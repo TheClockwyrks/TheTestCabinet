@@ -55,7 +55,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { brightestWarm, warm } from "./motes";
@@ -132,7 +132,7 @@ check("Its bulb shows at any distance", async () => {
   // shows the reviewer what was and was not drawn out there.
   captureStill(h, "bulb");
 
-  requireScene(snapshot, guard);
+  requireSceneHeld(snapshot, guard);
 
   // The fixture's own claim: the hunter stands on ground nothing has revealed, and
   // the fog it is read against is equally untouched.

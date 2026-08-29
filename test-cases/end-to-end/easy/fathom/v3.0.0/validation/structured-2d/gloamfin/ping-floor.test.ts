@@ -43,7 +43,7 @@ import {
   quietBoard,
   requireKind,
   requirePredatorMotion,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
   standDown,
 } from "../scene";
@@ -110,7 +110,7 @@ check("No two pings closer than the floor", async () => {
   );
   const ending = h.snapshot();
 
-  requireScene(ending, guard);
+  requireSceneHeld(ending, guard);
 
   const { sightings } = log;
   const tints = sightings.map((sighting) => sighting.tint);

@@ -32,7 +32,7 @@
 // its own cadence, and a ping in the unmuted window would let a build that never
 // sounded the pulse pass on somebody else's noise.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
@@ -42,9 +42,10 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
+  failPrecondition,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -98,6 +99,19 @@ function audible(harness: Harness): number {
   return harness.cues.filter((cue) => cue.gain > 0).length;
 }
 
+/**
+ * How many cues the build has ASKED for so far, whatever they sounded at.
+ *
+ * The same log, counted without the gain. A muted play is announced at gain zero
+ * rather than not announced, so the two counts together separate a mute that was
+ * never cleared — plays announced, none of them audible — from a build that never
+ * plays the pulse's cue at all, which is audio/sonar's verdict rather than this
+ * point's.
+ */
+function announced(harness: Harness): number {
+  return harness.cues.length;
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -108,78 +122,91 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("toggles mute on KeyM, and a muted dive sounds nothing", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    await poseStraightRun(h, RUN_TILES);
-    const quiet = await denAll(h);
-    await parkForager(h);
-    await clearUnderfoot(h);
-    h.debug.setBrightness(LIT);
-    h.debug.setCreatureAI(false);
-    const watch = await sceneGuard(h, quiet);
+check("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
+  await startPlaying(h);
+  await poseStraightRun(h, RUN_TILES);
+  const quiet = await denAll(h);
+  await parkForager(h);
+  await clearUnderfoot(h);
+  h.debug.setBrightness(LIT);
+  h.debug.setCreatureAI(false);
+  const watch = await sceneGuard(h, quiet);
 
-    const opening = h.snapshot();
+  const opening = h.snapshot();
 
-    // Muted.
-    await h.tap(MUTE_KEY);
-    await h.advance(BEAT_TICKS);
-    const muted = h.snapshot();
+  // Muted.
+  await h.tap(MUTE_KEY);
+  await h.advance(BEAT_TICKS);
+  const muted = h.snapshot();
 
-    h.debug.setSonarCooldown(0);
-    const quietFrom = audible(h);
-    await h.tap(SONAR_KEY);
-    await h.advance(CUE_WINDOW_TICKS);
-    const mutedSounds = audible(h) - quietFrom;
-    const mutedPulses = h
-      .snapshot()
-      .pulses.filter((pulse) => pulse.source === "forager").length;
-    // Before the assertions, so a check that fails still leaves the picture that
-    // shows why: a muted dive with the forager's own pulse flooding the corridor.
-    captureStill(h, "mute");
+  h.debug.setSonarCooldown(0);
+  const quietFrom = audible(h);
+  await h.tap(SONAR_KEY);
+  await h.advance(CUE_WINDOW_TICKS);
+  const mutedSounds = audible(h) - quietFrom;
+  const mutedPulses = h
+    .snapshot()
+    .pulses.filter((pulse) => pulse.source === "forager").length;
+  // Before the assertions, so a check that fails still leaves the picture that
+  // shows why: a muted dive with the forager's own pulse flooding the corridor.
+  captureStill(h, "mute");
 
-    // And unmuted.
-    await h.tap(MUTE_KEY);
-    await h.advance(BEAT_TICKS);
-    const unmuted = h.snapshot();
+  // And unmuted.
+  await h.tap(MUTE_KEY);
+  await h.advance(BEAT_TICKS);
+  const unmuted = h.snapshot();
 
-    h.debug.setSonarCooldown(0);
-    const loudFrom = audible(h);
-    await h.tap(SONAR_KEY);
-    await h.advance(CUE_WINDOW_TICKS);
-    const unmutedSounds = audible(h) - loudFrom;
+  h.debug.setSonarCooldown(0);
+  const loudFrom = audible(h);
+  const loudPlaysFrom = announced(h);
+  await h.tap(SONAR_KEY);
+  await h.advance(CUE_WINDOW_TICKS);
+  const unmutedSounds = audible(h) - loudFrom;
+  const unmutedPlays = announced(h) - loudPlaysFrom;
 
-    requireSceneHeld(h.snapshot(), watch);
+  requireSceneHeld(h.snapshot(), watch);
 
-    assertEqual(
-      opening.muted,
-      false,
-      "a session opens with sound on (specs/progression.md)",
+  assertEqual(
+    opening.muted,
+    false,
+    "a session opens with sound on (specs/progression.md)",
+  );
+  assertEqual(muted.muted, true, "pressing KeyM turns muting on");
+  assertEqual(unmuted.muted, false, "pressing KeyM again turns it off");
+
+  // The event happened either way — "The events that raise cues still happen
+  // and the game plays exactly as it does unmuted, and only the sound stops" —
+  // so a build that silenced the pulse by not emitting it is not the one this
+  // point passes.
+  assertGreaterThan(
+    mutedPulses,
+    0,
+    "the muted dive still emitted the pulse, so what is counted below is the " +
+      "sound of an event that happened",
+  );
+  assertEqual(
+    mutedSounds,
+    0,
+    `cues the build SOUNDED over ${CUE_WINDOW_TICKS} ticks of a MUTED dive ` +
+      `around its own sonar pulse`,
+  );
+  // A build that plays no cue for its own pulse has nothing for the toggle to
+  // restore, and "clearing the toggle restores the cues" cannot be read on a cue
+  // that was never asked for.
+  if (unmutedPlays === 0) {
+    failPrecondition(
+      "the unmuted dive asking the bus for a cue on its own sonar pulse, which " +
+        "is what specs/progression.md's \"Clearing the toggle restores the cues " +
+        'from the next event on" is read on',
+      "audio/sonar",
+      `the build announced no cue at all over ${CUE_WINDOW_TICKS} ticks around ` +
+        `the pulse`,
     );
-    assertEqual(muted.muted, true, "pressing KeyM turns muting on");
-    assertEqual(unmuted.muted, false, "pressing KeyM again turns it off");
-
-    // The event happened either way — "The events that raise cues still happen
-    // and the game plays exactly as it does unmuted, and only the sound stops" —
-    // so a build that silenced the pulse by not emitting it is not the one this
-    // point passes.
-    assertGreaterThan(
-      mutedPulses,
-      0,
-      "the muted dive still emitted the pulse, so what is counted below is the " +
-        "sound of an event that happened",
-    );
-    assertEqual(
-      mutedSounds,
-      0,
-      `cues the build SOUNDED over ${CUE_WINDOW_TICKS} ticks of a MUTED dive ` +
-        `around its own sonar pulse`,
-    );
-    assertGreaterThan(
-      unmutedSounds,
-      0,
-      `cues the build SOUNDED over ${CUE_WINDOW_TICKS} ticks of the same dive ` +
-        `UNMUTED, around the same pulse`,
-    );
-  });
+  }
+  assertGreaterThan(
+    unmutedSounds,
+    0,
+    `cues the build SOUNDED over ${CUE_WINDOW_TICKS} ticks of the same dive ` +
+      `UNMUTED, around the same pulse`,
+  );
 });

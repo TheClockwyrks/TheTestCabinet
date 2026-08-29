@@ -40,7 +40,8 @@ import { afterEach, beforeEach } from "vitest";
 import { check } from "../scene";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
-import { housedTiles, looseOf, poseMaze } from "../fixtures";
+import { housedTiles } from "../maze";
+import { looseOf, poseMaze } from "../fixtures";
 import {
   captureReplay,
   createHarness,

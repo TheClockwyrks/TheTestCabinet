@@ -32,7 +32,8 @@
 // where `HOW TO PLAY` leads, which is `states/howto`'s. Nothing here confirms
 // anything.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
+import { check } from "../scene";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
@@ -53,61 +54,64 @@ const SELECTION_CHANGE_MIN = 1;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("opens on the title, draws its copy, and shows which item is selected", async () => {
-  await h.debug.reset();
-  const opened = await h.snapshot();
+check(
+  "opens on the title, draws its copy, and shows which item is selected",
+  async () => {
+    await h.debug.reset();
+    const opened = await h.snapshot();
 
-  // The title as the game opens it, with the selection on the first item.
-  const selected = await frameOps(h);
-  // Before the assertions, so a failing check still leaves the picture that shows
-  // why the reviewer is being told the title is wrong.
-  await captureStill(h, "title");
+    // The title as the game opens it, with the selection on the first item.
+    const selected = await frameOps(h);
+    // Before the assertions, so a failing check still leaves the picture that shows
+    // why the reviewer is being told the title is wrong.
+    await captureStill(h, "title");
 
-  // The same screen again, nothing pressed: what one frame of this screen costs
-  // the next all by itself.
-  const unmoved = await frameOps(h);
-  // And the same screen with the selection moved off the first item.
-  await h.tap(MENU_DOWN_KEY);
-  const moved = await frameOps(h);
+    // The same screen again, nothing pressed: what one frame of this screen costs
+    // the next all by itself.
+    const unmoved = await frameOps(h);
+    // And the same screen with the selection moved off the first item.
+    await h.tap(MENU_DOWN_KEY);
+    const moved = await frameOps(h);
 
-  assertEqual(
-    opened.screen,
-    "title",
-    "the screen a fresh game opens on (specs/ui.md)",
-  );
+    assertEqual(
+      opened.screen,
+      "title",
+      "the screen a fresh game opens on (specs/ui.md)",
+    );
 
-  assertDrew(
-    selected,
-    TITLE_TEXT,
-    "the title the title screen shows (specs/ui.md)",
-  );
-  assertDrew(
-    selected,
-    TAGLINE_TEXT,
-    "the tagline the title screen shows (specs/ui.md)",
-  );
-  for (const item of TITLE_ITEMS) {
     assertDrew(
       selected,
-      item,
-      `an item of the title menu, which is ${TITLE_ITEMS.join(" then ")} (specs/ui.md)`,
+      TITLE_TEXT,
+      "the title the title screen shows (specs/ui.md)",
     );
-  }
+    assertDrew(
+      selected,
+      TAGLINE_TEXT,
+      "the tagline the title screen shows (specs/ui.md)",
+    );
+    for (const item of TITLE_ITEMS) {
+      assertDrew(
+        selected,
+        item,
+        `an item of the title menu, which is ${TITLE_ITEMS.join(" then ")} (specs/ui.md)`,
+      );
+    }
 
-  const idle = opDiff(selected, unmoved);
-  assertGreaterThanOrEqual(
-    opDiff(selected, moved),
-    idle + SELECTION_CHANGE_MIN,
-    `operations of the title frame that changed when the selection moved off ` +
-      `${TITLE_ITEMS[0]}, against the ${idle} that changed when it did not — ` +
-      `the selected item is drawn distinctly from the others (specs/ui.md)`,
-  );
-});
+    const idle = opDiff(selected, unmoved);
+    assertGreaterThanOrEqual(
+      opDiff(selected, moved),
+      idle + SELECTION_CHANGE_MIN,
+      `operations of the title frame that changed when the selection moved off ` +
+        `${TITLE_ITEMS[0]}, against the ${idle} that changed when it did not — ` +
+        `the selected item is drawn distinctly from the others (specs/ui.md)`,
+    );
+  },
+);

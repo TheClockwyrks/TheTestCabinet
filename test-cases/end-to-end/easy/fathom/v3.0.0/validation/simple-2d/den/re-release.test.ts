@@ -30,13 +30,13 @@
 // `setMaze` suspends the release schedule, so a posed board has no schedule to
 // read.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import {
-  graded,
-  predIndex,
+  check,
+  indexOfKind,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -89,8 +89,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("returns every predator to the den on a catch and runs the whole staggered schedule again from the moment play resumes", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "returns every predator to the den on a catch and runs the whole staggered schedule again from the moment play resumes",
+  async () => {
     h.debug.reset({ seed: SEED });
     h.debug.startDive();
     h.debug.beginPlay();
@@ -105,7 +106,7 @@ it("returns every predator to the den on a catch and runs the whole staggered sc
           `progression checks' verdict, not this one's`,
       );
     }
-    const found = predIndex(opening, "lanternjaw");
+    const found = indexOfKind(opening, "lanternjaw");
     if (found < 0) {
       unmetPrecondition(
         "the roster carries no Lanternjaw to take the life with, so there is no " +
@@ -201,5 +202,5 @@ it("returns every predator to the den on a catch and runs the whole staggered sc
           `measured from the moment play resumed`,
       );
     }
-  });
-});
+  },
+);

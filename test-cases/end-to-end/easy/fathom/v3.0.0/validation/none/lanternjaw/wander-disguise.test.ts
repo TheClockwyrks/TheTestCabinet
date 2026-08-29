@@ -25,7 +25,7 @@
 // `lanternjaw/light-range`'s, so a build that never acquires stands this check
 // down rather than failing it twice.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
 import { DRIFTER_SPEED, FORAGER_SPEED, PREDATOR_SPEED } from "../constants";
 import { poseSightLine, predatorIndex } from "../fixtures";
@@ -35,14 +35,16 @@ import {
   seconds,
   ticks,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
 
 /**
@@ -94,8 +96,8 @@ const CLIP_TICKS = 36;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
@@ -122,7 +124,7 @@ async function travel(
   return { covered, speed: last.speed, state: last.state };
 }
 
-it("It wanders at the drifter's pace and hunts faster", async () => {
+check("It wanders at the drifter's pace and hunts faster", async () => {
   await startPlaying(h);
   const line = await poseSightLine(h, GAP_TILES, {
     lead: LEAD_TILES,
@@ -130,12 +132,12 @@ it("It wanders at the drifter's pace and hunts faster", async () => {
   });
   const index = predatorIndex(await h.snapshot(), "lanternjaw");
   if (index === null) {
-    h.unmet(
+    unmetPrecondition(
       "the roster carries no Lanternjaw, so this scenario has nothing to pose — " +
         "what the roster holds is the progression checks' verdict, not this one's",
     );
   }
-  const quiet = await denAllExcept(h, [index]);
+  const quiet = await denAll(h, [index]);
   await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
   // Facing away down the corridor: its drift is the thing being timed, and a drift
   // that closed the gap would shorten the standoff the second half rests on.
@@ -161,7 +163,7 @@ it("It wanders at the drifter's pace and hunts faster", async () => {
       poll: 1,
     });
     if (!fixed.hit) {
-      h.unmet(
+      unmetPrecondition(
         "the Lanternjaw took no fix on a fully lit forager seven tiles away on a " +
           "clear line, so there was no chase to time — whether it senses the " +
           "forager at all is lanternjaw/light-range's verdict, not this one's",
@@ -173,7 +175,7 @@ it("It wanders at the drifter's pace and hunts faster", async () => {
     return { wandered, chased, end: await h.snapshot() };
   });
 
-  requireSceneHeld(h, read.end, guard);
+  requireSceneHeld(read.end, guard);
 
   const wanderSeconds = seconds(WANDER_TICKS);
   const chaseSeconds = seconds(CHASE_TICKS);

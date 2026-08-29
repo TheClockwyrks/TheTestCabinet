@@ -52,8 +52,8 @@ import {
   denTiles,
   gateTiles,
   tileAt,
-  type BoardView,
   type Dir,
+  type MazeView,
   type Tile,
 } from "../maze";
 import { denAll, standDown } from "../scene";
@@ -213,7 +213,7 @@ const APPROACHES: readonly { dx: number; dy: number; facing: Dir }[] = [
 ];
 
 /** The corridor tile of `view` nearest to a point on the grid, or `null`. */
-function nearestCorridor(view: BoardView, fx: number, fy: number): Tile | null {
+function nearestCorridor(view: MazeView, fx: number, fy: number): Tile | null {
   const at = { tx: fx * (view.grid.cols - 1), ty: fy * (view.grid.rows - 1) };
   let best: Tile | null = null;
   let bestGap = Infinity;
@@ -234,7 +234,7 @@ function nearestCorridor(view: BoardView, fx: number, fy: number): Tile | null {
  * Tried above the gate first, which is where specs/maze.md puts the corridor
  * outside a gate "on its top edge".
  */
-function gateApproach(view: BoardView): (Tile & { facing: Dir }) | null {
+function gateApproach(view: MazeView): (Tile & { facing: Dir }) | null {
   for (const gate of gateTiles(view)) {
     for (const { dx, dy, facing } of APPROACHES) {
       const tx = gate.tx + dx;

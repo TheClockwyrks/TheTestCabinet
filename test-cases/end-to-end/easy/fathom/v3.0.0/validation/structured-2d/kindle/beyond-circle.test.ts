@@ -58,7 +58,7 @@ import {
   denAll,
   failPrecondition,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { FOG_MATCH, windowRadius } from "./circle";
@@ -118,7 +118,7 @@ check("The amber lights are clipped to the circle", async () => {
   // light that should have been clipped away.
   captureStill(h, "clipped");
 
-  requireScene(beyond, guard);
+  requireSceneHeld(beyond, guard);
 
   assertEqual(
     beyond.drifters.length,

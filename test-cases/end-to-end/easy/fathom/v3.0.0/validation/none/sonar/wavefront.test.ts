@@ -24,7 +24,7 @@
 // is at a given depth, which is `progression/depth-scaling`'s. This reads the
 // pulse's own reported `range` and asks only that the pulse ends past it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -37,14 +37,15 @@ import {
   createHarness,
   seconds,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
 } from "../scene";
 import { castPulse, foragerPulse, requirePress, sinceEmit } from "./pulse";
 
@@ -105,107 +106,110 @@ const SPENT_TICKS = 108;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("advances the front at SONAR_WAVE_SPEED and takes the pulse off the list once it passes its range", async () => {
-  await startPlaying(h);
-  const run = await poseStraightRun(h, RUN_TILES);
-  await parkForager(h, { tx: run.tx, ty: run.ty });
-  await clearUnderfoot(h);
-  const quiet = await denAllExcept(h);
-  const watch = await sceneGuard(h, quiet);
+check(
+  "advances the front at SONAR_WAVE_SPEED and takes the pulse off the list once it passes its range",
+  async () => {
+    await startPlaying(h);
+    const run = await poseStraightRun(h, RUN_TILES);
+    await parkForager(h, run.start);
+    await clearUnderfoot(h);
+    const quiet = await denAll(h);
+    const watch = await sceneGuard(h, quiet);
 
-  const flight = await captureReplay(h, "wave", async () => {
-    const emitted = await castPulse(h);
-    // A press that did nothing at all is controls/sonar-key's; a press that
-    // armed the cooldown and left no front is exactly what THIS point decides,
-    // so it is asserted below rather than stood down on.
-    requirePress(h, emitted);
+    const flight = await captureReplay(h, "wave", async () => {
+      const emitted = await castPulse(h);
+      // A press that did nothing at all is controls/sonar-key's; a press that
+      // armed the cooldown and left no front is exactly what THIS point decides,
+      // so it is asserted below rather than stood down on.
+      requirePress(emitted);
 
-    const samples: {
-      ticks: number;
-      elapsed: number;
-      front: number | null;
-    }[] = [];
-    let stood = 1; // the tick the press itself ran
-    for (const at of SAMPLE_TICKS) {
-      await h.advance(at - stood);
-      stood = at;
-      const snapshot = await h.snapshot();
-      const pulse = foragerPulse(snapshot);
-      samples.push({
-        ticks: at,
-        elapsed: sinceEmit(emitted, snapshot),
-        front: pulse === undefined ? null : pulse.front,
-      });
+      const samples: {
+        ticks: number;
+        elapsed: number;
+        front: number | null;
+      }[] = [];
+      let stood = 1; // the tick the press itself ran
+      for (const at of SAMPLE_TICKS) {
+        await h.advance(at - stood);
+        stood = at;
+        const snapshot = await h.snapshot();
+        const pulse = foragerPulse(snapshot);
+        samples.push({
+          ticks: at,
+          elapsed: sinceEmit(emitted, snapshot),
+          front: pulse === undefined ? null : pulse.front,
+        });
+      }
+
+      // Out past the range, where the pulse is meant to be gone.
+      await h.advance(SPENT_TICKS - stood);
+      const spent = await h.snapshot();
+
+      return { emitted, samples, spent };
+    });
+
+    requireSceneHeld(await h.snapshot(), watch);
+
+    // The pulse begins at the forager rather than arriving everywhere at once —
+    // and it is still there a tick after the press to begin at all.
+    assertEqual(
+      flight.emitted.pulse !== null,
+      true,
+      "a wavefront on pulses one tick after the press, which a pulse that " +
+        "travels rather than covering its whole range at once must still be",
+    );
+    if (flight.emitted.pulse === null) return;
+    assertLessThanOrEqual(
+      flight.emitted.pulse.front,
+      OPENING_MAX,
+      "the front one tick after the pulse was cast, in corridor steps",
+    );
+
+    // And stands 14 * t steps out at each reading.
+    let previous = flight.emitted.pulse.front;
+    for (const sample of flight.samples) {
+      assertEqual(
+        sample.front !== null,
+        true,
+        `a forager pulse still in flight ${sample.ticks} ticks after the press, ` +
+          `where a front at SONAR_WAVE_SPEED stands ` +
+          `${(SONAR_WAVE_SPEED * seconds(sample.ticks)).toFixed(2)} steps out of ` +
+          `the ${flight.emitted.pulse.range} its range allows`,
+      );
+      if (sample.front === null) continue;
+      const expected = SONAR_WAVE_SPEED * sample.elapsed;
+      assertLessThanOrEqual(
+        Math.abs(sample.front - expected),
+        RATE_TOLERANCE * expected + EMIT_SLACK,
+        `|front - ${expected.toFixed(3)}| ${sample.ticks} ticks ` +
+          `(${sample.elapsed.toFixed(3)} s) after the press, in corridor steps`,
+      );
+      assertGreaterThan(
+        sample.front,
+        previous,
+        `the front ${sample.ticks} ticks after the press, against where it stood ` +
+          "at the reading before",
+      );
+      previous = sample.front;
     }
 
-    // Out past the range, where the pulse is meant to be gone.
-    await h.advance(SPENT_TICKS - stood);
-    const spent = await h.snapshot();
-
-    return { emitted, samples, spent };
-  });
-
-  requireSceneHeld(h, await h.snapshot(), watch);
-
-  // The pulse begins at the forager rather than arriving everywhere at once —
-  // and it is still there a tick after the press to begin at all.
-  assertEqual(
-    flight.emitted.pulse !== null,
-    true,
-    "a wavefront on pulses one tick after the press, which a pulse that " +
-      "travels rather than covering its whole range at once must still be",
-  );
-  if (flight.emitted.pulse === null) return;
-  assertLessThanOrEqual(
-    flight.emitted.pulse.front,
-    OPENING_MAX,
-    "the front one tick after the pulse was cast, in corridor steps",
-  );
-
-  // And stands 14 * t steps out at each reading.
-  let previous = flight.emitted.pulse.front;
-  for (const sample of flight.samples) {
+    // The pulse ends once the front passes its range.
     assertEqual(
-      sample.front !== null,
-      true,
-      `a forager pulse still in flight ${sample.ticks} ticks after the press, ` +
-        `where a front at SONAR_WAVE_SPEED stands ` +
-        `${(SONAR_WAVE_SPEED * seconds(sample.ticks)).toFixed(2)} steps out of ` +
-        `the ${flight.emitted.pulse.range} its range allows`,
+      foragerPulse(flight.spent),
+      undefined,
+      `a forager pulse still listed ${SPENT_TICKS} ticks ` +
+        `(${(SPENT_TICKS / TICK_HZ).toFixed(2)} s) after the press, by which time ` +
+        `a front at SONAR_WAVE_SPEED stands ` +
+        `${(SONAR_WAVE_SPEED * seconds(SPENT_TICKS)).toFixed(1)} steps out and is ` +
+        `past the ${flight.emitted.pulse.range} its range allows`,
     );
-    if (sample.front === null) continue;
-    const expected = SONAR_WAVE_SPEED * sample.elapsed;
-    assertLessThanOrEqual(
-      Math.abs(sample.front - expected),
-      RATE_TOLERANCE * expected + EMIT_SLACK,
-      `|front - ${expected.toFixed(3)}| ${sample.ticks} ticks ` +
-        `(${sample.elapsed.toFixed(3)} s) after the press, in corridor steps`,
-    );
-    assertGreaterThan(
-      sample.front,
-      previous,
-      `the front ${sample.ticks} ticks after the press, against where it stood ` +
-        "at the reading before",
-    );
-    previous = sample.front;
-  }
-
-  // The pulse ends once the front passes its range.
-  assertEqual(
-    foragerPulse(flight.spent),
-    undefined,
-    `a forager pulse still listed ${SPENT_TICKS} ticks ` +
-      `(${(SPENT_TICKS / TICK_HZ).toFixed(2)} s) after the press, by which time ` +
-      `a front at SONAR_WAVE_SPEED stands ` +
-      `${(SONAR_WAVE_SPEED * seconds(SPENT_TICKS)).toFixed(1)} steps out and is ` +
-      `past the ${flight.emitted.pulse.range} its range allows`,
-  );
-});
+  },
+);

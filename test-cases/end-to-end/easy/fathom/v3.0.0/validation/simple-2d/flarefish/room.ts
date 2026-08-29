@@ -36,7 +36,7 @@
 // from it are comparable.
 
 import { poseMaze } from "../fixtures";
-import { denAll, parkForager, requirePred, type QuietBoard } from "../scene";
+import { denAll, parkForager, requireKind, type Quiet } from "../scene";
 import type { Harness } from "../harness";
 import type { Tile } from "../maze";
 
@@ -98,7 +98,7 @@ export interface FlareRoom {
   /** The Flarefish's index in the snapshot's roster. */
   index: number;
   /** What was posed into the den, for the scene guard. */
-  quiet: QuietBoard;
+  quiet: Quiet;
 }
 
 /**
@@ -128,8 +128,8 @@ export async function poseFlareRoom(h: Harness): Promise<FlareRoom> {
   h.debug.clearPlankton();
   h.debug.setBrightness(0);
 
-  const index = requirePred(h.snapshot(), "flarefish");
-  const quiet = await denAll(h, ["flarefish"]);
+  const index = requireKind(h.snapshot(), "flarefish");
+  const quiet = await denAll(h, [index]);
   h.debug.setPredatorTile(index, hall[2].tx, hall[2].ty);
   h.debug.setPredatorDir(index, "right");
   h.debug.setPredatorState(index, "wander");

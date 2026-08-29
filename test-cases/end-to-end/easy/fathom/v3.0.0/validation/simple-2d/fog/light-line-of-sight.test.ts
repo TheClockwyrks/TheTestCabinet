@@ -34,7 +34,7 @@
 // and "drawn" is where the forager is standing — rather than where a patrol
 // happened to wander mid-clip.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { poseMaze } from "../fixtures";
@@ -47,11 +47,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   fromForager,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
@@ -104,145 +104,142 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The light does not bend around corners", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, BLIND_CORNER);
-    const start = board.mark("S");
-    const junction = board.mark("J");
-    const post = board.mark("P");
-    const quiet = await denAll(h, ["gloamfin"]);
-    const gloamfin = requirePred(h.snapshot(), "gloamfin");
+check("The light does not bend around corners", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, BLIND_CORNER);
+  const start = board.mark("S");
+  const junction = board.mark("J");
+  const post = board.mark("P");
+  const gloamfin = requireKind(h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [gloamfin]);
 
-    h.debug.setForagerTile(start.tx, start.ty);
-    h.debug.setForagerDir("right");
-    h.debug.setPredatorTile(gloamfin, post.tx, post.ty);
-    // Facing the junction it will be revealed from, so the reveal is head-on.
-    h.debug.setPredatorDir(gloamfin, "up");
-    h.debug.setPredatorState(gloamfin, "wander");
-    h.debug.setCreatureAI(false);
-    // No plankton to graze, so `G` is the one this check posed rather than one a
-    // swim down a corridor of pellets kept topping up.
-    h.debug.clearPlankton();
-    // The widest light in the game, so the predator is inside `V` throughout.
-    h.debug.setBrightness(1);
-    const watch = await sceneGuard(h, quiet, { foragerParked: false });
+  h.debug.setForagerTile(start.tx, start.ty);
+  h.debug.setForagerDir("right");
+  h.debug.setPredatorTile(gloamfin, post.tx, post.ty);
+  // Facing the junction it will be revealed from, so the reveal is head-on.
+  h.debug.setPredatorDir(gloamfin, "up");
+  h.debug.setPredatorState(gloamfin, "wander");
+  h.debug.setCreatureAI(false);
+  // No plankton to graze, so `G` is the one this check posed rather than one a
+  // swim down a corridor of pellets kept topping up.
+  h.debug.clearPlankton();
+  // The widest light in the game, so the predator is inside `V` throughout.
+  h.debug.setBrightness(1);
+  const watch = await sceneGuard(h, quiet, { foragerParked: false });
 
-    interface Sample {
-      lit: boolean;
-      gap: number;
-      radius: number;
-    }
-    const blind: Sample[] = [];
-    const clear: Sample[] = [];
-    const take = (): FathomSnapshot => {
-      const s = h.snapshot();
-      const hunter = s.predators[gloamfin];
-      if (hunter === undefined) return s;
-      const sample: Sample = {
-        lit: hunter.lit,
-        gap: fromForager(s, hunter.x, hunter.y),
-        radius: s.visionRadius,
-      };
-      if (s.forager.ty === junction.ty) {
-        if (s.forager.tx <= junction.tx - BLIND_MARGIN_TILES)
-          blind.push(sample);
-      } else if (s.forager.ty > junction.ty) {
-        clear.push(sample);
-      }
-      return s;
+  interface Sample {
+    lit: boolean;
+    gap: number;
+    radius: number;
+  }
+  const blind: Sample[] = [];
+  const clear: Sample[] = [];
+  const take = (): FathomSnapshot => {
+    const s = h.snapshot();
+    const hunter = s.predators[gloamfin];
+    if (hunter === undefined) return s;
+    const sample: Sample = {
+      lit: hunter.lit,
+      gap: fromForager(s, hunter.x, hunter.y),
+      radius: s.visionRadius,
     };
-
-    const end = await captureReplay(h, "los", async () => {
-      const before = h.snapshot();
-      // Along the corridor, judging every tick by where the forager stands.
-      h.hold(DIR_KEY.right);
-      let arrived = false;
-      for (let i = 0; i < LEG_MAX_TICKS && !arrived; i += 1) {
-        await h.advance(1);
-        arrived = take().forager.tx >= junction.tx;
-      }
-      // The buffered turn: `down` is set while the forager is inside the junction
-      // tile, and specs/movement.md honors a perpendicular direction at the next
-      // tile center the forager reaches, which is the junction's own.
-      h.release(DIR_KEY.right);
-      h.hold(DIR_KEY.down);
-      let onArm = false;
-      for (let i = 0; i < LEG_MAX_TICKS && !onArm; i += 1) {
-        await h.advance(1);
-        onArm = take().forager.ty >= junction.ty + 1;
-      }
-      h.release(DIR_KEY.down);
-      // Parked rather than merely released, so the clip ends on the reveal instead
-      // of on the forager drifting into the hunter three tiles below.
-      await parkForager(h);
-      await h.advance(TAIL_TICKS);
-      const settled = h.snapshot();
-      return { before, settled, arrived, onArm };
-    });
-
-    requireSceneHeld(end.settled, watch);
-
-    // Whether the forager travels is `controls/*` and `maze-movement/*`'s verdict.
-    if (!end.arrived || !end.onArm) {
-      requireSwim(
-        end.before.forager,
-        end.settled.forager,
-        "round the corner the predator waits behind",
-      );
-      unmetPrecondition(
-        `the forager did not reach ${end.arrived ? "the arm below the junction" : "the junction"} ` +
-          `within ${LEG_MAX_TICKS} ticks a leg, so the reveal this point is about ` +
-          `never happened; how the forager travels and turns is maze-movement's ` +
-          `verdict, not this one's`,
-      );
+    if (s.forager.ty === junction.ty) {
+      if (s.forager.tx <= junction.tx - BLIND_MARGIN_TILES) blind.push(sample);
+    } else if (s.forager.ty > junction.ty) {
+      clear.push(sample);
     }
+    return s;
+  };
 
-    assertGreaterThan(
-      blind.length,
-      0,
-      "ticks spent back along the corridor with rock squarely on the line",
-    );
-    assertGreaterThan(
-      clear.length,
-      0,
-      "ticks spent on the arm with open water between the two",
-    );
-
-    // The fixture's own geometry: the predator was inside the light's reach the
-    // whole time it was hidden, so "not lit" is about the rock and not the range.
-    const furthest = Math.max(...blind.map((s) => s.gap));
-    assertLessThan(
-      furthest,
-      VISION_MAX,
-      "the furthest the predator ever stood while judged blind, in logical " +
-        `units, against V at G = 1 (VISION_MIN + VISION_GAIN = ${VISION_MAX})`,
-    );
-    // And inside the light the BUILD reports, so a build whose radius is wrong is
-    // reported by the point that owns the radius rather than by this one.
-    const narrowest = Math.min(...blind.map((s) => s.radius));
-    if (narrowest <= furthest) {
-      unmetPrecondition(
-        `the build's own light radius fell to ${narrowest} while the predator ` +
-          `stood ${furthest.toFixed(1)} units away, so it was out of range rather ` +
-          `than behind rock; the radius is brightness/widens-vision's verdict`,
-      );
+  const end = await captureReplay(h, "los", async () => {
+    const before = h.snapshot();
+    // Along the corridor, judging every tick by where the forager stands.
+    h.hold(DIR_KEY.right);
+    let arrived = false;
+    for (let i = 0; i < LEG_MAX_TICKS && !arrived; i += 1) {
+      await h.advance(1);
+      arrived = take().forager.tx >= junction.tx;
     }
-
-    assertEqual(
-      blind.filter((s) => s.lit).length,
-      0,
-      "ticks on which the predator behind rock reported lit, of " +
-        `${blind.length} judged blind — the light travels straight ` +
-        "(specs/sensing.md)",
-    );
-    // The control: without it, "never lit" is satisfied by a build that draws no
-    // predator anywhere.
-    assertGreaterThan(
-      clear.filter((s) => s.lit).length,
-      0,
-      `ticks on which the same predator reported lit once the forager was on ` +
-        `the arm with open water between them, of ${clear.length} judged clear`,
-    );
+    // The buffered turn: `down` is set while the forager is inside the junction
+    // tile, and specs/movement.md honors a perpendicular direction at the next
+    // tile center the forager reaches, which is the junction's own.
+    h.release(DIR_KEY.right);
+    h.hold(DIR_KEY.down);
+    let onArm = false;
+    for (let i = 0; i < LEG_MAX_TICKS && !onArm; i += 1) {
+      await h.advance(1);
+      onArm = take().forager.ty >= junction.ty + 1;
+    }
+    h.release(DIR_KEY.down);
+    // Parked rather than merely released, so the clip ends on the reveal instead
+    // of on the forager drifting into the hunter three tiles below.
+    await parkForager(h);
+    await h.advance(TAIL_TICKS);
+    const settled = h.snapshot();
+    return { before, settled, arrived, onArm };
   });
+
+  requireSceneHeld(end.settled, watch);
+
+  // Whether the forager travels is `controls/*` and `maze-movement/*`'s verdict.
+  if (!end.arrived || !end.onArm) {
+    requireSwim(
+      end.before.forager,
+      end.settled.forager,
+      "round the corner the predator waits behind",
+    );
+    unmetPrecondition(
+      `the forager did not reach ${end.arrived ? "the arm below the junction" : "the junction"} ` +
+        `within ${LEG_MAX_TICKS} ticks a leg, so the reveal this point is about ` +
+        `never happened; how the forager travels and turns is maze-movement's ` +
+        `verdict, not this one's`,
+    );
+  }
+
+  assertGreaterThan(
+    blind.length,
+    0,
+    "ticks spent back along the corridor with rock squarely on the line",
+  );
+  assertGreaterThan(
+    clear.length,
+    0,
+    "ticks spent on the arm with open water between the two",
+  );
+
+  // The fixture's own geometry: the predator was inside the light's reach the
+  // whole time it was hidden, so "not lit" is about the rock and not the range.
+  const furthest = Math.max(...blind.map((s) => s.gap));
+  assertLessThan(
+    furthest,
+    VISION_MAX,
+    "the furthest the predator ever stood while judged blind, in logical " +
+      `units, against V at G = 1 (VISION_MIN + VISION_GAIN = ${VISION_MAX})`,
+  );
+  // And inside the light the BUILD reports, so a build whose radius is wrong is
+  // reported by the point that owns the radius rather than by this one.
+  const narrowest = Math.min(...blind.map((s) => s.radius));
+  if (narrowest <= furthest) {
+    unmetPrecondition(
+      `the build's own light radius fell to ${narrowest} while the predator ` +
+        `stood ${furthest.toFixed(1)} units away, so it was out of range rather ` +
+        `than behind rock; the radius is brightness/widens-vision's verdict`,
+    );
+  }
+
+  assertEqual(
+    blind.filter((s) => s.lit).length,
+    0,
+    "ticks on which the predator behind rock reported lit, of " +
+      `${blind.length} judged blind — the light travels straight ` +
+      "(specs/sensing.md)",
+  );
+  // The control: without it, "never lit" is satisfied by a build that draws no
+  // predator anywhere.
+  assertGreaterThan(
+    clear.filter((s) => s.lit).length,
+    0,
+    `ticks on which the same predator reported lit once the forager was on ` +
+      `the arm with open water between them, of ${clear.length} judged clear`,
+  );
 });

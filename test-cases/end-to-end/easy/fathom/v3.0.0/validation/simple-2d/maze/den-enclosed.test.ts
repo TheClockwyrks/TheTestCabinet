@@ -26,11 +26,11 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { denCorridorBreaches } from "../maze";
-import { graded } from "../scene";
+import { check } from "../scene";
 import {
   captureBoard,
   freshBoards,
@@ -59,8 +59,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("encloses the den chamber, leaving the gate its only opening onto the corridors", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "encloses the den chamber, leaving the gate its only opening onto the corridors",
+  async () => {
     const boards = await freshBoards(h);
     requireLaidOut(boards);
     requireDenChamber(boards);
@@ -84,5 +85,5 @@ it("encloses the den chamber, leaving the gate its only opening onto the corrido
           (named === "" ? "" : `, at ${named}`),
       );
     }
-  });
-});
+  },
+);

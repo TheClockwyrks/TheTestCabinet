@@ -42,7 +42,7 @@ import {
 import {
   check,
   indexOfKind,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
   standDown,
 } from "../scene";
@@ -160,7 +160,7 @@ check(
       );
     }
 
-    requireScene(h.snapshot(), run.guard);
+    requireSceneHeld(h.snapshot(), run.guard);
     requireReleasedFlag(run.den);
 
     // Half one: the catch put every hunter back, unreleased.

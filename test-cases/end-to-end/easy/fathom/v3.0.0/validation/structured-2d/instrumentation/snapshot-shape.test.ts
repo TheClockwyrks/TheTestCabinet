@@ -62,7 +62,7 @@ import {
   check,
   failPrecondition,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { FATHOM_DEBUG_VERSION, type FathomSnapshot } from "../surface";
@@ -204,7 +204,7 @@ check("reports every documented field, with its documented type", async () => {
   // board the shape was read off.
   captureStill(h, "posed");
 
-  requireScene(snap, guard);
+  requireSceneHeld(snap, guard);
 
   // The scene the shape is read over: a build whose controls never fired the two
   // effects has a defect the control points own, and this stands aside.
@@ -325,6 +325,7 @@ check("reports every documented field, with its documented type", async () => {
     assertNumber(drifter, "y", `${where}.y`);
     assertNumber(drifter, "tx", `${where}.tx`);
     assertNumber(drifter, "ty", `${where}.ty`);
+    assertBoolean(drifter, "lit", `${where}.lit`);
     const tile = tileOf(snap.grid, drifter.x, drifter.y);
     assertEqual(
       `${drifter.tx},${drifter.ty}`,

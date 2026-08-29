@@ -46,7 +46,7 @@
 // gets besides is the recorded clip, which shows the body arriving around an
 // unmoved bulb far better than any pixel bound could state it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -67,14 +67,16 @@ import {
   sampleRing,
   warmInProfile,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
 import { moteCenter } from "./motes";
 
@@ -128,15 +130,15 @@ const CLIP_TICKS = 60;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("Lighting it leaves the bulb where it was", async () => {
+check("Lighting it leaves the bulb where it was", async () => {
   await startPlaying(h);
   const line = await poseSightLine(h, GAP_TILES, {
     lead: LEAD_TILES,
@@ -144,12 +146,12 @@ it("Lighting it leaves the bulb where it was", async () => {
   });
   const index = predatorIndex(await h.snapshot(), "lanternjaw");
   if (index === null) {
-    h.unmet(
+    unmetPrecondition(
       "the roster carries no Lanternjaw, so this scenario has nothing to pose — " +
         "what the roster holds is the progression checks' verdict, not this one's",
     );
   }
-  const quiet = await denAllExcept(h, [index]);
+  const quiet = await denAll(h, [index]);
   await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
   await h.debug.setPredatorState(index, "wander");
   await parkForager(h, line.forager);
@@ -197,7 +199,7 @@ it("Lighting it leaves the bulb where it was", async () => {
     };
   });
 
-  requireSceneHeld(h, read.end, guard);
+  requireSceneHeld(read.end, guard);
 
   // The fixture's own geometry: the creature stands outside the light at the first
   // reading and inside it at the second, so the light is what changed.
@@ -224,7 +226,7 @@ it("Lighting it leaves the bulb where it was", async () => {
   // rather than by this one: with the pocket still short of the creature the
   // light never fell on it, and there is no reveal here to read.
   if (read.shown.visionRadius < read.gap) {
-    h.unmet(
+    unmetPrecondition(
       `the build's own light radius stood at ${read.shown.visionRadius} at ` +
         `G = 1 while the Lanternjaw stood ${read.gap.toFixed(1)} units away, so ` +
         `the light never reached it and there was no reveal to read — the ` +

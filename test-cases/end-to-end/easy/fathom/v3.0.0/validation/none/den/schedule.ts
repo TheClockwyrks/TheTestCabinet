@@ -26,9 +26,9 @@
 // there is no schedule to read.
 
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../constants";
-import { parkForager } from "../scene";
+import { parkForager, unmetPrecondition } from "../scene";
 import type { FathomSnapshot, Harness } from "../harness";
-import type { TileRef } from "../maze";
+import type { Tile } from "../maze";
 
 /**
  * How far a measured release may sit from the time the schedule gives it, in
@@ -65,8 +65,8 @@ export interface DenWatch {
 }
 
 /** Every tile of the board carrying `character`, in reading order. */
-function tilesOf(snap: FathomSnapshot, character: string): TileRef[] {
-  const found: TileRef[] = [];
+function tilesOf(snap: FathomSnapshot, character: string): Tile[] {
+  const found: Tile[] = [];
   for (let ty = 0; ty < snap.grid.rows; ty += 1) {
     const row = snap.tiles[ty] ?? "";
     for (let tx = 0; tx < snap.grid.cols; tx += 1) {
@@ -99,12 +99,12 @@ function tilesOf(snap: FathomSnapshot, character: string): TileRef[] {
  * spent tidying the board is a tick the den's own clock may already be running
  * in.
  */
-export async function parkClearOfDen(h: Harness): Promise<TileRef> {
+export async function parkClearOfDen(h: Harness): Promise<Tile> {
   const snap = await h.snapshot();
   const gates = tilesOf(snap, "g");
   const corridors = tilesOf(snap, ".");
   if (corridors.length === 0) {
-    h.unmet(
+    unmetPrecondition(
       "the build's maze reports no corridor tile at all, so there is nowhere " +
         "to stand the forager clear of the den — what the board holds is the " +
         "maze checks' verdict, not this one's",
@@ -120,7 +120,7 @@ export async function parkClearOfDen(h: Harness): Promise<TileRef> {
     return around.some((neighbour) => neighbour !== ".");
   });
   const candidates = walled.length > 0 ? walled : corridors;
-  const score = (tile: TileRef): number =>
+  const score = (tile: Tile): number =>
     gates.length === 0
       ? 0
       : Math.min(

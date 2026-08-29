@@ -37,7 +37,13 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { check, denAll, requireScene, requireSwim, sceneGuard } from "../scene";
+import {
+  check,
+  denAll,
+  requireSceneHeld,
+  requireSwim,
+  sceneGuard,
+} from "../scene";
 
 /**
  * The board: five tiles of straight corridor, the forager resting on the first
@@ -117,7 +123,7 @@ check("Plankton score SCORE_PLANKTON each", async () => {
     return { before, after, revisited: h.snapshot(), hit: eaten.hit };
   });
 
-  requireScene(bite.revisited, guard);
+  requireSceneHeld(bite.revisited, guard);
   if (!bite.hit) {
     requireSwim(
       bite.before.forager,

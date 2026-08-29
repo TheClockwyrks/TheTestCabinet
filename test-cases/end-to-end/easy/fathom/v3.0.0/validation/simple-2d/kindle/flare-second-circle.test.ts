@@ -44,7 +44,7 @@
 // than hanging: the sweep is bounded at the interval, the charge and the bloom
 // with a second's margin, and the check asserts the bloom actually arrived.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   FLARE_BLOOM,
   FLARE_CHARGE,
@@ -67,12 +67,12 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   fromForager,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -167,233 +167,228 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("A flare is a second window onto the maze", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART, { at: { tx: 0, ty: 0 } });
-    const ring = board.all("R");
-    const unlit = board.mark("S");
-    // The ring's own pellets are taken off before anything is read. A plankton is
-    // drawn on the corridor tile of the pair and never on the rock above it, so
-    // the pellet alone would separate the two colors and a build that washed the
-    // disc flat under its own plankton would read as the trench.
-    // specs/instrumentation.md has `setPlankton` take one off without eating it,
-    // so nothing scores and no maze clears.
+check("A flare is a second window onto the maze", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART, { at: { tx: 0, ty: 0 } });
+  const ring = board.all("R");
+  const unlit = board.mark("S");
+  // The ring's own pellets are taken off before anything is read. A plankton is
+  // drawn on the corridor tile of the pair and never on the rock above it, so
+  // the pellet alone would separate the two colors and a build that washed the
+  // disc flat under its own plankton would read as the trench.
+  // specs/instrumentation.md has `setPlankton` take one off without eating it,
+  // so nothing scores and no maze clears.
+  for (const tile of ring) {
+    await h.debug.setPlankton(tile.tx, tile.ty, false);
+  }
+  // The rock the ring encloses: every tile inside its bounding box that is not
+  // a tile of the ring itself, which this fixture leaves solid.
+  const inner: Tile[] = [];
+  const txs = ring.map((tile) => tile.tx);
+  const tys = ring.map((tile) => tile.ty);
+  for (let ty = Math.min(...tys) + 1; ty < Math.max(...tys); ty += 1) {
+    for (let tx = Math.min(...txs) + 1; tx < Math.max(...txs); tx += 1) {
+      if (ring.some((tile) => tile.tx === tx && tile.ty === ty)) continue;
+      inner.push({ tx, ty });
+    }
+  }
+
+  const flarefish = requireKind(h.snapshot(), "flarefish");
+  const quiet = await denAll(h, [flarefish]);
+  await h.debug.setPredatorTile(flarefish, ring[0].tx, ring[0].ty);
+  await h.debug.setPredatorState(flarefish, "wander");
+  await parkForager(h, board.mark("F"));
+  await clearUnderfoot(h);
+  const watch = await sceneGuard(h, quiet);
+
+  // The seven seconds of wandering the timer takes are run before the capture
+  // opens, so the clip is the bloom rather than the wait for it.
+  const charged = await h.until(
+    (snapshot) => snapshot.predators[flarefish].flareCharging === true,
+    { maxFrames: BLOOM_DEADLINE, poll: 4 },
+  );
+  assertEqual(
+    charged.hit,
+    true,
+    `the Flarefish began a charge-up within ${BLOOM_DEADLINE} ticks of being ` +
+      `posed to wander, which is FLARE_INTERVAL (${FLARE_INTERVAL} s) and a ` +
+      "second's margin",
+  );
+
+  const seen = await captureReplay(h, "second", async () => {
+    const blooming = await h.until(
+      (snapshot) => snapshot.predators[flarefish].flaring === true,
+      { maxFrames: ticks(FLARE_CHARGE + 1), poll: 1 },
+    );
+    await h.advance(BLOOM_SETTLE);
+    const during = h.snapshot();
+    const hunter = during.predators[flarefish];
+
+    // The tile of the ring furthest from the Flarefish that still lies inside
+    // the disc: as clear of the bloom art drawn on the creature as this room
+    // allows, and beyond the forager's own circle like every tile here.
+    let target: Tile | null = null;
+    let reach = -1;
     for (const tile of ring) {
-      await h.debug.setPlankton(tile.tx, tile.ty, false);
+      const at = centerOf(during, tile);
+      const fromFlare = Math.hypot(at.x - hunter.x, at.y - hunter.y);
+      if (fromFlare > FLARE_RADIUS - DISC_MARGIN) continue;
+      if (fromFlare <= reach) continue;
+      reach = fromFlare;
+      target = tile;
     }
-    // The rock the ring encloses: every tile inside its bounding box that is not
-    // a tile of the ring itself, which this fixture leaves solid.
-    const inner: Tile[] = [];
-    const txs = ring.map((tile) => tile.tx);
-    const tys = ring.map((tile) => tile.ty);
-    for (let ty = Math.min(...tys) + 1; ty < Math.max(...tys); ty += 1) {
-      for (let tx = Math.min(...txs) + 1; tx < Math.max(...txs); tx += 1) {
-        if (ring.some((tile) => tile.tx === tx && tile.ty === ty)) continue;
-        inner.push({ tx, ty });
-      }
+    const litColor = target === null ? null : tileColor(h, during, target);
+    const fog = tileColor(h, during, unlit);
+
+    // The structure reading: a rock tile of the ring's own interior and the
+    // corridor tile directly beneath it, the furthest such pair that still lies
+    // inside the disc, so the bloom falls on the two of them alike.
+    let wall: Tile | null = null;
+    let floor: Tile | null = null;
+    let pairReach = -1;
+    for (const rock of inner) {
+      const under = ring.find(
+        (tile) => tile.tx === rock.tx && tile.ty === rock.ty + 1,
+      );
+      if (under === undefined) continue;
+      const rockAt = centerOf(during, rock);
+      const underAt = centerOf(during, under);
+      const rockReach = Math.hypot(rockAt.x - hunter.x, rockAt.y - hunter.y);
+      const underReach = Math.hypot(underAt.x - hunter.x, underAt.y - hunter.y);
+      if (Math.max(rockReach, underReach) > FLARE_RADIUS - DISC_MARGIN)
+        continue;
+      const nearer = Math.min(rockReach, underReach);
+      if (nearer <= pairReach) continue;
+      pairReach = nearer;
+      wall = rock;
+      floor = under;
     }
+    const wallColor = wall === null ? null : tileColor(h, during, wall);
+    const floorColor = floor === null ? null : tileColor(h, during, floor);
 
-    const flarefish = requirePred(h.snapshot(), "flarefish");
-    const quiet = await denAll(h, ["flarefish"]);
-    await h.debug.setPredatorTile(flarefish, ring[0].tx, ring[0].ty);
-    await h.debug.setPredatorState(flarefish, "wander");
-    await parkForager(h, board.mark("F"));
-    await clearUnderfoot(h);
-    const watch = await sceneGuard(h, quiet);
-
-    // The seven seconds of wandering the timer takes are run before the capture
-    // opens, so the clip is the bloom rather than the wait for it.
-    const charged = await h.until(
-      (snapshot) => snapshot.predators[flarefish].flareCharging === true,
-      { maxFrames: BLOOM_DEADLINE, poll: 4 },
+    const ended = await h.until(
+      (snapshot) => snapshot.predators[flarefish].flaring === false,
+      { maxFrames: END_DEADLINE, poll: 1 },
     );
-    assertEqual(
-      charged.hit,
-      true,
-      `the Flarefish began a charge-up within ${BLOOM_DEADLINE} ticks of being ` +
-        `posed to wander, which is FLARE_INTERVAL (${FLARE_INTERVAL} s) and a ` +
-        "second's margin",
-    );
+    await h.advance(FADE_TICKS);
+    const after = h.snapshot();
+    const fadedColor = target === null ? null : tileColor(h, after, target);
 
-    const seen = await captureReplay(h, "second", async () => {
-      const blooming = await h.until(
-        (snapshot) => snapshot.predators[flarefish].flaring === true,
-        { maxFrames: ticks(FLARE_CHARGE + 1), poll: 1 },
-      );
-      await h.advance(BLOOM_SETTLE);
-      const during = h.snapshot();
-      const hunter = during.predators[flarefish];
-
-      // The tile of the ring furthest from the Flarefish that still lies inside
-      // the disc: as clear of the bloom art drawn on the creature as this room
-      // allows, and beyond the forager's own circle like every tile here.
-      let target: Tile | null = null;
-      let reach = -1;
-      for (const tile of ring) {
-        const at = centerOf(during, tile);
-        const fromFlare = Math.hypot(at.x - hunter.x, at.y - hunter.y);
-        if (fromFlare > FLARE_RADIUS - DISC_MARGIN) continue;
-        if (fromFlare <= reach) continue;
-        reach = fromFlare;
-        target = tile;
-      }
-      const litColor = target === null ? null : tileColor(h, during, target);
-      const fog = tileColor(h, during, unlit);
-
-      // The structure reading: a rock tile of the ring's own interior and the
-      // corridor tile directly beneath it, the furthest such pair that still lies
-      // inside the disc, so the bloom falls on the two of them alike.
-      let wall: Tile | null = null;
-      let floor: Tile | null = null;
-      let pairReach = -1;
-      for (const rock of inner) {
-        const under = ring.find(
-          (tile) => tile.tx === rock.tx && tile.ty === rock.ty + 1,
-        );
-        if (under === undefined) continue;
-        const rockAt = centerOf(during, rock);
-        const underAt = centerOf(during, under);
-        const rockReach = Math.hypot(rockAt.x - hunter.x, rockAt.y - hunter.y);
-        const underReach = Math.hypot(
-          underAt.x - hunter.x,
-          underAt.y - hunter.y,
-        );
-        if (Math.max(rockReach, underReach) > FLARE_RADIUS - DISC_MARGIN)
-          continue;
-        const nearer = Math.min(rockReach, underReach);
-        if (nearer <= pairReach) continue;
-        pairReach = nearer;
-        wall = rock;
-        floor = under;
-      }
-      const wallColor = wall === null ? null : tileColor(h, during, wall);
-      const floorColor = floor === null ? null : tileColor(h, during, floor);
-
-      const ended = await h.until(
-        (snapshot) => snapshot.predators[flarefish].flaring === false,
-        { maxFrames: END_DEADLINE, poll: 1 },
-      );
-      await h.advance(FADE_TICKS);
-      const after = h.snapshot();
-      const fadedColor = target === null ? null : tileColor(h, after, target);
-
-      return {
-        blooming,
-        during,
-        hunter,
-        target,
-        reach,
-        litColor,
-        fog,
-        wall,
-        floor,
-        wallColor,
-        floorColor,
-        ended,
-        after,
-        fadedColor,
-      };
-    });
-
-    requireSceneHeld(h.snapshot(), watch);
-
-    assertEqual(
-      seen.blooming.hit,
-      true,
-      `the charge-up became a bloom within ${ticks(FLARE_CHARGE + 1)} ticks, ` +
-        `which is FLARE_CHARGE (${FLARE_CHARGE} s) and a second's margin`,
-    );
-    if (seen.target === null) {
-      // Every tile of this room stands within `FLARE_RADIUS` of every other, so
-      // reaching here means the build's disc is somewhere other than where it
-      // says it is — which is `flarefish/flare-radius`'s verdict to give.
-      unmetPrecondition(
-        "no tile of the Flarefish's room lay inside the bloom disc while it " +
-          "burned, so there was no lit ground to read; where the disc reaches " +
-          "is the flarefish points' verdict, not this one's",
-      );
-    }
-
-    // The fixture's own geometry: the tile is inside the bloom and beyond the
-    // forager's circle, which is the whole situation this point describes.
-    assertLessThanOrEqual(
-      seen.reach,
-      FLARE_RADIUS,
-      `the logical units between the Flarefish and the tile that is read, ` +
-        `against FLARE_RADIUS (${FLARE_RADIUS})`,
-    );
-    const fromPlayer = fromForager(
-      seen.during,
-      centerOf(seen.during, seen.target).x,
-      centerOf(seen.during, seen.target).y,
-    );
-    assertGreaterThan(
-      fromPlayer,
-      windowRadius(seen.during),
-      "the logical units between the forager and the tile that is read, against " +
-        "the vision circle R it must lie beyond",
-    );
-
-    // Drawn while the bloom burns.
-    assertGreaterThan(
-      fromFog(seen.litColor as { r: number; g: number; b: number }, seen.fog),
-      DRAWN_MIN,
-      `the RGB distance out of 441 between the tile at (${seen.target.tx}, ` +
-        `${seen.target.ty}), inside the burning bloom and beyond the forager's ` +
-        "circle, and unrevealed fog",
-    );
-
-    // And what is drawn there is the maze, not the bloom's own glow over the mask.
-    if (
-      seen.wall === null ||
-      seen.floor === null ||
-      seen.wallColor === null ||
-      seen.floorColor === null
-    ) {
-      // Every tile of this room stands within `FLARE_RADIUS` of every other, so
-      // reaching here means the build's disc is somewhere other than where it
-      // says it is — which is `flarefish/flare-radius`'s verdict to give.
-      unmetPrecondition(
-        "no rock tile of the Flarefish's room and the corridor beneath it both " +
-          "lay inside the bloom disc while it burned, so there was no pair to " +
-          "read the trench from; where the disc reaches is the flarefish " +
-          "points' verdict, not this one's",
-      );
-    }
-    assertGreaterThan(
-      fromFog(seen.wallColor, seen.floorColor),
-      STRUCTURE_MIN,
-      `the RGB distance out of 441 between the rock at (${seen.wall.tx}, ` +
-        `${seen.wall.ty}) and the corridor at (${seen.floor.tx}, ` +
-        `${seen.floor.ty}) directly beneath it, one tile apart and both inside ` +
-        "the burning bloom: the disc draws rock and floor alike, so the trench " +
-        "itself reads out there rather than a flat wash of the bloom's light",
-    );
-
-    // And painted back to the fog once it is over.
-    assertEqual(
-      seen.ended.hit,
-      true,
-      `the bloom ended within ${END_DEADLINE} ticks of being read, which is ` +
-        `FLARE_BLOOM (${FLARE_BLOOM} s) and a second's margin`,
-    );
-    assertEqual(
-      seen.after.predators[flarefish].flaring,
-      false,
-      "the Flarefish's `flaring` at the second reading",
-    );
-    assertEqual(
-      visibilityOf(seen.after, seen.target),
-      "r",
-      `the tile at (${seen.target.tx}, ${seen.target.ty}) once the bloom is over: ` +
-        "what the flare lit stays remembered underneath",
-    );
-    assertLessThanOrEqual(
-      fromFog(seen.fadedColor as { r: number; g: number; b: number }, seen.fog),
-      FADED_MAX,
-      "the RGB distance out of 441 between that same tile a second after the " +
-        "bloom ended and unrevealed fog: the disc goes with the bloom",
-    );
+    return {
+      blooming,
+      during,
+      hunter,
+      target,
+      reach,
+      litColor,
+      fog,
+      wall,
+      floor,
+      wallColor,
+      floorColor,
+      ended,
+      after,
+      fadedColor,
+    };
   });
+
+  requireSceneHeld(h.snapshot(), watch);
+
+  assertEqual(
+    seen.blooming.hit,
+    true,
+    `the charge-up became a bloom within ${ticks(FLARE_CHARGE + 1)} ticks, ` +
+      `which is FLARE_CHARGE (${FLARE_CHARGE} s) and a second's margin`,
+  );
+  if (seen.target === null) {
+    // Every tile of this room stands within `FLARE_RADIUS` of every other, so
+    // reaching here means the build's disc is somewhere other than where it
+    // says it is — which is `flarefish/flare-radius`'s verdict to give.
+    unmetPrecondition(
+      "no tile of the Flarefish's room lay inside the bloom disc while it " +
+        "burned, so there was no lit ground to read; where the disc reaches " +
+        "is the flarefish points' verdict, not this one's",
+    );
+  }
+
+  // The fixture's own geometry: the tile is inside the bloom and beyond the
+  // forager's circle, which is the whole situation this point describes.
+  assertLessThanOrEqual(
+    seen.reach,
+    FLARE_RADIUS,
+    `the logical units between the Flarefish and the tile that is read, ` +
+      `against FLARE_RADIUS (${FLARE_RADIUS})`,
+  );
+  const fromPlayer = fromForager(
+    seen.during,
+    centerOf(seen.during, seen.target).x,
+    centerOf(seen.during, seen.target).y,
+  );
+  assertGreaterThan(
+    fromPlayer,
+    windowRadius(seen.during),
+    "the logical units between the forager and the tile that is read, against " +
+      "the vision circle R it must lie beyond",
+  );
+
+  // Drawn while the bloom burns.
+  assertGreaterThan(
+    fromFog(seen.litColor as { r: number; g: number; b: number }, seen.fog),
+    DRAWN_MIN,
+    `the RGB distance out of 441 between the tile at (${seen.target.tx}, ` +
+      `${seen.target.ty}), inside the burning bloom and beyond the forager's ` +
+      "circle, and unrevealed fog",
+  );
+
+  // And what is drawn there is the maze, not the bloom's own glow over the mask.
+  if (
+    seen.wall === null ||
+    seen.floor === null ||
+    seen.wallColor === null ||
+    seen.floorColor === null
+  ) {
+    // Every tile of this room stands within `FLARE_RADIUS` of every other, so
+    // reaching here means the build's disc is somewhere other than where it
+    // says it is — which is `flarefish/flare-radius`'s verdict to give.
+    unmetPrecondition(
+      "no rock tile of the Flarefish's room and the corridor beneath it both " +
+        "lay inside the bloom disc while it burned, so there was no pair to " +
+        "read the trench from; where the disc reaches is the flarefish " +
+        "points' verdict, not this one's",
+    );
+  }
+  assertGreaterThan(
+    fromFog(seen.wallColor, seen.floorColor),
+    STRUCTURE_MIN,
+    `the RGB distance out of 441 between the rock at (${seen.wall.tx}, ` +
+      `${seen.wall.ty}) and the corridor at (${seen.floor.tx}, ` +
+      `${seen.floor.ty}) directly beneath it, one tile apart and both inside ` +
+      "the burning bloom: the disc draws rock and floor alike, so the trench " +
+      "itself reads out there rather than a flat wash of the bloom's light",
+  );
+
+  // And painted back to the fog once it is over.
+  assertEqual(
+    seen.ended.hit,
+    true,
+    `the bloom ended within ${END_DEADLINE} ticks of being read, which is ` +
+      `FLARE_BLOOM (${FLARE_BLOOM} s) and a second's margin`,
+  );
+  assertEqual(
+    seen.after.predators[flarefish].flaring,
+    false,
+    "the Flarefish's `flaring` at the second reading",
+  );
+  assertEqual(
+    visibilityOf(seen.after, seen.target),
+    "r",
+    `the tile at (${seen.target.tx}, ${seen.target.ty}) once the bloom is over: ` +
+      "what the flare lit stays remembered underneath",
+  );
+  assertLessThanOrEqual(
+    fromFog(seen.fadedColor as { r: number; g: number; b: number }, seen.fog),
+    FADED_MAX,
+    "the RGB distance out of 441 between that same tile a second after the " +
+      "bloom ended and unrevealed fog: the disc goes with the bloom",
+  );
 });

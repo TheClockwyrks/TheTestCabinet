@@ -26,7 +26,7 @@
 // WHAT THIS DOES NOT DECIDE. What eating scores, which is `scoring/plankton`'s;
 // what it does to brightness, which is `brightness/from-eating`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BINDINGS, CUES } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
@@ -38,9 +38,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
@@ -73,8 +73,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.eat on the tick the forager eats a plankton, and not before", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "plays CUES.eat on the tick the forager eats a plankton, and not before",
+  async () => {
     await startPlaying(h);
     const run = await poseMoveKeyRun(h, "right");
     const quiet = await denAll(h);
@@ -115,7 +116,7 @@ it("plays CUES.eat on the tick the forager eats a plankton, and not before", asy
       seen.hit,
       true,
       `the forager ate a plankton inside the ${String(EAT_TICKS)} ticks the ` +
-        `check holds the key for, from tile (${String(run.tx)}, ${String(run.ty)})`,
+        `check holds the key for, from tile (${String(run.start.tx)}, ${String(run.start.ty)})`,
     );
     assertEqual(
       cuesBeforeEvent(seen, CUES.eat),
@@ -130,5 +131,5 @@ it("plays CUES.eat on the tick the forager eats a plankton, and not before", asy
       "times CUES.eat played on the tick the forager ate the plankton, which is " +
         "its own tick and at most once on it (specs/progression.md)",
     );
-  });
-});
+  },
+);

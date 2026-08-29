@@ -35,7 +35,7 @@
 // tiles and "drawn" for a corridor tile is its mote against the faint floor, read
 // at the tile's center where specs/gameplay.md draws it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -50,9 +50,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -105,92 +105,90 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The maze is drawn only inside the circle", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const home = board.mark("H");
-    const inside = board.mark("I");
-    const outside = board.mark("O");
-    const unlit = board.mark("S");
-    const quiet = await denAll(h);
+check("The maze is drawn only inside the circle", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const home = board.mark("H");
+  const inside = board.mark("I");
+  const outside = board.mark("O");
+  const unlit = board.mark("S");
+  const quiet = await denAll(h);
 
-    // Reveal the corridor by resting the forager along it, far end first, and
-    // bring it home. Each berth's own pellet is eaten off camera and `G` put back
-    // to zero, so no berth widens the circle the next reading is taken under.
-    for (const berth of [board.mark("F"), board.mark("M"), home]) {
-      await parkForager(h, berth);
-      await clearUnderfoot(h);
-      await h.advance(SETTLE_TICKS);
-    }
-    const watch = await sceneGuard(h, quiet);
+  // Reveal the corridor by resting the forager along it, far end first, and
+  // bring it home. Each berth's own pellet is eaten off camera and `G` put back
+  // to zero, so no berth widens the circle the next reading is taken under.
+  for (const berth of [board.mark("F"), board.mark("M"), home]) {
+    await parkForager(h, berth);
+    await clearUnderfoot(h);
     await h.advance(SETTLE_TICKS);
+  }
+  const watch = await sceneGuard(h, quiet);
+  await h.advance(SETTLE_TICKS);
 
-    const after = h.snapshot();
-    // Before the assertions, so a check that fails still leaves the picture of
-    // the circle the reviewer is being told about.
-    captureStill(h, "circle");
+  const after = h.snapshot();
+  // Before the assertions, so a check that fails still leaves the picture of
+  // the circle the reviewer is being told about.
+  captureStill(h, "circle");
 
-    requireSceneHeld(after, watch);
+  requireSceneHeld(after, watch);
 
-    const radius = windowRadius(after);
-    const insideAt = tileFromForager(after, inside);
-    const outsideAt = tileFromForager(after, outside);
-    // The fixture straddles the circle this build reports, or this scenario has
-    // nothing to say. Where `R` itself is wrong, `kindle/grows-with-eating` is the
-    // point that fails for it.
-    if (insideAt >= radius || outsideAt <= radius) {
-      unmetPrecondition(
-        `the fixture's samples do not straddle the reported windowRadius of ` +
-          `${radius.toFixed(1)}: they stand ${insideAt.toFixed(1)} and ` +
-          `${outsideAt.toFixed(1)} units from the forager, and the board was ` +
-          `drawn for the ${KINDLE_VISION_MIN} specs/sensing.md gives R at G = 0; ` +
-          "whether R takes its stated value is kindle/grows-with-eating's " +
-          "verdict, not this one's",
-      );
-    }
-    assertGreaterThan(
-      insideAt,
-      after.visionRadius,
-      `the logical units between the forager and the inside sample ` +
-        `${INSIDE_TILES} tiles out, which must exceed the light pocket V the ` +
-        "build reports so that the circle rather than the light is what draws it",
+  const radius = windowRadius(after);
+  const insideAt = tileFromForager(after, inside);
+  const outsideAt = tileFromForager(after, outside);
+  // The fixture straddles the circle this build reports, or this scenario has
+  // nothing to say. Where `R` itself is wrong, `kindle/grows-with-eating` is the
+  // point that fails for it.
+  if (insideAt >= radius || outsideAt <= radius) {
+    unmetPrecondition(
+      `the fixture's samples do not straddle the reported windowRadius of ` +
+        `${radius.toFixed(1)}: they stand ${insideAt.toFixed(1)} and ` +
+        `${outsideAt.toFixed(1)} units from the forager, and the board was ` +
+        `drawn for the ${KINDLE_VISION_MIN} specs/sensing.md gives R at G = 0; ` +
+        "whether R takes its stated value is kindle/grows-with-eating's " +
+        "verdict, not this one's",
     );
+  }
+  assertGreaterThan(
+    insideAt,
+    after.visionRadius,
+    `the logical units between the forager and the inside sample ` +
+      `${INSIDE_TILES} tiles out, which must exceed the light pocket V the ` +
+      "build reports so that the circle rather than the light is what draws it",
+  );
 
-    // Both samples were revealed while the forager stood along the corridor, and
-    // neither is lit now, so the only question left is what is DRAWN there.
-    assertEqual(
-      visibilityOf(after, inside),
-      "r",
-      `the tile at (${inside.tx}, ${inside.ty}), ${INSIDE_TILES} tiles out and ` +
-        "inside the vision circle",
-    );
-    assertEqual(
-      visibilityOf(after, outside),
-      "r",
-      `the tile at (${outside.tx}, ${outside.ty}), ${OUTSIDE_TILES} tiles out and ` +
-        "beyond the vision circle: the circle reveals nothing and forgets nothing",
-    );
-    assertEqual(
-      visibilityOf(after, unlit),
-      "u",
-      `the sealed tile at (${unlit.tx}, ${unlit.ty}), which nothing has touched`,
-    );
+  // Both samples were revealed while the forager stood along the corridor, and
+  // neither is lit now, so the only question left is what is DRAWN there.
+  assertEqual(
+    visibilityOf(after, inside),
+    "r",
+    `the tile at (${inside.tx}, ${inside.ty}), ${INSIDE_TILES} tiles out and ` +
+      "inside the vision circle",
+  );
+  assertEqual(
+    visibilityOf(after, outside),
+    "r",
+    `the tile at (${outside.tx}, ${outside.ty}), ${OUTSIDE_TILES} tiles out and ` +
+      "beyond the vision circle: the circle reveals nothing and forgets nothing",
+  );
+  assertEqual(
+    visibilityOf(after, unlit),
+    "u",
+    `the sealed tile at (${unlit.tx}, ${unlit.ty}), which nothing has touched`,
+  );
 
-    const fog = tileColor(h, after, unlit);
-    assertGreaterThan(
-      fromFog(tileColor(h, after, inside), fog),
-      DRAWN_MIN,
-      `the RGB distance out of 441 between the revealed tile ` +
-        `${insideAt.toFixed(0)} units from the forager, inside the ` +
-        `${radius.toFixed(0)}-unit vision circle, and unrevealed fog`,
-    );
-    assertLessThanOrEqual(
-      fromFog(tileColor(h, after, outside), fog),
-      FOG_MATCH,
-      `the RGB distance out of 441 between the revealed tile ` +
-        `${outsideAt.toFixed(0)} units from the forager, beyond the ` +
-        `${radius.toFixed(0)}-unit vision circle, and unrevealed fog`,
-    );
-  });
+  const fog = tileColor(h, after, unlit);
+  assertGreaterThan(
+    fromFog(tileColor(h, after, inside), fog),
+    DRAWN_MIN,
+    `the RGB distance out of 441 between the revealed tile ` +
+      `${insideAt.toFixed(0)} units from the forager, inside the ` +
+      `${radius.toFixed(0)}-unit vision circle, and unrevealed fog`,
+  );
+  assertLessThanOrEqual(
+    fromFog(tileColor(h, after, outside), fog),
+    FOG_MATCH,
+    `the RGB distance out of 441 between the revealed tile ` +
+      `${outsideAt.toFixed(0)} units from the forager, beyond the ` +
+      `${radius.toFixed(0)}-unit vision circle, and unrevealed fog`,
+  );
 });

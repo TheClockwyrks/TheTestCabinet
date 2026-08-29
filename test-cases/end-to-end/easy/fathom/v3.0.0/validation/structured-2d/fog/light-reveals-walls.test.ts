@@ -43,7 +43,13 @@ import {
   visibilityAt,
   type Harness,
 } from "../harness";
-import { check, denAll, parkForager, requireScene, sceneGuard } from "../scene";
+import {
+  check,
+  denAll,
+  parkForager,
+  requireSceneHeld,
+  sceneGuard,
+} from "../scene";
 
 /**
  * Tiles of open water between the forager and the rock that closes the corridor.
@@ -87,7 +93,7 @@ check("The light reveals the rock it lands on and stops there", async () => {
   // Before the assertions, so a check that fails still leaves the picture.
   captureStill(h, "walls");
 
-  requireScene(snapshot, watch);
+  requireSceneHeld(snapshot, watch);
 
   // The fixture's own geometry, from the specification's figures rather than from
   // the build's readings.

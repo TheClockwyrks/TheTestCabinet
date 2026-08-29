@@ -25,20 +25,26 @@
 // what a corner costs (`gloamfin/corners-slow`), or whether a predator keeps to the
 // corridors (`maze-movement/predators-keep-to-corridors`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { PREDATOR_SPEED, TICK_HZ } from "../constants";
 import { placePredator, poseApart } from "../fixtures";
-import { captureReplay, createHarness, type Harness } from "../harness";
 import {
-  denAllExcept,
+  captureReplay,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import {
+  check,
+  denAll,
   quietBoard,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
 } from "../scene";
-import { gloamfinOf, groundBetween, requireGloamfin } from "./pings";
+import { gloamfinOf, groundBetween } from "./pings";
 
 /**
  * How far the patrol's ring stands from the forager's own room, in tiles, and how
@@ -101,8 +107,8 @@ interface Wander {
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
@@ -130,11 +136,11 @@ async function measure(index: number): Promise<Wander> {
   };
 }
 
-it("It wanders at a steady PREDATOR_SPEED", async () => {
+check("It wanders at a steady PREDATOR_SPEED", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
-  const index = requireGloamfin(h, await h.snapshot());
-  const quiet = await denAllExcept(h, [index]);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
   await placePredator(h, index, rooms.far, { state: "wander" });
   await quietBoard(h);
   // The patrol this measures happens across the board in the dark, where the
@@ -151,7 +157,6 @@ it("It wanders at a steady PREDATOR_SPEED", async () => {
   const early = await measure(index);
   const settled = await h.snapshot();
   requirePredatorMotion(
-    h,
     opening,
     settled,
     index,
@@ -170,7 +175,7 @@ it("It wanders at a steady PREDATOR_SPEED", async () => {
     return measured;
   });
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
 
   for (const [when, window] of [
     ["a moment after it was set loose", early],

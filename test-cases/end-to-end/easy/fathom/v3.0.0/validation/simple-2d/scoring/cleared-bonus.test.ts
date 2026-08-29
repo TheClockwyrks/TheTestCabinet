@@ -24,7 +24,7 @@
 // reaching the forager, is asserted directly instead: every predator is posed into
 // the sealed den, and the lives are read either side of the bite.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { SCORE_CLEAR, SCORE_PLANKTON } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { poseMaze } from "../fixtures";
@@ -36,7 +36,7 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { denAll, graded, requireSwim } from "../scene";
+import { check, denAll, requireSwim } from "../scene";
 
 /**
  * The board: five tiles of straight corridor, the forager on the first and the
@@ -78,60 +78,58 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Clearing a maze scores SCORE_CLEAR", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const start = board.mark("S");
-    const target = board.mark("T");
-    h.debug.setForagerTile(start.tx, start.ty);
-    h.debug.setForagerDir("right");
-    // One plankton on the whole board, at the far end of the forager's run.
-    h.debug.clearPlankton();
-    h.debug.setPlankton(target.tx, target.ty, true);
-    await denAll(h);
+check("Clearing a maze scores SCORE_CLEAR", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const start = board.mark("S");
+  const target = board.mark("T");
+  h.debug.setForagerTile(start.tx, start.ty);
+  h.debug.setForagerDir("right");
+  // One plankton on the whole board, at the far end of the forager's run.
+  h.debug.clearPlankton();
+  h.debug.setPlankton(target.tx, target.ty, true);
+  await denAll(h);
 
-    const bite = await captureReplay(h, "clear", async () => {
-      const before = h.snapshot();
-      h.hold(DIR_KEY.right);
-      const eaten = await h.until((s) => s.planktonRemaining < 1, {
-        maxFrames: BITE_BUDGET,
-        poll: 1,
-      });
-      await h.advance(SETTLE_TICKS);
-      const settled = h.snapshot();
-      await h.advance(TAIL_TICKS);
-      h.release(DIR_KEY.right);
-      return { before, after: eaten.snapshot, settled, hit: eaten.hit };
+  const bite = await captureReplay(h, "clear", async () => {
+    const before = h.snapshot();
+    h.hold(DIR_KEY.right);
+    const eaten = await h.until((s) => s.planktonRemaining < 1, {
+      maxFrames: BITE_BUDGET,
+      poll: 1,
     });
-
-    if (!bite.hit) {
-      requireSwim(
-        bite.before.forager,
-        bite.after.forager,
-        "reach the maze's last plankton",
-      );
-    }
-
-    assertEqual(
-      bite.before.planktonRemaining,
-      1,
-      "the plankton on the board when the bite began, which the pose left at one",
-    );
-    assertEqual(
-      bite.settled.lives,
-      bite.before.lives,
-      "the lives across the bite, with every predator posed into the sealed den",
-    );
-    assertEqual(
-      bite.settled.score - bite.before.score,
-      SCORE_CLEAR + SCORE_PLANKTON,
-      "the score rise across the bite that left no plankton behind",
-    );
-    assertEqual(
-      bite.settled.screen,
-      "cleared",
-      "the screen a beat after the maze's last plankton was eaten",
-    );
+    await h.advance(SETTLE_TICKS);
+    const settled = h.snapshot();
+    await h.advance(TAIL_TICKS);
+    h.release(DIR_KEY.right);
+    return { before, after: eaten.snapshot, settled, hit: eaten.hit };
   });
+
+  if (!bite.hit) {
+    requireSwim(
+      bite.before.forager,
+      bite.after.forager,
+      "reach the maze's last plankton",
+    );
+  }
+
+  assertEqual(
+    bite.before.planktonRemaining,
+    1,
+    "the plankton on the board when the bite began, which the pose left at one",
+  );
+  assertEqual(
+    bite.settled.lives,
+    bite.before.lives,
+    "the lives across the bite, with every predator posed into the sealed den",
+  );
+  assertEqual(
+    bite.settled.score - bite.before.score,
+    SCORE_CLEAR + SCORE_PLANKTON,
+    "the score rise across the bite that left no plankton behind",
+  );
+  assertEqual(
+    bite.settled.screen,
+    "cleared",
+    "the screen a beat after the maze's last plankton was eaten",
+  );
 });

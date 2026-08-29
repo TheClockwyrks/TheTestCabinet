@@ -40,12 +40,17 @@
 // all, so the whole path from a physical key to a moving forager is the build's
 // own and every step of it is exercised here.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { TICK_HZ, TILE } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
-import { captureReplay, createHarness, type Harness } from "../harness";
-import { requireSceneHeld, sceneGuard, startPlaying } from "../scene";
+import {
+  captureReplay,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import { check, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The second key specs/movement.md binds the `left` action to. */
 const KEY = "KeyA";
@@ -81,15 +86,15 @@ const MOVED_MIN = TILE / 2;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("swims the forager left while KeyA is held", async () => {
+check("swims the forager left while KeyA is held", async () => {
   await startPlaying(h);
   const run = await poseMoveKeyRun(h, "left");
   // The forager is the SUBJECT here, so it is not held to staying put; what the
@@ -112,7 +117,7 @@ it("swims the forager left while KeyA is held", async () => {
     return { before, after };
   });
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
 
   assertEqual(moved.after.moving, true, "the forager reads as traveling");
   assertEqual(moved.after.dir, "left", "its heading");
@@ -120,7 +125,7 @@ it("swims the forager left while KeyA is held", async () => {
     moved.before.x - moved.after.x,
     MOVED_MIN,
     `units travelled left over ${HOLD_TICKS} ticks from tile ` +
-      `(${run.tile.tx}, ${run.tile.ty}), where the forager rested facing ` +
+      `(${run.start.tx}, ${run.start.ty}), where the forager rested facing ` +
       `${run.facing} into rock`,
   );
 });

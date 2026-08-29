@@ -36,9 +36,9 @@
 // from it are comparable.
 
 import { predatorIndex, poseMaze } from "../fixtures";
-import { denAllExcept, parkForager, type Quiet } from "../scene";
+import { denAll, parkForager, type Quiet, unmetPrecondition } from "../scene";
 import type { Harness } from "../harness";
-import type { TileRef } from "../maze";
+import type { Tile } from "../maze";
 
 /** How many tiles of corridor the forager's own room holds. */
 export const ROOM_TILES = 3;
@@ -92,9 +92,9 @@ export const FLARE_POLL = 2;
 /** The room, its hallway, and the Flarefish posed to patrol it. */
 export interface FlareRoom {
   /** The tile the forager is parked on, in its own sealed room. */
-  forager: TileRef;
+  forager: Tile;
   /** The hallway's tiles, left to right. */
-  hall: TileRef[];
+  hall: Tile[];
   /** The Flarefish's index in the snapshot's roster. */
   index: number;
   /** What was posed into the den, for the scene guard. */
@@ -131,12 +131,12 @@ export async function poseFlareRoom(h: Harness): Promise<FlareRoom> {
   const snap = await h.snapshot();
   const index = predatorIndex(snap, "flarefish");
   if (index === null) {
-    h.unmet(
+    unmetPrecondition(
       "the roster carries no Flarefish, so there is no flare to watch — what " +
         "the roster holds is the progression checks' verdict, not this one's",
     );
   }
-  const quiet = await denAllExcept(h, [index]);
+  const quiet = await denAll(h, [index]);
   await h.debug.setPredatorTile(index, hall[2].tx, hall[2].ty);
   await h.debug.setPredatorDir(index, "right");
   await h.debug.setPredatorState(index, "wander");

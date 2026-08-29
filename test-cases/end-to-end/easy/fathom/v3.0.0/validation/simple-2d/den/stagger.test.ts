@@ -29,12 +29,12 @@
 // hunters coming out of a real den, which is what `parkClearOfDen` and the scene
 // guard are for.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
-  graded,
+  check,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -78,8 +78,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("releases the den one predator at a time, DEN_RELEASE_GAP apart, in DEN_ORDER, and none during the countdown", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "releases the den one predator at a time, DEN_RELEASE_GAP apart, in DEN_ORDER, and none during the countdown",
+  async () => {
     h.debug.reset({ seed: SEED });
     h.debug.startDive();
     // The forager is a bystander to a clock, and the most expensive thing that can
@@ -160,5 +161,5 @@ it("releases the den one predator at a time, DEN_RELEASE_GAP apart, in DEN_ORDER
           `measured from the moment screen became playing`,
       );
     }
-  });
-});
+  },
+);

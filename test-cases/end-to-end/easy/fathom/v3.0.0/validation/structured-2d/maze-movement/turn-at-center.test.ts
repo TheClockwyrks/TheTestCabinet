@@ -46,7 +46,13 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { check, denAll, requireScene, requireSwim, sceneGuard } from "../scene";
+import {
+  check,
+  denAll,
+  requireSceneHeld,
+  requireSwim,
+  sceneGuard,
+} from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /** Tiles of corridor each arm carries past the junction. */
@@ -168,7 +174,7 @@ check(
       return { resting, approached, midway, turned, along };
     });
 
-    requireScene(h.snapshot(), guard);
+    requireSceneHeld(h.snapshot(), guard);
 
     // Whether a held action carries the forager anywhere is `controls/move-*`'s
     // verdict; a forager that never reached the junction has no turn to take.

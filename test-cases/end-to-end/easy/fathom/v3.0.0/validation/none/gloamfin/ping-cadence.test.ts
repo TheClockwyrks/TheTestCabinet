@@ -24,7 +24,7 @@
 // (`gloamfin/lost-you-orange`), or what a ping reveals
 // (`gloamfin/ping-reveals-nothing`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
@@ -33,22 +33,21 @@ import {
 } from "../assert";
 import { GLOAMFIN_PING_INTERVAL, TICK_HZ } from "../constants";
 import { placePredator, poseApart } from "../fixtures";
-import { captureReplay, createHarness, type Harness } from "../harness";
 import {
-  denAllExcept,
+  captureReplay,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import {
+  check,
+  denAll,
   quietBoard,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
 } from "../scene";
-import {
-  castFromOwnTile,
-  gloamfinOf,
-  pingGaps,
-  pingLog,
-  requireGloamfin,
-  sweep,
-} from "./pings";
+import { castFromOwnTile, gloamfinOf, pingGaps, pingLog, sweep } from "./pings";
 
 /** How far the patrol's sealed ring stands from the forager's room, in tiles. */
 const APART_TILES = 10;
@@ -89,19 +88,19 @@ const GAP_TOLERANCE = 0.1;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("It pings on its own cadence", async () => {
+check("It pings on its own cadence", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
-  const index = requireGloamfin(h, await h.snapshot());
-  const quiet = await denAllExcept(h, [index]);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
   await placePredator(h, index, rooms.far, { state: "wander" });
   await quietBoard(h);
   // The Gloamfin patrols across the board in the dark, so the canvas alone would
@@ -122,7 +121,7 @@ it("It pings on its own cadence", async () => {
   await sweep(h, OFF_CAMERA_TICKS, watch);
   await captureReplay(h, "ping", () => sweep(h, RECORDED_TICKS, watch));
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
   assertEqual(
     [...states].join(","),
     "wander",

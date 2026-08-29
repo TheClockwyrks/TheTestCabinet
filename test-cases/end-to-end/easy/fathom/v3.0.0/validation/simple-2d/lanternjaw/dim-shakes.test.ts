@@ -31,7 +31,7 @@
 // `lanternjaw/light-range`'s — a build that never takes one stands this check down
 // rather than failing it twice.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
@@ -52,11 +52,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -111,104 +111,102 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Dimming shakes its fix", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const line = await poseDimStandoff(h);
-    const index = requirePred(h.snapshot(), "lanternjaw");
-    const quiet = await denAll(h, ["lanternjaw"]);
-    await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-    await h.debug.setPredatorState(index, "wander");
-    await parkForager(h, line.fix);
-    await clearUnderfoot(h);
-    await h.debug.setBrightness(BRIGHT_G);
-    // The forager is meant to slip down the corridor, so the guard is not held to
-    // where it was parked; what it still catches is a life lost, the dive leaving
-    // live play, or another predator loose on the board.
-    const watch = await sceneGuard(h, quiet, { foragerParked: false });
+check("Dimming shakes its fix", async () => {
+  await startPlaying(h);
+  const line = await poseDimStandoff(h);
+  const index = requireKind(h.snapshot(), "lanternjaw");
+  const quiet = await denAll(h, [index]);
+  await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
+  await h.debug.setPredatorState(index, "wander");
+  await parkForager(h, line.fix);
+  await clearUnderfoot(h);
+  await h.debug.setBrightness(BRIGHT_G);
+  // The forager is meant to slip down the corridor, so the guard is not held to
+  // where it was parked; what it still catches is a life lost, the dive leaving
+  // live play, or another predator loose on the board.
+  const watch = await sceneGuard(h, quiet, { foragerParked: false });
 
-    const grid = h.snapshot().grid;
-    const slipFromFix = tileGap(grid, line.slip, line.fix);
-    const slipFromPred = tileGap(grid, line.slip, line.pred);
+  const grid = h.snapshot().grid;
+  const slipFromFix = tileGap(grid, line.slip, line.fix);
+  const slipFromPred = tileGap(grid, line.slip, line.pred);
 
-    const fixed = await h.until((s) => s.predators[index].state === "chase", {
-      maxFrames: FIX_TICKS,
+  const fixed = await h.until((s) => s.predators[index].state === "chase", {
+    maxFrames: FIX_TICKS,
+    poll: 1,
+  });
+  if (!fixed.hit) {
+    unmetPrecondition(
+      `the Lanternjaw took no fix on a forager ${tileGap(grid, line.pred, line.fix).toFixed(0)} ` +
+        `units away on a clear line at G ${BRIGHT_G}, so there was no fix to ` +
+        `shake; whether it senses the forager at all is lanternjaw/light-range's ` +
+        "verdict, not this one's",
+    );
+  }
+
+  const shaken = await captureReplay(h, "shaken", async () => {
+    // Dim and slip together, in one instant with no tick between them. Dimming
+    // FIRST is what makes the slip invisible: the pose is not a swim, so a
+    // forager still lit as it moved would simply be seen arriving and hand the
+    // hunter a fresh fix on its new tile. The pellet under the slip tile comes
+    // off the board rather than being eaten (specs/instrumentation.md:
+    // "Removing a plankton this way is not eating it"), because an eat there
+    // would hand back `BRIGHT_PER_EAT` of the very range this is taking away.
+    await h.debug.setBrightness(0);
+    await h.debug.setPlankton(line.slip.tx, line.slip.ty, false);
+    await parkForager(h, line.slip);
+
+    await h.advance(INSIDE_TICKS);
+    const inside = h.snapshot();
+    const gaveUp = await h.until((s) => s.predators[index].state === "wander", {
+      maxFrames: DEADLINE_TICKS - INSIDE_TICKS,
       poll: 1,
     });
-    if (!fixed.hit) {
-      unmetPrecondition(
-        `the Lanternjaw took no fix on a forager ${tileGap(grid, line.pred, line.fix).toFixed(0)} ` +
-          `units away on a clear line at G ${BRIGHT_G}, so there was no fix to ` +
-          `shake; whether it senses the forager at all is lanternjaw/light-range's ` +
-          "verdict, not this one's",
-      );
-    }
-
-    const shaken = await captureReplay(h, "shaken", async () => {
-      // Dim and slip together, in one instant with no tick between them. Dimming
-      // FIRST is what makes the slip invisible: the pose is not a swim, so a
-      // forager still lit as it moved would simply be seen arriving and hand the
-      // hunter a fresh fix on its new tile. The pellet under the slip tile comes
-      // off the board rather than being eaten (specs/instrumentation.md:
-      // "Removing a plankton this way is not eating it"), because an eat there
-      // would hand back `BRIGHT_PER_EAT` of the very range this is taking away.
-      await h.debug.setBrightness(0);
-      await h.debug.setPlankton(line.slip.tx, line.slip.ty, false);
-      await parkForager(h, line.slip);
-
-      await h.advance(INSIDE_TICKS);
-      const inside = h.snapshot();
-      const gaveUp = await h.until(
-        (s) => s.predators[index].state === "wander",
-        { maxFrames: DEADLINE_TICKS - INSIDE_TICKS, poll: 1 },
-      );
-      const at = INSIDE_TICKS + gaveUp.frames;
-      await h.advance(TAIL_TICKS);
-      return { inside, gaveUp, at, end: h.snapshot() };
-    });
-
-    requireSceneHeld(shaken.end, watch);
-    assertEqual(
-      `${shaken.end.forager.tx},${shaken.end.forager.ty}`,
-      `${line.slip.tx},${line.slip.ty}`,
-      "the forager stayed on the tile it slipped to, so the separations this " +
-        "check is measured on are the ones the fixture states",
-    );
-
-    // The fixture's own geometry, against the range the specification fixes at
-    // each end of the brightness curve.
-    assertGreaterThan(
-      slipFromFix,
-      DIM_RANGE,
-      `the units between the slip tile and the stale fix, which a range shrunk ` +
-        `to LANTERN_RANGE_BASE (${DIM_RANGE}) cannot reach across`,
-    );
-    assertLessThanOrEqual(
-      slipFromPred,
-      BRIGHT_RANGE,
-      `the units between the slip tile and where the hunter started, which a ` +
-        `range still at LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN (${BRIGHT_RANGE}) ` +
-        "would reach across — so a build whose range never shrank re-acquires " +
-        "rather than giving up",
-    );
-
-    assertEqual(
-      shaken.inside.predators[index].state,
-      "chase",
-      `the state ${seconds(INSIDE_TICKS).toFixed(2)} s after the sense was taken ` +
-        `away, inside the ${LINGER_TIME} s the fix is held for`,
-    );
-    assertEqual(
-      shaken.gaveUp.hit,
-      true,
-      `the Lanternjaw is back to wander by ${seconds(DEADLINE_TICKS).toFixed(2)} s ` +
-        `after the sense lapsed — LINGER_TIME (${LINGER_TIME} s) and a tenth of a ` +
-        `second; it read ${shaken.gaveUp.snapshot.predators[index].state} there`,
-    );
-    assertLessThanOrEqual(
-      seconds(shaken.at),
-      LINGER_TIME + 0.1,
-      "the seconds from the sense lapsing to the Lanternjaw wandering again",
-    );
+    const at = INSIDE_TICKS + gaveUp.frames;
+    await h.advance(TAIL_TICKS);
+    return { inside, gaveUp, at, end: h.snapshot() };
   });
+
+  requireSceneHeld(shaken.end, watch);
+  assertEqual(
+    `${shaken.end.forager.tx},${shaken.end.forager.ty}`,
+    `${line.slip.tx},${line.slip.ty}`,
+    "the forager stayed on the tile it slipped to, so the separations this " +
+      "check is measured on are the ones the fixture states",
+  );
+
+  // The fixture's own geometry, against the range the specification fixes at
+  // each end of the brightness curve.
+  assertGreaterThan(
+    slipFromFix,
+    DIM_RANGE,
+    `the units between the slip tile and the stale fix, which a range shrunk ` +
+      `to LANTERN_RANGE_BASE (${DIM_RANGE}) cannot reach across`,
+  );
+  assertLessThanOrEqual(
+    slipFromPred,
+    BRIGHT_RANGE,
+    `the units between the slip tile and where the hunter started, which a ` +
+      `range still at LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN (${BRIGHT_RANGE}) ` +
+      "would reach across — so a build whose range never shrank re-acquires " +
+      "rather than giving up",
+  );
+
+  assertEqual(
+    shaken.inside.predators[index].state,
+    "chase",
+    `the state ${seconds(INSIDE_TICKS).toFixed(2)} s after the sense was taken ` +
+      `away, inside the ${LINGER_TIME} s the fix is held for`,
+  );
+  assertEqual(
+    shaken.gaveUp.hit,
+    true,
+    `the Lanternjaw is back to wander by ${seconds(DEADLINE_TICKS).toFixed(2)} s ` +
+      `after the sense lapsed — LINGER_TIME (${LINGER_TIME} s) and a tenth of a ` +
+      `second; it read ${shaken.gaveUp.snapshot.predators[index].state} there`,
+  );
+  assertLessThanOrEqual(
+    seconds(shaken.at),
+    LINGER_TIME + 0.1,
+    "the seconds from the sense lapsing to the Lanternjaw wandering again",
+  );
 });

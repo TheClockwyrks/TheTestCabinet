@@ -31,18 +31,13 @@
 // `amber/lookalikes`'s; what the body does when the light reaches it is
 // `lanternjaw/additive-reveal`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertNotNull,
 } from "../assert";
-import {
-  poseOccludedPair,
-  predatorIndex,
-  tileCenterOf,
-  visibilityAt,
-} from "../fixtures";
+import { poseOccludedPair, predatorIndex } from "../fixtures";
 import {
   captureStill,
   createHarness,
@@ -51,17 +46,19 @@ import {
   sampleRing,
   warmInProfile,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
 import { moteProfile } from "./motes";
-import type { TileRef } from "../maze";
+import { tileCenter, type Tile, visibilityAt } from "../maze";
 
 /** How far apart the pair stands, in tiles. See the header. */
 const GAP_TILES = 5;
@@ -90,25 +87,25 @@ const SETTLE_TICKS = 2;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("Its bulb shows at any distance", async () => {
+check("Its bulb shows at any distance", async () => {
   await startPlaying(h);
   const pair = await poseOccludedPair(h, { tiles: GAP_TILES, len: RUN_TILES });
   const index = predatorIndex(await h.snapshot(), "lanternjaw");
   if (index === null) {
-    h.unmet(
+    unmetPrecondition(
       "the roster carries no Lanternjaw, so this scenario has nothing to pose — " +
         "what the roster holds is the progression checks' verdict, not this one's",
     );
   }
-  const quiet = await denAllExcept(h, [index]);
+  const quiet = await denAll(h, [index]);
   await h.debug.setPredatorTile(index, pair.pred.tx, pair.pred.ty);
   await h.debug.setPredatorState(index, "wander");
   await parkForager(h, pair.forager);
@@ -126,8 +123,8 @@ it("Its bulb shows at any distance", async () => {
   await h.advance(SETTLE_TICKS);
   const snapshot = await h.snapshot();
   const bulb = snapshot.predators[index];
-  const fogTile: TileRef = { tx: pair.pred.tx + FOG_OFFSET, ty: pair.pred.ty };
-  const fogAt = tileCenterOf(snapshot.grid, fogTile);
+  const fogTile: Tile = { tx: pair.pred.tx + FOG_OFFSET, ty: pair.pred.ty };
+  const fogAt = tileCenter(snapshot.grid, fogTile);
   const fog = await sampleRing(h, fogAt.x, fogAt.y, 0);
   const profile = await moteProfile(h, bulb.x, bulb.y);
   const found = warmInProfile(profile);
@@ -135,7 +132,7 @@ it("Its bulb shows at any distance", async () => {
   // shows the reviewer what was and was not drawn out there.
   await captureStill(h, "bulb");
 
-  requireSceneHeld(h, snapshot, guard);
+  requireSceneHeld(snapshot, guard);
 
   // The fixture's own claim: the hunter stands on ground nothing has revealed, and
   // the fog it is read against is equally untouched.

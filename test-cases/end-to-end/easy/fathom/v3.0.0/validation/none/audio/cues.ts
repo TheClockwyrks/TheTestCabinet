@@ -122,30 +122,25 @@ export async function watchForEvent(
   return { hit: false, at: -1, marked, ticks, snapshot: await h.snapshot() };
 }
 
-/**
- * The roster index of the first predator of `kind`, or a stood-down check.
- *
- * `specs/predators.md` puts one of each kind in the den at depth `1` and
- * `specs/state.md` lists the roster in release order, so a roster missing a kind
- * is `scoring/depth-scaling`'s verdict rather than any cue point's.
- */
-export function requireKind(
-  h: Harness,
-  snapshot: FathomSnapshot,
-  kind: string,
-): number {
-  const index = snapshot.predators.findIndex((one) => one.kind === kind);
-  if (index >= 0) return index;
-  h.unmet(
-    `the roster holds no ${kind}, so the scenario this cue needs could not be ` +
-      "staged — the roster at each depth is scoring/depth-scaling's verdict, " +
-      "not this one's",
-  );
-}
-
 /** How many sounds the build emitted on the event's own tick. */
 export function soundsOnEvent(watch: CueWatch): number {
   return watch.ticks.find((one) => one.step === watch.at)?.sounds ?? 0;
+}
+
+/** How many sounds it emitted on one numbered tick of the watch. */
+export function soundsOnTick(watch: CueWatch, step: number): number {
+  return watch.ticks.find((one) => one.step === step)?.sounds ?? 0;
+}
+
+/** How many sounds it emitted on the ticks strictly between two of them. */
+export function soundsBetween(
+  watch: CueWatch,
+  after: number,
+  before: number,
+): number {
+  return watch.ticks
+    .filter((one) => one.step > after && one.step < before)
+    .reduce((total, one) => total + one.sounds, 0);
 }
 
 /** How many sounds it emitted on any tick before the event's. */

@@ -27,7 +27,7 @@
 // the floor is (`gloamfin/ping-floor`), or that close hearing takes a fix at all
 // (`gloamfin/fix-and-alert`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertDeepEqual,
   assertEqual,
@@ -48,10 +48,10 @@ import {
 } from "../harness";
 import type { FathomSnapshot } from "../surface";
 import {
+  check,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
@@ -110,102 +110,100 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("It goes silent while it holds you by ear", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, SEALED_PAIR);
-    const index = requirePred(board.snap, "gloamfin");
-    const quiet = await denAll(h, ["gloamfin"]);
-    await placePredator(h, index, board.mark("G"), { state: "wander" });
-    await placeForager(h, board.mark("F"), "right");
-    // The forager is moved by this scenario on purpose, so the guard watches
-    // everything else: a life lost, the dive leaving live play, a denned hunter
-    // loose.
-    const guard = await sceneGuard(h, quiet, { foragerParked: false });
+check("It goes silent while it holds you by ear", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, SEALED_PAIR);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
+  await placePredator(h, index, board.mark("G"), { state: "wander" });
+  await placeForager(h, board.mark("F"), "right");
+  // The forager is moved by this scenario on purpose, so the guard watches
+  // everything else: a life lost, the dive leaving live play, a denned hunter
+  // loose.
+  const guard = await sceneGuard(h, quiet, { foragerParked: false });
 
+  await h.advance(SETTLE_TICKS);
+  const opening = h.snapshot();
+  const openingGloamfin = gloamfinOf(opening, index);
+
+  let lockHeld = true;
+  let heardAPing = false;
+  const watchSilence = (snap: FathomSnapshot): void => {
+    if (gloamfinOf(snap, index).hearingLock !== true) lockHeld = false;
+    if (snap.pulses.some((pulse) => pulse.source === "gloamfin")) {
+      heardAPing = true;
+    }
+  };
+
+  await sweep(h, OFF_CAMERA_TICKS, watchSilence);
+  const broke = await captureReplay(h, "silent", async () => {
+    await sweep(h, RECORDED_TICKS, watchSilence);
+    const held = h.snapshot();
+    // The lock is broken by moving the forager alone. Nothing touches the
+    // Gloamfin, so the only thing that changed is what it can hear.
+    await parkForager(h, board.mark("R"));
     await h.advance(SETTLE_TICKS);
-    const opening = h.snapshot();
-    const openingGloamfin = gloamfinOf(opening, index);
-
-    let lockHeld = true;
-    let heardAPing = false;
-    const watchSilence = (snap: FathomSnapshot): void => {
-      if (gloamfinOf(snap, index).hearingLock !== true) lockHeld = false;
-      if (snap.pulses.some((pulse) => pulse.source === "gloamfin")) {
-        heardAPing = true;
-      }
-    };
-
-    await sweep(h, OFF_CAMERA_TICKS, watchSilence);
-    const broke = await captureReplay(h, "silent", async () => {
-      await sweep(h, RECORDED_TICKS, watchSilence);
-      const held = h.snapshot();
-      // The lock is broken by moving the forager alone. Nothing touches the
-      // Gloamfin, so the only thing that changed is what it can hear.
-      await parkForager(h, board.mark("R"));
-      await h.advance(SETTLE_TICKS);
-      const apartNow = h.snapshot();
-      const ping = await h.until(
-        (snap) => snap.pulses.some((pulse) => pulse.source === "gloamfin"),
-        { maxFrames: BREAK_BUDGET, poll: 1 },
-      );
-      // Past the reading, so the clip carries the wavefront it is about.
-      await h.advance(TAIL_TICKS);
-      return { held, apartNow, ping };
-    });
-
-    requireSceneHeld(h.snapshot(), guard);
-
-    // The scenario stood as posed: the pair inside hearing range, and neither of
-    // them anywhere but the tile it was walled into.
-    assertLessThanOrEqual(
-      apart(opening.forager, openingGloamfin),
-      GLOAMFIN_HEAR,
-      `logical units between the two centers at the start, against the ` +
-        `GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) close hearing reaches`,
+    const apartNow = h.snapshot();
+    const ping = await h.until(
+      (snap) => snap.pulses.some((pulse) => pulse.source === "gloamfin"),
+      { maxFrames: BREAK_BUDGET, poll: 1 },
     );
-    assertDeepEqual(
-      { tx: broke.held.forager.tx, ty: broke.held.forager.ty },
-      { tx: board.mark("F").tx, ty: board.mark("F").ty },
-      "the tile the forager held for the whole silence — specs/movement.md keeps " +
-        "a body on a tile whose neighbors are all closed to it",
-    );
-
-    assertEqual(
-      openingGloamfin.hearingLock,
-      true,
-      "hearingLock with the forager standing inside GLOAMFIN_HEAR — " +
-        "specs/predators/gloamfin.md holds the lock while the two centers are that " +
-        "close, in the dark and through rock",
-    );
-    assertTrue(
-      lockHeld,
-      `hearingLock stayed true for the whole ${SILENCE_TICKS / TICK_HZ} s the ` +
-        `forager stood inside GLOAMFIN_HEAR`,
-    );
-    assertTrue(
-      !heardAPing,
-      `the Gloamfin cast no ping at all across ${SILENCE_TICKS / TICK_HZ} s of ` +
-        `hearing lock, which is two whole GLOAMFIN_PING_INTERVAL ` +
-        `(${GLOAMFIN_PING_INTERVAL} s) cadences — specs/predators/gloamfin.md ` +
-        `casts only while hearingLock is false, and a Gloamfin holding a lock "is ` +
-        `silent for as long as it holds it"`,
-    );
-
-    assertEqual(
-      gloamfinOf(broke.apartNow, index).hearingLock,
-      false,
-      `hearingLock once the forager stood ` +
-        `${apart(broke.apartNow.forager, gloamfinOf(broke.apartNow, index)).toFixed(0)} ` +
-        `logical units off, beyond the GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) close ` +
-        `hearing reaches`,
-    );
-    assertTrue(
-      broke.ping.hit,
-      `a ping arrived within ${BREAK_BUDGET} ticks ` +
-        `(${BREAK_BUDGET / TICK_HZ} s) of the lock breaking — ` +
-        `specs/predators/gloamfin.md has the Gloamfin ping "as soon as the lock ` +
-        `breaks", and its timer has been running down throughout the silence`,
-    );
+    // Past the reading, so the clip carries the wavefront it is about.
+    await h.advance(TAIL_TICKS);
+    return { held, apartNow, ping };
   });
+
+  requireSceneHeld(h.snapshot(), guard);
+
+  // The scenario stood as posed: the pair inside hearing range, and neither of
+  // them anywhere but the tile it was walled into.
+  assertLessThanOrEqual(
+    apart(opening.forager, openingGloamfin),
+    GLOAMFIN_HEAR,
+    `logical units between the two centers at the start, against the ` +
+      `GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) close hearing reaches`,
+  );
+  assertDeepEqual(
+    { tx: broke.held.forager.tx, ty: broke.held.forager.ty },
+    { tx: board.mark("F").tx, ty: board.mark("F").ty },
+    "the tile the forager held for the whole silence — specs/movement.md keeps " +
+      "a body on a tile whose neighbors are all closed to it",
+  );
+
+  assertEqual(
+    openingGloamfin.hearingLock,
+    true,
+    "hearingLock with the forager standing inside GLOAMFIN_HEAR — " +
+      "specs/predators/gloamfin.md holds the lock while the two centers are that " +
+      "close, in the dark and through rock",
+  );
+  assertTrue(
+    lockHeld,
+    `hearingLock stayed true for the whole ${SILENCE_TICKS / TICK_HZ} s the ` +
+      `forager stood inside GLOAMFIN_HEAR`,
+  );
+  assertTrue(
+    !heardAPing,
+    `the Gloamfin cast no ping at all across ${SILENCE_TICKS / TICK_HZ} s of ` +
+      `hearing lock, which is two whole GLOAMFIN_PING_INTERVAL ` +
+      `(${GLOAMFIN_PING_INTERVAL} s) cadences — specs/predators/gloamfin.md ` +
+      `casts only while hearingLock is false, and a Gloamfin holding a lock "is ` +
+      `silent for as long as it holds it"`,
+  );
+
+  assertEqual(
+    gloamfinOf(broke.apartNow, index).hearingLock,
+    false,
+    `hearingLock once the forager stood ` +
+      `${apart(broke.apartNow.forager, gloamfinOf(broke.apartNow, index)).toFixed(0)} ` +
+      `logical units off, beyond the GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) close ` +
+      `hearing reaches`,
+  );
+  assertTrue(
+    broke.ping.hit,
+    `a ping arrived within ${BREAK_BUDGET} ticks ` +
+      `(${BREAK_BUDGET / TICK_HZ} s) of the lock breaking — ` +
+      `specs/predators/gloamfin.md has the Gloamfin ping "as soon as the lock ` +
+      `breaks", and its timer has been running down throughout the silence`,
+  );
 });

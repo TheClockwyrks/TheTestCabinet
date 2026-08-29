@@ -30,11 +30,16 @@
 // ends the run, which is `scoring/three-lives`'; what a plankton or a drifter
 // scores, which is `scoring/plankton`'s and `amber/drifter-score`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
 import { GAMEOVER_ITEMS, START_LIVES } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
-import { startPlaying } from "../scene";
+import {
+  captureStill,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import { check } from "../scene";
 import {
   CONFIRM_KEY,
   assertDrew,
@@ -48,15 +53,15 @@ const EAT_TICKS = 1;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("ends the run on game over, reports it, and plays again", async () => {
+check("ends the run on game over, reports it, and plays again", async () => {
   await startPlaying(h);
 
   // A score worth reading off the screen, taken through the build's own scoring:

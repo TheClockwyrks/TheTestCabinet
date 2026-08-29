@@ -32,7 +32,7 @@
 // (`gloamfin/chase-cap`), or whether a hunter rounds rock at all
 // (`maze-movement/predators-keep-to-corridors`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertLessThan,
@@ -47,17 +47,24 @@ import {
   TICK_HZ,
 } from "../constants";
 import { placePredator, poseMaze } from "../fixtures";
-import { captureReplay, createHarness, type Harness } from "../harness";
 import {
-  denAllExcept,
+  captureReplay,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import {
+  check,
+  denAll,
   parkForager,
   quietBoard,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
-import { gloamfinOf, requireGloamfin } from "./pings";
+import { gloamfinOf } from "./pings";
 
 /**
  * The corner: the Gloamfin drops two tiles from `P` onto the junction `J` and
@@ -143,8 +150,8 @@ interface Step {
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
@@ -169,11 +176,11 @@ function turnAt(steps: readonly Step[]): number {
   );
 }
 
-it("Every corner costs it its edge", async () => {
+check("Every corner costs it its edge", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, CORNER);
-  const index = requireGloamfin(h, board.snap);
-  const quiet = await denAllExcept(h, [index]);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
   // The forager first, and parked: a posed chase fixes on "the forager's current
   // tile" (specs/instrumentation.md), and the corner this point is about is the
   // one between the Gloamfin and that tile.
@@ -192,9 +199,8 @@ it("Every corner costs it its edge", async () => {
     return steps;
   });
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
   requirePredatorMotion(
-    h,
     opening,
     await h.snapshot(),
     index,
@@ -211,7 +217,7 @@ it("Every corner costs it its edge", async () => {
 
   const turn = turnAt(corner);
   if (turn < 0) {
-    h.unmet(
+    unmetPrecondition(
       "the Gloamfin never turned onto the perpendicular arm of the posed corner, " +
         "so there was no corner for this point to measure the cost of — " +
         "specs/predators.md has a hunter holding a fix take the first step of a " +
@@ -290,8 +296,8 @@ it("Every corner costs it its edge", async () => {
   // left behind.
   await startPlaying(h);
   const back = await poseMaze(h, REVERSAL);
-  const backIndex = requireGloamfin(h, back.snap);
-  const backQuiet = await denAllExcept(h, [backIndex]);
+  const backIndex = requireKind(await h.snapshot(), "gloamfin");
+  const backQuiet = await denAll(h, [backIndex]);
   await quietBoard(h, back.mark("R"));
   await placePredator(h, backIndex, back.mark("M"), {
     dir: "right",
@@ -307,10 +313,10 @@ it("Every corner costs it its edge", async () => {
   await h.debug.setPredatorState(backIndex, "chase");
   const reversal = await sampleRun(backIndex, REVERSAL_TICKS);
 
-  requireSceneHeld(h, await h.snapshot(), backGuard);
+  requireSceneHeld(await h.snapshot(), backGuard);
   const turned = reversal.findIndex((step) => step.dir !== outbound);
   if (turned < 0) {
-    h.unmet(
+    unmetPrecondition(
       `the Gloamfin never turned around after the fix moved behind it — it kept ` +
         `heading ${outbound} — so there was no reversal for this point to price; ` +
         `specs/predators.md has a hunter take the first step of a shortest ` +

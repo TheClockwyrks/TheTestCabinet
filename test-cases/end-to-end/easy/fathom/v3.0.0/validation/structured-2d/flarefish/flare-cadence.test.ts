@@ -39,7 +39,7 @@ import {
   type Harness,
 } from "../harness";
 import type { FathomSnapshot } from "../surface";
-import { check, requireScene, sceneGuard, standDown } from "../scene";
+import { check, requireSceneHeld, sceneGuard, standDown } from "../scene";
 import { startPlaying } from "../harness";
 import {
   BLOOM_MAX,
@@ -211,7 +211,7 @@ check(
       return { heldCharge, bloom, heldBloom, quiet };
     });
 
-    requireScene(h.snapshot(), guard);
+    requireSceneHeld(h.snapshot(), guard);
 
     // Charge then bloom, in that order: the charge-up window is its own.
     assertEqual(

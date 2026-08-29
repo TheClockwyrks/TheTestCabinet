@@ -61,7 +61,7 @@ import {
   denAll,
   failPrecondition,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import type { Tile } from "../maze";
@@ -168,7 +168,7 @@ check("Hidden, but not forgotten", async () => {
     return { atFirst, drawn, fog, beyond, hidden, neverLit, back, redrawn };
   });
 
-  requireScene(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
 
   // The fixture's own geometry at each station, against the circle the build
   // reports there.

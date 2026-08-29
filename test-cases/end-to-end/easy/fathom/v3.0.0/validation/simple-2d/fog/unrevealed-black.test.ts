@@ -22,7 +22,7 @@
 // review item's own: no brighter than a tenth of full brightness, and the two
 // samples within 25 of the 441 an RGB distance can reach.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseDarkPatch } from "../fixtures";
 import {
@@ -36,9 +36,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
@@ -70,52 +70,50 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Unrevealed maze is flat dark fog", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const patch = await poseDarkPatch(h, { gap: SEALED_GAP });
-    const quiet = await denAll(h);
-    // The pellet the pose left under the forager is eaten off camera and the
-    // brightness put back to zero, so the light pocket around the forager is the
-    // one a dive opens with rather than one this scenario's setup widened.
-    await clearUnderfoot(h);
-    const watch = await sceneGuard(h, quiet);
+check("Unrevealed maze is flat dark fog", async () => {
+  await startPlaying(h);
+  const patch = await poseDarkPatch(h, { gap: SEALED_GAP });
+  const quiet = await denAll(h);
+  // The pellet the pose left under the forager is eaten off camera and the
+  // brightness put back to zero, so the light pocket around the forager is the
+  // one a dive opens with rather than one this scenario's setup widened.
+  await clearUnderfoot(h);
+  const watch = await sceneGuard(h, quiet);
 
-    // One frame, so there is a painted picture to read. The fogged pocket is
-    // sealed and eight tiles of rock away, so nothing about this frame reaches it.
-    await h.advance(1);
-    const after = h.snapshot();
-    captureStill(h, "fog");
+  // One frame, so there is a painted picture to read. The fogged pocket is
+  // sealed and eight tiles of rock away, so nothing about this frame reaches it.
+  await h.advance(1);
+  const after = h.snapshot();
+  captureStill(h, "fog");
 
-    requireSceneHeld(after, watch);
+  requireSceneHeld(after, watch);
 
-    assertEqual(
-      visibilityOf(after, patch.dark),
-      "u",
-      `the corridor tile at (${patch.dark.tx}, ${patch.dark.ty}), which no light reaches`,
-    );
-    assertEqual(
-      visibilityOf(after, patch.darkRock),
-      "u",
-      `the rock tile at (${patch.darkRock.tx}, ${patch.darkRock.ty}), which no light reaches`,
-    );
+  assertEqual(
+    visibilityOf(after, patch.dark),
+    "u",
+    `the corridor tile at (${patch.dark.tx}, ${patch.dark.ty}), which no light reaches`,
+  );
+  assertEqual(
+    visibilityOf(after, patch.darkRock),
+    "u",
+    `the rock tile at (${patch.darkRock.tx}, ${patch.darkRock.ty}), which no light reaches`,
+  );
 
-    const corridor = sampleTile(h, after, patch.dark);
-    const rock = sampleTile(h, after, patch.darkRock);
-    assertLessThanOrEqual(
-      luminance(corridor),
-      DARK_MAX,
-      "the unrevealed corridor tile's drawn brightness",
-    );
-    assertLessThanOrEqual(
-      luminance(rock),
-      DARK_MAX,
-      "the unrevealed rock tile's drawn brightness",
-    );
-    assertLessThanOrEqual(
-      colorDistance(corridor, rock),
-      ALIKE_MAX,
-      "how far apart the two unrevealed tiles are drawn",
-    );
-  });
+  const corridor = sampleTile(h, after, patch.dark);
+  const rock = sampleTile(h, after, patch.darkRock);
+  assertLessThanOrEqual(
+    luminance(corridor),
+    DARK_MAX,
+    "the unrevealed corridor tile's drawn brightness",
+  );
+  assertLessThanOrEqual(
+    luminance(rock),
+    DARK_MAX,
+    "the unrevealed rock tile's drawn brightness",
+  );
+  assertLessThanOrEqual(
+    colorDistance(corridor, rock),
+    ALIKE_MAX,
+    "how far apart the two unrevealed tiles are drawn",
+  );
 });

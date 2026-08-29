@@ -35,7 +35,13 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { check, denAll, quietBoard, requireScene, sceneGuard } from "../scene";
+import {
+  check,
+  denAll,
+  quietBoard,
+  requireSceneHeld,
+  sceneGuard,
+} from "../scene";
 
 /** The key specs/movement.md binds the `a` action to. */
 const KEY = "Space";
@@ -99,7 +105,7 @@ check("emits a forager sonar pulse on Space", async () => {
     return { armed, flying };
   });
 
-  requireScene(h.snapshot(), watch);
+  requireSceneHeld(h.snapshot(), watch);
 
   // The premise this point's own description states, posed through
   // `setSonarCooldown(0)`: "At `0` the pulse is ready and the snapshot reports

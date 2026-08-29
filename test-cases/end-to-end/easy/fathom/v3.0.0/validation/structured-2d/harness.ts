@@ -319,6 +319,16 @@ export interface Harness extends FixtureHost, SceneHost {
   snapshot(): FathomSnapshot;
   /** Run `frames` ticks back to back. */
   advance(frames: number): Promise<void>;
+  /**
+   * Run `ticks` that cost a captured section nothing, for setup rather than for
+   * measurement.
+   *
+   * This harness's recorder is the draw-call log a `captureReplay` opens and
+   * closes around a scenario, so ticks outside one are already free and this is
+   * an ordinary {@link Harness.advance}. The engineless harness records per tick
+   * and has a march of its own, which is why the operation exists at all.
+   */
+  skip(ticks: number): Promise<void>;
   /** Advance until `predicate` holds, sampling every `poll` ticks. */
   until(
     predicate: (snapshot: FathomSnapshot) => boolean,
@@ -742,12 +752,14 @@ export async function createHarness(
     trespasses,
     denReleases,
 
+    skip: (ticks) => harness.advance(ticks),
+
     async advance(frames) {
       // Advanced in stretches no longer than the watch's stride rather than in
       // one call, so a long wait is sampled throughout. `engine.advance` ticks
       // back to back with nothing between them, so the stretches are the same
       // run of ticks the single call would have been.
-      for (let done = 0; done < frames; ) {
+      for (let done = 0; done < frames;) {
         const step = Math.min(TRESPASS_POLL - sinceSample, frames - done);
         await engine.advance(step);
         done += step;
@@ -1357,7 +1369,7 @@ export function centerOf(
   snapshot: FathomSnapshot,
   tile: Tile,
 ): { x: number; y: number } {
-  return tileCenter(snapshot.grid, tile.tx, tile.ty);
+  return tileCenter(snapshot.grid, tile);
 }
 
 /** The visibility character reported for tile `(tx, ty)`. */

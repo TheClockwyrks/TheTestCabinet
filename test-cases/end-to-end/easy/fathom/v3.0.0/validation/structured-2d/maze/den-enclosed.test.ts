@@ -30,7 +30,7 @@ import { afterEach, beforeEach } from "vitest";
 import { check } from "../scene";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
-import { denCorridorBreaches, tileKey } from "../maze";
+import { denCorridorBreaches } from "../maze";
 import {
   captureBoard,
   freshBoards,
@@ -67,17 +67,7 @@ check(
     requireDenChamber(boards);
 
     const measured = boards.map((board) => {
-      // One entry per breaching DIRECTION comes back, so a chamber tile that
-      // touches corridor on two sides would be named twice; the reading is how many
-      // den-interior TILES are breached, which is what specs/maze.md bounds.
-      const breaches = [
-        ...new Map(
-          denCorridorBreaches(board.snapshot).map((one) => [
-            tileKey(one.tile),
-            one.tile,
-          ]),
-        ).values(),
-      ];
+      const breaches = denCorridorBreaches(board.snapshot);
       return { board, breaches, ok: breaches.length === MAX_BREACHES };
     });
     await captureBoard(h, witness(measured).board, "den");

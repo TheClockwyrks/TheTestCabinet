@@ -25,7 +25,7 @@
 // brightness is `brightness/widens-lanternjaw`'s. Both halves here stand at a
 // fraction of the range so neither turns on either.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThan, assertTrue } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -36,11 +36,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   separation,
@@ -91,88 +91,86 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Rock breaks its sense", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    // The forager's corridor carries `C`, the clear-line standoff, `GAP_TILES`
-    // along it; `P` sits the same number of ROWS below, with the rows between it
-    // and the forager solid rock across the whole grid.
-    const art = [
-      `F${".".repeat(GAP_TILES - 1)}C...`,
-      ...Array.from({ length: GAP_TILES - 1 }, () => ""),
-      "P.....",
-    ];
-    const board = await poseMaze(h, art);
-    const home = board.mark("F");
-    const blind = board.mark("P");
-    const clear = board.mark("C");
-    const index = requirePred(h.snapshot(), "lanternjaw");
-    const quiet = await denAll(h, ["lanternjaw"]);
-    await parkForager(h, home);
-    await clearUnderfoot(h);
+check("Rock breaks its sense", async () => {
+  await startPlaying(h);
+  // The forager's corridor carries `C`, the clear-line standoff, `GAP_TILES`
+  // along it; `P` sits the same number of ROWS below, with the rows between it
+  // and the forager solid rock across the whole grid.
+  const art = [
+    `F${".".repeat(GAP_TILES - 1)}C...`,
+    ...Array.from({ length: GAP_TILES - 1 }, () => ""),
+    "P.....",
+  ];
+  const board = await poseMaze(h, art);
+  const home = board.mark("F");
+  const blind = board.mark("P");
+  const clear = board.mark("C");
+  const index = requireKind(h.snapshot(), "lanternjaw");
+  const quiet = await denAll(h, [index]);
+  await parkForager(h, home);
+  await clearUnderfoot(h);
+  await h.debug.setBrightness(POSED_G);
+  const watch = await sceneGuard(h, quiet);
+
+  const read = await captureReplay(h, "blind", async () => {
+    // Behind the band: inside the range, no line, so no fix at any step.
+    await h.debug.setPredatorTile(index, blind.tx, blind.ty);
+    await h.debug.setPredatorState(index, "wander");
+    const seen: string[] = [];
+    for (let spent = 0; spent < BLIND_TICKS; spent += BLIND_POLL) {
+      await h.advance(BLIND_POLL);
+      seen.push(h.snapshot().predators[index].state);
+    }
+    const occluded = h.snapshot();
+
+    // The same separation on the forager's own corridor: open water between
+    // them, and nothing else about the scenario different.
+    await h.debug.setPredatorState(index, "wander");
+    await h.debug.setPredatorTile(index, clear.tx, clear.ty);
     await h.debug.setBrightness(POSED_G);
-    const watch = await sceneGuard(h, quiet);
-
-    const read = await captureReplay(h, "blind", async () => {
-      // Behind the band: inside the range, no line, so no fix at any step.
-      await h.debug.setPredatorTile(index, blind.tx, blind.ty);
-      await h.debug.setPredatorState(index, "wander");
-      const seen: string[] = [];
-      for (let spent = 0; spent < BLIND_TICKS; spent += BLIND_POLL) {
-        await h.advance(BLIND_POLL);
-        seen.push(h.snapshot().predators[index].state);
-      }
-      const occluded = h.snapshot();
-
-      // The same separation on the forager's own corridor: open water between
-      // them, and nothing else about the scenario different.
-      await h.debug.setPredatorState(index, "wander");
-      await h.debug.setPredatorTile(index, clear.tx, clear.ty);
-      await h.debug.setBrightness(POSED_G);
-      const acquired = await h.until(
-        (s) => s.predators[index].state === "chase",
-        { maxFrames: ACQUIRE_TICKS, poll: 1 },
-      );
-      const openGap = separation(acquired.snapshot, index);
-      await h.advance(TAIL_TICKS);
-      return {
-        seen,
-        blindGap: separation(occluded, index),
-        blindRange: occluded.predators[index].detectRange,
-        acquired,
-        openGap,
-        end: h.snapshot(),
-      };
-    });
-
-    requireSceneHeld(read.end, watch);
-
-    // The fixture's own geometry: both standoffs are well inside the range the
-    // build itself reports, so the rock is the only thing that differs.
-    assertLessThan(
-      read.blindGap,
-      read.blindRange ?? 0,
-      "the units between the two centers behind the rock band, which must be " +
-        "inside the detectRange the Lanternjaw reports",
+    const acquired = await h.until(
+      (s) => s.predators[index].state === "chase",
+      { maxFrames: ACQUIRE_TICKS, poll: 1 },
     );
-    assertLessThan(
-      read.openGap,
-      read.acquired.snapshot.predators[index].detectRange ?? 0,
-      "the units between the two centers on the open corridor, which must be " +
-        "inside the detectRange the Lanternjaw reports",
-    );
-
-    assertTrue(
-      read.seen.every((state) => state !== "chase"),
-      `the states the Lanternjaw reported across ${BLIND_TICKS} ticks standing ` +
-        `${read.blindGap.toFixed(0)} units away with a rock tile on the line ` +
-        `between the two centers — it read [${read.seen.join(", ")}]`,
-    );
-    assertEqual(
-      read.acquired.hit,
-      true,
-      `the same pair with open water between them acquires within ` +
-        `${ACQUIRE_TICKS} ticks, at ${read.openGap.toFixed(0)} units apart`,
-    );
+    const openGap = separation(acquired.snapshot, index);
+    await h.advance(TAIL_TICKS);
+    return {
+      seen,
+      blindGap: separation(occluded, index),
+      blindRange: occluded.predators[index].detectRange,
+      acquired,
+      openGap,
+      end: h.snapshot(),
+    };
   });
+
+  requireSceneHeld(read.end, watch);
+
+  // The fixture's own geometry: both standoffs are well inside the range the
+  // build itself reports, so the rock is the only thing that differs.
+  assertLessThan(
+    read.blindGap,
+    read.blindRange ?? 0,
+    "the units between the two centers behind the rock band, which must be " +
+      "inside the detectRange the Lanternjaw reports",
+  );
+  assertLessThan(
+    read.openGap,
+    read.acquired.snapshot.predators[index].detectRange ?? 0,
+    "the units between the two centers on the open corridor, which must be " +
+      "inside the detectRange the Lanternjaw reports",
+  );
+
+  assertTrue(
+    read.seen.every((state) => state !== "chase"),
+    `the states the Lanternjaw reported across ${BLIND_TICKS} ticks standing ` +
+      `${read.blindGap.toFixed(0)} units away with a rock tile on the line ` +
+      `between the two centers — it read [${read.seen.join(", ")}]`,
+  );
+  assertEqual(
+    read.acquired.hit,
+    true,
+    `the same pair with open water between them acquires within ` +
+      `${ACQUIRE_TICKS} ticks, at ${read.openGap.toFixed(0)} units apart`,
+  );
 });

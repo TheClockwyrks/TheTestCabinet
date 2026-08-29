@@ -20,11 +20,11 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
-import { floodReachable, openTiles, tileAt } from "../maze";
-import { graded } from "../scene";
+import { corridorTiles, floodReachable, tileAt } from "../maze";
+import { check } from "../scene";
 import { captureBoard, freshBoards, requireLaidOut, witness } from "./boards";
 
 let h: Harness;
@@ -37,14 +37,15 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("lays out one connected region, reaching every corridor tile from the forager's start", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "lays out one connected region, reaching every corridor tile from the forager's start",
+  async () => {
     const boards = await freshBoards(h);
     requireLaidOut(boards);
 
     const measured = boards.map((board) => {
       const start = board.snapshot.forager;
-      const total = openTiles(board.snapshot).length;
+      const total = corridorTiles(board.snapshot).length;
       const reached = floodReachable(board.snapshot, start.tx, start.ty).size;
       return { board, start, total, reached, ok: reached === total };
     });
@@ -60,5 +61,5 @@ it("lays out one connected region, reaching every corridor tile from the forager
           `of the ${one.total} the maze laid out from seed ${one.board.seed} carries`,
       );
     }
-  });
-});
+  },
+);

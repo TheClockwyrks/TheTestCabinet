@@ -29,24 +29,25 @@
 // is `flarefish/flare-cadence`'s; what the bloom reveals, which is
 // `flarefish/flare-reveals`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { FLARE_CHARGE, FLARE_INTERVAL, ticksFor } from "../constants";
 import { poseApart } from "../fixtures";
-import { captureReplay, createHarness, type Harness } from "../harness";
 import {
-  denAllExcept,
+  captureReplay,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import {
+  check,
+  denAll,
   quietBoard,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
-} from "../scene";
-import {
   requireKind,
-  soundsBeforeEvent,
-  soundsOnEvent,
-  watchForEvent,
-} from "./cues";
+} from "../scene";
+import { soundsBeforeEvent, soundsOnEvent, watchForEvent } from "./cues";
 
 /**
  * How far the hunter's sealed ring sits from the forager's room, in tiles.
@@ -72,62 +73,65 @@ const TAIL_TICKS = ticksFor(1);
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("sounds on the tick a Flarefish's bloom begins, and not on its charge-up", async () => {
-  // A real, browser-trusted gesture first: an engineless build owns its own audio
-  // layer and is entitled to open it on the player's first interaction alone
-  // (`specs/progression.md`). The key is bound to nothing, so this changes no state.
-  await h.armAudio();
-  await startPlaying(h);
-  const rooms = await poseApart(h, APART_TILES);
-  const flarefish = requireKind(h, await h.snapshot(), "flarefish");
+check(
+  "sounds on the tick a Flarefish's bloom begins, and not on its charge-up",
+  async () => {
+    // A real, browser-trusted gesture first: an engineless build owns its own audio
+    // layer and is entitled to open it on the player's first interaction alone
+    // (`specs/progression.md`). The key is bound to nothing, so this changes no state.
+    await h.armAudio();
+    await startPlaying(h);
+    const rooms = await poseApart(h, APART_TILES);
+    const flarefish = requireKind(await h.snapshot(), "flarefish");
 
-  await h.debug.setPredatorTile(flarefish, rooms.far.tx, rooms.far.ty);
-  await h.debug.setPredatorState(flarefish, "wander");
-  const quiet = await denAllExcept(h, [flarefish]);
-  await quietBoard(h, rooms.near);
-  const guard = await sceneGuard(h, quiet);
+    await h.debug.setPredatorTile(flarefish, rooms.far.tx, rooms.far.ty);
+    await h.debug.setPredatorState(flarefish, "wander");
+    const quiet = await denAll(h, [flarefish]);
+    await quietBoard(h, rooms.near);
+    const guard = await sceneGuard(h, quiet);
 
-  const watch = await captureReplay(h, "flare", async () => {
-    const seen = await watchForEvent(
-      h,
-      (s) => s.predators[flarefish]?.flaring === true,
-      FLARE_TICKS,
-      { mark: (s) => s.predators[flarefish]?.flareCharging === true },
+    const watch = await captureReplay(h, "flare", async () => {
+      const seen = await watchForEvent(
+        h,
+        (s) => s.predators[flarefish]?.flaring === true,
+        FLARE_TICKS,
+        { mark: (s) => s.predators[flarefish]?.flareCharging === true },
+      );
+      // Past the reading, so the clip shows the bloom burning. Nothing after this
+      // line can reach an assertion.
+      await h.advance(TAIL_TICKS);
+      return seen;
+    });
+
+    requireSceneHeld(await h.snapshot(), guard);
+
+    assertEqual(
+      watch.hit,
+      true,
+      `the wandering Flarefish's bloom began inside ${String(FLARE_TICKS)} ticks, ` +
+        `which is its FLARE_INTERVAL (${String(FLARE_INTERVAL)} s) cadence and its ` +
+        `FLARE_CHARGE (${String(FLARE_CHARGE)} s) charge-up with room to spare`,
     );
-    // Past the reading, so the clip shows the bloom burning. Nothing after this
-    // line can reach an assertion.
-    await h.advance(TAIL_TICKS);
-    return seen;
-  });
-
-  requireSceneHeld(h, await h.snapshot(), guard);
-
-  assertEqual(
-    watch.hit,
-    true,
-    `the wandering Flarefish's bloom began inside ${String(FLARE_TICKS)} ticks, ` +
-      `which is its FLARE_INTERVAL (${String(FLARE_INTERVAL)} s) cadence and its ` +
-      `FLARE_CHARGE (${String(FLARE_CHARGE)} s) charge-up with room to spare`,
-  );
-  assertEqual(
-    soundsBeforeEvent(watch),
-    0,
-    `sounds the build emitted over the ${String(watch.at - 1)} ticks before the ` +
-      `bloom — which include tick ${String(watch.marked)}, where the charge-up ` +
-      "began — on a board where nothing else is happening (specs/progression.md)",
-  );
-  assertGreaterThanOrEqual(
-    soundsOnEvent(watch),
-    1,
-    "sounds the build emitted on the tick the Flarefish's bloom began, which is " +
-      "the tick CUES.flare is played on (specs/progression.md)",
-  );
-});
+    assertEqual(
+      soundsBeforeEvent(watch),
+      0,
+      `sounds the build emitted over the ${String(watch.at - 1)} ticks before the ` +
+        `bloom — which include tick ${String(watch.marked)}, where the charge-up ` +
+        "began — on a board where nothing else is happening (specs/progression.md)",
+    );
+    assertGreaterThanOrEqual(
+      soundsOnEvent(watch),
+      1,
+      "sounds the build emitted on the tick the Flarefish's bloom began, which is " +
+        "the tick CUES.flare is played on (specs/progression.md)",
+    );
+  },
+);

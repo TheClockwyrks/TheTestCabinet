@@ -26,7 +26,7 @@
 // WHAT THIS DOES NOT DECIDE. What the pulse reveals, which the `sonar/*` points
 // own; the cooldown it starts, which is `sonar/cooldown`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BINDINGS, CUES } from "../../src/constants";
 import { assertEqual } from "../assert";
 import {
@@ -37,9 +37,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -83,8 +83,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.sonar on the tick the forager emits a pulse, and not before", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "plays CUES.sonar on the tick the forager emits a pulse, and not before",
+  async () => {
     await startPlaying(h);
     const quiet = await denAll(h);
     await parkForager(h);
@@ -135,5 +136,5 @@ it("plays CUES.sonar on the tick the forager emits a pulse, and not before", asy
       "times CUES.sonar played on the tick the forager cast its pulse, which is " +
         "its own tick and at most once on it (specs/progression.md)",
     );
-  });
-});
+  },
+);

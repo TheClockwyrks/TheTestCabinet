@@ -41,7 +41,14 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { check, denAll, quietBoard, requireScene, sceneGuard } from "../scene";
+import {
+  check,
+  denAll,
+  failPrecondition,
+  quietBoard,
+  requireSceneHeld,
+  sceneGuard,
+} from "../scene";
 
 /** The key specs/movement.md binds the `mute` action to. */
 const MUTE_KEY = "KeyM";
@@ -92,6 +99,19 @@ function audible(harness: Harness): number {
   return harness.cues.filter((cue) => cue.gain > 0).length;
 }
 
+/**
+ * How many cues the build has ASKED for so far, whatever they sounded at.
+ *
+ * The same log, counted without the gain. A muted play is announced at gain zero
+ * rather than not announced, so the two counts together separate a mute that was
+ * never cleared — plays announced, none of them audible — from a build that never
+ * plays the pulse's cue at all, which is audio/sonar's verdict rather than this
+ * point's.
+ */
+function announced(harness: Harness): number {
+  return harness.cues.length;
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -137,11 +157,13 @@ check("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
 
   h.debug.setSonarCooldown(0);
   const loudFrom = audible(h);
+  const loudPlaysFrom = announced(h);
   await h.tap(SONAR_KEY);
   await h.advance(CUE_WINDOW_TICKS);
   const unmutedSounds = audible(h) - loudFrom;
+  const unmutedPlays = announced(h) - loudPlaysFrom;
 
-  requireScene(h.snapshot(), watch);
+  requireSceneHeld(h.snapshot(), watch);
 
   assertEqual(
     opening.muted,
@@ -167,6 +189,19 @@ check("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
     `cues the build SOUNDED over ${CUE_WINDOW_TICKS} ticks of a MUTED dive ` +
       `around its own sonar pulse`,
   );
+  // A build that plays no cue for its own pulse has nothing for the toggle to
+  // restore, and "clearing the toggle restores the cues" cannot be read on a cue
+  // that was never asked for.
+  if (unmutedPlays === 0) {
+    failPrecondition(
+      "the unmuted dive asking the bus for a cue on its own sonar pulse, which " +
+        "is what specs/progression.md's \"Clearing the toggle restores the cues " +
+        'from the next event on" is read on',
+      "audio/sonar",
+      `the build announced no cue at all over ${CUE_WINDOW_TICKS} ticks around ` +
+        `the pulse`,
+    );
+  }
   assertGreaterThan(
     unmutedSounds,
     0,

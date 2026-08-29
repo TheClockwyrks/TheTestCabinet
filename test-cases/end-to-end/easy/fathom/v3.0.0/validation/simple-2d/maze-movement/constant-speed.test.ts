@@ -32,7 +32,7 @@
 // past the far end of the measured span, so nothing here turns and nothing runs
 // into rock.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { FORAGER_SPEED, TICK_HZ } from "../../src/constants";
 import { assertLessThanOrEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
@@ -45,8 +45,8 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
-  graded,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
@@ -199,8 +199,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("swims a straight corridor at FORAGER_SPEED, with no ramp and no drift", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "swims a straight corridor at FORAGER_SPEED, with no ramp and no drift",
+  async () => {
     await startPlaying(h);
 
     for (const [index, run] of RUNS.entries()) {
@@ -219,7 +220,10 @@ it("swims a straight corridor at FORAGER_SPEED, with no ramp and no drift", asyn
           : await drive(run.key);
 
       requireSceneHeld(h.snapshot(), watch);
-      judge(held, `${run.label} from tile (${posed.tx}, ${posed.ty})`);
+      judge(
+        held,
+        `${run.label} from tile (${posed.start.tx}, ${posed.start.ty})`,
+      );
     }
-  });
-});
+  },
+);

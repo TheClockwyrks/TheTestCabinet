@@ -30,7 +30,7 @@
 // (specs/instrumentation.md), so it is read where the snapshot says it is and the
 // forager is what moves between the two stations.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -47,10 +47,10 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   fromForager,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -101,112 +101,110 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The amber lights are clipped to the circle", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const away = board.mark("A");
-    const near = board.mark("N");
-    const berth = board.mark("D");
-    const unlit = board.mark("S");
-    const quiet = await denAll(h);
+check("The amber lights are clipped to the circle", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const away = board.mark("A");
+  const near = board.mark("N");
+  const berth = board.mark("D");
+  const unlit = board.mark("S");
+  const quiet = await denAll(h);
 
-    await parkForager(h, away);
-    await clearUnderfoot(h);
-    await h.debug.spawnDrifter(berth.tx, berth.ty);
-    await h.debug.setCreatureAI(false);
-    const watch = await sceneGuard(h, quiet);
+  await parkForager(h, away);
+  await clearUnderfoot(h);
+  await h.debug.spawnDrifter(berth.tx, berth.ty);
+  await h.debug.setCreatureAI(false);
+  const watch = await sceneGuard(h, quiet);
 
-    await h.advance(SETTLE_TICKS);
-    const beyond = h.snapshot();
-    // Before the assertions, so a check that fails still leaves the picture of
-    // the light that should have been clipped away.
-    captureStill(h, "clipped");
+  await h.advance(SETTLE_TICKS);
+  const beyond = h.snapshot();
+  // Before the assertions, so a check that fails still leaves the picture of
+  // the light that should have been clipped away.
+  captureStill(h, "clipped");
 
-    requireSceneHeld(beyond, watch);
+  requireSceneHeld(beyond, watch);
 
-    assertEqual(
-      beyond.drifters.length,
-      1,
-      "the drifters the maze holds after one was spawned across the board",
+  assertEqual(
+    beyond.drifters.length,
+    1,
+    "the drifters the maze holds after one was spawned across the board",
+  );
+  const far = beyond.drifters[0];
+  const farGap = fromForager(beyond, far.x, far.y);
+  const farRadius = windowRadius(beyond);
+  if (farGap <= farRadius) {
+    // The band this half lives in has to exist on this build. Where `R` itself
+    // is wrong, `kindle/grows-with-eating` is the point that fails for it.
+    unmetPrecondition(
+      `the drifter ${AWAY_TILES} tiles from the far station stands ` +
+        `${farGap.toFixed(1)} units off, which is not beyond the reported ` +
+        `windowRadius of ${farRadius.toFixed(1)}; whether R takes its stated ` +
+        "value is kindle/grows-with-eating's verdict, not this one's",
     );
-    const far = beyond.drifters[0];
-    const farGap = fromForager(beyond, far.x, far.y);
-    const farRadius = windowRadius(beyond);
-    if (farGap <= farRadius) {
-      // The band this half lives in has to exist on this build. Where `R` itself
-      // is wrong, `kindle/grows-with-eating` is the point that fails for it.
-      unmetPrecondition(
-        `the drifter ${AWAY_TILES} tiles from the far station stands ` +
-          `${farGap.toFixed(1)} units off, which is not beyond the reported ` +
-          `windowRadius of ${farRadius.toFixed(1)}; whether R takes its stated ` +
-          "value is kindle/grows-with-eating's verdict, not this one's",
-      );
-    }
-    assertGreaterThan(
-      farGap,
-      farRadius,
-      `the logical units between the forager and the drifter ${AWAY_TILES} tiles ` +
-        "off, against the vision circle R it must stand beyond",
-    );
-    assertEqual(
-      visibilityOf(beyond, berth),
-      "u",
-      `the drifter's tile at (${berth.tx}, ${berth.ty}), which nothing has revealed`,
-    );
+  }
+  assertGreaterThan(
+    farGap,
+    farRadius,
+    `the logical units between the forager and the drifter ${AWAY_TILES} tiles ` +
+      "off, against the vision circle R it must stand beyond",
+  );
+  assertEqual(
+    visibilityOf(beyond, berth),
+    "u",
+    `the drifter's tile at (${berth.tx}, ${berth.ty}), which nothing has revealed`,
+  );
 
-    const fog = tileColor(h, beyond, unlit);
-    assertLessThanOrEqual(
-      fromFog(brightestNear(h, far.x, far.y).color, fog),
-      CLIPPED_MAX,
-      `the RGB distance out of 441 between the brightest pixel within ` +
-        `${MOTE_REACH} units of the drifter's reported center and the flat fog ` +
-        "around it: an amber light beyond the circle is painted over with it",
-    );
+  const fog = tileColor(h, beyond, unlit);
+  assertLessThanOrEqual(
+    fromFog(brightestNear(h, far.x, far.y).color, fog),
+    CLIPPED_MAX,
+    `the RGB distance out of 441 between the brightest pixel within ` +
+      `${MOTE_REACH} units of the drifter's reported center and the flat fog ` +
+      "around it: an amber light beyond the circle is painted over with it",
+  );
 
-    // The same drifter, taken inside the circle by moving the forager to the near
-    // station — still outside the light pocket, so the circle is what draws it.
-    await parkForager(h, near);
-    await clearUnderfoot(h);
-    await h.advance(SETTLE_TICKS);
-    const inside = h.snapshot();
-    const close = inside.drifters[0];
-    const nearGap = fromForager(inside, close.x, close.y);
-    const radius = windowRadius(inside);
-    if (nearGap >= radius) {
-      // The band this half lives in has to exist on this build. Where `R` itself
-      // is wrong, `kindle/grows-with-eating` is the point that fails for it.
-      unmetPrecondition(
-        `the drifter ${NEAR_TILES} tiles from the near station stands ` +
-          `${nearGap.toFixed(1)} units off, which is not inside the reported ` +
-          `windowRadius of ${radius.toFixed(1)}; whether R takes its stated value ` +
-          "is kindle/grows-with-eating's verdict, not this one's",
-      );
-    }
-    assertLessThan(
-      nearGap,
-      radius,
-      "the logical units between the forager and the drifter at the near " +
-        "station, against the vision circle R it stands inside",
+  // The same drifter, taken inside the circle by moving the forager to the near
+  // station — still outside the light pocket, so the circle is what draws it.
+  await parkForager(h, near);
+  await clearUnderfoot(h);
+  await h.advance(SETTLE_TICKS);
+  const inside = h.snapshot();
+  const close = inside.drifters[0];
+  const nearGap = fromForager(inside, close.x, close.y);
+  const radius = windowRadius(inside);
+  if (nearGap >= radius) {
+    // The band this half lives in has to exist on this build. Where `R` itself
+    // is wrong, `kindle/grows-with-eating` is the point that fails for it.
+    unmetPrecondition(
+      `the drifter ${NEAR_TILES} tiles from the near station stands ` +
+        `${nearGap.toFixed(1)} units off, which is not inside the reported ` +
+        `windowRadius of ${radius.toFixed(1)}; whether R takes its stated value ` +
+        "is kindle/grows-with-eating's verdict, not this one's",
     );
-    assertGreaterThan(
-      nearGap,
-      inside.visionRadius,
-      "the same distance against the light pocket V it stands outside, so the " +
-        "circle rather than the light is what draws the mote",
-    );
+  }
+  assertLessThan(
+    nearGap,
+    radius,
+    "the logical units between the forager and the drifter at the near " +
+      "station, against the vision circle R it stands inside",
+  );
+  assertGreaterThan(
+    nearGap,
+    inside.visionRadius,
+    "the same distance against the light pocket V it stands outside, so the " +
+      "circle rather than the light is what draws the mote",
+  );
 
-    const mote = brightestWarmNear(h, close.x, close.y);
-    assertNotNull(
-      mote,
-      `a red-leaning pixel within ${MOTE_REACH} units of the drifter's reported ` +
-        "center once it lies inside the vision circle",
-    );
-    assertGreaterThan(
-      fromFog((mote as NearSample).color, fog),
-      DRAWN_MIN,
-      "the RGB distance out of 441 between the brightest warm pixel at the " +
-        "drifter inside the circle and the flat fog around it",
-    );
-  });
+  const mote = brightestWarmNear(h, close.x, close.y);
+  assertNotNull(
+    mote,
+    `a red-leaning pixel within ${MOTE_REACH} units of the drifter's reported ` +
+      "center once it lies inside the vision circle",
+  );
+  assertGreaterThan(
+    fromFog((mote as NearSample).color, fog),
+    DRAWN_MIN,
+    "the RGB distance out of 441 between the brightest warm pixel at the " +
+      "drifter inside the circle and the flat fog around it",
+  );
 });

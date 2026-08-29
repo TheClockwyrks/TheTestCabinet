@@ -34,20 +34,27 @@
 // ping reveals (`gloamfin/ping-reveals-nothing`), or how long the search runs
 // before it gives up.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
 import { GLOAMFIN_SEARCH_DELAY, TICK_HZ } from "../constants";
 import { placeForager, placePredator, poseMaze } from "../fixtures";
-import { captureReplay, createHarness, type Harness } from "../harness";
 import {
-  denAllExcept,
+  captureReplay,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import {
+  check,
+  denAll,
   quietBoard,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
-import { gloamfinOf, pingLog, requireGloamfin, sweep } from "./pings";
+import { gloamfinOf, pingLog, sweep } from "./pings";
 
 /**
  * The fixture: the forager rests on `F`, the Gloamfin chases from `P` four tiles
@@ -79,19 +86,19 @@ const DELAY_TOLERANCE = 0.1;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("A lost chase casts one orange ping", async () => {
+check("A lost chase casts one orange ping", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, STALE_FIX);
-  const index = requireGloamfin(h, board.snap);
-  const quiet = await denAllExcept(h, [index]);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
   // The forager stands on the tile the fix is about to be taken on...
   await placeForager(h, board.mark("F"), "right");
   await placePredator(h, index, board.mark("P"), {
@@ -121,17 +128,16 @@ it("A lost chase casts one orange ping", async () => {
   await sweep(h, AFTER_TICKS, watch);
   const ending = await h.snapshot();
 
-  requireSceneHeld(h, ending, guard);
+  requireSceneHeld(ending, guard);
 
   if (searchOpened === null) {
     requirePredatorMotion(
-      h,
       opening,
       ending,
       index,
       "chase the four tiles to the tile its fix named and find it empty",
     );
-    h.unmet(
+    unmetPrecondition(
       'the Gloamfin never reported state "search" after reaching the tile its ' +
         "fix named, so there was no search for the guaranteed ping to fall " +
         'inside — specs/predators/gloamfin.md takes "chase" to "search" when ' +

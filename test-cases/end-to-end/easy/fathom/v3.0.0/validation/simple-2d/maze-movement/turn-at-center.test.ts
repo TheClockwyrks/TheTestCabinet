@@ -30,7 +30,7 @@
 // on rather than being stopped by rock — the turn has to be the thing that moves
 // it off the approach axis.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TILE } from "../../src/constants";
 import {
   assertEqual,
@@ -47,8 +47,8 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
-  graded,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
@@ -123,8 +123,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("buffers a perpendicular direction set mid-tile and takes the turn at the junction center", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "buffers a perpendicular direction set mid-tile and takes the turn at the junction center",
+  async () => {
     await startPlaying(h);
     const corner = await poseCorner(h, { arm: ARM });
     const quiet = await denAll(h);
@@ -219,5 +220,5 @@ it("buffers a perpendicular direction set mid-tile and takes the turn at the jun
       `logical units travelled down the new arm in the ${AXIS_TICKS} ticks after ` +
         "the turn",
     );
-  });
-});
+  },
+);

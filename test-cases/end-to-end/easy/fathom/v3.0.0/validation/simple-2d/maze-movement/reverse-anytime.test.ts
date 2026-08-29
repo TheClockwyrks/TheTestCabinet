@@ -29,7 +29,7 @@
 // both at once does. So the heading is read at the flip and the travel over the
 // thirty ticks that follow it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TILE } from "../../src/constants";
 import {
   assertEqual,
@@ -46,8 +46,8 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
-  graded,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
@@ -127,8 +127,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("reverses the forager where it stands, without waiting for a tile center", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "reverses the forager where it stands, without waiting for a tile center",
+  async () => {
     await startPlaying(h);
     const board = await poseMaze(h, CORRIDOR);
     const start = board.mark("F");
@@ -224,5 +225,5 @@ it("reverses the forager where it stands, without waiting for a tile center", as
       `logical units travelled back the way it came in the ${BACK_TICKS} ticks ` +
         "after the heading flipped",
     );
-  });
-});
+  },
+);

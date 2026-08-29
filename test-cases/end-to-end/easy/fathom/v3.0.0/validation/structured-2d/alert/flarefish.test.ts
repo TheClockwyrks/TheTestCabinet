@@ -63,7 +63,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
   type SceneGuard,
 } from "../scene";
@@ -296,7 +296,7 @@ check("The Flarefish fires the alert on a fresh fix", async () => {
     return { fired, window, end: h.snapshot() };
   });
 
-  requireScene(lit.end, guard, { what: "the light-sense scenario" });
+  requireSceneHeld(lit.end, guard, { what: "the light-sense scenario" });
   assertEqual(
     lit.fired.hit,
     true,
@@ -359,7 +359,7 @@ check("The Flarefish fires the alert on a fresh fix", async () => {
   }
   const flare = await watchWindow(h, index);
 
-  requireScene(flare.after, guard, { what: "the flare scenario" });
+  requireSceneHeld(flare.after, guard, { what: "the flare scenario" });
   // The fixture's own geometry, against the figures the specification fixes.
   assertLessThanOrEqual(
     flareGap,

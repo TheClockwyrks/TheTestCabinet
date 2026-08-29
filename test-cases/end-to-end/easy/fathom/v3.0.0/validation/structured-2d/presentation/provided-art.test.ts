@@ -81,7 +81,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 
@@ -428,7 +428,7 @@ check("draws every element from its own seeded sheet", async () => {
   // frame whose draws were read.
   captureStill(h, "art");
 
-  requireScene(snap, watch);
+  requireSceneHeld(snap, watch);
 
   // The bloom is the only light that reaches these pockets: specs/sensing.md has
   // the forager's own pocket stop at the rock it lands on, and every creature

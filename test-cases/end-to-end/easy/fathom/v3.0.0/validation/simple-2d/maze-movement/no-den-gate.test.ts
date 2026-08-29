@@ -35,7 +35,7 @@
 // taken at either end of the window would miss one that slipped through and came
 // back.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual } from "../assert";
 import { poseMaze, stampLayout } from "../fixtures";
 import {
@@ -47,8 +47,8 @@ import {
 } from "../harness";
 import type { Tile } from "../maze";
 import {
+  check,
   denAll,
-  graded,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
@@ -94,13 +94,14 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("refuses the forager the den gate and the chamber behind it", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "refuses the forager the den gate and the chamber behind it",
+  async () => {
     const opening = await startPlaying(h);
     // Where the sealed den every fixture carries puts its gate, worked out from the
     // stamping rule alone — a pure computation over the grid this build reports,
     // with nothing posed yet — so the stub below can be drawn onto its top edge.
-    const gate = gateOf(stampLayout(opening.grid, [], {}).rows);
+    const gate = gateOf(stampLayout(opening, [], {}).rows);
     assertEqual(
       gate !== null,
       true,
@@ -187,5 +188,5 @@ it("refuses the forager the den gate and the chamber behind it", async (ctx) => 
       "the forager reads as travelling after the key has been held into the gate " +
         `for ${WATCH_TICKS} ticks`,
     );
-  });
-});
+  },
+);

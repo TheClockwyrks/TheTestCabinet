@@ -32,11 +32,11 @@
 // where `HOW TO PLAY` leads, which is `states/howto`'s. Nothing here confirms
 // anything.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../../src/constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { graded } from "../scene";
+import { check } from "../scene";
 import { MENU_DOWN_KEY, assertDrew, frameOps, opDiff } from "./screens";
 
 /**
@@ -62,8 +62,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("opens on the title, draws its copy, and shows which item is selected", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "opens on the title, draws its copy, and shows which item is selected",
+  async () => {
     h.debug.reset();
     const opened = h.snapshot();
 
@@ -112,5 +113,5 @@ it("opens on the title, draws its copy, and shows which item is selected", async
         `${TITLE_ITEMS[0]}, against the ${String(idle)} that changed when it did ` +
         `not — the selected item is drawn distinctly from the others (specs/ui.md)`,
     );
-  });
-});
+  },
+);

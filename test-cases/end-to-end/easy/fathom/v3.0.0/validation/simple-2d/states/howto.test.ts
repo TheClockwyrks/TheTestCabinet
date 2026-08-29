@@ -28,10 +28,10 @@
 // `Space` and `Shift`. Those two are asserted; the rest are left alone rather
 // than graded against a rendering this suite would have had to invent.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { graded } from "../scene";
+import { check } from "../scene";
 import {
   BACK_KEY,
   CONFIRM_KEY,
@@ -66,8 +66,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("reaches how-to-play from the title menu, covers the game, and goes back", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "reaches how-to-play from the title menu, covers the game, and goes back",
+  async () => {
     h.debug.reset();
     // DIVE -> HOW TO PLAY, then take it.
     await h.tap(MENU_DOWN_KEY);
@@ -116,5 +117,5 @@ it("reaches how-to-play from the title menu, covers the game, and goes back", as
       "title",
       "the screen `back` from how-to-play returns to (specs/ui.md)",
     );
-  });
-});
+  },
+);

@@ -32,7 +32,7 @@
 // `flarefish/flare-cadence`'s; and what the disc drops back to when the bloom ends,
 // which `specs/sensing.md` gives to the fog points.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -48,7 +48,7 @@ import { tileCenter } from "../maze";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import type { FathomSnapshot } from "../surface";
 import {
-  graded,
+  check,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -125,8 +125,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("lights every tile inside FLARE_RADIUS through rock while it blooms, and nothing outside it", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "lights every tile inside FLARE_RADIUS through rock while it blooms, and nothing outside it",
+  async () => {
     await startPlaying(h);
     const room = await poseFlareRoom(h);
     const guard = await sceneGuard(h, room.quiet);
@@ -192,7 +193,7 @@ it("lights every tile inside FLARE_RADIUS through rock while it blooms, and noth
     const outside: Tile[] = [];
     for (let ty = 0; ty < lit.grid.rows; ty += 1) {
       for (let tx = 0; tx < lit.grid.cols; tx += 1) {
-        const center = tileCenter(lit.grid, tx, ty);
+        const center = tileCenter(lit.grid, { tx, ty });
         const away = Math.hypot(center.x - fish.x, center.y - fish.y);
         if (away <= FLARE_RADIUS - RIM_INSET) inside.push({ tx, ty });
         else if (away >= outsideMin && away <= outsideMax) {
@@ -283,5 +284,5 @@ it("lights every tile inside FLARE_RADIUS through rock while it blooms, and noth
             `"${stateOf(lit, leaked[0])}"`
           : ""),
     );
-  });
-});
+  },
+);

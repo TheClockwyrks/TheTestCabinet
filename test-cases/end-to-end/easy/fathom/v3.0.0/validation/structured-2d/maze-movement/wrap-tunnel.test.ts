@@ -48,7 +48,7 @@ import {
   check,
   denAll,
   failPrecondition,
-  requireScene,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
 } from "../scene";
@@ -215,7 +215,7 @@ check(
       return { first, steps, wrapped, arrived, last };
     });
 
-    requireScene(h.snapshot(), guard);
+    requireSceneHeld(h.snapshot(), guard);
 
     // A forager that never got under way never reached the seam; whether a held
     // action moves it at all is `controls/move-*`'s verdict.

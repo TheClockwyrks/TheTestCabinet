@@ -48,7 +48,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 
@@ -182,7 +182,7 @@ check("It wanders at the drifter's pace and hunts faster", async () => {
     return { wandered, chased, end: h.snapshot() };
   });
 
-  requireScene(read.end, guard);
+  requireSceneHeld(read.end, guard);
 
   const wanderSeconds = seconds(WANDER_TICKS);
   const chaseSeconds = seconds(CHASE_TICKS);

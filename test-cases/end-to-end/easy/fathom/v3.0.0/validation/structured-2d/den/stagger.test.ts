@@ -33,7 +33,7 @@ import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
-import { check, requireScene, sceneGuard, standDown } from "../scene";
+import { check, requireSceneHeld, sceneGuard, standDown } from "../scene";
 import {
   requireReleasedFlag,
   DEN_ORDER_LINE,
@@ -112,7 +112,7 @@ check(
       return { countdown, started, den, guard };
     });
 
-    requireScene(h.snapshot(), watch.guard);
+    requireSceneHeld(h.snapshot(), watch.guard);
 
     // The schedule is read off `released`, so a build that does not report it sees
     // no releases at all — which would otherwise read as a den that never opened.

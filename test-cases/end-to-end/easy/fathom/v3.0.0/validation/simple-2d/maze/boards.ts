@@ -48,9 +48,9 @@ import {
 } from "../../src/constants";
 import { captureStill, startPlaying, type Harness } from "../harness";
 import {
+  corridorTiles,
   denTiles,
   gateTiles,
-  openTiles,
   tileAt,
   type Dir,
   type MazeView,
@@ -125,7 +125,7 @@ export function witness<M extends Measured>(measured: readonly M[]): M {
  * the cells inside the border, and a board with no corridor reads `0`.
  */
 export function requireLaidOut(boards: readonly Board[]): void {
-  const bare = boards.find((one) => openTiles(one.snapshot).length === 0);
+  const bare = boards.find((one) => corridorTiles(one.snapshot).length === 0);
   if (bare === undefined) return;
   unmetPrecondition(
     `the maze seed ${bare.seed} laid out carries no corridor tile at all, so ` +
@@ -214,7 +214,7 @@ function nearestCorridor(view: MazeView, fx: number, fy: number): Tile | null {
   const at = { tx: fx * (view.grid.cols - 1), ty: fy * (view.grid.rows - 1) };
   let best: Tile | null = null;
   let bestGap = Infinity;
-  for (const tile of openTiles(view)) {
+  for (const tile of corridorTiles(view)) {
     const gap = (tile.tx - at.tx) ** 2 + (tile.ty - at.ty) ** 2;
     if (gap < bestGap) {
       bestGap = gap;

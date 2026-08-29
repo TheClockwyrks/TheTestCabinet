@@ -28,7 +28,7 @@
 // `lanternjaw/dim-shakes`'s and `lanternjaw/ink-shakes`'s; how fast it then
 // travels is `lanternjaw/wander-disguise`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -43,16 +43,18 @@ import {
   ticks,
   type FathomSnapshot,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
-import type { TileRef } from "../maze";
+import type { Tile } from "../maze";
 
 /**
  * The corridor the pair stands on, in tiles.
@@ -117,26 +119,26 @@ function gap(snapshot: FathomSnapshot, index: number): number {
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("It senses the forager's light within R", async () => {
+check("It senses the forager's light within R", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, [`F${".".repeat(RUN_TILES - 1)}`]);
   const home = board.mark("F");
   const index = predatorIndex(await h.snapshot(), "lanternjaw");
   if (index === null) {
-    h.unmet(
+    unmetPrecondition(
       "the roster carries no Lanternjaw, so this scenario has nothing to pose — " +
         "what the roster holds is the progression checks' verdict, not this one's",
     );
   }
-  const quiet = await denAllExcept(h, [index]);
+  const quiet = await denAll(h, [index]);
   // Parked facing the rock across the corridor and its own pellet settled, so the
   // standoffs below are the distances the fixture states and `G` is the one the
   // check poses rather than one a mouthful widened.
@@ -153,7 +155,7 @@ it("It senses the forager's light within R", async () => {
     !Number.isFinite(reported) ||
     reported <= 0
   ) {
-    h.unmet(
+    unmetPrecondition(
       `the Lanternjaw reports detectRange as ${JSON.stringify(reported)} rather ` +
         "than a range in logical units, so there is no boundary to stand either " +
         "side of — what detectRange must be is brightness/widens-lanternjaw's " +
@@ -166,15 +168,15 @@ it("It senses the forager's light within R", async () => {
   );
   const outsideTiles = Math.ceil((reported * OUTSIDE_FACTOR) / TILE);
   if (outsideTiles > RUN_TILES - 1) {
-    h.unmet(
+    unmetPrecondition(
       `the Lanternjaw reports a detectRange of ${reported} units, so a standoff ` +
         `beyond it would need ${outsideTiles} tiles of corridor and this fixture ` +
         `lays out ${RUN_TILES - 1} — what detectRange must be is ` +
         "brightness/widens-lanternjaw's verdict, not this one's",
     );
   }
-  const inside: TileRef = { tx: home.tx + insideTiles, ty: home.ty };
-  const outside: TileRef = { tx: home.tx + outsideTiles, ty: home.ty };
+  const inside: Tile = { tx: home.tx + insideTiles, ty: home.ty };
+  const outside: Tile = { tx: home.tx + outsideTiles, ty: home.ty };
 
   const read = await captureReplay(h, "sense", async () => {
     // Inside the range, with a clear line and no ink: the sense must hold.
@@ -213,7 +215,7 @@ it("It senses the forager's light within R", async () => {
     };
   });
 
-  requireSceneHeld(h, read.end, guard);
+  requireSceneHeld(read.end, guard);
 
   // The fixture's own geometry, against the range the build itself reports.
   assertLessThanOrEqual(

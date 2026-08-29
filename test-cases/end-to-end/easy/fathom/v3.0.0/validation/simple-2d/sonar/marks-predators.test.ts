@@ -34,7 +34,7 @@
 // state, which is `sonar/heard-by-gloamfin`'s — with the minds off nothing here
 // takes a fix.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   SONAR_MARK_TIME,
@@ -48,15 +48,15 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
+import type { PredatorKind } from "../surface";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
-  type PredatorKind,
 } from "../scene";
 import { emitPulse, sinceEmit } from "./pulse";
 
@@ -115,17 +115,18 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("marks a Gloamfin and a Flarefish from the front's arrival and holds each for SONAR_MARK_TIME", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "marks a Gloamfin and a Flarefish from the front's arrival and holds each for SONAR_MARK_TIME",
+  async () => {
     await startPlaying(h);
     const targets = await poseSonarSense(h, 2);
     await parkForager(h);
     await clearUnderfoot(h);
 
     const posed = h.snapshot();
-    const gloamfin = requirePred(posed, "gloamfin");
-    const flarefish = requirePred(posed, "flarefish");
-    const quiet = await denAll(h, ["gloamfin", "flarefish"]);
+    const gloamfin = requireKind(posed, "gloamfin");
+    const flarefish = requireKind(posed, "flarefish");
+    const quiet = await denAll(h, [gloamfin, flarefish]);
 
     const subjects: { kind: PredatorKind; index: number; steps: number }[] = [
       { kind: "gloamfin", index: gloamfin, steps: targets[0].steps },
@@ -202,5 +203,5 @@ it("marks a Gloamfin and a Flarefish from the front's arrival and holds each for
           "turned true to the tick it turned back false",
       );
     }
-  });
-});
+  },
+);

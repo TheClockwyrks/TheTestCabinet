@@ -32,7 +32,7 @@
 // contents — and what the pause overlay looks like, which is the aesthetic
 // rating's.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BRIGHT_HOLD, PAUSE_ITEMS } from "../../src/constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
@@ -42,7 +42,7 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { denAll, graded } from "../scene";
+import { check, denAll } from "../scene";
 import {
   CONFIRM_KEY,
   MOVE_KEY,
@@ -90,101 +90,98 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("freezes the dive behind its menu, and resumes", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    // One hunter loose and patrolling, the rest put away so only the one that is
-    // supposed to hold still is on the board. At depth 1 the roster holds one of
-    // each kind (specs/predators.md), so naming index 0's kind names one hunter.
-    const opening = h.snapshot();
-    await denAll(h, [opening.predators[LOOSE].kind]);
-    h.debug.setPredatorState(LOOSE, "wander");
-    h.debug.setBrightness(POSED_BRIGHTNESS);
-    h.debug.setSonarCooldown(POSED_SONAR_COOLDOWN);
-    h.debug.setInkCooldown(POSED_INK_COOLDOWN);
+check("freezes the dive behind its menu, and resumes", async () => {
+  await startPlaying(h);
+  // One hunter loose and patrolling, the rest put away so only the one that is
+  // supposed to hold still is on the board. At depth 1 the roster holds one of
+  // each kind (specs/predators.md), so leaving index 0 out names one hunter.
+  await denAll(h, [LOOSE]);
+  h.debug.setPredatorState(LOOSE, "wander");
+  h.debug.setBrightness(POSED_BRIGHTNESS);
+  h.debug.setSonarCooldown(POSED_SONAR_COOLDOWN);
+  h.debug.setInkCooldown(POSED_INK_COOLDOWN);
 
-    await h.tap(PAUSE_KEY);
-    const paused = h.snapshot();
+  await h.tap(PAUSE_KEY);
+  const paused = h.snapshot();
 
-    const ops = await frameOps(h);
-    // Before the assertions, so a failing check still leaves the screen it read.
-    captureStill(h, "paused");
+  const ops = await frameOps(h);
+  // Before the assertions, so a failing check still leaves the screen it read.
+  captureStill(h, "paused");
 
-    const before = h.snapshot();
-    h.hold(MOVE_KEY);
-    await h.advance(FREEZE_TICKS);
-    h.release(MOVE_KEY);
-    const after = h.snapshot();
+  const before = h.snapshot();
+  h.hold(MOVE_KEY);
+  await h.advance(FREEZE_TICKS);
+  h.release(MOVE_KEY);
+  const after = h.snapshot();
 
-    await h.tap(CONFIRM_KEY); // RESUME, the first item of the pause menu.
-    const resumed = h.snapshot();
+  await h.tap(CONFIRM_KEY); // RESUME, the first item of the pause menu.
+  const resumed = h.snapshot();
 
-    assertEqual(
-      paused.screen,
-      "paused",
-      "the screen the pause control reaches from live play (specs/ui.md)",
-    );
-    for (const item of PAUSE_ITEMS) {
-      assertDrew(
-        ops,
-        item,
-        `an item of the pause menu, which is ${PAUSE_ITEMS.join(", ")} (specs/ui.md)`,
-      );
-    }
+  assertEqual(
+    paused.screen,
+    "paused",
+    "the screen the pause control reaches from live play (specs/ui.md)",
+  );
+  for (const item of PAUSE_ITEMS) {
     assertDrew(
       ops,
-      `DEPTH ${String(paused.depth)}`,
-      "the HUD's depth readout, still drawn over the maze that stays visible " +
-        "behind the pause menu (specs/ui.md)",
+      item,
+      `an item of the pause menu, which is ${PAUSE_ITEMS.join(", ")} (specs/ui.md)`,
     );
+  }
+  assertDrew(
+    ops,
+    `DEPTH ${String(paused.depth)}`,
+    "the HUD's depth readout, still drawn over the maze that stays visible " +
+      "behind the pause menu (specs/ui.md)",
+  );
 
-    // The ticks really ran, so nothing below is vacuous.
-    assertGreaterThan(
-      after.simTime - before.simTime,
-      0,
-      "simulated seconds accumulated while the dive was paused, which every " +
-        "tick adds to, the paused screen included (specs/state.md)",
-    );
+  // The ticks really ran, so nothing below is vacuous.
+  assertGreaterThan(
+    after.simTime - before.simTime,
+    0,
+    "simulated seconds accumulated while the dive was paused, which every " +
+      "tick adds to, the paused screen included (specs/state.md)",
+  );
 
-    assertEqual(
-      after.forager.x,
-      before.forager.x,
-      "the forager's x across a paused stretch with a movement key held, behind " +
-        "a screen on which nothing advances (specs/ui.md)",
-    );
-    assertEqual(
-      after.forager.y,
-      before.forager.y,
-      "the forager's y across a paused stretch with a movement key held",
-    );
-    assertEqual(
-      after.brightness,
-      before.brightness,
-      "the forager's brightness across a paused stretch longer than its hold " +
-        "and its halflife together (specs/ui.md)",
-    );
-    assertEqual(
-      after.sonar.cooldown,
-      before.sonar.cooldown,
-      "the sonar cooldown across a paused stretch longer than the cooldown " +
-        "posed (specs/ui.md)",
-    );
-    assertEqual(
-      after.ink.cooldown,
-      before.ink.cooldown,
-      "the ink cooldown across a paused stretch (specs/ui.md)",
-    );
-    assertEqual(
-      `${String(after.predators[LOOSE].x)},${String(after.predators[LOOSE].y)}`,
-      `${String(before.predators[LOOSE].x)},${String(before.predators[LOOSE].y)}`,
-      `where the loose ${before.predators[LOOSE].kind} stood across a paused ` +
-        "stretch, behind a maze that is frozen (specs/ui.md)",
-    );
+  assertEqual(
+    after.forager.x,
+    before.forager.x,
+    "the forager's x across a paused stretch with a movement key held, behind " +
+      "a screen on which nothing advances (specs/ui.md)",
+  );
+  assertEqual(
+    after.forager.y,
+    before.forager.y,
+    "the forager's y across a paused stretch with a movement key held",
+  );
+  assertEqual(
+    after.brightness,
+    before.brightness,
+    "the forager's brightness across a paused stretch longer than its hold " +
+      "and its halflife together (specs/ui.md)",
+  );
+  assertEqual(
+    after.sonar.cooldown,
+    before.sonar.cooldown,
+    "the sonar cooldown across a paused stretch longer than the cooldown " +
+      "posed (specs/ui.md)",
+  );
+  assertEqual(
+    after.ink.cooldown,
+    before.ink.cooldown,
+    "the ink cooldown across a paused stretch (specs/ui.md)",
+  );
+  assertEqual(
+    `${String(after.predators[LOOSE].x)},${String(after.predators[LOOSE].y)}`,
+    `${String(before.predators[LOOSE].x)},${String(before.predators[LOOSE].y)}`,
+    `where the loose ${before.predators[LOOSE].kind} stood across a paused ` +
+      "stretch, behind a maze that is frozen (specs/ui.md)",
+  );
 
-    assertEqual(
-      resumed.screen,
-      "playing",
-      "the screen RESUME confirmed from the pause menu returns to (specs/ui.md)",
-    );
-  });
+  assertEqual(
+    resumed.screen,
+    "playing",
+    "the screen RESUME confirmed from the pause menu returns to (specs/ui.md)",
+  );
 });

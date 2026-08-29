@@ -52,7 +52,7 @@ import {
   clearUnderfoot,
   denAll,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
@@ -177,7 +177,7 @@ check("A drifter stays until it is eaten", async () => {
     return { last, still };
   });
 
-  requireScene(watched.still, watch);
+  requireSceneHeld(watched.still, watch);
   assertEqual(
     opened.drifters.length,
     1,

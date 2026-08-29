@@ -58,7 +58,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { tileGap } from "../maze";
@@ -174,7 +174,7 @@ check("Dimming shakes its fix", async () => {
     return { inside, gaveUp, at, end: h.snapshot() };
   });
 
-  requireScene(shaken.end, guard);
+  requireSceneHeld(shaken.end, guard);
   assertEqual(
     `${shaken.end.forager.tx},${shaken.end.forager.ty}`,
     `${line.slip.tx},${line.slip.ty}`,

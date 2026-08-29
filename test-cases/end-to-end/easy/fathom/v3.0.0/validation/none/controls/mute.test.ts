@@ -37,7 +37,7 @@
 // has interacted with the page (specs/progression.md), and the key used carries no
 // binding, so arming changes nothing about the game.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
@@ -45,13 +45,9 @@ import {
   createHarness,
   watchCues,
   type Harness,
-} from "../harness";
-import {
-  quietBoard,
-  requireSceneHeld,
-  sceneGuard,
   startPlaying,
-} from "../scene";
+} from "../harness";
+import { check, quietBoard, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The key specs/movement.md binds the `mute` action to. */
 const MUTE_KEY = "KeyM";
@@ -93,15 +89,15 @@ const CUE_WINDOW_TICKS = 30;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
+check("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
   await startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
   await quietBoard(h);
@@ -141,7 +137,7 @@ it("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
   await h.advance(CUE_WINDOW_TICKS);
   const unmutedSounds = cues.length - loudFrom;
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
 
   assertEqual(
     opening.muted,

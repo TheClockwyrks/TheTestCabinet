@@ -36,11 +36,11 @@
 // is drawn behind the countdown at all, through the depth readout `specs/ui.md`
 // fixes the wording of.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TICK_HZ } from "../../src/constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import { captureStill, createHarness, ticks, type Harness } from "../harness";
-import { graded } from "../scene";
+import { check } from "../scene";
 import {
   CONFIRM_KEY,
   MOVE_KEY,
@@ -101,8 +101,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("opens the dive on the countdown, holds 1-3 s, and freezes the maze behind it", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "opens the dive on the countdown, holds 1-3 s, and freezes the maze behind it",
+  async () => {
     h.debug.reset();
     const title = h.snapshot();
     await h.tap(CONFIRM_KEY); // DIVE, the first item of the title menu.
@@ -194,5 +195,5 @@ it("opens the dive on the countdown, holds 1-3 s, and freezes the maze behind it
       "where the predators stood while the countdown ran, which holds them " +
         "still (specs/ui.md)",
     );
-  });
-});
+  },
+);

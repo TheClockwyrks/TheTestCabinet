@@ -25,7 +25,7 @@
 // brightness is `brightness/widens-lanternjaw`'s. Both halves here stand at a
 // fraction of the range so neither turns on either.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThan, assertTrue } from "../assert";
 import { poseMaze, predatorIndex } from "../fixtures";
 import {
@@ -34,14 +34,16 @@ import {
   ticks,
   type FathomSnapshot,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
 
 /**
@@ -87,15 +89,15 @@ function gap(snapshot: FathomSnapshot, index: number): number {
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("Rock breaks its sense", async () => {
+check("Rock breaks its sense", async () => {
   await startPlaying(h);
   // The forager's corridor carries `C`, the clear-line standoff, `GAP_TILES` along
   // it; `P` sits the same number of ROWS below, with the rows between it and the
@@ -111,12 +113,12 @@ it("Rock breaks its sense", async () => {
   const clear = board.mark("C");
   const index = predatorIndex(await h.snapshot(), "lanternjaw");
   if (index === null) {
-    h.unmet(
+    unmetPrecondition(
       "the roster carries no Lanternjaw, so this scenario has nothing to pose — " +
         "what the roster holds is the progression checks' verdict, not this one's",
     );
   }
-  const quiet = await denAllExcept(h, [index]);
+  const quiet = await denAll(h, [index]);
   await parkForager(h, home);
   await clearUnderfoot(h);
   await h.debug.setBrightness(POSED_G);
@@ -157,7 +159,7 @@ it("Rock breaks its sense", async () => {
     };
   });
 
-  requireSceneHeld(h, read.end, guard);
+  requireSceneHeld(read.end, guard);
 
   // The fixture's own geometry: both standoffs are well inside the range the build
   // itself reports, so the rock is the only thing that differs.

@@ -8,13 +8,23 @@
 // bulb exactly as it was and draws no body, marking neither it nor a drifter."
 //
 // TWO READINGS, because the claim has two halves and a build can hold either
-// alone. What the build SAYS — the Lanternjaw's `lit`, which specs/state.md
-// defines as "true while its body is being drawn this instant" — must stay
-// `false` for the whole life of the pulse. And what the build DRAWS — the amber
-// mote on each of the two creatures — must come through the front's passage
-// unchanged. A build that marks the Lanternjaw like the other two hunters fails
-// the first; one that leaves `lit` alone but tints the mote as the crest goes
-// over, or lights the body under it, fails the second.
+// alone. What the build SAYS — the `lit` flag of each amber creature, which
+// specs/state.md defines for the bonus drifter and for the Lanternjaw alike as
+// true "while its body is being drawn this instant" — must stay `false` for the
+// whole life of the pulse. And what the build DRAWS — the amber mote on each of
+// the two creatures — must come through the front's passage unchanged. A build
+// that marks either creature the way it marks the other two hunters fails the
+// first; one that leaves both flags alone and tints a mote as the crest goes
+// over fails the second.
+//
+// THE DRIFTER IS READ THROUGH ITS OWN FLAG. Its amber mote is drawn under the
+// amber-light rule rather than under the fog, so the mote is on screen whether or
+// not the jellyfish beneath it is, and the ground both creatures stand on goes
+// from never-revealed to remembered as a pulse passes, which is a change of its
+// own and one specs/sensing.md asks for. `lit` puts the question to the build
+// directly instead, so a build that begins drawing a drifter's body once a pulse
+// has flooded the tile it stands on answers `true` where specs/state.md requires
+// `false`.
 //
 // THE MOTES ARE READ BETWEEN TWO PULSES, and that is what keeps the reading about
 // the creatures rather than about the ground they stand on. A pulse is REQUIRED to
@@ -64,10 +74,19 @@ import {
   failPrecondition,
   parkForager,
   requireKind,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { emitPulse, foragerPulse, sinceEmit } from "./pulse";
+
+/** One tick's reading of one amber creature's `lit` flag. */
+interface LitSample {
+  /** Seconds since the pulse was emitted. */
+  elapsed: number;
+  /** Whose flag it is, so a failure names the creature the pulse drew. */
+  whose: string;
+  lit: boolean;
+}
 
 /**
  * How far a mote may be drawn from where it was drawn before the pulse, as an
@@ -113,7 +132,7 @@ afterEach(() => {
 });
 
 check(
-  "leaves the Lanternjaw unlit and both amber motes unchanged through a pulse",
+  "leaves both amber creatures unlit and both motes unchanged through a pulse",
   async () => {
     startPlaying(h);
     const targets = await poseSonarSense(h, 2);
@@ -140,43 +159,48 @@ check(
       1,
       "the bonus drifters on the board, one of them posed through spawnDrifter",
     );
-    // The Lanternjaw has to be undrawn BEFORE any pulse is cast, or "the pulse
-    // left it unlit" reads the same on a build whose own light was already drawing
-    // it. This fixture stands it behind rock with no pulse in flight, so a build
-    // that draws it here has light that does not stop at rock.
-    if (posedBoard.predators[lanternjaw].lit) {
-      failPrecondition(
-        "the Lanternjaw to be undrawn before any pulse was cast, so what this " +
-          "point reads through the pulse is the pulse's own doing; it stands " +
-          "behind rock and specs/sensing.md has the light travel straight and " +
-          "stop at the rock it lands on",
-        "fog/light-line-of-sight",
-        "it reported lit with no pulse in flight",
-      );
-    }
 
-    /** Cast a pulse, run it out, and report the Lanternjaw's `lit` throughout. */
+    /**
+     * Cast a pulse, run it out, and report both amber creatures' `lit`
+     * throughout.
+     *
+     * `lost` records a drifter that left the list under the reading, because a
+     * board with no drifter on it answers the drifter's half of the claim
+     * neither way.
+     */
     const cast = async (): Promise<{
       spent: boolean;
-      lit: { elapsed: number; lit: boolean }[];
+      lost: boolean;
+      lit: LitSample[];
     }> => {
       const emitted = await emitPulse(h);
-      const lit: { elapsed: number; lit: boolean }[] = [];
+      const lit: LitSample[] = [];
       let spent = false;
+      let lost = false;
       for (let tick = 1; tick <= SWEEP_TICKS; tick += 1) {
         if (tick > 1) await h.advance(1);
         const snapshot = h.snapshot();
-        lit.push({
-          elapsed: sinceEmit(emitted, snapshot),
-          lit: snapshot.predators[lanternjaw].lit,
-        });
+        const drifter = snapshot.drifters[0];
+        if (drifter === undefined) {
+          lost = true;
+          break;
+        }
+        const elapsed = sinceEmit(emitted, snapshot);
+        lit.push(
+          {
+            elapsed,
+            whose: "Lanternjaw's",
+            lit: snapshot.predators[lanternjaw].lit,
+          },
+          { elapsed, whose: "bonus drifter's", lit: drifter.lit },
+        );
         if (foragerPulse(snapshot) === undefined) {
           spent = true;
           break;
         }
       }
       await h.advance(AFTER_TICKS);
-      return { spent, lit };
+      return { spent, lost, lit };
     };
 
     /** Both amber lights, each read about its own drawn centre. */
@@ -196,6 +220,26 @@ check(
       };
     };
 
+    // Both amber creatures have to be undrawn BEFORE any pulse is cast, or "the
+    // pulse left them unlit" reads the same on a build whose own light was
+    // already drawing them. This fixture stands both behind rock, so a build
+    // that draws either one here has light that does not stop at rock.
+    for (const [whose, drawn] of [
+      ["Lanternjaw's", posedBoard.predators[lanternjaw].lit],
+      ["bonus drifter's", posedBoard.drifters[0].lit],
+    ] as const) {
+      if (drawn) {
+        failPrecondition(
+          `the ${whose} body to be undrawn before any pulse was cast, so what ` +
+            "this point reads through the pulse is the pulse's own doing; both " +
+            "stand behind rock and specs/sensing.md has the light travel " +
+            "straight and stop at the rock it lands on",
+          "fog/light-line-of-sight",
+          "it reported lit with no pulse in flight",
+        );
+      }
+    }
+
     // The first pulse settles the ground: the corridor both creatures stand on
     // goes from never-revealed to remembered, which is what specs/sensing.md asks
     // a flood to do and is not what this point is about.
@@ -210,8 +254,14 @@ check(
     // shows what the pulse did to the two glimmers.
     captureStill(h, "amber");
 
-    requireScene(after, watch);
+    requireSceneHeld(after, watch);
     for (const run of [first, second]) {
+      assertEqual(
+        run.lost,
+        false,
+        "the bonus drifter stayed on the board for the whole pulse, so its " +
+          "`lit` could be read across the front's arrival",
+      );
       assertEqual(
         run.spent,
         true,
@@ -224,8 +274,8 @@ check(
       assertEqual(
         sample.lit,
         false,
-        `the Lanternjaw's lit ${sample.elapsed.toFixed(3)} s into the pulse that ` +
-          "flooded the tile it stands on",
+        `the ${sample.whose} lit ${sample.elapsed.toFixed(3)} s into the pulse ` +
+          "that flooded the tile it stands on",
       );
     }
     assertEqual(
@@ -233,6 +283,13 @@ check(
       false,
       "the Lanternjaw's lit once the pulse has run out, inside the " +
         "SONAR_MARK_TIME a mark would still be holding it drawn for",
+    );
+    assertEqual(
+      after.drifters[0].lit,
+      false,
+      "the bonus drifter's lit once the pulse has run out, inside the " +
+        "SONAR_MARK_TIME a mark would still be holding a marked creature " +
+        "drawn for",
     );
 
     for (const [what, profile] of Object.entries(motesBefore)) {

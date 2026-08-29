@@ -33,7 +33,7 @@
 // from, so for every body on the board the pair is arithmetic on `x`, `y` and the
 // grid block the same snapshot reports.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertBetween,
   assertContains,
@@ -58,12 +58,14 @@ import {
   createHarness,
   type FathomSnapshot,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
 
 /**
@@ -159,15 +161,15 @@ function tileOf(
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("reports every documented field, with its documented type", async () => {
+check("reports every documented field, with its documented type", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
@@ -202,26 +204,26 @@ it("reports every documented field, with its documented type", async () => {
   // board the shape was read off.
   await captureStill(h, "posed");
 
-  requireSceneHeld(h, snap, guard);
+  requireSceneHeld(snap, guard);
 
   // The scene the shape is read over: a build whose controls never fired the two
   // effects has a defect the control points own, and this stands aside.
   if (snap.pulses.length === 0) {
-    h.unmet(
+    unmetPrecondition(
       `no sonar wavefront was in flight after ${SONAR_KEY} was pressed with the ` +
         `cooldown ready, so the pulses list had nothing in it to read — whether ` +
         `the sonar control fires is controls/sonar-key's verdict, not this one's`,
     );
   }
   if (snap.inkClouds.length === 0) {
-    h.unmet(
+    unmetPrecondition(
       `no ink cloud was standing after ${INK_KEY} was pressed with the cooldown ` +
         `ready, so the inkClouds list had nothing in it to read — whether the ink ` +
         `control fires is controls/ink-key's verdict, not this one's`,
     );
   }
   if (snap.drifters.length === 0) {
-    h.unmet(
+    unmetPrecondition(
       "spawnDrifter added no drifter, so the drifters list had nothing in it to " +
         "read — the operation itself is instrumentation/surface-present's verdict",
     );
@@ -320,6 +322,7 @@ it("reports every documented field, with its documented type", async () => {
     assertNumber(drifter, "y", `${where}.y`);
     assertNumber(drifter, "tx", `${where}.tx`);
     assertNumber(drifter, "ty", `${where}.ty`);
+    assertBoolean(drifter, "lit", `${where}.lit`);
     const tile = tileOf(snap.grid, drifter.x, drifter.y);
     assertEqual(
       `${drifter.tx},${drifter.ty}`,

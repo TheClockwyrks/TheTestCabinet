@@ -41,7 +41,7 @@ import {
   check,
   clearUnderfoot,
   denAll,
-  requireScene,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
 } from "../scene";
@@ -110,7 +110,7 @@ check(
       seen.snapshot.forager,
       "swim into a plankton and eat it",
     );
-    requireScene(h.snapshot(), watch);
+    requireSceneHeld(h.snapshot(), watch);
 
     assertEqual(
       seen.hit,

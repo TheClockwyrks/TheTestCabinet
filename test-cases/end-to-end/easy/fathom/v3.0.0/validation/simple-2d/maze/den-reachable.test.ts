@@ -31,11 +31,11 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { denTiles, predatorReachable } from "../maze";
-import { graded } from "../scene";
+import { check } from "../scene";
 import { captureBoard, freshBoards, witness } from "./boards";
 
 /**
@@ -63,8 +63,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("joins the den to the forager's start over the tiles a predator may enter", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "joins the den to the forager's start over the tiles a predator may enter",
+  async () => {
     const boards = await freshBoards(h);
 
     const measured = boards.map((board) => {
@@ -107,5 +108,5 @@ it("joins the den to the forager's start over the tiles a predator may enter", a
           (named === "" ? "" : `, at ${named}`),
       );
     }
-  });
-});
+  },
+);

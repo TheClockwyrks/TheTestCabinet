@@ -23,7 +23,7 @@
 // `lanternjaw/light-range`'s, so a build whose hunter never takes a fix stands this
 // check down rather than passing it on an absence that means nothing.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { ALERT_TIME } from "../../src/constants";
 import { assertEqual, assertTrue } from "../assert";
 import { poseSightLine } from "../fixtures";
@@ -36,11 +36,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -98,69 +98,67 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The Lanternjaw fires no alert", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const line = await poseSightLine(h, GAP_TILES, {
-      lead: LEAD_TILES,
-      tail: TAIL_TILES,
-    });
-    const index = requirePred(h.snapshot(), "lanternjaw");
-    const quiet = await denAll(h, ["lanternjaw"]);
-    await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-    await h.debug.setPredatorState(index, "wander");
-    await parkForager(h, line.forager);
-    await clearUnderfoot(h);
-    await h.debug.setBrightness(BRIGHT_G);
-    const watch = await sceneGuard(h, quiet);
-
-    const read = await captureReplay(h, "none", async () => {
-      // Sampled from before the acquisition, so a build that fires on the tick it
-      // takes the fix is caught as surely as one that fires a beat later.
-      const seen: { at: number; alert: boolean; state: string }[] = [];
-      const sample = (at: number): void => {
-        const p = h.snapshot().predators[index];
-        seen.push({ at, alert: p.alert, state: p.state });
-      };
-      sample(0);
-      const fixed = await h.until((s) => s.predators[index].state === "chase", {
-        maxFrames: FIX_TICKS,
-        poll: 1,
-      });
-      let spent = fixed.frames;
-      sample(spent);
-      for (let step = 0; step < WATCH_TICKS; step += WATCH_POLL) {
-        await h.advance(WATCH_POLL);
-        spent += WATCH_POLL;
-        sample(spent);
-      }
-      await h.advance(CLIP_TICKS);
-      return { fixed, seen, end: h.snapshot() };
-    });
-
-    requireSceneHeld(read.end, watch);
-
-    if (!read.fixed.hit) {
-      unmetPrecondition(
-        "the Lanternjaw took no fix on a fully lit forager seven tiles away on a " +
-          "clear line, so there was no acquisition for an alert to have been " +
-          "fired on; whether it senses the forager at all is " +
-          "lanternjaw/light-range's verdict, not this one's",
-      );
-    }
-
-    // The acquisition happened, which is what makes the absence below a reading.
-    assertEqual(
-      read.seen.some((one) => one.state === "chase"),
-      true,
-      "the Lanternjaw is seen holding a fix inside the window that was watched",
-    );
-    const fired = read.seen.filter((one) => one.alert);
-    assertTrue(
-      fired.length === 0,
-      `every reading of the Lanternjaw's alert across the acquisition and the ` +
-        `${seconds(WATCH_TICKS).toFixed(2)} s after it is false — it read true at ` +
-        `${fired.map((one) => `${seconds(one.at).toFixed(3)} s`).join(", ") || "no sample"}`,
-    );
+check("The Lanternjaw fires no alert", async () => {
+  await startPlaying(h);
+  const line = await poseSightLine(h, GAP_TILES, {
+    lead: LEAD_TILES,
+    tail: TAIL_TILES,
   });
+  const index = requireKind(h.snapshot(), "lanternjaw");
+  const quiet = await denAll(h, [index]);
+  await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
+  await h.debug.setPredatorState(index, "wander");
+  await parkForager(h, line.forager);
+  await clearUnderfoot(h);
+  await h.debug.setBrightness(BRIGHT_G);
+  const watch = await sceneGuard(h, quiet);
+
+  const read = await captureReplay(h, "none", async () => {
+    // Sampled from before the acquisition, so a build that fires on the tick it
+    // takes the fix is caught as surely as one that fires a beat later.
+    const seen: { at: number; alert: boolean; state: string }[] = [];
+    const sample = (at: number): void => {
+      const p = h.snapshot().predators[index];
+      seen.push({ at, alert: p.alert, state: p.state });
+    };
+    sample(0);
+    const fixed = await h.until((s) => s.predators[index].state === "chase", {
+      maxFrames: FIX_TICKS,
+      poll: 1,
+    });
+    let spent = fixed.frames;
+    sample(spent);
+    for (let step = 0; step < WATCH_TICKS; step += WATCH_POLL) {
+      await h.advance(WATCH_POLL);
+      spent += WATCH_POLL;
+      sample(spent);
+    }
+    await h.advance(CLIP_TICKS);
+    return { fixed, seen, end: h.snapshot() };
+  });
+
+  requireSceneHeld(read.end, watch);
+
+  if (!read.fixed.hit) {
+    unmetPrecondition(
+      "the Lanternjaw took no fix on a fully lit forager seven tiles away on a " +
+        "clear line, so there was no acquisition for an alert to have been " +
+        "fired on; whether it senses the forager at all is " +
+        "lanternjaw/light-range's verdict, not this one's",
+    );
+  }
+
+  // The acquisition happened, which is what makes the absence below a reading.
+  assertEqual(
+    read.seen.some((one) => one.state === "chase"),
+    true,
+    "the Lanternjaw is seen holding a fix inside the window that was watched",
+  );
+  const fired = read.seen.filter((one) => one.alert);
+  assertTrue(
+    fired.length === 0,
+    `every reading of the Lanternjaw's alert across the acquisition and the ` +
+      `${seconds(WATCH_TICKS).toFixed(2)} s after it is false — it read true at ` +
+      `${fired.map((one) => `${seconds(one.at).toFixed(3)} s`).join(", ") || "no sample"}`,
+  );
 });

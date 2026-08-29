@@ -24,7 +24,7 @@
 // is at a given depth, which is `progression/depth-scaling`'s. This reads the
 // pulse's own reported `range` and asks only that the pulse ends past it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -40,9 +40,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -114,11 +114,12 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("advances the front at SONAR_WAVE_SPEED and takes the pulse off the list once it passes its range", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "advances the front at SONAR_WAVE_SPEED and takes the pulse off the list once it passes its range",
+  async () => {
     await startPlaying(h);
     const run = await poseStraightRun(h, RUN_TILES);
-    await parkForager(h, { tx: run.tx, ty: run.ty });
+    await parkForager(h, run.start);
     await clearUnderfoot(h);
     const quiet = await denAll(h);
     const watch = await sceneGuard(h, quiet);
@@ -210,5 +211,5 @@ it("advances the front at SONAR_WAVE_SPEED and takes the pulse off the list once
         `${(SONAR_WAVE_SPEED * seconds(SPENT_TICKS)).toFixed(1)} steps out and is ` +
         `past the ${flight.emitted.pulse.range} its range allows`,
     );
-  });
-});
+  },
+);

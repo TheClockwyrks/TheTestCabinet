@@ -39,7 +39,7 @@ import {
   clearUnderfoot,
   denAll,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { KINDLE_VISION_GAIN, KINDLE_VISION_MIN, windowRadius } from "./circle";
@@ -114,7 +114,7 @@ check("The circle grows as you eat", async () => {
     return taken;
   });
 
-  requireScene(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
 
   for (const reading of readings) {
     assertLessThanOrEqual(

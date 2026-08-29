@@ -30,7 +30,7 @@
 // distance it was posed at rather than wherever a chase took it, and the forager's
 // light still falls where it falls.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -46,12 +46,12 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   fromForager,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -95,100 +95,98 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Predators are drawn by the light, not the circle", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const home = board.mark("F");
-    const band = board.mark("P");
-    const close = board.mark("N");
-    const unlit = board.mark("S");
+check("Predators are drawn by the light, not the circle", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const home = board.mark("F");
+  const band = board.mark("P");
+  const close = board.mark("N");
+  const unlit = board.mark("S");
 
-    const gloamfin = requirePred(h.snapshot(), "gloamfin");
-    const quiet = await denAll(h, ["gloamfin"]);
-    await h.debug.setPredatorTile(gloamfin, band.tx, band.ty);
-    await h.debug.setPredatorState(gloamfin, "wander");
-    await parkForager(h, home);
-    await clearUnderfoot(h);
-    // Held where it was posed: this point is about what is DRAWN at a distance,
-    // not about where a hunter goes next.
-    await h.debug.setCreatureAI(false);
-    const watch = await sceneGuard(h, quiet);
+  const gloamfin = requireKind(h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [gloamfin]);
+  await h.debug.setPredatorTile(gloamfin, band.tx, band.ty);
+  await h.debug.setPredatorState(gloamfin, "wander");
+  await parkForager(h, home);
+  await clearUnderfoot(h);
+  // Held where it was posed: this point is about what is DRAWN at a distance,
+  // not about where a hunter goes next.
+  await h.debug.setCreatureAI(false);
+  const watch = await sceneGuard(h, quiet);
 
-    await h.advance(SETTLE_TICKS);
-    const beyondLight = h.snapshot();
-    // Before the assertions, so a check that fails still leaves the picture of
-    // the hunter that should not be there.
-    captureStill(h, "bylight");
+  await h.advance(SETTLE_TICKS);
+  const beyondLight = h.snapshot();
+  // Before the assertions, so a check that fails still leaves the picture of
+  // the hunter that should not be there.
+  captureStill(h, "bylight");
 
-    requireSceneHeld(beyondLight, watch);
+  requireSceneHeld(beyondLight, watch);
 
-    const hunter = beyondLight.predators[gloamfin];
-    const gap = fromForager(beyondLight, hunter.x, hunter.y);
-    const radius = windowRadius(beyondLight);
-    // The band this point lives in has to exist on this build, or there is
-    // nothing here to decide. Where the two radii themselves are wrong,
-    // `kindle/grows-with-eating` and `brightness/vision-radius` are the points
-    // that fail for it.
-    if (gap >= radius || gap <= beyondLight.visionRadius) {
-      unmetPrecondition(
-        `the hunter posed ${BAND_TILES} tiles off stands ${gap.toFixed(1)} units ` +
-          `from the forager, which is not between the reported V of ` +
-          `${beyondLight.visionRadius.toFixed(1)} and R of ${radius.toFixed(1)}; ` +
-          "whether those radii take their stated values is the brightness and " +
-          "grows-with-eating points' verdict, not this one's",
-      );
-    }
-    assertLessThan(
-      gap,
-      radius,
-      "the logical units between the forager and the hunter, against the vision " +
-        "circle R it stands inside",
+  const hunter = beyondLight.predators[gloamfin];
+  const gap = fromForager(beyondLight, hunter.x, hunter.y);
+  const radius = windowRadius(beyondLight);
+  // The band this point lives in has to exist on this build, or there is
+  // nothing here to decide. Where the two radii themselves are wrong,
+  // `kindle/grows-with-eating` and `brightness/vision-radius` are the points
+  // that fail for it.
+  if (gap >= radius || gap <= beyondLight.visionRadius) {
+    unmetPrecondition(
+      `the hunter posed ${BAND_TILES} tiles off stands ${gap.toFixed(1)} units ` +
+        `from the forager, which is not between the reported V of ` +
+        `${beyondLight.visionRadius.toFixed(1)} and R of ${radius.toFixed(1)}; ` +
+        "whether those radii take their stated values is the brightness and " +
+        "grows-with-eating points' verdict, not this one's",
     );
-    assertGreaterThan(
-      gap,
-      beyondLight.visionRadius,
-      "the same distance against the light pocket V it stands outside",
-    );
+  }
+  assertLessThan(
+    gap,
+    radius,
+    "the logical units between the forager and the hunter, against the vision " +
+      "circle R it stands inside",
+  );
+  assertGreaterThan(
+    gap,
+    beyondLight.visionRadius,
+    "the same distance against the light pocket V it stands outside",
+  );
 
-    // Inside the circle, outside the light: nothing of it is drawn.
-    assertEqual(
-      hunter.lit,
-      false,
-      `the Gloamfin's \`lit\` while it stands ${gap.toFixed(0)} units off, inside ` +
-        "the vision circle and beyond the light pocket",
-    );
-    const fog = tileColor(h, beyondLight, unlit);
-    assertEqual(
-      visibilityOf(beyondLight, band),
-      "u",
-      `the hunter's tile at (${band.tx}, ${band.ty}), which no light has revealed`,
-    );
-    assertLessThanOrEqual(
-      fromFog(brightestNear(h, hunter.x, hunter.y).color, fog),
-      NO_BODY_MAX,
-      "the RGB distance out of 441 between the brightest pixel drawn where the " +
-        "hunter stands and the unrevealed fog around it: the circle draws no " +
-        "predator",
-    );
+  // Inside the circle, outside the light: nothing of it is drawn.
+  assertEqual(
+    hunter.lit,
+    false,
+    `the Gloamfin's \`lit\` while it stands ${gap.toFixed(0)} units off, inside ` +
+      "the vision circle and beyond the light pocket",
+  );
+  const fog = tileColor(h, beyondLight, unlit);
+  assertEqual(
+    visibilityOf(beyondLight, band),
+    "u",
+    `the hunter's tile at (${band.tx}, ${band.ty}), which no light has revealed`,
+  );
+  assertLessThanOrEqual(
+    fromFog(brightestNear(h, hunter.x, hunter.y).color, fog),
+    NO_BODY_MAX,
+    "the RGB distance out of 441 between the brightest pixel drawn where the " +
+      "hunter stands and the unrevealed fog around it: the circle draws no " +
+      "predator",
+  );
 
-    // And inside the light, with the corridor straight between them, it is.
-    await h.debug.setPredatorTile(gloamfin, close.tx, close.ty);
-    await h.advance(SETTLE_TICKS);
-    const inLight = h.snapshot();
-    const near = inLight.predators[gloamfin];
-    const closeGap = fromForager(inLight, near.x, near.y);
-    assertLessThan(
-      closeGap,
-      inLight.visionRadius,
-      `the logical units between the forager and the hunter brought back to ` +
-        `${LIT_TILES} tile, against the light pocket V`,
-    );
-    assertEqual(
-      near.lit,
-      true,
-      "the Gloamfin's `lit` inside the light pocket with clear line of sight: " +
-        "the light is what draws a hunter",
-    );
-  });
+  // And inside the light, with the corridor straight between them, it is.
+  await h.debug.setPredatorTile(gloamfin, close.tx, close.ty);
+  await h.advance(SETTLE_TICKS);
+  const inLight = h.snapshot();
+  const near = inLight.predators[gloamfin];
+  const closeGap = fromForager(inLight, near.x, near.y);
+  assertLessThan(
+    closeGap,
+    inLight.visionRadius,
+    `the logical units between the forager and the hunter brought back to ` +
+      `${LIT_TILES} tile, against the light pocket V`,
+  );
+  assertEqual(
+    near.lit,
+    true,
+    "the Gloamfin's `lit` inside the light pocket with clear line of sight: " +
+      "the light is what draws a hunter",
+  );
 });

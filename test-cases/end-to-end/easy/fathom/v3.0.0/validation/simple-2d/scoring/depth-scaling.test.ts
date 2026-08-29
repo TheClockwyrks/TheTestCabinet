@@ -35,7 +35,7 @@
 // the reading asks is only that the two depths agree; what the speed IS belongs to
 // `gloamfin/wander-speed`.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   DEN_ORDER,
   ROSTER_ADD_ORDER,
@@ -57,11 +57,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requirePredatorMotion,
 } from "../scene";
 import type { FathomSnapshot, PulseSnapshot } from "../surface";
@@ -161,92 +161,90 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Depth adds hunters and shortens the pulse", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    // The forager's own room, and across solid rock a sealed ring for the
-    // wanderer, so nothing the speed reading watches can reach the forager and
-    // drop out of its patrol.
-    const rooms = await poseApart(h, APART, { ring: RING });
-    await parkForager(h, rooms.near);
-    await clearUnderfoot(h);
+check("Depth adds hunters and shortens the pulse", async () => {
+  await startPlaying(h);
+  // The forager's own room, and across solid rock a sealed ring for the
+  // wanderer, so nothing the speed reading watches can reach the forager and
+  // drop out of its patrol.
+  const rooms = await poseApart(h, APART, { ring: RING });
+  await parkForager(h, rooms.near);
+  await clearUnderfoot(h);
 
-    const read = await captureReplay(h, "scale", async () => {
-      const depths = [];
-      for (const depth of DEPTHS) {
-        h.debug.setDepth(depth);
-        // The grown roster's newcomers are held in the sealed den with the rest,
-        // so nothing is loose while the readings are taken.
-        await denAll(h);
-        const snapshot = h.snapshot();
-        const pulse = await emitPulse(h);
-        depths.push({
-          depth,
-          kinds: snapshot.predators.map((p) => p.kind),
-          range: snapshot.sonar.range,
-          pulse,
-        });
-      }
-
-      const patrols = [];
-      for (const depth of [DEPTHS[0], DEPTHS[DEPTHS.length - 1]]) {
-        h.debug.setDepth(depth);
-        await denAll(h);
-        const index = requirePred(h.snapshot(), "gloamfin");
-        h.debug.setPredatorTile(index, rooms.far.tx, rooms.far.ty);
-        h.debug.setPredatorState(index, "wander");
-        const before = h.snapshot();
-        await h.advance(WANDER_TICKS);
-        const after = h.snapshot();
-        patrols.push({ depth, index, before, after });
-      }
-      return { depths, patrols };
-    });
-
-    for (const at of read.depths) {
-      assertDeepEqual(
-        at.kinds,
-        rosterAt(at.depth),
-        `the roster at depth ${at.depth}, in release order`,
-      );
-      assertEqual(
-        at.range,
-        sonarRangeAt(at.depth),
-        `sonar.range at depth ${at.depth}`,
-      );
-      assertNotNull(
-        at.pulse,
-        `a wavefront the forager emitted at depth ${at.depth}, fired with the ` +
-          `${SONAR_KEY} key inside ${PULSE_BUDGET} ticks`,
-      );
-      assertEqual(
-        at.pulse?.range,
-        sonarRangeAt(at.depth),
-        `the range the pulse fired at depth ${at.depth} carries`,
-      );
+  const read = await captureReplay(h, "scale", async () => {
+    const depths = [];
+    for (const depth of DEPTHS) {
+      h.debug.setDepth(depth);
+      // The grown roster's newcomers are held in the sealed den with the rest,
+      // so nothing is loose while the readings are taken.
+      await denAll(h);
+      const snapshot = h.snapshot();
+      const pulse = await emitPulse(h);
+      depths.push({
+        depth,
+        kinds: snapshot.predators.map((p) => p.kind),
+        range: snapshot.sonar.range,
+        pulse,
+      });
     }
 
-    // The wanderer has to have wandered for the speeds to mean anything; whether
-    // a predator moves under its own power is the den and patrol points' verdict.
-    for (const patrol of read.patrols) {
-      requirePredatorMotion(
-        patrol.before,
-        patrol.after,
-        "gloamfin",
-        `patrol its ring at depth ${patrol.depth}`,
-      );
+    const patrols = [];
+    for (const depth of [DEPTHS[0], DEPTHS[DEPTHS.length - 1]]) {
+      h.debug.setDepth(depth);
+      await denAll(h);
+      const index = requireKind(h.snapshot(), "gloamfin");
+      h.debug.setPredatorTile(index, rooms.far.tx, rooms.far.ty);
+      h.debug.setPredatorState(index, "wander");
+      const before = h.snapshot();
+      await h.advance(WANDER_TICKS);
+      const after = h.snapshot();
+      patrols.push({ depth, index, before, after });
     }
-    const [shallow, deep] = read.patrols;
-    assertLessThanOrEqual(
-      Math.abs(
-        deep.after.predators[deep.index].speed -
-          shallow.after.predators[shallow.index].speed,
-      ),
-      SPEED_SPREAD_MAX,
-      `how far a wandering Gloamfin's speed at depth ${deep.depth} ` +
-        `(${deep.after.predators[deep.index].speed}) sits from its speed at ` +
-        `depth ${shallow.depth} ` +
-        `(${shallow.after.predators[shallow.index].speed})`,
-    );
+    return { depths, patrols };
   });
+
+  for (const at of read.depths) {
+    assertDeepEqual(
+      at.kinds,
+      rosterAt(at.depth),
+      `the roster at depth ${at.depth}, in release order`,
+    );
+    assertEqual(
+      at.range,
+      sonarRangeAt(at.depth),
+      `sonar.range at depth ${at.depth}`,
+    );
+    assertNotNull(
+      at.pulse,
+      `a wavefront the forager emitted at depth ${at.depth}, fired with the ` +
+        `${SONAR_KEY} key inside ${PULSE_BUDGET} ticks`,
+    );
+    assertEqual(
+      at.pulse?.range,
+      sonarRangeAt(at.depth),
+      `the range the pulse fired at depth ${at.depth} carries`,
+    );
+  }
+
+  // The wanderer has to have wandered for the speeds to mean anything; whether
+  // a predator moves under its own power is the den and patrol points' verdict.
+  for (const patrol of read.patrols) {
+    requirePredatorMotion(
+      patrol.before,
+      patrol.after,
+      patrol.index,
+      `patrol its ring at depth ${patrol.depth}`,
+    );
+  }
+  const [shallow, deep] = read.patrols;
+  assertLessThanOrEqual(
+    Math.abs(
+      deep.after.predators[deep.index].speed -
+        shallow.after.predators[shallow.index].speed,
+    ),
+    SPEED_SPREAD_MAX,
+    `how far a wandering Gloamfin's speed at depth ${deep.depth} ` +
+      `(${deep.after.predators[deep.index].speed}) sits from its speed at ` +
+      `depth ${shallow.depth} ` +
+      `(${shallow.after.predators[shallow.index].speed})`,
+  );
 });

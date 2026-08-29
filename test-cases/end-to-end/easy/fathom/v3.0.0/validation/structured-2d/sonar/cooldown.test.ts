@@ -47,7 +47,7 @@ import {
   clearUnderfoot,
   denAll,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import {
@@ -162,7 +162,7 @@ check(
       return { emitted, beforeSecond, afterSecond, samples, ready };
     });
 
-    requireScene(h.snapshot(), watch);
+    requireSceneHeld(h.snapshot(), watch);
 
     // Armed, at the full figure, with the pulse it armed for in flight.
     assertEqual(

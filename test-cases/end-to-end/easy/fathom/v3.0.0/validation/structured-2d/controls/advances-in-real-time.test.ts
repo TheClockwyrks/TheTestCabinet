@@ -49,7 +49,12 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { check, failPrecondition, requireScene, sceneGuard } from "../scene";
+import {
+  check,
+  failPrecondition,
+  requireSceneHeld,
+  sceneGuard,
+} from "../scene";
 
 /**
  * The board: a hunter at a dead end, the forager well down the corridor from it,
@@ -154,8 +159,9 @@ check("advances itself in real time, with nothing stepping it", async () => {
       "running to observe",
   );
   // Whether the snapshot carries `released` at all is
-  // instrumentation/snapshot-shape's verdict; this point only needs to know the
-  // hunter it is watching is loose.
+  // instrumentation/snapshot-shape's verdict, and whether a hunter's turn ever
+  // comes is den/stagger's; this point only needs to know the hunter it is
+  // watching is loose.
   const releasedFlag = before.predators[SUBJECT]?.released;
   if (typeof releasedFlag !== "boolean") {
     failPrecondition(
@@ -166,12 +172,15 @@ check("advances itself in real time, with nothing stepping it", async () => {
       `released was ${JSON.stringify(releasedFlag)}`,
     );
   }
-  assertEqual(
-    releasedFlag,
-    true,
-    "the posed hunter counts as released, which `setPredatorState(index, " +
-      '"wander")` makes it (specs/instrumentation.md)',
-  );
+  if (!releasedFlag) {
+    failPrecondition(
+      'the posed hunter released, which `setPredatorState(index, "wander")` ' +
+        "makes it (specs/instrumentation.md), so there is a hunter loose on " +
+        "this board for a running clock to carry",
+      "den/stagger",
+      "released was false",
+    );
+  }
   assertEqual(
     before.predators[SUBJECT]?.state,
     "wander",
@@ -186,7 +195,7 @@ check("advances itself in real time, with nothing stepping it", async () => {
   h.release(KEY);
   captureStill(h, "after");
 
-  requireScene(h.snapshot(), watch);
+  requireSceneHeld(h.snapshot(), watch);
 
   assertGreaterThan(
     after.simTime - before.simTime,

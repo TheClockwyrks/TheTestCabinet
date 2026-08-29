@@ -50,7 +50,7 @@ import {
   check,
   denAll,
   requireKind,
-  requireScene,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
 } from "../scene";
@@ -124,7 +124,7 @@ check("Close hearing takes a fix and fires the alert", async () => {
     return { closed, read };
   });
 
-  requireScene(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
 
   // The scenario opened on a Gloamfin that had heard nothing, which is what makes
   // every reading below a reading of the crossing rather than of the pose.

@@ -45,7 +45,7 @@ import {
   clearUnderfoot,
   denAll,
   failPrecondition,
-  requireScene,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
 } from "../scene";
@@ -150,7 +150,7 @@ check("Eating brightens the forager", async () => {
   });
 
   const end = graze.after[graze.after.length - 1];
-  requireScene(end, watch);
+  requireSceneHeld(end, watch);
 
   // The measurement is of a step taken from zero, which is what the item states and
   // what keeps a wrong step from hiding behind a clamp.

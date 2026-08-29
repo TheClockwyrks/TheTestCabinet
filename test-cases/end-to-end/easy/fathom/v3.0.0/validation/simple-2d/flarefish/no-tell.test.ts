@@ -38,12 +38,12 @@
 // `specs/predators/flarefish.md` has "every predator and drifter inside the disc
 // drawn live", it reports `lit`. Plainly there, then plainly gone.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { FLARE_INTERVAL, TILE } from "../../src/constants";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import {
-  graded,
+  check,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -113,8 +113,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("shows nothing of itself between flares, in what it reports and on the canvas", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "shows nothing of itself between flares, in what it reports and on the canvas",
+  async () => {
     await startPlaying(h);
     const room = await poseFlareRoom(h);
     const guard = await sceneGuard(h, room.quiet);
@@ -218,5 +219,5 @@ it("shows nothing of itself between flares, in what it reports and on the canvas
         `(${fish.tx}, ${fish.ty}) and the pixel ${CONTROL_TILES} tiles along the ` +
         `same hallway — no mote, glow or wavefront is left behind`,
     );
-  });
-});
+  },
+);

@@ -28,7 +28,8 @@
 // `Space` and `Shift`. Those two are asserted; the rest are left alone rather
 // than graded against a rendering this suite would have had to invent.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
+import { check } from "../scene";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
@@ -57,61 +58,64 @@ const NAMED_KEYS = ["SPACE", "SHIFT"] as const;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("reaches how-to-play from the title menu, covers the game, and goes back", async () => {
-  await h.debug.reset();
-  // DIVE -> HOW TO PLAY, then take it.
-  await h.tap(MENU_DOWN_KEY);
-  await h.tap(CONFIRM_KEY);
-  const reached = await h.snapshot();
+check(
+  "reaches how-to-play from the title menu, covers the game, and goes back",
+  async () => {
+    await h.debug.reset();
+    // DIVE -> HOW TO PLAY, then take it.
+    await h.tap(MENU_DOWN_KEY);
+    await h.tap(CONFIRM_KEY);
+    const reached = await h.snapshot();
 
-  const ops = await frameOps(h);
-  // Before the assertions, so a failing check still leaves the screen it read.
-  await captureStill(h, "howto");
+    const ops = await frameOps(h);
+    // Before the assertions, so a failing check still leaves the screen it read.
+    await captureStill(h, "howto");
 
-  await h.tap(BACK_KEY);
-  const returned = await h.snapshot();
+    await h.tap(BACK_KEY);
+    const returned = await h.snapshot();
 
-  assertEqual(
-    reached.screen,
-    "howto",
-    "the screen HOW TO PLAY confirmed from the title menu reaches (specs/ui.md)",
-  );
-
-  for (const predator of PREDATORS) {
-    assertDrew(
-      ops,
-      predator,
-      "a hunter the how-to screen names, of the three specs/predators.md fixes",
+    assertEqual(
+      reached.screen,
+      "howto",
+      "the screen HOW TO PLAY confirmed from the title menu reaches (specs/ui.md)",
     );
-  }
-  for (const sense of SENSES) {
-    assertDrew(
-      ops,
-      sense,
-      "a way of reading the dark the how-to screen describes, of the forager's " +
-        "own light and the sonar pulse (specs/ui.md)",
-    );
-  }
-  for (const key of NAMED_KEYS) {
-    assertDrew(
-      ops,
-      key,
-      "a key the how-to screen names for the control it is bound to " +
-        "(specs/movement.md)",
-    );
-  }
 
-  assertEqual(
-    returned.screen,
-    "title",
-    "the screen `back` from how-to-play returns to (specs/ui.md)",
-  );
-});
+    for (const predator of PREDATORS) {
+      assertDrew(
+        ops,
+        predator,
+        "a hunter the how-to screen names, of the three specs/predators.md fixes",
+      );
+    }
+    for (const sense of SENSES) {
+      assertDrew(
+        ops,
+        sense,
+        "a way of reading the dark the how-to screen describes, of the forager's " +
+          "own light and the sonar pulse (specs/ui.md)",
+      );
+    }
+    for (const key of NAMED_KEYS) {
+      assertDrew(
+        ops,
+        key,
+        "a key the how-to screen names for the control it is bound to " +
+          "(specs/movement.md)",
+      );
+    }
+
+    assertEqual(
+      returned.screen,
+      "title",
+      "the screen `back` from how-to-play returns to (specs/ui.md)",
+    );
+  },
+);

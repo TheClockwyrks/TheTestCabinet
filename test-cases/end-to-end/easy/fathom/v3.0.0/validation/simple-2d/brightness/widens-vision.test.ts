@@ -29,7 +29,7 @@
 // has never been revealed by anything, so "not lit" there cannot be a tile that an
 // earlier, brighter reading had already lit and left remembered.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TILE, VISION_GAIN, VISION_MIN } from "../../src/constants";
 import {
   assertEqual,
@@ -48,9 +48,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   fromForager,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -90,79 +90,77 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Brightness widens the light pocket", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const run = await poseStraightRun(h, RUN_TILES);
-    const probe: Tile = { tx: run.tx + PROBE_TILES, ty: run.ty };
-    const quiet = await denAll(h);
-    await parkForager(h, { tx: run.tx, ty: run.ty });
-    // No plankton, so nothing the forager is standing on can raise `G` under a
-    // reading that is about a posed one.
-    h.debug.clearPlankton();
-    const watch = await sceneGuard(h, quiet);
+check("Brightness widens the light pocket", async () => {
+  await startPlaying(h);
+  const run = await poseStraightRun(h, RUN_TILES);
+  const probe: Tile = { tx: run.start.tx + PROBE_TILES, ty: run.start.ty };
+  const quiet = await denAll(h);
+  await parkForager(h, run.start);
+  // No plankton, so nothing the forager is standing on can raise `G` under a
+  // reading that is about a posed one.
+  h.debug.clearPlankton();
+  const watch = await sceneGuard(h, quiet);
 
-    const sweep = await captureReplay(h, "widen", async () => {
-      const readings: { g: number; radius: number; probe: string }[] = [];
-      for (const g of SAMPLES) {
-        h.debug.setBrightness(g);
-        await h.advance(READ_BEAT);
-        const snapshot = h.snapshot();
-        readings.push({
-          g,
-          radius: snapshot.visionRadius,
-          probe: visibilityOf(snapshot, probe),
-        });
-        // Held on screen so the clip shows the pocket at this width; the reading
-        // above is already taken, so nothing here can reach an assertion.
-        await h.advance(FILM_TICKS);
-      }
-      return { readings, end: h.snapshot() };
-    });
-
-    requireSceneHeld(sweep.end, watch);
-
-    // The fixture's own geometry, from the specification's figures rather than
-    // from the build's readings.
-    const center = centerOf(sweep.end, probe);
-    const gap = fromForager(sweep.end, center.x, center.y);
-    assertGreaterThan(
-      gap,
-      VISION_MIN,
-      `the ${PROBE_TILES * TILE} logical units to the probe tile, which must be ` +
-        `past V at G = 0 (VISION_MIN = ${VISION_MIN})`,
-    );
-    assertLessThan(
-      gap,
-      VISION_MIN + VISION_GAIN,
-      "that same distance, which must be inside V at G = 1 " +
-        `(VISION_MIN + VISION_GAIN = ${VISION_MIN + VISION_GAIN})`,
-    );
-
-    for (const reading of sweep.readings) {
-      const expected = VISION_MIN + VISION_GAIN * reading.g;
-      assertLessThanOrEqual(
-        Math.abs(reading.radius - expected),
-        RADIUS_TOLERANCE,
-        `visionRadius at G = ${reading.g}, against VISION_MIN + VISION_GAIN * G ` +
-          `(${expected})`,
-      );
+  const sweep = await captureReplay(h, "widen", async () => {
+    const readings: { g: number; radius: number; probe: string }[] = [];
+    for (const g of SAMPLES) {
+      h.debug.setBrightness(g);
+      await h.advance(READ_BEAT);
+      const snapshot = h.snapshot();
+      readings.push({
+        g,
+        radius: snapshot.visionRadius,
+        probe: visibilityOf(snapshot, probe),
+      });
+      // Held on screen so the clip shows the pocket at this width; the reading
+      // above is already taken, so nothing here can reach an assertion.
+      await h.advance(FILM_TICKS);
     }
-
-    // And the light the build actually casts, at the two ends of the range.
-    const dim = sweep.readings[0];
-    const bright = sweep.readings[sweep.readings.length - 1];
-    assertNotEqual(
-      dim.probe,
-      "l",
-      `the visibility of the tile ${PROBE_TILES} tiles down the corridor at ` +
-        `G = ${dim.g}, which is past the light's reach there`,
-    );
-    assertEqual(
-      bright.probe,
-      "l",
-      `the visibility of that same tile at G = ${bright.g}, which is inside the ` +
-        "light's reach there",
-    );
+    return { readings, end: h.snapshot() };
   });
+
+  requireSceneHeld(sweep.end, watch);
+
+  // The fixture's own geometry, from the specification's figures rather than
+  // from the build's readings.
+  const center = centerOf(sweep.end, probe);
+  const gap = fromForager(sweep.end, center.x, center.y);
+  assertGreaterThan(
+    gap,
+    VISION_MIN,
+    `the ${PROBE_TILES * TILE} logical units to the probe tile, which must be ` +
+      `past V at G = 0 (VISION_MIN = ${VISION_MIN})`,
+  );
+  assertLessThan(
+    gap,
+    VISION_MIN + VISION_GAIN,
+    "that same distance, which must be inside V at G = 1 " +
+      `(VISION_MIN + VISION_GAIN = ${VISION_MIN + VISION_GAIN})`,
+  );
+
+  for (const reading of sweep.readings) {
+    const expected = VISION_MIN + VISION_GAIN * reading.g;
+    assertLessThanOrEqual(
+      Math.abs(reading.radius - expected),
+      RADIUS_TOLERANCE,
+      `visionRadius at G = ${reading.g}, against VISION_MIN + VISION_GAIN * G ` +
+        `(${expected})`,
+    );
+  }
+
+  // And the light the build actually casts, at the two ends of the range.
+  const dim = sweep.readings[0];
+  const bright = sweep.readings[sweep.readings.length - 1];
+  assertNotEqual(
+    dim.probe,
+    "l",
+    `the visibility of the tile ${PROBE_TILES} tiles down the corridor at ` +
+      `G = ${dim.g}, which is past the light's reach there`,
+  );
+  assertEqual(
+    bright.probe,
+    "l",
+    `the visibility of that same tile at G = ${bright.g}, which is inside the ` +
+      "light's reach there",
+  );
 });

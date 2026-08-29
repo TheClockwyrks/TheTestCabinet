@@ -34,7 +34,7 @@
 // ping reveals (`gloamfin/ping-reveals-nothing`), or how long the search runs
 // before it gives up.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
 import { GLOAMFIN_SEARCH_DELAY, TICK_HZ } from "../../src/constants";
 import { poseMaze } from "../fixtures";
@@ -45,11 +45,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
@@ -101,95 +101,89 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("A lost chase casts one orange ping", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, STALE_FIX);
-    const index = requirePred(board.snap, "gloamfin");
-    const quiet = await denAll(h, ["gloamfin"]);
-    // The forager stands on the tile the fix is about to be taken on...
-    await placeForager(h, board.mark("F"), "right");
-    await placePredator(h, index, board.mark("P"), {
-      dir: "left",
-      state: "chase",
-    });
-    // ...and is then moved out of reach, which is what leaves the fix stale.
-    await parkForager(h, board.mark("R"));
-    await clearUnderfoot(h);
-    const guard = await sceneGuard(h, quiet);
-
-    const opening = h.snapshot();
-    const log = pingLog(index);
-    let searchOpened: number | null = null;
-    let searchClosed: number | null = null;
-    const watch = (snap: Parameters<typeof log.observe>[0]): void => {
-      log.observe(snap);
-      const state = gloamfinOf(snap, index).state;
-      if (state === "search" && searchOpened === null) {
-        searchOpened = snap.simTime;
-      }
-      if (
-        state !== "search" &&
-        searchOpened !== null &&
-        searchClosed === null
-      ) {
-        searchClosed = snap.simTime;
-      }
-    };
-
-    await captureReplay(h, "orange", () => sweep(h, RECORDED_TICKS, watch));
-    await sweep(h, AFTER_TICKS, watch);
-    const ending = h.snapshot();
-
-    requireSceneHeld(ending, guard);
-
-    if (searchOpened === null) {
-      requirePredatorMotion(
-        opening,
-        ending,
-        "gloamfin",
-        "chase the four tiles to the tile its fix named and find it empty",
-      );
-      unmetPrecondition(
-        'the Gloamfin never reported state "search" after reaching the tile its ' +
-          "fix named, so there was no search for the guaranteed ping to fall " +
-          'inside — specs/predators/gloamfin.md takes "chase" to "search" when ' +
-          "it reaches its fixed tile and the forager is not there, and " +
-          "gloamfin/chase-cap is where a chase that never arrives is reported",
-      );
-    }
-
-    const opened: number = searchOpened;
-    const closed = searchClosed ?? ending.simTime;
-    const oranges = log.sightings.filter(
-      (sighting) =>
-        sighting.tint === "orange" &&
-        sighting.t >= opened &&
-        sighting.t <= closed,
-    );
-
-    assertEqual(
-      oranges.length,
-      1,
-      `orange pings cast between the search opening and its end, over the ` +
-        `${(closed - opened).toFixed(2)} s it ran; the whole watch saw tints ` +
-        `[${log.sightings.map((sighting) => sighting.tint).join(", ")}] — ` +
-        `specs/predators/gloamfin.md casts one guaranteed ping into a search and ` +
-        `"a search casts one such ping at most"`,
-    );
-    assertNotEqual(
-      oranges[0].tint,
-      "violet",
-      "the guaranteed ping's tint, against the violet of an ordinary one — " +
-        'specs/predators/gloamfin.md draws it orange, "plainly apart from the ' +
-        'violet of an ordinary one"',
-    );
-    assertLessThanOrEqual(
-      Math.abs(oranges[0].t - opened - GLOAMFIN_SEARCH_DELAY),
-      DELAY_TOLERANCE,
-      `how far into the search the orange ping went, against ` +
-        `GLOAMFIN_SEARCH_DELAY (${GLOAMFIN_SEARCH_DELAY} s); it went ` +
-        `${(oranges[0].t - opened).toFixed(3)} s in`,
-    );
+check("A lost chase casts one orange ping", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, STALE_FIX);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
+  // The forager stands on the tile the fix is about to be taken on...
+  await placeForager(h, board.mark("F"), "right");
+  await placePredator(h, index, board.mark("P"), {
+    dir: "left",
+    state: "chase",
   });
+  // ...and is then moved out of reach, which is what leaves the fix stale.
+  await parkForager(h, board.mark("R"));
+  await clearUnderfoot(h);
+  const guard = await sceneGuard(h, quiet);
+
+  const opening = h.snapshot();
+  const log = pingLog(index);
+  let searchOpened: number | null = null;
+  let searchClosed: number | null = null;
+  const watch = (snap: Parameters<typeof log.observe>[0]): void => {
+    log.observe(snap);
+    const state = gloamfinOf(snap, index).state;
+    if (state === "search" && searchOpened === null) {
+      searchOpened = snap.simTime;
+    }
+    if (state !== "search" && searchOpened !== null && searchClosed === null) {
+      searchClosed = snap.simTime;
+    }
+  };
+
+  await captureReplay(h, "orange", () => sweep(h, RECORDED_TICKS, watch));
+  await sweep(h, AFTER_TICKS, watch);
+  const ending = h.snapshot();
+
+  requireSceneHeld(ending, guard);
+
+  if (searchOpened === null) {
+    requirePredatorMotion(
+      opening,
+      ending,
+      index,
+      "chase the four tiles to the tile its fix named and find it empty",
+    );
+    unmetPrecondition(
+      'the Gloamfin never reported state "search" after reaching the tile its ' +
+        "fix named, so there was no search for the guaranteed ping to fall " +
+        'inside — specs/predators/gloamfin.md takes "chase" to "search" when ' +
+        "it reaches its fixed tile and the forager is not there, and " +
+        "gloamfin/chase-cap is where a chase that never arrives is reported",
+    );
+  }
+
+  const opened: number = searchOpened;
+  const closed = searchClosed ?? ending.simTime;
+  const oranges = log.sightings.filter(
+    (sighting) =>
+      sighting.tint === "orange" &&
+      sighting.t >= opened &&
+      sighting.t <= closed,
+  );
+
+  assertEqual(
+    oranges.length,
+    1,
+    `orange pings cast between the search opening and its end, over the ` +
+      `${(closed - opened).toFixed(2)} s it ran; the whole watch saw tints ` +
+      `[${log.sightings.map((sighting) => sighting.tint).join(", ")}] — ` +
+      `specs/predators/gloamfin.md casts one guaranteed ping into a search and ` +
+      `"a search casts one such ping at most"`,
+  );
+  assertNotEqual(
+    oranges[0].tint,
+    "violet",
+    "the guaranteed ping's tint, against the violet of an ordinary one — " +
+      'specs/predators/gloamfin.md draws it orange, "plainly apart from the ' +
+      'violet of an ordinary one"',
+  );
+  assertLessThanOrEqual(
+    Math.abs(oranges[0].t - opened - GLOAMFIN_SEARCH_DELAY),
+    DELAY_TOLERANCE,
+    `how far into the search the orange ping went, against ` +
+      `GLOAMFIN_SEARCH_DELAY (${GLOAMFIN_SEARCH_DELAY} s); it went ` +
+      `${(oranges[0].t - opened).toFixed(3)} s in`,
+  );
 });

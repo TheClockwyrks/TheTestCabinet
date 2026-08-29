@@ -51,7 +51,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 
@@ -228,7 +228,7 @@ check("The Gloamfin fires the alert on a fresh fix", async () => {
     return { acquired, fired, inside, after, refreshed, end: h.snapshot() };
   });
 
-  requireScene(read.end, guard);
+  requireSceneHeld(read.end, guard);
 
   // The fixture's own geometry, and the fact that makes `lit` mean something.
   assertLessThanOrEqual(

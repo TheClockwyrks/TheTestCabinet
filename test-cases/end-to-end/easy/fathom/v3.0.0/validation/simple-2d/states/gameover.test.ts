@@ -34,7 +34,7 @@
 // life still reaches game over, and the item that owns the count is the one that
 // should say so.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { GAMEOVER_ITEMS, START_LIVES } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
 import {
@@ -43,7 +43,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { graded } from "../scene";
+import { check } from "../scene";
 import {
   CONFIRM_KEY,
   assertDrew,
@@ -65,81 +65,71 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("ends the run on game over, reports it, and plays again", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
+check("ends the run on game over, reports it, and plays again", async () => {
+  await startPlaying(h);
 
-    // A score worth reading off the screen, taken through the build's own
-    // scoring: the plankton the forager opens on, and one bonus drifter posed
-    // under it.
-    h.debug.setCreatureAI(false);
-    await h.advance(EAT_TICKS);
-    const standing = h.snapshot().forager;
-    h.debug.spawnDrifter(standing.tx, standing.ty);
-    await h.advance(EAT_TICKS);
-    h.debug.setCreatureAI(true);
-    const scored = h.snapshot();
+  // A score worth reading off the screen, taken through the build's own
+  // scoring: the plankton the forager opens on, and one bonus drifter posed
+  // under it.
+  h.debug.setCreatureAI(false);
+  await h.advance(EAT_TICKS);
+  const standing = h.snapshot().forager;
+  h.debug.spawnDrifter(standing.tx, standing.ty);
+  await h.advance(EAT_TICKS);
+  h.debug.setCreatureAI(true);
+  const scored = h.snapshot();
 
-    const over = await loseEveryLife(h);
-    const ops = await frameOps(h);
-    // Before the assertions, so a failing check still leaves the screen it read.
-    captureStill(h, "gameover");
+  const over = await loseEveryLife(h);
+  const ops = await frameOps(h);
+  // Before the assertions, so a failing check still leaves the screen it read.
+  captureStill(h, "gameover");
 
-    await h.tap(CONFIRM_KEY); // PLAY AGAIN, the first item of the game-over menu.
-    const again = h.snapshot();
+  await h.tap(CONFIRM_KEY); // PLAY AGAIN, the first item of the game-over menu.
+  const again = h.snapshot();
 
-    // The run really scored something, so the reading below is not of a zero.
-    assertGreaterThan(
-      scored.score,
-      0,
-      "the score the run had banked before its lives were spent, which is what " +
-        "the game-over screen has to carry (specs/ui.md)",
-    );
+  // The run really scored something, so the reading below is not of a zero.
+  assertGreaterThan(
+    scored.score,
+    0,
+    "the score the run had banked before its lives were spent, which is what " +
+      "the game-over screen has to carry (specs/ui.md)",
+  );
 
-    assertEqual(
-      over.screen,
-      "gameover",
-      "the screen contact with no life in reserve reaches (specs/progression.md)",
-    );
+  assertEqual(
+    over.screen,
+    "gameover",
+    "the screen contact with no life in reserve reaches (specs/progression.md)",
+  );
+  assertDrew(
+    ops,
+    String(over.score),
+    "the score the run finished on, drawn on the game-over screen " +
+      "(specs/ui.md)",
+  );
+  assertMatches(
+    drawnText(ops),
+    new RegExp(`(?<!\\d)${String(over.depth)}(?!\\d)`),
+    "the depth the run reached, drawn on the game-over screen as a number of " +
+      "its own (specs/ui.md)",
+  );
+  for (const item of GAMEOVER_ITEMS) {
     assertDrew(
       ops,
-      String(over.score),
-      "the score the run finished on, drawn on the game-over screen " +
-        "(specs/ui.md)",
+      item,
+      `an item of the game-over menu, which is ${GAMEOVER_ITEMS.join(" then ")} (specs/ui.md)`,
     );
-    assertMatches(
-      drawnText(ops),
-      new RegExp(`(?<!\\d)${String(over.depth)}(?!\\d)`),
-      "the depth the run reached, drawn on the game-over screen as a number of " +
-        "its own (specs/ui.md)",
-    );
-    for (const item of GAMEOVER_ITEMS) {
-      assertDrew(
-        ops,
-        item,
-        `an item of the game-over menu, which is ${GAMEOVER_ITEMS.join(" then ")} (specs/ui.md)`,
-      );
-    }
+  }
 
-    assertEqual(
-      again.screen,
-      "countdown",
-      "the screen PLAY AGAIN confirmed opens the fresh dive on (specs/ui.md)",
-    );
-    assertEqual(
-      again.depth,
-      1,
-      "the depth a fresh dive begins at (specs/ui.md)",
-    );
-    assertEqual(
-      again.score,
-      0,
-      "the score a fresh dive begins at (specs/ui.md)",
-    );
-    assertEqual(
-      again.lives,
-      START_LIVES,
-      "the lives in reserve a fresh dive begins with (specs/ui.md)",
-    );
-  });
+  assertEqual(
+    again.screen,
+    "countdown",
+    "the screen PLAY AGAIN confirmed opens the fresh dive on (specs/ui.md)",
+  );
+  assertEqual(again.depth, 1, "the depth a fresh dive begins at (specs/ui.md)");
+  assertEqual(again.score, 0, "the score a fresh dive begins at (specs/ui.md)");
+  assertEqual(
+    again.lives,
+    START_LIVES,
+    "the lives in reserve a fresh dive begins with (specs/ui.md)",
+  );
 });

@@ -31,7 +31,7 @@
 // housing and the plankton `setMaze` restores are right is
 // `controls/setmaze-houses-predators`' and the `maze/*` points'.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -43,7 +43,7 @@ import {
   visibilityOf,
   type Harness,
 } from "../harness";
-import { graded } from "../scene";
+import { check } from "../scene";
 import { FATHOM_DEBUG_VERSION, REQUIRED_OPS } from "../surface";
 import type { FathomSnapshot } from "../surface";
 import type { Tile } from "../maze";
@@ -121,8 +121,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("installs every documented operation and drives the running game", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "installs every documented operation and drives the running game",
+  async () => {
     // Reflection first, and through a read that invokes nothing: a build missing
     // an operation is told which one rather than failing on a call it never had.
     const surface = h.debug as unknown as Record<string, unknown>;
@@ -214,5 +215,5 @@ it("installs every documented operation and drives the running game", async (ctx
       `the brightest channel-mean, of 255, over the tile the forager was posed ` +
         `onto — it read ${beforeLit.toFixed(1)} while that tile was unrevealed`,
     );
-  });
-});
+  },
+);

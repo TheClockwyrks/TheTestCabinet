@@ -27,7 +27,7 @@
 // `lanternjaw/*`, `gloamfin/*` and `flarefish/*` points own; how long it stands,
 // which is `ink/cloud`'s; the cooldown it starts, which is `ink/cooldown`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BINDINGS, CUES } from "../../src/constants";
 import { assertEqual } from "../assert";
 import {
@@ -38,9 +38,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -85,8 +85,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.ink on the tick the forager releases ink, and not before", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "plays CUES.ink on the tick the forager releases ink, and not before",
+  async () => {
     await startPlaying(h);
     const quiet = await denAll(h);
     await parkForager(h);
@@ -137,5 +138,5 @@ it("plays CUES.ink on the tick the forager releases ink, and not before", async 
       "times CUES.ink played on the tick the forager released its cloud, which " +
         "is its own tick and at most once on it (specs/progression.md)",
     );
-  });
-});
+  },
+);

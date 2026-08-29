@@ -57,7 +57,7 @@ import {
   denAll,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
   standDown,
 } from "../scene";
@@ -200,7 +200,7 @@ check(
     // the rest: everything from here reads a tile off the Flarefish's own
     // reported column, so a hunter that has left the corridor takes the whole
     // arrangement with it.
-    requireScene(firstBloom.snapshot, guard);
+    requireSceneHeld(firstBloom.snapshot, guard);
     requireBurningDisc(firstBloom.snapshot, index);
 
     // A fix taken while the forager waits in its pocket is itself the negative
@@ -286,7 +286,7 @@ check(
       return { inside, posed, fix, after };
     });
 
-    requireScene(h.snapshot(), guard);
+    requireSceneHeld(h.snapshot(), guard);
 
     // The board really is what the claim needs: two corridors, five tiles and a
     // band of solid rock apart.

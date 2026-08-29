@@ -20,11 +20,11 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { symmetryMismatches } from "../maze";
-import { graded } from "../scene";
+import { check } from "../scene";
 import { captureBoard, freshBoards, requireLaidOut, witness } from "./boards";
 
 /**
@@ -46,8 +46,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("lays out a maze that mirrors about the axis between columns 17 and 18", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "lays out a maze that mirrors about the axis between columns 17 and 18",
+  async () => {
     const boards = await freshBoards(h);
     requireLaidOut(boards);
 
@@ -65,5 +66,5 @@ it("lays out a maze that mirrors about the axis between columns 17 and 18", asyn
           `den gate exempt, in the maze laid out from seed ${one.board.seed}`,
       );
     }
-  });
-});
+  },
+);

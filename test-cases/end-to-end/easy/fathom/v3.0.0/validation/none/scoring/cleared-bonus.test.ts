@@ -24,12 +24,18 @@
 // reaching the forager, is asserted directly instead: every predator is posed into
 // the sealed den, and the lives are read either side of the bite.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual } from "../assert";
 import { ARROW_KEY, SCORE_CLEAR, SCORE_PLANKTON } from "../constants";
 import { placeForager, poseMaze } from "../fixtures";
-import { captureReplay, createHarness, ticks, type Harness } from "../harness";
-import { denAllExcept, requireSwim, startPlaying } from "../scene";
+import {
+  captureReplay,
+  createHarness,
+  ticks,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import { check, denAll, requireSwim } from "../scene";
 
 /**
  * The board: five tiles of straight corridor, the forager on the first and the
@@ -63,66 +69,68 @@ const TAIL_TICKS = ticks(0.75);
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("pays SCORE_CLEAR on top of the plankton for the bite that empties the maze", async () => {
-  await startPlaying(h);
-  const board = await poseMaze(h, ART);
-  const start = board.mark("S");
-  const target = board.mark("T");
-  await placeForager(h, start, "right");
-  // One plankton on the whole board, at the far end of the forager's run.
-  await h.debug.clearPlankton();
-  await h.debug.setPlankton(target.tx, target.ty, true);
-  await denAllExcept(h);
+check(
+  "pays SCORE_CLEAR on top of the plankton for the bite that empties the maze",
+  async () => {
+    await startPlaying(h);
+    const board = await poseMaze(h, ART);
+    const start = board.mark("S");
+    const target = board.mark("T");
+    await placeForager(h, start, "right");
+    // One plankton on the whole board, at the far end of the forager's run.
+    await h.debug.clearPlankton();
+    await h.debug.setPlankton(target.tx, target.ty, true);
+    await denAll(h);
 
-  const bite = await captureReplay(h, "clear", async () => {
-    const before = await h.snapshot();
-    await h.hold(ARROW_KEY.right);
-    const eaten = await h.until((s) => s.planktonRemaining < 1, {
-      maxTicks: BITE_BUDGET,
-      poll: 1,
+    const bite = await captureReplay(h, "clear", async () => {
+      const before = await h.snapshot();
+      await h.hold(ARROW_KEY.right);
+      const eaten = await h.until((s) => s.planktonRemaining < 1, {
+        maxTicks: BITE_BUDGET,
+        poll: 1,
+      });
+      await h.advance(SETTLE_TICKS);
+      const settled = await h.snapshot();
+      await h.advance(TAIL_TICKS);
+      await h.release(ARROW_KEY.right);
+      return { before, after: eaten.snapshot, settled, hit: eaten.hit };
     });
-    await h.advance(SETTLE_TICKS);
-    const settled = await h.snapshot();
-    await h.advance(TAIL_TICKS);
-    await h.release(ARROW_KEY.right);
-    return { before, after: eaten.snapshot, settled, hit: eaten.hit };
-  });
 
-  if (!bite.hit) {
-    requireSwim(
-      h,
-      bite.before.forager,
-      bite.after.forager,
-      "reach the maze's last plankton",
+    if (!bite.hit) {
+      requireSwim(
+        bite.before.forager,
+        bite.after.forager,
+        "reach the maze's last plankton",
+      );
+    }
+
+    assertEqual(
+      bite.before.planktonRemaining,
+      1,
+      "the plankton on the board when the bite began, which the pose left at one",
     );
-  }
-
-  assertEqual(
-    bite.before.planktonRemaining,
-    1,
-    "the plankton on the board when the bite began, which the pose left at one",
-  );
-  assertEqual(
-    bite.settled.lives,
-    bite.before.lives,
-    "the lives across the bite, with every predator posed into the sealed den",
-  );
-  assertEqual(
-    bite.settled.score - bite.before.score,
-    SCORE_CLEAR + SCORE_PLANKTON,
-    "the score rise across the bite that left no plankton behind",
-  );
-  assertEqual(
-    bite.settled.screen,
-    "cleared",
-    "the screen a beat after the maze's last plankton was eaten",
-  );
-});
+    assertEqual(
+      bite.settled.lives,
+      bite.before.lives,
+      "the lives across the bite, with every predator posed into the sealed den",
+    );
+    assertEqual(
+      bite.settled.score - bite.before.score,
+      SCORE_CLEAR + SCORE_PLANKTON,
+      "the score rise across the bite that left no plankton behind",
+    );
+    assertEqual(
+      bite.settled.screen,
+      "cleared",
+      "the screen a beat after the maze's last plankton was eaten",
+    );
+  },
+);

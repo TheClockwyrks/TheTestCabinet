@@ -60,7 +60,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
 } from "../scene";
@@ -188,7 +188,7 @@ check("Predator bodies are not remembered", async () => {
     return { held, litPixel, swum, gone, gonePixel };
   });
 
-  requireScene(reading.gone, watch);
+  requireSceneHeld(reading.gone, watch);
 
   // Whether the forager swims is `controls/*` and `maze-movement/*`'s verdict.
   if (!reading.swum.hit) {

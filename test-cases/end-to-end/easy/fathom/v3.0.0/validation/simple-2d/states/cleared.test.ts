@@ -34,7 +34,7 @@
 // `scoring/descend-on-clear`'s. All that is read past the interstitial here is
 // that it gives way inside its own window.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TICK_HZ } from "../../src/constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
@@ -45,7 +45,7 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { denAll, graded, requireSwim } from "../scene";
+import { check, denAll, requireSwim } from "../scene";
 import { MOVE_KEY, assertDrew, frameOps, watchScreen } from "./screens";
 
 /**
@@ -93,15 +93,16 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("reaches the cleared interstitial, names the depth, and holds 1-3 s", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "reaches the cleared interstitial, names the depth, and holds 1-3 s",
+  async () => {
     await startPlaying(h);
     const run = await poseMoveKeyRun(h, "right");
     await denAll(h);
 
     // One mouthful left in the whole maze, one tile ahead of the forager.
     h.debug.clearPlankton();
-    h.debug.setPlankton(run.tx + 1, run.ty, true);
+    h.debug.setPlankton(run.start.tx + 1, run.start.ty, true);
     const before = h.snapshot();
 
     const swim = await watchScreen(h, "playing", SWIM_TICKS, MOVE_KEY);
@@ -161,5 +162,5 @@ it("reaches the cleared interstitial, names the depth, and holds 1-3 s", async (
       "seconds of the simulation's own accumulated time the cleared " +
         "interstitial held for (specs/ui.md)",
     );
-  });
-});
+  },
+);

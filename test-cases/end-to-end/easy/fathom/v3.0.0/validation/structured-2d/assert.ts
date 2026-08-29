@@ -3,12 +3,12 @@
 // Every check in this project asserts through these helpers rather than through
 // vitest's `expect`, because of where a failure ends up: the runner stores each
 // failed check as an expected/actual pair and the console renders that pair to
-// the reviewer. A chai message ("expected 9.097… to be less than or equal to 8",
-// trailed by a stack) makes a poor pair; these helpers throw a message of
-// exactly the shape the runner extracts —
+// the reviewer. A chai message ("expected 217.4030303 to be less than or equal
+// to 160", trailed by a stack) makes a poor pair; these helpers throw a message
+// of exactly the shape the runner extracts —
 //
-//   Expected: at most 8
-//   Actual: 9.097252332435328
+//   Expected: at most 160
+//   Actual: 217.4030303
 //
 // — so the reviewer reads the bound the case set beside the value the build
 // produced, and nothing else. The first line names what the check required, the
@@ -22,12 +22,12 @@
 //
 // Every helper takes an optional trailing `context`: what a check that runs the
 // same comparison many times over says to tell one failure from another
-// (`obstacle 1 at t=0.5: theta`), or what a harness reading names as the
-// requirement the build missed. It lands on the `Expected:` line, after the
-// bound, in parentheses:
+// (`G = 0.5: visionRadius`), or what a harness reading names as the requirement
+// the build missed. It lands on the `Expected:` line, after the bound, in
+// parentheses:
 //
-//   Expected: at most 0.01 (obstacle 1 at t=0.5: theta)
-//   Actual: 0.4
+//   Expected: within 0.5 of 128 (G = 0.5: visionRadius)
+//   Actual: 96
 //
 // so the pair stays two lines and the runner still reads it as one.
 

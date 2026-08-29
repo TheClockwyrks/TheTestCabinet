@@ -57,7 +57,7 @@ import {
   denAll,
   failPrecondition,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
 } from "../scene";
@@ -194,7 +194,7 @@ check("Revealed terrain is remembered", async () => {
     return { moved, later };
   });
 
-  requireScene(reading.later, watch);
+  requireSceneHeld(reading.later, watch);
 
   // The antecedent: the light did reveal the alcove before the forager left.
   const remembered = [

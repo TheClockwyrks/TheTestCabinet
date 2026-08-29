@@ -41,7 +41,7 @@ import {
   clearUnderfoot,
   denAll,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
@@ -115,7 +115,7 @@ check(
       }
     });
 
-    requireScene(h.snapshot(), watch);
+    requireSceneHeld(h.snapshot(), watch);
 
     assertEqual(
       seen.hit,

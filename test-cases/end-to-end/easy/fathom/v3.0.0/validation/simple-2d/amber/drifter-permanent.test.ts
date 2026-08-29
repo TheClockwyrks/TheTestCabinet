@@ -30,7 +30,7 @@
 // seconds of it — a drifter still drifting, half a minute after it appeared, and
 // then taken — rather than half a minute of the same.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { DRIFTER_INTERVAL, DRIFTER_SPEED, TICK_HZ } from "../../src/constants";
 import {
   assertEqual,
@@ -47,9 +47,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -148,81 +148,79 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("A drifter stays until it is eaten", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const rooms = await poseApart(h, APART, { ring: RING });
-    await parkForager(h, rooms.near);
-    await clearUnderfoot(h);
-    // An empty maze admits no drifter at the gate, so the one followed below is
-    // the one spawned here.
-    h.debug.clearPlankton();
-    const quiet = await denAll(h);
-    h.debug.spawnDrifter(rooms.far.tx, rooms.far.ty);
-    const watch = await sceneGuard(h, quiet);
-    const opened = h.snapshot();
+check("A drifter stays until it is eaten", async () => {
+  await startPlaying(h);
+  const rooms = await poseApart(h, APART, { ring: RING });
+  await parkForager(h, rooms.near);
+  await clearUnderfoot(h);
+  // An empty maze admits no drifter at the gate, so the one followed below is
+  // the one spawned here.
+  h.debug.clearPlankton();
+  const quiet = await denAll(h);
+  h.debug.spawnDrifter(rooms.far.tx, rooms.far.ty);
+  const watch = await sceneGuard(h, quiet);
+  const opened = h.snapshot();
 
-    // The long stretch, off camera.
-    const first = await pace(h, null);
-    await h.advance(GAP_TICKS);
-    const second = await pace(h, first.at);
-    await h.advance(GAP_TICKS);
-    const third = await pace(h, second.at);
-    await h.advance(TAIL_GAP_TICKS);
+  // The long stretch, off camera.
+  const first = await pace(h, null);
+  await h.advance(GAP_TICKS);
+  const second = await pace(h, first.at);
+  await h.advance(GAP_TICKS);
+  const third = await pace(h, second.at);
+  await h.advance(TAIL_GAP_TICKS);
 
-    const watched = await captureReplay(h, "permanent", async () => {
-      const last = await pace(h, third.at);
-      await h.advance(WATCH_TICKS);
-      const still = h.snapshot();
-      return { last, still };
-    });
-
-    requireSceneHeld(watched.still, watch);
-    assertEqual(
-      opened.drifters.length,
-      1,
-      "the bonus drifters on the board once one was spawned onto the sealed ring",
-    );
-    assertGreaterThan(
-      watched.still.simTime - opened.simTime,
-      DRIFTER_INTERVAL,
-      "the seconds of simulation the drifter was watched over, against the " +
-        "DRIFTER_INTERVAL cadence it has to outlast",
-    );
-    assertGreaterThanOrEqual(
-      watched.still.drifters.length,
-      1,
-      "the bonus drifters still in the maze at the end of that stretch",
-    );
-
-    const windows = [first, second, third, watched.last];
-    for (const [index, window] of windows.entries()) {
-      assertEqual(
-        window.held,
-        true,
-        `the drifter was in the list at every tick of pace window ${index + 1}`,
-      );
-      assertLessThanOrEqual(
-        Math.abs(window.speed - DRIFTER_SPEED),
-        PACE_TOLERANCE,
-        `how far the drifter's pace over window ${index + 1} sits from ` +
-          `DRIFTER_SPEED (${DRIFTER_SPEED}), measured as ground covered along ` +
-          `its own path over ${PACE_TICKS} ticks`,
-      );
-    }
-
-    // And it leaves the list only when the forager reaches it. The drifter is
-    // held where it stands and the forager put on its tile, which is the contact
-    // specs/gameplay.md defines; what the bite PAYS is amber/drifter-score's.
-    const taken = watched.still.drifters[0];
-    h.debug.setCreatureAI(false);
-    h.debug.setForagerTile(taken.tx, taken.ty);
-    await h.advance(EAT_TICKS);
-    assertEqual(
-      h.snapshot().drifters.length,
-      watched.still.drifters.length - 1,
-      `the bonus drifters left once the forager stood on the drifter's tile ` +
-        `(${taken.tx}, ${taken.ty})`,
-    );
+  const watched = await captureReplay(h, "permanent", async () => {
+    const last = await pace(h, third.at);
+    await h.advance(WATCH_TICKS);
+    const still = h.snapshot();
+    return { last, still };
   });
+
+  requireSceneHeld(watched.still, watch);
+  assertEqual(
+    opened.drifters.length,
+    1,
+    "the bonus drifters on the board once one was spawned onto the sealed ring",
+  );
+  assertGreaterThan(
+    watched.still.simTime - opened.simTime,
+    DRIFTER_INTERVAL,
+    "the seconds of simulation the drifter was watched over, against the " +
+      "DRIFTER_INTERVAL cadence it has to outlast",
+  );
+  assertGreaterThanOrEqual(
+    watched.still.drifters.length,
+    1,
+    "the bonus drifters still in the maze at the end of that stretch",
+  );
+
+  const windows = [first, second, third, watched.last];
+  for (const [index, window] of windows.entries()) {
+    assertEqual(
+      window.held,
+      true,
+      `the drifter was in the list at every tick of pace window ${index + 1}`,
+    );
+    assertLessThanOrEqual(
+      Math.abs(window.speed - DRIFTER_SPEED),
+      PACE_TOLERANCE,
+      `how far the drifter's pace over window ${index + 1} sits from ` +
+        `DRIFTER_SPEED (${DRIFTER_SPEED}), measured as ground covered along ` +
+        `its own path over ${PACE_TICKS} ticks`,
+    );
+  }
+
+  // And it leaves the list only when the forager reaches it. The drifter is
+  // held where it stands and the forager put on its tile, which is the contact
+  // specs/gameplay.md defines; what the bite PAYS is amber/drifter-score's.
+  const taken = watched.still.drifters[0];
+  h.debug.setCreatureAI(false);
+  h.debug.setForagerTile(taken.tx, taken.ty);
+  await h.advance(EAT_TICKS);
+  assertEqual(
+    h.snapshot().drifters.length,
+    watched.still.drifters.length - 1,
+    `the bonus drifters left once the forager stood on the drifter's tile ` +
+      `(${taken.tx}, ${taken.ty})`,
+  );
 });

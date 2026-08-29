@@ -38,7 +38,7 @@
 // what ink does to the hunters it DOES blind (`lanternjaw/*`, `flarefish/*`), or
 // what a cloud costs to release (`ink/*`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -54,11 +54,11 @@ import {
 } from "../harness";
 import type { FathomSnapshot } from "../surface";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
@@ -168,116 +168,114 @@ async function releaseInk(what: string): Promise<void> {
   }
 }
 
-it("Ink does nothing to it", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, STANDOFF);
-    const index = requirePred(board.snap, "gloamfin");
-    const quiet = await denAll(h, ["gloamfin"]);
-    // The forager first, and parked: a posed chase fixes on "the forager's current
-    // tile" (specs/instrumentation.md), and that tile is where the first cloud goes.
+check("Ink does nothing to it", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, STANDOFF);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
+  // The forager first, and parked: a posed chase fixes on "the forager's current
+  // tile" (specs/instrumentation.md), and that tile is where the first cloud goes.
+  await parkForager(h, board.mark("I"));
+  await clearUnderfoot(h);
+  await placePredator(h, index, board.mark("P"), {
+    dir: "left",
+    state: "chase",
+  });
+  const guard = await sceneGuard(h, quiet);
+
+  const watched = await captureReplay(h, "noop", async () => {
+    // ---- The cloud on the line between them --------------------------------
+    await releaseInk("cloud on the line between the two");
+    const openingOnLine = h.snapshot();
+    const onLine = await watchCloud(index);
+    const closedOnLine = h.snapshot();
+
+    // ---- And the cloud the hunter is standing in ---------------------------
+    await h.until((snap) => snap.inkClouds.length === 0, {
+      maxFrames: EXPIRY_BUDGET,
+      poll: 4,
+    });
+    // The forager lays the second cloud on the far tile and comes back, which is
+    // the only way this surface can put one under a hunter.
+    await parkForager(h, board.mark("P"));
+    await releaseInk("cloud under the hunter itself");
     await parkForager(h, board.mark("I"));
-    await clearUnderfoot(h);
     await placePredator(h, index, board.mark("P"), {
       dir: "left",
       state: "chase",
     });
-    const guard = await sceneGuard(h, quiet);
+    const openingInside = h.snapshot();
+    const inside = await watchCloud(index);
+    const closedInside = h.snapshot();
 
-    const watched = await captureReplay(h, "noop", async () => {
-      // ---- The cloud on the line between them --------------------------------
-      await releaseInk("cloud on the line between the two");
-      const openingOnLine = h.snapshot();
-      const onLine = await watchCloud(index);
-      const closedOnLine = h.snapshot();
-
-      // ---- And the cloud the hunter is standing in ---------------------------
-      await h.until((snap) => snap.inkClouds.length === 0, {
-        maxFrames: EXPIRY_BUDGET,
-        poll: 4,
-      });
-      // The forager lays the second cloud on the far tile and comes back, which is
-      // the only way this surface can put one under a hunter.
-      await parkForager(h, board.mark("P"));
-      await releaseInk("cloud under the hunter itself");
-      await parkForager(h, board.mark("I"));
-      await placePredator(h, index, board.mark("P"), {
-        dir: "left",
-        state: "chase",
-      });
-      const openingInside = h.snapshot();
-      const inside = await watchCloud(index);
-      const closedInside = h.snapshot();
-
-      return {
-        onLine,
-        openingOnLine,
-        closedOnLine,
-        inside,
-        openingInside,
-        closedInside,
-      };
-    });
-
-    requireSceneHeld(h.snapshot(), guard);
-
-    for (const [what, crossing, opening, closed] of [
-      [
-        "with the cloud on the line between it and the forager",
-        watched.onLine,
-        watched.openingOnLine,
-        watched.closedOnLine,
-      ],
-      [
-        "standing inside the cloud",
-        watched.inside,
-        watched.openingInside,
-        watched.closedInside,
-      ],
-    ] as const) {
-      requirePredatorMotion(
-        opening,
-        closed,
-        "gloamfin",
-        `chase on through the ink cloud this scenario laid ${what}`,
-      );
-      assertGreaterThan(
-        crossing.samples,
-        0,
-        `samples taken while a cloud stood, ${what} — INK_LIFE (${INK_LIFE} s) is ` +
-          `how long specs/sensing.md stands one for`,
-      );
-      assertGreaterThan(
-        crossing.closest,
-        GLOAMFIN_HEAR,
-        `the closest the two centers came ${what}, against the GLOAMFIN_HEAR ` +
-          `(${GLOAMFIN_HEAR}) close hearing reaches — inside it the Gloamfin would ` +
-          `know where the forager was for a reason that has nothing to do with ink, ` +
-          `and this scenario is posed so that never happens`,
-      );
-      assertEqual(
-        [...crossing.states].join(","),
-        "chase",
-        `the states the Gloamfin reported across the cloud's whole life ${what} — ` +
-          `specs/sensing.md exempts the Gloamfin from ink outright, and a blinded ` +
-          `hunter would drop its fix and report "wander"`,
-      );
-      assertGreaterThanOrEqual(
-        crossing.opened - crossing.ended,
-        CLOSED_MIN,
-        `logical units the Gloamfin took out of the gap over the cloud's whole ` +
-          `life ${what}, from ${crossing.opened.toFixed(0)} to ` +
-          `${crossing.ended.toFixed(0)} — specs/predators.md has a hunter holding a ` +
-          `fix pursue the fixed tile every step of the way`,
-      );
-    }
-
-    assertGreaterThan(
-      watched.inside.inside,
-      0,
-      "samples at which the Gloamfin's own center lay inside the cloud — the " +
-        "second half of this point is specs/sensing.md's containment case, and a " +
-        "hunter that never entered the cloud cannot answer it",
-    );
+    return {
+      onLine,
+      openingOnLine,
+      closedOnLine,
+      inside,
+      openingInside,
+      closedInside,
+    };
   });
+
+  requireSceneHeld(h.snapshot(), guard);
+
+  for (const [what, crossing, opening, closed] of [
+    [
+      "with the cloud on the line between it and the forager",
+      watched.onLine,
+      watched.openingOnLine,
+      watched.closedOnLine,
+    ],
+    [
+      "standing inside the cloud",
+      watched.inside,
+      watched.openingInside,
+      watched.closedInside,
+    ],
+  ] as const) {
+    requirePredatorMotion(
+      opening,
+      closed,
+      index,
+      `chase on through the ink cloud this scenario laid ${what}`,
+    );
+    assertGreaterThan(
+      crossing.samples,
+      0,
+      `samples taken while a cloud stood, ${what} — INK_LIFE (${INK_LIFE} s) is ` +
+        `how long specs/sensing.md stands one for`,
+    );
+    assertGreaterThan(
+      crossing.closest,
+      GLOAMFIN_HEAR,
+      `the closest the two centers came ${what}, against the GLOAMFIN_HEAR ` +
+        `(${GLOAMFIN_HEAR}) close hearing reaches — inside it the Gloamfin would ` +
+        `know where the forager was for a reason that has nothing to do with ink, ` +
+        `and this scenario is posed so that never happens`,
+    );
+    assertEqual(
+      [...crossing.states].join(","),
+      "chase",
+      `the states the Gloamfin reported across the cloud's whole life ${what} — ` +
+        `specs/sensing.md exempts the Gloamfin from ink outright, and a blinded ` +
+        `hunter would drop its fix and report "wander"`,
+    );
+    assertGreaterThanOrEqual(
+      crossing.opened - crossing.ended,
+      CLOSED_MIN,
+      `logical units the Gloamfin took out of the gap over the cloud's whole ` +
+        `life ${what}, from ${crossing.opened.toFixed(0)} to ` +
+        `${crossing.ended.toFixed(0)} — specs/predators.md has a hunter holding a ` +
+        `fix pursue the fixed tile every step of the way`,
+    );
+  }
+
+  assertGreaterThan(
+    watched.inside.inside,
+    0,
+    "samples at which the Gloamfin's own center lay inside the cloud — the " +
+      "second half of this point is specs/sensing.md's containment case, and a " +
+      "hunter that never entered the cloud cannot answer it",
+  );
 });

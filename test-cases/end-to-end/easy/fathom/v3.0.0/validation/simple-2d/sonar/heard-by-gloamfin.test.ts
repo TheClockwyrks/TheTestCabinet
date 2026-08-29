@@ -38,7 +38,7 @@
 // and the arrival is then bounded by that closing rate rather than by the flight
 // time of a stationary target.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
@@ -59,12 +59,12 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   fromForager,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
@@ -148,8 +148,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("hands a wandering Gloamfin its fix when the front arrives, not when the pulse is cast", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "hands a wandering Gloamfin its fix when the front arrives, not when the pulse is cast",
+  async () => {
     await startPlaying(h);
     const line = await poseSightLine(h, GAP_TILES, {
       lead: 0,
@@ -159,8 +160,8 @@ it("hands a wandering Gloamfin its fix when the front arrives, not when the puls
     await clearUnderfoot(h);
 
     const posed = h.snapshot();
-    const gloamfin = requirePred(posed, "gloamfin");
-    const quiet = await denAll(h, ["gloamfin"]);
+    const gloamfin = requireKind(posed, "gloamfin");
+    const quiet = await denAll(h, [gloamfin]);
     h.debug.setPredatorTile(gloamfin, line.pred.tx, line.pred.ty);
     // Facing away down the corridor, so its patrol opens outward rather than
     // straight at the forager.
@@ -179,7 +180,7 @@ it("hands a wandering Gloamfin its fix when the front arrives, not when the puls
       requirePredatorMotion(
         settled0,
         settled,
-        "gloamfin",
+        gloamfin,
         "patrol the corridor it was posed on",
       );
       if (settled.predators[gloamfin].state !== "wander") {
@@ -308,5 +309,5 @@ it("hands a wandering Gloamfin its fix when the front arrives, not when the puls
           `${heard.steps} corridor steps it was posed at`,
       );
     }
-  });
-});
+  },
+);

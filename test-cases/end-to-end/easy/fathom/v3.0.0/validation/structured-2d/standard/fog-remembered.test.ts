@@ -55,7 +55,7 @@ import {
   denAll,
   failPrecondition,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
@@ -158,7 +158,7 @@ check("The whole explored map stays drawn", async () => {
   // shows the reviewer what the build drew out there.
   captureStill(h, "remembered");
 
-  requireScene(after, guard);
+  requireSceneHeld(after, guard);
 
   // The fixture's own geometry, asserted rather than assumed: the tile that is
   // read stands further off than the light reaches at ANY brightness.

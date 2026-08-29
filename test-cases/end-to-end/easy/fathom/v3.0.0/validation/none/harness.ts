@@ -68,9 +68,15 @@ import {
   UNBOUND_KEY,
   type Dir,
 } from "./constants";
-import { tileCenterOf, type BoardSnapshot } from "./fixtures";
-import type { GridFrame, TileRef } from "./maze";
-import type { SceneOps } from "./scene";
+import { type FixtureBoard } from "./fixtures";
+import { tileCenter, type GridFrame, type Tile } from "./maze";
+import {
+  FORAGER_CORRIDORS,
+  PREDATOR_CORRIDORS,
+  type DenRelease,
+  type SceneOps,
+  type Trespass,
+} from "./scene";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -166,6 +172,23 @@ export interface PredatorSnapshot {
   flareRadius: number | null;
 }
 
+/** One bonus drifter, as a snapshot reports it. */
+export interface DrifterSnapshot {
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+  /**
+   * True while its body is being drawn this instant, by the forager's light or
+   * by a flare.
+   *
+   * Its amber mote is a separate drawing and is not what this answers for: the
+   * mote is one of the maze's amber lights and shows under its own rule, while
+   * `lit` says whether the jellyfish itself is drawn (specs/state.md).
+   */
+  lit: boolean;
+}
+
 /** One sonar wavefront in flight, the forager's own and the Gloamfin's alike. */
 export interface PulseSnapshot {
   source: "forager" | "gloamfin";
@@ -196,7 +219,7 @@ export interface InkCloudSnapshot {
  * {@link windowRadius}, which says what the build owes rather than throwing a
  * `TypeError` several ticks later.
  */
-export interface FathomSnapshot extends BoardSnapshot {
+export interface FathomSnapshot extends FixtureBoard {
   version: number;
   screen: Screen;
   depth: number;
@@ -229,7 +252,7 @@ export interface FathomSnapshot extends BoardSnapshot {
     dir: Dir;
     moving: boolean;
   };
-  drifters: { x: number; y: number; tx: number; ty: number }[];
+  drifters: DrifterSnapshot[];
   predators: PredatorSnapshot[];
   pulses: PulseSnapshot[];
   inkClouds: InkCloudSnapshot[];
@@ -324,11 +347,6 @@ export interface Viewport {
   offsetY: number;
 }
 
-/** What a check needs of vitest to decline to decide. A `TestContext` is one. */
-export interface UnmetContext {
-  skip(note?: string): never;
-}
-
 export interface HarnessOptions {
   /** The window's CSS width. Defaults to the logical stage width. */
   cssWidth?: number;
@@ -383,6 +401,20 @@ export interface Harness {
   tick(): number;
   /** The simulated time those ticks covered, in milliseconds. */
   timeMs(): number;
+
+  /**
+   * Every body found standing on ground movement cannot have carried it to, in
+   * the order they were first seen — see {@link Trespass} and
+   * {@link TRESPASS_POLL}.
+   */
+  readonly trespasses: readonly Trespass[];
+  /**
+   * Every release granted to a hunter still in the den, in the order they were
+   * granted — see {@link DenRelease}. Watched on the same stride, and for the
+   * same reason: a scenario that posed a hunter away cannot tell afterwards that
+   * one was let out.
+   */
+  readonly denReleases: readonly DenRelease[];
 
   /** A fresh read of the game's state through the build's `snapshot`. */
   snapshot(): Promise<FathomSnapshot>;
@@ -446,23 +478,20 @@ export interface Harness {
   pixels(points: readonly { x: number; y: number }[]): Promise<Pixel[]>;
   /** A pixel addressed in the canvas's own backing store, past the fit. */
   devicePixel(x: number, y: number): Promise<Pixel>;
+  /**
+   * The channel-mean brightness of every device pixel along one line of the
+   * backing store, addressed past the fit.
+   *
+   * One crossing into the page for the whole line, because a check that has to
+   * find WHERE the build drew something reads thousands of pixels rather than a
+   * handful, and a crossing each would cost more than the frame it is reading.
+   */
+  scanDevice(axis: "row" | "column", index: number): Promise<number[]>;
   /** The canvas's backing store size, as the build sized it. */
   surface(): Promise<{ width: number; height: number; dpr: number }>;
 
   /** Give the build a real, browser-trusted gesture, so its audio can open. */
   armAudio(): Promise<void>;
-
-  /**
-   * Decline to decide this point: the scenario could not be constructed against
-   * this build.
-   *
-   * The check is recorded as skipped, and a suite every check of which skipped is
-   * reported as a validator that did not run rather than as one the build failed —
-   * so the point goes to the reviewer instead of being answered wrongly. Reach it
-   * only through a `require*` helper in `scene.ts` or `fixtures.ts`, each of which
-   * names the check that OWNS the claim being stood aside on.
-   */
-  unmet(reason: string): never;
 
   /** Release anything held, and let the page go. */
   dispose(): Promise<void>;
@@ -653,24 +682,94 @@ async function readSurfaceFault(page: Page): Promise<string | null> {
   return null;
 }
 
+/* ---- The trespass watch --------------------------------------------------- */
+//
+// Nearly every scenario in this suite is held together by ROCK: a bystander
+// walled off from its subject, a pair sealed into neighboring cells, a hunter in
+// a sealed ring, a den walled on three sides. `specs/movement.md` is what
+// entitles a check to lean on that — the forager travels over corridor tiles and
+// nothing else, a predator over those and, while it is in the den, the chamber
+// and its gate — so a build that lets a body cross rock takes every one of those
+// scenarios apart at once. Left unwatched, that arrives as fifty findings
+// against fifty mechanics, none of them the one that broke.
+//
+// So the harness watches for it as it advances, and `scene.ts` turns what it saw
+// into a DECLINE naming `maze-movement/no-wall` or
+// `maze-movement/predators-keep-to-corridors`, the two points that fail for it.
+// The watch has to run DURING a measurement rather than after one, because the
+// evidence does not survive: a hunter that walks through rock, eats the forager
+// and is returned to the den by the life that cost stands on a den tile by the
+// time the check looks.
+//
+// The same watch carries a second reading for the same reason: a hunter in the
+// den that has been GRANTED ITS RELEASE. A scenario puts the rest of the roster
+// away and is entitled to find it there, because a pose that dens a hunter
+// suspends its release time (`specs/instrumentation.md`), and a build that
+// grants one anyway walks the hunter out through the gate and into the
+// measurement — then loses the evidence to the life it takes, which returns
+// every hunter to the den unreleased. `controls/setmaze-houses-predators` is the
+// point that fails for that one.
+//
+// SAMPLED INSIDE THE PAGE. Every read this harness takes crosses into the
+// browser, so a sample taken from Node would cost a round trip per look. The
+// tick loop already runs in one evaluation, so the looks run there too and come
+// back with it, and what crosses is a handful of tiles rather than a board.
+
+/**
+ * How often the watch looks, in ticks.
+ *
+ * Six. A tile is `TILE` (`32`) logical units and the fastest thing on the board
+ * travels at `GLOAMFIN_CHASE_SPEED` (`160`), so six ticks is at most `8` units —
+ * a quarter of a tile. No tile a body stands on can be crossed between two
+ * looks.
+ */
+export const TRESPASS_POLL = 6;
+
+/**
+ * How many distinct entries either watch keeps.
+ *
+ * A decline names what it saw, and a build that ignores rock produces one of
+ * these every few ticks forever. The first handful say everything a reader needs;
+ * the watch stops recording past that.
+ */
+const TRESPASS_CAP = 8;
+
+/** One body of one look, with the tile character it was standing on. */
+interface WatchedBody {
+  tx: number;
+  ty: number;
+  /** The layout character under it, or `null` off the board. */
+  at: string | null;
+  /** How a decline names it. */
+  what: string;
+  /** The point that owns this body keeping to the corridors. */
+  owner: string;
+  /** The roster index, for a predator; `-1` for the forager. */
+  index: number;
+  /** Its reported state, for a predator; `""` for the forager. */
+  state: string;
+  /** Its reported release flag, for a predator. */
+  released: boolean;
+}
+
+/** One look the page took, as it comes back across. */
+interface WatchSample {
+  /** Accumulated simulation time at the look, in seconds. */
+  t: number;
+  bodies: WatchedBody[];
+}
+
 /* ---- Building one --------------------------------------------------------- */
 
 /**
  * Load the built site in a browser, take the game off the wall clock, and hand
  * back everything a check reads.
  *
- * `ctx` is the running test's own vitest context, and it is required rather than
- * optional because {@link Harness.unmet} is how every `require*` helper declines
- * to decide. A harness with no way to decline would leave those helpers with only
- * two options — fail the point for something another point owns, or pass it on a
- * scenario that never stood up — and both of those are worse than saying so.
- *
  * The default shape is the stage's own size at one device pixel per CSS pixel, so
  * a logical coordinate and a canvas pixel are the same thing and no check but
  * `presentation/window-fit` has to think about the fit at all.
  */
 export async function createHarness(
-  ctx: UnmetContext,
   options: HarnessOptions = {},
 ): Promise<Harness> {
   const cssWidth = options.cssWidth ?? STAGE_W;
@@ -750,6 +849,54 @@ export async function createHarness(
   let tickCount = 0;
   let timeMs = 0;
 
+  // The trespass watch (see TRESPASS_POLL). It reads through the same snapshot a
+  // check does and never touches the game, and a look the page could not answer
+  // is swallowed outright: what a missing operation costs is
+  // `instrumentation/surface-present`'s finding, and this watch exists to keep
+  // findings where they belong rather than to add one of its own.
+  const trespasses: Trespass[] = [];
+  const denReleases: DenRelease[] = [];
+  const wasFreed = new Map<number, boolean>();
+  let sinceSample = 0;
+  const noteWatch = (samples: readonly WatchSample[]): void => {
+    for (const sample of samples) {
+      if (
+        trespasses.length >= TRESPASS_CAP &&
+        denReleases.length >= TRESPASS_CAP
+      ) {
+        return;
+      }
+      for (const body of sample.bodies) {
+        if (trespasses.length >= TRESPASS_CAP) break;
+        if (body.at === "." || body.at === "d" || body.at === "g") continue;
+        const ground =
+          body.at === null ? "off the board" : `the "${body.at}" tile`;
+        const where = `${body.what} stood on ${ground} at (${body.tx}, ${body.ty})`;
+        if (trespasses.some((one) => one.where === where)) continue;
+        trespasses.push({ where, owner: body.owner, at: sample.t });
+      }
+
+      // The den watch reads a TRANSITION rather than a state, so a hunter
+      // already released when the watch opened is not logged over and over: only
+      // the look on which a denned hunter's release first appears is.
+      for (const body of sample.bodies) {
+        if (body.index < 0) continue;
+        const freed = body.state === "den" && body.released;
+        const before = wasFreed.get(body.index);
+        wasFreed.set(body.index, freed);
+        if (!freed || before === true) continue;
+        if (denReleases.length >= TRESPASS_CAP) continue;
+        denReleases.push({
+          index: body.index,
+          where:
+            `${body.what} reported released while still in the den, at ` +
+            `(${body.tx}, ${body.ty})`,
+          at: sample.t,
+        });
+      }
+    }
+  };
+
   /**
    * Run `count` ticks as `count` recorded frames, and read the state they left,
    * in one crossing.
@@ -762,7 +909,7 @@ export async function createHarness(
   const drive = async (count: number): Promise<FathomSnapshot> => {
     if (surfaceFault !== null) refuse();
     const result = (await page.evaluate(
-      ([handle, howMany, tickMs]) => {
+      ([handle, howMany, tickMs, poll, since, foragerOwner, predatorOwner]) => {
         const api = (
           window as unknown as Record<
             string,
@@ -777,19 +924,81 @@ export async function createHarness(
         const audio = (
           window as unknown as { __fathomAudio: { started(): number } }
         ).__fathomAudio;
+        const look = (): unknown => {
+          const at = api.snapshot() as {
+            simTime: number;
+            tiles: string[];
+            forager: { tx: number; ty: number };
+            predators: {
+              kind: string;
+              tx: number;
+              ty: number;
+              state: string;
+              released: boolean;
+            }[];
+          };
+          const ground = (tx: number, ty: number): string | null =>
+            at.tiles[ty] === undefined ? null : (at.tiles[ty][tx] ?? null);
+          return {
+            t: at.simTime,
+            bodies: [
+              {
+                tx: at.forager.tx,
+                ty: at.forager.ty,
+                at: ground(at.forager.tx, at.forager.ty),
+                what: "the forager",
+                owner: foragerOwner,
+                index: -1,
+                state: "",
+                released: false,
+              },
+              ...at.predators.map((one, index) => ({
+                tx: one.tx,
+                ty: one.ty,
+                at: ground(one.tx, one.ty),
+                what: `the ${one.kind}`,
+                owner: predatorOwner,
+                index,
+                state: one.state,
+                released: one.released === true,
+              })),
+            ],
+          };
+        };
         const sounds: number[] = [];
+        const samples: unknown[] = [];
+        let ticks = since;
         for (let i = 0; i < howMany; i += 1) {
           const before = audio.started();
           rec.begin();
           api.advance(1);
           rec.end(tickMs);
           sounds.push(audio.started() - before);
+          ticks += 1;
+          if (ticks < poll) continue;
+          ticks = 0;
+          samples.push(look());
         }
-        return { snapshot: api.snapshot(), sounds };
+        return { snapshot: api.snapshot(), sounds, samples, since: ticks };
       },
-      [HANDLE, count, TICK_MS] as const,
-    )) as { snapshot: FathomSnapshot; sounds: number[] };
+      [
+        HANDLE,
+        count,
+        TICK_MS,
+        TRESPASS_POLL,
+        sinceSample,
+        FORAGER_CORRIDORS,
+        PREDATOR_CORRIDORS,
+      ] as const,
+    )) as {
+      snapshot: FathomSnapshot;
+      sounds: number[];
+      samples: WatchSample[];
+      since: number;
+    };
 
+    sinceSample = result.since;
+    noteWatch(result.samples);
     for (const emitted of result.sounds) {
       tickCount += 1;
       timeMs += TICK_MS;
@@ -801,8 +1010,8 @@ export async function createHarness(
   };
 
   /**
-   * Run `count` ticks in ONE `advance` call, closing no recorded frame, and read
-   * the state they left.
+   * Run `count` ticks in batched `advance` calls, closing no recorded frame, and
+   * read the state they left.
    *
    * The same real ticks the game runs under {@link drive}; what is skipped is the
    * recording, not the simulation. `specs/instrumentation.md` has `advance(n)` run
@@ -811,22 +1020,132 @@ export async function createHarness(
    */
   const march = async (count: number): Promise<FathomSnapshot> => {
     if (surfaceFault !== null) refuse();
-    const snapshot = (await page.evaluate(
-      ([handle, howMany]) => {
+    const result = (await page.evaluate(
+      ([handle, howMany, poll, since, foragerOwner, predatorOwner]) => {
         const api = (
           window as unknown as Record<
             string,
             Record<string, (...a: unknown[]) => unknown>
           >
         )[handle];
-        api.advance(howMany);
-        return api.snapshot();
+        const look = (): unknown => {
+          const at = api.snapshot() as {
+            simTime: number;
+            tiles: string[];
+            forager: { tx: number; ty: number };
+            predators: {
+              kind: string;
+              tx: number;
+              ty: number;
+              state: string;
+              released: boolean;
+            }[];
+          };
+          const ground = (tx: number, ty: number): string | null =>
+            at.tiles[ty] === undefined ? null : (at.tiles[ty][tx] ?? null);
+          return {
+            t: at.simTime,
+            bodies: [
+              {
+                tx: at.forager.tx,
+                ty: at.forager.ty,
+                at: ground(at.forager.tx, at.forager.ty),
+                what: "the forager",
+                owner: foragerOwner,
+                index: -1,
+                state: "",
+                released: false,
+              },
+              ...at.predators.map((one, index) => ({
+                tx: one.tx,
+                ty: one.ty,
+                at: ground(one.tx, one.ty),
+                what: `the ${one.kind}`,
+                owner: predatorOwner,
+                index,
+                state: one.state,
+                released: one.released === true,
+              })),
+            ],
+          };
+        };
+        // Run in stretches no longer than the watch's stride rather than in one
+        // call, so a long march is sampled throughout. `specs/instrumentation.md`
+        // has `advance(n)` run `n` whole ticks immediately and in order, so the
+        // stretches are the same run of ticks the single call would have been.
+        const samples: unknown[] = [];
+        let ticks = since;
+        let done = 0;
+        while (done < howMany) {
+          const step = Math.min(poll - ticks, howMany - done);
+          api.advance(step);
+          done += step;
+          ticks += step;
+          if (ticks < poll) continue;
+          ticks = 0;
+          samples.push(look());
+        }
+        return { snapshot: api.snapshot(), samples, since: ticks };
       },
-      [HANDLE, count] as const,
-    )) as FathomSnapshot;
+      [
+        HANDLE,
+        count,
+        TRESPASS_POLL,
+        sinceSample,
+        FORAGER_CORRIDORS,
+        PREDATOR_CORRIDORS,
+      ] as const,
+    )) as {
+      snapshot: FathomSnapshot;
+      samples: WatchSample[];
+      since: number;
+    };
+    sinceSample = result.since;
+    noteWatch(result.samples);
     tickCount += count;
     timeMs += count * TICK_MS;
-    return snapshot;
+    return result.snapshot;
+  };
+
+  const scanDevice = async (
+    axis: "row" | "column",
+    index: number,
+  ): Promise<number[]> => {
+    await page.evaluate(
+      () => new Promise<void>((done) => requestAnimationFrame(() => done())),
+    );
+    return page.evaluate(
+      ([which, at]) => {
+        const canvases = Array.from(document.querySelectorAll("canvas"));
+        if (canvases.length === 0) {
+          throw new Error("fathom: the page has no <canvas>");
+        }
+        let canvas = canvases[0];
+        for (const other of canvases) {
+          if (other.width * other.height > canvas.width * canvas.height) {
+            canvas = other;
+          }
+        }
+        const ctx2d = canvas.getContext("2d");
+        if (ctx2d === null) {
+          throw new Error("fathom: the canvas has no 2D context");
+        }
+        const row = which === "row";
+        const line = Math.min(
+          Math.max(at, 0),
+          Math.max((row ? canvas.height : canvas.width) - 1, 0),
+        );
+        const { data } = row
+          ? ctx2d.getImageData(0, line, canvas.width, 1)
+          : ctx2d.getImageData(line, 0, 1, canvas.height);
+        const out: number[] = [];
+        for (let i = 0; i < data.length; i += 4) {
+          out.push((data[i] + data[i + 1] + data[i + 2]) / 3);
+        }
+        return out;
+      },
+      [axis, index] as const,
+    );
   };
 
   const readPixels = async (
@@ -889,6 +1208,8 @@ export async function createHarness(
     timeMs: () => timeMs,
 
     snapshot: () => debug.snapshot(),
+    trespasses,
+    denReleases,
 
     advance: async (count) => {
       if (count > 0) await drive(count);
@@ -984,6 +1305,7 @@ export async function createHarness(
     pixel: async (x, y) => (await readPixels([toDevice(view, x, y)]))[0],
     pixels: (points) => readPixels(points.map((p) => toDevice(view, p.x, p.y))),
     devicePixel: async (x, y) => (await readPixels([{ x, y }]))[0],
+    scanDevice: (axis, index) => scanDevice(axis, index),
 
     surface: () =>
       page.evaluate(() => {
@@ -1015,8 +1337,6 @@ export async function createHarness(
       // is bound to nothing, so arming changes no game state.
       await page.keyboard.press(UNBOUND_KEY);
     },
-
-    unmet: (reason) => ctx.skip(reason),
 
     async dispose() {
       // The context stays: it holds the init scripts and the window shape, and the
@@ -1066,6 +1386,32 @@ async function sweep(
 
 /** Where {@link watchCues} attaches, per harness. */
 const harnessCues = new WeakMap<Harness, TimedCue[][]>();
+
+/* ---- Reaching live play --------------------------------------------------- */
+
+/**
+ * Reset on a seed, open a dive, and enter live play, through the debug surface
+ * alone.
+ *
+ * `startDive` poses the opening of a real dive and `beginPlay` ends the
+ * countdown immediately (`specs/instrumentation.md`), so this reaches live play
+ * without pressing a menu key: a build with a broken title menu and correct
+ * movement must fail the menu points and pass the movement ones. A check that is
+ * ABOUT the menus drives them itself and never calls this.
+ *
+ * An omitted `seed` takes `DEFAULT_SEED` (`1`), which
+ * `specs/instrumentation.md` fixes, so a scenario that turns on the board a
+ * build laid out replays exactly either way.
+ */
+export async function startPlaying(
+  h: Harness,
+  seed?: number,
+): Promise<FathomSnapshot> {
+  await h.debug.reset(seed === undefined ? undefined : { seed });
+  await h.debug.startDive();
+  await h.debug.beginPlay();
+  return h.snapshot();
+}
 
 /* ---- The fit -------------------------------------------------------------- */
 
@@ -1181,10 +1527,10 @@ const TILE_CLUSTER: readonly (readonly [number, number])[] = [
 export async function sampleTiles(
   h: Pick<Harness, "pixels">,
   grid: GridFrame,
-  tiles: readonly TileRef[],
+  tiles: readonly Tile[],
 ): Promise<Rgb[]> {
   const points = tiles.flatMap((tile) => {
-    const center = tileCenterOf(grid, tile);
+    const center = tileCenter(grid, tile);
     return TILE_CLUSTER.map(([dx, dy]) => ({
       x: center.x + dx,
       y: center.y + dy,
@@ -1204,8 +1550,8 @@ export async function sampleTiles(
 /** The mean color at one tile's center, on the board a snapshot reports. */
 export async function tileColor(
   h: Pick<Harness, "pixels">,
-  snapshot: BoardSnapshot,
-  tile: TileRef,
+  snapshot: FixtureBoard,
+  tile: Tile,
 ): Promise<Rgb> {
   const [color] = await sampleTiles(h, snapshot.grid, [tile]);
   return color;

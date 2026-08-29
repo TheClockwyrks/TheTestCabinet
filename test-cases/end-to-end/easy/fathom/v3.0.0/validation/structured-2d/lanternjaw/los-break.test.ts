@@ -42,7 +42,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
@@ -161,7 +161,7 @@ check("Rock breaks its sense", async () => {
     };
   });
 
-  requireScene(read.end, guard);
+  requireSceneHeld(read.end, guard);
 
   // The fixture's own geometry: both standoffs are well inside the range the build
   // itself reports, so the rock is the only thing that differs.

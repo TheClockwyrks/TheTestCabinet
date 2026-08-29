@@ -31,7 +31,7 @@
 // patrol travels at (`gloamfin/wander-speed`), or how the fix was taken
 // (`gloamfin/fix-and-alert`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -50,11 +50,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
@@ -114,101 +114,99 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("It chases at GLOAMFIN_CHASE_SPEED", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, RUN);
-    const index = requirePred(board.snap, "gloamfin");
-    const quiet = await denAll(h, ["gloamfin"]);
-    // The forager first, and parked: `setPredatorState(index, "chase")` fixes on
-    // "the forager's current tile" (specs/instrumentation.md), so it has to be
-    // standing at the far end of the run by the time the Gloamfin is posed.
-    await parkForager(h, board.mark("F"));
-    await clearUnderfoot(h);
-    await placePredator(h, index, board.mark("P"), {
-      // Faced down the corridor at the forager. A heading pointing anywhere else
-      // would put a turn into the opening steps, and this point measures the run
-      // rather than the turn.
-      dir: "left",
-      state: "chase",
-    });
-    const guard = await sceneGuard(h, quiet);
-
-    const opening = h.snapshot();
-
-    const run = await captureReplay(h, "cap", async () => {
-      await h.advance(SETTLE_TICKS);
-      let previous = gloamfinOf(h.snapshot(), index);
-      const from = previous;
-      let ground = 0;
-      let reported = 0;
-      let fastest = Number.NEGATIVE_INFINITY;
-      const states = new Set<string>();
-      for (let tick = 0; tick < MEASURE_TICKS; tick += 1) {
-        await h.advance(1);
-        const now = gloamfinOf(h.snapshot(), index);
-        ground += groundBetween(previous, now);
-        reported += now.speed;
-        fastest = Math.max(fastest, now.speed);
-        states.add(now.state);
-        previous = now;
-      }
-      const settled = h.snapshot();
-      // Past the readings, so the clip carries a run a reviewer can watch. Nothing
-      // after this line reaches an assertion.
-      await h.advance(TAIL_TICKS);
-      return {
-        from,
-        to: previous,
-        covered: (ground * TICK_HZ) / MEASURE_TICKS,
-        reported: reported / MEASURE_TICKS,
-        fastest,
-        states,
-        settled,
-      };
-    });
-
-    requireSceneHeld(h.snapshot(), guard);
-    requirePredatorMotion(
-      opening,
-      run.settled,
-      "gloamfin",
-      "chase down the straight corridor this scenario posed for it",
-    );
-
-    assertEqual(
-      [...run.states].join(","),
-      "chase",
-      "the Gloamfin's state across the window — this point measures a CHASE, and " +
-        "specs/predators/gloamfin.md gives a wander and a search speeds of their own",
-    );
-    assertLessThanOrEqual(
-      Math.abs(run.reported - GLOAMFIN_CHASE_SPEED),
-      SPEED_SLACK,
-      `how far the reported speed sat from GLOAMFIN_CHASE_SPEED ` +
-        `(${GLOAMFIN_CHASE_SPEED}) over ${MEASURE_TICKS} ticks of a straight ` +
-        `chase — specs/predators/gloamfin.md opens a fresh acquisition at that cap`,
-    );
-    assertLessThanOrEqual(
-      Math.abs(run.covered - GLOAMFIN_CHASE_SPEED),
-      SPEED_SLACK,
-      `how far the ground it actually covered sat from GLOAMFIN_CHASE_SPEED ` +
-        `(${GLOAMFIN_CHASE_SPEED}) logical units a second, over ` +
-        `${MEASURE_TICKS} ticks`,
-    );
-    assertLessThanOrEqual(
-      run.fastest,
-      GLOAMFIN_CHASE_SPEED + CAP_SLACK,
-      `the fastest speed reported anywhere in the window — ` +
-        `specs/predators/gloamfin.md makes GLOAMFIN_CHASE_SPEED ` +
-        `(${GLOAMFIN_CHASE_SPEED}) a ceiling the chase speed is "at most"`,
-    );
-    assertGreaterThan(
-      run.covered,
-      FORAGER_SPEED,
-      `the ground it covered, in logical units a second, against the forager's ` +
-        `own FORAGER_SPEED (${FORAGER_SPEED}) — specs/predators/gloamfin.md opens ` +
-        `the chase "above the forager's own speed"`,
-    );
+check("It chases at GLOAMFIN_CHASE_SPEED", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, RUN);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
+  // The forager first, and parked: `setPredatorState(index, "chase")` fixes on
+  // "the forager's current tile" (specs/instrumentation.md), so it has to be
+  // standing at the far end of the run by the time the Gloamfin is posed.
+  await parkForager(h, board.mark("F"));
+  await clearUnderfoot(h);
+  await placePredator(h, index, board.mark("P"), {
+    // Faced down the corridor at the forager. A heading pointing anywhere else
+    // would put a turn into the opening steps, and this point measures the run
+    // rather than the turn.
+    dir: "left",
+    state: "chase",
   });
+  const guard = await sceneGuard(h, quiet);
+
+  const opening = h.snapshot();
+
+  const run = await captureReplay(h, "cap", async () => {
+    await h.advance(SETTLE_TICKS);
+    let previous = gloamfinOf(h.snapshot(), index);
+    const from = previous;
+    let ground = 0;
+    let reported = 0;
+    let fastest = Number.NEGATIVE_INFINITY;
+    const states = new Set<string>();
+    for (let tick = 0; tick < MEASURE_TICKS; tick += 1) {
+      await h.advance(1);
+      const now = gloamfinOf(h.snapshot(), index);
+      ground += groundBetween(previous, now);
+      reported += now.speed;
+      fastest = Math.max(fastest, now.speed);
+      states.add(now.state);
+      previous = now;
+    }
+    const settled = h.snapshot();
+    // Past the readings, so the clip carries a run a reviewer can watch. Nothing
+    // after this line reaches an assertion.
+    await h.advance(TAIL_TICKS);
+    return {
+      from,
+      to: previous,
+      covered: (ground * TICK_HZ) / MEASURE_TICKS,
+      reported: reported / MEASURE_TICKS,
+      fastest,
+      states,
+      settled,
+    };
+  });
+
+  requireSceneHeld(h.snapshot(), guard);
+  requirePredatorMotion(
+    opening,
+    run.settled,
+    index,
+    "chase down the straight corridor this scenario posed for it",
+  );
+
+  assertEqual(
+    [...run.states].join(","),
+    "chase",
+    "the Gloamfin's state across the window — this point measures a CHASE, and " +
+      "specs/predators/gloamfin.md gives a wander and a search speeds of their own",
+  );
+  assertLessThanOrEqual(
+    Math.abs(run.reported - GLOAMFIN_CHASE_SPEED),
+    SPEED_SLACK,
+    `how far the reported speed sat from GLOAMFIN_CHASE_SPEED ` +
+      `(${GLOAMFIN_CHASE_SPEED}) over ${MEASURE_TICKS} ticks of a straight ` +
+      `chase — specs/predators/gloamfin.md opens a fresh acquisition at that cap`,
+  );
+  assertLessThanOrEqual(
+    Math.abs(run.covered - GLOAMFIN_CHASE_SPEED),
+    SPEED_SLACK,
+    `how far the ground it actually covered sat from GLOAMFIN_CHASE_SPEED ` +
+      `(${GLOAMFIN_CHASE_SPEED}) logical units a second, over ` +
+      `${MEASURE_TICKS} ticks`,
+  );
+  assertLessThanOrEqual(
+    run.fastest,
+    GLOAMFIN_CHASE_SPEED + CAP_SLACK,
+    `the fastest speed reported anywhere in the window — ` +
+      `specs/predators/gloamfin.md makes GLOAMFIN_CHASE_SPEED ` +
+      `(${GLOAMFIN_CHASE_SPEED}) a ceiling the chase speed is "at most"`,
+  );
+  assertGreaterThan(
+    run.covered,
+    FORAGER_SPEED,
+    `the ground it covered, in logical units a second, against the forager's ` +
+      `own FORAGER_SPEED (${FORAGER_SPEED}) — specs/predators/gloamfin.md opens ` +
+      `the chase "above the forager's own speed"`,
+  );
 });

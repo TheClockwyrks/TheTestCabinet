@@ -66,7 +66,7 @@ import {
   parkForager,
   requireKind,
   requirePredatorMotion,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { emitPulse, gloamfinPulses, sinceEmit } from "./pulse";
@@ -252,7 +252,7 @@ check(
       return { steps, arrival, closing, opening, mid, chased };
     });
 
-    requireScene(h.snapshot(), watch);
+    requireSceneHeld(h.snapshot(), watch);
 
     // One tick after the press the sound has gone nowhere, so nothing can have
     // been heard: this is the half of the claim that says "not at the moment the

@@ -37,7 +37,7 @@
 // resolves each action the game registered (specs/movement.md), so the key
 // dispatched here is the one a player presses.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
 import {
@@ -48,7 +48,7 @@ import {
   travelAlong,
   type Harness,
 } from "../harness";
-import { denAll, graded, requireSceneHeld, sceneGuard } from "../scene";
+import { check, denAll, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The first key specs/movement.md binds the `left` action to. */
 const KEY = "ArrowLeft";
@@ -80,35 +80,33 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("ArrowLeft swims the forager left", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const run = await poseMoveKeyRun(h, "left");
-    const quiet = await denAll(h);
-    // The forager is this check's SUBJECT, so it is expected to leave the tile it
-    // was parked on. What the guard still watches is everything else: a life lost,
-    // a screen change, a predator loose on the board.
-    const watch = await sceneGuard(h, quiet, { foragerParked: false });
+check("ArrowLeft swims the forager left", async () => {
+  await startPlaying(h);
+  const run = await poseMoveKeyRun(h, "left");
+  const quiet = await denAll(h);
+  // The forager is this check's SUBJECT, so it is expected to leave the tile it
+  // was parked on. What the guard still watches is everything else: a life lost,
+  // a screen change, a predator loose on the board.
+  const watch = await sceneGuard(h, quiet, { foragerParked: false });
 
-    const swum = await captureReplay(h, "move", () =>
-      driveHeldKey(h, KEY, {
-        holdTicks: HOLD_TICKS,
-        tailTicks: TAIL_TICKS,
-      }),
-    );
+  const swum = await captureReplay(h, "move", () =>
+    driveHeldKey(h, KEY, {
+      holdTicks: HOLD_TICKS,
+      tailTicks: TAIL_TICKS,
+    }),
+  );
 
-    requireSceneHeld(swum.after, watch);
+  requireSceneHeld(swum.after, watch);
 
-    // Half a tile: far more than any sub-unit drift, and comfortably under the
-    // whole tile a conforming build covers in the window. How FAST it travels is
-    // maze-movement/constant-speed's verdict; this one asks only that the key
-    // sent it that way.
-    assertGreaterThan(
-      travelAlong(swum.before, swum.after, "left"),
-      swum.before.grid.tile / 2,
-      `travel left over ${HOLD_TICKS} ticks from tile (${run.tx}, ${run.ty})`,
-    );
-    assertEqual(swum.after.forager.dir, "left", "the forager's facing");
-    assertEqual(swum.after.forager.moving, true, "the forager is traveling");
-  });
+  // Half a tile: far more than any sub-unit drift, and comfortably under the
+  // whole tile a conforming build covers in the window. How FAST it travels is
+  // maze-movement/constant-speed's verdict; this one asks only that the key
+  // sent it that way.
+  assertGreaterThan(
+    travelAlong(swum.before, swum.after, "left"),
+    swum.before.grid.tile / 2,
+    `travel left over ${HOLD_TICKS} ticks from tile (${run.start.tx}, ${run.start.ty})`,
+  );
+  assertEqual(swum.after.forager.dir, "left", "the forager's facing");
+  assertEqual(swum.after.forager.moving, true, "the forager is traveling");
 });

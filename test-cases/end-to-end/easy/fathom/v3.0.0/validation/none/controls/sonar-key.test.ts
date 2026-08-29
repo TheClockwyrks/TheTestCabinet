@@ -26,16 +26,16 @@
 // following one, and both conform, so the read is taken a few ticks later while
 // the front is still far inside its range.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
-import { captureReplay, createHarness, type Harness } from "../harness";
 import {
-  quietBoard,
-  requireSceneHeld,
-  sceneGuard,
+  captureReplay,
+  createHarness,
+  type Harness,
   startPlaying,
-} from "../scene";
+} from "../harness";
+import { check, quietBoard, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The key specs/movement.md binds the `a` action to. */
 const KEY = "Space";
@@ -73,15 +73,15 @@ const TAIL_TICKS = 90;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("emits a forager sonar pulse on Space", async () => {
+check("emits a forager sonar pulse on Space", async () => {
   await startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
   await quietBoard(h);
@@ -98,7 +98,7 @@ it("emits a forager sonar pulse on Space", async () => {
     return { armed, flying };
   });
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
 
   // The premise this point's own description states, posed through
   // `setSonarCooldown(0)`: "At `0` the pulse is ready and the snapshot reports

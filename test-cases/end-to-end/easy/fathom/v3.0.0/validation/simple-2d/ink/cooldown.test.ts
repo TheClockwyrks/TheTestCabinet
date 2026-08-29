@@ -27,7 +27,7 @@
 // `controls/ink-key`'s and which this stands down on; what the cloud is, which is
 // `ink/cloud`'s; and what ink does to a hunter, which belongs to each hunter.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -42,9 +42,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -119,11 +119,12 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("arms INK_COOLDOWN on a cloud, refuses a press inside it, and is ready again exactly when it reaches 0", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "arms INK_COOLDOWN on a cloud, refuses a press inside it, and is ready again exactly when it reaches 0",
+  async () => {
     await startPlaying(h);
     const run = await poseStraightRun(h, RUN_TILES);
-    await parkForager(h, { tx: run.tx, ty: run.ty });
+    await parkForager(h, run.start);
     await clearUnderfoot(h);
     const quiet = await denAll(h);
     const watch = await sceneGuard(h, quiet);
@@ -248,5 +249,5 @@ it("arms INK_COOLDOWN on a cloud, refuses a press inside it, and is ready again 
         "ink.cooldown on the tick ink.ready returned",
       );
     }
-  });
-});
+  },
+);

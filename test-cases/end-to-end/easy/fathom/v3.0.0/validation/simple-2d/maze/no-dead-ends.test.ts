@@ -19,11 +19,11 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { deadEnds } from "../maze";
-import { graded } from "../scene";
+import { check } from "../scene";
 import { captureBoard, freshBoards, requireLaidOut, witness } from "./boards";
 
 /**
@@ -47,8 +47,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("lays out a braided maze, with at least two corridor neighbors on every corridor tile", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "lays out a braided maze, with at least two corridor neighbors on every corridor tile",
+  async () => {
     const boards = await freshBoards(h);
     requireLaidOut(boards);
 
@@ -71,5 +72,5 @@ it("lays out a braided maze, with at least two corridor neighbors on every corri
           (named === "" ? "" : `, at ${named}`),
       );
     }
-  });
-});
+  },
+);

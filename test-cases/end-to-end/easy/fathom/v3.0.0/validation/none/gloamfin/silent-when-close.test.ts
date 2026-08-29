@@ -27,7 +27,7 @@
 // the floor is (`gloamfin/ping-floor`), or that close hearing takes a fix at all
 // (`gloamfin/fix-and-alert`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertDeepEqual,
   assertEqual,
@@ -41,15 +41,17 @@ import {
   createHarness,
   type FathomSnapshot,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
-  denAllExcept,
+  check,
+  denAll,
   parkForager,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
 } from "../scene";
-import { apart, gloamfinOf, requireGloamfin, sweep } from "./pings";
+import { apart, gloamfinOf, sweep } from "./pings";
 
 /**
  * The fixture: the forager walled into `F`, the Gloamfin walled into `G`
@@ -96,19 +98,19 @@ const TAIL_TICKS = 40;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("It goes silent while it holds you by ear", async () => {
+check("It goes silent while it holds you by ear", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, SEALED_PAIR);
-  const index = requireGloamfin(h, board.snap);
-  const quiet = await denAllExcept(h, [index]);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
   await placePredator(h, index, board.mark("G"), { state: "wander" });
   await placeForager(h, board.mark("F"), "right");
   // The forager is moved by this scenario on purpose, so the guard watches
@@ -147,7 +149,7 @@ it("It goes silent while it holds you by ear", async () => {
     return { held, apartNow, ping };
   });
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
 
   // The scenario stood as posed: the pair inside hearing range, and neither of
   // them anywhere but the tile it was walled into.

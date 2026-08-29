@@ -60,7 +60,7 @@ import {
   quietBoard,
   requireKind,
   requirePredatorMotion,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
   standDown,
 } from "../scene";
@@ -217,7 +217,7 @@ check("Ink does nothing to it", async () => {
     };
   });
 
-  requireScene(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
 
   for (const [what, crossing, opening, closed] of [
     [

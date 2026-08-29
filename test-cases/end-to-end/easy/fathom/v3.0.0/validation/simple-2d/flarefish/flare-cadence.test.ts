@@ -29,13 +29,13 @@
 // `flarefish/flare-reveals`'s; and whether anything of the Flarefish is drawn
 // between flares, which is `flarefish/no-tell`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { FLARE_BLOOM, FLARE_CHARGE, FLARE_INTERVAL } from "../../src/constants";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import type { FathomSnapshot } from "../surface";
 import {
-  graded,
+  check,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -99,8 +99,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("charges for FLARE_CHARGE, blooms for FLARE_BLOOM, and charges again a whole FLARE_INTERVAL after the bloom ends", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "charges for FLARE_CHARGE, blooms for FLARE_BLOOM, and charges again a whole FLARE_INTERVAL after the bloom ends",
+  async () => {
     await startPlaying(h);
     const room = await poseFlareRoom(h);
     const guard = await sceneGuard(h, room.quiet);
@@ -284,5 +285,5 @@ it("charges for FLARE_CHARGE, blooms for FLARE_BLOOM, and charges again a whole 
         `(${FLARE_INTERVAL} s) reloaded as the bloom ended, after a ` +
         `${FLARE_CHARGE} s charge and a ${FLARE_BLOOM} s bloom`,
     );
-  });
-});
+  },
+);

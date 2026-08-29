@@ -42,7 +42,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 
@@ -144,7 +144,7 @@ check("The Lanternjaw fires no alert", async () => {
     return { fixed, seen, end: h.snapshot() };
   });
 
-  requireScene(read.end, guard);
+  requireSceneHeld(read.end, guard);
 
   if (!read.fixed.hit) {
     failPrecondition(

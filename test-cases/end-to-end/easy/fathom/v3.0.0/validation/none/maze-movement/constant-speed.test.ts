@@ -32,7 +32,7 @@
 // past the far end of the measured span, so nothing here turns and nothing runs
 // into rock.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertLessThanOrEqual } from "../assert";
 import { ARROW_KEY, FORAGER_SPEED, TICK_HZ } from "../constants";
 import { poseStraightRun } from "../fixtures";
@@ -42,13 +42,14 @@ import {
   seconds,
   type FathomSnapshot,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
-  denAllExcept,
+  check,
+  denAll,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
-  startPlaying,
 } from "../scene";
 
 /** The corridor the run is measured on, in tiles. */
@@ -161,7 +162,6 @@ function judge(run: Drive, where: string): void {
   // rather than reporting a speed of zero as a speed fault.
   const last = run.marks[SEGMENTS - 1];
   requireSwim(
-    h,
     run.resting.forager,
     last.forager,
     `swim ${where}, the ${RUN_TILES}-tile corridor this check measures`,
@@ -190,33 +190,39 @@ function judge(run: Drive, where: string): void {
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("swims a straight corridor at FORAGER_SPEED, with no ramp and no drift", async () => {
-  await startPlaying(h);
+check(
+  "swims a straight corridor at FORAGER_SPEED, with no ramp and no drift",
+  async () => {
+    await startPlaying(h);
 
-  for (const [index, run] of RUNS.entries()) {
-    const posed = await poseStraightRun(h, RUN_TILES, { dir: run.dir });
-    const quiet = await denAllExcept(h);
-    // The forager is the SUBJECT, so it is not held to staying put. What the
-    // guard still catches is a life lost, a predator loose, or the dive leaving
-    // live play — any of which would make this a reading of some other situation.
-    const guard = await sceneGuard(h, quiet, { foragerParked: false });
+    for (const [index, run] of RUNS.entries()) {
+      const posed = await poseStraightRun(h, RUN_TILES, { dir: run.dir });
+      const quiet = await denAll(h);
+      // The forager is the SUBJECT, so it is not held to staying put. What the
+      // guard still catches is a life lost, a predator loose, or the dive leaving
+      // live play — any of which would make this a reading of some other situation.
+      const guard = await sceneGuard(h, quiet, { foragerParked: false });
 
-    // The clip is the first run; the second is the same reading on the other
-    // axis and needs no picture of its own.
-    const held =
-      index === 0
-        ? await captureReplay(h, "run", () => drive(run.key))
-        : await drive(run.key);
+      // The clip is the first run; the second is the same reading on the other
+      // axis and needs no picture of its own.
+      const held =
+        index === 0
+          ? await captureReplay(h, "run", () => drive(run.key))
+          : await drive(run.key);
 
-    requireSceneHeld(h, await h.snapshot(), guard);
-    judge(held, `${run.label} from tile (${posed.tx}, ${posed.ty})`);
-  }
-});
+      requireSceneHeld(await h.snapshot(), guard);
+      judge(
+        held,
+        `${run.label} from tile (${posed.start.tx}, ${posed.start.ty})`,
+      );
+    }
+  },
+);

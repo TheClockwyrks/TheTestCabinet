@@ -123,6 +123,15 @@ export interface DrifterSnapshot {
   y: number;
   tx: number;
   ty: number;
+  /**
+   * True while its body is being drawn this instant, by the forager's light or
+   * by a flare.
+   *
+   * Its amber mote is a separate drawing and is not what this answers for: the
+   * mote is one of the maze's amber lights and shows under its own rule, while
+   * `lit` says whether the jellyfish itself is drawn (specs/state.md).
+   */
+  lit: boolean;
 }
 
 /** One sonar wavefront in flight, as a snapshot reports it. */

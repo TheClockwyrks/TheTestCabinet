@@ -52,7 +52,7 @@
 // metrics and clock are — the host the engine runs on — and without it the build
 // is asked to draw from art no one gave it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -76,10 +76,10 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -359,150 +359,147 @@ afterEach(() => {
   restoreHost(host);
 });
 
-it("draws every element from its own seeded sheet", async (ctx) => {
-  await graded(ctx, async () => {
-    const seeded = await readSeededFrames();
+check("draws every element from its own seeded sheet", async () => {
+  const seeded = await readSeededFrames();
 
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const home = board.mark("F");
-    await parkForager(h, home);
-    // The pellet under the forager, eaten off camera with `G` put back to the
-    // zero a dive opens on, so the hunters' light ranges stay at their `G = 0`
-    // figures and none of them senses the forager across the rock.
-    await clearUnderfoot(h);
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const home = board.mark("F");
+  await parkForager(h, home);
+  // The pellet under the forager, eaten off camera with `G` put back to the
+  // zero a dive opens on, so the hunters' light ranges stay at their `G = 0`
+  // figures and none of them senses the forager across the rock.
+  await clearUnderfoot(h);
 
-    const roster = h.snapshot();
-    const lanternjaw = requirePred(roster, "lanternjaw");
-    const gloamfin = requirePred(roster, "gloamfin");
-    const flarefish = requirePred(roster, "flarefish");
-    for (const [index, letter] of [
-      [lanternjaw, "L"],
-      [gloamfin, "G"],
-      [flarefish, "X"],
-    ] as const) {
-      const pocket = board.mark(letter);
-      h.debug.setPredatorTile(index, pocket.tx, pocket.ty);
-      h.debug.setPredatorState(index, "wander");
-    }
-    const drop = board.mark("D");
-    h.debug.spawnDrifter(drop.tx, drop.ty);
-    const watch = await sceneGuard(h);
+  const roster = h.snapshot();
+  const lanternjaw = requireKind(roster, "lanternjaw");
+  const gloamfin = requireKind(roster, "gloamfin");
+  const flarefish = requireKind(roster, "flarefish");
+  for (const [index, letter] of [
+    [lanternjaw, "L"],
+    [gloamfin, "G"],
+    [flarefish, "X"],
+  ] as const) {
+    const pocket = board.mark(letter);
+    h.debug.setPredatorTile(index, pocket.tx, pocket.ty);
+    h.debug.setPredatorState(index, "wander");
+  }
+  const drop = board.mark("D");
+  h.debug.spawnDrifter(drop.tx, drop.ty);
+  const watch = await sceneGuard(h);
 
-    // Wait for the bloom on the build's own cadence, under a hard ceiling.
-    const bloom = await h.until(
-      (snap) => snap.predators[flarefish]?.flaring === true,
-      { maxFrames: BLOOM_DEADLINE_TICKS, poll: BLOOM_POLL_TICKS },
-    );
-    assertTrue(
-      bloom.hit,
-      `a Flarefish bloom within ${BLOOM_DEADLINE_TICKS} ticks of being posed ` +
-        `into "wander", which specs/predators/flarefish.md puts at most ` +
-        `${FLARE_INTERVAL + FLARE_CHARGE} s away — the flare-bloom sheet is ` +
-        `drawn only while one burns`,
-    );
+  // Wait for the bloom on the build's own cadence, under a hard ceiling.
+  const bloom = await h.until(
+    (snap) => snap.predators[flarefish]?.flaring === true,
+    { maxFrames: BLOOM_DEADLINE_TICKS, poll: BLOOM_POLL_TICKS },
+  );
+  assertTrue(
+    bloom.hit,
+    `a Flarefish bloom within ${BLOOM_DEADLINE_TICKS} ticks of being posed ` +
+      `into "wander", which specs/predators/flarefish.md puts at most ` +
+      `${FLARE_INTERVAL + FLARE_CHARGE} s away — the flare-bloom sheet is ` +
+      `drawn only while one burns`,
+  );
 
-    // Read in "chase", whose frames no other sheet carries, so on a build that
-    // draws what specs/assets.md asks the match below is unambiguous. It is boxed
-    // in by rock, so the pose moves it nowhere.
-    h.debug.setPredatorState(lanternjaw, "chase");
+  // Read in "chase", whose frames no other sheet carries, so on a build that
+  // draws what specs/assets.md asks the match below is unambiguous. It is boxed
+  // in by rock, so the pose moves it nowhere.
+  h.debug.setPredatorState(lanternjaw, "chase");
 
-    // One frame, read on its own: everything before it is cleared away so the
-    // draws below are the draws of exactly the frame the still shows.
-    h.calls.length = 0;
-    await h.advance(1);
-    const blits = blitsOf(h.calls, seeded);
-    const snap = h.snapshot();
-    // Before the assertions, so a failing check still leaves the picture of the
-    // frame whose draws were read.
-    captureStill(h, "art");
+  // One frame, read on its own: everything before it is cleared away so the
+  // draws below are the draws of exactly the frame the still shows.
+  h.calls.length = 0;
+  await h.advance(1);
+  const blits = blitsOf(h.calls, seeded);
+  const snap = h.snapshot();
+  // Before the assertions, so a failing check still leaves the picture of the
+  // frame whose draws were read.
+  captureStill(h, "art");
 
-    requireSceneHeld(snap, watch);
+  requireSceneHeld(snap, watch);
 
-    // Each hunter is drawn only while something lights it (specs/sensing.md),
-    // and out here in the dark that something is the bloom, so a build whose
-    // flare reveals nothing leaves this scenario with no bodies on screen to
-    // read a sheet off.
-    const dark = (
-      [
-        ["Lanternjaw", lanternjaw],
-        ["Gloamfin", gloamfin],
-        ["Flarefish", flarefish],
-      ] as const
-    ).filter(([, index]) => snap.predators[index]?.lit !== true);
-    if (dark.length > 0) {
-      unmetPrecondition(
-        `the ${dark.map(([name]) => name).join(" and ")} stood inside the ` +
-          `FLARE_RADIUS (${FLARE_RADIUS}) of a burning bloom and still reported ` +
-          "lit false, so no body was drawn for this point to read a sheet off; " +
-          "what a bloom lights is flarefish/flare-reveals's verdict, not this " +
-          "one's",
-      );
-    }
+  // Each hunter is drawn only while something lights it (specs/sensing.md),
+  // and out here in the dark that something is the bloom, so a build whose
+  // flare reveals nothing leaves this scenario with no bodies on screen to
+  // read a sheet off.
+  const dark = (
+    [
+      ["Lanternjaw", lanternjaw],
+      ["Gloamfin", gloamfin],
+      ["Flarefish", flarefish],
+    ] as const
+  ).filter(([, index]) => snap.predators[index]?.lit !== true);
+  if (dark.length > 0) {
+    unmetPrecondition(
+      `the ${dark.map(([name]) => name).join(" and ")} stood inside the ` +
+        `FLARE_RADIUS (${FLARE_RADIUS}) of a burning bloom and still reported ` +
+        "lit false, so no body was drawn for this point to read a sheet off; " +
+        "what a bloom lights is flarefish/flare-reveals's verdict, not this " +
+        "one's",
+    );
+  }
 
-    const at = (index: number): { x: number; y: number } => ({
-      x: snap.predators[index].x,
-      y: snap.predators[index].y,
-    });
-
-    assertTrue(
-      drawnFrom(blits, "glimmerfin", snap.forager).length > 0,
-      `the forager, at (${snap.forager.x}, ${snap.forager.y}), drawn from a ` +
-        `32 x 32 frame of assets/glimmerfin/ (specs/assets.md)`,
-    );
-    assertTrue(
-      drawnFrom(blits, "lanternjaw", at(lanternjaw)).length > 0,
-      `the Lanternjaw, at (${at(lanternjaw).x}, ${at(lanternjaw).y}), drawn ` +
-        `from a 32 x 32 frame of assets/lanternjaw/ (specs/assets.md)`,
-    );
-    assertTrue(
-      drawnFrom(blits, "gloamfin", at(gloamfin)).length > 0,
-      `the Gloamfin, at (${at(gloamfin).x}, ${at(gloamfin).y}), drawn from a ` +
-        `32 x 32 frame of assets/gloamfin/ (specs/assets.md)`,
-    );
-    assertTrue(
-      drawnFrom(blits, "flarefish", at(flarefish)).length > 0,
-      `the Flarefish, at (${at(flarefish).x}, ${at(flarefish).y}), drawn from ` +
-        `a 32 x 32 frame of assets/flarefish/ (specs/assets.md)`,
-    );
-    assertTrue(
-      drawnFrom(blits, "flare-bloom", at(flarefish)).length > 0,
-      `the burning flare, centered on the Flarefish at (${at(flarefish).x}, ` +
-        `${at(flarefish).y}), drawn from a 128 x 128 frame of ` +
-        `assets/flare-bloom/ (specs/assets.md); its lit radius is FLARE_RADIUS ` +
-        `(${FLARE_RADIUS})`,
-    );
-    const drifter = snap.drifters[0];
-    assertTrue(
-      drifter !== undefined && drawnFrom(blits, "drifter", drifter).length > 0,
-      `the bonus drifter, at (${drifter?.x}, ${drifter?.y}), drawn from a ` +
-        `32 x 32 frame of assets/drifter/ — which specs/assets.md makes the ` +
-        `same pixels as the Lanternjaw's disguise frames, so either name ` +
-        `satisfies it`,
-    );
-
-    // And the trench itself: rock from the wall autotile, corridor from the
-    // floor frame (specs/assets.md).
-    assertTrue(
-      blits.some((blit) =>
-        blit.matches.some(
-          (frame) =>
-            frame.sheet === "trench-walls" && frame.index < TRENCH_WALL_FRAMES,
-        ),
-      ),
-      "at least one rock tile drawn from the sixteen-frame wall autotile of " +
-        "assets/trench-walls/ (specs/assets.md)",
-    );
-    assertTrue(
-      blits.some((blit) =>
-        blit.matches.some(
-          (frame) =>
-            frame.sheet === "trench-walls" &&
-            frame.index === TRENCH_FLOOR_FRAME,
-        ),
-      ),
-      `at least one open tile drawn from frame ${TRENCH_FLOOR_FRAME} of ` +
-        `assets/trench-walls/, the corridor floor (specs/assets.md)`,
-    );
+  const at = (index: number): { x: number; y: number } => ({
+    x: snap.predators[index].x,
+    y: snap.predators[index].y,
   });
+
+  assertTrue(
+    drawnFrom(blits, "glimmerfin", snap.forager).length > 0,
+    `the forager, at (${snap.forager.x}, ${snap.forager.y}), drawn from a ` +
+      `32 x 32 frame of assets/glimmerfin/ (specs/assets.md)`,
+  );
+  assertTrue(
+    drawnFrom(blits, "lanternjaw", at(lanternjaw)).length > 0,
+    `the Lanternjaw, at (${at(lanternjaw).x}, ${at(lanternjaw).y}), drawn ` +
+      `from a 32 x 32 frame of assets/lanternjaw/ (specs/assets.md)`,
+  );
+  assertTrue(
+    drawnFrom(blits, "gloamfin", at(gloamfin)).length > 0,
+    `the Gloamfin, at (${at(gloamfin).x}, ${at(gloamfin).y}), drawn from a ` +
+      `32 x 32 frame of assets/gloamfin/ (specs/assets.md)`,
+  );
+  assertTrue(
+    drawnFrom(blits, "flarefish", at(flarefish)).length > 0,
+    `the Flarefish, at (${at(flarefish).x}, ${at(flarefish).y}), drawn from ` +
+      `a 32 x 32 frame of assets/flarefish/ (specs/assets.md)`,
+  );
+  assertTrue(
+    drawnFrom(blits, "flare-bloom", at(flarefish)).length > 0,
+    `the burning flare, centered on the Flarefish at (${at(flarefish).x}, ` +
+      `${at(flarefish).y}), drawn from a 128 x 128 frame of ` +
+      `assets/flare-bloom/ (specs/assets.md); its lit radius is FLARE_RADIUS ` +
+      `(${FLARE_RADIUS})`,
+  );
+  const drifter = snap.drifters[0];
+  assertTrue(
+    drifter !== undefined && drawnFrom(blits, "drifter", drifter).length > 0,
+    `the bonus drifter, at (${drifter?.x}, ${drifter?.y}), drawn from a ` +
+      `32 x 32 frame of assets/drifter/ — which specs/assets.md makes the ` +
+      `same pixels as the Lanternjaw's disguise frames, so either name ` +
+      `satisfies it`,
+  );
+
+  // And the trench itself: rock from the wall autotile, corridor from the
+  // floor frame (specs/assets.md).
+  assertTrue(
+    blits.some((blit) =>
+      blit.matches.some(
+        (frame) =>
+          frame.sheet === "trench-walls" && frame.index < TRENCH_WALL_FRAMES,
+      ),
+    ),
+    "at least one rock tile drawn from the sixteen-frame wall autotile of " +
+      "assets/trench-walls/ (specs/assets.md)",
+  );
+  assertTrue(
+    blits.some((blit) =>
+      blit.matches.some(
+        (frame) =>
+          frame.sheet === "trench-walls" && frame.index === TRENCH_FLOOR_FRAME,
+      ),
+    ),
+    `at least one open tile drawn from frame ${TRENCH_FLOOR_FRAME} of ` +
+      `assets/trench-walls/, the corridor floor (specs/assets.md)`,
+  );
 });

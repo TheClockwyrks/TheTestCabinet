@@ -31,7 +31,7 @@
 // `lanternjaw/light-range`'s — a build that never takes one stands this check down
 // rather than failing it twice.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -42,21 +42,24 @@ import {
   LANTERN_RANGE_GAIN,
   LINGER_TIME,
 } from "../constants";
-import { poseDimStandoff, predatorIndex, tileGap } from "../fixtures";
+import { tileGap } from "../maze";
+import { poseDimStandoff, predatorIndex } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   seconds,
   ticks,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
 
 /** The brightness the fix is earned at, which `setBrightness` holds steady. */
@@ -99,25 +102,25 @@ const TAIL_TICKS = 36;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("Dimming shakes its fix", async () => {
+check("Dimming shakes its fix", async () => {
   await startPlaying(h);
   const line = await poseDimStandoff(h);
   const index = predatorIndex(await h.snapshot(), "lanternjaw");
   if (index === null) {
-    h.unmet(
+    unmetPrecondition(
       "the roster carries no Lanternjaw, so this scenario has nothing to pose — " +
         "what the roster holds is the progression checks' verdict, not this one's",
     );
   }
-  const quiet = await denAllExcept(h, [index]);
+  const quiet = await denAll(h, [index]);
   await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
   await h.debug.setPredatorState(index, "wander");
   await parkForager(h, line.fix);
@@ -137,7 +140,7 @@ it("Dimming shakes its fix", async () => {
     poll: 1,
   });
   if (!fixed.hit) {
-    h.unmet(
+    unmetPrecondition(
       "the Lanternjaw took no fix on a forager " +
         `${tileGap(grid, line.pred, line.fix).toFixed(0)} units away on a clear ` +
         `line at G ${BRIGHT_G}, so there was no fix to shake — whether it senses ` +
@@ -168,7 +171,7 @@ it("Dimming shakes its fix", async () => {
     return { inside, gaveUp, at, end: await h.snapshot() };
   });
 
-  requireSceneHeld(h, shaken.end, guard);
+  requireSceneHeld(shaken.end, guard);
   assertEqual(
     `${shaken.end.forager.tx},${shaken.end.forager.ty}`,
     `${line.slip.tx},${line.slip.ty}`,

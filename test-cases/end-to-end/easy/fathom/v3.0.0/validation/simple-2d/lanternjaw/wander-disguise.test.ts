@@ -25,7 +25,7 @@
 // `lanternjaw/light-range`'s, so a build that never acquires stands this check
 // down rather than failing it twice.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   DRIFTER_SPEED,
   FORAGER_SPEED,
@@ -42,11 +42,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -129,101 +129,99 @@ async function travel(
   return { covered, speed: last.speed, state: last.state };
 }
 
-it("It wanders at the drifter's pace and hunts faster", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const line = await poseSightLine(h, GAP_TILES, {
-      lead: LEAD_TILES,
-      tail: TAIL_CORRIDOR,
-    });
-    const index = requirePred(h.snapshot(), "lanternjaw");
-    const quiet = await denAll(h, ["lanternjaw"]);
-    await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-    // Facing away down the corridor: its drift is the thing being timed, and a
-    // drift that closed the gap would shorten the standoff the second half rests
-    // on.
-    await h.debug.setPredatorDir(index, line.dir);
-    await h.debug.setPredatorState(index, "wander");
-    // Parked, its own pellet settled, and `G` left at the zero a dive opens on,
-    // which is what puts the forager outside the hunter's reach for the first half.
-    await parkForager(h, line.forager);
-    await clearUnderfoot(h);
-    const watch = await sceneGuard(h, quiet);
-
-    const read = await captureReplay(h, "disguise", async () => {
-      const wandered = await travel(h, index, WANDER_TICKS);
-
-      // The light comes up, and the Lanternjaw's own sensing does the rest. The
-      // tile is posed again first so the standoff is the one the fixture states
-      // whatever the drift did with it.
-      await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-      await h.debug.setPredatorState(index, "wander");
-      await h.debug.setBrightness(1);
-      const fixed = await h.until((s) => s.predators[index].state === "chase", {
-        maxFrames: FIX_TICKS,
-        poll: 1,
-      });
-      if (!fixed.hit) {
-        unmetPrecondition(
-          "the Lanternjaw took no fix on a fully lit forager seven tiles away on " +
-            "a clear line, so there was no chase to time; whether it senses the " +
-            "forager at all is lanternjaw/light-range's verdict, not this one's",
-        );
-      }
-      await h.advance(SETTLE_TICKS);
-      const chased = await travel(h, index, CHASE_TICKS);
-      await h.advance(CLIP_TICKS);
-      return { wandered, chased, end: h.snapshot() };
-    });
-
-    requireSceneHeld(read.end, watch);
-
-    const wanderSeconds = seconds(WANDER_TICKS);
-    const chaseSeconds = seconds(CHASE_TICKS);
-
-    assertEqual(
-      read.wandered.state,
-      "wander",
-      "the Lanternjaw held no fix while its disguised pace was measured",
-    );
-    assertLessThanOrEqual(
-      Math.abs(read.wandered.speed - DRIFTER_SPEED),
-      DRIFTER_SPEED * TOLERANCE,
-      `the speed an unfixed Lanternjaw reports against DRIFTER_SPEED ` +
-        `(${DRIFTER_SPEED}), the bonus drifter's pace — it read ` +
-        `${read.wandered.speed.toFixed(2)}`,
-    );
-    assertLessThanOrEqual(
-      Math.abs(read.wandered.covered - DRIFTER_SPEED * wanderSeconds),
-      DRIFTER_SPEED * wanderSeconds * TOLERANCE,
-      `the units it actually covered in ${wanderSeconds.toFixed(2)} s of wander ` +
-        `against the ${(DRIFTER_SPEED * wanderSeconds).toFixed(1)} DRIFTER_SPEED ` +
-        `calls for — it covered ${read.wandered.covered.toFixed(1)}`,
-    );
-
-    assertEqual(
-      read.chased.state,
-      "chase",
-      "the Lanternjaw held its fix throughout the hunting measurement",
-    );
-    assertLessThanOrEqual(
-      Math.abs(read.chased.speed - PREDATOR_SPEED),
-      PREDATOR_SPEED * TOLERANCE,
-      `the speed a fixed Lanternjaw reports against PREDATOR_SPEED ` +
-        `(${PREDATOR_SPEED}) — it read ${read.chased.speed.toFixed(2)}`,
-    );
-    assertLessThanOrEqual(
-      Math.abs(read.chased.covered - PREDATOR_SPEED * chaseSeconds),
-      PREDATOR_SPEED * chaseSeconds * TOLERANCE,
-      `the units it actually covered in ${chaseSeconds.toFixed(2)} s of chase ` +
-        `against the ${(PREDATOR_SPEED * chaseSeconds).toFixed(1)} PREDATOR_SPEED ` +
-        `calls for — it covered ${read.chased.covered.toFixed(1)}`,
-    );
-    assertLessThan(
-      read.chased.speed,
-      FORAGER_SPEED,
-      `the hunting speed against FORAGER_SPEED (${FORAGER_SPEED}), which it is ` +
-        "below, so a forager under way is never simply run down",
-    );
+check("It wanders at the drifter's pace and hunts faster", async () => {
+  await startPlaying(h);
+  const line = await poseSightLine(h, GAP_TILES, {
+    lead: LEAD_TILES,
+    tail: TAIL_CORRIDOR,
   });
+  const index = requireKind(h.snapshot(), "lanternjaw");
+  const quiet = await denAll(h, [index]);
+  await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
+  // Facing away down the corridor: its drift is the thing being timed, and a
+  // drift that closed the gap would shorten the standoff the second half rests
+  // on.
+  await h.debug.setPredatorDir(index, line.dir);
+  await h.debug.setPredatorState(index, "wander");
+  // Parked, its own pellet settled, and `G` left at the zero a dive opens on,
+  // which is what puts the forager outside the hunter's reach for the first half.
+  await parkForager(h, line.forager);
+  await clearUnderfoot(h);
+  const watch = await sceneGuard(h, quiet);
+
+  const read = await captureReplay(h, "disguise", async () => {
+    const wandered = await travel(h, index, WANDER_TICKS);
+
+    // The light comes up, and the Lanternjaw's own sensing does the rest. The
+    // tile is posed again first so the standoff is the one the fixture states
+    // whatever the drift did with it.
+    await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
+    await h.debug.setPredatorState(index, "wander");
+    await h.debug.setBrightness(1);
+    const fixed = await h.until((s) => s.predators[index].state === "chase", {
+      maxFrames: FIX_TICKS,
+      poll: 1,
+    });
+    if (!fixed.hit) {
+      unmetPrecondition(
+        "the Lanternjaw took no fix on a fully lit forager seven tiles away on " +
+          "a clear line, so there was no chase to time; whether it senses the " +
+          "forager at all is lanternjaw/light-range's verdict, not this one's",
+      );
+    }
+    await h.advance(SETTLE_TICKS);
+    const chased = await travel(h, index, CHASE_TICKS);
+    await h.advance(CLIP_TICKS);
+    return { wandered, chased, end: h.snapshot() };
+  });
+
+  requireSceneHeld(read.end, watch);
+
+  const wanderSeconds = seconds(WANDER_TICKS);
+  const chaseSeconds = seconds(CHASE_TICKS);
+
+  assertEqual(
+    read.wandered.state,
+    "wander",
+    "the Lanternjaw held no fix while its disguised pace was measured",
+  );
+  assertLessThanOrEqual(
+    Math.abs(read.wandered.speed - DRIFTER_SPEED),
+    DRIFTER_SPEED * TOLERANCE,
+    `the speed an unfixed Lanternjaw reports against DRIFTER_SPEED ` +
+      `(${DRIFTER_SPEED}), the bonus drifter's pace — it read ` +
+      `${read.wandered.speed.toFixed(2)}`,
+  );
+  assertLessThanOrEqual(
+    Math.abs(read.wandered.covered - DRIFTER_SPEED * wanderSeconds),
+    DRIFTER_SPEED * wanderSeconds * TOLERANCE,
+    `the units it actually covered in ${wanderSeconds.toFixed(2)} s of wander ` +
+      `against the ${(DRIFTER_SPEED * wanderSeconds).toFixed(1)} DRIFTER_SPEED ` +
+      `calls for — it covered ${read.wandered.covered.toFixed(1)}`,
+  );
+
+  assertEqual(
+    read.chased.state,
+    "chase",
+    "the Lanternjaw held its fix throughout the hunting measurement",
+  );
+  assertLessThanOrEqual(
+    Math.abs(read.chased.speed - PREDATOR_SPEED),
+    PREDATOR_SPEED * TOLERANCE,
+    `the speed a fixed Lanternjaw reports against PREDATOR_SPEED ` +
+      `(${PREDATOR_SPEED}) — it read ${read.chased.speed.toFixed(2)}`,
+  );
+  assertLessThanOrEqual(
+    Math.abs(read.chased.covered - PREDATOR_SPEED * chaseSeconds),
+    PREDATOR_SPEED * chaseSeconds * TOLERANCE,
+    `the units it actually covered in ${chaseSeconds.toFixed(2)} s of chase ` +
+      `against the ${(PREDATOR_SPEED * chaseSeconds).toFixed(1)} PREDATOR_SPEED ` +
+      `calls for — it covered ${read.chased.covered.toFixed(1)}`,
+  );
+  assertLessThan(
+    read.chased.speed,
+    FORAGER_SPEED,
+    `the hunting speed against FORAGER_SPEED (${FORAGER_SPEED}), which it is ` +
+      "below, so a forager under way is never simply run down",
+  );
 });

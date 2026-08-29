@@ -44,7 +44,7 @@
 // the long way round; a second of a predator correctly doing nothing is not. Its
 // verdict is no weaker for it — the same real simulation runs either way.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertNull } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -54,10 +54,10 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   sceneGuard,
   sceneHeld,
 } from "../scene";
@@ -148,18 +148,19 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("keeps a hunter to the corridors, rounding a spine and staying put when boxed in", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "keeps a hunter to the corridors, rounding a spine and staying put when boxed in",
+  async () => {
     const roster = await startPlaying(h);
     // Which kinds a roster carries is `scoring/depth-scaling`'s verdict; with no
     // Gloamfin there is no scenario to pose, so this check stands down.
-    const gloamfin = requirePred(roster, "gloamfin");
+    const gloamfin = requireKind(roster, "gloamfin");
 
     // ---- Boxed in, off-camera ------------------------------------------------
     const box = await poseMaze(h, BOXED);
     const boxed = box.mark("B");
     await parkForager(h, box.mark("F"));
-    const boxQuiet = await denAll(h, ["gloamfin"]);
+    const boxQuiet = await denAll(h, [gloamfin]);
     h.debug.setPredatorTile(gloamfin, boxed.tx, boxed.ty);
     h.debug.setPredatorState(gloamfin, "chase");
     const boxGuard = await sceneGuard(h, boxQuiet);
@@ -187,7 +188,7 @@ it("keeps a hunter to the corridors, rounding a spine and staying put when boxed
     const start = board.mark("P");
     const fix = board.mark("F");
     await parkForager(h, fix);
-    const quiet = await denAll(h, ["gloamfin"]);
+    const quiet = await denAll(h, [gloamfin]);
     h.debug.setPredatorTile(gloamfin, start.tx, start.ty);
     h.debug.setPredatorState(gloamfin, "chase");
     const guard = await sceneGuard(h, quiet);
@@ -249,5 +250,5 @@ it("keeps a hunter to the corridors, rounding a spine and staying put when boxed
         `within ${ROUTE_WATCH_TICKS} ticks, rather than pressing into the rock ` +
         "between them",
     );
-  });
-});
+  },
+);

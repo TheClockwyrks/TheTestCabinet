@@ -29,7 +29,7 @@
 // `lanternjaw/light-range`'s. A build that fails either stands this check down
 // rather than being failed twice for one fault.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -44,14 +44,16 @@ import {
   seconds,
   ticks,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
 
 /** The key `specs/movement.md` binds the `b` action — "releases an ink cloud" — to. */
@@ -104,25 +106,25 @@ const TAIL_TICKS = 36;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("Ink shakes its fix at once", async () => {
+check("Ink shakes its fix at once", async () => {
   await startPlaying(h);
   const stand = await poseInkStandoff(h, { gap: GAP_TILES });
   const index = predatorIndex(await h.snapshot(), "lanternjaw");
   if (index === null) {
-    h.unmet(
+    unmetPrecondition(
       "the roster carries no Lanternjaw, so this scenario has nothing to pose — " +
         "what the roster holds is the progression checks' verdict, not this one's",
     );
   }
-  const quiet = await denAllExcept(h, [index]);
+  const quiet = await denAll(h, [index]);
   await h.debug.setPredatorTile(index, stand.pred.tx, stand.pred.ty);
   await h.debug.setPredatorState(index, "wander");
   await parkForager(h, stand.ink);
@@ -136,7 +138,7 @@ it("Ink shakes its fix at once", async () => {
     poll: 1,
   });
   if (!fixed.hit) {
-    h.unmet(
+    unmetPrecondition(
       "the Lanternjaw took no fix on a lit forager on a clear line, so there was " +
         "no fix for ink to break — whether it senses the forager at all is " +
         "lanternjaw/light-range's verdict, not this one's",
@@ -151,7 +153,7 @@ it("Ink shakes its fix at once", async () => {
       { maxTicks: CLOUD_TICKS, poll: 1 },
     );
     if (!released.hit) {
-      h.unmet(
+      unmetPrecondition(
         `pressing ${INK_KEY} released no cloud with ink.ready posed true, so ` +
           "there was nothing on the line to blind the hunter — whether the key " +
           "releases ink is controls/ink-key's verdict, not this one's",
@@ -174,7 +176,7 @@ it("Ink shakes its fix at once", async () => {
     return { released, dropped, seen, watched, end: await h.snapshot() };
   });
 
-  requireSceneHeld(h, broke.end, guard);
+  requireSceneHeld(broke.end, guard);
 
   assertEqual(
     broke.dropped.hit,

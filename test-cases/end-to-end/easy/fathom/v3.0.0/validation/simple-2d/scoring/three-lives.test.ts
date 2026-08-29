@@ -23,7 +23,7 @@
 // ONLY THE LAST CATCH IS RECORDED. The clip this point ships is the run ending, so
 // the three lives before it are spent outside the capture.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { START_LIVES } from "../../src/constants";
 import { assertEqual } from "../assert";
 import {
@@ -33,7 +33,7 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { denAll, graded, unmetPrecondition } from "../scene";
+import { check, denAll, unmetPrecondition } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /**
@@ -100,81 +100,79 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Three lives, then game over", async (ctx) => {
-  await graded(ctx, async () => {
-    const opened = await startPlaying(h);
-    if (opened.predators.length === 0) {
-      unmetPrecondition(
-        "the roster carries no predator to make contact with; what a depth's " +
-          "roster holds is scoring/depth-scaling's verdict, not this one's",
-      );
-    }
-    await denAll(h);
+check("Three lives, then game over", async () => {
+  const opened = await startPlaying(h);
+  if (opened.predators.length === 0) {
+    unmetPrecondition(
+      "the roster carries no predator to make contact with; what a depth's " +
+        "roster holds is scoring/depth-scaling's verdict, not this one's",
+    );
+  }
+  await denAll(h);
 
-    // The three lives held in reserve, spent off camera.
-    const spent: Catch[] = [];
-    for (let life = 0; life < START_LIVES; life += 1) {
-      spent.push(await takeALife(h));
-    }
-    // And the catch taken with none left, which is the clip.
-    const last = await captureReplay(h, "over", async () => {
-      const taken = await takeALife(h);
-      await h.advance(TAIL_TICKS);
-      return taken;
-    });
-
-    assertEqual(
-      opened.lives,
-      START_LIVES,
-      "the lives a dive opens with, held in reserve",
-    );
-
-    for (const [index, taken] of spent.entries()) {
-      assertEqual(
-        taken.resumed,
-        true,
-        `play resumed for catch ${index + 1} of ${START_LIVES}, which found ` +
-          `the dive on ${taken.before.screen}`,
-      );
-      assertEqual(
-        taken.hit,
-        true,
-        `catch ${index + 1} of ${START_LIVES} landed inside ${CATCH_BUDGET} ` +
-          "ticks of a predator standing on the forager's own tile",
-      );
-      assertEqual(
-        taken.after.lives,
-        START_LIVES - index - 1,
-        `the lives in reserve after catch ${index + 1}`,
-      );
-      assertEqual(
-        taken.after.screen,
-        "countdown",
-        `the screen after catch ${index + 1}, with a life still in reserve`,
-      );
-    }
-
-    assertEqual(
-      last.resumed,
-      true,
-      `play resumed for the last catch, which found the dive on ` +
-        `${last.before.screen}`,
-    );
-    assertEqual(
-      last.before.lives,
-      0,
-      "the lives in reserve when the last catch was taken",
-    );
-    assertEqual(
-      last.hit,
-      true,
-      `the last catch landed inside ${CATCH_BUDGET} ticks of a predator ` +
-        "standing on the forager's own tile",
-    );
-    assertEqual(
-      last.after.screen,
-      "gameover",
-      "the screen after the catch taken with no life in reserve",
-    );
+  // The three lives held in reserve, spent off camera.
+  const spent: Catch[] = [];
+  for (let life = 0; life < START_LIVES; life += 1) {
+    spent.push(await takeALife(h));
+  }
+  // And the catch taken with none left, which is the clip.
+  const last = await captureReplay(h, "over", async () => {
+    const taken = await takeALife(h);
+    await h.advance(TAIL_TICKS);
+    return taken;
   });
+
+  assertEqual(
+    opened.lives,
+    START_LIVES,
+    "the lives a dive opens with, held in reserve",
+  );
+
+  for (const [index, taken] of spent.entries()) {
+    assertEqual(
+      taken.resumed,
+      true,
+      `play resumed for catch ${index + 1} of ${START_LIVES}, which found ` +
+        `the dive on ${taken.before.screen}`,
+    );
+    assertEqual(
+      taken.hit,
+      true,
+      `catch ${index + 1} of ${START_LIVES} landed inside ${CATCH_BUDGET} ` +
+        "ticks of a predator standing on the forager's own tile",
+    );
+    assertEqual(
+      taken.after.lives,
+      START_LIVES - index - 1,
+      `the lives in reserve after catch ${index + 1}`,
+    );
+    assertEqual(
+      taken.after.screen,
+      "countdown",
+      `the screen after catch ${index + 1}, with a life still in reserve`,
+    );
+  }
+
+  assertEqual(
+    last.resumed,
+    true,
+    `play resumed for the last catch, which found the dive on ` +
+      `${last.before.screen}`,
+  );
+  assertEqual(
+    last.before.lives,
+    0,
+    "the lives in reserve when the last catch was taken",
+  );
+  assertEqual(
+    last.hit,
+    true,
+    `the last catch landed inside ${CATCH_BUDGET} ticks of a predator ` +
+      "standing on the forager's own tile",
+  );
+  assertEqual(
+    last.after.screen,
+    "gameover",
+    "the screen after the catch taken with no life in reserve",
+  );
 });

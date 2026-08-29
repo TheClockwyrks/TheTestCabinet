@@ -50,7 +50,7 @@ import {
   quietBoard,
   requireKind,
   requirePredatorMotion,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
   standDown,
 } from "../scene";
@@ -128,7 +128,7 @@ check("A lost chase casts one orange ping", async () => {
   await sweep(h, AFTER_TICKS, watch);
   const ending = h.snapshot();
 
-  requireScene(ending, guard);
+  requireSceneHeld(ending, guard);
 
   if (searchOpened === null) {
     requirePredatorMotion(

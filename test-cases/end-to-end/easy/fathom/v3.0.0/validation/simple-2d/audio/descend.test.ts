@@ -35,7 +35,7 @@
 // `scoring/cleared-bonus`'s; the interstitial, which is `states/cleared`'s; the
 // descent, which is `scoring/descend-on-clear`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BINDINGS, CUES } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
@@ -46,7 +46,7 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { denAll, graded, requireSwim } from "../scene";
+import { check, denAll, requireSwim } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
 
 /** The key `specs/movement.md` binds the `right` action to first. */
@@ -74,8 +74,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.descend on the tick the maze is cleared, and not before", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "plays CUES.descend on the tick the maze is cleared, and not before",
+  async () => {
     await startPlaying(h);
     const run = await poseMoveKeyRun(h, "right");
     await denAll(h);
@@ -84,7 +85,7 @@ it("plays CUES.descend on the tick the maze is cleared, and not before", async (
     // fixture's own sealed larder goes with everything else, deliberately: this
     // is a point whose subject is the board running out.
     h.debug.clearPlankton();
-    h.debug.setPlankton(run.tx + 1, run.ty, true);
+    h.debug.setPlankton(run.start.tx + 1, run.start.ty, true);
     const before = h.snapshot();
 
     const seen = await captureReplay(h, "descend", async () => {
@@ -115,7 +116,7 @@ it("plays CUES.descend on the tick the maze is cleared, and not before", async (
       seen.hit,
       true,
       `the forager ate the maze's last plankton and cleared it inside ` +
-        `${String(SWIM_TICKS)} ticks, from tile (${String(run.tx)}, ${String(run.ty)})`,
+        `${String(SWIM_TICKS)} ticks, from tile (${String(run.start.tx)}, ${String(run.start.ty)})`,
     );
     assertEqual(
       cuesBeforeEvent(seen, CUES.descend),
@@ -130,5 +131,5 @@ it("plays CUES.descend on the tick the maze is cleared, and not before", async (
       "times CUES.descend played on the tick the maze cleared, which is its own " +
         "tick and at most once on it (specs/progression.md)",
     );
-  });
-});
+  },
+);

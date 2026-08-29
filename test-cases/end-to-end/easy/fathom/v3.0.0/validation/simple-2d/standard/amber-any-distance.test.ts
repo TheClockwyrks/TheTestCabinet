@@ -32,7 +32,7 @@
 // (specs/instrumentation.md), so the mote is read where the snapshot says it is
 // and this point turns on the drawing rather than on a wander it does not claim.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
 import { poseMaze } from "../fixtures";
@@ -49,10 +49,10 @@ import {
   type NearSample,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   fromForager,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -107,65 +107,63 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The amber lights show at any distance", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const home = board.mark("F");
-    const berth = board.mark("D");
-    const unlit = board.mark("S");
-    const quiet = await denAll(h);
+check("The amber lights show at any distance", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const home = board.mark("F");
+  const berth = board.mark("D");
+  const unlit = board.mark("S");
+  const quiet = await denAll(h);
 
-    await parkForager(h, home);
-    await clearUnderfoot(h);
-    await h.debug.spawnDrifter(berth.tx, berth.ty);
-    // Held exactly where it was posed, so the mote is read at the position the
-    // snapshot reports and nothing wanders between the two.
-    await h.debug.setCreatureAI(false);
-    const watch = await sceneGuard(h, quiet);
+  await parkForager(h, home);
+  await clearUnderfoot(h);
+  await h.debug.spawnDrifter(berth.tx, berth.ty);
+  // Held exactly where it was posed, so the mote is read at the position the
+  // snapshot reports and nothing wanders between the two.
+  await h.debug.setCreatureAI(false);
+  const watch = await sceneGuard(h, quiet);
 
-    await h.advance(SETTLE_TICKS);
-    const after = h.snapshot();
-    // Before the assertions, so a check that fails still leaves the picture.
-    captureStill(h, "amber");
+  await h.advance(SETTLE_TICKS);
+  const after = h.snapshot();
+  // Before the assertions, so a check that fails still leaves the picture.
+  captureStill(h, "amber");
 
-    requireSceneHeld(after, watch);
+  requireSceneHeld(after, watch);
 
-    const drifter = after.drifters[0];
-    assertEqual(
-      after.drifters.length,
-      1,
-      "the drifters the maze holds after one was spawned far across the board",
-    );
+  const drifter = after.drifters[0];
+  assertEqual(
+    after.drifters.length,
+    1,
+    "the drifters the maze holds after one was spawned far across the board",
+  );
 
-    // The fixture's own geometry: the drifter stands past every light the forager
-    // carries at any brightness, on ground nothing has ever revealed.
-    const away = fromForager(after, drifter.x, drifter.y);
-    assertGreaterThan(
-      away,
-      VISION_MAX,
-      `the logical units between the forager and the drifter ${FAR_TILES} tiles ` +
-        `off, which must exceed V at G = 1 (VISION_MIN + VISION_GAIN = ${VISION_MAX})`,
-    );
-    assertEqual(
-      visibilityOf(after, berth),
-      "u",
-      `the drifter's tile at (${berth.tx}, ${berth.ty}), which no light has touched`,
-    );
+  // The fixture's own geometry: the drifter stands past every light the forager
+  // carries at any brightness, on ground nothing has ever revealed.
+  const away = fromForager(after, drifter.x, drifter.y);
+  assertGreaterThan(
+    away,
+    VISION_MAX,
+    `the logical units between the forager and the drifter ${FAR_TILES} tiles ` +
+      `off, which must exceed V at G = 1 (VISION_MIN + VISION_GAIN = ${VISION_MAX})`,
+  );
+  assertEqual(
+    visibilityOf(after, berth),
+    "u",
+    `the drifter's tile at (${berth.tx}, ${berth.ty}), which no light has touched`,
+  );
 
-    // And the mote itself, against this build's own fog.
-    const fog = sampleTile(h, after, unlit);
-    const mote = brightestWarmNear(h, drifter.x, drifter.y);
-    assertNotNull(
-      mote,
-      `a red-leaning pixel within ${MOTE_REACH} units of the drifter's reported ` +
-        "center: the amber lights are drawn at any distance, across unrevealed fog",
-    );
-    assertGreaterThan(
-      colorDistance((mote as NearSample).color, fog),
-      DRAWN_MIN,
-      "the RGB distance out of 441 between the brightest warm pixel at the " +
-        "distant drifter and the unrevealed fog around it",
-    );
-  });
+  // And the mote itself, against this build's own fog.
+  const fog = sampleTile(h, after, unlit);
+  const mote = brightestWarmNear(h, drifter.x, drifter.y);
+  assertNotNull(
+    mote,
+    `a red-leaning pixel within ${MOTE_REACH} units of the drifter's reported ` +
+      "center: the amber lights are drawn at any distance, across unrevealed fog",
+  );
+  assertGreaterThan(
+    colorDistance((mote as NearSample).color, fog),
+    DRAWN_MIN,
+    "the RGB distance out of 441 between the brightest warm pixel at the " +
+      "distant drifter and the unrevealed fog around it",
+  );
 });

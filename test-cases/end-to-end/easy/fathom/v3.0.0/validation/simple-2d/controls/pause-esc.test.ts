@@ -26,7 +26,7 @@
 // THE SCREEN IS READ A BEAT AFTER THE PRESS. A build may take the transition in
 // the frame that delivers the key or at the top of the next, and both conform.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
@@ -35,7 +35,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { clearUnderfoot, denAll, graded, parkForager } from "../scene";
+import { check, clearUnderfoot, denAll, parkForager } from "../scene";
 
 /** The first key specs/movement.md binds the `pause` action to. */
 const KEY = "Escape";
@@ -82,41 +82,39 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("pauses a live dive on Escape", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    await poseStraightRun(h, RUN_TILES);
-    await denAll(h);
-    await parkForager(h);
-    await clearUnderfoot(h);
-    h.debug.setBrightness(LIT);
+check("pauses a live dive on Escape", async () => {
+  await startPlaying(h);
+  await poseStraightRun(h, RUN_TILES);
+  await denAll(h);
+  await parkForager(h);
+  await clearUnderfoot(h);
+  h.debug.setBrightness(LIT);
 
-    const live = h.snapshot();
-    assertEqual(
-      live.screen,
-      "playing",
-      "the dive is in live play before the key, which is the screen this " +
-        "point's claim is about",
-    );
+  const live = h.snapshot();
+  assertEqual(
+    live.screen,
+    "playing",
+    "the dive is in live play before the key, which is the screen this " +
+      "point's claim is about",
+  );
 
-    await h.tap(KEY);
-    await h.advance(BEAT_TICKS);
-    const pressed = h.snapshot();
-    await h.advance(HELD_TICKS);
-    // Before the assertions, so a check that fails still leaves the picture that
-    // shows why.
-    captureStill(h, "pause");
+  await h.tap(KEY);
+  await h.advance(BEAT_TICKS);
+  const pressed = h.snapshot();
+  await h.advance(HELD_TICKS);
+  // Before the assertions, so a check that fails still leaves the picture that
+  // shows why.
+  captureStill(h, "pause");
 
-    assertEqual(
-      pressed.lives,
-      live.lives,
-      "the forager was not caught mid-measurement, which would have moved the " +
-        "screen for a reason that is not this key's",
-    );
-    assertEqual(
-      pressed.screen,
-      "paused",
-      "the screen the pause control moves live play to (specs/ui.md)",
-    );
-  });
+  assertEqual(
+    pressed.lives,
+    live.lives,
+    "the forager was not caught mid-measurement, which would have moved the " +
+      "screen for a reason that is not this key's",
+  );
+  assertEqual(
+    pressed.screen,
+    "paused",
+    "the screen the pause control moves live play to (specs/ui.md)",
+  );
 });

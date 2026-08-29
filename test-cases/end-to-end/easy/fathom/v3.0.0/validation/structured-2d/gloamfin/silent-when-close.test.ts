@@ -52,7 +52,7 @@ import {
   denAll,
   parkForager,
   requireKind,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { apart, gloamfinOf, placePredator, sweep } from "./pings";
@@ -153,7 +153,7 @@ check("It goes silent while it holds you by ear", async () => {
     return { held, apartNow, ping };
   });
 
-  requireScene(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
 
   // The scenario stood as posed: the pair inside hearing range, and neither of
   // them anywhere but the tile it was walled into.

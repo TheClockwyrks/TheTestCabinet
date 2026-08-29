@@ -32,7 +32,7 @@
 // at every moment, its own ping floods corridors that do not reach the forager,
 // and no amount of patrolling can end the scenario by contact.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TICK_DT, TICK_HZ } from "../../src/constants";
 import { assertLessThanOrEqual } from "../assert";
 import { poseMaze } from "../fixtures";
@@ -43,14 +43,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  type SceneSnapshot,
+  type SceneView,
 } from "../scene";
 
 /**
@@ -117,7 +117,7 @@ const STEP_EPS = TICK_DT;
 const OPEN_TICKS = 24;
 
 /** The furthest anything on the board moved between two states, in logical units. */
-function widestTravel(before: SceneSnapshot, after: SceneSnapshot): number {
+function widestTravel(before: SceneView, after: SceneView): number {
   const from = [before.forager, ...before.predators];
   const to = [after.forager, ...after.predators];
   let worst = 0;
@@ -140,8 +140,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("advances only when the driver steps it, by exactly the ticks it is given", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "advances only when the driver steps it, by exactly the ticks it is given",
+  async () => {
     await startPlaying(h);
     const board = await poseMaze(h, ART);
     const home = board.mark("F");
@@ -151,8 +152,8 @@ it("advances only when the driver steps it, by exactly the ticks it is given", a
     // rather than a black rectangle.
     h.debug.setBrightness(1);
 
-    const witness = requirePred(h.snapshot(), WITNESS);
-    const quiet = await denAll(h, [WITNESS]);
+    const witness = requireKind(h.snapshot(), WITNESS);
+    const quiet = await denAll(h, [witness]);
     h.debug.setPredatorTile(witness, beat.tx, beat.ty);
     h.debug.setPredatorState(witness, "wander");
     const watch = await sceneGuard(h, quiet, { foragerParked: false });
@@ -189,7 +190,7 @@ it("advances only when the driver steps it, by exactly the ticks it is given", a
     requirePredatorMotion(
       run.stepFrom,
       run.stepTo,
-      WITNESS,
+      witness,
       "patrol over a second the driver stepped, which is what makes " +
         "'nothing moved while real time passed' a reading rather than a tautology",
     );
@@ -223,5 +224,5 @@ it("advances only when the driver steps it, by exactly the ticks it is given", a
       `how far the same second differs when it is covered as ${SPLIT_STEPS} ` +
         `steps of ${SPLIT_TICKS} ticks instead of one step of ${STEP_TICKS}`,
     );
-  });
-});
+  },
+);

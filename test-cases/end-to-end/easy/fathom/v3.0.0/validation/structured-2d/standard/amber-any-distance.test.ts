@@ -54,7 +54,7 @@ import {
   clearUnderfoot,
   denAll,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 
@@ -118,7 +118,7 @@ check("The amber lights show at any distance", async () => {
   // Before the assertions, so a check that fails still leaves the picture.
   captureStill(h, "amber");
 
-  requireScene(after, guard);
+  requireSceneHeld(after, guard);
 
   assertEqual(
     after.drifters.length,

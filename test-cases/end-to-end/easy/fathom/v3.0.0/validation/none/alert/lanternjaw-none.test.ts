@@ -23,7 +23,7 @@
 // `lanternjaw/light-range`'s, so a build whose hunter never takes a fix stands this
 // check down rather than passing it on an absence that means nothing.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
 import { ALERT_TIME } from "../constants";
 import { poseSightLine, predatorIndex } from "../fixtures";
@@ -33,14 +33,16 @@ import {
   seconds,
   ticks,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
 
 /** How far apart the pair stands, in tiles. See the header. */
@@ -87,15 +89,15 @@ const CLIP_TICKS = 36;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("The Lanternjaw fires no alert", async () => {
+check("The Lanternjaw fires no alert", async () => {
   await startPlaying(h);
   const line = await poseSightLine(h, GAP_TILES, {
     lead: LEAD_TILES,
@@ -103,12 +105,12 @@ it("The Lanternjaw fires no alert", async () => {
   });
   const index = predatorIndex(await h.snapshot(), "lanternjaw");
   if (index === null) {
-    h.unmet(
+    unmetPrecondition(
       "the roster carries no Lanternjaw, so this scenario has nothing to pose — " +
         "what the roster holds is the progression checks' verdict, not this one's",
     );
   }
-  const quiet = await denAllExcept(h, [index]);
+  const quiet = await denAll(h, [index]);
   await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
   await h.debug.setPredatorState(index, "wander");
   await parkForager(h, line.forager);
@@ -140,10 +142,10 @@ it("The Lanternjaw fires no alert", async () => {
     return { fixed, seen, end: await h.snapshot() };
   });
 
-  requireSceneHeld(h, read.end, guard);
+  requireSceneHeld(read.end, guard);
 
   if (!read.fixed.hit) {
-    h.unmet(
+    unmetPrecondition(
       "the Lanternjaw took no fix on a fully lit forager seven tiles away on a " +
         "clear line, so there was no acquisition for an alert to have been fired " +
         "on — whether it senses the forager at all is lanternjaw/light-range's " +

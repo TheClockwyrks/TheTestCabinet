@@ -44,7 +44,13 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { check, denAll, quietBoard, requireScene, sceneGuard } from "../scene";
+import {
+  check,
+  denAll,
+  quietBoard,
+  requireSceneHeld,
+  sceneGuard,
+} from "../scene";
 
 /** The first key specs/movement.md binds the `b` action to. */
 const KEY = "ShiftLeft";
@@ -123,7 +129,7 @@ check("releases an ink cloud on Shift", async () => {
     return { armed, released };
   });
 
-  requireScene(h.snapshot(), watch);
+  requireSceneHeld(h.snapshot(), watch);
 
   // The premise this point's own description states, posed through
   // `setInkCooldown(0)`: "At `0` ink is ready and the snapshot reports

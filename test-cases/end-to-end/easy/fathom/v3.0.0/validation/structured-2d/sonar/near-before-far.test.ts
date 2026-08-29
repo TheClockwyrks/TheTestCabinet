@@ -44,7 +44,7 @@ import {
   denAll,
   failPrecondition,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { emitPulse, sinceEmit } from "./pulse";
@@ -160,7 +160,7 @@ check(
       return { emitted, arrivedNear, arrivedFar };
     });
 
-    requireScene(h.snapshot(), watch);
+    requireSceneHeld(h.snapshot(), watch);
 
     for (const arrival of [
       { steps: NEAR_STEPS, at: flood.arrivedNear, tile: near },

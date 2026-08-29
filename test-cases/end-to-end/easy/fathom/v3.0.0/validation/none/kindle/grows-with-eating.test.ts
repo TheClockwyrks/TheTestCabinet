@@ -25,7 +25,7 @@
 // the top of the next step rather than inside the call, and both honour the page,
 // so each radius is read two ticks after the brightness that produced it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { KINDLE_VISION_GAIN, KINDLE_VISION_MIN } from "../constants";
 import { poseMaze } from "../fixtures";
@@ -34,14 +34,15 @@ import {
   createHarness,
   windowRadius,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
 } from "../scene";
 
 /** The board: a three-tile corridor the forager is parked on, and nothing else. */
@@ -78,57 +79,60 @@ function expected(g: number): number {
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("widens the vision circle with brightness, on KINDLE_VISION_MIN + KINDLE_VISION_GAIN * G", async () => {
-  await startPlaying(h);
-  const board = await poseMaze(h, ART);
-  const quiet = await denAllExcept(h);
-  // Parked facing rock with its own pellet eaten, so nothing the forager does can
-  // move `G` under the readings.
-  await parkForager(h, board.mark("H"));
-  await clearUnderfoot(h);
-  const guard = await sceneGuard(h, quiet);
+check(
+  "widens the vision circle with brightness, on KINDLE_VISION_MIN + KINDLE_VISION_GAIN * G",
+  async () => {
+    await startPlaying(h);
+    const board = await poseMaze(h, ART);
+    const quiet = await denAll(h);
+    // Parked facing rock with its own pellet eaten, so nothing the forager does can
+    // move `G` under the readings.
+    await parkForager(h, board.mark("H"));
+    await clearUnderfoot(h);
+    const guard = await sceneGuard(h, quiet);
 
-  const readings = await captureReplay(h, "grow", async () => {
-    const taken: { g: number; radius: number; vision: number }[] = [];
-    for (const g of POSED) {
-      await h.debug.setBrightness(g);
-      await h.advance(SETTLE_TICKS);
-      const snapshot = await h.snapshot();
-      taken.push({
-        g,
-        radius: windowRadius(snapshot),
-        vision: snapshot.visionRadius,
-      });
-      // The rest of the second the hold runs for, so the recording shows the
-      // circle standing at each width rather than flicking through them.
-      await h.advance(HOLD_TICKS - SETTLE_TICKS);
+    const readings = await captureReplay(h, "grow", async () => {
+      const taken: { g: number; radius: number; vision: number }[] = [];
+      for (const g of POSED) {
+        await h.debug.setBrightness(g);
+        await h.advance(SETTLE_TICKS);
+        const snapshot = await h.snapshot();
+        taken.push({
+          g,
+          radius: windowRadius(snapshot),
+          vision: snapshot.visionRadius,
+        });
+        // The rest of the second the hold runs for, so the recording shows the
+        // circle standing at each width rather than flicking through them.
+        await h.advance(HOLD_TICKS - SETTLE_TICKS);
+      }
+      return taken;
+    });
+
+    requireSceneHeld(await h.snapshot(), guard);
+
+    for (const reading of readings) {
+      assertLessThanOrEqual(
+        Math.abs(reading.radius - expected(reading.g)),
+        RADIUS_TOLERANCE,
+        `|windowRadius - ${expected(reading.g)}| at the posed G of ${reading.g}, ` +
+          `where specs/sensing.md gives R = ${KINDLE_VISION_MIN} + ` +
+          `${KINDLE_VISION_GAIN} * G`,
+      );
+      assertGreaterThan(
+        reading.radius,
+        reading.vision,
+        `the vision circle R against the light pocket V at the posed G of ` +
+          `${reading.g}: V is smaller than R at every brightness`,
+      );
     }
-    return taken;
-  });
-
-  requireSceneHeld(h, await h.snapshot(), guard);
-
-  for (const reading of readings) {
-    assertLessThanOrEqual(
-      Math.abs(reading.radius - expected(reading.g)),
-      RADIUS_TOLERANCE,
-      `|windowRadius - ${expected(reading.g)}| at the posed G of ${reading.g}, ` +
-        `where specs/sensing.md gives R = ${KINDLE_VISION_MIN} + ` +
-        `${KINDLE_VISION_GAIN} * G`,
-    );
-    assertGreaterThan(
-      reading.radius,
-      reading.vision,
-      `the vision circle R against the light pocket V at the posed G of ` +
-        `${reading.g}: V is smaller than R at every brightness`,
-    );
-  }
-});
+  },
+);

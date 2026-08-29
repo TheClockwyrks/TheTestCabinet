@@ -76,7 +76,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import type { Tile } from "../maze";
@@ -307,7 +307,7 @@ check("A flare is a second window onto the maze", async () => {
     };
   });
 
-  requireScene(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
 
   assertEqual(
     seen.blooming.hit,

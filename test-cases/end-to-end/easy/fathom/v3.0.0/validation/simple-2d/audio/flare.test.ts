@@ -31,7 +31,7 @@
 // is `flarefish/flare-cadence`'s; what the bloom reveals, which is
 // `flarefish/flare-reveals`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { CUES, FLARE_CHARGE, FLARE_INTERVAL } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { poseApart } from "../fixtures";
@@ -43,11 +43,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
@@ -85,15 +85,16 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.flare on the tick a Flarefish's bloom begins, and not on its charge-up", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "plays CUES.flare on the tick a Flarefish's bloom begins, and not on its charge-up",
+  async () => {
     await startPlaying(h);
     const rooms = await poseApart(h, APART_TILES);
-    const flarefish = requirePred(h.snapshot(), "flarefish");
+    const flarefish = requireKind(h.snapshot(), "flarefish");
 
     h.debug.setPredatorTile(flarefish, rooms.far.tx, rooms.far.ty);
     h.debug.setPredatorState(flarefish, "wander");
-    const quiet = await denAll(h, ["flarefish"]);
+    const quiet = await denAll(h, [flarefish]);
     await parkForager(h, rooms.near);
     await clearUnderfoot(h);
     const watch = await sceneGuard(h, quiet);
@@ -133,5 +134,5 @@ it("plays CUES.flare on the tick a Flarefish's bloom begins, and not on its char
       "times CUES.flare played on the tick the Flarefish's bloom began, which is " +
         "its own tick and at most once on it (specs/progression.md)",
     );
-  });
-});
+  },
+);

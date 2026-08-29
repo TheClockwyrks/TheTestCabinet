@@ -50,7 +50,7 @@ import {
   denAll,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
   standDown,
 } from "../scene";
@@ -167,7 +167,7 @@ check(
       return { farOpening, held, far, near };
     });
 
-    requireScene(h.snapshot(), guard);
+    requireSceneHeld(h.snapshot(), guard);
 
     // The far leg. The gaps are asserted from the board the build reports rather
     // than from the fixture's own arithmetic, so a build whose grid is not the one

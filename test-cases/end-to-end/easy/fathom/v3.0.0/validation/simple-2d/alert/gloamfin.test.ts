@@ -31,7 +31,7 @@
 // `gloamfin/fix-and-alert`'s, so a build whose Gloamfin never acquires stands this
 // check down rather than being failed twice for one fault.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { ALERT_TIME, GLOAMFIN_HEAR } from "../../src/constants";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import { poseOccludedPair } from "../fixtures";
@@ -45,11 +45,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   separation,
@@ -141,140 +141,138 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The Gloamfin fires the alert on a fresh fix", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const pair = await poseOccludedPair(h, {
-      tiles: GAP_TILES,
-      len: RUN_TILES,
-    });
-    const index = requirePred(h.snapshot(), "gloamfin");
-    const quiet = await denAll(h, ["gloamfin"]);
-    await h.debug.setPredatorTile(index, pair.pred.tx, pair.pred.ty);
-    await h.debug.setPredatorState(index, "wander");
-    await parkForager(h, pair.forager);
-    // Its own pellet settled and `G` back to the zero a dive opens on, so the
-    // light pocket is the narrowest it ever is and nothing widens it under the
-    // measurement.
-    await clearUnderfoot(h);
-    const watch = await sceneGuard(h, quiet);
+check("The Gloamfin fires the alert on a fresh fix", async () => {
+  await startPlaying(h);
+  const pair = await poseOccludedPair(h, {
+    tiles: GAP_TILES,
+    len: RUN_TILES,
+  });
+  const index = requireKind(h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
+  await h.debug.setPredatorTile(index, pair.pred.tx, pair.pred.ty);
+  await h.debug.setPredatorState(index, "wander");
+  await parkForager(h, pair.forager);
+  // Its own pellet settled and `G` back to the zero a dive opens on, so the
+  // light pocket is the narrowest it ever is and nothing widens it under the
+  // measurement.
+  await clearUnderfoot(h);
+  const watch = await sceneGuard(h, quiet);
 
-    const posed = h.snapshot();
-    const posedGap = separation(posed, index);
+  const posed = h.snapshot();
+  const posedGap = separation(posed, index);
 
-    const read = await captureReplay(h, "alert", async () => {
-      const acquired = await h.until(
-        (s) => s.predators[index].state === "chase",
-        { maxFrames: FIX_TICKS, poll: 1 },
-      );
-      if (!acquired.hit) {
-        unmetPrecondition(
-          `the Gloamfin took no fix on a forager ${posedGap.toFixed(0)} units ` +
-            `away, inside GLOAMFIN_HEAR (${GLOAMFIN_HEAR}), so there was no fresh ` +
-            "acquisition for an alert to fire on; whether close hearing takes a " +
-            "fix is gloamfin/fix-and-alert's verdict, not this one's",
-        );
-      }
-      const fired = await h.until((s) => s.predators[index].alert === true, {
-        maxFrames: ticks(0.1),
-        poll: 1,
-      });
-
-      // Everything below is dated from the tick the alert first read true.
-      let spent = 0;
-      const at = async (target: number) => {
-        await h.advance(target - spent);
-        spent = target;
-        return h.snapshot();
-      };
-      const inside: {
-        t: number;
-        alert: boolean;
-        lit: boolean;
-        visibility: string;
-      }[] = [];
-      for (const tick of INSIDE_TICKS) {
-        const s = await at(tick);
-        const p = s.predators[index];
-        inside.push({
-          t: seconds(tick),
-          alert: p.alert,
-          lit: p.lit,
-          visibility: visibilityOf(s, { tx: p.tx, ty: p.ty }),
-        });
-      }
-      const after = await at(AFTER_TICKS);
-
-      const refreshed: { t: number; alert: boolean; state: string }[] = [];
-      for (let step = 0; step < REFRESH_TICKS; step += REFRESH_POLL) {
-        await h.advance(REFRESH_POLL);
-        spent += REFRESH_POLL;
-        const p = h.snapshot().predators[index];
-        refreshed.push({ t: seconds(spent), alert: p.alert, state: p.state });
-      }
-      await h.advance(CLIP_TICKS);
-      return { acquired, fired, inside, after, refreshed, end: h.snapshot() };
-    });
-
-    requireSceneHeld(read.end, watch);
-
-    // The fixture's own geometry, and the fact that makes `lit` mean something.
-    assertLessThanOrEqual(
-      posedGap,
-      GLOAMFIN_HEAR,
-      `the units between the two centers against GLOAMFIN_HEAR (${GLOAMFIN_HEAR}), ` +
-        "the reach close hearing works within",
+  const read = await captureReplay(h, "alert", async () => {
+    const acquired = await h.until(
+      (s) => s.predators[index].state === "chase",
+      { maxFrames: FIX_TICKS, poll: 1 },
     );
-
-    assertEqual(
-      read.fired.hit,
-      true,
-      "the Gloamfin reports alert true within a tenth of a second of taking a " +
-        "fix it was not already chasing on (specs/predators.md)",
-    );
-    for (const sample of read.inside) {
-      assertEqual(
-        sample.alert,
-        true,
-        `the alert ${sample.t.toFixed(2)} s in, inside the ${ALERT_TIME} s ` +
-          "window it runs for",
-      );
-      assertEqual(
-        sample.visibility,
-        "u",
-        `the visibility of the tile the Gloamfin stands on ${sample.t.toFixed(2)} s ` +
-          "in, which no light, pulse or flare has reached — so what draws it is " +
-          "its own alert and nothing else",
-      );
-      assertEqual(
-        sample.lit,
-        true,
-        `whether the Gloamfin's body is drawn ${sample.t.toFixed(2)} s in, which ` +
-          "the alert draws wherever it stands and whatever the fog would " +
-          "otherwise hide of it",
+    if (!acquired.hit) {
+      unmetPrecondition(
+        `the Gloamfin took no fix on a forager ${posedGap.toFixed(0)} units ` +
+          `away, inside GLOAMFIN_HEAR (${GLOAMFIN_HEAR}), so there was no fresh ` +
+          "acquisition for an alert to fire on; whether close hearing takes a " +
+          "fix is gloamfin/fix-and-alert's verdict, not this one's",
       );
     }
-    assertEqual(
-      read.after.predators[index].alert,
-      false,
-      `the alert ${seconds(AFTER_TICKS).toFixed(2)} s in — ALERT_TIME (${ALERT_TIME} s) ` +
-        "and the item's tenth of a second past it",
-    );
+    const fired = await h.until((s) => s.predators[index].alert === true, {
+      maxFrames: ticks(0.1),
+      poll: 1,
+    });
 
-    // And the refresh: the fix is held and re-taken step after step, and nothing
-    // fires for it.
-    assertTrue(
-      read.refreshed.every((one) => one.state === "chase"),
-      "the Gloamfin held its fix throughout the refresh watch, so what was " +
-        "watched is a fix being refreshed rather than one being dropped — it read " +
-        `[${[...new Set(read.refreshed.map((one) => one.state))].join(", ")}]`,
-    );
-    const again = read.refreshed.filter((one) => one.alert);
-    assertTrue(
-      again.length === 0,
-      `every reading of the alert across the ${seconds(REFRESH_TICKS).toFixed(2)} s ` +
-        "the Gloamfin spent refreshing a fix it was already chasing on is false — " +
-        `it read true at ${again.map((one) => `${one.t.toFixed(2)} s`).join(", ") || "no sample"}`,
-    );
+    // Everything below is dated from the tick the alert first read true.
+    let spent = 0;
+    const at = async (target: number) => {
+      await h.advance(target - spent);
+      spent = target;
+      return h.snapshot();
+    };
+    const inside: {
+      t: number;
+      alert: boolean;
+      lit: boolean;
+      visibility: string;
+    }[] = [];
+    for (const tick of INSIDE_TICKS) {
+      const s = await at(tick);
+      const p = s.predators[index];
+      inside.push({
+        t: seconds(tick),
+        alert: p.alert,
+        lit: p.lit,
+        visibility: visibilityOf(s, { tx: p.tx, ty: p.ty }),
+      });
+    }
+    const after = await at(AFTER_TICKS);
+
+    const refreshed: { t: number; alert: boolean; state: string }[] = [];
+    for (let step = 0; step < REFRESH_TICKS; step += REFRESH_POLL) {
+      await h.advance(REFRESH_POLL);
+      spent += REFRESH_POLL;
+      const p = h.snapshot().predators[index];
+      refreshed.push({ t: seconds(spent), alert: p.alert, state: p.state });
+    }
+    await h.advance(CLIP_TICKS);
+    return { acquired, fired, inside, after, refreshed, end: h.snapshot() };
   });
+
+  requireSceneHeld(read.end, watch);
+
+  // The fixture's own geometry, and the fact that makes `lit` mean something.
+  assertLessThanOrEqual(
+    posedGap,
+    GLOAMFIN_HEAR,
+    `the units between the two centers against GLOAMFIN_HEAR (${GLOAMFIN_HEAR}), ` +
+      "the reach close hearing works within",
+  );
+
+  assertEqual(
+    read.fired.hit,
+    true,
+    "the Gloamfin reports alert true within a tenth of a second of taking a " +
+      "fix it was not already chasing on (specs/predators.md)",
+  );
+  for (const sample of read.inside) {
+    assertEqual(
+      sample.alert,
+      true,
+      `the alert ${sample.t.toFixed(2)} s in, inside the ${ALERT_TIME} s ` +
+        "window it runs for",
+    );
+    assertEqual(
+      sample.visibility,
+      "u",
+      `the visibility of the tile the Gloamfin stands on ${sample.t.toFixed(2)} s ` +
+        "in, which no light, pulse or flare has reached — so what draws it is " +
+        "its own alert and nothing else",
+    );
+    assertEqual(
+      sample.lit,
+      true,
+      `whether the Gloamfin's body is drawn ${sample.t.toFixed(2)} s in, which ` +
+        "the alert draws wherever it stands and whatever the fog would " +
+        "otherwise hide of it",
+    );
+  }
+  assertEqual(
+    read.after.predators[index].alert,
+    false,
+    `the alert ${seconds(AFTER_TICKS).toFixed(2)} s in — ALERT_TIME (${ALERT_TIME} s) ` +
+      "and the item's tenth of a second past it",
+  );
+
+  // And the refresh: the fix is held and re-taken step after step, and nothing
+  // fires for it.
+  assertTrue(
+    read.refreshed.every((one) => one.state === "chase"),
+    "the Gloamfin held its fix throughout the refresh watch, so what was " +
+      "watched is a fix being refreshed rather than one being dropped — it read " +
+      `[${[...new Set(read.refreshed.map((one) => one.state))].join(", ")}]`,
+  );
+  const again = read.refreshed.filter((one) => one.alert);
+  assertTrue(
+    again.length === 0,
+    `every reading of the alert across the ${seconds(REFRESH_TICKS).toFixed(2)} s ` +
+      "the Gloamfin spent refreshing a fix it was already chasing on is false — " +
+      `it read true at ${again.map((one) => `${one.t.toFixed(2)} s`).join(", ") || "no sample"}`,
+  );
 });

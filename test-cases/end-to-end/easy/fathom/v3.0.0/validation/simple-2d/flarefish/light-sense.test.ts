@@ -32,7 +32,7 @@
 // which is `alert/flarefish`'s; and what a chasing Flarefish then does, which is
 // `flarefish/chase-like-lanternjaw`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThan } from "../assert";
 import {
   FLARE_RADIUS,
@@ -46,10 +46,10 @@ import { poseSightLine } from "../fixtures";
 import { tileGap } from "../maze";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
+  check,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
@@ -115,8 +115,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("takes a fix on the forager's light inside R and none beyond it", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "takes a fix on the forager's light inside R and none beyond it",
+  async () => {
     await startPlaying(h);
     // One straight corridor with clear line of sight along the whole of it, so the
     // only condition of the sense that changes between the two legs is the range.
@@ -124,8 +125,8 @@ it("takes a fix on the forager's light inside R and none beyond it", async (ctx)
     await parkForager(h, line.forager);
     h.debug.clearPlankton();
 
-    const index = requirePred(h.snapshot(), "flarefish");
-    const quiet = await denAll(h, ["flarefish"]);
+    const index = requireKind(h.snapshot(), "flarefish");
+    const quiet = await denAll(h, [index]);
     const guard = await sceneGuard(h, quiet);
 
     const read = await captureReplay(h, "light", async () => {
@@ -214,5 +215,5 @@ it("takes a fix on the forager's light inside R and none beyond it", async (ctx)
         `specs/predators/flarefish.md gives it, in clear line of sight down one ` +
         `straight corridor`,
     );
-  });
-});
+  },
+);

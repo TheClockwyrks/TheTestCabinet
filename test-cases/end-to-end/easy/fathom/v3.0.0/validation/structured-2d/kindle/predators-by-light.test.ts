@@ -55,7 +55,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { FOG_MATCH, windowRadius } from "./circle";
@@ -124,7 +124,7 @@ check("Predators are drawn by the light, not the circle", async () => {
   // hunter that should not be there.
   captureStill(h, "bylight");
 
-  requireScene(beyondLight, guard);
+  requireSceneHeld(beyondLight, guard);
 
   const hunter = beyondLight.predators[gloamfin];
   const gap = Math.hypot(

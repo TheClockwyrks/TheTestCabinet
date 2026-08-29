@@ -22,7 +22,7 @@
 // (specs/instrumentation.md), so the forager still travels, the bite is still the
 // game's own, and the only thing removed is the gamble.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { SCORE_DRIFTER } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
@@ -35,8 +35,8 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
-  graded,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
@@ -71,62 +71,60 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Eating a drifter scores SCORE_DRIFTER", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const run = await poseStraightRun(h, RUN);
-    for (let step = 0; step < RUN; step += 1) {
-      h.debug.setPlankton(run.tx + step, run.ty, false);
-    }
-    const quiet = await denAll(h);
-    // The drifter waits exactly where it is put, and so does every denned hunter.
-    h.debug.setCreatureAI(false);
-    h.debug.spawnDrifter(run.tx + DRIFTER_AT, run.ty);
-    // The forager is this point's subject and is meant to travel, so the guard
-    // watches everything but where it stands.
-    const watch = await sceneGuard(h, quiet, { foragerParked: false });
+check("Eating a drifter scores SCORE_DRIFTER", async () => {
+  await startPlaying(h);
+  const run = await poseStraightRun(h, RUN);
+  for (let step = 0; step < RUN; step += 1) {
+    h.debug.setPlankton(run.start.tx + step, run.start.ty, false);
+  }
+  const quiet = await denAll(h);
+  // The drifter waits exactly where it is put, and so does every denned hunter.
+  h.debug.setCreatureAI(false);
+  h.debug.spawnDrifter(run.start.tx + DRIFTER_AT, run.start.ty);
+  // The forager is this point's subject and is meant to travel, so the guard
+  // watches everything but where it stands.
+  const watch = await sceneGuard(h, quiet, { foragerParked: false });
 
-    const bite = await captureReplay(h, "score", async () => {
-      const before = h.snapshot();
-      h.hold(DIR_KEY.right);
-      const eaten = await h.until(
-        (s) => s.drifters.length < before.drifters.length,
-        { maxFrames: BITE_BUDGET, poll: 1 },
-      );
-      const after = eaten.snapshot;
-      await h.advance(TAIL_TICKS);
-      h.release(DIR_KEY.right);
-      return { before, after, hit: eaten.hit };
-    });
-
-    requireSceneHeld(bite.after, watch);
-    if (!bite.hit) {
-      requireSwim(
-        bite.before.forager,
-        bite.after.forager,
-        "reach the drifter waiting on the run ahead of it",
-      );
-    }
-
-    assertEqual(
-      bite.before.drifters.length,
-      1,
-      "the bonus drifters on the board when the swim began",
+  const bite = await captureReplay(h, "score", async () => {
+    const before = h.snapshot();
+    h.hold(DIR_KEY.right);
+    const eaten = await h.until(
+      (s) => s.drifters.length < before.drifters.length,
+      { maxFrames: BITE_BUDGET, poll: 1 },
     );
-    assertEqual(
-      bite.after.drifters.length,
-      bite.before.drifters.length - 1,
-      "the bonus drifters left once the forager reached the one it was posed at",
-    );
-    assertEqual(
-      bite.after.score - bite.before.score,
-      SCORE_DRIFTER,
-      "the score rise across the bite, on a run stripped of its plankton",
-    );
-    assertEqual(
-      bite.after.planktonRemaining,
-      bite.before.planktonRemaining,
-      "planktonRemaining across the bite, which eating a drifter does not touch",
-    );
+    const after = eaten.snapshot;
+    await h.advance(TAIL_TICKS);
+    h.release(DIR_KEY.right);
+    return { before, after, hit: eaten.hit };
   });
+
+  requireSceneHeld(bite.after, watch);
+  if (!bite.hit) {
+    requireSwim(
+      bite.before.forager,
+      bite.after.forager,
+      "reach the drifter waiting on the run ahead of it",
+    );
+  }
+
+  assertEqual(
+    bite.before.drifters.length,
+    1,
+    "the bonus drifters on the board when the swim began",
+  );
+  assertEqual(
+    bite.after.drifters.length,
+    bite.before.drifters.length - 1,
+    "the bonus drifters left once the forager reached the one it was posed at",
+  );
+  assertEqual(
+    bite.after.score - bite.before.score,
+    SCORE_DRIFTER,
+    "the score rise across the bite, on a run stripped of its plankton",
+  );
+  assertEqual(
+    bite.after.planktonRemaining,
+    bite.before.planktonRemaining,
+    "planktonRemaining across the bite, which eating a drifter does not touch",
+  );
 });

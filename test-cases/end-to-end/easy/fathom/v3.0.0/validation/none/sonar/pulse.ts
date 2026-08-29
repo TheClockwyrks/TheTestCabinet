@@ -29,12 +29,12 @@
 // point that owns what actually went wrong, and neither is a verdict.
 
 import { BINDINGS } from "../constants";
+import { unmetPrecondition } from "../scene";
 import {
   type FathomSnapshot,
   type Harness,
   type PulseSnapshot,
 } from "../harness";
-import { predatorIndex } from "../fixtures";
 
 /**
  * The key specs/movement.md binds the `a` action — "Emits a sonar pulse" — to.
@@ -114,9 +114,9 @@ export async function castPulse(h: Harness): Promise<Emitted> {
  * That is a build that did not read the key, which is `controls/sonar-key`'s
  * verdict to give.
  */
-export function requirePress(h: Harness, emitted: Emitted): void {
+export function requirePress(emitted: Emitted): void {
   if (emitted.pulse !== null || emitted.armed) return;
-  h.unmet(
+  unmetPrecondition(
     `pressing ${SONAR_KEY} with sonar.ready ` +
       `${String(emitted.before.sonar.ready)} put no pulse in flight and armed no ` +
       "cooldown, so nothing about a pulse can be read here; whether the key emits " +
@@ -131,10 +131,10 @@ export function requirePress(h: Harness, emitted: Emitted): void {
  * wavefront it emitted was gone within the tick, which is a fault in how the
  * front travels, and `sonar/wavefront` is where that is decided.
  */
-export function requireLivePulse(h: Harness, emitted: Emitted): PulseSnapshot {
-  requirePress(h, emitted);
+export function requireLivePulse(emitted: Emitted): PulseSnapshot {
+  requirePress(emitted);
   if (emitted.pulse === null) {
-    h.unmet(
+    unmetPrecondition(
       `pressing ${SONAR_KEY} armed the sonar cooldown but left no wavefront on ` +
         "pulses a tick later, so this scenario has no front to follow; a pulse " +
         "that does not travel is sonar/wavefront's verdict, not this one's",
@@ -146,30 +146,7 @@ export function requireLivePulse(h: Harness, emitted: Emitted): PulseSnapshot {
 /** {@link castPulse}, refusing to go on without a wavefront to follow. */
 export async function emitPulse(h: Harness): Promise<LiveEmitted> {
   const emitted = await castPulse(h);
-  return { ...emitted, pulse: requireLivePulse(h, emitted) };
-}
-
-/**
- * The roster index of the one predator a scenario poses, or a refusal naming the
- * point that owns a roster too short to hold it.
- *
- * specs/predators.md gives depth `1` one of each kind, so at the depth every
- * posed scenario runs at "the Gloamfin" names exactly one predator.
- */
-export function requireKind(
-  h: Harness,
-  snapshot: FathomSnapshot,
-  kind: string,
-): number {
-  const index = predatorIndex(snapshot, kind);
-  if (index === null) {
-    h.unmet(
-      `the roster carries no ${kind}, so this scenario has nothing to pose; ` +
-        "specs/predators.md gives depth 1 one predator of each kind, and what " +
-        "the roster holds is the progression checks' verdict, not this one's",
-    );
-  }
-  return index;
+  return { ...emitted, pulse: requireLivePulse(emitted) };
 }
 
 /** Simulated seconds from the tick the pulse was cast on to `snapshot`. */

@@ -33,7 +33,7 @@
 // `flarefish/flare-lock`'s. A build that never flares stands this check down
 // rather than being failed twice for it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   ALERT_TIME,
   FLARE_BLOOM,
@@ -57,15 +57,15 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   separation,
-  type SceneWatch,
+  type SceneGuard,
   unmetPrecondition,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
@@ -243,125 +243,119 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The Flarefish fires the alert on a fresh fix", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
+check("The Flarefish fires the alert on a fresh fix", async () => {
+  await startPlaying(h);
 
-    /* ---- By its light sense ------------------------------------------------ */
+  /* ---- By its light sense ------------------------------------------------ */
 
-    const line = await poseSightLine(h, LIGHT_GAP_TILES, { lead: 1, tail: 2 });
-    const index = requirePred(h.snapshot(), "flarefish");
-    let quiet = await denAll(h, ["flarefish"]);
-    await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-    await h.debug.setPredatorState(index, "wander");
-    await parkForager(h, line.forager);
-    await clearUnderfoot(h);
-    await h.debug.setBrightness(1);
-    let watch: SceneWatch = await sceneGuard(h, quiet);
+  const line = await poseSightLine(h, LIGHT_GAP_TILES, { lead: 1, tail: 2 });
+  const index = requireKind(h.snapshot(), "flarefish");
+  let quiet = await denAll(h, [index]);
+  await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
+  await h.debug.setPredatorState(index, "wander");
+  await parkForager(h, line.forager);
+  await clearUnderfoot(h);
+  await h.debug.setBrightness(1);
+  let watch: SceneGuard = await sceneGuard(h, quiet);
 
-    const lit = await captureReplay(h, "alert", async () => {
-      const acquired = await h.until(
-        (s) => s.predators[index].state === "chase",
-        { maxFrames: FIX_TICKS, poll: 1 },
-      );
-      if (!acquired.hit) {
-        unmetPrecondition(
-          `the Flarefish took no fix on a fully lit forager ${LIGHT_GAP_TILES} ` +
-            "tiles away on a clear line, so there was no acquisition for an alert " +
-            "to fire on; whether its light sense takes a fix is " +
-            "flarefish/light-sense's verdict, not this one's",
-        );
-      }
-      const fired = await h.until((s) => s.predators[index].alert === true, {
-        maxFrames: FIRE_TICKS,
-        poll: 1,
-      });
-      const window = await watchWindow(h, index);
-      await h.advance(CLIP_TICKS);
-      return { fired, window, end: h.snapshot() };
-    });
-
-    requireSceneHeld(
-      lit.end,
-      watch,
-      "the light-sense scenario held to the end",
+  const lit = await captureReplay(h, "alert", async () => {
+    const acquired = await h.until(
+      (s) => s.predators[index].state === "chase",
+      { maxFrames: FIX_TICKS, poll: 1 },
     );
-    assertEqual(
-      lit.fired.hit,
-      true,
-      "the Flarefish reports alert true within a tenth of a second of its light " +
-        "sense taking a fix (specs/predators.md)",
-    );
-    assertWindow("light-sense", index, lit.window);
-
-    /* ---- By a flare lock --------------------------------------------------- */
-
-    // A room for the forager and, five rows below it, one corridor tile walled on
-    // every side. Nothing joins the two, so the bloom is the only thing that ever
-    // crosses between them.
-    const board = await poseMaze(h, [
-      "F..",
-      ...Array.from({ length: FLARE_GAP_TILES - 1 }, () => ""),
-      "B",
-    ]);
-    const home = board.mark("F");
-    const boxed = board.mark("B");
-    // The roster is the same one: `setMaze` re-dens every predator and changes
-    // nothing about who is on it (specs/instrumentation.md), so the index stands.
-    quiet = await denAll(h, ["flarefish"]);
-    await h.debug.setPredatorTile(index, boxed.tx, boxed.ty);
-    await h.debug.setPredatorState(index, "wander");
-    await parkForager(h, home);
-    await clearUnderfoot(h);
-    // Left dark, so the ordinary light sense reaches 128 units and cannot account
-    // for a lock at 160.
-    await h.debug.setBrightness(0);
-    watch = await sceneGuard(h, quiet);
-
-    const posed = h.snapshot();
-    const flareGap = separation(posed, index);
-
-    const charging = await h.until(
-      (s) => s.predators[index].flareCharging === true,
-      { maxFrames: FLARE_WAIT_TICKS, poll: FLARE_POLL },
-    );
-    if (!charging.hit) {
+    if (!acquired.hit) {
       unmetPrecondition(
-        `no flare charged in ${seconds(FLARE_WAIT_TICKS).toFixed(1)} s of a ` +
-          "wandering Flarefish, so there was no bloom to lock on with; when a " +
-          "flare charges and blooms is flarefish/flare-cadence's verdict, not " +
-          "this one's",
+        `the Flarefish took no fix on a fully lit forager ${LIGHT_GAP_TILES} ` +
+          "tiles away on a clear line, so there was no acquisition for an alert " +
+          "to fire on; whether its light sense takes a fix is " +
+          "flarefish/light-sense's verdict, not this one's",
       );
     }
-    const locked = await h.until((s) => s.predators[index].alert === true, {
-      maxFrames: ticks(FLARE_CHARGE + FLARE_BLOOM + 0.2),
+    const fired = await h.until((s) => s.predators[index].alert === true, {
+      maxFrames: FIRE_TICKS,
       poll: 1,
     });
-    if (!locked.hit) {
-      unmetPrecondition(
-        `the bloom of a Flarefish ${flareGap.toFixed(0)} units from the forager, ` +
-          `inside FLARE_RADIUS (${FLARE_RADIUS}), took no fix, so there was no ` +
-          "fresh acquisition for an alert to fire on; whether a bloom locks on is " +
-          "flarefish/flare-lock's verdict, not this one's",
-      );
-    }
-    const flare = await watchWindow(h, index);
-
-    requireSceneHeld(flare.after, watch, "the flare scenario held to the end");
-    // The fixture's own geometry, against the figures the specification fixes.
-    assertLessThanOrEqual(
-      flareGap,
-      FLARE_RADIUS,
-      `the units between the two centers against FLARE_RADIUS (${FLARE_RADIUS}), ` +
-        "the reach a bloom locks on within",
-    );
-    assertGreaterThan(
-      flareGap,
-      LANTERN_RANGE_BASE,
-      `the units between the two centers against R at G 0 (LANTERN_RANGE_BASE, ` +
-        `${LANTERN_RANGE_BASE}), the reach the ordinary light sense has while the ` +
-        "forager is dark — so what took this fix is the bloom and not that sense",
-    );
-    assertWindow("flare-lock", index, flare);
+    const window = await watchWindow(h, index);
+    await h.advance(CLIP_TICKS);
+    return { fired, window, end: h.snapshot() };
   });
+
+  requireSceneHeld(lit.end, watch, { what: "the light-sense scenario" });
+  assertEqual(
+    lit.fired.hit,
+    true,
+    "the Flarefish reports alert true within a tenth of a second of its light " +
+      "sense taking a fix (specs/predators.md)",
+  );
+  assertWindow("light-sense", index, lit.window);
+
+  /* ---- By a flare lock --------------------------------------------------- */
+
+  // A room for the forager and, five rows below it, one corridor tile walled on
+  // every side. Nothing joins the two, so the bloom is the only thing that ever
+  // crosses between them.
+  const board = await poseMaze(h, [
+    "F..",
+    ...Array.from({ length: FLARE_GAP_TILES - 1 }, () => ""),
+    "B",
+  ]);
+  const home = board.mark("F");
+  const boxed = board.mark("B");
+  // The roster is the same one: `setMaze` re-dens every predator and changes
+  // nothing about who is on it (specs/instrumentation.md), so the index stands.
+  quiet = await denAll(h, [index]);
+  await h.debug.setPredatorTile(index, boxed.tx, boxed.ty);
+  await h.debug.setPredatorState(index, "wander");
+  await parkForager(h, home);
+  await clearUnderfoot(h);
+  // Left dark, so the ordinary light sense reaches 128 units and cannot account
+  // for a lock at 160.
+  await h.debug.setBrightness(0);
+  watch = await sceneGuard(h, quiet);
+
+  const posed = h.snapshot();
+  const flareGap = separation(posed, index);
+
+  const charging = await h.until(
+    (s) => s.predators[index].flareCharging === true,
+    { maxFrames: FLARE_WAIT_TICKS, poll: FLARE_POLL },
+  );
+  if (!charging.hit) {
+    unmetPrecondition(
+      `no flare charged in ${seconds(FLARE_WAIT_TICKS).toFixed(1)} s of a ` +
+        "wandering Flarefish, so there was no bloom to lock on with; when a " +
+        "flare charges and blooms is flarefish/flare-cadence's verdict, not " +
+        "this one's",
+    );
+  }
+  const locked = await h.until((s) => s.predators[index].alert === true, {
+    maxFrames: ticks(FLARE_CHARGE + FLARE_BLOOM + 0.2),
+    poll: 1,
+  });
+  if (!locked.hit) {
+    unmetPrecondition(
+      `the bloom of a Flarefish ${flareGap.toFixed(0)} units from the forager, ` +
+        `inside FLARE_RADIUS (${FLARE_RADIUS}), took no fix, so there was no ` +
+        "fresh acquisition for an alert to fire on; whether a bloom locks on is " +
+        "flarefish/flare-lock's verdict, not this one's",
+    );
+  }
+  const flare = await watchWindow(h, index);
+
+  requireSceneHeld(flare.after, watch, { what: "the flare scenario" });
+  // The fixture's own geometry, against the figures the specification fixes.
+  assertLessThanOrEqual(
+    flareGap,
+    FLARE_RADIUS,
+    `the units between the two centers against FLARE_RADIUS (${FLARE_RADIUS}), ` +
+      "the reach a bloom locks on within",
+  );
+  assertGreaterThan(
+    flareGap,
+    LANTERN_RANGE_BASE,
+    `the units between the two centers against R at G 0 (LANTERN_RANGE_BASE, ` +
+      `${LANTERN_RANGE_BASE}), the reach the ordinary light sense has while the ` +
+      "forager is dark — so what took this fix is the bloom and not that sense",
+  );
+  assertWindow("flare-lock", index, flare);
 });

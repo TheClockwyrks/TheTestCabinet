@@ -57,7 +57,7 @@ import {
   denAll,
   failPrecondition,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import {
@@ -130,7 +130,7 @@ check("The maze is drawn only inside the circle", async () => {
   // circle the reviewer is being told about.
   captureStill(h, "circle");
 
-  requireScene(after, guard);
+  requireSceneHeld(after, guard);
 
   const radius = windowRadius(after);
   const insideAt = tileFromForager(after, inside);

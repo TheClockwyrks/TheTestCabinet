@@ -1,4 +1,5 @@
-// The reads the Kindle dive's six points share. CASE-PROVIDED.
+// kindle/circle — the outer vision circle, and the reads its six points share.
+// CASE-PROVIDED.
 //
 // WHY THESE POINTS CANNOT ASK "IS THIS PIXEL DARK". Every Kindle point turns on
 // one question: is the build drawing terrain here, or has it painted this ground
@@ -22,9 +23,9 @@
 // threshold and mean the same thing by it. What is here is the dive's own
 // geometry and the one bound its items share.
 
-import { tileCenterOf } from "../fixtures";
 import type { FathomSnapshot } from "../harness";
-import type { TileRef } from "../maze";
+import { tileCenter, type Tile } from "../maze";
+import { fromForager } from "../scene";
 
 /**
  * How far a sample may sit from the build's own fog and still read as "painted
@@ -36,20 +37,12 @@ import type { TileRef } from "../maze";
  */
 export const FOG_MATCH = 25;
 
-/** How far the logical point `(x, y)` lies from the forager's center. */
-export function fromForager(
-  snapshot: FathomSnapshot,
-  x: number,
-  y: number,
-): number {
-  return Math.hypot(x - snapshot.forager.x, y - snapshot.forager.y);
-}
+// How far a logical point lies from the forager's center is the scenario
+// module's `fromForager`, shared with every other range reading in the suite.
+export { fromForager } from "../scene";
 
 /** How far a tile's center lies from the forager's center, in logical units. */
-export function tileFromForager(
-  snapshot: FathomSnapshot,
-  tile: TileRef,
-): number {
-  const at = tileCenterOf(snapshot.grid, tile);
+export function tileFromForager(snapshot: FathomSnapshot, tile: Tile): number {
+  const at = tileCenter(snapshot.grid, tile);
   return fromForager(snapshot, at.x, at.y);
 }

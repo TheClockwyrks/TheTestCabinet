@@ -24,7 +24,7 @@
 // (`gloamfin/lost-you-orange`), or what a ping reveals
 // (`gloamfin/ping-reveals-nothing`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
@@ -40,11 +40,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
@@ -104,83 +104,81 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("It pings on its own cadence", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
-    const index = requirePred(h.snapshot(), "gloamfin");
-    const quiet = await denAll(h, ["gloamfin"]);
-    await placePredator(h, index, rooms.far, { state: "wander" });
-    await parkForager(h);
-    await clearUnderfoot(h);
-    // The Gloamfin patrols across the board in the dark, so the canvas alone would
-    // record a black screen. The debug overlay is a read-only panel carrying each
-    // predator's kind, state, tile and speed, toggled by the backtick key
-    // (`specs/instrumentation.md`), so this changes nothing and gives the clip
-    // something to show.
-    await h.tap("Backquote");
-    const guard = await sceneGuard(h, quiet);
+check("It pings on its own cadence", async () => {
+  await startPlaying(h);
+  const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
+  const index = requireKind(h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
+  await placePredator(h, index, rooms.far, { state: "wander" });
+  await parkForager(h);
+  await clearUnderfoot(h);
+  // The Gloamfin patrols across the board in the dark, so the canvas alone would
+  // record a black screen. The debug overlay is a read-only panel carrying each
+  // predator's kind, state, tile and speed, toggled by the backtick key
+  // (`specs/instrumentation.md`), so this changes nothing and gives the clip
+  // something to show.
+  await h.tap("Backquote");
+  const guard = await sceneGuard(h, quiet);
 
-    const log = pingLog(index);
-    const states = new Set<string>();
-    const watch = (snap: Parameters<typeof log.observe>[0]): void => {
-      log.observe(snap);
-      states.add(gloamfinOf(snap, index).state);
-    };
+  const log = pingLog(index);
+  const states = new Set<string>();
+  const watch = (snap: Parameters<typeof log.observe>[0]): void => {
+    log.observe(snap);
+    states.add(gloamfinOf(snap, index).state);
+  };
 
-    await sweep(h, OFF_CAMERA_TICKS, watch);
-    await captureReplay(h, "ping", () => sweep(h, RECORDED_TICKS, watch));
+  await sweep(h, OFF_CAMERA_TICKS, watch);
+  await captureReplay(h, "ping", () => sweep(h, RECORDED_TICKS, watch));
 
-    requireSceneHeld(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
+  assertEqual(
+    [...states].join(","),
+    "wander",
+    "the Gloamfin's state across the watch: this point measures the cadence of " +
+      "a WANDERING Gloamfin, and specs/predators/gloamfin.md silences one that " +
+      "holds a close-range hearing lock",
+  );
+
+  const { sightings } = log;
+  assertGreaterThanOrEqual(
+    sightings.length,
+    PINGS_WANTED,
+    `pings cast over ${WATCH_TICKS / TICK_HZ} s — specs/predators/gloamfin.md ` +
+      `has the timer reach 0 and the Gloamfin cast, then sets the timer back to ` +
+      `GLOAMFIN_PING_INTERVAL (${GLOAMFIN_PING_INTERVAL} s)`,
+  );
+
+  for (const [order, sighting] of sightings.entries()) {
     assertEqual(
-      [...states].join(","),
-      "wander",
-      "the Gloamfin's state across the watch: this point measures the cadence of " +
-        "a WANDERING Gloamfin, and specs/predators/gloamfin.md silences one that " +
-        "holds a close-range hearing lock",
+      sighting.source,
+      "gloamfin",
+      `the source of ping ${order + 1} — specs/state.md names the caster of a ` +
+        `wavefront in \`source\``,
     );
-
-    const { sightings } = log;
-    assertGreaterThanOrEqual(
-      sightings.length,
-      PINGS_WANTED,
-      `pings cast over ${WATCH_TICKS / TICK_HZ} s — specs/predators/gloamfin.md ` +
-        `has the timer reach 0 and the Gloamfin cast, then sets the timer back to ` +
-        `GLOAMFIN_PING_INTERVAL (${GLOAMFIN_PING_INTERVAL} s)`,
+    assertEqual(
+      sighting.tint,
+      "violet",
+      `the tint of ping ${order + 1} — specs/predators/gloamfin.md draws an ` +
+        `ordinary ping in the Gloamfin's own violet and reports tint "violet"`,
     );
+    assertTrue(
+      castFromOwnTile(sighting),
+      `ping ${order + 1} was cast from the Gloamfin's own tile: it reported an ` +
+        `origin of (${sighting.origin.tx}, ${sighting.origin.ty}) while the ` +
+        `Gloamfin held ` +
+        `${sighting.casterTiles.map((tile) => `(${tile.tx}, ${tile.ty})`).join(" then ")} ` +
+        `— specs/predators/gloamfin.md casts a ping from the Gloamfin's tile`,
+    );
+  }
 
-    for (const [order, sighting] of sightings.entries()) {
-      assertEqual(
-        sighting.source,
-        "gloamfin",
-        `the source of ping ${order + 1} — specs/state.md names the caster of a ` +
-          `wavefront in \`source\``,
-      );
-      assertEqual(
-        sighting.tint,
-        "violet",
-        `the tint of ping ${order + 1} — specs/predators/gloamfin.md draws an ` +
-          `ordinary ping in the Gloamfin's own violet and reports tint "violet"`,
-      );
-      assertTrue(
-        castFromOwnTile(sighting),
-        `ping ${order + 1} was cast from the Gloamfin's own tile: it reported an ` +
-          `origin of (${sighting.origin.tx}, ${sighting.origin.ty}) while the ` +
-          `Gloamfin held ` +
-          `${sighting.casterTiles.map((tile) => `(${tile.tx}, ${tile.ty})`).join(" then ")} ` +
-          `— specs/predators/gloamfin.md casts a ping from the Gloamfin's tile`,
-      );
-    }
-
-    for (const [order, gap] of pingGaps(sightings).entries()) {
-      assertLessThanOrEqual(
-        Math.abs(gap - GLOAMFIN_PING_INTERVAL),
-        GAP_TOLERANCE,
-        `how far the gap between ping ${order + 1} and ping ${order + 2} sat from ` +
-          `GLOAMFIN_PING_INTERVAL (${GLOAMFIN_PING_INTERVAL} s), the value casting ` +
-          `a ping sets the timer back to (specs/predators/gloamfin.md); the gap ` +
-          `measured ${gap.toFixed(3)} s`,
-      );
-    }
-  });
+  for (const [order, gap] of pingGaps(sightings).entries()) {
+    assertLessThanOrEqual(
+      Math.abs(gap - GLOAMFIN_PING_INTERVAL),
+      GAP_TOLERANCE,
+      `how far the gap between ping ${order + 1} and ping ${order + 2} sat from ` +
+        `GLOAMFIN_PING_INTERVAL (${GLOAMFIN_PING_INTERVAL} s), the value casting ` +
+        `a ping sets the timer back to (specs/predators/gloamfin.md); the gap ` +
+        `measured ${gap.toFixed(3)} s`,
+    );
+  }
 });

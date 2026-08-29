@@ -8,13 +8,23 @@
 // bulb exactly as it was and draws no body, marking neither it nor a drifter."
 //
 // TWO READINGS, because the claim has two halves and a build can hold either
-// alone. What the build SAYS — the Lanternjaw's `lit`, which specs/state.md
-// defines as "true while its body is being drawn this instant" — must stay
-// `false` for the whole life of the pulse. And what the build DRAWS — the amber
-// mote on each of the two creatures — must come through the front's passage
-// unchanged. A build that marks the Lanternjaw like the other two hunters fails
-// the first; one that leaves `lit` alone but tints the mote as the crest goes
-// over, or lights the body under it, fails the second.
+// alone. What the build SAYS — the `lit` flag of each amber creature, which
+// specs/state.md defines for the bonus drifter and for the Lanternjaw alike as
+// true "while its body is being drawn this instant" — must stay `false` for the
+// whole life of the pulse. And what the build DRAWS — the amber mote on each of
+// the two creatures — must come through the front's passage unchanged. A build
+// that marks either creature the way it marks the other two hunters fails the
+// first; one that leaves both flags alone and tints a mote as the crest goes
+// over fails the second.
+//
+// THE DRIFTER IS READ THROUGH ITS OWN FLAG. Its amber mote is drawn under the
+// amber-light rule rather than under the fog, so the mote is on screen whether or
+// not the jellyfish beneath it is, and the ground both creatures stand on goes
+// from never-revealed to remembered as a pulse passes, which is a change of its
+// own and one specs/sensing.md asks for. `lit` puts the question to the build
+// directly instead, so a build that begins drawing a drifter's body once a pulse
+// has flooded the tile it stands on answers `true` where specs/state.md requires
+// `false`.
 //
 // THE MOTES ARE READ BETWEEN TWO PULSES, and that is what keeps the reading about
 // the creatures rather than about the ground they stand on. A pulse is REQUIRED to
@@ -45,7 +55,7 @@
 // `amber/*`'s; and what a pulse does to the hunters it may mark, which is
 // `sonar/marks-predators`'.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseSonarSense } from "../fixtures";
 import {
@@ -55,16 +65,28 @@ import {
   sampleMoteProfile,
   type Harness,
   type MoteSample,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
+  failPrecondition,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  requireKind,
 } from "../scene";
-import { emitPulse, foragerPulse, requireKind, sinceEmit } from "./pulse";
+import { emitPulse, foragerPulse, sinceEmit } from "./pulse";
+
+/** One tick's reading of one amber creature's `lit` flag. */
+interface LitSample {
+  /** Seconds since the pulse was emitted. */
+  elapsed: number;
+  /** Whose flag it is, so a failure names the creature the pulse drew. */
+  whose: string;
+  lit: boolean;
+}
 
 /**
  * How far a mote may be drawn from where it was drawn before the pulse, as an
@@ -101,127 +123,182 @@ const AFTER_TICKS = 2;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("leaves the Lanternjaw unlit and both amber motes unchanged through a pulse", async () => {
-  await startPlaying(h);
-  const targets = await poseSonarSense(h, 2);
-  await parkForager(h);
-  await clearUnderfoot(h);
+check(
+  "leaves both amber creatures unlit and both motes unchanged through a pulse",
+  async () => {
+    await startPlaying(h);
+    const targets = await poseSonarSense(h, 2);
+    await parkForager(h);
+    await clearUnderfoot(h);
 
-  const posed = await h.snapshot();
-  const lanternjaw = requireKind(h, posed, "lanternjaw");
-  const quiet = await denAllExcept(h, [lanternjaw]);
+    const posed = await h.snapshot();
+    const lanternjaw = requireKind(posed, "lanternjaw");
+    const quiet = await denAll(h, [lanternjaw]);
 
-  await h.debug.setPredatorTile(lanternjaw, targets[0].tx, targets[0].ty);
-  await h.debug.setPredatorState(lanternjaw, "wander");
-  await h.debug.spawnDrifter(targets[1].tx, targets[1].ty);
-  // Both held where they were posed, so the two motes are read at the same two
-  // points before and after and neither creature acts on the pulse.
-  await h.debug.setCreatureAI(false);
+    await h.debug.setPredatorTile(lanternjaw, targets[0].tx, targets[0].ty);
+    await h.debug.setPredatorState(lanternjaw, "wander");
+    await h.debug.spawnDrifter(targets[1].tx, targets[1].ty);
+    // Both held where they were posed, so the two motes are read at the same two
+    // points before and after and neither creature acts on the pulse.
+    await h.debug.setCreatureAI(false);
 
-  const watch = await sceneGuard(h, quiet);
+    const watch = await sceneGuard(h, quiet);
 
-  await h.advance(SETTLE_TICKS);
-  const posedBoard = await h.snapshot();
-  assertEqual(
-    posedBoard.drifters.length,
-    1,
-    "the bonus drifters on the board, one of them posed through spawnDrifter",
-  );
+    await h.advance(SETTLE_TICKS);
+    const posedBoard = await h.snapshot();
+    assertEqual(
+      posedBoard.drifters.length,
+      1,
+      "the bonus drifters on the board, one of them posed through spawnDrifter",
+    );
 
-  /** Cast a pulse, run it out, and report the Lanternjaw's `lit` throughout. */
-  const cast = async (): Promise<{
-    spent: boolean;
-    lit: { elapsed: number; lit: boolean }[];
-  }> => {
-    const emitted = await emitPulse(h);
-    const lit: { elapsed: number; lit: boolean }[] = [];
-    let spent = false;
-    for (let tick = 1; tick <= SWEEP_TICKS; tick += 1) {
-      if (tick > 1) await h.advance(1);
+    /**
+     * Cast a pulse, run it out, and report both amber creatures' `lit`
+     * throughout.
+     *
+     * `lost` records a drifter that left the list under the reading, because a
+     * board with no drifter on it answers the drifter's half of the claim
+     * neither way.
+     */
+    const cast = async (): Promise<{
+      spent: boolean;
+      lost: boolean;
+      lit: LitSample[];
+    }> => {
+      const emitted = await emitPulse(h);
+      const lit: LitSample[] = [];
+      let spent = false;
+      let lost = false;
+      for (let tick = 1; tick <= SWEEP_TICKS; tick += 1) {
+        if (tick > 1) await h.advance(1);
+        const snapshot = await h.snapshot();
+        const drifter = snapshot.drifters[0];
+        if (drifter === undefined) {
+          lost = true;
+          break;
+        }
+        const elapsed = sinceEmit(emitted, snapshot);
+        lit.push(
+          {
+            elapsed,
+            whose: "Lanternjaw's",
+            lit: snapshot.predators[lanternjaw].lit,
+          },
+          { elapsed, whose: "bonus drifter's", lit: drifter.lit },
+        );
+        if (foragerPulse(snapshot) === undefined) {
+          spent = true;
+          break;
+        }
+      }
+      await h.advance(AFTER_TICKS);
+      return { spent, lost, lit };
+    };
+
+    /** Both amber lights, each read about its own drawn centre. */
+    const motes = async (): Promise<Record<string, MoteSample[]>> => {
       const snapshot = await h.snapshot();
-      lit.push({
-        elapsed: sinceEmit(emitted, snapshot),
-        lit: snapshot.predators[lanternjaw].lit,
-      });
-      if (foragerPulse(snapshot) === undefined) {
-        spent = true;
-        break;
+      return {
+        "Lanternjaw's bulb": await sampleMoteProfile(
+          h,
+          snapshot.predators[lanternjaw].x,
+          snapshot.predators[lanternjaw].y,
+        ),
+        "bonus drifter's mote": await sampleMoteProfile(
+          h,
+          snapshot.drifters[0].x,
+          snapshot.drifters[0].y,
+        ),
+      };
+    };
+
+    // Both amber creatures have to be undrawn BEFORE any pulse is cast, or "the
+    // pulse left them unlit" reads the same on a build whose own light was
+    // already drawing them. This fixture stands both behind rock, so a build
+    // that draws either one here has light that does not stop at rock.
+    for (const [whose, drawn] of [
+      ["Lanternjaw's", posedBoard.predators[lanternjaw].lit],
+      ["bonus drifter's", posedBoard.drifters[0].lit],
+    ] as const) {
+      if (drawn) {
+        failPrecondition(
+          `the ${whose} body to be undrawn before any pulse was cast, so what ` +
+            "this point reads through the pulse is the pulse's own doing; both " +
+            "stand behind rock and specs/sensing.md has the light travel " +
+            "straight and stop at the rock it lands on",
+          "fog/light-line-of-sight",
+          "it reported lit with no pulse in flight",
+        );
       }
     }
-    await h.advance(AFTER_TICKS);
-    return { spent, lit };
-  };
 
-  /** Both amber lights, each read about its own drawn centre. */
-  const motes = async (): Promise<Record<string, MoteSample[]>> => {
-    const snapshot = await h.snapshot();
-    return {
-      "Lanternjaw's bulb": await sampleMoteProfile(
-        h,
-        snapshot.predators[lanternjaw].x,
-        snapshot.predators[lanternjaw].y,
-      ),
-      "bonus drifter's mote": await sampleMoteProfile(
-        h,
-        snapshot.drifters[0].x,
-        snapshot.drifters[0].y,
-      ),
-    };
-  };
+    // The first pulse settles the ground: the corridor both creatures stand on
+    // goes from never-revealed to remembered, which is what specs/sensing.md asks
+    // a flood to do and is not what this point is about.
+    const first = await cast();
+    const motesBefore = await motes();
 
-  // The first pulse settles the ground: the corridor both creatures stand on
-  // goes from never-revealed to remembered, which is what specs/sensing.md asks
-  // a flood to do and is not what this point is about.
-  const first = await cast();
-  const motesBefore = await motes();
+    // And the second is the one the claim is read across.
+    const second = await cast();
+    const motesAfter = await motes();
+    const after = await h.snapshot();
+    // Before the assertions, so a failing check still leaves the picture that
+    // shows what the pulse did to the two glimmers.
+    await captureStill(h, "amber");
 
-  // And the second is the one the claim is read across.
-  const second = await cast();
-  const motesAfter = await motes();
-  const after = await h.snapshot();
-  // Before the assertions, so a failing check still leaves the picture that
-  // shows what the pulse did to the two glimmers.
-  await captureStill(h, "amber");
+    requireSceneHeld(after, watch);
+    for (const run of [first, second]) {
+      assertEqual(
+        run.lost,
+        false,
+        "the bonus drifter stayed on the board for the whole pulse, so its " +
+          "`lit` could be read across the front's arrival",
+      );
+      assertEqual(
+        run.spent,
+        true,
+        `the pulse ran out within ${SWEEP_TICKS} ticks of the press, so each ` +
+          "reading is taken with no crest over the two creatures",
+      );
+    }
 
-  requireSceneHeld(h, after, watch);
-  for (const run of [first, second]) {
+    for (const sample of [...first.lit, ...second.lit]) {
+      assertEqual(
+        sample.lit,
+        false,
+        `the ${sample.whose} lit ${sample.elapsed.toFixed(3)} s into the pulse ` +
+          "that flooded the tile it stands on",
+      );
+    }
     assertEqual(
-      run.spent,
-      true,
-      `the pulse ran out within ${SWEEP_TICKS} ticks of the press, so each ` +
-        "reading is taken with no crest over the two creatures",
-    );
-  }
-
-  for (const sample of [...first.lit, ...second.lit]) {
-    assertEqual(
-      sample.lit,
+      after.predators[lanternjaw].lit,
       false,
-      `the Lanternjaw's lit ${sample.elapsed.toFixed(3)} s into the pulse that ` +
-        "flooded the tile it stands on",
+      "the Lanternjaw's lit once the pulse has run out, inside the " +
+        "SONAR_MARK_TIME a mark would still be holding it drawn for",
     );
-  }
-  assertEqual(
-    after.predators[lanternjaw].lit,
-    false,
-    "the Lanternjaw's lit once the pulse has run out, inside the " +
-      "SONAR_MARK_TIME a mark would still be holding it drawn for",
-  );
+    assertEqual(
+      after.drifters[0].lit,
+      false,
+      "the bonus drifter's lit once the pulse has run out, inside the " +
+        "SONAR_MARK_TIME a mark would still be holding a marked creature " +
+        "drawn for",
+    );
 
-  for (const [what, profile] of Object.entries(motesBefore)) {
-    assertLessThanOrEqual(
-      profileDistance(profile, motesAfter[what]),
-      MOTE_TOLERANCE,
-      `the RGB distance between the ${what} before the pulse and after the ` +
-        "front had passed over it, of 441",
-    );
-  }
-});
+    for (const [what, profile] of Object.entries(motesBefore)) {
+      assertLessThanOrEqual(
+        profileDistance(profile, motesAfter[what]),
+        MOTE_TOLERANCE,
+        `the RGB distance between the ${what} before the pulse and after the ` +
+          "front had passed over it, of 441",
+      );
+    }
+  },
+);

@@ -61,7 +61,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 
@@ -172,7 +172,7 @@ check("A drifter and a Lanternjaw's bulb read alike", async () => {
   const after = h.snapshot();
   captureStill(h, "amber");
 
-  requireScene(after, guard);
+  requireSceneHeld(after, guard);
   assertEqual(
     after.drifters.length,
     1,

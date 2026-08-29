@@ -50,7 +50,7 @@ import {
   TICK_HZ,
   type Harness,
 } from "../harness";
-import { check, denAll, requireScene, sceneGuard } from "../scene";
+import { check, denAll, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The first key specs/movement.md binds the `left` action to. */
 const KEY = "ArrowLeft";
@@ -95,7 +95,7 @@ check("ArrowLeft swims the forager left", async () => {
   startPlaying(h);
   // A seven-tile corridor with the forager resting in the middle of it, facing
   // the rock across the corridor rather than along the run.
-  const run = await poseMoveKeyRun(h, "left", { facing: "up" });
+  const run = await poseMoveKeyRun(h, "left");
   assertEqual(
     h.snapshot().forager.dir,
     run.facing,
@@ -121,7 +121,7 @@ check("ArrowLeft swims the forager left", async () => {
     return { before, after };
   });
 
-  requireScene(swim.after, watch);
+  requireSceneHeld(swim.after, watch);
 
   assertEqual(
     swim.after.forager.moving,

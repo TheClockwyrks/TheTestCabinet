@@ -23,7 +23,7 @@
 // step or at the top of the following one, and both conform, so the cloud is read
 // a tick later and the tolerance below is stated against the ticks that have run.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertBetween,
   assertEqual,
@@ -32,13 +32,13 @@ import {
 } from "../assert";
 import { FORAGER_SPEED, INK_LIFE, INK_RADIUS, TICK_DT } from "../constants";
 import { poseStraightRun } from "../fixtures";
-import { captureReplay, createHarness, type Harness } from "../harness";
 import {
-  quietBoard,
-  requireSceneHeld,
-  sceneGuard,
+  captureReplay,
+  createHarness,
+  type Harness,
   startPlaying,
-} from "../scene";
+} from "../harness";
+import { check, quietBoard, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The first key specs/movement.md binds the `b` action to. */
 const KEY = "ShiftLeft";
@@ -91,15 +91,15 @@ const LIFE_SPENT_MAX = 3 * TICK_DT;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("releases an ink cloud on Shift", async () => {
+check("releases an ink cloud on Shift", async () => {
   await startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
   await quietBoard(h);
@@ -116,7 +116,7 @@ it("releases an ink cloud on Shift", async () => {
     return { armed, released };
   });
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
 
   // The premise this point's own description states, posed through
   // `setInkCooldown(0)`: "At `0` ink is ready and the snapshot reports

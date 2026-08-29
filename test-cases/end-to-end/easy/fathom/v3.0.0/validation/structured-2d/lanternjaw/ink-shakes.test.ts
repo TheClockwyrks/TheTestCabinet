@@ -51,7 +51,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 
@@ -178,7 +178,7 @@ check("Ink shakes its fix at once", async () => {
     return { released, dropped, seen, watched, end: h.snapshot() };
   });
 
-  requireScene(broke.end, guard);
+  requireSceneHeld(broke.end, guard);
 
   assertEqual(
     broke.dropped.hit,

@@ -26,7 +26,7 @@
 // following one, and both conform, so the read is taken a few ticks later while
 // the front is still far inside its range.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
@@ -36,9 +36,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -88,70 +88,68 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("emits a forager sonar pulse on Space", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    await poseStraightRun(h, RUN_TILES);
-    const quiet = await denAll(h);
-    await parkForager(h);
-    await clearUnderfoot(h);
-    h.debug.setSonarCooldown(0);
-    const watch = await sceneGuard(h, quiet);
+check("emits a forager sonar pulse on Space", async () => {
+  await startPlaying(h);
+  await poseStraightRun(h, RUN_TILES);
+  const quiet = await denAll(h);
+  await parkForager(h);
+  await clearUnderfoot(h);
+  h.debug.setSonarCooldown(0);
+  const watch = await sceneGuard(h, quiet);
 
-    const read = await captureReplay(h, "ping", async () => {
-      await h.advance(REST_TICKS);
-      const armed = h.snapshot();
-      await h.tap(KEY);
-      await h.advance(BEAT_TICKS);
-      const flying = h.snapshot();
-      await h.advance(TAIL_TICKS);
-      return { armed, flying };
-    });
-
-    requireSceneHeld(h.snapshot(), watch);
-
-    // The premise this point's own description states, posed through
-    // `setSonarCooldown(0)`: "At `0` the pulse is ready and the snapshot reports
-    // `sonar.ready` as `true`" (specs/instrumentation.md).
-    assertEqual(
-      read.armed.sonar.ready,
-      true,
-      "the pulse is ready when the key is pressed, the cooldown having been posed to 0",
-    );
-
-    const before = read.armed.pulses.filter(
-      (pulse) => pulse.source === "forager",
-    );
-    const after = read.flying.pulses.filter(
-      (pulse) => pulse.source === "forager",
-    );
-    assertGreaterThan(
-      after.length,
-      before.length,
-      `forager pulses in flight ${BEAT_TICKS + 1} ticks after Space (was ` +
-        `${before.length})`,
-    );
-    // Nothing below can read a pulse that is not there, and a wrong count above
-    // is the whole finding.
-    assertNotEqual(after.length, 0, "a pulse to read");
-
-    const pulse = after[0];
-    assertEqual(pulse.tint, "cyan", "the forager's pulse is tinted cyan");
-    assertEqual(
-      pulse.ox,
-      read.armed.forager.tx,
-      "the pulse originates from the forager's own column",
-    );
-    assertEqual(
-      pulse.oy,
-      read.armed.forager.ty,
-      "the pulse originates from the forager's own row",
-    );
-    assertEqual(
-      pulse.range,
-      read.armed.sonar.range,
-      `the pulse carries the depth ${read.armed.depth} path range the snapshot ` +
-        `reports as sonar.range`,
-    );
+  const read = await captureReplay(h, "ping", async () => {
+    await h.advance(REST_TICKS);
+    const armed = h.snapshot();
+    await h.tap(KEY);
+    await h.advance(BEAT_TICKS);
+    const flying = h.snapshot();
+    await h.advance(TAIL_TICKS);
+    return { armed, flying };
   });
+
+  requireSceneHeld(h.snapshot(), watch);
+
+  // The premise this point's own description states, posed through
+  // `setSonarCooldown(0)`: "At `0` the pulse is ready and the snapshot reports
+  // `sonar.ready` as `true`" (specs/instrumentation.md).
+  assertEqual(
+    read.armed.sonar.ready,
+    true,
+    "the pulse is ready when the key is pressed, the cooldown having been posed to 0",
+  );
+
+  const before = read.armed.pulses.filter(
+    (pulse) => pulse.source === "forager",
+  );
+  const after = read.flying.pulses.filter(
+    (pulse) => pulse.source === "forager",
+  );
+  assertGreaterThan(
+    after.length,
+    before.length,
+    `forager pulses in flight ${BEAT_TICKS + 1} ticks after Space (was ` +
+      `${before.length})`,
+  );
+  // Nothing below can read a pulse that is not there, and a wrong count above
+  // is the whole finding.
+  assertNotEqual(after.length, 0, "a pulse to read");
+
+  const pulse = after[0];
+  assertEqual(pulse.tint, "cyan", "the forager's pulse is tinted cyan");
+  assertEqual(
+    pulse.ox,
+    read.armed.forager.tx,
+    "the pulse originates from the forager's own column",
+  );
+  assertEqual(
+    pulse.oy,
+    read.armed.forager.ty,
+    "the pulse originates from the forager's own row",
+  );
+  assertEqual(
+    pulse.range,
+    read.armed.sonar.range,
+    `the pulse carries the depth ${read.armed.depth} path range the snapshot ` +
+      `reports as sonar.range`,
+  );
 });

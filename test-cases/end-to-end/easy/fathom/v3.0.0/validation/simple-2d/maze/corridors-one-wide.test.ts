@@ -17,11 +17,11 @@
 // over several freshly seeded layouts, so a generator that opens a room only
 // sometimes is caught.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { count2x2Open } from "../maze";
-import { graded } from "../scene";
+import { check } from "../scene";
 import { captureBoard, freshBoards, requireLaidOut, witness } from "./boards";
 
 /**
@@ -41,8 +41,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("lays out corridors one tile wide, with no 2x2 block of open corridor", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "lays out corridors one tile wide, with no 2x2 block of open corridor",
+  async () => {
     const boards = await freshBoards(h);
     requireLaidOut(boards);
 
@@ -60,5 +61,5 @@ it("lays out corridors one tile wide, with no 2x2 block of open corridor", async
           `seed ${one.board.seed}`,
       );
     }
-  });
-});
+  },
+);

@@ -52,7 +52,7 @@ import {
   type Harness,
 } from "../harness";
 import type { FathomSnapshot } from "../surface";
-import { check, requireScene, sceneGuard, standDown } from "../scene";
+import { check, requireSceneHeld, sceneGuard, standDown } from "../scene";
 import { startPlaying } from "../harness";
 import { FIRST_FLARE_MAX, FLARE_POLL, poseFlareRoom } from "./room";
 import type { Tile } from "../maze";
@@ -163,7 +163,7 @@ check(
       return snap;
     });
 
-    requireScene(h.snapshot(), guard);
+    requireSceneHeld(h.snapshot(), guard);
 
     const fish = lit.predators[room.index];
     assertEqual(
@@ -193,7 +193,7 @@ check(
     const outside: Tile[] = [];
     for (let ty = 0; ty < lit.grid.rows; ty += 1) {
       for (let tx = 0; tx < lit.grid.cols; tx += 1) {
-        const center = tileCenter(lit.grid, tx, ty);
+        const center = tileCenter(lit.grid, { tx, ty });
         const away = Math.hypot(center.x - fish.x, center.y - fish.y);
         if (away <= FLARE_RADIUS - RIM_INSET) inside.push({ tx, ty });
         else if (away >= outsideMin && away <= outsideMax) {

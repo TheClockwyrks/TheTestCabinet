@@ -34,7 +34,7 @@
 // build was making on the way in. A build that stalls at the seam reads long; one
 // that skips reads short; one that swims across reads `32`.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertBetween, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
@@ -43,10 +43,10 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { isOpen, wrapRows } from "../maze";
+import { isCorridor, wrapRows } from "../maze";
 import {
+  check,
   denAll,
-  graded,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
@@ -137,8 +137,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("carries the forager across the wrap tunnel in one ordinary step", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "carries the forager across the wrap tunnel in one ordinary step",
+  async () => {
     const opening = await startPlaying(h);
     const grid = opening.grid;
     const pierced = wrapRows(opening);
@@ -156,7 +157,7 @@ it("carries the forager across the wrap tunnel in one ordinary step", async (ctx
 
     // The corridor running inland from the left mouth, as far as this build offers.
     let approach = 0;
-    while (approach < MAX_APPROACH && isOpen(opening, approach + 1, row)) {
+    while (approach < MAX_APPROACH && isCorridor(opening, approach + 1, row)) {
       approach += 1;
     }
     if (approach === 0) {
@@ -337,5 +338,5 @@ it("carries the forager across the wrap tunnel in one ordinary step", async (ctx
         "swimming in — the forager swims through the seam rather than skipping " +
         "across it",
     );
-  });
-});
+  },
+);

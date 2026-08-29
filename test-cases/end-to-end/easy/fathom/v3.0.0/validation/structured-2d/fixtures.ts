@@ -1,68 +1,144 @@
-// Fathom — the posed-fixture machinery. CASE-PROVIDED, and SHARED
-// BYTE-IDENTICALLY across `validation/none/`, `validation/simple-2d/` and
-// `validation/structured-2d/`.
+// Fathom — the posed-fixture machinery. CASE-PROVIDED.
+//
+// WHAT IS SHARED. This file is byte-identical in `validation/none/`,
+// `validation/simple-2d/` and `validation/structured-2d/`. It drives the game,
+// which `maze.ts` never does, but it drives it through {@link FixtureHost} — a
+// structural reading of the debug surface's imperative form that every engine's
+// harness already satisfies. Every operation it calls is one
+// `specs/instrumentation.md` fixes, and every one of them is declared
+// {@link Awaitable}, because reaching a build through a browser page answers
+// with a promise and reaching one in process does not. Every call below is
+// awaited, which is correct under both.
+//
+// WHAT IS NOT SHARED, AND WHY. Nothing in this file, which is the point: a check
+// that poses a straight run, a corner or an occluded pair reads the same under
+// every engine, and the ASCII art it poses is one drawing rather than three. The
+// pure parts — the tile alphabet, the reachability reads, the walled-side
+// reading {@link faceWall} takes — live in `maze.ts` instead, so only the driving
+// is here. The whole library is carried under every engine even where one
+// engine's checks do not yet call every poser, because one file is what keeps
+// the fixtures one drawing.
 //
 // WHY A CHECK POSES THE GEOMETRY IT IS ABOUT. The maze is the build's own design
-// (specs/maze.md fixes its rules and nothing else), so a scenario that needs a
+// (`specs/maze.md` fixes its rules and nothing else), so a scenario that needs a
 // shape — a straight run of a given length, a corner to turn, a corridor ending
 // in rock, two tiles with a band of rock between them — can otherwise only go
-// hunting for one in whatever board this build happened to draw, and take what it
-// finds. What it finds differs from build to build: a different amount of room, a
-// different approach, sometimes nothing usable. A check that POSES the shape it
-// is about measures the behavior it names instead of the layout it landed in.
+// hunting for one in whatever board this build happened to draw, and take what
+// it finds. What it finds differs from build to build: a different amount of
+// room, a different approach, sometimes nothing usable. A check that POSES the
+// shape it is about measures the behavior it names instead of the layout it
+// landed in.
 //
-// `setMaze` is what makes that legitimate. specs/instrumentation.md exempts a
-// posed fixture from every rule in specs/maze.md — dead ends, corridors wider
+// `setMaze` is what makes that legitimate. `specs/instrumentation.md` exempts a
+// posed fixture from every rule in `specs/maze.md` — dead ends, corridors wider
 // than one tile, asymmetry, disconnected regions, a missing wrap tunnel are all
 // legal in a fixture — and requires the game to keep running on one exactly as
 // though it were the maze it had laid out itself. The eight `maze/*` points are
 // the exception that proves it: they read the build's OWN board, because finding
 // those properties there is the check (see `maze.ts`).
 //
-// This module drives the surface, so it names the operations it needs as an
-// interface of its own rather than importing a `surface.ts`: the engineless
-// project has none, and its operations cross into a page and answer with
-// promises. Every call below is awaited, which is correct under both.
+// THE ART IS THE FIXTURE, drawn the way it reads on screen: one string per row,
+// one character per tile.
+//
+//   `#` or a space   rock
+//   `.`              corridor
+//   `d` / `g`        den interior / the den gate
+//   any `A`-`Z`      corridor, AND a named anchor the check asks for by letter
+//
+// Anchors are what keep a scenario readable: it draws the corridor it wants and
+// labels the tiles that matter, rather than computing offsets. `F........P` is a
+// ten-tile straight run with the forager's tile at one end and a predator's at
+// the other. Everything outside the art is rock, and the art is centred in the
+// build's OWN reported grid, so a build whose maze is not `36 x 18` still gets
+// its fixture stamped somewhere valid rather than a layout of the wrong size.
+//
+// FOUR RULES EVERY FIXTURE OBEYS, each of them paid for by a run that was lost
+// without it.
+//
+//   1. A SEALED LARDER. Plankton sit on every corridor tile
+//      (`specs/gameplay.md`), and eating the last one clears the maze, descends,
+//      re-dens every predator and ends the scenario mid-measurement. A fixture
+//      is a handful of tiles, so a forager that keeps traveling empties it in a
+//      couple of seconds — and whether it does is not a check's to decide,
+//      because `specs/movement.md` lets a forager carry on to the next center.
+//      Pellets it cannot reach settle it outright: `planktonRemaining` never
+//      reaches `0`, whatever the forager does.
+//   2. A SEALED DEN. `setMaze` returns every predator to a den tile, so a
+//      fixture without one asks each build what "back to the den" means when
+//      there is no den, and they answer differently. The fixture carries a real
+//      chamber, walled on three sides with its gate above it, so even a build
+//      that runs the release schedule anyway — which `setMaze` says it must not
+//      — gets no further than the gate, and never into the scenario.
+//   3. THE FORAGER IS PLACED EXPLICITLY. `setMaze` rests it on "the first
+//      corridor tile in reading order", which `specs/instrumentation.md` is
+//      explicit is "a defined resting place rather than a meaningful one". Every
+//      poser below then puts it on a named anchor of its own fixture, and so
+//      must any scenario that poses art of its own.
+//   4. THE HOUSING IS CHECKED, NARROWLY. See {@link requireHoused}.
 
-import { fail } from "./assert";
-import { unmetPrecondition } from "./scene";
 import {
   CORRIDOR,
   DEN,
-  DIRS,
   GATE,
-  OPPOSITE,
   ROCK,
-  corridorDirs,
-  type BoardView,
+  housedTiles,
+  tileKey,
+  walledDir,
   type Dir,
+  type MazeView,
   type Tile,
 } from "./maze";
+import { unmetPrecondition } from "./scene";
 
 /** A value a driver may answer with directly or through a promise. */
 export type Awaitable<T> = T | Promise<T>;
 
-/** One predator, as much of it as a fixture reads. */
-export interface PredatorPose {
+/** The forager, as much of it as a poser reads (`specs/state.md`). */
+export interface ForagerView {
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+  dir: string;
+  moving: boolean;
+}
+
+/** One predator, as much of it as a poser reads (`specs/state.md`). */
+export interface PredatorView {
   kind: string;
+  x: number;
+  y: number;
   tx: number;
   ty: number;
   state: string;
   released: boolean;
 }
 
-/** The board a fixture reads back after posing itself. */
-export interface FixtureBoard extends BoardView {
+/**
+ * The board a fixture reads back after posing itself.
+ *
+ * Structural rather than imported from a `surface.ts`, so this module is the
+ * same file under every engine: each engine's own full snapshot type satisfies
+ * it, and a check keeps that fuller type by reading the harness directly.
+ */
+export interface FixtureBoard extends MazeView {
   screen: string;
-  predators: readonly PredatorPose[];
+  forager: ForagerView;
+  predators: readonly PredatorView[];
 }
 
-/** The operations a fixture drives, exactly as specs/instrumentation.md fixes them. */
+/** The three states `setPredatorState` poses (`specs/instrumentation.md`). */
+export type PosedPredatorState = "den" | "wander" | "chase";
+
+/** The operations a fixture drives, exactly as `specs/instrumentation.md` fixes them. */
 export interface FixtureOps {
   setMaze(rows: readonly string[]): Awaitable<void>;
   beginPlay(): Awaitable<void>;
   setForagerTile(tx: number, ty: number): Awaitable<void>;
   setForagerDir(dir: Dir): Awaitable<void>;
+  setPredatorTile(index: number, tx: number, ty: number): Awaitable<void>;
+  setPredatorDir(index: number, dir: Dir): Awaitable<void>;
+  setPredatorState(index: number, value: PosedPredatorState): Awaitable<void>;
 }
 
 /** What a poser needs of a harness: the surface, and a read of the board. */
@@ -71,9 +147,16 @@ export interface FixtureHost {
   snapshot(): Awaitable<FixtureBoard>;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Stamping a fixture                                                         */
+/* -------------------------------------------------------------------------- */
+
+/** How many tiles of unreachable corridor the sealed larder holds. */
+export const LARDER_TILES = 3;
+
 /** Where the art was stamped, and what each of its letters labels. */
 export interface Stamped {
-  /** The layout to hand `setMaze`, one string per row. */
+  /** The layout to hand `setMaze`, one string per grid row. */
   rows: string[];
   /** Each capital letter of the art, and every tile it labels, in reading order. */
   marks: Record<string, Tile[]>;
@@ -83,7 +166,7 @@ export interface Stamped {
 
 /** A posed fixture, as a scenario reads its own anchors back. */
 export interface Posed extends Stamped {
-  /** The one tile `letter` labels. Fails when the art labels it any other number of times. */
+  /** The one tile `letter` labels. Throws when the art labels it any other number of times. */
   mark(letter: string): Tile;
   /** Every tile `letter` labels, in reading order. */
   all(letter: string): Tile[];
@@ -94,9 +177,8 @@ export interface StampOptions {
   at?: Tile;
   /**
    * Add the sealed larder and the sealed den in the bottom two rows. On by
-   * default, and switched off only by a fixture that needs those rows for
-   * itself and keeps the board unclearable and its predators housed some other
-   * way.
+   * default, and switched off only by a fixture that needs those rows for itself
+   * and keeps the board unclearable and its predators housed some other way.
    */
   larder?: boolean;
 }
@@ -114,79 +196,69 @@ export interface PoseOptions extends StampOptions {
 /**
  * Stamp a piece of ASCII art into a full-size layout, ready for `setMaze`.
  *
- * The art is the fixture, drawn the way it reads on screen — one string per row,
- * one character per tile:
- *
- * | Character | The tile is |
- * | --- | --- |
- * | `#` or a space | Rock. |
- * | `.` | Corridor. |
- * | `d` / `g` | Den interior / the den gate. A fixture needs neither of its own. |
- * | any `A`-`Z` | Corridor, AND a named anchor the scenario asks for by that letter. |
- *
- * Anchors are what keeps a scenario readable: it draws the corridor it wants and
- * labels the two tiles that matter, rather than computing offsets.
- * `F........P` is a ten-tile straight run with the forager's tile at one end and
- * a predator's at the other. A letter used twice yields both tiles, in reading
- * order.
- *
- * Everything outside the art is rock. The art is centred in the BUILD's own
- * reported grid unless `at` places it, so a build whose grid is not `36 x 18`
- * still gets its fixture stamped somewhere valid rather than a layout of the
- * wrong size.
+ * Pure: it reads the grid's frame and returns rows. Nothing is posed until
+ * {@link poseMaze} takes them.
  */
 export function stampLayout(
-  board: BoardView,
+  view: MazeView,
   art: readonly string[],
   options: StampOptions = {},
 ): Stamped {
-  const { cols, rows } = board.grid;
+  const { cols, rows } = view.grid;
   const height = art.length;
-  const width = Math.max(...art.map((line) => line.length));
+  const width = Math.max(0, ...art.map((line) => line.length));
   const top = options.at ? options.at.ty : Math.floor((rows - height) / 2);
   const left = options.at ? options.at.tx : Math.floor((cols - width) / 2);
   if (top < 0 || left < 0 || top + height > rows || left + width > cols) {
-    fail(
-      `a grid this suite's ${width}x${height} fixture fits at ` +
-        `(${left}, ${top}); specs/overview.md fixes GRID_COLS (36) by ` +
-        `GRID_ROWS (18)`,
-      `${cols}x${rows}`,
+    // The fixture is stamped into the grid the BUILD reports, so one that does
+    // not fit is a statement about that grid rather than about the subject of
+    // this check. `specs/overview.md` fixes the grid at 36 x 18 and
+    // `instrumentation/snapshot-shape` is the point that reads it back.
+    unmetPrecondition(
+      `a ${width}x${height} fixture does not fit this build's ${cols}x${rows} ` +
+        `grid at (${left}, ${top}) — the grid specs/overview.md fixes, ` +
+        `GRID_COLS (36) by GRID_ROWS (18), would hold it; see ` +
+        `instrumentation/snapshot-shape`,
     );
   }
 
-  const grid: string[][] = Array.from({ length: rows }, () =>
+  const cells: string[][] = Array.from({ length: rows }, () =>
     new Array<string>(cols).fill(ROCK),
   );
   const marks: Record<string, Tile[]> = {};
-  for (let r = 0; r < height; r += 1) {
-    for (let c = 0; c < art[r].length; c += 1) {
-      const glyph = art[r][c];
+  for (let row = 0; row < height; row += 1) {
+    for (let col = 0; col < art[row].length; col += 1) {
+      const glyph = art[row][col];
       if (glyph === ROCK || glyph === " ") continue;
-      const tile: Tile = { tx: left + c, ty: top + r };
+      const tile: Tile = { tx: left + col, ty: top + row };
       if (glyph === CORRIDOR || glyph === DEN || glyph === GATE) {
-        grid[tile.ty][tile.tx] = glyph;
+        cells[tile.ty][tile.tx] = glyph;
         continue;
       }
       if (!/^[A-Z]$/.test(glyph)) {
         throw new Error(
           `stampLayout: unknown fixture character ${JSON.stringify(glyph)} ` +
-            `at art (${c}, ${r})`,
+            `at art (${col}, ${row})`,
         );
       }
-      grid[tile.ty][tile.tx] = CORRIDOR;
+      cells[tile.ty][tile.tx] = CORRIDOR;
       (marks[glyph] ??= []).push(tile);
     }
   }
 
-  if (options.larder ?? true) {
-    stampLarderAndDen(grid, cols, rows);
-  }
+  if (options.larder ?? true) stampLarderAndDen(cells, cols, rows);
 
-  return {
-    rows: grid.map((row) => row.join("")),
-    marks,
-    at: { tx: left, ty: top },
-  };
+  const stamped = cells.map((line) => line.join(""));
+  const pierced = stamped.findIndex(
+    (line) => line[0] !== ROCK && line[line.length - 1] !== ROCK,
+  );
+  if (pierced >= 0) {
+    throw new Error(
+      `stampLayout: the fixture opens both border columns on row ${pierced}, ` +
+        "which poses a wrap tunnel the scenario did not ask for",
+    );
+  }
+  return { rows: stamped, marks, at: { tx: left, ty: top } };
 }
 
 /**
@@ -194,19 +266,15 @@ export function stampLayout(
  *
  * THE LARDER is a short run of corridor the forager can never reach. A maze is
  * laid out with a plankton on every corridor tile and eating the one that leaves
- * none behind CLEARS the maze (specs/gameplay.md), which descends, lays out a
- * fresh board, re-dens every predator and ends the scenario. A fixture is a
- * handful of tiles, so a forager that keeps traveling can graze all of them in a
- * couple of seconds — and whether it does is not a check's to decide, because
- * specs/movement.md has the forager travel while a movement action is held and a
- * scenario is entitled to hold one. Pellets it cannot reach settle it outright:
- * `planktonRemaining` never reaches `0`, so no amount of grazing can clear the
- * maze, whatever the forager does. It costs the scenario nothing, because the
- * tiles are sealed off from everything else on the board.
+ * none behind CLEARS the maze (`specs/gameplay.md`), which descends, lays out a
+ * fresh board, re-dens every predator and ends the scenario. Pellets the forager
+ * cannot reach settle it outright: `planktonRemaining` never reaches `0`, so no
+ * amount of grazing can clear the maze, whatever the forager does. It costs the
+ * scenario nothing, because the tiles are sealed off from everything else.
  *
- * THE DEN is a three-tile chamber with its gate above the middle tile and rock on
- * the gate's other three sides. Every board a build lays out has one
- * (specs/maze.md), and `setMaze` returns every predator to a den tile — so a
+ * THE DEN is a three-tile chamber with its gate above the middle tile and rock
+ * on the gate's other three sides. Every board a build lays out has one
+ * (`specs/maze.md`), and `setMaze` returns every predator to a den tile — so a
  * fixture without one asks each build what "back to the den" means when there is
  * no den. Giving the fixture a real den takes the question away: there is
  * somewhere to put them, and it is nowhere near the scenario. Sealed means
@@ -216,51 +284,49 @@ export function stampLayout(
  * The two sit at opposite ends of those rows, so the larder is no more reachable
  * from the den than from the fixture.
  */
-function stampLarderAndDen(grid: string[][], cols: number, rows: number): void {
+function stampLarderAndDen(
+  cells: string[][],
+  cols: number,
+  rows: number,
+): void {
   const last = rows - 1;
   const above = rows - 2;
-  const used = (row: string[]): boolean => row.some((cell) => cell !== ROCK);
-  if (used(grid[last]) || used(grid[above])) {
+  const used = (line: string[]): boolean => line.some((cell) => cell !== ROCK);
+  if (used(cells[last]) || used(cells[above])) {
     throw new Error(
       "stampLayout: the fixture reaches the bottom two rows, which the larder " +
         "and the den need; pass { larder: false } and keep the board " +
         "unclearable and its predators housed another way",
     );
   }
-  for (let c = 1; c <= Math.min(3, cols - 2); c += 1) grid[last][c] = CORRIDOR;
-
-  const gateCol = cols - 3;
-  grid[above][gateCol] = GATE;
-  for (let c = gateCol - 1; c <= gateCol + 1; c += 1) grid[last][c] = DEN;
-}
-
-/** The den and gate tiles of a board, keyed `"tx,ty"`: where a predator belongs. */
-export function housedTiles(board: BoardView): Set<string> {
-  const housed = new Set<string>();
-  for (let ty = 0; ty < board.grid.rows; ty += 1) {
-    for (let tx = 0; tx < board.grid.cols; tx += 1) {
-      const at = board.tiles[ty]?.[tx];
-      if (at === DEN || at === GATE) housed.add(`${tx},${ty}`);
-    }
+  for (let tx = 1; tx <= Math.min(LARDER_TILES, cols - 2); tx += 1) {
+    cells[last][tx] = CORRIDOR;
   }
-  return housed;
+  const gate = cols - 3;
+  cells[above][gate] = GATE;
+  for (let tx = gate - 1; tx <= gate + 1; tx += 1) cells[last][tx] = DEN;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Posing one                                                                 */
+/* -------------------------------------------------------------------------- */
 
 /** One predator standing outside the den, and the kind of tile it stands on. */
-export interface LoosePredator extends PredatorPose {
+export interface LoosePredator extends Tile {
+  kind: string;
   /** `"open corridor"`, `"rock"`, or `"off the board"`. */
   ground: string;
-  /** The phrase both the precondition and the point that owns the claim report. */
+  /** The phrase both the decline and the point that owns the claim report. */
   where: string;
 }
 
-/** Every predator of `board` standing outside `housed`. */
+/** Every predator of `board` standing outside `housed`, in roster order. */
 export function looseOf(
   board: FixtureBoard,
-  housed: Set<string>,
+  housed: ReadonlySet<string>,
 ): LoosePredator[] {
   return board.predators
-    .filter((predator) => !housed.has(`${predator.tx},${predator.ty}`))
+    .filter((predator) => !housed.has(tileKey(predator)))
     .map((predator) => {
       const at = board.tiles[predator.ty]?.[predator.tx];
       const ground =
@@ -270,7 +336,9 @@ export function looseOf(
             ? "off the board"
             : "rock";
       return {
-        ...predator,
+        kind: predator.kind,
+        tx: predator.tx,
+        ty: predator.ty,
         ground,
         where: `the ${predator.kind} at (${predator.tx}, ${predator.ty}), on ${ground}`,
       };
@@ -278,32 +346,41 @@ export function looseOf(
 }
 
 /**
- * Refuse to grade a posed scenario whose predators `setMaze` did not put away.
+ * Refuse to grade a posed scenario whose predators `setMaze` did not put away —
+ * and refuse NARROWLY.
  *
- * specs/instrumentation.md is explicit about what the operation does with them:
- * the board is left in the state a freshly laid-out maze starts in, with every
- * predator returned to a den tile and its `released` flag `false`. A fixture from
- * {@link stampLayout} always carries a real den for them to be returned TO, so on
- * such a layout every predator's tile is a den or gate tile; there is nowhere else
- * it is entitled to be.
+ * `specs/instrumentation.md` is explicit about what the operation does with
+ * them: the board is left in the state a freshly laid-out maze starts in, with
+ * every predator returned to a den tile and its `released` flag `false`. A
+ * fixture from {@link stampLayout} always carries a real den for them to be
+ * returned TO, so on such a layout every predator's tile is a den or gate tile;
+ * there is nowhere else it is entitled to be. A build that rebuilds the board
+ * but leaves its hunters wherever its own den used to be drops them onto
+ * whatever the fixture put at those coordinates, which is frequently the
+ * corridor the scenario is about. One run went exactly that way: a Lanternjaw
+ * stood in the middle of a posed corridor, the forager swam into it a quarter of
+ * a second in, and the point reported "holding ArrowUp gives the forager an
+ * upward heading — expected up, actual left", `left` being the facing it
+ * respawns on. Three points blamed input and turning for an unmet `setMaze`
+ * contract, and nothing named `setMaze`.
  *
- * IT REFUSES NARROWLY. A build that misses the fixture's den misses it by
- * whatever offset its own den sat at, and the tile it lands on is as often rock as
- * corridor. Movement is confined to open tiles and rock is solid to every body
- * (specs/movement.md), so a hunter embedded in rock cannot reach the forager, the
- * subject, or anything else: the scenario around it is the one the check meant to
- * pose, and refusing to grade it would throw a real measurement away over
- * bookkeeping. A hunter on OPEN CORRIDOR is the one that can travel into the
- * scene, and it is the only one that stops the scenario.
+ * ONLY A PREDATOR THAT CAN GET ANYWHERE STOPS THE SCENARIO. A build that misses
+ * the fixture's den misses it by whatever offset its own den sat at, and the
+ * tile it lands on is as often rock as corridor. Movement is confined to the
+ * tiles open to a body and rock is solid to every body (`specs/movement.md`), so
+ * a hunter embedded in rock cannot reach the forager, the subject, or anything
+ * else: the scenario around it is the one the check meant to pose, and refusing
+ * to grade it would throw a real measurement away over bookkeeping. A hunter on
+ * OPEN CORRIDOR is the one that can travel into the scene, and it is the only
+ * one that stops the scenario.
  *
  * The full contract, rock included, is graded by
  * `controls/setmaze-houses-predators`, which poses with `housed: false` and
  * asserts the housing itself. This is the narrower question of whether THIS
  * scenario can still be read, so it DECLINES, naming that point as the one that
- * owns the verdict.
- *
- * A layout with no den at all is not checked: specs/instrumentation.md holds such
- * a predator out of play rather than fixing a tile for it.
+ * owns the verdict. A layout with no den at all is not checked:
+ * `specs/instrumentation.md` holds such a predator out of play rather than
+ * fixing a tile for it.
  */
 export function requireHoused(board: FixtureBoard): void {
   const housed = housedTiles(board);
@@ -313,26 +390,27 @@ export function requireHoused(board: FixtureBoard): void {
   );
   if (loose.length === 0) return;
   unmetPrecondition(
-    "Expected: setMaze to return every predator to a den tile of the posed " +
-      "fixture, which carries one (specs/instrumentation.md); a hunter left " +
-      "standing in open corridor can reach the forager and end the scenario, " +
-      "so this point's own claim was never measured — the housing contract is " +
-      "controls/setmaze-houses-predators' verdict to give\nActual: " +
-      loose.map((one) => one.where).join("; "),
+    `setMaze left a predator loose in the posed fixture — ` +
+      `${loose.map((one) => one.where).join("; ")}. ` +
+      `specs/instrumentation.md has the operation return every predator to a ` +
+      `den tile, and this fixture carries one; a hunter standing in open ` +
+      `corridor can reach the forager and end the scenario, so what happens ` +
+      `next is not this check's verdict — see ` +
+      `controls/setmaze-houses-predators`,
   );
 }
 
 /**
  * Pose a fixture as the whole maze, and hand back its anchors.
  *
- * `setMaze` leaves the dive on a fresh board — a plankton on every corridor tile,
- * the fog back to unrevealed, every predator returned to the den with `released`
- * false and the release schedule suspended — so a caller poses the forager and the
- * predators it wants afterwards, exactly as it would on a generated maze. Every
- * poser below places the forager EXPLICITLY on an anchor of its own fixture, and
- * so must any scenario that poses its own art: the operation rests the forager on
- * the first corridor tile in reading order, which specs/instrumentation.md is
- * explicit is a defined resting place rather than a meaningful one.
+ * `setMaze` leaves the dive on a fresh board — a plankton on every corridor
+ * tile, the fog back to unrevealed, every predator returned to the den with
+ * `released` false and the release schedule suspended — so a caller poses the
+ * forager and the predators it wants afterwards, exactly as it would on a
+ * generated maze.
+ *
+ * Every `pose*` helper below is built on this one, and a scenario whose shape
+ * none of them draws calls it directly with art of its own.
  */
 export async function poseMaze(
   h: FixtureHost,
@@ -343,11 +421,12 @@ export async function poseMaze(
   const stamped = stampLayout(before, art, options);
   await h.debug.setMaze(stamped.rows);
 
-  // specs/instrumentation.md leaves the screen exactly as it was, so a build in
-  // live play is still in live play here and this is a no-op. A build that read
-  // the new board as a new maze and opened a countdown is put back into play
-  // rather than having that reading reported against fifty unrelated points; the
-  // screen `setMaze` leaves is nobody's subject below.
+  // `specs/instrumentation.md` leaves the screen exactly as it was, so a build
+  // in live play is still in live play here and this is a no-op. A build that
+  // read the new board as a new maze and opened a countdown is put back into
+  // play rather than having that reading reported against fifty unrelated
+  // points; the screen `setMaze` leaves is nobody's subject below, and
+  // `controls/setmaze-*` is where that contract is graded.
   if ((await h.snapshot()).screen === "countdown") await h.debug.beginPlay();
 
   if (options.housed !== false) requireHoused(await h.snapshot());
@@ -369,10 +448,10 @@ export async function poseMaze(
 }
 
 /**
- * Place the forager on `tile`, facing `dir`.
+ * Place the forager on `tile`, facing `dir` where one is given.
  *
  * Every poser ends with one of these. The two operations are atomic
- * (specs/instrumentation.md), so a facing is posed beside a tile rather than
+ * (`specs/instrumentation.md`), so a facing is posed beside a tile rather than
  * with it.
  */
 export async function placeForager(
@@ -384,14 +463,31 @@ export async function placeForager(
   if (dir !== undefined) await h.debug.setForagerDir(dir);
 }
 
+/** Place one predator on a tile, and face it and state it where asked. */
+export async function placePredator(
+  h: FixtureHost,
+  index: number,
+  tile: Tile,
+  options: { dir?: Dir; state?: PosedPredatorState } = {},
+): Promise<void> {
+  await h.debug.setPredatorTile(index, tile.tx, tile.ty);
+  if (options.dir !== undefined) {
+    await h.debug.setPredatorDir(index, options.dir);
+  }
+  if (options.state !== undefined) {
+    await h.debug.setPredatorState(index, options.state);
+  }
+}
+
 /**
  * Face the forager at rock, so a build whose forager travels on with no action
  * held still holds the tile it was placed on.
  *
- * specs/movement.md has a forager at rest take its desired direction when the
+ * `specs/movement.md` has a forager at rest take its desired direction when the
  * tile that way is open and stay at rest otherwise, so a heading that leads into
  * rock cannot take it off the tile under any conforming reading. Where the tile
- * is a full crossroads the facing is left alone, which is the best available.
+ * is a full crossroads the facing is left alone, which is the best available and
+ * is what a resting build does anyway.
  *
  * Only for a scenario whose forager is a BYSTANDER. A check that reads the
  * forager's own heading poses that heading itself.
@@ -400,12 +496,26 @@ export async function faceWall(
   h: FixtureHost,
   tile: Tile,
 ): Promise<Dir | null> {
-  const board = await h.snapshot();
-  const open = corridorDirs(board, tile.tx, tile.ty);
-  const walled = DIRS.filter((dir) => !open.includes(dir));
-  if (walled.length === 0) return null;
-  await h.debug.setForagerDir(walled[0]);
-  return walled[0];
+  const wall = walledDir(await h.snapshot(), tile);
+  if (wall === null) return null;
+  await h.debug.setForagerDir(wall);
+  return wall;
+}
+
+/**
+ * The index of the first predator of `kind` on the roster, or `null`.
+ *
+ * `specs/state.md` lists the predators in release order and the surface's
+ * predator operations select one by that index, so this is how a scenario about
+ * a particular hunter names it. A roster that holds none of that kind is the
+ * roster's verdict rather than the caller's, so this reports rather than throws.
+ */
+export function predatorIndex(
+  board: FixtureBoard,
+  kind: string,
+): number | null {
+  const index = board.predators.findIndex((predator) => predator.kind === kind);
+  return index < 0 ? null : index;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -478,11 +588,11 @@ export interface SightLine {
  * The forager and a predator `gapTiles` apart on one straight corridor.
  *
  * `lead` and `tail` are spare corridor beyond each of them, so neither runs into
- * rock the instant a scenario sets it moving. `refugeGap` adds a sealed pocket
- * that many tiles further on, for a scenario that then puts the forager somewhere
- * a light, a ping or a patrol cannot follow: sealed rather than merely distant,
- * because the whole point of moving it is that what happens next cannot be the
- * predator arriving.
+ * rock the instant a scenario sets it moving. `refugeGap` adds a SEALED pocket
+ * that many tiles further on, for a scenario that then puts the forager
+ * somewhere a light, a ping or a patrol cannot follow: sealed rather than merely
+ * distant, because the whole point of moving it is that what happens next cannot
+ * be the predator arriving.
  */
 export async function poseSightLine(
   h: FixtureHost,
@@ -526,8 +636,9 @@ export interface Corner {
 
 /**
  * A corner with both arms running on past the junction, so a body that does NOT
- * turn keeps going rather than being stopped by rock. The forager rests on
- * `back`, facing along the approach.
+ * turn keeps going rather than being stopped by rock — which is what lets a
+ * check tell "it took the turn" from "it ran out of corridor". The forager rests
+ * on `back`, facing along the approach.
  */
 export async function poseCorner(
   h: FixtureHost,
@@ -566,15 +677,16 @@ export interface ApartRooms {
  * somewhere else as a bystander. On a generated maze "somewhere else" is only a
  * head start: a patrol crosses the board in a few seconds, so a long watch ends
  * with the creature arriving and the point becoming about something other than
- * its subject. A posed board may do what specs/maze.md forbids a laid-out one and
- * simply put them in different rooms, so "far away" holds for as long as the check
- * needs. The ring is a loop rather than a hallway, so a patrol has somewhere to go
- * and keeps moving instead of pacing a dead end.
+ * its subject. A posed board may do what `specs/maze.md` forbids a laid-out one
+ * — that page requires one connected region, and a fixture is exempt — and
+ * simply put them in different rooms, so "far away" holds for as long as the
+ * check needs. The ring is a loop rather than a hallway, so a patrol has
+ * somewhere to go and keeps moving instead of pacing a dead end.
  *
  * `near` is how much corridor the forager's own room has, which matters whenever
- * the check measures something that TRAVELS along corridors: a sonar pulse floods
- * by corridor step, so a pulse cast in a three-tile room reports a three-tile
- * reach however far its range is set.
+ * the check measures something that TRAVELS along corridors: a sonar pulse
+ * floods by corridor step, so a pulse cast in a three-tile room reports a
+ * three-tile reach however far its range is set.
  */
 export async function poseApart(
   h: FixtureHost,
@@ -642,19 +754,19 @@ export interface OccludedPair {
 /**
  * Two parallel corridors with a full band of rock between them, `tiles` apart.
  *
- * WHY A BAND RATHER THAN ONE ROCK ON THE LINE. These points watch a predator that
- * is still patrolling, so what matters is not that ONE pair of tiles is occluded
- * but that every tile the predator can reach is. A single rock with a way around
- * it leaves tiles at grazing angles where a check's own reading and a build's line
- * of sight can legitimately disagree, and the point then reads that disagreement
- * as a predator lit through rock. With a full band, every line from one corridor
- * to the other crosses solid rock, whatever either party rounds.
+ * WHY A BAND RATHER THAN ONE ROCK ON THE LINE. These points watch a predator
+ * that is still patrolling, so what matters is not that ONE pair of tiles is
+ * occluded but that every tile the predator can reach is. A single rock with a
+ * way around it leaves tiles at grazing angles where a check's own reading and a
+ * build's line of sight can legitimately disagree, and the point then reads that
+ * disagreement as a predator lit through rock. With a full band, every line from
+ * one corridor to the other crosses solid rock, whatever either party rounds.
  *
- * OCCLUSION IS NOT DARKNESS. Two tiles apart is `64` units, which sits inside the
- * forager's own light pocket at any brightness (`V` is `96` at `G = 0`), and a
- * build is entitled to paint that pocket as a glow. A check reading PIXELS across
- * the band stands its pair five tiles apart instead: past the pocket, and still
- * inside the kindle circle.
+ * OCCLUSION IS NOT DARKNESS. Two tiles apart is `64` units, which sits inside
+ * the forager's own light pocket at any brightness (`V` is `96` at `G = 0`), and
+ * a build is entitled to paint that pocket as a glow. A check reading PIXELS
+ * across the band stands its pair five tiles apart instead: past the pocket, and
+ * still inside the kindle circle.
  */
 export async function poseOccludedPair(
   h: FixtureHost,
@@ -672,7 +784,7 @@ export async function poseOccludedPair(
 
 /** A tile a sonar pulse floods to, and how many corridor steps out it lies. */
 export interface SonarTarget extends Tile {
-  /** Corridor steps from the forager's tile. */
+  /** Corridor steps from the forager's tile — the unit `E` is measured in. */
   steps: number;
 }
 
@@ -680,11 +792,12 @@ export interface SonarTarget extends Tile {
  * A dog-leg corridor, and the tiles a pulse from the forager reaches around the
  * bend, nearest first.
  *
- * These are tiles the pulse can flood to but the LIGHT cannot see: the return leg
- * sits directly under the outward leg with a band of rock between, so every line
- * from the forager to a target crosses solid rock while the corridor still joins
- * them in a few steps. That separation is the whole point of the sonar points —
- * anything revealed out there was revealed by the pulse and not by standing close.
+ * These are tiles the pulse can flood to but the LIGHT cannot see: the return
+ * leg sits directly under the outward leg with a band of rock between, so every
+ * line from the forager to a target crosses solid rock while the corridor still
+ * joins them in a few steps. That separation is the whole point of the sonar
+ * points — anything revealed out there was revealed by the pulse and not by
+ * standing close.
  */
 export async function poseSonarSense(
   h: FixtureHost,
@@ -708,21 +821,28 @@ export interface LitWallProbe {
   dir: Dir;
   /** How many corridor tiles run ahead of the forager. */
   run: number;
-  /** The rock that closes the corridor. */
+  /** The rock that closes the corridor, `run + 1` tiles along. */
   wall: Tile;
   /** The corridor tile on the far side of that rock, which the light must not reach. */
   behind: Tile;
-  /** The rock the forager itself stands against. */
+  /** The rock the forager itself stands against, across the corridor. */
   flankWalls: Tile[];
 }
 
 /**
- * A corridor of `run` tiles ahead of the forager, closed by one rock tile, with a
- * corridor tile behind it.
+ * A corridor of `run` tiles ahead of the forager, closed by one rock tile, with
+ * a corridor tile behind it.
  *
- * `behind` is what makes the point decidable: it is a tile the light must NOT
- * reach, and a corridor that simply ran into the board's border has no far side
- * at all.
+ * WHY AN AXIAL RAY. `specs/sensing.md` fixes the light as a straight line — a
+ * tile is lit when its center is within `V` and the segment joining the two
+ * centers crosses no rock other than that tile itself — but the rock flanking a
+ * corridor a few tiles away sits at a grazing angle, where two conforming builds
+ * may honestly disagree about a segment that clips a corner. The rock squarely
+ * at the END of a corridor the forager looks down does not: that line runs along
+ * the corridor's center line through nothing but open tiles.
+ *
+ * `behind` is what makes the point decidable — a tile the light must NOT reach —
+ * and a corridor that simply ran into the board's border has no far side at all.
  */
 export async function poseLitWallProbe(
   h: FixtureHost,
@@ -762,7 +882,8 @@ export interface DimStandoff {
 /**
  * A hunter, the tile the forager is fixed on, and a tile `slipTiles` further
  * along, all three on one straight run so the only thing between them is
- * distance.
+ * distance — far enough that a hunter still holding the stale fix cannot reach
+ * the slip, which is what the check measures.
  */
 export async function poseDimStandoff(
   h: FixtureHost,
@@ -785,9 +906,9 @@ export async function poseDimStandoff(
 export interface MoveKeyRun {
   /** The tile the forager rests on. */
   start: Tile;
-  /** The direction under test. */
+  /** The direction the check's action names. */
   dir: Dir;
-  /** The heading the forager was left resting on. */
+  /** The rock the forager is posed facing, across the corridor. */
   facing: Dir;
   /** How many tiles of corridor run ahead of it that way. */
   ahead: number;
@@ -795,29 +916,30 @@ export interface MoveKeyRun {
 
 /**
  * A straight corridor along the tested direction's OWN axis, with the forager
- * resting in the middle of it.
+ * resting in the middle of it, facing the rock across the corridor.
  *
- * Posed rather than found: whether a tile has corridor on the side a given action
- * pushes, and how much, is a property of the maze a build invented, so on one
- * board "hold left" has four tiles to cross and on another it has one and a wall.
- * Here every direction gets the same run.
+ * POSED RATHER THAN FOUND. Whether a tile has corridor on the side a given
+ * action pushes, and how much of it, is a property of the board a build
+ * invented: on one board "hold left" had four tiles to cross and on another it
+ * had one and a wall. Here every direction gets the same run, so the eight
+ * movement-action points measure the same thing eight times.
  *
- * THE FORAGER RESTS FACING THE OTHER WAY, which is what keeps the reading
- * non-vacuous. A check about `right` that posed the forager already facing right
- * would assert a heading the arrangement itself had set, and — on a build whose
- * forager travels with no action held — would read travel in the tested direction
- * that the tested action had nothing to do with. Resting it on the opposite
- * heading makes both readings the action's own: specs/movement.md honors a desired
- * direction opposite the current heading at once, wherever the forager stands, so
- * a conforming build turns and travels on the very tick the action arrives.
+ * THE FORAGER IS FACED INTO THE ROCK ACROSS THE CORRIDOR, never along the run.
+ * Faced along it, a build that ignored the keyboard entirely and simply
+ * travelled the way it was pointing would travel exactly as a conforming one
+ * does, and the check would pass a game no action reaches. Facing rock, the
+ * forager cannot leave its tile until the action is read and honoured —
+ * `specs/movement.md`: "A forager at rest takes the desired direction when the
+ * tile that way is open to it, and stays at rest otherwise" — so the travel a
+ * check measures is the action's doing and nothing else's. The corridor is one
+ * tile wide, so both tiles across it are rock and either serves.
  */
 export async function poseMoveKeyRun(
   h: FixtureHost,
   dir: Dir,
-  options: { ahead?: number; facing?: Dir } = {},
+  options: { ahead?: number } = {},
 ): Promise<MoveKeyRun> {
   const ahead = options.ahead ?? 3;
-  const facing = options.facing ?? OPPOSITE[dir];
   const arm = CORRIDOR.repeat(ahead);
   const vertical = dir === "up" || dir === "down";
   const art = vertical
@@ -825,6 +947,49 @@ export async function poseMoveKeyRun(
     : [arm + "S" + arm];
   const posed = await poseMaze(h, art);
   const start = posed.mark("S");
+  const facing: Dir = vertical ? "left" : "up";
   await placeForager(h, start, facing);
   return { start, dir, facing, ahead };
+}
+
+/** A lit room, and a sealed patch of corridor the light never reaches. */
+export interface DarkPatch {
+  /** The forager's tile, in its own small room. */
+  home: Tile;
+  /** A corridor tile no light has touched, across solid rock. */
+  dark: Tile;
+  /** The rock tile directly above that corridor tile, equally untouched. */
+  darkRock: Tile;
+  /** How far apart `home` and `dark` are, in tiles. */
+  tiles: number;
+}
+
+/**
+ * A small room for the forager and, `gap` tiles of solid rock away, a sealed
+ * three-tile corridor nothing has ever lit.
+ *
+ * The fog points need a tile that is genuinely unrevealed — never touched by the
+ * forager's light, a pulse or a flare — and a rock tile beside it that is
+ * equally untouched, so the two can be compared. The room and the pocket share a
+ * row with rock between them, and the pocket's whole surround is rock by
+ * construction, so `darkRock` is a rock tile whichever way a build traces a
+ * sight line.
+ */
+export async function poseDarkPatch(
+  h: FixtureHost,
+  options: { gap?: number } = {},
+): Promise<DarkPatch> {
+  const gap = options.gap ?? 8;
+  const posed = await poseMaze(h, [
+    "F" + CORRIDOR.repeat(2) + " ".repeat(gap) + CORRIDOR + "D" + CORRIDOR,
+  ]);
+  const home = posed.mark("F");
+  const dark = posed.mark("D");
+  await placeForager(h, home, "left");
+  return {
+    home,
+    dark,
+    darkRock: { tx: dark.tx, ty: dark.ty - 1 },
+    tiles: dark.tx - home.tx,
+  };
 }

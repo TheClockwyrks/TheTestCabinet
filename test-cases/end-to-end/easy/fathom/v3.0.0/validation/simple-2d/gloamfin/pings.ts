@@ -147,7 +147,7 @@ export async function sweep(
   }
 }
 
-/** The Gloamfin's own entry in a snapshot, by the index `requirePred` gave. */
+/** The Gloamfin's own entry in a snapshot, by the index `requireKind` gave. */
 export function gloamfinOf(
   snapshot: FathomSnapshot,
   index: number,

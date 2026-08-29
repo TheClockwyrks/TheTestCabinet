@@ -44,7 +44,7 @@ import {
   denAll,
   quietBoard,
   requireKind,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import {
@@ -128,7 +128,7 @@ check("It pings on its own cadence", async () => {
   await sweep(h, OFF_CAMERA_TICKS, watch);
   await captureReplay(h, "ping", () => sweep(h, RECORDED_TICKS, watch));
 
-  requireScene(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
   assertEqual(
     [...states].join(","),
     "wander",

@@ -32,7 +32,7 @@
 // WHAT THIS DOES NOT DECIDE. What a chase then does (`gloamfin/chase-cap`), or
 // what the alert looks like (`alert/gloamfin`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -47,9 +47,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
-  graded,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
@@ -93,93 +93,91 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Close hearing takes a fix and fires the alert", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, SEALED_PAIR);
-    const index = requirePred(board.snap, "gloamfin");
-    const quiet = await denAll(h, ["gloamfin"]);
-    await placePredator(h, index, board.mark("G"), { state: "wander" });
-    await placeForager(h, board.mark("F"), "right");
-    await h.debug.clearPlankton();
-    await h.debug.setBrightness(0);
-    // The forager is this point's mover, so the guard watches everything BUT where
-    // it stands: a life lost, the dive leaving live play, a denned hunter loose.
-    const guard = await sceneGuard(h, quiet, { foragerParked: false });
+check("Close hearing takes a fix and fires the alert", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, SEALED_PAIR);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
+  await placePredator(h, index, board.mark("G"), { state: "wander" });
+  await placeForager(h, board.mark("F"), "right");
+  await h.debug.clearPlankton();
+  await h.debug.setBrightness(0);
+  // The forager is this point's mover, so the guard watches everything BUT where
+  // it stands: a life lost, the dive leaving live play, a denned hunter loose.
+  const guard = await sceneGuard(h, quiet, { foragerParked: false });
 
-    const opening = h.snapshot();
-    const openingGloamfin = gloamfinOf(opening, index);
+  const opening = h.snapshot();
+  const openingGloamfin = gloamfinOf(opening, index);
 
-    const crossing = await captureReplay(h, "fix", async () => {
-      h.hold("ArrowRight");
-      const closed = await h.until(
-        (snap) => apart(snap.forager, gloamfinOf(snap, index)) <= GLOAMFIN_HEAR,
-        { maxFrames: SWIM_BUDGET, poll: 1 },
-      );
-      await h.advance(SETTLE_TICKS);
-      const read = h.snapshot();
-      // Held on past the reading purely so the clip carries a readable moment of
-      // the acquisition. The state the check reads is already taken.
-      await h.advance(TAIL_TICKS);
-      h.release("ArrowRight");
-      return { closed, read };
-    });
-
-    requireSceneHeld(h.snapshot(), guard);
-
-    // The scenario opened on a Gloamfin that had heard nothing, which is what makes
-    // every reading below a reading of the crossing rather than of the pose.
-    assertEqual(
-      openingGloamfin.state,
-      "wander",
-      "the Gloamfin's state before the forager closed on it",
+  const crossing = await captureReplay(h, "fix", async () => {
+    h.hold("ArrowRight");
+    const closed = await h.until(
+      (snap) => apart(snap.forager, gloamfinOf(snap, index)) <= GLOAMFIN_HEAR,
+      { maxFrames: SWIM_BUDGET, poll: 1 },
     );
-    assertEqual(
-      openingGloamfin.hearingLock,
-      false,
-      "hearingLock before the forager closed on it — specs/state.md reports it " +
-        "false at every moment the Gloamfin is not holding a close-range lock",
-    );
-    assertGreaterThan(
-      apart(opening.forager, openingGloamfin),
-      GLOAMFIN_HEAR,
-      `logical units between the two centers at the start, against the ` +
-        `GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) close hearing reaches`,
-    );
-
-    requireSwim(
-      opening.forager,
-      crossing.read.forager,
-      `swim the ${SEALED_PAIR[0].length - 1} tiles of corridor this scenario laid ` +
-        `out to bring it inside GLOAMFIN_HEAR of the Gloamfin`,
-    );
-
-    const heard = gloamfinOf(crossing.read, index);
-    assertLessThanOrEqual(
-      apart(crossing.read.forager, heard),
-      GLOAMFIN_HEAR,
-      `logical units between the two centers at the reading, against the ` +
-        `GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) close hearing reaches`,
-    );
-    assertEqual(
-      heard.hearingLock,
-      true,
-      "hearingLock once the forager stood inside GLOAMFIN_HEAR through rock — " +
-        "specs/predators/gloamfin.md has close hearing work in the dark and " +
-        "through rock, and reports the lock while it holds",
-    );
-    assertEqual(
-      heard.state,
-      "chase",
-      "the Gloamfin's state on the fix — specs/predators/gloamfin.md takes " +
-        '"wander" to "chase" when any of the three senses takes a fix',
-    );
-    assertEqual(
-      heard.alert,
-      true,
-      "the Gloamfin's alert on the fix — specs/predators.md fires the detection " +
-        "alert the moment a Gloamfin acquires a fix it was not already chasing on, " +
-        "and reports alert true for ALERT_TIME (0.5 s) from that moment",
-    );
+    await h.advance(SETTLE_TICKS);
+    const read = h.snapshot();
+    // Held on past the reading purely so the clip carries a readable moment of
+    // the acquisition. The state the check reads is already taken.
+    await h.advance(TAIL_TICKS);
+    h.release("ArrowRight");
+    return { closed, read };
   });
+
+  requireSceneHeld(h.snapshot(), guard);
+
+  // The scenario opened on a Gloamfin that had heard nothing, which is what makes
+  // every reading below a reading of the crossing rather than of the pose.
+  assertEqual(
+    openingGloamfin.state,
+    "wander",
+    "the Gloamfin's state before the forager closed on it",
+  );
+  assertEqual(
+    openingGloamfin.hearingLock,
+    false,
+    "hearingLock before the forager closed on it — specs/state.md reports it " +
+      "false at every moment the Gloamfin is not holding a close-range lock",
+  );
+  assertGreaterThan(
+    apart(opening.forager, openingGloamfin),
+    GLOAMFIN_HEAR,
+    `logical units between the two centers at the start, against the ` +
+      `GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) close hearing reaches`,
+  );
+
+  requireSwim(
+    opening.forager,
+    crossing.read.forager,
+    `swim the ${SEALED_PAIR[0].length - 1} tiles of corridor this scenario laid ` +
+      `out to bring it inside GLOAMFIN_HEAR of the Gloamfin`,
+  );
+
+  const heard = gloamfinOf(crossing.read, index);
+  assertLessThanOrEqual(
+    apart(crossing.read.forager, heard),
+    GLOAMFIN_HEAR,
+    `logical units between the two centers at the reading, against the ` +
+      `GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) close hearing reaches`,
+  );
+  assertEqual(
+    heard.hearingLock,
+    true,
+    "hearingLock once the forager stood inside GLOAMFIN_HEAR through rock — " +
+      "specs/predators/gloamfin.md has close hearing work in the dark and " +
+      "through rock, and reports the lock while it holds",
+  );
+  assertEqual(
+    heard.state,
+    "chase",
+    "the Gloamfin's state on the fix — specs/predators/gloamfin.md takes " +
+      '"wander" to "chase" when any of the three senses takes a fix',
+  );
+  assertEqual(
+    heard.alert,
+    true,
+    "the Gloamfin's alert on the fix — specs/predators.md fires the detection " +
+      "alert the moment a Gloamfin acquires a fix it was not already chasing on, " +
+      "and reports alert true for ALERT_TIME (0.5 s) from that moment",
+  );
 });

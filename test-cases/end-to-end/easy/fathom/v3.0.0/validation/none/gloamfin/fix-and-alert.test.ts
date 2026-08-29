@@ -32,7 +32,7 @@
 // WHAT THIS DOES NOT DECIDE. What a chase then does (`gloamfin/chase-cap`), or
 // what the alert looks like (`alert/gloamfin`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -40,15 +40,21 @@ import {
 } from "../assert";
 import { GLOAMFIN_HEAR, TICK_HZ } from "../constants";
 import { placeForager, placePredator, poseMaze } from "../fixtures";
-import { captureReplay, createHarness, type Harness } from "../harness";
 import {
-  denAllExcept,
+  captureReplay,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import {
+  check,
+  denAll,
+  requireKind,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
-  startPlaying,
 } from "../scene";
-import { apart, gloamfinOf, requireGloamfin } from "./pings";
+import { apart, gloamfinOf } from "./pings";
 
 /**
  * The fixture: the forager's corridor, and the Gloamfin walled into the tile
@@ -79,19 +85,19 @@ const TAIL_TICKS = 60;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("Close hearing takes a fix and fires the alert", async () => {
+check("Close hearing takes a fix and fires the alert", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, SEALED_PAIR);
-  const index = requireGloamfin(h, board.snap);
-  const quiet = await denAllExcept(h, [index]);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
   await placePredator(h, index, board.mark("G"), { state: "wander" });
   await placeForager(h, board.mark("F"), "right");
   await h.debug.clearPlankton();
@@ -118,7 +124,7 @@ it("Close hearing takes a fix and fires the alert", async () => {
     return { closed, read };
   });
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
 
   // The scenario opened on a Gloamfin that had heard nothing, which is what makes
   // every reading below a reading of the crossing rather than of the pose.
@@ -141,7 +147,6 @@ it("Close hearing takes a fix and fires the alert", async () => {
   );
 
   requireSwim(
-    h,
     opening.forager,
     crossing.read.forager,
     `swim the ${SEALED_PAIR[0].length - 1} tiles of corridor this scenario laid ` +

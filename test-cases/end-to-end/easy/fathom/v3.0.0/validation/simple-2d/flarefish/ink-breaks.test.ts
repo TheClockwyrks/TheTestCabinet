@@ -39,7 +39,7 @@
 // `ink/cloud`'s; and what breaks a fix that is not ink, which is
 // `flarefish/chase-like-lanternjaw`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -59,10 +59,10 @@ import {
 import { poseInkStandoff } from "../fixtures";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import {
+  check,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   separation,
@@ -134,15 +134,16 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("drops the Flarefish's fix the moment ink lands, and it takes no new one while the cloud blinds it", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "drops the Flarefish's fix the moment ink lands, and it takes no new one while the cloud blinds it",
+  async () => {
     await startPlaying(h);
     const line = await poseInkStandoff(h, { gap: GAP_TILES, clearTiles: 3 });
     await parkForager(h, line.ink);
     h.debug.clearPlankton();
 
-    const index = requirePred(h.snapshot(), "flarefish");
-    const quiet = await denAll(h, ["flarefish"]);
+    const index = requireKind(h.snapshot(), "flarefish");
+    const quiet = await denAll(h, [index]);
     h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
     h.debug.setPredatorDir(index, "left");
     h.debug.setPredatorState(index, "wander");
@@ -239,5 +240,5 @@ it("drops the Flarefish's fix the moment ink lands, and it takes no new one whil
         `${((PREDATOR_SPEED * (ticks(BLIND_WATCH) + TAIL_TICKS)) / TICK_HZ).toFixed(0)} ` +
         `units across it and the tail after it`,
     );
-  });
-});
+  },
+);

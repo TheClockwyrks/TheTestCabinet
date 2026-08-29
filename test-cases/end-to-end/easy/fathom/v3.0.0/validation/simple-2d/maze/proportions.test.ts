@@ -33,7 +33,7 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   MAZE_DENSITY_MAX,
   MAZE_DENSITY_MIN,
@@ -45,7 +45,7 @@ import {
 import { assertBetween } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { density, meanCorridorRun, openness } from "../maze";
-import { graded } from "../scene";
+import { check } from "../scene";
 import { captureBoard, freshBoards, witness } from "./boards";
 
 /*
@@ -65,8 +65,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("lays out a maze whose openness, corridor run and density are all in range", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "lays out a maze whose openness, corridor run and density are all in range",
+  async () => {
     const boards = await freshBoards(h);
 
     const measured = boards.map((board) => {
@@ -112,5 +113,5 @@ it("lays out a maze whose openness, corridor run and density are all in range", 
           `cells inside the border, in ${seed}`,
       );
     }
-  });
-});
+  },
+);

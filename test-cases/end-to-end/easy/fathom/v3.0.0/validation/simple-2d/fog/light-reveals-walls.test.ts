@@ -31,7 +31,7 @@
 // forager's brightness is the one this check posed and no flare or pulse reveals
 // anything.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { poseLitWallProbe } from "../fixtures";
@@ -44,9 +44,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   fromForager,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -77,62 +77,60 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The light reveals the rock it lands on and stops there", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const probe = await poseLitWallProbe(h, { run: PROBE_RUN });
-    const quiet = await denAll(h);
-    await parkForager(h, { tx: probe.tx, ty: probe.ty });
-    h.debug.clearPlankton();
-    // The widest light the game has: `V = VISION_MIN + VISION_GAIN * G`
-    // (specs/sensing.md), so both the rock and the tile behind it are in range and
-    // only the rock can be what stops the light.
-    h.debug.setBrightness(1);
-    const watch = await sceneGuard(h, quiet);
+check("The light reveals the rock it lands on and stops there", async () => {
+  await startPlaying(h);
+  const probe = await poseLitWallProbe(h, { run: PROBE_RUN });
+  const quiet = await denAll(h);
+  await parkForager(h, probe.forager);
+  h.debug.clearPlankton();
+  // The widest light the game has: `V = VISION_MIN + VISION_GAIN * G`
+  // (specs/sensing.md), so both the rock and the tile behind it are in range and
+  // only the rock can be what stops the light.
+  h.debug.setBrightness(1);
+  const watch = await sceneGuard(h, quiet);
 
-    await h.advance(SETTLE_TICKS);
-    const snapshot = h.snapshot();
-    // Before the assertions, so a check that fails still leaves the picture.
-    captureStill(h, "walls");
+  await h.advance(SETTLE_TICKS);
+  const snapshot = h.snapshot();
+  // Before the assertions, so a check that fails still leaves the picture.
+  captureStill(h, "walls");
 
-    requireSceneHeld(snapshot, watch);
+  requireSceneHeld(snapshot, watch);
 
-    // The fixture's own geometry, from the specification's figures rather than
-    // from the build's readings.
-    const reach = (tile: { tx: number; ty: number }): number => {
-      const center = centerOf(snapshot, tile);
-      return fromForager(snapshot, center.x, center.y);
-    };
-    assertLessThan(
-      reach(probe.wall),
-      VISION_MAX,
-      "the logical units between the forager and the rock closing the corridor, " +
-        `which must be inside V at G = 1 (VISION_MIN + VISION_GAIN = ${VISION_MAX})`,
-    );
-    assertLessThan(
-      reach(probe.behind),
-      VISION_MAX,
-      "the logical units between the forager and the corridor tile behind that " +
-        "rock, which is inside the same V — so only the rock can stop the light",
-    );
-    assertGreaterThan(
-      reach(probe.behind),
-      reach(probe.wall),
-      "the tile behind the rock stands further off than the rock itself",
-    );
+  // The fixture's own geometry, from the specification's figures rather than
+  // from the build's readings.
+  const reach = (tile: { tx: number; ty: number }): number => {
+    const center = centerOf(snapshot, tile);
+    return fromForager(snapshot, center.x, center.y);
+  };
+  assertLessThan(
+    reach(probe.wall),
+    VISION_MAX,
+    "the logical units between the forager and the rock closing the corridor, " +
+      `which must be inside V at G = 1 (VISION_MIN + VISION_GAIN = ${VISION_MAX})`,
+  );
+  assertLessThan(
+    reach(probe.behind),
+    VISION_MAX,
+    "the logical units between the forager and the corridor tile behind that " +
+      "rock, which is inside the same V — so only the rock can stop the light",
+  );
+  assertGreaterThan(
+    reach(probe.behind),
+    reach(probe.wall),
+    "the tile behind the rock stands further off than the rock itself",
+  );
 
-    assertEqual(
-      visibilityOf(snapshot, probe.wall),
-      "l",
-      `the rock at (${probe.wall.tx}, ${probe.wall.ty}) closing the corridor ` +
-        `${PROBE_RUN + 1} tiles ${probe.dir} of the forager, with open water ` +
-        "between them",
-    );
-    assertEqual(
-      visibilityOf(snapshot, probe.behind),
-      "u",
-      `the corridor tile at (${probe.behind.tx}, ${probe.behind.ty}) directly ` +
-        "behind that rock on the same line, which the light stops short of",
-    );
-  });
+  assertEqual(
+    visibilityOf(snapshot, probe.wall),
+    "l",
+    `the rock at (${probe.wall.tx}, ${probe.wall.ty}) closing the corridor ` +
+      `${PROBE_RUN + 1} tiles ${probe.dir} of the forager, with open water ` +
+      "between them",
+  );
+  assertEqual(
+    visibilityOf(snapshot, probe.behind),
+    "u",
+    `the corridor tile at (${probe.behind.tx}, ${probe.behind.ty}) directly ` +
+      "behind that rock on the same line, which the light stops short of",
+  );
 });

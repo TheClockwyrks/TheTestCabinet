@@ -49,7 +49,7 @@ import {
   denAll,
   parkForager,
   requireKind,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
@@ -111,7 +111,7 @@ check(
       return found;
     });
 
-    requireScene(h.snapshot(), watch);
+    requireSceneHeld(h.snapshot(), watch);
 
     assertEqual(
       seen.hit,

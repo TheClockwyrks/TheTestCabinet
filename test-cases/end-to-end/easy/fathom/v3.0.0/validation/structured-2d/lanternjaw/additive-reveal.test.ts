@@ -73,7 +73,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { brightestWarm, moteCenter, moteProfileAt, warm } from "./motes";
@@ -188,7 +188,7 @@ check("Lighting it leaves the bulb where it was", async () => {
     };
   });
 
-  requireScene(read.end, guard);
+  requireSceneHeld(read.end, guard);
 
   // The fixture's own geometry: the creature stands outside the light at the first
   // reading and inside it at the second, so the light is what changed.

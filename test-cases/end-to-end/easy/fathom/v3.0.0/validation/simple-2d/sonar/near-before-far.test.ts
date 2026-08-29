@@ -26,7 +26,7 @@
 // moment, which is `sonar/wavefront`'s — that point reads the build's own `front`
 // and this one reads the fog, so a build can fail either alone.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
 import { SONAR_WAVE_SPEED, TICK_DT, TILE } from "../../src/constants";
 import { poseStraightRun } from "../fixtures";
@@ -39,9 +39,9 @@ import {
 } from "../harness";
 import type { Tile } from "../maze";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -94,17 +94,18 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("reveals a tile 4 corridor steps out before one 8 steps out, each as the front reaches it", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "reveals a tile 4 corridor steps out before one 8 steps out, each as the front reaches it",
+  async () => {
     await startPlaying(h);
     const run = await poseStraightRun(h, RUN_TILES);
-    await parkForager(h, { tx: run.tx, ty: run.ty });
+    await parkForager(h, run.start);
     await clearUnderfoot(h);
     const quiet = await denAll(h);
     const watch = await sceneGuard(h, quiet);
 
-    const near: Tile = { tx: run.tx + NEAR_STEPS, ty: run.ty };
-    const far: Tile = { tx: run.tx + FAR_STEPS, ty: run.ty };
+    const near: Tile = { tx: run.start.tx + NEAR_STEPS, ty: run.start.ty };
+    const far: Tile = { tx: run.start.tx + FAR_STEPS, ty: run.start.ty };
 
     // The scenario's own ground: at the brightness it parks the forager at, the
     // light pocket cannot reach either tile, so whatever reveals them is the
@@ -121,7 +122,7 @@ it("reveals a tile 4 corridor steps out before one 8 steps out, each as the fron
       if (visibilityOf(posed, tile) !== "u") {
         unmetPrecondition(
           `the tile at (${tile.tx}, ${tile.ty}) was already revealed before any ` +
-            `pulse was cast, though it stands ${Math.hypot(tile.tx - run.tx, tile.ty - run.ty) * TILE} ` +
+            `pulse was cast, though it stands ${Math.hypot(tile.tx - run.start.tx, tile.ty - run.start.ty) * TILE} ` +
             `units from a forager whose light reaches ${posed.visionRadius} — so ` +
             "there is no arrival for this scenario to time; how far the forager's " +
             "own light reaches is the fog points' verdict, not this one's",
@@ -188,5 +189,5 @@ it("reveals a tile 4 corridor steps out before one 8 steps out, each as the fron
           `${flood.arrivedFar.toFixed(3)} s it took the tile ${FAR_STEPS} steps out`,
       );
     }
-  });
-});
+  },
+);

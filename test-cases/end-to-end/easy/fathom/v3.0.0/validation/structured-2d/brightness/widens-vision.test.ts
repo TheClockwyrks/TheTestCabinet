@@ -47,7 +47,13 @@ import {
   visibilityAt,
   type Harness,
 } from "../harness";
-import { check, denAll, parkForager, requireScene, sceneGuard } from "../scene";
+import {
+  check,
+  denAll,
+  parkForager,
+  requireSceneHeld,
+  sceneGuard,
+} from "../scene";
 import type { Tile } from "../maze";
 
 /** Tiles of posed corridor: the forager's own, the probe's, and room to spare. */
@@ -118,7 +124,7 @@ check("Brightness widens the light pocket", async () => {
     return { readings, end: h.snapshot() };
   });
 
-  requireScene(sweep.end, watch);
+  requireSceneHeld(sweep.end, watch);
 
   // The fixture's own geometry, from the specification's figures rather than from
   // the build's readings.

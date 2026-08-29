@@ -55,7 +55,7 @@ import {
   quietBoard,
   requireKind,
   requirePredatorMotion,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { gloamfinOf, groundBetween, placePredator } from "./pings";
@@ -165,7 +165,7 @@ check("It chases at GLOAMFIN_CHASE_SPEED", async () => {
     };
   });
 
-  requireScene(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
   requirePredatorMotion(
     opening,
     run.settled,

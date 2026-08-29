@@ -48,7 +48,7 @@ import {
   indexOfKind,
   parkForager,
   requirePredatorMotion,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
   type SceneView,
 } from "../scene";
@@ -188,7 +188,7 @@ check(
       return { before, after, stepFrom, stepTo, splitFrom, splitTo };
     });
 
-    requireScene(h.snapshot(), watch);
+    requireSceneHeld(h.snapshot(), watch);
 
     // The witness has to be able to move for "nothing moved" to mean anything,
     // and whether a predator patrols under its own power is the den and patrol

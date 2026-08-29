@@ -41,7 +41,7 @@ import {
   quietBoard,
   requireKind,
   requirePredatorMotion,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { gloamfinOf, groundBetween, placePredator } from "./pings";
@@ -175,7 +175,7 @@ check("It wanders at a steady PREDATOR_SPEED", async () => {
     return measured;
   });
 
-  requireScene(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
 
   for (const [when, window] of [
     ["a moment after it was set loose", early],

@@ -38,7 +38,7 @@
 // what ink does to the hunters it DOES blind (`lanternjaw/*`, `flarefish/*`), or
 // what a cloud costs to release (`ink/*`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -51,17 +51,20 @@ import {
   createHarness,
   type FathomSnapshot,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
-  denAllExcept,
+  check,
+  denAll,
   parkForager,
   quietBoard,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
-import { apart, gloamfinOf, requireGloamfin, sweep } from "./pings";
+import { apart, gloamfinOf, sweep } from "./pings";
 
 /**
  * The fixture: the forager rests on `I` and releases its cloud there, and the
@@ -111,8 +114,8 @@ interface Crossing {
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
@@ -155,7 +158,7 @@ async function releaseInk(what: string): Promise<void> {
   await h.debug.setInkCooldown(0);
   await h.tap(INK_KEY);
   if ((await h.snapshot()).inkClouds.length === 0) {
-    h.unmet(
+    unmetPrecondition(
       `no ink cloud stood after the b action was pressed with the cooldown at 0, ` +
         `so there was no ${what} for this point to watch the Gloamfin through — ` +
         `specs/sensing.md releases a cloud when ink's cooldown is 0 and ` +
@@ -165,11 +168,11 @@ async function releaseInk(what: string): Promise<void> {
   }
 }
 
-it("Ink does nothing to it", async () => {
+check("Ink does nothing to it", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, STANDOFF);
-  const index = requireGloamfin(h, board.snap);
-  const quiet = await denAllExcept(h, [index]);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
   // The forager first, and parked: a posed chase fixes on "the forager's current
   // tile" (specs/instrumentation.md), and that tile is where the first cloud goes.
   await quietBoard(h, board.mark("I"));
@@ -214,7 +217,7 @@ it("Ink does nothing to it", async () => {
     };
   });
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
 
   for (const [what, crossing, opening, closed] of [
     [
@@ -231,7 +234,6 @@ it("Ink does nothing to it", async () => {
     ],
   ] as const) {
     requirePredatorMotion(
-      h,
       opening,
       closed,
       index,

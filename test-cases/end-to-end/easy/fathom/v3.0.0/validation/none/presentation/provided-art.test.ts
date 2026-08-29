@@ -42,7 +42,7 @@
 // waits fourteen tiles off, past the bloom's own reach, so the flare cannot lock
 // onto it and cut itself short.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,13 +63,15 @@ import {
   captureStill,
   createHarness,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
 
 /* -------------------------------------------------------------------------- */
@@ -343,15 +345,15 @@ async function blitsOfOneTick(
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("draws every element from its own seeded sheet", async () => {
+check("draws every element from its own seeded sheet", async () => {
   const seeded = await readSeededFrames();
 
   await startPlaying(h);
@@ -410,7 +412,7 @@ it("draws every element from its own seeded sheet", async () => {
   // frame whose draws were read.
   await captureStill(h, "art");
 
-  requireSceneHeld(h, snap, guard);
+  requireSceneHeld(snap, guard);
 
   const at = (index: number): { x: number; y: number } => ({
     x: snap.predators[index].x,
@@ -428,7 +430,7 @@ it("draws every element from its own seeded sheet", async () => {
     .filter((index) => snap.predators[index]?.lit !== true)
     .map((index) => snap.predators[index].kind);
   if (unlit.length > 0) {
-    h.unmet(
+    unmetPrecondition(
       `the ${unlit.join(" and ")} stood inside the burning bloom and reported ` +
         `\`lit\` false, so no body was drawn for this point to read a sheet ` +
         `off — that a bloom lights every tile of its disc is ` +

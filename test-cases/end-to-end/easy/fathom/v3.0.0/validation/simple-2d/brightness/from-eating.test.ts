@@ -28,7 +28,7 @@
 // forager can never reach (`fixtures.ts`), so grazing four pellets cannot clear
 // the maze and descend in the middle of the measurement.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BRIGHT_PER_EAT } from "../../src/constants";
 import { assertLessThanOrEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
@@ -40,9 +40,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
@@ -93,66 +93,64 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Eating brightens the forager", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    await poseStraightRun(h, RUN_TILES);
-    const quiet = await denAll(h);
-    // The pellet the pose left under the forager is eaten off camera and `G` put
-    // back to the zero a dive opens on, so the first eat this point measures is
-    // taken from `0` and has its full headroom.
-    await clearUnderfoot(h);
-    const watch = await sceneGuard(h, quiet, { foragerParked: false });
+check("Eating brightens the forager", async () => {
+  await startPlaying(h);
+  await poseStraightRun(h, RUN_TILES);
+  const quiet = await denAll(h);
+  // The pellet the pose left under the forager is eaten off camera and `G` put
+  // back to the zero a dive opens on, so the first eat this point measures is
+  // taken from `0` and has its full headroom.
+  await clearUnderfoot(h);
+  const watch = await sceneGuard(h, quiet, { foragerParked: false });
 
-    const graze = await captureReplay(h, "brighten", async () => {
-      const start = h.snapshot();
-      const after: FathomSnapshot[] = [];
-      let previous = start;
-      for (let i = 0; i < EATS; i += 1) {
-        previous = await grazeOne(h, previous, {
-          budget: REACH_MAX_TICKS,
-          beat: READ_BEAT,
-        });
-        after.push(previous);
-      }
-      return { start, after };
-    });
-
-    const end = graze.after[graze.after.length - 1];
-    requireSceneHeld(end, watch);
-
-    // The measurement is of a step taken from zero, which is what the item states
-    // and what keeps a wrong step from hiding behind a clamp.
-    assertLessThanOrEqual(
-      graze.start.brightness,
-      ZERO_TOLERANCE,
-      "the brightness the graze started from, posed to the 0 a dive opens on",
-    );
-
-    assertLessThanOrEqual(
-      Math.abs(
-        graze.after[0].brightness - graze.start.brightness - BRIGHT_PER_EAT,
-      ),
-      STEP_TOLERANCE,
-      `how far the first pellet moved G, against BRIGHT_PER_EAT ` +
-        `(${BRIGHT_PER_EAT}): it went from ${graze.start.brightness} to ` +
-        `${graze.after[0].brightness}`,
-    );
-
-    // The ceiling. `EATS * BRIGHT_PER_EAT` is well past `1`, so a build that adds
-    // without clamping is over it and a build that clamps is exactly on it.
-    for (const [index, sample] of graze.after.entries()) {
-      assertLessThanOrEqual(
-        sample.brightness,
-        1,
-        `G after ${index + 1} plankton, which is clamped at 1 (specs/sensing.md)`,
-      );
+  const graze = await captureReplay(h, "brighten", async () => {
+    const start = h.snapshot();
+    const after: FathomSnapshot[] = [];
+    let previous = start;
+    for (let i = 0; i < EATS; i += 1) {
+      previous = await grazeOne(h, previous, {
+        budget: REACH_MAX_TICKS,
+        beat: READ_BEAT,
+      });
+      after.push(previous);
     }
-    assertLessThanOrEqual(
-      Math.abs(end.brightness - 1),
-      CLAMP_TOLERANCE,
-      `G after ${EATS} plankton, ${(EATS * BRIGHT_PER_EAT).toFixed(2)} of ` +
-        `brightness eaten, which clamps at exactly 1`,
-    );
+    return { start, after };
   });
+
+  const end = graze.after[graze.after.length - 1];
+  requireSceneHeld(end, watch);
+
+  // The measurement is of a step taken from zero, which is what the item states
+  // and what keeps a wrong step from hiding behind a clamp.
+  assertLessThanOrEqual(
+    graze.start.brightness,
+    ZERO_TOLERANCE,
+    "the brightness the graze started from, posed to the 0 a dive opens on",
+  );
+
+  assertLessThanOrEqual(
+    Math.abs(
+      graze.after[0].brightness - graze.start.brightness - BRIGHT_PER_EAT,
+    ),
+    STEP_TOLERANCE,
+    `how far the first pellet moved G, against BRIGHT_PER_EAT ` +
+      `(${BRIGHT_PER_EAT}): it went from ${graze.start.brightness} to ` +
+      `${graze.after[0].brightness}`,
+  );
+
+  // The ceiling. `EATS * BRIGHT_PER_EAT` is well past `1`, so a build that adds
+  // without clamping is over it and a build that clamps is exactly on it.
+  for (const [index, sample] of graze.after.entries()) {
+    assertLessThanOrEqual(
+      sample.brightness,
+      1,
+      `G after ${index + 1} plankton, which is clamped at 1 (specs/sensing.md)`,
+    );
+  }
+  assertLessThanOrEqual(
+    Math.abs(end.brightness - 1),
+    CLAMP_TOLERANCE,
+    `G after ${EATS} plankton, ${(EATS * BRIGHT_PER_EAT).toFixed(2)} of ` +
+      `brightness eaten, which clamps at exactly 1`,
+  );
 });

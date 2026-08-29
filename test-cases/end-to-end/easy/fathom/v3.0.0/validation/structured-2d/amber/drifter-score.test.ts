@@ -34,7 +34,13 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { check, denAll, requireScene, requireSwim, sceneGuard } from "../scene";
+import {
+  check,
+  denAll,
+  requireSceneHeld,
+  requireSwim,
+  sceneGuard,
+} from "../scene";
 
 /** Tiles of straight corridor posed as the whole board. */
 const RUN = 6;
@@ -92,7 +98,7 @@ check("Eating a drifter scores SCORE_DRIFTER", async () => {
     return { before, after, hit: eaten.hit };
   });
 
-  requireScene(bite.after, guard);
+  requireSceneHeld(bite.after, guard);
   if (!bite.hit) {
     requireSwim(
       bite.before.forager,

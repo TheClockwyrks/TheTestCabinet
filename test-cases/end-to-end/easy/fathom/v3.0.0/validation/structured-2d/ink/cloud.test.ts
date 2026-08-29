@@ -55,7 +55,7 @@ import {
   denAll,
   failPrecondition,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
 } from "../scene";
@@ -215,7 +215,7 @@ check(
       return { before, released, opened, swum, life, gone };
     });
 
-    requireScene(h.snapshot(), watch);
+    requireSceneHeld(h.snapshot(), watch);
 
     // Its size and its life, as released.
     assertLessThanOrEqual(

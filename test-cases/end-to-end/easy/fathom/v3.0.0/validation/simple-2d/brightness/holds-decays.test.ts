@@ -19,7 +19,7 @@
 // `brightness/from-eating` and passes or fails here on the SHAPE of its curve
 // alone.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BRIGHT_HALFLIFE, BRIGHT_HOLD } from "../../src/constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
@@ -32,9 +32,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
@@ -76,96 +76,93 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Brightness holds, then decays", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    await poseStraightRun(h, RUN_TILES);
-    const quiet = await denAll(h);
-    // The pellet the pose left under the forager is eaten off camera and `G` put
-    // back to zero, so the eat this check measures has its full headroom: `G`
-    // clamps at 1, and an eat that raised it by almost nothing would say nothing
-    // about the hold or the decay.
-    await clearUnderfoot(h);
-    const watch = await sceneGuard(h, quiet, { foragerParked: false });
+check("Brightness holds, then decays", async () => {
+  await startPlaying(h);
+  await poseStraightRun(h, RUN_TILES);
+  const quiet = await denAll(h);
+  // The pellet the pose left under the forager is eaten off camera and `G` put
+  // back to zero, so the eat this check measures has its full headroom: `G`
+  // clamps at 1, and an eat that raised it by almost nothing would say nothing
+  // about the hold or the decay.
+  await clearUnderfoot(h);
+  const watch = await sceneGuard(h, quiet, { foragerParked: false });
 
-    const curve = await captureReplay(h, "decay", async () => {
-      const eaten = await grazeOne(h, h.snapshot(), { budget: REACH_TICKS });
-      const g0 = eaten.brightness;
+  const curve = await captureReplay(h, "decay", async () => {
+    const eaten = await grazeOne(h, h.snapshot(), { budget: REACH_TICKS });
+    const g0 = eaten.brightness;
 
-      // Across the hold, then across two halvings past it. Every wait is measured
-      // from the tick the pellet went, so a slow build is failed rather than
-      // waited for.
-      let elapsed = 0;
-      const at = async (t: number): Promise<FathomSnapshot> => {
-        const target = ticks(t);
-        await h.advance(target - elapsed);
-        elapsed = target;
-        return h.snapshot();
-      };
+    // Across the hold, then across two halvings past it. Every wait is measured
+    // from the tick the pellet went, so a slow build is failed rather than
+    // waited for.
+    let elapsed = 0;
+    const at = async (t: number): Promise<FathomSnapshot> => {
+      const target = ticks(t);
+      await h.advance(target - elapsed);
+      elapsed = target;
+      return h.snapshot();
+    };
 
-      const held: { t: number; g: number }[] = [];
-      for (const t of HOLD_SAMPLES)
-        held.push({ t, g: (await at(t)).brightness });
+    const held: { t: number; g: number }[] = [];
+    for (const t of HOLD_SAMPLES) held.push({ t, g: (await at(t)).brightness });
 
-      const decayed: { halvings: number; g: number }[] = [];
-      for (let k = 1; k <= HALVINGS; k += 1) {
-        const t = BRIGHT_HOLD + k * BRIGHT_HALFLIFE;
-        decayed.push({ halvings: k, g: (await at(t)).brightness });
-      }
-
-      // A further pellet, eaten mid-decay: the hold is armed in full again, so
-      // `G` is steady from that tick for another whole second.
-      const mid = h.snapshot();
-      const again = await grazeOne(h, mid, { budget: REACH_TICKS });
-      const g1 = again.brightness;
-      let sinceRearm = 0;
-      const rearmed: { t: number; g: number }[] = [];
-      for (const t of HOLD_SAMPLES) {
-        const target = ticks(t);
-        await h.advance(target - sinceRearm);
-        sinceRearm = target;
-        rearmed.push({ t, g: h.snapshot().brightness });
-      }
-
-      return { eaten, g0, held, decayed, g1, rearmed, end: h.snapshot() };
-    });
-
-    requireSceneHeld(curve.end, watch);
-
-    // The eat itself is `brightness/from-eating`'s verdict; all this one needs is
-    // that there was one to measure a curve from.
-    assertEqual(
-      curve.g0 > 0,
-      true,
-      "eating a plankton raises G above the 0 the scenario started from",
-    );
-
-    for (const sample of curve.held) {
-      assertLessThanOrEqual(
-        Math.abs(sample.g - curve.g0),
-        HOLD_TOLERANCE,
-        `G at ${sample.t.toFixed(2)} s into the ${BRIGHT_HOLD} s hold, against ` +
-          `the ${curve.g0} it was eaten to`,
-      );
+    const decayed: { halvings: number; g: number }[] = [];
+    for (let k = 1; k <= HALVINGS; k += 1) {
+      const t = BRIGHT_HOLD + k * BRIGHT_HALFLIFE;
+      decayed.push({ halvings: k, g: (await at(t)).brightness });
     }
 
-    for (const sample of curve.decayed) {
-      const expected = curve.g0 * 0.5 ** sample.halvings;
-      assertLessThanOrEqual(
-        Math.abs(sample.g - expected),
-        DECAY_TOLERANCE,
-        `G at ${seconds(ticks(BRIGHT_HOLD + sample.halvings * BRIGHT_HALFLIFE)).toFixed(2)} s, ` +
-          `${sample.halvings} halving(s) past the hold, against ${expected.toFixed(4)}`,
-      );
+    // A further pellet, eaten mid-decay: the hold is armed in full again, so
+    // `G` is steady from that tick for another whole second.
+    const mid = h.snapshot();
+    const again = await grazeOne(h, mid, { budget: REACH_TICKS });
+    const g1 = again.brightness;
+    let sinceRearm = 0;
+    const rearmed: { t: number; g: number }[] = [];
+    for (const t of HOLD_SAMPLES) {
+      const target = ticks(t);
+      await h.advance(target - sinceRearm);
+      sinceRearm = target;
+      rearmed.push({ t, g: h.snapshot().brightness });
     }
 
-    for (const sample of curve.rearmed) {
-      assertLessThanOrEqual(
-        Math.abs(sample.g - curve.g1),
-        HOLD_TOLERANCE,
-        `G at ${sample.t.toFixed(2)} s into the hold a second plankton eaten ` +
-          `mid-decay arms, against the ${curve.g1} it was eaten to`,
-      );
-    }
+    return { eaten, g0, held, decayed, g1, rearmed, end: h.snapshot() };
   });
+
+  requireSceneHeld(curve.end, watch);
+
+  // The eat itself is `brightness/from-eating`'s verdict; all this one needs is
+  // that there was one to measure a curve from.
+  assertEqual(
+    curve.g0 > 0,
+    true,
+    "eating a plankton raises G above the 0 the scenario started from",
+  );
+
+  for (const sample of curve.held) {
+    assertLessThanOrEqual(
+      Math.abs(sample.g - curve.g0),
+      HOLD_TOLERANCE,
+      `G at ${sample.t.toFixed(2)} s into the ${BRIGHT_HOLD} s hold, against ` +
+        `the ${curve.g0} it was eaten to`,
+    );
+  }
+
+  for (const sample of curve.decayed) {
+    const expected = curve.g0 * 0.5 ** sample.halvings;
+    assertLessThanOrEqual(
+      Math.abs(sample.g - expected),
+      DECAY_TOLERANCE,
+      `G at ${seconds(ticks(BRIGHT_HOLD + sample.halvings * BRIGHT_HALFLIFE)).toFixed(2)} s, ` +
+        `${sample.halvings} halving(s) past the hold, against ${expected.toFixed(4)}`,
+    );
+  }
+
+  for (const sample of curve.rearmed) {
+    assertLessThanOrEqual(
+      Math.abs(sample.g - curve.g1),
+      HOLD_TOLERANCE,
+      `G at ${sample.t.toFixed(2)} s into the hold a second plankton eaten ` +
+        `mid-decay arms, against the ${curve.g1} it was eaten to`,
+    );
+  }
 });

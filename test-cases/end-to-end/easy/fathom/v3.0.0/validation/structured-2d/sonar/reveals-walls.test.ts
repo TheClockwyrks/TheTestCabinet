@@ -46,7 +46,7 @@ import {
   clearUnderfoot,
   denAll,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { emitPulse, foragerPulse } from "./pulse";
@@ -175,7 +175,7 @@ check(
     // reviewer needs to see which half of the board went wrong.
     captureStill(h, "walls");
 
-    requireScene(snapshot, watch);
+    requireSceneHeld(snapshot, watch);
     assertEqual(
       swept.hit,
       true,

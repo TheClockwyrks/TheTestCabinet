@@ -28,7 +28,7 @@
 // the recharge takes, which is `ink/cooldown`'s; and what a cloud does to a
 // hunter, which belongs to each hunter.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -43,15 +43,21 @@ import {
   TICK_HZ,
 } from "../constants";
 import { poseStraightRun } from "../fixtures";
-import { captureReplay, createHarness, type Harness } from "../harness";
 import {
+  captureReplay,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
 
 /** The key specs/movement.md binds the `b` action — "Releases an ink cloud" — to. */
@@ -136,153 +142,155 @@ const GONE_TOLERANCE = 3 * TICK_DT;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("releases a cloud of INK_RADIUS that stands where it was left for INK_LIFE and then goes", async () => {
-  await startPlaying(h);
-  const run = await poseStraightRun(h, RUN_TILES);
-  await parkForager(h, { tx: run.tx, ty: run.ty });
-  await clearUnderfoot(h);
-  const quiet = await denAllExcept(h);
-  // The forager is meant to swim away from its own cloud, so it is not held to
-  // where it was parked. What the guard still catches is a life lost or the
-  // dive leaving live play, either of which clears every cloud on the board.
-  const watch = await sceneGuard(h, quiet, { foragerParked: false });
+check(
+  "releases a cloud of INK_RADIUS that stands where it was left for INK_LIFE and then goes",
+  async () => {
+    await startPlaying(h);
+    const run = await poseStraightRun(h, RUN_TILES);
+    await parkForager(h, run.start);
+    await clearUnderfoot(h);
+    const quiet = await denAll(h);
+    // The forager is meant to swim away from its own cloud, so it is not held to
+    // where it was parked. What the guard still catches is a life lost or the
+    // dive leaving live play, either of which clears every cloud on the board.
+    const watch = await sceneGuard(h, quiet, { foragerParked: false });
 
-  const cloud = await captureReplay(h, "cloud", async () => {
-    await h.debug.setInkCooldown(0);
-    const before = await h.snapshot();
-    await h.tap(INK_KEY);
-    const released = await h.snapshot();
-    const opened = released.inkClouds[0];
-    if (opened === undefined) {
-      h.unmet(
-        `pressing ${INK_KEY} with ink.ready ${String(before.ink.ready)} released ` +
-          "no cloud, so there is nothing for this scenario to watch; whether " +
-          "the key releases one at all is controls/ink-key's verdict, not this " +
-          "one's",
+    const cloud = await captureReplay(h, "cloud", async () => {
+      await h.debug.setInkCooldown(0);
+      const before = await h.snapshot();
+      await h.tap(INK_KEY);
+      const released = await h.snapshot();
+      const opened = released.inkClouds[0];
+      if (opened === undefined) {
+        unmetPrecondition(
+          `pressing ${INK_KEY} with ink.ready ${String(before.ink.ready)} released ` +
+            "no cloud, so there is nothing for this scenario to watch; whether " +
+            "the key releases one at all is controls/ink-key's verdict, not this " +
+            "one's",
+        );
+      }
+
+      // Away down the corridor, past the cloud's own radius.
+      await h.hold(ARROW_KEY[run.dir]);
+      await h.advance(SWIM_TICKS);
+      await h.release(ARROW_KEY[run.dir]);
+      const swum = await h.snapshot();
+
+      // The life, read against the clock.
+      const life: { elapsed: number; remaining: number | null }[] = [];
+      let stood = 1 + SWIM_TICKS;
+      for (const at of LIFE_SAMPLE_TICKS) {
+        if (at > stood) {
+          await h.advance(at - stood);
+          stood = at;
+        }
+        const snapshot = await h.snapshot();
+        life.push({
+          elapsed: snapshot.simTime - before.simTime,
+          remaining: snapshot.inkClouds[0]?.remaining ?? null,
+        });
+      }
+
+      // And the end of it, to the tick.
+      await h.advance(SWEEP_FROM_TICKS - stood);
+      let gone: number | null = null;
+      for (let tick = SWEEP_FROM_TICKS; tick <= SWEEP_MAX_TICKS; tick += 1) {
+        const snapshot = await h.snapshot();
+        if (snapshot.inkClouds.length === 0) {
+          gone = snapshot.simTime - before.simTime;
+          break;
+        }
+        await h.advance(1);
+      }
+
+      return { before, released, opened, swum, life, gone };
+    });
+
+    requireSceneHeld(await h.snapshot(), watch);
+
+    // Its size and its life, as released.
+    assertLessThanOrEqual(
+      Math.abs(cloud.opened.radius - INK_RADIUS),
+      RADIUS_TOLERANCE,
+      `|radius - INK_RADIUS| on the cloud one tick after it was released`,
+    );
+    assertLessThanOrEqual(
+      Math.abs(cloud.opened.remaining - INK_LIFE),
+      LIFE_TOLERANCE,
+      `|remaining - INK_LIFE| on the cloud one tick after it was released`,
+    );
+
+    // It stays where it was left while the forager swims off.
+    requireSwim(
+      cloud.released.forager,
+      cloud.swum.forager,
+      "swim clear of the cloud it had just released",
+    );
+    const standing = cloud.swum.inkClouds[0];
+    assertEqual(
+      standing !== undefined,
+      true,
+      `the cloud still standing ${SWIM_TICKS} ticks after it was released, of ` +
+        `the ${INK_LIFE} s INK_LIFE gives it`,
+    );
+    if (standing !== undefined) {
+      assertGreaterThan(
+        Math.hypot(
+          cloud.swum.forager.x - standing.x,
+          cloud.swum.forager.y - standing.y,
+        ),
+        standing.radius,
+        "how far the forager had swum from its own cloud's centre by the time " +
+          "the centre was read again, against the cloud's own radius",
+      );
+      assertLessThanOrEqual(
+        Math.hypot(standing.x - cloud.opened.x, standing.y - cloud.opened.y),
+        CENTRE_TOLERANCE,
+        `how far the cloud's centre moved over the ${SWIM_TICKS} ticks the ` +
+          "forager spent swimming away from it, in logical units",
       );
     }
 
-    // Away down the corridor, past the cloud's own radius.
-    await h.hold(ARROW_KEY[run.dir]);
-    await h.advance(SWIM_TICKS);
-    await h.release(ARROW_KEY[run.dir]);
-    const swum = await h.snapshot();
-
-    // The life, read against the clock.
-    const life: { elapsed: number; remaining: number | null }[] = [];
-    let stood = 1 + SWIM_TICKS;
-    for (const at of LIFE_SAMPLE_TICKS) {
-      if (at > stood) {
-        await h.advance(at - stood);
-        stood = at;
-      }
-      const snapshot = await h.snapshot();
-      life.push({
-        elapsed: snapshot.simTime - before.simTime,
-        remaining: snapshot.inkClouds[0]?.remaining ?? null,
-      });
+    // Its life runs down against simulated time.
+    for (const sample of cloud.life) {
+      const expected = INK_LIFE - sample.elapsed;
+      assertEqual(
+        sample.remaining !== null,
+        true,
+        `the cloud still standing ${sample.elapsed.toFixed(3)} s in, with ` +
+          `${expected.toFixed(3)} s of INK_LIFE left`,
+      );
+      if (sample.remaining === null) continue;
+      assertLessThanOrEqual(
+        Math.abs(sample.remaining - expected),
+        RUNDOWN_TOLERANCE,
+        `|remaining - ${expected.toFixed(3)}| at ${sample.elapsed.toFixed(3)} s ` +
+          "after the release",
+      );
     }
 
-    // And the end of it, to the tick.
-    await h.advance(SWEEP_FROM_TICKS - stood);
-    let gone: number | null = null;
-    for (let tick = SWEEP_FROM_TICKS; tick <= SWEEP_MAX_TICKS; tick += 1) {
-      const snapshot = await h.snapshot();
-      if (snapshot.inkClouds.length === 0) {
-        gone = snapshot.simTime - before.simTime;
-        break;
-      }
-      await h.advance(1);
-    }
-
-    return { before, released, opened, swum, life, gone };
-  });
-
-  requireSceneHeld(h, await h.snapshot(), watch);
-
-  // Its size and its life, as released.
-  assertLessThanOrEqual(
-    Math.abs(cloud.opened.radius - INK_RADIUS),
-    RADIUS_TOLERANCE,
-    `|radius - INK_RADIUS| on the cloud one tick after it was released`,
-  );
-  assertLessThanOrEqual(
-    Math.abs(cloud.opened.remaining - INK_LIFE),
-    LIFE_TOLERANCE,
-    `|remaining - INK_LIFE| on the cloud one tick after it was released`,
-  );
-
-  // It stays where it was left while the forager swims off.
-  requireSwim(
-    h,
-    cloud.released.forager,
-    cloud.swum.forager,
-    "swim clear of the cloud it had just released",
-  );
-  const standing = cloud.swum.inkClouds[0];
-  assertEqual(
-    standing !== undefined,
-    true,
-    `the cloud still standing ${SWIM_TICKS} ticks after it was released, of ` +
-      `the ${INK_LIFE} s INK_LIFE gives it`,
-  );
-  if (standing !== undefined) {
-    assertGreaterThan(
-      Math.hypot(
-        cloud.swum.forager.x - standing.x,
-        cloud.swum.forager.y - standing.y,
-      ),
-      standing.radius,
-      "how far the forager had swum from its own cloud's centre by the time " +
-        "the centre was read again, against the cloud's own radius",
-    );
-    assertLessThanOrEqual(
-      Math.hypot(standing.x - cloud.opened.x, standing.y - cloud.opened.y),
-      CENTRE_TOLERANCE,
-      `how far the cloud's centre moved over the ${SWIM_TICKS} ticks the ` +
-        "forager spent swimming away from it, in logical units",
-    );
-  }
-
-  // Its life runs down against simulated time.
-  for (const sample of cloud.life) {
-    const expected = INK_LIFE - sample.elapsed;
+    // And it leaves the list when the life is spent.
     assertEqual(
-      sample.remaining !== null,
+      cloud.gone !== null,
       true,
-      `the cloud still standing ${sample.elapsed.toFixed(3)} s in, with ` +
-        `${expected.toFixed(3)} s of INK_LIFE left`,
+      `the cloud left inkClouds within ${SWEEP_MAX_TICKS} ticks of the release, ` +
+        `of the ${INK_LIFE} s INK_LIFE gives it`,
     );
-    if (sample.remaining === null) continue;
-    assertLessThanOrEqual(
-      Math.abs(sample.remaining - expected),
-      RUNDOWN_TOLERANCE,
-      `|remaining - ${expected.toFixed(3)}| at ${sample.elapsed.toFixed(3)} s ` +
-        "after the release",
-    );
-  }
-
-  // And it leaves the list when the life is spent.
-  assertEqual(
-    cloud.gone !== null,
-    true,
-    `the cloud left inkClouds within ${SWEEP_MAX_TICKS} ticks of the release, ` +
-      `of the ${INK_LIFE} s INK_LIFE gives it`,
-  );
-  if (cloud.gone !== null) {
-    assertLessThanOrEqual(
-      Math.abs(cloud.gone - INK_LIFE),
-      GONE_TOLERANCE,
-      "|elapsed - INK_LIFE| at the tick the cloud left inkClouds, measured " +
-        "from the tick it was released on",
-    );
-  }
-});
+    if (cloud.gone !== null) {
+      assertLessThanOrEqual(
+        Math.abs(cloud.gone - INK_LIFE),
+        GONE_TOLERANCE,
+        "|elapsed - INK_LIFE| at the tick the cloud left inkClouds, measured " +
+          "from the tick it was released on",
+      );
+    }
+  },
+);

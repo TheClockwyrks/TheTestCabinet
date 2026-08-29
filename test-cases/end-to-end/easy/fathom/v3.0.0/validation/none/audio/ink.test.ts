@@ -25,16 +25,21 @@
 // `lanternjaw/*`, `gloamfin/*` and `flarefish/*` points own; how long it stands,
 // which is `ink/cloud`'s; the cooldown it starts, which is `ink/cooldown`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { BINDINGS, ticksFor } from "../constants";
-import { captureReplay, createHarness, type Harness } from "../harness";
 import {
-  denAllExcept,
+  captureReplay,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import {
+  check,
+  denAll,
   quietBoard,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
 } from "../scene";
 import { soundsBeforeEvent, soundsOnEvent, watchForEvent } from "./cues";
 
@@ -67,66 +72,69 @@ const QUIET_LEAD = ticksFor(0.25);
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("sounds on the tick the forager releases ink, and not before", async () => {
-  // A real, browser-trusted gesture first: an engineless build owns its own audio
-  // layer and is entitled to open it on the player's first interaction alone
-  // (`specs/progression.md`). The key is bound to nothing, so this changes no state.
-  await h.armAudio();
-  await startPlaying(h);
-  const quiet = await denAllExcept(h);
-  await quietBoard(h);
-  await h.debug.setInkCooldown(0);
-  const guard = await sceneGuard(h, quiet);
+check(
+  "sounds on the tick the forager releases ink, and not before",
+  async () => {
+    // A real, browser-trusted gesture first: an engineless build owns its own audio
+    // layer and is entitled to open it on the player's first interaction alone
+    // (`specs/progression.md`). The key is bound to nothing, so this changes no state.
+    await h.armAudio();
+    await startPlaying(h);
+    const quiet = await denAll(h);
+    await quietBoard(h);
+    await h.debug.setInkCooldown(0);
+    const guard = await sceneGuard(h, quiet);
 
-  const watch = await captureReplay(h, "ink", async () => {
-    try {
-      const seen = await watchForEvent(
-        h,
-        (s) => s.inkClouds.length > 0,
-        QUIET_LEAD + RELEASE_TICKS,
-        {
-          quietLead: QUIET_LEAD,
-          arm: async () => {
-            await h.hold(INK_KEY);
+    const watch = await captureReplay(h, "ink", async () => {
+      try {
+        const seen = await watchForEvent(
+          h,
+          (s) => s.inkClouds.length > 0,
+          QUIET_LEAD + RELEASE_TICKS,
+          {
+            quietLead: QUIET_LEAD,
+            arm: async () => {
+              await h.hold(INK_KEY);
+            },
           },
-        },
-      );
-      // Held on past the reading, so the clip shows the cloud standing. Nothing
-      // after this line can reach an assertion.
-      await h.advance(TAIL_TICKS);
-      return seen;
-    } finally {
-      await h.release(INK_KEY);
-    }
-  });
+        );
+        // Held on past the reading, so the clip shows the cloud standing. Nothing
+        // after this line can reach an assertion.
+        await h.advance(TAIL_TICKS);
+        return seen;
+      } finally {
+        await h.release(INK_KEY);
+      }
+    });
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+    requireSceneHeld(await h.snapshot(), guard);
 
-  assertEqual(
-    watch.hit,
-    true,
-    `an ink cloud stood on the board inside the ${String(RELEASE_TICKS)} ticks ` +
-      "the check holds Shift for, with the cooldown posed ready",
-  );
-  assertEqual(
-    soundsBeforeEvent(watch),
-    0,
-    `sounds the build emitted over the ${String(watch.at - 1)} ticks before the ` +
-      "release, on a board where nothing else is happening — a cue is played on " +
-      "the tick its event happens (specs/progression.md)",
-  );
-  assertGreaterThanOrEqual(
-    soundsOnEvent(watch),
-    1,
-    "sounds the build emitted on the tick the forager released its cloud, which " +
-      "is the tick CUES.ink is played on (specs/progression.md)",
-  );
-});
+    assertEqual(
+      watch.hit,
+      true,
+      `an ink cloud stood on the board inside the ${String(RELEASE_TICKS)} ticks ` +
+        "the check holds Shift for, with the cooldown posed ready",
+    );
+    assertEqual(
+      soundsBeforeEvent(watch),
+      0,
+      `sounds the build emitted over the ${String(watch.at - 1)} ticks before the ` +
+        "release, on a board where nothing else is happening — a cue is played on " +
+        "the tick its event happens (specs/progression.md)",
+    );
+    assertGreaterThanOrEqual(
+      soundsOnEvent(watch),
+      1,
+      "sounds the build emitted on the tick the forager released its cloud, which " +
+        "is the tick CUES.ink is played on (specs/progression.md)",
+    );
+  },
+);

@@ -55,7 +55,7 @@ import {
   failPrecondition,
   parkForager,
   requireKind,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import type { PredatorKind } from "../surface";
@@ -166,7 +166,7 @@ check(
       }
     });
 
-    requireScene(h.snapshot(), watch);
+    requireSceneHeld(h.snapshot(), watch);
 
     for (const mark of marks) {
       const arrival = mark.steps / SONAR_WAVE_SPEED;

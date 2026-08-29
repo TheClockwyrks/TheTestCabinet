@@ -26,7 +26,7 @@
 // forager EVER standing on the rock tile, and a pair of readings taken at either
 // end of the window would miss one that slipped through and came back.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TILE } from "../../src/constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseMaze } from "../fixtures";
@@ -39,9 +39,10 @@ import {
   type Harness,
 } from "../harness";
 import {
+  FORAGER_CORRIDORS,
+  check,
   denAll,
   fromForager,
-  graded,
   requireSceneHeld,
   requireSwim,
   sceneGuard,
@@ -86,79 +87,77 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("stops the forager against rock rather than letting it in", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, DEAD_END);
-    const start = board.mark("S");
-    const last = board.mark("W");
-    await h.debug.setForagerTile(start.tx, start.ty);
-    await h.debug.setForagerDir(INTO);
-    const quiet = await denAll(h);
-    // The forager is the SUBJECT, so it is not held to staying put; the guard still
-    // catches a life lost, a predator loose, or the dive leaving live play.
-    const guard = await sceneGuard(h, quiet, { foragerParked: false });
+check("stops the forager against rock rather than letting it in", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, DEAD_END);
+  const start = board.mark("S");
+  const last = board.mark("W");
+  await h.debug.setForagerTile(start.tx, start.ty);
+  await h.debug.setForagerDir(INTO);
+  const quiet = await denAll(h);
+  // The forager is the SUBJECT, so it is not held to staying put; the guard still
+  // catches a life lost, a predator loose, or the dive leaving live play.
+  const guard = await sceneGuard(h, quiet, { foragerParked: false });
 
-    const face = centerOf(h.snapshot(), last);
-    /** The rock tile the held direction points into. */
-    const rock = { tx: last.tx + 1, ty: last.ty };
+  const face = centerOf(h.snapshot(), last);
+  /** The rock tile the held direction points into. */
+  const rock = { tx: last.tx + 1, ty: last.ty };
 
-    const drive = await captureReplay(h, "blocked", async () => {
-      const resting = h.snapshot();
-      h.hold(DIR_KEY[INTO]);
-      const trespass: string[] = [];
-      let reach = resting.forager.x;
-      for (let tick = 0; tick < WATCH_TICKS; tick += 1) {
-        await h.advance(1);
-        const snap = h.snapshot();
-        const { tx, ty, x } = snap.forager;
-        reach = Math.max(reach, x);
-        const kind = snap.tiles[ty]?.[tx];
-        const where = `(${tx}, ${ty})`;
-        if (kind !== "." && !trespass.includes(where)) trespass.push(where);
-      }
-      const settled = h.snapshot();
-      h.release(DIR_KEY[INTO]);
-      return { resting, trespass, reach, settled };
-    });
-
-    requireSceneHeld(h.snapshot(), guard);
-
-    // A forager that never got under way was never offered the rock; whether a
-    // held action moves it at all is `controls/move-*`'s verdict.
-    requireSwim(
-      drive.resting.forager,
-      drive.settled.forager,
-      "swim the corridor up to the rock that closes it",
-    );
-
-    assertEqual(
-      drive.trespass.join("; "),
-      "",
-      "tiles the forager stood on that are not corridor, over the whole drive — " +
-        `the rock this check drives it into is (${rock.tx}, ${rock.ty})`,
-    );
-
-    assertLessThanOrEqual(
-      drive.reach,
-      face.x + TILE / 2,
-      "the furthest the forager's center reached along the corridor, against the " +
-        `far edge of the last open tile (${last.tx}, ${last.ty}) — a body's ` +
-        "center stays on corridor tiles",
-    );
-
-    assertLessThanOrEqual(
-      fromForager(drive.settled, face.x, face.y),
-      REST_TOLERANCE,
-      `logical units between where the forager came to rest and the center of ` +
-        `the last open tile (${last.tx}, ${last.ty})`,
-    );
-
-    assertEqual(
-      drive.settled.forager.moving,
-      false,
-      "the forager reads as travelling after the key has been held into rock for " +
-        `${WATCH_TICKS} ticks`,
-    );
+  const drive = await captureReplay(h, "blocked", async () => {
+    const resting = h.snapshot();
+    h.hold(DIR_KEY[INTO]);
+    const trespass: string[] = [];
+    let reach = resting.forager.x;
+    for (let tick = 0; tick < WATCH_TICKS; tick += 1) {
+      await h.advance(1);
+      const snap = h.snapshot();
+      const { tx, ty, x } = snap.forager;
+      reach = Math.max(reach, x);
+      const kind = snap.tiles[ty]?.[tx];
+      const where = `(${tx}, ${ty})`;
+      if (kind !== "." && !trespass.includes(where)) trespass.push(where);
+    }
+    const settled = h.snapshot();
+    h.release(DIR_KEY[INTO]);
+    return { resting, trespass, reach, settled };
   });
+
+  requireSceneHeld(h.snapshot(), guard, { owns: [FORAGER_CORRIDORS] });
+
+  // A forager that never got under way was never offered the rock; whether a
+  // held action moves it at all is `controls/move-*`'s verdict.
+  requireSwim(
+    drive.resting.forager,
+    drive.settled.forager,
+    "swim the corridor up to the rock that closes it",
+  );
+
+  assertEqual(
+    drive.trespass.join("; "),
+    "",
+    "tiles the forager stood on that are not corridor, over the whole drive — " +
+      `the rock this check drives it into is (${rock.tx}, ${rock.ty})`,
+  );
+
+  assertLessThanOrEqual(
+    drive.reach,
+    face.x + TILE / 2,
+    "the furthest the forager's center reached along the corridor, against the " +
+      `far edge of the last open tile (${last.tx}, ${last.ty}) — a body's ` +
+      "center stays on corridor tiles",
+  );
+
+  assertLessThanOrEqual(
+    fromForager(drive.settled, face.x, face.y),
+    REST_TOLERANCE,
+    `logical units between where the forager came to rest and the center of ` +
+      `the last open tile (${last.tx}, ${last.ty})`,
+  );
+
+  assertEqual(
+    drive.settled.forager.moving,
+    false,
+    "the forager reads as travelling after the key has been held into rock for " +
+      `${WATCH_TICKS} ticks`,
+  );
 });

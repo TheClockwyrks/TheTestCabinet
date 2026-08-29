@@ -60,7 +60,7 @@ import {
   quietBoard,
   requireKind,
   requirePredatorMotion,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
   standDown,
 } from "../scene";
@@ -199,7 +199,7 @@ check("Every corner costs it its edge", async () => {
     return steps;
   });
 
-  requireScene(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
   requirePredatorMotion(
     opening,
     h.snapshot(),
@@ -313,7 +313,7 @@ check("Every corner costs it its edge", async () => {
   await h.debug.setPredatorState(backIndex, "chase");
   const reversal = await sampleRun(backIndex, REVERSAL_TICKS);
 
-  requireScene(h.snapshot(), backGuard, { what: "the reversal scenario" });
+  requireSceneHeld(h.snapshot(), backGuard, { what: "the reversal scenario" });
   const turned = reversal.findIndex((step) => step.dir !== outbound);
   if (turned < 0) {
     standDown(

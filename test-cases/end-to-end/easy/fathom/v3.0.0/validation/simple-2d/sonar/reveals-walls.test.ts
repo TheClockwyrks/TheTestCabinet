@@ -29,7 +29,7 @@
 // `progression/depth-scaling`'s — the fixture is drawn against the depth-1 range
 // the scenario reads off the pulse itself.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertNotEqual } from "../assert";
 import { SONAR_RANGE_BASE } from "../../src/constants";
 import { poseMaze } from "../fixtures";
@@ -42,9 +42,9 @@ import {
 } from "../harness";
 import type { Tile } from "../maze";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -135,8 +135,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("floods the corridors around a corner and through a junction with their rock, and enters neither a sealed pocket nor a tile past E", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "floods the corridors around a corner and through a junction with their rock, and enters neither a sealed pocket nor a tile past E",
+  async () => {
     await startPlaying(h);
     const board = await poseMaze(h, ART);
     const home = board.mark("F");
@@ -226,5 +227,5 @@ it("floods the corridors around a corner and through a junction with their rock,
           "off from every corridor the flood travels",
       );
     }
-  });
-});
+  },
+);

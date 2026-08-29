@@ -47,7 +47,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { check, requireScene, sceneGuard, standDown } from "../scene";
+import { check, requireSceneHeld, sceneGuard, standDown } from "../scene";
 import { startPlaying } from "../harness";
 import {
   BLOOM_MAX,
@@ -165,7 +165,7 @@ check(
       return { burning, ended, after, atFish, control };
     });
 
-    requireScene(h.snapshot(), guard);
+    requireSceneHeld(h.snapshot(), guard);
 
     // The control: it really was there, and really was drawn, a moment ago.
     const burning = watched.burning.predators[room.index];

@@ -31,7 +31,7 @@
 // WHAT THIS DOES NOT DECIDE. What a catch costs and what it resets, which is
 // `scoring/caught-costs-life`'s; the run ending, which is `scoring/three-lives`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { CUES } from "../../src/constants";
 import { assertEqual } from "../assert";
 import {
@@ -41,7 +41,7 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { clearUnderfoot, denAll, graded, parkForager } from "../scene";
+import { check, clearUnderfoot, denAll, parkForager } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
 
 /**
@@ -87,13 +87,13 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.caught on the tick a predator makes contact, and not before", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "plays CUES.caught on the tick a predator makes contact, and not before",
+  async () => {
     await startPlaying(h);
-    const opening = h.snapshot();
     // At depth 1 the roster holds one of each kind (specs/predators.md), so
-    // naming index 0's kind leaves exactly that one hunter loose.
-    await denAll(h, [opening.predators[HUNTER].kind]);
+    // leaving index 0 out leaves exactly that one hunter loose.
+    await denAll(h, [HUNTER]);
     await parkForager(h);
     await clearUnderfoot(h);
 
@@ -149,5 +149,5 @@ it("plays CUES.caught on the tick a predator makes contact, and not before", asy
       "times CUES.caught played on the tick the predator made contact, which is " +
         "its own tick and at most once on it (specs/progression.md)",
     );
-  });
-});
+  },
+);

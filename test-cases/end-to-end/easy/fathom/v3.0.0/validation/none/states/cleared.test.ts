@@ -34,12 +34,17 @@
 // `scoring/descend-on-clear`'s. All that is read past the interstitial here is
 // that it gives way inside its own window.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import { HOLD_MAX, HOLD_MIN, TICK_HZ, ticksFor } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
-import { captureStill, createHarness, type Harness } from "../harness";
-import { denAllExcept, requireSwim, startPlaying } from "../scene";
+import {
+  captureStill,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import { check, denAll, requireSwim } from "../scene";
 import { MOVE_KEY, assertDrew, frameOps, watchScreen } from "./screens";
 
 /**
@@ -71,81 +76,83 @@ const TICK_SLACK = 2 / TICK_HZ;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("reaches the cleared interstitial, names the depth, and holds 1-3 s", async () => {
-  await startPlaying(h);
-  const run = await poseMoveKeyRun(h, "right");
-  await denAllExcept(h);
+check(
+  "reaches the cleared interstitial, names the depth, and holds 1-3 s",
+  async () => {
+    await startPlaying(h);
+    const run = await poseMoveKeyRun(h, "right");
+    await denAll(h);
 
-  // One mouthful left in the whole maze, one tile ahead of the forager.
-  await h.debug.clearPlankton();
-  const last = { tx: run.tile.tx + 1, ty: run.tile.ty };
-  await h.debug.setPlankton(last.tx, last.ty, true);
-  const before = await h.snapshot();
+    // One mouthful left in the whole maze, one tile ahead of the forager.
+    await h.debug.clearPlankton();
+    const last = { tx: run.start.tx + 1, ty: run.start.ty };
+    await h.debug.setPlankton(last.tx, last.ty, true);
+    const before = await h.snapshot();
 
-  const swim = await watchScreen(h, "playing", SWIM_TICKS, MOVE_KEY);
-  // Whether the forager travels at all is the movement points' verdict.
-  requireSwim(
-    h,
-    before.forager,
-    swim.after.forager,
-    "reach the maze's last plankton",
-  );
-  const cleared = swim.after;
+    const swim = await watchScreen(h, "playing", SWIM_TICKS, MOVE_KEY);
+    // Whether the forager travels at all is the movement points' verdict.
+    requireSwim(
+      before.forager,
+      swim.after.forager,
+      "reach the maze's last plankton",
+    );
+    const cleared = swim.after;
 
-  const ops = await frameOps(h);
-  // Before the assertions, so a failing check still leaves the screen it read.
-  await captureStill(h, "cleared");
+    const ops = await frameOps(h);
+    // Before the assertions, so a failing check still leaves the screen it read.
+    await captureStill(h, "cleared");
 
-  const hold = await watchScreen(h, "cleared", MAX_HOLD_TICKS);
+    const hold = await watchScreen(h, "cleared", MAX_HOLD_TICKS);
 
-  assertEqual(
-    swim.hit,
-    true,
-    "the forager reaches the maze's last plankton inside the window the check " +
-      "gives it",
-  );
-  assertEqual(
-    cleared.planktonRemaining,
-    0,
-    "plankton left in the maze after the forager ate the last one " +
-      "(specs/progression.md)",
-  );
-  assertEqual(
-    cleared.screen,
-    "cleared",
-    "the screen eating the maze's last plankton reaches (specs/ui.md)",
-  );
-  assertDrew(
-    ops,
-    `DEPTH ${String(cleared.depth)} CLEARED`,
-    "the depth just cleared, named on the interstitial (specs/ui.md)",
-  );
+    assertEqual(
+      swim.hit,
+      true,
+      "the forager reaches the maze's last plankton inside the window the check " +
+        "gives it",
+    );
+    assertEqual(
+      cleared.planktonRemaining,
+      0,
+      "plankton left in the maze after the forager ate the last one " +
+        "(specs/progression.md)",
+    );
+    assertEqual(
+      cleared.screen,
+      "cleared",
+      "the screen eating the maze's last plankton reaches (specs/ui.md)",
+    );
+    assertDrew(
+      ops,
+      `DEPTH ${String(cleared.depth)} CLEARED`,
+      "the depth just cleared, named on the interstitial (specs/ui.md)",
+    );
 
-  assertEqual(
-    hold.hit,
-    true,
-    `the cleared interstitial gives way inside ${String(HOLD_MAX)} s of ` +
-      "simulated time (specs/ui.md)",
-  );
-  // The ticks really ran, so the span below is a measurement rather than nothing.
-  assertGreaterThan(
-    hold.after.simTime - cleared.simTime,
-    0,
-    "simulated seconds accumulated while the interstitial held (specs/state.md)",
-  );
-  assertBetween(
-    hold.after.simTime - cleared.simTime,
-    HOLD_MIN - TICK_SLACK,
-    HOLD_MAX + TICK_SLACK,
-    "seconds of the simulation's own accumulated time the cleared interstitial " +
-      "held for (specs/ui.md)",
-  );
-});
+    assertEqual(
+      hold.hit,
+      true,
+      `the cleared interstitial gives way inside ${String(HOLD_MAX)} s of ` +
+        "simulated time (specs/ui.md)",
+    );
+    // The ticks really ran, so the span below is a measurement rather than nothing.
+    assertGreaterThan(
+      hold.after.simTime - cleared.simTime,
+      0,
+      "simulated seconds accumulated while the interstitial held (specs/state.md)",
+    );
+    assertBetween(
+      hold.after.simTime - cleared.simTime,
+      HOLD_MIN - TICK_SLACK,
+      HOLD_MAX + TICK_SLACK,
+      "seconds of the simulation's own accumulated time the cleared interstitial " +
+        "held for (specs/ui.md)",
+    );
+  },
+);

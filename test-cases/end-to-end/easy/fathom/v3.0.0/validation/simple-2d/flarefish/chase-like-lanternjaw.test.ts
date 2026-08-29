@@ -42,7 +42,7 @@
 // `lanternjaw/dim-shakes`'s; and the cadence of the flares themselves, which is
 // `flarefish/flare-cadence`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   FLARE_INTERVAL,
@@ -61,10 +61,10 @@ import {
 } from "../harness";
 import type { FathomSnapshot } from "../surface";
 import {
+  check,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
@@ -178,8 +178,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("neither charges nor blooms across a chase longer than FLARE_INTERVAL, travels at PREDATOR_SPEED, and re-arms a whole interval on returning to wander", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "neither charges nor blooms across a chase longer than FLARE_INTERVAL, travels at PREDATOR_SPEED, and re-arms a whole interval on returning to wander",
+  async () => {
     await startPlaying(h);
     const board = await poseMaze(h, ART);
     const runStart = board.mark("C");
@@ -187,8 +188,8 @@ it("neither charges nor blooms across a chase longer than FLARE_INTERVAL, travel
     await parkForager(h, pocket);
     h.debug.setBrightness(0);
 
-    const index = requirePred(h.snapshot(), "flarefish");
-    const quiet = await denAll(h, ["flarefish"]);
+    const index = requireKind(h.snapshot(), "flarefish");
+    const quiet = await denAll(h, [index]);
     h.debug.setPredatorTile(index, runStart.tx, runStart.ty);
     h.debug.setPredatorDir(index, "right");
     h.debug.setPredatorState(index, "wander");
@@ -307,7 +308,7 @@ it("neither charges nor blooms across a chase longer than FLARE_INTERVAL, travel
     requirePredatorMotion(
       from,
       to,
-      "flarefish",
+      index,
       "chase the retreating forager down the corridor",
     );
 
@@ -366,5 +367,5 @@ it("neither charges nor blooms across a chase longer than FLARE_INTERVAL, travel
         `from the FLARE_INTERVAL (${FLARE_INTERVAL} s) ` +
         `specs/predators/flarefish.md sets the timer to in full`,
     );
-  });
-});
+  },
+);

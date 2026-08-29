@@ -31,24 +31,27 @@
 // `gloamfin/fix-and-alert`'s, so a build whose Gloamfin never acquires stands this
 // check down rather than being failed twice for one fault.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import { ALERT_TIME, GLOAMFIN_HEAR } from "../constants";
-import { poseOccludedPair, predatorIndex, visibilityAt } from "../fixtures";
+import { visibilityAt } from "../maze";
+import { poseOccludedPair, predatorIndex } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   seconds,
   ticks,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
 
 /**
@@ -131,25 +134,25 @@ const CLIP_TICKS = 36;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("The Gloamfin fires the alert on a fresh fix", async () => {
+check("The Gloamfin fires the alert on a fresh fix", async () => {
   await startPlaying(h);
   const pair = await poseOccludedPair(h, { tiles: GAP_TILES, len: RUN_TILES });
   const index = predatorIndex(await h.snapshot(), "gloamfin");
   if (index === null) {
-    h.unmet(
+    unmetPrecondition(
       "the roster carries no Gloamfin, so this scenario has nothing to pose — " +
         "what the roster holds is the progression checks' verdict, not this one's",
     );
   }
-  const quiet = await denAllExcept(h, [index]);
+  const quiet = await denAll(h, [index]);
   await h.debug.setPredatorTile(index, pair.pred.tx, pair.pred.ty);
   await h.debug.setPredatorState(index, "wander");
   await parkForager(h, pair.forager);
@@ -174,7 +177,7 @@ it("The Gloamfin fires the alert on a fresh fix", async () => {
       },
     );
     if (!acquired.hit) {
-      h.unmet(
+      unmetPrecondition(
         `the Gloamfin took no fix on a forager ${posedGap.toFixed(0)} units away, ` +
           `inside GLOAMFIN_HEAR (${GLOAMFIN_HEAR}), so there was no fresh ` +
           "acquisition for an alert to fire on — whether close hearing takes a " +
@@ -229,7 +232,7 @@ it("The Gloamfin fires the alert on a fresh fix", async () => {
     };
   });
 
-  requireSceneHeld(h, read.end, guard);
+  requireSceneHeld(read.end, guard);
 
   // The fixture's own geometry, and the fact that makes `lit` mean something.
   assertLessThanOrEqual(

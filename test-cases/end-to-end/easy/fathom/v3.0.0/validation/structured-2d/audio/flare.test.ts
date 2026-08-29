@@ -48,7 +48,7 @@ import {
   denAll,
   parkForager,
   requireKind,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { requireBurningDisc } from "../flarefish/room";
@@ -113,7 +113,7 @@ check(
       return found;
     });
 
-    requireScene(h.snapshot(), watch);
+    requireSceneHeld(h.snapshot(), watch);
     requireBurningDisc(seen.snapshot, flarefish);
 
     assertEqual(

@@ -32,8 +32,7 @@ import type {
   PredatorSnapshot,
   PulseSnapshot,
 } from "../harness";
-import { predatorIndex } from "../fixtures";
-import type { TileRef } from "../maze";
+import type { Tile } from "../maze";
 
 /**
  * Ticks between two samples of a watch, and so the precision of every time it
@@ -56,7 +55,7 @@ export interface PingSighting {
   /** `specs/state.md`'s source: `"gloamfin"` for every ping in this log. */
   source: string;
   /** The tile the wavefront reports as its origin. */
-  origin: TileRef;
+  origin: Tile;
   /**
    * The tiles the Gloamfin held at this sample and at the one before it.
    *
@@ -65,7 +64,7 @@ export interface PingSighting {
    * Gloamfin covers under two logical units at any speed this specification gives
    * it, which can carry it across one tile boundary and no more.
    */
-  casterTiles: TileRef[];
+  casterTiles: Tile[];
   /** Whether the caster's own body was being drawn at this sample. */
   casterLit: boolean;
 }
@@ -91,12 +90,12 @@ function nameOf(pulse: PulseSnapshot): string {
 export function pingLog(index: number): PingLog {
   const sightings: PingSighting[] = [];
   let standing = new Set<string>();
-  let previousTile: TileRef | null = null;
+  let previousTile: Tile | null = null;
   return {
     sightings,
     observe(snap) {
       const here = snap.predators[index];
-      const tile: TileRef | null =
+      const tile: Tile | null =
         here === undefined ? null : { tx: here.tx, ty: here.ty };
       const pulses = gloamfinPulses(snap);
       for (const pulse of pulses) {
@@ -107,7 +106,7 @@ export function pingLog(index: number): PingLog {
           source: pulse.source,
           origin: { tx: pulse.ox, ty: pulse.oy },
           casterTiles: [previousTile, tile].filter(
-            (each): each is TileRef => each !== null,
+            (each): each is Tile => each !== null,
           ),
           casterLit: here?.lit === true,
         });
@@ -151,28 +150,7 @@ export async function sweep(
   }
 }
 
-/**
- * The roster index of the Gloamfin, or an unmet precondition naming the point
- * that owns the roster.
- *
- * `specs/predators.md` gives depth `1` one of each kind and `specs/state.md` lists
- * the roster in release order, so at the depth every posed scenario runs at this
- * names exactly one predator. A roster that carries none is
- * `progression/roster-*`'s verdict, not this category's.
- */
-export function requireGloamfin(h: Harness, snap: FathomSnapshot): number {
-  const index = predatorIndex(snap, "gloamfin");
-  if (index === null) {
-    h.unmet(
-      "the roster carries no Gloamfin, so this scenario has nothing to pose — " +
-        "what a depth's roster holds is the progression checks' verdict, not " +
-        "this one's",
-    );
-  }
-  return index;
-}
-
-/** The Gloamfin's own entry in a snapshot, by the index {@link requireGloamfin} gave. */
+/** The Gloamfin's own entry in a snapshot, by the index {@link requireKind} gave. */
 export function gloamfinOf(
   snap: FathomSnapshot,
   index: number,

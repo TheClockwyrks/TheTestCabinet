@@ -46,7 +46,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 
@@ -137,7 +137,7 @@ check("Brightness widens the Lanternjaw's reach", async () => {
     return { readings, end: h.snapshot() };
   });
 
-  requireScene(sweep.end, watch);
+  requireSceneHeld(sweep.end, watch);
 
   // The sweep really did sweep. Without this, a build whose `G` never moved would
   // report one range at all five samples and clear the formula below at every one

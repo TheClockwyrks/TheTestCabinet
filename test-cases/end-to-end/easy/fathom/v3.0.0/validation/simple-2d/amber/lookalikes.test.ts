@@ -33,7 +33,7 @@
 // blows out toward white by design and the hue reads in the halo around it: the
 // brightest pixel of a perfectly good amber mote is often a neutral white one.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -55,12 +55,12 @@ import {
 } from "../harness";
 import type { Tile } from "../maze";
 import {
+  check,
   clearUnderfoot,
   denAll,
   fromForager,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
@@ -124,94 +124,92 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("A drifter and a Lanternjaw's bulb read alike", async (ctx) => {
-  await graded(ctx, async () => {
-    const opened = await startPlaying(h);
-    const lantern = requirePred(opened, "lanternjaw");
-    const board = await poseMaze(h, ART);
-    const home = board.mark("F");
-    const bulbTile = board.mark("A");
-    const driftTile = board.mark("B");
-    await parkForager(h, home);
-    // The pellet the pose left under the forager is eaten off camera and the
-    // brightness put back to zero, so the light pocket is the one a dive opens
-    // with rather than one this scenario's setup widened.
-    await clearUnderfoot(h);
+check("A drifter and a Lanternjaw's bulb read alike", async () => {
+  const opened = await startPlaying(h);
+  const lantern = requireKind(opened, "lanternjaw");
+  const board = await poseMaze(h, ART);
+  const home = board.mark("F");
+  const bulbTile = board.mark("A");
+  const driftTile = board.mark("B");
+  await parkForager(h, home);
+  // The pellet the pose left under the forager is eaten off camera and the
+  // brightness put back to zero, so the light pocket is the one a dive opens
+  // with rather than one this scenario's setup widened.
+  await clearUnderfoot(h);
 
-    const quiet = await denAll(h, ["lanternjaw"]);
-    h.debug.setPredatorTile(lantern, bulbTile.tx, bulbTile.ty);
-    h.debug.setPredatorState(lantern, "wander");
-    h.debug.spawnDrifter(driftTile.tx, driftTile.ty);
-    h.debug.setCreatureAI(false);
-    const watch = await sceneGuard(h, quiet);
+  const quiet = await denAll(h, [lantern]);
+  h.debug.setPredatorTile(lantern, bulbTile.tx, bulbTile.ty);
+  h.debug.setPredatorState(lantern, "wander");
+  h.debug.spawnDrifter(driftTile.tx, driftTile.ty);
+  h.debug.setCreatureAI(false);
+  const watch = await sceneGuard(h, quiet);
 
-    await h.advance(SETTLE_TICKS);
-    const after = h.snapshot();
-    captureStill(h, "amber");
+  await h.advance(SETTLE_TICKS);
+  const after = h.snapshot();
+  captureStill(h, "amber");
 
-    requireSceneHeld(after, watch);
+  requireSceneHeld(after, watch);
+  assertEqual(
+    after.drifters.length,
+    1,
+    "the bonus drifters on the board, which the pose spawned one of",
+  );
+
+  const drifter = after.drifters[0];
+  const hunter = after.predators[lantern];
+  const fogTile: Tile = { tx: bulbTile.tx, ty: bulbTile.ty + FOG_BELOW };
+
+  // The fixture's own geometry: both lights stand out in fog the forager's
+  // light does not reach.
+  for (const [name, tile] of [
+    ["the Lanternjaw's", bulbTile],
+    ["the drifter's", driftTile],
+    ["the fog sample's", fogTile],
+  ] as const) {
     assertEqual(
-      after.drifters.length,
-      1,
-      "the bonus drifters on the board, which the pose spawned one of",
+      visibilityOf(after, tile),
+      "u",
+      `${name} tile (${tile.tx}, ${tile.ty}), which no light has touched`,
     );
-
-    const drifter = after.drifters[0];
-    const hunter = after.predators[lantern];
-    const fogTile: Tile = { tx: bulbTile.tx, ty: bulbTile.ty + FOG_BELOW };
-
-    // The fixture's own geometry: both lights stand out in fog the forager's
-    // light does not reach.
-    for (const [name, tile] of [
-      ["the Lanternjaw's", bulbTile],
-      ["the drifter's", driftTile],
-      ["the fog sample's", fogTile],
-    ] as const) {
-      assertEqual(
-        visibilityOf(after, tile),
-        "u",
-        `${name} tile (${tile.tx}, ${tile.ty}), which no light has touched`,
-      );
-    }
-    for (const [name, body] of [
-      ["the Lanternjaw", hunter],
-      ["the drifter", drifter],
-    ] as const) {
-      assertGreaterThan(
-        fromForager(after, body.x, body.y),
-        after.visionRadius,
-        `how far ${name} stands from the forager, against the light radius V it ` +
-          `reports`,
-      );
-    }
-
-    const fogAt = centerOf(after, fogTile);
-    const fog = sampleRing(h, fogAt.x, fogAt.y, 0);
-    const bulb = moteAt(h, hunter.x, hunter.y);
-    const drift = moteAt(h, drifter.x, drifter.y);
-
-    for (const [name, mote] of [
-      ["the Lanternjaw's bulb", bulb],
-      ["the drifter's mote", drift],
-    ] as const) {
-      assertGreaterThan(
-        mote.r,
-        mote.b,
-        `the red channel of ${name}, the brightest warm pixel within ` +
-          `${MOTE_SEARCH} units of the position the snapshot reports it at`,
-      );
-      assertGreaterThan(
-        colorDistance(mote, fog),
-        ABOVE_FOG_MIN,
-        `how far ${name} stands from the flat fog around it, of 441`,
-      );
-    }
-
-    assertLessThanOrEqual(
-      colorDistance(bulb, drift),
-      ALIKE_MAX,
-      "how far the Lanternjaw's bulb and the drifter's mote are drawn apart, " +
-        "of 441",
+  }
+  for (const [name, body] of [
+    ["the Lanternjaw", hunter],
+    ["the drifter", drifter],
+  ] as const) {
+    assertGreaterThan(
+      fromForager(after, body.x, body.y),
+      after.visionRadius,
+      `how far ${name} stands from the forager, against the light radius V it ` +
+        `reports`,
     );
-  });
+  }
+
+  const fogAt = centerOf(after, fogTile);
+  const fog = sampleRing(h, fogAt.x, fogAt.y, 0);
+  const bulb = moteAt(h, hunter.x, hunter.y);
+  const drift = moteAt(h, drifter.x, drifter.y);
+
+  for (const [name, mote] of [
+    ["the Lanternjaw's bulb", bulb],
+    ["the drifter's mote", drift],
+  ] as const) {
+    assertGreaterThan(
+      mote.r,
+      mote.b,
+      `the red channel of ${name}, the brightest warm pixel within ` +
+        `${MOTE_SEARCH} units of the position the snapshot reports it at`,
+    );
+    assertGreaterThan(
+      colorDistance(mote, fog),
+      ABOVE_FOG_MIN,
+      `how far ${name} stands from the flat fog around it, of 441`,
+    );
+  }
+
+  assertLessThanOrEqual(
+    colorDistance(bulb, drift),
+    ALIKE_MAX,
+    "how far the Lanternjaw's bulb and the drifter's mote are drawn apart, " +
+      "of 441",
+  );
 });

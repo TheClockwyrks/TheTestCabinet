@@ -28,7 +28,7 @@
 // `controls/sonar-key`'s and which `emitPulse` stands down on; and how far or how
 // fast the front travels, which is `sonar/wavefront`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -43,9 +43,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -117,11 +117,12 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("arms SONAR_COOLDOWN on a pulse, refuses a press inside it, and is ready again exactly when it reaches 0", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "arms SONAR_COOLDOWN on a pulse, refuses a press inside it, and is ready again exactly when it reaches 0",
+  async () => {
     await startPlaying(h);
     const run0 = await poseStraightRun(h, RUN_TILES);
-    await parkForager(h, { tx: run0.tx, ty: run0.ty });
+    await parkForager(h, run0.start);
     await clearUnderfoot(h);
     const quiet = await denAll(h);
     const watch = await sceneGuard(h, quiet);
@@ -238,5 +239,5 @@ it("arms SONAR_COOLDOWN on a pulse, refuses a press inside it, and is ready agai
         "sonar.cooldown on the tick sonar.ready returned",
       );
     }
-  });
-});
+  },
+);

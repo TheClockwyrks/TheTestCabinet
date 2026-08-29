@@ -65,7 +65,7 @@ import {
   indexOfKind,
   parkForager,
   requirePredatorMotion,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
   standDown,
 } from "../scene";
@@ -283,7 +283,7 @@ check(
       return { acquired, flags, states, from, to, dropped, charged };
     });
 
-    requireScene(h.snapshot(), guard);
+    requireSceneHeld(h.snapshot(), guard);
 
     // The premise: the hunter's own sense took the fix, and held it for the whole
     // window. Both are `flarefish/light-sense`'s claim rather than this one's.

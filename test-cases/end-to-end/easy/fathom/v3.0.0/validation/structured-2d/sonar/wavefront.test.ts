@@ -44,7 +44,7 @@ import {
   clearUnderfoot,
   denAll,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import { castPulse, foragerPulse, requirePress, sinceEmit } from "./pulse";
@@ -156,7 +156,7 @@ check(
       return { emitted, samples, spent };
     });
 
-    requireScene(h.snapshot(), watch);
+    requireSceneHeld(h.snapshot(), watch);
 
     // The pulse begins at the forager rather than arriving everywhere at once —
     // and it is still there a tick after the press to begin at all.

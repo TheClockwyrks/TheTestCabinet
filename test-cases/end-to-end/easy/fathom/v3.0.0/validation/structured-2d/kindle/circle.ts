@@ -20,6 +20,7 @@
 import { fail } from "../assert";
 import type { FathomSnapshot } from "../surface";
 import type { Tile } from "../maze";
+import { fromForager } from "../scene";
 
 /**
  * The vision circle's radius at `G = 0` and how much a full `G` adds, in logical
@@ -62,14 +63,9 @@ export function windowRadius(snapshot: FathomSnapshot): number {
   return snapshot.windowRadius;
 }
 
-/** How far the logical point `(x, y)` lies from the forager's center. */
-export function fromForager(
-  snapshot: FathomSnapshot,
-  x: number,
-  y: number,
-): number {
-  return Math.hypot(x - snapshot.forager.x, y - snapshot.forager.y);
-}
+// How far a logical point lies from the forager's center is the scenario
+// module's `fromForager`, shared with every other range reading in the suite.
+export { fromForager } from "../scene";
 
 /** How far a tile's center lies from the forager's center, in logical units. */
 export function tileFromForager(snapshot: FathomSnapshot, tile: Tile): number {

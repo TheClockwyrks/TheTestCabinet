@@ -44,7 +44,13 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { check, denAll, requireScene, requireSwim, sceneGuard } from "../scene";
+import {
+  check,
+  denAll,
+  requireSceneHeld,
+  requireSwim,
+  sceneGuard,
+} from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /** The corridor the run is measured on, in tiles. */
@@ -217,7 +223,7 @@ check(
           ? await captureReplay(h, "run", () => drive(h, run.key))
           : await drive(h, run.key);
 
-      requireScene(h.snapshot(), guard, {
+      requireSceneHeld(h.snapshot(), guard, {
         what: `the scenario for ${run.label}`,
       });
       judge(

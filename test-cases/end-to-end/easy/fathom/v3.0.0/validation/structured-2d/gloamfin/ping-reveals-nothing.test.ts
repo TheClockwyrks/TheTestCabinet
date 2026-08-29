@@ -12,10 +12,10 @@
 // SO THERE ARE THREE READINGS, and they are three because a build can pass any two
 // of them while failing the third. The fog's own report (`visibility`, which
 // `specs/state.md` gives `u` for a tile "never touched by the forager's light, a
-// sonar pulse or a flare"); the `lit` flag of every predator, which the same file
-// makes true "while its body is being drawn this instant, whether by the forager's
-// light, a sonar mark, a flare, or its own alert"; and the PIXELS, which are the
-// only reading that catches a build that draws a reveal it never records.
+// sonar pulse or a flare"); the `lit` flag of every predator and every drifter,
+// which the same file makes true "while its body is being drawn this instant";
+// and the PIXELS, which are the only reading that catches a build that draws a
+// reveal it never records.
 //
 // THE ROOM IS SEALED AND DARK, AND THAT IS WHAT MAKES THE READINGS DECIDABLE. The
 // forager stands in a corridor of its own with solid rock between, so its light
@@ -69,7 +69,7 @@ import {
   denAll,
   quietBoard,
   requireKind,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
   standDown,
 } from "../scene";
@@ -274,9 +274,15 @@ check("Its ping reveals nothing", async () => {
     for (; ticks < FLIGHT_BUDGET; ticks += 1) {
       await h.advance(1);
       const snap = h.snapshot();
-      const shown = snap.predators
-        .filter((predator) => predator.lit)
-        .map((predator) => predator.kind);
+      // Both amber creatures answer for themselves. A drifter's `lit` says
+      // whether its body is drawn, which its amber mote is drawn under its own
+      // rule and cannot be read for.
+      const shown = [
+        ...snap.predators
+          .filter((predator) => predator.lit)
+          .map((predator) => predator.kind),
+        ...snap.drifters.filter((drifter) => drifter.lit).map(() => "drifter"),
+      ];
       if (shown.length > 0) drawn.push({ tick: ticks, kinds: shown });
       if (!snap.pulses.some((pulse) => pulse.source === "gloamfin")) break;
     }
@@ -289,7 +295,7 @@ check("Its ping reveals nothing", async () => {
     return { drawn, ticks, settled, afterPixels };
   });
 
-  requireScene(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
   assertTrue(
     flight.ticks < FLIGHT_BUDGET,
     `the ping's wavefront left \`pulses\` within ${FLIGHT_BUDGET} ticks — ` +
@@ -312,11 +318,11 @@ check("Its ping reveals nothing", async () => {
   assertEqual(
     flight.drawn.length,
     0,
-    `samples of the ping's flight at which any predator reported lit true; the ` +
+    `samples of the ping's flight at which any creature reported lit true; the ` +
       `first was ` +
       `${flight.drawn.length > 0 ? flight.drawn[0].kinds.join(" and ") : "none"} ` +
-      `— specs/predators/gloamfin.md: a ping marks no predator, "the Gloamfin ` +
-      `that cast it included"`,
+      `— specs/predators/gloamfin.md: a ping "marks no predator and no ` +
+      `drifter", "the Gloamfin that cast it included"`,
   );
 
   let read = 0;

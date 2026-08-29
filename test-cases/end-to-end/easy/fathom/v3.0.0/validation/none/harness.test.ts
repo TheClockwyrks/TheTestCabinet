@@ -37,8 +37,8 @@ import {
   type RecordedFrame,
   type RecordedOp,
   type Recording,
+  startPlaying,
 } from "./harness";
-import { startPlaying } from "./scene";
 
 /** The environment variable the runner names the media directory in. */
 const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
@@ -79,11 +79,11 @@ let mediaDir: string;
 let collecting: string | undefined;
 let h: Harness;
 
-beforeEach(async (ctx) => {
+beforeEach(async () => {
   collecting = process.env[MEDIA_DIR_ENV];
   mediaDir = mkdtempSync(join(tmpdir(), "fathom-replay-"));
   process.env[MEDIA_DIR_ENV] = mediaDir;
-  h = await createHarness(ctx);
+  h = await createHarness();
 });
 
 afterEach(async () => {

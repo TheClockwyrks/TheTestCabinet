@@ -51,7 +51,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
@@ -217,7 +217,7 @@ check("It senses the forager's light within R", async () => {
     };
   });
 
-  requireScene(read.end, guard);
+  requireSceneHeld(read.end, guard);
 
   // The fixture's own geometry, against the range the build itself reports.
   assertLessThanOrEqual(

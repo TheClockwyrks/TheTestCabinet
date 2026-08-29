@@ -52,7 +52,7 @@ import {
   failPrecondition,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
 } from "../scene";
@@ -185,7 +185,7 @@ check("The light does not bend around corners", async () => {
     return { before, settled, arrived, onArm };
   });
 
-  requireScene(end.settled, watch);
+  requireSceneHeld(end.settled, watch);
 
   // Whether the forager travels is `controls/*` and `maze-movement/*`'s verdict.
   if (!end.arrived || !end.onArm) {

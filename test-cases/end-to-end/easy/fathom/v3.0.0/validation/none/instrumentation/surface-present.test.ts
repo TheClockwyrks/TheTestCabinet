@@ -30,14 +30,9 @@
 // housing and the plankton `setMaze` restores are right is
 // `controls/setmaze-houses-predators`' and the `maze/*` points'.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import {
-  placeForager,
-  poseMaze,
-  tileCenterOf,
-  visibilityAt,
-} from "../fixtures";
+import { placeForager, poseMaze } from "../fixtures";
 import {
   FATHOM_DEBUG_VERSION,
   REQUIRED_OPS,
@@ -46,9 +41,10 @@ import {
   luminance,
   rgbOf,
   type Harness,
+  startPlaying,
 } from "../harness";
-import { startPlaying } from "../scene";
-import type { GridFrame, TileRef } from "../maze";
+import { check } from "../scene";
+import { tileCenter, type GridFrame, type Tile, visibilityAt } from "../maze";
 
 /**
  * The board: the forager's own four-tile room, eight tiles of solid rock, and a
@@ -96,9 +92,9 @@ const PROBE_OFFSET = 8;
 async function tileBrightness(
   h: Harness,
   grid: GridFrame,
-  tile: TileRef,
+  tile: Tile,
 ): Promise<number> {
-  const at = tileCenterOf(grid, tile);
+  const at = tileCenter(grid, tile);
   const points = [
     at,
     { x: at.x + PROBE_OFFSET, y: at.y },
@@ -112,104 +108,107 @@ async function tileBrightness(
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("installs every documented operation and drives the running game", async () => {
-  // Reflection first, and through a read that invokes nothing: a build missing an
-  // operation is told which one rather than failing on a call it never had.
-  const probed = await h.probe(REQUIRED_OPS);
-  assertEqual(
-    probed.version,
-    FATHOM_DEBUG_VERSION,
-    "window.__fathom.version, which specs/instrumentation.md fixes as " +
-      "FATHOM_DEBUG_VERSION",
-  );
-  for (const op of REQUIRED_OPS) {
+check(
+  "installs every documented operation and drives the running game",
+  async () => {
+    // Reflection first, and through a read that invokes nothing: a build missing an
+    // operation is told which one rather than failing on a call it never had.
+    const probed = await h.probe(REQUIRED_OPS);
     assertEqual(
-      probed.ops[op],
-      "function",
-      `typeof window.__fathom.${op}, an operation specs/instrumentation.md ` +
-        `requires on the surface`,
+      probed.version,
+      FATHOM_DEBUG_VERSION,
+      "window.__fathom.version, which specs/instrumentation.md fixes as " +
+        "FATHOM_DEBUG_VERSION",
     );
-  }
+    for (const op of REQUIRED_OPS) {
+      assertEqual(
+        probed.ops[op],
+        "function",
+        `typeof window.__fathom.${op}, an operation specs/instrumentation.md ` +
+          `requires on the surface`,
+      );
+    }
 
-  // And now the liveness, driven through the surface alone.
-  await startPlaying(h);
-  const board = await poseMaze(h, ART);
-  const home: TileRef = board.mark("H");
-  const far: TileRef = board.mark("T");
-  const rock: TileRef = { tx: home.tx + ROCK_OFFSET, ty: home.ty };
+    // And now the liveness, driven through the surface alone.
+    await startPlaying(h);
+    const board = await poseMaze(h, ART);
+    const home: Tile = board.mark("H");
+    const far: Tile = board.mark("T");
+    const rock: Tile = { tx: home.tx + ROCK_OFFSET, ty: home.ty };
 
-  await placeForager(h, home);
-  // Full glow, so the pocket the forager carries is at its widest and the reading
-  // below is of a tile that is lit rather than merely occupied.
-  await h.debug.setBrightness(1);
-  await h.advance(SETTLE_TICKS);
+    await placeForager(h, home);
+    // Full glow, so the pocket the forager carries is at its widest and the reading
+    // below is of a tile that is lit rather than merely occupied.
+    await h.debug.setBrightness(1);
+    await h.advance(SETTLE_TICKS);
 
-  const before = await h.snapshot();
-  const beforeLit = await tileBrightness(h, before.grid, far);
+    const before = await h.snapshot();
+    const beforeLit = await tileBrightness(h, before.grid, far);
 
-  // The pose under test.
-  await h.debug.setForagerTile(far.tx, far.ty);
-  await h.advance(SETTLE_TICKS);
+    // The pose under test.
+    await h.debug.setForagerTile(far.tx, far.ty);
+    await h.advance(SETTLE_TICKS);
 
-  const after = await h.snapshot();
-  const afterLit = await tileBrightness(h, after.grid, far);
-  // Before the assertions, so a failing check still leaves the picture of the
-  // state it was reading.
-  await captureStill(h, "state");
+    const after = await h.snapshot();
+    const afterLit = await tileBrightness(h, after.grid, far);
+    // Before the assertions, so a failing check still leaves the picture of the
+    // state it was reading.
+    await captureStill(h, "state");
 
-  // `setMaze` posed a board, and the snapshot reports THAT board.
-  assertEqual(
-    after.tiles[home.ty]?.[home.tx],
-    ".",
-    `snapshot().tiles at the posed room's first tile (${home.tx}, ${home.ty})`,
-  );
-  assertEqual(
-    after.tiles[rock.ty]?.[rock.tx],
-    "#",
-    `snapshot().tiles at (${rock.tx}, ${rock.ty}), the first tile of the ` +
-      `posed rock band`,
-  );
+    // `setMaze` posed a board, and the snapshot reports THAT board.
+    assertEqual(
+      after.tiles[home.ty]?.[home.tx],
+      ".",
+      `snapshot().tiles at the posed room's first tile (${home.tx}, ${home.ty})`,
+    );
+    assertEqual(
+      after.tiles[rock.ty]?.[rock.tx],
+      "#",
+      `snapshot().tiles at (${rock.tx}, ${rock.ty}), the first tile of the ` +
+        `posed rock band`,
+    );
 
-  // `setForagerTile` moved the forager onto it, and the snapshot says so.
-  assertEqual(
-    `${before.forager.tx},${before.forager.ty}`,
-    `${home.tx},${home.ty}`,
-    "the forager's tile before the pose",
-  );
-  assertEqual(
-    `${after.forager.tx},${after.forager.ty}`,
-    `${far.tx},${far.ty}`,
-    "the forager's tile after setForagerTile",
-  );
+    // `setForagerTile` moved the forager onto it, and the snapshot says so.
+    assertEqual(
+      `${before.forager.tx},${before.forager.ty}`,
+      `${home.tx},${home.ty}`,
+      "the forager's tile before the pose",
+    );
+    assertEqual(
+      `${after.forager.tx},${after.forager.ty}`,
+      `${far.tx},${far.ty}`,
+      "the forager's tile after setForagerTile",
+    );
 
-  // The game's own sensing ran on the posed board: the far tile went from
-  // untouched to lit because the forager is standing on it.
-  assertEqual(
-    visibilityAt(before, far),
-    "u",
-    `the visibility of (${far.tx}, ${far.ty}) while the forager was fourteen ` +
-      `tiles away behind rock`,
-  );
-  assertEqual(
-    visibilityAt(after, far),
-    "l",
-    `the visibility of (${far.tx}, ${far.ty}) with the forager standing on it`,
-  );
+    // The game's own sensing ran on the posed board: the far tile went from
+    // untouched to lit because the forager is standing on it.
+    assertEqual(
+      visibilityAt(before, far),
+      "u",
+      `the visibility of (${far.tx}, ${far.ty}) while the forager was fourteen ` +
+        `tiles away behind rock`,
+    );
+    assertEqual(
+      visibilityAt(after, far),
+      "l",
+      `the visibility of (${far.tx}, ${far.ty}) with the forager standing on it`,
+    );
 
-  // And the canvas draws it there. A lit tile carrying the forager and its glow
-  // cannot read as dark as the darkest an unrevealed tile may be drawn.
-  assertGreaterThan(
-    afterLit,
-    FOG_MAX_BRIGHTNESS,
-    `the brightest channel-mean, of 255, over the tile the forager was posed ` +
-      `onto — it read ${beforeLit.toFixed(1)} while that tile was unrevealed`,
-  );
-});
+    // And the canvas draws it there. A lit tile carrying the forager and its glow
+    // cannot read as dark as the darkest an unrevealed tile may be drawn.
+    assertGreaterThan(
+      afterLit,
+      FOG_MAX_BRIGHTNESS,
+      `the brightest channel-mean, of 255, over the tile the forager was posed ` +
+        `onto — it read ${beforeLit.toFixed(1)} while that tile was unrevealed`,
+    );
+  },
+);

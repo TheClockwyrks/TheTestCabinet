@@ -37,7 +37,7 @@
 // `flarefish/flare-reveals`'s; and the cadence the blooms arrive on, which is
 // `flarefish/flare-cadence`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
@@ -48,10 +48,10 @@ import { poseMaze } from "../fixtures";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import type { FathomSnapshot } from "../surface";
 import {
+  check,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   separation,
@@ -144,8 +144,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, and locks onto none just beyond it", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, and locks onto none just beyond it",
+  async () => {
     await startPlaying(h);
     const board = await poseMaze(h, ART);
     const lane = board.mark("F");
@@ -155,8 +156,8 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
     h.debug.clearPlankton();
     h.debug.setBrightness(0);
 
-    const index = requirePred(h.snapshot(), "flarefish");
-    const quiet = await denAll(h, ["flarefish"]);
+    const index = requireKind(h.snapshot(), "flarefish");
+    const quiet = await denAll(h, [index]);
     h.debug.setPredatorTile(index, patrol.tx, patrol.ty);
     h.debug.setPredatorDir(index, "right");
     h.debug.setPredatorState(index, "wander");
@@ -349,5 +350,5 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
       "the bloom a step after the lock, which specs/predators/flarefish.md ends " +
         "at once when it locks on",
     );
-  });
-});
+  },
+);

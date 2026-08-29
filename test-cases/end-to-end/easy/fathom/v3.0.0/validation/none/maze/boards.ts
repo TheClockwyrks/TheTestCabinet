@@ -46,7 +46,12 @@ import {
   SONAR_WAVE_SPEED,
   TICK_HZ,
 } from "../constants";
-import { captureStill, type FathomSnapshot, type Harness } from "../harness";
+import {
+  captureStill,
+  type FathomSnapshot,
+  type Harness,
+  startPlaying,
+} from "../harness";
 import {
   corridorTiles,
   denTiles,
@@ -54,9 +59,9 @@ import {
   tileAt,
   type Dir,
   type MazeView,
-  type TileRef,
+  type Tile,
 } from "../maze";
-import { denAllExcept, startPlaying } from "../scene";
+import { denAll, unmetPrecondition } from "../scene";
 
 /**
  * The seeds the eight structural points measure a layout at.
@@ -123,10 +128,10 @@ export function witness<M extends Measured>(measured: readonly M[]): M {
  * verdict to give: `specs/maze.md` bounds density at `MAZE_DENSITY_MIN` (`0.40`)
  * of the cells inside the border, and a board with no corridor reads `0`.
  */
-export function requireLaidOut(h: Harness, boards: readonly Board[]): void {
+export function requireLaidOut(boards: readonly Board[]): void {
   const bare = boards.find((one) => corridorTiles(one.snapshot).length === 0);
   if (bare === undefined) return;
-  h.unmet(
+  unmetPrecondition(
     `the maze seed ${bare.seed} laid out carries no corridor tile at all, so ` +
       "there is no layout here to measure — whether the game lays one out that " +
       "fills the grid is maze/proportions' verdict, and it does give it",
@@ -142,10 +147,10 @@ export function requireLaidOut(h: Harness, boards: readonly Board[]): void {
  * chamber is there at all is `maze/den-reachable`'s verdict, which asks for the
  * den a released predator comes out of and fails when there is none.
  */
-export function requireDenChamber(h: Harness, boards: readonly Board[]): void {
+export function requireDenChamber(boards: readonly Board[]): void {
   const bare = boards.find((one) => denTiles(one.snapshot).length === 0);
   if (bare === undefined) return;
-  h.unmet(
+  unmetPrecondition(
     `the maze seed ${bare.seed} laid out marks no den-interior tile, so there ` +
       "is no chamber here to ask about — whether the layout carries the den a " +
       "released predator comes out of is maze/den-reachable's verdict",
@@ -211,13 +216,9 @@ const APPROACHES: readonly { dx: number; dy: number; facing: Dir }[] = [
 ];
 
 /** The corridor tile of `view` nearest to a point on the grid, or `null`. */
-function nearestCorridor(
-  view: MazeView,
-  fx: number,
-  fy: number,
-): TileRef | null {
+function nearestCorridor(view: MazeView, fx: number, fy: number): Tile | null {
   const at = { tx: fx * (view.grid.cols - 1), ty: fy * (view.grid.rows - 1) };
-  let best: TileRef | null = null;
+  let best: Tile | null = null;
   let bestGap = Infinity;
   for (const tile of corridorTiles(view)) {
     const gap = (tile.tx - at.tx) ** 2 + (tile.ty - at.ty) ** 2;
@@ -236,7 +237,7 @@ function nearestCorridor(
  * Tried above the gate first, which is where `specs/maze.md` puts the corridor
  * outside a gate "on its top edge".
  */
-function gateApproach(view: MazeView): (TileRef & { facing: Dir }) | null {
+function gateApproach(view: MazeView): (Tile & { facing: Dir }) | null {
   for (const gate of gateTiles(view)) {
     for (const { dx, dy, facing } of APPROACHES) {
       const tx = gate.tx + dx;
@@ -266,7 +267,7 @@ export async function captureBoard(
 ): Promise<void> {
   try {
     await startPlaying(h, board.seed);
-    await denAllExcept(h);
+    await denAll(h);
     const view = await h.snapshot();
     const home = { tx: view.forager.tx, ty: view.forager.ty };
 

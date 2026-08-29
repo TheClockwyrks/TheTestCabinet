@@ -41,7 +41,7 @@ import {
 import {
   check,
   denAll,
-  requireScene,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
   FORAGER_CORRIDORS,
@@ -125,7 +125,7 @@ check("stops the forager against rock rather than letting it in", async () => {
   // when a body crosses rock and names this point; this is the point, so a
   // forager found standing in it is the finding rather than a reason to stand
   // down. A hunter that crossed rock is still somebody else's.
-  requireScene(h.snapshot(), guard, { owns: [FORAGER_CORRIDORS] });
+  requireSceneHeld(h.snapshot(), guard, { owns: [FORAGER_CORRIDORS] });
 
   // A forager that never got under way was never offered the rock; whether a
   // held action moves it at all is `controls/move-*`'s verdict.

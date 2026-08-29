@@ -68,7 +68,7 @@ import {
   denAll,
   indexOfKind,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
   standDown,
 } from "../scene";
@@ -185,7 +185,7 @@ check(
       return { fixed, inked, broke, refixed, ended };
     });
 
-    requireScene(h.snapshot(), guard);
+    requireSceneHeld(h.snapshot(), guard);
 
     // The premise: it was chasing, and there was a cloud.
     if (run.fixed.predators[index].state !== "chase") {

@@ -12,10 +12,10 @@
 // SO THERE ARE THREE READINGS, and they are three because a build can pass any two
 // of them while failing the third. The fog's own report (`visibility`, which
 // `specs/state.md` gives `u` for a tile "never touched by the forager's light, a
-// sonar pulse or a flare"); the `lit` flag of every predator, which the same file
-// makes true "while its body is being drawn this instant, whether by the forager's
-// light, a sonar mark, a flare, or its own alert"; and the PIXELS, which are the
-// only reading that catches a build that draws a reveal it never records.
+// sonar pulse or a flare"); the `lit` flag of every predator and every drifter,
+// which the same file makes true "while its body is being drawn this instant";
+// and the PIXELS, which are the only reading that catches a build that draws a
+// reveal it never records.
 //
 // THE ROOM IS SEALED AND DARK, AND THAT IS WHAT MAKES THE READINGS DECIDABLE. The
 // forager stands in a corridor of its own with solid rock between, so its light
@@ -45,7 +45,7 @@
 // unrevealed fog looks like (`fog/unrevealed-black`), or when a ping is cast
 // (`gloamfin/ping-cadence`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -53,13 +53,7 @@ import {
   assertTrue,
 } from "../assert";
 import { GLOAMFIN_PING_RANGE, TICK_HZ, TILE } from "../constants";
-import {
-  placePredator,
-  poseMaze,
-  predatorIndex,
-  tileCenterOf,
-  visibilityAt,
-} from "../fixtures";
+import { placePredator, poseMaze, predatorIndex } from "../fixtures";
 import {
   captureReplay,
   colorDistance,
@@ -67,16 +61,18 @@ import {
   rgbOf,
   type FathomSnapshot,
   type Harness,
+  startPlaying,
 } from "../harness";
-import type { TileRef } from "../maze";
+import { tileCenter, type Tile, visibilityAt } from "../maze";
 import {
-  denAllExcept,
+  check,
+  denAll,
   quietBoard,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
-import { requireGloamfin } from "./pings";
 
 /**
  * The fixture: the forager's own corridor at `N`, and across three tiles of solid
@@ -150,12 +146,8 @@ function drawnCreatures(
 }
 
 /** How far a tile's center stands from the nearest thing the build draws. */
-function clearance(
-  snap: FathomSnapshot,
-  tile: TileRef,
-  gloamfin: number,
-): number {
-  const center = tileCenterOf(snap.grid, tile);
+function clearance(snap: FathomSnapshot, tile: Tile, gloamfin: number): number {
+  const center = tileCenter(snap.grid, tile);
   return Math.min(
     ...drawnCreatures(snap, gloamfin).map((each) =>
       Math.hypot(each.x - center.x, each.y - center.y),
@@ -166,34 +158,34 @@ function clearance(
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("Its ping reveals nothing", async () => {
+check("Its ping reveals nothing", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, SEALED_ROOM);
-  const gloamfin = requireGloamfin(h, board.snap);
-  const lanternjaw = predatorIndex(board.snap, "lanternjaw");
+  const gloamfin = requireKind(await h.snapshot(), "gloamfin");
+  const lanternjaw = predatorIndex(await h.snapshot(), "lanternjaw");
   if (lanternjaw === null) {
-    h.unmet(
+    unmetPrecondition(
       "the roster carries no Lanternjaw to stand in the ping's reach, so " +
         '"marks no predator" had nothing to be asked of — what a depth\'s ' +
         "roster holds is the progression checks' verdict, not this one's",
     );
   }
-  const quiet = await denAllExcept(h, [gloamfin, lanternjaw]);
+  const quiet = await denAll(h, [gloamfin, lanternjaw]);
   await placePredator(h, gloamfin, board.mark("G"), { state: "wander" });
   await placePredator(h, lanternjaw, board.mark("A"), { state: "wander" });
   await h.debug.spawnDrifter(board.mark("B").tx, board.mark("B").ty);
   await quietBoard(h, board.mark("N"));
   const guard = await sceneGuard(h, quiet);
 
-  const room: TileRef[] = [
+  const room: Tile[] = [
     board.mark("A"),
     board.mark("B"),
     ...board.all("C"),
@@ -206,7 +198,7 @@ it("Its ping reveals nothing", async () => {
   const opening = await h.snapshot();
   const litEarly = room.filter((tile) => visibilityAt(opening, tile) !== "u");
   if (litEarly.length > 0) {
-    h.unmet(
+    unmetPrecondition(
       `${litEarly.length} of the ${room.length} tiles of the sealed room this ` +
         `scenario poses were already revealed before any ping was cast, so what ` +
         `the ping then changed cannot be read off them — a room the forager's ` +
@@ -221,7 +213,7 @@ it("Its ping reveals nothing", async () => {
     { maxTicks: PING_BUDGET, poll: 1 },
   );
   if (!cast.hit) {
-    h.unmet(
+    unmetPrecondition(
       `the Gloamfin cast no ping within ${PING_BUDGET / TICK_HZ} s, so there was ` +
         `no wavefront for this point to read the maze either side of — whether a ` +
         `Gloamfin pings at all is gloamfin/ping-cadence's verdict, not this one's`,
@@ -229,14 +221,14 @@ it("Its ping reveals nothing", async () => {
   }
   const before = cast.snapshot;
   const ping = before.pulses.find((pulse) => pulse.source === "gloamfin");
-  const origin: TileRef = { tx: ping?.ox ?? 0, ty: ping?.oy ?? 0 };
+  const origin: Tile = { tx: ping?.ox ?? 0, ty: ping?.oy ?? 0 };
 
   // The room is one straight corridor, so a corridor step is a column, and the
   // reach a ping got is |tx - ox| from the tile it was cast on.
-  const reach = (tile: TileRef): number => Math.abs(tile.tx - origin.tx);
+  const reach = (tile: Tile): number => Math.abs(tile.tx - origin.tx);
   const lanternjawTile = before.predators[lanternjaw];
   if (reach(lanternjawTile) > GLOAMFIN_PING_RANGE) {
-    h.unmet(
+    unmetPrecondition(
       `the Lanternjaw had wandered ${reach(lanternjawTile)} corridor steps from ` +
         `the tile the ping was cast on, beyond the GLOAMFIN_PING_RANGE ` +
         `(${GLOAMFIN_PING_RANGE}) steps a ping floods to, so the wavefront never ` +
@@ -256,13 +248,13 @@ it("Its ping reveals nothing", async () => {
     .sort((a, b) => reach(b) - reach(a))
     .slice(0, SAMPLE_TILES);
   if (sampled.length === 0) {
-    h.unmet(
+    unmetPrecondition(
       "no tile of the posed room was both inside the ping's reach and clear of " +
         "the drifter and the Lanternjaw, which are drawn wherever they stand, so " +
         "there was nowhere to read a pixel the ping alone could have changed",
     );
   }
-  const points = sampled.map((tile) => tileCenterOf(before.grid, tile));
+  const points = sampled.map((tile) => tileCenter(before.grid, tile));
   const beforePixels = await h.pixels(points);
 
   const flight = await captureReplay(h, "silent", async () => {
@@ -271,9 +263,15 @@ it("Its ping reveals nothing", async () => {
     for (; ticks < FLIGHT_BUDGET; ticks += 1) {
       await h.advance(1);
       const snap = await h.snapshot();
-      const shown = snap.predators
-        .filter((predator) => predator.lit)
-        .map((predator) => predator.kind);
+      // Both amber creatures answer for themselves. A drifter's `lit` says
+      // whether its body is drawn, which its amber mote is drawn under its own
+      // rule and cannot be read for.
+      const shown = [
+        ...snap.predators
+          .filter((predator) => predator.lit)
+          .map((predator) => predator.kind),
+        ...snap.drifters.filter((drifter) => drifter.lit).map(() => "drifter"),
+      ];
       if (shown.length > 0) drawn.push({ tick: ticks, kinds: shown });
       if (!snap.pulses.some((pulse) => pulse.source === "gloamfin")) break;
     }
@@ -286,7 +284,7 @@ it("Its ping reveals nothing", async () => {
     return { drawn, ticks, settled, afterPixels };
   });
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
   assertTrue(
     flight.ticks < FLIGHT_BUDGET,
     `the ping's wavefront left \`pulses\` within ${FLIGHT_BUDGET} ticks — ` +
@@ -309,11 +307,11 @@ it("Its ping reveals nothing", async () => {
   assertEqual(
     flight.drawn.length,
     0,
-    `samples of the ping's flight at which any predator reported lit true; the ` +
+    `samples of the ping's flight at which any creature reported lit true; the ` +
       `first was ` +
       `${flight.drawn.length > 0 ? flight.drawn[0].kinds.join(" and ") : "none"} ` +
-      `— specs/predators/gloamfin.md: a ping marks no predator, "the Gloamfin ` +
-      `that cast it included"`,
+      `— specs/predators/gloamfin.md: a ping "marks no predator and no ` +
+      `drifter", "the Gloamfin that cast it included"`,
   );
 
   let read = 0;

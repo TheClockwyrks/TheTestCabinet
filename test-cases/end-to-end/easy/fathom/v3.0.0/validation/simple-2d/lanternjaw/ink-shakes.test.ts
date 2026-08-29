@@ -27,7 +27,7 @@
 // `lanternjaw/light-range`'s. A build that fails either stands this check down
 // rather than being failed twice for one fault.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BINDINGS, LINGER_TIME } from "../../src/constants";
 import {
   assertEqual,
@@ -45,11 +45,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -113,91 +113,89 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Ink shakes its fix at once", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const stand = await poseInkStandoff(h, { gap: GAP_TILES });
-    const index = requirePred(h.snapshot(), "lanternjaw");
-    const quiet = await denAll(h, ["lanternjaw"]);
-    await h.debug.setPredatorTile(index, stand.pred.tx, stand.pred.ty);
-    await h.debug.setPredatorState(index, "wander");
-    await parkForager(h, stand.ink);
-    await clearUnderfoot(h);
-    await h.debug.setBrightness(BRIGHT_G);
-    await h.debug.setInkCooldown(0);
-    const watch = await sceneGuard(h, quiet);
+check("Ink shakes its fix at once", async () => {
+  await startPlaying(h);
+  const stand = await poseInkStandoff(h, { gap: GAP_TILES });
+  const index = requireKind(h.snapshot(), "lanternjaw");
+  const quiet = await denAll(h, [index]);
+  await h.debug.setPredatorTile(index, stand.pred.tx, stand.pred.ty);
+  await h.debug.setPredatorState(index, "wander");
+  await parkForager(h, stand.ink);
+  await clearUnderfoot(h);
+  await h.debug.setBrightness(BRIGHT_G);
+  await h.debug.setInkCooldown(0);
+  const watch = await sceneGuard(h, quiet);
 
-    const fixed = await h.until((s) => s.predators[index].state === "chase", {
-      maxFrames: FIX_TICKS,
-      poll: 1,
-    });
-    if (!fixed.hit) {
+  const fixed = await h.until((s) => s.predators[index].state === "chase", {
+    maxFrames: FIX_TICKS,
+    poll: 1,
+  });
+  if (!fixed.hit) {
+    unmetPrecondition(
+      "the Lanternjaw took no fix on a lit forager on a clear line, so there " +
+        "was no fix for ink to break; whether it senses the forager at all is " +
+        "lanternjaw/light-range's verdict, not this one's",
+    );
+  }
+
+  const broke = await captureReplay(h, "shaken", async () => {
+    const before = h.snapshot();
+    await h.tap(INK_KEY);
+    const released = await h.until(
+      (s) => s.inkClouds.length > before.inkClouds.length,
+      {
+        maxFrames: CLOUD_TICKS,
+        poll: 1,
+      },
+    );
+    if (!released.hit) {
       unmetPrecondition(
-        "the Lanternjaw took no fix on a lit forager on a clear line, so there " +
-          "was no fix for ink to break; whether it senses the forager at all is " +
-          "lanternjaw/light-range's verdict, not this one's",
+        `pressing ${INK_KEY} released no cloud with ink.ready posed true, so ` +
+          "there was nothing on the line to blind the hunter; whether the key " +
+          "releases ink is controls/ink-key's verdict, not this one's",
       );
     }
-
-    const broke = await captureReplay(h, "shaken", async () => {
-      const before = h.snapshot();
-      await h.tap(INK_KEY);
-      const released = await h.until(
-        (s) => s.inkClouds.length > before.inkClouds.length,
-        {
-          maxFrames: CLOUD_TICKS,
-          poll: 1,
-        },
-      );
-      if (!released.hit) {
-        unmetPrecondition(
-          `pressing ${INK_KEY} released no cloud with ink.ready posed true, so ` +
-            "there was nothing on the line to blind the hunter; whether the key " +
-            "releases ink is controls/ink-key's verdict, not this one's",
-        );
-      }
-      const dropped = await h.until(
-        (s) => s.predators[index].state === "wander",
-        { maxFrames: DROP_TICKS, poll: 1 },
-      );
-      const seen: string[] = [];
-      for (let spent = 0; spent < BLIND_TICKS; spent += BLIND_POLL) {
-        await h.advance(BLIND_POLL);
-        seen.push(h.snapshot().predators[index].state);
-      }
-      const watched = h.snapshot();
-      await h.advance(TAIL_TICKS);
-      return { released, dropped, seen, watched, end: h.snapshot() };
-    });
-
-    requireSceneHeld(broke.end, watch);
-
-    assertEqual(
-      broke.dropped.hit,
-      true,
-      `the Lanternjaw is wandering within ${seconds(DROP_TICKS).toFixed(2)} s of ` +
-        `the cloud appearing, well short of LINGER_TIME (${LINGER_TIME} s) — it ` +
-        `read ${broke.dropped.snapshot.predators[index].state} at the deadline`,
+    const dropped = await h.until(
+      (s) => s.predators[index].state === "wander",
+      { maxFrames: DROP_TICKS, poll: 1 },
     );
-    assertLessThanOrEqual(
-      seconds(broke.dropped.frames),
-      0.1,
-      "the seconds from the cloud appearing to the fix being dropped, which ink " +
-        "drops at once and with no linger (specs/predators/lanternjaw.md)",
-    );
-    // The watch below only says anything while the cloud is actually standing, so
-    // the fixture's own claim is read off the snapshot rather than assumed.
-    assertGreaterThan(
-      broke.watched.inkClouds.length,
-      0,
-      `the clouds still standing after the ${seconds(BLIND_TICKS).toFixed(1)} s ` +
-        "the hunter was watched for, which is what makes that watch a reading of " +
-        "a blinded hunter",
-    );
-    assertTrue(
-      broke.seen.every((state) => state !== "chase"),
-      "the states the Lanternjaw reported while the cloud stood between it and " +
-        `the forager — it read [${broke.seen.join(", ")}]`,
-    );
+    const seen: string[] = [];
+    for (let spent = 0; spent < BLIND_TICKS; spent += BLIND_POLL) {
+      await h.advance(BLIND_POLL);
+      seen.push(h.snapshot().predators[index].state);
+    }
+    const watched = h.snapshot();
+    await h.advance(TAIL_TICKS);
+    return { released, dropped, seen, watched, end: h.snapshot() };
   });
+
+  requireSceneHeld(broke.end, watch);
+
+  assertEqual(
+    broke.dropped.hit,
+    true,
+    `the Lanternjaw is wandering within ${seconds(DROP_TICKS).toFixed(2)} s of ` +
+      `the cloud appearing, well short of LINGER_TIME (${LINGER_TIME} s) — it ` +
+      `read ${broke.dropped.snapshot.predators[index].state} at the deadline`,
+  );
+  assertLessThanOrEqual(
+    seconds(broke.dropped.frames),
+    0.1,
+    "the seconds from the cloud appearing to the fix being dropped, which ink " +
+      "drops at once and with no linger (specs/predators/lanternjaw.md)",
+  );
+  // The watch below only says anything while the cloud is actually standing, so
+  // the fixture's own claim is read off the snapshot rather than assumed.
+  assertGreaterThan(
+    broke.watched.inkClouds.length,
+    0,
+    `the clouds still standing after the ${seconds(BLIND_TICKS).toFixed(1)} s ` +
+      "the hunter was watched for, which is what makes that watch a reading of " +
+      "a blinded hunter",
+  );
+  assertTrue(
+    broke.seen.every((state) => state !== "chase"),
+    "the states the Lanternjaw reported while the cloud stood between it and " +
+      `the forager — it read [${broke.seen.join(", ")}]`,
+  );
 });

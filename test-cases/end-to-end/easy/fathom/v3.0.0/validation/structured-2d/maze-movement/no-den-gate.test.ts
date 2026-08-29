@@ -46,7 +46,13 @@ import {
   type Harness,
 } from "../harness";
 import type { Tile } from "../maze";
-import { check, denAll, requireScene, requireSwim, sceneGuard } from "../scene";
+import {
+  check,
+  denAll,
+  requireSceneHeld,
+  requireSwim,
+  sceneGuard,
+} from "../scene";
 
 /**
  * How much corridor the stub carries above the gate, in tiles.
@@ -149,7 +155,7 @@ check(
       return { resting, onGate, inDen, settled };
     });
 
-    requireScene(h.snapshot(), guard);
+    requireSceneHeld(h.snapshot(), guard);
 
     // A forager that never got under way was never offered the gate; whether a
     // held action moves it at all is `controls/move-*`'s verdict.

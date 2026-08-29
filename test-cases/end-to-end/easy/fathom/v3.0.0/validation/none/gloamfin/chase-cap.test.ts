@@ -31,7 +31,7 @@
 // patrol travels at (`gloamfin/wander-speed`), or how the fix was taken
 // (`gloamfin/fix-and-alert`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -39,16 +39,22 @@ import {
 } from "../assert";
 import { FORAGER_SPEED, GLOAMFIN_CHASE_SPEED, TICK_HZ } from "../constants";
 import { placePredator, poseMaze } from "../fixtures";
-import { captureReplay, createHarness, type Harness } from "../harness";
 import {
-  denAllExcept,
+  captureReplay,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import {
+  check,
+  denAll,
   quietBoard,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  startPlaying,
 } from "../scene";
-import { gloamfinOf, groundBetween, requireGloamfin } from "./pings";
+import { gloamfinOf, groundBetween } from "./pings";
 
 /**
  * The fixture: one straight corridor with the forager on `F` and the Gloamfin
@@ -95,19 +101,19 @@ const CAP_SLACK = 0.01;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("It chases at GLOAMFIN_CHASE_SPEED", async () => {
+check("It chases at GLOAMFIN_CHASE_SPEED", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, RUN);
-  const index = requireGloamfin(h, board.snap);
-  const quiet = await denAllExcept(h, [index]);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
   // The forager first, and parked: `setPredatorState(index, "chase")` fixes on
   // "the forager's current tile" (specs/instrumentation.md), so it has to be
   // standing at the far end of the run by the time the Gloamfin is posed.
@@ -155,9 +161,8 @@ it("It chases at GLOAMFIN_CHASE_SPEED", async () => {
     };
   });
 
-  requireSceneHeld(h, await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
   requirePredatorMotion(
-    h,
     opening,
     run.settled,
     index,

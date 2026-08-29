@@ -32,7 +32,7 @@
 // `gloamfin/ping-reveals-nothing`'s; its color, which is
 // `gloamfin/lost-you-orange`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { CUES, GLOAMFIN_PING_INTERVAL } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { poseApart } from "../fixtures";
@@ -44,11 +44,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
@@ -85,15 +85,16 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.predatorPing on the tick a Gloamfin casts its ping, and not before", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "plays CUES.predatorPing on the tick a Gloamfin casts its ping, and not before",
+  async () => {
     await startPlaying(h);
     const rooms = await poseApart(h, APART_TILES);
-    const gloamfin = requirePred(h.snapshot(), "gloamfin");
+    const gloamfin = requireKind(h.snapshot(), "gloamfin");
 
     h.debug.setPredatorTile(gloamfin, rooms.far.tx, rooms.far.ty);
     h.debug.setPredatorState(gloamfin, "wander");
-    const quiet = await denAll(h, ["gloamfin"]);
+    const quiet = await denAll(h, [gloamfin]);
     await parkForager(h, rooms.near);
     await clearUnderfoot(h);
     const watch = await sceneGuard(h, quiet);
@@ -133,5 +134,5 @@ it("plays CUES.predatorPing on the tick a Gloamfin casts its ping, and not befor
         "flight, which is its own tick and at most once on it " +
         "(specs/progression.md)",
     );
-  });
-});
+  },
+);

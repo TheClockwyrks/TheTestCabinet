@@ -36,12 +36,18 @@
 // reports it there, and would walk its hunters out of any fixture that was not
 // sealed.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import { DEN_ORDER, DEN_RELEASE_GAP, ticksFor } from "../constants";
-import { housedTiles, loosePredators, poseMaze } from "../fixtures";
-import { captureReplay, createHarness, type Harness } from "../harness";
-import { startPlaying } from "../scene";
+import { housedTiles } from "../maze";
+import { looseOf, poseMaze } from "../fixtures";
+import {
+  captureReplay,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import { check } from "../scene";
 
 /**
  * The fixture: a plain corridor.
@@ -76,98 +82,101 @@ const FILMED_SECONDS = 2;
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("re-dens every predator on a posed board and holds it there", async () => {
-  await startPlaying(h);
-  await poseMaze(h, BOARD, { housed: false });
+check(
+  "re-dens every predator on a posed board and holds it there",
+  async () => {
+    await startPlaying(h);
+    await poseMaze(h, BOARD, { housed: false });
 
-  const posed = await h.snapshot();
-  const housed = housedTiles(posed);
-  const loose = loosePredators(posed, housed);
+    const posed = await h.snapshot();
+    const housed = housedTiles(posed);
+    const loose = looseOf(posed, housed);
 
-  // Sampled across the whole watch rather than read once at the end, so a hunter
-  // that left and came back is still named.
-  const escaped = new Map<string, string>();
-  const note = (snapshot: typeof posed): void => {
-    for (const one of loosePredators(snapshot, housed)) {
-      if (!escaped.has(one.kind)) escaped.set(one.kind, one.where);
-    }
-  };
+    // Sampled across the whole watch rather than read once at the end, so a hunter
+    // that left and came back is still named.
+    const escaped = new Map<string, string>();
+    const note = (snapshot: typeof posed): void => {
+      for (const one of looseOf(snapshot, housed)) {
+        if (!escaped.has(one.kind)) escaped.set(one.kind, one.where);
+      }
+    };
 
-  const samples = ticksFor(SAMPLE_SECONDS);
-  const filmed = Math.round(FILMED_SECONDS / SAMPLE_SECONDS);
-  const total = Math.round(WATCH_SECONDS / SAMPLE_SECONDS);
+    const samples = ticksFor(SAMPLE_SECONDS);
+    const filmed = Math.round(FILMED_SECONDS / SAMPLE_SECONDS);
+    const total = Math.round(WATCH_SECONDS / SAMPLE_SECONDS);
 
-  await captureReplay(h, "housed", async () => {
-    for (let taken = 0; taken < filmed; taken += 1) {
-      await h.advance(samples);
+    await captureReplay(h, "housed", async () => {
+      for (let taken = 0; taken < filmed; taken += 1) {
+        await h.advance(samples);
+        note(await h.snapshot());
+      }
+    });
+    for (let taken = filmed; taken < total; taken += 1) {
+      await h.skip(samples);
       note(await h.snapshot());
     }
-  });
-  for (let taken = filmed; taken < total; taken += 1) {
-    await h.skip(samples);
-    note(await h.snapshot());
-  }
-  const ended = await h.snapshot();
+    const ended = await h.snapshot();
 
-  // The fixture carries a den at all. If this fails the fixture is wrong rather
-  // than the build, and everything below it would be meaningless.
-  assertGreaterThan(
-    housed.size,
-    0,
-    "den and gate tiles in the posed layout, for the hunters to be returned to",
-  );
+    // The fixture carries a den at all. If this fails the fixture is wrong rather
+    // than the build, and everything below it would be meaningless.
+    assertGreaterThan(
+      housed.size,
+      0,
+      "den and gate tiles in the posed layout, for the hunters to be returned to",
+    );
 
-  assertLength(
-    loose,
-    0,
-    `predators standing outside the posed layout's den the moment it was posed` +
-      (loose.length > 0
-        ? ` — ${loose.map((one) => one.where).join("; ")}`
-        : ""),
-  );
+    assertLength(
+      loose,
+      0,
+      `predators standing outside the posed layout's den the moment it was posed` +
+        (loose.length > 0
+          ? ` — ${loose.map((one) => one.where).join("; ")}`
+          : ""),
+    );
 
-  const left = [...escaped.values()];
-  assertLength(
-    left,
-    0,
-    `predators that left the den over ${WATCH_SECONDS} s of live play, which is ` +
-      `past the ${2 * DEN_RELEASE_GAP} s the third of them would ordinarily be ` +
-      `due at` +
-      (left.length > 0 ? ` — ${left.join("; ")}` : ""),
-  );
+    const left = [...escaped.values()];
+    assertLength(
+      left,
+      0,
+      `predators that left the den over ${WATCH_SECONDS} s of live play, which is ` +
+        `past the ${2 * DEN_RELEASE_GAP} s the third of them would ordinarily be ` +
+        `due at` +
+        (left.length > 0 ? ` — ${left.join("; ")}` : ""),
+    );
 
-  // The assertion the sealed den cannot fake.
-  const released = ended.predators
-    .filter((one) => one.released === true)
-    .map((one) => one.kind);
-  assertLength(
-    released,
-    0,
-    `predators reporting released after ${WATCH_SECONDS} s on a posed board, ` +
-      `whose release schedule is suspended (the roster releases in ` +
-      `${DEN_ORDER.join(", ")} order)` +
-      (released.length > 0 ? ` — ${released.join(", ")}` : ""),
-  );
+    // The assertion the sealed den cannot fake.
+    const released = ended.predators
+      .filter((one) => one.released === true)
+      .map((one) => one.kind);
+    assertLength(
+      released,
+      0,
+      `predators reporting released after ${WATCH_SECONDS} s on a posed board, ` +
+        `whose release schedule is suspended (the roster releases in ` +
+        `${DEN_ORDER.join(", ")} order)` +
+        (released.length > 0 ? ` — ${released.join(", ")}` : ""),
+    );
 
-  // And the watch was worth taking: a roster with nothing in it would clear every
-  // assertion above without the build having housed anything.
-  assertGreaterThan(
-    ended.predators.length,
-    0,
-    "predators on the roster the whole watch was about",
-  );
-  assertEqual(
-    ended.screen,
-    "playing",
-    "the dive stayed in live play, so the release schedule this point says is " +
-      "suspended was one that would otherwise have been running",
-  );
-});
+    // And the watch was worth taking: a roster with nothing in it would clear every
+    // assertion above without the build having housed anything.
+    assertGreaterThan(
+      ended.predators.length,
+      0,
+      "predators on the roster the whole watch was about",
+    );
+    assertEqual(
+      ended.screen,
+      "playing",
+      "the dive stayed in live play, so the release schedule this point says is " +
+        "suspended was one that would otherwise have been running",
+    );
+  },
+);

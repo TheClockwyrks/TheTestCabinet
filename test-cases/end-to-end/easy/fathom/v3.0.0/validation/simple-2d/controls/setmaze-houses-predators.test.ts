@@ -36,10 +36,11 @@
 // reports it there, and would walk its hunters out of any fixture that was not
 // sealed.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
-import { housedTiles, looseOf, poseMaze } from "../fixtures";
+import { housedTiles } from "../maze";
+import { looseOf, poseMaze } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -47,7 +48,7 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { graded } from "../scene";
+import { check } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /**
@@ -91,8 +92,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("re-dens every predator on a posed board and holds it there", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "re-dens every predator on a posed board and holds it there",
+  async () => {
     await startPlaying(h);
     await poseMaze(h, BOARD, { housed: false });
 
@@ -178,5 +180,5 @@ it("re-dens every predator on a posed board and holds it there", async (ctx) => 
       "the dive stayed in live play, so the release schedule this point says is " +
         "suspended was one that would otherwise have been running",
     );
-  });
-});
+  },
+);

@@ -45,7 +45,13 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { check, denAll, requireScene, requireSwim, sceneGuard } from "../scene";
+import {
+  check,
+  denAll,
+  requireSceneHeld,
+  requireSwim,
+  sceneGuard,
+} from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /**
@@ -166,7 +172,7 @@ check(
       return { resting, midway, flipped, returning };
     });
 
-    requireScene(h.snapshot(), guard);
+    requireSceneHeld(h.snapshot(), guard);
 
     // A forager that never got under way has no heading to reverse; whether a held
     // action moves it at all is `controls/move-*`'s verdict.

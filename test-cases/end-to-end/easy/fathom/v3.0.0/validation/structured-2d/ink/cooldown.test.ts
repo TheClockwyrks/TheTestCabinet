@@ -47,7 +47,7 @@ import {
   denAll,
   failPrecondition,
   parkForager,
-  requireScene,
+  requireSceneHeld,
   sceneGuard,
 } from "../scene";
 
@@ -173,7 +173,7 @@ check(
       return { before, armed, beforeSecond, afterSecond, samples, ready };
     });
 
-    requireScene(h.snapshot(), watch);
+    requireSceneHeld(h.snapshot(), watch);
 
     // Armed, at the full figure.
     assertEqual(

@@ -32,11 +32,16 @@
 // contents — and what the pause overlay looks like, which is the aesthetic
 // rating's.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { BRIGHT_HOLD, PAUSE_ITEMS, ticksFor } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
-import { denAllExcept, startPlaying } from "../scene";
+import {
+  captureStill,
+  createHarness,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import { check, denAll } from "../scene";
 import {
   CONFIRM_KEY,
   MOVE_KEY,
@@ -76,19 +81,19 @@ const FREEZE_TICKS = ticksFor(4 * BRIGHT_HOLD);
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("freezes the dive behind its menu, and resumes", async () => {
+check("freezes the dive behind its menu, and resumes", async () => {
   await startPlaying(h);
   // One hunter loose and patrolling, the rest put away so only the one that is
   // supposed to hold still is on the board.
-  await denAllExcept(h, [LOOSE]);
+  await denAll(h, [LOOSE]);
   await h.debug.setPredatorState(LOOSE, "wander");
   await h.debug.setBrightness(POSED_BRIGHTNESS);
   await h.debug.setSonarCooldown(POSED_SONAR_COOLDOWN);

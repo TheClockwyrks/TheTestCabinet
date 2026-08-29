@@ -28,7 +28,7 @@
 // the recharge takes, which is `ink/cooldown`'s; and what a cloud does to a
 // hunter, which belongs to each hunter.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -50,10 +50,10 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   fromForager,
-  graded,
   parkForager,
   requireSceneHeld,
   requireSwim,
@@ -151,11 +151,12 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("releases a cloud of INK_RADIUS that stands where it was left for INK_LIFE and then goes", async (ctx) => {
-  await graded(ctx, async () => {
+check(
+  "releases a cloud of INK_RADIUS that stands where it was left for INK_LIFE and then goes",
+  async () => {
     await startPlaying(h);
     const run = await poseStraightRun(h, RUN_TILES);
-    await parkForager(h, { tx: run.tx, ty: run.ty });
+    await parkForager(h, run.start);
     await clearUnderfoot(h);
     const quiet = await denAll(h);
     // The forager is meant to swim away from its own cloud, so it is not held to
@@ -289,5 +290,5 @@ it("releases a cloud of INK_RADIUS that stands where it was left for INK_LIFE an
           "from the tick it was released on",
       );
     }
-  });
-});
+  },
+);

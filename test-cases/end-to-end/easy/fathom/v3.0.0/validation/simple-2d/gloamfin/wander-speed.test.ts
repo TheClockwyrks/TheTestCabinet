@@ -25,7 +25,7 @@
 // what a corner costs (`gloamfin/corners-slow`), or whether a predator keeps to the
 // corridors (`maze-movement/predators-keep-to-corridors`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { PREDATOR_SPEED, TICK_HZ } from "../../src/constants";
 import { poseApart } from "../fixtures";
@@ -36,11 +36,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
@@ -137,84 +137,82 @@ async function measure(index: number): Promise<Wander> {
   };
 }
 
-it("It wanders at a steady PREDATOR_SPEED", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
-    const index = requirePred(h.snapshot(), "gloamfin");
-    const quiet = await denAll(h, ["gloamfin"]);
-    await placePredator(h, index, rooms.far, { state: "wander" });
-    await parkForager(h);
-    await clearUnderfoot(h);
-    // The patrol this measures happens across the board in the dark, where the
-    // forager's light never falls, so a clip of the canvas alone would be a black
-    // screen. `specs/instrumentation.md` puts the current state, tile and speed of
-    // every predator on the debug overlay and makes the overlay a READ-ONLY panel
-    // toggled by the backtick key, so this leaves the simulation exactly as it was
-    // and gives the recording something to show.
-    await h.tap("Backquote");
-    const guard = await sceneGuard(h, quiet);
+check("It wanders at a steady PREDATOR_SPEED", async () => {
+  await startPlaying(h);
+  const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
+  const index = requireKind(h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
+  await placePredator(h, index, rooms.far, { state: "wander" });
+  await parkForager(h);
+  await clearUnderfoot(h);
+  // The patrol this measures happens across the board in the dark, where the
+  // forager's light never falls, so a clip of the canvas alone would be a black
+  // screen. `specs/instrumentation.md` puts the current state, tile and speed of
+  // every predator on the debug overlay and makes the overlay a READ-ONLY panel
+  // toggled by the backtick key, so this leaves the simulation exactly as it was
+  // and gives the recording something to show.
+  await h.tap("Backquote");
+  const guard = await sceneGuard(h, quiet);
 
-    const opening = h.snapshot();
-    await h.advance(SETTLE_TICKS);
-    const early = await measure(index);
-    const settled = h.snapshot();
-    requirePredatorMotion(
-      opening,
-      settled,
-      "gloamfin",
-      "wander the ring this scenario posed for it",
-    );
+  const opening = h.snapshot();
+  await h.advance(SETTLE_TICKS);
+  const early = await measure(index);
+  const settled = h.snapshot();
+  requirePredatorMotion(
+    opening,
+    settled,
+    index,
+    "wander the ring this scenario posed for it",
+  );
 
-    // The minute, run before the capture below opens, so the wait costs the clip
-    // nothing: a recording holds only the frames the section it wraps drove.
-    await h.advance(MINUTE_TICKS);
+  // The minute, run before the capture below opens, so the wait costs the clip
+  // nothing: a recording holds only the frames the section it wraps drove.
+  await h.advance(MINUTE_TICKS);
 
-    const late = await captureReplay(h, "wander", async () => {
-      const measured = await measure(index);
-      // Past the reading, so the clip runs on for a readable moment. Both windows
-      // are already taken, so nothing after this line can change the verdict.
-      await h.advance(TAIL_TICKS);
-      return measured;
-    });
-
-    requireSceneHeld(h.snapshot(), guard);
-
-    for (const [when, window] of [
-      ["a moment after it was set loose", early],
-      [`after ${MINUTE_TICKS / TICK_HZ} s of wandering`, late],
-    ] as const) {
-      assertEqual(
-        [...window.states].join(","),
-        "wander",
-        `the Gloamfin's state across the window measured ${when}: this point ` +
-          `measures a WANDER, and specs/predators/gloamfin.md gives a chase and a ` +
-          `search speeds of their own`,
-      );
-      assertLessThanOrEqual(
-        Math.abs(window.reported - PREDATOR_SPEED),
-        SPEED_SLACK,
-        `how far the reported speed sat from PREDATOR_SPEED (${PREDATOR_SPEED}) ` +
-          `${when}, over ${MEASURE_TICKS} ticks — specs/predators/gloamfin.md has ` +
-          `a wandering Gloamfin travel at PREDATOR_SPEED, steady for as long as it ` +
-          `wanders`,
-      );
-      assertLessThanOrEqual(
-        Math.abs(window.covered - PREDATOR_SPEED),
-        SPEED_SLACK,
-        `how far the ground it actually covered ${when} sat from PREDATOR_SPEED ` +
-          `(${PREDATOR_SPEED}) logical units a second, over ${MEASURE_TICKS} ticks`,
-      );
-    }
-
-    // And the two readings agree with each other, which is the "no wind-up" half
-    // stated directly rather than inferred from two separate bounds.
-    assertLessThanOrEqual(
-      Math.abs(late.covered - early.covered),
-      SPEED_SLACK,
-      `how far the ground covered after a minute of wandering sat from the ground ` +
-        `covered a moment after release — specs/predators/gloamfin.md: the wander ` +
-        `speed never winds up`,
-    );
+  const late = await captureReplay(h, "wander", async () => {
+    const measured = await measure(index);
+    // Past the reading, so the clip runs on for a readable moment. Both windows
+    // are already taken, so nothing after this line can change the verdict.
+    await h.advance(TAIL_TICKS);
+    return measured;
   });
+
+  requireSceneHeld(h.snapshot(), guard);
+
+  for (const [when, window] of [
+    ["a moment after it was set loose", early],
+    [`after ${MINUTE_TICKS / TICK_HZ} s of wandering`, late],
+  ] as const) {
+    assertEqual(
+      [...window.states].join(","),
+      "wander",
+      `the Gloamfin's state across the window measured ${when}: this point ` +
+        `measures a WANDER, and specs/predators/gloamfin.md gives a chase and a ` +
+        `search speeds of their own`,
+    );
+    assertLessThanOrEqual(
+      Math.abs(window.reported - PREDATOR_SPEED),
+      SPEED_SLACK,
+      `how far the reported speed sat from PREDATOR_SPEED (${PREDATOR_SPEED}) ` +
+        `${when}, over ${MEASURE_TICKS} ticks — specs/predators/gloamfin.md has ` +
+        `a wandering Gloamfin travel at PREDATOR_SPEED, steady for as long as it ` +
+        `wanders`,
+    );
+    assertLessThanOrEqual(
+      Math.abs(window.covered - PREDATOR_SPEED),
+      SPEED_SLACK,
+      `how far the ground it actually covered ${when} sat from PREDATOR_SPEED ` +
+        `(${PREDATOR_SPEED}) logical units a second, over ${MEASURE_TICKS} ticks`,
+    );
+  }
+
+  // And the two readings agree with each other, which is the "no wind-up" half
+  // stated directly rather than inferred from two separate bounds.
+  assertLessThanOrEqual(
+    Math.abs(late.covered - early.covered),
+    SPEED_SLACK,
+    `how far the ground covered after a minute of wandering sat from the ground ` +
+      `covered a moment after release — specs/predators/gloamfin.md: the wander ` +
+      `speed never winds up`,
+  );
 });

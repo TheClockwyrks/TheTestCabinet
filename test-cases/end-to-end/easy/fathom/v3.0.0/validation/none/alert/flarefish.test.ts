@@ -37,7 +37,7 @@
 // `flarefish/flare-lock`'s. A build that never flares stands this check down
 // rather than being failed twice for it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -59,15 +59,17 @@ import {
   ticks,
   type FathomSnapshot,
   type Harness,
+  startPlaying,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
-  denAllExcept,
+  denAll,
   parkForager,
   requireSceneHeld,
   sceneGuard,
   type SceneGuard,
-  startPlaying,
+  unmetPrecondition,
 } from "../scene";
 
 /**
@@ -241,15 +243,15 @@ function assertWindow(
 
 let h: Harness;
 
-beforeEach(async (ctx) => {
-  h = await createHarness(ctx);
+beforeEach(async () => {
+  h = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("The Flarefish fires the alert on a fresh fix", async () => {
+check("The Flarefish fires the alert on a fresh fix", async () => {
   await startPlaying(h);
 
   /* ---- By its light sense -------------------------------------------------- */
@@ -257,12 +259,12 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
   const line = await poseSightLine(h, LIGHT_GAP_TILES, { lead: 1, tail: 2 });
   const index = predatorIndex(await h.snapshot(), "flarefish");
   if (index === null) {
-    h.unmet(
+    unmetPrecondition(
       "the roster carries no Flarefish, so this scenario has nothing to pose — " +
         "what the roster holds is the progression checks' verdict, not this one's",
     );
   }
-  let quiet = await denAllExcept(h, [index]);
+  let quiet = await denAll(h, [index]);
   await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
   await h.debug.setPredatorState(index, "wander");
   await parkForager(h, line.forager);
@@ -279,7 +281,7 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
       },
     );
     if (!acquired.hit) {
-      h.unmet(
+      unmetPrecondition(
         `the Flarefish took no fix on a fully lit forager ${LIGHT_GAP_TILES} ` +
           "tiles away on a clear line, so there was no acquisition for an alert " +
           "to fire on — whether its light sense takes a fix is " +
@@ -295,7 +297,7 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
     return { fired, window, end: await h.snapshot() };
   });
 
-  requireSceneHeld(h, lit.end, guard);
+  requireSceneHeld(lit.end, guard);
   assertEqual(
     lit.fired.hit,
     true,
@@ -318,7 +320,7 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
   const boxed = board.mark("B");
   // The roster is the same one: `setMaze` re-dens every predator and changes
   // nothing about who is on it (specs/instrumentation.md), so the index stands.
-  quiet = await denAllExcept(h, [index]);
+  quiet = await denAll(h, [index]);
   await h.debug.setPredatorTile(index, boxed.tx, boxed.ty);
   await h.debug.setPredatorState(index, "wander");
   await parkForager(h, home);
@@ -336,7 +338,7 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
     { maxTicks: FLARE_WAIT_TICKS, poll: FLARE_POLL },
   );
   if (!charging.hit) {
-    h.unmet(
+    unmetPrecondition(
       `no flare charged in ${seconds(FLARE_WAIT_TICKS).toFixed(1)} s of a ` +
         "wandering Flarefish, so there was no bloom to lock on with — when a " +
         "flare charges and blooms is flarefish/flare-cadence's verdict, not this " +
@@ -348,7 +350,7 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
     poll: 1,
   });
   if (!locked.hit) {
-    h.unmet(
+    unmetPrecondition(
       `the bloom of a Flarefish ${flareGap.toFixed(0)} units from the forager, ` +
         `inside FLARE_RADIUS (${FLARE_RADIUS}), took no fix, so there was no ` +
         "fresh acquisition for an alert to fire on — whether a bloom locks on is " +
@@ -357,7 +359,7 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
   }
   const flare = await watchWindow(h, index);
 
-  requireSceneHeld(h, flare.after, guard);
+  requireSceneHeld(flare.after, guard);
   // The fixture's own geometry, against the figures the specification fixes.
   assertLessThanOrEqual(
     flareGap,

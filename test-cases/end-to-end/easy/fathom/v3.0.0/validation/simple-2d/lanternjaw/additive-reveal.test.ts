@@ -46,7 +46,7 @@
 // gets besides is the recorded clip, which shows the body arriving around an
 // unmoved bulb far better than any pixel bound could state it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import {
   assertEqual,
@@ -67,12 +67,12 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   fromForager,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
   unmetPrecondition,
@@ -137,127 +137,125 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Lighting it leaves the bulb where it was", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const line = await poseSightLine(h, GAP_TILES, {
-      lead: LEAD_TILES,
-      tail: TAIL_TILES,
-    });
-    const index = requirePred(h.snapshot(), "lanternjaw");
-    const quiet = await denAll(h, ["lanternjaw"]);
-    await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-    await h.debug.setPredatorState(index, "wander");
-    await parkForager(h, line.forager);
-    await clearUnderfoot(h);
-    await h.debug.setCreatureAI(false);
-    const watch = await sceneGuard(h, quiet);
-
-    const read = await captureReplay(h, "reveal", async () => {
-      await h.advance(SETTLE_TICKS);
-      const dark = h.snapshot();
-      const unlitAt = dark.predators[index];
-      const darkCenter = moteCenter(h, unlitAt.x, unlitAt.y);
-      const darkProfile = moteProfileAt(h, darkCenter);
-      const darkBody = sampleRing(h, darkCenter.x, darkCenter.y, BODY_RADIUS);
-
-      // The light comes up and reaches the creature. Nothing else is touched.
-      await h.debug.setBrightness(1);
-      await h.advance(SETTLE_TICKS);
-      const shown = h.snapshot();
-      const litAt = shown.predators[index];
-      const litProfile = moteProfileAt(h, darkCenter);
-      const litBody = sampleRing(h, darkCenter.x, darkCenter.y, BODY_RADIUS);
-
-      await h.advance(CLIP_TICKS);
-      return {
-        dark,
-        shown,
-        darkCenter,
-        darkProfile,
-        litProfile,
-        darkBody,
-        litBody,
-        gap: fromForager(shown, litAt.x, litAt.y),
-        end: h.snapshot(),
-      };
-    });
-
-    requireSceneHeld(read.end, watch);
-
-    // The fixture's own geometry: the creature stands outside the light at the
-    // first reading and inside it at the second, so the light is what changed.
-    assertGreaterThan(
-      read.gap,
-      VISION_MIN,
-      `the units between the two centers against V at G 0 (VISION_MIN, ` +
-        `${VISION_MIN}), which the creature stands beyond`,
-    );
-    assertLessThan(
-      read.gap,
-      VISION_MIN + VISION_GAIN,
-      `the units between the two centers against V at G 1 (VISION_MIN + ` +
-        `VISION_GAIN, ${VISION_MIN + VISION_GAIN}), which the creature stands ` +
-        "inside",
-    );
-    // Inside the light the BUILD reports, so a build whose radius never grows is
-    // reported by the point that owns the radius rather than by this one.
-    if (read.shown.visionRadius <= read.gap) {
-      unmetPrecondition(
-        `the build's own light radius reached ${read.shown.visionRadius} at ` +
-          `G = 1 while the Lanternjaw stood ${read.gap.toFixed(1)} units away, ` +
-          "so the light never fell on it and there was no reveal to read; what " +
-          "V is at a given G is brightness/widens-vision's verdict, not this " +
-          "one's",
-      );
-    }
-
-    assertEqual(
-      read.dark.predators[index].lit,
-      false,
-      "whether the Lanternjaw's body is drawn before the light reaches it",
-    );
-    assertEqual(
-      read.shown.predators[index].lit,
-      true,
-      "whether the Lanternjaw's body is drawn once the light reaches it",
-    );
-
-    // The bulb: still amber, and still amber where it was.
-    assertNotNull(
-      brightestWarm(read.darkProfile),
-      "a warm sample in the mote's profile before the light reached it, read " +
-        `about the (${read.darkCenter.x.toFixed(1)}, ${read.darkCenter.y.toFixed(1)}) ` +
-        "the mote was drawn at",
-    );
-    const litMote = brightestWarm(read.litProfile);
-    assertNotNull(
-      litMote,
-      "a warm sample in the mote's profile once the light has reached it, read " +
-        "about the same place the mote was drawn at unlit — the reveal adds the " +
-        "body without taking the bulb away",
-    );
-    assertEqual(
-      warm((litMote as NonNullable<typeof litMote>).color),
-      true,
-      "the lit mote still reads red-leaning, its red channel above its blue",
-    );
-
-    // And the body: fog before, drawn after, read clear of the mote.
-    assertLessThanOrEqual(
-      luminance(read.darkBody),
-      FOG_CEILING,
-      `the mean channel ${BODY_RADIUS} units out from the mote before the light ` +
-        "reached it, which is the unrevealed fog specs/overview.md caps at a " +
-        "tenth of full brightness",
-    );
-    assertGreaterThan(
-      colorDistance(read.litBody, read.darkBody),
-      CHANGED_MIN,
-      `the RGB distance, out of 441, the ring ${BODY_RADIUS} units out from the ` +
-        "mote moved when the light fell on the creature: mean channel " +
-        `${luminance(read.litBody).toFixed(1)} against the ` +
-        `${luminance(read.darkBody).toFixed(1)} of fog it was`,
-    );
+check("Lighting it leaves the bulb where it was", async () => {
+  await startPlaying(h);
+  const line = await poseSightLine(h, GAP_TILES, {
+    lead: LEAD_TILES,
+    tail: TAIL_TILES,
   });
+  const index = requireKind(h.snapshot(), "lanternjaw");
+  const quiet = await denAll(h, [index]);
+  await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
+  await h.debug.setPredatorState(index, "wander");
+  await parkForager(h, line.forager);
+  await clearUnderfoot(h);
+  await h.debug.setCreatureAI(false);
+  const watch = await sceneGuard(h, quiet);
+
+  const read = await captureReplay(h, "reveal", async () => {
+    await h.advance(SETTLE_TICKS);
+    const dark = h.snapshot();
+    const unlitAt = dark.predators[index];
+    const darkCenter = moteCenter(h, unlitAt.x, unlitAt.y);
+    const darkProfile = moteProfileAt(h, darkCenter);
+    const darkBody = sampleRing(h, darkCenter.x, darkCenter.y, BODY_RADIUS);
+
+    // The light comes up and reaches the creature. Nothing else is touched.
+    await h.debug.setBrightness(1);
+    await h.advance(SETTLE_TICKS);
+    const shown = h.snapshot();
+    const litAt = shown.predators[index];
+    const litProfile = moteProfileAt(h, darkCenter);
+    const litBody = sampleRing(h, darkCenter.x, darkCenter.y, BODY_RADIUS);
+
+    await h.advance(CLIP_TICKS);
+    return {
+      dark,
+      shown,
+      darkCenter,
+      darkProfile,
+      litProfile,
+      darkBody,
+      litBody,
+      gap: fromForager(shown, litAt.x, litAt.y),
+      end: h.snapshot(),
+    };
+  });
+
+  requireSceneHeld(read.end, watch);
+
+  // The fixture's own geometry: the creature stands outside the light at the
+  // first reading and inside it at the second, so the light is what changed.
+  assertGreaterThan(
+    read.gap,
+    VISION_MIN,
+    `the units between the two centers against V at G 0 (VISION_MIN, ` +
+      `${VISION_MIN}), which the creature stands beyond`,
+  );
+  assertLessThan(
+    read.gap,
+    VISION_MIN + VISION_GAIN,
+    `the units between the two centers against V at G 1 (VISION_MIN + ` +
+      `VISION_GAIN, ${VISION_MIN + VISION_GAIN}), which the creature stands ` +
+      "inside",
+  );
+  // Inside the light the BUILD reports, so a build whose radius never grows is
+  // reported by the point that owns the radius rather than by this one.
+  if (read.shown.visionRadius <= read.gap) {
+    unmetPrecondition(
+      `the build's own light radius reached ${read.shown.visionRadius} at ` +
+        `G = 1 while the Lanternjaw stood ${read.gap.toFixed(1)} units away, ` +
+        "so the light never fell on it and there was no reveal to read; what " +
+        "V is at a given G is brightness/widens-vision's verdict, not this " +
+        "one's",
+    );
+  }
+
+  assertEqual(
+    read.dark.predators[index].lit,
+    false,
+    "whether the Lanternjaw's body is drawn before the light reaches it",
+  );
+  assertEqual(
+    read.shown.predators[index].lit,
+    true,
+    "whether the Lanternjaw's body is drawn once the light reaches it",
+  );
+
+  // The bulb: still amber, and still amber where it was.
+  assertNotNull(
+    brightestWarm(read.darkProfile),
+    "a warm sample in the mote's profile before the light reached it, read " +
+      `about the (${read.darkCenter.x.toFixed(1)}, ${read.darkCenter.y.toFixed(1)}) ` +
+      "the mote was drawn at",
+  );
+  const litMote = brightestWarm(read.litProfile);
+  assertNotNull(
+    litMote,
+    "a warm sample in the mote's profile once the light has reached it, read " +
+      "about the same place the mote was drawn at unlit — the reveal adds the " +
+      "body without taking the bulb away",
+  );
+  assertEqual(
+    warm((litMote as NonNullable<typeof litMote>).color),
+    true,
+    "the lit mote still reads red-leaning, its red channel above its blue",
+  );
+
+  // And the body: fog before, drawn after, read clear of the mote.
+  assertLessThanOrEqual(
+    luminance(read.darkBody),
+    FOG_CEILING,
+    `the mean channel ${BODY_RADIUS} units out from the mote before the light ` +
+      "reached it, which is the unrevealed fog specs/overview.md caps at a " +
+      "tenth of full brightness",
+  );
+  assertGreaterThan(
+    colorDistance(read.litBody, read.darkBody),
+    CHANGED_MIN,
+    `the RGB distance, out of 441, the ring ${BODY_RADIUS} units out from the ` +
+      "mote moved when the light fell on the creature: mean channel " +
+      `${luminance(read.litBody).toFixed(1)} against the ` +
+      `${luminance(read.darkBody).toFixed(1)} of fog it was`,
+  );
 });

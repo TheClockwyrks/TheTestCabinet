@@ -31,7 +31,7 @@
 // `amber/lookalikes`'s; what the body does when the light reaches it is
 // `lanternjaw/additive-reveal`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
@@ -49,11 +49,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
@@ -94,82 +94,80 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Its bulb shows at any distance", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const pair = await poseOccludedPair(h, {
-      tiles: GAP_TILES,
-      len: RUN_TILES,
-    });
-    const index = requirePred(h.snapshot(), "lanternjaw");
-    const quiet = await denAll(h, ["lanternjaw"]);
-    await h.debug.setPredatorTile(index, pair.pred.tx, pair.pred.ty);
-    await h.debug.setPredatorState(index, "wander");
-    await parkForager(h, pair.forager);
-    // The pellet the pose left under the forager is settled and `G` put back to
-    // zero, so the light pocket is the narrowest a dive ever carries and the
-    // reading is taken over ground nothing has touched.
-    await clearUnderfoot(h);
-    // Held exactly where it was posed for the one frame that is read: this point
-    // is about what is DRAWN at a reported position, and a hunter that drifted
-    // between the snapshot and the sample would be read half a body away from
-    // where it said it was.
-    await h.debug.setCreatureAI(false);
-    const watch = await sceneGuard(h, quiet);
-
-    await h.advance(SETTLE_TICKS);
-    const snapshot = h.snapshot();
-    const bulb = snapshot.predators[index];
-    const fogTile: Tile = { tx: pair.pred.tx + FOG_OFFSET, ty: pair.pred.ty };
-    const fog = sampleTile(h, snapshot, fogTile);
-    const profile = sampleMoteProfile(h, bulb.x, bulb.y);
-    const found = brightestWarm(profile);
-    // Before the assertions, so a check that fails still leaves the picture that
-    // shows the reviewer what was and was not drawn out there.
-    captureStill(h, "bulb");
-
-    requireSceneHeld(snapshot, watch);
-
-    // The fixture's own claim: the hunter stands on ground nothing has revealed,
-    // and the fog it is read against is equally untouched.
-    assertEqual(
-      visibilityOf(snapshot, { tx: bulb.tx, ty: bulb.ty }),
-      "u",
-      `the visibility of the tile the Lanternjaw stands on, (${bulb.tx}, ${bulb.ty}), ` +
-        "which no light, pulse or flare has reached",
-    );
-    assertEqual(
-      visibilityOf(snapshot, fogTile),
-      "u",
-      `the visibility of the tile the fog is sampled from, (${fogTile.tx}, ${fogTile.ty})`,
-    );
-    assertEqual(
-      bulb.lit,
-      false,
-      "whether the Lanternjaw's body is being drawn this instant, which nothing " +
-        "out here is doing (specs/predators.md)",
-    );
-
-    // And what the build DREW there.
-    assertNotNull(
-      found,
-      "a warm sample somewhere in the Lanternjaw's mote profile — its red channel " +
-        `above its blue — searched within 12 units of the (${bulb.x.toFixed(0)}, ` +
-        `${bulb.y.toFixed(0)}) it reports itself at`,
-    );
-    const sample = found as NonNullable<typeof found>;
-    assertEqual(
-      warm(sample.color),
-      true,
-      `the brightest warm sample of the bulb's profile reads red-leaning: ` +
-        `r ${sample.color.r.toFixed(0)} against b ${sample.color.b.toFixed(0)}`,
-    );
-    assertGreaterThanOrEqual(
-      luminance(sample.color) - luminance(fog),
-      ABOVE_FOG,
-      `the mean channels the bulb stands above the unrevealed fog beside it: ` +
-        `${luminance(sample.color).toFixed(1)} at radius ${sample.radius} against ` +
-        `${luminance(fog).toFixed(1)} of fog, out of 255`,
-    );
+check("Its bulb shows at any distance", async () => {
+  await startPlaying(h);
+  const pair = await poseOccludedPair(h, {
+    tiles: GAP_TILES,
+    len: RUN_TILES,
   });
+  const index = requireKind(h.snapshot(), "lanternjaw");
+  const quiet = await denAll(h, [index]);
+  await h.debug.setPredatorTile(index, pair.pred.tx, pair.pred.ty);
+  await h.debug.setPredatorState(index, "wander");
+  await parkForager(h, pair.forager);
+  // The pellet the pose left under the forager is settled and `G` put back to
+  // zero, so the light pocket is the narrowest a dive ever carries and the
+  // reading is taken over ground nothing has touched.
+  await clearUnderfoot(h);
+  // Held exactly where it was posed for the one frame that is read: this point
+  // is about what is DRAWN at a reported position, and a hunter that drifted
+  // between the snapshot and the sample would be read half a body away from
+  // where it said it was.
+  await h.debug.setCreatureAI(false);
+  const watch = await sceneGuard(h, quiet);
+
+  await h.advance(SETTLE_TICKS);
+  const snapshot = h.snapshot();
+  const bulb = snapshot.predators[index];
+  const fogTile: Tile = { tx: pair.pred.tx + FOG_OFFSET, ty: pair.pred.ty };
+  const fog = sampleTile(h, snapshot, fogTile);
+  const profile = sampleMoteProfile(h, bulb.x, bulb.y);
+  const found = brightestWarm(profile);
+  // Before the assertions, so a check that fails still leaves the picture that
+  // shows the reviewer what was and was not drawn out there.
+  captureStill(h, "bulb");
+
+  requireSceneHeld(snapshot, watch);
+
+  // The fixture's own claim: the hunter stands on ground nothing has revealed,
+  // and the fog it is read against is equally untouched.
+  assertEqual(
+    visibilityOf(snapshot, { tx: bulb.tx, ty: bulb.ty }),
+    "u",
+    `the visibility of the tile the Lanternjaw stands on, (${bulb.tx}, ${bulb.ty}), ` +
+      "which no light, pulse or flare has reached",
+  );
+  assertEqual(
+    visibilityOf(snapshot, fogTile),
+    "u",
+    `the visibility of the tile the fog is sampled from, (${fogTile.tx}, ${fogTile.ty})`,
+  );
+  assertEqual(
+    bulb.lit,
+    false,
+    "whether the Lanternjaw's body is being drawn this instant, which nothing " +
+      "out here is doing (specs/predators.md)",
+  );
+
+  // And what the build DREW there.
+  assertNotNull(
+    found,
+    "a warm sample somewhere in the Lanternjaw's mote profile — its red channel " +
+      `above its blue — searched within 12 units of the (${bulb.x.toFixed(0)}, ` +
+      `${bulb.y.toFixed(0)}) it reports itself at`,
+  );
+  const sample = found as NonNullable<typeof found>;
+  assertEqual(
+    warm(sample.color),
+    true,
+    `the brightest warm sample of the bulb's profile reads red-leaning: ` +
+      `r ${sample.color.r.toFixed(0)} against b ${sample.color.b.toFixed(0)}`,
+  );
+  assertGreaterThanOrEqual(
+    luminance(sample.color) - luminance(fog),
+    ABOVE_FOG,
+    `the mean channels the bulb stands above the unrevealed fog beside it: ` +
+      `${luminance(sample.color).toFixed(1)} at radius ${sample.radius} against ` +
+      `${luminance(fog).toFixed(1)} of fog, out of 255`,
+  );
 });

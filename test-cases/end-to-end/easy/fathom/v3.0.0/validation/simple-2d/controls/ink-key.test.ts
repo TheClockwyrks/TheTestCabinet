@@ -23,7 +23,7 @@
 // step or at the top of the following one, and both conform, so the cloud is read
 // a tick later and the tolerance below is stated against the ticks that have run.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertBetween,
   assertEqual,
@@ -44,9 +44,9 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
   requireSceneHeld,
   sceneGuard,
@@ -111,70 +111,68 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("releases an ink cloud on Shift", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    await poseStraightRun(h, RUN_TILES);
-    const quiet = await denAll(h);
-    await parkForager(h);
-    await clearUnderfoot(h);
-    h.debug.setInkCooldown(0);
-    const watch = await sceneGuard(h, quiet);
+check("releases an ink cloud on Shift", async () => {
+  await startPlaying(h);
+  await poseStraightRun(h, RUN_TILES);
+  const quiet = await denAll(h);
+  await parkForager(h);
+  await clearUnderfoot(h);
+  h.debug.setInkCooldown(0);
+  const watch = await sceneGuard(h, quiet);
 
-    const read = await captureReplay(h, "ink", async () => {
-      await h.advance(REST_TICKS);
-      const armed = h.snapshot();
-      await h.tap(KEY);
-      await h.advance(BEAT_TICKS);
-      const released = h.snapshot();
-      await h.advance(TAIL_TICKS);
-      return { armed, released };
-    });
-
-    requireSceneHeld(h.snapshot(), watch);
-
-    // The premise this point's own description states, posed through
-    // `setInkCooldown(0)`: "At `0` ink is ready and the snapshot reports
-    // `ink.ready` as `true`" (specs/instrumentation.md).
-    assertEqual(
-      read.armed.ink.ready,
-      true,
-      "ink is ready when the key is pressed, the cooldown having been posed to 0",
-    );
-
-    assertGreaterThan(
-      read.released.inkClouds.length,
-      read.armed.inkClouds.length,
-      `ink clouds standing ${BEAT_TICKS + 1} ticks after ShiftLeft (was ` +
-        `${read.armed.inkClouds.length})`,
-    );
-    assertNotEqual(read.released.inkClouds.length, 0, "a cloud to read");
-
-    const cloud = read.released.inkClouds[0];
-    assertBetween(
-      cloud.x,
-      read.armed.forager.x - CENTER_EPS,
-      read.armed.forager.x + CENTER_EPS,
-      "the cloud's center x against the forager's own",
-    );
-    assertBetween(
-      cloud.y,
-      read.armed.forager.y - CENTER_EPS,
-      read.armed.forager.y + CENTER_EPS,
-      "the cloud's center y against the forager's own",
-    );
-    assertBetween(
-      cloud.radius,
-      INK_RADIUS - RADIUS_EPS,
-      INK_RADIUS + RADIUS_EPS,
-      `the cloud's radius against INK_RADIUS (${INK_RADIUS})`,
-    );
-    assertBetween(
-      cloud.remaining,
-      INK_LIFE - LIFE_SPENT_MAX,
-      INK_LIFE,
-      `the cloud's remaining life against INK_LIFE (${INK_LIFE}), ` +
-        `${BEAT_TICKS + 1} ticks after the press`,
-    );
+  const read = await captureReplay(h, "ink", async () => {
+    await h.advance(REST_TICKS);
+    const armed = h.snapshot();
+    await h.tap(KEY);
+    await h.advance(BEAT_TICKS);
+    const released = h.snapshot();
+    await h.advance(TAIL_TICKS);
+    return { armed, released };
   });
+
+  requireSceneHeld(h.snapshot(), watch);
+
+  // The premise this point's own description states, posed through
+  // `setInkCooldown(0)`: "At `0` ink is ready and the snapshot reports
+  // `ink.ready` as `true`" (specs/instrumentation.md).
+  assertEqual(
+    read.armed.ink.ready,
+    true,
+    "ink is ready when the key is pressed, the cooldown having been posed to 0",
+  );
+
+  assertGreaterThan(
+    read.released.inkClouds.length,
+    read.armed.inkClouds.length,
+    `ink clouds standing ${BEAT_TICKS + 1} ticks after ShiftLeft (was ` +
+      `${read.armed.inkClouds.length})`,
+  );
+  assertNotEqual(read.released.inkClouds.length, 0, "a cloud to read");
+
+  const cloud = read.released.inkClouds[0];
+  assertBetween(
+    cloud.x,
+    read.armed.forager.x - CENTER_EPS,
+    read.armed.forager.x + CENTER_EPS,
+    "the cloud's center x against the forager's own",
+  );
+  assertBetween(
+    cloud.y,
+    read.armed.forager.y - CENTER_EPS,
+    read.armed.forager.y + CENTER_EPS,
+    "the cloud's center y against the forager's own",
+  );
+  assertBetween(
+    cloud.radius,
+    INK_RADIUS - RADIUS_EPS,
+    INK_RADIUS + RADIUS_EPS,
+    `the cloud's radius against INK_RADIUS (${INK_RADIUS})`,
+  );
+  assertBetween(
+    cloud.remaining,
+    INK_LIFE - LIFE_SPENT_MAX,
+    INK_LIFE,
+    `the cloud's remaining life against INK_LIFE (${INK_LIFE}), ` +
+      `${BEAT_TICKS + 1} ticks after the press`,
+  );
 });

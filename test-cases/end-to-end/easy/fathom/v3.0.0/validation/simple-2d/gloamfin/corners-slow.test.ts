@@ -32,7 +32,7 @@
 // (`gloamfin/chase-cap`), or whether a hunter rounds rock at all
 // (`maze-movement/predators-keep-to-corridors`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertLessThan,
@@ -54,11 +54,11 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  graded,
   parkForager,
-  requirePred,
+  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
@@ -176,172 +176,164 @@ function turnAt(steps: readonly Step[]): number {
   );
 }
 
-it("Every corner costs it its edge", async (ctx) => {
-  await graded(ctx, async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, CORNER);
-    const index = requirePred(board.snap, "gloamfin");
-    const quiet = await denAll(h, ["gloamfin"]);
-    // The forager first, and parked: a posed chase fixes on "the forager's current
-    // tile" (specs/instrumentation.md), and the corner this point is about is the
-    // one between the Gloamfin and that tile.
-    await parkForager(h, board.mark("F"));
-    await clearUnderfoot(h);
-    await placePredator(h, index, board.mark("P"), {
-      dir: "down",
-      state: "chase",
-    });
-    const guard = await sceneGuard(h, quiet);
-
-    const opening = h.snapshot();
-    const corner = await captureReplay(h, "corner", async () => {
-      const steps = await sampleRun(index, CORNER_TICKS);
-      // Past the last sample, so the clip carries a readable moment after the ramp.
-      await h.advance(TAIL_TICKS);
-      return steps;
-    });
-
-    requireSceneHeld(h.snapshot(), guard);
-    requirePredatorMotion(
-      opening,
-      h.snapshot(),
-      "gloamfin",
-      "chase down the approach and round the corner this scenario posed",
-    );
-    assertEqual(
-      [...new Set(corner.map((step) => step.state))].join(","),
-      "chase",
-      "the Gloamfin's state across the corner run — a posed chase is fixed on the " +
-        "forager's tile and pursuing it (specs/instrumentation.md), and the forager " +
-        "stood on that tile the whole way, so a conforming hunter has nothing to " +
-        "have lost",
-    );
-
-    const turn = turnAt(corner);
-    if (turn < 0) {
-      unmetPrecondition(
-        "the Gloamfin never turned onto the perpendicular arm of the posed corner, " +
-          "so there was no corner for this point to measure the cost of — " +
-          "specs/predators.md has a hunter holding a fix take the first step of a " +
-          "shortest corridor route to it, which here is down and then right, and " +
-          "whether it rounds rock at all is " +
-          "maze-movement/predators-keep-to-corridors's verdict, not this one's",
-      );
-    }
-
-    // A straight run costs it nothing: everything from the settle to the step
-    // before the turn is the approach, and it is all at the cap.
-    for (const step of corner.slice(SETTLE_TICKS, turn)) {
-      assertLessThanOrEqual(
-        Math.abs(step.speed - GLOAMFIN_CHASE_SPEED),
-        SPEED_SLACK,
-        `how far the speed at tick ${step.tick} of the STRAIGHT approach sat from ` +
-          `GLOAMFIN_CHASE_SPEED (${GLOAMFIN_CHASE_SPEED}) — ` +
-          `specs/predators/gloamfin.md: a straight run is not a turn and leaves ` +
-          `the chase speed alone`,
-      );
-    }
-
-    const around = corner.slice(
-      Math.max(0, turn - 1),
-      Math.min(corner.length, turn + TURN_WINDOW),
-    );
-    const floor = Math.min(...around.map((step) => step.speed));
-    assertLessThanOrEqual(
-      Math.abs(floor - GLOAMFIN_CORNER_SPEED),
-      SPEED_SLACK,
-      `how far the lowest speed across the turn (tick ${corner[turn].tick}, where ` +
-        `the heading went ${corner[turn - 1].dir} to ${corner[turn].dir}) sat from ` +
-        `GLOAMFIN_CORNER_SPEED (${GLOAMFIN_CORNER_SPEED})`,
-    );
-    assertLessThan(
-      floor,
-      FORAGER_SPEED,
-      `the corner floor, against the forager's own FORAGER_SPEED ` +
-        `(${FORAGER_SPEED}) — specs/predators/gloamfin.md puts the drop "below the ` +
-        `forager's speed", which is what makes a corner an escape`,
-    );
-
-    // THE CLIMB IS MEASURED PAST THE DROP, NOT PAST THE HEADING CHANGE. A build may
-    // report the corner floor on the step its heading turns or on the step after —
-    // `specs/predators.md` fixes neither — and on the second of those the step the
-    // heading turned on still reports the cap. Searching for the cap from the first
-    // step that is CLEARLY off it reads the same climb under both conventions, and
-    // it is still timed from the turn itself, which is what the specification dates
-    // `GLOAMFIN_RAMP_TIME` from.
-    const dropped = corner.findIndex(
-      (step, order) =>
-        order >= turn - 1 && step.speed < GLOAMFIN_CHASE_SPEED - SPEED_SLACK,
-    );
-    const regained = corner.findIndex(
-      (step, order) =>
-        order > dropped && step.speed >= GLOAMFIN_CHASE_SPEED - CAP_EPSILON,
-    );
-    assertTrue(
-      dropped >= 0 && regained > dropped,
-      `the Gloamfin climbed back to GLOAMFIN_CHASE_SPEED ` +
-        `(${GLOAMFIN_CHASE_SPEED}) within the ${CORNER_TICKS - turn} ticks watched ` +
-        `after the turn — specs/predators/gloamfin.md has the chase speed climb ` +
-        `steadily back to the cap and hold there`,
-    );
-    assertLessThanOrEqual(
-      Math.abs((regained - turn) / TICK_HZ - GLOAMFIN_RAMP_TIME),
-      RAMP_TOLERANCE,
-      `how far the climb back to the cap sat from GLOAMFIN_RAMP_TIME ` +
-        `(${GLOAMFIN_RAMP_TIME} s) after the turn; it took ` +
-        `${((regained - turn) / TICK_HZ).toFixed(3)} s`,
-    );
-
-    // ---- And a reversal costs it nothing --------------------------------------
-    //
-    // A fresh board, so the chase speed this reads is not the one the corner above
-    // left behind.
-    await startPlaying(h);
-    const back = await poseMaze(h, REVERSAL);
-    const backIndex = requirePred(back.snap, "gloamfin");
-    const backQuiet = await denAll(h, ["gloamfin"]);
-    await parkForager(h, back.mark("R"));
-    await clearUnderfoot(h);
-    await placePredator(h, backIndex, back.mark("M"), {
-      dir: "right",
-      state: "chase",
-    });
-    const backGuard = await sceneGuard(h, backQuiet, { foragerParked: false });
-    // Long enough for the chase to be genuinely running one way.
-    await h.advance(OUTBOUND_TICKS);
-    const outbound = gloamfinOf(h.snapshot(), backIndex).dir;
-    // The forager goes to the other side of it and the fix follows, which is the
-    // one arrangement that asks a running chase to turn around.
-    await parkForager(h, back.mark("L"));
-    await h.debug.setPredatorState(backIndex, "chase");
-    const reversal = await sampleRun(backIndex, REVERSAL_TICKS);
-
-    requireSceneHeld(
-      h.snapshot(),
-      backGuard,
-      "the reversal scenario held to the end",
-    );
-    const turned = reversal.findIndex((step) => step.dir !== outbound);
-    if (turned < 0) {
-      unmetPrecondition(
-        `the Gloamfin never turned around after the fix moved behind it — it kept ` +
-          `heading ${outbound} — so there was no reversal for this point to price; ` +
-          `specs/predators.md has a hunter take the first step of a shortest ` +
-          `corridor route to its fix, and whether it does is ` +
-          `maze-movement/predators-keep-to-corridors's verdict, not this one's`,
-      );
-    }
-    const slowest = Math.min(
-      ...reversal.slice(turned).map((step) => step.speed),
-    );
-    assertLessThanOrEqual(
-      Math.abs(slowest - GLOAMFIN_CHASE_SPEED),
-      SPEED_SLACK,
-      `how far the lowest speed across the reversal sat from ` +
-        `GLOAMFIN_CHASE_SPEED (${GLOAMFIN_CHASE_SPEED}) — ` +
-        `specs/predators/gloamfin.md: a reversal is not a turn and leaves the ` +
-        `chase speed alone, so nothing here may show the ` +
-        `GLOAMFIN_CORNER_SPEED (${GLOAMFIN_CORNER_SPEED}) floor`,
-    );
+check("Every corner costs it its edge", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, CORNER);
+  const index = requireKind(await h.snapshot(), "gloamfin");
+  const quiet = await denAll(h, [index]);
+  // The forager first, and parked: a posed chase fixes on "the forager's current
+  // tile" (specs/instrumentation.md), and the corner this point is about is the
+  // one between the Gloamfin and that tile.
+  await parkForager(h, board.mark("F"));
+  await clearUnderfoot(h);
+  await placePredator(h, index, board.mark("P"), {
+    dir: "down",
+    state: "chase",
   });
+  const guard = await sceneGuard(h, quiet);
+
+  const opening = h.snapshot();
+  const corner = await captureReplay(h, "corner", async () => {
+    const steps = await sampleRun(index, CORNER_TICKS);
+    // Past the last sample, so the clip carries a readable moment after the ramp.
+    await h.advance(TAIL_TICKS);
+    return steps;
+  });
+
+  requireSceneHeld(h.snapshot(), guard);
+  requirePredatorMotion(
+    opening,
+    h.snapshot(),
+    index,
+    "chase down the approach and round the corner this scenario posed",
+  );
+  assertEqual(
+    [...new Set(corner.map((step) => step.state))].join(","),
+    "chase",
+    "the Gloamfin's state across the corner run — a posed chase is fixed on the " +
+      "forager's tile and pursuing it (specs/instrumentation.md), and the forager " +
+      "stood on that tile the whole way, so a conforming hunter has nothing to " +
+      "have lost",
+  );
+
+  const turn = turnAt(corner);
+  if (turn < 0) {
+    unmetPrecondition(
+      "the Gloamfin never turned onto the perpendicular arm of the posed corner, " +
+        "so there was no corner for this point to measure the cost of — " +
+        "specs/predators.md has a hunter holding a fix take the first step of a " +
+        "shortest corridor route to it, which here is down and then right, and " +
+        "whether it rounds rock at all is " +
+        "maze-movement/predators-keep-to-corridors's verdict, not this one's",
+    );
+  }
+
+  // A straight run costs it nothing: everything from the settle to the step
+  // before the turn is the approach, and it is all at the cap.
+  for (const step of corner.slice(SETTLE_TICKS, turn)) {
+    assertLessThanOrEqual(
+      Math.abs(step.speed - GLOAMFIN_CHASE_SPEED),
+      SPEED_SLACK,
+      `how far the speed at tick ${step.tick} of the STRAIGHT approach sat from ` +
+        `GLOAMFIN_CHASE_SPEED (${GLOAMFIN_CHASE_SPEED}) — ` +
+        `specs/predators/gloamfin.md: a straight run is not a turn and leaves ` +
+        `the chase speed alone`,
+    );
+  }
+
+  const around = corner.slice(
+    Math.max(0, turn - 1),
+    Math.min(corner.length, turn + TURN_WINDOW),
+  );
+  const floor = Math.min(...around.map((step) => step.speed));
+  assertLessThanOrEqual(
+    Math.abs(floor - GLOAMFIN_CORNER_SPEED),
+    SPEED_SLACK,
+    `how far the lowest speed across the turn (tick ${corner[turn].tick}, where ` +
+      `the heading went ${corner[turn - 1].dir} to ${corner[turn].dir}) sat from ` +
+      `GLOAMFIN_CORNER_SPEED (${GLOAMFIN_CORNER_SPEED})`,
+  );
+  assertLessThan(
+    floor,
+    FORAGER_SPEED,
+    `the corner floor, against the forager's own FORAGER_SPEED ` +
+      `(${FORAGER_SPEED}) — specs/predators/gloamfin.md puts the drop "below the ` +
+      `forager's speed", which is what makes a corner an escape`,
+  );
+
+  // THE CLIMB IS MEASURED PAST THE DROP, NOT PAST THE HEADING CHANGE. A build may
+  // report the corner floor on the step its heading turns or on the step after —
+  // `specs/predators.md` fixes neither — and on the second of those the step the
+  // heading turned on still reports the cap. Searching for the cap from the first
+  // step that is CLEARLY off it reads the same climb under both conventions, and
+  // it is still timed from the turn itself, which is what the specification dates
+  // `GLOAMFIN_RAMP_TIME` from.
+  const dropped = corner.findIndex(
+    (step, order) =>
+      order >= turn - 1 && step.speed < GLOAMFIN_CHASE_SPEED - SPEED_SLACK,
+  );
+  const regained = corner.findIndex(
+    (step, order) =>
+      order > dropped && step.speed >= GLOAMFIN_CHASE_SPEED - CAP_EPSILON,
+  );
+  assertTrue(
+    dropped >= 0 && regained > dropped,
+    `the Gloamfin climbed back to GLOAMFIN_CHASE_SPEED ` +
+      `(${GLOAMFIN_CHASE_SPEED}) within the ${CORNER_TICKS - turn} ticks watched ` +
+      `after the turn — specs/predators/gloamfin.md has the chase speed climb ` +
+      `steadily back to the cap and hold there`,
+  );
+  assertLessThanOrEqual(
+    Math.abs((regained - turn) / TICK_HZ - GLOAMFIN_RAMP_TIME),
+    RAMP_TOLERANCE,
+    `how far the climb back to the cap sat from GLOAMFIN_RAMP_TIME ` +
+      `(${GLOAMFIN_RAMP_TIME} s) after the turn; it took ` +
+      `${((regained - turn) / TICK_HZ).toFixed(3)} s`,
+  );
+
+  // ---- And a reversal costs it nothing --------------------------------------
+  //
+  // A fresh board, so the chase speed this reads is not the one the corner above
+  // left behind.
+  await startPlaying(h);
+  const back = await poseMaze(h, REVERSAL);
+  const backIndex = requireKind(await h.snapshot(), "gloamfin");
+  const backQuiet = await denAll(h, [backIndex]);
+  await parkForager(h, back.mark("R"));
+  await clearUnderfoot(h);
+  await placePredator(h, backIndex, back.mark("M"), {
+    dir: "right",
+    state: "chase",
+  });
+  const backGuard = await sceneGuard(h, backQuiet, { foragerParked: false });
+  // Long enough for the chase to be genuinely running one way.
+  await h.advance(OUTBOUND_TICKS);
+  const outbound = gloamfinOf(h.snapshot(), backIndex).dir;
+  // The forager goes to the other side of it and the fix follows, which is the
+  // one arrangement that asks a running chase to turn around.
+  await parkForager(h, back.mark("L"));
+  await h.debug.setPredatorState(backIndex, "chase");
+  const reversal = await sampleRun(backIndex, REVERSAL_TICKS);
+
+  requireSceneHeld(h.snapshot(), backGuard, { what: "the reversal scenario" });
+  const turned = reversal.findIndex((step) => step.dir !== outbound);
+  if (turned < 0) {
+    unmetPrecondition(
+      `the Gloamfin never turned around after the fix moved behind it — it kept ` +
+        `heading ${outbound} — so there was no reversal for this point to price; ` +
+        `specs/predators.md has a hunter take the first step of a shortest ` +
+        `corridor route to its fix, and whether it does is ` +
+        `maze-movement/predators-keep-to-corridors's verdict, not this one's`,
+    );
+  }
+  const slowest = Math.min(...reversal.slice(turned).map((step) => step.speed));
+  assertLessThanOrEqual(
+    Math.abs(slowest - GLOAMFIN_CHASE_SPEED),
+    SPEED_SLACK,
+    `how far the lowest speed across the reversal sat from ` +
+      `GLOAMFIN_CHASE_SPEED (${GLOAMFIN_CHASE_SPEED}) — ` +
+      `specs/predators/gloamfin.md: a reversal is not a turn and leaves the ` +
+      `chase speed alone, so nothing here may show the ` +
+      `GLOAMFIN_CORNER_SPEED (${GLOAMFIN_CORNER_SPEED}) floor`,
+  );
 });
