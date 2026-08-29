@@ -19,13 +19,12 @@
 // it further off than the light radius the build itself reports, and the check
 // reads that separation at every sample rather than assuming it.
 //
-// THE FLARE PHASE POSES A HUNTER THAT CANNOT MOVE. `specs/movement.md`: "a body
-// standing on a tile whose neighbors are all closed to it stays where it stands".
-// A single corridor tile walled on all four sides holds the Flarefish exactly five
-// tiles from the forager for the whole wait, so the bloom happens at a distance
-// inside `FLARE_RADIUS` (192) rather than wherever a patrol had wandered to, and a
-// hunter that locks on cannot then cross to the forager and end the measurement.
-// Its own mind runs throughout: nothing about the flare is posed.
+// EACH FLAREFISH IS POSED WITH ITS MIND ALONE. What fires an alert is an
+// acquisition, which is sensing, so both phases give the hunter its senses and
+// HOLD its travel (`specs/instrumentation.md`): it takes its fix, fires the alert
+// and reports from the tile the fixture stood it on, and the separation each
+// phase states is the separation it keeps. What a Flarefish does with a fix once
+// it has one is `flarefish/chase-like-lanternjaw`'s.
 //
 // THE WAIT FOR THAT FLARE IS SKIPPED RATHER THAN ADVANCED, so the seconds spent
 // standing still cost the recorded clip nothing; what the clip shows is the
@@ -258,8 +257,11 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
   /* ---- By its light sense -------------------------------------------------- */
 
   const line = await poseSightLine(h, LIGHT_GAP_TILES, { lead: 1, tail: 2 });
+  // Its light sense is the whole of what this phase exercises, so its travel is
+  // held: it looks down the corridor from the tile the fixture put it on.
   let index = await spawnPredator(h, "flarefish", line.pred, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, line.forager);
   await h.debug.setBrightness(1);
@@ -300,9 +302,9 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
 
   /* ---- By a flare lock ----------------------------------------------------- */
 
-  // A room for the forager and, five rows below it, one corridor tile walled on
-  // every side. Nothing joins the two, so the bloom is the only thing that ever
-  // crosses between them.
+  // A room for the forager and, five rows below it, one corridor tile. Nothing
+  // joins the two, so the bloom is the only thing that ever crosses between
+  // them.
   const board = await poseMaze(h, [
     "F..",
     ...Array.from({ length: FLARE_GAP_TILES - 1 }, () => ""),
@@ -311,8 +313,13 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
   const home = board.mark("F");
   const boxed = board.mark("B");
   // Posing a fixture empties the board, so the Flarefish of the first half is
-  // gone with everything else and this half spawns its own.
-  index = await spawnPredator(h, "flarefish", boxed, { state: "wander" });
+  // gone with everything else and this half spawns its own — its travel held
+  // too, because the bloom is what this phase reads and the walled cell is not
+  // what keeps it in place.
+  index = await spawnPredator(h, "flarefish", boxed, {
+    state: "wander",
+    travel: false,
+  });
   await parkForager(h, home);
   // Left dark, so the ordinary light sense reaches 128 units and cannot account
   // for a lock at 160.

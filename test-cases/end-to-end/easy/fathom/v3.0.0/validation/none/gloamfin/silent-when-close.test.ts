@@ -9,14 +9,13 @@
 // `GLOAMFIN_PING_INTERVAL` (`4 s`) cadences the ping is long overdue — and it must
 // still not have gone.
 //
-// THE PAIR IS WALLED IN, EACH ON A TILE OF ITS OWN, DIAGONALLY ADJACENT. That does
-// two things nothing else does as cleanly. Neither body has an open neighbor, and
-// `specs/movement.md` keeps a body on such a tile, so the eight seconds cannot end
-// in the Gloamfin reaching the forager and taking a life — and the lock is held by
-// standing still rather than by re-posing either of them under the measurement.
-// And `45.25` logical units is comfortably inside the `GLOAMFIN_HEAR` (`64`) close
-// hearing reaches, where two tiles along a corridor is exactly `64` and would ask
-// whether a build reads "at most" as `<=` or `<`.
+// THE PAIR STANDS DIAGONALLY ADJACENT, EACH ON A TILE OF ITS OWN. The Gloamfin's
+// travel is held and the forager's tile has no open neighbor, so the eight seconds
+// cannot end in the Gloamfin reaching the forager and taking a life — and the lock
+// is held by standing still rather than by re-posing either of them under the
+// measurement. `45.25` logical units is comfortably inside the `GLOAMFIN_HEAR`
+// (`64`) close hearing reaches, where two tiles along a corridor is exactly `64`
+// and would ask whether a build reads "at most" as `<=` or `<`.
 //
 // THE LOCK IS THEN BROKEN WITHOUT TOUCHING THE GLOAMFIN. `setForagerTile` moves the
 // forager to a sealed pocket seven tiles off (`specs/instrumentation.md`), which is
@@ -102,8 +101,11 @@ afterEach(async () => {
 it("It goes silent while it holds you by ear", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, SEALED_PAIR);
+  // The lock and the silence are its mind's, so its mind runs and its travel is
+  // held: the pair stands the separation the fixture posed for the whole watch.
   const index = await spawnPredator(h, "gloamfin", board.mark("G"), {
     state: "wander",
+    travel: false,
   });
   await placeForager(h, board.mark("F"), "right");
   // The forager is moved by this scenario on purpose, so the guard watches

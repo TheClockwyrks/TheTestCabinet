@@ -107,7 +107,9 @@ afterEach(() => {
 it("Dimming shakes its fix", async () => {
   startPlaying(h);
   const line = await poseDimStandoff(h);
-  const index = await spawnPredator(h, "lanternjaw", line.pred);
+  const index = await spawnPredator(h, "lanternjaw", line.pred, {
+    travel: false,
+  });
   await parkForager(h, line.fix);
   h.debug.setBrightness(BRIGHT_G);
   h.debug.setBrightHold(BRIGHT_HOLD);

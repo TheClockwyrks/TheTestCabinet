@@ -28,9 +28,9 @@
 //
 // IT IS POSED ONTO A NAMED TILE BEFORE THE READING, so both samples land on
 // interior hallway tiles — corridor on both sides, rock above and below — rather
-// than on whichever tile a patrol happened to reach. `setPredatorTile` "leaves its
-// facing, its state and its `released` flag untouched" (`specs/instrumentation.md`),
-// so nothing about the flare cycle moves with it.
+// than on a tile chosen by anything else. `setPredatorTile` leaves "its facing,
+// its `state`, its `released` flag, its mind and its travel ... untouched"
+// (`specs/instrumentation.md`), so nothing about the flare cycle moves with it.
 //
 // THE BLOOM IS THE CONTROL FOR "NOTHING". A build that draws no Flarefish at all,
 // ever, would satisfy an unaccompanied "nothing is drawn here", so the reading a
@@ -110,7 +110,7 @@ afterEach(async () => {
 it("shows nothing of itself between flares, in what it reports and on the canvas", async () => {
   await startPlaying(h);
   const room = await poseFlareRoom(h);
-  const guard = await sceneGuard(h);
+  const guard = await sceneGuard(h, { posesAgain: true });
 
   const bloom = await h.until(
     (snap) => snap.predators[room.index].flaring === true,
@@ -119,7 +119,7 @@ it("shows nothing of itself between flares, in what it reports and on the canvas
   assertEqual(
     bloom.hit,
     true,
-    `the Flarefish bloomed within ${FIRST_FLARE_MAX} s of patrolling its own ` +
+    `the Flarefish bloomed within ${FIRST_FLARE_MAX} s of standing in its own ` +
       "hallway, which is the flare this point watches it come out of",
   );
 
@@ -136,7 +136,7 @@ it("shows nothing of itself between flares, in what it reports and on the canvas
     await h.advance(ticks(AFTER_FADE));
 
     // Onto a named interior tile of the hallway, so the pair of samples is the
-    // same corridor twice rather than whichever tile a patrol reached.
+    // same corridor twice rather than two tiles of it.
     const home = room.hall[SAMPLE_HALL_INDEX];
     await h.debug.setPredatorTile(room.index, home.tx, home.ty);
     await h.advance(SETTLE_TICKS);

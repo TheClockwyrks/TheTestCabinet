@@ -17,6 +17,13 @@
 // the tunnel the build cut for itself, so the row is found in the layout rather
 // than stamped into it.
 //
+// THE LAYOUT IS ALL IT KEEPS. `clearWorld` takes the roster, the drifters and the
+// plankton off the board the build laid out and puts the fog back, so what swims
+// the pierced row is the forager and nothing else: no hunter can arrive on the
+// approach and cost a life mid-crossing, and no pellet under the seam can widen
+// the light or clear the maze under the reading. The layout itself — which is the
+// only thing this point is about — is untouched by all four.
+//
 // AND IT STARTS INSIDE THE CORRIDOR, NOT ON THE MOUTH TILE. What the point names
 // is "traveling off one mouth" — a crossing that continues travel already under
 // way. Posed AT the border tile at rest, the wrap would have to engage from a
@@ -49,6 +56,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
+import { clearWorld } from "../fixtures";
 import { isCorridor, wrapRows } from "../maze";
 import { MOTION_EPS, requireSceneHeld, sceneGuard } from "../scene";
 
@@ -171,6 +179,8 @@ it("carries the forager across the wrap tunnel in one ordinary step", async () =
     );
   }
 
+  // Everything the crossing is not about, off the build's own board.
+  await clearWorld(h);
   await h.debug.setForagerTile(approach, row);
   await h.debug.setForagerDir(OUT);
   // The forager is the SUBJECT, so it is not held to staying put; the guard still

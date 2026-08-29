@@ -32,7 +32,7 @@
 // second half of the claim.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual } from "../assert";
+import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseMaze, spawnPredator, stampLayout } from "../fixtures";
 import {
   captureReplay,
@@ -70,6 +70,20 @@ const POSED_LIVES = 2;
 const POSED_DEPTH = 3;
 
 /**
+ * The two cooldowns, posed plainly mid-run so neither reads as a fresh maze's.
+ *
+ * `specs/instrumentation.md` names them among the things a posed layout leaves
+ * exactly as they stand, and a maze laid out afresh carries both ready at `0`.
+ * Each is read back to the tenth of a second the pose ran a tick or two before,
+ * because both count down on the game's own clock.
+ */
+const POSED_SONAR_COOLDOWN = 3.5;
+const POSED_INK_COOLDOWN = 2.25;
+
+/** How far a cooldown read back may sit from the value posed, in seconds. */
+const COOLDOWN_TOLERANCE = 0.1;
+
+/**
  * How long the walled-in hunter is left to run its own mind, in ticks.
  *
  * A second, which is three tiles and more of travel at any speed
@@ -87,6 +101,7 @@ interface Standing {
   state: string;
   released: boolean;
   mind: boolean;
+  travel: boolean;
 }
 
 /** Every predator of a snapshot, in roster order, as the comparison reads them. */
@@ -99,6 +114,7 @@ function roster(snapshot: ReturnType<Harness["snapshot"]>): Standing[] {
     state: one.state,
     released: one.released,
     mind: one.mind,
+    travel: one.travel,
   }));
 }
 
@@ -127,6 +143,8 @@ it("poses a layout and leaves the roster and the run exactly as they stand", asy
   h.debug.setScore(POSED_SCORE);
   h.debug.setLives(POSED_LIVES);
   h.debug.setDepth(POSED_DEPTH);
+  h.debug.setSonarCooldown(POSED_SONAR_COOLDOWN);
+  h.debug.setInkCooldown(POSED_INK_COOLDOWN);
   h.debug.clearPredators();
 
   // Three hunters, each posed differently, and all of them held still so that what
@@ -209,6 +227,18 @@ it("poses a layout and leaves the roster and the run exactly as they stand", asy
     before.drifters.length,
     "the bonus drifters in the maze across setMaze",
   );
+  assertLessThanOrEqual(
+    Math.abs(read.after.sonar.cooldown - before.sonar.cooldown),
+    COOLDOWN_TOLERANCE,
+    "how far the sonar cooldown moved across setMaze, which the call leaves " +
+      "exactly as it stands",
+  );
+  assertLessThanOrEqual(
+    Math.abs(read.after.ink.cooldown - before.ink.cooldown),
+    COOLDOWN_TOLERANCE,
+    "how far ink's cooldown moved across setMaze, which the call leaves " +
+      "exactly as it stands",
+  );
   assertEqual(
     read.after.forager.tx,
     before.forager.tx,
@@ -218,6 +248,11 @@ it("poses a layout and leaves the roster and the run exactly as they stand", asy
     read.after.forager.ty,
     before.forager.ty,
     "the forager's row across setMaze",
+  );
+  assertEqual(
+    read.after.forager.dir,
+    before.forager.dir,
+    "the forager's facing across setMaze",
   );
 
   // The second half: the hunter the new rock closed over travels nowhere.

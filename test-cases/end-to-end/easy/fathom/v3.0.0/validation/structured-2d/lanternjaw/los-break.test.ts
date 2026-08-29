@@ -104,11 +104,13 @@ it("Rock breaks its sense", async () => {
   const home = board.mark("F");
   const blind = board.mark("P");
   const clear = board.mark("C");
-  const index = await spawnPredator(h, "lanternjaw", blind);
+  const index = await spawnPredator(h, "lanternjaw", blind, {
+    travel: false,
+  });
   await parkForager(h, home);
   h.debug.setBrightness(POSED_G);
   h.debug.setBrightHold(BRIGHT_HOLD);
-  const guard = await sceneGuard(h);
+  const guard = await sceneGuard(h, { posesAgain: true });
 
   const read = await captureReplay(h, "blind", async () => {
     // Behind the band: inside the range, no line, so no fix at any step.

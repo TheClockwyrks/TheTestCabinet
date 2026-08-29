@@ -80,8 +80,11 @@ afterEach(() => {
 it("plays CUES.flare on the tick a Flarefish's bloom begins, and not on its charge-up", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, APART_TILES);
+  // The bloom runs off its own cadence, which is its mind; where it stands
+  // while the cue plays is nothing to this point, so its travel is held.
   const flarefish = await spawnPredator(h, "flarefish", rooms.far, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, rooms.near);
   const watch = await sceneGuard(h);

@@ -189,8 +189,11 @@ it("draws the maze inside a bloom beyond the vision circle, and fogs it again wh
     }
   }
 
+  // The bloom is its mind's cadence, so its mind runs and its travel is held:
+  // the disc is centered on the ring tile the fixture stood it on.
   const flarefish = await spawnPredator(h, "flarefish", ring[0], {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, board.mark("F"));
   const guard = await sceneGuard(h);

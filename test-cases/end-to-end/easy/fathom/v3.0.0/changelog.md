@@ -90,17 +90,52 @@ path left in any of the three suites.
 What makes that honest is how a scenario is posed. Every fixture empties the
 board — `clearPredators`, `clearDrifters`, `clearPlankton`, `clearFog` — and the
 check spawns back exactly what its own requirement concerns, at the tile it
-means, with `setPredatorMind(index, false)` for a body that has to be present but
-inert. Nothing is contained: a bystander is removed rather than walled in or
+means. Nothing is contained: a bystander is removed rather than walled in or
 parked in a quiet corner, because containment leans on the game's own rules
 holding and a broken build is broken in exactly those rules. Where a check cannot
 pose the world it needs, or the debug surface answers wrongly, the check FAILS,
 because that surface is part of what the case asks for and a buggy surface and
 buggy behavior are one failure from the grade's point of view.
 
-Measured against thirty-five injected defects — one broken rule at a time, under
-all three engines — nothing is left undecided anywhere, and the point that owns
-the broken rule fails in every case.
+## Sensing and travelling are two faculties, held one at a time
+
+Isolation reaches inside the creature a point is about, and one switch could not
+express it. `setPredatorMind(index, false)` turns a hunter off whole — it "senses
+nothing, decides nothing, and does not move" — so a point about what a hunter
+SENSES had to leave the mind on to get the sense it was reading, and leaving the
+mind on left the body free to walk. Those hunters walked. The rock-swimming
+predator above failed thirteen points on the reposed suites for exactly that
+reason: each had emptied its board correctly and then let the one creature it
+posed travel when its requirement never needed it to.
+
+So the hold is now per faculty. `setPredatorTravel(index, enabled)` and
+`setDrifterTravel(index, enabled)` join the two mind switches: with its travel off
+a creature's body "holds the tile it stands on, however long the scenario runs and
+whatever its mind decides", while its mind runs untouched — it senses, takes and
+lapses a fix, fires its alert and reports the speed its state carries. `travel` is
+reported beside `mind` on every creature in `snapshot()`. A point that grades a
+sense poses the mind and holds the travel; a point that grades travel poses both;
+a body that only has to be present and inert keeps the mind switch. Twenty-nine
+points on the Structured 2D suite hold locomotion this way, and the same defect
+that failed thirteen points now fails the one that owns it.
+
+The hold is also checked rather than trusted. `fixtures.ts` reads each switch back
+off the snapshot as it poses it, and the scene guard every point closes on re-reads
+it at the END of the measurement against the tile the creature was posed on: a
+build that reports `travel: false` and carries the body through the maze anyway
+fails every point whose scenario leaned on the hold, rather than quietly handing
+each of them a different world than the one it asked for.
+
+Measured against twenty-seven injected defects — one broken rule at a time, run
+against the reference of every engine and, for the vision circle, of the Kindle
+variant too — no check anywhere skipped, and the point that owns the broken rule
+failed in every case. A chasing predator routed through rock fails
+`maze-movement/predators-keep-to-corridors` and nothing else, on all three
+engines: one point, where the same defect against the previous suites failed
+thirteen. A defect that breaks one rule in more than one place fails more than one
+point, and each of those points owns part of what broke — a forager that may enter
+any tile fails `maze-movement/no-wall` and `maze-movement/no-den-gate`, the rock
+half and the den-gate half of one sentence.
 
 ## The schedule is read from the schedule
 

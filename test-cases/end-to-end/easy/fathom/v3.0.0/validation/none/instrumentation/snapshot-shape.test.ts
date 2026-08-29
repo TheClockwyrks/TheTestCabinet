@@ -349,6 +349,7 @@ it("reports every documented field, with its documented type", async () => {
     assertNumber(drifter, "ty", `${where}.ty`);
     assertBoolean(drifter, "lit", `${where}.lit`);
     assertBoolean(drifter, "mind", `${where}.mind`);
+    assertBoolean(drifter, "travel", `${where}.travel`);
     const tile = tileOf(snap.grid, drifter.x, drifter.y);
     assertEqual(
       `${drifter.tx},${drifter.ty}`,
@@ -369,6 +370,7 @@ it("reports every documented field, with its documented type", async () => {
     assertContains(STATES, predator.state, `${where}.state`);
     assertBoolean(predator, "released", `${where}.released`);
     assertBoolean(predator, "mind", `${where}.mind`);
+    assertBoolean(predator, "travel", `${where}.travel`);
     assertNumber(predator, "speed", `${where}.speed`);
     assertBoolean(predator, "alert", `${where}.alert`);
     assertBoolean(predator, "lit", `${where}.lit`);

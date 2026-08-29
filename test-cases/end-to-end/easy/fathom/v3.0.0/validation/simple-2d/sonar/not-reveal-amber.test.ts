@@ -57,7 +57,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
-import { poseSonarSense, spawnPredator } from "../fixtures";
+import { poseSonarSense, spawnDrifter, spawnPredator } from "../fixtures";
 import {
   captureStill,
   createHarness,
@@ -134,8 +134,7 @@ it("leaves both amber creatures unlit and both motes unchanged through a pulse",
     state: "wander",
     mind: false,
   });
-  h.debug.spawnDrifter(targets[1].tx, targets[1].ty);
-  h.debug.setDrifterMind(0, false);
+  await spawnDrifter(h, targets[1], { mind: false });
 
   const watch = await sceneGuard(h);
 

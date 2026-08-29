@@ -18,10 +18,12 @@
 // fixes its operations, so they mean the same thing in every build: `setMaze`
 // takes a fixture exactly as given and sets the layout alone, `clearPredators`
 // empties the roster outright, `setBrightHold` arms the hold beside a posed `G`,
-// and `setPredatorMind(index, false)` holds one hunter where it stands and leaves
-// the rest of the simulation running. Posing
-// through it is how a scenario is reproducible, and it is the seam the case's
-// specification documents. `surface.ts` is that specification as types, and it is
+// and the two faculty switches gate one hunter's mind and its travel apart —
+// `setPredatorMind(index, false)` leaves a prop that decides nothing,
+// `setPredatorTravel(index, false)` a hunter that senses and alerts without ever
+// leaving its tile — each of them leaving the rest of the simulation running.
+// Posing through it is how a scenario is reproducible, and it is the seam the
+// case's specification documents. `surface.ts` is that specification as types, and it is
 // the only description of the surface this harness reads: the build's own module
 // for it is never imported.
 //

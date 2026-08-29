@@ -35,6 +35,7 @@
 
 import { BINDINGS } from "../../src/constants";
 import { assertMatches } from "../assert";
+import { holdPredators } from "../fixtures";
 import {
   DIR_KEY,
   drawnText as textRuns,
@@ -217,6 +218,10 @@ const MAX_ATTEMPTS = 8;
  * `specs/gameplay.md` costs a life for contact "whatever that predator's kind and
  * whatever it is doing", and `specs/state.md` fixes index `0` as the first of the
  * release order at every depth.
+ *
+ * EVERY ATTEMPT OPENS BY HOLDING THE WHOLE ROSTER. A catch is a contact rule
+ * rather than a chase, so no hunter here needs to travel, and a den emptying
+ * behind the staged contact is a second hunter that could take the life instead.
  */
 export async function loseEveryLife(h: Harness): Promise<FathomSnapshot> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
@@ -229,6 +234,7 @@ export async function loseEveryLife(h: Harness): Promise<FathomSnapshot> {
     if (snapshot.screen !== "playing") return snapshot;
 
     const lives = snapshot.lives;
+    await holdPredators(h);
     h.debug.setPredatorTile(0, snapshot.forager.tx, snapshot.forager.ty);
     h.debug.setPredatorState(0, "chase");
     const taken = await h.until(

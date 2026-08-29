@@ -42,7 +42,7 @@ import {
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { poseMaze, spawnPredator } from "../fixtures";
+import { poseMaze, spawnDrifter, spawnPredator } from "../fixtures";
 import {
   brightestWarmNear,
   captureStill,
@@ -137,8 +137,7 @@ it("A drifter and a Lanternjaw's bulb read alike", async () => {
     state: "wander",
     mind: false,
   });
-  h.debug.spawnDrifter(driftTile.tx, driftTile.ty);
-  h.debug.setDrifterMind(0, false);
+  await spawnDrifter(h, driftTile, { mind: false });
   const watch = await sceneGuard(h);
 
   await h.advance(SETTLE_TICKS);

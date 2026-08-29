@@ -138,7 +138,7 @@ it("lights every tile inside FLARE_RADIUS through rock while it blooms, and noth
   assertEqual(
     bloom.hit,
     true,
-    `the Flarefish bloomed within ${FIRST_FLARE_MAX} s of patrolling its own ` +
+    `the Flarefish bloomed within ${FIRST_FLARE_MAX} s of standing in its own ` +
       "hallway, which is the disc this point reads",
   );
 

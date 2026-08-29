@@ -38,7 +38,7 @@ import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
-import { poseApart } from "../fixtures";
+import { poseApart, spawnDrifter } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -147,7 +147,7 @@ it("A drifter stays until it is eaten", async () => {
   await parkForager(h, rooms.near);
   // The board `poseApart` posed carries no plankton, so the cadence admits no
   // drifter at the gate and the one followed below is the one spawned here.
-  h.debug.spawnDrifter(rooms.far.tx, rooms.far.ty);
+  await spawnDrifter(h, rooms.far);
   const watch = await sceneGuard(h);
   const opened = h.snapshot();
 

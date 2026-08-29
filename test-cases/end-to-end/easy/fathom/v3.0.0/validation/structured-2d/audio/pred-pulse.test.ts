@@ -80,7 +80,7 @@ afterEach(() => {
 it("plays CUES.predatorPing on the tick a Gloamfin casts its ping, and not before", async () => {
   startPlaying(h);
   const rooms = await poseApart(h, APART_TILES);
-  await spawnPredator(h, "gloamfin", rooms.far);
+  await spawnPredator(h, "gloamfin", rooms.far, { travel: false });
   await parkForager(h, rooms.near);
   const watch = await sceneGuard(h);
 

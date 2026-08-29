@@ -107,8 +107,11 @@ afterEach(() => {
 it("Dimming shakes its fix", async () => {
   await startPlaying(h);
   const line = await poseDimStandoff(h);
+  // The fix and its shaking are its light sense's, so its mind runs and its
+  // travel is held: the separations below are the fixture's own throughout.
   const index = await spawnPredator(h, "lanternjaw", line.pred, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, line.fix);
   await poseBrightness(h, BRIGHT_G, BRIGHT_HOLD);

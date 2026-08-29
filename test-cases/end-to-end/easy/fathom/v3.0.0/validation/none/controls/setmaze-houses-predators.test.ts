@@ -19,13 +19,15 @@
 // input bug and a turning bug against a build whose input and turning were fine.
 // This is the point that fails for it.
 //
-// THE BOARD IS POSED DISTINCTIVE FIRST. A score of `0`, three lives and a roster
-// in the den are what a build that rebuilt everything would land on by accident,
-// so each of those is moved off its opening value before the layout is posed: the
-// score and the lives are set to figures nothing else produces, both cooldowns are
-// left part-spent, and one hunter is stood out on the corridor while the rest of
-// the roster waits in the den. Every reading below is then a fact about what
-// `setMaze` left rather than a coincidence.
+// THE BOARD IS POSED DISTINCTIVE FIRST. A score of `0`, three lives, a maze full
+// of plankton, no drifters and a roster in the den are what a build that rebuilt
+// everything would land on by accident, so every reading the sentence names is
+// moved off its opening value before the layout is posed: the score and the lives
+// are set to figures nothing else produces, both cooldowns are left part-spent,
+// the plankton are cleared down to a single posed pellet, one bonus drifter is put
+// on the board, and one hunter is stood out on the corridor while the rest of the
+// roster waits in the den. Every reading below is then a fact about what `setMaze`
+// left rather than a coincidence.
 //
 // NOTHING IS ADVANCED ACROSS THE POSE. The claim is about the state the call
 // leaves, and a tick of simulation would fold the game's own systems into the
@@ -38,8 +40,14 @@
 // tile each one holds, its facing, its state and its release flag.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { stampLayout } from "../fixtures";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThan,
+  fail,
+} from "../assert";
+import { spawnDrifter, stampLayout } from "../fixtures";
+import { corridorTiles, isCorridor, type Tile } from "../maze";
 import {
   captureReplay,
   createHarness,
@@ -49,7 +57,8 @@ import {
 } from "../harness";
 
 /**
- * The layout posed over the build's own board: a plain corridor and nothing else.
+ * The layout posed over the build's own board: a plain corridor and nothing else,
+ * stamped from the tile the pellet stands on.
  *
  * What it holds does not matter. What matters is that it is a different board
  * from the one the game laid out, so a build that ignored the call or rebuilt the
@@ -99,14 +108,44 @@ function roster(snapshot: FathomSnapshot): Hunter[] {
 }
 
 /** A corridor tile of the build's own board, for the loose hunter to stand on. */
-function corridorTile(snapshot: FathomSnapshot): { tx: number; ty: number } {
-  for (let ty = 0; ty < snapshot.grid.rows; ty += 1) {
-    const row = snapshot.tiles[ty] ?? "";
-    for (let tx = 0; tx < snapshot.grid.cols; tx += 1) {
-      if (row[tx] === ".") return { tx, ty };
-    }
+function corridorTile(snapshot: FathomSnapshot): Tile {
+  const tiles = corridorTiles(snapshot);
+  if (tiles.length === 0) {
+    fail(
+      "corridor tiles on the board the dive laid out, for the hunter this " +
+        "point poses out of the den; specs/maze.md gives a laid-out maze " +
+        "corridor along every route it draws",
+      "none",
+    );
   }
-  return { tx: -1, ty: -1 };
+  return tiles[0];
+}
+
+/**
+ * The left tile of a side-by-side pair of corridor tiles with room along the row
+ * for the layout this point poses.
+ *
+ * The pellet goes on that tile and the drifter on the one beside it, and the
+ * posed layout is stamped from the same tile, so both stand on ground BOTH
+ * layouts leave open. That matters because a pellet the new layout buries under
+ * rock is a case `specs/instrumentation.md` leaves to the build — the sentence
+ * this point reads is about what the call leaves alone, not about what a build
+ * does with ground it can no longer reach.
+ *
+ * `specs/maze.md` leaves no dead end, so every corridor tile has at least two
+ * open neighbours and a board that carries no such pair anywhere is one this
+ * point fails on rather than one it declines to read.
+ */
+function posedRun(snapshot: FathomSnapshot): Tile {
+  for (const tile of corridorTiles(snapshot)) {
+    if (tile.tx + BOARD[0].length > snapshot.grid.cols) continue;
+    if (isCorridor(snapshot, tile.tx + 1, tile.ty)) return tile;
+  }
+  fail(
+    `two side-by-side corridor tiles on the board the dive laid out with the ` +
+      `${BOARD[0].length} tiles of room the posed layout needs along their row`,
+    "no such pair on the board",
+  );
 }
 
 let h: Harness;
@@ -137,12 +176,34 @@ it("sets the layout a posed board gives and leaves everything else as it stands"
   await h.debug.setSonarCooldown(POSED_SONAR_COOLDOWN);
   await h.debug.setInkCooldown(POSED_INK_COOLDOWN);
   const loose = corridorTile(own);
+  const pellet = posedRun(own);
+  const drift: Tile = { tx: pellet.tx + 1, ty: pellet.ty };
   await h.debug.setPredatorTile(0, loose.tx, loose.ty);
   await h.debug.setPredatorDir(0, "left");
   await h.debug.setPredatorState(0, "wander");
+  // The plankton down to one posed pellet, and one bonus drifter on the board.
+  // The drifter is a prop: what is read of it is that it is still there, so it is
+  // posed with its mind off and decides nothing (specs/instrumentation.md).
+  await h.debug.clearPlankton();
+  await h.debug.setPlankton(pellet.tx, pellet.ty, true);
+  await spawnDrifter(h, drift, { mind: false });
 
   const before = await h.snapshot();
-  const stamped = stampLayout(before, BOARD);
+  // The pellet and the drifter really are on the board, so the two readings that
+  // follow the call are of something rather than of an empty list.
+  assertEqual(
+    before.planktonRemaining,
+    1,
+    "the plankton left on the board after clearPlankton and one posed pellet",
+  );
+  assertEqual(
+    before.drifters.length,
+    1,
+    "the bonus drifters on the board after one was spawned onto it",
+  );
+  // Stamped from the pellet's own tile, so the row the layout poses runs along
+  // the pair the pellet and the drifter stand on.
+  const stamped = stampLayout(before, BOARD, { at: pellet });
   const after = await captureReplay(h, "housed", async () => {
     await h.debug.setMaze(stamped.rows);
     // Read the instant the call leaves, before anything is advanced: the claim
@@ -215,5 +276,27 @@ it("sets the layout a posed board gives and leaves everything else as it stands"
     after.ink.cooldown,
     before.ink.cooldown,
     "the ink cooldown after the pose, which setMaze leaves as it stands",
+  );
+  assertEqual(
+    after.planktonRemaining,
+    before.planktonRemaining,
+    "the plankton remaining after the pose, which setMaze leaves as it stands",
+  );
+  assertDeepEqual(
+    after.plankton,
+    before.plankton,
+    "the plankton layer after the pose, which setMaze leaves as it stands",
+  );
+  assertEqual(
+    after.drifters.length,
+    before.drifters.length,
+    "the bonus drifters on the board after the pose, which setMaze leaves as " +
+      "they stand",
+  );
+  assertDeepEqual(
+    after.visibility,
+    before.visibility,
+    "the revealed-tile memory after the pose, which setMaze leaves exactly as " +
+      "it stands",
   );
 });

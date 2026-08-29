@@ -144,8 +144,12 @@ it("The Gloamfin fires the alert on a fresh fix", async () => {
     tiles: GAP_TILES,
     len: RUN_TILES,
   });
+  // Its close hearing is what fires the alert, so its mind runs and its travel
+  // is held: it hears the forager through the rock band from the tile the
+  // fixture put it on and never leaves it (`specs/instrumentation.md`).
   const index = await spawnPredator(h, "gloamfin", pair.pred, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, pair.forager);
   const watch = await sceneGuard(h);

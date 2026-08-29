@@ -110,8 +110,11 @@ afterEach(() => {
 it("Brightness widens the Lanternjaw's reach", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, ROOMS_APART, { ring: RING_TILES });
+  // What is read is the range it REPORTS as the dial turns, which its mind
+  // computes; its travel is held, so the reading is taken on one standing pose.
   const lanternjaw = await spawnPredator(h, "lanternjaw", rooms.far, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, rooms.near);
   const watch = await sceneGuard(h);

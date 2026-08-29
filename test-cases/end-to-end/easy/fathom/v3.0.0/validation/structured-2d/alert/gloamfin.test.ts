@@ -142,7 +142,11 @@ afterEach(() => {
 it("The Gloamfin fires the alert on a fresh fix", async () => {
   startPlaying(h);
   const pair = await poseOccludedPair(h, { tiles: GAP_TILES, len: RUN_TILES });
-  const index = await spawnPredator(h, "gloamfin", pair.pred);
+  // Its close hearing is what this reads; its body is held, so the pair keeps
+  // the separation the fixture states for the whole window.
+  const index = await spawnPredator(h, "gloamfin", pair.pred, {
+    travel: false,
+  });
   await parkForager(h, pair.forager);
   // Its own pellet settled and `G` back to the zero a dive opens on, so the light
   // pocket is the narrowest it ever is and nothing widens it under the

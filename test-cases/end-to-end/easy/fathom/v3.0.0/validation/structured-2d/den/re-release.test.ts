@@ -28,10 +28,10 @@
 // `simTime` straight after is release time `0` of the re-run schedule, exactly.
 //
 // THE BOARD IS POSED, and `schedule.ts` describes it: a den with its gate and,
-// across solid rock, the corridor the forager stands in. The attempt a catch sets
-// up rests the forager on the board's own start tile, which is in that same
-// corridor, so the re-run schedule is watched with nothing able to interrupt it a
-// second time.
+// across solid rock, the corridor the forager stands in. Every hunter's body is
+// held there too, so the re-run schedule is watched with nothing on the board
+// travelling at all — the catch this item stages is posed onto the forager's own
+// tile, and a held hunter still makes contact (`specs/instrumentation.md`).
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
@@ -49,6 +49,7 @@ import {
   assertReleasedFlag,
   assertRoster,
   dueAt,
+  holdRoster,
   orderLine,
   poseDenBoard,
   watchReleases,
@@ -115,6 +116,10 @@ it("returns every predator to the den on a catch and runs the whole staggered sc
     });
     await h.advance(SETTLE_TICKS);
     const denned = h.snapshot();
+    // Held again, in case the attempt this catch set up handed the den fresh
+    // bodies: `specs/instrumentation.md` restores travel on a `reset` alone, but
+    // a roster rebuilt from scratch would arrive travelling.
+    holdRoster(h);
 
     // The attempt the catch set up rests the forager on the board's start tile,
     // in the same corridor it was parked in; it is faced into the rock again so

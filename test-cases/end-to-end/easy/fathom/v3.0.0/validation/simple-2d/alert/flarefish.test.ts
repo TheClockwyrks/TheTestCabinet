@@ -104,8 +104,8 @@ const FIRE_TICKS = ticks(0.1);
  * specs/predators/flarefish.md fixes the interval between flares and leaves what
  * the timer opens at to the build, so the budget covers a first flare arriving as
  * late as a full interval into the wait and a second one after it. A hard bound
- * even so: a build that never flares stands the check down here rather than
- * running the suite out.
+ * even so: a build that never flares fails this point here rather than running
+ * the suite out.
  */
 const FLARE_WAIT_TICKS = ticks(
   2 * FLARE_INTERVAL + FLARE_CHARGE + FLARE_BLOOM + 1,
@@ -246,8 +246,12 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
   /* ---- By its light sense ------------------------------------------------ */
 
   const line = await poseSightLine(h, LIGHT_GAP_TILES, { lead: 1, tail: 2 });
+  // Its light sense is the whole of what this leg exercises, so its travel is
+  // held: it looks down the corridor from the tile the fixture put it on and
+  // never leaves it (`specs/instrumentation.md`).
   const index = await spawnPredator(h, "flarefish", line.pred, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, line.forager);
   await poseBrightness(h, 1, BRIGHT_HOLD);
@@ -296,9 +300,11 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
   const home = board.mark("F");
   const boxed = board.mark("B");
   // `poseMaze` emptied the board, so this half stands its own Flarefish in the
-  // walled cell and nothing else is on the board at all.
+  // walled cell and nothing else is on the board at all. Its travel is held too:
+  // the bloom is what this leg reads, and the cell is not what keeps it there.
   const boxedIndex = await spawnPredator(h, "flarefish", boxed, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, home);
   // Left dark, so the ordinary light sense reaches 128 units and cannot account

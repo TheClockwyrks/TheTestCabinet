@@ -251,7 +251,9 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
   /* ---- By its light sense -------------------------------------------------- */
 
   const line = await poseSightLine(h, LIGHT_GAP_TILES, { lead: 1, tail: 2 });
-  let index = await spawnPredator(h, "flarefish", line.pred);
+  let index = await spawnPredator(h, "flarefish", line.pred, {
+    travel: false,
+  });
   await parkForager(h, line.forager);
   h.debug.setBrightness(1);
   h.debug.setBrightHold(BRIGHT_HOLD);
@@ -305,7 +307,7 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
   const boxed = board.mark("B");
   // A fresh board is a fresh empty world, so the second half stands its own
   // Flarefish up: one hunter, in the box, and nothing else.
-  index = await spawnPredator(h, "flarefish", boxed);
+  index = await spawnPredator(h, "flarefish", boxed, { travel: false });
   await parkForager(h, home);
   // Left dark, so the ordinary light sense reaches 128 units and cannot account
   // for a lock at 160.

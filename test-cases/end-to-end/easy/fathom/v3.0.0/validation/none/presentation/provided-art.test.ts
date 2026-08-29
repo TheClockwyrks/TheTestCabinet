@@ -34,13 +34,14 @@
 // way, and this point is about the sheet rather than about which frame of it.
 //
 // THE SCENE IS BUILT AROUND THE FLARE, because the flare-bloom sheet is drawn
-// only while one burns. The three hunters and the drifter each stand on a
-// single corridor tile boxed in by rock, so none of them can travel
-// (`specs/predators.md`: "A predator standing on a tile with no open neighbor
-// stays on that tile"), and all four sit inside `FLARE_RADIUS` of the Flarefish,
-// so the bloom draws every one of them live (`specs/sensing.md`). The forager
-// waits fourteen tiles off, past the bloom's own reach, so the flare cannot lock
-// onto it and cut itself short.
+// only while one burns. Nothing on this board is posed with a faculty this point
+// does not read: the Flarefish keeps its MIND, because the bloom is its own
+// cadence running, and the other three creatures are props posed with neither.
+// Every one of the four is then a body standing exactly where the fixture put it,
+// which is what a sheet is read off. All four sit inside `FLARE_RADIUS` of the
+// Flarefish, so the bloom draws every one of them live (`specs/sensing.md`), and
+// the forager waits fourteen tiles off, past the bloom's own reach, so the flare
+// cannot lock onto it and cut itself short.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
@@ -356,10 +357,11 @@ it("draws every element from its own seeded sheet", async () => {
 
   // One of each hunter: this point reads the sheet every element is drawn from,
   // so all three kinds have to be on the canvas at once. The two whose behavior
-  // this point is not about are posed with their minds off, so they hold the
-  // tile they are put on because nothing is deciding for them — not because the
-  // rock around them held. The Flarefish keeps its mind, because the bloom this
-  // scene is built around is its own cadence running.
+  // this point is not about are posed with their minds off, so they hold the tile
+  // they are put on because nothing is deciding for them. The Flarefish keeps its
+  // mind — the bloom this scene is built around is its own cadence running — and
+  // has its travel held instead, so the disc burns from the tile the fixture
+  // stood it on.
   const lanternjaw = await spawnPredator(h, "lanternjaw", board.mark("L"), {
     state: "wander",
     mind: false,
@@ -370,8 +372,9 @@ it("draws every element from its own seeded sheet", async () => {
   });
   const flarefish = await spawnPredator(h, "flarefish", board.mark("X"), {
     state: "wander",
+    travel: false,
   });
-  await spawnDrifter(h, board.mark("D"));
+  await spawnDrifter(h, board.mark("D"), { mind: false });
   const guard = await sceneGuard(h);
 
   // Wait for the bloom on the build's own cadence, off camera, under a hard

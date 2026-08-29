@@ -27,6 +27,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { START_LIVES } from "../constants";
+import { holdPredators } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -70,6 +71,11 @@ interface Catch {
  * Resume play if the previous catch left a countdown, put the first predator of
  * the roster on the forager, and let the game resolve the contact.
  *
+ * The whole roster is held still first: contact is the rule this point counts
+ * lives against, and a den emptying behind the staged catch would be a second
+ * hunter able to take the same life. It is held again on every attempt, because a
+ * roster the previous catch rebuilt would arrive travelling.
+ *
  * `filmed` chooses between the recorded `advance`/`until` and the unfilmed
  * `skip`/`skipUntil`: the same real ticks either way, and only the last catch is
  * worth a reviewer's frames.
@@ -86,6 +92,7 @@ async function takeALife(h: Harness, filmed: boolean): Promise<Catch> {
     // could not be staged.
     return { before, after: before, hit: false, resumed: false };
   }
+  await holdPredators(h);
   await h.debug.setPredatorTile(0, before.forager.tx, before.forager.ty);
   await h.debug.setPredatorState(0, "chase");
   const gone = (s: FathomSnapshot): boolean =>
@@ -118,13 +125,6 @@ it("holds three lives in reserve and ends the run on the fourth catch", async ()
       "specs/predators.md puts one of each of the three kinds in the den at " +
       "depth 1",
   );
-  // Every hunter but the one that takes each life holds where it stands, its
-  // own mind off (specs/instrumentation.md), so each catch is the one this
-  // check staged. The roster itself stays, because a life lost re-dens it.
-  for (let index = 1; index < opened.predators.length; index += 1) {
-    await h.debug.setPredatorMind(index, false);
-  }
-
   // The three lives held in reserve, spent off camera.
   const spent: Catch[] = [];
   for (let life = 0; life < START_LIVES; life += 1) {

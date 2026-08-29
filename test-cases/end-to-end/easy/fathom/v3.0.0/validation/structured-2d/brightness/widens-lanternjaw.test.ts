@@ -96,7 +96,9 @@ afterEach(() => {
 it("Brightness widens the Lanternjaw's reach", async () => {
   startPlaying(h);
   const rooms = await poseApart(h, ROOMS_APART, { ring: RING_TILES });
-  const lanternjaw = await spawnPredator(h, "lanternjaw", rooms.far);
+  const lanternjaw = await spawnPredator(h, "lanternjaw", rooms.far, {
+    travel: false,
+  });
   await parkForager(h, rooms.near);
   h.debug.clearPlankton();
   const watch = await sceneGuard(h);

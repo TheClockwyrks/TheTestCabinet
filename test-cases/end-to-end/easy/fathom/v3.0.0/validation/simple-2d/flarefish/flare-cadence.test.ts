@@ -120,7 +120,7 @@ it("charges for FLARE_CHARGE, blooms for FLARE_BLOOM, and charges again a whole 
     assertEqual(
       fish(snap).state,
       "wander",
-      `the Flarefish is still patrolling ${what}, which is the condition its ` +
+      `the Flarefish is still wandering ${what}, which is the condition its ` +
         "flare timer runs down under — its sealed hallway is eleven tiles " +
         "from a forager at G = 0, past both of its reaches",
     );

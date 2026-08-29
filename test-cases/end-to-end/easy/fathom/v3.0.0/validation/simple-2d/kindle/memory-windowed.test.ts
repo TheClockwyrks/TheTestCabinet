@@ -57,6 +57,7 @@ import {
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import {
   FOG_MATCH,
+  MASKED_MATCH,
   fromFog,
   tileColor,
   tileFromForager,
@@ -210,7 +211,7 @@ it("Hidden, but not forgotten", async () => {
   );
   assertLessThanOrEqual(
     fromFog(seen.hidden, seen.fog),
-    FOG_MATCH,
+    MASKED_MATCH,
     "the RGB distance out of 441 between the watched tile beyond the circle " +
       "and unrevealed fog, which it is painted with while it is out there",
   );
@@ -238,7 +239,7 @@ it("Hidden, but not forgotten", async () => {
   );
   assertLessThanOrEqual(
     fromFog(seen.neverLit, seen.fog),
-    FOG_MATCH,
+    MASKED_MATCH,
     "the RGB distance out of 441 between that never-lit tile inside the circle " +
       "and unrevealed fog, which is what ground the light has not reached is " +
       "painted with",

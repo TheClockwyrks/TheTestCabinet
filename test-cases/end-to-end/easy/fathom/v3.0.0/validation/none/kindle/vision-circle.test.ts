@@ -55,7 +55,7 @@ import {
   startPlaying,
 } from "../harness";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
-import { FOG_MATCH, tileFromForager } from "./circle";
+import { FOG_MATCH, MASKED_MATCH, tileFromForager } from "./circle";
 
 /**
  * The board: one long corridor, and across eight tiles of solid rock a sealed
@@ -186,7 +186,7 @@ it("draws revealed ground inside the vision circle and fogs it beyond", async ()
   );
   assertLessThanOrEqual(
     colorDistance(outsideColor, fog),
-    FOG_MATCH,
+    MASKED_MATCH,
     `the RGB distance out of 441 between the revealed tile ` +
       `${outsideAt.toFixed(0)} units from the forager, beyond the ` +
       `${radius.toFixed(0)}-unit vision circle, and unrevealed fog`,

@@ -30,10 +30,11 @@
 // off the brightness the build reports at the end of the window and confirms the
 // pair is still inside it.
 //
-// THE WINDOW IS BOUNDED BY THE GROUND THE HUNTER CAN COVER. At `PREDATOR_SPEED`
-// (`116`) everything driven here closes some two hundred units of the `288` the
-// stand opens with — so the hunter cannot reach the forager's tile, and what the
-// reading is of is the item's own subject rather than a caught life.
+// AND THE HUNTER'S TRAVEL IS HELD, because what this point grades is a sense
+// being broken rather than a body being carried. It stands the `288` units the
+// fixture laid out for the whole reading, so the cloud stays squarely on the line
+// between the two, the forager stays inside the range the sense would otherwise
+// reach it at, and nothing here can end in a caught life.
 //
 // WHAT THIS DOES NOT DECIDE. How long a cloud lasts or how wide it is, which are
 // `ink/cloud`'s; and what breaks a fix that is not ink, which is
@@ -48,12 +49,11 @@ import {
 } from "../assert";
 import {
   BINDINGS,
+  BRIGHT_HOLD,
   INK_RADIUS,
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
   LINGER_TIME,
-  PREDATOR_SPEED,
-  TICK_HZ,
   TILE,
 } from "../constants";
 import { poseInkStandoff, spawnPredator } from "../fixtures";
@@ -82,10 +82,9 @@ const RANGE = LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * POSED_G;
 /**
  * How far apart the pair stands, in tiles.
  *
- * Nine (`288` units): inside the `320` of `R` at the posed `G`, and far enough
- * that everything this check drives — the acquisition, the cloud, the break, the
- * blinded window and the tail held for the clip — leaves the hunter short of the
- * forager's tile at `PREDATOR_SPEED`.
+ * Nine (`288` units): inside the `320` of `R` at the posed `G`, and far outside
+ * the `32` of a tile contact is decided on — and the hunter's travel is held, so
+ * that is where it stands for every reading this check takes.
  */
 const GAP_TILES = 9;
 
@@ -105,18 +104,22 @@ const BREAK_MAX = 0.1;
 /**
  * How long the Flarefish is then watched for a new fix, in seconds.
  *
- * A second and a half. Bounded by the ground the hunter can cover: at
- * `PREDATOR_SPEED` that is `174` units of the `256` between them, so it cannot
- * reach the forager's tile inside the window, and it is well short of the
- * `INK_LIFE` (`3 s`) the cloud stands for, so the cloud is still blinding it at
- * the last step read.
+ * A second and a half: well short of the `INK_LIFE` (`3 s`) the cloud stands for,
+ * so the cloud is still blinding it at the last step read.
  */
 const BLIND_WATCH = 1.5;
 
 /**
+ * How often the blinded window is read, in ticks.
+ *
+ * Four, a thirtieth of a second — far finer than anything the claim turns on, and
+ * the beat the forager's glow is posed again on.
+ */
+const BLIND_POLL = 4;
+
+/**
  * Ticks held after the reading, so the clip shows the standoff rather than cutting
- * on it. Every reading is already taken, and they are counted into the ground the
- * hunter may cover before it would reach the forager.
+ * on it. Every reading is already taken.
  */
 const TAIL_TICKS = 24;
 
@@ -136,11 +139,15 @@ it("drops the Flarefish's fix the moment ink lands, and it takes no new one whil
   await parkForager(h, line.ink);
   await h.debug.clearPlankton();
 
+  // Its light sense is what the cloud breaks, so its mind runs and its travel is
+  // held: it stands the standoff the fixture laid out for the whole reading.
   const index = await spawnPredator(h, "flarefish", line.pred, {
     dir: "left",
     state: "wander",
+    travel: false,
   });
   await h.debug.setBrightness(POSED_G);
+  await h.debug.setBrightHold(BRIGHT_HOLD);
   const guard = await sceneGuard(h);
 
   const run = await captureReplay(h, "ink", async () => {
@@ -158,10 +165,22 @@ it("drops the Flarefish's fix the moment ink lands, and it takes no new one whil
       { maxTicks: ticks(BREAK_MAX), poll: 1 },
     );
     // And then the harder half: a whole blinded window with no new fix in it.
-    const refixed = await h.until(
-      (snap) => snap.predators[index].state !== "wander",
-      { maxTicks: ticks(BLIND_WATCH), poll: 1 },
-    );
+    // The forager's glow is posed again as the window runs. `G` decays on its own
+    // curve once the hold expires and `R` shrinks with it (specs/sensing.md), so a
+    // window left to decay would end with the forager outside the reach the
+    // Flarefish would otherwise have sensed it at — and "it took no new fix"
+    // would be a reading of distance rather than of ink.
+    const blindTicks = ticks(BLIND_WATCH);
+    let refixed = false;
+    for (let spent = 0; spent < blindTicks; spent += BLIND_POLL) {
+      await h.debug.setBrightness(POSED_G);
+      await h.debug.setBrightHold(BRIGHT_HOLD);
+      await h.advance(Math.min(BLIND_POLL, blindTicks - spent));
+      if ((await h.snapshot()).predators[index].state !== "wander") {
+        refixed = true;
+        break;
+      }
+    }
     const ended = await h.snapshot();
     await h.advance(TAIL_TICKS);
     return { fixed, inked, broke, refixed, ended };
@@ -200,7 +219,7 @@ it("drops the Flarefish's fix the moment ink lands, and it takes no new one whil
 
   // And no new fix while it is blind.
   assertEqual(
-    run.refixed.hit,
+    run.refixed,
     false,
     `the Flarefish took a fresh fix during the ${BLIND_WATCH} s the cloud ` +
       `blinded it — the cloud is centered on the forager, so the segment ` +
@@ -229,8 +248,8 @@ it("drops the Flarefish's fix the moment ink lands, and it takes no new one whil
     endGap,
     TILE,
     `the units between the two centers at the end of the window, against the ` +
-      `${TILE}-unit tile contact is decided on — it can close at most ` +
-      `${((PREDATOR_SPEED * (ticks(BLIND_WATCH) + TAIL_TICKS)) / TICK_HZ).toFixed(0)} ` +
-      `units across it and the tail after it`,
+      `${TILE}-unit tile contact is decided on — the hunter's travel is held, ` +
+      `so the pair still stands the ${GAP_TILES * TILE} units the fixture laid ` +
+      `out`,
   );
 });

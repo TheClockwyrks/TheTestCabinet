@@ -18,10 +18,8 @@
 //
 // THE OUTSIDE LEG COMES FIRST, and it is bounded rather than open-ended: a
 // Flarefish that has not fixed on the forager after a stated stretch of steps has
-// held none, and the stretch is short enough that its own travel cannot carry it
-// inside `R` underneath the reading. At `PREDATOR_SPEED` (`116`) it covers under a
-// hundred units in the window, against the hundred and sixty of margin the far
-// stand leaves.
+// held none. Its travel is held, so the far stand is the far stand for every one
+// of those steps and the leg cannot end with a hunter that simply arrived.
 //
 // NEITHER DISTANCE IS INSIDE A FLARE. Both stands are past `FLARE_RADIUS`
 // (`192`), so the bloom's own lock — which reaches through rock and is
@@ -39,8 +37,6 @@ import {
   FLARE_RADIUS,
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
-  PREDATOR_SPEED,
-  TICK_HZ,
   TILE,
 } from "../constants";
 import { tileGap } from "../maze";
@@ -82,12 +78,9 @@ const FAR_TILES = 15;
 /**
  * How long the far stand is watched, in ticks.
  *
- * A hundred ticks, five sixths of a second. Two ceilings meet here. It has to be
- * short enough that the Flarefish's own travel cannot bring it inside `R` — at
- * `PREDATOR_SPEED` that is under a hundred units against a hundred and sixty of
- * margin — and short enough to sit inside the `BRIGHT_HOLD` the posed `G` is
- * steady across. It is still a hundred steps, on each of which
- * `specs/predators/flarefish.md` has the sense run.
+ * A hundred ticks, five sixths of a second: short enough to sit inside the
+ * `BRIGHT_HOLD` the posed `G` is steady across, and still a hundred steps, on
+ * each of which `specs/predators/flarefish.md` has the sense run.
  */
 const FAR_TICKS = 100;
 
@@ -120,11 +113,14 @@ it("takes a fix on the forager's light inside R and none beyond it", async () =>
   const line = await poseSightLine(h, FAR_TILES, { lead: 1, tail: 1 });
   await parkForager(h, line.forager);
 
+  // Its travel is held, so each leg's standoff is exactly the distance the
+  // fixture states for the whole of the window it is watched over.
   const index = await spawnPredator(h, "flarefish", line.pred, {
     dir: line.toForager,
     state: "wander",
+    travel: false,
   });
-  const guard = await sceneGuard(h);
+  const guard = await sceneGuard(h, { posesAgain: true });
 
   const read = await captureReplay(h, "light", async () => {
     // The far stand: fifteen tiles down the corridor, at the brightest the
@@ -180,8 +176,7 @@ it("takes a fix on the forager's light inside R and none beyond it", async () =>
     false,
     `the Flarefish took a fix over ${FAR_TICKS} ticks standing ${farGap} units ` +
       `off, beyond the R = ${RANGE} specs/predators/flarefish.md gives it at ` +
-      `G = ${POSED_G} (it can close at most ` +
-      `${((PREDATOR_SPEED * FAR_TICKS) / TICK_HZ).toFixed(0)} units in that window)`,
+      `G = ${POSED_G} (its travel is held, so it stood there for every one)`,
   );
   assertEqual(
     read.far.predators[index].state,

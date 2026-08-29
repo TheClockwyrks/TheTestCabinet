@@ -131,13 +131,15 @@ it("It senses the forager's light within R", async () => {
   await h.debug.setBrightHold(BRIGHT_HOLD);
   // The one hunter this point is about, spawned at the far end of the corridor;
   // both standoffs move it along the same run.
+  // Its travel is held, so a standoff is the distance the check posed it at
+  // rather than whatever a patrol had made of it.
   const index = await spawnPredator(
     h,
     "lanternjaw",
     { tx: home.tx + RUN_TILES - 1, ty: home.ty },
-    { state: "wander" },
+    { state: "wander", travel: false },
   );
-  const guard = await sceneGuard(h);
+  const guard = await sceneGuard(h, { posesAgain: true });
 
   // The build's own reported range, which is what both standoffs are measured
   // from.

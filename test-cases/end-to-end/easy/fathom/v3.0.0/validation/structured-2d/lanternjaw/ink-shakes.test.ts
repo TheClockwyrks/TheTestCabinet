@@ -108,7 +108,9 @@ afterEach(() => {
 it("Ink shakes its fix at once", async () => {
   startPlaying(h);
   const stand = await poseInkStandoff(h, { gap: GAP_TILES });
-  const index = await spawnPredator(h, "lanternjaw", stand.pred);
+  const index = await spawnPredator(h, "lanternjaw", stand.pred, {
+    travel: false,
+  });
   await parkForager(h, stand.ink);
   h.debug.setBrightness(BRIGHT_G);
   h.debug.setBrightHold(BRIGHT_HOLD);

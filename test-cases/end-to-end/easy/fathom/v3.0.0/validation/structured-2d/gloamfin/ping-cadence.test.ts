@@ -93,6 +93,7 @@ it("It pings on its own cadence", async () => {
   startPlaying(h);
   const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
   const index = await spawnPredator(h, "gloamfin", rooms.far, {
+    travel: false,
     state: "wander",
   });
   await parkForager(h);

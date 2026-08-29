@@ -107,6 +107,7 @@ it("It goes silent while it holds you by ear", async () => {
   startPlaying(h);
   const board = await poseMaze(h, SEALED_PAIR);
   const index = await spawnPredator(h, "gloamfin", board.mark("G"), {
+    travel: false,
     state: "wander",
   });
   await placeForager(h, board.mark("F"), "right");

@@ -96,8 +96,11 @@ it("The Lanternjaw fires no alert", async () => {
     lead: LEAD_TILES,
     tail: TAIL_TILES,
   });
+  // Its light sense takes the fix this point reads the absent alert against,
+  // and nothing here is about how it travels, so its travel is held.
   const index = await spawnPredator(h, "lanternjaw", line.pred, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, line.forager);
   await poseBrightness(h, BRIGHT_G, BRIGHT_HOLD);

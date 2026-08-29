@@ -114,6 +114,10 @@ it("plays CUES.caught on the tick a predator makes contact, and not before", asy
         quietLead: QUIET_LEAD,
         // The contact itself: a hunter whose center lies on the forager's own
         // tile (specs/gameplay.md), posed loose so the build's own rule decides.
+        // Its travel is held, because contact is already made where it stands
+        // and "contact with it still costs a life" whatever its body is doing
+        // (specs/instrumentation.md) — so what this cue is read off is the
+        // contact rule alone and never a hunter swimming into place.
         arm: () => {
           h.debug.addPredator(
             HUNTER_KIND,
@@ -121,6 +125,7 @@ it("plays CUES.caught on the tick a predator makes contact, and not before", asy
             before.forager.ty,
           );
           h.debug.setPredatorState(HUNTER, "chase");
+          h.debug.setPredatorTravel(HUNTER, false);
         },
       },
     );

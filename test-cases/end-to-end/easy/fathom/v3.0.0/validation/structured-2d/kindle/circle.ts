@@ -42,8 +42,30 @@ export const KINDLE_VISION_GAIN = 128;
  * The bound every Kindle review item states for itself: `25` of `441`. Wide
  * enough for dithering, a soft circle edge and anti-aliasing; far too narrow for
  * terrain a build is actually drawing.
+ *
+ * NOT the bound for the mask itself, which is {@link MASKED_MATCH}.
  */
 export const FOG_MATCH = 25;
+
+/**
+ * How far a sample the vision circle has MASKED may sit from that same fog.
+ *
+ * `specs/sensing.md` does not say a masked tile resembles the fog, it says it is
+ * painted with it: ground beyond `R` carries "the same flat fog as
+ * never-revealed ground". Two samples of one flat color match exactly, so the
+ * only slack this owes is dithering and anti-aliasing, and `8` of `441` is
+ * generous for that — every reference reads `0.0` here.
+ *
+ * IT IS SEPARATE FROM {@link FOG_MATCH} BECAUSE 25 CANNOT DECIDE THIS. How far a
+ * build draws REMEMBERED ground from its fog is the build's own choice, and one
+ * of this case's three references draws it only `34.3` away — so a tile that
+ * build is fully drawing, with no mask over it at all, sits `14.7` from fog and
+ * passes a bound of `25`. Measured: with `drawVisionMask` removed outright from
+ * the Simple 2D reference, every Kindle point still passed. A build with no
+ * vision circle whatever has to fail the points that own the circle, so the
+ * mask's own bound is the tight one and the drawn-terrain bound stays wide.
+ */
+export const MASKED_MATCH = 8;
 
 /**
  * The outer vision circle's radius as this build reports it, or a failure naming

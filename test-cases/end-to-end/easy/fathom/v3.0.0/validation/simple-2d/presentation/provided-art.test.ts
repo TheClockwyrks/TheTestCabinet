@@ -34,13 +34,14 @@
 // way, and this point is about the sheet rather than about which frame of it.
 //
 // THE SCENE IS BUILT AROUND THE FLARE, because the flare-bloom sheet is drawn
-// only while one burns. The three hunters and the drifter each stand on a single
-// corridor tile boxed in by rock, so none of them can travel
-// (specs/predators.md: "A predator standing on a tile with no open neighbor stays
-// on that tile"), and all four sit inside `FLARE_RADIUS` of the Flarefish, so the
-// bloom draws every one of them live (specs/sensing.md). The forager waits fourteen
-// tiles off, past the bloom's own reach, so the flare cannot lock onto it and cut
-// itself short.
+// only while one burns. Nothing on this board is posed with a faculty this point
+// does not read: the Flarefish keeps its MIND, because the bloom is its own
+// cadence running, and the other three creatures are props posed with neither.
+// Every one of the four is then a body standing exactly where the fixture put it,
+// which is what a sheet is read off. All four sit inside `FLARE_RADIUS` of the
+// Flarefish, so the bloom draws every one of them live (specs/sensing.md), and
+// the forager waits fourteen tiles off, past the bloom's own reach, so the flare
+// cannot lock onto it and cut itself short.
 //
 // THE SEEDED TREE IS SERVED TO THE ENGINE'S LOADER. specs/assets.md has the build
 // load every frame through the engine, which resolves each path under `assets/`
@@ -66,7 +67,7 @@ import {
   TILE,
 } from "../../src/constants";
 import { assertLength, assertTrue } from "../assert";
-import { poseMaze, spawnPredator } from "../fixtures";
+import { poseMaze, spawnDrifter, spawnPredator } from "../fixtures";
 import {
   callsTo,
   captureStill,
@@ -141,7 +142,7 @@ const BLOOM_POLL_TICKS = 6;
 
 /**
  * The board: a six-tile corridor for the forager away to the right, a row of
- * solid rock, and four single-tile pockets sealed in on all four sides.
+ * solid rock, and four single-tile pockets, one for each creature.
  *
  * `X` holds the Flarefish; `L`, `G` and `D` hold the Lanternjaw, the Gloamfin and
  * the drifter, four, two and two tiles from it, all well inside `FLARE_RADIUS`
@@ -360,11 +361,12 @@ it("draws every element from its own seeded sheet", async () => {
   await parkForager(h, home);
 
   // One of each kind: this point reads a sheet off every creature the case ships
-  // art for, and the board holds nothing else. The two whose behavior this point
-  // is not about are posed with their minds off, so they hold the tile they are
-  // put on because nothing is deciding for them rather than because the rock
-  // around them held. The Flarefish keeps its mind: the bloom this scene is
-  // built around is its own cadence running.
+  // art for, and the board holds nothing else. The two hunters whose behavior
+  // this point is not about are posed with their minds off, so they hold the
+  // tile they are put on because nothing is deciding for them. The Flarefish
+  // keeps its mind — the bloom this scene is built around is its own cadence
+  // running — and has its travel held instead, so the disc burns from the tile
+  // the fixture stood it on.
   const lanternjaw = await spawnPredator(h, "lanternjaw", board.mark("L"), {
     state: "wander",
     mind: false,
@@ -375,9 +377,9 @@ it("draws every element from its own seeded sheet", async () => {
   });
   const flarefish = await spawnPredator(h, "flarefish", board.mark("X"), {
     state: "wander",
+    travel: false,
   });
-  const drop = board.mark("D");
-  h.debug.spawnDrifter(drop.tx, drop.ty);
+  await spawnDrifter(h, board.mark("D"), { mind: false });
   const watch = await sceneGuard(h);
 
   // Wait for the bloom on the build's own cadence, under a hard ceiling.
@@ -394,8 +396,8 @@ it("draws every element from its own seeded sheet", async () => {
   );
 
   // Read in "chase", whose frames no other sheet carries, so on a build that
-  // draws what specs/assets.md asks the match below is unambiguous. It is boxed
-  // in by rock, so the pose moves it nowhere.
+  // draws what specs/assets.md asks the match below is unambiguous. Its mind is
+  // off, so the pose is the whole of what changes about it.
   h.debug.setPredatorState(lanternjaw, "chase");
 
   // One frame, read on its own: everything before it is cleared away so the

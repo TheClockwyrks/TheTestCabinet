@@ -10,13 +10,12 @@
 // "any of the three senses takes a fix". So one crossing decides three readings:
 // `hearingLock`, `state` and `alert`.
 //
-// THE PAIR STANDS EITHER SIDE OF ROCK, DIAGONALLY. Two things follow from that.
-// The line between them crosses nothing but rock, so a fix taken here can only have
-// been taken by ear — this Gloamfin has no light sense at all
-// (`detectRange` is `null` for it), and the rock removes the question anyway. And
-// each of them sits on a tile with no open neighbor, which
-// `specs/movement.md` keeps a body on: neither can reach the other, so the reading
-// cannot end in contact and a life lost.
+// THE PAIR STANDS EITHER SIDE OF ROCK, DIAGONALLY. The line between them crosses
+// nothing but rock, so a fix taken here can only have been taken by ear — this
+// Gloamfin has no light sense at all (`detectRange` is `null` for it), and the
+// rock removes the question anyway. The hunter's travel is held besides, so it
+// hears from the tile it was posed on and the reading cannot end in contact and a
+// life lost.
 //
 // THE DISTANCE IS NOT THE BOUNDARY. Two tiles apart along a corridor is exactly
 // `64`, which asks whether a build reads "at most `GLOAMFIN_HEAR`" as `<=` or `<`
@@ -89,8 +88,11 @@ afterEach(async () => {
 it("Close hearing takes a fix and fires the alert", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, SEALED_PAIR);
+  // The forager is what closes the gap here; the Gloamfin's part is to HEAR it,
+  // so its mind runs and its travel is held.
   const index = await spawnPredator(h, "gloamfin", board.mark("G"), {
     state: "wander",
+    travel: false,
   });
   await placeForager(h, board.mark("F"), "right");
   await h.debug.clearPlankton();

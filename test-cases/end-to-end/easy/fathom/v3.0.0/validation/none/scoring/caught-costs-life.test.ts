@@ -45,6 +45,7 @@ import {
   INK_COOLDOWN,
   SONAR_COOLDOWN,
 } from "../constants";
+import { holdPredators, spawnDrifter } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -104,15 +105,13 @@ it("costs one life on contact and sets the maze up for another attempt", async (
       "specs/predators.md puts one of each of the three kinds in the den at " +
       "depth 1",
   );
-  // THE ROSTER STAYS ON THE BOARD, because what a catch does to the WHOLE
-  // roster is half of what this point reads. Every hunter but the one that
-  // makes the contact has its own mind turned off instead, which "holds exactly
-  // where it stands... senses nothing, decides nothing, and does not move"
-  // (specs/instrumentation.md) — so the catch below is made by the hunter this
-  // check posed and by nothing else.
-  for (let index = 1; index < opened.predators.length; index += 1) {
-    await h.debug.setPredatorMind(index, false);
-  }
+  // THE ROSTER STAYS ON THE BOARD, because what a catch does to the WHOLE roster
+  // is half of what this point reads. What it does not need is a single body
+  // travelling: the catch below is POSED onto the forager's own tile, and a
+  // hunter whose travel is held still makes contact (specs/instrumentation.md).
+  // So every one of them is held where it stands and no hunter can take a life
+  // this check did not stage.
+  await holdPredators(h);
 
   // Off the start tile, under the game's own movement code.
   const leaving = corridorDirs(opened, startTile.tx, startTile.ty)[0];
@@ -141,7 +140,9 @@ it("costs one life on contact and sets the maze up for another attempt", async (
     (best, tile) => (reach(tile) > reach(best) ? tile : best),
     startTile,
   );
-  await h.debug.spawnDrifter(away.tx, away.ty);
+  // A prop: the reset has to take it off the board, and nothing here is about
+  // where it drifts, so it is posed inert on the furthest tile there is.
+  await spawnDrifter(h, away, { mind: false });
 
   const caught = await captureReplay(h, "caught", async () => {
     const before = await h.snapshot();

@@ -28,14 +28,20 @@
 // (`specs/instrumentation.md`). Nothing else is on the board — no plankton, no
 // drifters, no fog — so nothing but the schedule can move while it is read.
 //
+// AND EVERY HUNTER'S BODY IS HELD, because neither item exercises one. The
+// schedule is the `released` flag and nothing else, and `setPredatorTravel` leaves
+// that flag turning over on its own slot while the body holds in the den, since
+// crossing the chamber to the gate is travel (`specs/instrumentation.md`). So the
+// one thing these items must not be at the mercy of — a hunter reaching the
+// forager, taking a life, re-denning the roster and restarting the very clock
+// being read — cannot happen, because nothing on the board travels at all.
+//
 // THE FORAGER IS A BYSTANDER AND IT IS THE ONE THING THAT CANNOT BE REMOVED, so
-// the fixture gives it a room of its own. A forager caught mid-measurement
-// re-dens every predator and restarts the very schedule being read, and a room
-// no corridor joins to the den's is what keeps that from happening — a property
-// of the layout the check itself drew, not of a rule it hoped would hold.
+// the fixture gives it a room of its own besides, no corridor joining it to the
+// den's.
 
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../constants";
-import { poseMaze } from "../fixtures";
+import { holdPredators, poseMaze } from "../fixtures";
 import { parkForager } from "../scene";
 import type { FathomSnapshot, Harness } from "../harness";
 import type { Tile } from "../maze";
@@ -107,6 +113,8 @@ export interface DenBoard {
  * (`specs/instrumentation.md`). That is the roster whose staggered schedule both
  * items read, and it is the only thing on the board besides the forager.
  *
+ * Every hunter it lays in is left with its mind running and its travel held.
+ *
  * The screen is left where the caller put it, because both items pin the
  * schedule's origin themselves: the schedule starts from the moment `screen`
  * becomes `"playing"`, so the check that reads it decides when that moment is.
@@ -116,6 +124,7 @@ export async function poseDenBoard(h: Harness): Promise<DenBoard> {
   const home = posed.mark("N");
   await parkForager(h, home);
   await h.debug.setDepth(1);
+  await holdPredators(h);
   await h.debug.setBrightness(0);
   return { forager: home };
 }

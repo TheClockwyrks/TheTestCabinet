@@ -86,6 +86,17 @@
 //     stands (`specs/instrumentation.md`), so the fixture clears it rather than
 //     measuring what the previous board had lit.
 //
+// AND WITHIN THE CREATURE A CHECK IS ABOUT, ONLY THE FACULTIES ITS REQUIREMENT
+// EXERCISES. Emptying the board settles the bystanders; the subject is settled by
+// the two switches `specs/instrumentation.md` gives every creature. A check about
+// what a hunter SENSES gives it its mind and holds its travel, so it acquires,
+// alerts and reports from the tile the fixture stood it on and never walks out of
+// the scenario. A check that needs a body present but inert holds its mind, and
+// nothing is decided for it to carry out. A check about how a hunter TRAVELS holds
+// neither, because travel is the thing it grades. Each hold is READ BACK at the
+// pose, so a build whose switch does nothing fails the check that asked for it
+// rather than being measured in a world it never posed.
+//
 // THE FORAGER IS PLACED EXPLICITLY. `setMaze` moves nothing, so the forager
 // stands wherever it stood on the board before — which the new layout may have
 // closed over. Every poser below puts it on a named anchor of its own fixture,
@@ -126,6 +137,7 @@ export interface PredatorView {
   state: string;
   released: boolean;
   mind: boolean;
+  travel: boolean;
 }
 
 /** One bonus drifter, as much of it as a poser reads (`specs/state.md`). */
@@ -135,6 +147,7 @@ export interface DrifterView {
   tx: number;
   ty: number;
   mind: boolean;
+  travel: boolean;
 }
 
 /**
@@ -170,8 +183,10 @@ export interface FixtureOps {
   setPredatorState(index: number, value: PosedPredatorState): Awaitable<void>;
   setPredatorReleased(index: number, released: boolean): Awaitable<void>;
   setPredatorMind(index: number, enabled: boolean): Awaitable<void>;
+  setPredatorTravel(index: number, enabled: boolean): Awaitable<void>;
   spawnDrifter(tx: number, ty: number): Awaitable<void>;
   setDrifterMind(index: number, enabled: boolean): Awaitable<void>;
+  setDrifterTravel(index: number, enabled: boolean): Awaitable<void>;
 }
 
 /** What a poser needs of a harness: the surface, and a read of the board. */
@@ -369,8 +384,10 @@ export interface SpawnOptions {
   dir?: Dir;
   /** The state to put it in. Left at the `"wander"` it arrives on when omitted. */
   state?: PosedPredatorState;
-  /** Pass `false` to hold it inert: present and solid, deciding nothing. */
+  /** Pass `false` to hold it inert: present and solid, sensing and deciding nothing. */
   mind?: boolean;
+  /** Pass `false` to hold its body still while its mind runs on. */
+  travel?: boolean;
 }
 
 /**
@@ -382,10 +399,18 @@ export interface SpawnOptions {
  * than counting is what keeps that true of a build whose `addPredator` answers
  * differently: the index this returns is the one the snapshot actually holds.
  *
- * `mind: false` is how a scenario keeps a hunter that must be PRESENT but must
- * not act — the second body a sonar mark or a flare is read against, the
- * neighbour a mind-off check leaves hunting. It holds where it stands, senses
- * nothing and decides nothing, while contact with it still costs a life.
+ * THE TWO FACULTIES ARE POSED SEPARATELY, because a requirement rarely exercises
+ * both. `mind: false` is how a scenario keeps a hunter that must be PRESENT but
+ * must not act — the second body a sonar mark or a flare is read against, the
+ * prop a shape or a sheet is read off. It senses nothing and decides nothing, so
+ * nothing is carried out and it holds where it stands, while contact with it
+ * still costs a life. `travel: false` is how a scenario keeps a hunter that must
+ * SENSE but must not travel — the hunter an alert, a fix, a lock or a ping is
+ * read off. Its mind runs untouched through the code play runs, and only its
+ * body is held (`specs/instrumentation.md`).
+ *
+ * A check whose subject is how a hunter MOVES — its speed, its routing, its
+ * cornering, its release — passes neither, because travel is the thing it grades.
  */
 export async function spawnPredator(
   h: FixtureHost,
@@ -401,24 +426,104 @@ export async function spawnPredator(
     await h.debug.setPredatorState(index, options.state);
   }
   if (options.mind === false) await h.debug.setPredatorMind(index, false);
+  if (options.travel === false) await h.debug.setPredatorTravel(index, false);
+  if (options.mind === false || options.travel === false) {
+    const posed = (await h.snapshot()).predators[index];
+    if (options.mind === false) {
+      requireHeld(posed?.mind, `the ${kind}`, "mind", "setPredatorMind");
+    }
+    if (options.travel === false) {
+      requireHeld(posed?.travel, `the ${kind}`, "travel", "setPredatorTravel");
+    }
+  }
   return index;
+}
+
+/**
+ * A faculty a scenario asked to hold is REPORTED held, or the check that asked
+ * fails.
+ *
+ * A pose that did not take is a world the check could not arrange, and a check
+ * measuring a scenario it did not pose is worth nothing: `specs/state.md` has
+ * every creature report both faculties, and `specs/instrumentation.md` makes the
+ * surface a deliverable of the build like any other. So the read-back happens at
+ * the pose, where the failure can still name the operation, rather than
+ * surfacing later as whatever an unheld body wandered into.
+ */
+function requireHeld(
+  reported: boolean | undefined,
+  who: string,
+  faculty: string,
+  operation: string,
+): void {
+  if (reported === false) return;
+  fail(
+    `${who} to report \`${faculty}\` false after ${operation}(index, false), ` +
+      "which this scenario poses so that it holds",
+    reported === undefined
+      ? "the creature was not on the board to be read back"
+      : `${faculty} read ${JSON.stringify(reported)}`,
+  );
+}
+
+/**
+ * Hold every predator on the roster where it stands, each one's mind running on.
+ *
+ * For the points that read the roster a maze LAID OUT rather than spawning a
+ * hunter of their own — the release schedule, what a catch costs, what a posed
+ * layout leaves alone. None of those is about how a hunter travels, and a roster
+ * left free to travel is a roster of bystanders any one of which can end the
+ * scenario by walking into the forager. `setPredatorTravel(index, false)` holds
+ * one body and leaves its mind untouched (`specs/instrumentation.md`), so the
+ * schedule still turns `released` over on time and contact still costs a life.
+ *
+ * Hands back how many it held, which is a caller's reading of the roster it
+ * found.
+ */
+export async function holdPredators(h: FixtureHost): Promise<number> {
+  const board = await h.snapshot();
+  for (let index = 0; index < board.predators.length; index += 1) {
+    await h.debug.setPredatorTravel(index, false);
+  }
+  const held = await h.snapshot();
+  for (const [index, predator] of held.predators.entries()) {
+    requireHeld(
+      predator.travel,
+      `the ${predator.kind} at index ${index}`,
+      "travel",
+      "setPredatorTravel",
+    );
+  }
+  return board.predators.length;
 }
 
 /**
  * Add one bonus drifter and hand back its index, on the same reading.
  *
- * `mind: false` holds it where it stands: still drawn, still eaten by a forager
- * whose tile it shares, and still worth the ordinary bonus
- * (`specs/instrumentation.md`).
+ * Its two faculties are posed separately, as a hunter's are. `mind: false`
+ * leaves it deciding nothing, so nothing is carried out and it holds where it
+ * stands; `travel: false` holds its body while its wander runs on. Under either
+ * it is still drawn, still eaten by a forager whose tile it shares, and still
+ * worth the ordinary bonus (`specs/instrumentation.md`).
  */
 export async function spawnDrifter(
   h: FixtureHost,
   tile: Tile,
-  options: { mind?: boolean } = {},
+  options: { mind?: boolean; travel?: boolean } = {},
 ): Promise<number> {
   await h.debug.spawnDrifter(tile.tx, tile.ty);
   const index = (await h.snapshot()).drifters.length - 1;
   if (options.mind === false) await h.debug.setDrifterMind(index, false);
+  if (options.travel === false) await h.debug.setDrifterTravel(index, false);
+  if (options.mind === false || options.travel === false) {
+    const posed = (await h.snapshot()).drifters[index];
+    if (options.mind === false) {
+      requireHeld(posed?.mind, "the drifter", "mind", "setDrifterMind");
+    }
+    if (options.travel === false) {
+      requireHeld(posed?.travel, "the drifter", "travel", "setDrifterTravel");
+    }
+  }
   return index;
 }
 

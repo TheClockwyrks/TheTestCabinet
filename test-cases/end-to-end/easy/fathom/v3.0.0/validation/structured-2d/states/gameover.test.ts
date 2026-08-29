@@ -51,7 +51,7 @@ import {
   frameOps,
   loseEveryLife,
 } from "./screens";
-import { poseMaze, spawnPredator } from "../fixtures";
+import { poseMaze, spawnDrifter, spawnPredator } from "../fixtures";
 import { parkForager } from "../scene";
 
 /**
@@ -94,13 +94,16 @@ it("ends the run on game over, reports it, and plays again", async () => {
   h.debug.setPlankton(bite.tx, bite.ty, true);
   h.debug.setForagerTile(bite.tx, bite.ty);
   await h.advance(EAT_TICKS);
-  h.debug.spawnDrifter(bite.tx, bite.ty);
+  await spawnDrifter(h, bite, { mind: false });
   await h.advance(EAT_TICKS);
   const scored = h.snapshot();
 
   // The hunter every attempt below stages its catch with, added after the score
-  // is banked so nothing can take a life early.
-  await spawnPredator(h, "lanternjaw", board.mark("P"));
+  // is banked so nothing can take a life early. Each catch is POSED — the hunter
+  // is put on the forager's own tile — so nothing here is about where it travels,
+  // and its body is held while contact still costs a life
+  // (specs/instrumentation.md).
+  await spawnPredator(h, "lanternjaw", board.mark("P"), { travel: false });
 
   const over = await loseEveryLife(h);
   const ops = await frameOps(h);

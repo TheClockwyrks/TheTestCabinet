@@ -120,9 +120,11 @@ export const REQUIRED_OPS = [
   "setPredatorState",
   "setPredatorReleased",
   "setPredatorMind",
+  "setPredatorTravel",
   "spawnDrifter",
   "clearDrifters",
   "setDrifterMind",
+  "setDrifterTravel",
   "setSonarCooldown",
   "setInkCooldown",
 ] as const;
@@ -161,6 +163,8 @@ export interface PredatorSnapshot {
   released: boolean;
   /** Whether its own mind is running (`specs/state.md`). */
   mind: boolean;
+  /** Whether its body carries what its mind decides (`specs/state.md`). */
+  travel: boolean;
   speed: number;
   alert: boolean;
   lit: boolean;
@@ -192,6 +196,8 @@ export interface DrifterSnapshot {
   lit: boolean;
   /** Whether its own mind is running (`specs/state.md`). */
   mind: boolean;
+  /** Whether its body carries that wander through the maze (`specs/state.md`). */
+  travel: boolean;
 }
 
 /** One sonar wavefront in flight, the forager's own and the Gloamfin's alike. */
@@ -309,9 +315,11 @@ export interface FathomDebugApi extends FixtureOps {
   setPredatorState(index: number, value: PosablePredatorState): Promise<void>;
   setPredatorReleased(index: number, released: boolean): Promise<void>;
   setPredatorMind(index: number, enabled: boolean): Promise<void>;
+  setPredatorTravel(index: number, enabled: boolean): Promise<void>;
   spawnDrifter(tx: number, ty: number): Promise<void>;
   clearDrifters(): Promise<void>;
   setDrifterMind(index: number, enabled: boolean): Promise<void>;
+  setDrifterTravel(index: number, enabled: boolean): Promise<void>;
   setSonarCooldown(seconds: number): Promise<void>;
   setInkCooldown(seconds: number): Promise<void>;
 }

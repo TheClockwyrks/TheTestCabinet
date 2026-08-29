@@ -128,7 +128,7 @@ it("charges for FLARE_CHARGE, blooms for FLARE_BLOOM, and charges again a whole 
       `the Flarefish's state before ${what}, from a sealed hallway eleven ` +
         "tiles from a forager at G = 0 — a Flarefish that has found the " +
         "forager neither charges nor blooms (specs/predators/flarefish.md), " +
-        "so a cadence can only be timed on one that is still patrolling",
+        "so a cadence can only be timed on one that is still wandering",
     );
   };
 

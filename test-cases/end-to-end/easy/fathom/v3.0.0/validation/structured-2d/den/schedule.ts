@@ -23,10 +23,15 @@
 // layout and nothing else (`specs/instrumentation.md`), so a posed fixture runs
 // the release schedule exactly as a laid-out maze does — and `setDepth` puts "the
 // roster ... laid out in the den with every `released` flag false, exactly as a
-// maze at that depth lays it out" onto it. What the pose buys is the one thing
-// these items must not be at the mercy of: the forager stands in a corridor no
-// route joins to the den, so no hunter these items time can reach it and cost a
-// life, which would re-den the roster and restart the very clock being read.
+// maze at that depth lays it out" onto it.
+//
+// AND EVERY HUNTER'S BODY IS HELD, because neither item exercises one. The
+// schedule is the `released` flag and nothing else, and `setPredatorTravel` leaves
+// that flag turning over on its own slot while the body holds in the den, since
+// crossing the chamber to the gate is travel (`specs/instrumentation.md`). So the
+// one thing these items must not be at the mercy of — a hunter reaching the
+// forager, taking a life, re-denning the roster and restarting the very clock
+// being read — cannot happen, because nothing on the board travels at all.
 
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
 import { assertEqual, assertLength } from "../assert";
@@ -109,7 +114,22 @@ export async function poseDenBoard(h: Harness): Promise<Tile> {
   await parkForager(h, home);
   h.debug.setDepth(DEN_DEPTH);
   h.debug.setBrightness(0);
+  holdRoster(h);
   return home;
+}
+
+/**
+ * Hold every hunter of the laid-out roster where it stands, minds running.
+ *
+ * Called after `setDepth` has laid the roster in, and again after a catch has
+ * re-denned it: `specs/progression.md` restores the arrangement an attempt starts
+ * from, and neither item reads anything a fresh body would carry over.
+ */
+export function holdRoster(h: Harness): void {
+  const roster = h.snapshot().predators;
+  for (let index = 0; index < roster.length; index += 1) {
+    h.debug.setPredatorTravel(index, false);
+  }
 }
 
 /**

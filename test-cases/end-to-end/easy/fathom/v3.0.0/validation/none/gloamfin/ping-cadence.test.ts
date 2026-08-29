@@ -11,13 +11,12 @@
 // Gloamfin's own, that each leaves the Gloamfin's own tile, and that the gaps
 // between them are the interval.
 //
-// WHY THE GLOAMFIN IS SEALED AWAY FROM THE FORAGER. The same file makes a Gloamfin
-// "silent for as long as it holds" a close-range hearing lock, so a patrol that
-// wanders into the forager stops pinging and the measurement ends. `specs/maze.md`
-// has a laid-out maze in one connected region, which cannot keep them apart for
-// thirteen seconds; a posed fixture is exempt from those rules
-// (`specs/instrumentation.md`) and simply puts them in separate rooms. That the
-// silence itself is correct is `gloamfin/silent-when-close`'s point, not this one's.
+// WHY THE GLOAMFIN STANDS AWAY FROM THE FORAGER. The same file makes a Gloamfin
+// "silent for as long as it holds" a close-range hearing lock, so a hunter inside
+// `GLOAMFIN_HEAR` stops pinging and the measurement ends. The fixture puts the two
+// in separate rooms, ten tiles apart, and the hunter's travel is held, so that
+// separation is the one the whole watch runs at. That the silence itself is
+// correct is `gloamfin/silent-when-close`'s point, not this one's.
 //
 // WHAT THIS DOES NOT DECIDE. What the floor between two pings is
 // (`gloamfin/ping-floor`), what a search's guaranteed ping does
@@ -92,11 +91,14 @@ afterEach(async () => {
 it("It pings on its own cadence", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
+  // The cadence is its mind's timer, so its mind runs and its travel is held: it
+  // casts every ping from the one tile the fixture stood it on.
   const index = await spawnPredator(h, "gloamfin", rooms.far, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h);
-  // The Gloamfin patrols across the board in the dark, so the canvas alone would
+  // The Gloamfin stands across the board in the dark, so the canvas alone would
   // record a black screen. The debug overlay is a read-only panel carrying each
   // predator's kind, state, tile and speed, toggled by the backtick key
   // (`specs/instrumentation.md`), so this changes nothing and gives the clip

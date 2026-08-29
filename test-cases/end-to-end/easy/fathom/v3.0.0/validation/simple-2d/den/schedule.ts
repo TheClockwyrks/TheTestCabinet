@@ -37,7 +37,7 @@
 // release time `0` exactly.
 
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
-import { placeForager, poseMaze } from "../fixtures";
+import { holdPredators, placeForager, poseMaze } from "../fixtures";
 import { Harness } from "../harness";
 import { FathomSnapshot } from "../surface";
 import { Tile } from "../maze";
@@ -95,13 +95,19 @@ const DEPTH = 1;
  *
  * Left on the TITLE screen: `reset` opens there and nothing here makes the screen
  * become `"playing"`, because that instant is release time `0` and each item pins
- * it itself.
+ * it itself. Every hunter is left with its mind running and its travel held.
  */
 export async function poseDenSchedule(h: Harness, seed: number): Promise<Tile> {
   h.debug.reset({ seed });
   const board = await poseMaze(h, BOARD);
   // The roster this point is about, laid out in the chamber the fixture carries.
   h.debug.setDepth(DEPTH);
+  // Held where they lie. Both items read the `released` flag and the moment it
+  // turns over, which a held predator's slot still does on schedule
+  // (`specs/instrumentation.md`); what travel would add is three bodies crossing
+  // the chamber, which is `maze-movement/predators-keep-to-corridors`' subject
+  // and nothing to a schedule.
+  await holdPredators(h);
   const home = board.mark("F");
   // Faced into the rock above a corridor one tile wide, so the forager holds the
   // tile it was put on for the whole watch (`specs/movement.md`).

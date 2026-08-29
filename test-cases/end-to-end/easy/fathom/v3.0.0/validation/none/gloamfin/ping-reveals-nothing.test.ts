@@ -23,18 +23,19 @@
 // before and after. Anything that changes out there was changed by the ping.
 //
 // A DRIFTER AND A SECOND HUNTER STAND IN THE ROOM, because "marks no predator and
-// no drifter" is not a claim a check can make of an empty corridor. The second
-// hunter is a LANTERNJAW rather than a Flarefish: a Flarefish's flare "lights the
-// full disc of the flare radius... revealing and remembering every tile in it"
-// (`specs/sensing.md`), which would reveal the room under the measurement and blame
-// the ping for it.
+// no drifter" is not a claim a check can make of an empty corridor. Both are
+// props, posed with their minds off, so each holds the tile it was put on. The
+// second hunter is a LANTERNJAW rather than a Flarefish: a Flarefish's flare
+// "lights the full disc of the flare radius... revealing and remembering every
+// tile in it" (`specs/sensing.md`), which would reveal the room under the
+// measurement and blame the ping for it.
 //
 // THE PIXELS ARE SAMPLED WHERE NOTHING IS DRAWN. The drifter and the Lanternjaw's
 // bulb are amber lights "drawn at all times and at any distance" in this variant
-// (`specs/sensing.md`), so they move under the reading and would change pixels the
-// ping never touched. The sample tiles are therefore chosen at the moment of the
-// cast, at least two tiles clear of every drawn creature, and re-checked when the
-// second reading is taken.
+// (`specs/sensing.md`), so a pixel read on top of either would carry a change the
+// ping never made. The sample tiles are therefore chosen at the moment of the
+// cast, at least two tiles clear of every drawn creature, and the clearance is
+// read again when the second reading is taken.
 //
 // AND THEY ARE SAMPLED AFTER THE FRONT HAS GONE. The wavefront itself IS drawn
 // while it travels, so a reading taken under it would measure the one thing the
@@ -69,15 +70,15 @@ import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * The fixture: the forager's own corridor at `N`, and across three tiles of solid
- * rock an eleven-tile room holding the Lanternjaw on `A`, a drifter on `B`, the
- * eight tiles `C` the pixels are sampled from, and the Gloamfin on `G`.
+ * rock a nine-tile room holding the Lanternjaw on `A`, a drifter on `B`, the six
+ * tiles `C` the pixels are sampled from, and the Gloamfin on `G`.
  *
- * ELEVEN TILES, so that every tile of the room is inside the
- * `GLOAMFIN_PING_RANGE` (`9`) corridor steps a ping floods to from all but the two
- * furthest origins, and the check confirms the reach it actually got rather than
- * assuming it.
+ * NINE TILES, so that every tile of the room — the Lanternjaw at its far end
+ * included, eight corridor steps from the Gloamfin — is inside the
+ * `GLOAMFIN_PING_RANGE` (`9`) steps a ping floods to. The check confirms the reach
+ * it actually got rather than assuming it.
  */
-const SEALED_ROOM = ["N..   AB" + "C".repeat(8) + "G"];
+const SEALED_ROOM = ["N..   AB" + "C".repeat(6) + "G"];
 
 /**
  * How long the scenario will wait for the Gloamfin to cast, in ticks.
@@ -162,13 +163,20 @@ afterEach(async () => {
 it("Its ping reveals nothing", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, SEALED_ROOM);
+  // The room this point is about: one Gloamfin casting on its own cadence, and
+  // one Lanternjaw and one drifter held exactly where they are put so the pixels
+  // below can only be the ping's doing. The caster's travel is held too — the
+  // ping is its mind's, and the reaches below are measured from the tile it casts
+  // on.
   const gloamfin = await spawnPredator(h, "gloamfin", board.mark("G"), {
     state: "wander",
+    travel: false,
   });
   const lanternjaw = await spawnPredator(h, "lanternjaw", board.mark("A"), {
     state: "wander",
+    mind: false,
   });
-  await spawnDrifter(h, board.mark("B"));
+  await spawnDrifter(h, board.mark("B"), { mind: false });
   await parkForager(h, board.mark("N"));
   const guard = await sceneGuard(h);
 

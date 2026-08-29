@@ -92,11 +92,14 @@ afterEach(() => {
 it("It pings on its own cadence", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
+  // The cadence is its mind's timer, so its mind runs and its travel is held: it
+  // casts every ping from the one tile the fixture stood it on.
   const index = await spawnPredator(h, "gloamfin", rooms.far, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h);
-  // The Gloamfin patrols across the board in the dark, so the canvas alone would
+  // The Gloamfin stands across the board in the dark, so the canvas alone would
   // record a black screen. The debug overlay is a read-only panel carrying each
   // predator's kind, state, tile and speed, toggled by the backtick key
   // (`specs/instrumentation.md`), so this changes nothing and gives the clip

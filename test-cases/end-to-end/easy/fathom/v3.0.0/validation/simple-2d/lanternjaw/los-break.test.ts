@@ -106,10 +106,13 @@ it("Rock breaks its sense", async () => {
   await parkForager(h, home);
   await poseBrightness(h, POSED_G, BRIGHT_HOLD);
   // The one Lanternjaw this point is about, standing where the band occludes it.
+  // Its travel is held: whether the rock breaks its SENSE is the claim, and a
+  // hunter that walked out from behind the band would answer a different one.
   const index = await spawnPredator(h, "lanternjaw", blind, {
     state: "wander",
+    travel: false,
   });
-  const watch = await sceneGuard(h);
+  const watch = await sceneGuard(h, { posesAgain: true });
 
   const read = await captureReplay(h, "blind", async () => {
     // Behind the band: inside the range, no line, so no fix at any step.

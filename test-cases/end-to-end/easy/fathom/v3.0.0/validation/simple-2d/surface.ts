@@ -100,7 +100,9 @@ export interface PredatorSnapshot {
   released: boolean;
   /** Whether its own mind is running. */
   mind: boolean;
-  /** Its current speed, in logical units per second. */
+  /** Whether its body carries what its mind decides through the maze. */
+  travel: boolean;
+  /** The rate it travels at in its current `state`, in logical units per second. */
   speed: number;
   /** True only while its detection alert is firing. */
   alert: boolean;
@@ -128,6 +130,8 @@ export interface DrifterSnapshot {
   ty: number;
   /** Whether its own wander is running. */
   mind: boolean;
+  /** Whether its body carries that wander through the maze. */
+  travel: boolean;
   /**
    * True while its body is being drawn this instant, by the forager's light or
    * by a flare.
@@ -285,10 +289,16 @@ export interface FathomDebugApi<S = unknown> {
     index: number,
     released: boolean,
   ): S;
+  /** Gates its sensing and its deciding alone. */
   setPredatorMind(state: DeepReadonly<S>, index: number, enabled: boolean): S;
+  /** Gates its locomotion alone: its mind runs on untouched. */
+  setPredatorTravel(state: DeepReadonly<S>, index: number, enabled: boolean): S;
   spawnDrifter(state: DeepReadonly<S>, tx: number, ty: number): S;
   clearDrifters(state: DeepReadonly<S>): S;
+  /** Gates its wander alone. */
   setDrifterMind(state: DeepReadonly<S>, index: number, enabled: boolean): S;
+  /** Gates its locomotion alone: its wander runs on untouched. */
+  setDrifterTravel(state: DeepReadonly<S>, index: number, enabled: boolean): S;
   setSonarCooldown(state: DeepReadonly<S>, seconds: number): S;
   setInkCooldown(state: DeepReadonly<S>, seconds: number): S;
 }
@@ -325,9 +335,11 @@ export const REQUIRED_OPS = [
   "setPredatorState",
   "setPredatorReleased",
   "setPredatorMind",
+  "setPredatorTravel",
   "spawnDrifter",
   "clearDrifters",
   "setDrifterMind",
+  "setDrifterTravel",
   "setSonarCooldown",
   "setInkCooldown",
 ] as const;

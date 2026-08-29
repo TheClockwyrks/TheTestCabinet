@@ -139,8 +139,9 @@ export const MOTION_EPS = 4;
  * it.
  *
  * Deliberately NOT for the points that are about a predator staying put — a
- * denned hunter, a bystander held by `setPredatorMind(index, false)`, a hunter
- * boxed in by rock — each of which travels zero legitimately.
+ * denned hunter, a prop held by `setPredatorMind(index, false)`, a sensing
+ * hunter held by `setPredatorTravel(index, false)`, a hunter boxed in by rock —
+ * each of which travels zero legitimately.
  */
 export function requirePredatorMotion(
   before: SceneView,
@@ -161,6 +162,40 @@ export function requirePredatorMotion(
   fail(
     `the ${to.kind} to travel under its own power while the scenario waited for ` +
       `it to ${what}; specs/predators.md fixes a speed for every state it can be in`,
+    `${moved.toFixed(1)} units moved`,
+  );
+}
+
+/**
+ * The scenario's SUBJECT is a drifter that was supposed to travel, and it FAILS
+ * when it did not.
+ *
+ * The drifter's counterpart to {@link requirePredatorMotion}, for the points
+ * whose witness is a body that moves under its own power and senses nothing at
+ * all. `specs/gameplay.md` has a bonus drifter wander the corridors at
+ * `DRIFTER_SPEED`, so one that covers no ground across a whole measurement has
+ * exhibited nothing for a reading to be taken from.
+ */
+export function requireDrifterMotion(
+  before: SceneView,
+  after: SceneView,
+  index: number,
+  what: string,
+): void {
+  const from = before.drifters[index];
+  const to = after.drifters[index];
+  if (from === undefined || to === undefined) {
+    fail(
+      `the maze to still hold the drifter this scenario posed at index ${index}`,
+      `${after.drifters.length} drifters on the maze`,
+    );
+  }
+  const moved = Math.hypot(to.x - from.x, to.y - from.y);
+  if (moved >= MOTION_EPS) return;
+  fail(
+    `the drifter to wander under its own power while the scenario waited for ` +
+      `it to ${what}; specs/gameplay.md has one drift the corridors at ` +
+      "DRIFTER_SPEED",
     `${moved.toFixed(1)} units moved`,
   );
 }
@@ -209,6 +244,27 @@ export interface SceneGuard {
   forager: Tile;
   lives: number;
   screen: string;
+  held: readonly HeldBody[];
+}
+
+/**
+ * A creature the scenario posed with a faculty switched off, and the tile it was
+ * standing on when it was posed.
+ *
+ * `specs/instrumentation.md` makes both holds a promise about the BODY. With its
+ * travel off a creature's body "holds the tile it stands on, however long the
+ * scenario runs and whatever its mind decides"; with its mind off "nothing is
+ * decided, so nothing is carried out and it holds exactly where it stands". So a
+ * held creature that has changed tile by the end of a measurement is a build that
+ * did not honor the hold.
+ */
+export interface HeldBody {
+  /** How a failure names it, e.g. `the gloamfin (predator 0)`. */
+  what: string;
+  /** Which list it is in, and where in that list. */
+  family: "predator" | "drifter";
+  index: number;
+  tile: Tile;
 }
 
 /**
@@ -218,10 +274,16 @@ export interface SceneGuard {
  * TAKE IT ONCE THE SCENARIO IS POSED, which is what the picture is of. A check
  * that re-poses part-way through takes a fresh one at that point. Pass
  * `foragerParked: false` for a scenario in which the forager is meant to travel.
+ *
+ * Pass `posesAgain: true` for a scenario that MOVES A HELD CREATURE ITSELF — one
+ * that sweeps a hunter out along a corridor with `setPredatorTile` to read what
+ * it senses at each distance. The picture cannot tell a step the scenario took
+ * from a step the build took, so a scenario that takes its own gives up the
+ * hold's guarantee and reads each distance back off the snapshot instead.
  */
 export async function sceneGuard(
   h: SceneHost,
-  options: { foragerParked?: boolean } = {},
+  options: { foragerParked?: boolean; posesAgain?: boolean } = {},
 ): Promise<SceneGuard> {
   const snapshot = await h.snapshot();
   return {
@@ -229,7 +291,32 @@ export async function sceneGuard(
     forager: { tx: snapshot.forager.tx, ty: snapshot.forager.ty },
     lives: snapshot.lives,
     screen: snapshot.screen,
+    held: options.posesAgain === true ? [] : heldBodies(snapshot),
   };
+}
+
+/** Every creature on the board standing with a faculty switched off. */
+function heldBodies(snapshot: SceneView): HeldBody[] {
+  const out: HeldBody[] = [];
+  snapshot.predators.forEach((one, index) => {
+    if (one.mind && one.travel) return;
+    out.push({
+      what: `the ${one.kind} (predator ${index})`,
+      family: "predator",
+      index,
+      tile: { tx: one.tx, ty: one.ty },
+    });
+  });
+  snapshot.drifters.forEach((one, index) => {
+    if (one.mind && one.travel) return;
+    out.push({
+      what: `drifter ${index}`,
+      family: "drifter",
+      index,
+      tile: { tx: one.tx, ty: one.ty },
+    });
+  });
+  return out;
 }
 
 /**
@@ -258,6 +345,43 @@ export function sceneHeld(
         "point describes"
       );
     }
+  }
+  return heldBroke(snapshot, guard);
+}
+
+/**
+ * The held creature that travelled anyway, as a sentence, or `null` when none
+ * did.
+ *
+ * THIS IS WHAT THE ISOLATION RESTS ON. A check poses the faculties its
+ * requirement exercises and holds the rest, and everything it then measures
+ * assumes the held ones stayed held. A build that reports `travel: false` and
+ * carries the body through the maze regardless satisfies the read-back
+ * `fixtures.ts` takes and breaks the scenario silently — and a run measured
+ * against a hunter that was supposed to be standing still is not the run the
+ * point describes. So the hold is re-read at the END of the measurement, against
+ * the tile it was posed on.
+ *
+ * A creature the scenario deliberately let go of is not held any more, so only
+ * one still reporting a faculty off is judged.
+ */
+function heldBroke(snapshot: SceneView, guard: SceneGuard): string | null {
+  for (const held of guard.held) {
+    const now =
+      held.family === "predator"
+        ? snapshot.predators[held.index]
+        : snapshot.drifters[held.index];
+    if (now === undefined) continue;
+    if (now.mind && now.travel) continue;
+    if (now.tx === held.tile.tx && now.ty === held.tile.ty) continue;
+    const off = [now.mind ? null : "its mind", now.travel ? null : "its travel"]
+      .filter((one) => one !== null)
+      .join(" and ");
+    return (
+      `${held.what} was posed with ${off} off, which holds its body on the tile ` +
+      `it stands on, and it travelled from (${held.tile.tx}, ${held.tile.ty}) ` +
+      `to (${now.tx}, ${now.ty}) anyway`
+    );
   }
   return null;
 }

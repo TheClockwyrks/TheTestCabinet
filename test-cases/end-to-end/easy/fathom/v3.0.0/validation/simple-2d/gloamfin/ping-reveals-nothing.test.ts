@@ -55,7 +55,7 @@ import {
   assertTrue,
 } from "../assert";
 import { GLOAMFIN_PING_RANGE, TICK_HZ, TILE } from "../../src/constants";
-import { poseMaze, spawnPredator } from "../fixtures";
+import { poseMaze, spawnDrifter, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   centerOf,
@@ -70,15 +70,15 @@ import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * The fixture: the forager's own corridor at `N`, and across three tiles of solid
- * rock an eleven-tile room holding the Lanternjaw on `A`, a drifter on `B`, the
- * eight tiles `C` the pixels are sampled from, and the Gloamfin on `G`.
+ * rock a nine-tile room holding the Lanternjaw on `A`, a drifter on `B`, the six
+ * tiles `C` the pixels are sampled from, and the Gloamfin on `G`.
  *
- * ELEVEN TILES, so that every tile of the room is inside the
- * `GLOAMFIN_PING_RANGE` (`9`) corridor steps a ping floods to from all but the two
- * furthest origins, and the check confirms the reach it actually got rather than
- * assuming it.
+ * NINE TILES, so that every tile of the room — the Lanternjaw at its far end
+ * included, eight corridor steps from the Gloamfin — is inside the
+ * `GLOAMFIN_PING_RANGE` (`9`) steps a ping floods to. The check confirms the reach
+ * it actually got rather than assuming it.
  */
-const SEALED_ROOM = ["N..   AB" + "C".repeat(8) + "G"];
+const SEALED_ROOM = ["N..   AB" + "C".repeat(6) + "G"];
 
 /**
  * How long the scenario will wait for the Gloamfin to cast, in ticks.
@@ -171,18 +171,20 @@ afterEach(() => {
 it("Its ping reveals nothing", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, SEALED_ROOM);
-  // The room this point is about: one Gloamfin running its own mind, and one
-  // Lanternjaw and one drifter held exactly where they are put so the pixels
-  // below can only be the ping's doing.
+  // The room this point is about: one Gloamfin casting on its own cadence, and
+  // one Lanternjaw and one drifter held exactly where they are put so the pixels
+  // below can only be the ping's doing. The caster's travel is held too — the
+  // ping is its mind's, and the reaches below are measured from the tile it
+  // casts on.
   const gloamfin = await spawnPredator(h, "gloamfin", board.mark("G"), {
     state: "wander",
+    travel: false,
   });
   const lanternjaw = await spawnPredator(h, "lanternjaw", board.mark("A"), {
     state: "wander",
     mind: false,
   });
-  await h.debug.spawnDrifter(board.mark("B").tx, board.mark("B").ty);
-  await h.debug.setDrifterMind(0, false);
+  await spawnDrifter(h, board.mark("B"), { mind: false });
   await parkForager(h, board.mark("N"));
   const guard = await sceneGuard(h);
 

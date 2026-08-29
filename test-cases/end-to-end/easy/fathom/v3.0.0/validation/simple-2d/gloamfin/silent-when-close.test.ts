@@ -106,8 +106,11 @@ afterEach(() => {
 it("It goes silent while it holds you by ear", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, SEALED_PAIR);
+  // The lock and the silence are its mind's, so its mind runs and its travel is
+  // held: the pair stands the separation the fixture walled them into.
   const index = await spawnPredator(h, "gloamfin", board.mark("G"), {
     state: "wander",
+    travel: false,
   });
   await placeForager(h, board.mark("F"), "right");
   // The forager is moved by this scenario on purpose, so the guard watches

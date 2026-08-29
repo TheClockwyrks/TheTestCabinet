@@ -119,8 +119,9 @@ it("takes a fix on the forager's light inside R and none beyond it", async () =>
 
   const index = await spawnPredator(h, "flarefish", line.pred, {
     dir: line.toForager,
+    travel: false,
   });
-  const guard = await sceneGuard(h);
+  const guard = await sceneGuard(h, { posesAgain: true });
 
   const read = await captureReplay(h, "light", async () => {
     // The far stand: fifteen tiles down the corridor, at the brightest the

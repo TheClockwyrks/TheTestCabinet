@@ -20,18 +20,23 @@
 // stands it inside the radius during the next, so a build with no distance test
 // fails the first and a build that never locks fails the second.
 //
-// THE NEGATIVE LEG IS JUDGED STEP BY STEP RATHER THAN OVER A GUESSED WINDOW. The
-// disc moves with the Flarefish and the Flarefish is patrolling, so the separation
-// changes underneath any fixed window. Each step is therefore read on its own: the
-// leg counts only the steps on which the bloom was burning AND the pair stood past
-// `FLARE_RADIUS`, and asks that no fix was taken on any of them. A build whose
-// hunter drifts into range simply ends the leg early with fewer steps behind it,
-// and the check says so rather than reporting a lock it invited.
+// WHAT THE FLAREFISH IS POSED WITH. Its mind alone: the flare cycle it runs and
+// the lock it takes are the whole of the claim, and its travel is HELD, so the
+// bloom burns from the one tile the fixture stood it on. Every separation below is
+// then the fixture's own arithmetic rather than whatever a patrol had made of it,
+// and a hunter drifting into range cannot turn the negative leg into a lock the
+// check invited itself. How a Flarefish travels is
+// `flarefish/chase-like-lanternjaw`'s.
+//
+// THE NEGATIVE LEG IS STILL JUDGED STEP BY STEP. The lock is evaluated on every
+// step of a burning bloom, so each step is a fresh chance for a build with no
+// distance test: the leg counts the steps on which the bloom was burning AND the
+// pair stood past `FLARE_RADIUS`, and asks that no fix was taken on any of them.
 //
 // THE FORAGER WAITS IN A THIRD, SEALED POCKET between the legs, seven tiles below
-// the patrol — past `FLARE_RADIUS` from every tile of it — so the bloom the leg is
-// about is the first one that can reach it, rather than one that locked on while
-// the scenario was still waiting.
+// the Flarefish — past `FLARE_RADIUS` — so the bloom the leg is about is the
+// first one that can reach it, rather than one that locked on while the scenario
+// was still waiting.
 //
 // WHAT THIS DOES NOT DECIDE. What the bloom LIGHTS, which is
 // `flarefish/flare-reveals`'s; and the cadence the blooms arrive on, which is
@@ -68,8 +73,8 @@ import type { Tile } from "../maze";
  * way from one to the other, and a third sealed pocket well below both.
  *
  * `F` is the corridor the forager is posed into during a bloom, `P` the corridor
- * the Flarefish patrols, and `W` the pocket the forager waits in between the legs.
- * A posed fixture is exempt from `specs/maze.md`'s connectedness
+ * the Flarefish stands in, and `W` the pocket the forager waits in between the
+ * legs. A posed fixture is exempt from `specs/maze.md`'s connectedness
  * (`specs/instrumentation.md`), which is what lets three rooms with no route
  * between them stand as the whole maze.
  */
@@ -90,7 +95,7 @@ const ART = [
 ] as const;
 
 /**
- * How far the forager's corridor sits above the patrol, in tiles.
+ * How far the forager's corridor sits above the Flarefish's, in tiles.
  *
  * Five tiles is `160` units, inside `FLARE_RADIUS` (`192`) with four rows of solid
  * rock between — the whole shape of the claim in one number.
@@ -100,7 +105,7 @@ const ROWS_APART = 5;
 /**
  * How far along its corridor the forager stands for the negative leg, in tiles.
  *
- * Five tiles across the five it stands above the patrol is `sqrt(50)` tiles,
+ * Five tiles across the five it stands above the Flarefish is `sqrt(50)` tiles,
  * `226` units: past `FLARE_RADIUS` with a tile and a bit to spare, so the leg is
  * about a forager JUST outside the disc rather than one across the board from it.
  */
@@ -144,15 +149,16 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const lane = board.mark("F");
-  const patrol = board.mark("P");
+  const stand = board.mark("P");
   const pocket = board.mark("W");
   await parkForager(h, pocket);
   await h.debug.clearPlankton();
   await h.debug.setBrightness(0);
 
-  const index = await spawnPredator(h, "flarefish", patrol, {
+  const index = await spawnPredator(h, "flarefish", stand, {
     dir: "right",
     state: "wander",
+    travel: false,
   });
   // The forager is moved between the legs, so the guard watches everything about
   // the scene except where it stands.
@@ -164,11 +170,25 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
     const fish = snap.predators[index];
     return Math.hypot(fish.x - snap.forager.x, fish.y - snap.forager.y);
   };
-  /** A tile of the forager's corridor `across` tiles from the Flarefish's column. */
-  const lanePlace = (fishColumn: number, across: number): Tile => {
-    const right = fishColumn + across;
-    const tx =
-      right <= patrol.tx + ART[0].length - 1 ? right : fishColumn - across;
+  /**
+   * A tile of the forager's corridor `across` tiles along from the Flarefish's
+   * own column.
+   *
+   * Both legs are about a distance FROM THE HUNTER, and its travel is held, so
+   * the column is the one the fixture stood it in and the tile is arithmetic on
+   * the stamped art. The assertion is the fixture checking its own drawing: a
+   * board whose grid is not the one `specs/overview.md` fixes could put the
+   * offset outside the lane, and that is a failure of this check rather than a
+   * rock tile handed to `setForagerTile`.
+   */
+  const lanePlace = (across: number): Tile => {
+    const tx = stand.tx + across;
+    assertEqual(
+      board.rows[lane.ty]?.[tx],
+      ".",
+      `the tile ${across} along the Flarefish's lane, at (${tx}, ${lane.ty}), ` +
+        "is the corridor this fixture stamped there",
+    );
     return { tx, ty: lane.ty };
   };
 
@@ -179,9 +199,9 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
   );
   // A fix taken while the forager waits in its pocket is itself the negative
   // leg's verdict, and a harsher one than the leg below: the pocket sits seven
-  // tiles under the patrol, past FLARE_RADIUS, behind six rows of solid rock and
-  // with no ink anywhere, so nothing the specification gives this hunter reaches
-  // it. Read at this point in the scenario, because a bloom that ignores its own
+  // tiles under the Flarefish, past FLARE_RADIUS, behind six rows of solid rock
+  // and with no ink anywhere, so nothing the specification gives this hunter
+  // reaches it. Read at this point in the scenario, because a bloom that ignores its own
   // radius takes that fix on the FIRST flare and leaves no later one to watch.
   assertEqual(
     firstBloom.snapshot.predators[index].state,
@@ -193,13 +213,10 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
   assertEqual(
     firstBloom.hit,
     true,
-    `the Flarefish bloomed within ${FIRST_FLARE_MAX} s of patrolling its own ` +
+    `the Flarefish bloomed within ${FIRST_FLARE_MAX} s of standing in its own ` +
       "corridor, which is the bloom the forager stands outside of",
   );
-  const outside = lanePlace(
-    firstBloom.snapshot.predators[index].tx,
-    OFFSET_TILES,
-  );
+  const outside = lanePlace(OFFSET_TILES);
   await h.debug.setForagerTile(outside.tx, outside.ty);
 
   const steps: { away: number; state: string }[] = [];
@@ -239,7 +256,7 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
   );
 
   const locked = await captureReplay(h, "lock", async () => {
-    const inside = lanePlace(secondBloom.snapshot.predators[index].tx, 0);
+    const inside = lanePlace(0);
     await h.debug.setForagerTile(inside.tx, inside.ty);
     const posed = await h.snapshot();
     const fix = await h.until(
@@ -261,7 +278,7 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
   // band of solid rock apart.
   assertEqual(
     locked.posed.forager.ty,
-    patrol.ty - ROWS_APART,
+    stand.ty - ROWS_APART,
     "the row the forager was posed on, above the Flarefish's own",
   );
   assertLessThan(

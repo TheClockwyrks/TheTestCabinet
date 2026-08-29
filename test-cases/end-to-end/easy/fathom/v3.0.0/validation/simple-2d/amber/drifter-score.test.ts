@@ -26,7 +26,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { SCORE_DRIFTER } from "../../src/constants";
 import { assertEqual } from "../assert";
-import { poseStraightRun } from "../fixtures";
+import { poseStraightRun, spawnDrifter } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -84,7 +84,13 @@ it("Eating a drifter scores SCORE_DRIFTER", async () => {
   for (let step = 0; step < POCKET_TILES; step += 1) {
     h.debug.setPlankton(pocket + step, run.start.ty, true);
   }
-  h.debug.spawnDrifter(run.start.tx + DRIFTER_AT, run.start.ty);
+  await spawnDrifter(
+    h,
+    { tx: run.start.tx + DRIFTER_AT, ty: run.start.ty },
+    {
+      mind: false,
+    },
+  );
   // The drifter waits exactly where it is put.
   h.debug.setDrifterMind(0, false);
   // The forager is this point's subject and is meant to travel, so the guard

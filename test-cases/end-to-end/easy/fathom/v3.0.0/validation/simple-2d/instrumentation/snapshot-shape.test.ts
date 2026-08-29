@@ -54,7 +54,7 @@ import {
   GRID_ROWS,
   TILE,
 } from "../../src/constants";
-import { poseMaze, spawnPredator } from "../fixtures";
+import { poseMaze, spawnDrifter, spawnPredator } from "../fixtures";
 import {
   captureStill,
   createHarness,
@@ -181,8 +181,7 @@ it("reports every documented field, with its documented type", async () => {
     });
   }
   const drop = board.mark("D");
-  h.debug.spawnDrifter(drop.tx, drop.ty);
-  h.debug.setDrifterMind(0, false);
+  await spawnDrifter(h, drop, { mind: false });
   const guard = await sceneGuard(h);
 
   h.debug.setSonarCooldown(0);
@@ -342,6 +341,7 @@ it("reports every documented field, with its documented type", async () => {
     assertNumber(drifter, "ty", `${where}.ty`);
     assertBoolean(drifter, "lit", `${where}.lit`);
     assertBoolean(drifter, "mind", `${where}.mind`);
+    assertBoolean(drifter, "travel", `${where}.travel`);
     const tile = tileOf(snap.grid, drifter.x, drifter.y);
     assertEqual(
       `${drifter.tx},${drifter.ty}`,
@@ -367,6 +367,7 @@ it("reports every documented field, with its documented type", async () => {
     assertContains(STATES, predator.state, `${where}.state`);
     assertBoolean(predator, "released", `${where}.released`);
     assertBoolean(predator, "mind", `${where}.mind`);
+    assertBoolean(predator, "travel", `${where}.travel`);
     assertNumber(predator, "speed", `${where}.speed`);
     assertBoolean(predator, "alert", `${where}.alert`);
     assertBoolean(predator, "lit", `${where}.lit`);

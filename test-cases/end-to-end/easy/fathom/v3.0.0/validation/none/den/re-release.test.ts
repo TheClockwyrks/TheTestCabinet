@@ -30,7 +30,10 @@
 // `poseDenBoard` lays the den board and `setDepth(1)` lays the roster into its
 // chamber; nothing else stands on it. `specs/progression.md` sets the next
 // attempt up over the maze as it stands, so the fixture survives the catch and
-// the re-run schedule is read on the same board the first one was.
+// the re-run schedule is read on the same board the first one was. Every hunter's
+// body is held throughout, the one that takes the life included: the catch is
+// POSED onto the forager's own tile, and contact costs a life whatever a hunter's
+// body is doing (`specs/instrumentation.md`).
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -40,6 +43,7 @@ import {
   assertTrue,
 } from "../assert";
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../constants";
+import { holdPredators } from "../fixtures";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import {
   parkForager,
@@ -121,6 +125,10 @@ it("returns every predator to the den on a catch and runs the whole staggered sc
     });
     await h.advance(SETTLE_TICKS);
     const denned = await h.snapshot();
+    // Held again, in case the attempt this catch set up handed the den fresh
+    // bodies: `specs/instrumentation.md` restores travel on a `reset` alone, and
+    // a roster rebuilt from scratch would arrive travelling.
+    await holdPredators(h);
 
     // The respawn rests the forager on the fixture's start tile, which is the
     // room it was parked in; face it back into rock so it holds that tile.

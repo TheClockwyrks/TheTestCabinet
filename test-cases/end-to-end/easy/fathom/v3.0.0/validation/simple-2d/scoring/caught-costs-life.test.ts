@@ -39,6 +39,7 @@ import {
   assertGreaterThan,
   fail,
 } from "../assert";
+import { holdPredators, spawnDrifter } from "../fixtures";
 import {
   captureReplay,
   centerOf,
@@ -138,10 +139,14 @@ it("Contact costs a life and sets the board up again", async () => {
       fromForager(board, p.x, p.y);
     return reach(at) > reach(to) ? tile : best;
   }, startTile);
-  h.debug.spawnDrifter(away.tx, away.ty);
+  await spawnDrifter(h, away, { mind: false });
 
   const caught = await captureReplay(h, "caught", async () => {
     const before = h.snapshot();
+    // The whole roster held: what this point prices is the CONTACT rule and the
+    // board the game lays out after it, and a second hunter crossing the maze
+    // meanwhile is a bystander that could take the same life.
+    await holdPredators(h);
     h.debug.setPredatorTile(0, before.forager.tx, before.forager.ty);
     h.debug.setPredatorState(0, "chase");
     const contact = await h.until((s) => s.lives < before.lives, {

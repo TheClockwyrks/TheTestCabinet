@@ -95,7 +95,11 @@ it("The Lanternjaw fires no alert", async () => {
     lead: LEAD_TILES,
     tail: TAIL_TILES,
   });
-  const index = await spawnPredator(h, "lanternjaw", line.pred);
+  // Its light sense is what this reads; its body is held, because nothing here
+  // is about where a Lanternjaw goes once it has the fix.
+  const index = await spawnPredator(h, "lanternjaw", line.pred, {
+    travel: false,
+  });
   await parkForager(h, line.forager);
   h.debug.setBrightness(BRIGHT_G);
   h.debug.setBrightHold(BRIGHT_HOLD);

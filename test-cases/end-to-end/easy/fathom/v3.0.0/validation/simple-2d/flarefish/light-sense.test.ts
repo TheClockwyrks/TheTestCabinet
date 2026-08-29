@@ -121,12 +121,15 @@ it("takes a fix on the forager's light inside R and none beyond it", async () =>
   const line = await poseSightLine(h, FAR_TILES, { lead: 1, tail: 1 });
   await parkForager(h, line.forager);
 
-  const guard = await sceneGuard(h);
+  const guard = await sceneGuard(h, { posesAgain: true });
 
   // The one Flarefish this point is about, on a board that holds nothing else.
+  // Its travel is held, so each leg's standoff is exactly the distance the
+  // fixture states for the whole of the window it is watched over.
   const index = await spawnPredator(h, "flarefish", line.pred, {
     dir: line.toForager,
     state: "wander",
+    travel: false,
   });
 
   const read = await captureReplay(h, "light", async () => {

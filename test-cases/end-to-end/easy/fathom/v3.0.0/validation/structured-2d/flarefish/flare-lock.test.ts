@@ -152,7 +152,10 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
   h.debug.clearPlankton();
   h.debug.setBrightness(0);
 
-  const index = await spawnPredator(h, "flarefish", patrol, { dir: "right" });
+  const index = await spawnPredator(h, "flarefish", patrol, {
+    dir: "right",
+    travel: false,
+  });
   // The forager is moved between the legs, so the guard watches everything about
   // the scene except where it stands.
   const guard = await sceneGuard(h, { foragerParked: false });

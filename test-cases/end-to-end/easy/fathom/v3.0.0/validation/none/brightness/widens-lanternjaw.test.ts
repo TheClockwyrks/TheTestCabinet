@@ -108,8 +108,11 @@ afterEach(async () => {
 it("reports detectRange as LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, ROOMS_APART, { ring: RING_TILES });
+  // What is read is the range it REPORTS as the dial turns, which its mind
+  // computes; its travel is held, so the reading is taken on one standing pose.
   const lanternjaw = await spawnPredator(h, "lanternjaw", rooms.far, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, rooms.near);
   const guard = await sceneGuard(h);

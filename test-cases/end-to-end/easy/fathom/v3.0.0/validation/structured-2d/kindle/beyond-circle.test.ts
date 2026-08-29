@@ -55,7 +55,7 @@ import {
   visibilityAt,
 } from "../harness";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
-import { FOG_MATCH, windowRadius } from "./circle";
+import { FOG_MATCH, MASKED_MATCH, windowRadius } from "./circle";
 
 /**
  * The board: one long corridor, and across eight tiles of solid rock a sealed
@@ -75,7 +75,7 @@ const AWAY_TILES = 16; // 512 units: past R at G = 1 (320)
 const NEAR_TILES = 5; // 160 units: past V (96), inside R (192)
 
 /** The review item's bounds, as RGB distances out of `441`. */
-const CLIPPED_MAX = FOG_MATCH;
+const CLIPPED_MAX = MASKED_MATCH;
 const DRAWN_MIN = FOG_MATCH;
 
 /** Ticks run at each station, so the build has drawn the posed board. */

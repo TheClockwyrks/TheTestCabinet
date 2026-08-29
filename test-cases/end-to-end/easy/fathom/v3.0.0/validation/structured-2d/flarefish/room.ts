@@ -128,7 +128,10 @@ export async function poseFlareRoom(h: Harness): Promise<FlareRoom> {
   await parkForager(h, home);
   h.debug.setBrightness(0);
 
-  const index = await spawnPredator(h, "flarefish", hall[2], { dir: "right" });
+  const index = await spawnPredator(h, "flarefish", hall[2], {
+    dir: "right",
+    travel: false,
+  });
 
   return { forager: home, hall, index };
 }

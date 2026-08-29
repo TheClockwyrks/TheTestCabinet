@@ -34,13 +34,12 @@
 // way, and this point is about the sheet rather than about which frame of it.
 //
 // THE SCENE IS BUILT AROUND THE FLARE, because the flare-bloom sheet is drawn
-// only while one burns. The three hunters and the drifter each stand on a single
-// corridor tile boxed in by rock, so none of them can travel
-// (specs/predators.md: "A predator standing on a tile with no open neighbor stays
-// on that tile"), and all four sit inside `FLARE_RADIUS` of the Flarefish, so the
-// bloom draws every one of them live (specs/sensing.md). The forager waits fourteen
-// tiles off, past the bloom's own reach, so the flare cannot lock onto it and cut
-// itself short.
+// only while one burns. Nothing on the board travels: the two hunters this point
+// is not about and the drifter are inert props, and the Flarefish keeps its mind
+// — the bloom is its own cadence running — with its body held. All four sit
+// inside `FLARE_RADIUS` of the Flarefish, so the bloom draws every one of them
+// live (specs/sensing.md). The forager waits fourteen tiles off, past the bloom's
+// own reach, so the flare cannot lock onto it and cut itself short.
 //
 // THE SEEDED TREE IS SERVED TO THE ENGINE'S LOADER. specs/assets.md has the build
 // load every frame through the engine, which resolves each path under `assets/`
@@ -66,7 +65,7 @@ import {
   TILE,
 } from "../../src/constants";
 import { assertTrue, fail } from "../assert";
-import { poseMaze, spawnPredator } from "../fixtures";
+import { poseMaze, spawnDrifter, spawnPredator } from "../fixtures";
 import {
   callsTo,
   captureStill,
@@ -363,20 +362,22 @@ it("draws every element from its own seeded sheet", async () => {
   // the forager across the rock.
 
   // One of each hunter and one drifter: the five bodies whose sheets this point
-  // reads, and nothing else on the board. The two hunters whose behavior this
-  // point is not about are posed with their minds off, so they hold the tile
-  // they are put on because nothing is deciding for them rather than because the
-  // rock around them held. The Flarefish keeps its mind: the bloom this scene is
-  // built around is its own cadence running.
+  // reads, and nothing else on the board. The two hunters and the drifter this
+  // point reads nothing but a sheet off are posed with their minds off, so they
+  // hold the tile they are put on because nothing is deciding for them rather
+  // than because the rock around them held. The Flarefish keeps its mind — the
+  // bloom this scene is built around is its own cadence running — and is held by
+  // its travel alone.
   const lanternjaw = await spawnPredator(h, "lanternjaw", board.mark("L"), {
     mind: false,
   });
   const gloamfin = await spawnPredator(h, "gloamfin", board.mark("G"), {
     mind: false,
   });
-  const flarefish = await spawnPredator(h, "flarefish", board.mark("X"));
-  const drop = board.mark("D");
-  h.debug.spawnDrifter(drop.tx, drop.ty);
+  const flarefish = await spawnPredator(h, "flarefish", board.mark("X"), {
+    travel: false,
+  });
+  await spawnDrifter(h, board.mark("D"), { mind: false });
   const watch = await sceneGuard(h);
 
   // Wait for the bloom on the build's own cadence, under a hard ceiling.

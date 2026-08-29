@@ -80,7 +80,12 @@ afterEach(() => {
 it("plays CUES.predatorPing on the tick a Gloamfin casts its ping, and not before", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, APART_TILES);
-  await spawnPredator(h, "gloamfin", rooms.far, { state: "wander" });
+  // The ping is cast by its mind on its own cadence, so its mind runs and its
+  // travel is held: it casts from the tile the fixture put it on.
+  await spawnPredator(h, "gloamfin", rooms.far, {
+    state: "wander",
+    travel: false,
+  });
   await parkForager(h, rooms.near);
   const watch = await sceneGuard(h);
 

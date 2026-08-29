@@ -15,9 +15,9 @@
 // reads is still caught.
 //
 // THE PAIR STANDS SEVEN TILES APART, 224 units: inside the 320 a Lanternjaw
-// reaches at `G = 1`, so the fix is earned rather than posed, and far enough that
-// the hunter cannot cross the gap and take a life while the window is being
-// watched.
+// reaches at `G = 1`, so the fix is earned rather than posed. Its travel is held,
+// so that is the separation it keeps for the whole window and no acquisition can
+// end in a life lost.
 //
 // THE BOARD HOLDS THE LANTERNJAW AND NOTHING ELSE. `poseSightLine` empties it and
 // this check spawns back the one hunter it is about, so no second predator can
@@ -100,8 +100,11 @@ it("The Lanternjaw fires no alert", async () => {
     lead: LEAD_TILES,
     tail: TAIL_TILES,
   });
+  // Its light sense takes the fix this point reads the absent alert against, and
+  // nothing here is about how it travels, so its travel is held.
   const index = await spawnPredator(h, "lanternjaw", line.pred, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, line.forager);
   await h.debug.setBrightness(BRIGHT_G);

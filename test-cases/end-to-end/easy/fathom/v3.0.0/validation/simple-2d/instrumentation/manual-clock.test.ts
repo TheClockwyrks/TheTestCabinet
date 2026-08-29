@@ -18,24 +18,27 @@
 // own, or that read the wall clock instead of the delta it is handed, fails here
 // and nowhere else that names the cause.
 //
-// THE WITNESS IS A PREDATOR, NOT THE FORAGER. A forager with no action held rests
-// under either reading of specs/movement.md, so it would sit still whether or not
-// something else were driving the game and prove nothing. A released predator
-// patrols on the game's own clock whatever the player does
-// (specs/predators.md), so it is what a still-running clock would visibly carry
-// across its corridor. That it can move at all is checked FIRST, over a stretch
-// this check itself steps, so a build whose predators never move stands the point
-// down instead of passing it on nothing.
+// THE WITNESS IS A BONUS DRIFTER, AND THE BOARD CARRIES NO PREDATOR AT ALL. A
+// forager with no action held rests under either reading of specs/movement.md, so
+// it would sit still whether or not something else were driving the game and
+// prove nothing; something has to be moving under its own power. A drifter is the
+// narrowest thing that is. specs/gameplay.md has one wander the corridors at
+// `DRIFTER_SPEED` on the game's own clock whatever the player does, and it senses
+// nothing, chases nothing and takes no life — so nothing about this scenario can
+// end except by the clock being stepped. A hunter would have brought its senses,
+// its routing and its contact rule along with its travel, and every one of those
+// is another point's. That the drifter can move at all is checked FIRST, over a
+// stretch this check itself steps, so a build whose drifters never move fails
+// this point instead of passing it on nothing.
 //
-// THE TWO CORRIDORS NEVER MEET. The predator patrols a sealed corridor four rows
-// below the forager's sealed room, so it is past `GLOAMFIN_HEAR` (`64`, 2 tiles)
-// at every moment, its own ping floods corridors that do not reach the forager,
-// and no amount of patrolling can end the scenario by contact.
+// THE TWO ROOMS NEVER MEET. The drifter wanders a sealed corridor four rows below
+// the forager's sealed room, so it can never be eaten and the pair of bodies this
+// check watches is the pair it posed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BRIGHT_HOLD, TICK_DT, TICK_HZ } from "../../src/constants";
 import { assertLessThanOrEqual } from "../assert";
-import { poseMaze, spawnPredator } from "../fixtures";
+import { poseMaze, spawnDrifter } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -45,7 +48,7 @@ import {
 } from "../harness";
 import {
   parkForager,
-  requirePredatorMotion,
+  requireDrifterMotion,
   requireSceneHeld,
   sceneGuard,
   type SceneView,
@@ -53,22 +56,18 @@ import {
 
 /**
  * The board: an eight-tile room for the forager, three rows of solid rock, and a
- * twelve-tile corridor for the patrolling witness.
+ * twelve-tile corridor for the wandering witness.
  *
- * The two are disconnected, so the witness cannot reach the forager however long
- * it patrols, and four rows of separation is `128` logical units — twice
- * `GLOAMFIN_HEAR` (`64`) — so the witness never takes a close-hearing fix either.
+ * The two are disconnected, so the forager can never reach the witness and eat
+ * it, however long either of them runs.
  */
 const ART = [
   "F.......",
   "########",
   "########",
   "########",
-  "P...........",
+  "W...........",
 ] as const;
-
-/** The kind posed loose as the witness. */
-const WITNESS = "gloamfin" as const;
 
 /** One second of real time with nothing stepping the game. */
 const SETTLE_MS = 1000;
@@ -87,10 +86,9 @@ const MAX_DRIFT = 2 * TICK_DT;
  * The furthest anything on the board may drift over that second, in logical
  * units.
  *
- * The slowest thing that moves under its own power is the drifter at
- * `DRIFTER_SPEED` (`64`) and the witness patrols at `PREDATOR_SPEED` (`116`), so
- * a running clock carries the slowest of them two tiles in a second. Four units
- * is an eighth of a tile: rounding, and nothing else.
+ * The witness wanders at `DRIFTER_SPEED` (`64`), so a running clock carries it
+ * two tiles in a second. Four units is an eighth of a tile: rounding, and nothing
+ * else.
  */
 const MAX_TRAVEL = 4;
 
@@ -116,8 +114,8 @@ const OPEN_TICKS = 24;
 
 /** The furthest anything on the board moved between two states, in logical units. */
 function widestTravel(before: SceneView, after: SceneView): number {
-  const from = [before.forager, ...before.predators];
-  const to = [after.forager, ...after.predators];
+  const from = [before.forager, ...before.drifters];
+  const to = [after.forager, ...after.drifters];
   let worst = 0;
   for (let i = 0; i < from.length && i < to.length; i += 1) {
     worst = Math.max(
@@ -142,13 +140,13 @@ it("advances only when the driver steps it, by exactly the ticks it is given", a
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
-  const beat = board.mark("P");
+  const beat = board.mark("W");
   await parkForager(h, home);
   // Full glow, so the clip is a lit room a reviewer can compare frame to frame
   // rather than a black rectangle.
   await poseBrightness(h, 1, BRIGHT_HOLD);
 
-  const witness = await spawnPredator(h, WITNESS, beat, { state: "wander" });
+  const witness = await spawnDrifter(h, beat);
   const watch = await sceneGuard(h, { foragerParked: false });
 
   const run = await captureReplay(h, "held", async () => {
@@ -178,13 +176,13 @@ it("advances only when the driver steps it, by exactly the ticks it is given", a
   requireSceneHeld(h.snapshot(), watch);
 
   // The witness has to be able to move for "nothing moved" to mean anything,
-  // and whether a predator patrols under its own power is the den and patrol
-  // points' verdict rather than this one's.
-  requirePredatorMotion(
+  // and whether a drifter wanders under its own power is `amber/*`'s verdict
+  // rather than this one's.
+  requireDrifterMotion(
     run.stepFrom,
     run.stepTo,
     witness,
-    "patrol over a second the driver stepped, which is what makes " +
+    "wander over a second the driver stepped, which is what makes " +
       "'nothing moved while real time passed' a reading rather than a tautology",
   );
 
@@ -197,7 +195,7 @@ it("advances only when the driver steps it, by exactly the ticks it is given", a
   assertLessThanOrEqual(
     widestTravel(run.before, run.after),
     MAX_TRAVEL,
-    `the furthest the forager or any predator drifted, in logical units, ` +
+    `the furthest the forager or the drifter moved, in logical units, ` +
       `over that same second — so the clock was held rather than a counter ` +
       `stalled`,
   );

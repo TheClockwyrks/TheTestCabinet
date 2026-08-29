@@ -18,11 +18,10 @@
 // `specs/sensing.md` states: "the segment joining its center to the forager's
 // center passes within `INK_RADIUS` of that cloud's center".
 //
-// THE STANDOFF IS WIDE ON PURPOSE. The hunter stands eight tiles off: inside the
-// 320 units it reaches at `G = 1`, so it has a fix to lose, and far enough that a
-// blinded hunter wandering at `DRIFTER_SPEED` (64) cannot cross the gap inside the
-// cloud's whole life. A closer pair ends with the hunter blundering into a parked
-// forager, which takes a life and re-dens the board mid-measurement.
+// THE STANDOFF IS WIDE ON PURPOSE. The hunter stands eight tiles off, inside the
+// 320 units it reaches at `G = 1`, so it has a fix to lose — and its travel is
+// held, so that is where it stands for the whole of the blinded watch rather than
+// blundering into a parked forager and taking a life mid-measurement.
 //
 // WHAT THIS DOES NOT DECIDE. That the key releases a cloud at all is
 // `controls/ink-key`'s and `ink/cloud`'s; taking the fix in the first place is
@@ -109,8 +108,11 @@ afterEach(async () => {
 it("Ink shakes its fix at once", async () => {
   await startPlaying(h);
   const stand = await poseInkStandoff(h, { gap: GAP_TILES });
+  // Its light sense is what the cloud breaks, so its mind runs and its travel is
+  // held: it stands behind the cloud for the whole of the blinded watch.
   const index = await spawnPredator(h, "lanternjaw", stand.pred, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, stand.ink);
   await h.debug.setBrightness(BRIGHT_G);

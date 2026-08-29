@@ -108,8 +108,11 @@ afterEach(() => {
 it("Ink shakes its fix at once", async () => {
   await startPlaying(h);
   const stand = await poseInkStandoff(h, { gap: GAP_TILES });
+  // Its light sense is what the cloud breaks, so its mind runs and its travel is
+  // held: it stands behind the cloud for the whole of the blinded watch.
   const index = await spawnPredator(h, "lanternjaw", stand.pred, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, stand.ink);
   await poseBrightness(h, BRIGHT_G, BRIGHT_HOLD);

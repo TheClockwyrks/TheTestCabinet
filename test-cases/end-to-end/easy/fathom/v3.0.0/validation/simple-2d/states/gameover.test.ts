@@ -38,6 +38,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { GAMEOVER_ITEMS, START_LIVES } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
+import { spawnDrifter } from "../fixtures";
 import {
   captureStill,
   createHarness,
@@ -73,8 +74,7 @@ it("ends the run on game over, reports it, and plays again", async () => {
   // under it.
   await h.advance(EAT_TICKS);
   const standing = h.snapshot().forager;
-  h.debug.spawnDrifter(standing.tx, standing.ty);
-  h.debug.setDrifterMind(0, false);
+  await spawnDrifter(h, standing, { mind: false });
   await h.advance(EAT_TICKS);
   const scored = h.snapshot();
 

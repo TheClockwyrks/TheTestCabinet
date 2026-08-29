@@ -27,14 +27,27 @@
 // this check itself steps, so a build whose predators never move stands the point
 // down instead of passing it on nothing.
 //
-// THE TWO CORRIDORS NEVER MEET. The predator patrols a sealed corridor four rows
-// below the forager's sealed room, so it is past `GLOAMFIN_HEAR` (`64`, 2 tiles)
-// at every moment, its own ping floods corridors that do not reach the forager,
-// and no amount of patrolling can end the scenario by contact.
+// AND THE WITNESS IS OUT OF REACH BY ARITHMETIC, NOT BY ROCK. A hunter contained
+// by a wall is only contained while the build's own movement rule holds, and a
+// build that walks a body through rock would end this scenario with a life lost
+// and report a movement defect under a heading about the clock. So the witness is
+// posed a distance away that no body could cross in the ticks this check ever
+// steps: the whole run is {@link REACH_TICKS} ticks, and even at
+// `GLOAMFIN_CHASE_SPEED` (`134`) — the fastest anything in `specs/predators.md`
+// travels — that buys {@link MAX_REACH} units against the separation the fixture
+// poses, which the check reads back off the snapshot and holds to that floor. It
+// is past `GLOAMFIN_HEAR` (`64`, 2 tiles) by the same margin, so the witness never
+// takes a fix and never chases at all; its own ping floods corridors that do not
+// reach the forager.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, TICK_DT, TICK_HZ } from "../../src/constants";
-import { assertLessThanOrEqual } from "../assert";
+import {
+  BRIGHT_HOLD,
+  GLOAMFIN_CHASE_SPEED,
+  TICK_DT,
+  TICK_HZ,
+} from "../../src/constants";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
@@ -63,7 +76,7 @@ const ART = [
   "########",
   "########",
   "########",
-  "P...........",
+  " ".repeat(20) + "P...........",
 ] as const;
 
 /** The kind posed loose as the witness. */
@@ -93,12 +106,29 @@ const MAX_DRIFT = 2 * TICK_DT;
  */
 const MAX_TRAVEL = 4;
 
+/** Recorded ticks either side of the wait, so the clip opens and closes on it. */
+const OPEN_TICKS = 24;
+
 /** One second of game time, as specs/movement.md counts it. */
 const STEP_TICKS = TICK_HZ;
 
 /** The same second, spent sixty steps at a time. */
 const SPLIT_STEPS = 60;
 const SPLIT_TICKS = STEP_TICKS / SPLIT_STEPS;
+
+/** Every tick this check steps the game, over the whole run. */
+const REACH_TICKS = 2 * OPEN_TICKS + STEP_TICKS + SPLIT_STEPS * SPLIT_TICKS;
+
+/**
+ * The furthest any body could travel across the whole run, in logical units.
+ *
+ * `GLOAMFIN_CHASE_SPEED` (`134`) is the fastest figure `specs/predators.md` gives
+ * anything, so a body travelling flat out for every stepped tick — through rock,
+ * through the border, however a broken build routes it — covers this much and no
+ * more. The separation the fixture poses is held above it below, which is what
+ * makes contact impossible here without leaning on rock being solid.
+ */
+const MAX_REACH = (GLOAMFIN_CHASE_SPEED * REACH_TICKS) / TICK_HZ;
 
 /**
  * How far a stepped span's simulation time may sit from the time those ticks are
@@ -109,9 +139,6 @@ const SPLIT_TICKS = STEP_TICKS / SPLIT_STEPS;
  * the rule.
  */
 const STEP_EPS = TICK_DT;
-
-/** Recorded ticks either side of the wait, so the clip opens and closes on it. */
-const OPEN_TICKS = 24;
 
 /** The furthest anything on the board moved between two states, in logical units. */
 function widestTravel(before: SceneView, after: SceneView): number {
@@ -153,6 +180,21 @@ it("advances only when the driver steps it, by exactly the ticks it is given", a
   // rather than a tautology.
   const witness = await spawnPredator(h, WITNESS, beat);
   const watch = await sceneGuard(h, { foragerParked: false });
+
+  // The fixture's own geometry: far enough that no body travelling flat out for
+  // every tick this check steps could reach the forager, so nothing here rests on
+  // the rock between them holding.
+  const posed = h.snapshot();
+  assertGreaterThan(
+    Math.hypot(
+      posed.predators[witness].x - posed.forager.x,
+      posed.predators[witness].y - posed.forager.y,
+    ),
+    MAX_REACH,
+    `the units between the witness and the forager, against the ${MAX_REACH.toFixed(0)} ` +
+      `a body could cover over the ${REACH_TICKS} ticks this check steps at ` +
+      `GLOAMFIN_CHASE_SPEED (${GLOAMFIN_CHASE_SPEED})`,
+  );
 
   const run = await captureReplay(h, "held", async () => {
     // The clip opens on the posed room, before the wait.

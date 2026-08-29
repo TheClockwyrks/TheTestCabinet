@@ -58,7 +58,12 @@ import {
 } from "../harness";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import type { Tile } from "../maze";
-import { FOG_MATCH, tileFromForager, windowRadius } from "./circle";
+import {
+  FOG_MATCH,
+  MASKED_MATCH,
+  tileFromForager,
+  windowRadius,
+} from "./circle";
 
 /**
  * The board: one long corridor, and across eight tiles of solid rock a sealed
@@ -213,7 +218,7 @@ it("Hidden, but not forgotten", async () => {
   );
   assertLessThanOrEqual(
     colorDistance(seen.hidden, seen.fog),
-    FOG_MATCH,
+    MASKED_MATCH,
     "the RGB distance out of 441 between the watched tile beyond the circle and " +
       "unrevealed fog, which it is painted with while it is out there",
   );
@@ -241,7 +246,7 @@ it("Hidden, but not forgotten", async () => {
   );
   assertLessThanOrEqual(
     colorDistance(seen.neverLit, seen.fog),
-    FOG_MATCH,
+    MASKED_MATCH,
     "the RGB distance out of 441 between that never-lit tile inside the circle " +
       "and unrevealed fog, which is what ground the light has not reached is " +
       "painted with",

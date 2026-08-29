@@ -95,10 +95,15 @@ it("plays CUES.caught on the tick a predator makes contact, and not before", asy
   // either window is the contact this check stages.
   const run = await poseStraightRun(h, RUN_TILES);
   await parkForager(h, run.start);
-  const HUNTER = await spawnPredator(h, "lanternjaw", {
-    tx: run.start.tx + RUN_TILES - 1,
-    ty: run.start.ty,
-  });
+  // Its body is held: the contact this check stages is POSED, so nothing here
+  // turns on where the hunter travels, and contact with a held hunter still
+  // costs a life (specs/instrumentation.md).
+  const HUNTER = await spawnPredator(
+    h,
+    "lanternjaw",
+    { tx: run.start.tx + RUN_TILES - 1, ty: run.start.ty },
+    { travel: false },
+  );
 
   const before = h.snapshot();
 

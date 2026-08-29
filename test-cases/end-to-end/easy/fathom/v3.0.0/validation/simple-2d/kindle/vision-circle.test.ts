@@ -52,6 +52,7 @@ import {
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import {
   FOG_MATCH,
+  MASKED_MATCH,
   KINDLE_VISION_MIN,
   fromFog,
   tileColor,
@@ -173,7 +174,7 @@ it("The maze is drawn only inside the circle", async () => {
   );
   assertLessThanOrEqual(
     fromFog(tileColor(h, after, outside), fog),
-    FOG_MATCH,
+    MASKED_MATCH,
     `the RGB distance out of 441 between the revealed tile ` +
       `${outsideAt.toFixed(0)} units from the forager, beyond the ` +
       `${radius.toFixed(0)}-unit vision circle, and unrevealed fog`,

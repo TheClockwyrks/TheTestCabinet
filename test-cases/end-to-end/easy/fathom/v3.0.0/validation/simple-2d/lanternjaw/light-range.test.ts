@@ -128,14 +128,15 @@ it("It senses the forager's light within R", async () => {
   await parkForager(h, home);
   await poseBrightness(h, POSED_G, BRIGHT_HOLD);
   // The one Lanternjaw this point is about, put at the far end of the run until
-  // each standoff moves it.
+  // each standoff moves it. Its travel is held, so a standoff is the distance
+  // the check posed it at rather than whatever a patrol had made of it.
   const index = await spawnPredator(
     h,
     "lanternjaw",
     { tx: home.tx + RUN_TILES - 1, ty: home.ty },
-    { state: "wander" },
+    { state: "wander", travel: false },
   );
-  const watch = await sceneGuard(h);
+  const watch = await sceneGuard(h, { posesAgain: true });
 
   // The build's own reported range, which is what both standoffs are measured
   // from. `specs/state.md` has a Lanternjaw report it as a number of logical

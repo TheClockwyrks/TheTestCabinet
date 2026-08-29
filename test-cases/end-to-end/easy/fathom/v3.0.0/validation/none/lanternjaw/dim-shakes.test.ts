@@ -9,15 +9,11 @@
 // fix and returns to `"wander"`."
 //
 // WHY THE FORAGER SLIPS AWAY AS IT DIMS. Dimming alone cannot be measured with the
-// forager left standing where it was fixed. While it lingers the Lanternjaw paths
-// to that tile at `PREDATOR_SPEED` (116), covering 232 units in the 2 s — so to
-// still be outside the dim `R` of 128 when the window expires, the forager would
-// have to have started more than 360 units away, and at `G = 1` it can only be
-// sensed within 320 in the first place. The two bounds cannot both hold, so a
-// spec-correct Lanternjaw always walks back into range and re-acquires. The
-// scenario therefore runs the counter the page actually describes: the forager
-// goes dim AND slips off down the same corridor, and the hunter, with its range
-// collapsed, cannot find it from the stale fix.
+// forager left standing where it was fixed: the pair stands two tiles apart, `64`
+// units, well inside the `128` a dim `R` still reaches, so the sense would never
+// lapse at all. The scenario therefore runs the counter the page actually
+// describes: the forager goes dim AND slips off down the same corridor, and the
+// hunter, with its range collapsed, cannot find it from the stale fix.
 //
 // AND WHY IT SLIPS ALONG THE SAME STRAIGHT RUN. All three tiles sit on one
 // corridor, so the hunter can see the slip tile the whole time and only the SIZE
@@ -105,8 +101,11 @@ afterEach(async () => {
 it("Dimming shakes its fix", async () => {
   await startPlaying(h);
   const line = await poseDimStandoff(h);
+  // The fix and its shaking are its light sense's, so its mind runs and its
+  // travel is held: the separations below are the fixture's own throughout.
   const index = await spawnPredator(h, "lanternjaw", line.pred, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, line.fix);
   await h.debug.setBrightness(BRIGHT_G);

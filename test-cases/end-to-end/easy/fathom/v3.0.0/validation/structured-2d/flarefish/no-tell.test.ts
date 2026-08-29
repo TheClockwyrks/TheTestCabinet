@@ -122,7 +122,7 @@ afterEach(() => {
 it("shows nothing of itself between flares, in what it reports and on the canvas", async () => {
   await startPlaying(h);
   const room = await poseFlareRoom(h);
-  const guard = await sceneGuard(h);
+  const guard = await sceneGuard(h, { posesAgain: true });
 
   const bloom = await h.until(
     (snap) => snap.predators[room.index].flaring === true,

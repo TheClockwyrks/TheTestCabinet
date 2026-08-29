@@ -91,8 +91,11 @@ afterEach(() => {
 it("Close hearing takes a fix and fires the alert", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, SEALED_PAIR);
+  // The forager is what closes the gap here; the Gloamfin's part is to HEAR it,
+  // so its mind runs and its travel is held.
   const index = await spawnPredator(h, "gloamfin", board.mark("G"), {
     state: "wander",
+    travel: false,
   });
   await placeForager(h, board.mark("F"), "right");
   await poseBrightness(h, 0, BRIGHT_HOLD);

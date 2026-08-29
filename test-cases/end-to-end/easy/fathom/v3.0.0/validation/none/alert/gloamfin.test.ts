@@ -23,9 +23,10 @@
 // confirms that from the snapshot — the hunter's tile reads `u`, never revealed —
 // rather than assuming it.
 //
-// AND THE TWO ARE SEALED FROM EACH OTHER, so a hunter that acquires cannot cross to
-// the forager and end the measurement with a lost life. A posed board may do what a
-// generated one may not (`specs/instrumentation.md`).
+// AND THE HUNTER'S TRAVEL IS HELD, so the pair keeps the two tiles the fixture
+// stands it at for the whole window and a hunter that acquires cannot cross to
+// the forager and end the measurement with a lost life. The band of rock is what
+// keeps the tile dark; the hold is what keeps the hunter on it.
 //
 // THE BOARD HOLDS THE GLOAMFIN AND NOTHING ELSE. `poseOccludedPair` empties it
 // and this check spawns back the one hunter it is about, so `G` stays at the zero
@@ -141,8 +142,12 @@ afterEach(async () => {
 it("The Gloamfin fires the alert on a fresh fix", async () => {
   await startPlaying(h);
   const pair = await poseOccludedPair(h, { tiles: GAP_TILES, len: RUN_TILES });
+  // Its close hearing is what fires the alert, so its mind runs and its travel
+  // is held: it hears the forager through the rock band from the tile the
+  // fixture put it on and never leaves it (`specs/instrumentation.md`).
   const index = await spawnPredator(h, "gloamfin", pair.pred, {
     state: "wander",
+    travel: false,
   });
   await parkForager(h, pair.forager);
   const guard = await sceneGuard(h);

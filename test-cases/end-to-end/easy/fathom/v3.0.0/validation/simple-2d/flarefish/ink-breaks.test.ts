@@ -53,8 +53,6 @@ import {
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
   LINGER_TIME,
-  PREDATOR_SPEED,
-  TICK_HZ,
   TILE,
 } from "../../src/constants";
 import { poseInkStandoff, spawnPredator } from "../fixtures";
@@ -112,13 +110,18 @@ const BREAK_MAX = 0.1;
 /**
  * How long the Flarefish is then watched for a new fix, in seconds.
  *
- * A second and a half. Bounded by the ground the hunter can cover: at
- * `PREDATOR_SPEED` that is `174` units of the `256` between them, so it cannot
- * reach the forager's tile inside the window, and it is well short of the
- * `INK_LIFE` (`3 s`) the cloud stands for, so the cloud is still blinding it at
- * the last step read.
+ * A second and a half: well short of the `INK_LIFE` (`3 s`) the cloud stands for,
+ * so the cloud is still blinding it at the last step read.
  */
 const BLIND_WATCH = 1.5;
+
+/**
+ * How often the blinded window is read, in ticks.
+ *
+ * Four, which is a thirtieth of a second — far finer than anything the claim
+ * turns on, and the beat the forager's glow is re-posed on.
+ */
+const BLIND_POLL = 4;
 
 /**
  * Ticks held after the reading, so the clip shows the standoff rather than cutting
@@ -142,9 +145,13 @@ it("drops the Flarefish's fix the moment ink lands, and it takes no new one whil
   const line = await poseInkStandoff(h, { gap: GAP_TILES, clearTiles: 3 });
   await parkForager(h, line.ink);
 
+  // Its light sense is what the cloud breaks, so its mind runs and its travel is
+  // held: it stands the standoff the fixture laid out for the whole reading, and
+  // the cloud stays squarely on the line between the two.
   const index = await spawnPredator(h, "flarefish", line.pred, {
     dir: "left",
     state: "wander",
+    travel: false,
   });
   await poseBrightness(h, POSED_G, BRIGHT_HOLD);
   const guard = await sceneGuard(h);
@@ -164,10 +171,21 @@ it("drops the Flarefish's fix the moment ink lands, and it takes no new one whil
       { maxFrames: ticks(BREAK_MAX), poll: 1 },
     );
     // And then the harder half: a whole blinded window with no new fix in it.
-    const refixed = await h.until(
-      (snap) => snap.predators[index].state !== "wander",
-      { maxFrames: ticks(BLIND_WATCH), poll: 1 },
-    );
+    // The forager's glow is re-posed as the window runs. `G` decays on its own
+    // curve once the hold expires and `R` shrinks with it (specs/sensing.md), so
+    // a window left to decay would end with the forager out of the reach the
+    // Flarefish would otherwise have sensed it at — and "it took no new fix"
+    // would be a reading of distance rather than of ink.
+    const blindTicks = ticks(BLIND_WATCH);
+    let refixed = false;
+    for (let spent = 0; spent < blindTicks; spent += BLIND_POLL) {
+      await poseBrightness(h, POSED_G, BRIGHT_HOLD);
+      await h.advance(Math.min(BLIND_POLL, blindTicks - spent));
+      if (h.snapshot().predators[index].state !== "wander") {
+        refixed = true;
+        break;
+      }
+    }
     const ended = h.snapshot();
     await h.advance(TAIL_TICKS);
     return { fixed, inked, broke, refixed, ended };
@@ -207,7 +225,7 @@ it("drops the Flarefish's fix the moment ink lands, and it takes no new one whil
 
   // And no new fix while it is blind.
   assertEqual(
-    run.refixed.hit,
+    run.refixed,
     false,
     `the Flarefish took a fresh fix during the ${BLIND_WATCH} s the cloud ` +
       `blinded it — the cloud is centered on the forager, so the segment ` +
@@ -233,8 +251,8 @@ it("drops the Flarefish's fix the moment ink lands, and it takes no new one whil
     endGap,
     TILE,
     `the units between the two centers at the end of the window, against the ` +
-      `${TILE}-unit tile contact is decided on — it can close at most ` +
-      `${((PREDATOR_SPEED * (ticks(BLIND_WATCH) + TAIL_TICKS)) / TICK_HZ).toFixed(0)} ` +
-      `units across it and the tail after it`,
+      `${TILE}-unit tile contact is decided on — the hunter's travel is held, ` +
+      `so the pair still stands the ${GAP_TILES * TILE} units the fixture laid ` +
+      `out`,
   );
 });

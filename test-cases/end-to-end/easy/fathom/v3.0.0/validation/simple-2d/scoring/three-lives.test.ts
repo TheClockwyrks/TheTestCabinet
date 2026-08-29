@@ -26,6 +26,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { START_LIVES } from "../../src/constants";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { holdPredators } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -68,6 +69,10 @@ interface Catch {
 /**
  * Resume play if the previous catch left a countdown, put the first predator of
  * the roster on the forager, and let the game resolve the contact.
+ *
+ * The whole roster is held still first: contact is the rule this point counts
+ * lives against, and a den emptying behind the staged catch would be a second
+ * hunter able to take the same life.
  */
 async function takeALife(h: Harness): Promise<Catch> {
   if (h.snapshot().screen === "countdown") h.debug.setScreen("playing");
@@ -79,6 +84,7 @@ async function takeALife(h: Harness): Promise<Catch> {
     // could not be staged.
     return { before, after: before, hit: false, resumed: false };
   }
+  await holdPredators(h);
   h.debug.setPredatorTile(0, before.forager.tx, before.forager.ty);
   h.debug.setPredatorState(0, "chase");
   const contact = await h.until(

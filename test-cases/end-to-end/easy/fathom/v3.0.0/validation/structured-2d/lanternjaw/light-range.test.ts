@@ -133,11 +133,13 @@ it("It senses the forager's light within R", async () => {
   h.debug.setBrightness(POSED_G);
   h.debug.setBrightHold(BRIGHT_HOLD);
   h.debug.setBrightHold(BRIGHT_HOLD);
-  const index = await spawnPredator(h, "lanternjaw", {
-    tx: home.tx + RUN_TILES - 1,
-    ty: home.ty,
-  });
-  const guard = await sceneGuard(h);
+  const index = await spawnPredator(
+    h,
+    "lanternjaw",
+    { tx: home.tx + RUN_TILES - 1, ty: home.ty },
+    { travel: false },
+  );
+  const guard = await sceneGuard(h, { posesAgain: true });
 
   // The build's own reported range, which is what both standoffs are measured
   // from.

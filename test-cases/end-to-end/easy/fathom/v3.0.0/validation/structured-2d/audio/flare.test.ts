@@ -81,7 +81,9 @@ afterEach(() => {
 it("plays CUES.flare on the tick a Flarefish's bloom begins, and not on its charge-up", async () => {
   startPlaying(h);
   const rooms = await poseApart(h, APART_TILES);
-  const flarefish = await spawnPredator(h, "flarefish", rooms.far);
+  const flarefish = await spawnPredator(h, "flarefish", rooms.far, {
+    travel: false,
+  });
   await parkForager(h, rooms.near);
   const watch = await sceneGuard(h);
 

@@ -7,13 +7,13 @@
 // the two halves comparable: the same forager, the same hunter, the same
 // separation, the same brightness, one line crossing rock and one not.
 //
-// THE ROCK IS A FULL BAND rather than one tile on the line. The hunter is still
-// patrolling, so what has to be occluded is not one pair of tiles but every tile
-// the hunter can reach; a single rock with a way around it leaves tiles at grazing
-// angles where this check's idea of the line and a build's can honestly disagree,
-// and the disagreement would then be read as a sense through rock. The fixture
-// puts the hunter on its own corridor with a solid row of rock between the two, so
-// no line from anywhere it can stand reaches the forager.
+// THE ROCK IS A FULL BAND rather than one tile on the line. A single rock with a
+// way around it leaves the tiles beside it at grazing angles, where this check's
+// idea of the line and a build's can honestly disagree, and the disagreement
+// would then be read as a sense through rock. The fixture puts the hunter on its
+// own corridor with a solid row of rock between the two, and holds its travel, so
+// the line from where it stands crosses rock squarely and it stands there for the
+// whole watch.
 //
 // AND THE CLEAR-LINE HALF IS THE SAME BOARD. The hunter is moved onto the
 // forager's own corridor, the same number of tiles away, so the second reading
@@ -108,10 +108,13 @@ it("Rock breaks its sense", async () => {
   await h.debug.setBrightness(POSED_G);
   await h.debug.setBrightHold(BRIGHT_HOLD);
   // The one hunter this point is about, behind the rock band to begin with.
+  // Its travel is held: whether the rock breaks its SENSE is the claim, and a
+  // hunter that walked out from behind the band would answer a different one.
   const index = await spawnPredator(h, "lanternjaw", blind, {
     state: "wander",
+    travel: false,
   });
-  const guard = await sceneGuard(h);
+  const guard = await sceneGuard(h, { posesAgain: true });
 
   const read = await captureReplay(h, "blind", async () => {
     // Behind the band: inside the range, no line, so no fix at any step.

@@ -10,7 +10,9 @@
 // THE HUNTER IS POSED ONTO THE FORAGER, because that IS the condition the
 // specification states. A chase across a corridor would test the hunter's
 // pathfinding, which `gloamfin/*` and `maze-movement/*` own, and would leave this
-// point failing for a hunter that never arrived.
+// point failing for a hunter that never arrived. So no hunter here travels at
+// all: the whole roster is held where it stands, and the one catch this point
+// reads is the one it posed.
 //
 // THE BOARD IS THE BUILD'S OWN, not a posed fixture, and that is the point. The
 // arrangement includes "the forager at rest on its start tile", and a start tile
@@ -86,6 +88,24 @@ const SETTLE_TICKS = ticksFor(0.1);
 /** Ticks past the reading, purely so the clip shows the board coming back. */
 const TAIL_TICKS = ticksFor(0.75);
 
+/**
+ * Hold every hunter of the roster where it stands, minds running.
+ *
+ * This point runs on the build's OWN board, so it cannot empty the roster the way
+ * a posed fixture does — the arrangement it reads is the one a catch sets up, and
+ * that arrangement is about the whole roster. What it can do is exercise none of
+ * their bodies: every catch below is POSED onto the forager's own tile, and a
+ * hunter whose travel is off still makes contact (`specs/instrumentation.md`), so
+ * no hunter can take a life this point did not stage. Called again after each
+ * catch, in case the attempt it set up handed the den fresh bodies.
+ */
+function holdRoster(h: Harness): void {
+  const roster = h.snapshot().predators;
+  for (let index = 0; index < roster.length; index += 1) {
+    h.debug.setPredatorTravel(index, false);
+  }
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -106,6 +126,8 @@ it("Contact costs a life and sets the board up again", async () => {
       opened.predators.length,
     );
   }
+
+  holdRoster(h);
 
   // Off the start tile, so the reading below is a real question rather than a
   // forager that never left. It is CARRIED off it rather than driven: what this
@@ -139,7 +161,10 @@ it("Contact costs a life and sets the board up again", async () => {
     (best, tile) => (reach(tile) > reach(best) ? tile : best),
     startTile,
   );
+  // A prop: the reset has to take it off the board, and nothing here is about
+  // where it drifts, so it is posed inert on the furthest tile there is.
   h.debug.spawnDrifter(away.tx, away.ty);
+  h.debug.setDrifterMind(h.snapshot().drifters.length - 1, false);
 
   const caught = await captureReplay(h, "caught", async () => {
     const before = h.snapshot();

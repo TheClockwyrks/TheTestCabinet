@@ -188,7 +188,9 @@ it("A flare is a second window onto the maze", async () => {
     }
   }
 
-  const flarefish = await spawnPredator(h, "flarefish", ring[0]);
+  const flarefish = await spawnPredator(h, "flarefish", ring[0], {
+    travel: false,
+  });
   await parkForager(h, board.mark("F"));
   const guard = await sceneGuard(h);
 

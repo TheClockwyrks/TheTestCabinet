@@ -107,6 +107,8 @@ export interface DrifterSnapshot {
   lit: boolean;
   /** True while it runs its own wander, which is how a dive is played. */
   mind: boolean;
+  /** True while its body carries that wander through the maze. */
+  travel: boolean;
 }
 
 /**
@@ -128,7 +130,9 @@ export interface PredatorSnapshot {
   released: boolean;
   /** True while it runs its own mind, which is how a dive is played. */
   mind: boolean;
-  /** Its current speed, in logical units per second. */
+  /** True while its body carries what its mind decides through the maze. */
+  travel: boolean;
+  /** The rate it travels at in its current `state`, in logical units per second. */
   speed: number;
   /** True only during the `ALERT_TIME` window after a fix is acquired. */
   alert: boolean;
@@ -295,14 +299,18 @@ export interface FathomDebugApi {
   setPredatorState(index: number, value: PosablePredatorState): void;
   /** Sets one predator's `released` flag, moving it nowhere. */
   setPredatorReleased(index: number, released: boolean): void;
-  /** Turns one predator's own mind on or off. */
+  /** Turns one predator's sensing and deciding on or off. */
   setPredatorMind(index: number, enabled: boolean): void;
+  /** Turns one predator's locomotion on or off, its mind running untouched. */
+  setPredatorTravel(index: number, enabled: boolean): void;
   /** Adds one bonus drifter at the center of an open corridor tile. */
   spawnDrifter(tx: number, ty: number): void;
   /** Takes every bonus drifter off the maze at once, eating none of them. */
   clearDrifters(): void;
-  /** Turns one drifter's own mind on or off. */
+  /** Turns one drifter's own wander on or off. */
   setDrifterMind(index: number, enabled: boolean): void;
+  /** Turns one drifter's locomotion on or off, its wander running untouched. */
+  setDrifterTravel(index: number, enabled: boolean): void;
   /** Sets the seconds remaining on the sonar pulse's cooldown. */
   setSonarCooldown(seconds: number): void;
   /** Sets the seconds remaining on ink's cooldown. */
@@ -342,9 +350,11 @@ export const REQUIRED_OPS = [
   "setPredatorState",
   "setPredatorReleased",
   "setPredatorMind",
+  "setPredatorTravel",
   "spawnDrifter",
   "clearDrifters",
   "setDrifterMind",
+  "setDrifterTravel",
   "setSonarCooldown",
   "setInkCooldown",
 ] as const;

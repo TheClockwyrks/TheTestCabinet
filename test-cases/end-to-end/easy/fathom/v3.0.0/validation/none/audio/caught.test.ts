@@ -107,12 +107,16 @@ it("sounds on the tick a predator makes contact, and not before", async () => {
         quietLead: QUIET_LEAD,
         // The contact itself: a hunter whose center lies on the forager's own
         // tile (specs/gameplay.md), posed loose so the build's own rule decides.
+        // Its travel is held, because contact is already made where it stands
+        // and "contact with it still costs a life" whatever its body is doing
+        // (specs/instrumentation.md) — so the cue is read off the contact rule
+        // alone and never off a hunter swimming into place.
         arm: async () => {
           await spawnPredator(
             h,
             HUNTER,
             { tx: before.forager.tx, ty: before.forager.ty },
-            { state: "chase" },
+            { state: "chase", travel: false },
           );
         },
       },

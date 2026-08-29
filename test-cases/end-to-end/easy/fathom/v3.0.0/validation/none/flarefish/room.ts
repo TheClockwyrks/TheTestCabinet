@@ -1,26 +1,30 @@
 // flarefish/room.ts — the sealed room three of these checks watch a flare cycle
 // from, and the figures they share.
 //
-// WHY A ROOM RATHER THAN A PLACE ON THE BOARD. Three of these items — the tell
-// between flares, the cadence, and what the bloom reveals — need a Flarefish that
-// keeps WANDERING for tens of seconds. That is the one thing a Flarefish stops
-// doing the moment it finds the forager: "A chasing Flarefish neither charges nor
-// blooms" (`specs/predators/flarefish.md`), so a scenario that lets the two meet
-// has nothing left to watch. And meeting is what happens on any real board: the
-// maze is one connected region (`specs/maze.md`) and a Flarefish crosses it at
-// `PREDATOR_SPEED` in a few seconds, so "far away" is only ever a head start.
+// WHAT THE THREE ITEMS EXERCISE. The tell between flares, the cadence, and what
+// the bloom reveals are all the Flarefish's MIND: its flare timer runs, it
+// charges, it blooms, and it senses. None of the three is about how it travels,
+// so its travel is held and the bloom this poser hands over burns from the tile
+// it was stood on. What that removes is a whole class of accident — a hunter that
+// wandered out of the frame a pixel was read at, or off the tile a disc was
+// measured from — without touching the cadence being watched.
 //
-// A posed fixture is exempt from `specs/maze.md` (`specs/instrumentation.md`), so
-// this simply puts the two in different rooms with no way between them, far
-// enough apart that neither of the Flarefish's two reaches arrives:
+// WHY A ROOM RATHER THAN A PLACE ON THE BOARD. All three need a Flarefish that
+// stays in `"wander"` for tens of seconds. That is the one thing a Flarefish
+// stops doing the moment it finds the forager: "A chasing Flarefish neither
+// charges nor blooms" (`specs/predators/flarefish.md`), so a scenario in which it
+// senses the forager has nothing left to watch. A posed fixture is exempt from
+// `specs/maze.md` (`specs/instrumentation.md`), so this simply puts the two in
+// different rooms with no way between them, far enough apart that neither of the
+// Flarefish's two reaches arrives:
 //
 //   * its light-sense, `R = LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G`, which
 //     is `LANTERN_RANGE_BASE` (`128`, four tiles) at the `G = 0` a dive opens on;
 //   * its bloom, which locks on through rock inside `FLARE_RADIUS` (`192`, six
 //     tiles).
 //
-// Eleven tiles (`352`) is past both, and it is the CLOSEST the two ever come,
-// because the Flarefish's hallway is sealed.
+// Eleven tiles (`352`) is past both, and it is the separation the two hold for
+// the whole watch, because the Flarefish's body does not travel.
 //
 // THE ROOM HOLDS THE FLAREFISH AND NOTHING ELSE. `poseMaze` empties the board,
 // so the other two hunters are off the roster rather than shut in a den, and the
@@ -89,7 +93,7 @@ export const NEXT_FLARE_MAX = 10;
  */
 export const FLARE_POLL = 2;
 
-/** The room, its hallway, and the Flarefish posed to patrol it. */
+/** The room, its hallway, and the Flarefish standing in it. */
 export interface FlareRoom {
   /** The tile the forager is parked on, in its own sealed room. */
   forager: Tile;
@@ -100,11 +104,11 @@ export interface FlareRoom {
 }
 
 /**
- * Pose the two sealed rooms, park the forager in one and set a wandering
- * Flarefish patrolling the other.
+ * Pose the two sealed rooms, park the forager in one and stand a wandering
+ * Flarefish in the other with its travel held.
  *
- * The Flarefish starts in the middle of its hallway so the first thing it does is
- * patrol rather than turn around at an end.
+ * It stands in the middle of its hallway, so one bloom from where it stands
+ * covers every tile of that hallway.
  */
 export async function poseFlareRoom(h: Harness): Promise<FlareRoom> {
   const art = [
@@ -128,6 +132,7 @@ export async function poseFlareRoom(h: Harness): Promise<FlareRoom> {
   const index = await spawnPredator(h, "flarefish", hall[2], {
     dir: "right",
     state: "wander",
+    travel: false,
   });
 
   return { forager: home, hall, index };

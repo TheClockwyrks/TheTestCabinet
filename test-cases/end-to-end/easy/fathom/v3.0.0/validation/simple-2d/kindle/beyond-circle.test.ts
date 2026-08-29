@@ -40,7 +40,7 @@ import {
   assertLessThanOrEqual,
   assertNotNull,
 } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnDrifter } from "../fixtures";
 import {
   captureStill,
   createHarness,
@@ -56,6 +56,7 @@ import {
 } from "../scene";
 import {
   FOG_MATCH,
+  MASKED_MATCH,
   MOTE_REACH,
   brightestNear,
   brightestWarmNear,
@@ -83,7 +84,7 @@ const AWAY_TILES = 16; // 512 units: past R at G = 1 (320)
 const NEAR_TILES = 5; // 160 units: past V (96), inside R (192)
 
 /** The review item's bound, as an RGB distance out of `441`. */
-const CLIPPED_MAX = FOG_MATCH;
+const CLIPPED_MAX = MASKED_MATCH;
 const DRAWN_MIN = FOG_MATCH;
 
 /** Ticks run at each station, so the build has drawn the posed board. */
@@ -108,8 +109,7 @@ it("The amber lights are clipped to the circle", async () => {
   const unlit = board.mark("S");
 
   await parkForager(h, away);
-  await h.debug.spawnDrifter(berth.tx, berth.ty);
-  await h.debug.setDrifterMind(0, false);
+  await spawnDrifter(h, berth, { mind: false });
   const watch = await sceneGuard(h);
 
   await h.advance(SETTLE_TICKS);

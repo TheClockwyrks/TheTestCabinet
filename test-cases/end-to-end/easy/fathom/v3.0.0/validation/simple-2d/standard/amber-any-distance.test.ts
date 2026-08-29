@@ -37,7 +37,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnDrifter } from "../fixtures";
 import {
   brightestWarmNear,
   captureStill,
@@ -114,10 +114,9 @@ it("The amber lights show at any distance", async () => {
   const unlit = board.mark("S");
 
   await parkForager(h, home);
-  await h.debug.spawnDrifter(berth.tx, berth.ty);
   // Held exactly where it was posed, so the mote is read at the position the
   // snapshot reports and nothing wanders between the two.
-  await h.debug.setDrifterMind(0, false);
+  await spawnDrifter(h, berth, { mind: false });
   const watch = await sceneGuard(h);
 
   await h.advance(SETTLE_TICKS);
