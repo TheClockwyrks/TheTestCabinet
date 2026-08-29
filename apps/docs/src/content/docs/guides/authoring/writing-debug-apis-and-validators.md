@@ -167,6 +167,12 @@ control operation, and the
 [precondition guardrail](/testing/end-to-end/instrumentation/#the-precondition-guardrail)
 applies to them unchanged.
 
+Isolation reaches inside the entity the requirement is about. That entity is
+posed with only the faculties the requirement exercises, so a check on what a
+creature senses gives it its senses and holds its body still, and a check on how
+it travels gives it both. A switch that turns a whole creature off cannot express
+the first, so each faculty a scenario has to hold is its own operation.
+
 ### A validator always reaches a verdict
 
 Every validator ends at a pass or a fail. A validator that cannot pose the world
@@ -237,7 +243,8 @@ When designing or revising a case's debug API and validators:
 - Each validator reaches its scenario through the debug API alone and drives
   nothing outside its requirement.
 - Each validator poses a world holding only what its requirement concerns, and
-  the debug API carries the operations that remove the rest.
+  the debug API carries the operations that remove the rest and gate the
+  faculties its requirement does not exercise.
 - Every validator reaches a pass or a fail, and a debug API that cannot be
   driven fails the item rather than leaving it undecided.
 - Integration validators exist only where the game replays to a known outcome
