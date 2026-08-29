@@ -49,6 +49,8 @@
 #   run-images-e2e / -full-stack / -game-jam / -asset / -adversarial / -performance / -gg
 #                   rebuild+import ONLY one test type's run image(s) — the fast path when you touched just that type's tooling
 #   run-image-<name>  rebuild+import a SINGLE run image by short name (e.g. run-image-voxel-animation) — the finest grain, for one asset kind
+#   run-images-gg-selfcheck  build gg static and rebuild the four environment-representative `-gg` images WITH
+#                   the `gg selfcheck` gate — the same command CI publishes behind (builds only; imports nothing)
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
 #   local-forward   foreground-forward backend→:8787, auth→:8789, artifacts→:8790, arena→:8791, AND Grafana→:3000 to localhost (the console runs from source via `npm run -w apps/web dev`)
 #   local-grafana   foreground-forward Grafana→:3000 AND the OTLP collector→:4318/:4317 to localhost (use when you also need the OTLP ports; local-forward already exposes Grafana)
@@ -201,6 +203,22 @@ PERFORMANCE_IMAGE_NAMES := performance
 # the name: there is exactly one variant per image and no list that could be missing one.
 GG_IMAGE_NAMES          := $(addsuffix -gg,$(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE_NAMES) $(GAME_JAM_IMAGE_NAMES) $(ASSET_IMAGE_NAMES) $(ADVERSARIAL_IMAGE_NAMES) $(PERFORMANCE_IMAGE_NAMES))
 
+# The four variants `run-images-gg-selfcheck` drives `gg selfcheck` in, and the binary it
+# builds to drive them with. One variant per ENVIRONMENT: every `-gg` image carries the same
+# `/opt/gg` (copied with `--link`, so byte-identical), so what differs between them is the
+# environment that tree has to run in — the image the lineage is rooted at, plus every package
+# the run images `apt-get install` on the way down. That is four and not two, because a dozen
+# run images install their own packages on top of `base` and apt brings each package's whole
+# closure with it: the mesa render images carry an ICU nothing in their Dockerfiles asked for,
+# which is the very library the C# arm was shipped without. Named here rather than derived
+# because they are the same four `containers/build.sh` names in GG_SELFCHECK_IMAGES and the
+# same four `.github/workflows/build-containers.yml` asserts by name. What keeps three lists
+# from drifting apart is not agreement between them: `assert_gg_environments`, in build.sh,
+# re-derives the grouping from the Dockerfiles and fails a gated build if any variant's
+# environment has no representative.
+GG_SELFCHECK_IMAGE_NAMES := sprite-gg base-wasm-gg voxel-gg blender-gg
+GG_SELFCHECK_BIN         := $(REPO)/target/gg-selfcheck/gg
+
 # Every run image this Makefile builds + imports locally: the union of the per-type
 # groups above (so it stays in lockstep with them). Order matches build.sh's
 # dependency order (base, then base-wasm which is FROM it, then full-stack-2d /
@@ -245,7 +263,7 @@ LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 # DOCKER_CONFIG overridden. Harmless for podman (it uses its own auth store).
 BUILD_DOCKER_CONFIG := $(HOME)/.cache/tcab/build-docker-config
 
-.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance run-images-gg apply apply-overlay apply-wait rollout-wait sts-reconcile
+.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance run-images-gg run-images-gg-selfcheck apply apply-overlay apply-wait rollout-wait sts-reconcile
 
 # The ingest sits BETWEEN applying the overlay and waiting for the services to become
 # ready, and that order is load-bearing rather than incidental. The backend's readiness
@@ -552,6 +570,48 @@ run-images-performance:
 run-images-gg: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-gg:
 	$(call build_import_run_images,$(GG_IMAGE_NAMES),$(call run_image_refs,$(GG_IMAGE_NAMES)))
+
+# Ask the question building a `-gg` variant does not: do the eleven language toolchains it
+# carries actually RUN in the image they were copied into?
+#
+# Nothing above answers that. A variant is one `COPY` of a compiler tree onto a parent, and
+# every gate those compilers have — the installers' own verification compiles, the Rust
+# suite, the catalogue reflection — runs on the machine that ASSEMBLED the tree rather than
+# inside the image it ships in. The C# arm was dead in twenty-five published images for
+# exactly that reason: `csc` aborted at CLR start-up for want of an ICU the toolchain did
+# not carry, and the installer's verification passed because the builder stage it ran in had
+# apt-installed one and then exported `/opt/gg` without it.
+#
+# So this target builds the static `gg` a run is actually given (`scripts/build-gg-static.sh`
+# — the same binary the driver image bakes in) and hands it to `containers/build.sh
+# --gg-selfcheck`, which drives every arm's real bootstrap turn inside each image it builds,
+# as the unprivileged `node` run user, in the gap where CI pushes. It is the SAME
+# invocation `.github/workflows/build-containers.yml` publishes behind, which is what makes a
+# green run here mean something: not a local approximation of the gate, the gate.
+#
+# FOUR IMAGES, NOT TWENTY-SIX. `/opt/gg` is byte-identical across every variant (the `--link`
+# COPY in containers/gg/Dockerfile), so what can differ is the environment it runs in — and
+# there are four of those, not the two parents it looks like: `sprite-gg` is the shared base,
+# `base-wasm-gg` adds base-wasm's packages, `voxel-gg` adds the mesa stack the render images
+# install, and `blender-gg` is the Ubuntu lineage. build.sh refuses the flag against a
+# selection containing none of them, and re-derives the grouping from the Dockerfiles before
+# it builds anything.
+#
+# It BUILDS but does not IMPORT: this is a question about the images, not a way to put them
+# in the cluster — `run-images-gg` is what the cluster needs. Expect minutes: the check
+# compiles one program per arm eleven times over (~35 s per image once the toolchain builder
+# and every parent is cached; the first run pays for those instead — and one of the four
+# parents is an asset image, so that first run also builds the `tools` Rust builder).
+#
+# The binary is written under the repository's own gitignored `target/`, beside where
+# `gg-reference`/`gg-artifacts` land, rather than into a temporary directory — it is ~750 MB
+# and rebuilding it for every check is the slow half of this target.
+run-images-gg-selfcheck: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
+run-images-gg-selfcheck:
+	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
+	bash '$(REPO)/scripts/build-gg-static.sh' '$(GG_SELFCHECK_BIN)'
+	IMAGE_NAME_PREFIX='$(RUN_IMAGE_PREFIX)' IMAGE_TAG='$(RUN_IMAGE_TAG)' DOCKER='$(CONTAINER_TOOL)' \
+	  bash '$(REPO)/containers/build.sh' --gg-selfcheck '$(GG_SELFCHECK_BIN)' $(GG_SELFCHECK_IMAGE_NAMES)
 
 # Rebuild + import a SINGLE run image by its short name — the finest grain, for
 # iterating on one asset-generation kind (`make run-image-voxel-animation`,

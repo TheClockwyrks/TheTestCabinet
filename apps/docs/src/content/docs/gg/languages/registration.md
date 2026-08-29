@@ -200,8 +200,9 @@ below.
 10. Install the run-time toolchain, if the arm needs one, in
     `containers/gg-toolchains/Dockerfile`. It installs under
     `/opt/gg/toolchains` and nowhere else, is relocatable across the Debian- and
-    Ubuntu-based run images, and is drivable with a per-invocation working tree
-    and output directory. A `COPY` that reads the build context must have its
+    Ubuntu-based run images, carries under its own root every shared library
+    those images do not supply, and is drivable with a per-invocation working
+    tree and output directory. A `COPY` that reads the build context must have its
     path re-included in the applicable `.dockerignore`, which is an allowlist;
     `scripts/ci/build-context.sh` is the gate that catches a missing
     re-inclusion. Add the arm's documentation tool to
@@ -228,8 +229,11 @@ below.
     every configured value, the ending call, every rule a program runs under,
     and that the render carries this arm's segment and no other arm's, within
     the two-paragraph and character ceilings. The bootstrap gate prepares and
-    runs the arm's bootstrap program and requires the views it promised. The
-    spelling gates refuse a segment that names a catalogued function of any arm.
+    runs the arm's bootstrap program and requires the views it promised, and
+    [`gg selfcheck`](/gg/languages/selfcheck/) drives that same round trip
+    inside a built `-gg` run image of each lineage, which is where the arm's
+    toolchain is held to what the image supplies. The spelling gates refuse a
+    segment that names a catalogued function of any arm.
 
 Every step is either a new file the arm owns or a one-line registration the
 compiler refuses to let anyone skip.

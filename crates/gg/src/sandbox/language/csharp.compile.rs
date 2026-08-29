@@ -70,6 +70,41 @@
 //! That is a decision rather than an accident of invocation, and it is why this module names the
 //! assembly instead of the launcher beside it.
 //!
+//! # What the toolchain carries, because the run image does not
+//!
+//! .NET does not link ICU; it **`dlopen`s** it. `libSystem.Globalization.Native.so` opens
+//! `libicuuc.so.<v>` and `libicui18n.so.<v>` — and `libicudata` behind the first of them — while the
+//! runtime is still starting, and a process that cannot find them does not fail to compile. It
+//! `FailFast`s before any managed code runs: SIGABRT, an empty stdout, and a sentence on stderr
+//! nobody was reading. The `node:24-bookworm-slim` run image twenty-five of the twenty-six `-gg`
+//! variants are built over ships no ICU at all, so that is what `csc` did there on **every C# turn**
+//! until this arm started carrying its own copy.
+//!
+//! Three things that look like they would have caught it did not, and each is a reason the rule is
+//! shaped the way it is. `ldd` reported a complete closure, because a `dlopen`ed library appears in
+//! no ELF header. The installer's own verification compile passed, because it ran in a builder stage
+//! that had `apt-get install`ed `libicu72` for exactly that purpose and then exported `/opt/gg`
+//! without it. And the arm compiled perfectly in *some* of those images the whole time — the Ubuntu
+//! `blender-gg`, because Blender's package closure pulls in `libicu78`, and every mesa render image
+//! (`voxel-gg`, `mc-gg`, `material-gg`, …), because `mesa-vulkan-drivers` pulls in `libicu72`. Not
+//! one of those Dockerfiles asks for an ICU. An image that satisfies a dependency by accident
+//! satisfies nothing: the same tree is copied to the same absolute path into all twenty-six, and
+//! none of them was ever asked.
+//!
+//! So the toolchain carries the three libraries under [`lib/`](LIBRARY_DIRECTORY) and **every**
+//! `dotnet` gg spawns names that directory on `LD_LIBRARY_PATH` — which is why [`dotnet`] exists as
+//! the one place a `dotnet` command is built. It is the [Swift arm](super::super::swift)'s
+//! arrangement, arrived at from the same failure: a toolchain published against one distribution,
+//! copied into an image built from another, carrying the closure it needs and naming it on the
+//! loader path rather than hoping. `apps/docs/src/content/docs/gg/languages/compilation.md` states
+//! the rule for every arm.
+//!
+//! `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` also makes `csc` run, and was **rejected**. It does not
+//! supply what is missing; it changes the compiler's globalization behaviour, and this arm's
+//! `-deterministic` is a promise that one program compiles to one assembly on a developer's machine
+//! and in a run image. A flag that makes the two compilers different is the one repair this arm
+//! cannot take.
+//!
 //! # The failures, and which of them are the model's
 //!
 //! `csc` exits non-zero both when it disagreed with the program and when it could not run, so the
@@ -130,7 +165,7 @@ use std::time::Duration;
 use base64::Engine as _;
 
 use crate::sandbox::language::compile::{
-    CompilerReport, Workspace, place_tree, shared_toolchain_dir,
+    CompilerCommand, CompilerReport, Workspace, place_tree, shared_toolchain_dir,
 };
 use crate::sandbox::language::csharp::sdk::{SDK_DIRECTORY, SDK_SOURCES};
 use crate::sandbox::language::csharp::source;
@@ -151,6 +186,32 @@ const IMAGE_HOME: &str = "/opt/gg/toolchains/dotnet";
 
 /// Where `scripts/ci/install-dotnet.sh` puts it on a developer's machine, under `$HOME`.
 const USER_HOME_SUFFIX: &str = ".local/share/tcab/gg-dotnet";
+
+/// The launcher, inside the toolchain tree — the only `dotnet` this arm ever runs.
+///
+/// Named once because three things have to agree about it: the check that a tree
+/// [is one](usable), the [command builder](dotnet) that spawns it, and the sentence an operator is
+/// shown when it will not start.
+const LAUNCHER: &str = "dotnet/dotnet";
+
+/// The shared libraries the toolchain carries because the run image does not, relative to its root.
+///
+/// `libicuuc`, `libicui18n` and `libicudata`, put there by `scripts/ci/install-dotnet.sh` out of the
+/// same distribution the rest of the tree is pruned against. See this module's own documentation for
+/// what happens without them, and why nothing short of shipping them was accepted. It is named on
+/// [every `dotnet` this arm spawns](dotnet), and a tree without it is
+/// [not a toolchain](usable) — because what a missing ICU produces is a SIGABRT with no output at
+/// all, and a model told that was its program's fault.
+const LIBRARY_DIRECTORY: &str = "lib";
+
+/// The sonames [`LIBRARY_DIRECTORY`] must hold, which are the three .NET opens as it starts.
+///
+/// `libicuuc` and `libicui18n` are named by `libSystem.Globalization.Native.so` itself; `libicudata`
+/// is the blob the first of them reaches for. All three, checked one at a time — see [`vendored`]
+/// for why two of the three is the shape worth catching, and
+/// `gg_dotnet_icu_vendored` in `scripts/ci/install-dotnet.sh`, which asks the same question of the
+/// tree it has just written.
+const VENDORED_LIBRARIES: &[&str] = &["libicuuc", "libicui18n", "libicudata"];
 
 /// The file a model's program is compiled from, and the one its diagnostics are located in.
 ///
@@ -240,16 +301,57 @@ fn home() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
 }
 
-/// Whether a candidate tree is the one this arm needs — the launcher, the compiler and the
-/// references, all three.
+/// Whether a candidate tree is the one this arm needs — the launcher, the compiler, the references
+/// and the [libraries the image does not supply](LIBRARY_DIRECTORY), all four.
 ///
-/// All three rather than just the launcher, because the failure a partial tree produces is the worst
+/// All four rather than just the launcher, because the failure a partial tree produces is the worst
 /// kind: `dotnet` starts, `csc` is missing, and what a model would be told is that its program did
 /// not compile.
+///
+/// `lib/` is here for exactly that argument and is the sharpest case of it. A tree missing it is a
+/// tree whose `dotnet` aborts on SIGABRT at start-up, before it has read a line of the model's
+/// program, printing to stderr and leaving stdout empty — so what the model would be told is that
+/// its program did not compile, on the evidence of nothing at all. Refusing the tree turns that into
+/// the sentence [`missing_toolchain`] shows an operator, which names the four things a tree must
+/// hold and is the only reading of the failure that is true.
 fn usable(root: &Path) -> bool {
-    root.join("dotnet/dotnet").is_file()
+    root.join(LAUNCHER).is_file()
         && root.join("roslyn/bincore/csc.dll").is_file()
         && root.join("ref").is_dir()
+        && vendored(root)
+}
+
+/// Whether the toolchain really carries [the libraries the run image does not
+/// supply](LIBRARY_DIRECTORY) — each of the three sonames, and not merely the directory they live
+/// in.
+///
+/// The directory is not the thing that makes `csc` start; the files in it are, and the two come
+/// apart. `scripts/ci/install-dotnet.sh` creates `lib/` before it fills it, so an install that fell
+/// over between the two — no `ar` on the machine, a fetch that failed, an interrupted layer — leaves
+/// exactly the shape [`usable`] was extended to reject: a tree that looks complete and whose
+/// `dotnet` aborts on SIGABRT before it reads a line of the model's program. That was measured, on
+/// an image with no `binutils`, and the empty directory was accepted.
+///
+/// Matched one soname at a time and by **prefix**, for the two reasons the installer's own guard
+/// gives. The version is not gg's to know — it is whatever that distribution's package index
+/// resolved to, which is the point of resolving it there rather than writing it into a script — and
+/// the failure worth catching is a `lib/` holding two of the three: `libicuuc` and `libicudata` are
+/// what the [Swift arm](super::super::swift) vendors for `libxml2`, so a tree that borrowed its
+/// closure would carry two thirds of what .NET opens and start nothing.
+fn vendored(root: &Path) -> bool {
+    let directory = root.join(LIBRARY_DIRECTORY);
+    let Ok(entries) = std::fs::read_dir(&directory) else {
+        return false;
+    };
+    let present: Vec<String> = entries
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    VENDORED_LIBRARIES.iter().all(|soname| {
+        present
+            .iter()
+            .any(|name| name.starts_with(&format!("{soname}.so")))
+    })
 }
 
 /// Compile a **program** — a model's reply — into the manifest of IL assemblies the guest loads.
@@ -489,10 +591,10 @@ pub(super) fn sdk_assembly(root: &Path, context: &PrepareContext) -> Result<Path
         let report = invoke(root, &response, context)?;
         match report.ok {
             true => Ok(()),
-            false => Err(format!(
+            false => Err(arrangement_failure(
                 "gg's own C# SDK did not compile, which is a defect in gg rather than in the \
-                 program:\n{}",
-                report.stdout.trim(),
+                 program",
+                &report,
             )),
         }
     })?;
@@ -646,26 +748,58 @@ fn references(root: &Path) -> Result<Vec<PathBuf>, PrepareFailure> {
     Ok(found)
 }
 
+/// **The one place a `dotnet` is built**, isolated in this preparation's tree and pointed at this
+/// toolchain and at nothing else the machine happens to have.
+///
+/// Two call sites spawn the launcher — [`invoke`], which is every `csc` this arm runs, and
+/// [`parse_errors`], which runs the parse-only driver — and they were until recently four
+/// environment variables written out twice. That is exactly the shape a half fix takes: `csc`
+/// given its libraries, the classifier not, and an arm that compiles a program correctly and then
+/// cannot say whether the compiler's rejection was a typo. The environment a `dotnet` this arm runs
+/// needs is one rule, so it lives in one function, and a third call site added later inherits it
+/// rather than remembering it.
+///
+/// Each of the four earns its place:
+///
+/// * `DOTNET_ROOT` names the runtime **inside the same tree**, because the launcher resolves its
+///   shared framework relative to it and a machine with its own .NET installed must not be able to
+///   satisfy this compile.
+/// * `DOTNET_CLI_TELEMETRY_OPTOUT` and `DOTNET_NOLOGO` silence a first-run banner that would
+///   otherwise be printed into the diagnostics gg is about to read.
+/// * `LD_LIBRARY_PATH` names the [libraries the toolchain carries](LIBRARY_DIRECTORY), because .NET
+///   `dlopen`s ICU as it starts and the run image has none — see this module's own documentation
+///   for the failure that produces and why nothing cheaper was accepted. It is applied after the
+///   seam's own redirection and points at a read-only path outside this preparation's tree, which
+///   is the escape hatch [`CompilerCommand::env`] documents: it selects which shared library the
+///   loader opens and can change no verdict. The [Swift arm](super::super::swift) names its own
+///   vendored closure the same way, for the same reason.
+fn dotnet<'context>(
+    root: &Path,
+    context: &'context PrepareContext,
+) -> Result<CompilerCommand<'context>, String> {
+    let mut command = context.compiler(root.join(LAUNCHER))?;
+    command
+        .env("DOTNET_ROOT", root.join("dotnet"))
+        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+        .env("DOTNET_NOLOGO", "1")
+        .env("LD_LIBRARY_PATH", root.join(LIBRARY_DIRECTORY));
+    Ok(command)
+}
+
 /// Spawn `csc` over this preparation's own response file and wait for it, killing it at
 /// [`COMPILE_TIMEOUT`].
 ///
 /// `dotnet exec <csc.dll>` rather than the `csc` shim beside it, deliberately — see this module's
 /// own documentation: the shim is what starts Roslyn's shared compiler server, and a compiler
-/// process shared between two agents' programs is the one thing this seam does not allow.
-///
-/// `DOTNET_ROOT` names the runtime inside the same tree, because the launcher resolves its shared
-/// framework relative to it and a machine with its own .NET installed must not be able to satisfy
-/// this compile. The two CLI variables silence a first-run banner that would otherwise be printed
-/// into the diagnostics gg is about to read.
+/// process shared between two agents' programs is the one thing this seam does not allow. The
+/// environment it runs in is [`dotnet`]'s, which is where the reasons for it are.
 fn invoke(
     root: &Path,
     response: &Path,
     context: &PrepareContext,
 ) -> Result<CompilerReport, String> {
-    let launcher = root.join("dotnet/dotnet");
-    context
-        .compiler(&launcher)
-        .map_err(|error| format!("{}{error}", spawn_prefix(&launcher)))?
+    dotnet(root, context)
+        .map_err(|error| format!("{}{error}", spawn_prefix(root)))?
         .arg("exec")
         .arg(root.join("roslyn/bincore/csc.dll"))
         // On the command line rather than in the response file, and it has to be: `csc` reads the
@@ -675,31 +809,65 @@ fn invoke(
         // and the reference set are chosen to decide.
         .arg("-noconfig")
         .arg(format!("@{}", response.display()))
-        .env("DOTNET_ROOT", root.join("dotnet"))
-        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
-        .env("DOTNET_NOLOGO", "1")
         .run(COMPILE_TIMEOUT)
         .map_err(|error| match error.starts_with("could not run") {
-            true => format!("{}{error}", spawn_prefix(&launcher)),
+            true => format!("{}{error}", spawn_prefix(root)),
             false => error,
         })
 }
 
 /// What a failure to start the compiler is prefixed with — the one failure here an operator can fix.
-fn spawn_prefix(launcher: &Path) -> String {
+fn spawn_prefix(root: &Path) -> String {
     format!(
         "gg compiles every C# program with Roslyn and could not start it ({}): ",
-        launcher.display(),
+        root.join(LAUNCHER).display(),
     )
 }
 
 /// What gg says when the toolchain is not installed at all.
+///
+/// It enumerates what a tree must hold, and the list is [`usable`]'s list: an operator who points
+/// [`DOTNET_HOME_ENV`] at a tree gg then refuses reads this sentence and nothing else, so a part it
+/// does not name is a part they cannot know is missing. `lib/` is on it for that reason rather than
+/// for completeness — a tree assembled before the installer vendored the
+/// [libraries](LIBRARY_DIRECTORY) is exactly the tree that reaches this sentence today.
 fn missing_toolchain() -> String {
     format!(
         "gg compiles every C# program with Roslyn and found no .NET toolchain — install one with \
          scripts/ci/install-dotnet.sh, or point {DOTNET_HOME_ENV} at a tree holding \
-         dotnet/dotnet, roslyn/bincore/csc.dll and ref/",
+         {LAUNCHER}, roslyn/bincore/csc.dll, ref/ and {LIBRARY_DIRECTORY}/",
     )
+}
+
+/// How a compile **gg ran for itself** — its own [SDK](sdk_assembly), its own
+/// [parse classifier](parser) — is reported when it failed.
+///
+/// The reader is an **operator**, never a model, and that decides everything about the shape.
+/// Nothing here is [bounded](SHOWN) the way a model's diagnostics are, because none of it is spent
+/// in a model's context window: someone is reading a defect in gg's own arrangement and wants all of
+/// it. What it carries is what the seam's own contract says a toolchain failure carries — "the exit
+/// status, the signal and the tail of the compiler's stderr"
+/// (`apps/docs/src/content/docs/gg/languages/compilation.md`) — and
+/// [`CompilerReport::stderr_tail`] has already trimmed that tail to the size a crash report needs.
+///
+/// The status and the stderr are here because of what they cost when they were not. Both of these
+/// paths once rendered `report.stdout` alone, and a .NET that cannot start writes to stderr and
+/// leaves stdout empty — so a live run died on its first turn reporting "gg's own C# SDK did not
+/// compile, which is a defect in gg rather than in the program:" followed by a full stop and
+/// nothing, with the SIGABRT and the compiler's own account of what it could not find both in hand
+/// and both discarded. [`verdict`] had it right in the same file the whole time.
+///
+/// The compiler's stdout comes last and only when there is any, so the ordinary case — Roslyn
+/// disagreeing with gg's own C#, which is what these two failures usually are — reads as the
+/// diagnostics it always did, under one line saying how the process ended.
+fn arrangement_failure(lead: &str, report: &CompilerReport) -> String {
+    let mut message = format!("{lead}: {}{}", report.status, report.stderr_tail());
+    let reported = report.stdout.trim();
+    if !reported.is_empty() {
+        message.push('\n');
+        message.push_str(reported);
+    }
+    message
 }
 
 /// Turn a finished invocation into a verdict.
@@ -830,16 +998,12 @@ fn verdict(report: &CompilerReport) -> Result<(), PrepareFailure> {
 /// wrong in neither direction.
 fn parse_errors(root: &Path, file: &Path, context: &PrepareContext) -> Option<Vec<String>> {
     let driver = parser(root, context).ok()?;
-    let report = context
-        .compiler(root.join("dotnet/dotnet"))
+    let report = dotnet(root, context)
         .ok()?
         .arg("exec")
         .arg(&driver)
         .arg(LANGUAGE_VERSION)
         .arg(file)
-        .env("DOTNET_ROOT", root.join("dotnet"))
-        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
-        .env("DOTNET_NOLOGO", "1")
         .run(COMPILE_TIMEOUT)
         .ok()?;
     // A non-zero exit is the driver saying it could not answer — a usage or I/O failure — and is
@@ -949,11 +1113,10 @@ fn parser(root: &Path, context: &PrepareContext) -> Result<PathBuf, String> {
         let report = invoke(root, &response, context)?;
         match report.ok {
             true => Ok(()),
-            false => Err(format!(
+            false => Err(arrangement_failure(
                 "csc could not build gg's own C# parse classifier, which is gg's arrangement \
-                 failing rather than any program's: {}\n{}",
-                report.status,
-                report.stdout.trim(),
+                 failing rather than any program's",
+                &report,
             )),
         }
     })?;

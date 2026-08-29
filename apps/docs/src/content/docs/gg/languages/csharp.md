@@ -46,11 +46,40 @@ The toolchain is a .NET tree rather than a `dotnet` on `PATH`, because the
 reference assemblies decide what a program may call and must match the class
 library inside the guest. gg looks in `TCAB_GG_DOTNET_HOME` when an operator
 sets it, then `/opt/gg/toolchains/dotnet`, then `~/.local/share/tcab/gg-dotnet`.
-A tree is usable only when it holds `dotnet/dotnet`, `roslyn/bincore/csc.dll`
-and a `ref/` directory. A partial one is rejected rather than allowed to fail as
-a compile error, and a machine's own .NET installation is never used. The
-installer deletes Roslyn's `VBCSCompiler`, so a resident compiler server shared
-between two preparations is absent from the tree rather than merely unused.
+A tree is usable only when it holds `dotnet/dotnet`, `roslyn/bincore/csc.dll`,
+a `ref/` directory and a `lib/` directory. A partial one is rejected rather than
+allowed to fail as a compile error, and a machine's own .NET installation is
+never used. The installer deletes Roslyn's `VBCSCompiler`, so a resident
+compiler server shared between two preparations is absent from the tree rather
+than merely unused.
+
+`lib/` holds the ICU libraries the host's .NET runtime loads at start-up,
+`libicuuc`, `libicui18n` and `libicudata`, vendored by the installer out of the
+same distribution the rest of the tree is pruned against. Every `dotnet` this
+arm runs names that directory on `LD_LIBRARY_PATH`: each program compile, the
+SDK assembly build and the parse-only driver alike. The runtime reaches them through
+`dlopen`, so they appear in no ELF header and the check that the tree is whole
+is a compile rather than a link check, on the terms every
+[self-contained toolchain](/gg/languages/compilation/#self-contained-toolchains)
+is held to.
+
+What that guarantees is a floor rather than an override. The compiler starts on
+an image that supplies no ICU at all, which is twenty-five of the twenty-six
+`-gg` variants' parent and was where this arm died on every turn. It does not
+decide which ICU the compiler starts against on an image that supplies a newer
+one: the runtime probes versioned sonames from newest downwards, so the Ubuntu
+lineage answers with its own `libicu78` before the probe reaches the vendored
+`72`. Both were measured, and the same program compiles to the same assembly
+under either — an SDK build byte-identical across the two. What the libraries
+buy is that the compiler runs; what keeps `-deterministic` meaning one assembly
+per program is that the arm supplies them rather than starting `csc` under
+invariant globalization, which would change what the compiler does with a
+program rather than what the machine gives it.
+
+Everything this arm reports as a toolchain failure carries the exit status, the
+signal and the tail of the compiler's stderr, the SDK assembly build and the
+parse-only driver included. A .NET that cannot start writes to stderr and leaves
+stdout empty, so a report drawn from stdout alone carries nothing at all.
 
 `crates/gg-sandbox-artifacts/csharp` runs `packages/gg-sandbox-csharp/build.sh`
 and publishes one file, `csharp.component.wasm`, which is not committed. The arm

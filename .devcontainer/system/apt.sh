@@ -41,6 +41,28 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 #     thing it runs on. Declared here for the reason iproute2 is: it was present by
 #     accident for a while, and an undeclared tool disappears silently on a
 #     base-image change.
+#   - libicu-dev: ICU, which gg's C# program-language arm needs to run one compiler.
+#     The .NET runtime does not link it: `libSystem.Globalization.Native.so` `dlopen`s
+#     `libicuuc` and `libicui18n` by name while the CLR is still starting, and calls
+#     `FailFast` when neither resolves — so `csc` on a machine without ICU dies of
+#     SIGABRT having written nothing, and that arm's suite (nine files, several of
+#     which spawn a real Roslyn) cannot run at all. Declared here for the reason
+#     iproute2 is, and it is the starkest of the three: ICU has been arriving through
+#     `languages/rust/tauri.sh`, which installs `libwebkit2gtk-4.1-dev` for the
+#     DESKTOP app's build, which depends on `libwebkit2gtk-4.1-0`, which depends on
+#     `libicu78`. Whether gg's C# arm is testable on this machine has been a property
+#     of whether the Tauri shell still wants a browser engine — a chain nobody would
+#     walk backwards from a compiler that aborted.
+#     A RUN IMAGE OWES THE SAME LIBRARIES AND DOES NOT GET THEM FROM HERE: it has no
+#     package manager at run time, so `scripts/ci/install-dotnet.sh` vendors the same
+#     three under `/opt/gg` and gg names that directory on `LD_LIBRARY_PATH`. The two
+#     halves are not interchangeable, and assuming they were is what shipped a broken
+#     arm: this file's ICU is why the whole C# suite passes here, and it says nothing
+#     whatever about the image the toolchain actually runs in.
+#     `libicu-dev` rather than the runtime package, because the runtime package's name
+#     carries the ABI version — `libicu72` on Debian bookworm, `libicu78` on this
+#     image's Ubuntu 26.04 — so it would have to be edited on every base bump, while
+#     the `-dev` name is stable and depends on whichever runtime the release ships.
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	build-essential \
 	cmake \
@@ -48,6 +70,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	git \
 	iproute2 \
 	jq \
+	libicu-dev \
 	lsof \
 	musl-tools \
 	procps \

@@ -616,7 +616,53 @@ Run on a machine with Docker (or Podman) available:
 ./build.sh voxel-animation     # build ONLY the named image(s) — base is (re)built as needed for the FROM
 ./build.sh adversarial performance
 DOCKER=podman ./build.sh       # build with Podman instead
+./build.sh --gg-selfcheck <PATH-TO-GG>   # …and gate the `-gg` variants on `gg selfcheck`
 ```
+
+### Gating the `-gg` variants on `gg selfcheck`
+
+Building a `-gg` variant asks nothing about whether the compilers it carries **run**
+in it. The third constraint on
+[the gg toolchain builder](#the-gg-toolchain-builder) below says a toolchain is
+self-contained *and proven where it runs*; this flag is the second half of that
+sentence made mechanical.
+
+`--gg-selfcheck <PATH-TO-GG>` takes a `gg` binary — build one with
+`scripts/build-gg-static.sh`, which is the same static-musl artifact a deployment
+copies into a run container — and, for each variant it builds, drives
+[`gg selfcheck`](../apps/docs/src/content/docs/gg/languages/selfcheck.md) inside the
+image it has just built: every registered language arm's real bootstrap turn, real
+toolchain resolution, real compiler, real guest. The binary is installed the way a run
+installs it (created container, copied to `/tmp/gg`, `exec`ed as the unprivileged
+`node` user — root would prove permissions no run has), and the check runs **between
+`docker build` and `push_and_pin`**, so a variant with a dead arm cannot reach the
+registry.
+
+It runs in four **environment representatives** — `sprite-gg`, `base-wasm-gg`,
+`voxel-gg` and `blender-gg` — and not in all twenty-six. `/opt/gg` is byte-identical on
+every variant, so what can differ is the environment that tree has to run in. That is not
+the same as the parent, which is what this list first said and got wrong: there are two
+external parents, but a dozen run images `apt-get install` packages of their own on top of
+`base`, and apt brings each package's whole dependency closure with it. Probed with the C#
+arm's own missing library, `sprite-gg` and `base-wasm-gg` carry no ICU at all, `voxel-gg`
+carries `libicu72` because `mesa-vulkan-drivers` pulled it in, and `blender-gg` carries
+`libicu78` because Blender did — three answers where the parent count says two.
+
+Grouping the variants by root **and** by every package installed along the way gives four
+groups, and those four images are one of each. The argument is only as good as its last
+clause, so `build.sh` re-derives both halves: `assert_gg_lineages` reads the final `FROM`
+of every run image's Dockerfile and fails a gated build if the set of external parents is
+not exactly the two it knows, and `assert_gg_environments` re-derives the grouping and
+fails if any `-gg` variant's environment has no representative — which is what catches an
+`apt-get install` added to a render image by somebody who was not thinking about gg. A
+gated build whose selection contains no representative is refused rather than quietly
+passing.
+
+`.github/workflows/build-containers.yml` passes the flag on every push that publishes,
+and then greps `build.sh`'s `gg selfcheck ok:` lines to assert the gate ran at all — a
+refactor that drops the flag fails there instead of silently publishing. Locally,
+`make -C deployments/local run-images-gg-selfcheck` builds the binary and runs the same
+command against the `:local` images.
 
 ### The shared asset-tooling builder
 
@@ -676,8 +722,8 @@ variants carry them. Because it is not in `image-names.sh`, the `manifest` job i
 `build-containers.yml` — which is driven by that list — fuses this one arch pair by name,
 immediately after its loop.
 
-Two constraints bind every toolchain added to it, and both are written down in the
-Dockerfile's header. It must be **relocatable and distribution-portable** — the same
+Three constraints bind every toolchain added to it, and all three are written down
+in the Dockerfile's header. It must be **relocatable and distribution-portable** — the same
 tree is copied to the same absolute path onto the Debian-based images and onto
 `blender-gg`, whose parent is Ubuntu. And it must be drivable **isolated per invocation**:
 several compilers run concurrently inside one run, and a shared build strategy and
@@ -687,6 +733,28 @@ compiler with its working directory, `HOME`, `TMPDIR` and `XDG_*` roots inside t
 preparation's own tree — so what this constrains is the toolchain that can *only* be
 driven through a process shared between compilations. See
 [per-agent compiler isolation](../apps/docs/src/content/docs/gg/languages/compilation.md#per-agent-compiler-isolation).
+
+And it must be **self-contained, and proven so where it runs**. This is the same
+constraint as the first taken to its conclusion: a toolchain vendors under `/opt/gg`
+every shared library the run images do not supply, and gg names that directory on the
+loader path (or the tree's own rpath reaches it). The second half of it is where the
+proof lives. Each installer below ends by compiling with the pruned copy, and that compile
+runs in this **builder** stage — which `apt-get install`s the arm's own dependencies
+and then exports `/opt/gg` without them, so a pass here says nothing about the image
+the tree is copied *into*. The gate that does is
+[`gg selfcheck`](../apps/docs/src/content/docs/gg/languages/selfcheck.md), run inside
+a **built** `-gg` variant of each environment — `sprite-gg`, `base-wasm-gg`, `voxel-gg`
+and `blender-gg` — before any is published. A dependency satisfied by whatever the image
+happens to contain is not satisfied: it is an arm that works on some run images and dies
+on others, and moves between the two whenever an unrelated package does.
+
+Self-containment is a **floor and not an override**, and the difference matters when
+reading a green check. What the vendored set guarantees is that the compiler starts on an
+image supplying nothing; it does not decide which copy loads on an image supplying a newer
+one. .NET probes versioned ICU sonames from newest downwards, so `blender-gg`'s Ubuntu
+answers with its own `libicu78` long before the probe reaches the bookworm `72` under
+`/opt/gg/toolchains/dotnet/lib` — measured with `LD_DEBUG=libs`, not assumed. That is why
+the gate is a check per environment rather than a check on one.
 
 The tree carries **PureScript**'s toolchain today: `purs` and `esbuild`, both statically
 linked, both a single file, and both pinned by
@@ -762,10 +830,12 @@ for the vintage reason PureScript's library set is not.
 clang, a `wasm-ld`, a wasi-libc sysroot and a libc++. It is also the least work to make
 portable, and that is the toolchain rather than the script: `clang` finds its own sysroot
 from its own path, every binary carries an `$ORIGIN/../lib` rpath, and the only things
-outside the tree it needs are the two GCC-runtime sonames its Debian build links — so
-[`scripts/ci/install-wasi-sdk.sh`](../scripts/ci/install-wasi-sdk.sh) copies exactly those
-two in beside it, where that rpath finds them and nothing else in the image does. No
-`LD_LIBRARY_PATH`, no closure walk. What is dropped out of ~650 MB is `lldb`, the lint and
+outside the tree it needs are the sonames its Debian build links that glibc does not
+provide — the two GCC-runtime ones and `libtinfo` — so
+[`scripts/ci/install-wasi-sdk.sh`](../scripts/ci/install-wasi-sdk.sh) copies each of them in
+beside it, where that rpath finds them and nothing else in the image does. No
+`LD_LIBRARY_PATH`; the closure is walked to decide that list rather than to place it.
+What is dropped out of ~650 MB is `lldb`, the lint and
 format tools, the object utilities, the other linker drivers, `wasm-component-ld` — and, the
 largest deletion by far, four of the wasi-sysroot's five *targets*, since gg compiles to
 exactly the one its package pins. The Dockerfile proves the pruning by compiling both a C
@@ -776,6 +846,21 @@ vintage reason PureScript's library set is not; and the **precompiled header** o
 standard-library headers every program is compiled with — that one is built once per
 *machine*, into a content-keyed shared directory, because a PCH is readable only by the clang
 that wrote it.
+
+**.NET** is the one toolchain here whose missing dependency is invisible to the tools that
+find missing dependencies. What is kept out of a published ~770 MB SDK — the launcher, the
+shared framework, Roslyn and the reference assemblies — is managed code over one small
+native host, so its ELF closure looks complete on any glibc. It is not: the runtime
+`dlopen`s ICU (`libicuuc`, `libicui18n`, `libicudata`) out of
+`libSystem.Globalization.Native.so` at startup, `ldd` reports nothing missing, and a `csc`
+with no ICU beside it `FailFast`s with SIGABRT before it writes a line to stdout. So
+[`scripts/ci/install-dotnet.sh`](../scripts/ci/install-dotnet.sh) vendors the three
+libraries into `<home>/lib`, and gg names that directory on `LD_LIBRARY_PATH` for every
+`dotnet` it runs — the Swift arrangement, for the same reason and by a different route.
+Invariant-globalization mode would also start the compiler and is not used: it changes what
+Roslyn does with a program, and this arm's `-deterministic` output is compared across
+machines. The bindings a program is compiled against are not here, for the vintage reason
+PureScript's library set is not.
 
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
 directory alongside this README, plus the base). Those are exactly the names a runner

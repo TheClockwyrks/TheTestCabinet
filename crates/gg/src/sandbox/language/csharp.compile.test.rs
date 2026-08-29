@@ -6,6 +6,13 @@
 //! [`csharp.substrate.test.rs`](super::super::substrate), against a real `csc`. What is here is the
 //! decision made *after* one, because that decision has a failure mode nothing end to end would
 //! catch: a compiler that fell over is reported to the model as its own mistake.
+//!
+//! The other half of that is what an **operator** is told when the compiler that fell over was one
+//! gg ran for itself, and it is tested here for the same reason and against the same kind of
+//! fixture. A `csc` that cannot start is unreachable from an end-to-end test on a machine where the
+//! toolchain works — it is by definition the machine where it does not — so the invocation is
+//! spelled out as the [`report`] the crash really produced: `ok=false`, killed by a signal, an
+//! empty stdout and everything the runtime had to say on stderr.
 
 use super::*;
 
@@ -255,7 +262,7 @@ fn what_counts_as_a_diagnostic_is_roslyns_own_error_format_and_nothing_else() {
 }
 
 #[test]
-fn the_toolchain_is_only_accepted_when_all_three_of_its_parts_are_there() {
+fn the_toolchain_is_only_accepted_when_all_four_of_its_parts_are_there() {
     // The failure a partial tree produces is the worst kind: `dotnet` starts, `csc` is missing, and
     // what a model would be told is that its program did not compile.
     let root = tempfile::tempdir().expect("a temporary directory");
@@ -263,7 +270,7 @@ fn the_toolchain_is_only_accepted_when_all_three_of_its_parts_are_there() {
     assert!(!usable(path), "an empty directory is not a .NET toolchain");
 
     std::fs::create_dir_all(path.join("dotnet")).expect("the launcher's directory");
-    std::fs::write(path.join("dotnet/dotnet"), "").expect("the launcher");
+    std::fs::write(path.join(LAUNCHER), "").expect("the launcher");
     assert!(!usable(path), "a launcher alone is not a .NET toolchain");
 
     std::fs::create_dir_all(path.join("roslyn/bincore")).expect("the compiler's directory");
@@ -274,7 +281,65 @@ fn the_toolchain_is_only_accepted_when_all_three_of_its_parts_are_there() {
     );
 
     std::fs::create_dir_all(path.join("ref")).expect("the reference directory");
+    // Everything a link check can see is now in place, and this tree still cannot compile anything:
+    // .NET `dlopen`s ICU as it starts, the run image supplies none, and what the toolchain has not
+    // vendored nothing will supply. A tree accepted here is a `csc` that SIGABRTs before it reads
+    // the model's program, reported to the model as its own mistake — the exact failure the three
+    // checks above exist to prevent, one layer further down.
+    assert!(
+        !usable(path),
+        "a tree carrying none of the libraries the run image lacks was accepted as a toolchain"
+    );
+
+    // The directory alone is not the thing that makes `csc` start, and the two really do come apart:
+    // the installer creates `lib/` before it fills it, so an install that fell over in between — no
+    // `ar` on the machine, a fetch that failed — leaves this exact shape. Measured on an image with
+    // no `binutils`, where the empty directory was accepted and the arm aborted anyway.
+    std::fs::create_dir_all(path.join(LIBRARY_DIRECTORY)).expect("the vendored library directory");
+    assert!(
+        !usable(path),
+        "an empty library directory was accepted as the libraries the run image lacks"
+    );
+
+    // Two of the three, which is what a tree that borrowed the Swift arm's closure would hold:
+    // that arm vendors `libicuuc` and `libicudata` for `libxml2` and not the `libicui18n` .NET also
+    // opens, so the near miss has to fail as loudly as the empty directory.
+    for soname in ["libicuuc", "libicudata"] {
+        std::fs::write(
+            path.join(LIBRARY_DIRECTORY).join(format!("{soname}.so.72")),
+            "",
+        )
+        .expect("a vendored library");
+    }
+    assert!(
+        !usable(path),
+        "a tree carrying two of the three libraries .NET opens was accepted"
+    );
+
+    // The version is deliberately not gg's to know — the installer resolves it from the
+    // distribution's own index — so the match is by soname prefix and any version completes the
+    // tree.
+    std::fs::write(path.join(LIBRARY_DIRECTORY).join("libicui18n.so.72"), "")
+        .expect("the last vendored library");
     assert!(usable(path), "a complete tree was not accepted");
+}
+
+#[test]
+fn the_sentence_an_operator_is_shown_names_every_part_a_tree_must_hold() {
+    // `usable` refuses silently — an operator who pointed the variable at a tree gg then declined to
+    // use reads this sentence and nothing else, so a part it does not enumerate is a part they
+    // cannot know is missing. The two lists have to move together.
+    let message = missing_toolchain();
+    for part in [LAUNCHER, "roslyn/bincore/csc.dll", "ref/", "lib/"] {
+        assert!(
+            message.contains(part),
+            "an operator is not told that {part} is one of the things a tree must hold: {message}"
+        );
+    }
+    assert!(
+        message.contains(DOTNET_HOME_ENV),
+        "the sentence does not say which variable points at a tree: {message}"
+    );
 }
 
 #[test]
@@ -381,4 +446,229 @@ fn a_toolchain_with_no_reference_assemblies_is_a_toolchain_failure() {
         ),
         other => panic!("an empty reference pack is a toolchain failure, not {other:?}"),
     }
+}
+
+#[test]
+fn a_runtime_that_could_not_start_is_reported_with_what_it_actually_said() {
+    // The live failure this rendering was rewritten for. Run iip2fot2vcy2paazu0rbsve9 died on its
+    // first turn because the run image ships no ICU, .NET `dlopen`s it, and the runtime `FailFast`s
+    // before any managed code runs. Everything it wrote went to stderr and stdout was empty, so the
+    // report — which formatted `stdout` alone — reached the operator as the lead sentence, a colon,
+    // a full stop and nothing. Both halves of what the process left behind were in hand and both
+    // were discarded.
+    let aborted = report(
+        false,
+        "was killed by signal 6",
+        "",
+        "Process terminated. Couldn't find a valid ICU package installed on the system. \
+         Please install libicu using your package manager and try again. Alternatively you can set \
+         the configuration flag System.Globalization.Invariant to true.\n",
+    );
+    let message = arrangement_failure(
+        "gg's own C# SDK did not compile, which is a defect in gg rather than in the program",
+        &aborted,
+    );
+    assert!(
+        message.contains("was killed by signal 6"),
+        "the report does not say how the process ended: {message}"
+    );
+    assert!(
+        message.contains("Couldn't find a valid ICU package"),
+        "the report does not carry what the runtime said it could not find: {message}"
+    );
+    // The regression itself, stated as the shape rather than as a string: nothing after the colon.
+    let (_, after) = message
+        .split_once(':')
+        .expect("the lead sentence ends in a colon");
+    assert!(
+        after.trim().len() > 1,
+        "the report is empty after the colon, which is the whole defect: {message}"
+    );
+}
+
+#[test]
+fn the_parse_classifiers_own_failure_carries_the_same_evidence() {
+    // The second of the two paths, and it failed the same way for a different reason: it kept the
+    // status and dropped the stderr. A half-fixed contract is one an operator cannot rely on, so
+    // both paths render through one function and this asserts the second really does.
+    let aborted = report(
+        false,
+        "was killed by signal 6",
+        "",
+        "Process terminated. Couldn't find a valid ICU package installed on the system.\n",
+    );
+    let message = arrangement_failure(
+        "csc could not build gg's own C# parse classifier, which is gg's arrangement failing \
+         rather than any program's",
+        &aborted,
+    );
+    assert!(
+        message.contains("was killed by signal 6") && message.contains("valid ICU package"),
+        "the classifier's failure does not carry the status and the stderr: {message}"
+    );
+}
+
+/// A `dotnet` that dies exactly the way the run image's did: nothing on stdout, the runtime's own
+/// account on stderr, and SIGABRT.
+///
+/// Two lines and then `kill -ABRT $$`, because that is the whole of what `libSystem.Globalization
+/// .Native.so` leaves behind when neither ICU it `dlopen`s resolves. A test that stubbed a non-zero
+/// *exit* instead would pass against a report that dropped the signal.
+#[cfg(unix)]
+const ABORTING_LAUNCHER: &str = "#!/bin/sh\n\
+     echo 'Process terminated.' >&2\n\
+     echo \"Couldn't find a valid ICU package installed on the system.\" >&2\n\
+     kill -ABRT $$\n";
+
+/// A tree shaped enough like a .NET toolchain for [`sdk_assembly`] and [`parser`] to get as far as
+/// spawning it, whose launcher then cannot start.
+///
+/// Everything in it is a stub except the launcher, because everything else on the path to the spawn
+/// is a *file* to these two functions: `csc.dll` is an argument and a stamp, the two Roslyn
+/// assemblies and `csc.runtimeconfig.json` are files [`parser`] copies, and `ref/` needs one `.dll`
+/// so [`references`] does not refuse the tree first.
+#[cfg(unix)]
+fn toolchain_whose_runtime_cannot_start() -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let path = root.path();
+    for directory in ["dotnet", "roslyn/bincore", "ref/stub", LIBRARY_DIRECTORY] {
+        std::fs::create_dir_all(path.join(directory)).expect("the tree is created");
+    }
+
+    let launcher = path.join(LAUNCHER);
+    std::fs::write(&launcher, ABORTING_LAUNCHER).expect("the launcher is written");
+    std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755))
+        .expect("the launcher is executable");
+
+    for file in [
+        "csc.dll",
+        "Microsoft.CodeAnalysis.dll",
+        "Microsoft.CodeAnalysis.CSharp.dll",
+    ] {
+        std::fs::write(path.join("roslyn/bincore").join(file), b"stub")
+            .expect("a Roslyn assembly is stubbed");
+    }
+    std::fs::write(path.join("roslyn/bincore/csc.runtimeconfig.json"), "{}")
+        .expect("Roslyn's runtime configuration is stubbed");
+    std::fs::write(path.join("ref/stub/System.Runtime.dll"), b"stub")
+        .expect("a reference assembly is stubbed");
+    root
+}
+
+/// The SDK build's OWN reporting, driven through the function that does it rather than through the
+/// helper it calls.
+///
+/// The two cases above assert what [`arrangement_failure`] renders. That is not where the defect
+/// was: both of these call sites once formatted `report.stdout` inline and never reached the helper
+/// at all, so a revert of either leaves those two green. This drives the real `sdk_assembly` against
+/// a launcher that aborts, which is the shape of the live failure, and it fails if the call site
+/// stops asking for the status and the stderr however good the helper is.
+#[cfg(unix)]
+#[test]
+fn the_sdk_build_reports_a_runtime_that_could_not_start() {
+    let toolchain = toolchain_whose_runtime_cannot_start();
+    let context = PrepareContext::new();
+    let failure = sdk_assembly(toolchain.path(), &context)
+        .expect_err("a launcher that aborts cannot have built gg's SDK");
+    assert!(
+        failure.contains("gg's own C# SDK did not compile"),
+        "the failure is not the one this path reports: {failure}"
+    );
+    assert!(
+        failure.contains("was killed by signal 6"),
+        "the call site dropped how the process ended: {failure}"
+    );
+    assert!(
+        failure.contains("Couldn't find a valid ICU package"),
+        "the call site dropped what the runtime said it could not find: {failure}"
+    );
+}
+
+/// The same, for the parse classifier — the second of the two call sites, which kept the status and
+/// dropped the stderr.
+#[cfg(unix)]
+#[test]
+fn the_parse_classifiers_build_reports_a_runtime_that_could_not_start() {
+    let toolchain = toolchain_whose_runtime_cannot_start();
+    let context = PrepareContext::new();
+    let failure = parser(toolchain.path(), &context)
+        .expect_err("a launcher that aborts cannot have built the parse classifier");
+    assert!(
+        failure.contains("gg's own C# parse classifier"),
+        "the failure is not the one this path reports: {failure}"
+    );
+    assert!(
+        failure.contains("was killed by signal 6"),
+        "the call site dropped how the process ended: {failure}"
+    );
+    assert!(
+        failure.contains("Couldn't find a valid ICU package"),
+        "the call site dropped what the runtime said it could not find: {failure}"
+    );
+}
+
+/// Every `dotnet` this arm spawns is pointed at the libraries the toolchain carries.
+///
+/// This is the whole of the runtime repair, and it is one line that no other test in this crate can
+/// see. Deleting it leaves all eighty-odd C# tests green on any machine that has an ICU of its own —
+/// which is every machine `cargo` runs on, by construction, since `.devcontainer/system/apt.sh`
+/// declares one. The arm would be exactly as dead in the run images as it was, and the suite exactly
+/// as green as it was. So the variable is asserted at the one place it is set, where a third spawn
+/// site added later inherits it rather than remembering it.
+#[test]
+fn every_dotnet_this_arm_runs_is_pointed_at_the_libraries_the_toolchain_carries() {
+    let root = std::path::Path::new("/opt/gg/toolchains/dotnet");
+    let context = PrepareContext::new();
+    let command = dotnet(root, &context).expect("a dotnet command is built");
+    let environment = command.environment();
+
+    assert_eq!(
+        environment.get("LD_LIBRARY_PATH").map(String::as_str),
+        Some("/opt/gg/toolchains/dotnet/lib"),
+        "a dotnet spawned without the toolchain's own lib/ aborts at CLR start-up in the run image",
+    );
+    assert_eq!(
+        environment.get("DOTNET_ROOT").map(String::as_str),
+        Some("/opt/gg/toolchains/dotnet/dotnet"),
+        "the runtime is resolved inside this tree and not from the machine",
+    );
+    for (variable, value) in [("DOTNET_CLI_TELEMETRY_OPTOUT", "1"), ("DOTNET_NOLOGO", "1")] {
+        assert_eq!(
+            environment.get(variable).map(String::as_str),
+            Some(value),
+            "a first-run banner would be read as part of a compiler's diagnostics",
+        );
+    }
+}
+
+#[test]
+fn a_compiler_that_disagreed_with_ggs_own_c_sharp_still_reads_as_its_diagnostics() {
+    // The ordinary case these two paths were written for — Roslyn refusing gg's own SDK sources —
+    // must be unchanged by carrying the crash evidence. The diagnostics are still there, whole and
+    // unbounded, because the reader is an operator reading a defect in gg and wants all of them;
+    // what is new is one line above them saying how the process ended.
+    let rejected = report(
+        false,
+        "exited with status 1",
+        "Gg/Files.cs(12,20): error CS0246: The type or namespace name 'Strem' could not be found\n",
+        "",
+    );
+    let message = arrangement_failure("gg's own C# SDK did not compile", &rejected);
+    assert_eq!(
+        message,
+        "gg's own C# SDK did not compile: exited with status 1\n\
+         Gg/Files.cs(12,20): error CS0246: The type or namespace name 'Strem' could not be found",
+        "a compile Roslyn simply refused no longer reads as its own diagnostics"
+    );
+    // And a compiler that said nothing at all on either stream leaves no dangling separator behind:
+    // the status is the whole report, because the status is all there was.
+    assert_eq!(
+        arrangement_failure(
+            "gg's own C# SDK did not compile",
+            &report(false, "timed out after 60s", "", "")
+        ),
+        "gg's own C# SDK did not compile: timed out after 60s",
+    );
 }

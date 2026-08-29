@@ -46,6 +46,14 @@ same `.devcontainer/` paths as well (see the Podman note under
 outside all of this is Ruby itself, which is a distribution package and so is
 installed by `system/apt.sh`.
 
+That script also declares the shared libraries an arm's compiler expects the
+machine to supply — ICU, which Roslyn's .NET runtime `dlopen`s at startup — for
+the reason it declares `iproute2` and Ruby: a package that arrives as somebody
+else's transitive dependency is a package that leaves when that dependency
+does. A run image owes the same libraries to the same compilers and vendors
+them under `/opt/gg` instead, since it has no package manager at run time; see
+[the toolchain builder](../containers/README.md#the-gg-toolchain-builder).
+
 The `postCreateCommand` still runs the installer, now as a **reconciler**: an
 image built before a pin moved is stale, and the way you find that out otherwise
 is `rustc` refusing another release's `.rlib` with E0514 halfway through a build.

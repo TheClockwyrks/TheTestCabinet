@@ -13,13 +13,21 @@
 //! [before teardown](test_cabinet_core::salvage) and assembled into the run tree's session record.
 //! Capture is the reason the journal exists and the only reason it exists.
 //!
-//! The binary carries one further subcommand that runs nothing at all: `gg reference` projects
+//! Two of the binary's subcommands run nothing at all, and one runs everything. `gg reference` projects
 //! gg's own tool definitions and each arm's documentation views into the
 //! [contract](test_cabinet_core::gg_reference::GgReference) the console's Reference section
 //! renders, so the documentation of what a model is offered is generated from what a model is
 //! really offered. `--out` writes the twelve documents — the index and one per program language — as
 //! **files a deployment reads at run time**, which is how they reach a backend that cannot depend on
-//! this crate at all.
+//! this crate at all. `gg probe-fixtures` projects the per-arm turn-1 conversations the backend
+//! replays, on the same terms and for the same reason.
+//!
+//! `gg selfcheck` is the opposite kind of thing: it drives every one of the eleven program-language
+//! arms through a real bootstrap turn — the real toolchain, the real compiler, the real guest — in
+//! whatever environment the binary was started in, and exits non-zero if any arm is broken there.
+//! Its whole input is the binary and the environment around it, which is what makes it the gate a
+//! built run image is held to. `crates/gg/src/selfcheck.rs` carries the failure that argument comes
+//! from.
 //!
 //! Everything else — the model client, the agent turn loop, tool dispatch, and the telemetry
 //! emitter — is internal to this crate; the binary is the only public surface.
@@ -57,6 +65,7 @@ mod prompts;
 mod reference;
 mod sandbox;
 mod search;
+mod selfcheck;
 mod skills;
 mod subagents;
 mod summary;
@@ -84,9 +93,10 @@ use crate::telemetry::Emitter;
 ///   deployment's baked binary is invoked by. Turning it into `gg run --config` would break every
 ///   run the moment a driver and a binary disagreed on which generation they were, for no gain — so
 ///   the bare form stays, permanently, as an implied [`Command::Run`].
-/// - **`gg <SUBCOMMAND>`** for everything else. Today that is [`Command::Reference`], which prints
-///   what gg offers a model so the console can serve it without the backend depending on this
-///   crate.
+/// - **`gg <SUBCOMMAND>`** for everything else. Today that is [`Command::Reference`] and
+///   [`Command::ProbeFixtures`], which print what gg offers a model so the console and the backend
+///   can serve it without depending on this crate, and [`Command::Selfcheck`], which asks every
+///   program-language arm whether it works in the environment the binary is running in.
 ///
 /// The two are held apart by clap's `args_conflicts_with_subcommands` (a subcommand and a bare
 /// `--config` are mutually exclusive rather than silently both-applied) and `subcommand_negates_reqs`
@@ -155,6 +165,33 @@ enum Command {
     /// It is a subcommand for the reason `reference` is: the backend that embeds these files
     /// cannot depend on this crate.
     ProbeFixtures(ProbeFixturesArgs),
+
+    /// Drive every registered program-language arm's bootstrap round trip here, and exit non-zero
+    /// if any of them is broken.
+    ///
+    /// The gate a built run image is held to. Each arm's own opening program is prepared with that
+    /// arm's real toolchain, evaluated by its real guest, and required to have placed the views it
+    /// opened — the same call every code-mode run makes first. Its whole input is this binary and
+    /// the environment around it, which is the point: a toolchain verified in the stage that
+    /// assembled it has been verified in the wrong environment, and a library loaded by `dlopen`
+    /// is in no ELF header for a link check to find.
+    ///
+    /// It is a subcommand rather than a test for the same reason: `cargo` never enters the image a
+    /// run executes in. `crates/gg/src/selfcheck.rs` carries the failure the design comes from, and
+    /// `apps/docs/src/content/docs/gg/languages/selfcheck.md` says where it is run.
+    Selfcheck(SelfcheckArgs),
+}
+
+/// Arguments for the self-check.
+#[derive(Debug, Args)]
+struct SelfcheckArgs {
+    /// Check only the named arm, by the id a run's configuration names it under (`csharp`, `rust`,
+    /// …). Repeatable; omit to check every registered arm.
+    ///
+    /// What a developer iterating on one arm reaches for, and the only reason the flag exists — the
+    /// gate itself names none, because an arm left unchecked is an arm nothing is asserting about.
+    #[arg(long = "language", value_name = "ID")]
+    languages: Vec<String>,
 }
 
 /// Arguments for projecting the probe fixtures.
@@ -203,6 +240,7 @@ pub async fn run_from_args() -> ExitCode {
         (Some(Command::Run(args)), _) => run_session(&args.config).await,
         (Some(Command::Reference(args)), _) => project_reference(args.out.as_deref()),
         (Some(Command::ProbeFixtures(args)), _) => project_probe_fixtures(&args.out),
+        (Some(Command::Selfcheck(args)), _) => selfcheck::selfcheck(&args.languages).await,
         // Unreachable: clap requires `--config` when no subcommand was named, and rejects it
         // alongside one. Reported rather than unwrapped so a future change to those two settings
         // surfaces as a message instead of a panic in the run container.

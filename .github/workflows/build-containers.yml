@@ -33,7 +33,12 @@ name: Build containers
 #
 # None is a per-harness image: a run installs the selected harness's CLI into the
 # image at run time (see harnesses/README.md), so the images never need rebuilding
-# when a harness publishes a new version.
+# when a harness publishes a new version. The `-gg` variants are the one exception, and
+# they are also the reason this job now builds a `gg` binary before it builds an image:
+# those variants bake in eleven language compilers, and the `build` job GATES them on
+# `gg selfcheck` — every arm's real bootstrap turn, driven inside the freshly-built image
+# as the unprivileged run user, between that image's build and its push. See the step
+# comments below, and containers/build.sh's header for what went wrong without it.
 #
 # This is the one CI job that lives on GitHub Actions rather than the primary
 # Azure DevOps pipeline, by deliberate exception: the image is meant for anyone
@@ -117,13 +122,22 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # `build.sh` runs `scripts/presign-sample-pack.mjs` (node-only, no npm install)
-      # to mint the R2 download URL for the sfx-sample/music audio packs.
+      # Node serves two things here. `build.sh` runs `scripts/presign-sample-pack.mjs`
+      # (node-only) to mint the R2 download URL for the sfx-sample/music audio packs; and
+      # building `gg` below reflects the TypeScript and JavaScript arms' signature
+      # catalogues with the workspace's PINNED `typescript`, which is a devDependency, so
+      # `npm ci` is a build prerequisite for two of the eleven arms. The version matches
+      # ci.yml's and release.yml's rather than the 20.x this step used to pin for the
+      # presign script alone — one Node for the job, and the one the rest of CI builds gg
+      # with.
       - uses: actions/setup-node@v6
         with:
-          node-version: 20.20.2
+          node-version: 22.23.1
+          cache: npm
 
-      # Authenticate to GHCR with the built-in token (packages: write above).
+      # Authenticate to GHCR with the built-in token (packages: write above). It comes
+      # BEFORE the toolchain hydration below rather than after, because that step pulls a
+      # published package from this same registry.
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
@@ -131,7 +145,81 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # build.sh (no args) builds EVERY run image — base, every asset-generation kind
+      # ------------------------------------------------------------------
+      # A `gg` binary for the self-check gate
+      # ------------------------------------------------------------------
+      # WHY THIS JOB NOW BUILDS A COMPILER-HARNESS BINARY BEFORE IT BUILDS IMAGES.
+      #
+      # The `-gg` variants carry eleven language toolchains, and building one asks nothing
+      # about whether those toolchains RUN in the image they were copied into. They did
+      # not: `csc` aborted at CLR start-up in every Debian-lineage variant for want of an
+      # ICU the toolchain did not carry, twenty-five images shipped with a dead C# arm, and
+      # every gate the arm had was green because every one of them ran somewhere else — in
+      # the devcontainer, or in the builder stage that installs the dependency it then
+      # exports without. The gate that answers the actual question is `gg selfcheck` run
+      # INSIDE a built variant, so this job has to have a `gg` to run.
+      #
+      # The four steps below are the same sequence `ci.yml`'s `rust` job and `release.yml`'s
+      # `gg` job already use, in the same order and for the same reasons; read either of
+      # those for the longer argument. In brief: `crates/gg/build.rs` reflects each arm's
+      # signature catalogue out of that arm's own SDK on every build and compiles every
+      # arm's artifacts, so a machine that builds gg is a machine with all eleven
+      # toolchains (~1.9 GB) plus the C# arm's build-only ones (~1.4 GB more). Hydrating
+      # from the published CI image replaces five upstream CDNs with one registry pull;
+      # the pinned installer still runs afterwards and still owns every pin.
+      - name: Install the musl toolchain and Ruby
+        run: sudo apt-get update && sudo apt-get install -y musl-tools ruby
+      # `:build-latest`, NOT `:latest`. The two tags differ by ~1.4 GB, and the bigger one
+      # is what a job that COMPILES test-cabinet-gg needs — the C# arm's guest is relinked
+      # from a whole .NET SDK against an unpruned wasi-sdk at build time. Pulling `:latest`
+      # would still work and be strictly worse: the arm's own build.sh would fetch both
+      # itself on every run. `containers/gg-ci/Dockerfile` carries the two-tag argument.
+      # The step is best-effort by design (no image on a first run or a fork, a version
+      # behind between a pin bump and the rebuild); it degrades to the full install.
+      - name: Hydrate gg's program-language toolchains
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          owner="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          ./scripts/ci/hydrate-gg-toolchains.sh "ghcr.io/${owner}/$(./containers/gg-ci/image-name.sh):build-latest"
+      - name: Install gg's program-language toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/ci/install-gg-toolchains.sh
+          # And the C# arm's BUILD toolchains, deliberately excluded from the eleven-arm
+          # list (~1.4 GB no gg RUN needs) — see that installer's header.
+          ./scripts/ci/install-gg-build-toolchains.sh
+          npm ci
+          # The build below is a separate process, so the installers' bin directory is
+          # prepended for the job rather than exported here: `purs` and `uv` come off PATH.
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      # STATIC MUSL IS NOT A PORTABILITY NICETY HERE, IT IS THE ONLY BUILD THAT WOULD RUN.
+      # The runners are ubuntu-24.04 (glibc 2.39) and the images this binary is about to be
+      # executed inside are Debian bookworm (2.36) and Ubuntu 26.04 — a dynamically linked
+      # build would fail to load in the very image it is meant to gate. It is also exactly
+      # the artifact a deployment installs: `core`'s gg_exec copies this same static binary
+      # into a run container. The script derives its target from the runner's architecture,
+      # which is why this matrix builds natively per arch.
+      - name: Build gg (static musl)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/build-gg-static.sh "$RUNNER_TEMP/gg"
+          # And then give the disk back. This job builds twenty-six `-gg` variants after
+          # this step, on a runner whose image store and whose `target/` share one
+          # filesystem; a release build of gg leaves several gigabytes of intermediate
+          # artifacts behind and the binary itself has already been copied out to
+          # $RUNNER_TEMP. Nothing downstream reads `target/` — the images compile inside
+          # their own build contexts, and the repo-root `.dockerignore` excludes it — so
+          # this is free, and an out-of-space failure forty minutes into an image build is
+          # not. The `df` is for the log: it is the number to read first if this job ever
+          # dies during a build with something unhelpful about no space left.
+          rm -rf target
+          df -h /
+
+      # build.sh (given no image NAMES — the one flag it takes is below) builds EVERY run
+      # image — base, every asset-generation kind
       # including blender, adversarial, performance, and the `-gg` variants that carry
       # gg's language toolchains — natively for this runner's
       # architecture, pushes them to IMAGE_REGISTRY under the arch-suffixed tag, and
@@ -148,6 +236,23 @@ jobs:
       # read-scoped — CI never writes the bucket; publishing is a local step. They are
       # REQUIRED: a pack that is not pinned (or that cannot be presigned) fails the
       # build rather than shipping an image with an empty palette, so these must be set.
+      #
+      # `--gg-selfcheck` is what makes this job a gate on the `-gg` variants rather than
+      # only a publisher of them: build.sh drives every language arm's real bootstrap turn
+      # inside each environment representative it builds — as the unprivileged run user,
+      # from this static binary — BETWEEN that image's build and its push, so a variant
+      # carrying a dead arm cannot reach the registry. Four images cover all twenty-six
+      # variants: `/opt/gg` is byte-identical across them, so what differs is the
+      # environment it runs in — the image the lineage is rooted at plus every package the
+      # run images install on the way down, which is four groups and not the two parents it
+      # looks like. build.sh's GG_SELFCHECK_IMAGES carries the argument and its
+      # `assert_gg_environments` re-derives the grouping from the Dockerfiles on every
+      # gated build.
+      #
+      # The output is teed because the step AFTER this one asserts the gate actually ran.
+      # `set -euo pipefail` is written out rather than assumed: an unqualified `run:` on
+      # Linux is `bash -e`, with no `pipefail`, so build.sh's exit status would be thrown
+      # away by the pipe into `tee` and a failed gate would land as a green step.
       - name: Build and push images
         env:
           PUSH: "1"
@@ -159,9 +264,39 @@ jobs:
           CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID }}
           CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY }}
         run: |
+          set -euo pipefail
           registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
           echo "Pushing $IMAGE_TAG images to $registry"
-          IMAGE_REGISTRY="$registry" ./containers/build.sh
+          IMAGE_REGISTRY="$registry" ./containers/build.sh --gg-selfcheck "$RUNNER_TEMP/gg" \
+            2>&1 | tee "$RUNNER_TEMP/build-containers.log"
+
+      # THE GATE HAS TO HAVE RUN, NOT MERELY HAVE BEEN ASKED FOR.
+      #
+      # Everything above is one command line, and the way this whole mechanism stops being
+      # worth anything is a refactor that drops the flag from it: the build would still pass
+      # and would publish exactly the images the check exists to hold back, with nothing in
+      # the log to say so. So the per-image `gg selfcheck ok:` lines build.sh prints are
+      # required here by name. A skipped gate is now a red step, which is the difference
+      # between a gate and a habit.
+      #
+      # The names are written out rather than read from build.sh, deliberately: this is an
+      # independent statement of what must have been checked, and a list derived from the
+      # thing under test would agree with it however wrong it became.
+      - name: Assert the gg self-check ran in every environment
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/build-containers.log"
+          for image in sprite-gg base-wasm-gg voxel-gg blender-gg; do
+            if ! grep -Fq "gg selfcheck ok: $image" "$log"; then
+              echo "::error::containers/build.sh published without running gg selfcheck in $image." >&2
+              echo "The images built here carry gg's eleven language toolchains, and building one" >&2
+              echo "asks nothing about whether they RUN in it — which is how twenty-five images" >&2
+              echo "once shipped with a dead C# arm. Restore the --gg-selfcheck flag on the build" >&2
+              echo "step above; see containers/build.sh's header." >&2
+              exit 1
+            fi
+            echo "gg selfcheck ran in $image"
+          done
 
   # Fuse the per-arch tags into the multi-arch manifest lists every runner resolves:
   # `:latest` (DEFAULT_CONTAINER_TAG) AND an immutable `:<git-sha>` a deployment can

@@ -399,6 +399,39 @@ The script builds gg, so it needs the toolchains described under
 projection itself needs none of them, because every arm's catalogue is compiled
 into the binary.
 
+## Checking gg's arms in a run image
+
+Every language arm compiles inside the run container, against the toolchain tree
+the `-gg` image variants carry, so the question a build cannot answer is whether
+that tree works where it is copied to. `gg selfcheck` answers it: it drives every
+arm's bootstrap program through the real preparation, guest and views in whatever
+environment the binary is running in, and exits non-zero when any arm fails.
+
+```sh
+make -C deployments/local run-images-gg-selfcheck   # build gg, build the four, check them
+```
+
+That target builds the static binary with `scripts/build-gg-static.sh` and hands
+it to `containers/build.sh --gg-selfcheck`, which drives the check inside each
+image between building it and pushing it — installing the binary the way a run
+does, with `docker cp` to `/tmp/gg` and an `exec` as the unprivileged run user.
+Naming the images runs the same command by hand:
+
+```sh
+containers/build.sh --gg-selfcheck target/gg-selfcheck/gg \
+  sprite-gg base-wasm-gg voxel-gg blender-gg
+```
+
+Four images answer for all twenty-six variants, because `/opt/gg` is byte-identical
+across them and what differs is the environment it runs in — the image the lineage
+is rooted at plus every package a run image installs on the way down. `build.sh`
+re-derives that grouping from the Dockerfiles on every gated build. CI passes the
+same `--gg-selfcheck` flag post-merge, before the images are published.
+
+`cargo run -p test-cabinet-gg -- selfcheck` asks the same question of this
+machine's own toolchains, which is the form to run while working on an arm. See
+[the self-check](/gg/languages/selfcheck/).
+
 ## Desktop app (Tauri)
 
 The Tauri CLI drives the [desktop app](/components/tauri/overview/), building the

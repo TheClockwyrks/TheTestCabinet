@@ -61,6 +61,10 @@
 #                             #   image is named but no base image is present locally yet. This is
 #                             #   how deployments/local/Makefile rebuilds one test type — or one
 #                             #   asset-generation kind — without paying for the whole set.
+#   ./build.sh --gg-selfcheck <PATH-TO-GG> [<name>...]
+#                             #   additionally drive `gg selfcheck` inside each environment
+#                             #   representative it builds, BEFORE that image is pushed. See
+#                             #   "Gating the `-gg` variants" below.
 #
 # The images are distributed via a registry and pulled by the runner, which
 # resolves the one for a run's test type and asset kind from its own registry
@@ -114,6 +118,34 @@
 # It has its own workflow (.github/workflows/build-gg-ci-image.yml) with its own trigger,
 # and `./build.sh gg-ci` is rejected as an unknown name by the check below, which is the
 # intended answer rather than an oversight.
+#
+# GATING THE `-gg` VARIANTS ON `gg selfcheck` (`--gg-selfcheck <PATH-TO-GG>`).
+#
+# A `-gg` variant's whole content beyond its parent is a compiler tree, and nothing about
+# building that tree asks whether it RUNS where it was copied to. It went wrong exactly
+# that way: the C# arm's `csc` aborted at CLR start-up in every Debian-lineage run image
+# for want of an ICU the toolchain did not carry, while the installer's own verification
+# compile passed — because that compile ran in the builder stage, which `apt-get install`s
+# the arm's dependencies and then exports `/opt/gg` without them. The libraries were
+# reached by `dlopen`, so they were in no ELF header for `ldd` to miss either. Twenty-five
+# images shipped with a dead arm and every check was green.
+#
+# So: with `--gg-selfcheck`, this script drives `gg selfcheck` — every registered language
+# arm's real bootstrap turn, real toolchain, real compiler, real guest — INSIDE the image
+# it has just built, as the unprivileged run user, and does it BEFORE `push_and_pin` gets
+# the chance to publish it. A variant with a dead arm cannot reach the registry.
+#
+# IT IS A FLAG AND NOT AN ENVIRONMENT VARIABLE, deliberately. An env var is forgotten
+# silently — a workflow edit that drops it leaves a build that still passes and publishes
+# exactly the images this exists to keep unpublished, and quietly ceasing to be worth
+# anything is the single most likely way this whole change stops mattering. A flag is
+# visible in the one command line a reader of `build-containers.yml` reads, and the
+# workflow additionally greps this script's output for the per-image `gg selfcheck ok:`
+# lines below, so a refactor that stops passing it FAILS rather than skips.
+#
+# WHICH IMAGES IT RUNS IN is argued at GG_SELFCHECK_IMAGES; what stops a run image from
+# quietly becoming an environment nothing checks is `assert_gg_environments`, and what pins
+# the two external references those environments are rooted at is `assert_gg_lineages`.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -124,6 +156,134 @@ readonly IMAGE_REGISTRY="${IMAGE_REGISTRY:-}"
 readonly IMAGE_TAG="${IMAGE_TAG:-latest}"
 readonly IMAGE_NAME_PREFIX="${IMAGE_NAME_PREFIX:-test-cabinet-}"
 readonly DOCKER="${DOCKER:-docker}"
+
+# ---------------------------------------------------------------------------
+# Options
+# ---------------------------------------------------------------------------
+# One flag, parsed here so the rest of the script sees only image names in "$@" and the
+# selection logic at the bottom is unchanged. `--gg-selfcheck <PATH>` (or
+# `--gg-selfcheck=<PATH>`) names a `gg` binary on THIS machine; the header argues why the
+# gate is a flag rather than an environment variable, and why it is worth a parser in a
+# script that had none.
+GG_SELFCHECK_BIN=""
+positional=()
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--gg-selfcheck)
+			if [[ $# -lt 2 ]]; then
+				echo "--gg-selfcheck needs the path to a gg binary" >&2
+				exit 1
+			fi
+			GG_SELFCHECK_BIN="$2"
+			shift 2
+			;;
+		--gg-selfcheck=*)
+			GG_SELFCHECK_BIN="${1#*=}"
+			shift
+			;;
+		# Everything after `--` is an image name, however it is spelled.
+		--)
+			shift
+			positional+=("$@")
+			break
+			;;
+		-*)
+			echo "unknown option '$1'. The only option is --gg-selfcheck <PATH-TO-GG>." >&2
+			exit 1
+			;;
+		*)
+			positional+=("$1")
+			shift
+			;;
+	esac
+done
+set -- ${positional[@]+"${positional[@]}"}
+
+# A path that is not there, or is not executable, is a typo — and a gate that quietly
+# checked nothing would be worse than no gate, so it is fatal before the first build
+# rather than a container failure forty minutes later. The path is resolved to an absolute
+# one because it is handed to the container runtime, and made `readonly` because nothing
+# below may change what was gated on.
+if [[ -n "${GG_SELFCHECK_BIN}" ]]; then
+	if [[ ! -f "${GG_SELFCHECK_BIN}" || ! -x "${GG_SELFCHECK_BIN}" ]]; then
+		echo "--gg-selfcheck: '${GG_SELFCHECK_BIN}' is not an executable file." >&2
+		echo "       Build one with: scripts/build-gg-static.sh <out-path>" >&2
+		exit 1
+	fi
+	GG_SELFCHECK_BIN="$(cd "$(dirname "${GG_SELFCHECK_BIN}")" && pwd)/$(basename "${GG_SELFCHECK_BIN}")"
+fi
+readonly GG_SELFCHECK_BIN
+
+# THE FOUR IMAGES THE GATE RUNS IN, AND WHY IT IS FOUR AND NOT TWENTY-SIX.
+#
+# Every `-gg` variant carries the SAME toolchain tree: `containers/gg/Dockerfile` copies
+# `/opt/gg` with `--link`, which builds the layer rooted at `scratch` rather than as a diff
+# against each parent — so all twenty-six variants get the identical digest for identical
+# bytes (that COPY's comment carries the measurement). What can differ between two variants
+# is therefore not the toolchain but the ENVIRONMENT it has to run in, and the question this
+# list answers is how many distinct environments the twenty-six are.
+#
+# IT IS NOT "THE NUMBER OF PARENTS", which is what this list first said and got wrong. There
+# are two external parents — the Debian `node:*-bookworm-slim` and `blender`'s `ubuntu:26.04`
+# — but a run image is not its parent: a dozen of them `apt-get install` packages of their
+# own on top of `base`, and a package brings its whole dependency closure with it. Measured
+# on the local store, with the C# arm's own missing library as the probe:
+#
+#   test-cabinet-sprite-gg      no libicu at all
+#   test-cabinet-base-wasm-gg   no libicu at all
+#   test-cabinet-voxel-gg       libicu{uc,i18n,data}.so.72, dragged in by mesa-vulkan-drivers
+#   test-cabinet-blender-gg     libicu{uc,i18n,data}.so.78, dragged in by blender
+#
+# So `base-wasm-gg` alone did not answer for `voxel-gg`: in one the vendored ICU is what the
+# runtime opens and in the other the image's own copy is there to be found instead, and
+# "satisfied by a package something unrelated pulled in" is the exact failure class this
+# whole gate exists to end. Grouping the twenty-six by the environment their Dockerfiles
+# build — the external reference the lineage is rooted at, plus every package `apt` installs
+# anywhere along the chain — gives FOUR groups, and these are one of each:
+#
+#   sprite-gg     node:*-bookworm-slim + the shared base's packages
+#   base-wasm-gg  …and base-wasm's binaryen, libssl-dev, pkg-config
+#   voxel-gg      …and the mesa stack (libvulkan1, mesa-vulkan-drivers) the render images add
+#   blender-gg    ubuntu:26.04 + blender's packages
+#
+# `base` itself is in no group: it has no `-gg` variant, so no arm ever runs there.
+#
+# That is the whole argument, and it is only as good as "four groups" — which is why
+# `assert_gg_environments` re-derives the grouping from the Dockerfiles on every gated build
+# instead of trusting this comment, and `assert_gg_lineages` separately pins the two external
+# references the grouping is rooted at. The C# bug was in the ENVIRONMENT (a missing ICU),
+# and `--link` says nothing whatever about what a variant is layered onto.
+readonly GG_SELFCHECK_IMAGES=(sprite-gg base-wasm-gg voxel-gg blender-gg)
+
+# The external images the run images' lineages are rooted at, and the exact references they
+# name. `assert_gg_lineages` requires the set derived from `containers/*/Dockerfile` to be
+# exactly this, so a third lineage — or a bump of either of these two — stops a gated build
+# and has to be answered rather than absorbed. A bump is worth stopping for: the blender
+# image works today only because Ubuntu's own package closure happens to drag in an ICU,
+# which is precisely the kind of accident a new base image silently withdraws.
+#
+# This is a PIN and not the coverage argument. What makes four images answer for twenty-six
+# is `assert_gg_environments`, which groups the variants by root *and* by the packages each
+# one installs; a root that never moves while a run image gains a package is a change this
+# list cannot see and that one can.
+readonly GG_LINEAGE_ROOTS=(
+	"base=docker.io/library/node:24.18.0-bookworm-slim"
+	"blender=docker.io/library/ubuntu:26.04"
+)
+
+# Where the binary is installed inside the container under test. `crates/core`'s
+# `gg::BINARY_PATH` — the path a real run copies gg to, and the one gg's own scratch files
+# are named as siblings of (`/tmp/gg-invocation.json`, `/tmp/gg-cancel`). The check is
+# worth as little as it differs from a run, so it does not invent a path of its own.
+readonly GG_SELFCHECK_CONTAINER_PATH="/tmp/gg"
+
+# The unprivileged user a run's harness executes as: uid 1000 `node`, created by
+# `containers/base/Dockerfile` and recreated with the same name and uid by
+# `containers/blender/Dockerfile` (`crates/core/src/container.rs`'s RUN_USER is what both
+# are matching). The check runs as that user and not as root, because root would prove
+# permissions no run has — a toolchain directory only root can read is a broken arm that a
+# root check calls healthy.
+readonly GG_SELFCHECK_USER="node"
 
 # The base, adversarial, and performance image tags left in the local store
 # (build-only mode) or tagged from and pushed (push mode). The sprite,
@@ -284,6 +444,300 @@ build_gg_toolchains() {
 	fi
 }
 
+# ---------------------------------------------------------------------------
+# The `-gg` gate
+# ---------------------------------------------------------------------------
+
+# Re-derive the external images the run images are rooted at, and refuse a gated build if the
+# set is not the pinned one.
+#
+# This is the FLOOR of the coverage argument rather than the argument. Every run image's
+# final stage is either `FROM ${BASE_IMAGE}` — layered onto another image built here, so it
+# inherits that image's lineage — or `FROM` a literal external reference, which STARTS a
+# lineage. Collect the literals and the set must be exactly GG_LINEAGE_ROOTS. What that
+# catches is a new parent, or a bump of one, either of which changes what an image supplies
+# for reasons no arm can see. What it CANNOT catch is a run image installing a package of
+# its own, which changes the same thing without touching a `FROM` at all; that is
+# `assert_gg_environments`, and this function was for a while mistaken for it.
+#
+# It reads the LAST `FROM` in each file, which is the stage that ships: several images have
+# builder stages `FROM docker.io/library/rust:*`, and a builder is not a lineage — nothing
+# a run executes is layered onto it.
+#
+# The audit that produced this gate suggested the equivalent assertion as a Rust unit test
+# over `crates/core`'s image resolution. It belongs here instead, and the reason is the same
+# one that made `gg selfcheck` a subcommand rather than a test: the fact being asserted is a
+# property of the Dockerfiles, and this is the program that reads them. A test would also be
+# asserting it somewhere that cannot stop the push. The same goes for its sibling below.
+#
+# Only fatal under `--gg-selfcheck`. Without the flag no coverage is being claimed, and
+# failing an unrelated local `./build.sh sprite` because somebody added an image would be
+# an alarm in the wrong place.
+assert_gg_lineages() {
+	local name dockerfile from
+	local -a roots=()
+	for name in "${ALL_NAMES[@]}"; do
+		# A `-gg` variant is `FROM` its parent (`containers/gg/Dockerfile`), so it starts
+		# no lineage of its own — which is the fact the whole gate is built on.
+		[[ "${name}" == *-gg ]] && continue
+		dockerfile="${SCRIPT_DIR}/${name}/Dockerfile"
+		if [[ ! -f "${dockerfile}" ]]; then
+			echo "gg selfcheck: no Dockerfile at ${dockerfile#"${SCRIPT_DIR}/"} for run image '${name}'" >&2
+			exit 1
+		fi
+		from="$(grep -E '^FROM[[:space:]]' "${dockerfile}" | tail -n 1 | awk '{print $2}')"
+		# `${BASE_IMAGE}`, `${FULL_STACK_2D_IMAGE}`, … — layered onto an image built here.
+		[[ "${from}" == \$* ]] && continue
+		roots+=("${name}=${from}")
+	done
+
+	local expected actual
+	expected="$(printf '%s\n' "${GG_LINEAGE_ROOTS[@]}" | sort)"
+	actual="$(printf '%s\n' ${roots[@]+"${roots[@]}"} | sort)"
+	if [[ "${expected}" != "${actual}" ]]; then
+		echo "ERROR: the run images are no longer rooted at exactly the two images pinned here." >&2
+		echo "  expected: $(printf '%s ' "${GG_LINEAGE_ROOTS[@]}")" >&2
+		echo "  found:    $(printf '%s ' ${roots[@]+"${roots[@]}"})" >&2
+		echo "" >&2
+		echo "  \`gg selfcheck\` is run in one -gg variant per environment (${GG_SELFCHECK_IMAGES[*]})," >&2
+		echo "  and an environment starts with the image its lineage is rooted at. A root that is not in" >&2
+		echo "  this list is an environment nothing drives an arm in — which is exactly how the C# arm" >&2
+		echo "  came to be dead on one lineage and alive on the other." >&2
+		echo "" >&2
+		echo "  A NEW parent: add its variant to GG_SELFCHECK_IMAGES and its root to GG_LINEAGE_ROOTS." >&2
+		echo "  A BUMPED parent: update GG_LINEAGE_ROOTS — and read the arm installers' vendoring first," >&2
+		echo "  since which shared libraries an image happens to supply is a property of that reference." >&2
+		exit 1
+	fi
+}
+
+# The packages one image's Dockerfile installs in the stage that ships.
+#
+# Only the final stage: several images have builder stages that install a compiler, and a
+# builder's packages are in nothing a run executes. Only `apt`, because `apt` is how a
+# package's whole dependency closure arrives — the thing that put an ICU into the mesa
+# images and into `blender` without either Dockerfile naming one. A tarball unpacked by a
+# `RUN curl | tar` (node in `blender`, rustup in `base-wasm`) brings no closure with it and
+# is deliberately not counted.
+#
+# Reading the package names out of the file is what makes this notice a package ADDED later,
+# which is the whole point: the assertion below has to fail on an edit to some render image's
+# Dockerfile that nobody thought was about gg at all.
+gg_image_packages() {
+	local file="$1" start
+	start="$(grep -n '^FROM[[:space:]]' "${file}" | tail -n 1 | cut -d: -f1)"
+	awk -v start="${start}" '
+		NR < start { next }
+		# A comment, wherever it sits. `containers/blender/Dockerfile` explains itself with the
+		# words "a single `apt-get install` gives arch parity", and a scan that read that line
+		# would put "arch", "parity" and "gives" into the environment key.
+		/^[ \t]*#/ { next }
+		{
+			line = $0
+			if (!collecting) {
+				at = index(line, "apt-get install")
+				if (at == 0) { next }
+				line = substr(line, at + length("apt-get install"))
+				collecting = 1
+			}
+			continued = (line ~ /\\[ \t]*$/)
+			sub(/\\[ \t]*$/, "", line)
+			count = split(line, word, /[ \t]+/)
+			for (at = 1; at <= count; at++) {
+				token = word[at]
+				if (token == "") { continue }
+				# The shell operator that ends the install and starts the `rm -rf` beside it.
+				# Everything after it on this line, and every line after it, is another command.
+				if (token == "&&" || token == ";") { collecting = 0; continued = 0; break }
+				if (token ~ /^-/) { continue }
+				if (token ~ /^[a-z0-9][a-z0-9.+-]*$/) { print token }
+			}
+			if (!continued) { collecting = 0 }
+		}
+	' "${file}"
+}
+
+# The image one run image's final stage is layered onto, as `!<external reference>` when it
+# starts a lineage or as the short name of another image built here when it does not.
+#
+# A `FROM ${SOMETHING_IMAGE}` is resolved through that stage's own `ARG SOMETHING_IMAGE=`
+# default, which every run image carries and which names a `test-cabinet-<name>:latest`. That
+# literal prefix is matched rather than IMAGE_NAME_PREFIX: the default in the Dockerfile is a
+# fixed string, and a build run with a different prefix has not changed what the file says.
+gg_image_parent() {
+	local file="$1" from variable default
+	from="$(grep -E '^FROM[[:space:]]' "${file}" | tail -n 1 | awk '{print $2}')"
+	if [[ "${from}" != \$\{*\} ]]; then
+		printf '!%s\n' "${from}"
+		return
+	fi
+	variable="${from#\$\{}"
+	variable="${variable%\}}"
+	default="$(grep -E "^ARG ${variable}=" "${file}" | tail -n 1 | sed 's/^[^=]*=//')"
+	if [[ -z "${default}" ]]; then
+		echo "gg selfcheck: ${file#"${SCRIPT_DIR}/"} is FROM ${from} with no ARG default to resolve it." >&2
+		exit 1
+	fi
+	default="${default%%:*}"
+	printf '%s\n' "${default#test-cabinet-}"
+}
+
+# The environment one run image presents to a toolchain: the external reference its lineage
+# is rooted at on the first line, then every package installed anywhere along the chain.
+gg_image_environment() {
+	local name="$1" file parent
+	file="${SCRIPT_DIR}/${name}/Dockerfile"
+	if [[ ! -f "${file}" ]]; then
+		echo "gg selfcheck: no Dockerfile at ${file#"${SCRIPT_DIR}/"} for run image '${name}'" >&2
+		exit 1
+	fi
+	parent="$(gg_image_parent "${file}")"
+	case "${parent}" in
+	'!'*) printf '%s\n' "${parent#!}" ;;
+	*) gg_image_environment "${parent}" ;;
+	esac
+	gg_image_packages "${file}"
+}
+
+# That environment folded into one comparable string.
+gg_environment_key() {
+	local lines
+	lines="$(gg_image_environment "$1")"
+	printf '%s [%s]' \
+		"$(printf '%s\n' "${lines}" | head -n 1)" \
+		"$(printf '%s\n' "${lines}" | tail -n +2 | sort -u | tr '\n' ',' | sed 's/,$//')"
+}
+
+# Re-derive the environments the `-gg` variants have, and refuse a gated build if any of them
+# is one no representative in GG_SELFCHECK_IMAGES is driven in.
+#
+# THIS IS THE ASSERTION THE FIRST VERSION OF THE GATE DID NOT HAVE, and its absence was the
+# same mistake in miniature as the one the gate exists to catch. The claim was "two images
+# cover twenty-six, because /opt/gg is byte-identical and there are two parents", and
+# `assert_gg_lineages` was written to keep the "two parents" half honest — which it does, and
+# which was never the half that could go wrong quietly. A run image is not its parent: a
+# dozen of them `apt-get install` a package on top of `base`, apt brings the package's closure
+# with it, and the mesa images have carried an ICU that way the whole time. Re-deriving the
+# ROOTS could not notice that and cannot notice the next one, because nothing about a new
+# `apt-get install` line in `containers/voxel/Dockerfile` changes any `FROM`.
+#
+# What is compared is the environment as the Dockerfiles describe it rather than as the built
+# image contains it. Reading the real closure would mean `docker run … dpkg-query` per image,
+# which is a truer answer and the wrong one to gate on: it can only be asked after the image
+# is built, it differs between the two architectures a manifest is assembled from, and a
+# package a base image quietly gains at its own next digest would make an unrelated build
+# fail with no edit to point at. The Dockerfiles are what a reviewer changes, so they are what
+# this stops on.
+#
+# Only fatal under `--gg-selfcheck`, for the reason `assert_gg_lineages` is.
+assert_gg_environments() {
+	local name key representative
+	local -A covered=()
+	for representative in "${GG_SELFCHECK_IMAGES[@]}"; do
+		key="$(gg_environment_key "${representative%-gg}")"
+		if [[ -n "${covered["${key}"]:-}" ]]; then
+			echo "ERROR: ${representative} and ${covered["${key}"]} are the same environment." >&2
+			echo "  Every image in GG_SELFCHECK_IMAGES costs a full eleven-arm check (~40s), so two that" >&2
+			echo "  answer the same question are one that answers none. Drop one, or check what edit made" >&2
+			echo "  them identical: ${key}" >&2
+			exit 1
+		fi
+		covered["${key}"]="${representative}"
+	done
+
+	local -a uncovered=()
+	for name in "${ALL_NAMES[@]}"; do
+		[[ "${name}" == *-gg ]] || continue
+		key="$(gg_environment_key "${name%-gg}")"
+		[[ -n "${covered["${key}"]:-}" ]] || uncovered+=("${name}")
+	done
+	if [[ ${#uncovered[@]} -gt 0 ]]; then
+		echo "ERROR: ${#uncovered[@]} -gg variant(s) run an arm in an environment nothing checks:" >&2
+		printf '           %s\n' "${uncovered[@]}" >&2
+		echo "" >&2
+		echo "  \`gg selfcheck\` runs in one variant per environment (${GG_SELFCHECK_IMAGES[*]}), where an" >&2
+		echo "  environment is the image the lineage is rooted at PLUS every package apt installs along" >&2
+		echo "  the way — because apt brings a package's whole closure with it, and a shared library an" >&2
+		echo "  image happens to hold that way is what decides whether an arm's own vendored copy is the" >&2
+		echo "  one that loads. ${uncovered[0]}'s environment is:" >&2
+		echo "      $(gg_environment_key "${uncovered[0]%-gg}")" >&2
+		echo "" >&2
+		echo "  A run image that gained a package: add its variant to GG_SELFCHECK_IMAGES, or take the" >&2
+		echo "  package back out. There is no third answer that keeps this gate meaning anything." >&2
+		exit 1
+	fi
+}
+
+# Whether this variant is one of the environment representatives the gate runs in.
+gg_selfcheck_covers() {
+	local name="$1" representative
+	for representative in "${GG_SELFCHECK_IMAGES[@]}"; do
+		[[ "${name}" == "${representative}" ]] && return 0
+	done
+	return 1
+}
+
+# The container the check is running in, so a failure anywhere between `create` and `rm`
+# still takes it with it. One EXIT trap for the script; `gg_selfcheck` clears the variable
+# on its own way out, so the trap is a no-op on the ordinary path.
+GG_SELFCHECK_CONTAINER=""
+gg_selfcheck_cleanup() {
+	[[ -n "${GG_SELFCHECK_CONTAINER}" ]] || return 0
+	"$DOCKER" rm --force "${GG_SELFCHECK_CONTAINER}" >/dev/null 2>&1 || true
+	GG_SELFCHECK_CONTAINER=""
+}
+trap gg_selfcheck_cleanup EXIT
+
+# Drive `gg selfcheck` inside a freshly-built variant, and fail the whole build if any arm
+# is broken. Arguments: the variant's short name and its local image tag.
+#
+# WHY IT INSTALLS THE BINARY THE WAY A RUN DOES — created container, `cp` the bytes in,
+# start it, `exec` as the run user — rather than bind-mounting it. Two reasons, and the
+# second is the one that would have bitten:
+#
+#   1. It is what production does. `crates/core`'s container runtime creates the run
+#      container, copies gg in at `/tmp/gg` and `exec --user node`s it. A gate whose
+#      installation differs from the run's is a gate answering a slightly different
+#      question than the one that matters.
+#   2. `cp` reads the file on THIS side of the socket. A bind mount is resolved by the
+#      DAEMON, and this repository's own devcontainer talks to the host's daemon
+#      (Docker-outside-of-Docker), where an in-container path names nothing: the mount
+#      silently becomes an empty directory and the gate dies with `permission denied` for
+#      a reason that has nothing to do with any arm. `deployments/local/Makefile` carries
+#      the same problem for k3d and solves it by translating to the host path; a `cp` needs
+#      no translation, so the local target and CI run the identical command.
+gg_selfcheck() {
+	local name="$1" image="$2"
+	echo "==> gg selfcheck: driving every language arm inside ${image} as ${GG_SELFCHECK_USER}" >&2
+
+	# The image's own CMD (`sleep infinity`) is what a run container is started with, so it
+	# is what this one is started with; the check itself arrives through `exec`.
+	GG_SELFCHECK_CONTAINER="$("$DOCKER" create "${image}")"
+	"$DOCKER" cp "${GG_SELFCHECK_BIN}" "${GG_SELFCHECK_CONTAINER}:${GG_SELFCHECK_CONTAINER_PATH}"
+	"$DOCKER" start "${GG_SELFCHECK_CONTAINER}" >/dev/null
+
+	# Not `set -e`'s job to end the build here: the report has to be attributable to an
+	# image, so the status is caught, the container is removed, and the message names the
+	# variant. Everything gg printed has already gone to this script's own stdout/stderr.
+	local status=0
+	"$DOCKER" exec --user "${GG_SELFCHECK_USER}" "${GG_SELFCHECK_CONTAINER}" \
+		"${GG_SELFCHECK_CONTAINER_PATH}" selfcheck || status=$?
+	gg_selfcheck_cleanup
+
+	if [[ "${status}" -ne 0 ]]; then
+		echo "" >&2
+		echo "ERROR: gg selfcheck FAILED in ${image} (exit ${status}); ${name} is NOT publishable." >&2
+		echo "       The per-arm report above says which arm and whose defect it is. An arm that" >&2
+		echo "       compiles on a developer machine and dies here is the toolchain failing to carry" >&2
+		echo "       something the image does not supply — see apps/docs/src/content/docs/gg/languages/" >&2
+		echo "       compilation.md#self-contained-toolchains." >&2
+		exit 1
+	fi
+	# The line the workflow greps for. Changing its shape is changing an assertion in
+	# .github/workflows/build-containers.yml.
+	echo "==> gg selfcheck ok: ${name} — every language arm passed in ${image}"
+}
+
 # Build one `<parent>-gg` variant: the parent run image plus the gg toolchain tree
 # (see containers/gg/Dockerfile). One parameterized Dockerfile serves them all — the
 # variants differ only in what they are `FROM` — so this takes the variant's name and
@@ -300,6 +754,15 @@ build_gg_variant() {
 		--build-arg "GG_TOOLCHAINS_IMAGE=${GG_TOOLCHAINS_IMAGE}" \
 		-t "${image}" \
 		-f "${SCRIPT_DIR}/gg/Dockerfile" "${SCRIPT_DIR}/.."
+
+	# BETWEEN THE BUILD AND THE PUSH, AND THAT ORDER IS THE POINT: a variant whose toolchain
+	# cannot run in it must never reach a registry, and `set -euo pipefail` plus the `exit 1`
+	# inside `gg_selfcheck` is what makes a broken arm end the build here rather than one
+	# image later. Only the environment representatives are driven — see GG_SELFCHECK_IMAGES
+	# for why four answer for twenty-six, and `assert_gg_environments` for what keeps that true.
+	if [[ -n "${GG_SELFCHECK_BIN}" ]] && gg_selfcheck_covers "${name}"; then
+		gg_selfcheck "${name}" "${image}"
+	fi
 
 	if [[ -n "${PUSH}" ]]; then
 		local reference
@@ -673,6 +1136,16 @@ build_one() {
 # in build-containers.yml can't drift (see that script's header).
 mapfile -t ALL_NAMES < <("${SCRIPT_DIR}/image-names.sh")
 
+# Before anything is built: if this build is claiming to gate the `-gg` variants, the claim
+# has to still be true. Both halves of it — the two external references the lineages are
+# rooted at, and the four environments those roots plus the images' own packages make. Cheap
+# (they read the Dockerfiles), and they run first so an uncovered variant is a message rather
+# than an hour of building followed by one.
+if [[ -n "${GG_SELFCHECK_BIN}" ]]; then
+	assert_gg_lineages
+	assert_gg_environments
+fi
+
 # The images that do NOT bake a binary out of the shared tooling builder: the two
 # base layers, the self-contained blender image, the adversarial and performance
 # images (which compile their own wasm-targeting tooling in their own stages), and
@@ -729,6 +1202,26 @@ for known in tools "${ALL_NAMES[@]}"; do
 	done
 done
 selected=("${ordered[@]}")
+
+# A gate that was asked for and checked nothing is the failure this whole mechanism exists
+# to prevent, one level up. `--gg-selfcheck` with a selection that contains no lineage
+# representative would build, print nothing about any arm, and exit 0 — so it is refused,
+# here, before the first `docker build` rather than at the end of one.
+if [[ -n "${GG_SELFCHECK_BIN}" ]]; then
+	gg_selfcheck_selected=""
+	for name in "${selected[@]}"; do
+		gg_selfcheck_covers "${name}" && { gg_selfcheck_selected=1; break; }
+	done
+	if [[ -z "${gg_selfcheck_selected}" ]]; then
+		echo "ERROR: --gg-selfcheck was given, but the selection builds no image the check runs in." >&2
+		echo "       It runs in the environment representatives — ${GG_SELFCHECK_IMAGES[*]} — because" >&2
+		echo "       /opt/gg is byte-identical across every -gg variant and what differs is the environment" >&2
+		echo "       it runs in (see GG_SELFCHECK_IMAGES). Name at least one of them:" >&2
+		echo "           ./build.sh --gg-selfcheck <PATH-TO-GG> ${GG_SELFCHECK_IMAGES[*]}" >&2
+		exit 1
+	fi
+	unset gg_selfcheck_selected
+fi
 
 # Uphold the FROM-base and FROM-base-wasm invariants. Rebuild base (then base-wasm)
 # first if selected; otherwise, if any dependent image was selected but its parent

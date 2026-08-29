@@ -209,8 +209,9 @@ fn a_compiler_that_is_not_installed_names_itself() {
     assert!(error.contains("gg-no-such-compiler"), "{error}");
 }
 
-/// Only the last few lines of a crashing toolchain's stderr reach a run's error record. A compiler
-/// dying in a loop can print megabytes and none of it belongs in a turn's error.
+/// Only a few lines of a crashing toolchain's stderr reach a run's error record. A compiler dying
+/// in a loop can print megabytes and none of it belongs in a turn's error — and what is dropped
+/// says that it was, so nobody reads the middle of a stack as the whole of one.
 #[test]
 fn a_noisy_compilers_stderr_is_bounded() {
     let context = PrepareContext::new();
@@ -221,6 +222,42 @@ fn a_noisy_compilers_stderr_is_bounded() {
     let tail = report.stderr_tail();
     assert!(tail.contains("line199"), "{tail}");
     assert!(!tail.contains("line100"), "{tail}");
+    assert!(
+        tail.contains("187 line(s) omitted"),
+        "the elision is silent, so the gap reads as none: {tail}"
+    );
+}
+
+/// The window has a HEAD as well as a tail, and this is the failure that bought it.
+///
+/// A runtime that aborts before `main` prints its diagnosis first and its stack last. `csc` on an
+/// image with no ICU writes nineteen lines: `Process terminated.`, the sentence naming what it
+/// could not find, then seventeen managed frames. Under a pure ten-line tail the operator got
+/// seventeen frames of Roslyn's start-up and no word of `libicu` anywhere — a report with the whole
+/// of its content cut off the top.
+#[test]
+fn a_runtime_that_aborted_before_main_keeps_the_line_that_says_why() {
+    let context = PrepareContext::new();
+    let report = shell(
+        &context,
+        "echo 'Process terminated.' >&2; \
+         echo \"Couldn't find a valid ICU package installed on the system.\" >&2; \
+         i=0; while [ $i -lt 17 ]; do echo \"   at Frame$i()\" >&2; i=$((i+1)); done; \
+         exit 134",
+    );
+    let tail = report.stderr_tail();
+    assert!(
+        tail.contains("Couldn't find a valid ICU package"),
+        "the sentence the whole report is about did not survive the bound: {tail}"
+    );
+    assert!(
+        tail.contains("Frame16"),
+        "the end of the stack is still what a crash is read backwards from: {tail}"
+    );
+    assert!(
+        !tail.contains("Frame3"),
+        "nothing was bounded at all: {tail}"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------

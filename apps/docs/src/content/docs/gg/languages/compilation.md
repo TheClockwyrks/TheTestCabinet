@@ -60,6 +60,44 @@ A language may move one-off work out of the first code turn by implementing
 `warm_prepare`, which gg calls once per run on the same blocking task that
 compiles the interpreter component. It is best-effort and idempotent.
 
+### Self-contained toolchains
+
+A toolchain carries every shared library the run image does not supply. The
+same tree is copied to the same absolute path into every `-gg` variant, and no
+two of those images hold the same set of libraries: they are built over two
+different parents, a dozen of them install packages of their own on top of the
+shared base, and each package arrives with its whole dependency closure. What an
+arm reads out of an image is decided by that image's package closure rather than
+by anything the arm installed, so a dependency an image happens to satisfy counts
+as unsatisfied.
+
+An installer with no self-contained distribution to ship walks the transitive
+ELF closure of the binaries it keeps, places what the image does not supply
+under `lib/` inside the toolchain's own root, and resolves each library from its
+distribution's own package index rather than from a version written into the
+script. The arm names that directory on the loader path of every compiler it
+spawns. Where the tree's own binaries carry an rpath into that directory the
+loader finds it without a variable, and the closure is walked to decide the list
+all the same.
+
+What proves a toolchain is a compile, run in the image the toolchain will run
+in. A library loaded by `dlopen` appears in no ELF header, so a link check
+reports a complete closure over a binary that aborts at start-up, which is the
+shape .NET's globalization libraries have. A builder stage installs its own
+packages and exports the tree without them, so a compile that succeeds there
+reports on the environment that assembled the tree rather than on the one it
+runs in. [`gg selfcheck`](/gg/languages/selfcheck/) is where the question is
+settled.
+
+A vendored library is a floor and not an override, which is why that check is
+per image rather than once. It guarantees the compiler starts where the image
+supplies nothing. Where the image supplies its own copy of the same library, the
+loader may well answer with that one — a runtime that probes versioned sonames
+from newest downwards finds a newer system copy before it reaches the vendored
+one, whatever the loader path says. So an arm is self-contained in the sense
+that no image can leave it unable to start, not in the sense that every image
+gives it the same library.
+
 ## Recorded compile time
 
 The sandbox's clock starts once a program is prepared, so compile time lands in

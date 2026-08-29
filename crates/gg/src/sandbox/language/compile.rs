@@ -373,6 +373,26 @@ impl<'a> CompilerCommand<'a> {
         self
     }
 
+    /// What environment this command has been given, for a test that must pin one variable.
+    ///
+    /// It exists for a variable whose absence is invisible: the C# arm's `LD_LIBRARY_PATH`, which
+    /// names the ICU its toolchain carries. Every machine `cargo` runs on has an ICU of its own
+    /// (`.devcontainer/system/apt.sh` now declares one, deliberately), so deleting that line leaves
+    /// the whole arm's suite green and the run images broken — which is how it shipped. Nothing on
+    /// the turn path reads this; the test that does is the only reader.
+    #[cfg(test)]
+    pub fn environment(&self) -> std::collections::BTreeMap<String, String> {
+        self.command
+            .get_envs()
+            .filter_map(|(key, value)| {
+                Some((
+                    key.to_string_lossy().into_owned(),
+                    value?.to_string_lossy().into_owned(),
+                ))
+            })
+            .collect()
+    }
+
     /// Run it, killing it at `timeout`, and report what it did.
     ///
     /// Both streams are captured to files inside the private tree rather than to pipes. A pipe would
@@ -464,20 +484,67 @@ pub struct CompilerReport {
 }
 
 impl CompilerReport {
-    /// The last few lines of stderr, prefixed for an operator's log, or nothing when it said
-    /// nothing.
-    ///
-    /// Bounded because a crashing toolchain can print a great deal and none of it belongs in a run's
-    /// error record.
+    /// The lines of stderr worth keeping, prefixed for an operator's log, or nothing when it said
+    /// nothing. See [`shown_stderr`] for the window and why it has two ends.
     pub fn stderr_tail(&self) -> String {
-        let stderr = self.stderr.trim();
-        if stderr.is_empty() {
-            return String::new();
-        }
-        let lines: Vec<&str> = stderr.lines().rev().take(10).collect();
-        let text: Vec<&str> = lines.into_iter().rev().collect();
-        format!(": {}", text.join(" | "))
+        shown_stderr(&self.stderr)
     }
+}
+
+/// How many lines are kept from the **start** of a stderr too long to keep whole.
+///
+/// Three, because that is what a runtime's own account of why it could not start costs: .NET's
+/// `FailFast` writes `Process terminated.`, then the sentence naming what it could not find, then
+/// the first frame — and a fourth line buys nothing that the tail does not already carry.
+const STDERR_HEAD: usize = 3;
+
+/// How many lines are kept from the **end** of a stderr too long to keep whole. The window this
+/// bound alone once was.
+const STDERR_TAIL: usize = 10;
+
+/// The lines of a compiler's stderr that belong in a run's error record, prefixed with `": "`, or
+/// nothing when it wrote nothing.
+///
+/// **Bounded**, because a crashing toolchain can print a great deal and none of it belongs in a
+/// run's error record. **Bounded at both ends**, and that half is the one worth arguing.
+///
+/// A compiler that disagreed with a program says so as it goes and stops, so its last lines are its
+/// conclusion — which is why this was a pure tail. A runtime that aborts **before `main`** is the
+/// opposite shape: it prints its diagnosis first and its stack last, and the stack is the long part.
+/// The failure this whole seam was rewritten for is exactly that one — nineteen lines from `csc`
+/// opening `Process terminated.` / `Couldn't find a valid ICU package installed on the system.`
+/// and then seventeen managed frames. A ten-line tail carries seventeen frames of Roslyn's start-up
+/// and not one word of what it could not find, so the operator reads a signal and a stack for a
+/// defect whose whole content was in the second line. Keeping a head as well costs three lines and
+/// is the difference between a report and a puzzle.
+///
+/// What falls between the two windows is replaced by a count rather than dropped silently, because
+/// a stack with a gap in it that does not say it has one is a stack somebody will read as complete.
+fn shown_stderr(stderr: &str) -> String {
+    let stderr = stderr.trim();
+    if stderr.is_empty() {
+        return String::new();
+    }
+    let lines: Vec<&str> = stderr.lines().collect();
+    let shown: Vec<String> = match lines.len() > STDERR_HEAD + STDERR_TAIL {
+        false => lines.iter().map(|line| (*line).to_string()).collect(),
+        true => {
+            let omitted = lines.len() - STDERR_HEAD - STDERR_TAIL;
+            lines[..STDERR_HEAD]
+                .iter()
+                .map(|line| (*line).to_string())
+                .chain(std::iter::once(format!(
+                    "... {omitted} line(s) omitted ..."
+                )))
+                .chain(
+                    lines[lines.len() - STDERR_TAIL..]
+                        .iter()
+                        .map(|line| (*line).to_string()),
+                )
+                .collect()
+        }
+    };
+    format!(": {}", shown.join(" | "))
 }
 
 /// How a finished process ended.
@@ -931,21 +998,18 @@ impl CompilerDaemon {
         }
     }
 
-    /// The last few lines the daemon wrote to stderr, prefixed for an operator's log.
+    /// The lines the daemon wrote to stderr that belong in an operator's log.
     ///
     /// Read from the file each time rather than remembered, because the interesting lines are
-    /// usually the ones written just before the failure being reported.
+    /// usually the ones written just before the failure being reported. The window is
+    /// [`shown_stderr`]'s, and it is the same window for the same reason: a daemon that died of a
+    /// runtime that could not start put its account at the top of the file and its stack at the
+    /// bottom, whatever it was going to say later.
     pub fn stderr_tail(&self) -> String {
         let Ok(stderr) = std::fs::read_to_string(&self.stderr) else {
             return String::new();
         };
-        let stderr = stderr.trim();
-        if stderr.is_empty() {
-            return String::new();
-        }
-        let lines: Vec<&str> = stderr.lines().rev().take(10).collect();
-        let text: Vec<&str> = lines.into_iter().rev().collect();
-        format!(": {}", text.join(" | "))
+        shown_stderr(&stderr)
     }
 }
 

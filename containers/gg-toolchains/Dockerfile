@@ -52,8 +52,8 @@
 # elsewhere is silently dropped, and a package manager run here would additionally bind
 # this tree to one distribution's library versions.
 #
-# Two constraints every toolchain added here must meet
-# ----------------------------------------------------
+# Three constraints every toolchain added here must meet
+# ------------------------------------------------------
 # 1. **Relocatable and distribution-portable.** Every run image publishes a `-gg` variant,
 #    so this tree is copied onto the Debian-bookworm-derived images *and* onto
 #    `blender-gg`, whose parent is Ubuntu — and it is copied
@@ -61,7 +61,7 @@
 #    or links a library only one of them ships is a toolchain that works on some gg runs
 #    and not others. Prefer a statically linked or self-contained distribution; where that
 #    is impossible, the language's own step is responsible for vendoring what it needs
-#    under `/opt/gg`.
+#    under `/opt/gg` — which is constraint 3, spelled out.
 # 2. **Isolated per invocation, by construction.** Several compilers run CONCURRENTLY
 #    inside one run — up to `limits.maxParallel` agents times a program chain of four — and
 #    two silent-corruption bugs were measured from exactly that: a shared TeaVM build
@@ -78,6 +78,47 @@
 #    keeping warm is driven from a `CompilerPool`, which lends an instance exclusively.
 #    `crates/gg/src/sandbox/language/isolation.rs` is the gate that holds every language to
 #    this at 16-way concurrency, and it reproduces both measured bugs to prove it can.
+# 3. **Self-contained, and proven where it runs.** Constraint 1 taken to its conclusion, and
+#    written separately because that one is about PATHS and this one is about LIBRARIES. A
+#    toolchain carries under `/opt/gg` every shared library the run images do not supply, and the
+#    arm names that directory on the loader path of every compiler it spawns — or the tree's own
+#    binaries carry an `RPATH` into it, which is the same answer without the variable. The
+#    installer decides that list by walking the transitive ELF closure of the binaries it keeps,
+#    and resolves each library from its distribution's own package index rather than from a
+#    version written into a script.
+#
+#    A dependency the image happens to contain is NOT satisfied, and there are more images than
+#    there are parents. Two external parents exist — `node:24.18.0-bookworm-slim` under 25 of the
+#    26 variants and `ubuntu:26.04` under `blender-gg` — but a dozen run images `apt-get install`
+#    packages of their own on top of `base`, and apt brings each package's whole dependency closure
+#    with it. Probed with this arm's own missing library: `sprite-gg` and `base-wasm-gg` carry no
+#    ICU at all, `voxel-gg` carries `libicu72` because `mesa-vulkan-drivers` pulled it in, and
+#    `blender-gg` carries `libicu78` because Blender did. An arm that read ICU out of the image was
+#    therefore an arm that worked on some run images and aborted on others, and that would move
+#    between the two the next time any of their package closures changed for an unrelated reason.
+#    `COPY --link` makes this tree byte-identical in all 26 variants and says nothing whatever
+#    about what is underneath it.
+#
+#    Vendoring is a FLOOR and not an override, which is why the gate below is per environment
+#    rather than once. What the vendored copy guarantees is that the compiler starts where the
+#    image supplies nothing; where the image supplies a newer copy of the same library the loader
+#    may answer with that one instead — .NET probes versioned ICU sonames from newest downwards, so
+#    `blender-gg` binds its own `libicu78` before the probe reaches the bookworm 72 under
+#    `/opt/gg`, measured with `LD_DEBUG=libs`. Self-contained means no image can leave an arm
+#    unable to start, not that every image gives it the same library.
+#
+#    THE SECOND HALF IS THE HALF THAT WAS MISSING. Each installer ends by compiling with the
+#    pruned copy, and that compile runs HERE — in a builder stage that `apt-get install`s what it
+#    needs and then exports `/opt/gg` without it. A pass here is a statement about the machine that
+#    assembled the tree, not about the image the tree is copied into. And `ldd` is weaker still: a
+#    library reached by `dlopen` is named in no ELF header, so a clean link check is exactly what a
+#    `csc` that `FailFast`s with SIGABRT before writing a line to stdout reports. So no stage here
+#    may install a library an arm's own vendoring is supposed to supply — see the C# block, whose
+#    `apt` line deliberately does not carry ICU, which is what makes that installer's own check
+#    honest — and the gate that settles the question for real is
+#    [`gg selfcheck`](../../apps/docs/src/content/docs/gg/languages/selfcheck.md), run inside a
+#    BUILT `-gg` variant of each ENVIRONMENT — `sprite-gg`, `base-wasm-gg`, `voxel-gg`,
+#    `blender-gg` — before any of them is published.
 #
 # Each toolchain arrives with the language that needs it, so this layer grows one block at
 # a time. It carried nothing at all until PureScript's arrived, which was deliberate: an
@@ -374,10 +415,16 @@ RUN set -eux; \
 # toolchain rather than of this block. wasi-sdk is built for exactly this job: `clang` finds its
 # sysroot and its resource directory from its own path (`bin/clang.cfg` names
 # `<CFGDIR>/../share/wasi-sysroot`), every binary carries an `RPATH` of `$ORIGIN/../lib`, and the
-# tree relocates whole. The one thing it does depend on is the distribution it was published for
-# — its `clang` links Debian's `libstdc++.so.6` and `libgcc_s.so.1` — so the installer vendors
-# exactly those two under `<home>/lib`, where that `RPATH` finds them and nothing else in the
-# image does. No `LD_LIBRARY_PATH` and no ELF closure walk, which is the Swift block's price.
+# tree relocates whole. The one thing it does depend on is the distribution it was published for,
+# so constraint 3 costs this arm three libraries rather than a strategy: `clang` links Debian's
+# `libstdc++.so.6` and `libgcc_s.so.1`, and one level further down the closure the `libedit.so.0`
+# shipped inside the tarball links `libtinfo.so.6`. The installer vendors all three under
+# `<home>/lib`, where that `RPATH` finds them — transitively, since an `RPATH` and not a `RUNPATH`
+# is what reaches a dependency's own dependencies — and nothing else in the image does. No
+# `LD_LIBRARY_PATH`, which is the Swift and C# blocks' price; the closure is still walked, to
+# decide the list rather than to place it. `libtinfo` in particular was resolving off the base
+# images for as long as this block has existed, which both of them happen to carry because their
+# `bash` depends on it: satisfied by accident is the thing constraint 3 does not count.
 #
 # Constraint 2 is satisfied outright. `clang++` is a plain one-shot process with an explicit
 # `-o`, it has no daemon, and it only ever READS what gg carries. It writes its intermediates
@@ -406,15 +453,21 @@ RUN set -eux; \
 COPY packages/gg-sandbox-cpp/cpp-version.sh \
 	/tmp/gg-cpp/packages/gg-sandbox-cpp/cpp-version.sh
 COPY scripts/ci/install-wasi-sdk.sh /tmp/gg-cpp/scripts/ci/install-wasi-sdk.sh
+# The three sonames the installer vendors are copied from THIS stage, so they have to be here to
+# be copied — which is the opposite of the C# block's `apt` line and not a contradiction: what is
+# forbidden there is a library the run image would have to supply, and what is required here is a
+# library this stage hands to the tree. `libtinfo6` is declared rather than left to arrive with
+# `bash`, for the reason `.devcontainer/system/apt.sh` declares the tools it does.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-	apt-get update && apt-get install -y --no-install-recommends libstdc++6
+	apt-get update && apt-get install -y --no-install-recommends libstdc++6 libtinfo6
 RUN set -eux; \
 	WASI_SDK_INSTALL_DIR=/opt/gg/toolchains/wasi-sdk \
 	bash /tmp/gg-cpp/scripts/ci/install-wasi-sdk.sh; \
 	rm -rf /tmp/gg-cpp; \
 	test -x /opt/gg/toolchains/wasi-sdk/bin/clang++; \
 	test -f /opt/gg/toolchains/wasi-sdk/lib/libstdc++.so.6; \
+	test -f /opt/gg/toolchains/wasi-sdk/lib/libtinfo.so.6; \
 	test -d /opt/gg/toolchains/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1/eh
 
 # --- C# ---------------------------------------------------------------------
@@ -428,8 +481,21 @@ RUN set -eux; \
 #
 # Constraint 1 is satisfied by construction: a `dotnet-install.sh` tree is relocatable, the
 # launcher resolves its framework relative to `DOTNET_ROOT` (which gg sets to the tree it
-# found), and the whole of it is managed code plus one small native host. The same tree works
-# on the Debian-derived run images and on `blender-gg`'s Ubuntu.
+# found), and the whole of it is managed code plus one small native host.
+#
+# Constraint 3 is NOT satisfied by construction, and this arm is the reason that constraint is
+# written down. Being managed code over one small native host is exactly what hides the one
+# native dependency it has: `libSystem.Globalization.Native.so` `dlopen`s `libicuuc` and
+# `libicui18n` by name while the CLR is still starting, so ICU is in no ELF header anywhere in
+# the tree and `ldd` reports a complete closure over a `csc` that cannot start. It shipped that
+# way — a C# arm that worked on `blender-gg`, whose Ubuntu carries `libicu78` because Blender's
+# apt dependencies do, and that killed the first turn of every run on the twenty-five Node-based
+# variants with SIGABRT and an empty stdout. So `install-dotnet.sh` now vendors the three ICU
+# libraries into `<home>/lib` out of Debian bookworm's own package index, and
+# `csharp.compile.rs` names that directory on `LD_LIBRARY_PATH` for every `dotnet` it runs. It is
+# the Swift block's arrangement, reached from the same constraint; Swift's vendored set does not
+# rescue this one, because it carries `libicuuc` and `libicudata` for `libxml2` and not the
+# `libicui18n` .NET also loads.
 #
 # Constraint 2 is satisfied outright, and one thing is deleted to keep it that way. `csc` is a
 # plain one-shot process with an explicit `-out:`, and it only ever READS the reference
@@ -453,22 +519,36 @@ RUN set -eux; \
 #
 # The versions are the ones `packages/gg-sandbox-csharp/csharp-version.sh` pins, and the script
 # is run here so there is one list rather than two. It ends by compiling a C# file with the
-# pruned copy, because every deletion above is a thing that could have broken it.
+# pruned copy — with `<home>/lib` and nothing else on `LD_LIBRARY_PATH` — because every deletion
+# above is a thing that could have broken it, and because with no ICU in this stage that compile
+# is the only thing that can tell anyone the vendoring worked.
 COPY packages/gg-sandbox-cpp/cpp-version.sh \
 	/tmp/gg-csharp/packages/gg-sandbox-cpp/cpp-version.sh
 COPY packages/gg-sandbox-csharp/csharp-version.sh \
 	/tmp/gg-csharp/packages/gg-sandbox-csharp/csharp-version.sh
 COPY scripts/ci/install-dotnet.sh /tmp/gg-csharp/scripts/ci/install-dotnet.sh
+# `binutils` for the `ar` that unpacks the ICU package the installer vendors, and — deliberately,
+# and this is the most load-bearing line in this block — NO `libicu72`. It used to be here, and it
+# was here for one reason: to make the installer's own verification compile pass in THIS stage. It
+# did, every time, on ICU that the next instruction threw away, because the export below is
+# `FROM scratch` + `COPY --from=build /opt/gg /opt/gg` and nothing outside `/opt/gg` survives it.
+# That is how a green check shipped a broken arm to twenty-five images. With no ICU installed here
+# the builder has none to fall back on, so the installer's compile can only pass on the copy it
+# vendored — which is the thing the run images will actually have. Anything added back to this
+# line that an arm is supposed to vendor for itself undoes that, silently.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-	apt-get update && apt-get install -y --no-install-recommends libicu72
+	apt-get update && apt-get install -y --no-install-recommends binutils
 RUN set -eux; \
 	DOTNET_INSTALL_DIR=/opt/gg/toolchains/dotnet \
 	bash /tmp/gg-csharp/scripts/ci/install-dotnet.sh; \
 	rm -rf /tmp/gg-csharp; \
 	test -x /opt/gg/toolchains/dotnet/dotnet/dotnet; \
 	test -f /opt/gg/toolchains/dotnet/roslyn/bincore/csc.dll; \
-	test ! -f /opt/gg/toolchains/dotnet/roslyn/bincore/VBCSCompiler.dll
+	test ! -f /opt/gg/toolchains/dotnet/roslyn/bincore/VBCSCompiler.dll; \
+	ls /opt/gg/toolchains/dotnet/lib/libicuuc.so.* >/dev/null; \
+	ls /opt/gg/toolchains/dotnet/lib/libicui18n.so.* >/dev/null; \
+	ls /opt/gg/toolchains/dotnet/lib/libicudata.so.* >/dev/null
 
 # --- Export just the tree ---------------------------------------------------
 # `scratch` so this published-nowhere builder carries no base layers: it is only ever a
