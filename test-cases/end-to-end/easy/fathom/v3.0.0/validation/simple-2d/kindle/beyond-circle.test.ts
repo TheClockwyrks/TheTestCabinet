@@ -37,7 +37,6 @@ import {
   assertLessThan,
   assertLessThanOrEqual,
   assertNotNull,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -53,8 +52,8 @@ import {
   fromForager,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import {
@@ -124,7 +123,7 @@ it("The amber lights are clipped to the circle", async (ctx) => {
     // the light that should have been clipped away.
     captureStill(h, "clipped");
 
-    assertNull(sceneHeld(beyond, watch), "the scenario held to the end");
+    requireSceneHeld(beyond, watch);
 
     assertEqual(
       beyond.drifters.length,

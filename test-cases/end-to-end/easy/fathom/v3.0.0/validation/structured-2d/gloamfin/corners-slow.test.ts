@@ -32,12 +32,11 @@
 // (`gloamfin/chase-cap`), or whether a hunter rounds rock at all
 // (`maze-movement/predators-keep-to-corridors`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertLessThan,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import {
@@ -55,13 +54,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   parkForager,
   quietBoard,
   requireKind,
   requirePredatorMotion,
+  requireScene,
   sceneGuard,
-  sceneHeld,
   standDown,
 } from "../scene";
 import { gloamfinOf, placePredator } from "./pings";
@@ -176,7 +176,7 @@ function turnAt(steps: readonly Step[]): number {
   );
 }
 
-it("Every corner costs it its edge", async () => {
+check("Every corner costs it its edge", async () => {
   startPlaying(h);
   const board = await poseMaze(h, CORNER);
   const index = requireKind(h.snapshot(), "gloamfin");
@@ -199,7 +199,7 @@ it("Every corner costs it its edge", async () => {
     return steps;
   });
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+  requireScene(h.snapshot(), guard);
   requirePredatorMotion(
     opening,
     h.snapshot(),
@@ -313,10 +313,7 @@ it("Every corner costs it its edge", async () => {
   await h.debug.setPredatorState(backIndex, "chase");
   const reversal = await sampleRun(backIndex, REVERSAL_TICKS);
 
-  assertNull(
-    sceneHeld(h.snapshot(), backGuard),
-    "the reversal scenario held to the end",
-  );
+  requireScene(h.snapshot(), backGuard, { what: "the reversal scenario" });
   const turned = reversal.findIndex((step) => step.dir !== outbound);
   if (turned < 0) {
     standDown(

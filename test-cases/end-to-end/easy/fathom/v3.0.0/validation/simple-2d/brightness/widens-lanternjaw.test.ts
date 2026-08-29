@@ -43,7 +43,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { LANTERN_RANGE_BASE, LANTERN_RANGE_GAIN } from "../../src/constants";
-import { assertLessThanOrEqual, assertNotEqual, assertNull } from "../assert";
+import { assertLessThanOrEqual, assertNotEqual } from "../assert";
 import { poseApart } from "../fixtures";
 import {
   captureReplay,
@@ -56,8 +56,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 
@@ -134,7 +134,7 @@ it("Brightness widens the Lanternjaw's reach", async (ctx) => {
       return { readings, end: h.snapshot() };
     });
 
-    assertNull(sceneHeld(sweep.end, watch), "the scenario held to the end");
+    requireSceneHeld(sweep.end, watch);
 
     // The dial really moved. Without this the readings could all be one G and a
     // build with a flat range would pass on a curve nobody drove.

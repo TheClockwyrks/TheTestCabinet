@@ -61,8 +61,8 @@ import {
 import {
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import { FATHOM_DEBUG_VERSION, type FathomSnapshot } from "../surface";
@@ -205,7 +205,7 @@ it("reports every documented field, with its documented type", async (ctx) => {
     // board the shape was read off.
     captureStill(h, "posed");
 
-    assertNull(sceneHeld(snap, guard), "the scenario held to the end");
+    requireSceneHeld(snap, guard);
 
     // The scene the shape is read over: a build whose controls never fired the two
     // effects has a defect the control points own, and this stands aside.

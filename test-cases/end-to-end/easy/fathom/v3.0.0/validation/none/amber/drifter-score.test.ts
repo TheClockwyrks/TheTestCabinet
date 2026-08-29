@@ -23,15 +23,15 @@
 // game's own, and the only thing removed is the gamble.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import { ARROW_KEY, SCORE_DRIFTER } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import {
   denAllExcept,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -91,7 +91,7 @@ it("scores SCORE_DRIFTER for a bonus drifter and takes it off the board", async 
     return { before, after, hit: eaten.hit };
   });
 
-  assertNull(sceneHeld(bite.after, guard), "the scenario held to the end");
+  requireSceneHeld(h, bite.after, guard);
   if (!bite.hit) {
     requireSwim(
       h,

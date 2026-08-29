@@ -28,9 +28,9 @@
 // forager can never reach (`fixtures.ts`), so grazing four pellets cannot clear
 // the maze and descend in the middle of the measurement.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BRIGHT_PER_EAT } from "../../src/constants";
-import { assertLessThanOrEqual, assertNull } from "../assert";
+import { assertLessThanOrEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
   DIR_KEY,
@@ -41,12 +41,13 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
+  requireScene,
   requireSwim,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
@@ -127,7 +128,7 @@ async function grazeOne(
   }
 }
 
-it("Eating brightens the forager", async () => {
+check("Eating brightens the forager", async () => {
   startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
   const quiet = await denAll(h);
@@ -149,7 +150,7 @@ it("Eating brightens the forager", async () => {
   });
 
   const end = graze.after[graze.after.length - 1];
-  assertNull(sceneHeld(end, watch), "the scenario held to the end");
+  requireScene(end, watch);
 
   // The measurement is of a step taken from zero, which is what the item states and
   // what keeps a wrong step from hiding behind a clamp.

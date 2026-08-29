@@ -46,7 +46,7 @@
 // `sonar/marks-predators`'.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseSonarSense } from "../fixtures";
 import {
   captureStill,
@@ -63,8 +63,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { emitPulse, foragerPulse, sinceEmit } from "./pulse";
 
@@ -194,7 +194,7 @@ it("leaves the Lanternjaw unlit and both amber motes unchanged through a pulse",
     // shows what the pulse did to the two glimmers.
     captureStill(h, "amber");
 
-    assertNull(sceneHeld(after, watch), "the scenario held to the end");
+    requireSceneHeld(after, watch);
     for (const run of [first, second]) {
       assertEqual(
         run.spent,

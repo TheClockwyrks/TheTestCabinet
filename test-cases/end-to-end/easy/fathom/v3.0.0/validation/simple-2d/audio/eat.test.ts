@@ -28,7 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BINDINGS, CUES } from "../../src/constants";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   captureReplay,
@@ -41,9 +41,9 @@ import {
   clearUnderfoot,
   denAll,
   graded,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
 
@@ -109,7 +109,7 @@ it("plays CUES.eat on the tick the forager eats a plankton, and not before", asy
       seen.snapshot.forager,
       "swim into a plankton and eat it",
     );
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     assertEqual(
       seen.hit,

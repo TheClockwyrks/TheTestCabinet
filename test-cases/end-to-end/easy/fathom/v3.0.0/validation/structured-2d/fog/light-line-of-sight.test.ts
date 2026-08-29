@@ -34,14 +34,9 @@
 // and "drawn" is where the forager is standing — rather than where a patrol
 // happened to wander mid-clip.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThan,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   DIR_KEY,
@@ -52,13 +47,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   requireSwim,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
@@ -107,7 +103,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The light does not bend around corners", async () => {
+check("The light does not bend around corners", async () => {
   startPlaying(h);
   const board = await poseMaze(h, BLIND_CORNER);
   const start = board.mark("S");
@@ -189,7 +185,7 @@ it("The light does not bend around corners", async () => {
     return { before, settled, arrived, onArm };
   });
 
-  assertNull(sceneHeld(end.settled, watch), "the scenario held to the end");
+  requireScene(end.settled, watch);
 
   // Whether the forager travels is `controls/*` and `maze-movement/*`'s verdict.
   if (!end.arrived || !end.onArm) {

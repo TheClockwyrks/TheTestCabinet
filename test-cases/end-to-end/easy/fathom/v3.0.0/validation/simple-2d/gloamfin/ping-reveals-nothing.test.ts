@@ -50,7 +50,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import { GLOAMFIN_PING_RANGE, TICK_HZ, TILE } from "../../src/constants";
@@ -72,8 +71,8 @@ import {
   parkForager,
   predIndex,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import { placePredator } from "./pings";
@@ -292,7 +291,7 @@ it("Its ping reveals nothing", async (ctx) => {
       return { drawn, ticks, settled, afterPixels };
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
     assertTrue(
       flight.ticks < FLIGHT_BUDGET,
       `the ping's wavefront left \`pulses\` within ${FLIGHT_BUDGET} ticks — ` +

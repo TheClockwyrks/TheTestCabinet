@@ -37,16 +37,15 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { GLOAMFIN_HEAR, TICK_HZ } from "../constants";
 import { placeForager, placePredator, poseMaze } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   denAllExcept,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { apart, gloamfinOf, requireGloamfin } from "./pings";
@@ -119,10 +118,7 @@ it("Close hearing takes a fix and fires the alert", async () => {
     return { closed, read };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // The scenario opened on a Gloamfin that had heard nothing, which is what makes
   // every reading below a reading of the crossing rather than of the pose.

@@ -32,7 +32,6 @@ import {
   assertDeepEqual,
   assertEqual,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import { GLOAMFIN_HEAR, GLOAMFIN_PING_INTERVAL, TICK_HZ } from "../constants";
@@ -46,8 +45,8 @@ import {
 import {
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { apart, gloamfinOf, requireGloamfin, sweep } from "./pings";
@@ -148,10 +147,7 @@ it("It goes silent while it holds you by ear", async () => {
     return { held, apartNow, ping };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // The scenario stood as posed: the pair inside hearing range, and neither of
   // them anywhere but the tile it was walled into.

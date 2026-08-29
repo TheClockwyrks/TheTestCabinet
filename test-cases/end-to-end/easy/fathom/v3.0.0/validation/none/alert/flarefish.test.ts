@@ -42,7 +42,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import {
   ALERT_TIME,
@@ -65,10 +64,10 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
-  startPlaying,
   type SceneGuard,
+  startPlaying,
 } from "../scene";
 
 /**
@@ -296,10 +295,7 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
     return { fired, window, end: await h.snapshot() };
   });
 
-  assertNull(
-    sceneHeld(lit.end, guard),
-    "the light-sense scenario held to the end",
-  );
+  requireSceneHeld(h, lit.end, guard);
   assertEqual(
     lit.fired.hit,
     true,
@@ -361,10 +357,7 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
   }
   const flare = await watchWindow(h, index);
 
-  assertNull(
-    sceneHeld(flare.after, guard),
-    "the flare scenario held to the end",
-  );
+  requireSceneHeld(h, flare.after, guard);
   // The fixture's own geometry, against the figures the specification fixes.
   assertLessThanOrEqual(
     flareGap,

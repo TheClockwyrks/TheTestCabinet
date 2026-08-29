@@ -38,7 +38,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -62,8 +61,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /**
@@ -150,7 +149,7 @@ it("A drifter and a Lanternjaw's bulb read alike", async (ctx) => {
     const after = h.snapshot();
     captureStill(h, "amber");
 
-    assertNull(sceneHeld(after, watch), "the scenario held to the end");
+    requireSceneHeld(after, watch);
     assertEqual(
       after.drifters.length,
       1,

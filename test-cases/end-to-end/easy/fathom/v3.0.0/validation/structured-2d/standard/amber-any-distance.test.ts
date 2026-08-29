@@ -32,14 +32,9 @@
 // (specs/instrumentation.md), so the mote is read where the snapshot says it is
 // and this point turns on the drawing rather than on a wander it does not claim.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertNotNull,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   brightestWarmNear,
@@ -55,11 +50,12 @@ import {
   visibilityAt,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /**
@@ -101,7 +97,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The amber lights show at any distance", async () => {
+check("The amber lights show at any distance", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
@@ -122,7 +118,7 @@ it("The amber lights show at any distance", async () => {
   // Before the assertions, so a check that fails still leaves the picture.
   captureStill(h, "amber");
 
-  assertNull(sceneHeld(after, guard), "the scenario held to the end");
+  requireScene(after, guard);
 
   assertEqual(
     after.drifters.length,

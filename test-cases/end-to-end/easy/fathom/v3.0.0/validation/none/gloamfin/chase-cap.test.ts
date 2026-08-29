@@ -36,7 +36,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { FORAGER_SPEED, GLOAMFIN_CHASE_SPEED, TICK_HZ } from "../constants";
 import { placePredator, poseMaze } from "../fixtures";
@@ -45,8 +44,8 @@ import {
   denAllExcept,
   quietBoard,
   requirePredatorMotion,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { gloamfinOf, groundBetween, requireGloamfin } from "./pings";
@@ -156,10 +155,7 @@ it("It chases at GLOAMFIN_CHASE_SPEED", async () => {
     };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
   requirePredatorMotion(
     h,
     opening,

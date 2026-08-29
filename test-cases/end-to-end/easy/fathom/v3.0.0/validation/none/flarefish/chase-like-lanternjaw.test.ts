@@ -43,7 +43,7 @@
 // `flarefish/flare-cadence`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   ARROW_KEY,
   FLARE_INTERVAL,
@@ -63,8 +63,8 @@ import {
   denAllExcept,
   parkForager,
   requirePredatorMotion,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { BLOOM_MAX, FIRST_FLARE_MAX, FLARE_POLL } from "./room";
@@ -275,10 +275,7 @@ it("neither charges nor blooms across a chase longer than FLARE_INTERVAL, travel
     return { acquired, flags, states, from, to, dropped, charged };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // The premise: the hunter's own sense took the fix, and held it for the whole
   // window. Both are `flarefish/light-sense`'s claim rather than this one's.

@@ -48,10 +48,9 @@ import {
   fromForager,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
-import { assertNull } from "../assert";
 
 /**
  * Tiles of open water between the forager and the rock that closes the corridor.
@@ -96,7 +95,7 @@ it("The light reveals the rock it lands on and stops there", async (ctx) => {
     // Before the assertions, so a check that fails still leaves the picture.
     captureStill(h, "walls");
 
-    assertNull(sceneHeld(snapshot, watch), "the scenario held to the end");
+    requireSceneHeld(snapshot, watch);
 
     // The fixture's own geometry, from the specification's figures rather than
     // from the build's readings.

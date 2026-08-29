@@ -35,12 +35,11 @@
 // tiles and "drawn" for a corridor tile is its mote against the faint floor, read
 // at the tile's center where specs/gameplay.md draws it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -53,12 +52,13 @@ import {
   visibilityAt,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import {
   FOG_MATCH,
@@ -105,7 +105,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The maze is drawn only inside the circle", async () => {
+check("The maze is drawn only inside the circle", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("H");
@@ -130,7 +130,7 @@ it("The maze is drawn only inside the circle", async () => {
   // circle the reviewer is being told about.
   captureStill(h, "circle");
 
-  assertNull(sceneHeld(after, guard), "the scenario held to the end");
+  requireScene(after, guard);
 
   const radius = windowRadius(after);
   const insideAt = tileFromForager(after, inside);

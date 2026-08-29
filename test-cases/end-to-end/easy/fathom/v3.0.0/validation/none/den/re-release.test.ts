@@ -40,7 +40,7 @@ import {
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../constants";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import { predatorIndex } from "../fixtures";
-import { sceneGuard, sceneHeld } from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 import {
   DEN_ORDER_LINE,
   RELEASE_TOLERANCE,
@@ -152,10 +152,7 @@ it("returns every predator to the den on a catch and runs the whole staggered sc
     );
   }
 
-  assertNull(
-    sceneHeld(await h.snapshot(), run.guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), run.guard);
   assertNull(
     run.den.missingFlag,
     "specs/state.md requires `released` of every predator, and the schedule " +

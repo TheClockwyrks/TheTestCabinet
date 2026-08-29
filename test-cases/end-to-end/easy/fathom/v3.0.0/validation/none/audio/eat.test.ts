@@ -25,16 +25,16 @@
 // what it does to brightness, which is `brightness/from-eating`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { ARROW_KEY, ticksFor } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   clearUnderfoot,
   denAllExcept,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { soundsBeforeEvent, soundsOnEvent, watchForEvent } from "./cues";
@@ -106,10 +106,7 @@ it("sounds on the tick the forager eats a plankton, and not before", async () =>
     watch.snapshot.forager,
     "swim into a plankton and eat it",
   );
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   assertEqual(
     watch.hit,

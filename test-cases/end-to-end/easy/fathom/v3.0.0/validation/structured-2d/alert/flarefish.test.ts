@@ -33,7 +33,7 @@
 // `flarefish/flare-lock`'s. A build that never flares stands this check down
 // rather than being failed twice for it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   ALERT_TIME,
   FLARE_BLOOM,
@@ -46,7 +46,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze, poseSightLine } from "../fixtures";
 import {
@@ -58,13 +57,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
   type SceneGuard,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
@@ -248,7 +248,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The Flarefish fires the alert on a fresh fix", async () => {
+check("The Flarefish fires the alert on a fresh fix", async () => {
   startPlaying(h);
 
   /* ---- By its light sense -------------------------------------------------- */
@@ -296,10 +296,7 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
     return { fired, window, end: h.snapshot() };
   });
 
-  assertNull(
-    sceneHeld(lit.end, guard),
-    "the light-sense scenario held to the end",
-  );
+  requireScene(lit.end, guard, { what: "the light-sense scenario" });
   assertEqual(
     lit.fired.hit,
     true,
@@ -362,10 +359,7 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
   }
   const flare = await watchWindow(h, index);
 
-  assertNull(
-    sceneHeld(flare.after, guard),
-    "the flare scenario held to the end",
-  );
+  requireScene(flare.after, guard, { what: "the flare scenario" });
   // The fixture's own geometry, against the figures the specification fixes.
   assertLessThanOrEqual(
     flareGap,

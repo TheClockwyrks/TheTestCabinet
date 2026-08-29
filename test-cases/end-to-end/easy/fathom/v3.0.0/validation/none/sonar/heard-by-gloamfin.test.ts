@@ -43,7 +43,6 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import {
   GLOAMFIN_HEAR,
@@ -59,8 +58,8 @@ import {
   denAllExcept,
   parkForager,
   requirePredatorMotion,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { emitPulse, gloamfinPulses, requireKind, sinceEmit } from "./pulse";
@@ -239,10 +238,7 @@ it("hands a wandering Gloamfin its fix when the front arrives, not when the puls
     return { steps, arrival, closing, opening, mid, chased };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), watch),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), watch);
 
   // One tick after the press the sound has gone nowhere, so nothing can have
   // been heard: this is the half of the claim that says "not at the moment the

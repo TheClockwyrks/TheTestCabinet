@@ -34,7 +34,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TICK_DT, TICK_HZ } from "../../src/constants";
-import { assertLessThanOrEqual, assertNull } from "../assert";
+import { assertLessThanOrEqual } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,
@@ -48,8 +48,8 @@ import {
   parkForager,
   requirePred,
   requirePredatorMotion,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   type SceneSnapshot,
 } from "../scene";
 
@@ -181,7 +181,7 @@ it("advances only when the driver steps it, by exactly the ticks it is given", a
       return { before, after, stepFrom, stepTo, splitFrom, splitTo };
     });
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     // The witness has to be able to move for "nothing moved" to mean anything,
     // and whether a predator patrols under its own power is the den and patrol

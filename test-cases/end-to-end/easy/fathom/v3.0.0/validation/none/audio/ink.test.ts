@@ -26,14 +26,14 @@
 // which is `ink/cloud`'s; the cooldown it starts, which is `ink/cooldown`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { BINDINGS, ticksFor } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   denAllExcept,
   quietBoard,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { soundsBeforeEvent, soundsOnEvent, watchForEvent } from "./cues";
@@ -108,10 +108,7 @@ it("sounds on the tick the forager releases ink, and not before", async () => {
     }
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   assertEqual(
     watch.hit,

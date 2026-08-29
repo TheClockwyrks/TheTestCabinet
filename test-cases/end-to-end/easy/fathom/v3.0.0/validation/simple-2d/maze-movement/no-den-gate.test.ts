@@ -36,7 +36,7 @@
 // back.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import { poseMaze, stampLayout } from "../fixtures";
 import {
   captureReplay,
@@ -46,7 +46,13 @@ import {
   type Harness,
 } from "../harness";
 import type { Tile } from "../maze";
-import { denAll, graded, requireSwim, sceneGuard, sceneHeld } from "../scene";
+import {
+  denAll,
+  graded,
+  requireSceneHeld,
+  requireSwim,
+  sceneGuard,
+} from "../scene";
 
 /**
  * How much corridor the stub carries above the gate, in tiles.
@@ -148,7 +154,7 @@ it("refuses the forager the den gate and the chamber behind it", async (ctx) => 
       return { resting, onGate, inDen, settled };
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
 
     // A forager that never got under way was never offered the gate; whether a
     // held action moves it at all is `controls/move-*`'s verdict.

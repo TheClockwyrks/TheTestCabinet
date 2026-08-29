@@ -34,7 +34,6 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThan,
-  assertNull,
 } from "../assert";
 import { ARROW_KEY, TILE } from "../constants";
 import { poseMaze, tileCenterOf } from "../fixtures";
@@ -46,9 +45,9 @@ import {
 } from "../harness";
 import {
   denAllExcept,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -167,10 +166,7 @@ it("reverses the forager where it stands, without waiting for a tile center", as
     return { resting, midway, flipped, returning };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // A forager that never got under way has no heading to reverse; whether a held
   // action moves it at all is `controls/move-*`'s verdict.

@@ -32,12 +32,7 @@
 // check down rather than being failed twice for one fault.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLessThanOrEqual,
-  assertNull,
-  assertTrue,
-} from "../assert";
+import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import { ALERT_TIME, GLOAMFIN_HEAR } from "../constants";
 import { poseOccludedPair, predatorIndex, visibilityAt } from "../fixtures";
 import {
@@ -51,8 +46,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -234,7 +229,7 @@ it("The Gloamfin fires the alert on a fresh fix", async () => {
     };
   });
 
-  assertNull(sceneHeld(read.end, guard), "the scenario held to the end");
+  requireSceneHeld(h, read.end, guard);
 
   // The fixture's own geometry, and the fact that makes `lit` mean something.
   assertLessThanOrEqual(

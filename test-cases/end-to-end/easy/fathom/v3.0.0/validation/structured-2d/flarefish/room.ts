@@ -35,9 +35,11 @@
 // bloom every tile of it is in the same visibility state and two samples taken
 // from it are comparable.
 
+import { FLARE_RADIUS } from "../../src/constants";
 import { poseMaze } from "../fixtures";
 import {
   denAll,
+  failPrecondition,
   indexOfKind,
   parkForager,
   standDown,
@@ -45,6 +47,7 @@ import {
 } from "../scene";
 import type { Harness } from "../harness";
 import type { Tile } from "../maze";
+import type { FathomSnapshot } from "../surface";
 
 /** How many tiles of corridor the forager's own room holds. */
 export const ROOM_TILES = 3;
@@ -148,4 +151,38 @@ export async function poseFlareRoom(h: Harness): Promise<FlareRoom> {
   h.debug.setPredatorState(index, "wander");
 
   return { forager: home, hall, index, quiet };
+}
+
+/**
+ * A Flarefish that reports a burning bloom is burning a disc, or the check that
+ * merely wanted one to watch stands down.
+ *
+ * specs/predators/flarefish.md ties the two together: through the bloom window
+ * "`flaring` is true and `flareRadius` is `FLARE_RADIUS` (`192`, 6 tiles)", and
+ * outside a flare "`flaring` is false and `flareRadius` is `0`". So a hunter that
+ * raises the flag with no disc under it — over its charge-up, say, which the same
+ * file gives `flareCharging` and not `flaring` — hands every check that WAITS for
+ * a bloom a moment that is not one, and each of them then reports the flare's
+ * light, its cue or its lock against a build whose flare did none of those things
+ * yet.
+ *
+ * `flarefish/flare-reveals` is the point that fails for it: it holds the reported
+ * `flareRadius` against `FLARE_RADIUS` through the window it finds. So the checks
+ * that only needed a bloom to stand in defer to it.
+ */
+export function requireBurningDisc(
+  snapshot: FathomSnapshot,
+  index: number,
+): void {
+  const fish = snapshot.predators[index];
+  if (fish === undefined || fish.flaring !== true) return;
+  if (typeof fish.flareRadius === "number" && fish.flareRadius > 0) return;
+  failPrecondition(
+    `a Flarefish reporting flaring to burn a disc of FLARE_RADIUS ` +
+      `(${FLARE_RADIUS}), so there was a bloom for this check to stand in; ` +
+      "specs/predators/flarefish.md gives the flag and the radius the same " +
+      "window",
+    "flarefish/flare-reveals",
+    `flareRadius was reported as ${JSON.stringify(fish.flareRadius)}`,
+  );
 }

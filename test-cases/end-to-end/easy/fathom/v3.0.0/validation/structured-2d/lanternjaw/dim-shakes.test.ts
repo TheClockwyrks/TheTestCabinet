@@ -31,7 +31,7 @@
 // `lanternjaw/light-range`'s — a build that never takes one stands this check down
 // rather than failing it twice.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
@@ -41,7 +41,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseDimStandoff } from "../fixtures";
 import {
@@ -53,13 +52,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { tileGap } from "../maze";
 
@@ -111,7 +111,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Dimming shakes its fix", async () => {
+check("Dimming shakes its fix", async () => {
   startPlaying(h);
   const line = await poseDimStandoff(h);
   const index = indexOfKind(h.snapshot(), "lanternjaw");
@@ -174,7 +174,7 @@ it("Dimming shakes its fix", async () => {
     return { inside, gaveUp, at, end: h.snapshot() };
   });
 
-  assertNull(sceneHeld(shaken.end, guard), "the scenario held to the end");
+  requireScene(shaken.end, guard);
   assertEqual(
     `${shaken.end.forager.tx},${shaken.end.forager.ty}`,
     `${line.slip.tx},${line.slip.ty}`,

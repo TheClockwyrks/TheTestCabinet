@@ -36,7 +36,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import {
   FORAGER_SPEED,
@@ -57,8 +56,8 @@ import {
   parkForager,
   requirePred,
   requirePredatorMotion,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { gloamfinOf, groundBetween, placePredator } from "./pings";
 
@@ -169,7 +168,7 @@ it("It chases at GLOAMFIN_CHASE_SPEED", async (ctx) => {
       };
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
     requirePredatorMotion(
       opening,
       run.settled,

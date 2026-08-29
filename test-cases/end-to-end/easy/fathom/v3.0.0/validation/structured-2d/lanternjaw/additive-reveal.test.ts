@@ -46,7 +46,7 @@
 // gets besides is the recorded clip, which shows the body arriving around an
 // unmoved bulb far better than any pixel bound could state it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import {
   assertEqual,
@@ -54,7 +54,6 @@ import {
   assertLessThan,
   assertLessThanOrEqual,
   assertNotNull,
-  assertNull,
 } from "../assert";
 import { poseSightLine } from "../fixtures";
 import {
@@ -68,13 +67,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { brightestWarm, moteCenter, moteProfileAt, warm } from "./motes";
 
@@ -136,7 +136,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Lighting it leaves the bulb where it was", async () => {
+check("Lighting it leaves the bulb where it was", async () => {
   startPlaying(h);
   const line = await poseSightLine(h, GAP_TILES, {
     lead: LEAD_TILES,
@@ -188,7 +188,7 @@ it("Lighting it leaves the bulb where it was", async () => {
     };
   });
 
-  assertNull(sceneHeld(read.end, guard), "the scenario held to the end");
+  requireScene(read.end, guard);
 
   // The fixture's own geometry: the creature stands outside the light at the first
   // reading and inside it at the second, so the light is what changed.
@@ -205,6 +205,22 @@ it("Lighting it leaves the bulb where it was", async () => {
       `VISION_GAIN, ${VISION_MIN + VISION_GAIN}), which the creature stands ` +
       "inside",
   );
+  // The dark reading is only dark if the build's own pocket falls short of the
+  // creature. The fixture stands it past the VISION_MIN (96) that specs/sensing.md
+  // gives V at the G of 0 this half is read at, so a build whose light reaches it
+  // anyway has a V that does not answer to brightness — brightness/widens-vision
+  // asks that directly and does give a verdict on it.
+  if (read.gap <= read.dark.visionRadius) {
+    failPrecondition(
+      `the build's own light pocket to fall short of the ` +
+        `${read.gap.toFixed(1)} units the Lanternjaw stood at with G posed to ` +
+        "0, so there was a dark reading for this point to compare against; " +
+        "specs/sensing.md gives V = VISION_MIN + VISION_GAIN * G",
+      "brightness/widens-vision",
+      `a V of ${read.dark.visionRadius.toFixed(1)} at the G of ` +
+        `${read.dark.brightness.toFixed(2)} it reported`,
+    );
+  }
   assertEqual(
     read.dark.predators[index].lit,
     false,

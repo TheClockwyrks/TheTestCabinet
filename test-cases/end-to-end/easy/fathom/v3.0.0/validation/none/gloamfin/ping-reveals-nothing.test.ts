@@ -50,7 +50,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import { GLOAMFIN_PING_RANGE, TICK_HZ, TILE } from "../constants";
@@ -73,8 +72,8 @@ import type { TileRef } from "../maze";
 import {
   denAllExcept,
   quietBoard,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { requireGloamfin } from "./pings";
@@ -287,10 +286,7 @@ it("Its ping reveals nothing", async () => {
     return { drawn, ticks, settled, afterPixels };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
   assertTrue(
     flight.ticks < FLIGHT_BUDGET,
     `the ping's wavefront left \`pulses\` within ${FLIGHT_BUDGET} ticks — ` +

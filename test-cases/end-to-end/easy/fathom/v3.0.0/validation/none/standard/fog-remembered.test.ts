@@ -35,7 +35,7 @@
 // are drawn DIFFERENTLY, not what color either one is.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { VISION_GAIN, VISION_MIN } from "../constants";
 import { poseMaze, tileCenterOf, visibilityAt } from "../fixtures";
 import {
@@ -49,8 +49,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import type { TileRef } from "../maze";
@@ -147,7 +147,7 @@ it("keeps drawing explored ground however far the forager swims from it", async 
   // shows the reviewer what the build drew out there.
   await captureStill(h, "remembered");
 
-  assertNull(sceneHeld(after, guard), "the scenario held to the end");
+  requireSceneHeld(h, after, guard);
 
   // The fixture's own geometry, asserted rather than assumed: the tile that is
   // read stands further off than the light reaches at ANY brightness.

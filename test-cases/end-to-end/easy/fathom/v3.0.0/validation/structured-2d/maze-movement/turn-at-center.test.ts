@@ -30,13 +30,12 @@
 // on rather than being stopped by rock — the turn has to be the thing that moves
 // it off the approach axis.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TILE } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseCorner } from "../fixtures";
 import {
@@ -47,7 +46,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { denAll, requireSwim, sceneGuard, sceneHeld } from "../scene";
+import { check, denAll, requireScene, requireSwim, sceneGuard } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /** Tiles of corridor each arm carries past the junction. */
@@ -118,99 +117,102 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("buffers a perpendicular direction set mid-tile and takes the turn at the junction center", async () => {
-  startPlaying(h);
-  const corner = await poseCorner(h, { arm: ARM });
-  const quiet = await denAll(h);
-  // The forager is the SUBJECT here, so it is not held to staying put; the guard
-  // still catches a life lost, a predator loose, or the dive leaving live play.
-  const guard = await sceneGuard(h, quiet, { foragerParked: false });
+check(
+  "buffers a perpendicular direction set mid-tile and takes the turn at the junction center",
+  async () => {
+    startPlaying(h);
+    const corner = await poseCorner(h, { arm: ARM });
+    const quiet = await denAll(h);
+    // The forager is the SUBJECT here, so it is not held to staying put; the guard
+    // still catches a life lost, a predator loose, or the dive leaving live play.
+    const guard = await sceneGuard(h, quiet, { foragerParked: false });
 
-  const opening = h.snapshot();
-  const grid = opening.grid;
-  const back = centerOf(opening, corner.back);
-  const junction = centerOf(opening, corner.junction);
-  const approachKey = DIR_KEY[corner.approach];
-  const perpKey = DIR_KEY[corner.perp];
+    const opening = h.snapshot();
+    const grid = opening.grid;
+    const back = centerOf(opening, corner.back);
+    const junction = centerOf(opening, corner.junction);
+    const approachKey = DIR_KEY[corner.approach];
+    const perpKey = DIR_KEY[corner.perp];
 
-  const drive = await captureReplay(h, "turn", async () => {
-    const resting = h.snapshot();
-    // Swim up to the junction and stop a quarter of a tile past the last center.
-    h.hold(approachKey);
-    let approached = resting;
-    for (let tick = 0; tick < APPROACH_MAX_TICKS; tick += 1) {
-      await h.advance(1);
-      approached = h.snapshot();
-      if (approached.forager.x - back.x >= BUFFER_AT) break;
-    }
-    // One key at a time: let go of the approach, then buffer the turn.
-    h.release(approachKey);
-    h.hold(perpKey);
-    await h.advance(SETTLE_TICKS);
-    const midway = h.snapshot();
+    const drive = await captureReplay(h, "turn", async () => {
+      const resting = h.snapshot();
+      // Swim up to the junction and stop a quarter of a tile past the last center.
+      h.hold(approachKey);
+      let approached = resting;
+      for (let tick = 0; tick < APPROACH_MAX_TICKS; tick += 1) {
+        await h.advance(1);
+        approached = h.snapshot();
+        if (approached.forager.x - back.x >= BUFFER_AT) break;
+      }
+      // One key at a time: let go of the approach, then buffer the turn.
+      h.release(approachKey);
+      h.hold(perpKey);
+      await h.advance(SETTLE_TICKS);
+      const midway = h.snapshot();
 
-    // Watch every tick for the heading to flip, so the reading is the FIRST
-    // moment the turn was taken rather than wherever a fixed wait happened to
-    // land.
-    let turned: FathomSnapshot | null = null;
-    for (let tick = 0; tick < TURN_MAX_TICKS && turned === null; tick += 1) {
-      await h.advance(1);
-      const snap = h.snapshot();
-      if (snap.forager.dir === corner.perp) turned = snap;
-    }
-    await h.advance(AXIS_TICKS);
-    const along = h.snapshot();
-    // Held on past every reading, so the clip shows the forager swimming down
-    // the new arm rather than stopping at the moment the verdict was taken.
-    await h.advance(TAIL_TICKS);
-    h.release(perpKey);
-    return { resting, approached, midway, turned, along };
-  });
+      // Watch every tick for the heading to flip, so the reading is the FIRST
+      // moment the turn was taken rather than wherever a fixed wait happened to
+      // land.
+      let turned: FathomSnapshot | null = null;
+      for (let tick = 0; tick < TURN_MAX_TICKS && turned === null; tick += 1) {
+        await h.advance(1);
+        const snap = h.snapshot();
+        if (snap.forager.dir === corner.perp) turned = snap;
+      }
+      await h.advance(AXIS_TICKS);
+      const along = h.snapshot();
+      // Held on past every reading, so the clip shows the forager swimming down
+      // the new arm rather than stopping at the moment the verdict was taken.
+      await h.advance(TAIL_TICKS);
+      h.release(perpKey);
+      return { resting, approached, midway, turned, along };
+    });
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireScene(h.snapshot(), guard);
 
-  // Whether a held action carries the forager anywhere is `controls/move-*`'s
-  // verdict; a forager that never reached the junction has no turn to take.
-  requireSwim(
-    drive.resting.forager,
-    drive.approached.forager,
-    "swim up to the junction the turn is taken at",
-  );
+    // Whether a held action carries the forager anywhere is `controls/move-*`'s
+    // verdict; a forager that never reached the junction has no turn to take.
+    requireSwim(
+      drive.resting.forager,
+      drive.approached.forager,
+      "swim up to the junction the turn is taken at",
+    );
 
-  // The fixture's own claim: the turn was asked for AWAY from a tile center.
-  assertGreaterThanOrEqual(
-    offCenter(drive.approached.forager.x, grid.originX, grid.tile),
-    BUFFER_AT,
-    "logical units between the forager's center and the nearest tile center " +
-      "when the perpendicular direction was set",
-  );
+    // The fixture's own claim: the turn was asked for AWAY from a tile center.
+    assertGreaterThanOrEqual(
+      offCenter(drive.approached.forager.x, grid.originX, grid.tile),
+      BUFFER_AT,
+      "logical units between the forager's center and the nearest tile center " +
+        "when the perpendicular direction was set",
+    );
 
-  assertEqual(
-    drive.midway.forager.dir,
-    corner.approach,
-    `the forager's heading ${SETTLE_TICKS} ticks after the perpendicular was ` +
-      "set mid-tile, which specs/movement.md honors only at the next tile center",
-  );
+    assertEqual(
+      drive.midway.forager.dir,
+      corner.approach,
+      `the forager's heading ${SETTLE_TICKS} ticks after the perpendicular was ` +
+        "set mid-tile, which specs/movement.md honors only at the next tile center",
+    );
 
-  assertEqual(
-    drive.turned !== null,
-    true,
-    `the buffered turn onto ${corner.perp} was taken within ` +
-      `${TURN_MAX_TICKS} ticks of being set`,
-  );
-  if (drive.turned === null) return;
+    assertEqual(
+      drive.turned !== null,
+      true,
+      `the buffered turn onto ${corner.perp} was taken within ` +
+        `${TURN_MAX_TICKS} ticks of being set`,
+    );
+    if (drive.turned === null) return;
 
-  assertLessThanOrEqual(
-    Math.abs(drive.turned.forager.x - junction.x),
-    CENTER_TOLERANCE,
-    `|x - the junction center's x| at the tick the heading became ` +
-      `${corner.perp}, in logical units`,
-  );
+    assertLessThanOrEqual(
+      Math.abs(drive.turned.forager.x - junction.x),
+      CENTER_TOLERANCE,
+      `|x - the junction center's x| at the tick the heading became ` +
+        `${corner.perp}, in logical units`,
+    );
 
-  assertGreaterThanOrEqual(
-    drive.along.forager.y - drive.turned.forager.y,
-    TILE / 2,
-    `logical units travelled down the new arm in the ${AXIS_TICKS} ticks after ` +
-      "the turn",
-  );
-});
+    assertGreaterThanOrEqual(
+      drive.along.forager.y - drive.turned.forager.y,
+      TILE / 2,
+      `logical units travelled down the new arm in the ${AXIS_TICKS} ticks after ` +
+        "the turn",
+    );
+  },
+);

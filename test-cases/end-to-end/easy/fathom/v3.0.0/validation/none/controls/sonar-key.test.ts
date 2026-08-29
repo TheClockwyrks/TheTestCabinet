@@ -27,15 +27,15 @@
 // the front is still far inside its range.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertNotEqual,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertNotEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
-import { quietBoard, sceneGuard, sceneHeld, startPlaying } from "../scene";
+import {
+  quietBoard,
+  requireSceneHeld,
+  sceneGuard,
+  startPlaying,
+} from "../scene";
 
 /** The key specs/movement.md binds the `a` action to. */
 const KEY = "Space";
@@ -98,10 +98,7 @@ it("emits a forager sonar pulse on Space", async () => {
     return { armed, flying };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // The premise this point's own description states, posed through
   // `setSonarCooldown(0)`: "At `0` the pulse is ready and the snapshot reports

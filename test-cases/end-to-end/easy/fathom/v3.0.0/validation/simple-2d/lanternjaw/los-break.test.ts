@@ -26,7 +26,7 @@
 // fraction of the range so neither turns on either.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThan, assertNull, assertTrue } from "../assert";
+import { assertEqual, assertLessThan, assertTrue } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,
@@ -41,8 +41,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   separation,
 } from "../scene";
 
@@ -145,7 +145,7 @@ it("Rock breaks its sense", async (ctx) => {
       };
     });
 
-    assertNull(sceneHeld(read.end, watch), "the scenario held to the end");
+    requireSceneHeld(read.end, watch);
 
     // The fixture's own geometry: both standoffs are well inside the range the
     // build itself reports, so the rock is the only thing that differs.

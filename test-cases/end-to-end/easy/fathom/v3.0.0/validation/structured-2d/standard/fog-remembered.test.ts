@@ -34,9 +34,9 @@
 // (specs/overview.md leaves it so), so the question is whether the two tiles are
 // drawn DIFFERENTLY, not what color either one is.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
-import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   captureStill,
@@ -50,12 +50,13 @@ import {
   type Rgb,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
 import type { Tile } from "../maze";
@@ -115,7 +116,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The whole explored map stays drawn", async () => {
+check("The whole explored map stays drawn", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("H");
@@ -157,7 +158,7 @@ it("The whole explored map stays drawn", async () => {
   // shows the reviewer what the build drew out there.
   captureStill(h, "remembered");
 
-  assertNull(sceneHeld(after, guard), "the scenario held to the end");
+  requireScene(after, guard);
 
   // The fixture's own geometry, asserted rather than assumed: the tile that is
   // read stands further off than the light reaches at ANY brightness.

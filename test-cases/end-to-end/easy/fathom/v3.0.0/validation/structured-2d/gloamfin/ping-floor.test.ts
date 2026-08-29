@@ -27,12 +27,8 @@
 // (`gloamfin/ping-cadence`), or when in a search the guaranteed ping falls
 // (`gloamfin/lost-you-orange`). Both are stood aside for by name below.
 
-import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
-  assertNull,
-} from "../assert";
+import { afterEach, beforeEach } from "vitest";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import { GLOAMFIN_PING_MIN_GAP, TICK_HZ } from "../../src/constants";
 import { placeForager, poseMaze } from "../fixtures";
 import {
@@ -42,12 +38,13 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   quietBoard,
   requireKind,
   requirePredatorMotion,
+  requireScene,
   sceneGuard,
-  sceneHeld,
   standDown,
 } from "../scene";
 import { pingGaps, pingLog, placePredator, sweep } from "./pings";
@@ -92,7 +89,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("No two pings closer than the floor", async () => {
+check("No two pings closer than the floor", async () => {
   startPlaying(h);
   const board = await poseMaze(h, LONG_CHASE);
   const index = requireKind(h.snapshot(), "gloamfin");
@@ -113,7 +110,7 @@ it("No two pings closer than the floor", async () => {
   );
   const ending = h.snapshot();
 
-  assertNull(sceneHeld(ending, guard), "the scenario held to the end");
+  requireScene(ending, guard);
 
   const { sightings } = log;
   const tints = sightings.map((sighting) => sighting.tint);

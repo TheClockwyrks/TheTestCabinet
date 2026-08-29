@@ -29,7 +29,7 @@
 // nothing and clears no maze (specs/instrumentation.md), so the bite that clears
 // is the game's own.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { placeForager, poseMaze } from "../fixtures";
@@ -42,7 +42,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { denAll, requireSwim } from "../scene";
+import { check, denAll, requireSwim } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /**
@@ -116,7 +116,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Clearing descends to the next depth", async () => {
+check("Clearing descends to the next depth", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const start = board.mark("S");

@@ -28,13 +28,12 @@
 // `lanternjaw/dim-shakes`'s and `lanternjaw/ink-shakes`'s; how fast it then
 // travels is `lanternjaw/wander-disguise`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TILE } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import { poseMaze } from "../fixtures";
@@ -46,13 +45,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
 import type { Tile } from "../maze";
@@ -128,7 +128,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("It senses the forager's light within R", async () => {
+check("It senses the forager's light within R", async () => {
   startPlaying(h);
   const board = await poseMaze(h, [`F${".".repeat(RUN_TILES - 1)}`]);
   const home = board.mark("F");
@@ -217,7 +217,7 @@ it("It senses the forager's light within R", async () => {
     };
   });
 
-  assertNull(sceneHeld(read.end, guard), "the scenario held to the end");
+  requireScene(read.end, guard);
 
   // The fixture's own geometry, against the range the build itself reports.
   assertLessThanOrEqual(

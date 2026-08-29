@@ -33,7 +33,7 @@
 // from, so for every body on the board the pair is arithmetic on `x`, `y` and the
 // grid block the same snapshot reports.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertBetween,
   assertContains,
@@ -58,7 +58,13 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { failPrecondition, parkForager, sceneGuard, sceneHeld } from "../scene";
+import {
+  check,
+  failPrecondition,
+  parkForager,
+  requireScene,
+  sceneGuard,
+} from "../scene";
 import { FATHOM_DEBUG_VERSION, type FathomSnapshot } from "../surface";
 
 /**
@@ -162,7 +168,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("reports every documented field, with its documented type", async () => {
+check("reports every documented field, with its documented type", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
@@ -198,7 +204,7 @@ it("reports every documented field, with its documented type", async () => {
   // board the shape was read off.
   captureStill(h, "posed");
 
-  assertNull(sceneHeld(snap, guard), "the scenario held to the end");
+  requireScene(snap, guard);
 
   // The scene the shape is read over: a build whose controls never fired the two
   // effects has a defect the control points own, and this stands aside.

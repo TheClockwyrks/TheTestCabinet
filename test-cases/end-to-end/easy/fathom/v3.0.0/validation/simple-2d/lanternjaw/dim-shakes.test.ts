@@ -41,7 +41,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseDimStandoff } from "../fixtures";
 import {
@@ -58,8 +57,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import { tileGap } from "../maze";
@@ -168,7 +167,7 @@ it("Dimming shakes its fix", async (ctx) => {
       return { inside, gaveUp, at, end: h.snapshot() };
     });
 
-    assertNull(sceneHeld(shaken.end, watch), "the scenario held to the end");
+    requireSceneHeld(shaken.end, watch);
     assertEqual(
       `${shaken.end.forager.tx},${shaken.end.forager.ty}`,
       `${line.slip.tx},${line.slip.ty}`,

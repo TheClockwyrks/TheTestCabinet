@@ -52,7 +52,7 @@
 // metrics and clock are — the host the engine runs on — and without it the build
 // is asked to draw from art no one gave it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -65,7 +65,7 @@ import {
   TICK_HZ,
   TILE,
 } from "../../src/constants";
-import { assertNull, assertTrue } from "../assert";
+import { assertTrue } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   callsTo,
@@ -76,12 +76,13 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /* -------------------------------------------------------------------------- */
@@ -358,7 +359,7 @@ afterEach(() => {
   restoreHost(host);
 });
 
-it("draws every element from its own seeded sheet", async () => {
+check("draws every element from its own seeded sheet", async () => {
   const seeded = await readSeededFrames();
 
   startPlaying(h);
@@ -427,7 +428,7 @@ it("draws every element from its own seeded sheet", async () => {
   // frame whose draws were read.
   captureStill(h, "art");
 
-  assertNull(sceneHeld(snap, watch), "the scenario held to the end");
+  requireScene(snap, watch);
 
   // The bloom is the only light that reaches these pockets: specs/sensing.md has
   // the forager's own pocket stop at the rock it lands on, and every creature

@@ -27,12 +27,11 @@
 // `controls/ink-key`'s and which this defers to by name; what the cloud is, which is
 // `ink/cloud`'s; and what ink does to a hunter, which belongs to each hunter.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { BINDINGS, INK_COOLDOWN, TICK_DT, TICK_HZ } from "../../src/constants";
 import { poseStraightRun } from "../fixtures";
@@ -43,12 +42,13 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
-  parkForager,
-  sceneGuard,
-  sceneHeld,
   failPrecondition,
+  parkForager,
+  requireScene,
+  sceneGuard,
 } from "../scene";
 
 /** The key specs/movement.md binds the `b` action — "Releases an ink cloud" — to. */
@@ -119,133 +119,136 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("arms INK_COOLDOWN on a cloud, refuses a press inside it, and is ready again exactly when it reaches 0", async () => {
-  startPlaying(h);
-  const run = await poseStraightRun(h, RUN_TILES);
-  await parkForager(h, run.start);
-  await clearUnderfoot(h);
-  const quiet = await denAll(h);
-  const watch = await sceneGuard(h, quiet);
+check(
+  "arms INK_COOLDOWN on a cloud, refuses a press inside it, and is ready again exactly when it reaches 0",
+  async () => {
+    startPlaying(h);
+    const run = await poseStraightRun(h, RUN_TILES);
+    await parkForager(h, run.start);
+    await clearUnderfoot(h);
+    const quiet = await denAll(h);
+    const watch = await sceneGuard(h, quiet);
 
-  const recharge = await captureReplay(h, "cooldown", async () => {
-    h.debug.setInkCooldown(0);
-    const before = h.snapshot();
-    await h.tap(INK_KEY);
-    const armed = h.snapshot();
-    if (armed.inkClouds.length === 0) {
-      failPrecondition(
-        `pressing ${INK_KEY} in live play to release a cloud; ` +
-          "specs/movement.md binds the `b` action to it and specs/sensing.md " +
-          "has a cloud appear when ink's cooldown is 0",
-        "controls/ink-key",
-        `no cloud, with ink.ready ${String(before.ink.ready)} at the press`,
+    const recharge = await captureReplay(h, "cooldown", async () => {
+      h.debug.setInkCooldown(0);
+      const before = h.snapshot();
+      await h.tap(INK_KEY);
+      const armed = h.snapshot();
+      if (armed.inkClouds.length === 0) {
+        failPrecondition(
+          `pressing ${INK_KEY} in live play to release a cloud; ` +
+            "specs/movement.md binds the `b` action to it and specs/sensing.md " +
+            "has a cloud appear when ink's cooldown is 0",
+          "controls/ink-key",
+          `no cloud, with ink.ready ${String(before.ink.ready)} at the press`,
+        );
+      }
+
+      // Down to the refused press, then the press itself and the tick that
+      // delivers it.
+      await h.advance(SECOND_PRESS_TICKS - 1);
+      const beforeSecond = h.snapshot();
+      await h.tap(INK_KEY);
+      const afterSecond = h.snapshot();
+
+      // Down to the last stretch, and then a tick at a time through it.
+      await h.advance(SWEEP_FROM_TICKS - SECOND_PRESS_TICKS - 1);
+      const samples: Sample[] = [];
+      let ready: Sample | null = null;
+      while (
+        ready === null &&
+        (h.snapshot().simTime - before.simTime) * TICK_HZ < READY_MAX_TICKS
+      ) {
+        await h.advance(1);
+        const snapshot = h.snapshot();
+        const sample: Sample = {
+          elapsed: snapshot.simTime - before.simTime,
+          ready: snapshot.ink.ready,
+          cooldown: snapshot.ink.cooldown,
+        };
+        samples.push(sample);
+        if (sample.ready) ready = sample;
+      }
+
+      return { before, armed, beforeSecond, afterSecond, samples, ready };
+    });
+
+    requireScene(h.snapshot(), watch);
+
+    // Armed, at the full figure.
+    assertEqual(
+      recharge.before.ink.ready,
+      true,
+      "ink.ready with the cooldown posed to 0, before the cloud",
+    );
+    assertEqual(
+      recharge.armed.ink.ready,
+      false,
+      "ink.ready one tick after the cloud was released",
+    );
+    assertLessThanOrEqual(
+      Math.abs(recharge.armed.ink.cooldown - INK_COOLDOWN),
+      ARM_TOLERANCE,
+      `|ink.cooldown - INK_COOLDOWN| one tick after the cloud, of the ` +
+        `${INK_COOLDOWN} s specs/sensing.md arms`,
+    );
+
+    // Running down against simulated time.
+    assertGreaterThan(
+      recharge.armed.ink.cooldown - recharge.beforeSecond.ink.cooldown,
+      0,
+      `how much of the cooldown ran off over the ${SECOND_PRESS_TICKS} ticks ` +
+        "before the second press",
+    );
+
+    // The second press, inside the cooldown: nothing released, and no re-arm.
+    assertEqual(
+      recharge.beforeSecond.ink.ready,
+      false,
+      `ink.ready ${SECOND_PRESS_TICKS} ticks in, with the cooldown still running`,
+    );
+    assertLessThanOrEqual(
+      recharge.afterSecond.inkClouds.length,
+      recharge.beforeSecond.inkClouds.length,
+      `the ink clouds standing one tick after a second ${INK_KEY} press taken ` +
+        "while the cooldown was still running, against how many stood the tick " +
+        "before it",
+    );
+    assertLessThanOrEqual(
+      recharge.afterSecond.ink.cooldown,
+      recharge.beforeSecond.ink.cooldown,
+      "ink.cooldown across the refused press, which must keep running down " +
+        "rather than being armed again",
+    );
+
+    // Ready exactly when the meter reaches zero, and not before.
+    for (const sample of recharge.samples) {
+      assertEqual(
+        sample.ready,
+        sample.cooldown === 0,
+        `ink.ready ${sample.elapsed.toFixed(4)} s after the cloud, where ` +
+          `ink.cooldown is ${sample.cooldown.toFixed(4)} — specs/state.md has ` +
+          "ready true exactly when the cooldown is 0",
       );
     }
-
-    // Down to the refused press, then the press itself and the tick that
-    // delivers it.
-    await h.advance(SECOND_PRESS_TICKS - 1);
-    const beforeSecond = h.snapshot();
-    await h.tap(INK_KEY);
-    const afterSecond = h.snapshot();
-
-    // Down to the last stretch, and then a tick at a time through it.
-    await h.advance(SWEEP_FROM_TICKS - SECOND_PRESS_TICKS - 1);
-    const samples: Sample[] = [];
-    let ready: Sample | null = null;
-    while (
-      ready === null &&
-      (h.snapshot().simTime - before.simTime) * TICK_HZ < READY_MAX_TICKS
-    ) {
-      await h.advance(1);
-      const snapshot = h.snapshot();
-      const sample: Sample = {
-        elapsed: snapshot.simTime - before.simTime,
-        ready: snapshot.ink.ready,
-        cooldown: snapshot.ink.cooldown,
-      };
-      samples.push(sample);
-      if (sample.ready) ready = sample;
+    assertEqual(
+      recharge.ready !== null,
+      true,
+      `ink.ready returned within ${READY_MAX_TICKS} ticks of the cloud, of the ` +
+        `${INK_COOLDOWN} s INK_COOLDOWN runs`,
+    );
+    if (recharge.ready !== null) {
+      assertLessThanOrEqual(
+        Math.abs(recharge.ready.elapsed - INK_COOLDOWN),
+        READY_TOLERANCE,
+        `|elapsed - INK_COOLDOWN| at the tick ink.ready returned, measured from ` +
+          "the tick the cloud was released on",
+      );
+      assertEqual(
+        recharge.ready.cooldown,
+        0,
+        "ink.cooldown on the tick ink.ready returned",
+      );
     }
-
-    return { before, armed, beforeSecond, afterSecond, samples, ready };
-  });
-
-  assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
-
-  // Armed, at the full figure.
-  assertEqual(
-    recharge.before.ink.ready,
-    true,
-    "ink.ready with the cooldown posed to 0, before the cloud",
-  );
-  assertEqual(
-    recharge.armed.ink.ready,
-    false,
-    "ink.ready one tick after the cloud was released",
-  );
-  assertLessThanOrEqual(
-    Math.abs(recharge.armed.ink.cooldown - INK_COOLDOWN),
-    ARM_TOLERANCE,
-    `|ink.cooldown - INK_COOLDOWN| one tick after the cloud, of the ` +
-      `${INK_COOLDOWN} s specs/sensing.md arms`,
-  );
-
-  // Running down against simulated time.
-  assertGreaterThan(
-    recharge.armed.ink.cooldown - recharge.beforeSecond.ink.cooldown,
-    0,
-    `how much of the cooldown ran off over the ${SECOND_PRESS_TICKS} ticks ` +
-      "before the second press",
-  );
-
-  // The second press, inside the cooldown: nothing released, and no re-arm.
-  assertEqual(
-    recharge.beforeSecond.ink.ready,
-    false,
-    `ink.ready ${SECOND_PRESS_TICKS} ticks in, with the cooldown still running`,
-  );
-  assertLessThanOrEqual(
-    recharge.afterSecond.inkClouds.length,
-    recharge.beforeSecond.inkClouds.length,
-    `the ink clouds standing one tick after a second ${INK_KEY} press taken ` +
-      "while the cooldown was still running, against how many stood the tick " +
-      "before it",
-  );
-  assertLessThanOrEqual(
-    recharge.afterSecond.ink.cooldown,
-    recharge.beforeSecond.ink.cooldown,
-    "ink.cooldown across the refused press, which must keep running down " +
-      "rather than being armed again",
-  );
-
-  // Ready exactly when the meter reaches zero, and not before.
-  for (const sample of recharge.samples) {
-    assertEqual(
-      sample.ready,
-      sample.cooldown === 0,
-      `ink.ready ${sample.elapsed.toFixed(4)} s after the cloud, where ` +
-        `ink.cooldown is ${sample.cooldown.toFixed(4)} — specs/state.md has ` +
-        "ready true exactly when the cooldown is 0",
-    );
-  }
-  assertEqual(
-    recharge.ready !== null,
-    true,
-    `ink.ready returned within ${READY_MAX_TICKS} ticks of the cloud, of the ` +
-      `${INK_COOLDOWN} s INK_COOLDOWN runs`,
-  );
-  if (recharge.ready !== null) {
-    assertLessThanOrEqual(
-      Math.abs(recharge.ready.elapsed - INK_COOLDOWN),
-      READY_TOLERANCE,
-      `|elapsed - INK_COOLDOWN| at the tick ink.ready returned, measured from ` +
-        "the tick the cloud was released on",
-    );
-    assertEqual(
-      recharge.ready.cooldown,
-      0,
-      "ink.cooldown on the tick ink.ready returned",
-    );
-  }
-});
+  },
+);

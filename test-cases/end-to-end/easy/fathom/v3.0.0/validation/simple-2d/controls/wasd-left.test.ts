@@ -38,7 +38,7 @@
 // dispatched here is the one a player presses.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   captureReplay,
@@ -48,7 +48,7 @@ import {
   travelAlong,
   type Harness,
 } from "../harness";
-import { denAll, graded, sceneGuard, sceneHeld } from "../scene";
+import { denAll, graded, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The second key specs/movement.md binds the `left` action to. */
 const KEY = "KeyA";
@@ -97,7 +97,7 @@ it("KeyA swims the forager left", async (ctx) => {
       }),
     );
 
-    assertNull(sceneHeld(swum.after, watch), "the scenario held to the end");
+    requireSceneHeld(swum.after, watch);
 
     // Half a tile: far more than any sub-unit drift, and comfortably under the
     // whole tile a conforming build covers in the window. How FAST it travels is

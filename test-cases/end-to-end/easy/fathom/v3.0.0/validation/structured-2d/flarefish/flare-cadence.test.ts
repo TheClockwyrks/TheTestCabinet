@@ -29,8 +29,8 @@
 // `flarefish/flare-reveals`'s; and whether anything of the Flarefish is drawn
 // between flares, which is `flarefish/no-tell`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { afterEach, beforeEach } from "vitest";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { FLARE_BLOOM, FLARE_CHARGE, FLARE_INTERVAL } from "../../src/constants";
 import {
   captureReplay,
@@ -39,7 +39,7 @@ import {
   type Harness,
 } from "../harness";
 import type { FathomSnapshot } from "../surface";
-import { sceneGuard, sceneHeld, standDown } from "../scene";
+import { check, requireScene, sceneGuard, standDown } from "../scene";
 import { startPlaying } from "../harness";
 import {
   BLOOM_MAX,
@@ -99,183 +99,191 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("charges for FLARE_CHARGE, blooms for FLARE_BLOOM, and charges again a whole FLARE_INTERVAL after the bloom ends", async () => {
-  await startPlaying(h);
-  const room = await poseFlareRoom(h);
-  const guard = await sceneGuard(h, room.quiet);
+check(
+  "charges for FLARE_CHARGE, blooms for FLARE_BLOOM, and charges again a whole FLARE_INTERVAL after the bloom ends",
+  async () => {
+    await startPlaying(h);
+    const room = await poseFlareRoom(h);
+    const guard = await sceneGuard(h, room.quiet);
 
-  const fish = (snap: FathomSnapshot): FathomSnapshot["predators"][number] =>
-    snap.predators[room.index];
-  const charging = (snap: FathomSnapshot): boolean =>
-    fish(snap).flareCharging === true;
-  const blooming = (snap: FathomSnapshot): boolean =>
-    fish(snap).flaring === true;
+    const fish = (snap: FathomSnapshot): FathomSnapshot["predators"][number] =>
+      snap.predators[room.index];
+    const charging = (snap: FathomSnapshot): boolean =>
+      fish(snap).flareCharging === true;
+    const blooming = (snap: FathomSnapshot): boolean =>
+      fish(snap).flaring === true;
 
-  /**
-   * Stand the check down if the Flarefish stopped wandering.
-   *
-   * The timer "runs down only while the Flarefish is wandering with no flare in
-   * progress" (`specs/predators/flarefish.md`), so a Flarefish that has found the
-   * forager has no cadence to time. The two rooms are eleven tiles apart and
-   * sealed from each other, well past both of its reaches, so this can only fire
-   * on a build whose sense reaches further than `specs/predators/flarefish.md`
-   * gives it — which is `flarefish/light-sense`'s verdict.
-   */
-  const stillWandering = (snap: FathomSnapshot, what: string): void => {
-    const state = fish(snap).state;
-    if (state === "wander") return;
-    standDown(
-      `the Flarefish left its wander (${state}) before ${what}, from a sealed ` +
-        `hallway eleven tiles from a forager at G = 0 — whether its sense holds ` +
-        `only inside R is flarefish/light-sense's verdict, not this one's`,
+    /**
+     * Stand the check down if the Flarefish stopped wandering.
+     *
+     * The timer "runs down only while the Flarefish is wandering with no flare in
+     * progress" (`specs/predators/flarefish.md`), so a Flarefish that has found the
+     * forager has no cadence to time. The two rooms are eleven tiles apart and
+     * sealed from each other, well past both of its reaches, so this can only fire
+     * on a build whose sense reaches further than `specs/predators/flarefish.md`
+     * gives it — which is `flarefish/light-sense`'s verdict.
+     */
+    const stillWandering = (snap: FathomSnapshot, what: string): void => {
+      const state = fish(snap).state;
+      if (state === "wander") return;
+      standDown(
+        `the Flarefish left its wander (${state}) before ${what}, from a sealed ` +
+          `hallway eleven tiles from a forager at G = 0 — whether its sense holds ` +
+          `only inside R is flarefish/light-sense's verdict, not this one's`,
+      );
+    };
+
+    // A sweep reports a hit on its first read, so the opening state is captured
+    // before any of them runs rather than from one.
+    const opening = h.snapshot();
+    assertEqual(
+      fish(opening).flareCharging,
+      false,
+      "the Flarefish is not already charging when the watch opens",
     );
-  };
+    assertEqual(
+      fish(opening).flaring,
+      false,
+      "the Flarefish is not already blooming when the watch opens",
+    );
 
-  // A sweep reports a hit on its first read, so the opening state is captured
-  // before any of them runs rather than from one.
-  const opening = h.snapshot();
-  assertEqual(
-    fish(opening).flareCharging,
-    false,
-    "the Flarefish is not already charging when the watch opens",
-  );
-  assertEqual(
-    fish(opening).flaring,
-    false,
-    "the Flarefish is not already blooming when the watch opens",
-  );
-
-  // Off camera: a whole first cycle, so the second charge-up is timed from a
-  // charge-up rather than from the pose.
-  const firstCharge = await h.until(charging, {
-    maxFrames: ticksFor(FIRST_FLARE_MAX),
-    poll: FLARE_POLL,
-  });
-  stillWandering(firstCharge.snapshot, "it first charged up");
-  assertEqual(
-    firstCharge.hit,
-    true,
-    `a wandering Flarefish charged up within ${FIRST_FLARE_MAX} s`,
-  );
-  const firstBloom = await h.until(blooming, {
-    maxFrames: ticksFor(CHARGE_MAX),
-    poll: FLARE_POLL,
-  });
-  stillWandering(firstBloom.snapshot, "its first charge-up reached a bloom");
-  assertEqual(
-    firstBloom.hit,
-    true,
-    `the first charge-up reached its bloom within ${CHARGE_MAX} s`,
-  );
-  const firstQuiet = await h.until((snap) => !blooming(snap), {
-    maxFrames: ticksFor(BLOOM_MAX),
-    poll: FLARE_POLL,
-  });
-  stillWandering(firstQuiet.snapshot, "its first bloom ended");
-  assertEqual(
-    firstQuiet.hit,
-    true,
-    `the first bloom ended within ${BLOOM_MAX} s`,
-  );
-  const secondCharge = await h.until(charging, {
-    maxFrames: ticksFor(NEXT_FLARE_MAX),
-    poll: FLARE_POLL,
-  });
-  stillWandering(secondCharge.snapshot, "it charged up a second time");
-  assertEqual(
-    secondCharge.hit,
-    true,
-    `a second charge-up began within ${NEXT_FLARE_MAX} s of the first bloom ` +
-      `ending`,
-  );
-
-  // On camera: the second charge-up running into its bloom, and the bloom out.
-  const cycle = await captureReplay(h, "flare", async () => {
-    // The charge-up flag, read near the far end of the window it fills.
-    await h.advance(ticksFor(FLARE_CHARGE) - HELD_MARGIN);
-    const heldCharge = h.snapshot();
-    const bloom = await h.until(blooming, {
+    // Off camera: a whole first cycle, so the second charge-up is timed from a
+    // charge-up rather than from the pose.
+    const firstCharge = await h.until(charging, {
+      maxFrames: ticksFor(FIRST_FLARE_MAX),
+      poll: FLARE_POLL,
+    });
+    stillWandering(firstCharge.snapshot, "it first charged up");
+    assertEqual(
+      firstCharge.hit,
+      true,
+      `a wandering Flarefish charged up within ${FIRST_FLARE_MAX} s`,
+    );
+    const firstBloom = await h.until(blooming, {
       maxFrames: ticksFor(CHARGE_MAX),
       poll: FLARE_POLL,
     });
-    // And the bloom flag, the same way.
-    await h.advance(ticksFor(FLARE_BLOOM) - HELD_MARGIN);
-    const heldBloom = h.snapshot();
-    const quiet = await h.until((snap) => !blooming(snap), {
+    stillWandering(firstBloom.snapshot, "its first charge-up reached a bloom");
+    assertEqual(
+      firstBloom.hit,
+      true,
+      `the first charge-up reached its bloom within ${CHARGE_MAX} s`,
+    );
+    const firstQuiet = await h.until((snap) => !blooming(snap), {
       maxFrames: ticksFor(BLOOM_MAX),
       poll: FLARE_POLL,
     });
-    await h.advance(TAIL_TICKS);
-    return { heldCharge, bloom, heldBloom, quiet };
-  });
+    stillWandering(firstQuiet.snapshot, "its first bloom ended");
+    assertEqual(
+      firstQuiet.hit,
+      true,
+      `the first bloom ended within ${BLOOM_MAX} s`,
+    );
+    const secondCharge = await h.until(charging, {
+      maxFrames: ticksFor(NEXT_FLARE_MAX),
+      poll: FLARE_POLL,
+    });
+    stillWandering(secondCharge.snapshot, "it charged up a second time");
+    assertEqual(
+      secondCharge.hit,
+      true,
+      `a second charge-up began within ${NEXT_FLARE_MAX} s of the first bloom ` +
+        `ending`,
+    );
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    // On camera: the second charge-up running into its bloom, and the bloom out.
+    const cycle = await captureReplay(h, "flare", async () => {
+      // The charge-up flag, read near the far end of the window it fills.
+      await h.advance(ticksFor(FLARE_CHARGE) - HELD_MARGIN);
+      const heldCharge = h.snapshot();
+      const bloom = await h.until(blooming, {
+        maxFrames: ticksFor(CHARGE_MAX),
+        poll: FLARE_POLL,
+      });
+      // And the bloom flag, the same way.
+      await h.advance(ticksFor(FLARE_BLOOM) - HELD_MARGIN);
+      const heldBloom = h.snapshot();
+      const quiet = await h.until((snap) => !blooming(snap), {
+        maxFrames: ticksFor(BLOOM_MAX),
+        poll: FLARE_POLL,
+      });
+      await h.advance(TAIL_TICKS);
+      return { heldCharge, bloom, heldBloom, quiet };
+    });
 
-  // Charge then bloom, in that order: the charge-up window is its own.
-  assertEqual(
-    fish(secondCharge.snapshot).flaring,
-    false,
-    "the Flarefish is charging and not yet blooming when the charge-up begins",
-  );
-  assertEqual(
-    fish(cycle.heldCharge).flareCharging,
-    true,
-    `the Flarefish is still charging up ${ticksFor(FLARE_CHARGE) - HELD_MARGIN} ` +
-      `ticks in, of the ${ticksFor(FLARE_CHARGE)} FLARE_CHARGE (${FLARE_CHARGE} s) ` +
-      `runs for`,
-  );
-  assertEqual(
-    fish(cycle.heldCharge).flaring,
-    false,
-    "the Flarefish has not begun blooming while its charge-up still runs",
-  );
-  assertEqual(
-    fish(cycle.heldBloom).flaring,
-    true,
-    `the Flarefish is still blooming ${ticksFor(FLARE_BLOOM) - HELD_MARGIN} ` +
-      `ticks in, of the ${ticksFor(FLARE_BLOOM)} FLARE_BLOOM (${FLARE_BLOOM} s) ` +
-      `burns for`,
-  );
-  stillWandering(cycle.bloom.snapshot, "its second charge-up reached a bloom");
-  assertEqual(
-    cycle.bloom.hit,
-    true,
-    `the second charge-up reached its bloom within ${CHARGE_MAX} s`,
-  );
-  assertEqual(
-    cycle.quiet.hit,
-    true,
-    `the second bloom ended within ${BLOOM_MAX} s`,
-  );
+    requireScene(h.snapshot(), guard);
 
-  assertLessThanOrEqual(
-    Math.abs(
-      cycle.bloom.snapshot.simTime -
+    // Charge then bloom, in that order: the charge-up window is its own.
+    assertEqual(
+      fish(secondCharge.snapshot).flaring,
+      false,
+      "the Flarefish is charging and not yet blooming when the charge-up begins",
+    );
+    assertEqual(
+      fish(cycle.heldCharge).flareCharging,
+      true,
+      `the Flarefish is still charging up ${ticksFor(FLARE_CHARGE) - HELD_MARGIN} ` +
+        `ticks in, of the ${ticksFor(FLARE_CHARGE)} FLARE_CHARGE (${FLARE_CHARGE} s) ` +
+        `runs for`,
+    );
+    assertEqual(
+      fish(cycle.heldCharge).flaring,
+      false,
+      "the Flarefish has not begun blooming while its charge-up still runs",
+    );
+    assertEqual(
+      fish(cycle.heldBloom).flaring,
+      true,
+      `the Flarefish is still blooming ${ticksFor(FLARE_BLOOM) - HELD_MARGIN} ` +
+        `ticks in, of the ${ticksFor(FLARE_BLOOM)} FLARE_BLOOM (${FLARE_BLOOM} s) ` +
+        `burns for`,
+    );
+    stillWandering(
+      cycle.bloom.snapshot,
+      "its second charge-up reached a bloom",
+    );
+    assertEqual(
+      cycle.bloom.hit,
+      true,
+      `the second charge-up reached its bloom within ${CHARGE_MAX} s`,
+    );
+    assertEqual(
+      cycle.quiet.hit,
+      true,
+      `the second bloom ended within ${BLOOM_MAX} s`,
+    );
+
+    assertLessThanOrEqual(
+      Math.abs(
+        cycle.bloom.snapshot.simTime -
+          secondCharge.snapshot.simTime -
+          FLARE_CHARGE,
+      ),
+      BEAT_TOLERANCE,
+      `how far the charge-up ran from the FLARE_CHARGE (${FLARE_CHARGE} s) ` +
+        `specs/predators/flarefish.md gives it`,
+    );
+    assertLessThanOrEqual(
+      Math.abs(
+        cycle.quiet.snapshot.simTime -
+          cycle.bloom.snapshot.simTime -
+          FLARE_BLOOM,
+      ),
+      BEAT_TOLERANCE,
+      `how far the bloom burned from the FLARE_BLOOM (${FLARE_BLOOM} s) ` +
+        `specs/predators/flarefish.md gives it`,
+    );
+    assertLessThanOrEqual(
+      Math.abs(
         secondCharge.snapshot.simTime -
-        FLARE_CHARGE,
-    ),
-    BEAT_TOLERANCE,
-    `how far the charge-up ran from the FLARE_CHARGE (${FLARE_CHARGE} s) ` +
-      `specs/predators/flarefish.md gives it`,
-  );
-  assertLessThanOrEqual(
-    Math.abs(
-      cycle.quiet.snapshot.simTime - cycle.bloom.snapshot.simTime - FLARE_BLOOM,
-    ),
-    BEAT_TOLERANCE,
-    `how far the bloom burned from the FLARE_BLOOM (${FLARE_BLOOM} s) ` +
-      `specs/predators/flarefish.md gives it`,
-  );
-  assertLessThanOrEqual(
-    Math.abs(
-      secondCharge.snapshot.simTime -
-        firstCharge.snapshot.simTime -
-        CHARGE_TO_CHARGE,
-    ),
-    CYCLE_TOLERANCE,
-    `how far consecutive charge-ups sat from the ${CHARGE_TO_CHARGE} s ` +
-      `specs/predators/flarefish.md gives them — FLARE_INTERVAL ` +
-      `(${FLARE_INTERVAL} s) reloaded as the bloom ended, after a ` +
-      `${FLARE_CHARGE} s charge and a ${FLARE_BLOOM} s bloom`,
-  );
-});
+          firstCharge.snapshot.simTime -
+          CHARGE_TO_CHARGE,
+      ),
+      CYCLE_TOLERANCE,
+      `how far consecutive charge-ups sat from the ${CHARGE_TO_CHARGE} s ` +
+        `specs/predators/flarefish.md gives them — FLARE_INTERVAL ` +
+        `(${FLARE_INTERVAL} s) reloaded as the bloom ended, after a ` +
+        `${FLARE_CHARGE} s charge and a ${FLARE_BLOOM} s bloom`,
+    );
+  },
+);

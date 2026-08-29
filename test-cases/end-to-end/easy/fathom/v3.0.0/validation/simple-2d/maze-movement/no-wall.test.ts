@@ -28,7 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TILE } from "../../src/constants";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,
@@ -42,9 +42,9 @@ import {
   denAll,
   fromForager,
   graded,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /**
@@ -122,7 +122,7 @@ it("stops the forager against rock rather than letting it in", async (ctx) => {
       return { resting, trespass, reach, settled };
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
 
     // A forager that never got under way was never offered the rock; whether a
     // held action moves it at all is `controls/move-*`'s verdict.

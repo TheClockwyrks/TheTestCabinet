@@ -29,17 +29,13 @@
 // hunters coming out of a real den, which is what `parkClearOfDen` and the scene
 // guard are for.
 
-import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLength,
-  assertLessThanOrEqual,
-  assertNull,
-} from "../assert";
+import { afterEach, beforeEach } from "vitest";
+import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
-import { sceneGuard, sceneHeld, standDown } from "../scene";
+import { check, requireScene, sceneGuard, standDown } from "../scene";
 import {
+  requireReleasedFlag,
   DEN_ORDER_LINE,
   RELEASE_TOLERANCE,
   dueAt,
@@ -78,84 +74,80 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("releases the den one predator at a time, DEN_RELEASE_GAP apart, in DEN_ORDER, and none during the countdown", async () => {
-  h.debug.reset({ seed: SEED });
-  h.debug.startDive();
-  // The forager is a bystander to a clock, and the most expensive thing that can
-  // happen to this measurement is its being caught: a life lost re-dens every
-  // predator and starts the whole schedule again.
-  await parkClearOfDen(h);
+check(
+  "releases the den one predator at a time, DEN_RELEASE_GAP apart, in DEN_ORDER, and none during the countdown",
+  async () => {
+    h.debug.reset({ seed: SEED });
+    h.debug.startDive();
+    // The forager is a bystander to a clock, and the most expensive thing that can
+    // happen to this measurement is its being caught: a life lost re-dens every
+    // predator and starts the whole schedule again.
+    await parkClearOfDen(h);
 
-  const opening = h.snapshot();
-  if (opening.predators.length < DEN_ORDER.length) {
-    standDown(
-      `the depth-1 roster carries ${opening.predators.length} predators, and ` +
-        `specs/predators.md gives it one of each of the three kinds, so there ` +
-        `is no staggered schedule to read — what the roster holds is the ` +
-        `progression checks' verdict, not this one's`,
-    );
-  }
+    const opening = h.snapshot();
+    if (opening.predators.length < DEN_ORDER.length) {
+      standDown(
+        `the depth-1 roster carries ${opening.predators.length} predators, and ` +
+          `specs/predators.md gives it one of each of the three kinds, so there ` +
+          `is no staggered schedule to read — what the roster holds is the ` +
+          `progression checks' verdict, not this one's`,
+      );
+    }
 
-  const watch = await captureReplay(h, "stagger", async () => {
-    // The countdown, on the build's own clock, before anything ends it.
-    const countdown = await watchCountdown(h, COUNTDOWN_WATCH);
-    // Release time zero, pinned: no tick runs inside `beginPlay`, so the state
-    // read straight after it is the moment the schedule starts from.
-    h.debug.beginPlay();
-    const started = h.snapshot();
-    const guard = await sceneGuard(h, null);
-    const den = await watchReleases(h, {
-      seconds: watchSeconds(DEN_ORDER.length),
-      count: DEN_ORDER.length,
+    const watch = await captureReplay(h, "stagger", async () => {
+      // The countdown, on the build's own clock, before anything ends it.
+      const countdown = await watchCountdown(h, COUNTDOWN_WATCH);
+      // Release time zero, pinned: no tick runs inside `beginPlay`, so the state
+      // read straight after it is the moment the schedule starts from.
+      h.debug.beginPlay();
+      const started = h.snapshot();
+      const guard = await sceneGuard(h, null);
+      const den = await watchReleases(h, {
+        seconds: watchSeconds(DEN_ORDER.length),
+        count: DEN_ORDER.length,
+      });
+      // A beat past the last release, so the clip does not cut on the moment it
+      // exists to show. Every reading is already taken.
+      await h.advance(TAIL_TICKS);
+      return { countdown, started, den, guard };
     });
-    // A beat past the last release, so the clip does not cut on the moment it
-    // exists to show. Every reading is already taken.
-    await h.advance(TAIL_TICKS);
-    return { countdown, started, den, guard };
-  });
 
-  assertNull(
-    sceneHeld(h.snapshot(), watch.guard),
-    "the scenario held to the end",
-  );
+    requireScene(h.snapshot(), watch.guard);
 
-  // The schedule is read off `released`, so a build that does not report it sees
-  // no releases at all — which would otherwise read as a den that never opened.
-  assertNull(
-    watch.den.missingFlag,
-    "specs/state.md requires `released` of every predator, and the schedule " +
-      "specs/predators.md fixes is read off it",
-  );
+    // The schedule is read off `released`, so a build that does not report it sees
+    // no releases at all — which would otherwise read as a den that never opened.
+    requireReleasedFlag(watch.den);
 
-  // No hunter loose while the countdown ran.
-  assertLength(
-    watch.countdown.loose,
-    0,
-    `the predators released during the ${COUNTDOWN_WATCH} s of countdown ` +
-      `watched (${orderLine(watch.countdown.loose)}), which ` +
-      `specs/predators.md counts against nothing`,
-  );
-
-  // Order and completeness in one reading: comparing the sequence rather than
-  // counting it shows exactly how far a den that stalls halfway got.
-  assertEqual(
-    orderLine(watch.den.releases.map((release) => release.kind)),
-    DEN_ORDER_LINE,
-    `the order the den emptied in, over the ` +
-      `${watchSeconds(DEN_ORDER.length)} s after live play began`,
-  );
-
-  // And the schedule itself: the head at zero and every slot after it a whole
-  // `DEN_RELEASE_GAP` later. Absolute rather than as gaps, because `beginPlay`
-  // fixes the origin exactly, and gaps alone would pass a den that held every
-  // hunter for half a minute and then let them out five seconds apart.
-  for (const [slot, release] of watch.den.releases.entries()) {
-    assertLessThanOrEqual(
-      Math.abs(release.t - watch.started.simTime - dueAt(slot)),
-      RELEASE_TOLERANCE,
-      `how far the ${release.kind}'s release sat from the ${dueAt(slot)} s ` +
-        `specs/predators.md gives slot ${slot} at ${DEN_RELEASE_GAP} s a slot, ` +
-        `measured from the moment screen became playing`,
+    // No hunter loose while the countdown ran.
+    assertLength(
+      watch.countdown.loose,
+      0,
+      `the predators released during the ${COUNTDOWN_WATCH} s of countdown ` +
+        `watched (${orderLine(watch.countdown.loose)}), which ` +
+        `specs/predators.md counts against nothing`,
     );
-  }
-});
+
+    // Order and completeness in one reading: comparing the sequence rather than
+    // counting it shows exactly how far a den that stalls halfway got.
+    assertEqual(
+      orderLine(watch.den.releases.map((release) => release.kind)),
+      DEN_ORDER_LINE,
+      `the order the den emptied in, over the ` +
+        `${watchSeconds(DEN_ORDER.length)} s after live play began`,
+    );
+
+    // And the schedule itself: the head at zero and every slot after it a whole
+    // `DEN_RELEASE_GAP` later. Absolute rather than as gaps, because `beginPlay`
+    // fixes the origin exactly, and gaps alone would pass a den that held every
+    // hunter for half a minute and then let them out five seconds apart.
+    for (const [slot, release] of watch.den.releases.entries()) {
+      assertLessThanOrEqual(
+        Math.abs(release.t - watch.started.simTime - dueAt(slot)),
+        RELEASE_TOLERANCE,
+        `how far the ${release.kind}'s release sat from the ${dueAt(slot)} s ` +
+          `specs/predators.md gives slot ${slot} at ${DEN_RELEASE_GAP} s a slot, ` +
+          `measured from the moment screen became playing`,
+      );
+    }
+  },
+);

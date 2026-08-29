@@ -35,7 +35,6 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThan,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -46,7 +45,13 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { denAll, graded, requireSwim, sceneGuard, sceneHeld } from "../scene";
+import {
+  denAll,
+  graded,
+  requireSceneHeld,
+  requireSwim,
+  sceneGuard,
+} from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /**
@@ -166,7 +171,7 @@ it("reverses the forager where it stands, without waiting for a tile center", as
       return { resting, midway, flipped, returning };
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
 
     // A forager that never got under way has no heading to reverse; whether a held
     // action moves it at all is `controls/move-*`'s verdict.

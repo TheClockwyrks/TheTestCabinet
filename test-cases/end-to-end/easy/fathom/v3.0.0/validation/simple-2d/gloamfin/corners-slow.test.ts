@@ -37,7 +37,6 @@ import {
   assertEqual,
   assertLessThan,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import {
@@ -61,8 +60,8 @@ import {
   parkForager,
   requirePred,
   requirePredatorMotion,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import { gloamfinOf, placePredator } from "./pings";
@@ -202,7 +201,7 @@ it("Every corner costs it its edge", async (ctx) => {
       return steps;
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
     requirePredatorMotion(
       opening,
       h.snapshot(),
@@ -317,8 +316,9 @@ it("Every corner costs it its edge", async (ctx) => {
     await h.debug.setPredatorState(backIndex, "chase");
     const reversal = await sampleRun(backIndex, REVERSAL_TICKS);
 
-    assertNull(
-      sceneHeld(h.snapshot(), backGuard),
+    requireSceneHeld(
+      h.snapshot(),
+      backGuard,
       "the reversal scenario held to the end",
     );
     const turned = reversal.findIndex((step) => step.dir !== outbound);

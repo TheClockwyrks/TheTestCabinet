@@ -33,7 +33,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import {
   ARROW_KEY,
@@ -49,9 +48,9 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -207,10 +206,7 @@ it("releases a cloud of INK_RADIUS that stands where it was left for INK_LIFE an
     return { before, released, opened, swum, life, gone };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), watch),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), watch);
 
   // Its size and its life, as released.
   assertLessThanOrEqual(

@@ -26,9 +26,9 @@
 // forager EVER standing on the rock tile, and a pair of readings taken at either
 // end of the window would miss one that slipped through and came back.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TILE } from "../../src/constants";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,
@@ -38,7 +38,14 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { denAll, requireSwim, sceneGuard, sceneHeld } from "../scene";
+import {
+  check,
+  denAll,
+  requireScene,
+  requireSwim,
+  sceneGuard,
+  FORAGER_CORRIDORS,
+} from "../scene";
 
 /**
  * The dead end: the forager starts on `S` and the corridor stops at `W`, with
@@ -79,7 +86,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("stops the forager against rock rather than letting it in", async () => {
+check("stops the forager against rock rather than letting it in", async () => {
   startPlaying(h);
   const board = await poseMaze(h, DEAD_END);
   const start = board.mark("S");
@@ -114,7 +121,11 @@ it("stops the forager against rock rather than letting it in", async () => {
     return { resting, trespass, reach, settled };
   });
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+  // The rock this point is ABOUT. Every other bystander in this suite declines
+  // when a body crosses rock and names this point; this is the point, so a
+  // forager found standing in it is the finding rather than a reason to stand
+  // down. A hunter that crossed rock is still somebody else's.
+  requireScene(h.snapshot(), guard, { owns: [FORAGER_CORRIDORS] });
 
   // A forager that never got under way was never offered the rock; whether a
   // held action moves it at all is `controls/move-*`'s verdict.

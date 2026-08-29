@@ -31,19 +31,14 @@
 // read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLessThanOrEqual,
-  assertNull,
-  assertTrue,
-} from "../assert";
+import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import {
   graded,
   predIndex,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import {
@@ -159,15 +154,16 @@ it("returns every predator to the den on a catch and runs the whole staggered sc
       );
     }
 
-    assertNull(
-      sceneHeld(h.snapshot(), run.guard),
-      "the scenario held to the end",
-    );
-    assertNull(
-      run.den.missingFlag,
-      "specs/state.md requires `released` of every predator, and the schedule " +
-        "specs/predators.md fixes is read off it",
-    );
+    requireSceneHeld(h.snapshot(), run.guard);
+    if (run.den.missingFlag !== null) {
+      unmetPrecondition(
+        `${run.den.missingFlag}, ` +
+          "so there is no schedule here to read: specs/state.md requires " +
+          "`released` of every predator and the schedule specs/predators.md " +
+          "fixes is read off it. What a snapshot must carry is " +
+          "instrumentation/snapshot-shape's verdict, not this one's",
+      );
+    }
 
     // Half one: the catch put every hunter back, unreleased.
     for (const predator of run.denned.predators) {

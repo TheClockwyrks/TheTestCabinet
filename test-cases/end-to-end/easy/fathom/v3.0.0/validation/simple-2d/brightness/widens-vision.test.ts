@@ -37,7 +37,6 @@ import {
   assertLessThan,
   assertLessThanOrEqual,
   assertNotEqual,
-  assertNull,
 } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
@@ -53,8 +52,8 @@ import {
   fromForager,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { Tile } from "../maze";
 
@@ -121,7 +120,7 @@ it("Brightness widens the light pocket", async (ctx) => {
       return { readings, end: h.snapshot() };
     });
 
-    assertNull(sceneHeld(sweep.end, watch), "the scenario held to the end");
+    requireSceneHeld(sweep.end, watch);
 
     // The fixture's own geometry, from the specification's figures rather than
     // from the build's readings.

@@ -26,13 +26,8 @@
 // of the following one, and both conform, so the read is taken a few ticks later
 // while the front is still far inside its range.
 
-import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertNotEqual,
-  assertNull,
-} from "../assert";
+import { afterEach, beforeEach } from "vitest";
+import { assertEqual, assertGreaterThan, assertNotEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,
@@ -40,7 +35,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { denAll, quietBoard, sceneGuard, sceneHeld } from "../scene";
+import { check, denAll, quietBoard, requireScene, sceneGuard } from "../scene";
 
 /** The key specs/movement.md binds the `a` action to. */
 const KEY = "Space";
@@ -86,7 +81,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("emits a forager sonar pulse on Space", async () => {
+check("emits a forager sonar pulse on Space", async () => {
   startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
   const quiet = await denAll(h);
@@ -104,7 +99,7 @@ it("emits a forager sonar pulse on Space", async () => {
     return { armed, flying };
   });
 
-  assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+  requireScene(h.snapshot(), watch);
 
   // The premise this point's own description states, posed through
   // `setSonarCooldown(0)`: "At `0` the pulse is ready and the snapshot reports

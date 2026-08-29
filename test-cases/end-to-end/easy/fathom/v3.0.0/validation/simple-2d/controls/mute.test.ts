@@ -33,7 +33,7 @@
 // sounded the pulse pass on somebody else's noise.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
   captureStill,
@@ -46,8 +46,8 @@ import {
   denAll,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /** The key specs/movement.md binds the `mute` action to. */
@@ -149,7 +149,7 @@ it("toggles mute on KeyM, and a muted dive sounds nothing", async (ctx) => {
     await h.advance(CUE_WINDOW_TICKS);
     const unmutedSounds = audible(h) - loudFrom;
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     assertEqual(
       opening.muted,

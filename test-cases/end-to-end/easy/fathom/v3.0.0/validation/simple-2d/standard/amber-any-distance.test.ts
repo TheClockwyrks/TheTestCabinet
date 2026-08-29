@@ -34,12 +34,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertNotNull,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   MOTE_SEARCH,
@@ -59,8 +54,8 @@ import {
   fromForager,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /**
@@ -134,7 +129,7 @@ it("The amber lights show at any distance", async (ctx) => {
     // Before the assertions, so a check that fails still leaves the picture.
     captureStill(h, "amber");
 
-    assertNull(sceneHeld(after, watch), "the scenario held to the end");
+    requireSceneHeld(after, watch);
 
     const drifter = after.drifters[0];
     assertEqual(

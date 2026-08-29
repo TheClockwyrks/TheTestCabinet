@@ -26,7 +26,8 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
+import { check } from "../scene";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { denCorridorBreaches, tileKey } from "../maze";
@@ -58,38 +59,41 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("encloses the den chamber, leaving the gate its only opening onto the corridors", async () => {
-  const boards = freshBoards(h);
-  requireLaidOut(boards);
-  requireDenChamber(boards);
+check(
+  "encloses the den chamber, leaving the gate its only opening onto the corridors",
+  async () => {
+    const boards = freshBoards(h);
+    requireLaidOut(boards);
+    requireDenChamber(boards);
 
-  const measured = boards.map((board) => {
-    // One entry per breaching DIRECTION comes back, so a chamber tile that
-    // touches corridor on two sides would be named twice; the reading is how many
-    // den-interior TILES are breached, which is what specs/maze.md bounds.
-    const breaches = [
-      ...new Map(
-        denCorridorBreaches(board.snapshot).map((one) => [
-          tileKey(one.tile),
-          one.tile,
-        ]),
-      ).values(),
-    ];
-    return { board, breaches, ok: breaches.length === MAX_BREACHES };
-  });
-  await captureBoard(h, witness(measured).board, "den");
+    const measured = boards.map((board) => {
+      // One entry per breaching DIRECTION comes back, so a chamber tile that
+      // touches corridor on two sides would be named twice; the reading is how many
+      // den-interior TILES are breached, which is what specs/maze.md bounds.
+      const breaches = [
+        ...new Map(
+          denCorridorBreaches(board.snapshot).map((one) => [
+            tileKey(one.tile),
+            one.tile,
+          ]),
+        ).values(),
+      ];
+      return { board, breaches, ok: breaches.length === MAX_BREACHES };
+    });
+    await captureBoard(h, witness(measured).board, "den");
 
-  for (const one of measured) {
-    const named = one.breaches
-      .slice(0, NAMED)
-      .map((tile) => `(${tile.tx}, ${tile.ty})`)
-      .join(", ");
-    assertEqual(
-      one.breaches.length,
-      MAX_BREACHES,
-      `den-interior tiles with a corridor neighbor in the maze laid out from ` +
-        `seed ${one.board.seed}` +
-        (named === "" ? "" : `, at ${named}`),
-    );
-  }
-});
+    for (const one of measured) {
+      const named = one.breaches
+        .slice(0, NAMED)
+        .map((tile) => `(${tile.tx}, ${tile.ty})`)
+        .join(", ");
+      assertEqual(
+        one.breaches.length,
+        MAX_BREACHES,
+        `den-interior tiles with a corridor neighbor in the maze laid out from ` +
+          `seed ${one.board.seed}` +
+          (named === "" ? "" : `, at ${named}`),
+      );
+    }
+  },
+);

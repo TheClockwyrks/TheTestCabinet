@@ -59,7 +59,12 @@ import {
   type FathomSnapshot,
   type Harness,
 } from "../harness";
-import { parkForager, sceneGuard, sceneHeld, startPlaying } from "../scene";
+import {
+  parkForager,
+  requireSceneHeld,
+  sceneGuard,
+  startPlaying,
+} from "../scene";
 
 /**
  * The board: a nine-tile corridor for the forager and the drifter, and, three
@@ -197,7 +202,7 @@ it("reports every documented field, with its documented type", async () => {
   // board the shape was read off.
   await captureStill(h, "posed");
 
-  assertNull(sceneHeld(snap, guard), "the scenario held to the end");
+  requireSceneHeld(h, snap, guard);
 
   // The scene the shape is read over: a build whose controls never fired the two
   // effects has a defect the control points own, and this stands aside.

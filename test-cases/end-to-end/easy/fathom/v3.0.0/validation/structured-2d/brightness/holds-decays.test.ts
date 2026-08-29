@@ -19,7 +19,7 @@
 // larder, so `planktonRemaining` never reaches zero however much of the run the
 // forager grazes, and the maze cannot clear and descend mid-window.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BRIGHT_HALFLIFE, BRIGHT_HOLD } from "../../src/constants";
 import { assertLessThanOrEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
@@ -31,7 +31,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { clearUnderfoot, failPrecondition } from "../scene";
+import { check, clearUnderfoot, failPrecondition } from "../scene";
 
 /** The hold and the halflife, in whole simulation ticks. */
 const HOLD_TICKS = ticksFor(BRIGHT_HOLD);
@@ -110,7 +110,7 @@ async function eatOne(harness: Harness): Promise<{ g: number; ticks: number }> {
   return { g: eaten.snapshot.brightness, ticks: eaten.frames };
 }
 
-it("Brightness holds, then decays", async () => {
+check("Brightness holds, then decays", async () => {
   startPlaying(h);
   // Eight tiles of corridor: the tile the forager rests on, the pellet this point
   // measures, and room for the second eat mid-decay with tiles to spare.

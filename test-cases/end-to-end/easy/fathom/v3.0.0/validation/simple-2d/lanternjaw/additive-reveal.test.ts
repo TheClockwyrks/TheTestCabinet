@@ -54,7 +54,6 @@ import {
   assertLessThan,
   assertLessThanOrEqual,
   assertNotNull,
-  assertNull,
 } from "../assert";
 import { poseSightLine } from "../fixtures";
 import {
@@ -74,8 +73,9 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
+  unmetPrecondition,
 } from "../scene";
 import { brightestWarm, moteCenter, moteProfileAt, warm } from "./motes";
 
@@ -183,7 +183,7 @@ it("Lighting it leaves the bulb where it was", async (ctx) => {
       };
     });
 
-    assertNull(sceneHeld(read.end, watch), "the scenario held to the end");
+    requireSceneHeld(read.end, watch);
 
     // The fixture's own geometry: the creature stands outside the light at the
     // first reading and inside it at the second, so the light is what changed.
@@ -200,6 +200,18 @@ it("Lighting it leaves the bulb where it was", async (ctx) => {
         `VISION_GAIN, ${VISION_MIN + VISION_GAIN}), which the creature stands ` +
         "inside",
     );
+    // Inside the light the BUILD reports, so a build whose radius never grows is
+    // reported by the point that owns the radius rather than by this one.
+    if (read.shown.visionRadius <= read.gap) {
+      unmetPrecondition(
+        `the build's own light radius reached ${read.shown.visionRadius} at ` +
+          `G = 1 while the Lanternjaw stood ${read.gap.toFixed(1)} units away, ` +
+          "so the light never fell on it and there was no reveal to read; what " +
+          "V is at a given G is brightness/widens-vision's verdict, not this " +
+          "one's",
+      );
+    }
+
     assertEqual(
       read.dark.predators[index].lit,
       false,

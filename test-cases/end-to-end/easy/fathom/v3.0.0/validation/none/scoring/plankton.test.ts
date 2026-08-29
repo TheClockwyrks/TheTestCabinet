@@ -26,15 +26,15 @@
 // ate from and stays there while the reading is taken.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import { ARROW_KEY, SCORE_PLANKTON } from "../constants";
 import { placeForager, poseMaze } from "../fixtures";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import {
   denAllExcept,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -117,7 +117,7 @@ it("scores SCORE_PLANKTON for a plankton and takes it off the board", async () =
     return { before, after, revisited: await h.snapshot(), hit: eaten.hit };
   });
 
-  assertNull(sceneHeld(bite.revisited, guard), "the scenario held to the end");
+  requireSceneHeld(h, bite.revisited, guard);
   if (!bite.hit) {
     requireSwim(
       h,

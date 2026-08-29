@@ -27,12 +27,11 @@
 // the floor is (`gloamfin/ping-floor`), or that close hearing takes a fix at all
 // (`gloamfin/fix-and-alert`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertDeepEqual,
   assertEqual,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import {
@@ -49,11 +48,12 @@ import {
 } from "../harness";
 import type { FathomSnapshot } from "../surface";
 import {
+  check,
   denAll,
   parkForager,
   requireKind,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { apart, gloamfinOf, placePredator, sweep } from "./pings";
 
@@ -110,7 +110,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("It goes silent while it holds you by ear", async () => {
+check("It goes silent while it holds you by ear", async () => {
   startPlaying(h);
   const board = await poseMaze(h, SEALED_PAIR);
   const index = requireKind(h.snapshot(), "gloamfin");
@@ -153,7 +153,7 @@ it("It goes silent while it holds you by ear", async () => {
     return { held, apartNow, ping };
   });
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+  requireScene(h.snapshot(), guard);
 
   // The scenario stood as posed: the pair inside hearing range, and neither of
   // them anywhere but the tile it was walled into.

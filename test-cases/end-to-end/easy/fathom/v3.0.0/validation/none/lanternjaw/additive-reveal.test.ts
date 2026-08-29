@@ -53,7 +53,6 @@ import {
   assertLessThan,
   assertLessThanOrEqual,
   assertNotNull,
-  assertNull,
 } from "../assert";
 import { VISION_GAIN, VISION_MIN } from "../constants";
 import { poseSightLine, predatorIndex } from "../fixtures";
@@ -73,8 +72,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { moteCenter } from "./motes";
@@ -198,7 +197,7 @@ it("Lighting it leaves the bulb where it was", async () => {
     };
   });
 
-  assertNull(sceneHeld(read.end, guard), "the scenario held to the end");
+  requireSceneHeld(h, read.end, guard);
 
   // The fixture's own geometry: the creature stands outside the light at the first
   // reading and inside it at the second, so the light is what changed.

@@ -30,13 +30,12 @@
 // distance it was posed at rather than wherever a chase took it, and the forager's
 // light still falls where it falls.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -50,13 +49,14 @@ import {
   visibilityAt,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { FOG_MATCH, windowRadius } from "./circle";
 
@@ -91,7 +91,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Predators are drawn by the light, not the circle", async () => {
+check("Predators are drawn by the light, not the circle", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
@@ -124,7 +124,7 @@ it("Predators are drawn by the light, not the circle", async () => {
   // hunter that should not be there.
   captureStill(h, "bylight");
 
-  assertNull(sceneHeld(beyondLight, guard), "the scenario held to the end");
+  requireScene(beyondLight, guard);
 
   const hunter = beyondLight.predators[gloamfin];
   const gap = Math.hypot(

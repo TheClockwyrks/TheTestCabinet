@@ -31,12 +31,11 @@
 // `amber/lookalikes`'s; what the body does when the light reaches it is
 // `lanternjaw/additive-reveal`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertNotNull,
-  assertNull,
 } from "../assert";
 import { poseOccludedPair } from "../fixtures";
 import {
@@ -50,13 +49,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { brightestWarm, warm } from "./motes";
 import type { Tile } from "../maze";
@@ -95,7 +95,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Its bulb shows at any distance", async () => {
+check("Its bulb shows at any distance", async () => {
   startPlaying(h);
   const pair = await poseOccludedPair(h, { tiles: GAP_TILES, len: RUN_TILES });
   const index = indexOfKind(h.snapshot(), "lanternjaw");
@@ -132,7 +132,7 @@ it("Its bulb shows at any distance", async () => {
   // shows the reviewer what was and was not drawn out there.
   captureStill(h, "bulb");
 
-  assertNull(sceneHeld(snapshot, guard), "the scenario held to the end");
+  requireScene(snapshot, guard);
 
   // The fixture's own claim: the hunter stands on ground nothing has revealed, and
   // the fog it is read against is equally untouched.

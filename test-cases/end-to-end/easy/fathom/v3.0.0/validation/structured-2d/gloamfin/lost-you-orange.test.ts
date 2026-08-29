@@ -34,13 +34,8 @@
 // ping reveals (`gloamfin/ping-reveals-nothing`), or how long the search runs
 // before it gives up.
 
-import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLessThanOrEqual,
-  assertNotEqual,
-  assertNull,
-} from "../assert";
+import { afterEach, beforeEach } from "vitest";
+import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
 import { GLOAMFIN_SEARCH_DELAY, TICK_HZ } from "../../src/constants";
 import { placeForager, poseMaze } from "../fixtures";
 import {
@@ -50,12 +45,13 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   quietBoard,
   requireKind,
   requirePredatorMotion,
+  requireScene,
   sceneGuard,
-  sceneHeld,
   standDown,
 } from "../scene";
 import { gloamfinOf, pingLog, placePredator, sweep } from "./pings";
@@ -98,7 +94,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("A lost chase casts one orange ping", async () => {
+check("A lost chase casts one orange ping", async () => {
   startPlaying(h);
   const board = await poseMaze(h, STALE_FIX);
   const index = requireKind(h.snapshot(), "gloamfin");
@@ -132,7 +128,7 @@ it("A lost chase casts one orange ping", async () => {
   await sweep(h, AFTER_TICKS, watch);
   const ending = h.snapshot();
 
-  assertNull(sceneHeld(ending, guard), "the scenario held to the end");
+  requireScene(ending, guard);
 
   if (searchOpened === null) {
     requirePredatorMotion(

@@ -24,13 +24,12 @@
 // the cloud is read a tick later and the tolerance below is stated against the
 // ticks that have run.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertBetween,
   assertEqual,
   assertGreaterThan,
   assertNotEqual,
-  assertNull,
 } from "../assert";
 import {
   FORAGER_SPEED,
@@ -45,7 +44,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { denAll, quietBoard, sceneGuard, sceneHeld } from "../scene";
+import { check, denAll, quietBoard, requireScene, sceneGuard } from "../scene";
 
 /** The first key specs/movement.md binds the `b` action to. */
 const KEY = "ShiftLeft";
@@ -106,7 +105,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("releases an ink cloud on Shift", async () => {
+check("releases an ink cloud on Shift", async () => {
   startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
   const quiet = await denAll(h);
@@ -124,7 +123,7 @@ it("releases an ink cloud on Shift", async () => {
     return { armed, released };
   });
 
-  assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+  requireScene(h.snapshot(), watch);
 
   // The premise this point's own description states, posed through
   // `setInkCooldown(0)`: "At `0` ink is ready and the snapshot reports

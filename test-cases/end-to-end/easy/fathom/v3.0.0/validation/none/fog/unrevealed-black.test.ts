@@ -29,7 +29,7 @@
 // report, fails rather than passing on the half it got right.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseMaze, tileCenterOf, visibilityAt } from "../fixtures";
 import {
   captureStill,
@@ -39,7 +39,12 @@ import {
   rgbOf,
   type Harness,
 } from "../harness";
-import { denAllExcept, sceneGuard, sceneHeld, startPlaying } from "../scene";
+import {
+  denAllExcept,
+  requireSceneHeld,
+  sceneGuard,
+  startPlaying,
+} from "../scene";
 import type { TileRef } from "../maze";
 
 /**
@@ -108,7 +113,7 @@ it("draws an unrevealed rock tile and an unrevealed corridor tile alike, and dar
   // why the reviewer is being told the fog leaks.
   await captureStill(h, "fog");
 
-  assertNull(sceneHeld(snap, guard), "the scenario held to the end");
+  requireSceneHeld(h, snap, guard);
 
   // What the build SAYS about the two tiles.
   assertEqual(

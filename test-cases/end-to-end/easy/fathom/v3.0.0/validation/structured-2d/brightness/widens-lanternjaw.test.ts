@@ -30,9 +30,9 @@
 // from `G` and a build that recomputes it at the top of the next step keeps the
 // formula exactly as much as one that recomputes it inside the operation.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { LANTERN_RANGE_BASE, LANTERN_RANGE_GAIN } from "../../src/constants";
-import { assertLessThanOrEqual, assertNotEqual, assertNull } from "../assert";
+import { assertLessThanOrEqual, assertNotEqual } from "../assert";
 import { poseApart } from "../fixtures";
 import {
   captureReplay,
@@ -41,12 +41,13 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /**
@@ -67,6 +68,19 @@ const SAMPLES: readonly number[] = [0, 0.25, 0.5, 0.75, 1];
 /** The review item's tolerance on the range, in logical units. */
 const RANGE_TOLERANCE = 1;
 
+/**
+ * How far apart the brightest and dimmest `G` the build reports back must sit,
+ * for the sweep below to have measured a range that WIDENS rather than five
+ * readings of one range.
+ *
+ * The samples span the whole `[0, 1]` of `G`, and specs/instrumentation.md has
+ * `setBrightness` pose the value outright and arm the hold in full, so a
+ * conforming build reports the two ends as `0` and `1`. Four fifths of that is
+ * room for a build whose hold is short of the second the specification gives it
+ * without letting one that never moved `G` at all through.
+ */
+const BRIGHTNESS_SPAN = 0.8;
+
 /** Ticks between posing a brightness and reading what was derived from it. */
 const READ_BEAT = 2;
 
@@ -83,7 +97,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Brightness widens the Lanternjaw's reach", async () => {
+check("Brightness widens the Lanternjaw's reach", async () => {
   startPlaying(h);
   const rooms = await poseApart(h, ROOMS_APART, { ring: RING_TILES });
   const lanternjaw = indexOfKind(h.snapshot(), "lanternjaw");
@@ -102,13 +116,19 @@ it("Brightness widens the Lanternjaw's reach", async () => {
   const watch = await sceneGuard(h, quiet);
 
   const sweep = await captureReplay(h, "range", async () => {
-    const readings: { g: number; range: number | null }[] = [];
+    const readings: {
+      g: number;
+      brightness: number;
+      range: number | null;
+    }[] = [];
     for (const g of SAMPLES) {
       h.debug.setBrightness(g);
       await h.advance(READ_BEAT);
+      const snapshot = h.snapshot();
       readings.push({
         g,
-        range: h.snapshot().predators[lanternjaw]?.detectRange ?? null,
+        brightness: snapshot.brightness,
+        range: snapshot.predators[lanternjaw]?.detectRange ?? null,
       });
       // Held on screen so the clip runs at this brightness; the reading above is
       // already taken, so nothing here can reach an assertion.
@@ -117,8 +137,30 @@ it("Brightness widens the Lanternjaw's reach", async () => {
     return { readings, end: h.snapshot() };
   });
 
-  assertNull(sceneHeld(sweep.end, watch), "the scenario held to the end");
+  requireScene(sweep.end, watch);
 
+  // The sweep really did sweep. Without this, a build whose `G` never moved would
+  // report one range at all five samples and clear the formula below at every one
+  // of them, because the formula would be evaluated at the `G` it reported.
+  const reported = sweep.readings.map((one) => one.brightness);
+  const spanned = Math.max(...reported) - Math.min(...reported);
+  if (spanned < BRIGHTNESS_SPAN) {
+    failPrecondition(
+      `G to move across the ${SAMPLES[0]} to ${SAMPLES[SAMPLES.length - 1]} ` +
+        "this sweep posed it to, so there is a widening to read; " +
+        "specs/instrumentation.md has setBrightness pose the value outright " +
+        "and arm the hold in full",
+      "brightness/holds-decays",
+      `the reported G spanned ${spanned.toFixed(3)}`,
+    );
+  }
+
+  // THE FORMULA IS HELD AGAINST THE BUILD'S OWN `G`, read out of the same
+  // snapshot as the range, rather than against the brightness that was posed. The
+  // two are the same figure on a conforming build, and on a build that lets a
+  // posed `G` slip they are not. What this point claims is the RELATION between
+  // the two, and that claim is decided either way; whether a posed `G` then holds
+  // is brightness/holds-decays' verdict.
   for (const reading of sweep.readings) {
     assertNotEqual(
       reading.range,
@@ -126,12 +168,14 @@ it("Brightness widens the Lanternjaw's reach", async () => {
       `the Lanternjaw's detectRange at G = ${reading.g}, which specs/state.md ` +
         "has it report as a number",
     );
-    const expected = LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * reading.g;
+    const expected =
+      LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * reading.brightness;
     assertLessThanOrEqual(
       Math.abs((reading.range ?? Number.NaN) - expected),
       RANGE_TOLERANCE,
-      `detectRange at G = ${reading.g}, against ` +
-        `LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G (${expected})`,
+      `detectRange with G posed to ${reading.g} and reported as ` +
+        `${reading.brightness.toFixed(4)}, against ` +
+        `LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G (${expected.toFixed(2)})`,
     );
   }
 });

@@ -27,12 +27,7 @@
 // and this one reads the fog, so a build can fail either alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLessThan,
-  assertLessThanOrEqual,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
 import { SONAR_WAVE_SPEED, TICK_DT, TILE } from "../constants";
 import { poseStraightRun, visibilityAt } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
@@ -41,8 +36,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { emitPulse, sinceEmit } from "./pulse";
@@ -148,10 +143,7 @@ it("reveals a tile 4 corridor steps out before one 8 steps out, each as the fron
     return { emitted, arrivedNear, arrivedFar };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), watch),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), watch);
 
   for (const arrival of [
     { steps: NEAR_STEPS, at: flood.arrivedNear, tile: near },

@@ -37,7 +37,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import {
   FLARE_RADIUS,
@@ -48,7 +47,12 @@ import {
 import { tileCenter } from "../maze";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import type { FathomSnapshot } from "../surface";
-import { graded, sceneGuard, sceneHeld, unmetPrecondition } from "../scene";
+import {
+  graded,
+  requireSceneHeld,
+  sceneGuard,
+  unmetPrecondition,
+} from "../scene";
 import { startPlaying } from "../harness";
 import { FIRST_FLARE_MAX, FLARE_POLL, poseFlareRoom } from "./room";
 import type { Tile } from "../maze";
@@ -158,7 +162,7 @@ it("lights every tile inside FLARE_RADIUS through rock while it blooms, and noth
       return snap;
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
 
     const fish = lit.predators[room.index];
     assertEqual(

@@ -25,7 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ALERT_TIME } from "../../src/constants";
-import { assertEqual, assertNull, assertTrue } from "../assert";
+import { assertEqual, assertTrue } from "../assert";
 import { poseSightLine } from "../fixtures";
 import {
   captureReplay,
@@ -41,8 +41,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 
@@ -138,7 +138,7 @@ it("The Lanternjaw fires no alert", async (ctx) => {
       return { fixed, seen, end: h.snapshot() };
     });
 
-    assertNull(sceneHeld(read.end, watch), "the scenario held to the end");
+    requireSceneHeld(read.end, watch);
 
     if (!read.fixed.hit) {
       unmetPrecondition(

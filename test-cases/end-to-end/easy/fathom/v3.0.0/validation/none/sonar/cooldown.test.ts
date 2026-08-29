@@ -33,7 +33,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { SONAR_COOLDOWN, TICK_DT, TICK_HZ } from "../constants";
 import { poseStraightRun } from "../fixtures";
@@ -42,8 +41,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import {
@@ -156,10 +155,7 @@ it("arms SONAR_COOLDOWN on a pulse, refuses a press inside it, and is ready agai
     return { emitted, beforeSecond, afterSecond, samples, ready };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), watch),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), watch);
 
   // Armed, at the full figure, with the pulse it armed for in flight.
   assertEqual(

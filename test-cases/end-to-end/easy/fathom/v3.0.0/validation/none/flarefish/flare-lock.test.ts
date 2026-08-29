@@ -42,7 +42,6 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThan,
-  assertNull,
 } from "../assert";
 import { FLARE_RADIUS, TILE } from "../constants";
 import { poseMaze, predatorIndex } from "../fixtures";
@@ -56,8 +55,9 @@ import {
 import {
   denAllExcept,
   parkForager,
+  requirePosedGround,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import {
@@ -191,6 +191,15 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
     (snap) => blooming(snap) || snap.predators[index].state !== "wander",
     { maxTicks: ticks(FIRST_FLARE_MAX), poll: FLARE_POLL },
   );
+  // The lane is what stands between the pair, so a Flarefish that is no longer on
+  // it has broken the fixture rather than the radius rule.
+  requirePosedGround(
+    h,
+    firstBloom.snapshot,
+    guard,
+    index,
+    "the corridor it was posed to patrol",
+  );
   // A fix taken while the forager waits in its pocket is itself the negative
   // leg's verdict, and a harsher one than the leg below: the pocket sits seven
   // tiles under the patrol, past FLARE_RADIUS, behind six rows of solid rock and
@@ -273,10 +282,7 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
     return { inside, posed, fix, after };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // The board really is what the claim needs: two corridors, five tiles and a
   // band of solid rock apart.

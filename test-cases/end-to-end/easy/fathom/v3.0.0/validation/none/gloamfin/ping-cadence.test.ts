@@ -29,7 +29,6 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import { GLOAMFIN_PING_INTERVAL, TICK_HZ } from "../constants";
@@ -38,8 +37,8 @@ import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   denAllExcept,
   quietBoard,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import {
@@ -123,10 +122,7 @@ it("It pings on its own cadence", async () => {
   await sweep(h, OFF_CAMERA_TICKS, watch);
   await captureReplay(h, "ping", () => sweep(h, RECORDED_TICKS, watch));
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
   assertEqual(
     [...states].join(","),
     "wander",

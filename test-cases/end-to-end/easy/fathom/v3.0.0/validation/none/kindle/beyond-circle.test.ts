@@ -37,7 +37,6 @@ import {
   assertLessThan,
   assertLessThanOrEqual,
   assertNotNull,
-  assertNull,
 } from "../assert";
 import { poseMaze, visibilityAt } from "../fixtures";
 import {
@@ -56,8 +55,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { FOG_MATCH } from "./_kindle";
@@ -120,7 +119,7 @@ it("clips a drifter's mote to the vision circle, and draws it once inside", asyn
   // light that should have been clipped away.
   await captureStill(h, "clipped");
 
-  assertNull(sceneHeld(beyond, guard), "the scenario held to the end");
+  requireSceneHeld(h, beyond, guard);
 
   assertEqual(
     beyond.drifters.length,

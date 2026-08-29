@@ -35,12 +35,7 @@
 // before it gives up.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLessThanOrEqual,
-  assertNotEqual,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
 import { GLOAMFIN_SEARCH_DELAY, TICK_HZ } from "../constants";
 import { placeForager, placePredator, poseMaze } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
@@ -48,8 +43,8 @@ import {
   denAllExcept,
   quietBoard,
   requirePredatorMotion,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { gloamfinOf, pingLog, requireGloamfin, sweep } from "./pings";
@@ -126,7 +121,7 @@ it("A lost chase casts one orange ping", async () => {
   await sweep(h, AFTER_TICKS, watch);
   const ending = await h.snapshot();
 
-  assertNull(sceneHeld(ending, guard), "the scenario held to the end");
+  requireSceneHeld(h, ending, guard);
 
   if (searchOpened === null) {
     requirePredatorMotion(

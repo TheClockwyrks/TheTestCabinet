@@ -40,7 +40,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { KINDLE_VISION_MIN } from "../constants";
 import { poseMaze, visibilityAt } from "../fixtures";
@@ -56,8 +55,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { FOG_MATCH, tileFromForager } from "./_kindle";
@@ -128,7 +127,7 @@ it("draws revealed ground inside the vision circle and fogs it beyond", async ()
   // circle the reviewer is being told about.
   await captureStill(h, "circle");
 
-  assertNull(sceneHeld(after, guard), "the scenario held to the end");
+  requireSceneHeld(h, after, guard);
 
   const radius = windowRadius(after);
   const insideAt = tileFromForager(after, inside);

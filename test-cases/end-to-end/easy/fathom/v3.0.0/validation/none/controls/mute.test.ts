@@ -38,7 +38,7 @@
 // binding, so arming changes nothing about the game.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
   captureStill,
@@ -46,7 +46,12 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { quietBoard, sceneGuard, sceneHeld, startPlaying } from "../scene";
+import {
+  quietBoard,
+  requireSceneHeld,
+  sceneGuard,
+  startPlaying,
+} from "../scene";
 
 /** The key specs/movement.md binds the `mute` action to. */
 const MUTE_KEY = "KeyM";
@@ -136,10 +141,7 @@ it("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
   await h.advance(CUE_WINDOW_TICKS);
   const unmutedSounds = cues.length - loudFrom;
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   assertEqual(
     opening.muted,

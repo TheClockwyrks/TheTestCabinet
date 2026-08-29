@@ -38,12 +38,11 @@
 // (specs/instrumentation.md), and the distances are read against the `R` the
 // build reports at the moment of each reading.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -57,12 +56,13 @@ import {
   visibilityAt,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { Tile } from "../maze";
 import { FOG_MATCH, tileFromForager, windowRadius } from "./circle";
@@ -115,7 +115,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Hidden, but not forgotten", async () => {
+check("Hidden, but not forgotten", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const watched = board.mark("T");
@@ -168,7 +168,7 @@ it("Hidden, but not forgotten", async () => {
     return { atFirst, drawn, fog, beyond, hidden, neverLit, back, redrawn };
   });
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+  requireScene(h.snapshot(), guard);
 
   // The fixture's own geometry at each station, against the circle the build
   // reports there.

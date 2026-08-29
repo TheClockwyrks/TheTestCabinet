@@ -30,7 +30,7 @@
 // the scenario reads off the pulse itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNotEqual, assertNull } from "../assert";
+import { assertEqual, assertNotEqual } from "../assert";
 import { SONAR_RANGE_BASE } from "../constants";
 import { poseMaze, visibilityAt } from "../fixtures";
 import { captureStill, createHarness, type Harness } from "../harness";
@@ -39,8 +39,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { emitPulse, foragerPulse } from "./pulse";
@@ -167,7 +167,7 @@ it("floods the corridors around a corner and through a junction with their rock,
   // reviewer needs to see which half of the board went wrong.
   await captureStill(h, "walls");
 
-  assertNull(sceneHeld(snapshot, watch), "the scenario held to the end");
+  requireSceneHeld(h, snapshot, watch);
   assertEqual(
     swept.hit,
     true,

@@ -39,10 +39,15 @@
 // drawn live", it reports `lit`. Plainly there, then plainly gone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { FLARE_INTERVAL, TILE } from "../../src/constants";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
-import { graded, sceneGuard, sceneHeld, unmetPrecondition } from "../scene";
+import {
+  graded,
+  requireSceneHeld,
+  sceneGuard,
+  unmetPrecondition,
+} from "../scene";
 import { startPlaying } from "../harness";
 import { BLOOM_MAX, FIRST_FLARE_MAX, FLARE_POLL, poseFlareRoom } from "./room";
 
@@ -152,7 +157,7 @@ it("shows nothing of itself between flares, in what it reports and on the canvas
       return { burning, ended, after, atFish, control };
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
 
     // The control: it really was there, and really was drawn, a moment ago.
     const burning = watched.burning.predators[room.index];
@@ -162,12 +167,18 @@ it("shows nothing of itself between flares, in what it reports and on the canvas
       `the Flarefish is still blooming ${INTO_BLOOM} ticks in, when the control ` +
         `reading is taken`,
     );
-    assertEqual(
-      burning.lit,
-      true,
-      "the Flarefish is drawn while its own bloom burns, which " +
-        "specs/predators/flarefish.md gives to every predator inside the disc",
-    );
+    // The control rests on a bloom that draws the creature standing in it, and
+    // what a bloom lights is another point's claim: with nothing drawn while it
+    // burned there is no "before" for the dark reading below to be measured
+    // against, and this scenario decides nothing.
+    if (burning.lit !== true) {
+      unmetPrecondition(
+        `the Flarefish reported lit false ${INTO_BLOOM} ticks into its own ` +
+          "bloom, so nothing was drawn for the reading after the bloom to fall " +
+          "back from; what a bloom lights is flarefish/flare-reveals's verdict, " +
+          "not this one's",
+      );
+    }
     assertEqual(
       watched.ended.hit,
       true,

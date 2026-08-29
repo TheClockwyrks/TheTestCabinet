@@ -36,7 +36,6 @@ import {
   assertGreaterThan,
   assertLessThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import {
   placePredator,
@@ -57,8 +56,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { FOG_MATCH } from "./_kindle";
@@ -130,7 +129,7 @@ it("leaves a hunter inside the circle but beyond the light undrawn, and draws it
   // hunter that should not be there.
   await captureStill(h, "bylight");
 
-  assertNull(sceneHeld(beyondLight, guard), "the scenario held to the end");
+  requireSceneHeld(h, beyondLight, guard);
 
   const gap = Math.hypot(
     hunter.x - beyondLight.forager.x,

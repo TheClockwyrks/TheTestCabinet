@@ -35,7 +35,6 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { ARROW_KEY, TILE } from "../constants";
 import { poseCorner, tileCenterOf } from "../fixtures";
@@ -47,9 +46,9 @@ import {
 } from "../harness";
 import {
   denAllExcept,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -169,10 +168,7 @@ it("buffers a perpendicular direction set mid-tile and takes the turn at the jun
     return { resting, approached, midway, turned, along };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // Whether a held action carries the forager anywhere is `controls/move-*`'s
   // verdict; a forager that never reached the junction has no turn to take.

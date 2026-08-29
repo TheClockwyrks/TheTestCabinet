@@ -33,7 +33,7 @@
 // `flarefish/chase-like-lanternjaw`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThan, assertNull } from "../assert";
+import { assertEqual, assertLessThan } from "../assert";
 import {
   FLARE_RADIUS,
   LANTERN_RANGE_BASE,
@@ -47,8 +47,8 @@ import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -161,10 +161,7 @@ it("takes a fix on the forager's light inside R and none beyond it", async () =>
     return { farOpening, held, far, near };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // The far leg. The gaps are asserted from the board the build reports rather
   // than from the fixture's own arithmetic, so a build whose grid is not the one

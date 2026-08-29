@@ -27,15 +27,15 @@
 // end of the window would miss one that slipped through and came back.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { ARROW_KEY, TILE } from "../constants";
 import { poseMaze, tileCenterOf } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   denAllExcept,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -114,10 +114,7 @@ it("stops the forager against rock rather than letting it in", async () => {
     return { resting, trespass, reach, settled };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // A forager that never got under way was never offered the rock; whether a
   // held action moves it at all is `controls/move-*`'s verdict.

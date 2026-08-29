@@ -42,15 +42,15 @@
 // read and the check stands down.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLessThanOrEqual, assertNotEqual, assertNull } from "../assert";
+import { assertLessThanOrEqual, assertNotEqual } from "../assert";
 import { LANTERN_RANGE_BASE, LANTERN_RANGE_GAIN } from "../constants";
 import { placePredator, poseApart, predatorIndex } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -131,7 +131,7 @@ it("reports detectRange as LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G", async (
     return { readings, end: await h.snapshot() };
   });
 
-  assertNull(sceneHeld(sweep.end, guard), "the scenario held to the end");
+  requireSceneHeld(h, sweep.end, guard);
 
   // The dial really moved. Without this the readings could all be one G and a
   // build with a flat range would pass on a curve nobody drove.

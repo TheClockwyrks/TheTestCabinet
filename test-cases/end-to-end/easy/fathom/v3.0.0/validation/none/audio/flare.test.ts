@@ -30,15 +30,15 @@
 // `flarefish/flare-reveals`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { FLARE_CHARGE, FLARE_INTERVAL, ticksFor } from "../constants";
 import { poseApart } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   denAllExcept,
   quietBoard,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import {
@@ -108,10 +108,7 @@ it("sounds on the tick a Flarefish's bloom begins, and not on its charge-up", as
     return seen;
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   assertEqual(
     watch.hit,

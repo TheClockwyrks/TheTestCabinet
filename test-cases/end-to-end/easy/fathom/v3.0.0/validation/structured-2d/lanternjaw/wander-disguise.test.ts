@@ -25,18 +25,13 @@
 // `lanternjaw/light-range`'s, so a build that never acquires stands this check
 // down rather than failing it twice.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   DRIFTER_SPEED,
   FORAGER_SPEED,
   PREDATOR_SPEED,
 } from "../../src/constants";
-import {
-  assertEqual,
-  assertLessThan,
-  assertLessThanOrEqual,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
 import { poseSightLine } from "../fixtures";
 import {
   captureReplay,
@@ -47,13 +42,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /**
@@ -133,7 +129,7 @@ async function travel(
   return { covered, speed: last.speed, state: last.state };
 }
 
-it("It wanders at the drifter's pace and hunts faster", async () => {
+check("It wanders at the drifter's pace and hunts faster", async () => {
   startPlaying(h);
   const line = await poseSightLine(h, GAP_TILES, {
     lead: LEAD_TILES,
@@ -186,7 +182,7 @@ it("It wanders at the drifter's pace and hunts faster", async () => {
     return { wandered, chased, end: h.snapshot() };
   });
 
-  assertNull(sceneHeld(read.end, guard), "the scenario held to the end");
+  requireScene(read.end, guard);
 
   const wanderSeconds = seconds(WANDER_TICKS);
   const chaseSeconds = seconds(CHASE_TICKS);

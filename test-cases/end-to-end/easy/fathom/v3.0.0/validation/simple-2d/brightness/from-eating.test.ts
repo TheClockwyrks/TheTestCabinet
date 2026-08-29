@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BRIGHT_PER_EAT } from "../../src/constants";
-import { assertLessThanOrEqual, assertNull } from "../assert";
+import { assertLessThanOrEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,
@@ -43,8 +43,8 @@ import {
   clearUnderfoot,
   denAll,
   graded,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
 import { grazeOne } from "./graze";
@@ -119,7 +119,7 @@ it("Eating brightens the forager", async (ctx) => {
     });
 
     const end = graze.after[graze.after.length - 1];
-    assertNull(sceneHeld(end, watch), "the scenario held to the end");
+    requireSceneHeld(end, watch);
 
     // The measurement is of a step taken from zero, which is what the item states
     // and what keeps a wrong step from hiding behind a clamp.

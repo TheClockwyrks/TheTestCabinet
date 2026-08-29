@@ -35,12 +35,7 @@
 // that skips reads short; one that swims across reads `32`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertBetween,
-  assertEqual,
-  assertLessThanOrEqual,
-  assertNull,
-} from "../assert";
+import { assertBetween, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -52,9 +47,9 @@ import { isOpen, wrapRows } from "../maze";
 import {
   denAll,
   graded,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 
@@ -217,7 +212,7 @@ it("carries the forager across the wrap tunnel in one ordinary step", async (ctx
       return { first, steps, wrapped, arrived, last };
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
 
     // A forager that never got under way never reached the seam; whether a held
     // action moves it at all is `controls/move-*`'s verdict.

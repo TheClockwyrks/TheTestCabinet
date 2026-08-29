@@ -42,7 +42,6 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThan,
-  assertNull,
 } from "../assert";
 import { FLARE_RADIUS, TILE } from "../../src/constants";
 import { poseMaze } from "../fixtures";
@@ -53,8 +52,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   separation,
   unmetPrecondition,
 } from "../scene";
@@ -284,7 +283,7 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
       return { inside, posed, fix, after };
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
 
     // The board really is what the claim needs: two corridors, five tiles and a
     // band of solid rock apart.

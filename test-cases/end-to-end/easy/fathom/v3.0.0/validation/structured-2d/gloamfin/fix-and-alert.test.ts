@@ -32,12 +32,11 @@
 // WHAT THIS DOES NOT DECIDE. What a chase then does (`gloamfin/chase-cap`), or
 // what the alert looks like (`alert/gloamfin`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { GLOAMFIN_HEAR, TICK_HZ } from "../../src/constants";
 import { placeForager, poseMaze } from "../fixtures";
@@ -48,11 +47,12 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   requireKind,
+  requireScene,
   requireSwim,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { apart, gloamfinOf, placePredator } from "./pings";
 
@@ -93,7 +93,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Close hearing takes a fix and fires the alert", async () => {
+check("Close hearing takes a fix and fires the alert", async () => {
   startPlaying(h);
   const board = await poseMaze(h, SEALED_PAIR);
   const index = requireKind(h.snapshot(), "gloamfin");
@@ -124,7 +124,7 @@ it("Close hearing takes a fix and fires the alert", async () => {
     return { closed, read };
   });
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+  requireScene(h.snapshot(), guard);
 
   // The scenario opened on a Gloamfin that had heard nothing, which is what makes
   // every reading below a reading of the crossing rather than of the pose.

@@ -23,8 +23,9 @@
 // that read the key ARMS it (specs/sensing.md: "emitting one sets the cooldown to
 // `SONAR_COOLDOWN`"), and one that read nothing does not. `failPrecondition`
 // then states the requirement the build actually missed and names the point whose
-// job it is to report it, so a reviewer reading a wall of failures sees one cause
-// rather than seven mechanics.
+// job it is to report it, and the check declines rather than recording a verdict
+// of its own, so a reviewer reading the run sees one cause rather than seven
+// mechanics.
 
 import { BINDINGS } from "../../src/constants";
 import type { FathomSnapshot, PulseSnapshot } from "../surface";

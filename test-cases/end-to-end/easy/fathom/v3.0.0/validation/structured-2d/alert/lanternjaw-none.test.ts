@@ -23,9 +23,9 @@
 // `lanternjaw/light-range`'s, so a build whose hunter never takes a fix stands this
 // check down rather than passing it on an absence that means nothing.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { ALERT_TIME } from "../../src/constants";
-import { assertEqual, assertNull, assertTrue } from "../assert";
+import { assertEqual, assertTrue } from "../assert";
 import { poseSightLine } from "../fixtures";
 import {
   captureReplay,
@@ -36,13 +36,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /** How far apart the pair stands, in tiles. See the header. */
@@ -97,7 +98,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The Lanternjaw fires no alert", async () => {
+check("The Lanternjaw fires no alert", async () => {
   startPlaying(h);
   const line = await poseSightLine(h, GAP_TILES, {
     lead: LEAD_TILES,
@@ -143,7 +144,7 @@ it("The Lanternjaw fires no alert", async () => {
     return { fixed, seen, end: h.snapshot() };
   });
 
-  assertNull(sceneHeld(read.end, guard), "the scenario held to the end");
+  requireScene(read.end, guard);
 
   if (!read.fixed.hit) {
     failPrecondition(

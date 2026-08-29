@@ -35,12 +35,7 @@
 // happened to wander mid-clip.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThan,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { ARROW_KEY, VISION_GAIN, VISION_MIN } from "../constants";
 import {
   placeForager,
@@ -58,9 +53,9 @@ import {
 import {
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -189,7 +184,7 @@ it("leaves a predator behind rock unlit and lights it once the corner is rounded
     return { before, settled, arrived, onArm };
   });
 
-  assertNull(sceneHeld(end.settled, guard), "the scenario held to the end");
+  requireSceneHeld(h, end.settled, guard);
 
   // Whether the forager travels is `controls/*` and `maze-movement/*`'s verdict.
   if (!end.arrived || !end.onArm) {

@@ -65,7 +65,7 @@ import {
   TICK_HZ,
   TILE,
 } from "../../src/constants";
-import { assertNull, assertTrue } from "../assert";
+import { assertTrue } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   callsTo,
@@ -80,8 +80,9 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
+  unmetPrecondition,
 } from "../scene";
 
 /* -------------------------------------------------------------------------- */
@@ -416,7 +417,28 @@ it("draws every element from its own seeded sheet", async (ctx) => {
     // frame whose draws were read.
     captureStill(h, "art");
 
-    assertNull(sceneHeld(snap, watch), "the scenario held to the end");
+    requireSceneHeld(snap, watch);
+
+    // Each hunter is drawn only while something lights it (specs/sensing.md),
+    // and out here in the dark that something is the bloom, so a build whose
+    // flare reveals nothing leaves this scenario with no bodies on screen to
+    // read a sheet off.
+    const dark = (
+      [
+        ["Lanternjaw", lanternjaw],
+        ["Gloamfin", gloamfin],
+        ["Flarefish", flarefish],
+      ] as const
+    ).filter(([, index]) => snap.predators[index]?.lit !== true);
+    if (dark.length > 0) {
+      unmetPrecondition(
+        `the ${dark.map(([name]) => name).join(" and ")} stood inside the ` +
+          `FLARE_RADIUS (${FLARE_RADIUS}) of a burning bloom and still reported ` +
+          "lit false, so no body was drawn for this point to read a sheet off; " +
+          "what a bloom lights is flarefish/flare-reveals's verdict, not this " +
+          "one's",
+      );
+    }
 
     const at = (index: number): { x: number; y: number } => ({
       x: snap.predators[index].x,

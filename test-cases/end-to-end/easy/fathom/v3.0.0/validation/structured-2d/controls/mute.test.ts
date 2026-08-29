@@ -32,8 +32,8 @@
 // its own cadence, and a ping in the unmuted window would let a build that never
 // sounded the pulse pass on somebody else's noise.
 
-import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { afterEach, beforeEach } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
   captureStill,
@@ -41,7 +41,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { denAll, quietBoard, sceneGuard, sceneHeld } from "../scene";
+import { check, denAll, quietBoard, requireScene, sceneGuard } from "../scene";
 
 /** The key specs/movement.md binds the `mute` action to. */
 const MUTE_KEY = "KeyM";
@@ -102,7 +102,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
+check("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
   startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
   const quiet = await denAll(h);
@@ -141,7 +141,7 @@ it("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
   await h.advance(CUE_WINDOW_TICKS);
   const unmutedSounds = audible(h) - loudFrom;
 
-  assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+  requireScene(h.snapshot(), watch);
 
   assertEqual(
     opening.muted,

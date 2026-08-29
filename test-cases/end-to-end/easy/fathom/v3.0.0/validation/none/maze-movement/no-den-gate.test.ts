@@ -36,15 +36,15 @@
 // back.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import { ARROW_KEY } from "../constants";
 import { poseMaze, stampLayout } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   denAllExcept,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import type { TileRef } from "../maze";
@@ -148,10 +148,7 @@ it("refuses the forager the den gate and the chamber behind it", async () => {
     return { resting, onGate, inDen, settled };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // A forager that never got under way was never offered the gate; whether a
   // held action moves it at all is `controls/move-*`'s verdict.

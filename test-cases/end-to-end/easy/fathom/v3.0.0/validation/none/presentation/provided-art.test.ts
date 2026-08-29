@@ -46,7 +46,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertNull, assertTrue } from "../assert";
+import { assertTrue } from "../assert";
 import {
   FLARE_BLOOM,
   FLARE_CHARGE,
@@ -67,8 +67,8 @@ import {
 import {
   clearUnderfoot,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -410,7 +410,7 @@ it("draws every element from its own seeded sheet", async () => {
   // frame whose draws were read.
   await captureStill(h, "art");
 
-  assertNull(sceneHeld(snap, guard), "the scenario held to the end");
+  requireSceneHeld(h, snap, guard);
 
   const at = (index: number): { x: number; y: number } => ({
     x: snap.predators[index].x,

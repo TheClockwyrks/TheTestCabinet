@@ -35,7 +35,7 @@
 // the reading asks is only that the two depths agree; what the speed IS belongs to
 // `gloamfin/wander-speed`.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   DEN_ORDER,
   ROSTER_ADD_ORDER,
@@ -58,6 +58,7 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   failPrecondition,
   indexOfKind,
@@ -161,7 +162,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Depth adds hunters and shortens the pulse", async () => {
+check("Depth adds hunters and shortens the pulse", async () => {
   startPlaying(h);
   // The forager's own room, and across solid rock a sealed ring for the wanderer,
   // so nothing the speed reading watches can reach the forager and drop out of its

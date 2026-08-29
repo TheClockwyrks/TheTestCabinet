@@ -29,7 +29,6 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import { GLOAMFIN_PING_INTERVAL, TICK_HZ } from "../../src/constants";
@@ -46,8 +45,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import {
   castFromOwnTile,
@@ -132,7 +131,7 @@ it("It pings on its own cadence", async (ctx) => {
     await sweep(h, OFF_CAMERA_TICKS, watch);
     await captureReplay(h, "ping", () => sweep(h, RECORDED_TICKS, watch));
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
     assertEqual(
       [...states].join(","),
       "wander",

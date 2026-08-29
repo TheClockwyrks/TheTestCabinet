@@ -31,15 +31,15 @@
 // `gloamfin/lost-you-orange`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { GLOAMFIN_PING_INTERVAL, ticksFor } from "../constants";
 import { poseApart } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   denAllExcept,
   quietBoard,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import {
@@ -107,10 +107,7 @@ it("sounds on the tick a Gloamfin casts its own ping, and not before", async () 
     return seen;
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   assertEqual(
     watch.hit,

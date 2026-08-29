@@ -26,12 +26,7 @@
 // down rather than failing it twice.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLessThan,
-  assertLessThanOrEqual,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
 import { DRIFTER_SPEED, FORAGER_SPEED, PREDATOR_SPEED } from "../constants";
 import { poseSightLine, predatorIndex } from "../fixtures";
 import {
@@ -45,8 +40,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -178,7 +173,7 @@ it("It wanders at the drifter's pace and hunts faster", async () => {
     return { wandered, chased, end: await h.snapshot() };
   });
 
-  assertNull(sceneHeld(read.end, guard), "the scenario held to the end");
+  requireSceneHeld(h, read.end, guard);
 
   const wanderSeconds = seconds(WANDER_TICKS);
   const chaseSeconds = seconds(CHASE_TICKS);

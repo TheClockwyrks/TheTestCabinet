@@ -26,11 +26,7 @@
 // so each radius is read two ticks after the brightness that produced it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertGreaterThan,
-  assertLessThanOrEqual,
-  assertNull,
-} from "../assert";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,
@@ -43,8 +39,8 @@ import {
   denAll,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { KINDLE_VISION_GAIN, KINDLE_VISION_MIN, windowRadius } from "./circle";
 
@@ -119,7 +115,7 @@ it("The circle grows as you eat", async (ctx) => {
       return taken;
     });
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     for (const reading of readings) {
       assertLessThanOrEqual(

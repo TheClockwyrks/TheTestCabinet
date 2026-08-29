@@ -33,7 +33,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import {
   BINDINGS,
@@ -56,9 +55,9 @@ import {
   fromForager,
   graded,
   parkForager,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 
@@ -215,7 +214,7 @@ it("releases a cloud of INK_RADIUS that stands where it was left for INK_LIFE an
       return { before, released, opened, swum, life, gone };
     });
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     // Its size and its life, as released.
     assertLessThanOrEqual(

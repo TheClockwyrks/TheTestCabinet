@@ -24,7 +24,7 @@
 // reaching the forager, is asserted directly instead: every predator is posed into
 // the sealed den, and the lives are read either side of the bite.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { SCORE_CLEAR, SCORE_PLANKTON } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { placeForager, poseMaze } from "../fixtures";
@@ -36,7 +36,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { denAll, requireSwim } from "../scene";
+import { check, denAll, requireSwim } from "../scene";
 
 /**
  * The board: five tiles of straight corridor, the forager on the first and the
@@ -78,7 +78,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Clearing a maze scores SCORE_CLEAR", async () => {
+check("Clearing a maze scores SCORE_CLEAR", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const start = board.mark("S");

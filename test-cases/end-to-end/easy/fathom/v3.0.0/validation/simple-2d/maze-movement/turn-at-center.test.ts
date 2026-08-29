@@ -36,7 +36,6 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseCorner } from "../fixtures";
 import {
@@ -47,7 +46,13 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { denAll, graded, requireSwim, sceneGuard, sceneHeld } from "../scene";
+import {
+  denAll,
+  graded,
+  requireSceneHeld,
+  requireSwim,
+  sceneGuard,
+} from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /** Tiles of corridor each arm carries past the junction. */
@@ -168,7 +173,7 @@ it("buffers a perpendicular direction set mid-tile and takes the turn at the jun
       return { resting, approached, midway, turned, along };
     });
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     // Whether a held action carries the forager anywhere is `controls/move-*`'s
     // verdict; a forager that never reached the junction has no turn to take.

@@ -30,11 +30,16 @@
 // between flares, which is `flarefish/no-tell`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { FLARE_BLOOM, FLARE_CHARGE, FLARE_INTERVAL } from "../../src/constants";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import type { FathomSnapshot } from "../surface";
-import { graded, sceneGuard, sceneHeld, unmetPrecondition } from "../scene";
+import {
+  graded,
+  requireSceneHeld,
+  sceneGuard,
+  unmetPrecondition,
+} from "../scene";
 import { startPlaying } from "../harness";
 import {
   BLOOM_MAX,
@@ -205,7 +210,7 @@ it("charges for FLARE_CHARGE, blooms for FLARE_BLOOM, and charges again a whole 
       return { heldCharge, bloom, heldBloom, quiet };
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
 
     // Charge then bloom, in that order: the charge-up window is its own.
     assertEqual(

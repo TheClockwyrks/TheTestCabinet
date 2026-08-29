@@ -500,7 +500,7 @@ export function predatorIndex(
 /* The fixtures                                                               */
 /* -------------------------------------------------------------------------- */
 
-/** A straight corridor posed as the whole board: `len` tiles running right. */
+/** A straight corridor posed as the whole board: `len` tiles along one axis. */
 export interface StraightRun extends TileRef {
   dir: Dir;
   len: number;
@@ -508,21 +508,30 @@ export interface StraightRun extends TileRef {
 
 /**
  * A straight corridor of `len` tiles posed as the whole board, the forager placed
- * at its left end facing along it.
+ * at its near end facing along it.
  *
- * `spare` adds a second sealed pocket well clear of the run: ground the light has
- * never touched, for a check that reads a build's own unrevealed fog color.
+ * `dir` runs the corridor to the right or downward, so a check that reads travel
+ * can read it on either axis. `spare` adds a second sealed pocket well clear of
+ * the run: ground the light has never touched, for a check that reads a build's
+ * own unrevealed fog color.
  */
 export async function poseStraightRun<S extends BoardSnapshot>(
   h: PoseHarness<S>,
   len: number,
-  options: { spare?: boolean } = {},
+  options: { spare?: boolean; dir?: "right" | "down" } = {},
 ): Promise<StraightRun> {
-  const tail = options.spare === true ? " ".repeat(8) + "..." : "";
-  const board = await poseMaze(h, ["S" + ".".repeat(len - 1) + tail]);
+  const dir = options.dir ?? "right";
+  const spare = options.spare === true;
+  const art =
+    dir === "right"
+      ? ["S" + ".".repeat(len - 1) + (spare ? " ".repeat(8) + "..." : "")]
+      : ["S", ...Array.from({ length: len - 1 }, () => ".")].concat(
+          spare ? [" ".repeat(8) + "..."] : [],
+        );
+  const board = await poseMaze(h, art);
   const start = board.mark("S");
-  await placeForager(h, start, "right");
-  return { tx: start.tx, ty: start.ty, dir: "right", len };
+  await placeForager(h, start, dir);
+  return { tx: start.tx, ty: start.ty, dir, len };
 }
 
 /** A straight corridor along ONE axis with the forager in the middle of it. */

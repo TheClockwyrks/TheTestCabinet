@@ -39,7 +39,7 @@
 // drawn live", it reports `lit`. Plainly there, then plainly gone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { FLARE_INTERVAL, TILE } from "../constants";
 import {
   captureReplay,
@@ -49,7 +49,7 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { sceneGuard, sceneHeld, startPlaying } from "../scene";
+import { requireSceneHeld, sceneGuard, startPlaying } from "../scene";
 import { BLOOM_MAX, FIRST_FLARE_MAX, FLARE_POLL, poseFlareRoom } from "./room";
 
 /**
@@ -151,10 +151,7 @@ it("shows nothing of itself between flares, in what it reports and on the canvas
     return { burning, ended, after, atFish, control };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // The control: it really was there, and really was drawn, a moment ago.
   const burning = watched.burning.predators[room.index];

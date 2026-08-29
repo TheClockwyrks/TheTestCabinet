@@ -33,12 +33,11 @@
 // blows out toward white by design and the hue reads in the halo around it: the
 // brightest pixel of a perfectly good amber mote is often a neutral white one.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -56,13 +55,14 @@ import {
 } from "../harness";
 import type { Tile } from "../maze";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /**
@@ -140,7 +140,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("A drifter and a Lanternjaw's bulb read alike", async () => {
+check("A drifter and a Lanternjaw's bulb read alike", async () => {
   const opened = startPlaying(h);
   const lantern = indexOfKind(opened, "lanternjaw");
   if (lantern < 0) {
@@ -172,7 +172,7 @@ it("A drifter and a Lanternjaw's bulb read alike", async () => {
   const after = h.snapshot();
   captureStill(h, "amber");
 
-  assertNull(sceneHeld(after, guard), "the scenario held to the end");
+  requireScene(after, guard);
   assertEqual(
     after.drifters.length,
     1,

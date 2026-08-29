@@ -29,7 +29,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BINDINGS, CUES } from "../../src/constants";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -42,8 +42,8 @@ import {
   denAll,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
 
@@ -116,7 +116,7 @@ it("plays CUES.ink on the tick the forager releases ink, and not before", async 
       }
     });
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     assertEqual(
       seen.hit,

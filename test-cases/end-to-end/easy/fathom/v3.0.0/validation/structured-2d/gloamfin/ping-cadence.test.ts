@@ -24,12 +24,11 @@
 // (`gloamfin/lost-you-orange`), or what a ping reveals
 // (`gloamfin/ping-reveals-nothing`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import { GLOAMFIN_PING_INTERVAL, TICK_HZ } from "../../src/constants";
@@ -41,11 +40,12 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   quietBoard,
   requireKind,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import {
   castFromOwnTile,
@@ -103,7 +103,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("It pings on its own cadence", async () => {
+check("It pings on its own cadence", async () => {
   startPlaying(h);
   const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
   const index = requireKind(h.snapshot(), "gloamfin");
@@ -128,7 +128,7 @@ it("It pings on its own cadence", async () => {
   await sweep(h, OFF_CAMERA_TICKS, watch);
   await captureReplay(h, "ping", () => sweep(h, RECORDED_TICKS, watch));
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+  requireScene(h.snapshot(), guard);
   assertEqual(
     [...states].join(","),
     "wander",

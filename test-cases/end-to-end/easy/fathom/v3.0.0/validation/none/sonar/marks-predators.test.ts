@@ -35,7 +35,7 @@
 // takes a fix.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { SONAR_MARK_TIME, SONAR_WAVE_SPEED, TICK_HZ } from "../constants";
 import { poseSonarSense } from "../fixtures";
 import {
@@ -48,8 +48,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { emitPulse, requireKind, sinceEmit } from "./pulse";
@@ -158,10 +158,7 @@ it("marks a Gloamfin and a Flarefish from the front's arrival and holds each for
     }
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), watch),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), watch);
 
   for (const mark of marks) {
     const arrival = mark.steps / SONAR_WAVE_SPEED;

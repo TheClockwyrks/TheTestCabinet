@@ -32,20 +32,15 @@
 // flare or pulse reveals anything.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThan,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { VISION_GAIN, VISION_MIN } from "../constants";
 import { poseLitWallProbe, tileGap, visibilityAt } from "../fixtures";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -91,7 +86,7 @@ it("lights the rock closing a corridor and leaves the tile behind it dark", asyn
   // Before the assertions, so a check that fails still leaves the picture.
   await captureStill(h, "walls");
 
-  assertNull(sceneHeld(snap, guard), "the scenario held to the end");
+  requireSceneHeld(h, snap, guard);
 
   // The fixture's own geometry, from the specification's figures rather than from
   // the build's readings.

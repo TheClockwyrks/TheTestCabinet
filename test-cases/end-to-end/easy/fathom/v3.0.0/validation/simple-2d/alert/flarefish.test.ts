@@ -46,7 +46,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze, poseSightLine } from "../fixtures";
 import {
@@ -63,11 +62,11 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   separation,
-  unmetPrecondition,
   type SceneWatch,
+  unmetPrecondition,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
@@ -282,8 +281,9 @@ it("The Flarefish fires the alert on a fresh fix", async (ctx) => {
       return { fired, window, end: h.snapshot() };
     });
 
-    assertNull(
-      sceneHeld(lit.end, watch),
+    requireSceneHeld(
+      lit.end,
+      watch,
       "the light-sense scenario held to the end",
     );
     assertEqual(
@@ -347,10 +347,7 @@ it("The Flarefish fires the alert on a fresh fix", async (ctx) => {
     }
     const flare = await watchWindow(h, index);
 
-    assertNull(
-      sceneHeld(flare.after, watch),
-      "the flare scenario held to the end",
-    );
+    requireSceneHeld(flare.after, watch, "the flare scenario held to the end");
     // The fixture's own geometry, against the figures the specification fixes.
     assertLessThanOrEqual(
       flareGap,

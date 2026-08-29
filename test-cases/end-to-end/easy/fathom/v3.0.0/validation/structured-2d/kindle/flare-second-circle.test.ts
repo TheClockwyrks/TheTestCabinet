@@ -44,7 +44,7 @@
 // than hanging: the sweep is bounded at the interval, the charge and the bloom
 // with a second's margin, and the check asserts the bloom actually arrived.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   FLARE_BLOOM,
   FLARE_CHARGE,
@@ -55,7 +55,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -71,13 +70,14 @@ import {
   visibilityAt,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { Tile } from "../maze";
 import { FOG_MATCH, windowRadius } from "./circle";
@@ -169,11 +169,20 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("A flare is a second window onto the maze", async () => {
+check("A flare is a second window onto the maze", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART, { at: { tx: 0, ty: 0 } });
   const ring = board.all("R");
   const unlit = board.mark("S");
+  // The ring's own pellets are taken off before anything is read. A plankton is
+  // drawn on the corridor tile of the pair and never on the rock above it, so the
+  // pellet alone would separate the two colors and a build that washed the disc
+  // flat under its own plankton would read as the trench.
+  // specs/instrumentation.md has `setPlankton` take one off without eating it, so
+  // nothing scores and no maze clears.
+  for (const tile of ring) {
+    h.debug.setPlankton(tile.tx, tile.ty, false);
+  }
 
   const flarefish = indexOfKind(h.snapshot(), "flarefish");
   if (flarefish < 0) {
@@ -298,7 +307,7 @@ it("A flare is a second window onto the maze", async () => {
     };
   });
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+  requireScene(h.snapshot(), guard);
 
   assertEqual(
     seen.blooming.hit,

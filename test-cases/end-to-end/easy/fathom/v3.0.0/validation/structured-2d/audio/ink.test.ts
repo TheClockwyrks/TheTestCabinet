@@ -27,9 +27,9 @@
 // `lanternjaw/*`, `gloamfin/*` and `flarefish/*` points own; how long it stands,
 // which is `ink/cloud`'s; the cooldown it starts, which is `ink/cooldown`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BINDINGS, CUES } from "../../src/constants";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -38,11 +38,12 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
 
@@ -84,55 +85,58 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.ink on the tick the forager releases ink, and not before", async () => {
-  startPlaying(h);
-  const quiet = await denAll(h);
-  await parkForager(h);
-  await clearUnderfoot(h);
-  h.debug.setInkCooldown(0);
-  const watch = await sceneGuard(h, quiet);
+check(
+  "plays CUES.ink on the tick the forager releases ink, and not before",
+  async () => {
+    startPlaying(h);
+    const quiet = await denAll(h);
+    await parkForager(h);
+    await clearUnderfoot(h);
+    h.debug.setInkCooldown(0);
+    const watch = await sceneGuard(h, quiet);
 
-  const seen = await captureReplay(h, "ink", async () => {
-    try {
-      const found = await watchForEvent(
-        h,
-        (s) => s.inkClouds.length > 0,
-        QUIET_LEAD + RELEASE_TICKS,
-        {
-          quietLead: QUIET_LEAD,
-          arm: () => {
-            h.hold(INK_KEY);
+    const seen = await captureReplay(h, "ink", async () => {
+      try {
+        const found = await watchForEvent(
+          h,
+          (s) => s.inkClouds.length > 0,
+          QUIET_LEAD + RELEASE_TICKS,
+          {
+            quietLead: QUIET_LEAD,
+            arm: () => {
+              h.hold(INK_KEY);
+            },
           },
-        },
-      );
-      // Held on past the reading, so the clip shows the cloud standing. Nothing
-      // after this line can reach an assertion.
-      await h.advance(TAIL_TICKS);
-      return found;
-    } finally {
-      h.release(INK_KEY);
-    }
-  });
+        );
+        // Held on past the reading, so the clip shows the cloud standing. Nothing
+        // after this line can reach an assertion.
+        await h.advance(TAIL_TICKS);
+        return found;
+      } finally {
+        h.release(INK_KEY);
+      }
+    });
 
-  assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireScene(h.snapshot(), watch);
 
-  assertEqual(
-    seen.hit,
-    true,
-    `an ink cloud stood on the board inside the ${String(RELEASE_TICKS)} ticks ` +
-      "the check holds Shift for, with the cooldown posed ready",
-  );
-  assertEqual(
-    cuesBeforeEvent(seen, CUES.ink),
-    0,
-    `times CUES.ink played over the ${String(seen.at - 1)} ticks before the ` +
-      "release — a cue is played on the tick its event happens " +
-      "(specs/progression.md)",
-  );
-  assertEqual(
-    cuesOnEvent(seen, CUES.ink),
-    1,
-    "times CUES.ink played on the tick the forager released its cloud, which " +
-      "is its own tick and at most once on it (specs/progression.md)",
-  );
-});
+    assertEqual(
+      seen.hit,
+      true,
+      `an ink cloud stood on the board inside the ${String(RELEASE_TICKS)} ticks ` +
+        "the check holds Shift for, with the cooldown posed ready",
+    );
+    assertEqual(
+      cuesBeforeEvent(seen, CUES.ink),
+      0,
+      `times CUES.ink played over the ${String(seen.at - 1)} ticks before the ` +
+        "release — a cue is played on the tick its event happens " +
+        "(specs/progression.md)",
+    );
+    assertEqual(
+      cuesOnEvent(seen, CUES.ink),
+      1,
+      "times CUES.ink played on the tick the forager released its cloud, which " +
+        "is its own tick and at most once on it (specs/progression.md)",
+    );
+  },
+);

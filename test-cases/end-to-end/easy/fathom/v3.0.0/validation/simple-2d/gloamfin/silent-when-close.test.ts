@@ -32,7 +32,6 @@ import {
   assertDeepEqual,
   assertEqual,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import {
@@ -53,8 +52,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { apart, gloamfinOf, placeForager, placePredator, sweep } from "./pings";
 
@@ -155,7 +154,7 @@ it("It goes silent while it holds you by ear", async (ctx) => {
       return { held, apartNow, ping };
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
 
     // The scenario stood as posed: the pair inside hearing range, and neither of
     // them anywhere but the tile it was walled into.

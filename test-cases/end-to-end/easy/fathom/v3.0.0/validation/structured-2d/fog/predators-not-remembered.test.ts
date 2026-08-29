@@ -34,13 +34,12 @@
 // reach is what `fog/unrevealed-black` uses for two tiles being drawn alike, and
 // it is used here for the same question about one tile at two moments.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TILE, VISION_GAIN, VISION_MIN } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -56,13 +55,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   requireSwim,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { Tile } from "../maze";
 
@@ -121,7 +121,7 @@ function tileColor(snapshot: ReturnType<Harness["snapshot"]>, tile: Tile) {
   return sampleColor(h, at.x, at.y);
 }
 
-it("Predator bodies are not remembered", async () => {
+check("Predator bodies are not remembered", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const stand = board.mark("T");
@@ -188,7 +188,7 @@ it("Predator bodies are not remembered", async () => {
     return { held, litPixel, swum, gone, gonePixel };
   });
 
-  assertNull(sceneHeld(reading.gone, watch), "the scenario held to the end");
+  requireScene(reading.gone, watch);
 
   // Whether the forager swims is `controls/*` and `maze-movement/*`'s verdict.
   if (!reading.swum.hit) {

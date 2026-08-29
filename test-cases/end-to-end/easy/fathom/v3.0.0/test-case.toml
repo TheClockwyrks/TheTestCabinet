@@ -747,11 +747,12 @@ title = "Maze movement"
 [[review.categories.items]]
 id = "constant-speed"
 title = "The forager travels at a constant speed"
-description = "Running a straight corridor, the forager covers ground at FORAGER_SPEED (128 logical units per second) within 2 percent, measured over a stretch of at least four tiles, with no ramp at the start and no drift over the run."
+description = "Running a straight corridor, the forager covers ground at FORAGER_SPEED (128 logical units per second) within 2 percent, measured over a stretch of at least four tiles, with no ramp at the start and no drift over the run, and the same figure on a corridor running down as on one running right."
 domains = ["navigation"]
 failure_cap = "scuffed"
-# Automated validation: pose a long straight corridor, hold one direction, and
-# measure the distance covered against the simulated time it took. See
+# Automated validation: pose a long straight corridor, hold the direction along
+# it, and measure the distance covered against the simulated time it took; then
+# the same reading on a corridor running down. See
 # validation/<engine>/maze-movement/constant-speed.test.ts.
 validation = { script = "maze-movement/constant-speed.test.ts", outputs = [
   { id = "run", name = "The forager running a straight corridor", kind = "replay" },

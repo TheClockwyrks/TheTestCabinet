@@ -39,9 +39,9 @@
 // the forager once the run is laid out, so it stays under ordinary player control
 // and answers the held action exactly as it does for a player.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { FORAGER_SPEED, TILE } from "../../src/constants";
-import { assertEqual, assertGreaterThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   captureReplay,
@@ -50,7 +50,7 @@ import {
   TICK_HZ,
   type Harness,
 } from "../harness";
-import { denAll, sceneGuard, sceneHeld } from "../scene";
+import { check, denAll, requireScene, sceneGuard } from "../scene";
 
 /** The first key specs/movement.md binds the `right` action to. */
 const KEY = "ArrowRight";
@@ -91,7 +91,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("ArrowRight swims the forager right", async () => {
+check("ArrowRight swims the forager right", async () => {
   startPlaying(h);
   // A seven-tile corridor with the forager resting in the middle of it, facing
   // the rock across the corridor rather than along the run.
@@ -121,7 +121,7 @@ it("ArrowRight swims the forager right", async () => {
     return { before, after };
   });
 
-  assertNull(sceneHeld(swim.after, watch), "the scenario held to the end");
+  requireScene(swim.after, watch);
 
   assertEqual(
     swim.after.forager.moving,

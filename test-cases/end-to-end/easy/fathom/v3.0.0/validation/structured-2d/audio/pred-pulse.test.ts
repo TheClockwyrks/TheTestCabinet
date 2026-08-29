@@ -32,9 +32,9 @@
 // `gloamfin/ping-reveals-nothing`'s; its color, which is
 // `gloamfin/lost-you-orange`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { CUES, GLOAMFIN_PING_INTERVAL } from "../../src/constants";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import { poseApart } from "../fixtures";
 import {
   captureReplay,
@@ -44,12 +44,13 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   parkForager,
   requireKind,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
 
@@ -84,51 +85,54 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.predatorPing on the tick a Gloamfin casts its ping, and not before", async () => {
-  startPlaying(h);
-  const rooms = await poseApart(h, APART_TILES);
-  const gloamfin = requireKind(h.snapshot(), "gloamfin");
+check(
+  "plays CUES.predatorPing on the tick a Gloamfin casts its ping, and not before",
+  async () => {
+    startPlaying(h);
+    const rooms = await poseApart(h, APART_TILES);
+    const gloamfin = requireKind(h.snapshot(), "gloamfin");
 
-  h.debug.setPredatorTile(gloamfin, rooms.far.tx, rooms.far.ty);
-  h.debug.setPredatorState(gloamfin, "wander");
-  const quiet = await denAll(h, [gloamfin]);
-  await parkForager(h, rooms.near);
-  await clearUnderfoot(h);
-  const watch = await sceneGuard(h, quiet);
+    h.debug.setPredatorTile(gloamfin, rooms.far.tx, rooms.far.ty);
+    h.debug.setPredatorState(gloamfin, "wander");
+    const quiet = await denAll(h, [gloamfin]);
+    await parkForager(h, rooms.near);
+    await clearUnderfoot(h);
+    const watch = await sceneGuard(h, quiet);
 
-  const seen = await captureReplay(h, "pulse", async () => {
-    const found = await watchForEvent(
-      h,
-      (s) => s.pulses.some((pulse) => pulse.source === "gloamfin"),
-      PING_TICKS,
+    const seen = await captureReplay(h, "pulse", async () => {
+      const found = await watchForEvent(
+        h,
+        (s) => s.pulses.some((pulse) => pulse.source === "gloamfin"),
+        PING_TICKS,
+      );
+      // Past the reading, so the clip shows the ping crossing its ring. Nothing
+      // after this line can reach an assertion.
+      await h.advance(TAIL_TICKS);
+      return found;
+    });
+
+    requireScene(h.snapshot(), watch);
+
+    assertEqual(
+      seen.hit,
+      true,
+      `the wandering Gloamfin cast one of its own pings inside ${String(PING_TICKS)} ` +
+        `ticks, which is twice its GLOAMFIN_PING_INTERVAL ` +
+        `(${String(GLOAMFIN_PING_INTERVAL)} s) cadence`,
     );
-    // Past the reading, so the clip shows the ping crossing its ring. Nothing
-    // after this line can reach an assertion.
-    await h.advance(TAIL_TICKS);
-    return found;
-  });
-
-  assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
-
-  assertEqual(
-    seen.hit,
-    true,
-    `the wandering Gloamfin cast one of its own pings inside ${String(PING_TICKS)} ` +
-      `ticks, which is twice its GLOAMFIN_PING_INTERVAL ` +
-      `(${String(GLOAMFIN_PING_INTERVAL)} s) cadence`,
-  );
-  assertEqual(
-    cuesBeforeEvent(seen, CUES.predatorPing),
-    0,
-    `times CUES.predatorPing played over the ${String(seen.at - 1)} ticks ` +
-      "before the ping — a cue is played on the tick its event happens " +
-      "(specs/progression.md)",
-  );
-  assertEqual(
-    cuesOnEvent(seen, CUES.predatorPing),
-    1,
-    "times CUES.predatorPing played on the tick the Gloamfin's ping entered " +
-      "flight, which is its own tick and at most once on it " +
-      "(specs/progression.md)",
-  );
-});
+    assertEqual(
+      cuesBeforeEvent(seen, CUES.predatorPing),
+      0,
+      `times CUES.predatorPing played over the ${String(seen.at - 1)} ticks ` +
+        "before the ping — a cue is played on the tick its event happens " +
+        "(specs/progression.md)",
+    );
+    assertEqual(
+      cuesOnEvent(seen, CUES.predatorPing),
+      1,
+      "times CUES.predatorPing played on the tick the Gloamfin's ping entered " +
+        "flight, which is its own tick and at most once on it " +
+        "(specs/progression.md)",
+    );
+  },
+);

@@ -43,7 +43,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
-  assertNull,
 } from "../assert";
 import { GLOAMFIN_HEAR, INK_LIFE, TICK_HZ, TILE } from "../constants";
 import { placePredator, poseMaze } from "../fixtures";
@@ -58,8 +57,8 @@ import {
   parkForager,
   quietBoard,
   requirePredatorMotion,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import { apart, gloamfinOf, requireGloamfin, sweep } from "./pings";
@@ -215,10 +214,7 @@ it("Ink does nothing to it", async () => {
     };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   for (const [what, crossing, opening, closed] of [
     [

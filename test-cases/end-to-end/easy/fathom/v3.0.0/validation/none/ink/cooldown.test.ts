@@ -32,7 +32,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { BINDINGS, INK_COOLDOWN, TICK_DT, TICK_HZ } from "../constants";
 import { poseStraightRun } from "../fixtures";
@@ -41,8 +40,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -166,10 +165,7 @@ it("arms INK_COOLDOWN on a cloud, refuses a press inside it, and is ready again 
     return { before, armed, beforeSecond, afterSecond, samples, ready };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), watch),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), watch);
 
   // Armed, at the full figure.
   assertEqual(

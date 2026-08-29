@@ -27,12 +27,7 @@
 // and this one reads the fog, so a build can fail either alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLessThan,
-  assertLessThanOrEqual,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
 import { SONAR_WAVE_SPEED, TICK_DT, TILE } from "../../src/constants";
 import { poseStraightRun } from "../fixtures";
 import {
@@ -48,11 +43,11 @@ import {
   denAll,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
-import { emitPulse, sinceEmit } from "./pulse";
+import { emitPulse, requireFogMemory, sinceEmit } from "./pulse";
 
 /** The corridor, in tiles: the forager's own plus nine steps out. */
 const RUN_TILES = 10;
@@ -156,7 +151,13 @@ it("reveals a tile 4 corridor steps out before one 8 steps out, each as the fron
       return { emitted, arrivedNear, arrivedFar };
     });
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
+
+    // Every reading above is of the fog's MEMORY of a front that has already
+    // passed, so a build that keeps nothing it reveals answers "u" at all of
+    // them and reads exactly like one whose pulse revealed nothing. Taken here,
+    // after the readings, so it costs a clean run nothing.
+    await requireFogMemory(h);
 
     for (const arrival of [
       { steps: NEAR_STEPS, at: flood.arrivedNear, tile: near },

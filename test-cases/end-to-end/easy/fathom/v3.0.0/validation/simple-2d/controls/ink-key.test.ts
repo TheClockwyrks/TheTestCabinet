@@ -29,7 +29,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertNotEqual,
-  assertNull,
 } from "../assert";
 import {
   FORAGER_SPEED,
@@ -49,8 +48,8 @@ import {
   denAll,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /** The first key specs/movement.md binds the `b` action to. */
@@ -132,7 +131,7 @@ it("releases an ink cloud on Shift", async (ctx) => {
       return { armed, released };
     });
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     // The premise this point's own description states, posed through
     // `setInkCooldown(0)`: "At `0` ink is ready and the snapshot reports

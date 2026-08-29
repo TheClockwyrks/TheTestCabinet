@@ -39,7 +39,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import {
@@ -65,8 +64,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -155,7 +154,7 @@ it("draws the drifter's mote and the Lanternjaw's bulb as near-identical amber l
   const after = await h.snapshot();
   await captureStill(h, "amber");
 
-  assertNull(sceneHeld(after, guard), "the scenario held to the end");
+  requireSceneHeld(h, after, guard);
   assertEqual(
     after.drifters.length,
     1,

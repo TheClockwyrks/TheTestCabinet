@@ -30,7 +30,7 @@
 // the scenario reads off the pulse itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNotEqual, assertNull } from "../assert";
+import { assertEqual, assertNotEqual } from "../assert";
 import { SONAR_RANGE_BASE } from "../../src/constants";
 import { poseMaze } from "../fixtures";
 import {
@@ -46,10 +46,10 @@ import {
   denAll,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
-import { emitPulse, foragerPulse } from "./pulse";
+import { emitPulse, foragerPulse, requireFogMemory } from "./pulse";
 
 /**
  * The board: the forager's corridor with a junction and a corner on it, a leg
@@ -174,7 +174,14 @@ it("floods the corridors around a corner and through a junction with their rock,
     // reviewer needs to see which half of the board went wrong.
     captureStill(h, "walls");
 
-    assertNull(sceneHeld(snapshot, watch), "the scenario held to the end");
+    requireSceneHeld(snapshot, watch);
+
+    // Every reading above is of the fog's MEMORY of a front that has already
+    // passed, so a build that keeps nothing it reveals answers "u" at all of
+    // them and reads exactly like one whose pulse revealed nothing. Taken here,
+    // after the readings, so it costs a clean run nothing.
+    await requireFogMemory(h);
+
     assertEqual(
       swept.hit,
       true,

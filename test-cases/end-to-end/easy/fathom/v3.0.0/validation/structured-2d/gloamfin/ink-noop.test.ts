@@ -38,12 +38,11 @@
 // what ink does to the hunters it DOES blind (`lanternjaw/*`, `flarefish/*`), or
 // what a cloud costs to release (`ink/*`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
-  assertNull,
 } from "../assert";
 import { GLOAMFIN_HEAR, INK_LIFE, TICK_HZ, TILE } from "../../src/constants";
 import { poseMaze } from "../fixtures";
@@ -55,13 +54,14 @@ import {
 } from "../harness";
 import type { FathomSnapshot } from "../surface";
 import {
+  check,
   denAll,
   parkForager,
   quietBoard,
   requireKind,
   requirePredatorMotion,
+  requireScene,
   sceneGuard,
-  sceneHeld,
   standDown,
 } from "../scene";
 import { apart, gloamfinOf, placePredator, sweep } from "./pings";
@@ -168,7 +168,7 @@ async function releaseInk(what: string): Promise<void> {
   }
 }
 
-it("Ink does nothing to it", async () => {
+check("Ink does nothing to it", async () => {
   startPlaying(h);
   const board = await poseMaze(h, STANDOFF);
   const index = requireKind(h.snapshot(), "gloamfin");
@@ -217,7 +217,7 @@ it("Ink does nothing to it", async () => {
     };
   });
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+  requireScene(h.snapshot(), guard);
 
   for (const [what, crossing, opening, closed] of [
     [

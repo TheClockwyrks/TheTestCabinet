@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { SCORE_PLANKTON } from "../../src/constants";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,
@@ -37,7 +37,13 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { denAll, graded, requireSwim, sceneGuard, sceneHeld } from "../scene";
+import {
+  denAll,
+  graded,
+  requireSceneHeld,
+  requireSwim,
+  sceneGuard,
+} from "../scene";
 
 /**
  * The board: five tiles of straight corridor, the forager resting on the first
@@ -119,10 +125,7 @@ it("Plankton score SCORE_PLANKTON each", async (ctx) => {
       return { before, after, revisited: h.snapshot(), hit: eaten.hit };
     });
 
-    assertNull(
-      sceneHeld(bite.revisited, watch),
-      "the scenario held to the end",
-    );
+    requireSceneHeld(bite.revisited, watch);
     if (!bite.hit) {
       requireSwim(
         bite.before.forager,

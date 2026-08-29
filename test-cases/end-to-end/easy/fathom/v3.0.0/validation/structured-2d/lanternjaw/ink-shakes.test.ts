@@ -27,13 +27,12 @@
 // `lanternjaw/light-range`'s. A build that fails either stands this check down
 // rather than being failed twice for one fault.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BINDINGS, LINGER_TIME } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import { poseInkStandoff } from "../fixtures";
@@ -46,13 +45,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /** The key specs/movement.md binds the `b` action — "releases an ink cloud" — to. */
@@ -113,7 +113,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Ink shakes its fix at once", async () => {
+check("Ink shakes its fix at once", async () => {
   startPlaying(h);
   const stand = await poseInkStandoff(h, { gap: GAP_TILES });
   const index = indexOfKind(h.snapshot(), "lanternjaw");
@@ -178,7 +178,7 @@ it("Ink shakes its fix at once", async () => {
     return { released, dropped, seen, watched, end: h.snapshot() };
   });
 
-  assertNull(sceneHeld(broke.end, guard), "the scenario held to the end");
+  requireScene(broke.end, guard);
 
   assertEqual(
     broke.dropped.hit,

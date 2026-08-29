@@ -23,7 +23,7 @@
 // samples within 25 of the 441 an RGB distance can reach.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseDarkPatch } from "../fixtures";
 import {
   captureStill,
@@ -39,8 +39,8 @@ import {
   clearUnderfoot,
   denAll,
   graded,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /** The review item's ceiling: a tenth of full brightness, per channel. */
@@ -87,7 +87,7 @@ it("Unrevealed maze is flat dark fog", async (ctx) => {
     const after = h.snapshot();
     captureStill(h, "fog");
 
-    assertNull(sceneHeld(after, watch), "the scenario held to the end");
+    requireSceneHeld(after, watch);
 
     assertEqual(
       visibilityOf(after, patch.dark),

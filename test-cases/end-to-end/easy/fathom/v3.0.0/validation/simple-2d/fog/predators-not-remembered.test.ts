@@ -40,7 +40,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -60,9 +59,9 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 
@@ -176,7 +175,7 @@ it("Predator bodies are not remembered", async (ctx) => {
       return { held, litPixel, swum, gone, gonePixel };
     });
 
-    assertNull(sceneHeld(reading.gone, watch), "the scenario held to the end");
+    requireSceneHeld(reading.gone, watch);
 
     // Whether the forager swims is `controls/*` and `maze-movement/*`'s verdict.
     if (!reading.swum.hit) {

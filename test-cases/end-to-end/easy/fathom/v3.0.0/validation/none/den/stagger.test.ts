@@ -38,7 +38,7 @@ import {
 } from "../assert";
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
-import { sceneGuard, sceneHeld } from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 import {
   DEN_ORDER_LINE,
   RELEASE_TOLERANCE,
@@ -114,10 +114,7 @@ it("releases the den one predator at a time, DEN_RELEASE_GAP apart, in DEN_ORDER
     return { countdown, started, den, guard };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), watch.guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), watch.guard);
 
   // The schedule is read off `released`, so a build that does not report it sees
   // no releases at all — which would otherwise read as a den that never opened.

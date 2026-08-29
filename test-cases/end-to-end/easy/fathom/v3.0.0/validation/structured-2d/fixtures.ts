@@ -25,6 +25,7 @@
 // promises. Every call below is awaited, which is correct under both.
 
 import { fail } from "./assert";
+import { unmetPrecondition } from "./scene";
 import {
   CORRIDOR,
   DEN,
@@ -298,8 +299,8 @@ export function looseOf(
  * The full contract, rock included, is graded by
  * `controls/setmaze-houses-predators`, which poses with `housed: false` and
  * asserts the housing itself. This is the narrower question of whether THIS
- * scenario can still be read, so it names that point as the one that owns the
- * verdict.
+ * scenario can still be read, so it DECLINES, naming that point as the one that
+ * owns the verdict.
  *
  * A layout with no den at all is not checked: specs/instrumentation.md holds such
  * a predator out of play rather than fixing a tile for it.
@@ -311,13 +312,13 @@ export function requireHoused(board: FixtureBoard): void {
     (one) => one.ground === "open corridor",
   );
   if (loose.length === 0) return;
-  fail(
-    "setMaze to return every predator to a den tile of the posed fixture, " +
-      "which carries one (specs/instrumentation.md); a hunter left standing " +
-      "in open corridor can reach the forager and end the scenario, so this " +
-      "point's own claim was never measured — the housing contract is " +
-      "controls/setmaze-houses-predators' verdict to give",
-    loose.map((one) => one.where).join("; "),
+  unmetPrecondition(
+    "Expected: setMaze to return every predator to a den tile of the posed " +
+      "fixture, which carries one (specs/instrumentation.md); a hunter left " +
+      "standing in open corridor can reach the forager and end the scenario, " +
+      "so this point's own claim was never measured — the housing contract is " +
+      "controls/setmaze-houses-predators' verdict to give\nActual: " +
+      loose.map((one) => one.where).join("; "),
   );
 }
 

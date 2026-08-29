@@ -34,7 +34,7 @@
 // and no amount of patrolling can end the scenario by contact.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLessThanOrEqual, assertNotEqual, assertNull } from "../assert";
+import { assertLessThanOrEqual, assertNotEqual } from "../assert";
 import { TICK_DT, TICK_HZ } from "../constants";
 import { placePredator, poseMaze, predatorIndex } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
@@ -42,8 +42,8 @@ import {
   denAllExcept,
   parkForager,
   requirePredatorMotion,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -197,10 +197,7 @@ it("advances only when the driver steps it, by exactly the ticks it is given", a
     return { before, after, stepFrom, stepTo, splitFrom, splitTo };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // The witness has to be able to move for "nothing moved" to mean anything, and
   // whether a predator patrols under its own power is the den and patrol points'

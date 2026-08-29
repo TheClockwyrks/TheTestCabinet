@@ -33,12 +33,7 @@
 // and this point turns on the drawing rather than on a wander it does not claim.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertNotNull,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
 import { VISION_GAIN, VISION_MIN } from "../constants";
 import { poseMaze, visibilityAt } from "../fixtures";
 import {
@@ -55,8 +50,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -126,7 +121,7 @@ it("draws a drifter's warm mote out in unrevealed fog, far past every light", as
   // Before the assertions, so a check that fails still leaves the picture.
   await captureStill(h, "amber");
 
-  assertNull(sceneHeld(after, guard), "the scenario held to the end");
+  requireSceneHeld(h, after, guard);
 
   assertEqual(
     after.drifters.length,

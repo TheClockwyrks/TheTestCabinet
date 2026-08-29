@@ -45,7 +45,6 @@ import {
   assertGreaterThan,
   assertLessThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import {
   BINDINGS,
@@ -62,8 +61,8 @@ import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import {
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -176,10 +175,7 @@ it("drops the Flarefish's fix the moment ink lands, and it takes no new one whil
     return { fixed, inked, broke, refixed, ended };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // The premise: it was chasing, and there was a cloud.
   if (run.fixed.predators[index].state !== "chase") {

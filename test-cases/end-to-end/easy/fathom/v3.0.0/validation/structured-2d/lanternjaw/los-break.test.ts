@@ -25,8 +25,8 @@
 // brightness is `brightness/widens-lanternjaw`'s. Both halves here stand at a
 // fraction of the range so neither turns on either.
 
-import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThan, assertNull, assertTrue } from "../assert";
+import { afterEach, beforeEach } from "vitest";
+import { assertEqual, assertLessThan, assertTrue } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,
@@ -36,13 +36,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
@@ -97,7 +98,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Rock breaks its sense", async () => {
+check("Rock breaks its sense", async () => {
   startPlaying(h);
   // The forager's corridor carries `C`, the clear-line standoff, `GAP_TILES` along
   // it; `P` sits the same number of ROWS below, with the rows between it and the
@@ -160,7 +161,7 @@ it("Rock breaks its sense", async () => {
     };
   });
 
-  assertNull(sceneHeld(read.end, guard), "the scenario held to the end");
+  requireScene(read.end, guard);
 
   // The fixture's own geometry: both standoffs are well inside the range the build
   // itself reports, so the rock is the only thing that differs.

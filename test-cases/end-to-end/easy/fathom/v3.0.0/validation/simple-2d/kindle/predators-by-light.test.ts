@@ -36,7 +36,6 @@ import {
   assertGreaterThan,
   assertLessThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -53,8 +52,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import {
@@ -122,7 +121,7 @@ it("Predators are drawn by the light, not the circle", async (ctx) => {
     // the hunter that should not be there.
     captureStill(h, "bylight");
 
-    assertNull(sceneHeld(beyondLight, watch), "the scenario held to the end");
+    requireSceneHeld(beyondLight, watch);
 
     const hunter = beyondLight.predators[gloamfin];
     const gap = fromForager(beyondLight, hunter.x, hunter.y);

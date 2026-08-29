@@ -31,7 +31,7 @@
 // NO SCENE GUARD. The guard's first finding is a screen that changed under the
 // measurement, which here is the subject.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { INK_COOLDOWN, SONAR_COOLDOWN } from "../../src/constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
@@ -44,7 +44,7 @@ import {
   type Harness,
 } from "../harness";
 import { corridorDirs, corridorTiles, type Tile } from "../maze";
-import { denAll, failPrecondition, requireSwim } from "../scene";
+import { check, denAll, failPrecondition, requireSwim } from "../scene";
 
 /**
  * Ticks the forager travels away from its start tile before the catch.
@@ -85,7 +85,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Contact costs a life and sets the board up again", async () => {
+check("Contact costs a life and sets the board up again", async () => {
   const opened = startPlaying(h);
   const startTile: Tile = { tx: opened.forager.tx, ty: opened.forager.ty };
   if (opened.predators.length === 0) {

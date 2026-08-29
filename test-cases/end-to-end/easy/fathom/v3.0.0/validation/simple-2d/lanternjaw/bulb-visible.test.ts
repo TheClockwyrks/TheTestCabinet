@@ -36,7 +36,6 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertNotNull,
-  assertNull,
 } from "../assert";
 import { poseOccludedPair } from "../fixtures";
 import {
@@ -55,8 +54,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { brightestWarm, warm } from "./motes";
 import type { Tile } from "../maze";
@@ -129,7 +128,7 @@ it("Its bulb shows at any distance", async (ctx) => {
     // shows the reviewer what was and was not drawn out there.
     captureStill(h, "bulb");
 
-    assertNull(sceneHeld(snapshot, watch), "the scenario held to the end");
+    requireSceneHeld(snapshot, watch);
 
     // The fixture's own claim: the hunter stands on ground nothing has revealed,
     // and the fog it is read against is equally untouched.

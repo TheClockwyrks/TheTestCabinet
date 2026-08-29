@@ -32,7 +32,7 @@
 // contents — and what the pause overlay looks like, which is the aesthetic
 // rating's.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { BRIGHT_HOLD, PAUSE_ITEMS } from "../../src/constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
@@ -42,7 +42,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { denAll } from "../scene";
+import { check, denAll } from "../scene";
 import {
   CONFIRM_KEY,
   MOVE_KEY,
@@ -90,7 +90,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("freezes the dive behind its menu, and resumes", async () => {
+check("freezes the dive behind its menu, and resumes", async () => {
   startPlaying(h);
   // One hunter loose and patrolling, the rest put away so only the one that is
   // supposed to hold still is on the board.

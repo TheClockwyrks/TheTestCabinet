@@ -26,7 +26,7 @@
 // corridors (`maze-movement/predators-keep-to-corridors`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { PREDATOR_SPEED, TICK_HZ } from "../../src/constants";
 import { poseApart } from "../fixtures";
 import {
@@ -42,8 +42,8 @@ import {
   parkForager,
   requirePred,
   requirePredatorMotion,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { gloamfinOf, groundBetween, placePredator } from "./pings";
 
@@ -178,7 +178,7 @@ it("It wanders at a steady PREDATOR_SPEED", async (ctx) => {
       return measured;
     });
 
-    assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), guard);
 
     for (const [when, window] of [
       ["a moment after it was set loose", early],

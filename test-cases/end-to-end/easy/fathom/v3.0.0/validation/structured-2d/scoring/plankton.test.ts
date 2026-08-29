@@ -25,9 +25,9 @@
 // THE PELLET IS AT A DEAD END, so the forager comes to rest on the very tile it
 // ate from and stays there while the reading is taken.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { SCORE_PLANKTON } from "../../src/constants";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import { placeForager, poseMaze } from "../fixtures";
 import {
   captureReplay,
@@ -37,7 +37,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { denAll, requireSwim, sceneGuard, sceneHeld } from "../scene";
+import { check, denAll, requireScene, requireSwim, sceneGuard } from "../scene";
 
 /**
  * The board: five tiles of straight corridor, the forager resting on the first
@@ -81,7 +81,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Plankton score SCORE_PLANKTON each", async () => {
+check("Plankton score SCORE_PLANKTON each", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const start = board.mark("S");
@@ -117,7 +117,7 @@ it("Plankton score SCORE_PLANKTON each", async () => {
     return { before, after, revisited: h.snapshot(), hit: eaten.hit };
   });
 
-  assertNull(sceneHeld(bite.revisited, guard), "the scenario held to the end");
+  requireScene(bite.revisited, guard);
   if (!bite.hit) {
     requireSwim(
       bite.before.forager,

@@ -20,7 +20,8 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
+import { check } from "../scene";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { symmetryMismatches } from "../maze";
@@ -45,22 +46,25 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("lays out a maze that mirrors about the axis between columns 17 and 18", async () => {
-  const boards = freshBoards(h);
-  requireLaidOut(boards);
+check(
+  "lays out a maze that mirrors about the axis between columns 17 and 18",
+  async () => {
+    const boards = freshBoards(h);
+    requireLaidOut(boards);
 
-  const measured = boards.map((board) => {
-    const mismatches = symmetryMismatches(board.snapshot);
-    return { board, mismatches, ok: mismatches === MAX_MISMATCHES };
-  });
-  await captureBoard(h, witness(measured).board);
+    const measured = boards.map((board) => {
+      const mismatches = symmetryMismatches(board.snapshot);
+      return { board, mismatches, ok: mismatches === MAX_MISMATCHES };
+    });
+    await captureBoard(h, witness(measured).board);
 
-  for (const one of measured) {
-    assertEqual(
-      one.mismatches,
-      MAX_MISMATCHES,
-      `cells that disagree with their mirror about being rock, den interior and ` +
-        `den gate exempt, in the maze laid out from seed ${one.board.seed}`,
-    );
-  }
-});
+    for (const one of measured) {
+      assertEqual(
+        one.mismatches,
+        MAX_MISMATCHES,
+        `cells that disagree with their mirror about being rock, den interior and ` +
+          `den gate exempt, in the maze laid out from seed ${one.board.seed}`,
+      );
+    }
+  },
+);

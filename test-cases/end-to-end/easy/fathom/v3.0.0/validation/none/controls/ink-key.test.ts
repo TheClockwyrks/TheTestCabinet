@@ -29,12 +29,16 @@ import {
   assertEqual,
   assertGreaterThan,
   assertNotEqual,
-  assertNull,
 } from "../assert";
 import { FORAGER_SPEED, INK_LIFE, INK_RADIUS, TICK_DT } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
-import { quietBoard, sceneGuard, sceneHeld, startPlaying } from "../scene";
+import {
+  quietBoard,
+  requireSceneHeld,
+  sceneGuard,
+  startPlaying,
+} from "../scene";
 
 /** The first key specs/movement.md binds the `b` action to. */
 const KEY = "ShiftLeft";
@@ -112,10 +116,7 @@ it("releases an ink cloud on Shift", async () => {
     return { armed, released };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // The premise this point's own description states, posed through
   // `setInkCooldown(0)`: "At `0` ink is ready and the snapshot reports

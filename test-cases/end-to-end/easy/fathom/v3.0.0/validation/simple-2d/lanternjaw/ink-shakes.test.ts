@@ -33,7 +33,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import { poseInkStandoff } from "../fixtures";
@@ -51,8 +50,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 
@@ -171,7 +170,7 @@ it("Ink shakes its fix at once", async (ctx) => {
       return { released, dropped, seen, watched, end: h.snapshot() };
     });
 
-    assertNull(sceneHeld(broke.end, watch), "the scenario held to the end");
+    requireSceneHeld(broke.end, watch);
 
     assertEqual(
       broke.dropped.hit,

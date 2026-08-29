@@ -84,7 +84,7 @@ validation = { script = "kindle/grows-with-eating.test.ts", outputs = [
 [[review.categories.items]]
 id = "memory-windowed"
 title = "Hidden, but not forgotten"
-description = "A tile revealed earlier still reports visibility r once the forager has swum beyond windowRadius of it, even while the pixel there is painted with the flat fog, and bringing the forager back inside the radius draws it again with any uneaten plankton still on it."
+description = "A tile revealed earlier still reports visibility r once the forager has swum beyond windowRadius of it, even while the pixel there is painted with the flat fog, and bringing the forager back inside the radius draws it again with any uneaten plankton still on it; a tile the light has never reached still reports u while the circle covers it, and is painted with that same flat fog."
 domains = ["sensing"]
 failure_cap = "passable"
 # Automated validation: reveal a tile, swim past the radius and read its
@@ -121,7 +121,7 @@ validation = { script = "kindle/beyond-circle.test.ts", outputs = [
 [[review.categories.items]]
 id = "flare-second-circle"
 title = "A flare is a second window onto the maze"
-description = "A Flarefish blooming beyond the forager's vision circle draws the maze inside its bloom: a tile inside FLARE_RADIUS (192) of the Flarefish but beyond windowRadius of the forager is drawn while the bloom burns, differing from the flat fog by more than an RGB distance of 25 of 441, and is painted back to that fog once the bloom ends."
+description = "A Flarefish blooming beyond the forager's vision circle draws the maze inside its bloom: a tile inside FLARE_RADIUS (192) of the Flarefish but beyond windowRadius of the forager is drawn while the bloom burns, differing from the flat fog by more than an RGB distance of 25 of 441, a rock tile and the corridor tile beneath it inside the same bloom differ from each other by more than that, and the tile is painted back to that fog once the bloom ends."
 domains = ["sensing", "predators"]
 failure_cap = "passable"
 # Automated validation: pose a Flarefish well beyond the vision circle, let it

@@ -32,11 +32,11 @@
 // a tile in the right direction says "it went that way" and nothing more.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { TICK_HZ, TILE } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
-import { sceneGuard, sceneHeld, startPlaying } from "../scene";
+import { requireSceneHeld, sceneGuard, startPlaying } from "../scene";
 
 /** The key `specs/movement.md` binds the `right` action to. */
 const KEY = "ArrowRight";
@@ -103,10 +103,7 @@ it("swims the forager right while ArrowRight is held", async () => {
     return { before, after };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   assertEqual(moved.after.moving, true, "the forager reads as traveling");
   assertEqual(moved.after.dir, "right", "its heading");

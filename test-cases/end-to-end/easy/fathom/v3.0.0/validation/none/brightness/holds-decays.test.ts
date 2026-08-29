@@ -37,7 +37,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { ARROW_KEY, BRIGHT_HALFLIFE, BRIGHT_HOLD } from "../constants";
 import { poseStraightRun } from "../fixtures";
@@ -51,9 +50,9 @@ import {
 import {
   clearUnderfoot,
   parkForager,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -192,10 +191,7 @@ it("holds brightness for BRIGHT_HOLD, halves it every BRIGHT_HALFLIFE, and re-ar
     return { hold, decay, before, eaten, armed, stillHeld };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   // The hold: steady for the whole second.
   for (const sample of curve.hold) {

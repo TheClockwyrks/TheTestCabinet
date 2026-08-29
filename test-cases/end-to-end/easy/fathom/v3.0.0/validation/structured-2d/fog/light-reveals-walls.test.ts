@@ -31,14 +31,9 @@
 // forager's brightness is the one this check posed and no flare or pulse reveals
 // anything.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThan,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { poseLitWallProbe } from "../fixtures";
 import {
   captureStill,
@@ -48,7 +43,7 @@ import {
   visibilityAt,
   type Harness,
 } from "../harness";
-import { denAll, parkForager, sceneGuard, sceneHeld } from "../scene";
+import { check, denAll, parkForager, requireScene, sceneGuard } from "../scene";
 
 /**
  * Tiles of open water between the forager and the rock that closes the corridor.
@@ -75,7 +70,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The light reveals the rock it lands on and stops there", async () => {
+check("The light reveals the rock it lands on and stops there", async () => {
   startPlaying(h);
   const probe = await poseLitWallProbe(h, { run: PROBE_RUN });
   const quiet = await denAll(h);
@@ -92,7 +87,7 @@ it("The light reveals the rock it lands on and stops there", async () => {
   // Before the assertions, so a check that fails still leaves the picture.
   captureStill(h, "walls");
 
-  assertNull(sceneHeld(snapshot, watch), "the scenario held to the end");
+  requireScene(snapshot, watch);
 
   // The fixture's own geometry, from the specification's figures rather than from
   // the build's readings.

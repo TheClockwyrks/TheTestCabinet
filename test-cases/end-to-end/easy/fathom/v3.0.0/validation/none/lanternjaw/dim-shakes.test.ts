@@ -36,7 +36,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import {
   LANTERN_RANGE_BASE,
@@ -55,8 +54,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -169,7 +168,7 @@ it("Dimming shakes its fix", async () => {
     return { inside, gaveUp, at, end: await h.snapshot() };
   });
 
-  assertNull(sceneHeld(shaken.end, guard), "the scenario held to the end");
+  requireSceneHeld(h, shaken.end, guard);
   assertEqual(
     `${shaken.end.forager.tx},${shaken.end.forager.ty}`,
     `${line.slip.tx},${line.slip.ty}`,

@@ -36,7 +36,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
-import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   captureStill,
@@ -54,8 +54,8 @@ import {
   fromForager,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 
@@ -149,7 +149,7 @@ it("The whole explored map stays drawn", async (ctx) => {
     // shows the reviewer what the build drew out there.
     captureStill(h, "remembered");
 
-    assertNull(sceneHeld(after, watch), "the scenario held to the end");
+    requireSceneHeld(after, watch);
 
     // The fixture's own geometry, asserted rather than assumed: the tile that is
     // read stands further off than the light reaches at ANY brightness, and the

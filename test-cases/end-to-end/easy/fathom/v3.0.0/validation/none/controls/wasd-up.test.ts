@@ -41,11 +41,11 @@
 // own and every step of it is exercised here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { TICK_HZ, TILE } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import { captureReplay, createHarness, type Harness } from "../harness";
-import { sceneGuard, sceneHeld, startPlaying } from "../scene";
+import { requireSceneHeld, sceneGuard, startPlaying } from "../scene";
 
 /** The second key specs/movement.md binds the `up` action to. */
 const KEY = "KeyW";
@@ -112,10 +112,7 @@ it("swims the forager up while KeyW is held", async () => {
     return { before, after };
   });
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   assertEqual(moved.after.moving, true, "the forager reads as traveling");
   assertEqual(moved.after.dir, "up", "its heading");

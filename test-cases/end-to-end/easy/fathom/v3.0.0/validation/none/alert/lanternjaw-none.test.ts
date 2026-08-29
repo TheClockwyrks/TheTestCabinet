@@ -24,7 +24,7 @@
 // check down rather than passing it on an absence that means nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNull, assertTrue } from "../assert";
+import { assertEqual, assertTrue } from "../assert";
 import { ALERT_TIME } from "../constants";
 import { poseSightLine, predatorIndex } from "../fixtures";
 import {
@@ -38,8 +38,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -140,7 +140,7 @@ it("The Lanternjaw fires no alert", async () => {
     return { fixed, seen, end: await h.snapshot() };
   });
 
-  assertNull(sceneHeld(read.end, guard), "the scenario held to the end");
+  requireSceneHeld(h, read.end, guard);
 
   if (!read.fixed.hit) {
     h.unmet(

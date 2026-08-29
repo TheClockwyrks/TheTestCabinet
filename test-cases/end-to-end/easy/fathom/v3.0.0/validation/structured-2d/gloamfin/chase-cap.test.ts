@@ -31,12 +31,11 @@
 // patrol travels at (`gloamfin/wander-speed`), or how the fix was taken
 // (`gloamfin/fix-and-alert`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import {
   FORAGER_SPEED,
@@ -51,12 +50,13 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   quietBoard,
   requireKind,
   requirePredatorMotion,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { gloamfinOf, groundBetween, placePredator } from "./pings";
 
@@ -113,7 +113,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("It chases at GLOAMFIN_CHASE_SPEED", async () => {
+check("It chases at GLOAMFIN_CHASE_SPEED", async () => {
   startPlaying(h);
   const board = await poseMaze(h, RUN);
   const index = requireKind(h.snapshot(), "gloamfin");
@@ -165,7 +165,7 @@ it("It chases at GLOAMFIN_CHASE_SPEED", async () => {
     };
   });
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+  requireScene(h.snapshot(), guard);
   requirePredatorMotion(
     opening,
     run.settled,

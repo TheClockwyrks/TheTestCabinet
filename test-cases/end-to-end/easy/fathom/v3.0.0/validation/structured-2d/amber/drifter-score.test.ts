@@ -22,9 +22,9 @@
 // (specs/instrumentation.md), so the forager still travels, the bite is still the
 // game's own, and the only thing removed is the gamble.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { SCORE_DRIFTER } from "../../src/constants";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,
@@ -34,7 +34,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { denAll, requireSwim, sceneGuard, sceneHeld } from "../scene";
+import { check, denAll, requireScene, requireSwim, sceneGuard } from "../scene";
 
 /** Tiles of straight corridor posed as the whole board. */
 const RUN = 6;
@@ -65,7 +65,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Eating a drifter scores SCORE_DRIFTER", async () => {
+check("Eating a drifter scores SCORE_DRIFTER", async () => {
   startPlaying(h);
   const run = await poseStraightRun(h, RUN);
   for (let step = 0; step < RUN; step += 1) {
@@ -92,7 +92,7 @@ it("Eating a drifter scores SCORE_DRIFTER", async () => {
     return { before, after, hit: eaten.hit };
   });
 
-  assertNull(sceneHeld(bite.after, guard), "the scenario held to the end");
+  requireScene(bite.after, guard);
   if (!bite.hit) {
     requireSwim(
       bite.before.forager,

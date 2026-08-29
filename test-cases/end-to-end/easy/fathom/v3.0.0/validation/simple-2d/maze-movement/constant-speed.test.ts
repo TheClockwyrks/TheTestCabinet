@@ -18,14 +18,23 @@
 // fixture carries the sealed larder, so no amount of grazing along it can clear
 // the maze mid-measurement.
 //
+// AND IT IS READ ON BOTH AXES, because "wherever it is in the maze" is the other
+// half of the same sentence. A build that integrates its travel per axis, or that
+// carries a different figure for vertical corridors than for horizontal ones, is
+// constant along either run taken on its own and is not constant in the maze; one
+// axis alone cannot tell it from a conforming build. So the same four-stretch
+// reading is taken twice, on a corridor running right and on a corridor running
+// down, and both are held to the same figure.
+//
 // WHAT THIS DOES NOT DECIDE. Whether a held key reaches the forager at all, which
-// is `controls/move-right`'s; and where a turn is taken, which is
-// `maze-movement/turn-at-center`'s. The corridor runs straight past the far end
-// of the measured span, so nothing here turns and nothing runs into rock.
+// is `controls/move-right`'s and `controls/move-down`'s; and where a turn is
+// taken, which is `maze-movement/turn-at-center`'s. Each corridor runs straight
+// past the far end of the measured span, so nothing here turns and nothing runs
+// into rock.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { FORAGER_SPEED, TICK_HZ } from "../../src/constants";
-import { assertLessThanOrEqual, assertNull } from "../assert";
+import { assertLessThanOrEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,
@@ -35,14 +44,23 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { denAll, graded, requireSwim, sceneGuard, sceneHeld } from "../scene";
+import {
+  denAll,
+  graded,
+  requireSceneHeld,
+  requireSwim,
+  sceneGuard,
+} from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /** The corridor the run is measured on, in tiles. */
 const RUN_TILES = 14;
 
-/** The key specs/movement.md binds the `right` action to. */
-const KEY = DIR_KEY.right;
+/** The two runs this point measures, and the key each one is held with. */
+const RUNS = [
+  { dir: "right", key: DIR_KEY.right, label: "the corridor running right" },
+  { dir: "down", key: DIR_KEY.down, label: "the corridor running down" },
+] as const;
 
 /**
  * How long the scenario waits for the held action to reach the forager at all,
@@ -92,11 +110,83 @@ function speedOver(
   to: FathomSnapshot,
   ticks: number,
 ): number {
-  const distance = Math.hypot(
+  return travelled(from, to) / seconds(ticks);
+}
+
+/** How far the forager has travelled from where it rested, in logical units. */
+function travelled(from: FathomSnapshot, to: FathomSnapshot): number {
+  return Math.hypot(
     to.forager.x - from.forager.x,
     to.forager.y - from.forager.y,
   );
-  return distance / seconds(ticks);
+}
+
+/** What one held run came to. */
+interface Drive {
+  resting: FathomSnapshot;
+  launched: FathomSnapshot;
+  marks: FathomSnapshot[];
+}
+
+/**
+ * Hold `key` down the corridor the forager rests on and read the four stretches.
+ *
+ * The span opens on the first tick the forager has actually moved, whichever way
+ * the corridor runs, so a build that reads its keyboard on the tick after the key
+ * lands is measured over travel rather than over its own handover.
+ */
+async function drive(key: string): Promise<Drive> {
+  const resting = h.snapshot();
+  h.hold(key);
+  let launched = resting;
+  for (let tick = 0; tick < LAUNCH_TICKS; tick += 1) {
+    await h.advance(1);
+    launched = h.snapshot();
+    if (travelled(resting, launched) > 0) break;
+  }
+  const marks: FathomSnapshot[] = [];
+  for (let segment = 0; segment < SEGMENTS; segment += 1) {
+    await h.advance(SEGMENT_TICKS);
+    marks.push(h.snapshot());
+  }
+  // Held on past the last reading so the clip closes on a forager still
+  // swimming. Every state the verdict rests on is already captured.
+  await h.advance(TAIL_TICKS);
+  h.release(key);
+  return { resting, launched, marks };
+}
+
+/** Hold every stretch of one run to FORAGER_SPEED, and the whole run with it. */
+function judge(run: Drive, where: string): void {
+  // Whether a held action moves the forager at all is `controls/move-*`'s
+  // verdict; with no travel there is no speed to measure, so this stands down
+  // rather than reporting a speed of zero as a speed fault.
+  const last = run.marks[SEGMENTS - 1];
+  requireSwim(
+    run.resting.forager,
+    last.forager,
+    `swim ${where}, the ${RUN_TILES}-tile corridor this check measures`,
+  );
+
+  const span = SEGMENTS * SEGMENT_TICKS;
+  assertLessThanOrEqual(
+    Math.abs(speedOver(run.launched, last, span) - FORAGER_SPEED),
+    FORAGER_SPEED * SPEED_TOLERANCE,
+    `|speed - FORAGER_SPEED| over the whole ${span}-tick run down ${where}, ` +
+      "in logical units per second",
+  );
+
+  let from = run.launched;
+  for (const [index, mark] of run.marks.entries()) {
+    assertLessThanOrEqual(
+      Math.abs(speedOver(from, mark, SEGMENT_TICKS) - FORAGER_SPEED),
+      FORAGER_SPEED * SPEED_TOLERANCE,
+      `|speed - FORAGER_SPEED| over stretch ${index + 1} of ${SEGMENTS} of ` +
+        `${where}, the ${SEGMENT_TICKS} ticks from ${index * SEGMENT_TICKS} to ` +
+        `${(index + 1) * SEGMENT_TICKS} of the run`,
+    );
+    from = mark;
+  }
 }
 
 let h: Harness;
@@ -112,64 +202,24 @@ afterEach(() => {
 it("swims a straight corridor at FORAGER_SPEED, with no ramp and no drift", async (ctx) => {
   await graded(ctx, async () => {
     await startPlaying(h);
-    const run = await poseStraightRun(h, RUN_TILES);
-    const quiet = await denAll(h);
-    // The forager is the SUBJECT, so it is not held to staying put. What the
-    // guard still catches is a life lost, a predator loose, or the dive leaving
-    // live play — any of which would make this a reading of some other situation.
-    const watch = await sceneGuard(h, quiet, { foragerParked: false });
 
-    const drive = await captureReplay(h, "run", async () => {
-      const resting = h.snapshot();
-      h.hold(KEY);
-      let launched = resting;
-      for (let tick = 0; tick < LAUNCH_TICKS; tick += 1) {
-        await h.advance(1);
-        launched = h.snapshot();
-        if (launched.forager.x > resting.forager.x) break;
-      }
-      const marks: FathomSnapshot[] = [];
-      for (let segment = 0; segment < SEGMENTS; segment += 1) {
-        await h.advance(SEGMENT_TICKS);
-        marks.push(h.snapshot());
-      }
-      // Held on past the last reading so the clip closes on a forager still
-      // swimming. Every state the verdict rests on is already captured.
-      await h.advance(TAIL_TICKS);
-      h.release(KEY);
-      return { resting, launched, marks };
-    });
+    for (const [index, run] of RUNS.entries()) {
+      const posed = await poseStraightRun(h, RUN_TILES, { dir: run.dir });
+      const quiet = await denAll(h);
+      // The forager is the SUBJECT, so it is not held to staying put. What the
+      // guard still catches is a life lost, a predator loose, or the dive leaving
+      // live play — any of which would make this a reading of some other situation.
+      const watch = await sceneGuard(h, quiet, { foragerParked: false });
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+      // The clip is the first run; the second is the same reading on the other
+      // axis and needs no picture of its own.
+      const held =
+        index === 0
+          ? await captureReplay(h, "run", () => drive(run.key))
+          : await drive(run.key);
 
-    // Whether a held action moves the forager at all is `controls/move-right`'s
-    // verdict; with no travel there is no speed to measure, so this stands down
-    // rather than reporting a speed of zero as a speed fault.
-    const last = drive.marks[SEGMENTS - 1];
-    requireSwim(
-      drive.resting.forager,
-      last.forager,
-      `swim the ${RUN_TILES}-tile corridor this check measures`,
-    );
-
-    const span = SEGMENTS * SEGMENT_TICKS;
-    assertLessThanOrEqual(
-      Math.abs(speedOver(drive.launched, last, span) - FORAGER_SPEED),
-      FORAGER_SPEED * SPEED_TOLERANCE,
-      `|speed - FORAGER_SPEED| over the whole ${span}-tick run from tile ` +
-        `(${run.tx}, ${run.ty}), in logical units per second`,
-    );
-
-    let from = drive.launched;
-    for (const [index, mark] of drive.marks.entries()) {
-      assertLessThanOrEqual(
-        Math.abs(speedOver(from, mark, SEGMENT_TICKS) - FORAGER_SPEED),
-        FORAGER_SPEED * SPEED_TOLERANCE,
-        `|speed - FORAGER_SPEED| over stretch ${index + 1} of ${SEGMENTS}, the ` +
-          `${SEGMENT_TICKS} ticks from ${index * SEGMENT_TICKS} to ` +
-          `${(index + 1) * SEGMENT_TICKS} of the run`,
-      );
-      from = mark;
+      requireSceneHeld(h.snapshot(), watch);
+      judge(held, `${run.label} from tile (${posed.tx}, ${posed.ty})`);
     }
   });
 });

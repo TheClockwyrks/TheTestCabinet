@@ -26,7 +26,7 @@
 // there is no schedule to read.
 
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
-import { parkForager, standDown } from "../scene";
+import { failPrecondition, parkForager, standDown } from "../scene";
 import type { Harness } from "../harness";
 import type { FathomSnapshot } from "../surface";
 import type { Tile } from "../maze";
@@ -181,6 +181,28 @@ export async function watchReleases(
     note(last);
   }
   return { releases, missingFlag, last };
+}
+
+/**
+ * Stand a den point down where the build reports no `released` flag to read the
+ * schedule off.
+ *
+ * specs/state.md requires `released` of every predator and specs/predators.md
+ * dates the whole staggered schedule from it, so a roster that does not report it
+ * leaves both den points measuring nothing: no release ever arrives, and a den
+ * that never opened is indistinguishable from a field that was never there. That
+ * the snapshot carries the field at all is `instrumentation/snapshot-shape`'s
+ * verdict, which asserts it directly.
+ */
+export function requireReleasedFlag(watch: DenWatch): void {
+  if (watch.missingFlag === null) return;
+  failPrecondition(
+    "`released` reported as a boolean on every predator, which is what the " +
+      "staggered schedule specs/predators.md fixes is dated from; " +
+      "specs/state.md requires the field",
+    "instrumentation/snapshot-shape",
+    watch.missingFlag,
+  );
 }
 
 /**

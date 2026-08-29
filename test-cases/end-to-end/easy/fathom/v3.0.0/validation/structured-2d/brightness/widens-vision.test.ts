@@ -29,7 +29,7 @@
 // has never been revealed by anything, so "not lit" there cannot be a tile that an
 // earlier, brighter reading had already lit and left remembered.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TILE, VISION_GAIN, VISION_MIN } from "../../src/constants";
 import {
   assertEqual,
@@ -37,7 +37,6 @@ import {
   assertLessThan,
   assertLessThanOrEqual,
   assertNotEqual,
-  assertNull,
 } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
@@ -48,7 +47,7 @@ import {
   visibilityAt,
   type Harness,
 } from "../harness";
-import { denAll, parkForager, sceneGuard, sceneHeld } from "../scene";
+import { check, denAll, parkForager, requireScene, sceneGuard } from "../scene";
 import type { Tile } from "../maze";
 
 /** Tiles of posed corridor: the forager's own, the probe's, and room to spare. */
@@ -84,7 +83,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Brightness widens the light pocket", async () => {
+check("Brightness widens the light pocket", async () => {
   startPlaying(h);
   const run = await poseStraightRun(h, RUN_TILES);
   const probe: Tile = { tx: run.start.tx + PROBE_TILES, ty: run.start.ty };
@@ -98,6 +97,7 @@ it("Brightness widens the light pocket", async () => {
   const sweep = await captureReplay(h, "widen", async () => {
     const readings: {
       g: number;
+      brightness: number;
       radius: number;
       probe: string | undefined;
     }[] = [];
@@ -107,6 +107,7 @@ it("Brightness widens the light pocket", async () => {
       const snapshot = h.snapshot();
       readings.push({
         g,
+        brightness: snapshot.brightness,
         radius: snapshot.visionRadius,
         probe: visibilityAt(snapshot, probe),
       });
@@ -117,7 +118,7 @@ it("Brightness widens the light pocket", async () => {
     return { readings, end: h.snapshot() };
   });
 
-  assertNull(sceneHeld(sweep.end, watch), "the scenario held to the end");
+  requireScene(sweep.end, watch);
 
   // The fixture's own geometry, from the specification's figures rather than from
   // the build's readings.
@@ -139,13 +140,21 @@ it("Brightness widens the light pocket", async () => {
       `(VISION_MIN + VISION_GAIN = ${VISION_MIN + VISION_GAIN})`,
   );
 
+  // THE FORMULA IS HELD AGAINST THE BUILD'S OWN `G`, read out of the same
+  // snapshot as the radius, rather than against the brightness that was posed.
+  // The two are the same figure on a conforming build — specs/sensing.md has
+  // `setBrightness` arm the hold in full, so `G` is steady for a second — and on
+  // a build that lets `G` slip they are not. What this point claims is the
+  // RELATION between the two, and that claim is decided either way; whether a
+  // posed `G` then holds is brightness/holds-decays' verdict.
   for (const reading of sweep.readings) {
-    const expected = VISION_MIN + VISION_GAIN * reading.g;
+    const expected = VISION_MIN + VISION_GAIN * reading.brightness;
     assertLessThanOrEqual(
       Math.abs(reading.radius - expected),
       RADIUS_TOLERANCE,
-      `visionRadius at G = ${reading.g}, against VISION_MIN + VISION_GAIN * G ` +
-        `(${expected})`,
+      `visionRadius with G posed to ${reading.g} and reported as ` +
+        `${reading.brightness.toFixed(4)}, against ` +
+        `VISION_MIN + VISION_GAIN * G (${expected.toFixed(2)})`,
     );
   }
 

@@ -39,7 +39,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { ARROW_KEY, TILE, VISION_GAIN, VISION_MIN } from "../constants";
 import {
@@ -60,9 +59,9 @@ import {
 import {
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -179,7 +178,7 @@ it("drops a predator body once the light leaves it, keeping nothing on the tile"
     return { held, litColor, swum, gone, goneColor };
   });
 
-  assertNull(sceneHeld(reading.gone, guard), "the scenario held to the end");
+  requireSceneHeld(h, reading.gone, guard);
 
   // Whether the forager swims is `controls/*` and `maze-movement/*`'s verdict.
   if (!reading.swum.hit) {

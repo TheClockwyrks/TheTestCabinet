@@ -40,7 +40,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -55,8 +54,8 @@ import {
   denAll,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import {
@@ -132,7 +131,7 @@ it("The maze is drawn only inside the circle", async (ctx) => {
     // the circle the reviewer is being told about.
     captureStill(h, "circle");
 
-    assertNull(sceneHeld(after, watch), "the scenario held to the end");
+    requireSceneHeld(after, watch);
 
     const radius = windowRadius(after);
     const insideAt = tileFromForager(after, inside);

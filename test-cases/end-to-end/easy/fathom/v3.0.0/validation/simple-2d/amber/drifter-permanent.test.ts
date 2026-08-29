@@ -37,7 +37,6 @@ import {
   assertGreaterThan,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseApart } from "../fixtures";
 import {
@@ -52,8 +51,8 @@ import {
   denAll,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
@@ -178,7 +177,7 @@ it("A drifter stays until it is eaten", async (ctx) => {
       return { last, still };
     });
 
-    assertNull(sceneHeld(watched.still, watch), "the scenario held to the end");
+    requireSceneHeld(watched.still, watch);
     assertEqual(
       opened.drifters.length,
       1,

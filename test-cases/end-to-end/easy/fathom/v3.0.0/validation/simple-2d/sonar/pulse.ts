@@ -26,7 +26,7 @@
 
 import { BINDINGS } from "../../src/constants";
 import type { FathomSnapshot, PulseSnapshot } from "../surface";
-import { type Harness } from "../harness";
+import { visibilityOf, type Harness } from "../harness";
 import { unmetPrecondition } from "../scene";
 
 /**
@@ -145,4 +145,64 @@ export async function emitPulse(h: Harness): Promise<LiveEmitted> {
 /** Simulated seconds from the tick the pulse was cast on to `snapshot`. */
 export function sinceEmit(emitted: Emitted, snapshot: FathomSnapshot): number {
   return snapshot.simTime - emitted.before.simTime;
+}
+
+/* -------------------------------------------------------------------------- */
+/* The memory a reveal is read out of                                         */
+/* -------------------------------------------------------------------------- */
+
+/** How long the probe below holds each brightness for, in ticks. */
+const PROBE_TICKS = 4;
+
+/**
+ * Stand a check down whose build does not keep a tile it has revealed.
+ *
+ * WHY A REVEAL CANNOT BE READ WITHOUT IT. specs/sensing.md states two rules and
+ * only one of them is the pulse's: "Three things reveal a tile: the forager's
+ * passive light, a sonar pulse's front as it arrives, and a flare's bloom", and
+ * then, separately, "A revealed tile is lit while its source holds it and
+ * remembered from then on". A front sweeps a tile once and moves on, so what a
+ * check reads afterwards is the MEMORY of that sweep. A build that reveals every
+ * tile the front reaches and forgets it on the next step answers `"u"` at every
+ * reading a pulse check can take, and reads exactly like one whose pulse revealed
+ * nothing.
+ *
+ * SO THE MEMORY IS PROBED WITH THE FORAGER'S OWN LIGHT, which is a different
+ * source and settles the question on its own: the light is widened for a moment,
+ * then taken back to the dark it opened in, and a tile the wide pocket reached
+ * and the narrow one no longer does must report `"r"`. A build that answers
+ * `"u"` there has lost a tile the light itself revealed, which is
+ * `fog/remembered-persists`'s verdict.
+ *
+ * TAKEN AFTER EVERY READING, so a scenario that ran cleanly is untouched by it:
+ * the probe moves the brightness and nothing else, and every figure the check
+ * asserts is already in hand by the time it runs.
+ */
+export async function requireFogMemory(h: Harness): Promise<void> {
+  h.debug.setBrightness(1);
+  await h.advance(PROBE_TICKS);
+  const wide = h.snapshot();
+  h.debug.setBrightness(0);
+  await h.advance(PROBE_TICKS);
+  const narrow = h.snapshot();
+
+  for (let ty = 0; ty < narrow.grid.rows; ty += 1) {
+    for (let tx = 0; tx < narrow.grid.cols; tx += 1) {
+      const tile = { tx, ty };
+      // A tile the wide pocket lit that the narrow one no longer holds: what
+      // becomes of it is memory and nothing else.
+      if (visibilityOf(wide, tile) !== "l") continue;
+      const kept = visibilityOf(narrow, tile);
+      if (kept === "l") continue;
+      if (kept === "r") return;
+      unmetPrecondition(
+        `the tile at (${tx}, ${ty}) reported "${kept}" once the forager's own ` +
+          "light had been widened onto it and taken back, so this build does " +
+          "not keep a tile it has revealed and no reading of what a pulse " +
+          "revealed can survive to be taken; specs/sensing.md remembers a " +
+          "revealed tile for the rest of the maze, and whether it does is " +
+          "fog/remembered-persists's verdict, not this one's",
+      );
+    }
+  }
 }

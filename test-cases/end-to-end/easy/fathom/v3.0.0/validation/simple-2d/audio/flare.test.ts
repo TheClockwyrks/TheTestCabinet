@@ -33,7 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CUES, FLARE_CHARGE, FLARE_INTERVAL } from "../../src/constants";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import { poseApart } from "../fixtures";
 import {
   captureReplay,
@@ -48,8 +48,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
 
@@ -111,7 +111,7 @@ it("plays CUES.flare on the tick a Flarefish's bloom begins, and not on its char
       return found;
     });
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     assertEqual(
       seen.hit,

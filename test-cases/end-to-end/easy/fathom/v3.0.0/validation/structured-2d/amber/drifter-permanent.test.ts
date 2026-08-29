@@ -30,14 +30,13 @@
 // seconds of it — a drifter still drifting, half a minute after it appeared, and
 // then taken — rather than half a minute of the same.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { DRIFTER_INTERVAL, DRIFTER_SPEED } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseApart } from "../fixtures";
 import {
@@ -49,11 +48,12 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
@@ -149,7 +149,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("A drifter stays until it is eaten", async () => {
+check("A drifter stays until it is eaten", async () => {
   startPlaying(h);
   const rooms = await poseApart(h, APART, { ring: RING });
   await parkForager(h, rooms.near);
@@ -177,7 +177,7 @@ it("A drifter stays until it is eaten", async () => {
     return { last, still };
   });
 
-  assertNull(sceneHeld(watched.still, watch), "the scenario held to the end");
+  requireScene(watched.still, watch);
   assertEqual(
     opened.drifters.length,
     1,

@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BRIGHT_HALFLIFE, BRIGHT_HOLD } from "../../src/constants";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,
@@ -35,8 +35,8 @@ import {
   clearUnderfoot,
   denAll,
   graded,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
 import { grazeOne } from "./graze";
@@ -130,7 +130,7 @@ it("Brightness holds, then decays", async (ctx) => {
       return { eaten, g0, held, decayed, g1, rearmed, end: h.snapshot() };
     });
 
-    assertNull(sceneHeld(curve.end, watch), "the scenario held to the end");
+    requireSceneHeld(curve.end, watch);
 
     // The eat itself is `brightness/from-eating`'s verdict; all this one needs is
     // that there was one to measure a curve from.

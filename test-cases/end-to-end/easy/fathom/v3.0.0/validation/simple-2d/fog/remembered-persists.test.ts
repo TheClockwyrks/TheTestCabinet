@@ -38,12 +38,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TILE, VISION_MIN } from "../../src/constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThan,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   DIR_KEY,
@@ -62,9 +57,9 @@ import {
   fromForager,
   graded,
   parkForager,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import type { Tile } from "../maze";
@@ -194,7 +189,7 @@ it("Revealed terrain is remembered", async (ctx) => {
       return { moved, later };
     });
 
-    assertNull(sceneHeld(reading.later, watch), "the scenario held to the end");
+    requireSceneHeld(reading.later, watch);
 
     // The antecedent: the light did reveal the alcove before the forager left.
     for (const [name, tile] of [

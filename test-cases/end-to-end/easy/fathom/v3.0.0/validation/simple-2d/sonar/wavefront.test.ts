@@ -29,7 +29,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { SONAR_WAVE_SPEED, TICK_DT, TICK_HZ } from "../../src/constants";
 import { poseStraightRun } from "../fixtures";
@@ -45,8 +44,8 @@ import {
   denAll,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { castPulse, foragerPulse, requirePress, sinceEmit } from "./pulse";
 
@@ -156,7 +155,7 @@ it("advances the front at SONAR_WAVE_SPEED and takes the pulse off the list once
       return { emitted, samples, spent };
     });
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     // The pulse begins at the forager rather than arriving everywhere at once —
     // and it is still there a tick after the press to begin at all.

@@ -30,15 +30,15 @@
 // guard are for.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLength,
-  assertLessThanOrEqual,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
-import { graded, sceneGuard, sceneHeld, unmetPrecondition } from "../scene";
+import {
+  graded,
+  requireSceneHeld,
+  sceneGuard,
+  unmetPrecondition,
+} from "../scene";
 import {
   DEN_ORDER_LINE,
   RELEASE_TOLERANCE,
@@ -115,18 +115,19 @@ it("releases the den one predator at a time, DEN_RELEASE_GAP apart, in DEN_ORDER
       return { countdown, started, den, guard };
     });
 
-    assertNull(
-      sceneHeld(h.snapshot(), watch.guard),
-      "the scenario held to the end",
-    );
+    requireSceneHeld(h.snapshot(), watch.guard);
 
     // The schedule is read off `released`, so a build that does not report it sees
     // no releases at all — which would otherwise read as a den that never opened.
-    assertNull(
-      watch.den.missingFlag,
-      "specs/state.md requires `released` of every predator, and the schedule " +
-        "specs/predators.md fixes is read off it",
-    );
+    if (watch.den.missingFlag !== null) {
+      unmetPrecondition(
+        `${watch.den.missingFlag}, ` +
+          "so there is no schedule here to read: specs/state.md requires " +
+          "`released` of every predator and the schedule specs/predators.md " +
+          "fixes is read off it. What a snapshot must carry is " +
+          "instrumentation/snapshot-shape's verdict, not this one's",
+      );
+    }
 
     // No hunter loose while the countdown ran.
     assertLength(

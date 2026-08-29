@@ -29,7 +29,7 @@
 // maze and descend in the middle of the measurement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLessThanOrEqual, assertNull } from "../assert";
+import { assertLessThanOrEqual } from "../assert";
 import { ARROW_KEY, BRIGHT_PER_EAT } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
@@ -42,9 +42,9 @@ import {
 import {
   clearUnderfoot,
   denAllExcept,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -148,7 +148,7 @@ it("raises brightness by BRIGHT_PER_EAT for each plankton, and clamps it at 1", 
   });
 
   const end = graze.after[graze.after.length - 1];
-  assertNull(sceneHeld(end, guard), "the scenario held to the end");
+  requireSceneHeld(h, end, guard);
 
   // The measurement is of a step taken from zero, which is what the point states
   // and what keeps a wrong step from hiding behind a clamp.

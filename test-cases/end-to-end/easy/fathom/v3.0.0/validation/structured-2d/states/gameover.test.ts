@@ -30,9 +30,15 @@
 // ends the run, which is `scoring/three-lives`'; what a plankton or a drifter
 // scores, which is `scoring/plankton`'s and `amber/drifter-score`'s.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
+import { check } from "../scene";
 import { GAMEOVER_ITEMS, START_LIVES } from "../../src/constants";
-import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+  assertMatches,
+} from "../assert";
 import {
   captureStill,
   createHarness,
@@ -60,7 +66,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("ends the run on game over, reports it, and plays again", async () => {
+check("ends the run on game over, reports it, and plays again", async () => {
   startPlaying(h);
 
   // A score worth reading off the screen, taken through the build's own
@@ -95,10 +101,16 @@ it("ends the run on game over, reports it, and plays again", async () => {
     "gameover",
     "the screen contact with no life in reserve reaches (specs/progression.md)",
   );
-  assertEqual(
+  // The reserve really was spent, which is what makes the reading above a game
+  // over rather than a screen that turned up early. The EXACT count is
+  // `scoring/three-lives`' — specs/progression.md puts `lives` at `0` when the
+  // run ends, and a build that hands out one life too many is that point's
+  // finding — so this asks only that nothing was left.
+  assertLessThanOrEqual(
     over.lives,
     0,
-    "the lives in reserve when the run ended (specs/progression.md)",
+    "the lives in reserve when the run ended, which specs/progression.md has " +
+      "already spent",
   );
 
   assertDrew(

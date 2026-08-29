@@ -31,12 +31,7 @@ import {
   FORAGER_SPEED,
   PREDATOR_SPEED,
 } from "../../src/constants";
-import {
-  assertEqual,
-  assertLessThan,
-  assertLessThanOrEqual,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
 import { poseSightLine } from "../fixtures";
 import {
   captureReplay,
@@ -52,8 +47,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 
@@ -181,7 +176,7 @@ it("It wanders at the drifter's pace and hunts faster", async (ctx) => {
       return { wandered, chased, end: h.snapshot() };
     });
 
-    assertNull(sceneHeld(read.end, watch), "the scenario held to the end");
+    requireSceneHeld(read.end, watch);
 
     const wanderSeconds = seconds(WANDER_TICKS);
     const chaseSeconds = seconds(CHASE_TICKS);

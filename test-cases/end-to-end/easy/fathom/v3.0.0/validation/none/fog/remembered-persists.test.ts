@@ -37,12 +37,7 @@
 // `192` the kindle circle covers at that same `G`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThan,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { ARROW_KEY, TILE, VISION_MIN } from "../constants";
 import {
   placeForager,
@@ -62,9 +57,9 @@ import {
 import {
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import type { TileRef } from "../maze";
@@ -192,7 +187,7 @@ it("keeps a revealed tile remembered and drawn once the light has moved on", asy
     return { moved, later };
   });
 
-  assertNull(sceneHeld(reading.later, guard), "the scenario held to the end");
+  requireSceneHeld(h, reading.later, guard);
 
   // The antecedent: the light did reveal the alcove before the forager left.
   const remembered = [

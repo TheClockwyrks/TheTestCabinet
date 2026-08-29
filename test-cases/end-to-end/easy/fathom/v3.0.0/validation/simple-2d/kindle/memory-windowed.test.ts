@@ -8,7 +8,7 @@
 // circle is a rendering mask over that and reveals nothing, so a remembered tile
 // outside the circle still reports `r`."
 //
-// Three readings, and no two of them can be swapped for each other:
+// Four readings, and no two of them can be swapped for each other:
 //
 //   1. The tile inside the circle, drawn.
 //   2. The forager beyond `R` of it — `visibility` still `r` while the pixel
@@ -16,11 +16,17 @@
 //      the mask from a build that simply forgot the tile.
 //   3. The forager back inside `R` — drawn again, and drawn the SAME, which is
 //      what "with any uneaten plankton still on it" comes to on the canvas.
+//   4. A tile the light has NEVER reached, standing inside `R` at that same
+//      moment — `visibility` still `u`, and painted with the flat fog. This is
+//      "it reveals no tile" read in the direction the other three cannot reach:
+//      the circle is asked whether it SENSES, rather than whether it forgets.
 //
 // Without (1) and (3) the point would be passed by a build that never draws that
 // ground at all; without (2) it would be passed by a build with no circle, which
 // draws the tile the whole way through and satisfies "returning draws it again"
-// while having hidden nothing.
+// while having hidden nothing; and without (4) it would be passed by a build
+// whose circle marks everything it covers as explored, which hides nothing on the
+// way out and leaves a maze that fills itself in as the forager swims.
 //
 // THE TILE IS READ FROM THE REMEMBERED BAND, past the light pocket and inside the
 // circle, so what draws it at (1) and (3) is the circle rather than the light.
@@ -37,7 +43,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -53,8 +58,8 @@ import {
   denAll,
   graded,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import {
@@ -72,15 +77,27 @@ import {
  * `T` is the tile that is watched and `M` the berth beside it that reveals it.
  * `H` is the near berth, `NEAR_TILES` from `T` — past the light pocket and inside
  * the circle. `A` is the away berth, `AWAY_TILES` from `T`, past the circle at
- * any brightness. `S` is the fog reference.
+ * any brightness. `U` is the tile no berth's light ever reaches, standing
+ * `UNSEEN_TILES` from `A` — past the light pocket there and inside the circle,
+ * which is where the fourth reading is taken. `S` is the fog reference.
  */
-const ART = ["H....TM.........A" + " ".repeat(8) + "S.."] as const;
+const ART = ["H....TM....U....A" + " ".repeat(8) + "S.."] as const;
 
 /** How far the near berth stands from the watched tile, in tiles. */
 const NEAR_TILES = 5; // 160 units: past V (96), inside R (192)
 
 /** How far the away berth stands from it, in tiles. */
 const AWAY_TILES = 11; // 352 units: past R at G = 1 (320)
+
+/**
+ * How far the never-lit tile stands from the away berth, in tiles.
+ *
+ * `160` units: past the `V` of `96` the light reaches at the `G` of `0` every
+ * berth is read at, and inside the `R` of `192` the circle covers there. Its
+ * other two neighbours in this fixture stand `5` and `11` tiles off, both past
+ * `V`, so no station of this scenario ever lights it.
+ */
+const UNSEEN_TILES = 5;
 
 /** The review item's bound on "drawn", as an RGB distance out of `441`. */
 const DRAWN_MIN = FOG_MATCH;
@@ -106,6 +123,7 @@ it("Hidden, but not forgotten", async (ctx) => {
     await startPlaying(h);
     const board = await poseMaze(h, ART);
     const watched = board.mark("T");
+    const unseen = board.mark("U");
     const unlit = board.mark("S");
     const near = board.mark("H");
     const away = board.mark("A");
@@ -145,6 +163,7 @@ it("Hidden, but not forgotten", async (ctx) => {
       await h.advance(DWELL_TICKS);
       const beyond = h.snapshot();
       const hidden: Rgb = tileColor(h, beyond, watched);
+      const neverLit: Rgb = tileColor(h, beyond, unseen);
 
       // And back inside it.
       await restAt(near);
@@ -152,10 +171,10 @@ it("Hidden, but not forgotten", async (ctx) => {
       const back = h.snapshot();
       const redrawn: Rgb = tileColor(h, back, watched);
 
-      return { atFirst, drawn, fog, beyond, hidden, back, redrawn };
+      return { atFirst, drawn, fog, beyond, hidden, neverLit, back, redrawn };
     });
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     // The fixture's own geometry at each station, against the circle the build
     // reports there.
@@ -206,6 +225,35 @@ it("Hidden, but not forgotten", async (ctx) => {
       FOG_MATCH,
       "the RGB distance out of 441 between the watched tile beyond the circle " +
         "and unrevealed fog, which it is painted with while it is out there",
+    );
+
+    // 4. And the tile the light never reached, inside the circle all the while.
+    const reach = tileFromForager(seen.beyond, unseen);
+    assertGreaterThan(
+      reach,
+      seen.beyond.visionRadius,
+      `the ${UNSEEN_TILES} tiles from the away station to the never-lit tile, ` +
+        "against the light pocket V reported there, which must fall short of it",
+    );
+    assertGreaterThan(
+      windowRadius(seen.beyond),
+      reach,
+      `the vision circle R at the away station against the ${reach.toFixed(0)} ` +
+        "units to the never-lit tile, which stands inside it",
+    );
+    assertEqual(
+      visibilityOf(seen.beyond, unseen),
+      "u",
+      `the tile at (${unseen.tx}, ${unseen.ty}), which no light, pulse or flare ` +
+        "has reached and which the circle covers: the circle reveals no tile and " +
+        "remembers no tile (specs/sensing.md)",
+    );
+    assertLessThanOrEqual(
+      fromFog(seen.neverLit, seen.fog),
+      FOG_MATCH,
+      "the RGB distance out of 441 between that never-lit tile inside the circle " +
+        "and unrevealed fog, which is what ground the light has not reached is " +
+        "painted with",
     );
 
     // 3. Drawn again, and drawn the same.

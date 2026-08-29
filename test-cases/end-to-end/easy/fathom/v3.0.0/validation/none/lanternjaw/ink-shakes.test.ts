@@ -34,7 +34,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import { BINDINGS, LINGER_TIME } from "../constants";
@@ -50,8 +49,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -175,7 +174,7 @@ it("Ink shakes its fix at once", async () => {
     return { released, dropped, seen, watched, end: await h.snapshot() };
   });
 
-  assertNull(sceneHeld(broke.end, guard), "the scenario held to the end");
+  requireSceneHeld(h, broke.end, guard);
 
   assertEqual(
     broke.dropped.hit,

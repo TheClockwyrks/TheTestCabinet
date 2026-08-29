@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { SCORE_DRIFTER } from "../../src/constants";
-import { assertEqual, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,
@@ -34,7 +34,13 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { denAll, graded, requireSwim, sceneGuard, sceneHeld } from "../scene";
+import {
+  denAll,
+  graded,
+  requireSceneHeld,
+  requireSwim,
+  sceneGuard,
+} from "../scene";
 
 /** Tiles of straight corridor posed as the whole board. */
 const RUN = 6;
@@ -93,7 +99,7 @@ it("Eating a drifter scores SCORE_DRIFTER", async (ctx) => {
       return { before, after, hit: eaten.hit };
     });
 
-    assertNull(sceneHeld(bite.after, watch), "the scenario held to the end");
+    requireSceneHeld(bite.after, watch);
     if (!bite.hit) {
       requireSwim(
         bite.before.forager,

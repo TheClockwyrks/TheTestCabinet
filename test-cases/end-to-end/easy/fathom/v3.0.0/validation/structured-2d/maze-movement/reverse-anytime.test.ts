@@ -29,13 +29,12 @@
 // both at once does. So the heading is read at the flip and the travel over the
 // thirty ticks that follow it.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TILE } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThan,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -46,7 +45,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { denAll, requireSwim, sceneGuard, sceneHeld } from "../scene";
+import { check, denAll, requireScene, requireSwim, sceneGuard } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /**
@@ -122,100 +121,103 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("reverses the forager where it stands, without waiting for a tile center", async () => {
-  startPlaying(h);
-  const board = await poseMaze(h, CORRIDOR);
-  const start = board.mark("F");
-  await h.debug.setForagerTile(start.tx, start.ty);
-  await h.debug.setForagerDir(FORWARD);
-  const quiet = await denAll(h);
-  // The forager is the SUBJECT, so it is not held to staying put; the guard still
-  // catches a life lost, a predator loose, or the dive leaving live play.
-  const guard = await sceneGuard(h, quiet, { foragerParked: false });
+check(
+  "reverses the forager where it stands, without waiting for a tile center",
+  async () => {
+    startPlaying(h);
+    const board = await poseMaze(h, CORRIDOR);
+    const start = board.mark("F");
+    await h.debug.setForagerTile(start.tx, start.ty);
+    await h.debug.setForagerDir(FORWARD);
+    const quiet = await denAll(h);
+    // The forager is the SUBJECT, so it is not held to staying put; the guard still
+    // catches a life lost, a predator loose, or the dive leaving live play.
+    const guard = await sceneGuard(h, quiet, { foragerParked: false });
 
-  const opening = h.snapshot();
-  const grid = opening.grid;
-  const home = centerOf(opening, start);
+    const opening = h.snapshot();
+    const grid = opening.grid;
+    const home = centerOf(opening, start);
 
-  const drive = await captureReplay(h, "reverse", async () => {
-    const resting = h.snapshot();
-    h.hold(DIR_KEY[FORWARD]);
-    await h.advance(FORWARD_TICKS);
-    const midway = h.snapshot();
-    // One key at a time: let go of the forward key, then ask for the opposite.
-    h.release(DIR_KEY[FORWARD]);
-    h.hold(DIR_KEY[BACK]);
+    const drive = await captureReplay(h, "reverse", async () => {
+      const resting = h.snapshot();
+      h.hold(DIR_KEY[FORWARD]);
+      await h.advance(FORWARD_TICKS);
+      const midway = h.snapshot();
+      // One key at a time: let go of the forward key, then ask for the opposite.
+      h.release(DIR_KEY[FORWARD]);
+      h.hold(DIR_KEY[BACK]);
 
-    let flipped: FathomSnapshot | null = null;
-    for (
-      let tick = 0;
-      tick < REVERSE_MAX_TICKS && flipped === null;
-      tick += 1
-    ) {
-      await h.advance(1);
-      const snap = h.snapshot();
-      if (snap.forager.dir === BACK) flipped = snap;
-    }
-    await h.advance(BACK_TICKS);
-    const returning = h.snapshot();
-    // Held on past every reading, so the clip shows the forager swimming back
-    // the way it came rather than stopping where the verdict was taken.
-    await h.advance(TAIL_TICKS);
-    h.release(DIR_KEY[BACK]);
-    return { resting, midway, flipped, returning };
-  });
+      let flipped: FathomSnapshot | null = null;
+      for (
+        let tick = 0;
+        tick < REVERSE_MAX_TICKS && flipped === null;
+        tick += 1
+      ) {
+        await h.advance(1);
+        const snap = h.snapshot();
+        if (snap.forager.dir === BACK) flipped = snap;
+      }
+      await h.advance(BACK_TICKS);
+      const returning = h.snapshot();
+      // Held on past every reading, so the clip shows the forager swimming back
+      // the way it came rather than stopping where the verdict was taken.
+      await h.advance(TAIL_TICKS);
+      h.release(DIR_KEY[BACK]);
+      return { resting, midway, flipped, returning };
+    });
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+    requireScene(h.snapshot(), guard);
 
-  // A forager that never got under way has no heading to reverse; whether a held
-  // action moves it at all is `controls/move-*`'s verdict.
-  requireSwim(
-    drive.resting.forager,
-    drive.midway.forager,
-    "get under way before the reversal",
-  );
-  assertEqual(
-    drive.midway.forager.dir,
-    FORWARD,
-    `the forager's heading after ${FORWARD_TICKS} ticks of held travel from ` +
-      `tile (${start.tx}, ${start.ty})`,
-  );
+    // A forager that never got under way has no heading to reverse; whether a held
+    // action moves it at all is `controls/move-*`'s verdict.
+    requireSwim(
+      drive.resting.forager,
+      drive.midway.forager,
+      "get under way before the reversal",
+    );
+    assertEqual(
+      drive.midway.forager.dir,
+      FORWARD,
+      `the forager's heading after ${FORWARD_TICKS} ticks of held travel from ` +
+        `tile (${start.tx}, ${start.ty})`,
+    );
 
-  // The fixture's own claim: the reversal is asked for away from a tile center,
-  // with room enough that none can be reached inside the window below.
-  const ahead = nextCenterAhead(
-    drive.midway.forager.x,
-    grid.originX,
-    grid.tile,
-  );
-  assertGreaterThanOrEqual(
-    ahead - drive.midway.forager.x,
-    CENTER_CLEARANCE,
-    "logical units between the forager and the next tile center ahead when the " +
-      `opposite direction was asked for, ${(drive.midway.forager.x - home.x).toFixed(2)} ` +
-      "units along the run",
-  );
+    // The fixture's own claim: the reversal is asked for away from a tile center,
+    // with room enough that none can be reached inside the window below.
+    const ahead = nextCenterAhead(
+      drive.midway.forager.x,
+      grid.originX,
+      grid.tile,
+    );
+    assertGreaterThanOrEqual(
+      ahead - drive.midway.forager.x,
+      CENTER_CLEARANCE,
+      "logical units between the forager and the next tile center ahead when the " +
+        `opposite direction was asked for, ${(drive.midway.forager.x - home.x).toFixed(2)} ` +
+        "units along the run",
+    );
 
-  assertEqual(
-    drive.flipped !== null,
-    true,
-    `the forager's heading became ${BACK} within ${REVERSE_MAX_TICKS} ticks of ` +
-      "the opposite direction being asked for, which specs/movement.md honors " +
-      "at once wherever it stands",
-  );
-  if (drive.flipped === null) return;
+    assertEqual(
+      drive.flipped !== null,
+      true,
+      `the forager's heading became ${BACK} within ${REVERSE_MAX_TICKS} ticks of ` +
+        "the opposite direction being asked for, which specs/movement.md honors " +
+        "at once wherever it stands",
+    );
+    if (drive.flipped === null) return;
 
-  assertLessThan(
-    drive.flipped.forager.x,
-    ahead,
-    "the forager's x at the tick its heading flipped, against the x of the next " +
-      "tile center ahead — a reversal is not taken at a center",
-  );
+    assertLessThan(
+      drive.flipped.forager.x,
+      ahead,
+      "the forager's x at the tick its heading flipped, against the x of the next " +
+        "tile center ahead — a reversal is not taken at a center",
+    );
 
-  assertGreaterThanOrEqual(
-    drive.flipped.forager.x - drive.returning.forager.x,
-    BACK_MIN,
-    `logical units travelled back the way it came in the ${BACK_TICKS} ticks ` +
-      "after the heading flipped",
-  );
-});
+    assertGreaterThanOrEqual(
+      drive.flipped.forager.x - drive.returning.forager.x,
+      BACK_MIN,
+      `logical units travelled back the way it came in the ${BACK_TICKS} ticks ` +
+        "after the heading flipped",
+    );
+  },
+);

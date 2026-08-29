@@ -31,7 +31,8 @@
 // housing and the plankton `setMaze` restores are right is
 // `controls/setmaze-houses-predators`' and the `maze/*` points'.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
+import { check } from "../scene";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { placeForager, poseMaze } from "../fixtures";
 import {
@@ -120,96 +121,99 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("installs every documented operation and drives the running game", async () => {
-  // Reflection first, and through a read that invokes nothing: a build missing
-  // an operation is told which one rather than failing on a call it never had.
-  const surface = h.debug as unknown as Record<string, unknown>;
-  assertEqual(
-    surface.version,
-    FATHOM_DEBUG_VERSION,
-    "engine.debug.version, which specs/instrumentation.md fixes as " +
-      "FATHOM_DEBUG_VERSION",
-  );
-  for (const op of REQUIRED_OPS) {
+check(
+  "installs every documented operation and drives the running game",
+  async () => {
+    // Reflection first, and through a read that invokes nothing: a build missing
+    // an operation is told which one rather than failing on a call it never had.
+    const surface = h.debug as unknown as Record<string, unknown>;
     assertEqual(
-      typeof surface[op],
-      "function",
-      `typeof engine.debug.${op}, an operation specs/instrumentation.md ` +
-        `requires on the surface`,
+      surface.version,
+      FATHOM_DEBUG_VERSION,
+      "engine.debug.version, which specs/instrumentation.md fixes as " +
+        "FATHOM_DEBUG_VERSION",
     );
-  }
+    for (const op of REQUIRED_OPS) {
+      assertEqual(
+        typeof surface[op],
+        "function",
+        `typeof engine.debug.${op}, an operation specs/instrumentation.md ` +
+          `requires on the surface`,
+      );
+    }
 
-  // And now the liveness, driven through the surface alone.
-  startPlaying(h);
-  const board = await poseMaze(h, ART);
-  const home = board.mark("H");
-  const far = board.mark("T");
-  const rock: Tile = { tx: home.tx + ROCK_OFFSET, ty: home.ty };
+    // And now the liveness, driven through the surface alone.
+    startPlaying(h);
+    const board = await poseMaze(h, ART);
+    const home = board.mark("H");
+    const far = board.mark("T");
+    const rock: Tile = { tx: home.tx + ROCK_OFFSET, ty: home.ty };
 
-  await placeForager(h, home);
-  // Full glow, so the pocket the forager carries is at its widest and the
-  // reading below is of a tile that is lit rather than merely occupied.
-  h.debug.setBrightness(1);
-  await h.advance(SETTLE_TICKS);
+    await placeForager(h, home);
+    // Full glow, so the pocket the forager carries is at its widest and the
+    // reading below is of a tile that is lit rather than merely occupied.
+    h.debug.setBrightness(1);
+    await h.advance(SETTLE_TICKS);
 
-  const before = h.snapshot();
-  const beforeLit = tileBrightness(h, before, far);
+    const before = h.snapshot();
+    const beforeLit = tileBrightness(h, before, far);
 
-  // The pose under test.
-  h.debug.setForagerTile(far.tx, far.ty);
-  await h.advance(SETTLE_TICKS);
+    // The pose under test.
+    h.debug.setForagerTile(far.tx, far.ty);
+    await h.advance(SETTLE_TICKS);
 
-  const after = h.snapshot();
-  const afterLit = tileBrightness(h, after, far);
-  // Before the assertions, so a failing check still leaves the picture of the
-  // state it was reading.
-  captureStill(h, "state");
+    const after = h.snapshot();
+    const afterLit = tileBrightness(h, after, far);
+    // Before the assertions, so a failing check still leaves the picture of the
+    // state it was reading.
+    captureStill(h, "state");
 
-  // `setMaze` posed a board, and the snapshot reports THAT board.
-  assertEqual(
-    after.tiles[home.ty]?.[home.tx],
-    ".",
-    `snapshot().tiles at the posed room's first tile (${home.tx}, ${home.ty})`,
-  );
-  assertEqual(
-    after.tiles[rock.ty]?.[rock.tx],
-    "#",
-    `snapshot().tiles at (${rock.tx}, ${rock.ty}), the first tile of the ` +
-      `posed rock band`,
-  );
+    // `setMaze` posed a board, and the snapshot reports THAT board.
+    assertEqual(
+      after.tiles[home.ty]?.[home.tx],
+      ".",
+      `snapshot().tiles at the posed room's first tile (${home.tx}, ${home.ty})`,
+    );
+    assertEqual(
+      after.tiles[rock.ty]?.[rock.tx],
+      "#",
+      `snapshot().tiles at (${rock.tx}, ${rock.ty}), the first tile of the ` +
+        `posed rock band`,
+    );
 
-  // `setForagerTile` moved the forager onto it, and the snapshot says so.
-  assertEqual(
-    `${before.forager.tx},${before.forager.ty}`,
-    `${home.tx},${home.ty}`,
-    "the forager's tile before the pose",
-  );
-  assertEqual(
-    `${after.forager.tx},${after.forager.ty}`,
-    `${far.tx},${far.ty}`,
-    "the forager's tile after setForagerTile",
-  );
+    // `setForagerTile` moved the forager onto it, and the snapshot says so.
+    assertEqual(
+      `${before.forager.tx},${before.forager.ty}`,
+      `${home.tx},${home.ty}`,
+      "the forager's tile before the pose",
+    );
+    assertEqual(
+      `${after.forager.tx},${after.forager.ty}`,
+      `${far.tx},${far.ty}`,
+      "the forager's tile after setForagerTile",
+    );
 
-  // The game's own sensing ran on the posed board: the far tile went from
-  // untouched to lit because the forager is standing on it.
-  assertEqual(
-    visibilityAt(before, far),
-    "u",
-    `the visibility of (${far.tx}, ${far.ty}) while the forager was fourteen ` +
-      `tiles away behind rock`,
-  );
-  assertEqual(
-    visibilityAt(after, far),
-    "l",
-    `the visibility of (${far.tx}, ${far.ty}) with the forager standing on it`,
-  );
+    // The game's own sensing ran on the posed board: the far tile went from
+    // untouched to lit because the forager is standing on it.
+    assertEqual(
+      visibilityAt(before, far),
+      "u",
+      `the visibility of (${far.tx}, ${far.ty}) while the forager was fourteen ` +
+        `tiles away behind rock`,
+    );
+    assertEqual(
+      visibilityAt(after, far),
+      "l",
+      `the visibility of (${far.tx}, ${far.ty}) with the forager standing on it`,
+    );
 
-  // And the canvas draws it there. A lit tile carrying the forager and its glow
-  // cannot read as dark as the darkest an unrevealed tile may be drawn.
-  assertGreaterThan(
-    afterLit,
-    FOG_MAX_BRIGHTNESS,
-    `the brightest channel-mean, of 255, over the tile the forager was posed ` +
-      `onto — it read ${beforeLit.toFixed(1)} while that tile was unrevealed`,
-  );
-});
+    // And the canvas draws it there. A lit tile carrying the forager and its glow
+    // cannot read as dark as the darkest an unrevealed tile may be drawn.
+    assertGreaterThan(
+      afterLit,
+      FOG_MAX_BRIGHTNESS,
+      `the brightest channel-mean, of 255, over the tile the forager was posed ` +
+        `onto — it read ${beforeLit.toFixed(1)} while that tile was unrevealed`,
+    );
+  },
+);

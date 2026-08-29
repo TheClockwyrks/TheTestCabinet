@@ -36,12 +36,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThan,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   DIR_KEY,
@@ -57,9 +52,9 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   requireSwim,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import type { FathomSnapshot } from "../surface";
@@ -186,7 +181,7 @@ it("The light does not bend around corners", async (ctx) => {
       return { before, settled, arrived, onArm };
     });
 
-    assertNull(sceneHeld(end.settled, watch), "the scenario held to the end");
+    requireSceneHeld(end.settled, watch);
 
     // Whether the forager travels is `controls/*` and `maze-movement/*`'s verdict.
     if (!end.arrived || !end.onArm) {

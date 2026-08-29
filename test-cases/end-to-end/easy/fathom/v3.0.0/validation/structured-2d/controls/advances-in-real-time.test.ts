@@ -39,8 +39,8 @@
 // clock alone.
 
 import { WallClock } from "@test-cabinet/structured-2d";
-import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { afterEach, beforeEach } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { DRIFTER_SPEED } from "../../src/constants";
 import { placeForager, poseMaze } from "../fixtures";
 import {
@@ -49,7 +49,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { sceneGuard, sceneHeld } from "../scene";
+import { check, failPrecondition, requireScene, sceneGuard } from "../scene";
 
 /**
  * The board: a hunter at a dead end, the forager well down the corridor from it,
@@ -122,7 +122,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("advances itself in real time, with nothing stepping it", async () => {
+check("advances itself in real time, with nothing stepping it", async () => {
   startPlaying(h);
   const board = await poseMaze(h, BOARD);
   const den = board.mark("P");
@@ -153,8 +153,21 @@ it("advances itself in real time, with nothing stepping it", async () => {
     "the dive is live before the clock is handed back, so there is something " +
       "running to observe",
   );
+  // Whether the snapshot carries `released` at all is
+  // instrumentation/snapshot-shape's verdict; this point only needs to know the
+  // hunter it is watching is loose.
+  const releasedFlag = before.predators[SUBJECT]?.released;
+  if (typeof releasedFlag !== "boolean") {
+    failPrecondition(
+      "`released` reported as a boolean on the posed hunter, which is how this " +
+        "scenario knows it is loose rather than held; specs/state.md requires " +
+        "the field of every predator",
+      "instrumentation/snapshot-shape",
+      `released was ${JSON.stringify(releasedFlag)}`,
+    );
+  }
   assertEqual(
-    before.predators[SUBJECT]?.released,
+    releasedFlag,
     true,
     "the posed hunter counts as released, which `setPredatorState(index, " +
       '"wander")` makes it (specs/instrumentation.md)',
@@ -173,7 +186,7 @@ it("advances itself in real time, with nothing stepping it", async () => {
   h.release(KEY);
   captureStill(h, "after");
 
-  assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+  requireScene(h.snapshot(), watch);
 
   assertGreaterThan(
     after.simTime - before.simTime,

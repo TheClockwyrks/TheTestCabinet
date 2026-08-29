@@ -36,7 +36,6 @@ import {
   assertLessThan,
   assertLessThanOrEqual,
   assertNotEqual,
-  assertNull,
 } from "../assert";
 import { TILE, VISION_GAIN, VISION_MIN } from "../constants";
 import { poseStraightRun, tileGap, visibilityAt } from "../fixtures";
@@ -44,8 +43,8 @@ import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 import type { TileRef } from "../maze";
@@ -116,7 +115,7 @@ it("reports V as VISION_MIN + VISION_GAIN * G and lights a tile between the two 
     return { readings, end: await h.snapshot() };
   });
 
-  assertNull(sceneHeld(sweep.end, guard), "the scenario held to the end");
+  requireSceneHeld(h, sweep.end, guard);
 
   // The fixture's own geometry, from the specification's figures rather than from
   // the build's readings.

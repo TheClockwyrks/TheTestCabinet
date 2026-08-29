@@ -110,10 +110,8 @@ export function witness<M extends Measured>(measured: readonly M[]): M {
 /**
  * Refuse to grade a point whose layout carries no corridor tile at all.
  *
- * Through `scene.ts`'s {@link standDown}, so this reads as a FAILURE naming the
- * point that owes the verdict rather than as a check that decided nothing. A suite
- * here holds one check, so a stand-down expressed as a skip would be reported as a
- * validator that never ran and hand the point to a reviewer.
+ * Through `scene.ts`'s {@link standDown}, so the check DECLINES, naming the point
+ * that owes the verdict rather than recording one of its own.
  *
  * WHY THIS DEFERS. Four of these points count something that must come to zero —
  * `2 x 2` blocks, mirror mismatches, dead ends, unreachable corridor — and every

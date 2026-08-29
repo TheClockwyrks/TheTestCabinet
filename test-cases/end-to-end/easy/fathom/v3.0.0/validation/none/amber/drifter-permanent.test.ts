@@ -36,7 +36,6 @@ import {
   assertGreaterThan,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { DRIFTER_INTERVAL, DRIFTER_SPEED, TICK_HZ } from "../constants";
 import { poseApart } from "../fixtures";
@@ -51,8 +50,8 @@ import {
   clearUnderfoot,
   denAllExcept,
   parkForager,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   startPlaying,
 } from "../scene";
 
@@ -176,7 +175,7 @@ it("keeps a drifter in the maze at its own pace until the forager eats it", asyn
     return { last, still };
   });
 
-  assertNull(sceneHeld(watched.still, guard), "the scenario held to the end");
+  requireSceneHeld(h, watched.still, guard);
   assertEqual(
     opened.drifters.length,
     1,

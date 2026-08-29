@@ -25,8 +25,8 @@
 // what a corner costs (`gloamfin/corners-slow`), or whether a predator keeps to the
 // corridors (`maze-movement/predators-keep-to-corridors`).
 
-import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNull } from "../assert";
+import { afterEach, beforeEach } from "vitest";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { PREDATOR_SPEED, TICK_HZ } from "../../src/constants";
 import { poseApart } from "../fixtures";
 import {
@@ -36,12 +36,13 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   quietBoard,
   requireKind,
   requirePredatorMotion,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { gloamfinOf, groundBetween, placePredator } from "./pings";
 
@@ -135,7 +136,7 @@ async function measure(index: number): Promise<Wander> {
   };
 }
 
-it("It wanders at a steady PREDATOR_SPEED", async () => {
+check("It wanders at a steady PREDATOR_SPEED", async () => {
   startPlaying(h);
   const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
   const index = requireKind(h.snapshot(), "gloamfin");
@@ -174,7 +175,7 @@ it("It wanders at a steady PREDATOR_SPEED", async () => {
     return measured;
   });
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+  requireScene(h.snapshot(), guard);
 
   for (const [when, window] of [
     ["a moment after it was set loose", early],

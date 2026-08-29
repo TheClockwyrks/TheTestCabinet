@@ -28,11 +28,7 @@
 // (`gloamfin/lost-you-orange`). Both are stood aside for by name below.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
-  assertNull,
-} from "../assert";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import { GLOAMFIN_PING_MIN_GAP, TICK_HZ } from "../../src/constants";
 import { poseMaze } from "../fixtures";
 import {
@@ -48,8 +44,8 @@ import {
   parkForager,
   requirePred,
   requirePredatorMotion,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import { pingGaps, pingLog, placeForager, placePredator, sweep } from "./pings";
@@ -117,7 +113,7 @@ it("No two pings closer than the floor", async (ctx) => {
     );
     const ending = h.snapshot();
 
-    assertNull(sceneHeld(ending, guard), "the scenario held to the end");
+    requireSceneHeld(ending, guard);
 
     const { sightings } = log;
     const tints = sightings.map((sighting) => sighting.tint);

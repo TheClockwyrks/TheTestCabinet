@@ -36,14 +36,9 @@
 // reading — narrower than the `131.9` the alcove stands at, and narrower than the
 // `192` the kindle circle covers at that same `G`.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { TILE, VISION_MIN } from "../../src/constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThan,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   DIR_KEY,
@@ -58,12 +53,13 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   denAll,
   failPrecondition,
   parkForager,
+  requireScene,
   requireSwim,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import type { Tile } from "../maze";
 
@@ -135,7 +131,7 @@ function tileColor(snapshot: ReturnType<Harness["snapshot"]>, tile: Tile) {
   return sampleColor(h, at.x, at.y);
 }
 
-it("Revealed terrain is remembered", async () => {
+check("Revealed terrain is remembered", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const alcove: Tile = board.mark("A");
@@ -198,7 +194,7 @@ it("Revealed terrain is remembered", async () => {
     return { moved, later };
   });
 
-  assertNull(sceneHeld(reading.later, watch), "the scenario held to the end");
+  requireScene(reading.later, watch);
 
   // The antecedent: the light did reveal the alcove before the forager left.
   const remembered = [

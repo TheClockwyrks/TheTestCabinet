@@ -15,6 +15,17 @@
 // of the flare rather than of the mask — a build that simply draws the whole maze
 // lights the tile during the bloom too, and only the fade separates them.
 //
+// AND WHAT IS DRAWN THERE HAS TO BE THE MAZE. "Lit" read as "brighter than the
+// flat fog" is satisfied by the bloom ART alone: specs/assets.md draws that from
+// the seeded flare-bloom sheet composited as light, so a build that leaves the
+// mask closed over the disc and lets the glow show through paints a bright patch
+// over ground it never drew. What separates the two is STRUCTURE — the disc draws
+// "rock and floor alike", and specs/assets.md draws rock from the wall autotile
+// and the corridor from the floor frame, so under a real second window the two
+// read differently and under a glow alone they read the same. The reading is
+// therefore taken on a rock tile and the corridor tile directly beneath it, one
+// tile apart so the bloom falls on both alike, and they must not match.
+//
 // THE FLAREFISH IS SEALED IN A ROOM OF ITS OWN, twenty-five tiles from the
 // forager. specs/maze.md requires one connected region and a fixture is exempt
 // (specs/instrumentation.md), so the two are in different rooms rather than
@@ -44,7 +55,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -63,8 +73,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   unmetPrecondition,
 } from "../scene";
 import type { Tile } from "../maze";
@@ -111,6 +121,19 @@ const DRAWN_MIN = FOG_MATCH;
 const FADED_MAX = FOG_MATCH;
 
 /**
+ * How far apart a rock tile and a corridor tile inside the bloom must read, as an
+ * RGB distance out of `441`.
+ *
+ * The same `25` every other reading here uses, and used the same way: two samples
+ * closer together than this are the same color as far as this suite is concerned.
+ * A build drawing the trench under the disc separates them by several times it,
+ * because they are drawn from different frames of `assets/trench-walls/`; a build
+ * showing only the bloom's own glow separates them by the falloff across one
+ * tile, which is far under it.
+ */
+const STRUCTURE_MIN = FOG_MATCH;
+
+/**
  * How long the scenario will wait for a bloom, in ticks.
  *
  * `FLARE_INTERVAL` for the timer, `FLARE_CHARGE` for the charge-up, and a second
@@ -150,6 +173,26 @@ it("A flare is a second window onto the maze", async (ctx) => {
     const board = await poseMaze(h, ART, { at: { tx: 0, ty: 0 } });
     const ring = board.all("R");
     const unlit = board.mark("S");
+    // The ring's own pellets are taken off before anything is read. A plankton is
+    // drawn on the corridor tile of the pair and never on the rock above it, so
+    // the pellet alone would separate the two colors and a build that washed the
+    // disc flat under its own plankton would read as the trench.
+    // specs/instrumentation.md has `setPlankton` take one off without eating it,
+    // so nothing scores and no maze clears.
+    for (const tile of ring) {
+      await h.debug.setPlankton(tile.tx, tile.ty, false);
+    }
+    // The rock the ring encloses: every tile inside its bounding box that is not
+    // a tile of the ring itself, which this fixture leaves solid.
+    const inner: Tile[] = [];
+    const txs = ring.map((tile) => tile.tx);
+    const tys = ring.map((tile) => tile.ty);
+    for (let ty = Math.min(...tys) + 1; ty < Math.max(...tys); ty += 1) {
+      for (let tx = Math.min(...txs) + 1; tx < Math.max(...txs); tx += 1) {
+        if (ring.some((tile) => tile.tx === tx && tile.ty === ty)) continue;
+        inner.push({ tx, ty });
+      }
+    }
 
     const flarefish = requirePred(h.snapshot(), "flarefish");
     const quiet = await denAll(h, ["flarefish"]);
@@ -198,6 +241,35 @@ it("A flare is a second window onto the maze", async (ctx) => {
       const litColor = target === null ? null : tileColor(h, during, target);
       const fog = tileColor(h, during, unlit);
 
+      // The structure reading: a rock tile of the ring's own interior and the
+      // corridor tile directly beneath it, the furthest such pair that still lies
+      // inside the disc, so the bloom falls on the two of them alike.
+      let wall: Tile | null = null;
+      let floor: Tile | null = null;
+      let pairReach = -1;
+      for (const rock of inner) {
+        const under = ring.find(
+          (tile) => tile.tx === rock.tx && tile.ty === rock.ty + 1,
+        );
+        if (under === undefined) continue;
+        const rockAt = centerOf(during, rock);
+        const underAt = centerOf(during, under);
+        const rockReach = Math.hypot(rockAt.x - hunter.x, rockAt.y - hunter.y);
+        const underReach = Math.hypot(
+          underAt.x - hunter.x,
+          underAt.y - hunter.y,
+        );
+        if (Math.max(rockReach, underReach) > FLARE_RADIUS - DISC_MARGIN)
+          continue;
+        const nearer = Math.min(rockReach, underReach);
+        if (nearer <= pairReach) continue;
+        pairReach = nearer;
+        wall = rock;
+        floor = under;
+      }
+      const wallColor = wall === null ? null : tileColor(h, during, wall);
+      const floorColor = floor === null ? null : tileColor(h, during, floor);
+
       const ended = await h.until(
         (snapshot) => snapshot.predators[flarefish].flaring === false,
         { maxFrames: END_DEADLINE, poll: 1 },
@@ -214,13 +286,17 @@ it("A flare is a second window onto the maze", async (ctx) => {
         reach,
         litColor,
         fog,
+        wall,
+        floor,
+        wallColor,
+        floorColor,
         ended,
         after,
         fadedColor,
       };
     });
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     assertEqual(
       seen.blooming.hit,
@@ -266,6 +342,33 @@ it("A flare is a second window onto the maze", async (ctx) => {
       `the RGB distance out of 441 between the tile at (${seen.target.tx}, ` +
         `${seen.target.ty}), inside the burning bloom and beyond the forager's ` +
         "circle, and unrevealed fog",
+    );
+
+    // And what is drawn there is the maze, not the bloom's own glow over the mask.
+    if (
+      seen.wall === null ||
+      seen.floor === null ||
+      seen.wallColor === null ||
+      seen.floorColor === null
+    ) {
+      // Every tile of this room stands within `FLARE_RADIUS` of every other, so
+      // reaching here means the build's disc is somewhere other than where it
+      // says it is — which is `flarefish/flare-radius`'s verdict to give.
+      unmetPrecondition(
+        "no rock tile of the Flarefish's room and the corridor beneath it both " +
+          "lay inside the bloom disc while it burned, so there was no pair to " +
+          "read the trench from; where the disc reaches is the flarefish " +
+          "points' verdict, not this one's",
+      );
+    }
+    assertGreaterThan(
+      fromFog(seen.wallColor, seen.floorColor),
+      STRUCTURE_MIN,
+      `the RGB distance out of 441 between the rock at (${seen.wall.tx}, ` +
+        `${seen.wall.ty}) and the corridor at (${seen.floor.tx}, ` +
+        `${seen.floor.ty}) directly beneath it, one tile apart and both inside ` +
+        "the burning bloom: the disc draws rock and floor alike, so the trench " +
+        "itself reads out there rather than a flat wash of the bloom's light",
     );
 
     // And painted back to the fog once it is over.

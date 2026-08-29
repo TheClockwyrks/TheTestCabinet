@@ -30,14 +30,13 @@
 // (specs/instrumentation.md), so it is read where the snapshot says it is and the
 // forager is what moves between the two stations.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThan,
   assertLessThanOrEqual,
   assertNotNull,
-  assertNull,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -54,12 +53,13 @@ import {
   visibilityAt,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 import { FOG_MATCH, windowRadius } from "./circle";
 
@@ -97,7 +97,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The amber lights are clipped to the circle", async () => {
+check("The amber lights are clipped to the circle", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const away = board.mark("A");
@@ -118,7 +118,7 @@ it("The amber lights are clipped to the circle", async () => {
   // light that should have been clipped away.
   captureStill(h, "clipped");
 
-  assertNull(sceneHeld(beyond, guard), "the scenario held to the end");
+  requireScene(beyond, guard);
 
   assertEqual(
     beyond.drifters.length,

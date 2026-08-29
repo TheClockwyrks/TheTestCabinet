@@ -31,14 +31,9 @@
 // `gloamfin/fix-and-alert`'s, so a build whose Gloamfin never acquires stands this
 // check down rather than being failed twice for one fault.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { ALERT_TIME, GLOAMFIN_HEAR } from "../../src/constants";
-import {
-  assertEqual,
-  assertLessThanOrEqual,
-  assertNull,
-  assertTrue,
-} from "../assert";
+import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import { poseOccludedPair } from "../fixtures";
 import {
   captureReplay,
@@ -50,13 +45,14 @@ import {
   type Harness,
 } from "../harness";
 import {
+  check,
   clearUnderfoot,
   denAll,
   failPrecondition,
   indexOfKind,
   parkForager,
+  requireScene,
   sceneGuard,
-  sceneHeld,
 } from "../scene";
 
 /**
@@ -147,7 +143,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("The Gloamfin fires the alert on a fresh fix", async () => {
+check("The Gloamfin fires the alert on a fresh fix", async () => {
   startPlaying(h);
   const pair = await poseOccludedPair(h, { tiles: GAP_TILES, len: RUN_TILES });
   const index = indexOfKind(h.snapshot(), "gloamfin");
@@ -232,7 +228,7 @@ it("The Gloamfin fires the alert on a fresh fix", async () => {
     return { acquired, fired, inside, after, refreshed, end: h.snapshot() };
   });
 
-  assertNull(sceneHeld(read.end, guard), "the scenario held to the end");
+  requireScene(read.end, guard);
 
   // The fixture's own geometry, and the fact that makes `lit` mean something.
   assertLessThanOrEqual(

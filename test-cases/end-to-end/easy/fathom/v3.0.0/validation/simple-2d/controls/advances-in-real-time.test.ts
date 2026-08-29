@@ -40,7 +40,7 @@
 
 import { WallClock } from "@test-cabinet/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { DRIFTER_SPEED } from "../../src/constants";
 import { poseMaze } from "../fixtures";
 import {
@@ -49,7 +49,12 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { graded, sceneGuard, sceneHeld } from "../scene";
+import {
+  graded,
+  requireSceneHeld,
+  sceneGuard,
+  unmetPrecondition,
+} from "../scene";
 
 /**
  * The board: a hunter at a dead end, the forager well down the corridor from it,
@@ -156,12 +161,16 @@ it("advances itself in real time, with nothing stepping it", async (ctx) => {
       "the dive is live before the clock is handed back, so there is something " +
         "running to observe",
     );
-    assertEqual(
-      before.predators[SUBJECT]?.released,
-      true,
-      "the posed hunter counts as released, which `setPredatorState(index, " +
-        '"wander")` makes it (specs/instrumentation.md)',
-    );
+    if (before.predators[SUBJECT]?.released !== true) {
+      unmetPrecondition(
+        "the hunter this scenario posed out of the den reports `released` as " +
+          `${JSON.stringify(before.predators[SUBJECT]?.released)} rather than the ` +
+          'true `setPredatorState(index, "wander")` gives it ' +
+          "(specs/instrumentation.md), so the released predator this point " +
+          "watches was never set loose; what a snapshot must carry is " +
+          "instrumentation/snapshot-shape's verdict, not this one's",
+      );
+    }
     assertEqual(
       before.predators[SUBJECT]?.state,
       "wander",
@@ -176,7 +185,7 @@ it("advances itself in real time, with nothing stepping it", async (ctx) => {
     h.release(KEY);
     captureStill(h, "after");
 
-    assertNull(sceneHeld(h.snapshot(), watch), "the scenario held to the end");
+    requireSceneHeld(h.snapshot(), watch);
 
     assertGreaterThan(
       after.simTime - before.simTime,

@@ -45,12 +45,11 @@
 // unrevealed fog looks like (`fog/unrevealed-black`), or when a ping is cast
 // (`gloamfin/ping-cadence`).
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import { GLOAMFIN_PING_RANGE, TICK_HZ, TILE } from "../../src/constants";
@@ -66,11 +65,12 @@ import {
 import type { Tile } from "../maze";
 import type { FathomSnapshot } from "../surface";
 import {
+  check,
   denAll,
   quietBoard,
   requireKind,
+  requireScene,
   sceneGuard,
-  sceneHeld,
   standDown,
 } from "../scene";
 import { placePredator } from "./pings";
@@ -175,7 +175,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Its ping reveals nothing", async () => {
+check("Its ping reveals nothing", async () => {
   startPlaying(h);
   const board = await poseMaze(h, SEALED_ROOM);
   const gloamfin = requireKind(h.snapshot(), "gloamfin");
@@ -289,7 +289,7 @@ it("Its ping reveals nothing", async () => {
     return { drawn, ticks, settled, afterPixels };
   });
 
-  assertNull(sceneHeld(h.snapshot(), guard), "the scenario held to the end");
+  requireScene(h.snapshot(), guard);
   assertTrue(
     flight.ticks < FLIGHT_BUDGET,
     `the ping's wavefront left \`pulses\` within ${FLIGHT_BUDGET} ticks — ` +

@@ -29,9 +29,16 @@
 //   unmet precondition through `h.unmet` and stands aside, so the grade names the
 //   one broken thing once rather than nine mechanics that were fine.
 //
-// IT IMPORTS ONLY `maze.ts` AND `fixtures.ts`, and describes the harness it drives
-// structurally, so this module is the same file under every engine.
+// The two meet in {@link requireSceneHeld}, which is what a bystander check
+// actually calls. A scene that came apart for a reason another item owns and
+// FAILS for is handed to that item; a scene that came apart for a reason nothing
+// else owns is a failure here, because otherwise it would go ungraded.
+//
+// IT IMPORTS ONLY `assert.ts`, `maze.ts` AND `fixtures.ts`, and describes the
+// harness it drives structurally, so this module is the same file under every
+// engine.
 
+import { assertNull } from "./assert";
 import {
   type BoardSnapshot,
   type PoseHarness,
@@ -39,7 +46,17 @@ import {
   placeForager,
   walledDir,
 } from "./fixtures";
-import type { Dir, TileRef } from "./maze";
+import {
+  type Dir,
+  type MazeView,
+  type TileRef,
+  corridorNeighborDirs,
+  floodReachable,
+  isDen,
+  isRock,
+  key,
+  predatorReachable,
+} from "./maze";
 
 /** The operations a scene helper calls beyond the ones a poser needs. */
 export interface SceneOps extends PoseOps {
@@ -169,6 +186,20 @@ export function boardDisturbance(
 /* The scene guard                                                            */
 /* -------------------------------------------------------------------------- */
 
+/** Where one predator stood, and on what ground, when the scenario was posed. */
+export interface PosedPredator {
+  kind: string;
+  tile: TileRef;
+  /** It was in the den — put there by the scenario, or already there. */
+  denned: boolean;
+  /**
+   * Every tile it can reach from there without crossing rock, as {@link key}s.
+   * Empty when it was not standing on ground a predator may stand on at all,
+   * which is the one case nothing can be concluded from.
+   */
+  ground: Set<string>;
+}
+
 /** A picture of the scenario the moment `arrange` finished with it. */
 export interface SceneGuard {
   quiet: Quiet | null;
@@ -176,20 +207,26 @@ export interface SceneGuard {
   forager: TileRef;
   lives: number;
   screen: string;
+  /** The board the scenario was posed on, which is what pens the bodies in. */
+  view: MazeView;
+  /** Every predator, as the scenario left it. */
+  predators: PosedPredator[];
 }
 
 /**
  * Take a picture of the scenario the moment it is posed, so a check can ask
  * whether it was still standing when the measurement ended.
  *
- * Pair with {@link sceneHeld}, which is the check's FIRST assertion:
+ * Pair with {@link requireSceneHeld}, which is the check's FIRST assertion:
  *
  * ```ts
  * const guard = await sceneGuard(h, quiet);
  * // ... drive the measurement ...
- * const broke = sceneHeld(await h.snapshot(), guard);
- * assertNull(broke, "the scenario held to the end");
+ * requireSceneHeld(h, await h.snapshot(), guard);
  * ```
+ *
+ * A check that RE-POSES a body part-way through takes a fresh guard at that
+ * point, because the picture this one holds is of the scene as it was.
  *
  * `foragerParked` is for a scenario in which the forager is a BYSTANDER and must
  * not wander; a check that drives the forager itself passes `false`.
@@ -200,12 +237,22 @@ export async function sceneGuard<S extends BoardSnapshot>(
   options: { foragerParked?: boolean } = {},
 ): Promise<SceneGuard> {
   const snap = await h.snapshot();
+  const view: MazeView = { grid: snap.grid, tiles: snap.tiles };
   return {
     quiet,
     foragerParked: options.foragerParked ?? true,
     forager: { tx: snap.forager.tx, ty: snap.forager.ty },
     lives: snap.lives,
     screen: snap.screen,
+    view,
+    predators: snap.predators.map((predator, index) => ({
+      kind: predator.kind,
+      tile: { tx: predator.tx, ty: predator.ty },
+      // Only what THIS scenario put away. A hunter that merely happens to be in
+      // the den when the guard is taken is one the check is about to pose out.
+      denned: quiet?.denned.includes(index) ?? false,
+      ground: predatorReachable(view, [{ tx: predator.tx, ty: predator.ty }]),
+    })),
   };
 }
 
@@ -238,6 +285,239 @@ export function sceneHeld(
     }
   }
   return null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Who owns a scene that came apart                                           */
+/* -------------------------------------------------------------------------- */
+
+/** What broke a scene, and the check whose verdict that is. */
+export interface SceneBreakOwner {
+  /** What gave way, as a sentence. */
+  reason: string;
+  /** The check, or checks, that own it and fail for it. */
+  owner: string;
+}
+
+/** The two checks a broken bystander scene is ever handed over to. */
+const CORRIDORS = "maze-movement/predators-keep-to-corridors";
+const HOUSING = "controls/setmaze-houses-predators";
+const NO_WALL = "maze-movement/no-wall";
+
+/**
+ * What went wrong here that another check OWNS and fails for, or `null` when
+ * nothing else owns it.
+ *
+ * WHY THIS EXISTS. A bystander scenario rests on two things and watches a third.
+ * It rests on rock — the ring a hunter patrols, the lane it swims, the walled-in
+ * pair inside hearing range of each other with neither able to reach the other —
+ * and it rests on the den holding whatever `denAllExcept` put away, which
+ * `specs/instrumentation.md` guarantees by suspending those predators' release
+ * times rather than by geometry. A build that breaks either does not break ONE of
+ * these scenarios, it breaks every one of them at once, and each reports the
+ * wreckage under its own heading: one `canEnter` answering `true` was graded as a
+ * ping that stopped, a flare that never came, an ink cloud that failed to break a
+ * fix and art that was not drawn.
+ *
+ * Both have a check of their own that FAILS for them, so a scene that came apart
+ * either way is theirs to report and every bystander stands aside — a decline
+ * rather than a pass, so the point still reaches a reviewer.
+ *
+ * IT IS DELIBERATELY NARROW. Four readings, each taken off the posed scene rather
+ * than assumed, and none of them possible on a conforming build:
+ *
+ *   - a predator is standing on rock, which `specs/movement.md` makes solid to
+ *     every body;
+ *   - a predator this scenario put in the den is out of it, when the op that put
+ *     it there suspended its release time;
+ *   - a life was lost although every predator was either put away like that or,
+ *     from where the scenario posed it, unable to reach the corridor the forager
+ *     stood in without crossing rock;
+ *   - a bystander forager left a tile with no open neighbor at all.
+ *
+ * Everything else — a dive that left live play, a maze cleared mid-measurement, a
+ * bystander forager that wandered off a tile it could legally leave — is nobody
+ * else's claim and stays a failure of the check that found it.
+ */
+export function sceneBreakOwner(
+  snap: BoardSnapshot,
+  guard: SceneGuard | null,
+): SceneBreakOwner | null {
+  if (guard === null) return null;
+
+  // The plainest reading there is, and the one no scenario can confuse: rock is
+  // solid to every body (`specs/movement.md`), so nothing may be standing on it.
+  const trespassing = guard.predators
+    .map((posed, index) => ({ posed, at: snap.predators[index] }))
+    .filter(
+      (pair) =>
+        pair.at !== undefined && isRock(guard.view, pair.at.tx, pair.at.ty),
+    );
+  if (trespassing.length > 0) {
+    return {
+      reason: trespassing
+        .map(
+          (pair) =>
+            `the ${pair.posed.kind} stood on the rock at (${pair.at.tx}, ${pair.at.ty})`,
+        )
+        .join("; "),
+      owner: CORRIDORS,
+    };
+  }
+
+  const escaped = guard.predators.filter(
+    (predator, index) =>
+      predator.denned &&
+      snap.predators[index] !== undefined &&
+      snap.predators[index].state !== "den",
+  );
+  if (escaped.length > 0) {
+    return {
+      reason:
+        `the ${escaped.map((predator) => predator.kind).join(" and ")} left the ` +
+        `den this scenario put it in, whose release time that op suspended`,
+      owner: HOUSING,
+    };
+  }
+
+  if (snap.lives < guard.lives) {
+    const region = floodReachable(
+      guard.view,
+      guard.forager.tx,
+      guard.forager.ty,
+    );
+    // A forager on something that is not corridor is a reading nothing can be
+    // concluded from, so this makes no claim about who broke the scene.
+    if (region.size === 0) return null;
+    const able = guard.predators.filter((predator) => {
+      // Put away by this scenario, with its release time suspended.
+      if (predator.denned) return false;
+      // Two readings nothing follows from, both of which say "fail rather than
+      // hand this over": a hunter on ground no body may stand on, which
+      // `controls/setmaze-houses-predators` grades, and one still resting in the
+      // den because the check had not posed it out when the guard was taken.
+      if (predator.ground.size === 0) return true;
+      if (isDen(guard.view, predator.tile.tx, predator.tile.ty)) return true;
+      return reaches(predator.ground, region);
+    });
+    if (able.length > 0) return null;
+    const denned = guard.predators.filter((predator) => predator.denned);
+    const walled = guard.predators.length - denned.length;
+    return {
+      reason:
+        `the forager was caught although this scenario had ` +
+        (denned.length > 0
+          ? `put ${denned.map((predator) => predator.kind).join(" and ")} in the den`
+          : "") +
+        (denned.length > 0 && walled > 0 ? " and " : "") +
+        (walled > 0
+          ? `stood every other predator where no route over corridor, den and ` +
+            `gate joins it to the corridor the forager was standing in`
+          : ""),
+      owner:
+        denned.length > 0 && walled > 0
+          ? `${HOUSING} and ${CORRIDORS}`
+          : denned.length > 0
+            ? HOUSING
+            : CORRIDORS,
+    };
+  }
+
+  if (
+    guard.foragerParked &&
+    (snap.forager.tx !== guard.forager.tx ||
+      snap.forager.ty !== guard.forager.ty) &&
+    corridorNeighborDirs(guard.view, guard.forager.tx, guard.forager.ty)
+      .length === 0
+  ) {
+    return {
+      reason:
+        `the forager left (${guard.forager.tx}, ${guard.forager.ty}), a tile ` +
+        `with no open neighbor at all, so it went into rock`,
+      owner: NO_WALL,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * The scenario held, or this check declines to the one that owns what gave way.
+ *
+ * The FIRST thing a bystander check asserts, in place of asserting on
+ * {@link sceneHeld} directly:
+ *
+ * ```ts
+ * const guard = await sceneGuard(h, quiet);
+ * // ... drive the measurement ...
+ * requireSceneHeld(h, await h.snapshot(), guard);
+ * ```
+ *
+ * A check that OWNS one of the claims {@link sceneBreakOwner} defers to asserts
+ * on {@link sceneHeld} itself instead, because a decline there would leave the
+ * defect ungraded by anything at all.
+ */
+export function requireSceneHeld<S extends BoardSnapshot>(
+  h: PoseHarness<S>,
+  snap: BoardSnapshot,
+  guard: SceneGuard | null,
+): void {
+  const owned = sceneBreakOwner(snap, guard);
+  const broke = sceneHeld(snap, guard);
+  if (owned !== null) {
+    h.unmet(
+      `${owned.reason}, so what was measured is not the situation this check ` +
+        `describes` +
+        (broke === null ? "" : ` (${broke})`) +
+        `; that is ${owned.owner}'s verdict, not this one's`,
+    );
+  }
+  assertNull(broke, "the scenario held to the end");
+}
+
+/**
+ * Refuse to grade a scenario whose subject has left the room it was posed in.
+ *
+ * {@link sceneBreakOwner} reads the board at the END of a measurement, and every
+ * reading it takes has to hold for the checks that re-pose their subject part-way
+ * through as well, so it says nothing about where a hunter has WANDERED to. This
+ * is that reading, and a check calls it for a hunter it posed once and left
+ * alone: the fixture pens it into a ring, a lane or a chamber, and a route from
+ * there to anywhere else crosses rock.
+ *
+ * Called where the check's own first assertion would otherwise fire, because a
+ * hunter loose in the rock reaches the forager, takes a fix and answers that
+ * assertion long before the scene guard is read.
+ */
+export function requirePosedGround<S extends BoardSnapshot>(
+  h: PoseHarness<S>,
+  snap: BoardSnapshot,
+  guard: SceneGuard,
+  index: number,
+  what: string,
+): void {
+  const posed = guard.predators[index];
+  const at = snap.predators[index];
+  if (posed === undefined || at === undefined) return;
+  // Nothing to conclude from: `setMaze` left it somewhere no body may stand, and
+  // `controls/setmaze-houses-predators` is the item that grades that.
+  if (posed.ground.size === 0) return;
+  if (posed.ground.has(key({ tx: at.tx, ty: at.ty }))) return;
+  h.unmet(
+    `the ${posed.kind} stood at (${at.tx}, ${at.ty}), which no route over ` +
+      `corridor, den and gate joins to the (${posed.tile.tx}, ${posed.tile.ty}) ` +
+      `this fixture posed it on, so it left ${what} by crossing rock — whether a ` +
+      `predator keeps to the corridors is ` +
+      `maze-movement/predators-keep-to-corridors' verdict, not this one's`,
+  );
+}
+
+/** Whether two sets of {@link key}s share a tile. */
+function reaches(ground: Set<string>, region: Set<string>): boolean {
+  for (const tile of region) {
+    if (ground.has(tile)) return true;
+  }
+  return false;
 }
 
 /* -------------------------------------------------------------------------- */

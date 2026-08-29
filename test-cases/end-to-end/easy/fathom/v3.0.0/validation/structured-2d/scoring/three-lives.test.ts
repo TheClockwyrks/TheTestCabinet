@@ -23,7 +23,7 @@
 // ONLY THE LAST CATCH IS RECORDED. The clip this point ships is the run ending, so
 // the three lives before it are spent outside the capture.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { START_LIVES } from "../../src/constants";
 import { assertEqual } from "../assert";
 import {
@@ -33,7 +33,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { denAll, failPrecondition } from "../scene";
+import { check, denAll, failPrecondition } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /**
@@ -100,7 +100,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Three lives, then game over", async () => {
+check("Three lives, then game over", async () => {
   const opened = startPlaying(h);
   if (opened.predators.length === 0) {
     failPrecondition(

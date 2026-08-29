@@ -20,7 +20,7 @@
 // table). The second, KeyD, is `controls/wasd-right`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   DIR_KEY,
@@ -31,7 +31,7 @@ import {
   travelAlong,
   type Harness,
 } from "../harness";
-import { denAll, graded, sceneGuard, sceneHeld } from "../scene";
+import { denAll, graded, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * Frames the key is held before the verdict is read.
@@ -77,7 +77,7 @@ it("ArrowRight swims the forager right", async (ctx) => {
       }),
     );
 
-    assertNull(sceneHeld(swum.after, watch), "the scenario held to the end");
+    requireSceneHeld(swum.after, watch);
 
     // Half a tile: far more than any sub-unit drift, and comfortably under the
     // whole tile a conforming build covers in the window. How FAST it travels is

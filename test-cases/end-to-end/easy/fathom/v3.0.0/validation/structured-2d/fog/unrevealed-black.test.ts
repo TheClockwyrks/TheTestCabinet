@@ -31,7 +31,7 @@
 // widen the light under the reading, and which tick a build eats an underfoot
 // pellet on is not something this point has any business turning on.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import {
   assertEqual,
@@ -50,7 +50,7 @@ import {
   visibilityAt,
   type Harness,
 } from "../harness";
-import { parkForager } from "../scene";
+import { check, parkForager } from "../scene";
 import type { Tile } from "../maze";
 
 /**
@@ -86,7 +86,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("Unrevealed maze is flat dark fog", async () => {
+check("Unrevealed maze is flat dark fog", async () => {
   startPlaying(h);
 
   // A four-tile corridor for the forager, ten tiles of solid rock, then a sealed

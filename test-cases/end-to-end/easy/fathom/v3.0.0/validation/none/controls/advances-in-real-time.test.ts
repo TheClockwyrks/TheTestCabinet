@@ -34,11 +34,11 @@
 // clock alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { DRIFTER_SPEED } from "../constants";
 import { placeForager, poseMaze } from "../fixtures";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { sceneGuard, sceneHeld, startPlaying } from "../scene";
+import { requireSceneHeld, sceneGuard, startPlaying } from "../scene";
 
 /**
  * The board: a hunter at a dead end, the forager well down the corridor from it,
@@ -160,10 +160,7 @@ it("advances itself in real time, with nothing stepping it", async () => {
   await h.release(KEY);
   await captureStill(h, "after");
 
-  assertNull(
-    sceneHeld(await h.snapshot(), guard),
-    "the scenario held to the end",
-  );
+  requireSceneHeld(h, await h.snapshot(), guard);
 
   assertGreaterThan(
     after.simTime - before.simTime,

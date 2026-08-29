@@ -34,7 +34,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertNull,
   assertTrue,
 } from "../assert";
 import { poseMaze } from "../fixtures";
@@ -51,8 +50,8 @@ import {
   graded,
   parkForager,
   requirePred,
+  requireSceneHeld,
   sceneGuard,
-  sceneHeld,
   separation,
   unmetPrecondition,
 } from "../scene";
@@ -206,7 +205,7 @@ it("It senses the forager's light within R", async (ctx) => {
       };
     });
 
-    assertNull(sceneHeld(read.end, watch), "the scenario held to the end");
+    requireSceneHeld(read.end, watch);
 
     // The fixture's own geometry, against the range the build itself reports.
     assertLessThanOrEqual(
