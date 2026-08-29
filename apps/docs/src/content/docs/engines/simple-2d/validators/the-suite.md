@@ -227,20 +227,13 @@ export interface Debug {
 
 ## An unmet precondition
 
-A suite sometimes cannot construct its scenario against a fully conformant build,
-because the setup searched the world the build invented and found no place to pose
-it. That says nothing about the build, so a suite reports it by skipping: a suite
-whose checks were all skipped leaves its point unanswered for the reviewer to
-decide by hand rather than failing it.
-
-```ts
-it.skipIf(corner === undefined)("rebounds out of a blind corner", () => {
-  // …
-});
-```
-
-A suite that skips only some of its checks still decides its point from the checks
-that ran.
+A suite whose checks all skipped reports an unmet precondition, and the point is
+left undecided for a reviewer rather than failed. This is a capability of the
+runner rather than a shape to author toward. A suite poses its own world through
+the case's debug surface, removing what its requirement is not about and placing
+what it is, so the setup has nothing to search for and every check reaches a
+verdict; see
+[Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/).
 
 ## The module contract
 

@@ -13,8 +13,9 @@ Running in process is what makes a check exact. A suite asks for a number of
 frames and gets that number, at the deltas its clock supplied, and a failure
 arrives as an ordinary stack trace through the build's own code.
 
-A suite that cannot construct its scenario reports it by skipping, with
-`it.skipIf`, so an unanswered point reaches a reviewer rather than failing.
+A suite poses its own scenario through the case's debug surface, removing the
+entities its requirement is not about and placing the ones it is, so every check
+reaches a verdict.
 
 ## Engine-specific by construction
 

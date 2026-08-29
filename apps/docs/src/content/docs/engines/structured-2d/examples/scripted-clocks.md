@@ -126,10 +126,10 @@ await advanceMs(engine, 2500);
 
 ## One scenario, three step sizes
 
-The scenario parks one orb out of the way, puts the other 300 units down a clear
-lane, places the runner at the near end, and holds the right action for two
-seconds of simulated time. A correct build collects the orb once, scores it, and
-finishes 360 units along.
+The scenario reduces the world to two orbs, puts one 300 units down a clear lane
+and the other clear of the runner's path, places the runner at the near end, and
+holds the right action for two seconds of simulated time. A correct build
+collects the orb once, scores it, and finishes 360 units along.
 
 ```ts
 // validation/clocks.test.ts

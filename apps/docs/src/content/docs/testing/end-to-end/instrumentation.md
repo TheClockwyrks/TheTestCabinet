@@ -202,10 +202,16 @@ So a helper that cannot pose its scenario throws an error carrying the
 `validation/_helpers.mjs`). The driver records such a script as inconclusive: it
 did not run, no failed verdict is synthesized for it, and the point is left for
 the reviewer to judge by hand. An unmarked throw keeps its original meaning, so
-the API misbehaved and the point fails. Reach for the marker whenever the
-failure is a property of the world, and leave a plain `throw` for a bug in the
-script itself, such as a bad argument or an impossible tick count, which should
-be loud.
+the API misbehaved and the point fails. A bug in the script itself, such as a
+bad argument or an impossible tick count, is a plain `throw` and stays loud.
+
+The marker is a platform capability rather than an authoring practice. A case
+whose debug API lets a validator remove the world's entities and place the ones
+it asserts on gives every validator a world it poses rather than searches, so
+the search never comes up empty and the marker stays unused. Authoring toward
+that is the rule in
+[Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/):
+a validator always reaches a verdict.
 
 ## Determinism
 

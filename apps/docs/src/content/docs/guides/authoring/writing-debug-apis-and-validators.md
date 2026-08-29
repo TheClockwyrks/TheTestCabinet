@@ -145,6 +145,50 @@ Passing through unrelated surface on the way to a scenario adds failure modes
 that belong to other validators. Any reasoning that a longer route makes a
 validator stronger is mistaken: the route makes the grade less precise.
 
+### Validators pose an isolated world
+
+A validator poses a world holding only what its requirement concerns. Every
+other entity is removed before the scenario is staged, rather than parked in a
+harmless corner, frozen, or held in a state that keeps it quiet. Containment
+leans on the game's own rules holding, and a broken build is broken in exactly
+those rules, so an entity that escapes its containment makes a bystander
+validator report a defect belonging to another validator.
+
+The debug API carries the operations that make this possible: one that removes
+the entities a case's world holds, and one that places each kind. A validator
+clears the world and spawns back exactly what its requirement is about, so a
+check on one predator's pursuit runs against one predator, and a check on the
+player's movement runs against the player alone.
+
+A case whose world holds entities a validator must exclude owes those removal
+operations, as a requirement on the debug API rather than a convenience. The
+specification enumerates each by name, signature, and effect like every other
+control operation, and the
+[precondition guardrail](/testing/end-to-end/instrumentation/#the-precondition-guardrail)
+applies to them unchanged.
+
+### A validator always reaches a verdict
+
+Every validator ends at a pass or a fail. A validator that cannot pose the world
+it needs, or whose debug API answers wrongly, fails the item it decides. A buggy
+debug API and buggy game behavior are one failure from the grade's point of
+view, because the debug API is a deliverable the case requires. The
+instrumentation contract states the same rule from the platform's side, where a
+build's broken instrumentation fails the points it hides (see
+[The debug API is load-bearing](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing)),
+and this rule is that principle carried into how a validator is written.
+
+The reason is what a run resolves to. A run carries a single score, and one
+number cannot separate a point lost to a failure from a point that could not be
+decided. An undecided point lowers no rating and falls to a person to settle by
+hand, which is the expense the automation exists to remove.
+
+The platform holds one class of failure apart, and a validator reporting an
+[unmet precondition](/testing/end-to-end/instrumentation/#unmet-preconditions)
+leaves its point undecided. That path serves a validator that has to search the
+build's own world for somewhere to stand, and a validator that poses its own
+world searches for nothing, so a well-authored case leaves the path unused.
+
 ### Validators are unit tests
 
 A validator establishes a precondition, runs the real systems for a bounded
@@ -192,6 +236,10 @@ When designing or revising a case's debug API and validators:
   has its own validator.
 - Each validator reaches its scenario through the debug API alone and drives
   nothing outside its requirement.
+- Each validator poses a world holding only what its requirement concerns, and
+  the debug API carries the operations that remove the rest.
+- Every validator reaches a pass or a fail, and a debug API that cannot be
+  driven fails the item rather than leaving it undecided.
 - Integration validators exist only where the game replays to a known outcome
   without a validator-side player.
 - Each validated item's failure cap follows the table above.

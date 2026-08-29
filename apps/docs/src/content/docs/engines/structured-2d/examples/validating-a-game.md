@@ -599,10 +599,6 @@ import {
 } from "../src/constants";
 import { createHarness, type Harness } from "./harness";
 
-const probe = await createHarness();
-const declaresWalls = probe.world().byTag(TAGS.wall).length > 0;
-probe.dispose();
-
 let harness: Harness;
 
 beforeEach(async () => {
@@ -641,7 +637,7 @@ it("spends the dash over its stated duration", async () => {
   expect(engine.debug.snapshot().runner.x).toBeCloseTo(320 + dashed + walked, 2);
 });
 
-it.skipIf(!declaresWalls)("is blocked by the arena wall", async () => {
+it("is blocked by the arena wall", async () => {
   const { engine } = harness;
   engine.debug.placeRunner({ x: 320, y: 180 });
 
@@ -670,11 +666,9 @@ built. The dash costs a quarter of
 that second at 480 units per second and the remaining three quarters run at the
 walking speed, which is 120 units plus 135.
 
-The third check reads a collision the build only produces when it declared
-walls, which the case leaves open. `it.skipIf` takes its condition from a probe
-harness built once when the module loads, so a build with an open field reports
-the point as unanswered rather than failing it. A skip reaches a reviewer; a
-failure would claim the build is wrong.
+The third check reads a collision at the arena wall, which the case's
+specification declares, so the check runs against every build and a build with
+an open field fails it.
 
 A `hit` names the actor with the lower `id` as `a`. The walls are declared
 actors and the runner is spawned by the game mode, so the wall is always `a` and
