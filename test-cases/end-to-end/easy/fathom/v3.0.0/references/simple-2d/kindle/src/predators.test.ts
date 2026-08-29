@@ -188,6 +188,7 @@ describe("the den and its release schedule", () => {
     expect(added.mode).toBe("wander");
     expect(added.released).toBe(true);
     expect(added.mind).toBe(true);
+    expect(added.travel).toBe(true);
 
     const waiting = denPose({ ...added, released: false });
     const after = run(waiting, w, 120 * 30);

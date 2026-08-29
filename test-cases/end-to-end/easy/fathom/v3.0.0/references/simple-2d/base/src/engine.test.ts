@@ -42,6 +42,7 @@ import {
   INK_COOLDOWN,
   INK_RADIUS,
   LAYOUT,
+  PREDATOR_SPEED,
   SCORE_CLEAR,
   SCORE_DRIFTER,
   SCORE_PLANKTON,
@@ -274,8 +275,9 @@ describe("the wiring the engine expects", () => {
     expect(snapshot.lives).toBe(START_LIVES);
     expect(snapshot.depth).toBe(1);
     expect(snapshot.brightHold).toBe(0);
-    // Every creature opens with its own mind running.
+    // Every creature opens with its own mind and its own travel running.
     expect(snapshot.predators.every((p) => p.mind)).toBe(true);
+    expect(snapshot.predators.every((p) => p.travel)).toBe(true);
     // The plankton layer and the count it carries are the same fact.
     const stocked = snapshot.plankton.join("").split("*").length - 1;
     expect(stocked).toBe(snapshot.planktonRemaining);
@@ -701,6 +703,95 @@ describe("the predators", () => {
     expect(before.drifters[1].mind).toBe(true);
     await h.advance(3);
     const after = h.snapshot();
+    expect(after.drifters[0].x).toBe(before.drifters[0].x);
+    expect(after.drifters[0].y).toBe(before.drifters[0].y);
+    expect(after.drifters[1].x).not.toBe(before.drifters[1].x);
+  });
+
+  it("runs a held predator's senses while its body holds its tile", async () => {
+    // A brightness the hold keeps steady, so the Lanternjaw's sense of the light
+    // does not fade under the check.
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    h.pose((s) => h.debug.setBrightness(s, 1));
+    h.pose((s) => h.debug.setBrightHold(s, BRIGHT_HOLD));
+    h.pose((s) => h.debug.addPredator(s, "lanternjaw", 9, HALL_ROW));
+    h.pose((s) => h.debug.addPredator(s, "lanternjaw", 20, HALL_ROW));
+    h.pose((s) => h.debug.setPredatorTravel(s, 0, false));
+
+    const before = h.snapshot();
+    expect(before.predators[0].travel).toBe(false);
+    expect(before.predators[1].travel).toBe(true);
+    expect(before.predators[0].state).toBe("wander");
+    await h.advance(0.5);
+
+    const after = h.snapshot();
+    // Its mind ran in full: it saw the light, took the fix, and reports the rate
+    // its state carries.
+    expect(after.predators[0].state).toBe("chase");
+    expect(after.predators[0].speed).toBeCloseTo(PREDATOR_SPEED, 0);
+    // Its body held the tile it stood on.
+    expect(after.predators[0].x).toBe(before.predators[0].x);
+    expect(after.predators[0].y).toBe(before.predators[0].y);
+    expect(after.predators[0].tx).toBe(9);
+    // The hunter beside it, its travel running, closes on the forager.
+    expect(after.predators[1].x).toBeLessThan(before.predators[1].x);
+  });
+
+  it("fires a held Gloamfin's alert and hands it a fix", async () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    h.pose((s) => h.debug.addPredator(s, "gloamfin", 10, HALL_ROW));
+    h.pose((s) => h.debug.setPredatorTravel(s, 0, false));
+    const before = h.snapshot().predators[0];
+
+    // The front covers the five tiles between them in well under the window the
+    // alert stays open for.
+    h.tap("Space");
+    await h.advance(0.5);
+
+    const held = h.snapshot().predators[0];
+    expect(held.state).toBe("chase");
+    expect(held.alert).toBe(true);
+    expect(held.speed).toBeCloseTo(GLOAMFIN_CHASE_SPEED, 0);
+    expect(held.x).toBe(before.x);
+    expect(held.y).toBe(before.y);
+  });
+
+  it("keeps a held predator in the den its slot let it out of", async () => {
+    poseBoard(denBoard(), 1, HALL_ROW);
+    h.pose((s) => h.debug.addPredator(s, "gloamfin", 5, HALL_ROW));
+    h.pose((s) => h.debug.addPredator(s, "gloamfin", 5, HALL_ROW));
+    h.pose((s) => h.debug.setPredatorTile(s, 0, 17, HALL_ROW + 2));
+    h.pose((s) => h.debug.setPredatorTile(s, 1, 18, HALL_ROW + 2));
+    h.pose((s) => h.debug.setPredatorState(s, 0, "den"));
+    h.pose((s) => h.debug.setPredatorState(s, 1, "den"));
+    h.pose((s) => h.debug.setPredatorTravel(s, 0, false));
+
+    const before = h.snapshot().predators[0];
+    expect(before.released).toBe(true);
+    await h.advance(3);
+
+    // Crossing the chamber to the gate is travel, so a held predator whose slot
+    // has come stays in the chamber.
+    const held = h.snapshot().predators[0];
+    expect(held.state).toBe("den");
+    expect(held.x).toBe(before.x);
+    expect(held.y).toBe(before.y);
+    // The one beside it, its travel running, swims out of the same chamber.
+    expect(h.snapshot().predators[1].state).toBe("wander");
+  });
+
+  it("holds one drifter's body and leaves the rest wandering", async () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    h.pose((s) => h.debug.spawnDrifter(s, 20, HALL_ROW));
+    h.pose((s) => h.debug.spawnDrifter(s, 28, HALL_ROW));
+    h.pose((s) => h.debug.setDrifterTravel(s, 0, false));
+
+    const before = h.snapshot();
+    expect(before.drifters[0].travel).toBe(false);
+    expect(before.drifters[1].travel).toBe(true);
+    await h.advance(3);
+    const after = h.snapshot();
+    expect(after.drifters[0].mind).toBe(true);
     expect(after.drifters[0].x).toBe(before.drifters[0].x);
     expect(after.drifters[0].y).toBe(before.drifters[0].y);
     expect(after.drifters[1].x).not.toBe(before.drifters[1].x);

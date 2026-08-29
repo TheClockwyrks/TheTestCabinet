@@ -115,6 +115,7 @@ describe("the fixed-step core", () => {
     expect(drifter.y).toBe(80 + 5 * 32 + 16);
     expect(drifter.heading).toBeNull();
     expect(drifter.mind).toBe(true);
+    expect(drifter.travel).toBe(true);
   });
 
   it("runs exactly TICK_HZ ticks over a second of game time", () => {

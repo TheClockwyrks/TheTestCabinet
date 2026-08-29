@@ -45,6 +45,7 @@ export interface PredatorSnapshot {
   state: PredatorMode;
   released: boolean;
   mind: boolean;
+  travel: boolean;
   speed: number;
   alert: boolean;
   lit: boolean;
@@ -95,6 +96,7 @@ export interface FathomSnapshot {
     ty: number;
     lit: boolean;
     mind: boolean;
+    travel: boolean;
   }[];
   predators: PredatorSnapshot[];
   pulses: {
@@ -147,6 +149,7 @@ function predatorSnapshot(
     state: p.mode,
     released: p.released,
     mind: p.mind,
+    travel: p.travel,
     speed: p.speed,
     // The Lanternjaw fires no alert, so its window never opens.
     alert: p.alertIn > 0,
@@ -210,6 +213,7 @@ export function snapshotOf(
         ty: at.ty,
         lit: drifterLit(state.lit, d),
         mind: d.mind,
+        travel: d.travel,
       };
     }),
     predators: state.predators.map((p) =>

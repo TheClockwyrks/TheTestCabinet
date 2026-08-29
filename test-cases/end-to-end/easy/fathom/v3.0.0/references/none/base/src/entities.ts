@@ -307,6 +307,9 @@ export class Predator extends Mover {
   /** Whether it runs its own mind, which is how a dive is played. */
   mind = true;
 
+  /** Whether its body carries what its mind decides through the maze. */
+  travel = true;
+
   /** The tile it believes the forager is on, or `null` while it has none. */
   fix: Cell | null = null;
 
@@ -360,6 +363,9 @@ export class Predator extends Mover {
 export class Drifter extends Mover {
   /** Whether it runs its own wander, which is how a dive is played. */
   mind = true;
+
+  /** Whether its body carries that wander through the maze. */
+  travel = true;
 }
 
 /** Whether a body's heading changed by a quarter turn between two steps. */

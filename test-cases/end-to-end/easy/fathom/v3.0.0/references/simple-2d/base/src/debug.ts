@@ -140,6 +140,11 @@ export interface FathomDebugApi {
     index: number,
     enabled: boolean,
   ): FathomState;
+  setPredatorTravel(
+    state: DeepReadonly<FathomState>,
+    index: number,
+    enabled: boolean,
+  ): FathomState;
   spawnDrifter(
     state: DeepReadonly<FathomState>,
     tx: number,
@@ -147,6 +152,11 @@ export interface FathomDebugApi {
   ): FathomState;
   clearDrifters(state: DeepReadonly<FathomState>): FathomState;
   setDrifterMind(
+    state: DeepReadonly<FathomState>,
+    index: number,
+    enabled: boolean,
+  ): FathomState;
+  setDrifterTravel(
     state: DeepReadonly<FathomState>,
     index: number,
     enabled: boolean,
@@ -471,11 +481,11 @@ export function createDebugApi(): FathomDebugApi {
      * One predator of `kind` added at the end of the roster, at the center of an
      * open corridor tile.
      *
-     * It arrives loose and patrolling, released, its mind running and facing up,
-     * whatever roster the current depth gives, and it hunts, senses, chases and
-     * makes contact from there exactly as one released from the den does. It
-     * carries no release time, because the staggered schedule runs on the roster a
-     * maze is laid out with.
+     * It arrives loose and patrolling, released, its mind and its travel running
+     * and facing up, whatever roster the current depth gives, and it hunts,
+     * senses, chases and makes contact from there exactly as one released from the
+     * den does. It carries no release time, because the staggered schedule runs on
+     * the roster a maze is laid out with.
      */
     addPredator(state, kind, tx, ty) {
       if (!PREDATOR_KINDS.includes(kind)) {
@@ -492,8 +502,8 @@ export function createDebugApi(): FathomDebugApi {
 
     /**
      * One predator moved to the center of a tile it may stand on: an open corridor
-     * tile, a den tile, or the den gate. Its facing, its state, its `released` flag
-     * and its mind are untouched.
+     * tile, a den tile, or the den gate. Its facing, its state, its `released`
+     * flag, its mind and its travel are untouched.
      */
     setPredatorTile(state, index, tx, ty) {
       const predator = requirePredator(
@@ -536,11 +546,11 @@ export function createDebugApi(): FathomDebugApi {
     /**
      * One predator's state, posed where it already stands.
      *
-     * It moves the predator nowhere and leaves its `released` flag and its mind as
-     * they stand, so `"den"` is posed on a den tile or the den gate and the two
-     * loose states on an open corridor tile. After the call the predator's own mind
-     * runs whenever the simulation advances: it senses, acquires, chases and
-     * searches through the real code.
+     * It moves the predator nowhere and leaves its `released` flag, its mind and
+     * its travel as they stand, so `"den"` is posed on a den tile or the den gate
+     * and the two loose states on an open corridor tile. After the call the
+     * predator's own mind runs whenever the simulation advances: it senses,
+     * acquires, chases and searches through the real code.
      */
     setPredatorState(state, index, value) {
       const predator = requirePredator(
@@ -585,11 +595,12 @@ export function createDebugApi(): FathomDebugApi {
     },
 
     /**
-     * One predator's own mind. With it off that predator holds exactly where it
-     * stands, keeping the tile, facing and state it was posed with: it senses
-     * nothing, decides nothing, and does not move. It is still drawn under the rule
-     * its kind and its lighting give, and contact with it still costs a life. Every
-     * other predator, and everything else in the game, carries on untouched.
+     * One predator's own mind, which is its sensing and its deciding. With it off
+     * that predator senses nothing and decides nothing, keeping the facing, the
+     * state and the fix it was posed with, and nothing is decided, so nothing is
+     * carried out and it holds exactly where it stands. It is still drawn under the
+     * rule its kind and its lighting give, and contact with it still costs a life.
+     * Every other predator, and everything else in the game, carries on untouched.
      */
     setPredatorMind(state, index, enabled) {
       const predator = requirePredator(
@@ -602,6 +613,32 @@ export function createDebugApi(): FathomDebugApi {
         predators: withPredator(state.predators, index, {
           ...predator,
           mind: enabled,
+        }),
+      };
+    },
+
+    /**
+     * One predator's travel, which is what carries its body where its mind
+     * decides. With it off that predator's body holds the tile it stands on
+     * whatever its mind decides, and its mind runs untouched: it senses, takes and
+     * lapses a fix, fires its detection alert, changes its state under its own
+     * rules, and reports the speed that state carries. Its `released` flag still
+     * turns over when its slot arrives, and it holds in the den from there, because
+     * crossing the chamber to the gate is travel. It is still drawn under the rule
+     * its kind and its lighting give, and contact with it still costs a life. Every
+     * other predator, and everything else in the game, carries on untouched.
+     */
+    setPredatorTravel(state, index, enabled) {
+      const predator = requirePredator(
+        "setPredatorTravel",
+        state.predators,
+        index,
+      );
+      return {
+        ...state,
+        predators: withPredator(state.predators, index, {
+          ...predator,
+          travel: enabled,
         }),
       };
     },
@@ -630,10 +667,11 @@ export function createDebugApi(): FathomDebugApi {
     },
 
     /**
-     * One drifter's own mind. With it off that drifter holds exactly where it
-     * stands and does not move. It is still drawn, still eaten by a forager whose
-     * tile it shares, and still worth the ordinary bonus. Every other drifter, and
-     * everything else in the game, carries on untouched.
+     * One drifter's own mind, which is the wander it decides. With it off that
+     * drifter decides nothing, so nothing is carried out and it holds exactly where
+     * it stands. It is still drawn, still eaten by a forager whose tile it shares,
+     * and still worth the ordinary bonus. Every other drifter, and everything else
+     * in the game, carries on untouched.
      */
     setDrifterMind(state, index, enabled) {
       const drifter = requireDrifter("setDrifterMind", state.drifters, index);
@@ -642,6 +680,24 @@ export function createDebugApi(): FathomDebugApi {
         drifters: withDrifter(state.drifters, index, {
           ...drifter,
           mind: enabled,
+        }),
+      };
+    },
+
+    /**
+     * One drifter's travel, which is what carries its body where its wander
+     * decides. With it off that drifter's body holds the tile it stands on whatever
+     * its wander decides. It is still drawn, still eaten by a forager whose tile it
+     * shares, and still worth the ordinary bonus. Every other drifter, and
+     * everything else in the game, carries on untouched.
+     */
+    setDrifterTravel(state, index, enabled) {
+      const drifter = requireDrifter("setDrifterTravel", state.drifters, index);
+      return {
+        ...state,
+        drifters: withDrifter(state.drifters, index, {
+          ...drifter,
+          travel: enabled,
         }),
       };
     },

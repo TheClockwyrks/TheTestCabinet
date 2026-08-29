@@ -97,9 +97,11 @@ export interface FathomDebugApi {
   setPredatorState(index: number, value: PredatorState): void;
   setPredatorReleased(index: number, released: boolean): void;
   setPredatorMind(index: number, enabled: boolean): void;
+  setPredatorTravel(index: number, enabled: boolean): void;
   spawnDrifter(tx: number, ty: number): void;
   clearDrifters(): void;
   setDrifterMind(index: number, enabled: boolean): void;
+  setDrifterTravel(index: number, enabled: boolean): void;
   setSonarCooldown(seconds: number): void;
   setInkCooldown(seconds: number): void;
 }
@@ -375,9 +377,10 @@ export function createDebugApi(
 
     /**
      * Add one predator, loose and patrolling on a corridor tile, at the end of
-     * the roster. It hunts, senses, chases and makes contact from there exactly
-     * as one released from the den does, and it carries no release time, because
-     * the staggered schedule runs on the roster a maze is laid out with.
+     * the roster, with its mind and its travel running. It hunts, senses, chases
+     * and makes contact from there exactly as one released from the den does,
+     * and it carries no release time, because the staggered schedule runs on the
+     * roster a maze is laid out with.
      */
     addPredator(kind, tx, ty) {
       if (!PREDATOR_KINDS.includes(kind)) {
@@ -396,7 +399,7 @@ export function createDebugApi(
 
     /**
      * Move one predator to a tile's center and leave it there. Its facing, its
-     * `state`, its `released` flag and its mind are untouched.
+     * `state`, its `released` flag, its mind and its travel are untouched.
      */
     setPredatorTile(index, tx, ty) {
       const p = predatorAt(index);
@@ -457,14 +460,29 @@ export function createDebugApi(
     },
 
     /**
-     * Turn one predator's own mind on or off. With it off that predator holds
-     * exactly where it stands; every other predator, and everything else in the
-     * game, carries on untouched.
+     * Turn one predator's own mind on or off. With it off that predator senses
+     * nothing and decides nothing, keeping the facing, the `state` and the fix
+     * it was posed with; nothing is decided, so nothing is carried out and it
+     * holds exactly where it stands. Every other predator, and everything else
+     * in the game, carries on untouched.
      */
     setPredatorMind(index, enabled) {
       const p = predatorAt(index);
       p.mind = Boolean(enabled);
       if (!p.mind) p.dir = null;
+    },
+
+    /**
+     * Turn one predator's travel on or off. With it off its body holds the tile
+     * it stands on whatever its mind decides, while that mind runs untouched: it
+     * senses, takes and lapses a fix, fires its alert, changes its `state` and
+     * reports the speed that `state` carries. Every other predator, and
+     * everything else in the game, carries on untouched.
+     */
+    setPredatorTravel(index, enabled) {
+      const p = predatorAt(index);
+      p.travel = Boolean(enabled);
+      if (!p.travel) p.dir = null;
     },
 
     /**
@@ -488,14 +506,25 @@ export function createDebugApi(
     },
 
     /**
-     * Turn one drifter's own mind on or off. With it off that drifter holds
-     * exactly where it stands, and is still drawn, still eaten and still worth
-     * the ordinary bonus.
+     * Turn one drifter's own mind on or off. With it off that drifter decides
+     * nothing, so nothing is carried out and it holds exactly where it stands.
+     * It is still drawn, still eaten and still worth the ordinary bonus.
      */
     setDrifterMind(index, enabled) {
       const d = drifterAt(index);
       d.mind = Boolean(enabled);
       if (!d.mind) d.dir = null;
+    },
+
+    /**
+     * Turn one drifter's travel on or off. With it off its body holds the tile
+     * it stands on whatever its wander decides. It is still drawn, still eaten
+     * and still worth the ordinary bonus.
+     */
+    setDrifterTravel(index, enabled) {
+      const d = drifterAt(index);
+      d.travel = Boolean(enabled);
+      if (!d.travel) d.dir = null;
     },
 
     /** Set the seconds left on the sonar pulse's cooldown. */

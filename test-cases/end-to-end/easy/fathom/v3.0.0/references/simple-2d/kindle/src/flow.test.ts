@@ -88,8 +88,9 @@ describe("the opening state", () => {
     ]);
     expect(state.predators.every((p) => p.mode === "den")).toBe(true);
     expect(state.predators.every((p) => !p.released)).toBe(true);
-    // Every creature opens with its own mind running.
+    // Every creature opens with its own mind and its own travel running.
     expect(state.predators.every((p) => p.mind)).toBe(true);
+    expect(state.predators.every((p) => p.travel)).toBe(true);
     // The release times are the staggered schedule, one slot each.
     expect(state.predators.map((p) => p.releaseIn)).toEqual([0, 5, 10]);
   });

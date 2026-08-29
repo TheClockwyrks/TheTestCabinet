@@ -754,9 +754,12 @@ function grazeTile(state: FathomState): boolean {
 /**
  * Every hunter's own step, each taken or not on its own mind.
  *
- * A hunter whose mind is off holds exactly where it stands, but the windows its
- * body is drawn for — its sonar mark and its detection alert — are presentation
- * rather than sense, so they keep running down either way.
+ * A hunter whose mind is off senses nothing and decides nothing, so nothing is
+ * carried out and it holds exactly where it stands. The windows its body is
+ * drawn for — its sonar mark and its detection alert — are presentation rather
+ * than sense, so they keep running down either way. Its travel is gated one
+ * level down, inside the step, so a hunter that has its mind but not its travel
+ * runs that mind in full and only holds its body.
  */
 function stepPredators(state: FathomState, dt: number): void {
   const world = predatorWorld(state);
@@ -771,7 +774,12 @@ function stepDrifters(state: FathomState, dt: number): void {
   const canEnter = (c: number, r: number): boolean =>
     state.maze.isCorridor(c, r);
   for (const d of state.drifters) {
-    if (!d.mind) continue;
+    // Its wander is its mind and carrying that wander out is its travel, so
+    // either faculty off leaves it at rest on the tile it stands on.
+    if (!d.mind || !d.travel) {
+      d.dir = null;
+      continue;
+    }
     advance(
       d,
       dt,

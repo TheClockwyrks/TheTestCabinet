@@ -84,6 +84,7 @@ field below. It is a pure read that changes nothing.
       tx: <number>, ty: <number>,
       lit: <boolean>,
       mind: <boolean>,           // whether its own mind is running
+      travel: <boolean>,         // whether its body travels
     },
   ],
 
@@ -96,7 +97,8 @@ field below. It is a pure read that changes nothing.
       state: "den" | "wander" | "chase" | "search",
       released: <boolean>,
       mind: <boolean>,           // whether its own mind is running
-      speed: <number>,           // its current speed, in logical units per second
+      travel: <boolean>,         // whether its body travels
+      speed: <number>,           // the rate it travels at in its current state
       alert: <boolean>,
       lit: <boolean>,
       detectRange: <number | null>,   // Lanternjaw and Flarefish
@@ -238,7 +240,8 @@ leaves the list.
 - `lit` is `true` while its body is being drawn this instant, by the forager's
   light or by a flare. Its amber mote is a separate drawing, shown under the
   amber-light rule `specs/sensing.md` fixes, so `lit` answers for the body alone.
-- `mind` is `true` while it runs its own wander, which is how a dive is played.
+- `mind` is `true` while it decides its own wander.
+- `travel` is `true` while its body carries those decisions through the maze.
 
 ## The predators
 
@@ -252,8 +255,11 @@ and the debugging surface's predator operations select a predator by that index.
 - `x` and `y` are its center, in logical units, and `tx` and `ty` the tile it is
   on.
 - `dir` is its facing, always one of the four cardinal directions.
-- `speed` is its current speed, in logical units per second.
-- `mind` is `true` while it runs its own mind, which is how a dive is played.
+- `speed` is the rate it travels at in its current `state`, in logical units
+  per second.
+- `mind` is `true` while it senses and decides for itself.
+- `travel` is `true` while its body carries what its mind decides through the
+  maze.
 - `alert` is `true` only while its detection alert is firing, which is the
   `ALERT_TIME` (`0.5 s`) window after a Gloamfin or a Flarefish acquires a fix.
   It is always `false` for the Lanternjaw, which fires no alert.

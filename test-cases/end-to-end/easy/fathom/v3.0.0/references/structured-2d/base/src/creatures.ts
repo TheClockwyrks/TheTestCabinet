@@ -83,8 +83,11 @@ export class Drifter implements Body {
   facing: Dir = "left";
   speed = DRIFTER_SPEED;
 
-  /** Whether it runs its own wander, which is how a dive is played. */
+  /** Whether it decides its own wander, which is how a dive is played. */
   mind = true;
+
+  /** Whether its body carries those decisions through the maze. */
+  travel = true;
 
   constructor(cell: Cell) {
     this.x = tileCenterX(cell.tx);
@@ -113,8 +116,11 @@ export class Predator implements Body {
    */
   readonly releaseAt: number | null;
 
-  /** Whether it runs its own mind, which is how a dive is played. */
+  /** Whether it senses and decides for itself, which is how a dive is played. */
   mind = true;
+
+  /** Whether its body carries what its mind decides through the maze. */
+  travel = true;
 
   /** The tile it believes the forager is on. */
   fix: Cell | null = null;

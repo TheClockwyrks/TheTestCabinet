@@ -55,6 +55,7 @@ export interface DrifterSnapshot {
   ty: number;
   lit: boolean;
   mind: boolean;
+  travel: boolean;
 }
 
 export interface PredatorSnapshot {
@@ -67,6 +68,7 @@ export interface PredatorSnapshot {
   state: PredatorState;
   released: boolean;
   mind: boolean;
+  travel: boolean;
   speed: number;
   alert: boolean;
   lit: boolean;
@@ -202,6 +204,7 @@ export function snapshot(
       ty: d.row,
       lit: drifterLit(state, d),
       mind: d.mind,
+      travel: d.travel,
     })),
     predators: state.predators.map((p) => {
       const hunts = p.kind === "lanternjaw" || p.kind === "flarefish";
@@ -217,6 +220,7 @@ export function snapshot(
         state: p.state,
         released: p.released,
         mind: p.mind,
+        travel: p.travel,
         speed: p.speed,
         alert: p.alertT > 0,
         lit: predatorLit(state, p),

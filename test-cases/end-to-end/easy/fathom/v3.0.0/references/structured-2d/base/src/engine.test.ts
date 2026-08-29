@@ -575,6 +575,40 @@ describe("the rules of a dive", () => {
     expect(harness.debug.snapshot().tiles[loose.ty][loose.tx]).toBe(".");
     harness.dispose();
   });
+
+  it("holds a predator with its travel off inside the den it is released from", async () => {
+    const harness = await createHarness();
+    harness.debug.setScreen("playing");
+    const fixture = pose(harness.debug, DEN);
+    minds(harness.debug, false);
+    const start = at(fixture, "F");
+    harness.debug.setForagerTile(start.tx, start.ty);
+
+    const den = harness.debug.snapshot().tiles.reduce<{
+      tx: number;
+      ty: number;
+    } | null>((found, row, ty) => {
+      const tx = row.indexOf("d");
+      return found ?? (tx === -1 ? null : { tx, ty });
+    }, null);
+    if (!den) throw new Error("the fixture carries no den tile");
+    harness.debug.setPredatorTile(0, den.tx, den.ty);
+    harness.debug.setPredatorState(0, "den");
+    harness.debug.setPredatorReleased(0, false);
+    harness.debug.setPredatorMind(0, true);
+    harness.debug.setPredatorTravel(0, false);
+
+    // Long enough to have crossed the chamber and be out through the gate.
+    await harness.engine.advance(ticks(0.5));
+
+    // Its slot came and the flag turned over, and crossing the chamber to the
+    // gate is travel, so it holds the den tile it was posed on.
+    const held = harness.debug.snapshot().predators[0];
+    expect(held.released).toBe(true);
+    expect(held.state).toBe("den");
+    expect([held.tx, held.ty]).toEqual([den.tx, den.ty]);
+    harness.dispose();
+  });
 });
 
 describe("the picture", () => {

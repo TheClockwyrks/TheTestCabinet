@@ -82,6 +82,7 @@ export interface SnapshotDrifter {
   ty: number;
   lit: boolean;
   mind: boolean;
+  travel: boolean;
 }
 
 export interface SnapshotPredator {
@@ -94,6 +95,7 @@ export interface SnapshotPredator {
   state: PredatorState;
   released: boolean;
   mind: boolean;
+  travel: boolean;
   speed: number;
   alert: boolean;
   lit: boolean;
@@ -176,9 +178,11 @@ export interface FathomDebugApi {
   setPredatorState(index: number, value: "den" | "wander" | "chase"): void;
   setPredatorReleased(index: number, released: boolean): void;
   setPredatorMind(index: number, enabled: boolean): void;
+  setPredatorTravel(index: number, enabled: boolean): void;
   spawnDrifter(tx: number, ty: number): void;
   clearDrifters(): void;
   setDrifterMind(index: number, enabled: boolean): void;
+  setDrifterTravel(index: number, enabled: boolean): void;
   setSonarCooldown(seconds: number): void;
   setInkCooldown(seconds: number): void;
 }
@@ -582,11 +586,28 @@ export function createDebugApi(world: () => World): FathomDebugApi {
       requirePredator(state, index, where).released = released === true;
     },
 
-    /** One predator's own mind, on or off. */
+    /**
+     * One predator's own mind, on or off. With it off the predator senses
+     * nothing and decides nothing, so nothing is carried out and it holds
+     * exactly where it stands, keeping the facing, the state and the fix it was
+     * posed with. It is drawn and makes contact as it always did.
+     */
     setPredatorMind(index, enabled) {
       const where = "setPredatorMind(index, enabled)";
       const state = read();
       requirePredator(state, index, where).mind = enabled === true;
+    },
+
+    /**
+     * One predator's travel, on or off. With it off its body holds the tile it
+     * stands on while its mind runs untouched: it senses, takes and lapses a
+     * fix, fires its alert, changes its state, and reports the speed that state
+     * carries. It is drawn and makes contact as it always did.
+     */
+    setPredatorTravel(index, enabled) {
+      const where = "setPredatorTravel(index, enabled)";
+      const state = read();
+      requirePredator(state, index, where).travel = enabled === true;
     },
 
     /** One bonus drifter, which then wanders through the ordinary code. */
@@ -601,11 +622,18 @@ export function createDebugApi(world: () => World): FathomDebugApi {
       read().drifters = [];
     },
 
-    /** One drifter's own mind, on or off. */
+    /** One drifter's own mind, on or off, which decides its wander. */
     setDrifterMind(index, enabled) {
       const where = "setDrifterMind(index, enabled)";
       const state = read();
       requireDrifter(state, index, where).mind = enabled === true;
+    },
+
+    /** One drifter's travel, on or off, which carries its wander out. */
+    setDrifterTravel(index, enabled) {
+      const where = "setDrifterTravel(index, enabled)";
+      const state = read();
+      requireDrifter(state, index, where).travel = enabled === true;
     },
 
     /** The seconds left on the sonar pulse's cooldown. */
@@ -686,6 +714,7 @@ export function snapshotOf(state: FathomState): FathomSnapshot {
         ty: cell.ty,
         lit: drifterDrawn(state, drifter),
         mind: drifter.mind,
+        travel: drifter.travel,
       };
     }),
     predators: state.predators.map((predator) => {
@@ -704,6 +733,7 @@ export function snapshotOf(state: FathomState): FathomSnapshot {
         state: predator.state,
         released: predator.released,
         mind: predator.mind,
+        travel: predator.travel,
         speed: predator.speed,
         alert: predator.alert > 0,
         lit: predatorDrawn(state, predator),

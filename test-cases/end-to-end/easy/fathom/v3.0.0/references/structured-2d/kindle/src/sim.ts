@@ -226,7 +226,10 @@ function stepInk(state: FathomState, dt: number): void {
 
 function stepDrifters(state: FathomState, dt: number, cues: CueBag): void {
   for (const drifter of state.drifters) {
-    if (!drifter.mind) continue;
+    // Its wander is what its mind decides and the step is its travel, so with
+    // either faculty off it holds the tile it stands on
+    // (`specs/instrumentation.md`).
+    if (!drifter.mind || !drifter.travel) continue;
     advanceBody(
       drifter,
       dt,

@@ -5,6 +5,7 @@ import {
   BRIGHT_HOLD,
   DEN_RELEASE_GAP,
   FATHOM_DEBUG_VERSION,
+  GLOAMFIN_CHASE_SPEED,
   GLOAMFIN_HEAR,
   GRID_COLS,
   GRID_ORIGIN_X,
@@ -13,6 +14,7 @@ import {
   INK_LIFE,
   INK_RADIUS,
   LANTERN_RANGE_BASE,
+  LINGER_TIME,
   SCORE_PLANKTON,
   START_LIVES,
   TICK_HZ,
@@ -137,7 +139,7 @@ describe("the debug surface", () => {
       expect(s.predators.every((p) => p.state === "den" && !p.released)).toBe(
         true,
       );
-      expect(s.predators.every((p) => p.mind)).toBe(true);
+      expect(s.predators.every((p) => p.mind && p.travel)).toBe(true);
       expect(h.state.menu).toBe(0);
     });
 
@@ -165,11 +167,14 @@ describe("the debug surface", () => {
       expect(h.state.muted).toBe(true);
     });
 
-    it("restores a creature's mind", () => {
+    it("restores a creature's mind and its travel", () => {
       api.setScreen("playing");
       api.setPredatorMind(0, false);
+      api.setPredatorTravel(0, false);
       api.reset();
-      expect(api.snapshot().predators[0].mind).toBe(true);
+      const p = api.snapshot().predators[0];
+      expect(p.mind).toBe(true);
+      expect(p.travel).toBe(true);
     });
 
     it("reseeds the game's randomness, so a run repeats exactly", () => {
@@ -655,6 +660,7 @@ describe("the debug surface", () => {
         state: "wander",
         released: true,
         mind: true,
+        travel: true,
       });
     });
 
@@ -692,12 +698,13 @@ describe("the debug surface", () => {
       expect(s.predators[0].state).toBe("den");
     });
 
-    it("moves one without touching its facing, state, flag or mind", () => {
+    it("moves one without touching its facing, state, flag or faculties", () => {
       api.setPredatorTile(0, 20, 8);
       api.setPredatorState(0, "wander");
       api.setPredatorDir(0, "left");
       api.setPredatorReleased(0, false);
       api.setPredatorMind(0, false);
+      api.setPredatorTravel(0, false);
       api.setPredatorTile(0, 24, 8);
       const s = api.snapshot();
       expect([s.predators[0].tx, s.predators[0].ty]).toEqual([24, 8]);
@@ -705,6 +712,7 @@ describe("the debug surface", () => {
       expect(s.predators[0].state).toBe("wander");
       expect(s.predators[0].released).toBe(false);
       expect(s.predators[0].mind).toBe(false);
+      expect(s.predators[0].travel).toBe(false);
     });
 
     it("poses a predator loose with no fix", () => {
@@ -778,6 +786,83 @@ describe("the debug surface", () => {
       expect(api.snapshot().lives).toBe(START_LIVES - 1);
     });
 
+    it("holds the body of one whose travel is off on the tile it stands on", () => {
+      api.setForagerTile(3, 8);
+      api.setPredatorTile(0, 20, 8);
+      api.setPredatorState(0, "wander");
+      api.setPredatorTravel(0, false);
+      api.setPredatorTile(1, 24, 8);
+      api.setPredatorState(1, "wander");
+      api.advance(TICK_HZ * 2);
+      const s = api.snapshot();
+      expect([s.predators[0].tx, s.predators[0].ty]).toEqual([20, 8]);
+      expect(s.predators[0].x).toBe(Maze.centerX(20));
+      expect(s.predators[0].travel).toBe(false);
+      // Its neighbor's travel is untouched, so that one has patrolled away.
+      expect(s.predators[1].tx).not.toBe(24);
+    });
+
+    it("runs the mind of one whose travel is off through the real code", () => {
+      api.setPlankton(20, 8, false);
+      api.setForagerTile(20, 8);
+      api.setPredatorTile(1, 21, 8);
+      api.setPredatorState(1, "wander");
+      api.setPredatorTravel(1, false);
+      api.advance(1);
+      const s = api.snapshot();
+      // It heard, took a fresh fix, fired its alert and opened the chase at the
+      // speed a chase carries — all of it while its body held its tile.
+      expect(s.predators[1].hearingLock).toBe(true);
+      expect(s.predators[1].state).toBe("chase");
+      expect(s.predators[1].alert).toBe(true);
+      expect(s.predators[1].speed).toBe(GLOAMFIN_CHASE_SPEED);
+      expect([s.predators[1].tx, s.predators[1].ty]).toEqual([21, 8]);
+    });
+
+    it("lapses the fix of one whose travel is off, as an unheld one does", () => {
+      api.setForagerTile(20, 8);
+      api.setPredatorTile(0, 21, 8);
+      api.setPredatorState(0, "chase");
+      api.setPredatorTravel(0, false);
+      api.setForagerTile(3, 8);
+      api.setBrightness(0);
+      api.advance(ticks(LINGER_TIME) + TICK_HZ);
+      const s = api.snapshot();
+      expect(s.predators[0].state).toBe("wander");
+      expect([s.predators[0].tx, s.predators[0].ty]).toEqual([21, 8]);
+    });
+
+    it("turns the release flag of one whose travel is off over on schedule", () => {
+      // A den that opens onto the corridor, so a predator whose travel is on
+      // does leave it and the contrast is the switch and nothing else.
+      api.setMaze(stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 9, 16));
+      api.setDepth(1);
+      const slot = api.snapshot().predators[1];
+      api.setPredatorTravel(1, false);
+      api.advance(ticks(DEN_RELEASE_GAP) + TICK_HZ);
+      const s = api.snapshot();
+      // Its slot came, so its flag turned over; crossing the chamber to the gate
+      // is travel, so it holds in the den from there.
+      expect(s.predators[1].released).toBe(true);
+      expect(s.predators[1].state).toBe("den");
+      expect([s.predators[1].tx, s.predators[1].ty]).toEqual([
+        slot.tx,
+        slot.ty,
+      ]);
+      // Its neighbor's travel is untouched, so that one is out of the chamber.
+      expect(s.predators[0].state).not.toBe("den");
+    });
+
+    it("costs a life on contact with one whose travel is off", () => {
+      api.setPlankton(20, 8, false);
+      api.setPredatorTile(0, 20, 8);
+      api.setPredatorState(0, "wander");
+      api.setPredatorTravel(0, false);
+      api.setForagerTile(20, 8);
+      api.advance(1);
+      expect(api.snapshot().lives).toBe(START_LIVES - 1);
+    });
+
     it("refuses a tile no predator may stand on", () => {
       expect(() => api.setPredatorTile(0, 0, 0)).toThrow(RangeError);
     });
@@ -793,6 +878,7 @@ describe("the debug surface", () => {
       expect(() => api.setPredatorState(9, "wander")).toThrow(RangeError);
       expect(() => api.setPredatorReleased(9, true)).toThrow(RangeError);
       expect(() => api.setPredatorMind(9, false)).toThrow(RangeError);
+      expect(() => api.setPredatorTravel(9, false)).toThrow(RangeError);
     });
 
     it("refuses a state that is not posable", () => {
@@ -825,6 +911,7 @@ describe("the debug surface", () => {
         // Spawned out of the forager's light pocket, so its body is undrawn.
         lit: false,
         mind: true,
+        travel: true,
       });
     });
 
@@ -867,9 +954,34 @@ describe("the debug surface", () => {
       expect(api.snapshot().score).toBeGreaterThan(score);
     });
 
+    it("holds one whose travel is off exactly where it stands", () => {
+      api.setForagerTile(3, 8);
+      api.spawnDrifter(20, 8);
+      api.spawnDrifter(24, 8);
+      api.setDrifterTravel(0, false);
+      api.advance(TICK_HZ);
+      const s = api.snapshot();
+      expect([s.drifters[0].tx, s.drifters[0].ty]).toEqual([20, 8]);
+      expect(s.drifters[0].x).toBe(Maze.centerX(20));
+      expect(s.drifters[0].travel).toBe(false);
+      expect(s.drifters[1].x).not.toBe(Maze.centerX(24));
+    });
+
+    it("still eats one whose travel is off, for the ordinary bonus", () => {
+      api.setForagerTile(20, 8);
+      api.setPlankton(20, 8, false);
+      api.spawnDrifter(20, 8);
+      api.setDrifterTravel(0, false);
+      const score = api.snapshot().score;
+      api.advance(1);
+      expect(api.snapshot().drifters).toEqual([]);
+      expect(api.snapshot().score).toBeGreaterThan(score);
+    });
+
     it("refuses a tile that is not open corridor, or an index it has not", () => {
       expect(() => api.spawnDrifter(17, 2)).toThrow(RangeError);
       expect(() => api.setDrifterMind(0, false)).toThrow(RangeError);
+      expect(() => api.setDrifterTravel(0, false)).toThrow(RangeError);
     });
   });
 

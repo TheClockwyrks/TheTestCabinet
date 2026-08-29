@@ -165,9 +165,10 @@ interface CreatureStep {
  *
  * Each creature runs its own mind, and one whose mind is off holds exactly where
  * it stands, keeping the tile, facing and state it was posed with, while only the
- * windows that are consequences rather than decisions run down
- * (`specs/instrumentation.md`). A mind is turned off one creature at a time, so
- * every other creature carries on untouched.
+ * windows that are consequences rather than decisions run down. A creature whose
+ * travel is off runs its mind in full and holds its body on the tile it stands on
+ * (`specs/instrumentation.md`). A faculty is turned off one creature at a time,
+ * so every other creature carries on untouched.
  */
 function stepCreatures(state: FathomState, dt: number): CreatureStep {
   const draws = createDraws(state.rngState);
@@ -198,11 +199,13 @@ function stepCreatures(state: FathomState, dt: number): CreatureStep {
     if (step.bloom !== null) blooms.push(step.bloom);
   });
 
-  const drifters = state.drifters.map((d) =>
-    d.mind
-      ? { ...d, ...driftBody(d, state.maze, DRIFTER_SPEED, dt, draws) }
-      : d,
-  );
+  const drifters = state.drifters.map((d) => {
+    // A drifter's wander is its mind and its travel is what carries that wander
+    // through the maze, so one whose travel is off rests where it stands.
+    if (!d.travel) return { ...d, heading: null };
+    if (!d.mind) return d;
+    return { ...d, ...driftBody(d, state.maze, DRIFTER_SPEED, dt, draws) };
+  });
 
   return { predators, drifters, pulses, blooms, cues, rngState: draws.state };
 }
@@ -251,7 +254,10 @@ function admitDrifter(state: FathomState, dt: number): FathomState {
   };
 }
 
-/** A bonus drifter at rest on the center of `(tx, ty)`, its mind running. */
+/**
+ * A bonus drifter at rest on the center of `(tx, ty)`, its mind and its travel
+ * running.
+ */
 export function createDrifter(tx: number, ty: number): DrifterState {
   return {
     x: centerX(tx),
@@ -259,6 +265,7 @@ export function createDrifter(tx: number, ty: number): DrifterState {
     facing: "down",
     heading: null,
     mind: true,
+    travel: true,
   };
 }
 

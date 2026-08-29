@@ -176,6 +176,7 @@ export function createPredator(
     mode: "den",
     released: false,
     mind: true,
+    travel: true,
     speed: 0,
     releaseIn: slot * DEN_RELEASE_GAP,
     fix: null,
@@ -200,9 +201,9 @@ export function createPredator(
  * which is what `setPredatorState(index, "den")` poses
  * (`specs/instrumentation.md`).
  *
- * It moves the predator nowhere and leaves its `released` flag and its mind as
- * they stand, so a released predator posed into the chamber swims out through the
- * gate from there and an unreleased one waits its slot.
+ * It moves the predator nowhere and leaves its `released` flag, its mind and its
+ * travel as they stand, so a released predator posed into the chamber swims out
+ * through the gate from there and an unreleased one waits its slot.
  */
 export function denPose(p: PredatorState): PredatorState {
   return {
@@ -222,7 +223,8 @@ export function denPose(p: PredatorState): PredatorState {
 
 /**
  * A predator the debug surface added: loose and patrolling on `(tx, ty)`, its
- * slot behind it and its mind running (`specs/instrumentation.md`).
+ * slot behind it, its mind and its travel running
+ * (`specs/instrumentation.md`).
  *
  * It carries no release time, because the staggered schedule runs on the roster a
  * maze is laid out with rather than on one added mid-scenario.
@@ -342,6 +344,11 @@ function stepDen(
   if (gate === null) return { ...current, heading: null, speed: 0 };
 
   const speed = wanderSpeed(current.kind);
+  // Crossing the chamber to the gate is travel, so a predator whose travel is off
+  // has its slot turn its `released` flag over and then holds in the den, at the
+  // rate that crossing carries (`specs/instrumentation.md`).
+  if (!current.travel) return { ...current, heading: null, speed };
+
   const target = { tx: gate.tx, ty: gate.ty - 1 };
   const canEnter = (tx: number, ty: number): boolean =>
     predatorCanEnter(w.maze, tx, ty);
@@ -561,6 +568,11 @@ function steer(
   w: PredatorWorld,
   draws: Draws,
 ): PredatorState {
+  // Travel is the carrying out of what the mind has just decided, so a predator
+  // whose travel is off holds the tile it stands on and rests there, whatever it
+  // decided and however long the scenario runs (`specs/instrumentation.md`).
+  if (!p.travel) return { ...p, heading: null };
+
   const canEnter = (tx: number, ty: number): boolean =>
     foragerCanEnter(w.maze, tx, ty);
   const routeTo = (body: Body, goal: Tile): Heading => {

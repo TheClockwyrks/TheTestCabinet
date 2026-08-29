@@ -168,8 +168,8 @@ title-screen value: the title screen with its first menu item highlighted, the
 score at `0`, `START_LIVES` (`3`) lives, depth `1`, brightness `0` with its hold
 spent, a freshly laid out maze with a plankton on every corridor tile, the fog
 fully unrevealed, no drifters, the roster depth `1` gives with every predator on a
-den tile and unreleased, every creature's mind running, both cooldowns ready, no
-pulses and no ink clouds in flight, and `simTime` at `0`.
+den tile and unreleased, every creature's mind and travel running, both cooldowns
+ready, no pulses and no ink clouds in flight, and `simTime` at `0`.
 `options.seed` seeds the game's random generator, defaulting to `DEFAULT_SEED`
 (`1`).
 `options` is optional and an omitted `seed` takes the default.
@@ -381,10 +381,10 @@ roster held before the call, and it is added whatever roster the current depth
 gives, so a posed roster may hold any kinds in any number.
 
 It arrives loose and patrolling: its `state` is `"wander"`, its `released` flag is
-`true`, its mind is running, and it faces `"up"`. It hunts, senses, chases and
-makes contact from there exactly as a predator released from the den does. It
-carries no release time, because the staggered schedule `specs/predators.md` fixes
-runs on the roster a maze is laid out with.
+`true`, its mind and its travel are running, and it faces `"up"`. It hunts,
+senses, chases and makes contact from there exactly as a predator released from
+the den does. It carries no release time, because the staggered schedule
+`specs/predators.md` fixes runs on the roster a maze is laid out with.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `setPredatorTile(state, index, tx, ty)`
@@ -395,7 +395,7 @@ runs on the roster a maze is laid out with.
 Moves one predator to the center of tile `(tx, ty)` and leaves it there. `index`
 selects a predator by its position in the snapshot's `predators` list, counted
 from `0`. The tile is an open corridor tile, a den tile or the den gate. Its
-facing, its `state`, its `released` flag and its mind are untouched.
+facing, its `state`, its `released` flag, its mind and its travel are untouched.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `setPredatorDir(state, index, dir)`
@@ -444,11 +444,31 @@ nowhere and changes its `state` not at all.
 Turns one predator's own mind on or off. `index` selects the predator as above.
 Minds are on by default and a `reset` restores them.
 
-With its mind off, that predator holds exactly where it stands, keeping the tile,
-facing and `state` it was posed with: it senses nothing, decides nothing, and does
-not move, however long the scenario runs. It is still drawn under the rule its
-kind and its lighting give, and contact with it still costs a life. Every other
-predator, and everything else in the game, carries on untouched.
+With its mind off, that predator senses nothing and decides nothing, keeping the
+facing, the `state` and the fix it was posed with. Nothing is decided, so nothing
+is carried out and it holds exactly where it stands, however long the scenario
+runs. It is still drawn under the rule its kind and its lighting give, and contact
+with it still costs a life. Every other predator, and everything else in the game,
+carries on untouched.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setPredatorTravel(state, index, enabled)`
+{{else}}
+### `setPredatorTravel(index, enabled)`
+{{/if}}
+
+Turns one predator's travel on or off. `index` selects the predator as above.
+Travel is on by default and a `reset` restores it.
+
+With its travel off, that predator's body holds the tile it stands on, however
+long the scenario runs and whatever its mind decides. Its mind runs untouched: it
+senses, takes and lapses a fix, fires its detection alert, changes its `state`
+under its own rules, and reports the `speed` that `state` carries. Its `released`
+flag still turns over when its slot in the release schedule arrives, and it holds
+in the den from there, because crossing the chamber to the gate is travel. It is
+still drawn under the rule its kind and its lighting give, and contact with it
+still costs a life. Every other predator, and everything else in the game, carries
+on untouched.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `spawnDrifter(state, tx, ty)`
@@ -482,10 +502,24 @@ Turns one drifter's own mind on or off. `index` selects a drifter by its positio
 in the snapshot's `drifters` list, counted from `0`. Minds are on by default and a
 `reset` restores them.
 
-With its mind off, that drifter holds exactly where it stands and does not move,
-however long the scenario runs. It is still drawn, still eaten by a forager whose
-tile it shares, and still worth the ordinary bonus. Every other drifter, and
-everything else in the game, carries on untouched.
+With its mind off, that drifter decides nothing, so nothing is carried out and it
+holds exactly where it stands, however long the scenario runs. It is still drawn,
+still eaten by a forager whose tile it shares, and still worth the ordinary bonus.
+Every other drifter, and everything else in the game, carries on untouched.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setDrifterTravel(state, index, enabled)`
+{{else}}
+### `setDrifterTravel(index, enabled)`
+{{/if}}
+
+Turns one drifter's travel on or off. `index` selects the drifter as above. Travel
+is on by default and a `reset` restores it.
+
+With its travel off, that drifter's body holds the tile it stands on, however long
+the scenario runs and whatever its wander decides. It is still drawn, still eaten
+by a forager whose tile it shares, and still worth the ordinary bonus. Every other
+drifter, and everything else in the game, carries on untouched.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `setSonarCooldown(state, seconds)`

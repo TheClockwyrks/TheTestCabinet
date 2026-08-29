@@ -35,7 +35,7 @@ import { wanderIntent } from "./creatures";
 import { lineOfSightClear } from "./fog";
 import type { InkCloud } from "./ink";
 import { inkBetween, inkCovers } from "./ink";
-import type { Maze } from "./maze";
+import type { Maze, TileTest } from "./maze";
 import type { Intent } from "./movement";
 import { advanceBody, bodyCell } from "./movement";
 import type { Rng } from "./rng";
@@ -126,6 +126,23 @@ export function decayPredatorTimers(predator: Predator, dt: number): void {
   predator.flareFade = Math.max(0, predator.flareFade - dt);
 }
 
+/**
+ * The step a hunter's mind has just asked for. Travel is the carrying out of a
+ * decision, so a hunter with its travel off holds the tile it stands on however
+ * long the scenario runs and whatever its mind decides, and its mind runs on
+ * untouched (`specs/instrumentation.md`).
+ */
+function travelBody(
+  predator: Predator,
+  dt: number,
+  maze: Maze,
+  intent: Intent,
+  open: TileTest,
+): void {
+  if (!predator.travel) return;
+  advanceBody(predator, dt, maze, intent, open);
+}
+
 // ---- The den swim --------------------------------------------------------
 
 function swimOutOfDen(predator: Predator, dt: number, trench: Trench): void {
@@ -138,7 +155,7 @@ function swimOutOfDen(predator: Predator, dt: number, trench: Trench): void {
   }
   const open = maze.openToPredator;
   const beyond: Cell = { tx: gate.tx, ty: gate.ty - 1 };
-  advanceBody(
+  travelBody(
     predator,
     dt,
     maze,
@@ -393,7 +410,7 @@ export function updatePredator(
   else updateFlarefish(predator, dt, trench);
 
   const before = predator.heading;
-  advanceBody(
+  travelBody(
     predator,
     dt,
     trench.maze,

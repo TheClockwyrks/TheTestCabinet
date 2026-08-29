@@ -11,6 +11,7 @@ import {
   DEFAULT_SEED,
   DEN_RELEASE_GAP,
   DRIFTER_MAX,
+  GLOAMFIN_CHASE_SPEED,
   GLOAMFIN_HEAR,
   GRID_COLS,
   GRID_ORIGIN_X,
@@ -123,12 +124,14 @@ describe("the snapshot", () => {
     expect(snapshot.drifters).toHaveLength(1);
     expect(typeof snapshot.drifters[0].lit).toBe("boolean");
     expect(snapshot.drifters[0].mind).toBe(false);
+    expect(snapshot.drifters[0].travel).toBe(true);
     expect(typeof snapshot.simTime).toBe("number");
 
     // A field a kind does not carry reports null rather than going missing.
     const [lanternjaw, gloamfin, flarefish] = snapshot.predators;
     expect(lanternjaw.kind).toBe("lanternjaw");
     expect(lanternjaw.mind).toBe(false);
+    expect(lanternjaw.travel).toBe(true);
     expect(lanternjaw.hearingRange).toBeNull();
     expect(lanternjaw.hearingLock).toBeNull();
     expect(lanternjaw.flaring).toBeNull();
@@ -240,8 +243,9 @@ describe("reset", () => {
     ]);
     expect(snapshot.predators.every((p) => p.state === "den")).toBe(true);
     expect(snapshot.predators.every((p) => !p.released)).toBe(true);
-    // Every creature's mind is running again.
+    // Every creature's mind and travel are running again.
     expect(snapshot.predators.every((p) => p.mind)).toBe(true);
+    expect(snapshot.predators.every((p) => p.travel)).toBe(true);
     // A plankton on every corridor tile, and nowhere else.
     expect(snapshot.planktonRemaining).toBe(
       snapshot.tiles
@@ -811,6 +815,75 @@ describe("the predator poses", () => {
     expect(after.sonar.cooldown).toBeLessThan(before.sonar.cooldown);
     expect(() => harness.debug.setPredatorMind(9, false)).toThrow();
     expect(() => harness.debug.setDrifterMind(9, false)).toThrow();
+    expect(() => harness.debug.setPredatorTravel(9, false)).toThrow();
+    expect(() => harness.debug.setDrifterTravel(9, false)).toThrow();
+    harness.dispose();
+  });
+
+  it("holds a predator's body on its tile while its own mind runs on", async () => {
+    const harness = await playing();
+    const fixture = pose(harness.debug, HALL);
+    const start = at(fixture, "F");
+    harness.debug.clearPredators();
+    harness.debug.clearDrifters();
+    // One tile off the forager: inside GLOAMFIN_HEAR, and not the tile the
+    // forager stands on, so nothing here is contact.
+    harness.debug.addPredator("gloamfin", start.tx + 1, start.ty);
+    harness.debug.setPredatorTravel(0, false);
+
+    const before = harness.debug.snapshot().predators[0];
+    expect(before.mind).toBe(true);
+    expect(before.travel).toBe(false);
+    expect(before.state).toBe("wander");
+
+    await harness.engine.advance(ticks(0.25));
+    const held = harness.debug.snapshot().predators[0];
+
+    // Its mind ran through the code play runs: it heard the forager, took the
+    // fix, fired its alert, and reports the pace a chase carries.
+    expect(held.hearingLock).toBe(true);
+    expect(held.state).toBe("chase");
+    expect(held.alert).toBe(true);
+    expect(held.speed).toBeCloseTo(GLOAMFIN_CHASE_SPEED, 6);
+    // Its body held the tile it was posed on, to the unit.
+    expect(held.x).toBe(before.x);
+    expect(held.y).toBe(before.y);
+    expect([held.tx, held.ty]).toEqual([start.tx + 1, start.ty]);
+
+    // Travel back on and the same chase carries the body.
+    harness.debug.setPredatorTravel(0, true);
+    await harness.engine.advance(2);
+    const loosed = harness.debug.snapshot().predators[0];
+    expect(loosed.travel).toBe(true);
+    expect(loosed.x).toBeLessThan(held.x);
+    harness.dispose();
+  });
+
+  it("holds a drifter's body on its tile and leaves the rest wandering", async () => {
+    const harness = await playing();
+    const fixture = pose(harness.debug, HALL);
+    const start = at(fixture, "F");
+    harness.debug.clearPredators();
+    harness.debug.clearDrifters();
+    harness.debug.spawnDrifter(start.tx + 4, start.ty);
+    harness.debug.spawnDrifter(start.tx + 6, start.ty);
+    harness.debug.setDrifterTravel(0, false);
+
+    const before = harness.debug.snapshot();
+    expect(before.drifters[0].travel).toBe(false);
+    expect(before.drifters[1].travel).toBe(true);
+    await harness.engine.advance(ticks(0.2));
+    const after = harness.debug.snapshot();
+
+    // The held one keeps its tile with its mind still running; the other
+    // wanders on.
+    expect(after.drifters[0].x).toBe(before.drifters[0].x);
+    expect(after.drifters[0].mind).toBe(true);
+    expect([after.drifters[0].tx, after.drifters[0].ty]).toEqual([
+      start.tx + 4,
+      start.ty,
+    ]);
+    expect(after.drifters[1].x).not.toBe(before.drifters[1].x);
     harness.dispose();
   });
 

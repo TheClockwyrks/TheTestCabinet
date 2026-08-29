@@ -159,16 +159,18 @@ The operations are `reset` (seedable), `snapshot`, `setScreen`, `setScore`,
 `setLives`, `setDepth`, `setMaze`, `setPlankton`, `clearPlankton`, `clearFog`,
 `setForagerTile`, `setForagerDir`, `setBrightness`, `setBrightHold`,
 `clearPredators`, `addPredator`, `setPredatorTile`, `setPredatorDir`,
-`setPredatorState`, `setPredatorReleased`, `setPredatorMind`, `spawnDrifter`,
-`clearDrifters`, `setDrifterMind`, `setSonarCooldown` and `setInkCooldown`. Each
+`setPredatorState`, `setPredatorReleased`, `setPredatorMind`,
+`setPredatorTravel`, `spawnDrifter`, `clearDrifters`, `setDrifterMind`,
+`setDrifterTravel`, `setSonarCooldown` and `setInkCooldown`. Each
 is a single-field pose that feeds the same code path play feeds — a posed layout
 is loaded by the code a descent loads one with, a posed predator hunts through
 its own mind, and a posed chase takes its fix through the acquisition a sense
 takes one through — so a scenario driven from code behaves exactly like one
 played by hand. A caller that wants several things arranged makes several calls,
 and nothing it does not ask for happens: the removal and placement pairs let a
-scenario stand a world holding only what it is about. Predators and drifters are
-addressed by their index into the snapshot's own lists. Everything about
+scenario stand a world holding only what it is about, and the mind and travel
+switches let it pose a creature with only the faculties it is about. Predators
+and drifters are addressed by their index into the snapshot's own lists. Everything about
 _driving a browser game_ — the clock, exact frames, key events — is the engine's,
 which is why the surface carries no `step` and no `keyDown`. The surface is inert
 during normal play.

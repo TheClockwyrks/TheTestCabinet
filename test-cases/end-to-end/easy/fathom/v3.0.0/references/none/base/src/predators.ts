@@ -349,6 +349,14 @@ function updateInDen(p: Predator, dt: number, w: PredatorWorld): void {
   }
 
   p.speed = PREDATOR_SPEED;
+  if (!p.travel) {
+    // Crossing the chamber to the gate is travel, so a predator with its travel
+    // off waits its slot out, turns its `released` flag over, and holds in the
+    // den from there.
+    p.dir = null;
+    return;
+  }
+
   const canLeave: CanEnter = (c, r) => w.maze.isDenOpen(c, r);
   advance(
     p,
@@ -403,15 +411,18 @@ function wantDir(p: Predator, w: PredatorWorld, canEnter: CanEnter): Heading {
  * its detection alert.
  *
  * Separate from the step below because these are presentation rather than
- * sense. A predator whose mind is off holds exactly where it stands, and a mark
- * or an alert already showing still fades out on time.
+ * sense. A predator whose mind is off decides nothing and so holds exactly where
+ * it stands, and a mark or an alert already showing still fades out on time.
  */
 export function decayPredatorTimers(p: Predator, dt: number): void {
   if (p.markT > 0) p.markT = Math.max(0, p.markT - dt);
   if (p.alertT > 0) p.alertT = Math.max(0, p.alertT - dt);
 }
 
-/** Advance one predator by `dt`: its timers, its sense, and its step. */
+/**
+ * Advance one predator by `dt`: its timers, its sense, and its step. Its own
+ * mind is what runs here, so this is called only for a predator that has one.
+ */
 export function updatePredator(
   p: Predator,
   dt: number,
@@ -438,7 +449,14 @@ export function updatePredator(
 
   const canEnter = corridorOnly(w);
   const before = p.dir;
-  advance(p, dt, w.maze, () => wantDir(p, w, canEnter), canEnter);
+  if (p.travel) {
+    advance(p, dt, w.maze, () => wantDir(p, w, canEnter), canEnter);
+  } else {
+    // Travel is the carrying out of what the mind decided. With it off the mind
+    // above has run in full — it sensed, took or lapsed its fix, fired its alert
+    // and settled its `state` and its speed — and only the body holds still.
+    p.dir = null;
+  }
 
   // A corner costs a chasing Gloamfin its edge: it drops below the forager's own
   // speed and climbs back over the ramp time. A straight run and a reversal are

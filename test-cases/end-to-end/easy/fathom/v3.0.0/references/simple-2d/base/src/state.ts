@@ -84,8 +84,10 @@ export interface DrifterState {
   readonly y: number;
   readonly facing: Dir;
   readonly heading: Heading;
-  /** Whether it runs its own wander (`specs/instrumentation.md`). */
+  /** Whether it decides its own wander (`specs/instrumentation.md`). */
   readonly mind: boolean;
+  /** Whether its body carries that wander through the maze. */
+  readonly travel: boolean;
 }
 
 /** What a predator is doing (`specs/state.md`). */
@@ -105,9 +107,11 @@ export interface PredatorState {
   readonly mode: PredatorMode;
   /** Whether its turn in the den's staggered schedule has come. */
   readonly released: boolean;
-  /** Whether it runs its own mind (`specs/instrumentation.md`). */
+  /** Whether it senses and decides for itself (`specs/instrumentation.md`). */
   readonly mind: boolean;
-  /** Its current speed, in logical units per second. */
+  /** Whether its body carries what its mind decides through the maze. */
+  readonly travel: boolean;
+  /** The rate it travels at in its current mode, in logical units per second. */
   readonly speed: number;
   /**
    * The seconds left until its release time, or `null` for a predator that has
