@@ -19,7 +19,12 @@ import {
 } from "./constants";
 import { bodyTile } from "./entities";
 import { detectRange, flareCharging, flaring } from "./predators";
-import { visibilityRows, visionRadius, windowRadius } from "./sensing";
+import {
+  drifterLit,
+  visibilityRows,
+  visionRadius,
+  windowRadius,
+} from "./sensing";
 import { sonarRange } from "./sonar";
 import type {
   Dir,
@@ -84,7 +89,13 @@ export interface FathomSnapshot {
     dir: Dir;
     moving: boolean;
   };
-  drifters: { x: number; y: number; tx: number; ty: number }[];
+  drifters: {
+    x: number;
+    y: number;
+    tx: number;
+    ty: number;
+    lit: boolean;
+  }[];
   predators: PredatorSnapshot[];
   pulses: {
     source: PulseSource;
@@ -172,7 +183,13 @@ export function snapshotOf(
     },
     drifters: state.drifters.map((d) => {
       const at = bodyTile(d);
-      return { x: d.x, y: d.y, tx: at.tx, ty: at.ty };
+      return {
+        x: d.x,
+        y: d.y,
+        tx: at.tx,
+        ty: at.ty,
+        lit: drifterLit(state.lit, d),
+      };
     }),
     predators: state.predators.map((p) =>
       predatorSnapshot(p, state.brightness),

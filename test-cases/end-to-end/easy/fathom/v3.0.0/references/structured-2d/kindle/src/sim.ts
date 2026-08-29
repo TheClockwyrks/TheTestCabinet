@@ -385,7 +385,12 @@ export function predatorDrawn(state: FathomState, predator: Predator): boolean {
   return state.fog.showsBody(cell.tx, cell.ty);
 }
 
-/** Whether the forager's light or a flare is on a drifter this instant. */
+/**
+ * Whether a drifter's body is drawn this instant: by the forager's own light, or
+ * inside a flare's disc. Its amber mote is drawn under the amber-light rule and
+ * is a different question, so a drifter glimmering in the dark is one whose body
+ * is not drawn.
+ */
 export function drifterDrawn(state: FathomState, drifter: Drifter): boolean {
   const cell = bodyCell(drifter);
   return state.fog.showsBody(cell.tx, cell.ty);

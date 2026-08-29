@@ -3,7 +3,7 @@
 // Every quantity the specification defines as derived rather than held: the
 // light radius `V` and the vision circle's radius `R` from the brightness `G`,
 // the sonar range `E` from the depth, the roster a depth holds, and whether a
-// predator's body is being drawn this instant. They live apart from
+// predator's or a drifter's body is being drawn this instant. They live apart from
 // `src/game.ts` because the renderer, the snapshot and the overlay all ask them
 // of a state the game owns, and none of those three should have to reach into
 // the game to work them out.
@@ -21,7 +21,7 @@ import {
   VISION_GAIN,
   VISION_MIN,
 } from "./constants";
-import type { Predator } from "./entities";
+import type { Drifter, Predator } from "./entities";
 import type { FathomState } from "./game";
 import { COUNTDOWN_STEP } from "./theme";
 import type { PredatorKind, Screen } from "./types";
@@ -70,6 +70,17 @@ export function predatorLit(state: FathomState, p: Predator): boolean {
   // washing over the tile it stands on lights the ground, not the hunter.
   if (p.kind !== "lanternjaw" && p.markT > 0) return true;
   return state.fog.showsBodies(p.col, p.row);
+}
+
+/**
+ * Whether a drifter's body is drawn this instant: by the forager's own light,
+ * or inside a flare's disc.
+ *
+ * Its amber mote is drawn under its own rule and is a different question, so a
+ * drifter glimmering in the dark is one whose body is not drawn.
+ */
+export function drifterLit(state: FathomState, d: Drifter): boolean {
+  return state.fog.showsBodies(d.col, d.row);
 }
 
 /** Whether the maze itself is on screen, which is what the HUD is drawn over. */

@@ -53,7 +53,7 @@ import type { Cell, Dir } from "./grid";
 import { cellIndex, inGrid } from "./grid";
 import { bodyCell, restAt } from "./movement";
 import { acquireFix, lightDetectRange } from "./predators";
-import { predatorDrawn, refreshLight, trenchFor } from "./sim";
+import { drifterDrawn, predatorDrawn, refreshLight, trenchFor } from "./sim";
 import type { PulseSource, PulseTint } from "./sonar";
 import { fathomState, type FathomState, type Screen } from "./game";
 
@@ -81,6 +81,7 @@ export interface SnapshotDrifter {
   y: number;
   tx: number;
   ty: number;
+  lit: boolean;
 }
 
 export interface SnapshotPredator {
@@ -488,7 +489,13 @@ export function snapshotOf(state: FathomState): FathomSnapshot {
     },
     drifters: state.drifters.map((drifter) => {
       const cell = bodyCell(drifter);
-      return { x: drifter.x, y: drifter.y, tx: cell.tx, ty: cell.ty };
+      return {
+        x: drifter.x,
+        y: drifter.y,
+        tx: cell.tx,
+        ty: cell.ty,
+        lit: drifterDrawn(state, drifter),
+      };
     }),
     predators: state.predators.map((predator) => {
       const cell = bodyCell(predator);

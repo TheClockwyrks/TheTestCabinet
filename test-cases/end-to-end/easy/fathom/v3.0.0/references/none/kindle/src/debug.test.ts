@@ -525,6 +525,8 @@ describe("the debug surface", () => {
         y: Maze.centerY(8),
         tx: 10,
         ty: 8,
+        // Spawned out of the forager's light pocket, so its body is undrawn.
+        lit: false,
       });
     });
 

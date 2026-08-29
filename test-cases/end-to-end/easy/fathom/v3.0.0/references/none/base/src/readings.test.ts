@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ALERT_TIME,
+  DRIFTER_SPEED,
   GAMEOVER_ITEMS,
   PAUSE_ITEMS,
   SONAR_MARK_TIME,
@@ -9,9 +10,11 @@ import {
   VISION_GAIN,
   VISION_MIN,
 } from "./constants";
+import { Drifter } from "./entities";
 import { harness } from "./harness.test-support";
 import {
   countdownNumber,
+  drifterLit,
   menuItems,
   mazeOnScreen,
   predatorLit,
@@ -111,6 +114,30 @@ describe("predatorLit", () => {
     // creature under one is still not drawn (`specs/sensing.md`).
     h.state.fog.lightGround(p.col, p.row);
     expect(predatorLit(h.state, p)).toBe(false);
+  });
+});
+
+describe("drifterLit", () => {
+  it("draws a drifter the forager's light falls on", () => {
+    const h = harness();
+    const d = new Drifter(3, 3, DRIFTER_SPEED);
+    h.state.fog.light(d.col, d.row);
+    expect(drifterLit(h.state, d)).toBe(true);
+  });
+
+  it("leaves one standing in the dark undrawn", () => {
+    const h = harness();
+    const d = new Drifter(3, 3, DRIFTER_SPEED);
+    expect(drifterLit(h.state, d)).toBe(false);
+  });
+
+  it("leaves one a sonar crest is washing over undrawn", () => {
+    const h = harness();
+    const d = new Drifter(3, 3, DRIFTER_SPEED);
+    // A crest lights the ground, not what stands on it, and a drifter is an
+    // amber light a pulse never resolves (`specs/sensing.md`).
+    h.state.fog.lightGround(d.col, d.row);
+    expect(drifterLit(h.state, d)).toBe(false);
   });
 });
 

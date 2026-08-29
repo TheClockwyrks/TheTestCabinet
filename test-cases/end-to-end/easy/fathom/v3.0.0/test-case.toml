@@ -1129,12 +1129,13 @@ validation = { script = "sonar/marks-predators.test.ts", outputs = [
 [[review.categories.items]]
 id = "not-reveal-amber"
 title = "It never resolves the amber look-alikes"
-description = "A bonus drifter and a Lanternjaw standing on flooded tiles beyond the forager's light are left as they were: the Lanternjaw reports lit false through the whole pulse, and the pixels at both creatures' motes are unchanged across the front's arrival within an RGB distance of 25 of 441."
+description = "A bonus drifter and a Lanternjaw standing on flooded tiles beyond the forager's light are left as they were: both report lit false through the whole pulse and after it has run out, and the pixels at both creatures' motes are unchanged across the front's arrival within an RGB distance of 25 of 441."
 domains = ["sensing", "predators"]
 failure_cap = "passable"
 # Automated validation: pose a drifter and a Lanternjaw on a flooded corridor
-# beyond V, sample both motes before and after the front reaches them, and read
-# the Lanternjaw's `lit`. See validation/<engine>/sonar/not-reveal-amber.test.ts.
+# beyond V, read both creatures' `lit` through the pulse, and sample both motes
+# before and after the front reaches them. See
+# validation/<engine>/sonar/not-reveal-amber.test.ts.
 validation = { script = "sonar/not-reveal-amber.test.ts", outputs = [
   { id = "amber", name = "The amber look-alikes left unmarked by sonar", kind = "image" },
 ] }
@@ -1383,7 +1384,7 @@ validation = { script = "gloamfin/silent-when-close.test.ts", outputs = [
 [[review.categories.items]]
 id = "ping-reveals-nothing"
 title = "Its ping reveals nothing"
-description = "A ping sweeping over unrevealed corridor leaves every tile it passes reporting u, marks no predator and no drifter — every lit flag unchanged, the casting Gloamfin's included — and the pixels at a tile it swept, sampled once the front has passed, are unchanged from before the ping within an RGB distance of 25 of 441."
+description = "A ping sweeping over unrevealed corridor leaves every tile it passes reporting u, marks no predator and no drifter — every lit flag stays false, the drifter's and the casting Gloamfin's included — and the pixels at a tile it swept, sampled once the front has passed, are unchanged from before the ping within an RGB distance of 25 of 441."
 domains = ["predators", "sensing"]
 failure_cap = "passable"
 # Automated validation: pose a Gloamfin on unrevealed corridor with a drifter and
@@ -1860,8 +1861,11 @@ title = "The descend cue"
 description = "CUES.descend (\"descend\") plays on the tick a maze is cleared, exactly once on that tick."
 domains = ["progression"]
 failure_cap = "passable"
-# Automated validation: eat the last plankton and watch the cue bus on the tick
-# the maze clears. See validation/<engine>/audio/descend.test.ts.
+# Automated validation: swim through an ordinary mouthful and then the maze's
+# last one, and read the tick the maze cleared — the cue bus by name under an
+# engine, and under `none`, where a sound carries no name and the clearing tick
+# also carries CUES.eat, against what the ordinary mouthful sounded a moment
+# earlier. See validation/<engine>/audio/descend.test.ts.
 validation = { script = "audio/descend.test.ts", outputs = [
   { id = "descend", name = "The maze clear whose cue is checked", kind = "replay" },
 ] }
@@ -1882,7 +1886,9 @@ description = "Over surfaces wider than the stage, taller than it, and at a rais
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: stand the game up over several surface sizes and pixel
-# ratios and measure where the stage lands and what the bars are painted with. See
+# ratios, measure where the stage lands and what the bars are painted with, and on
+# a letterboxed window read the drawn light's own midpoint off the canvas against
+# where the specified fit puts the forager. See
 # validation/<engine>/presentation/window-fit.test.ts.
 validation = { script = "presentation/window-fit.test.ts", outputs = [
   { id = "fit", name = "The stage fitted in an off-aspect window", kind = "image" },

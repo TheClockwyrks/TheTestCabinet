@@ -97,11 +97,15 @@ hunter waits on, so an arrival was never the schedule.
 
 `setBrightness` now arms the one-second brightness hold in full, exactly as
 eating a plankton does, so a posed brightness is steady for that window rather
-than decaying out from under the check reading it. The sonar wavefront's speed
-is pinned at fourteen corridor steps per second, where it had been left as "a
-fraction of a second". Two new points were added: one owning the `setMaze`
-housing contract, and one owning "predators keep to the corridors", asked in
-both the shape a hunter must round and the shape it must sit still in.
+than decaying out from under the check reading it. A bonus drifter reports `lit`
+beside its position, the reading a predator already carried: true while its
+jellyfish body is being drawn this instant, and answering for the body alone,
+because the amber mote that shows a drifter in the dark is a separate drawing
+under the amber-light rule. The sonar wavefront's speed is pinned at fourteen
+corridor steps per second, where it had been left as "a fraction of a second".
+Two new points were added: one owning the `setMaze` housing contract, and one
+owning "predators keep to the corridors", asked in both the shape a hunter must
+round and the shape it must sit still in.
 
 ## The specifications were rewritten
 

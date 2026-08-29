@@ -22,7 +22,7 @@ import {
 } from "./constants";
 import type { FathomState } from "./game";
 import { lightDetectRange, isBlooming, isCharging } from "./predators";
-import { predatorLit, sonarRange, visionRadius } from "./readings";
+import { drifterLit, predatorLit, sonarRange, visionRadius } from "./readings";
 import type {
   Dir,
   PredatorKind,
@@ -46,6 +46,7 @@ export interface DrifterSnapshot {
   y: number;
   tx: number;
   ty: number;
+  lit: boolean;
 }
 
 export interface PredatorSnapshot {
@@ -167,6 +168,7 @@ export function snapshot(
       y: d.y,
       tx: d.col,
       ty: d.row,
+      lit: drifterLit(state, d),
     })),
     predators: state.predators.map((p) => {
       const hunts = p.kind === "lanternjaw" || p.kind === "flarefish";

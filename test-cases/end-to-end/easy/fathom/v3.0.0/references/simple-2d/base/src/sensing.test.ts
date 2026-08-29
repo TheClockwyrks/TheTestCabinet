@@ -4,11 +4,13 @@ import { centerX, centerY, tileIndex } from "./grid";
 import { loadLayout } from "./maze";
 import {
   castLight,
+  drifterLit,
   emptyGrid,
   lightDisc,
   lineOfSightClear,
   visibilityRows,
 } from "./sensing";
+import { createDrifter } from "./simulate";
 import type { MazeState, Tile } from "./state";
 
 function board(
@@ -116,5 +118,21 @@ describe("the visibility the snapshot reports", () => {
     expect(rows[2][3]).toBe("r");
     expect(rows[2][4]).toBe("l");
     expect(rows[2][5]).toBe("u");
+  });
+});
+
+describe("whether a drifter's body is drawn", () => {
+  it("draws it where the fog holds its tile lit", () => {
+    const lit = emptyGrid();
+    lit[tileIndex(6, 3)] = true;
+    const drifter = createDrifter(6, 3);
+    expect(drifterLit(lit, drifter)).toBe(true);
+  });
+
+  it("leaves it undrawn where its tile is not lit", () => {
+    const lit = emptyGrid();
+    lit[tileIndex(7, 3)] = true;
+    const drifter = createDrifter(6, 3);
+    expect(drifterLit(lit, drifter)).toBe(false);
   });
 });

@@ -84,6 +84,7 @@ describe("the snapshot", () => {
     expect(snapshot.forager.dir).toMatch(/^(up|down|left|right)$/);
     expect(typeof snapshot.forager.moving).toBe("boolean");
     expect(snapshot.drifters).toHaveLength(1);
+    expect(typeof snapshot.drifters[0].lit).toBe("boolean");
     expect(typeof snapshot.simTime).toBe("number");
 
     // A field a kind does not carry reports null rather than going missing.

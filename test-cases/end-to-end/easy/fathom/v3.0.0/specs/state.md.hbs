@@ -78,7 +78,7 @@ field below. It is a pure read that changes nothing.
   },
 
   drifters: [
-    { x: <number>, y: <number>, tx: <number>, ty: <number> },
+    { x: <number>, y: <number>, tx: <number>, ty: <number>, lit: <boolean> },
   ],
 
   predators: [
@@ -210,9 +210,14 @@ remembered tile outside the circle still reports `r`.{{/if}}
 
 ## The drifters
 
-`drifters` lists every bonus drifter in the maze, each with its center `x` and `y`
-in logical units and the tile `tx`, `ty` it is on. A drifter that has been eaten
+`drifters` lists every bonus drifter in the maze. A drifter that has been eaten
 leaves the list.
+
+- `x` and `y` are its center, in logical units, and `tx` and `ty` are the tile it
+  is on, the tile whose bounds contain its center.
+- `lit` is `true` while its body is being drawn this instant, by the forager's
+  light or by a flare. Its amber mote is a separate drawing, shown under the
+  amber-light rule `specs/sensing.md` fixes, so `lit` answers for the body alone.
 
 ## The predators
 

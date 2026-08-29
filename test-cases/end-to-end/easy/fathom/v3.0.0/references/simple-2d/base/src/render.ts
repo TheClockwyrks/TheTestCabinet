@@ -48,7 +48,7 @@ import { COUNTDOWN_BEAT } from "./flow";
 import { centerX, centerY, tileIndex } from "./grid";
 import { isGate, isRock, wallMask } from "./maze";
 import { FLARE_FADE } from "./predators";
-import { visionRadius } from "./sensing";
+import { drifterLit, visionRadius } from "./sensing";
 import {
   COLOR,
   FORAGER_FPS,
@@ -640,11 +640,7 @@ function drawCreatures(state: State, ctx: Ctx): void {
   // A drifter's jellyfish body is drawn only where it is lit, exactly as a
   // predator's is; its amber mote below is what shows it in the dark.
   for (const d of state.drifters) {
-    const at = tileIndex(
-      Math.floor((d.x - GRID_ORIGIN_X) / TILE),
-      Math.floor((d.y - GRID_ORIGIN_Y) / TILE),
-    );
-    if (!state.lit[at]) continue;
+    if (!drifterLit(state.lit, d)) continue;
     if (
       drawFrame(
         ctx,

@@ -56,6 +56,7 @@ import {
   countdownNumber,
   mazeOnScreen,
   menuItems,
+  drifterLit,
   predatorLit,
   windowRadius,
 } from "./readings";
@@ -570,7 +571,7 @@ function drawBodies(
   // A drifter's jellyfish body shows only where the forager's own light falls
   // on it: a sonar pulse never resolves which amber glimmer is which.
   for (const d of state.drifters) {
-    if (!state.fog.showsBodies(d.col, d.row)) continue;
+    if (!drifterLit(state, d)) continue;
     drawSprite(ctx, state.assets.drifter, drifterFrame(d), d, alpha);
   }
 

@@ -22,7 +22,7 @@ import {
   tileIndex,
 } from "./grid";
 import { isRock } from "./maze";
-import type { MazeState } from "./state";
+import type { DrifterState, MazeState } from "./state";
 
 /** An array with an entry per tile, all `false`. */
 export function emptyGrid(): boolean[] {
@@ -76,6 +76,21 @@ export function lineOfSightClear(
     if (isRock(maze, x, y)) return false;
   }
   return true;
+}
+
+/**
+ * Whether a drifter's body is drawn this instant (`specs/state.md`): true where
+ * the fog holds the tile it stands on lit, by the forager's own light or by a
+ * flare's disc.
+ *
+ * Its amber mote is drawn under the amber-light rule and is a different
+ * question, so a drifter glimmering in the dark is one whose body is not drawn.
+ */
+export function drifterLit(
+  lit: readonly boolean[],
+  drifter: DrifterState,
+): boolean {
+  return lit[tileIndex(columnAt(drifter.x), rowAt(drifter.y))];
 }
 
 /** What one recomputation of the fog leaves behind. */
