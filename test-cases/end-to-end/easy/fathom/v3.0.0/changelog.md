@@ -72,6 +72,18 @@ schedule suspended, so a posed scenario does not share its corridor with a
 hunter that wandered in. The structural maze points are the exception, because
 finding the shape in the build's own board is what those points are.
 
+## A broken rule fails the point that owns it
+
+A scenario poses a board and then measures one thing on it, and a defect
+elsewhere in the build used to give way underneath every scenario that shared
+the board. One predator swimming through rock failed fourteen points, thirteen
+of which were about something else. Each point now takes a guard when its
+scenario is arranged, and a point whose guard gives way for a reason another
+point owns stands down through an unmet precondition instead of answering. Three
+points own those reasons and fail for them: the forager honouring rock, the
+predators honouring rock, and `setMaze` returning every predator to the den. A
+reviewer reading a red line is therefore reading the rule that broke.
+
 ## The schedule is read from the schedule
 
 Each predator now carries a `released` flag beside its `state`. `state` says
