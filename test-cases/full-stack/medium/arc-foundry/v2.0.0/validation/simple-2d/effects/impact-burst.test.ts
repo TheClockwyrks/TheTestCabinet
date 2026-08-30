@@ -1,27 +1,112 @@
-// Arc Foundry — `effects.impact-burst`. CASE-PROVIDED. NOT YET WRITTEN.
+// Arc Foundry — effects/impact-burst: a shot that connects bursts where it landed.
 //
-// The manifest declares this point at `effects/impact-burst.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT, from `specs/assets.md`: the impact system is spawned when "any
+// shot connects with a unit", it carries "a small burst of sparks at the point of
+// impact", and it is spawned "at the position of the event that raised it: ... the
+// impact where a shot connects".
 //
-// THE REQUIREMENT. Particles are drawn at the point a shot connects with a
-// unit on the frame it connects that were not drawn there on the frame before
-// it.
+// THE PRODUCED FILES ARE SERVED TO THE LOADER HERE, by `./produced.ts`: the system
+// so it can be played, and the sprites so the unit under the reading looks and
+// behaves as it does in a page.
 //
-// HOW IT IS DECIDED. Sample the impact point either side of a Capacitor's hit.
-// The evidence it hands back is `impact` (replay): the burst where a shot
-// connects.
+// THE WORLD. One Scrap Capacitor and one held Mote inside its stated range, and
+// nothing else. `specs/components.md` puts the hit on the projectile — "when the
+// projectile comes within `PROJECTILE_HIT_R` (`6`) of that position it applies its
+// damage" — so the frame the unit's health drops is the frame the shot connected,
+// and that is the frame the reading starts on. The projectile is removed by then,
+// so nothing of the shot itself is left in the picture.
+//
+// A MOTE SURVIVES THE HIT, ON PURPOSE. `specs/components.md` gives a Scrap
+// Capacitor `6` damage and `specs/enemies.md` scales a Mote to ten health on wave
+// one at Medium, so the unit lives and no death burst can stand in for the impact.
+//
+// WHAT IS READ, AND HOW THE UNIT'S OWN CYCLE IS KEPT OUT OF THE ANSWER. The burst
+// is drawn where the shot landed, which is on the unit, so the reading is taken
+// there — and a unit's idle cycle loops while it is on the yard. The reading is
+// therefore a comparison against the same ground under the same looping cycle: a
+// four-frame loop advances a handful of times in a tenth of a second, and a system
+// simulated live moves on nearly every frame of it. The band above the unit is
+// left out, because a health bar dropping is not a burst.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+} from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  parkUnit,
+  standComponent,
+  structureCenter,
+  ticks,
+  unitById,
+  type Harness,
+} from "../harness";
+import { serveProducedAssets } from "./produced";
+import { lattice, motion } from "./region";
 
-describe("effects.impact-burst", () => {
-  it("Any shot that connects bursts at the impact", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `effects.impact-burst` has not been written yet",
+/** Clear ground, well away from the map's waypoint platforms and its chain. */
+const ANCHOR = { col: 21, row: 17 };
+const HEAD = structureCenter(ANCHOR.col, ANCHOR.row);
+
+/** Eighty units away, inside the Scrap Capacitor's stated range of `100`. */
+const AT = { x: HEAD.x + 80, y: HEAD.y };
+
+/** Over the unit and the ground just around it, clear of the health bar above it. */
+const POINTS = lattice(AT, 18, 3).filter((point) => point.y >= AT.y - 8);
+
+const WINDOW = ticks(0.1);
+const MOVING = WINDOW / 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  serveProducedAssets();
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("sets the impact point moving on the frame a shot connects", async () => {
+  openYard(h, { wave: 1 });
+  const unit = parkUnit(h, "mote", AT);
+  await h.advance(1);
+  const still = await motion(h, POINTS, WINDOW);
+
+  standComponent(h, "capacitor", 1, ANCHOR.col, ANCHOR.row);
+  const full = unitById(h.snapshot(), unit).maxHp;
+
+  const played = await captureReplay(h, "impact", async () => {
+    const hit = await h.until(
+      (s) => s.units.some((u) => u.id === unit && u.hp < full),
+      { maxFrames: ticks(3) },
     );
+    return { hit: hit.hit, moving: await motion(h, POINTS, WINDOW) };
   });
+
+  assertEqual(
+    played.hit,
+    true,
+    "a Scrap Capacitor's shot to connect with a Mote eighty units away within " +
+      "three seconds (specs/components.md)",
+  );
+  assertGreaterThan(
+    played.moving,
+    still,
+    "the point a shot connected at to change on more frames than the same " +
+      "ground did before the shot, so an impact burst is played there " +
+      `(specs/assets.md); it changed on ${still} of ${WINDOW} frames before`,
+  );
+  assertGreaterThanOrEqual(
+    played.moving,
+    MOVING,
+    "the burst to keep moving across the tenth of a second after the hit, as " +
+      "a live particle system does (specs/assets.md)",
+  );
 });
