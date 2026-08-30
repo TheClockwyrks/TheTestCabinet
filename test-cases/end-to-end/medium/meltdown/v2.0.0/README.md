@@ -24,10 +24,11 @@ systems that have to hold each other up at once: a maze that re-paths live under
 a grid of multi-size rotatable footprints, a two-phase thermal model in which
 every tower is coupled to its neighbours, a damage curve that plateaus at each
 tower's own redline with the trip as its only failure, an economy with four
-income lines, six surge types including a flyer that ignores the maze, a
-twenty-wave progression stated as closed forms, five modes over three
-difficulties, eight screens, and a build panel with a live inspector. None of it
-is deep on its own; all of it together is a great deal to keep consistent.
+income lines, six surge types including a flyer that ignores the maze, a wave
+progression whose type, size and cadence are stated as closed forms, five modes
+over three difficulties, eight screens, and a build panel with a live inspector.
+None of it is deep on its own; all of it together is a great deal to keep
+consistent.
 
 ## What is new in `v2.0.0`
 
@@ -121,9 +122,9 @@ pinned to the figure — the stage, the casing band, `TILE`, the tile-to-stage m
 the openings' rows and columns — and everything else about the look is the
 build's. There is no palette, no typeface and no panel layout anywhere in the
 specs or in `src/constants.ts`. What the specification does fix about appearance
-is legibility a player depends on: an emitter's colour tracking its heat along a
+is legibility a player depends on: an emitter's color tracking its heat along a
 ramp, a tripped tower reading apart from an online one at the same heat, radiator
-faces drawn apart from plain ones, and the surge reading apart from every colour
+faces drawn apart from plain ones, and the surge reading apart from every color
 a tower shows anywhere on its ramp. The `presentation` validators decide exactly
 that, against an RGB distance and never a hex value.
 
@@ -144,6 +145,14 @@ Each project carries the same spec-derived oracle beside its harness:
 figures, and `routes.ts` recomputes the route metric the same way, so every
 thermal and pathing expectation is derived from the specs rather than from a
 number the reference produced.
+
+One rule governs every item about whether time passes, and it is the lesson
+`v1.0.0` bought. Such an item settles over a real window on the build's own
+clock, in two legs of equal length, and never calls the stepping operation:
+stepping is instrumentation, and the question is about the game. The pair is a
+running leg the floor must really travel in and a paused leg whose drift and
+simulated-clock gain must both stay under a ceiling, with both readings taken
+from the one snapshot on the press.
 
 `validation-baseline/<engine>/<variant>/` holds the media the same suites
 captured from that engine's reference build, so a reviewer sees the build's
