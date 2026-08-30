@@ -54,7 +54,7 @@ import type {
 } from "./game";
 
 /** How far past each side of the strait a lane's ring reaches, in stage units. */
-export const WRAP_MARGIN = 5 * TILE;
+const WRAP_MARGIN = 5 * TILE;
 
 /** How many times a band's phases are redrawn before its stagger is accepted. */
 const STAGGER_ATTEMPTS = 128;
@@ -305,43 +305,6 @@ export function floeAtPoint(
     if (item.row === row && coversPoint(item, x)) return item;
   }
   return null;
-}
-
-/** The floe covering a tile of a row, or `null`. */
-export function floeOnTile(
-  world: World,
-  col: number,
-  row: number,
-): IceFloe | null {
-  return floeAtPoint(world, tileCX(col), row);
-}
-
-/**
- * Whether a moving vehicle covers a tile now or reaches it within `lead`
- * seconds, carrying its lane forward at its current motion (specs/hunter.md).
- *
- * A lane runs one way, so the tiles a vehicle sweeps over the lead are the span
- * between where it is and where it will be, widened by its own length.
- */
-export function tileSweptWithin(
-  world: World,
-  state: FloeState,
-  col: number,
-  row: number,
-  lead: number,
-): boolean {
-  const lane = laneAt(state, row);
-  if (lane === null) return false;
-  const travel = lane.dir * lane.speed * TILE * lead;
-  const center = tileCX(col);
-  for (const item of vehiclesOf(world)) {
-    if (item.row !== row) continue;
-    const from = Math.min(item.transform.x, item.transform.x + travel);
-    const to =
-      Math.max(item.transform.x, item.transform.x + travel) + TILE * item.len;
-    if (center >= from && center < to) return true;
-  }
-  return false;
 }
 
 /** Put one vehicle on the ice band, appended to the roster with a fresh id. */

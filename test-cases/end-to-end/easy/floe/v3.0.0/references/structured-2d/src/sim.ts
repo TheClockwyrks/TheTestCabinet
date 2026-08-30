@@ -109,13 +109,6 @@ export interface Bus {
   setMuted(muted: boolean): void;
 }
 
-/** A bus that does nothing, for a pose that must make no sound. */
-export const SILENT: Bus = {
-  cue: () => undefined,
-  muted: () => false,
-  setMuted: () => undefined,
-};
-
 /** The tick's input, resolved out of the actions before the rules see it. */
 export interface Intents {
   /** The direction being requested on the `playing` screen, or `null`. */
@@ -145,20 +138,6 @@ export function noIntents(): Intents {
     pause: false,
     mute: false,
   };
-}
-
-/** Whether any edge is still waiting to be consumed. */
-export function hasEdges(intents: Intents): boolean {
-  return (
-    intents.up ||
-    intents.down ||
-    intents.left ||
-    intents.right ||
-    intents.confirm ||
-    intents.back ||
-    intents.pause ||
-    intents.mute
-  );
 }
 
 /**

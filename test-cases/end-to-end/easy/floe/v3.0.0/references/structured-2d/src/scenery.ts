@@ -48,6 +48,12 @@ function bandRect(
 class BandsArt extends DrawComponent {
   draw(api: DrawApi): void {
     const { ctx } = api;
+    // The first thing drawn each frame, on the lowest layer, so this is where
+    // the frame's sampling is chosen: the seeded art is pixel art and has to
+    // stay crisp at every scale the stage is fitted to (specs/assets.md).
+    // Nothing between here and the end of the frame resets it, so every sprite
+    // the pipeline draws afterwards is sampled the same way.
+    ctx.imageSmoothingEnabled = false;
     if (api.mode === "wireframe") {
       ctx.strokeStyle = COLOR.textDim;
       ctx.lineWidth = 1;

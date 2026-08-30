@@ -4,49 +4,12 @@
 // the figures; this module is the derived reading of them. Nothing here holds
 // state and nothing here touches the world.
 
-import {
-  BAYS,
-  COLS,
-  ICE_BOTTOM,
-  ICE_TOP,
-  ROW_BAYS,
-  ROW_CAP,
-  ROW_MEDIAN,
-  ROW_NEAR,
-  ROWS,
-  TILE,
-  WATER_BOTTOM,
-  WATER_TOP,
-} from "./constants";
+import { BAYS, ROW_NEAR, TILE, WATER_BOTTOM, WATER_TOP } from "./constants";
 import type { Facing, ItemKind } from "./game";
-
-/** One of the five bands, plus the far shore's two rows told apart. */
-export type Band = "cap" | "bays" | "water" | "median" | "ice" | "near";
-
-/** The band a strait row belongs to. */
-export function bandOf(row: number): Band {
-  if (row <= ROW_CAP) return "cap";
-  if (row === ROW_BAYS) return "bays";
-  if (row >= WATER_TOP && row <= WATER_BOTTOM) return "water";
-  if (row === ROW_MEDIAN) return "median";
-  if (row >= ICE_TOP && row <= ICE_BOTTOM) return "ice";
-  return "near";
-}
 
 /** Whether the row is one of the eight the water band occupies. */
 export function isWaterRow(row: number): boolean {
   return row >= WATER_TOP && row <= WATER_BOTTOM;
-}
-
-/** Whether the row is one of the eight the ice band occupies. */
-export function isIceRow(row: number): boolean {
-  return row >= ICE_TOP && row <= ICE_BOTTOM;
-}
-
-/** Whether the row is solid ground whatever is on it: the shores and the median. */
-export function isSolidRow(row: number): boolean {
-  const band = bandOf(row);
-  return band === "near" || band === "median" || band === "ice";
 }
 
 /** The bay a far-shore column belongs to, or `-1` where the shore is solid. */
@@ -103,16 +66,6 @@ export function tileDistance(
   bRow: number,
 ): number {
   return Math.abs(aCol - bCol) + Math.abs(aRow - bRow);
-}
-
-/** A column clamped onto the strait. */
-export function clampCol(col: number): number {
-  return Math.max(0, Math.min(COLS - 1, col));
-}
-
-/** A row clamped onto the strait. */
-export function clampRow(row: number): number {
-  return Math.max(0, Math.min(ROWS - 1, row));
 }
 
 /** The rows a crossing has advanced, given the topmost row it has reached. */

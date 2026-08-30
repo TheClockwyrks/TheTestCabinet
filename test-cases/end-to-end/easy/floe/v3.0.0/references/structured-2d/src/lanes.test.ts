@@ -19,6 +19,13 @@ import {
 import { createHarness, type Harness } from "./harness.test-support";
 import type { FloeSnapshotShape } from "./game";
 
+/** What every check below reads of a lane item: where it is and how wide. */
+interface LaneItem {
+  row: number;
+  x: number;
+  len: number;
+}
+
 let harness: Harness;
 
 beforeEach(async () => {
@@ -39,9 +46,9 @@ function mod(value: number, by: number): number {
  * its leftmost item lies off the left edge, and its rightmost item's right edge
  * is past the right one.
  */
-function spans(
+function spans<T extends LaneItem>(
   which: number,
-  items: readonly { row: number; x: number; len: number }[],
+  items: readonly T[],
   level: number,
 ): void {
   const spec = [...ICE_LANES, ...WATER_LANES].find(
@@ -57,11 +64,10 @@ function spans(
 }
 
 /** Every item of one row, left to right. */
-function row(
-  items: readonly { row: number; x: number; len: number }[],
-  which: number,
-): { row: number; x: number; len: number }[] {
-  return items.filter((item) => item.row === which).sort((a, b) => a.x - b.x);
+function row<T extends LaneItem>(items: readonly T[], which: number): T[] {
+  return [...items]
+    .filter((item) => item.row === which)
+    .sort((a, b) => a.x - b.x);
 }
 
 describe("a laid-out band", () => {
@@ -122,7 +128,7 @@ describe("a laid-out band", () => {
   it("staggers each band, so no column is covered in all eight rows", () => {
     const snapshot = harness.snapshot();
     const covered = (
-      items: readonly { row: number; x: number; len: number }[],
+      items: readonly LaneItem[],
       rows: readonly number[],
       col: number,
     ): boolean =>
@@ -166,10 +172,7 @@ describe("the per-level scaling", () => {
           8,
         );
         const period = (ITEM_LEN[spec.kind] + laneGap(spec.row, level)) * TILE;
-        const items = row(
-          [...snapshot.vehicles, ...snapshot.floes],
-          spec.row,
-        );
+        const items = row([...snapshot.vehicles, ...snapshot.floes], spec.row);
         for (let i = 1; i < items.length; i += 1) {
           expect(items[i].x - items[i - 1].x).toBeCloseTo(period, 6);
         }
@@ -229,9 +232,8 @@ describe("lane motion", () => {
       // One second of game time, with any whole trips around the lane's ring
       // folded out: a wrap is the same item arriving at the other edge.
       const period = (ITEM_LEN[spec.kind] + laneGap(spec.row, 1)) * TILE;
-      const trackLen = row([...after.vehicles, ...after.floes], spec.row)
-        .length *
-        period;
+      const trackLen =
+        row([...after.vehicles, ...after.floes], spec.row).length * period;
       const off = mod(delta - step, trackLen);
       expect(Math.min(off, trackLen - off)).toBeLessThan(0.5);
     }

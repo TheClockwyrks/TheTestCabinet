@@ -26,17 +26,12 @@ import {
 } from "./constants";
 import {
   DIRECTIONS,
-  bandOf,
   bayCenterX,
   bayColumns,
   bayIndexAtCol,
-  clampCol,
-  clampRow,
   facingBetween,
   facingDX,
   facingDY,
-  isIceRow,
-  isSolidRow,
   isWaterRow,
   itemKind,
   rowsAdvanced,
@@ -78,33 +73,21 @@ describe("the tile-to-stage map", () => {
 });
 
 describe("the five bands", () => {
-  it("names each row's band", () => {
-    expect(bandOf(ROW_CAP)).toBe("cap");
-    expect(bandOf(ROW_BAYS)).toBe("bays");
-    expect(bandOf(WATER_TOP)).toBe("water");
-    expect(bandOf(WATER_BOTTOM)).toBe("water");
-    expect(bandOf(ROW_MEDIAN)).toBe("median");
-    expect(bandOf(ICE_TOP)).toBe("ice");
-    expect(bandOf(ICE_BOTTOM)).toBe("ice");
-    expect(bandOf(ROW_NEAR)).toBe("near");
-  });
-
-  it("puts the eight water rows and the eight ice rows where the table does", () => {
+  it("puts the eight water rows where the table does", () => {
     const water = [];
-    const ice = [];
     for (let row = 0; row < ROWS; row += 1) {
       if (isWaterRow(row)) water.push(row);
-      if (isIceRow(row)) ice.push(row);
     }
+    expect(water).toEqual([WATER_TOP, 3, 4, 5, 6, 7, 8, WATER_BOTTOM]);
     expect(water).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
-    expect(ice).toEqual([11, 12, 13, 14, 15, 16, 17, 18]);
   });
 
-  it("calls the near shore, the median and the ice band solid", () => {
-    expect(isSolidRow(ROW_NEAR)).toBe(true);
-    expect(isSolidRow(ROW_MEDIAN)).toBe(true);
-    expect(isSolidRow(ICE_TOP)).toBe(true);
-    expect(isSolidRow(WATER_TOP)).toBe(false);
+  it("stacks the five bands in the order specs/strait.md fixes", () => {
+    expect([ROW_CAP, ROW_BAYS]).toEqual([0, 1]);
+    expect([WATER_TOP, WATER_BOTTOM]).toEqual([2, 9]);
+    expect(ROW_MEDIAN).toBe(10);
+    expect([ICE_TOP, ICE_BOTTOM]).toEqual([11, 18]);
+    expect(ROW_NEAR).toBe(19);
   });
 });
 
@@ -157,13 +140,6 @@ describe("derived readings", () => {
     expect(rowsAdvanced(ROW_NEAR)).toBe(0);
     expect(rowsAdvanced(ROW_NEAR - 3)).toBe(3);
     expect(rowsAdvanced(ROW_BAYS)).toBe(18);
-  });
-
-  it("clamps a tile onto the strait", () => {
-    expect(clampCol(-4)).toBe(0);
-    expect(clampCol(400)).toBe(COLS - 1);
-    expect(clampRow(-1)).toBe(0);
-    expect(clampRow(99)).toBe(ROWS - 1);
   });
 
   it("accepts the six lane item kinds and refuses anything else", () => {
