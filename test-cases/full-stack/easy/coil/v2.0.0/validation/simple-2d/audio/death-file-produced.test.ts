@@ -1,33 +1,74 @@
-/*
- * Coil validator: `audio.death-file-produced`. PLACEHOLDER.
- *
- * The death cue ships a produced sound.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * assets/audio/death.wav exists, decodes as a WAV of non-zero length, and
- * carries audible signal rather than silence.
- *
- * HOW:
- * read the WAV off the built workspace, parse its header, and measure its peak
- * amplitude. The check reads a file and drives nothing, so its evidence is a
- * still.
- *
- * MEDIA IT MUST CAPTURE: death (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// audio/death-file-produced — the death cue is a sound this build made, not
+// silence.
+//
+// WHAT THE SPECIFICATION FIXES. `specs/assets.md` puts the `death` cue at
+// `assets/audio/death.wav`, made with `sfx-synth` or `sfx-sample`, and requires
+// the file to be produced during this build and committed rather than downloaded
+// or stood in for. `specs/ui.md` binds the cue to the head entering a fatal cell.
+// So the file exists, it is a WAV, it holds samples, and those samples carry
+// signal.
+//
+// WHAT IT DELIBERATELY DOES NOT READ. What the sound is like: "the one heavy
+// sound in the game... and unmistakable as the end of a round" is
+// `specs/assets.md`'s sound bar and the presentation domain's aesthetic rating.
+// The one part of that bar stated as a comparison of figures is its length
+// against the other two, and that is `audio/death-is-the-longest-cue`. That the
+// build plays it on the fatal tick is `audio/death-cue-plays`.
+//
+// HOW THE FILE IS READ. Off the repository the build produced, at the path
+// `specs/assets.md` fixes: its RIFF header, so a file merely wearing the
+// extension is caught, and then its samples — see `audio/sounds.ts` for why the
+// bytes are read here rather than through the engine, and why reading them here
+// covers every encoding a generation binary writes.
+//
+// THE EVIDENCE. This point drives nothing, so its declared still is a picture of
+// the moment the cue belongs to: the head one cell from the wall it is about to
+// run into.
 
-test("audio.death-file-produced", () => {
-  throw new Error(
-    "validator not implemented: audio/death-file-produced.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan, fail } from "../assert";
+import { CUES, INTERIOR_MAX_COL } from "../../src/constants";
+import {
+  captureStill,
+  chainFrom,
+  createHarness,
+  type Cell,
+  type Harness,
+} from "../harness";
+import { CUE_FILES, readSound, SILENCE_FLOOR, showRound } from "./sounds";
+
+/** The path `specs/assets.md` fixes for the death cue. */
+const FILE = CUE_FILES[CUES.death];
+
+/** The last interior cell of row 8: one step east of it is the wall border. */
+const BRINK: Cell = { col: INTERIOR_MAX_COL, row: 8 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("ships a produced death cue carrying audible signal", async () => {
+  const { sound, reason } = readSound(FILE);
+
+  await showRound(h, {
+    snake: chainFrom(BRINK, "right", 4),
+    dir: "right",
+    pellet: null,
+    travel: false,
+  });
+  captureStill(h, "death");
+
+  if (sound === null) fail(`a readable PCM WAV at ${FILE}`, reason);
+  assertGreaterThan(sound.frames, 0, `sample frames in ${FILE}`);
+  assertGreaterThan(
+    sound.peak,
+    SILENCE_FLOOR,
+    `the peak sample of ${FILE}, on a full scale of 1`,
   );
 });
