@@ -51,16 +51,22 @@ const STEPS = 10;
 const DUE_FRAMES = ticksFor(WORM_STEP_L1 * STEPS);
 
 /**
- * How far the count may fall from that, in frames.
+ * How far the count may fall from that.
  *
- * A step lands in the frame whose accumulated time FIRST reaches the interval, so
- * an arrival can be read up to one frame late; and 168 additions of `1 / 120` s
- * settle a hair either side of `1.4` s in binary floating point, which can move
- * that frame by one more. Two frames is `2 / 120` s, 1.2% of the `1.4` s figure —
- * far inside the gap to any neighbouring interval, since `0.13` s would land ten
- * steps at 156 frames and `0.15` s at 180.
+ * `0.03` s, stated in SECONDS and converted to this harness's own frames, so
+ * every engine's suite allows the same drift on the same cadence requirement.
+ * Each part of it is a reading artefact rather than room on the figure: a step
+ * lands in the frame whose accumulated time FIRST reaches the interval and the
+ * sweep reads between frames, so an arrival can be read a frame late; and the
+ * accumulated deltas settle a hair either side of `1.4` s in binary floating
+ * point, which can move that frame by one more, and a build that adds its deltas
+ * in a different order can land a frame either side of that in turn. `0.03` s is
+ * 2.1% of the `1.4` s figure and far inside the gap to any neighbouring interval:
+ * a build stepping every `0.13` s reaches ten steps `0.1` s early and one
+ * stepping every `0.15` s `0.1` s late.
  */
-const TOLERANCE_FRAMES = 2;
+const TOLERANCE_SECONDS = 0.03;
+const TOLERANCE_FRAMES = ticksFor(TOLERANCE_SECONDS);
 
 /** How far the sweep runs: twice the figure, so a slow build is still measured. */
 const MAX_FRAMES = DUE_FRAMES * 2;

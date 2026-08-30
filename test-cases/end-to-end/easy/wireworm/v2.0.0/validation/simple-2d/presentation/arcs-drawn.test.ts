@@ -16,13 +16,15 @@
 // links are read from the snapshot and taken as given, so a build that got the
 // chain wrong is docked once, there.
 //
-// THE CORRIDOR IS A TILE WIDE. specs/discharge.md fixes the two ENDS of an arc
-// and leaves its form free, so lightning is expected to wander off the straight
-// line between them; half a tile of clearance on each side is room for that
-// wandering and still narrow enough that only drawing that runs BETWEEN the two
-// centres can satisfy it. Every sample point along the corridor has to find
-// something, so a build that drew a spark at each end and nothing between them
-// fails.
+// THE LIGHTNING IS LOOKED FOR IN A DISC AT EACH OF FIVE STATIONS ALONG THE
+// CHORD. specs/discharge.md fixes the two ENDS of an arc and leaves its form
+// free, so lightning is expected to wander off the straight line between them;
+// `WANDER_MAX` — a third of a tile, in every direction rather than only across
+// the chord — is room for that wandering and still narrow enough that only
+// drawing that runs BETWEEN the two centres can satisfy it. Every station has to
+// find something, so a build that drew a spark at each end and nothing between
+// them fails. The `none` and `structured-2d` suites search the same disc at the
+// same five stations.
 //
 // THE BOARD IS BARE WHERE THE ARCS ARE. Both detonated nodes are removed by the
 // chain — specs/discharge.md: "A detonated node is removed from the board, and
@@ -49,6 +51,7 @@ import {
   startPlaying,
   ticksFor,
   type Harness,
+  type Rgb,
 } from "../harness";
 import { meanColor, pixelColor, tileBox } from "./reading";
 
@@ -65,25 +68,19 @@ import { meanColor, pixelColor, tileBox } from "./reading";
 const APART_MIN = 40;
 
 /**
- * How far to either side of the straight line between two centres the lightning
- * may wander, in logical units.
+ * How far off the straight chord the lightning may wander, in logical units.
  *
- * specs/discharge.md fixes the two ENDS of an arc and leaves its form to the
- * build — "The color and the form of the lightning are yours" — so a jagged
- * polyline is expected to leave the straight line. Half a tile (`TILE / 2`, `16`)
- * is generous room for that and still keeps the corridor inside the pair of tiles
- * the arc joins.
+ * A third of a tile. specs/discharge.md leaves the form of the lightning to the
+ * build — "The color and the form of the lightning are yours" — and lightning is
+ * drawn jagged, so the chord is where the arc runs rather than where every one of
+ * its pixels lies. Wander wider than this and the arc no longer reads as joining
+ * two particular tile centres, which is the one thing the file does fix about the
+ * drawing.
  */
-const CORRIDOR_HALF = TILE / 2;
+const WANDER_MAX = Math.round(TILE / 3);
 
-/**
- * How many points along each arc are looked at, both ends included.
- *
- * Nine points over an arc that spans at most `2 * DISCHARGE_RADIUS` (`4`) tiles
- * puts a sample every half tile at the widest, so a gap in the drawing wider than
- * half a tile cannot hide between two of them.
- */
-const SAMPLES_ALONG = 9;
+/** Where along the chord the lightning is looked for, as fractions of it. */
+const STATIONS = [0.1, 0.3, 0.5, 0.7, 0.9] as const;
 
 /** The tile the critical node stands on, and the row it is on. */
 const STRUCK_C = 12;
@@ -107,6 +104,21 @@ const BARE_R = 14;
 const BOLT_SWEEP_TICKS = ticksFor(BOARD_H / BOLT_SPEED);
 
 let h: Harness;
+
+/** The pixel within `WANDER_MAX` of `(x, y)` furthest from `board`. */
+function furthestFromBoard(x: number, y: number, board: Rgb): number {
+  let furthest = -1;
+  for (let dy = -WANDER_MAX; dy <= WANDER_MAX; dy += 1) {
+    for (let dx = -WANDER_MAX; dx <= WANDER_MAX; dx += 1) {
+      if (dx * dx + dy * dy > WANDER_MAX * WANDER_MAX) continue;
+      furthest = Math.max(
+        furthest,
+        colorDistance(pixelColor(h, x + dx, y + dy), board),
+      );
+    }
+  }
+  return furthest;
+}
 
 beforeEach(async () => {
   h = await createHarness();
@@ -145,32 +157,20 @@ it("draws lightning along the segment joining each pair of linked tiles", async 
   for (const arc of swept.snapshot.arcs) {
     const from = { x: tileCX(arc.from.c), y: tileCY(arc.from.r) };
     const to = { x: tileCX(arc.to.c), y: tileCY(arc.to.r) };
-    const span = Math.hypot(to.x - from.x, to.y - from.y) || 1;
-    // The unit normal to the link, which is the direction the corridor widens in.
-    const nx = -(to.y - from.y) / span;
-    const ny = (to.x - from.x) / span;
 
-    for (let i = 0; i < SAMPLES_ALONG; i += 1) {
-      const t = i / (SAMPLES_ALONG - 1);
-      const cx = from.x + (to.x - from.x) * t;
-      const cy = from.y + (to.y - from.y) * t;
+    for (const station of STATIONS) {
+      const cx = from.x + (to.x - from.x) * station;
+      const cy = from.y + (to.y - from.y) * station;
 
-      let boldest = 0;
-      for (let off = -CORRIDOR_HALF; off <= CORRIDOR_HALF; off += 1) {
-        const apart = colorDistance(
-          pixelColor(h, cx + nx * off, cy + ny * off),
-          board,
-        );
-        if (apart > boldest) boldest = apart;
-      }
+      const boldest = furthestFromBoard(cx, cy, board);
       if (boldest <= APART_MIN) {
         fail(
           `drawing more than ${APART_MIN} of 441 from the board within ` +
-            `${CORRIDOR_HALF} units of (${Math.round(cx)}, ${Math.round(cy)}), ` +
-            `on the segment joining tile (${arc.from.c}, ${arc.from.r}) to ` +
-            `tile (${arc.to.c}, ${arc.to.r}) — specs/discharge.md: an arc is ` +
-            "drawn as bright lightning joining the centers of the two tiles " +
-            "it links",
+            `${WANDER_MAX} units of (${Math.round(cx)}, ${Math.round(cy)}), ` +
+            `the point ${station} of the way along the chord joining tile ` +
+            `(${arc.from.c}, ${arc.from.r}) to tile (${arc.to.c}, ` +
+            `${arc.to.r}) — specs/discharge.md: an arc is drawn as bright ` +
+            "lightning joining the centers of the two tiles it links",
           boldest,
         );
       }
