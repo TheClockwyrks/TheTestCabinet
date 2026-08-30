@@ -1,25 +1,75 @@
-// Deepcore — assets.ore-overlays. STUB: NOT YET AUTHORED.
+// assets/ore-overlays — every ore and gemstone has its own overlay.
 //
-// Every ore and gemstone has its own overlay
+// `specs/assets.md`: one overlay per ore and one per gemstone, at
+// `assets/ore/<name>.png`, "named in lower case". `specs/mining.md` names the ten
+// ores and the three gemstones, and `specs/instrumentation.md` fixes an ore's id
+// as "its name in lower case", so the thirteen file names follow from the
+// specification rather than from a list this check invented — `ORE_IDS` and
+// `GEMSTONE_IDS` are that same set.
 //
-// One overlay exists at assets/ore/<name>.png for each of the ten ores and
-// three gemstones, named in lower case, and no two of the thirteen are
-// identical.
-//
-// Automated validation: read the thirteen overlay files by the names in
-// specs/mining.md and hold each present and every pair different.
-//
-// `test-case.toml` declares this suite as `assets/ore-overlays.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (ores (image)) around the drive.
+// Every one must be there and every pair must be a different drawing.
+// `specs/overview.md` requires a player to tell the ten ores apart from one
+// another and a gemstone from an ore at a glance, so two ores sharing a stamp is
+// the failure this decides; whether the smears read as smears and the jewels as
+// jewels is a reviewer's reading off the still, which poses a run of them side by
+// side in one band's rock.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { PLAYABLE_COL_MIN } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  fillRow,
+  layFloor,
+  layOre,
+  openScene,
+  pinDrill,
+  pinMiner,
+  standOn,
+  type Harness,
+} from "../harness";
+import { allDistinct, readPicture, type Picture } from "./produced";
+import { MINERAL_SPRITES } from "./spec";
 
-test("Every ore and gemstone has its own overlay", () => {
-  throw new Error(
-    "Deepcore validator `assets/ore-overlays` is declared in test-case.toml but has not been authored yet.",
-  );
+/** Where the run of overlays in the still is posed. */
+const ROW = 200;
+const MINER_COL = PLAYABLE_COL_MIN + 3;
+
+/** How many of the thirteen fit across the visible window beside the miner. */
+const SHOWN = 6;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness({ assets: true });
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("produces a distinct overlay for each of the thirteen minerals", async () => {
+  const missing: string[] = [];
+  const pictures: Picture[] = [];
+  for (const ore of MINERAL_SPRITES) {
+    const picture = await readPicture("ore", `${ore}.png`);
+    if (picture === null) missing.push(`assets/ore/${ore}.png`);
+    else pictures.push(picture);
+  }
+
+  openScene(h);
+  pinDrill(h);
+  layFloor(h, ROW);
+  standOn(h, MINER_COL, ROW);
+  pinMiner(h);
+  fillRow(h, ROW - 1, MINER_COL + 1, MINER_COL + SHOWN, "rock");
+  for (let at = 0; at < SHOWN; at += 1) {
+    layOre(h, MINER_COL + 1 + at, ROW - 1, MINERAL_SPRITES[at]);
+  }
+  await h.advance(2);
+  captureStill(h, "ores");
+
+  assertEqual(missing.join(", "), "", "specs/assets.md");
+  assertEqual(allDistinct(pictures), true, "specs/assets.md");
 });

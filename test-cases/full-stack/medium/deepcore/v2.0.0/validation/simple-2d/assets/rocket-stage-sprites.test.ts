@@ -1,24 +1,62 @@
-// Deepcore — assets.rocket-stage-sprites. STUB: NOT YET AUTHORED.
+// assets/rocket-stage-sprites — the rocket is produced at all six states.
 //
-// The rocket is produced at each assembly state
+// `specs/assets.md`: `assets/rocket/stageN.png` holds "The rocket with `N`
+// components installed, `stage0` through `stage5`", and the environment-sprite
+// list asks for "The rocket at each of its six assembly states, from the bare pad
+// to the launch-ready rocket, so the player reads the win progress from the pad".
 //
-// Six distinct sprites exist at assets/rocket/stage0.png through stage5.png,
-// so the pad has a drawing for every number of components installed.
-//
-// Automated validation: read the six stage files and hold each present and
-// every pair different.
-//
-// `test-case.toml` declares this suite as `assets/rocket-stage-sprites.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (stages (image)) around the drive.
+// So all six must be there and all six must be different drawings: a build that
+// ships one picture six times, or repeats a stage, leaves the player unable to
+// read progress off the pad even though every file is present. Which stage is
+// drawn at which count is a different requirement and its own point; the still
+// here is the pad partway through, which is what a reviewer compares the six files
+// against.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  layCamp,
+  openScene,
+  pinDrill,
+  standAtBuilding,
+  type Harness,
+} from "../harness";
+import { allDistinct, readPicture, type Picture } from "./produced";
+import { ROCKET_STAGES } from "./spec";
 
-test("The rocket is produced at each assembly state", () => {
-  throw new Error(
-    "Deepcore validator `assets/rocket-stage-sprites` is declared in test-case.toml but has not been authored yet.",
-  );
+/** The count the still shows the pad at: partway up the checklist. */
+const SHOWN = 3;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness({ assets: true });
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("produces six distinct rocket assembly sprites", async () => {
+  const missing: string[] = [];
+  const pictures: Picture[] = [];
+  for (let stage = 0; stage < ROCKET_STAGES; stage += 1) {
+    const picture = await readPicture("rocket", `stage${stage}.png`);
+    if (picture === null) missing.push(`assets/rocket/stage${stage}.png`);
+    else pictures.push(picture);
+  }
+
+  openScene(h);
+  layCamp(h);
+  pinDrill(h);
+  standAtBuilding(h, "launch-pad");
+  h.debug.setPanel(null);
+  h.debug.setRocketInstalled(SHOWN);
+  await h.advance(2);
+  captureStill(h, "stages");
+
+  assertEqual(missing.join(", "), "", "specs/assets.md");
+  assertEqual(allDistinct(pictures), true, "specs/assets.md");
 });
