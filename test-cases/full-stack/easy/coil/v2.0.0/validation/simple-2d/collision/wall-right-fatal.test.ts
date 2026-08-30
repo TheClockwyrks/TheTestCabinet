@@ -1,32 +1,51 @@
-/*
- * Coil validator: `collision.wall-right-fatal`. PLACEHOLDER.
- *
- * The right wall is fatal.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * The head advancing into column GRID_COLS - 1 (29) ends the round immediately
- * as a death.
- *
- * HOW:
- * pose the head on column 28 facing right with the pellet cleared, run one
- * tick, and read the screen back.
- *
- * MEDIA IT MUST CAPTURE: right (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// collision/wall-right-fatal — the head advancing into the right wall ends the round.
+//
+// specs/board.md makes the border one cell thick on all four sides and every one
+// of its cells "Solid, and fatal to the head on contact"; specs/movement.md's step
+// 3 tests the new head cell alone and says the round ends "at once, with no grace
+// tick and no second chance". specs/ui.md names the screen a fatal collision
+// reaches: `gameover`.
+//
+// EACH WALL IS ITS OWN POINT because a build that seals three sides and leaks on
+// the fourth has to grade differently from one that seals none, and because the
+// four are four separate comparisons in a build's own code. The head is posed one
+// cell short of the wall, facing it, with the pellet off the board and the
+// obstacle course cleared, so the tick that resolves is the collision and nothing
+// else.
 
-test("collision.wall-right-fatal", () => {
-  throw new Error(
-    "validator not implemented: collision/wall-right-fatal.test.ts",
-  );
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
+import {
+  arrangeApproach,
+  captureReplay,
+  createHarness,
+  type Cell,
+  type Harness,
+} from "../harness";
+
+/**
+ * The wall cell the head is aimed at: column `GRID_COLS - 1`, the far
+ * side of the border.
+ */
+const WALL: Cell = { col: 29, row: 8 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("ends the round on the tick the head enters the right wall", async () => {
+  const posed = arrangeApproach(h, WALL, { dir: "right", length: 3 });
+  assertDeepEqual(posed.next, WALL, "the cell the next tick enters");
+  assertEqual(posed.snapshot.screen, "playing", "the round before the tick");
+
+  const after = await captureReplay(h, "right", () => h.tick());
+
+  assertEqual(after.ticks, 1, "ticks resolved");
+  assertEqual(after.screen, "gameover", "the screen the fatal tick reached");
 });
