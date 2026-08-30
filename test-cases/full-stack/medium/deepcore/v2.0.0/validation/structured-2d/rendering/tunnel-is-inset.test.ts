@@ -7,7 +7,7 @@
 // not the tunnel fill.
 //
 // Automated validation: clear one cell surrounded by rock and sample the drawn
-// cell at its border and at its centre, holding the border unlike the centre
+// cell at its border and at its center, holding the border unlike the center
 // fill.
 //
 // `test-case.toml` declares this suite as `rendering/tunnel-is-inset.test.ts` and requires it

@@ -2,8 +2,8 @@
 //
 // A gas blast reaches only its stated radius
 //
-// The detonation damages the miner only while the miner centre is within
-// GAS_BLAST_TILES (1.5) tiles of the pocket centre, and costs a miner beyond
+// The detonation damages the miner only while the miner center is within
+// GAS_BLAST_TILES (1.5) tiles of the pocket center, and costs a miner beyond
 // that radius nothing at all.
 //
 // Automated validation: detonate a posed pocket with the miner held just

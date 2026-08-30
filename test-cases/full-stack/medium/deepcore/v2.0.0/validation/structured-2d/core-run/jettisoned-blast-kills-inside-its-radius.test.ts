@@ -2,8 +2,8 @@
 //
 // A jettisoned detonation kills a miner close by
 //
-// A detonation on the ground kills a miner whose centre is within
-// CORE_BLAST_TILES (3) tiles of the ground cell centre, with the death cause
+// A detonation on the ground kills a miner whose center is within
+// CORE_BLAST_TILES (3) tiles of the ground cell center, with the death cause
 // core-detonation.
 //
 // Automated validation: jettison a Sample, hold the miner two tiles away with

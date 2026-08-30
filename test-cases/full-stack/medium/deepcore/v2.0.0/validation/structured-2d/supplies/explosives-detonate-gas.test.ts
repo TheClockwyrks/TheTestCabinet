@@ -3,7 +3,7 @@
 // A gas pocket in a blast detonates
 //
 // A gas pocket inside an explosives block detonates exactly as a drilled one
-// does, at its depth damage, and the miner stands at the centre of the block,
+// does, at its depth damage, and the miner stands at the center of the block,
 // so a hidden pocket can hurt or kill it.
 //
 // Automated validation: pose a gas pocket inside a Dynamite block and hold the

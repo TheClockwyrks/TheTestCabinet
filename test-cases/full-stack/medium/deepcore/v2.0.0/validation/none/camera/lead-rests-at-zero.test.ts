@@ -1,10 +1,10 @@
 // Deepcore — camera.lead-rests-at-zero. STUB: NOT YET AUTHORED.
 //
-// A near-still miner sits at the centre of the view
+// A near-still miner sits at the center of the view
 //
 // leadTarget is 0 while the miner vertical speed is at or under
 // CAM_STILL_SPEED (40), so boring straight down at near-zero velocity holds
-// the miner at the vertical centre and the lead starts at 0.
+// the miner at the vertical center and the lead starts at 0.
 //
 // Automated validation: pose the miner at a vertical speed under
 // CAM_STILL_SPEED, advance a sustained span and hold the lead at 0.
@@ -18,7 +18,7 @@
 
 import { test } from "vitest";
 
-test("A near-still miner sits at the centre of the view", () => {
+test("A near-still miner sits at the center of the view", () => {
   throw new Error(
     "Deepcore validator `camera/lead-rests-at-zero` is declared in test-case.toml but has not been authored yet.",
   );
