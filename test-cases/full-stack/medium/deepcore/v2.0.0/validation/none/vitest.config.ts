@@ -20,10 +20,16 @@
 // WHY THIS PROJECT NEEDS SCAFFOLDING THE ENGINE-BACKED ONES DO NOT. An engineless
 // build is a static site with nothing to import, so every check drives it in a
 // real browser through `window.__deepcore`. `globalSetup` starts the one server
-// and the one Chromium the whole project shares, before any suite runs;
-// `setupFiles` gives each suite worker the teardown that returns its page when
-// the file is done. The environment stays `node` — the suites drive a browser,
-// they do not run in one.
+// and the one Chromium the whole project shares, before any suite runs, and
+// hands both to the workers through `provide`. The environment stays `node` —
+// the suites drive a browser, they do not run in one.
+//
+// A `setupFiles` entry belongs beside `globalSetup` and is deliberately absent
+// until the suites are written. Its only job is the per-worker teardown that
+// hands a page back when a suite file is done, which is a call into the shared
+// harness; the harness lands with the suites, and the entry lands with it. A
+// `setupFiles` naming a file that does not exist is not a deferral, it is a
+// project that cannot be collected at all.
 
 import { defineConfig } from "vitest/config";
 
@@ -34,7 +40,6 @@ export default defineConfig({
     include: ["validation/**/*.test.ts"],
     environment: "node",
     globalSetup: ["validation/globalSetup.ts"],
-    setupFiles: ["validation/setup.ts"],
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
