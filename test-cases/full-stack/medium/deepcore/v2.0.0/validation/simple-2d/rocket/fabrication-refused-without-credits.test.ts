@@ -1,25 +1,72 @@
-// Deepcore — rocket.fabrication-refused-without-credits. STUB: NOT YET AUTHORED.
+// Deepcore — rocket/fabrication-refused-without-credits: a thin balance buys
+// nothing.
 //
-// Fabricating is refused without the Credits
+// `specs/rocket.md`: the `FABRICATE` action "is enabled only while the Credits
+// are affordable and the material is held." `specs/gameplay.md` states the
+// general rule: "Credits never go negative, and an action that cannot be
+// afforded is disabled."
 //
-// FABRICATE is refused while the balance is short of the component price:
-// nothing is installed, no material is consumed and the balance is unchanged.
+// So the balance is posed ONE Credit short of the Guidance Unit's price, with its
+// Resonite held, and `FABRICATE` is called. One short rather than empty, because
+// the boundary is where an off-by-one build differs from a correct one, and
+// because a build that refused only an empty purse would pass anything looser.
 //
-// Automated validation: pose a balance one Credit short with the material
-// held, attempt the fabrication and read the installed list, the satchel and
-// the balance unchanged.
-//
-// `test-case.toml` declares this suite as `rocket/fabrication-refused-without-credits.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (short (image)) around the drive.
+// Nothing may move: not the checklist, not the satchel, not the balance.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { ROCKET_COMPONENTS } from "../../src/constants";
+import { assertDeepEqual, assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { openPadScene } from "./pad-scene";
 
-test("Fabricating is refused without the Credits", () => {
-  throw new Error(
-    "Deepcore validator `rocket/fabrication-refused-without-credits` is declared in test-case.toml but has not been authored yet.",
+/** The Guidance Unit is the third entry on the checklist. */
+const GUIDANCE = ROCKET_COMPONENTS[2];
+
+/** Held, so the only thing missing is the money. */
+const HELD = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("installs nothing and deducts nothing one Credit short of the price", async () => {
+  openPadScene(h);
+  h.debug.setRocketInstalled(2);
+  h.debug.setMaterial("resonite", HELD);
+  h.debug.setCredits(GUIDANCE.credits - 1);
+
+  const before = h.snapshot();
+  assertEqual(
+    before.rocket.nextComponent,
+    GUIDANCE.id,
+    "the component the pad offers next",
+  );
+
+  h.debug.fabricate();
+  const after = h.snapshot();
+
+  await h.advance(2);
+  captureStill(h, "short");
+
+  assertDeepEqual(
+    after.rocket.installed,
+    before.rocket.installed,
+    "the checklist after the refused fabrication",
+  );
+  assertEqual(
+    after.credits,
+    GUIDANCE.credits - 1,
+    "the balance after the refused fabrication",
+  );
+  assertEqual(
+    after.satchel.resonite,
+    HELD,
+    "Resonite after the refused fabrication",
   );
 });
