@@ -86,14 +86,19 @@ const BOLTS: ReadonlyArray<readonly [number, number]> = [
 ];
 
 /**
- * The two flags that are not numbers, and the forms a build may draw them in.
+ * The two facts that are not numbers, and the forms a build may draw them in.
  *
- * A heading of `-1` is drawn as a signed number, an arrow, or a word; a diving
- * flag that is set is drawn as its own name, an arrow, or a boolean. Which of
- * them a build chooses is the build's, so each pattern accepts all of them.
+ * The worm is posed heading left and up with its diving flag set, and
+ * specs/instrumentation.md fixes no spelling for either fact: a heading of `-1`
+ * is honestly written as a signed number, as an arrow, as a word, or as the
+ * initial of a direction — `dh -1`, `←`, `left`, `L`, `LU` are all the same
+ * fact — and a diving flag is written as its own name, as an arrow, or as a
+ * boolean. So each pattern accepts every one of those forms, and the same pair
+ * is read by the `none`, `simple-2d` and `structured-2d` suites, so the one
+ * requirement is decided the same way on all three engines.
  */
-const HEADING_FORMS = /-1|←|↑|\bleft\b|\bup\b/i;
-const DIVING_FORMS = /div|↓|▼|true|yes/i;
+const HEADING_FORMS = /-1|←|↑|◀|▲|\bleft\b|\bup\b|\bl[ud]?\b|\bu[lr]?\b/i;
+const DIVING_FORMS = /div|↓|▼|▽|\btrue\b|\byes\b|\bon\b/i;
 
 /** The engine's own frame-time line, which is not one of the game's sources. */
 const ENGINE_METRICS = /^\s*frame\s*:/i;

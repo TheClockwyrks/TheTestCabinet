@@ -30,13 +30,16 @@
 // (specs/board.md gives the map both ways), so each is accepted in either
 // spelling. A worm's "head tile" is named as a tile and is read as one.
 //
-// AND TWO ARE NOT READ AT ALL. A worm's "two headings" and its "diving flag" are
-// a pair of `+1`/`-1` values and a boolean, and there is no spelling of either
-// that the specification fixes — `RD`, `right/down`, `dh 1 dv 1` and `→↓` are
-// all honest renderings of the same fact. Requiring any one of them would fail a
-// build that reported it perfectly well, so this point holds the build to the
-// facts whose written form its own vocabulary settles and leaves those two to a
-// reviewer looking at the picture.
+// AND TWO ARE READ AS FORMS RATHER THAN AS FIGURES. A worm's "two headings" and
+// its "diving flag" are a pair of `+1`/`-1` values and a boolean, and there is
+// no spelling of either that the specification fixes — `LU`, `left/up`,
+// `dh -1 dv -1` and `←↑` are all honest renderings of the same fact. So the worm
+// is posed heading LEFT and UP with its diving flag set, which is the reading
+// whose written forms can be enumerated (a `+1` cannot: the digit `1` falls
+// inside every other figure on the panel), and each fact is accepted in any of
+// the forms {@link HEADING_FORMS} and {@link DIVING_FORMS} list. The `none` and
+// `simple-2d` suites read the same two patterns, so the one requirement is
+// decided the same way on all three engines.
 //
 // THE PANEL IS COMPARED AGAINST THE FRAME BEFORE IT, WHICH IS ALSO THE
 // OFF-BY-DEFAULT READING. The HUD draws the score, the lives and the level in
@@ -88,10 +91,15 @@ const NODE_ROW = 5;
 const NODE_FIRST_COL = 8;
 const NODE_COUNT = 23;
 
-/** The worm: 14 segments, head on tile (29, 13), trailing left along the row. */
-const WORM_C = 29;
+/**
+ * The worm: 14 segments, head on tile (26, 13), heading LEFT and UP with its
+ * diving flag set, so its body trails RIGHT along the row to column 39.
+ */
+const WORM_C = 26;
 const WORM_R = 13;
 const WORM_LENGTH = 14;
+const WORM_DH = -1;
+const WORM_DV = -1;
 
 /** The foe: a glitch on tile (34, 3), whose center is (1104, 192). */
 const FOE_C = 34;
@@ -118,6 +126,22 @@ const ENGINE_METRICS_LINE = /^frame: /;
 /** Whether some line carries `value` as a number of its own. */
 function mentions(lines: readonly string[], value: number): boolean {
   const pattern = new RegExp(`(?<![\\d.])${value}(?:\\.0+)?(?!\\d)`);
+  return lines.some((line) => pattern.test(line));
+}
+
+/**
+ * The two facts that are not numbers, and the forms a build may draw them in.
+ *
+ * A heading of `-1` is honestly written as a signed number, as an arrow, as a
+ * word, or as the initial of a direction — `dh -1`, `←`, `left`, `L`, `LU` are
+ * all the same fact — and a diving flag is written as its own name, as an arrow,
+ * or as a boolean. Each pattern accepts every one of those forms.
+ */
+const HEADING_FORMS = /-1|←|↑|◀|▲|\bleft\b|\bup\b|\bl[ud]?\b|\bu[lr]?\b/i;
+const DIVING_FORMS = /div|↓|▼|▽|\btrue\b|\byes\b|\bon\b/i;
+
+/** Whether some line is drawn in one of the forms `pattern` accepts. */
+function drawnAs(lines: readonly string[], pattern: RegExp): boolean {
   return lines.some((line) => pattern.test(line));
 }
 
@@ -168,7 +192,8 @@ it("draws the facts the specification names and changes nothing", async () => {
 
   // Everything on the board is posed STILL, so the comparison across the toggle
   // reads the panel's effect rather than the game's own motion.
-  const worm = poseWorm(h, WORM_C, WORM_R, WORM_LENGTH);
+  const worm = poseWorm(h, WORM_C, WORM_R, WORM_LENGTH, WORM_DH, WORM_DV);
+  h.debug.setWormDiving(worm, true);
   h.debug.setWormStepping(worm, false);
   h.debug.setWormBody(worm, false);
 
@@ -239,6 +264,16 @@ it("draws the facts the specification names and changes nothing", async () => {
     {
       what: `the worm's head tile row, ${WORM_R}`,
       found: mentions(panel, WORM_R),
+    },
+    {
+      what:
+        `the worm's two headings, posed at dh ${WORM_DH} and dv ${WORM_DV}, ` +
+        `in any of the forms ${HEADING_FORMS}`,
+      found: drawnAs(panel, HEADING_FORMS),
+    },
+    {
+      what: `the worm's diving flag, posed set, in any of the forms ${DIVING_FORMS}`,
+      found: drawnAs(panel, DIVING_FORMS),
     },
     { what: `the foe's id, ${foe}`, found: mentions(panel, foe) },
     { what: `the foe's kind, "glitch"`, found: says(panel, "glitch") },
