@@ -10,12 +10,14 @@ Stages are numbered from `1` and run without an end. A standard stage is one wav
 built as `specs/swarm.md` states.
 
 - The wave for a stage is built in the moment the stage-intro hold gives way to the
-  live wave. No drone exists during that hold.
+  live wave. The field is empty for that hold: no drone stands on it and no bullet
+  of either side is in flight, so a stage always opens on a clear field.
 - A standard stage clears in the moment the last drone of its wave is destroyed. A
   live wave that holds no drone and has had none removed is being played rather than
   cleared, so a stage that was never given a drone never clears.
 - A cleared stage opens the stage-cleared interstitial. When that gives way, the
-  stage number is one higher and the next stage's intro opens.
+  stage number is one higher and the next stage's intro opens, and every drone and
+  every bullet left over from the finished stage has left the field.
 
 ## Challenge stages
 
@@ -38,6 +40,9 @@ A challenge stage is a non-firing flyover.
 - Each group sweeps across the play field along a path of your design and leaves it
   within eight seconds of the group's release. A challenge drone never settles into a
   formation slot, and one that leaves the field is removed.
+- A challenge drone holds phase `entering` for the whole flyover. It never reaches
+  `formation`, and nothing puts it into `diving` or `returning`, so a discharge wave
+  reaches it as `specs/resonance.md` states.
 - The stage ends in the moment the last of its drones has left the field or been
   destroyed. It then opens the stage-cleared interstitial, which reports the result
   `specs/ui.md` states.
