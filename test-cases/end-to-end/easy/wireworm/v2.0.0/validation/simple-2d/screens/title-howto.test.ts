@@ -1,19 +1,59 @@
-// Wireworm — screens.title-howto, under the `simple-2d` engine. CASE-PROVIDED.
+// Wireworm — screens/title-howto: confirming HOW TO PLAY on the title opens the
+// how-to screen.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// One transition of the menu state machine `specs/ui.md` fixes: HOW TO PLAY
+// "moves to `howto`". The highlight is POSED onto the second item with the
+// surface's own `setMenuIndex` rather than walked there with the movement keys,
+// so what this decides is the transition alone: whether `down` moves a highlight
+// is `screens/title-menu-wraps-down`'s to decide, and a build with a stuck
+// highlight and a working confirm grades differently here from one with neither.
 //
-// The point it decides, from `test-case.toml`:
-//
-// HOW TO PLAY opens the how-to screen
-//
-// Confirming the second title item leaves the game on the howto screen.
+// The press itself is the `confirm` action's own bound key, dispatched as a real
+// key event at the target the engine listens on — the menus are keyboard only
+// (`specs/controls.md`).
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TITLE_ITEMS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
 
-test("screens.title-howto", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/simple-2d/screens/title-howto.test.ts has not been written yet",
+/** `confirm`'s own bound key; `Enter` drives nothing else (specs/controls.md). */
+const CONFIRM_KEY = "Enter";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("opens the how-to screen from the second title item", async () => {
+  h.debug.reset();
+  assertEqual(
+    TITLE_ITEMS[1],
+    "HOW TO PLAY",
+    "HOW TO PLAY is the second title item",
+  );
+  h.debug.setMenuIndex(1);
+  const posed = h.snapshot();
+  assertEqual(posed.screen, "title", "the press is made on the title screen");
+  assertEqual(
+    posed.menuIndex,
+    1,
+    "setMenuIndex rests the highlight on HOW TO PLAY " +
+      "(specs/instrumentation.md)",
+  );
+
+  await h.tap(CONFIRM_KEY);
+  await h.advance(1);
+  captureStill(h, "howto");
+
+  assertEqual(
+    h.snapshot().screen,
+    "howto",
+    "confirming HOW TO PLAY leaves the game on the howto screen (specs/ui.md)",
   );
 });
