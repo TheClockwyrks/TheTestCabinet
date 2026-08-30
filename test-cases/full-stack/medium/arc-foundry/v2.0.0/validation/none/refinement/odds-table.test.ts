@@ -1,28 +1,73 @@
-// Arc Foundry — `refinement.odds-table`. CASE-PROVIDED. NOT YET WRITTEN.
+// refinement/odds-table — the live odds are the refinement level's own row.
 //
-// The manifest declares this point at `refinement/odds-table.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/scrap-press.md fixes the whole table: "`REFINEMENT_ODDS` holds one
+// five-tier distribution per level, each summing to `1`", nine rows for `R0`
+// through `R8`, with `R0` rolling Scrap alone and `R8` the only row that ever
+// rolls Tesla-Prime. specs/instrumentation.md fixes where a caller reads them:
+// `qualityOdds` is "the live roll odds, summing to 1" and "the five-tier
+// distribution at the current refinement level, the same odds the build panel
+// shows", and `setRefinement` sets "the refinement level ... and with it the roll
+// odds".
 //
-// THE REQUIREMENT. At each of the nine refinement levels the reported
-// qualityOdds equal that level's row of REFINEMENT_ODDS exactly, each row
-// summing to 1, so R4 reads [0.40, 0.30, 0.20, 0.10, 0] and R8 reads [0, 0.30,
-// 0.30, 0.30, 0.10].
-//
-// HOW IT IS DECIDED. Set each refinement level in turn and hold qualityOdds
-// against the nine-row table. The evidence it hands back is `odds` (image):
-// the panel's odds at a refined press.
+// Each of the nine levels is set in turn and its row is read straight back. The
+// yard is empty throughout, because nothing on it bears on the odds: this is the
+// press's own distribution and it is read from the press.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertLength } from "../assert";
+import { REFINEMENT_MAX, REFINEMENT_ODDS } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** A refinement level worth a picture: the odds a refined press draws from. */
+const PICTURED = 5;
 
-describe("refinement.odds-table", () => {
-  it("The live odds are REFINEMENT_ODDS[R]", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `refinement.odds-table` has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("reports REFINEMENT_ODDS[R] at every one of the nine levels", async () => {
+  await openYard(h);
+
+  for (let level = 0; level <= REFINEMENT_MAX; level += 1) {
+    await h.debug.setRefinement(level);
+    if (level === PICTURED) {
+      await h.advance(1);
+      await captureStill(h, "odds");
+    }
+
+    const s = await h.snapshot();
+    assertEqual(s.refinement, level, "the level the press was set to");
+    assertLength(
+      s.qualityOdds,
+      5,
+      `one weight per quality tier at R${level} (specs/scrap-press.md)`,
     );
-  });
+
+    const row = REFINEMENT_ODDS[level]!;
+    for (const [tier, weight] of row.entries()) {
+      assertCloseTo(
+        s.qualityOdds[tier]!,
+        weight,
+        6,
+        `the weight on tier ${tier + 1} at R${level} (specs/scrap-press.md)`,
+      );
+    }
+    assertCloseTo(
+      s.qualityOdds.reduce((sum, weight) => sum + weight, 0),
+      1,
+      6,
+      `the row at R${level} summing to 1 (specs/scrap-press.md)`,
+    );
+  }
 });
