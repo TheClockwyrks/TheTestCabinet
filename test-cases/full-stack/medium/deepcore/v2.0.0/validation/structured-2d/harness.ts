@@ -500,7 +500,19 @@ export interface Harness {
 
   /** How the stage is mapped onto this harness's canvas. */
   viewport(): Viewport;
-  /** Where a logical stage point lands in the canvas's backing store. */
+  /**
+   * Where a LOGICAL STAGE point lands in the canvas's backing store.
+   *
+   * The engine's fit alone, and deliberately not the camera. A logical stage
+   * point is what `specs/ui.md` states the status bar and the panels in, and the
+   * viewport is the whole of what stands between one and a device pixel.
+   *
+   * A WORLD point goes through the camera first, and the camera is read off the
+   * snapshot rather than off the engine: {@link worldToStage} is that step, and
+   * it is the arithmetic `specs/world.md` states rather than a call into the
+   * engine, so the reading is of where the specification says a cell is drawn.
+   * {@link sampleCell} is the two composed, and is what a terrain check uses.
+   */
   device(x: number, y: number): { x: number; y: number };
   /** The device pixel under a logical stage point, as `[r, g, b, a]`. */
   pixel(x: number, y: number): [number, number, number, number];
