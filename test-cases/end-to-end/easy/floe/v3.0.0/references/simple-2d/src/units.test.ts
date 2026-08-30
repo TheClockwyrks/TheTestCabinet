@@ -79,7 +79,7 @@ import {
   laneWillCover,
   layOutStrait,
 } from "./lanes";
-import { nextIndex, nextRandom, nextRange } from "./rng";
+import { nextIndex, nextRandom } from "./rng";
 import { handleInput } from "./screens";
 import { advanceFrame } from "./simulate";
 import { addScore, boundariesCrossed } from "./scoring";
@@ -132,13 +132,10 @@ describe("the seeded generator", () => {
     }
   });
 
-  it("holds a range draw inside its bounds and an index draw inside its count", () => {
+  it("holds an index draw inside its count", () => {
     let state = 5;
     for (let index = 0; index < 200; index += 1) {
-      const [value, afterRange] = nextRange(state, 10, 20);
-      expect(value).toBeGreaterThanOrEqual(10);
-      expect(value).toBeLessThan(20);
-      const [pick, afterIndex] = nextIndex(afterRange, 4);
+      const [pick, afterIndex] = nextIndex(state, 4);
       expect(pick).toBeGreaterThanOrEqual(0);
       expect(pick).toBeLessThan(4);
       state = afterIndex;

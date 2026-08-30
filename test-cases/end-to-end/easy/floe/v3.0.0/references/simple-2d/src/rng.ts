@@ -24,16 +24,6 @@ export function nextRandom(state: number): readonly [number, number] {
   return [((t ^ (t >>> 14)) >>> 0) / 4294967296, next];
 }
 
-/** A draw in `[lo, hi)`, and the generator state that follows. */
-export function nextRange(
-  state: number,
-  lo: number,
-  hi: number,
-): readonly [number, number] {
-  const [value, next] = nextRandom(state);
-  return [lo + value * (hi - lo), next];
-}
-
 /** A whole draw in `[0, count)`, and the generator state that follows. */
 export function nextIndex(
   state: number,
