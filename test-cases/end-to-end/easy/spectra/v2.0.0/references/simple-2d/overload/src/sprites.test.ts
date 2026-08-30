@@ -86,6 +86,34 @@ function mask(x: number, y: number, size: number): boolean[] {
   return out;
 }
 
+/** The mean colour of the pixels an entity actually paints, ignoring the field. */
+function paintedColour(
+  x: number,
+  y: number,
+  size: number,
+): [number, number, number, number] {
+  const data = h.region(x - size / 2, y - size / 2, size, size);
+  const field = h.pixel(20, 500);
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const pixel: [number, number, number, number] = [
+      data[i] as number,
+      data[i + 1] as number,
+      data[i + 2] as number,
+      255,
+    ];
+    if (rgbDistance(pixel, field) <= 24) continue;
+    r += pixel[0];
+    g += pixel[1];
+    b += pixel[2];
+    n++;
+  }
+  return n === 0 ? field : [r / n, g / n, b / n, 255];
+}
+
 /** How much of `size` square around `(x, y)` is painted. */
 function painted(x: number, y: number, size: number): number {
   return mask(x, y, size).filter(Boolean).length;
@@ -167,6 +195,21 @@ describe("what the field draws from the art", () => {
     expect(rgbDistance(shard, field)).toBeGreaterThan(40);
     expect(rgbDistance(ship, shard)).toBeGreaterThan(40);
     expect(rgbDistance(ship, field)).toBeGreaterThan(40);
+
+    // The same reading, taken over every pixel each entity actually paints
+    // rather than at its centre, so the kinds stay apart however a reader
+    // samples them.
+    const shardBox = paintedColour(300, 250, SHARD_SIZE);
+    const fluxBox = paintedColour(600, 250, FLUX_SIZE);
+    const prismBox = paintedColour(900, 250, PRISM_SIZE);
+    const shipBox = paintedColour(640, SHIP_Y, SHIP_W);
+    expect(rgbDistance(shardBox, fluxBox)).toBeGreaterThan(40);
+    expect(rgbDistance(fluxBox, prismBox)).toBeGreaterThan(40);
+    expect(rgbDistance(shardBox, prismBox)).toBeGreaterThan(40);
+    expect(rgbDistance(shipBox, shardBox)).toBeGreaterThan(40);
+    for (const painted of [shardBox, fluxBox, prismBox, shipBox]) {
+      expect(rgbDistance(painted, field)).toBeGreaterThan(40);
+    }
   });
 
   it("reads the ship's own band off the ship", async () => {

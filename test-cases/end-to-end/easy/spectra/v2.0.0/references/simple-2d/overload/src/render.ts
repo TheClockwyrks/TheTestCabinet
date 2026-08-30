@@ -63,6 +63,7 @@ import {
   BAND_LIGHT,
   BAND_TINT,
   COLOR,
+  GLOW,
   TINT,
   font,
 } from "./theme";
@@ -265,7 +266,7 @@ function drawShip(
 ): void {
   const band = state.ship.band;
   const x = state.ship.x;
-  glow(ctx, band, x, SHIP_Y, SHIP_W * 0.9, 0.34);
+  glow(ctx, band, x, SHIP_Y, SHIP_W * GLOW.ship.reach, GLOW.ship.strength);
   const drawn = drawSprite(
     ctx,
     state.art,
@@ -278,6 +279,11 @@ function drawShip(
     TINT.ship,
   );
   if (!drawn) fallbackBody(ctx, band, x, SHIP_Y, SHIP_W * 0.7);
+  // A white-hot rail along the hull, so the ship reads as a ship rather than as
+  // one more drone of its band however a reader samples it.
+  ctx.fillStyle = COLOR.textBright;
+  ctx.fillRect(x - SHIP_W * 0.34, SHIP_Y - SHIP_H * 0.16, SHIP_W * 0.68, 3);
+
   // The ship's own band core, which always agrees with the polarity indicator. It
   // burns lighter than a drone of the same band, so the hull reads as the hull.
   ctx.fillStyle = BAND_LIGHT[band];
@@ -326,7 +332,8 @@ function drawDrone(
   const effective = effectiveDroneBand(drone, state.stage, state.inversion);
   const shimmer = shimmering(drone, state.stage);
 
-  glow(ctx, effective, drone.x, drone.y, size * 0.95, 0.3);
+  const halo = GLOW[drone.kind];
+  glow(ctx, effective, drone.x, drone.y, size * halo.reach, halo.strength);
 
   switch (drone.kind) {
     case "shard": {
@@ -369,9 +376,11 @@ function drawDrone(
       } else {
         ctx.fillStyle = COLOR.textBright;
         ctx.beginPath();
-        ctx.arc(drone.x, drone.y, size * 0.2, 0, Math.PI * 2);
+        ctx.arc(drone.x, drone.y, size * 0.24, 0, Math.PI * 2);
         ctx.fill();
-        accent(ctx, effective, drone.x, drone.y, size * 0.34, 1.5);
+        // The band's own colour rings the pale body, so a settled Flux still
+        // reads as the band it is holding.
+        accent(ctx, effective, drone.x, drone.y, size * 0.4, 3);
       }
       break;
     }

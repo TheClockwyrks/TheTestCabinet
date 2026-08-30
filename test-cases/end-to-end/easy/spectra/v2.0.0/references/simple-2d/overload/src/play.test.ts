@@ -202,6 +202,22 @@ describe("what a shot does", () => {
     expect(h.snapshot().lives).toBe(START_LIVES);
   });
 
+  it("fills nothing for a Prism's shell, and RESONANCE_KILL for its core", async () => {
+    poseDrone(h, "prism", 500, 300, { band: "cyan" });
+    await fireAt(h, 500, 300, "cyan");
+    expect(h.snapshot().resonance).toBe(0);
+    await fireAt(h, 500, 300, "magenta");
+    expect(h.snapshot().resonance).toBe(RESONANCE_KILL);
+  });
+
+  it("consumes a mismatched shot rather than passing it through", async () => {
+    poseDrone(h, "shard", 500, 300, { band: "cyan" });
+    h.pose((s, d) => d.addPlayerBullet(s, 500, 340, "magenta"));
+    expect(playerBullets(h)).toHaveLength(1);
+    await h.advance(0.1);
+    expect(playerBullets(h)).toHaveLength(0);
+  });
+
   it("caps the meter and never decays it", async () => {
     h.pose((s, d) => d.setResonance(s, RESONANCE_MAX - 1));
     poseDrone(h, "shard", 500, 300, { band: "cyan" });

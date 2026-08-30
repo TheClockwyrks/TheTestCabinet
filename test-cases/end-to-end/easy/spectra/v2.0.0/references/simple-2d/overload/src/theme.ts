@@ -70,9 +70,22 @@ export const BAND_TINT: Readonly<Record<Band, string>> = {
  */
 export const TINT = {
   shard: 0.86,
-  flux: 0.5,
+  flux: 0.34,
   prism: 0.62,
   ship: 0.42,
+} as const;
+
+/**
+ * How brightly each element's own halo burns, and how far it reaches past the
+ * silhouette. The halo is part of what tells the kinds apart: a Shard is a hard
+ * chip of one band, a Flux is a pale two-band body with almost no halo, a Prism
+ * sits inside a wide one, and the ship carries the widest of all.
+ */
+export const GLOW = {
+  shard: { reach: 1.0, strength: 0.34 },
+  flux: { reach: 0.7, strength: 0.12 },
+  prism: { reach: 1.05, strength: 0.44 },
+  ship: { reach: 0.72, strength: 0.26 },
 } as const;
 
 /** Every colour this build draws in code. */
