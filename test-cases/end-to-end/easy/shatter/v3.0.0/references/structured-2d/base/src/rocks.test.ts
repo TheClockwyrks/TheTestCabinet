@@ -87,7 +87,9 @@ describe("splitting", () => {
     const h = await playing();
     const { fragments } = await shootDown(h, "large", 300, 150);
     expect(fragments.length).toBe(2);
-    expect(h.debug.snapshot().rocks.every((r) => r.size === "medium")).toBe(true);
+    expect(h.debug.snapshot().rocks.every((r) => r.size === "medium")).toBe(
+      true,
+    );
     expect(h.debug.snapshot().score).toBe(SCORE_LARGE);
   });
 
@@ -95,7 +97,9 @@ describe("splitting", () => {
     const h = await playing();
     const { fragments } = await shootDown(h, "medium", 300, 150);
     expect(fragments.length).toBe(2);
-    expect(h.debug.snapshot().rocks.every((r) => r.size === "small")).toBe(true);
+    expect(h.debug.snapshot().rocks.every((r) => r.size === "small")).toBe(
+      true,
+    );
     expect(h.debug.snapshot().score).toBe(SCORE_MEDIUM);
   });
 
@@ -110,9 +114,9 @@ describe("splitting", () => {
     const h = await playing();
     const { parent, fragments } = await shootDown(h, "large", 300, 150);
     for (const fragment of fragments) {
-      expect(Math.hypot(fragment.x - parent.x, fragment.y - parent.y)).toBeLessThan(
-        6,
-      );
+      expect(
+        Math.hypot(fragment.x - parent.x, fragment.y - parent.y),
+      ).toBeLessThan(6);
     }
   });
 

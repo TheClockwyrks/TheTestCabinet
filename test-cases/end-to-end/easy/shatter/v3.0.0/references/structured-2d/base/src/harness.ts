@@ -122,7 +122,9 @@ export async function createHarness(): Promise<Harness> {
   const cues: CuePlay[] = [];
   const loops: { cue: string; running: boolean }[] = [];
   engine.events.on("cue:played", ({ cue, gain }) => cues.push({ cue, gain }));
-  engine.events.on("cue:looped", ({ cue }) => loops.push({ cue, running: true }));
+  engine.events.on("cue:looped", ({ cue }) =>
+    loops.push({ cue, running: true }),
+  );
   engine.events.on("cue:stopped", ({ cue }) =>
     loops.push({ cue, running: false }),
   );

@@ -72,6 +72,8 @@ describe("the swept contact test", () => {
 
   it("works across a seam", () => {
     const dt = 1 / 120;
-    expect(sweptHit(4, 100, -600, 0, FIELD_W - 4, 100, 0, 0, 12, dt)).toBe(true);
+    expect(sweptHit(4, 100, -600, 0, FIELD_W - 4, 100, 0, 0, 12, dt)).toBe(
+      true,
+    );
   });
 });

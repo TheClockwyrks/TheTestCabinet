@@ -48,9 +48,11 @@ describe("inertial flight", () => {
       h.up("ArrowUp");
       const ship = h.debug.snapshot().ship;
       const bearing = Math.atan2(ship.vy, ship.vx);
-      expect(Math.abs(Math.atan2(Math.sin(bearing - facing), Math.cos(bearing - facing)))).toBeLessThan(
-        (1 * Math.PI) / 180,
-      );
+      expect(
+        Math.abs(
+          Math.atan2(Math.sin(bearing - facing), Math.cos(bearing - facing)),
+        ),
+      ).toBeLessThan((1 * Math.PI) / 180);
     }
   });
 

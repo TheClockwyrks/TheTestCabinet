@@ -18,7 +18,13 @@ import {
   STAR_Y,
 } from "./constants";
 import { deltaX, deltaY } from "./geometry";
-import { createHarness, poseRock, startPlaying, ticksFor, type Harness } from "./harness";
+import {
+  createHarness,
+  poseRock,
+  startPlaying,
+  ticksFor,
+  type Harness,
+} from "./harness";
 
 /** Long enough for a test that steps a minute or more of game time. */
 const LONG = 40_000;
@@ -45,85 +51,101 @@ function poseGunner(h: Harness, x: number, y: number): void {
 }
 
 describe("the saucer's cadence", () => {
-  it("brings the first one in about eighteen seconds", async () => {
-    const h = await playing();
-    h.debug.setSaucerSpawning(true);
-    await h.seconds(16);
-    expect(h.debug.snapshot().saucer).toBeNull();
-    await h.seconds(4);
-    expect(h.debug.snapshot().saucer).not.toBeNull();
-  }, LONG);
-
-  it("never starts a second visit over a live one", async () => {
-    const h = await playing();
-    h.debug.setSaucerSpawning(true);
-
-    let previous: number | null = null;
-    let gapSeen = true;
-    for (let tick = 0; tick < ticksFor(70); tick += 1) {
-      await h.advance(1);
-      const saucer = h.debug.snapshot().saucer;
-      if (saucer === null) {
-        previous = null;
-        gapSeen = true;
-        continue;
-      }
-      if (previous !== null && saucer.id !== previous) {
-        // One visit followed another with no tick reporting an empty slot.
-        expect(gapSeen).toBe(true);
-      }
-      if (previous === null || saucer.id !== previous) gapSeen = false;
-      previous = saucer.id;
-    }
-  }, LONG);
-
-  it("leaves after its lifetime and returns after a drawn gap", async () => {
-    const h = await playing();
-    h.debug.addSaucer(200, 200);
-    h.debug.setSaucerMind(false);
-    h.debug.setSaucerGun(false);
-    await h.seconds(SAUCER_LIFETIME - 0.5);
-    expect(h.debug.snapshot().saucer).not.toBeNull();
-    await h.seconds(1);
-    expect(h.debug.snapshot().saucer).toBeNull();
-
-    h.debug.setSaucerSpawning(true);
-    let gap = 0;
-    for (let tick = 0; tick < ticksFor(SAUCER_GAP_MAX + 5); tick += 1) {
-      await h.advance(1);
-      gap += 1 / 120;
-      if (h.debug.snapshot().saucer !== null) break;
-    }
-    expect(gap).toBeGreaterThanOrEqual(SAUCER_GAP_MIN - 0.5);
-    expect(gap).toBeLessThanOrEqual(SAUCER_GAP_MAX + 0.5);
-  }, LONG);
-
-  it("enters at an edge, on a row drawn across the field", async () => {
-    const rows: number[] = [];
-    for (const seed of [1, 2, 3, 4]) {
-      const h = await createHarness();
-      h.debug.reset({ seed });
-      startPlaying(h.debug);
+  it(
+    "brings the first one in about eighteen seconds",
+    async () => {
+      const h = await playing();
       h.debug.setSaucerSpawning(true);
-      for (let visit = 0; visit < 2; visit += 1) {
-        for (let tick = 0; tick < ticksFor(60); tick += 1) {
-          await h.advance(1);
-          const saucer = h.debug.snapshot().saucer;
-          if (saucer === null) continue;
-          expect(Math.min(saucer.x, 1280 - saucer.x)).toBeLessThan(40);
-          expect(saucer.y).toBeGreaterThanOrEqual(SAUCER_R - 1);
-          expect(saucer.y).toBeLessThanOrEqual(FIELD_H - SAUCER_R + 1);
-          rows.push(saucer.y);
-          h.debug.removeSaucer();
-          break;
+      await h.seconds(16);
+      expect(h.debug.snapshot().saucer).toBeNull();
+      await h.seconds(4);
+      expect(h.debug.snapshot().saucer).not.toBeNull();
+    },
+    LONG,
+  );
+
+  it(
+    "never starts a second visit over a live one",
+    async () => {
+      const h = await playing();
+      h.debug.setSaucerSpawning(true);
+
+      let previous: number | null = null;
+      let gapSeen = true;
+      for (let tick = 0; tick < ticksFor(70); tick += 1) {
+        await h.advance(1);
+        const saucer = h.debug.snapshot().saucer;
+        if (saucer === null) {
+          previous = null;
+          gapSeen = true;
+          continue;
         }
+        if (previous !== null && saucer.id !== previous) {
+          // One visit followed another with no tick reporting an empty slot.
+          expect(gapSeen).toBe(true);
+        }
+        if (previous === null || saucer.id !== previous) gapSeen = false;
+        previous = saucer.id;
       }
-      h.dispose();
-    }
-    expect(rows.length).toBeGreaterThanOrEqual(8);
-    const span = Math.max(...rows) - Math.min(...rows);
-    expect(span).toBeGreaterThan((FIELD_H - 2 * SAUCER_R) / 2);
-  }, LONG);
+    },
+    LONG,
+  );
+
+  it(
+    "leaves after its lifetime and returns after a drawn gap",
+    async () => {
+      const h = await playing();
+      h.debug.addSaucer(200, 200);
+      h.debug.setSaucerMind(false);
+      h.debug.setSaucerGun(false);
+      await h.seconds(SAUCER_LIFETIME - 0.5);
+      expect(h.debug.snapshot().saucer).not.toBeNull();
+      await h.seconds(1);
+      expect(h.debug.snapshot().saucer).toBeNull();
+
+      h.debug.setSaucerSpawning(true);
+      let gap = 0;
+      for (let tick = 0; tick < ticksFor(SAUCER_GAP_MAX + 5); tick += 1) {
+        await h.advance(1);
+        gap += 1 / 120;
+        if (h.debug.snapshot().saucer !== null) break;
+      }
+      expect(gap).toBeGreaterThanOrEqual(SAUCER_GAP_MIN - 0.5);
+      expect(gap).toBeLessThanOrEqual(SAUCER_GAP_MAX + 0.5);
+    },
+    LONG,
+  );
+
+  it(
+    "enters at an edge, on a row drawn across the field",
+    async () => {
+      const rows: number[] = [];
+      for (const seed of [1, 2, 3, 4]) {
+        const h = await createHarness();
+        h.debug.reset({ seed });
+        startPlaying(h.debug);
+        h.debug.setSaucerSpawning(true);
+        for (let visit = 0; visit < 2; visit += 1) {
+          for (let tick = 0; tick < ticksFor(60); tick += 1) {
+            await h.advance(1);
+            const saucer = h.debug.snapshot().saucer;
+            if (saucer === null) continue;
+            expect(Math.min(saucer.x, 1280 - saucer.x)).toBeLessThan(40);
+            expect(saucer.y).toBeGreaterThanOrEqual(SAUCER_R - 1);
+            expect(saucer.y).toBeLessThanOrEqual(FIELD_H - SAUCER_R + 1);
+            rows.push(saucer.y);
+            h.debug.removeSaucer();
+            break;
+          }
+        }
+        h.dispose();
+      }
+      expect(rows.length).toBeGreaterThanOrEqual(8);
+      const span = Math.max(...rows) - Math.min(...rows);
+      expect(span).toBeGreaterThan((FIELD_H - 2 * SAUCER_R) / 2);
+    },
+    LONG,
+  );
 });
 
 describe("how the saucer travels", () => {
@@ -147,7 +169,9 @@ describe("how the saucer travels", () => {
     for (let tick = 0; tick < ticksFor(4 * SAUCER_WEAVE_INTERVAL); tick += 1) {
       await h.advance(1);
       const saucer = h.debug.snapshot().saucer!;
-      expect(Math.abs(saucer.vy)).toBeLessThanOrEqual(SAUCER_WEAVE_SPEED * 1.05);
+      expect(Math.abs(saucer.vy)).toBeLessThanOrEqual(
+        SAUCER_WEAVE_SPEED * 1.05,
+      );
       const next = Math.sign(saucer.vy);
       if (next !== 0 && next !== sign) {
         changes.push(tick);
@@ -185,30 +209,34 @@ describe("how the saucer travels", () => {
     expect(saucer.vy).toBe(0);
   });
 
-  it("never overlaps the star's core, whichever row it crosses on", async () => {
-    const h = await playing();
-    const surface = CORE_R + SAUCER_R;
-    let worst = Number.POSITIVE_INFINITY;
+  it(
+    "never overlaps the star's core, whichever row it crosses on",
+    async () => {
+      const h = await playing();
+      const surface = CORE_R + SAUCER_R;
+      let worst = Number.POSITIVE_INFINITY;
 
-    for (const row of [STAR_Y - 40, STAR_Y, STAR_Y + 40]) {
-      for (const fromLeft of [true, false]) {
-        startPlaying(h.debug);
-        h.debug.addSaucer(fromLeft ? SAUCER_R : 1280 - SAUCER_R, row);
-        h.debug.setSaucerGun(false);
-        h.debug.setSaucerVelocity(fromLeft ? SAUCER_SPEED : -SAUCER_SPEED, 0);
+      for (const row of [STAR_Y - 40, STAR_Y, STAR_Y + 40]) {
+        for (const fromLeft of [true, false]) {
+          startPlaying(h.debug);
+          h.debug.addSaucer(fromLeft ? SAUCER_R : 1280 - SAUCER_R, row);
+          h.debug.setSaucerGun(false);
+          h.debug.setSaucerVelocity(fromLeft ? SAUCER_SPEED : -SAUCER_SPEED, 0);
 
-        let previous = h.debug.snapshot().saucer!;
-        for (let sample = 0; sample < 130; sample += 1) {
-          await h.advance(8);
-          const saucer = h.debug.snapshot().saucer;
-          if (saucer === null) break;
-          worst = Math.min(worst, segmentDistance(previous, saucer));
-          previous = saucer;
+          let previous = h.debug.snapshot().saucer!;
+          for (let sample = 0; sample < 130; sample += 1) {
+            await h.advance(8);
+            const saucer = h.debug.snapshot().saucer;
+            if (saucer === null) break;
+            worst = Math.min(worst, segmentDistance(previous, saucer));
+            previous = saucer;
+          }
         }
       }
-    }
-    expect(worst).toBeGreaterThan(surface);
-  }, LONG);
+      expect(worst).toBeGreaterThan(surface);
+    },
+    LONG,
+  );
 });
 
 /** The distance from the star's centre to the path between two samples. */
@@ -222,7 +250,9 @@ function segmentDistance(
   const apy = deltaY(a.y, STAR_Y);
   const length = abx * abx + aby * aby;
   const t =
-    length === 0 ? 0 : Math.max(0, Math.min(1, (apx * abx + apy * aby) / length));
+    length === 0
+      ? 0
+      : Math.max(0, Math.min(1, (apx * abx + apy * aby) / length));
   return Math.hypot(apx - abx * t, apy - aby * t);
 }
 
@@ -232,7 +262,11 @@ describe("the saucer's gun", () => {
     poseGunner(h, 300, 200);
 
     const shots: number[] = [];
-    for (let tick = 0; tick < ticksFor(5 * SAUCER_FIRE_INTERVAL + 1); tick += 1) {
+    for (
+      let tick = 0;
+      tick < ticksFor(5 * SAUCER_FIRE_INTERVAL + 1);
+      tick += 1
+    ) {
       await h.advance(1);
       if (h.debug.snapshot().enemyBullets.length > 0) {
         shots.push(tick);
@@ -246,39 +280,43 @@ describe("the saucer's gun", () => {
     }
   });
 
-  it("aims at the ship, with a fresh error inside ten degrees per shot", async () => {
-    const h = await playing();
-    h.debug.setShipPosition(300 + 400, 200);
-    poseGunner(h, 300, 200);
+  it(
+    "aims at the ship, with a fresh error inside ten degrees per shot",
+    async () => {
+      const h = await playing();
+      h.debug.setShipPosition(300 + 400, 200);
+      poseGunner(h, 300, 200);
 
-    // A visit is finite, so the sixty shots are taken across several of them:
-    // each saucer is brought back the moment its own twelve seconds run out.
-    const bearings: number[] = [];
-    for (let tick = 0; tick < ticksFor(160); tick += 1) {
-      await h.advance(1);
-      const seen = h.debug.snapshot();
-      if (seen.saucer === null) {
-        poseGunner(h, 300, 200);
-        continue;
+      // A visit is finite, so the sixty shots are taken across several of them:
+      // each saucer is brought back the moment its own twelve seconds run out.
+      const bearings: number[] = [];
+      for (let tick = 0; tick < ticksFor(160); tick += 1) {
+        await h.advance(1);
+        const seen = h.debug.snapshot();
+        if (seen.saucer === null) {
+          poseGunner(h, 300, 200);
+          continue;
+        }
+        if (seen.enemyBullets.length === 0) continue;
+        const bullet = seen.enemyBullets[0];
+        bearings.push(Math.atan2(bullet.vy, bullet.vx));
+        h.debug.clearEnemyBullets();
+        if (bearings.length >= 60) break;
       }
-      if (seen.enemyBullets.length === 0) continue;
-      const bullet = seen.enemyBullets[0];
-      bearings.push(Math.atan2(bullet.vy, bullet.vx));
-      h.debug.clearEnemyBullets();
-      if (bearings.length >= 60) break;
-    }
 
-    expect(bearings.length).toBe(60);
-    const degree = Math.PI / 180;
-    // The ship lies due right of the saucer, so the true bearing is zero.
-    for (const bearing of bearings) {
-      expect(Math.abs(bearing)).toBeLessThanOrEqual(SAUCER_AIM_ERROR + 1e-6);
-    }
-    const mean = bearings.reduce((sum, value) => sum + value, 0) / 60;
-    expect(Math.abs(mean)).toBeLessThan(3 * degree);
-    const spread = Math.max(...bearings) - Math.min(...bearings);
-    expect(spread).toBeGreaterThan(4 * degree);
-  }, LONG);
+      expect(bearings.length).toBe(60);
+      const degree = Math.PI / 180;
+      // The ship lies due right of the saucer, so the true bearing is zero.
+      for (const bearing of bearings) {
+        expect(Math.abs(bearing)).toBeLessThanOrEqual(SAUCER_AIM_ERROR + 1e-6);
+      }
+      const mean = bearings.reduce((sum, value) => sum + value, 0) / 60;
+      expect(Math.abs(mean)).toBeLessThan(3 * degree);
+      const spread = Math.max(...bearings) - Math.min(...bearings);
+      expect(spread).toBeGreaterThan(4 * degree);
+    },
+    LONG,
+  );
 
   it("its round carries its own motion", async () => {
     const h = await playing();
