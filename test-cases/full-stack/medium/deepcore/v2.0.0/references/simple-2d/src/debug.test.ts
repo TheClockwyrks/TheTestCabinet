@@ -108,6 +108,58 @@ describe("readings", () => {
     );
     expect(Object.keys(snapshot.tiers).sort()).toEqual([...TRACKS].sort());
     expect(Object.keys(snapshot.items).sort()).toEqual([...ITEM_IDS].sort());
+    expect(Object.keys(snapshot.camera).sort()).toEqual(["lead", "x", "y"]);
+    expect(Object.keys(snapshot.cargo).sort()).toEqual(
+      ["liftLimitKg", "loadKg", "ore", "slotCap", "slotsUsed"].sort(),
+    );
+    expect(Object.keys(snapshot.satchel).sort()).toEqual(
+      ["coreSample", "cryenite", "resonite"].sort(),
+    );
+    expect(Object.keys(snapshot.rocket).sort()).toEqual(
+      ["installed", "nextComponent"].sort(),
+    );
+    expect(Object.keys(snapshot.scanner).sort()).toEqual(
+      ["dirX", "dirY", "distanceTiles", "locked", "target"].sort(),
+    );
+    expect(Object.keys(snapshot.noticesFired).sort()).toEqual(["gas", "lava"]);
+  });
+
+  it("reports a live cut and a finished expedition in the shape the surface fixes", async () => {
+    h.pose((debug, state) => debug.setTile(state, 5, 200, "rock"));
+    h.pose((debug, state) => debug.setTile(state, 5, 201, "rock"));
+    standOn(h, 5, 200);
+    h.pose((debug, state) => debug.setFuel(state, 100));
+    h.hold("down");
+    await h.advance(12);
+    h.release("down");
+    const cut = h.debug.snapshot(h.state).miner.drilling;
+    expect(cut).not.toBeNull();
+    expect(Object.keys(cut ?? {}).sort()).toEqual(
+      ["col", "dir", "progress", "row"].sort(),
+    );
+    expect(cut?.progress).toBeGreaterThan(0);
+    expect(cut?.progress).toBeLessThanOrEqual(1);
+
+    h.pose((debug, state) => debug.setHull(state, 0));
+    await h.seconds(2);
+    const summary = h.debug.snapshot(h.state).summary;
+    expect(Object.keys(summary ?? {}).sort()).toEqual(
+      [
+        "componentsInstalled",
+        "creditsEarned",
+        "deathCause",
+        "deepestDepthMeters",
+        "elapsedSeconds",
+        "mode",
+      ].sort(),
+    );
+  });
+
+  it("reads a cell in the shape the surface fixes", () => {
+    h.pose((debug, state) => debug.setOreTile(state, 5, 200, "ferron"));
+    expect(Object.keys(h.debug.tileAt(h.state, 5, 200)).sort()).toEqual(
+      ["band", "health", "kind", "material", "maxHealth", "ore"].sort(),
+    );
   });
 
   it("rests every field the current screen does not use", () => {
