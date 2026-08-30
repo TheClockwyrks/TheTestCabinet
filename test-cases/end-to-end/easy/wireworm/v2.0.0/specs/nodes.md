@@ -1,134 +1,109 @@
-# Charge
+# Wireworm — The node field
 
-## Overview
+Nodes are the terrain of the board: capacitor components the worm winds through,
+the player charges by fighting, and clears by shooting. This file defines what a
+node is, what raises and lowers its charge, what removes it, how a new run lays
+the starting field, and how that field grows and persists. The chain-arc
+discharge a critical node sets off is in `specs/discharge.md`.
 
-This file defines the signature charge system: how a node holds charge, how the
-worm charges the field it winds through, what each of your shots does to a node,
-and the chain-arc discharge a critical node sets off. It builds on the tile grid
-in `specs/board.md`, drives how the worm behaves in `specs/worm.md`, and is what
-the foes in `specs/foes.md` manipulate.
+## Charge
 
-## Node charge
+Every node occupies one tile of the board and carries one value: its charge, a
+whole number from `0` to `CHARGE_MAX` (`3`). Charge is the whole of a node's
+state, and a tile is either empty or holds exactly one node.
 
-Every node carries a single state: its charge `C`, an integer in `{0, 1, 2, 3}`.
-Charge is the only per-node state; how you clear a node depends entirely on its
-charge (below).
+| Charge | State |
+| --- | --- |
+| `0` | Inert |
+| `1` | Low |
+| `2` | Charged |
+| `3` | Critical |
 
-Charge is shown by the node's sprite, one frame per level (`specs/assets.md`):
+A node at charge `1` or above is a charged node, and charge `3` is critical.
+`specs/assets.md` states which sprite frame is drawn for each state, and
+`specs/overview.md` states what a player has to read from them.
 
-| `C` | State | Reads as |
-| --- | --- | --- |
-| 0 | inert | dark, unlit, a dead component |
-| 1 | low | a faint teal glow in the core |
-| 2 | charged | a bright cyan core with a faint glow halo |
-| 3 | critical | white-hot core, bright halo, amber overcharge sparks, pulsing |
+Charge never changes on its own. It does not decay, it does not rise with time,
+and nothing raises or lowers it except the events below.
 
-A critical node (`C = 3`) is loaded and dangerous, and reads unmistakably as
-different from a merely charged one (`specs/overview.md`): it is what detonates,
-and it is what makes the worm dive (below and `specs/worm.md`).
+## What raises a node's charge
 
-## The worm charges the field
-
-The worm charges the terrain it steers on. Whenever the head is blocked by a node
-in the tile ahead of it, the collision that makes the worm drop a row and reverse
-(`specs/worm.md`), that node gains one charge:
+A node gains one charge when the worm's head is blocked by it, capped at
+`CHARGE_MAX`:
 
 ```
-C = min(3, C + 1)
+charge = min(CHARGE_MAX, charge + 1)
 ```
 
-- A node the worm bumps once is low; one it keeps ricocheting off climbs to
-  critical. The chokepoints the worm winds around the most are exactly the nodes
-  that go critical, so the field arms itself as a side effect of the worm doing
-  what it does.
-- Charge only ever rises from a worm bump (and from a corruptor, `specs/foes.md`).
-  It never rises on its own and never from your shots. It does not decay over
-  time: a charged node stays charged until you shoot it, it detonates, or it is
-  removed.
-- The worm charges a node once per collision, not continuously while touching it:
-  each drop-and-reverse against a node is one `+1`.
+The rise happens on the step the block happens, once per block rather than
+continuously while the worm touches the node. `specs/worm.md` states what blocks
+a step. A worm turned by the side edge of the board or by a worm segment changes
+no node's charge, and a worm dropping or diving into a tile a node stands on
+leaves that node's charge exactly as it was.
 
-## What your shots do to a node
+The corruptor is the other route, and `specs/foes.md` states it.
 
-Your cursor fires bolts straight up (`specs/controls.md`). A bolt travels up its
-column until it hits the first node, worm segment, or foe in its path, then stops.
-What a bolt does to a node it hits depends on that node's charge:
+## What a bolt does to a node
 
-- `C = 0` (inert): destroyed. An inert node has no charge holding it together; a
-  single bolt removes it, clearing the tile.
-- `C = 1` or `C = 2`: de-energized one level, `C = C - 1`. The bolt knocks one
-  level of charge out of the node but does not remove it. A charged node resists
-  clearing: you shoot the charge out of it, level by level, and only the final
-  bolt, once it is inert, removes it. A `C = 2` node therefore takes three bolts
-  to clear (2, then 1, then 0, then gone).
-- `C = 3` (critical): detonates. A bolt into a critical node does not de-energize
-  it; it sets off the chain-arc discharge (below). This is the only way a critical
-  node leaves the board, and it is how you clear a big charged cluster in one shot
-  instead of whittling each node down.
+A bolt travels up its column and resolves against the first node, worm segment,
+or foe in its path, as `specs/cursor.md` states. What it does to a node depends
+on that node's charge:
 
-There is no way for your shots to raise a node's charge; only the worm and the
-corruptor charge the field. Your shots only ever push charge down, or, at
-critical, blow it up.
+| Charge struck | Result |
+| --- | --- |
+| `0` | The node is removed and its tile is left empty. |
+| `1` | The node is left standing at charge `0`. |
+| `2` | The node is left standing at charge `1`. |
+| `3` | The node detonates, as `specs/discharge.md` states. |
 
-## The chain-arc discharge
+A charged node is therefore cleared by knocking its charge down one bolt at a
+time and removing it once it is inert, and a critical node is cleared by
+detonating it instead. No bolt ever raises a node's charge.
 
-Shooting a critical node detonates it, and the detonation chains through the
-charged cluster around it:
+A bolt that resolves against a worm segment standing on a tile a node also
+occupies leaves that node's charge exactly as it was. The segment is what the
+bolt struck.
 
-1. The detonated node is removed from the board (its tile clears).
-2. It arcs to every charged node (`C >= 1`) whose tile is within 2 tiles of it, a
-   Chebyshev radius of 2 (the surrounding 5 x 5 block of tiles, centered on the
-   detonated node). Inert nodes (`C = 0`) do not conduct and are not consumed, so
-   arcs leap over them.
-3. Every node an arc reaches is itself detonated, removed, and it arcs onward to
-   the charged nodes within 2 tiles of it. The discharge floods outward through
-   the connected web of charged nodes this way until no charged node remains
-   within reach, clearing the whole cluster in one chain. A node is detonated at
-   most once per discharge, so a fully charged board can be cleared by a single
-   well-placed shot.
-4. Every worm segment within 2 tiles of any detonated node is destroyed, and,
-   unlike a segment killed by a direct shot, a segment killed by a discharge
-   leaves no node behind (`specs/worm.md`). A discharge is the clean kill: it culls
-   the worm and thins the field at once, where shooting the worm normally thickens
-   it.
+## How the field grows
 
-The reach of a discharge is the connected set of charged nodes, each within 2
-tiles of the next. Where the worm has charged a dense run of nodes, one shot
-clears a wide swath and fries every segment threading through it; where charge is
-sparse, a detonation is a small local pop. Draw the arcs as bright `#b8ffe6`
-lightning between the detonating nodes (`specs/overview.md`); the arc visuals are
-yours to render (there is no arc sprite, see `specs/assets.md`).
+Every worm segment destroyed by a bolt leaves a fresh node at charge `0` on the
+tile it died on. Where that tile already holds a node, no new node is laid and
+the standing node keeps the charge it had. A segment destroyed by a discharge
+leaves nothing, as `specs/discharge.md` states.
 
-## Critical nodes make the worm dive
+The dropper lays nodes as it falls, as `specs/foes.md` states.
 
-A critical node is double-edged: it is your weapon, but until you detonate it, it
-is a hazard. When a worm segment collides with a critical node (`C = 3`), in
-addition to charging (which is already capped at 3, so the node stays critical),
-the worm enters a dive: instead of the normal drop-one-row-and-reverse, it drives
-straight down its current column, one row per step, ignoring nodes and walls,
-until it reaches the bottom row or the player band, then resumes normal winding
-(`specs/worm.md`).
+## What removes a node
 
-A charged cluster is an express lane: a worm that reaches it plunges toward you
-instead of winding the long way down. This is the pressure that keeps the charged
-field from being a free bank of weapons. A critical cluster you leave standing is
-a critical cluster the worm can ride into your band. Detonate criticals to clear
-the worm and the terrain both; leave them and they may fast-track the worm at you.
+| Route | Stated in |
+| --- | --- |
+| A bolt into an inert node. | This file. |
+| A detonation, including every node the chain reaches. | `specs/discharge.md` |
+| A glitch eating the node on its tile. | `specs/foes.md` |
 
-## Why this is the game
+Nothing else removes a node.
 
-Put together, charge is the whole tension of Wireworm:
+## The starting field
 
-- Shooting the worm normally thickens the field (each kill leaves a node), and a
-  thicker field steers the worm down faster (`specs/worm.md`), so fighting the
-  worm the ordinary way makes your situation more dangerous over time.
-- The worm charges the field it winds through, and a charged cluster is a loaded
-  weapon, but also a dive-lane that fast-tracks the worm at you.
-- A discharge is the release valve: it clears a whole charged swath and cleanly
-  fries the worm through it, thinning the field instead of thickening it, but you
-  can only build one by letting the worm run long enough to charge a cluster to
-  critical, which is exactly when the situation is most dangerous.
+A new run lays a scattering of nodes across the scatter rows, rows
+`SCATTER_TOP_ROW` (`1`) through `SCATTER_BOTTOM_ROW` (`17`) inclusive, which
+hold `680` tiles between them.
 
-Good play is pacing that cycle: let the field build and charge, then relieve it
-with a great discharge at the right moment, not too early (a small pop), not too
-late (the worm rides the criticals into your band).
+- The number of nodes laid is between `SCATTER_MIN_FRACTION` (`0.10`) and
+  `SCATTER_MAX_FRACTION` (`0.15`) of those `680` tiles.
+- Every node of the scatter is laid at charge `0`.
+- No node is laid in row `0`, which the worm enters along, and none in the player
+  band, rows `18` and `19`.
+- The tiles are drawn from the run's seeded random generator, so a run's starting
+  field is a fresh scatter rather than one fixed layout, and two runs from
+  different seeds lay different fields.
+
+## The field persists
+
+The field is laid once, when a run starts, and it stands from there.
+
+- Clearing a level does not reset it. The nodes standing when a level clears are
+  the nodes standing when the next level's play begins, at the charges they held.
+- Losing a life does not reset it. Every node and its charge survive the respawn
+  unchanged, while the worms and the foes do not, as `specs/progression.md`
+  states.

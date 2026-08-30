@@ -2,204 +2,361 @@
 
 ## Overview
 
-Wireworm is a fixed-shooter arcade game for the browser. A segmented data-worm
-winds down a circuit board through a field of capacitor nodes; you are a defrag
-cursor pinned to a shallow band at the bottom, firing upward to cut the worm
-apart before it reaches you.
+Wireworm is a fixed-shooter arcade game for the browser, played on a circuit
+board. A segmented data-worm winds down the board through a field of capacitor
+nodes. The player is a defrag cursor pinned to a shallow band along the floor,
+firing upward to cut the worm apart before it reaches the band.
 
-Wireworm's defining idea is the charged field. Every node the worm bumps gains
-charge, so the same collision that steers the worm energizes the terrain it
-steers on. A fully charged node is a weapon: shoot it and it detonates, arcing
-through the whole charged cluster around it, clearing those nodes and cleanly
-frying any worm segments caught in the arc. But the board fights back. Every worm
-segment you shoot leaves a fresh node behind, so the field thickens as you fight,
-and a thicker field drives the worm down at you faster. The game is the tug
-between those two: let the field build and charge so you can clear it in one great
-discharge, but not so far that the worm rides it into your band.
+Wireworm's defining idea is the charged field. Every node the worm is turned by
+gains charge, so the collision that steers the worm also arms the terrain it
+steers on. A fully charged node detonates when it is shot, arcing through the
+charged cluster around it, clearing those nodes and frying every worm segment
+caught in the arc. Every segment cut by a bolt leaves a fresh node behind, so
+the field thickens as the fight goes on, and a critical node the worm reaches
+sends it diving straight down.
 
-Wireworm has its own name, look, charged-node discharge, and data-worm. Do not
-reproduce the assets, branding, characters, or design of any existing game.
+Wireworm has its own name, look, and rules, and its assets, branding, and design
+are original to it.
 
-## How the specification is organized
+The specification spans several files under `specs/`. `specs/board.md` gives the
+board's geometry and the tile-to-stage map; `specs/nodes.md` the node field and
+its charge; `specs/discharge.md` the chain-arc discharge; `specs/worm.md` the
+data-worm; `specs/foes.md` the three support foes; `specs/cursor.md` the cursor
+and its bolts; `specs/controls.md` the keys; `specs/progression.md` the run of
+lives and levels; `specs/scoring.md` every score figure; `specs/ui.md` the
+screens, the HUD, and audio; `specs/assets.md` the seeded sprite art;
+`specs/state.md` what the game's state carries; `specs/instrumentation.md` the
+debug and automation surface; and `specs/showcase.md` the showcase the finished
+build ships. Read all of them and build the game they describe as one cohesive
+whole.
 
-This specification is split across several files. Read all of them before you
-start; they cross-reference each other by name and form one specification.
+{{#if (eq engine.slug "none")}}
+## The runtime
 
-- `specs/overview.md` — this file: goals, hard requirements, free choices, the
-  coordinate system, the palette and type, and the visual design.
-- `specs/board.md` — the geometry of the board: the tile grid, the node field,
-  the player band, where the worm enters, and the HUD layout.
-- `specs/charge.md` — the signature systems: node charge, how the worm charges
-  the field, what your shots do to a node, and the chain-arc discharge.
-- `specs/worm.md` — the data-worm: how it is built from segments, how it winds
-  down the board, how splitting and shortening work, and how it grows the field.
-- `specs/foes.md` — the support foes (the glitch, the packet-dropper, and the
-  corruptor), their behavior, and how they threaten you and reshape the field.
-- `specs/controls.md` — the keyboard controls: moving in the band, firing, and
-  pausing.
-- `specs/progression.md` — lives, the level progression and victory, and scoring.
-- `specs/ui.md` — the game states, the main menu, the HUD, and audio.
-- `specs/assets.md` — the provided sprite art you must render the game with, how
-  it is organized, and the rule for loading it so the build works at any base
-  path.
-- `specs/instrumentation.md` — the `window.__wireworm` debugging and automation
-  API, the debug overlay, and the deterministic, steppable core they rest on.
+This game stands on no engine, so the runtime under it is yours to write: the
+frame loop and the delta time it measures, the canvas fit, keyboard input, audio
+cues, loading the seeded sprite art, and the debug overlay. Where this
+specification speaks of the runtime it means that layer, and it states only what
+Wireworm needs from it. How the layer is structured is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It owns the frame loop and
+the delta time the game is given, the input actions the cursor and the menus are
+driven by, audio cues, asset loading, the canvas fit, and the debug overlay.
+Read its documentation before you start. This specification states only what is
+specific to Wireworm.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It is a gameplay framework
+as much as a runtime: the game is written as subclasses of its classes, a game
+instance, a game mode, actors and their components, and the controllers that
+drive them, and the engine constructs, ticks, and renders them in a fixed order.
+It owns the frame loop and the delta time the game is given, rendering and the
+camera, the canvas fit, the input actions the cursor and the menus are driven
+by, audio cues, asset loading, and the debug overlay. Read its documentation
+before you start. This specification states only what is specific to Wireworm.
+
+The logical design field handed to the engine is the stage, and the game leaves
+the camera at rest, so world units and the stage's logical units coincide and
+every position in this specification is both.
+{{/if}}
+
+## The project you build in
+
+The project at the root of this repository is already wired up, and its
+`README.md` describes it. It is a TypeScript project built with Vite, tested
+with Vitest, linted with ESLint, and formatted with Prettier. That toolchain is
+fixed and supplied.
+
+{{#if (eq engine.slug "none")}}
+### What you implement
+
+Everything under `src/`. The directory does not exist yet.
+
+`index.html` loads `/src/main.ts` as its entry point, so that module is where
+your build starts. Beyond that the structure is yours: the frame loop and the
+canvas fit, keyboard input, audio, the debug overlay, the debug and automation
+surface, the figures this specification fixes, and the game itself.
+
+The game's state is yours to shape. `specs/state.md` states what it must carry,
+and `specs/instrumentation.md` states the one contract fixed over it.
+
+### What stays as it is
+
+- `assets/`, the seeded sprite art. `specs/assets.md` is its contract.
+- `index.html`, the page and the canvas the stage is fitted into.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+  `vite.config.ts` serves `assets/` in development and copies the same tree into
+  `dist/` when the site is built.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from this specification
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is stated here under a name. Anything this specification does
+not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test drives the game over its own clock for a counted number of frames,
+so it needs no browser, and `@napi-rs/canvas` is installed for a test that wants
+a real 2D context.
+{{else if (eq engine.slug "simple-2d")}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`.
+
+`src/game.ts` exports `game`, a `Game<WirewormState, WirewormDebugApi>`:
+`initialize` builds the state and the debug surface once and returns them
+together as `[state, debug]`, `update` takes the current state as a read-only
+view (`DeepReadonly<WirewormState>`) and returns the next state, advanced against
+the frame's delta time in seconds, and `render` is handed that next state,
+read-only again, and draws it. The engine holds the state by value and replaces
+it with what each `update` returns, so a frame builds the next state from the
+current one rather than writing into it, and nothing but `update` and the debug
+surface's poses advances the game. All three functions throw `"not implemented"`
+as they stand. Implement them.
+
+`src/game.ts` also declares and exports `WirewormState` and the types it is built
+from, exactly as `specs/state.md` states them, and `WirewormDebugApi`, the debug
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the board
+itself. The seeded stub exports a placeholder; replace it with the color your
+board uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `assets/`, the seeded sprite art. `specs/assets.md` is its contract.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.tcab/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it also
+names the constant that holds it, and the constant is authoritative. Anything
+this specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over its own canvas and clock and advances the
+game a counted number of frames, so it needs no browser.
+{{else}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`. The file does
+not exist yet, and `src/main.ts` imports it, so the project does not compile
+until you create it.
+
+`src/game.ts` exports `game`, a `GameDefinition<WirewormDebugApi>`: the game
+instance class, a level registry holding the single level the game runs in, and
+`startLevel` naming it. The game opens that one level and never opens another;
+every screen is a value of the state's `screen` field, so the world and its game
+state live for the whole session. The instance's `initialize` registers the
+actions, defines the cues, and returns the debug surface. The level's game mode
+runs the screens and the rules, and it adds a single player in its `beginPlay`,
+possessing nothing; that player's controller is where the actions are read. The
+mode's `gameStateClass` is `WirewormState`, so the world's game state is the
+state `specs/state.md` declares. The actors, components, and controllers you
+write draw that state and drive it.
+
+`src/game.ts` also declares and exports `WirewormState` and the types it is built
+from, exactly as `specs/state.md` states them, and `WirewormDebugApi`, the debug
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the board
+itself.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `assets/`, the seeded sprite art. `specs/assets.md` is its contract.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.tcab/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it also
+names the constant that holds it, and the constant is authoritative. Anything
+this specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over a canvas from `@napi-rs/canvas` and a
+surface and clock of its own, then advances the game a counted number of frames
+with `engine.advance`, so it needs no browser.
+{{/if}}
+
+### The checks the repository passes
+
+Four commands run over the finished repository before it is reviewed:
+
+| Command | Checks |
+| --- | --- |
+| `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
+| `npx eslint .` | The code is lint-clean. |
+| `npx prettier --check .` | The code is formatted. |
+| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
+
+They run on the repository as you leave it. `npm run typecheck`, `npm run lint`,
+`npm run format`, and `npm test` run the same four locally.
+
+### The build interface
+
+`npm ci` followed by `npm run build` produces the complete static site into
+`dist/` at the repository root, with an `index.html` at the root of that
+directory as the entry point. That directory runs correctly when served as-is
+from any static file server, at any base path. The scripts that do this are
+already in `package.json`.
 
 ## Goal of this build
 
-Produce a complete, polished, playable game that runs entirely in a browser.
-This is a substantial front-end task: real-time rendered graphics, a fixed-step
-simulation, a segmented worm that winds a tile field and splits when shot, a
-charged-terrain model with a chain-reaction discharge, three distinct support
-foes, a shot and collision system, a field that persists and thickens across a
-level run, multiple game states and menus, and a HUD. Aim for a build a person
-would actually want to play, tense and readable, not a tech demo.
+Produce a complete, polished, playable game that runs entirely in a browser. Aim
+for a game a person would enjoy playing: tense, readable, and fast.
+
+The build ships the whole run: twelve levels on one board, the data-worm, the
+charged field and its discharge, the three support foes, the six screens, and
+the HUD. Every other spec file states one part of it.
 
 ### Hard requirements
 
-- Render real graphics. Draw the game with Canvas 2D, WebGL/WebGPU, or positioned
-  DOM elements, using the provided sprite assets (`specs/assets.md`). A text-only
-  or ASCII rendering does not satisfy this requirement.
-- Run in the browser with no backend. No server, accounts, database, or network
-  calls at runtime. Everything needed to play must be self-contained.
-- No API keys or credentials of any kind to build, run, or play.
-- Ship an npm-driven static build. The project is a Node project with a
-  `package.json` at its root, buildable with only Node.js and npm-installed
-  dependencies and no separately installed language toolchain. Commit a
-  `package-lock.json`, since the build is installed with `npm ci`. Running
-  `npm ci` and then `npm run build` produces the complete static site, with no
-  further manual step, into one of `dist/`, `build/`, or `out/` at the project
-  root, with an `index.html` at the root of that directory as the entry point.
-  That output directory runs correctly when served as-is from any static file
-  server, at any base path (see `specs/assets.md`, because the game loads the
-  seeded sprite art at runtime). You choose the language, framework, bundler, and
-  rendering approach behind this interface; only the `npm ci` and `npm run build`
-  commands and where the build output lands are fixed.
-- Include a `README.md` in the produced repository explaining what the game is,
-  how to install dependencies, how to run it in development, how to produce the
-  static production build, and the controls.
-- Expose the `window.__wireworm` API and the read-only debug overlay described in
-  `specs/instrumentation.md`, backed by the deterministic, steppable core that
-  file requires. This is a required part of the build.
+{{#if (eq engine.slug "none")}}
+- Write the runtime the game stands on: the frame loop and its delta time, the
+  canvas fit, keyboard input, audio, and the debug overlay.
+{{else if (eq engine.slug "simple-2d")}}
+- Build on the {{engine.name}} engine, taking the frame loop, the input actions,
+  audio, asset loading, and the debug overlay from it.
+{{else}}
+- Build on the {{engine.name}} engine, taking the frame loop, rendering, the
+  input actions, audio, asset loading, and the debug overlay from it, and writing
+  the game inside its framework of game modes, actors, components, and
+  controllers.
+{{/if}}
+- Render real graphics on the canvas. The nodes, the worm, the cursor, and the
+  three foes are drawn from the seeded sprite art under `assets/`, as
+  `specs/assets.md` states; everything else is drawn in code.
+- Run in the browser with no backend. Everything needed to play is
+  self-contained, and no API key or credential is needed to build, run, or play.
+{{#if (eq engine.slug "none")}}
+- Hold the game's whole state in one value, the one the frame loop advances and
+  the debug surface reads.
+{{else if (eq engine.slug "simple-2d")}}
+- Hold the game's whole state in `WirewormState`, as `specs/state.md` declares
+  it.
+{{else}}
+- Hold the game's whole authoritative state in `WirewormState`, the world's game
+  state, as `specs/state.md` declares it.
+{{/if}}
+- Expose the debug and automation surface `specs/instrumentation.md` specifies,
+  and the read-only debug overlay it describes, backed by the deterministic core
+  that file requires. This is a required part of the build.
+- Ship the showcase `specs/showcase.md` describes, at the root of this
+  repository.
+- Replace the starter `README.md` with one explaining what the game is, how to
+  install dependencies, how to run it in development, how to produce the static
+  production build, and the controls.
 
-### Free choices
+## Code quality
 
-You choose the language, framework, bundler, and rendering approach, subject to
-the requirements above. Plain TypeScript with Canvas 2D is sufficient; a
-framework is not required. Favor a clean, well-structured codebase over any
-particular technology. The spawn timing, level pacing, and per-level composition
-of the worm and foes are given in `specs/worm.md`, `specs/foes.md`, and
-`specs/progression.md`; implement them as written.
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the simulation.
 
 ## Coordinate system and presentation
 
-All positions, sizes, speeds, and ranges in this document are given in logical
-pixels on a fixed 1280 x 720 stage (16:9). The origin `(0, 0)` is the top-left;
-`x` increases to the right and `y` increases downward.
+All positions, sizes, speeds, and ranges in this specification are given in the
+game's own logical units on a fixed stage of `STAGE_W x STAGE_H`
+(`1280 x 720`, 16:9). The origin `(0, 0)` is the top-left; `x` increases to the
+right and `y` increases downward.
 
-**An entity's position is its center.** Wherever a moving thing — the defrag
-cursor, a foe, a bolt — is given, taken, or reported as an `(x, y)` pair, that pair
-is the center of the entity, not the top-left corner of its sprite. A 32 x 32 foe
-at `(x, y)` therefore covers `[x - 16, x + 16]` by `[y - 16, y + 16]`, and it sits
-squarely on tile `(c, r)` exactly when `(x, y)` is that tile's center,
-`(32c + 16, 80 + 32r + 16)` (`specs/board.md`). The tile a foe occupies is the one
-containing its center, `c = floor(x / 32)` and `r = floor((y - 80) / 32)`. This is
-one convention for the whole game: it fixes where a sprite is drawn relative to the
-position that drives it, which tile a foe's effects land on, and what
-`window.__wireworm` reports and accepts (`specs/instrumentation.md`).
+An entity's position is its center. Wherever the cursor, a foe, or a bolt is
+given, taken, or reported as an `(x, y)` pair, that pair is the center of the
+entity rather than the top-left corner of its sprite. The board is a grid of
+tiles, and an entity sits squarely on a tile exactly when its center is that
+tile's center; the tile it occupies is the one containing its center. The
+tile-to-stage map and its inverse are in `specs/board.md`, which owns them.
 
-- The stage scales uniformly to fit the browser window while preserving its 16:9
-  aspect ratio, letterboxed with the background color on the remaining space. The
-  game stays correct and centered at any window size.
-- Game logic operates in logical-pixel space, independent of the rendered scale.
-- The whole stage is on screen at every window size: the complete `1280 x 720`
-  area is visible at once, the full HUD bar, the entire board, and all four edges,
-  fitted to the window and centered with nothing clipped or pushed past the edges.
-  The build fits correctly on load, before any input, and at any pixel density.
+- `STAGE_W x STAGE_H` is the game's logical design size. Fitting it to the
+  browser window is the runtime's work: the uniform scale that preserves the
+  aspect ratio, the letterboxed centering, and the device pixel ratio. The
+  complete stage is therefore on screen at every window size, on load and at any
+  pixel density.
+- The letterbox bars around the stage carry the stage's background color.
+- Draw in logical units, and take the canvas element's own size from the runtime
+  alone.
+- Game logic operates in logical units, independent of the rendered scale.
 
-The stage is divided into the HUD bar across the top, `x` in `[0, 1280]`, `y` in
-`[0, 80]`, and the board below it, `x` in `[0, 1280]`, `y` in `[80, 720]`
-(1280 x 640). The board is laid out on a tile grid: tiles are 32 x 32 logical
-pixels, and the grid is 40 columns x 20 rows (`1280 x 640`). Column `c` (`0..39`)
-spans `x` in `[32c, 32c + 32]`; row `r` (`0..19`) spans `y` in
-`[80 + 32r, 80 + 32r + 32]`. A node fills exactly one tile, and each worm segment
-occupies one tile; the sprite art is authored at this 32 x 32 tile size
-(`specs/assets.md`). The grid geometry, the node field, the player band, and the
-HUD are defined in full in `specs/board.md`.
+Every rate in this specification is per second and every duration is in seconds,
+integrated against the delta time the runtime hands each update. The one clocked
+quantity is the worm's tile step, which `specs/worm.md` states.
+
+## What the board shows
+
+While the game is being played, the board carries every node standing on it at
+its own charge, every worm and each of its segments, every foe, every bolt in
+flight, the arcs of a discharge while they last, and the cursor inside its band.
+The HUD bar above the board carries the score, the lives remaining, and the
+level. `specs/board.md` gives the extent of each region and `specs/ui.md` the
+readouts.
 
 ## Visual design
 
-The look is a dark circuit board lit by charge: a deep board with faint copper
-traces, a field of little capacitor nodes that glow brighter as they charge, and
-a violet data-worm winding down through them. The canonical palette and type are
-below; match them.
+The board is dark. Choose the colors and the typography, decide how a node, a
+worm segment, a foe, the cursor, and a bolt are drawn, and decide what the board
+and its floor band look like behind them.
 
-| Element | Color |
+Whatever look you choose, a player reads all of the following at a glance.
+
+| What a player reads | Requirement |
 | --- | --- |
-| Board / stage background | `#0b1418` |
-| Trace grid lines | `#14282e` |
-| Player-band tint (bottom rows) | `#0f1f1c` |
-| HUD bar background | `#0c191c` |
-| HUD edges / dividers | `#1c3a40` |
-| Node casing | `#25303a` |
-| Node metal rim / leads | `#5a7183` |
-| Node core inert (charge 0) | `#20343d` |
-| Node charge low (charge 1) | `#2f9e86` |
-| Node charge mid (charge 2) | `#54e6bd` |
-| Node core critical (charge 3) | `#e6fff7` |
-| Node overcharge spark / corruption | `#ffb43a` |
-| Discharge arc | `#b8ffe6` |
-| Worm carapace | `#7a2fae` |
-| Worm carapace edge | `#c06bff` |
-| Worm data seam | `#ff3fa4` |
-| Worm sensor eye | `#ff5a3c` |
-| Player cursor chassis | `#3f8ba3` |
-| Player cursor core / bolt | `#57e0ff` |
-| Player cursor highlight | `#eafcff` |
-| Glitch (node-eater) | `#d92b4a` |
-| Packet-dropper | `#e8a83a` |
-| Corruptor | `#8fd63a` |
-| Score / readouts | `#54e6bd` |
-| Primary text | `#dfeef0` |
-| Secondary text | `#7f9aa0` |
-| Tertiary text / hints | `#4a6068` |
+| Charge, by level | The four charge states of a node are told apart at a glance, and they read as a ramp: each state is visibly brighter or more energetic than the one below it, with critical the most so. |
+| The worm | The worm reads apart from the board behind it and from a node of any charge, and its head, its body, and its tail are told apart. |
+| The cursor | The cursor reads apart from the player band it sits in. |
+| The foes | The glitch, the dropper, and the corruptor read apart from one another and from the board. |
+| A bolt in flight | A bolt reads apart from the board along the column it is climbing. |
+| The band | The player band reads as a distinct floor across the full width of the board. |
+| Text | Every readout and every screen's text is legible against its background at the logical stage size. |
 
-- Use a monospace type family for all text (title, menus, HUD, labels). Do not
-  depend on a web font that must be downloaded; a system monospace stack is
-  required so the game renders identically offline.
-- The trace grid is faint but always visible on the board, so the player can read
-  tiles and the shape of the node field. The bottom player band (`specs/board.md`)
-  reads as subtly distinct, a faint tinted floor, so it is clear where the cursor
-  may go.
-- Charge is readable at a glance, and by more than motion alone. A node's glow
-  tracks its charge along the ramp above, from inert dark to low teal to mid cyan
-  to white-hot critical, and a critical node is the brightest, with amber
-  overcharge sparks, visibly pulsing. Because charge is the heart of the game, a
-  player can tell a critical node ready to detonate from a half-charged one
-  without guessing. Render the provided node sprite for each charge state
-  (`specs/assets.md`).
-- Keep the worm and the foes off the node charge ramp so they never read as
-  charge: the worm is violet with a magenta seam, the glitch error-red, the
-  dropper amber, the corruptor toxic-green, never the teal-to-white of the node
-  charge ramp. The corruptor's amber stinger matches the node overcharge color,
-  because charging nodes to critical is exactly what it does (`specs/foes.md`).
-- The three canonical screens, the title screen, the in-game view, and the
-  game-over screen, are described in full under Game states in `specs/ui.md`.
-  Implement each as described, in this palette and type.
-
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look:
-
-- `reference/title.png` — the title screen and main menu.
-- `reference/gameplay.png` — a representative in-game frame, mid-level.
-- `reference/game-over.png` — the game-over screen.
-
-Treat them as illustrative examples, not targets to reproduce: they show one way
-the screens can look, but design your own menus and layout rather than copy them.
-The only firm requirement is that every menu and navigation path this
-specification mandates is present, rendered in the palette and type the spec
-defines. They are images only, and the node field, worm, and foes they show are
-just one example moment. Build the screens from this specification; the field is
-grown at runtime and is never fixed, so design your own conforming game, not a
-copy of the frame.
+The palette, the type, the glow, and every other aspect of the look are yours.
