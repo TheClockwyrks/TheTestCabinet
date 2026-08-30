@@ -116,7 +116,7 @@ export function coreRowFor(size: WorldSize): number {
 
 /** How deep the Core lies at a world size, in meters. */
 export function coreDepthMetersFor(size: WorldSize): number {
-  return (coreRowFor(size) - 1) * METERS_PER_ROW;
+  return coreRowFor(size) * METERS_PER_ROW;
 }
 
 /**
@@ -809,9 +809,9 @@ export const MODE_BLURB: Record<"standard" | "hardcore", string> = {
 
 /** What the size-select screen states about each size before it is chosen. */
 export const SIZE_BLURB: Record<WorldSize, string> = {
-  quick: "QUICK — the Core lies 1245 m down.",
-  standard: "STANDARD — the Core lies 2495 m down.",
-  marathon: "MARATHON — the Core lies 4995 m down.",
+  quick: `QUICK — a half-depth mine. The Core lies ${coreDepthMetersFor("quick")} m down.`,
+  standard: `STANDARD — the full mine. The Core lies ${coreDepthMetersFor("standard")} m down.`,
+  marathon: `MARATHON — a double-depth mine. The Core lies ${coreDepthMetersFor("marathon")} m down.`,
 };
 
 // ---------------------------------------------------------------------------

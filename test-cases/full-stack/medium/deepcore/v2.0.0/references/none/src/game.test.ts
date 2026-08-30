@@ -16,12 +16,14 @@ import {
   PLAYABLE_COL_MAX,
   PLAYABLE_COL_MIN,
   ROCKET_TOTAL_CREDITS,
+  SIZE_BLURB,
   SPAWN_COL,
   STANDARD_ROWS,
   SURFACE_Y,
   TILE,
   VIEW_H,
   VIEW_W,
+  coreDepthMetersFor,
   coreRowFor,
   depthFraction,
 } from "./constants";
@@ -338,5 +340,16 @@ describe("the rocket and the expedition's end", () => {
     standOn(game, 5, 10);
     run(game, 0.1, 1);
     expect(game.deepestDepthMeters).toBe(deep);
+  });
+});
+
+describe("the size-select copy", () => {
+  it("states each size's Core depth as the world file's table gives it", () => {
+    expect(coreDepthMetersFor("quick")).toBe(1250);
+    expect(coreDepthMetersFor("standard")).toBe(2500);
+    expect(coreDepthMetersFor("marathon")).toBe(5000);
+    for (const size of ["quick", "standard", "marathon"] as const) {
+      expect(SIZE_BLURB[size]).toContain(`${coreDepthMetersFor(size)} m`);
+    }
   });
 });
