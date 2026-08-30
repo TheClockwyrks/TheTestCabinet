@@ -1,0 +1,1314 @@
+slug = "meltdown"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Meltdown"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Meltdown asks
+# for multi-size, rotatable grid tower placement with live maze re-pathing, eight
+# tower types each with distinct thermal behavior, a heat-to-damage plateau with a
+# per-tower redline and a trip, a surface-cooling ("thermal blanket") model with
+# radiator faces and conduction between neighbors, a thermostatic Forge and coolant
+# Sink, upgrade and economy systems, several surge types including maze-ignoring
+# flyers, a 20-wave progression with win and loss, and multiple states. The thermal
+# simulation and the spatial heat-management it demands push it past the arcade
+# cases; it is still a bounded, single-screen 2D build, so it sits at medium.
+difficulty = "medium"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["strategy", "2d", "tower-defense"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+An open-field tower-defense game where your towers are also the walls, so you \
+build the maze the surge must walk — and every emitter fires harder the hotter it \
+runs, up to its redline, then trips if it overheats. Towers shed heat only through \
+faces on open air, so pace heat across the floor: space and rotate your guns, run a \
+core in its plateau, feed a sniper, hold the cryo line cold."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. Injects absolute in-container paths via template variables.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run
+# is stopped. Meltdown is a substantial build (grid maze and live pathing, eight
+# towers, the heat/redline model, economy and upgrades, a 20-wave progression,
+# multiple states), so it gets a full five hours.
+max_runtime_hours = 5
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project to build on: a `package.json` that pins
+# `playwright` as a dev dependency, so the in-container browser tooling is a
+# visible, project-local dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. Installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This version offers a single `base` variant (the standard Containment defense on
+# the one fixed floor), declared in its own file under `variants/`. It supplies the
+# `title` view's menu screenshot; `mode-select`, `gameplay`, and `game-over` are
+# common. Future
+# versions/variants are expected to add alternate floors (a central reactor block,
+# scattered cores) and rule twists as additional variants on top of this base.
+# This list is a root key, so it must precede the first table header (`[build]`).
+variants = ["variants/base.toml"]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Instrumentation: the debug-and-automation surface every build installs, named
+# once here so a review item's `validation` driver (and the validator that runs it)
+# knows which `window` global to drive. The seeded specification documents the same
+# handle independently as an ordinary game debug feature (see
+# specs/instrumentation.md); this entry is reporter-side and never seeded. It is
+# required because review items below declare `validation` scripts.
+[instrumentation]
+handle = "__meltdown"
+# The fixed simulation rate, in Hz. Meltdown's debug API advances time in whole
+# simulation ticks (`step(ticks)`) rather than in seconds, so there is no rounding
+# and no ambiguity about what a step means. This is the rate the validation
+# runtime uses to relate that exact stepping back to real time — one tick is
+# 1/60 of a second, so a second of game time is 60 ticks. It must match the
+# timestep the seeded `specs/gameplay.md` mandates.
+tick_hz = 60
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern. All common specs are
+# plain Markdown, seeded verbatim.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/playfield.md"
+
+[[spec]]
+source = "specs/heat.md"
+
+[[spec]]
+source = "specs/towers.md"
+
+[[spec]]
+source = "specs/surge.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+[[spec]]
+source = "specs/economy.md"
+
+[[spec]]
+source = "specs/gameplay.md"
+
+[[spec]]
+source = "specs/ui.md"
+
+[[spec]]
+source = "specs/modes.md"
+
+# The debugging and automation surface every build must expose: a deterministic,
+# steppable core; a `window.__meltdown` API to drive and inspect the game from
+# code; and a read-only debug overlay. Seeded for every variant and framed as an
+# ordinary developer affordance of the game.
+[[spec]]
+source = "specs/instrumentation.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact
+# paths the `[[proof]]` entries below declare. The paths in this spec and in the
+# `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
+# captured (with Playwright) from this case's playable reference-impl build — the
+# authored, correct game under `reference-impl/` — and served as-is (seeded into
+# the run as a visual target, never rendered). See `reference/README.md` for how
+# they are regenerated. The `title` view is variant-specific (declared per variant
+# above); `mode-select`, `gameplay`, and `game-over` look the same in every variant.
+[[reference]]
+view = "mode-select"
+media = "reference/screenshots/mode-select.png"
+
+[[reference]]
+view = "gameplay"
+media = "reference/screenshots/gameplay.png"
+
+[[reference]]
+view = "game-over"
+media = "reference/screenshots/game-over.png"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot
+# or `.webm` clip to; `specs/proof.md` instructs the build to produce them at
+# exactly these paths. Validation records whether each turned up (informational).
+# The media kind is inferred from the extension: `.png` is an image, `.webm` a
+# video (the format Playwright records natively; the public gallery transcodes
+# it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "mode-select"
+name = "Mode select"
+dest = "proof/mode-select.png"
+
+[[proof]]
+id = "gameplay"
+name = "In-match"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "End screen"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "heat"
+name = "Heat-as-power clip"
+dest = "proof/heat.webm"
+
+[[proof]]
+id = "siege"
+name = "Maze and surge clip"
+dest = "proof/siege.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
+
+# Scoring domains. The reviewer rates each independently while playing the build,
+# and the run's overall rating is the WORST across them — a flawless heat system
+# cannot mask a maze that does not path, and vice versa. These qualitative
+# per-domain ratings are separate from the point checklist below, which the
+# categories grammar scores globally (a point attaches to no domain).
+[[domain]]
+id = "heat"
+name = "Heat & Thermal Play"
+description = "The signature: heat as power up to each tower's redline plateau, the trip as the sole failure, surface cooling through radiator faces (a boxed-in core bakes) with rotation and conduction, the thermostatic Forge and coolant Sink, the heat-averse Rime, and how spacing and orientation pace each tower's heat."
+
+[[domain]]
+id = "defense"
+name = "Tower Defense"
+description = "The TD core: towers-as-walls mazing and live re-pathing to the fixed opposite exhaust, the can't-seal rule, the tower roster and upgrades, the surge types and maze-ignoring flyers, and the economy and 20-wave progression."
+
+# Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
+# `[[review.categories]]` is a CATEGORY — a bare name (id + title) grouping the
+# points a reviewer grades — and each `[[review.categories.items]]` under it is one
+# graded review item worth one point (the default weight), so a category is worth
+# the number of items it holds (no fractional scoring). Each item states a single
+# observable requirement the seeded specification already states; the recorded
+# verdict id is the composite `<categoryId>.<itemId>`. The checklist is
+# reporter-side material — never seeded into a run.
+#
+# An item with a `validation` script is decided automatically (the reviewer can
+# override); one without is reviewed by a person. The genuinely subjective points —
+# the feel of the heat read, the art and layout of the screens, and everything
+# under Audio — carry no script. A few UI captures carry a script only to REACH and
+# capture a state (the auto-verdict confirms it is reachable); how it reads and
+# lays out is still left to the reviewer.
+[review]
+format = 2
+
+# --- Heat is power ------------------------------------------------------------
+[[review.categories]]
+id = "heat"
+title = "Heat is power"
+[[review.categories.items]]
+id = "cold-feeble"
+title = "A cold gun is feeble"
+description = "A cold emitter fires at about 0.35x base damage — nearly useless — so an idle wall of cold guns is not a defense."
+# Automated validation: pose an emitter's heat to 0 and read its live heat damage
+# multiplier back (~0.35). See validation/heat/cold-feeble.mjs.
+validation = { script = "validation/heat/cold-feeble.mjs", outputs = [
+  { id = "cold", name = "A cold, low-power emitter", kind = "image" },
+] }
+[[review.categories.items]]
+id = "climbs-to-redline"
+title = "Damage climbs to the redline"
+description = "An emitter's damage climbs on an accelerating curve with its heat, reaching 3.5x base at its per-tower redline (its max-efficiency mark)."
+# Automated validation: sweep an emitter's heat from cold to its redline and read
+# the heat multiplier climbing to ~3.5 at the redline. See
+# validation/heat/climbs-to-redline.mjs.
+validation = { script = "validation/heat/climbs-to-redline.mjs", outputs = [
+  { id = "climb", name = "An emitter heating from feeble to full power", kind = "video" },
+] }
+[[review.categories.items]]
+id = "plateau"
+title = "The plateau above the redline"
+description = "From the redline up to the 100 trip the multiplier holds flat at 3.5x — pushing past the redline adds trip risk, not more damage."
+# Automated validation: read the heat multiplier at the redline, between the redline
+# and 100, and just below 100 — all ~3.5. See validation/heat/plateau.mjs.
+validation = { script = "validation/heat/plateau.mjs", outputs = [
+  { id = "plateau", name = "Heat climbing past the redline while the multiplier holds at 3.5x", kind = "video" },
+] }
+[[review.categories.items]]
+id = "glow-ramp"
+title = "Glow tracks heat"
+description = "A tower's glow tracks its heat from cold blue up to white-hot, so heat reads at a glance on the floor."
+# Automated validation: sample the rendered pixels of the same tower cold and hot —
+# the fill shifts from blue to warm/white. See validation/heat/glow-ramp.mjs.
+validation = { script = "validation/heat/glow-ramp.mjs", outputs = [
+  { id = "glow", name = "A tower glowing hotter", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inspector-read"
+title = "Inspector shows damage and multiplier"
+description = "The selected-tower inspector shows the current per-shot damage alongside the heat damage multiplier (e.g. x3.5) and the redline marker, so the climb and the plateau read directly."
+
+# --- The trip ----------------------------------------------------------------
+[[review.categories]]
+id = "trip"
+title = "The trip"
+[[review.categories.items]]
+id = "trips-at-100"
+title = "Reaching 100 trips the tower"
+description = "Driving an emitter's heat to 100 trips it offline (no damage) for its cooldown."
+# Automated validation: drive a real firing emitter to 100 heat and confirm it
+# trips (tripped, damage 0). See validation/trip/trips-at-100.mjs.
+validation = { script = "validation/trip/trips-at-100.mjs", outputs = [
+  { id = "trip", name = "An emitter overheating and tripping", kind = "video" },
+] }
+[[review.categories.items]]
+id = "returns-cold"
+title = "A tripped tower returns cold"
+description = "After about five seconds offline a tripped tower comes back online cold (heat 0)."
+# Automated validation: trip a tower, then step past the cooldown and confirm it is
+# back online with heat 0. See validation/trip/returns-cold.mjs.
+validation = { script = "validation/trip/returns-cold.mjs", outputs = [
+  { id = "return", name = "A tripped tower coming back cold", kind = "video" },
+] }
+[[review.categories.items]]
+id = "strobing-red"
+title = "A tripped tower strobes red"
+description = "While offline a tripped tower is drawn strobing red, so a gapped kill-box reads at a glance."
+# Automated validation: sample the rendered pixels of a tripped tower — red
+# dominates. See validation/trip/strobing-red.mjs.
+validation = { script = "validation/trip/strobing-red.mjs", outputs = [
+  { id = "strobe", name = "A tripped tower strobing red", kind = "video" },
+] }
+[[review.categories.items]]
+id = "only-failure"
+title = "The trip is the only failure"
+description = "A tower is never destroyed or damaged by the surge — overheating is the only way it fails; surge walking past leaves it intact."
+# Automated validation: drive units past a tower and confirm the tower persists,
+# never removed or harmed. See validation/trip/only-failure.mjs.
+validation = { script = "validation/trip/only-failure.mjs", outputs = [
+  { id = "intact", name = "Surge passing an intact tower", kind = "video" },
+] }
+
+# --- Surface cooling ---------------------------------------------------------
+[[review.categories]]
+id = "cooling"
+title = "Surface cooling"
+[[review.categories.items]]
+id = "open-faces-shed"
+title = "Open faces shed heat"
+description = "A hot tower with faces on open air cools itself down over time when not firing."
+# Automated validation: pose a lone hot emitter and step with no target — its heat
+# falls. See validation/cooling/open-faces-shed.mjs.
+validation = { script = "validation/cooling/open-faces-shed.mjs", outputs = [
+  { id = "shed", name = "A lone hot tower cooling off", kind = "video" },
+] }
+[[review.categories.items]]
+id = "boxed-bakes"
+title = "A boxed-in tower bakes"
+description = "A firing emitter boxed in by neighbors on every face cannot shed its heat and bakes itself to the trip."
+# Automated validation: box a firing emitter on all four faces and confirm it climbs
+# to the trip. See validation/cooling/boxed-bakes.mjs.
+validation = { script = "validation/cooling/boxed-bakes.mjs", outputs = [
+  { id = "bake", name = "A boxed-in emitter baking to the trip", kind = "video" },
+] }
+[[review.categories.items]]
+id = "radiator-better"
+title = "Radiator faces shed better"
+description = "The designated radiator (cyan-fin) faces shed heat far better than plain faces, so aiming them at open air cools a tower faster."
+# Automated validation: with two faces blocked, an emitter whose radiator faces
+# point at open air cools faster than one whose plain faces do. See
+# validation/cooling/radiator-better.mjs.
+validation = { script = "validation/cooling/radiator-better.mjs", outputs = [
+  { id = "radiator", name = "Radiator faces cooling faster", kind = "video" },
+] }
+
+# --- Radiator faces and rotation ---------------------------------------------
+[[review.categories]]
+id = "rotation"
+title = "Rotation"
+[[review.categories.items]]
+id = "aims-faces"
+title = "Rotating aims the radiator faces"
+description = "Rotating a tower 90 degrees turns its radiator faces, so the same tower placed at different rotations presents its cool faces in different world directions."
+# Automated validation: place a tower at two rotations and read its world radiator
+# faces rotate accordingly. See validation/rotation/aims-faces.mjs.
+validation = { script = "validation/rotation/aims-faces.mjs", outputs = [
+  { id = "faces", name = "Radiator faces at two rotations", kind = "image" },
+] }
+# There is deliberately no "rotation changes the outcome" point here. It used to sit
+# between these two and made exactly the claim `cooling.radiator-better` already makes —
+# that in the same spot, with the same faces blocked, a radiator face on the open air
+# cools better than a plain one — differing only in how many faces it blocked. Two points
+# scoring one behavior double-count it, and this category is about the CONTROL (that a
+# quarter turn aims the faces, and that the choice is locked at placement); the thermal
+# consequence of aiming them belongs with surface cooling, which is where it is checked.
+[[review.categories.items]]
+id = "locked"
+title = "Orientation is locked at placement"
+description = "A placed tower cannot be rotated — orientation is chosen on the held preview before placing, so the inspector offers no rotate action (re-aiming means selling and rebuilding)."
+
+# --- The Forge ---------------------------------------------------------------
+[[review.categories]]
+id = "forge"
+title = "The Forge"
+[[review.categories.items]]
+id = "warms"
+title = "The Forge warms a cold gun"
+description = "A Forge touching a cold emitter warms it up over time (it does not fire itself)."
+# Automated validation: a cold emitter next to a Forge heats up when stepped. See
+# validation/forge/warms.mjs.
+validation = { script = "validation/forge/warms.mjs", outputs = [
+  { id = "warm", name = "A Forge waking a cold gun", kind = "video" },
+] }
+[[review.categories.items]]
+id = "caps-setpoint"
+title = "The Forge never exceeds its setpoint"
+description = "The Forge warms an emitter only toward its setpoint, never past it, so it can never push a gun to the trip on its own."
+# Automated validation: an emitter fed by a Forge settles below the Forge's setpoint
+# and never exceeds it. See validation/forge/caps-setpoint.mjs.
+validation = { script = "validation/forge/caps-setpoint.mjs", outputs = [
+  { id = "cap", name = "Heat settling below the setpoint", kind = "video" },
+] }
+[[review.categories.items]]
+id = "setpoint-scales"
+title = "The setpoint rises with level"
+description = "Upgrading a Forge raises its setpoint, so a maxed Forge settles a fed gun hotter than a level-I one."
+# Automated validation: a gun fed by a level-III Forge settles hotter than one fed
+# by a level-I Forge. See validation/forge/setpoint-scales.mjs.
+validation = { script = "validation/forge/setpoint-scales.mjs", outputs = [
+  { id = "scales", name = "A stronger Forge settling a gun hotter", kind = "video" },
+] }
+[[review.categories.items]]
+id = "inert"
+title = "The Forge does not fire"
+description = "The Forge has no heat of its own and deals no damage — it never fires at the surge."
+# Automated validation: a Forge next to targets reports heat 0, damage 0, and never
+# fires. See validation/forge/inert.mjs.
+validation = { script = "validation/forge/inert.mjs", outputs = [
+  { id = "inert", name = "A non-firing Forge beside the surge", kind = "image" },
+] }
+
+# --- The Sink ----------------------------------------------------------------
+[[review.categories]]
+id = "sink"
+title = "The Sink"
+[[review.categories.items]]
+id = "cools"
+title = "The Sink cools a gun"
+description = "A Sink touching a hot emitter draws its heat down faster than open air alone (it does not fire itself)."
+# Automated validation: a hot emitter cools faster with a Sink neighbor than
+# without. See validation/sink/cools.mjs.
+validation = { script = "validation/sink/cools.mjs", outputs = [
+  { id = "cool", name = "A Sink drawing a gun's heat down", kind = "video" },
+] }
+[[review.categories.items]]
+id = "cools-boxed"
+title = "The Sink cools through a blocked face"
+description = "A Sink cools an emitter through a face that touches it — even a face with no open air — so it is the only way to cool a boxed-in tower."
+# Automated validation: a hot emitter with a Sink on its only otherwise-blocked face
+# still cools. See validation/sink/cools-boxed.mjs.
+validation = { script = "validation/sink/cools-boxed.mjs", outputs = [
+  { id = "boxed", name = "A Sink cooling through a walled face", kind = "video" },
+] }
+[[review.categories.items]]
+id = "output-scales"
+title = "The Sink's output rises with level"
+description = "Upgrading a Sink increases its cooling, so a maxed Sink pulls heat down faster than a level-I one."
+# Automated validation: a level-III Sink cools faster than a level-I Sink. See
+# validation/sink/output-scales.mjs.
+validation = { script = "validation/sink/output-scales.mjs", outputs = [
+  { id = "scales", name = "A stronger Sink cooling faster", kind = "video" },
+] }
+[[review.categories.items]]
+id = "inert"
+title = "The Sink does not fire"
+description = "The Sink has no heat of its own and deals no damage — it never fires at the surge."
+# Automated validation: a Sink next to targets reports heat 0, damage 0, and never
+# fires. See validation/sink/inert.mjs.
+validation = { script = "validation/sink/inert.mjs", outputs = [
+  { id = "inert", name = "A non-firing Sink beside the surge", kind = "image" },
+] }
+
+# --- Conduction --------------------------------------------------------------
+[[review.categories]]
+id = "conduction"
+title = "Conduction"
+[[review.categories.items]]
+id = "hot-to-cold"
+title = "Heat conducts to a cooler neighbor"
+description = "When two emitters touch, heat conducts from the hotter into the cooler across the shared edge — a cool tower against a hot one heats up even though it is not firing."
+# Automated validation: a hot emitter and a touching cold one converge — the cold
+# one heats, the hot one cools. See validation/conduction/hot-to-cold.mjs.
+validation = { script = "validation/conduction/hot-to-cold.mjs", outputs = [
+  { id = "conduct", name = "Heat spreading to a cool neighbor", kind = "video" },
+] }
+[[review.categories.items]]
+id = "movers-inert"
+title = "Movers do not conduct"
+description = "The Forge and Sink have no heat of their own — a hot emitter touching one does not heat the mover up."
+# Automated validation: a Forge/Sink touching a hot emitter stays at heat 0. See
+# validation/conduction/movers-inert.mjs.
+validation = { script = "validation/conduction/movers-inert.mjs", outputs = [
+  { id = "movers", name = "A mover staying cold beside a hot gun", kind = "image" },
+] }
+
+# --- The heat-averse Rime ----------------------------------------------------
+[[review.categories]]
+id = "rime"
+title = "The Rime"
+[[review.categories.items]]
+id = "cold-slows-most"
+title = "The Rime slows hardest when cold"
+description = "A cold Rime cuts a unit's speed by its full cold-slow ceiling — it slows hardest when cold."
+# Automated validation: a cold Rime hits a unit and its speed drops to about the
+# cold-slow ceiling. See validation/rime/cold-slows-most.mjs.
+validation = { script = "validation/rime/cold-slows-most.mjs", outputs = [
+  { id = "slow", name = "A cold Rime slowing the surge", kind = "video" },
+] }
+[[review.categories.items]]
+id = "degrades-with-heat"
+title = "The slow degrades as the Rime heats"
+description = "The Rime's slow fraction falls as it heats, degrading to nothing at the trip — it runs the heat rule backward."
+# Automated validation: sweep the Rime's heat and read its slow fraction fall toward
+# zero. See validation/rime/degrades-with-heat.mjs.
+validation = { script = "validation/rime/degrades-with-heat.mjs", outputs = [
+  { id = "degrade", name = "The Rime's slow fading as its own firing heats it", kind = "video" },
+] }
+[[review.categories.items]]
+id = "core-immune"
+title = "The Core is immune to slowing"
+description = "A Core boss cannot be slowed — a Rime's slow has no effect on it."
+# Automated validation: a cold Rime hits a Core and the Core's speed is unchanged
+# (not slowed). See validation/rime/core-immune.mjs.
+validation = { script = "validation/rime/core-immune.mjs", outputs = [
+  { id = "immune", name = "A Core shrugging off the Rime", kind = "video" },
+] }
+[[review.categories.items]]
+id = "ceiling-scales"
+title = "Upgrading raises the cold-slow ceiling"
+description = "Upgrading a Rime raises its cold-slow ceiling (rather than its damage), so a maxed Rime slows harder when cold."
+# Automated validation: the Rime's cold slow fraction rises across its three levels.
+# See validation/rime/ceiling-scales.mjs.
+validation = { script = "validation/rime/ceiling-scales.mjs", outputs = [
+  { id = "ceiling", name = "The cold-slow ceiling rising as the Rime is upgraded", kind = "video" },
+] }
+
+# --- Upgrades ----------------------------------------------------------------
+[[review.categories]]
+id = "upgrades"
+title = "Upgrades"
+[[review.categories.items]]
+id = "stronger-hotter"
+title = "Upgrades run stronger and hotter"
+description = "Upgrading an emitter makes it hit harder AND run hotter — a maxed emitter is a glass cannon that needs thermal support."
+# Automated validation: an upgraded emitter shows higher damage at the same heat and
+# heats faster when firing. See validation/upgrades/stronger-hotter.mjs.
+validation = { script = "validation/upgrades/stronger-hotter.mjs", outputs = [
+  { id = "upgrade", name = "A maxed emitter hitting harder and hotter", kind = "video" },
+] }
+[[review.categories.items]]
+id = "geometry-unchanged"
+title = "Size, redline, and radiators are unchanged"
+description = "Upgrading leaves an emitter's footprint size, redline, and radiator layout the same — only its power and heat grow."
+# Automated validation: size, redline, and radiator faces match before and after an
+# upgrade. See validation/upgrades/geometry-unchanged.mjs.
+validation = { script = "validation/upgrades/geometry-unchanged.mjs", outputs = [
+  { id = "geometry", name = "An upgraded tower keeping its geometry", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cost"
+title = "Upgrade costs"
+description = "Upgrading to level II costs the build cost; to level III costs 1.8x the build cost."
+# Automated validation: the money spent on each upgrade matches 1.0x then 1.8x the
+# build cost. See validation/upgrades/cost.mjs.
+validation = { script = "validation/upgrades/cost.mjs", outputs = [
+  { id = "level-2", name = "The inspector after the 15 upgrade to level II", kind = "image" },
+  { id = "level-3", name = "The inspector after the 27 upgrade to level III", kind = "image" },
+] }
+
+# --- Towers are walls --------------------------------------------------------
+[[review.categories]]
+id = "mazing"
+title = "Towers are walls"
+[[review.categories.items]]
+id = "towers-are-walls"
+title = "Towers block and lengthen the route"
+description = "Every tower is also a wall: placing towers across the direct route forces the surge to path the long way around, lengthening the route."
+# Automated validation: placing a wall across the straight lane lengthens the vent's
+# shortest route. See validation/mazing/towers-are-walls.mjs.
+validation = { script = "validation/mazing/towers-are-walls.mjs", outputs = [
+  { id = "maze", name = "A wall lengthening the surge's route", kind = "video" },
+] }
+[[review.categories.items]]
+id = "live-repath"
+title = "Placing a tower re-paths live"
+description = "Placing a tower re-paths every unit already on the floor live — a walking unit continues from where it is on the new route, with no teleporting."
+# Automated validation: a unit walking mid-floor keeps its position when a wall is
+# placed ahead and reroutes without jumping. See validation/mazing/live-repath.mjs.
+validation = { script = "validation/mazing/live-repath.mjs", outputs = [
+  { id = "repath", name = "A unit rerouting live around a new wall", kind = "video" },
+] }
+
+# --- You can never seal the floor --------------------------------------------
+[[review.categories]]
+id = "sealing"
+title = "Never seal the floor"
+[[review.categories.items]]
+id = "no-seal"
+title = "A sealing placement is refused"
+description = "A placement that would leave a vent with no route to its exhaust is refused and shown invalid."
+# Automated validation: the final tile that would seal a vent's last route fails the
+# placement check and builds nothing. See validation/sealing/no-seal.mjs.
+validation = { script = "validation/sealing/no-seal.mjs", outputs = [
+  { id = "seal", name = "A sealing placement refused", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-trap"
+title = "Trapping a walking unit is refused"
+description = "A placement that would trap a unit already walking (leaving it no route) is likewise refused."
+# Automated validation: with a unit in a corridor, the tile that would trap it fails
+# the placement check. See validation/sealing/no-trap.mjs.
+validation = { script = "validation/sealing/no-trap.mjs", outputs = [
+  { id = "trap", name = "A trap placement refused", kind = "video" },
+  { id = "refused", name = "The refused footprint held over the trapped unit", kind = "image" },
+] }
+[[review.categories.items]]
+id = "partial-opening-ok"
+title = "Partly covering an opening is allowed"
+description = "A tower may partially cover a vent or exhaust opening — only fully sealing it is forbidden."
+# Automated validation: a footprint covering some but not all of the left vent's
+# tiles is a valid placement. See validation/sealing/partial-opening-ok.mjs.
+validation = { script = "validation/sealing/partial-opening-ok.mjs", outputs = [
+  { id = "partial", name = "A tower partly across a vent", kind = "image" },
+] }
+
+# --- Two vents, two exhausts -------------------------------------------------
+[[review.categories]]
+id = "pathing"
+title = "Vents and exhausts"
+[[review.categories.items]]
+id = "opposite-left"
+title = "The left vent routes to the right exhaust"
+description = "A unit entering the left vent is assigned the right (opposite) exhaust and leaves there, never the nearer one."
+# Automated validation: a unit spawned at the left vent has exhaust right and leaks
+# out the right edge. See validation/pathing/opposite-left.mjs.
+validation = { script = "validation/pathing/opposite-left.mjs", outputs = [
+  { id = "left", name = "A left-vent unit crossing to the right exhaust", kind = "video" },
+] }
+[[review.categories.items]]
+id = "opposite-top"
+title = "The top vent routes to the bottom exhaust"
+description = "A unit entering the top vent is assigned the bottom (opposite) exhaust and leaves there, never the nearer one."
+# Automated validation: a unit spawned at the top vent has exhaust bottom and leaks
+# out the bottom edge. See validation/pathing/opposite-top.mjs.
+validation = { script = "validation/pathing/opposite-top.mjs", outputs = [
+  { id = "top", name = "A top-vent unit crossing to the bottom exhaust", kind = "video" },
+] }
+
+# --- The walled floor --------------------------------------------------------
+[[review.categories]]
+id = "casing"
+title = "The walled floor"
+[[review.categories.items]]
+id = "no-build"
+title = "No building on the casing"
+description = "No tower can be built off the tile grid onto the enclosing casing wall."
+# Automated validation: a footprint that runs off the grid onto the casing fails the
+# placement check. See validation/casing/no-build.mjs.
+validation = { script = "validation/casing/no-build.mjs", outputs = [
+  { id = "casing", name = "A held tower stopped at the floor edge by the casing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "openings"
+title = "The casing and its four openings"
+description = "The floor is enclosed by an impassable casing wall with exactly four openings — the two vents and two exhausts — visible around the floor."
+
+# --- Flyers ignore the maze --------------------------------------------------
+[[review.categories]]
+id = "flyers"
+title = "Flyers"
+[[review.categories.items]]
+id = "straight-line"
+title = "Flyers fly straight over the maze"
+description = "A Drift flyer flies a straight line from its vent to the opposite exhaust, over every tower and wall, ignoring the maze."
+# Automated validation: a Drift keeps its cross-axis coordinate and reaches the
+# opposite exhaust over a walled ground path. See validation/flyers/straight-line.mjs.
+validation = { script = "validation/flyers/straight-line.mjs", outputs = [
+  { id = "fly", name = "A flyer crossing straight over the maze", kind = "video" },
+] }
+[[review.categories.items]]
+id = "any-emitter-hits"
+title = "Any emitter can hit a flyer"
+description = "Any emitter can damage a flyer in range — the Flak is the dedicated air specialist, not the only counter."
+# Automated validation: an Arc damages a Drift in range. See
+# validation/flyers/any-emitter-hits.mjs.
+validation = { script = "validation/flyers/any-emitter-hits.mjs", outputs = [
+  { id = "hit", name = "A ground emitter tagging a flyer", kind = "video" },
+] }
+[[review.categories.items]]
+id = "flak-air-only"
+title = "The Flak hits air only"
+description = "The Flak targets flyers only — it cannot damage a ground unit, but it damages a flyer in range."
+# Automated validation: a Flak leaves a ground unit untouched but damages a Drift.
+# See validation/flyers/flak-air-only.mjs.
+validation = { script = "validation/flyers/flak-air-only.mjs", outputs = [
+  { id = "flak", name = "The Flak ignoring ground, hitting air", kind = "video" },
+] }
+
+# --- Targeting ---------------------------------------------------------------
+[[review.categories]]
+id = "targeting"
+title = "Targeting"
+[[review.categories.items]]
+id = "ground-and-air"
+title = "Emitters hit both ground and air"
+description = "A general emitter (not the air-only Flak) can damage both a ground unit and a flyer in range."
+# Automated validation: an Arc damages both a ground Mote and a Drift in range. See
+# validation/targeting/ground-and-air.mjs.
+validation = { script = "validation/targeting/ground-and-air.mjs", outputs = [
+  { id = "both", name = "An emitter hitting ground and air", kind = "video" },
+] }
+[[review.categories.items]]
+id = "fire-rate"
+title = "An emitter fires at its stated rate"
+description = "An emitter fires at its published fire rate for as long as it has a target, including when one walks in after a quiet spell — it never discharges a burst of shots at once to make up for the time it spent with nothing to shoot at."
+# Automated validation: an Arc (2.0/s) left idle, then given a target, fires about
+# three shots per second with its shots a full interval apart. See
+# validation/targeting/fire-rate.mjs.
+validation = { script = "validation/targeting/fire-rate.mjs", outputs = [
+  { id = "rate", name = "An emitter firing at its stated rate", kind = "video" },
+] }
+[[review.categories.items]]
+id = "first-along-path"
+title = "Emitters target the unit furthest along"
+description = "An emitter fires on the unit furthest along its path (closest to leaking) first, rather than the nearest one."
+# Automated validation: of two units, the one further along the path takes damage
+# first. See validation/targeting/first-along-path.mjs.
+validation = { script = "validation/targeting/first-along-path.mjs", outputs = [
+  { id = "first", name = "An emitter picking the leading unit", kind = "video" },
+] }
+
+# --- The Bloom (splash) ------------------------------------------------------
+[[review.categories]]
+id = "bloom"
+title = "The Bloom"
+[[review.categories.items]]
+id = "splash"
+title = "The Bloom splashes a clump"
+description = "A Bloom shot damages every unit within its splash radius of the impact, so one shot into a clump hits several units at once."
+# Automated validation: a Bloom shot into a tight clump damages more than one unit.
+# See validation/bloom/splash.mjs.
+validation = { script = "validation/bloom/splash.mjs", outputs = [
+  { id = "splash", name = "A Bloom shot splashing a clump", kind = "video" },
+] }
+
+# --- Tower sizes -------------------------------------------------------------
+[[review.categories]]
+id = "sizes"
+title = "Tower sizes"
+[[review.categories.items]]
+id = "footprints"
+title = "Footprints are 2x2, 3x3, and 4x4"
+description = "Arc, Stutter, Rime, Flak, Forge, and Sink are 2x2; the Bloom is 3x3; the Lance is 4x4."
+# Automated validation: each type placed reports its correct footprint size. See
+# validation/sizes/footprints.mjs.
+validation = { script = "validation/sizes/footprints.mjs", outputs = [
+  { id = "sizes", name = "The three footprint sizes on the floor", kind = "image" },
+] }
+
+# --- Shop-hover and inspector info -------------------------------------------
+[[review.categories]]
+id = "info"
+title = "Info panels"
+[[review.categories.items]]
+id = "shop-hover"
+title = "Hovering a shop tower shows its info"
+description = "Hovering a shop tower shows that type's info panel (stats and a description) in the inspector area."
+# Automated validation: hovering a shop tower sets the hovered-shop state and the
+# panel is captured. See validation/info/shop-hover.mjs.
+validation = { script = "validation/info/shop-hover.mjs", outputs = [
+  { id = "hover", name = "A shop tower's info panel", kind = "image" },
+] }
+[[review.categories.items]]
+id = "counts"
+title = "A placed tower tallies kills and damage"
+description = "A selected placed tower shows its lifetime kills and total damage dealt — runtime tallies that grow as it fights."
+# Automated validation: a firing tower accrues kills and damage, shown in its
+# inspector. See validation/info/counts.mjs.
+validation = { script = "validation/info/counts.mjs", outputs = [
+  { id = "counts", name = "A tower's kill and damage tally", kind = "video" },
+] }
+
+# --- The economy -------------------------------------------------------------
+[[review.categories]]
+id = "economy"
+title = "The economy"
+[[review.categories.items]]
+id = "bounty"
+title = "A kill pays a bounty"
+description = "Killing a unit pays its kill bounty into the player's money."
+# Automated validation: from zero money, killing one Mote pays exactly its bounty.
+# See validation/economy/bounty.mjs.
+validation = { script = "validation/economy/bounty.mjs", outputs = [
+  { id = "bounty", name = "A kill paying a bounty", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wave-clear-bonus"
+title = "Clearing a wave pays a bonus"
+description = "Clearing a wave pays a wave-clear bonus that grows with the wave number."
+# Automated validation: clearing wave 1 (in a no-interest mode) pays exactly the
+# wave-1 bonus. See validation/economy/wave-clear-bonus.mjs.
+validation = { script = "validation/economy/wave-clear-bonus.mjs", outputs = [
+  { id = "bonus", name = "A wave-clear bonus paid", kind = "video" },
+] }
+[[review.categories.items]]
+id = "interest"
+title = "Interest is paid between waves"
+description = "Between waves the player earns interest on their savings, capped, in the modes that grant it."
+# Automated validation: clearing a wave in Containment adds the expected interest on
+# top of the bonus. See validation/economy/interest.mjs.
+validation = { script = "validation/economy/interest.mjs", outputs = [
+  { id = "interest", name = "Interest paid on savings", kind = "video" },
+] }
+[[review.categories.items]]
+id = "early-send"
+title = "Sending a wave early pays a bonus"
+description = "Sending a wave early during a timed build phase pays a bonus equal to the seconds left on the countdown."
+# Automated validation: sending early with a known countdown pays exactly those
+# seconds. See validation/economy/early-send.mjs.
+validation = { script = "validation/economy/early-send.mjs", outputs = [
+  { id = "early", name = "An early-send bonus paid", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cant-overspend"
+title = "You cannot overspend"
+description = "A tower the player cannot afford cannot be placed, and money never goes negative."
+# Automated validation: below the cost, placement is refused and money is unchanged.
+# See validation/economy/cant-overspend.mjs.
+validation = { script = "validation/economy/cant-overspend.mjs", outputs = [
+  { id = "afford", name = "An unaffordable placement refused", kind = "image" },
+] }
+
+# --- Build phases ------------------------------------------------------------
+[[review.categories]]
+id = "phases"
+title = "Build phases"
+[[review.categories.items]]
+id = "opening-untimed"
+title = "The opening phase is untimed"
+description = "Before Wave 1 the opening build phase is untimed: it shows no countdown and never auto-starts."
+# Automated validation: a long step in the opening phase never advances the wave or
+# shows a build timer. See validation/phases/opening-untimed.mjs.
+validation = { script = "validation/phases/opening-untimed.mjs", outputs = [
+  { id = "opening", name = "The untimed opening phase holding", kind = "image" },
+  { id = "untimed", name = "The opening phase running on with no countdown", kind = "video" },
+] }
+[[review.categories.items]]
+id = "opening-start"
+title = "Start begins Wave 1"
+description = "Pressing Start in the opening phase begins Wave 1."
+# Automated validation: sending from the opening phase begins wave 1. See
+# validation/phases/opening-start.mjs.
+validation = { script = "validation/phases/opening-start.mjs", outputs = [
+  { id = "start", name = "Wave 1 beginning on Start", kind = "video" },
+] }
+[[review.categories.items]]
+id = "between-timed"
+title = "Between-wave phases count down and auto-start"
+description = "The between-wave build phases carry a ~15-second countdown that auto-starts the next wave when it expires."
+# Automated validation: a between-wave build timer counts down and auto-starts the
+# next wave. See validation/phases/between-timed.mjs.
+validation = { script = "validation/phases/between-timed.mjs", outputs = [
+  { id = "between", name = "A between-wave countdown auto-starting", kind = "video" },
+] }
+
+# --- Selling and refunds -----------------------------------------------------
+[[review.categories]]
+id = "refund"
+title = "Selling and refunds"
+[[review.categories.items]]
+id = "partial"
+title = "70% refund once the tower has fought"
+description = "Selling a tower that has fought a wave refunds 70% of everything spent on it."
+# Automated validation: a tower sold after its placement wave has run refunds 70% of
+# its build cost. See validation/refund/partial.mjs.
+validation = { script = "validation/refund/partial.mjs", outputs = [
+  { id = "partial", name = "A 70% refund on a fought tower", kind = "video" },
+] }
+[[review.categories.items]]
+id = "full-before-wave"
+title = "Full refund before the wave starts"
+description = "A tower sold before the wave it was placed on has started refunds its full spend."
+# Automated validation: a tower placed and sold within the same untimed opening phase
+# refunds in full. See validation/refund/full-before-wave.mjs.
+validation = { script = "validation/refund/full-before-wave.mjs", outputs = [
+  { id = "full", name = "A full refund before the wave", kind = "video" },
+] }
+[[review.categories.items]]
+id = "reopens"
+title = "Selling reopens the footprint"
+description = "Selling a tower reopens every tile in its footprint and re-paths the surge, so a route it lengthened shortens again."
+# Automated validation: selling a wall returns the vent's route to its shorter
+# length. See validation/refund/reopens.mjs.
+validation = { script = "validation/refund/reopens.mjs", outputs = [
+  { id = "reopen", name = "A sold wall reopening the route", kind = "video" },
+] }
+
+# --- The surge ---------------------------------------------------------------
+[[review.categories]]
+id = "surge"
+title = "The surge"
+[[review.categories.items]]
+id = "stats"
+title = "Each surge type has its stats"
+description = "The surge types field their specified base HP and speed — Mote, Sprint, Hulk, Swarm, Drift, and Core each distinct."
+# Automated validation: each spawned type reports its base HP and speed. See
+# validation/surge/stats.mjs.
+validation = { script = "validation/surge/stats.mjs", outputs = [
+  { id = "stats", name = "The surge roster on the floor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "leak-costs-life"
+title = "A leak costs a life"
+description = "A unit that reaches an exhaust leaks and costs the player a life."
+# Automated validation: a Mote leaking an exhaust costs exactly one life. See
+# validation/surge/leak-costs-life.mjs.
+validation = { script = "validation/surge/leak-costs-life.mjs", outputs = [
+  { id = "leak", name = "A unit leaking an exhaust", kind = "video" },
+] }
+[[review.categories.items]]
+id = "hulk-leak"
+title = "A Hulk costs more lives"
+description = "A Hulk leak costs two lives, more than a light unit."
+# Automated validation: a Hulk leaking costs exactly two lives. See
+# validation/surge/hulk-leak.mjs.
+validation = { script = "validation/surge/hulk-leak.mjs", outputs = [
+  { id = "hulk", name = "A Hulk breaching the exhaust", kind = "video" },
+] }
+[[review.categories.items]]
+id = "core-boss"
+title = "The Core boss is a heavy breach"
+description = "The Core boss carries a huge HP pool and, if it leaks, costs five lives."
+# Automated validation: a Core reports its large HP and a leak costs five lives. See
+# validation/surge/core-boss.mjs.
+validation = { script = "validation/surge/core-boss.mjs", outputs = [
+  { id = "core", name = "A Core boss breaching", kind = "video" },
+] }
+[[review.categories.items]]
+id = "hp-scales"
+title = "Surge HP scales with the wave"
+description = "A unit's HP scales up with the wave number, so a deep-wave unit is far tankier than a wave-1 one."
+# Automated validation: the same type spawned at a deeper wave reports scaled-up HP.
+# See validation/surge/hp-scales.mjs.
+validation = { script = "validation/surge/hp-scales.mjs", outputs = [
+  { id = "scale", name = "The same emitter grinding down a wave-1 and a wave-6 Mote", kind = "video" },
+] }
+[[review.categories.items]]
+id = "single-type-waves"
+title = "Each wave fields a single type"
+description = "A wave releases one intruder type rather than a mixture, and the type varies from wave to wave, so each wave presses one specific answer."
+# Automated validation: a spread of waves each preview exactly one type, what spawns
+# matches that type, and the waves are not all the same type. See
+# validation/surge/single-type-waves.mjs.
+validation = { script = "validation/surge/single-type-waves.mjs", outputs = [
+  { id = "single", name = "A single-type wave on the floor", kind = "video" },
+] }
+[[review.categories.items]]
+id = "milestone-core"
+title = "Milestone waves carry a Core"
+description = "The milestone waves (the midpoint and the finale) each include a Core boss."
+# Automated validation: the midpoint and final waves each spawn a Core. See
+# validation/surge/milestone-core.mjs.
+validation = { script = "validation/surge/milestone-core.mjs", outputs = [
+  { id = "milestone", name = "A Core anchoring a milestone wave", kind = "video" },
+] }
+
+# --- Game states -------------------------------------------------------------
+# Each state is REACHED through the debug API and captured, so a reviewer sees the
+# actual screen (paired against the reference build's own). The auto-verdict
+# confirms the state is reachable; whether each reads and lays out well is left to
+# the reviewer.
+[[review.categories]]
+id = "states"
+title = "Game states"
+[[review.categories.items]]
+id = "title"
+title = "Title menu"
+description = "The title / main menu is reachable, with PLAY and HOW TO PLAY."
+# Automated validation: reset to the title and capture it. See
+# validation/states/title.mjs.
+validation = { script = "validation/states/title.mjs", outputs = [
+  { id = "title", name = "The title menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mode-select"
+title = "Mode select"
+description = "PLAY opens a mode-select menu listing Containment and the special modes."
+# Automated validation: navigate to mode select and capture it. See
+# validation/states/mode-select.mjs.
+validation = { script = "validation/states/mode-select.mjs", outputs = [
+  { id = "modeselect", name = "The mode-select menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "difficulty-select"
+title = "Difficulty select"
+description = "Choosing Containment opens a difficulty select — Easy, Medium, Hard."
+# Automated validation: navigate to the difficulty select and capture it. See
+# validation/states/difficulty-select.mjs.
+validation = { script = "validation/states/difficulty-select.mjs", outputs = [
+  { id = "difficulty", name = "The difficulty select", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto"
+title = "How to play"
+description = "The how-to-play state is reachable and correct."
+# Automated validation: navigate to How to Play and capture it. See
+# validation/states/howto.mjs.
+validation = { script = "validation/states/howto.mjs", outputs = [
+  { id = "howto", name = "The how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause"
+title = "Pause"
+description = "The pause state is reachable, offering resume, restart, and quit."
+# Automated validation: pause a live match and capture the pause menu. See
+# validation/states/pause.mjs.
+validation = { script = "validation/states/pause.mjs", outputs = [
+  { id = "pause", name = "The pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory"
+title = "Victory"
+description = "Clearing the final wave reaches the Victory state."
+# Automated validation: drive a real final wave to a clear and capture Victory. See
+# validation/states/victory.mjs.
+validation = { script = "validation/states/victory.mjs", outputs = [
+  { id = "victory", name = "The Victory screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover"
+title = "Game over"
+description = "Losing the last life reaches the Game over (reactor breached) state."
+# Automated validation: drive a real leak to the last life and capture Game over.
+# See validation/states/gameover.mjs.
+validation = { script = "validation/states/gameover.mjs", outputs = [
+  { id = "gameover", name = "The Game over screen", kind = "image" },
+] }
+
+# --- Pause behavior ----------------------------------------------------------
+[[review.categories]]
+id = "pause"
+title = "Pause behavior"
+[[review.categories.items]]
+id = "freezes"
+title = "Pausing freezes the simulation"
+description = "While paused the simulation does not advance — the surge holds its position."
+# Automated validation: on the build's own clock, a unit walks, and then holds its
+# position — and the simulation clock stops — once the game is paused. See
+# validation/pause/freezes.mjs.
+validation = { script = "validation/pause/freezes.mjs", outputs = [
+  { id = "frozen", name = "The surge frozen while paused", kind = "image" },
+  { id = "pause", name = "The surge walking, then held by the pause", kind = "video" },
+] }
+
+# --- Modes and difficulty ----------------------------------------------------
+[[review.categories]]
+id = "modes"
+title = "Modes and difficulty"
+[[review.categories.items]]
+id = "difficulty-values"
+title = "Difficulty sets money and wave count"
+description = "Containment Easy, Medium, and Hard change the starting money and the number of waves (Easy: more money, fewer waves; Hard: less money, more waves)."
+# Automated validation: each difficulty starts with its own money and wave count.
+# See validation/modes/difficulty-values.mjs.
+validation = { script = "validation/modes/difficulty-values.mjs", outputs = [
+  { id = "easy", name = "Easy: 350 starting money over 15 waves", kind = "image" },
+  { id = "medium", name = "Medium: 250 starting money over 20 waves", kind = "image" },
+  { id = "hard", name = "Hard: 200 starting money over 26 waves", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hundred"
+title = "The Hundred"
+description = "The Hundred starts with its own economy and runs a single 100-unit onslaught rather than a scaling wave schedule."
+# Automated validation: The Hundred starts with its own money/lives/wave count and
+# releases one onslaught. See validation/modes/hundred.mjs.
+validation = { script = "validation/modes/hundred.mjs", outputs = [
+  { id = "hundred", name = "The Hundred's single onslaught", kind = "video" },
+] }
+[[review.categories.items]]
+id = "deep-pockets"
+title = "Deep Pockets"
+description = "Deep Pockets starts flush with 10,000 funds and pays no interest between waves."
+# Automated validation: Deep Pockets starts with 10,000 and a cleared wave pays no
+# interest. See validation/modes/deep-pockets.mjs.
+validation = { script = "validation/modes/deep-pockets.mjs", outputs = [
+  { id = "opening", name = "Deep Pockets opening with 10,000 funds", kind = "image" },
+  { id = "deep", name = "The balance after a wave clear, with no interest paid", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bottleneck"
+title = "Bottleneck"
+description = "Bottleneck restricts building to a central zone — placements outside it are refused."
+# Automated validation: placement inside the zone is valid, outside it is refused.
+# See validation/modes/bottleneck.mjs.
+validation = { script = "validation/modes/bottleneck.mjs", outputs = [
+  { id = "inside", name = "A placement inside the build zone, shown valid", kind = "image" },
+  { id = "outside", name = "The same tower outside the zone, shown invalid", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sudden-death"
+title = "Sudden Death"
+description = "Sudden Death gives one life, so a single leak ends the game."
+# Automated validation: Sudden Death starts with one life and one leak ends the run.
+# See validation/modes/sudden-death.mjs.
+validation = { script = "validation/modes/sudden-death.mjs", outputs = [
+  { id = "sudden", name = "One leak ending Sudden Death", kind = "video" },
+] }
+[[review.categories.items]]
+id = "descriptions"
+title = "Mode descriptions before choosing"
+description = "Mode select shows each mode's description before it is chosen, so the player can read what a mode does before committing."
+[[review.categories.items]]
+id = "replay"
+title = "Restart / Play Again replay the chosen mode"
+description = "RESTART and PLAY AGAIN replay the same mode and difficulty."
+# Automated validation: PLAY AGAIN from Game over starts a new game with the same
+# mode and difficulty. See validation/modes/replay.mjs.
+validation = { script = "validation/modes/replay.mjs", outputs = [
+  { id = "replay", name = "Replaying the same mode", kind = "video" },
+] }
+
+# --- Keyboard controls (input injection) -------------------------------------
+# Each control is driven with injected keyboard input through the debug API (see
+# specs/instrumentation.md) and its effect read back.
+[[review.categories]]
+id = "controls"
+title = "Keyboard controls"
+[[review.categories.items]]
+id = "arm-hotkeys"
+title = "Number keys arm shop towers"
+description = "The number keys 1..8 arm the shop towers in shop order."
+validation = { script = "validation/controls/arm-hotkeys.mjs", outputs = [
+  { id = "arm", name = "Arming a tower by hotkey", kind = "video" },
+] }
+[[review.categories.items]]
+id = "rotate"
+title = "R rotates the held tower"
+description = "R rotates the held preview 90 degrees before placing."
+validation = { script = "validation/controls/rotate.mjs", outputs = [
+  { id = "rotate", name = "Rotating the held preview", kind = "video" },
+] }
+[[review.categories.items]]
+id = "send-wave"
+title = "Space sends the wave"
+description = "Space starts / sends the next wave."
+validation = { script = "validation/controls/send-wave.mjs", outputs = [
+  { id = "send", name = "Sending a wave with Space", kind = "video" },
+] }
+[[review.categories.items]]
+id = "speed-toggle"
+title = "F toggles game speed"
+description = "F toggles the game-speed control between 1x and 2x."
+validation = { script = "validation/controls/speed-toggle.mjs", outputs = [
+  { id = "speed", name = "The surge speeding up as F toggles to 2x", kind = "video" },
+] }
+[[review.categories.items]]
+id = "pause-p"
+title = "P pauses"
+description = "P pauses a live match."
+validation = { script = "validation/controls/pause-p.mjs", outputs = [
+  { id = "p", name = "Pausing with P", kind = "video" },
+] }
+[[review.categories.items]]
+id = "pause-esc"
+title = "Esc pauses"
+description = "Esc pauses a live match (when nothing is armed or selected)."
+validation = { script = "validation/controls/pause-esc.mjs", outputs = [
+  { id = "esc", name = "Pausing with Esc", kind = "video" },
+] }
+[[review.categories.items]]
+id = "upgrade-key"
+title = "U upgrades the selected tower"
+description = "U upgrades the selected placed tower one level."
+validation = { script = "validation/controls/upgrade-key.mjs", outputs = [
+  { id = "upgrade", name = "Upgrading with U", kind = "video" },
+] }
+[[review.categories.items]]
+id = "sell-key"
+title = "S sells the selected tower"
+description = "S sells the selected placed tower."
+validation = { script = "validation/controls/sell-key.mjs", outputs = [
+  { id = "sell", name = "Selling with S", kind = "video" },
+] }
+[[review.categories.items]]
+id = "mute"
+title = "M toggles mute"
+description = "M toggles mute on any screen."
+validation = { script = "validation/controls/mute.mjs", outputs = [
+  { id = "mute", name = "The mute control before and after M is pressed", kind = "video" },
+] }
+[[review.categories.items]]
+id = "cancel-placement"
+title = "Esc cancels a held placement"
+description = "Esc cancels an armed placement (before it falls back to pausing)."
+validation = { script = "validation/controls/cancel-placement.mjs", outputs = [
+  { id = "cancel", name = "Cancelling a held tower", kind = "video" },
+] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live floor advances — simulation time accumulates and a surge unit walks the maze — without anything stepping it from outside."
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
+
+# --- Building behavior -------------------------------------------------------
+[[review.categories]]
+id = "building"
+title = "Building"
+[[review.categories.items]]
+id = "place-stays-armed"
+title = "Placement stays armed"
+description = "After placing a tower the shop stays armed with the same type, so a run of copies can be laid down in a row."
+# Automated validation: placing a tower leaves it armed with the same type. See
+# validation/building/place-stays-armed.mjs.
+validation = { script = "validation/building/place-stays-armed.mjs", outputs = [
+  { id = "armed", name = "Placement staying armed", kind = "video" },
+] }
+
+# --- UI ----------------------------------------------------------------------
+[[review.categories]]
+id = "ui"
+title = "UI"
+[[review.categories.items]]
+id = "window-fit"
+title = "Window fit"
+description = "The entire 1280x720 stage — the full floor with its casing wall, the build panel, and all four edges — stays visible, fitted, and centered at any window size, including on load before any input."
+# The title reference and submitted title proof are the eyeballed context for the
+# window-fit point.
+reference = "title"
+proof = "title"
+[[review.categories.items]]
+id = "heat-read"
+title = "On-floor heat read"
+description = "Each tower shows an on-footprint heat read with the redline marker, so heat and its plateau read directly on the floor."
+# The gameplay reference and submitted heat proof are the eyeballed context for the
+# on-floor heat read.
+reference = "gameplay"
+proof = "heat"
+[[review.categories.items]]
+id = "next-wave-preview"
+title = "Next-wave preview"
+description = "During a build phase the inspector previews the makeup of the coming wave."
+# Automated validation: a build phase reports a non-empty wave preview, captured. See
+# validation/ui/next-wave-preview.mjs.
+validation = { script = "validation/ui/next-wave-preview.mjs", outputs = [
+  { id = "preview", name = "The next-wave preview", kind = "image" },
+] }
+
+# --- Audio -------------------------------------------------------------------
+# All audio is synthesized with the Web Audio API (specs/ui.md — no audio files), so
+# the validator reads the sources a build starts and confirms a distinct cue fires on
+# each event. The build must not autoplay, so each check arms audio with a real
+# gesture (a key press and a corner click — Meltdown is mouse-driven, so a build may
+# unlock audio from a pointer rather than a key) first; the exact sound is the
+# model's own, only that a cue plays is scored. Each mandated cue is its own review
+# item so a build fails exactly the cue it omits. The muteable / never-fail-to-load /
+# silent-until-interaction properties are reviewed by a person from play.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "fire-cue"
+title = "Firing cue"
+description = "A distinct short cue, synthesized with the Web Audio API (no audio files), plays when an emitter fires."
+validation = { script = "validation/audio/fire-cue.mjs", outputs = [
+  { id = "fire", name = "An emitter firing whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "trip-cue"
+title = "Trip cue"
+description = "A distinct cue plays when a tower trips offline."
+validation = { script = "validation/audio/trip-cue.mjs", outputs = [
+  { id = "trip", name = "A trip whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "leak-cue"
+title = "Leak cue"
+description = "A distinct cue plays when a unit leaks an exhaust."
+validation = { script = "validation/audio/leak-cue.mjs", outputs = [
+  { id = "leak", name = "A leak whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "death-cue"
+title = "Death cue"
+description = "A distinct cue plays when a surge unit dies."
+validation = { script = "validation/audio/death-cue.mjs", outputs = [
+  { id = "death", name = "A surge unit dying whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "place-cue"
+title = "Place cue"
+description = "A distinct cue plays when a tower is placed."
+validation = { script = "validation/audio/place-cue.mjs", outputs = [
+  { id = "place", name = "A tower placement whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wave-clear-cue"
+title = "Wave-clear cue"
+description = "A distinct cue plays when a wave clears."
+validation = { script = "validation/audio/wave-clear-cue.mjs", outputs = [
+  { id = "wave-clear", name = "A wave clear whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "victory-cue"
+title = "Victory sting"
+description = "The Victory sting plays when the final wave clears and the run is won."
+validation = { script = "validation/audio/victory-cue.mjs", outputs = [
+  { id = "victory", name = "The victory whose sting is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "game-over-cue"
+title = "Game-over sting"
+description = "The Game-over sting plays when the last life is lost."
+validation = { script = "validation/audio/game-over-cue.mjs", outputs = [
+  { id = "gameover", name = "The game over whose sting is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "synth-muteable"
+title = "Synthesized, muteable, safe audio"
+description = "All audio is synthesized with the Web Audio API (no audio files), plays fine fully muted, never fails the game if audio cannot start, and stays silent until the player first interacts."
