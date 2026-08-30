@@ -1,32 +1,64 @@
-/*
- * Coil validator: `presentation.head-drawn-from-sprite`. PLACEHOLDER.
- *
- * The head is drawn from a sprite.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * A live frame paints the head cell with an image draw rather than a shape
- * drawn in code.
- *
- * HOW:
- * pose the snake on known cells, render a frame, and confirm an image draw
- * covers the head cell.
- *
- * MEDIA IT MUST CAPTURE: head (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// presentation/head-drawn-from-sprite — the head cell is painted with a bitmap,
+// not with a shape drawn in code.
+//
+// WHAT THE SPECIFICATION FIXES. `specs/assets.md` opens with it: "the snake is
+// drawn from produced sprites rather than from shapes drawn in code", and its
+// table of which cell picks which sprite gives the head "the head sheet's
+// current frame, turned to the snake's direction". The same file's closing table
+// lists everything that stays drawn in code — the field, the ruling, the border,
+// the obstacles, the pellet, the HUD, the screens, the overlay — and the snake is
+// not on it.
+//
+// WHAT IS READ. Whether an image draw landed on the head's cell. `image-init.js`
+// wraps `drawImage`, the one door a bitmap reaches a 2D canvas through, and logs
+// the destination rectangle mapped through whatever transform the build drew
+// under, so a build that translates to the cell and blits at the origin is read
+// at the cell. Nothing here asks WHICH file was painted: `specs/assets.md` fixes
+// the files but leaves a build free to name and order the images it loads them
+// into, and the head's own sheet is decided by `presentation/head-frames-*`.
+//
+// THE WORLD THIS POSES. A chain and nothing else — the pellet cleared, the
+// obstacle course cleared, travel switched off — so the only thing that could
+// have blitted on the head's cell is the head.
 
-test("presentation.head-drawn-from-sprite", () => {
-  throw new Error(
-    "validator not implemented: presentation/head-drawn-from-sprite.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertNotNull } from "../assert";
+import {
+  captureStill,
+  chainFrom,
+  createHarness,
+  HOME_HEAD,
+  poseScene,
+  spriteOnCell,
+  type Harness,
+} from "../harness";
+
+/** Head, two straight body cells, and the tail: a chain as it is in play. */
+const LENGTH = 4;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("paints the head cell with an image draw", async () => {
+  await poseScene(h, {
+    snake: chainFrom(HOME_HEAD, "right", LENGTH),
+    dir: "right",
+    pellet: null,
+    travel: false,
+  });
+
+  const blits = await h.frameBlits();
+  await captureStill(h, "head");
+
+  assertNotNull(
+    spriteOnCell(h, blits, HOME_HEAD.col, HOME_HEAD.row),
+    "the sprite an image draw painted on the head cell",
   );
 });

@@ -1,32 +1,64 @@
-/*
- * Coil validator: `presentation.tail-sprite-produced`. PLACEHOLDER.
- *
- * The tail sprite is produced.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * assets/snake/tail.png exists, is CELL x CELL (32 x 32), and carries
- * non-transparent paint.
- *
- * HOW:
- * read the tail PNG off the built workspace, check its dimensions, and count
- * its opaque pixels.
- *
- * MEDIA IT MUST CAPTURE: sprite (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// presentation/tail-sprite-produced — the tail sprite is on disk, at the size
+// a cell is, and carries paint.
+//
+// WHAT THE SPECIFICATION FIXES. `specs/assets.md` puts the tail sprite at
+// `assets/snake/tail.png`, produced with `draw`, authored with its one
+// neighbor lying to the right, and it holds every produced sprite to one
+// shape: "pixel art on a transparent, straight-alpha canvas of `CELL x CELL`
+// (`32 x 32`), so one sprite covers exactly one board cell". The path, the
+// square, and a drawn sprite rather than an empty canvas are what this reads.
+//
+// WHAT IT DELIBERATELY DOES NOT READ. What the sprite looks like, which is the
+// presentation domain's aesthetic rating; that it differs from the other two,
+// which is `presentation/sprites-distinct`; and whether the build ever paints
+// a cell with it, which is `presentation/tail-at-the-last-cell`.
+//
+// HOW THE FILE IS READ. Off the repository the build produced, at the path
+// `specs/assets.md` fixes, and decoded by the browser rather than by a decoder
+// written here — see `presentation/sprites.ts` for why. The evidence is a
+// picture of the file itself, since this point drives no game.
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual, fail } from "../assert";
+import { CELL } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  decodeSprite,
+  isCellSized,
+  PAINT_MIN_SHARE,
+  paintShare,
+  showSpriteFiles,
+} from "./sprites";
 
-test("presentation.tail-sprite-produced", () => {
-  throw new Error(
-    "validator not implemented: presentation/tail-sprite-produced.test.ts",
+/** The path `specs/assets.md` fixes for the tail sprite. */
+const FILE = "assets/snake/tail.png";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("ships a painted cell-sized tail sprite", async () => {
+  const { sprite, reason } = await decodeSprite(h, FILE);
+  await showSpriteFiles(h, [FILE]);
+  await captureStill(h, "sprite");
+
+  if (sprite === null) {
+    fail(`a decodable image at ${FILE}`, reason);
+  }
+  if (!isCellSized(sprite)) {
+    fail(
+      `${FILE} at CELL x CELL (${CELL} x ${CELL})`,
+      `${sprite.width} x ${sprite.height}`,
+    );
+  }
+  assertGreaterThanOrEqual(
+    paintShare(sprite),
+    PAINT_MIN_SHARE,
+    `the share of ${FILE} carrying paint`,
   );
 });
