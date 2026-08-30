@@ -22,11 +22,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BOLT_SPEED, CUES, TILE } from "../../src/constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLength,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -109,5 +105,9 @@ it("plays the level-clear cue on the frame the level clears", async () => {
     frame,
     "the cue plays on the frame the level clears (specs/ui.md)",
   );
-  assertGreaterThan(clears[0].gain, 0, "the cue is audible with the bus unmuted");
+  assertGreaterThan(
+    clears[0].gain,
+    0,
+    "the cue is audible with the bus unmuted",
+  );
 });

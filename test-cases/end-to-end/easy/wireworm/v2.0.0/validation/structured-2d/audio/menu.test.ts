@@ -110,6 +110,14 @@ it("plays one menu cue per move of the highlight", async () => {
     secondFrame,
     "the second cue plays on the frame the second move landed (specs/ui.md)",
   );
-  assertGreaterThan(played[0].gain, 0, "the cue is audible with the bus unmuted");
-  assertGreaterThan(played[1].gain, 0, "the cue is audible with the bus unmuted");
+  assertGreaterThan(
+    played[0].gain,
+    0,
+    "the cue is audible with the bus unmuted",
+  );
+  assertGreaterThan(
+    played[1].gain,
+    0,
+    "the cue is audible with the bus unmuted",
+  );
 });
