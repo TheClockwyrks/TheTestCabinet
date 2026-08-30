@@ -1,23 +1,88 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/screens/title-new-game-enters-play.test.ts
+// screens/title-new-game-enters-play — the title's NEW GAME deals a game and
+// enters play.
 //
-// The review item `screens.title-new-game-enters-play` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/screens.md's title table: `NEW GAME` "deals a fresh game, as
+// specs/deal.md states, and moves to `playing`". specs/controls.md fixes its hit
+// rectangle as `TITLE_NEW_GAME` (`{ x: 480, y: 448, w: 320, h: 52 }`) and states
+// that a control answers a CLICK — a press and the release that follows it within
+// `DRAG_THRESHOLD` — whose press point lies inside that rectangle.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// DRIVEN THROUGH THE ENGINE'S OWN POINTER. {@link tapPointer} dispatches a real
+// press and release at the rectangle's center and runs the one frame that delivers
+// both, so what is exercised is the player's path: the same events, read by the
+// same update. The point is the rectangle's center, which is the least
+// interesting point inside it — this decides that the control answers, not where
+// its edges are.
 //
-// What this item must decide, from the manifest:
+// THE TABLE IS EMPTIED FIRST, which is what makes the second reading mean
+// anything: with no card on the thirteen piles before the press, fifty-two
+// afterwards can only have come from a deal. `DECK_SIZE` (`52`) is
+// specs/deal.md's, and the count is the whole of what is read of the deal here —
+// the column sizes, the faces, the stock's share and the empty waste are the
+// `deal` group's eleven points, and grading them again here would grade one deal
+// twice.
 //
-//   The title's NEW GAME deals and enters play
-//
-//   A press and release inside TITLE_NEW_GAME reaches playing with a fresh fifty-two-card deal.
+// WHAT THIS DOES NOT DECIDE. That `NEW GAME` is DRAWN on the title screen, which
+// is `screens/title-shows-items`, nor that the HUD's own `NEW GAME` deals, which
+// is `screens/hud-new-game-deals`: a build whose title control is dead and whose
+// HUD control works fails one point and passes the other.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { DECK_SIZE, TITLE_NEW_GAME } from "../../src/constants";
+import { assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  tableCards,
+  tapPointer,
+  type Harness,
+} from "../harness";
 
-it("screens.title-new-game-enters-play — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/screens/title-new-game-enters-play.test.ts is a scaffold stub, not a validator",
+/** A point inside `TITLE_NEW_GAME`: its center (specs/controls.md). */
+const PRESS = {
+  x: TITLE_NEW_GAME.x + TITLE_NEW_GAME.w / 2,
+  y: TITLE_NEW_GAME.y + TITLE_NEW_GAME.h / 2,
+};
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reaches playing with a full deck dealt when NEW GAME is clicked", async () => {
+  h.debug.setScreen("title");
+  h.debug.clearTable();
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "posing: the game is on the title screen, where TITLE_NEW_GAME answers " +
+      "(specs/controls.md: a control answers only on the screen it belongs to)",
+  );
+  assertLength(
+    tableCards(h.snapshot()),
+    0,
+    "posing: cards on the thirteen piles before the press, so the deck below " +
+      "can only have come from the deal (specs/instrumentation.md)",
+  );
+
+  await tapPointer(h, PRESS.x, PRESS.y);
+  captureStill(h, "playing");
+
+  const snapshot = h.snapshot();
+  assertEqual(
+    snapshot.screen,
+    "playing",
+    "the screen after a click inside TITLE_NEW_GAME (specs/screens.md)",
+  );
+  assertLength(
+    tableCards(snapshot),
+    DECK_SIZE,
+    "cards on the thirteen piles after that click, which specs/deal.md fixes " +
+      "at DECK_SIZE (52) for a fresh deal (specs/screens.md)",
   );
 });

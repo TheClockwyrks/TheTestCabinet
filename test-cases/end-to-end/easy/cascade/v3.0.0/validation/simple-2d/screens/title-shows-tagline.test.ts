@@ -1,23 +1,64 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/screens/title-shows-tagline.test.ts
+// screens/title-shows-tagline — the title screen draws its tagline.
 //
-// The review item `screens.title-shows-tagline` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/screens.md fixes the title screen's copy by name and by
+// literal: the Tagline element is `TAGLINE_TEXT`, whose content is
+// `KLONDIKE SOLITAIRE`. Every piece of screen copy the file names "is the text
+// that is drawn". So a frame of the title screen carries that literal among its
+// text.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE SCREEN IS POSED RATHER THAN OPENED. `setScreen("title")` puts the game on
+// the screen this point is about and changes nothing else
+// (specs/instrumentation.md), so this point is decided on the copy alone and a
+// build that opens elsewhere fails `screens/opens-on-title` instead.
+// `clearTable` empties the thirteen piles underneath, because the specification
+// lets the table show behind the screen and nothing this point reads concerns a
+// card.
 //
-// What this item must decide, from the manifest:
+// MATCHED BY SUBSTRING, IGNORING CASE ({@link drewText}). The literal is the
+// case's; how a build presents it is the build's.
 //
-//   The title screen shows its tagline
-//
-//   TAGLINE_TEXT (KLONDIKE SOLITAIRE) is drawn on the title screen.
+// ONE LITERAL, IN ONE DIRECTION. A build that draws the title and forgets the
+// tagline fails here and passes `screens/title-shows-title`, which is why the two
+// are separate points.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TAGLINE_TEXT } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drawFrame,
+  drewText,
+  type Harness,
+} from "../harness";
 
-it("screens.title-shows-tagline — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/screens/title-shows-tagline.test.ts is a scaffold stub, not a validator",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws TAGLINE_TEXT among the title screen's text", async () => {
+  h.debug.setScreen("title");
+  h.debug.clearTable();
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "posing: the game is on the title screen the frame below draws " +
+      "(specs/instrumentation.md)",
+  );
+
+  const calls = await drawFrame(h);
+  captureStill(h, "title");
+
+  assertEqual(
+    drewText(calls, TAGLINE_TEXT),
+    true,
+    `the title screen's frame drawing TAGLINE_TEXT (${TAGLINE_TEXT}) ` +
+      "(specs/screens.md)",
   );
 });
