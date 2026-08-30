@@ -20,9 +20,9 @@ there is a game definition, a mode, actors, components and a controller. What
 stays the build's is Spectra itself: the bands, the ship, the swarm, the
 discharge and everything drawn.
 
-Under `none` the workspace is that toolchain and nothing else: ten files at the
-root, and no `src/` at all. The model writes every line of what runs, from the
-frame loop and its delta time up to the game.
+Under `none` the seeded project adds no source at all: ten configuration and
+page files at its root, and no `src/` directory. The model writes every line of
+what runs, from the frame loop and its delta time up to the game.
 
 ## Three engines, one game
 
@@ -38,20 +38,26 @@ offers a switch between them.
 ## The specifications were rewritten
 
 Every spec was rewritten against the current authoring guidelines, and the file
-set changed with them. `v1.0.0` shipped ten files, two of which held most of the
-game: `specs/gameplay.md.hbs` carried the ship, the swarm, the stages, the
-progression and the scoring at once, and `specs/polarity.md` carried the bands
-and the resonance discharge together. `v2.0.0` ships eighteen, one concern each,
-and every rule lives in exactly one file.
+set changed with them. `v1.0.0` shipped ten files, four of which each held
+several concerns at once: `specs/controls.md` carried the simulation core, the
+ship's movement, the key bindings, firing and the discharge control;
+`specs/gameplay.md.hbs` carried the mode, the stages, the challenge flyover, the
+scoring and the lives; `specs/polarity.md` carried the bands and the resonance
+discharge together; and `specs/drones.md` carried everything true of any drone
+alongside the three kinds. `v2.0.0` ships eighteen files, one concern each, and
+every rule lives in exactly one of them.
 
-`specs/playfield.md` becomes `specs/field.md` and takes sole ownership of the
-ship's lane and the formation slot grid. `specs/gameplay.md.hbs` splits into
-`specs/ship.md`, `specs/swarm.md`, `specs/stages.md`, `specs/progression.md`,
-`specs/scoring.md` and `specs/mode.md.hbs`, the last of which is now the only
-seeded file that branches on the variant. `specs/polarity.md` splits into
-`specs/bands.md` and `specs/resonance.md`. `specs/simulation.md`,
-`specs/drones.md`, `specs/state.md.hbs` and `specs/showcase.md.hbs` are new;
-`specs/proof.md` is gone.
+`specs/playfield.md` becomes `specs/field.md` and keeps the geometry alone,
+taking sole ownership of the ship's lane and the formation slot grid.
+`specs/controls.md.hbs` keeps the keys alone: its simulation core becomes
+`specs/simulation.md`, and its movement and its firing join the ship's footprint
+in `specs/ship.md`. `specs/gameplay.md.hbs` splits into `specs/stages.md`,
+`specs/progression.md`, `specs/scoring.md` and `specs/mode.md.hbs`, the last of
+which is the only file that states the rule the two modes disagree about.
+`specs/polarity.md` splits into `specs/bands.md` and `specs/resonance.md`.
+`specs/drones.md` sheds everything true of any drone into a new `specs/swarm.md`
+and keeps the three kinds. `specs/state.md.hbs` and `specs/showcase.md.hbs` are
+new, and `specs/proof.md` is gone.
 
 The prose states what the finished build must be and do, and nothing about how to
 build it. Behavior a check reads is stated exactly or between explicit bounds.
@@ -68,8 +74,9 @@ behind those readings.
 Spectra is the case where that needs care, because the seeded art already carries
 the two band colors. The specification therefore fixes the relationship rather
 than the value: everything the build draws in a band uses the same two colors the
-art does, each band carries a distinct shape accent so the bands stay legible to
-a colorblind player, and no hex value appears anywhere in the seeded set. The
+art does, and each band carries a distinct shape accent so the bands stay legible
+to a colorblind player. No spec file names a color value, and the only hex in the
+seeded set is the black the page and the placeholder `BACKGROUND` start at. The
 presentation validators assert that a thing is drawn and that two things are told
 apart, against a stated RGB distance, never a color.
 
@@ -111,15 +118,16 @@ named outcomes that other items were supposed to grade. `clearField()` emptied t
 drones and both bullet rosters together, with no `removeDrone(id)` beside it, so a
 check wanting one drone and one enemy bullet had to clear everything and rebuild.
 `setDroneAI(enabled)` was a single whole-swarm switch that halted sway, path
-advance, dive decisions and firing at once. And `snapshot()` reported five fields
-no operation could set, while bullets and bursts carried no `id` at all.
+advance, dive decisions and firing at once. And `snapshot()` reported
+`menuIndex`, `inversionActive` and `muted` with nothing on the surface able to
+produce any of them, while bullets and bursts carried no `id` at all.
 
 Every operation is now atomic, takes scalars, and is verifiable by set-then-read:
 each one sets one field, reads the state, or moves the clock, and `snapshot()`
 reports every field an operation can set. A drone is placed with
 `addDrone(kind, x, y)` and then given its band, its phase, its slot, its band
-clock and its shell one call each. `dischargeReady` and `isChallenge` become
-derived reads that follow `setResonance` and `setStage`; `inversionActive` follows
+clock and its shell one call each. `dischargeReady` and `isChallenge` are derived
+reads that follow `setResonance` and `setStage`; `inversionActive` follows
 `setInversion(seconds)`; `menuIndex` gets `setMenuIndex(n)`. Every drone, bullet
 and burst carries an `id`, and an entity added through the surface is appended to
 its roster.
@@ -182,15 +190,25 @@ independently, and its overall functional rating is the worst of the four, so a
 build whose band rules are exact and whose screens are threadbare is told apart
 from one where it is the other way round.
 
+## The eight lessons v1.0.0 learned by being run
+
+Running `v1.0.0` turned up eight checks that measured something other than what
+they claimed to measure, and each was patched in a `v1.0.0` validator. `v2.0.0`
+replaces every validator in the case, so each lesson had to be earned again
+through a different mechanism. Several are now held up by a rule the
+specification states outright rather than by a validator being careful about how
+it reads the field, which is the better place for them: a build is told what it
+is held to. The eight sections below are those lessons and where each one landed.
+
 ## A stage is cleared by clearing the game's own wave
 
-`stages.advance` posed a drone into a field that `clearField()` had just emptied
-and then destroyed it. It claimed to measure that clearing a wave advances the
-stage, and in fact measured whether a debug clear leaves the wave live — an
-unwritten side effect no build was told about. A build whose progression was
-correct in play failed it.
+As first written, `stages.advance` posed a drone into a field that `clearField()`
+had just emptied and then destroyed it. It claimed to measure that clearing a
+wave advances the stage, and in fact measured whether a debug clear leaves the
+wave live — an unwritten side effect no build was told about. A build whose
+progression was correct in play failed it.
 
-Two items replace it, and a stated rule holds them up. `specs/stages.md` now
+Two items now carry it, and a stated rule holds them up. `specs/stages.md` now
 states the level-clear rule as a moment: a stage clears in the moment the last
 drone of its wave is destroyed, so a wave that never held a drone is playing
 rather than cleared. `stages.clears-on-last-drone` lets the real stage-1 wave fly
@@ -201,63 +219,76 @@ items.
 
 ## The stage-cleared screen is reached the same way
 
-The same posing bug captured a blank screen for `ui.state-stage-cleared`: the
-screen it photographed was the one a debug-emptied field produced, not the one a
-player reaches. `stages.stage-cleared-screen` now reads the screen after
+The same posing bug had captured a blank screen for `ui.state-stage-cleared`:
+the screen it photographed was the one a debug-emptied field produced, not the
+one a player reaches. `stages.stage-cleared-screen` now reads the screen after
 `stages.clears-on-last-drone`'s drive, so the capture is of the screen a cleared
 wave actually opens.
 
 ## One behavior is graded once
 
-`controls.discharge-key` asserted both that the key started a discharge and that
-the meter was spent. It claimed to measure the binding and measured the meter as
-well, so a build whose key was wired correctly and whose meter was wrong lost a
-`controls` point for a resonance fault.
+As first written, `controls.discharge-key` asserted both that the key started a
+discharge and that the meter was spent. It claimed to measure the binding and
+measured the meter as well, so a build whose key was wired correctly and whose
+meter was wrong lost a `controls` point for a resonance fault.
 
-The two claims are now two items. `controls.discharge-x` asserts only that the key
-starts the real discharge wave; `resonance.discharge-spends` asserts only that the
-meter drops to zero. That split is a rule over the whole checklist now: an item
-asserts its own requirement and nothing else, which is why the checklist more than
-tripled without the game gaining a rule.
+`v1.0.0` split the two claims into two items, and `v2.0.0` keeps them apart:
+`controls.discharge-x` asserts only that the key starts the real discharge wave,
+and `resonance.discharge-spends` only that the meter drops to zero. The split is
+now a rule over the whole checklist rather than one item's repair: an item asserts
+its own requirement and nothing else, which is why the checklist more than tripled
+without the game gaining a rule.
 
 ## A wrapping dive is correct, not a fault
 
-`swarm.dive-returns` sampled a diver's path and read the bottom-to-top wrap as a
-discontinuity, and read a build that never reports the `returning` phase as one
-that never came home. It claimed to measure that a diver returns to its slot and
-in fact measured whether the path was continuous in screen coordinates and whether
-one particular phase name appeared.
+As first written, `swarm.dive-returns` sampled a diver's path and read the
+bottom-to-top wrap as a discontinuity, and read a build that never reports the
+`returning` phase as one that never came home. It claimed to measure that a diver
+returns to its slot and in fact measured whether the path was continuous in screen
+coordinates and whether one particular phase name appeared.
 
-Two items now carry it. `swarm.dive-continuous` allows at most one discontinuity
-and only as a wrap across the field edges, with a tolerance either side because
-the endpoints come from two samples a couple of frames apart.
-`swarm.dive-returns` asserts the re-settle alone. A build failing one is named for
-that one.
+`v1.0.0` taught the one item to allow the wrap. `v2.0.0` also stops it from
+asserting three things at once, and `specs/swarm.md` states outright that a dive
+ends either by looping back above `FIELD_BOTTOM` or by wrapping through the
+bottom, so the wrap is one of two stated endings rather than something a check has
+to be generous about.
+`swarm.dive-continuous` allows at most one discontinuity and only as a wrap across
+the field edges, with a tolerance either side because the endpoints come from two
+samples a couple of frames apart. `swarm.dive-returns` asserts the re-settle
+alone, `swarm.dive-speed` the rate, and `swarm.looping-dive-stays-in-field` the
+other ending. A build failing one is named for that one.
 
 ## A Prism's escort is read across the whole entrance
 
-`drones.prism-escort` counted the entering drones at one chosen instant. It
-claimed to measure that a Prism arrives escorted and in fact measured what one
-frame's roster happened to list, which passed a build that marks a whole wave as
-entering from the first frame and failed a build that staggers its groups.
+As first written, `drones.prism-escort` counted the entering drones at one chosen
+instant. It claimed to measure that a Prism arrives escorted and in fact measured
+what one frame's roster happened to list, which passed a build that marks a whole
+wave as entering from the first frame and failed a build that staggers its groups.
 
-It now sweeps the entire entrance and requires two opposite-band Shards in motion
-and near the Prism at the same instant, which is the escort a player sees rather
-than a count taken at a moment of the check's choosing.
+`v1.0.0` answered by sweeping the entire entrance, and `v2.0.0` reads it the same
+way: two opposite-band Shards in motion and within `320` units of the Prism at the
+same instant, which is the escort a player sees rather than a count taken at a
+moment of the check's choosing. No stated rule fixes an escort radius, so the `320`
+units are an honest tolerance on entering alongside, and the reasoning for the
+figure travels with it: a quarter of the field's width is loose enough for any
+entrance choreography a build invents and nowhere near loose enough to sweep in a
+drone entering on the far side of the stage.
 
 ## A challenge group is what a player sees, not what a frame lists
 
-`stages.challenge-alternating` clustered arrivals in time alone. It claimed to
-measure that a challenge stage's five groups alternate bands and in fact measured
-how the build happened to batch its spawns: a build sweeping each group of eight
-in as two waves of four read as ten groups, and drones queued off the left or
-right edge counted as arrived because their flight `y` was already inside the
-field.
+As first written, `stages.challenge-alternating` clustered arrivals in time
+alone. It claimed to measure that a challenge stage's five groups alternate bands
+and in fact measured how the build happened to batch its spawns: a build sweeping
+each group of eight in as two waves of four read as ten groups, and drones queued
+off the left or right edge counted as arrived because their flight `y` was already
+inside the field.
 
-`stages.challenge-single-band-groups` and `stages.challenge-alternates` replace
-it. Both read arrival as inside the field on both axes, and both merge adjacent
-same-band waves before comparing, so a group is the thing that flies across the
-screen together.
+`v1.0.0` fixed both halves in the one item. `v2.0.0` also stops it from grading
+two requirements at once: `stages.challenge-single-band-groups` asserts that no
+group mixes the bands and `stages.challenge-alternates` that consecutive groups
+differ. Both read arrival as inside the field on both axes, and both merge
+adjacent same-band waves before comparing, so a group is the thing that flies
+across the screen together.
 
 ## Mute is stated at source strength
 
@@ -277,13 +308,18 @@ muted, and under `none` the page-side audio shim reports no source started.
 
 ## An item whose claim is a difference captures both states
 
-`color.ship-band` declared one output, so its evidence was a single still of a
-ship on one band while its claim was that the two bands are told apart. A
-reviewer looking at that capture could not see the thing the item asserted.
-`presentation.ship-reads-band` declares two outputs, `cyan` and `magenta`. The
-general rule now holds across the checklist: an item whose claim is a difference
-between two renders declares the before-and-after pair, and an item measuring a
-difference inside one render declares the single render its assertion turns on.
+As first written, `color.ship-band` declared one output, so its evidence was a
+single still of a ship on one band while its claim was that the two bands are told
+apart. A reviewer looking at that capture could not see the thing the item
+asserted.
+
+`v1.0.0` gave that one item a capture per band. `v2.0.0` makes it a rule over the
+whole checklist: an item whose claim is a difference between two renders declares
+the before-and-after pair, and an item measuring a difference inside one render
+declares the single render its assertion turns on.
+`presentation.ship-reads-band` is the first kind and declares `cyan` and
+`magenta`; `overload.telegraph-drawn` is the second and declares one capture of
+three drones at charge zero, one and two.
 
 ## The build ships a showcase, and no proof captures
 

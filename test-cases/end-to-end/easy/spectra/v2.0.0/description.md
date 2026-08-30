@@ -30,6 +30,16 @@ and drones. It deliberately drops the genre's captured-ship rescue and double
 fighter, because survival here is about reading the field's two bands and
 flipping at the right instant rather than about power-ups.
 
+## The two modes
+
+A run is asked for one of two modes, and they disagree about exactly one rule:
+what a mismatched shot does to the drone it hits. Under **Sortie** it does
+nothing, and the shot is simply wasted. Under **Overload** it charges the drone,
+and the third charge overloads it into a reaction that differs by kind — a Shard
+plunges, a Flux flips its band and sprays, a Prism bursts in both bands and may
+grow the swarm. That one rule inverts the risk of a wrong-band shot, so the same
+field is played very differently under each.
+
 ## Why it is a benchmark
 
 Spectra is a large build for an easy case, and its size is in breadth rather than
@@ -54,16 +64,6 @@ once.
 
 Every one of those is stated exactly and checked exactly, so a build that is
 nearly right in many places is told apart from one that is right.
-
-## The two modes
-
-A run is asked for one of two modes, and they disagree about exactly one rule:
-what a mismatched shot does to the drone it hits. Under **Sortie** it does
-nothing, and the shot is simply wasted. Under **Overload** it charges the drone,
-and the third charge overloads it into a reaction that differs by kind — a Shard
-plunges, a Flux flips its band and sprays, a Prism bursts in both bands and may
-grow the swarm. That one rule inverts the risk of a wrong-band shot, so the same
-field is played very differently under each.
 
 ## What a model is given
 
