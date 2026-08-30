@@ -113,14 +113,20 @@ export function handleInput(
 ): FrameOutcome {
   if (sim.screen === "playing") {
     sim.request = requestedDirection(input);
+    // The request is what a HELD direction leaves for the ticks of this frame; the
+    // latch is what a press edge leaves for the first tick that runs, whether that
+    // is one of this frame's or one of a later frame's.
+    if (sim.request !== null) sim.pendingTap = sim.request;
     if (input.pause) {
       goTo(sim, "paused");
       sim.request = null;
+      sim.pendingTap = null;
     }
     return { toggleMute: input.mute };
   }
 
   sim.request = null;
+  sim.pendingTap = null;
   stepMenuScreen(sim, input, events);
   return { toggleMute: input.mute };
 }

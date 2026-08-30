@@ -80,6 +80,8 @@ import {
   layOutStrait,
 } from "./lanes";
 import { nextIndex, nextRandom, nextRange } from "./rng";
+import { handleInput } from "./screens";
+import { advanceFrame } from "./simulate";
 import { addScore, boundariesCrossed } from "./scoring";
 import { registerDiagnostics } from "./diagnostics";
 import { newTickEvents, toSim, type Sim } from "./sim";
@@ -668,6 +670,65 @@ describe("the run", () => {
     expect(other.vehicles.map((item) => item.x)).toEqual(
       sim.vehicles.map((item) => item.x),
     );
+  });
+});
+
+// ---- A frame is not a tick --------------------------------------------
+
+describe("a press edge", () => {
+  /** A live crossing on an emptied strait, with the critter on the near shore. */
+  function crossing(): Sim {
+    const sim = toSim(blankState());
+    startRun(sim);
+    sim.vehicles = [];
+    sim.floes = [];
+    sim.gates.timerRunning = false;
+    return sim;
+  }
+
+  /** One frame: the input resolved once, then the ticks its delta completes. */
+  function frame(sim: Sim, input: typeof NO_INPUT, dt: number): void {
+    handleInput(sim, input, newTickEvents());
+    advanceFrame(sim, dt, true);
+  }
+
+  const TAP_UP = { ...NO_INPUT, up: true, tapUp: true };
+
+  it("still hops once when the frame it landed on completed no tick", () => {
+    const sim = crossing();
+    // A third of a tick: the delta completes none, so nothing runs and the key is
+    // up again by the next frame. The edge is what a tap is, so it is kept.
+    frame(sim, TAP_UP, TICK_DT / 3);
+    expect(critterRow(sim)).toBe(ROW_NEAR);
+
+    frame(sim, NO_INPUT, TICK_DT);
+    expect(critterRow(sim)).toBe(ROW_NEAR - 1);
+
+    // And no further: one press, one hop.
+    for (let n = 0; n < 240; n += 1) frame(sim, NO_INPUT, TICK_DT);
+    expect(critterRow(sim)).toBe(ROW_NEAR - 1);
+  });
+
+  it("is ignored inside the cooldown rather than saved up for its end", () => {
+    const sim = crossing();
+    frame(sim, TAP_UP, TICK_DT);
+    expect(critterRow(sim)).toBe(ROW_NEAR - 1);
+
+    // Half a cooldown in, a second press: ignored, and gone.
+    for (let n = 0; n < 7; n += 1) frame(sim, NO_INPUT, TICK_DT);
+    frame(sim, TAP_UP, TICK_DT);
+    expect(critterRow(sim)).toBe(ROW_NEAR - 1);
+    for (let n = 0; n < 240; n += 1) frame(sim, NO_INPUT, TICK_DT);
+    expect(critterRow(sim)).toBe(ROW_NEAR - 1);
+  });
+
+  it("is dropped by a screen that is not playing, and by a pause", () => {
+    const sim = crossing();
+    sim.screen = "paused";
+    frame(sim, TAP_UP, TICK_DT / 3);
+    sim.screen = "playing";
+    frame(sim, NO_INPUT, TICK_DT);
+    expect(critterRow(sim)).toBe(ROW_NEAR);
   });
 });
 

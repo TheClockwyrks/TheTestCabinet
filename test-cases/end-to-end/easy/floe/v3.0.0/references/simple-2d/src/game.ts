@@ -14,7 +14,7 @@
 // over mutable data, which is what makes the surface's `reset` enough to replay a
 // scenario exactly.
 //
-// SEVEN FIELDS GO BEYOND THAT DECLARATION, and `specs/state.md` asks for them there:
+// EIGHT FIELDS GO BEYOND THAT DECLARATION, and `specs/state.md` asks for them there:
 // "anything else the game must keep from one tick to the next is a field you add to
 // `FloeState`, rather than a module-level variable or a closure". They are
 // `frameCarry` (the remainder of a frame's delta the fixed step carries),
@@ -22,8 +22,8 @@
 // `simTime` does not), `nextId` (the counter every entity's id comes off),
 // `slots` (the hunt's two slots and how long each empty one has left before it
 // fills), `fishTimer` and `lastFishBay` (the bonus catch's own cadence), `request`
-// (the direction the frame's input is asking for, which the ticks consume), and
-// `lunge` (where a bear that caught the critter was, so `specs/assets.md`'s lunge
+// and `pendingTap` (the direction the frame's input is asking for, and a press edge
+// no tick has been offered yet, which the ticks consume), and `lunge` (where a bear that caught the critter was, so `specs/assets.md`'s lunge
 // frames are drawn there on the tick of the catch — every bear leaves the strait on
 // that tick, so the bear itself is gone by the time anything draws).
 //
@@ -211,6 +211,19 @@ export interface FloeState {
   readonly lastFishBay: number | null;
   /** The direction this frame's input is asking the critter to hop. */
   readonly request: Facing | null;
+  /**
+   * A direction whose press edge no tick has been offered yet.
+   *
+   * A frame is not a tick. At a refresh rate above `TICK_HZ` a frame's delta
+   * completes no whole tick at all, and a key pressed and released inside such a
+   * frame is up again by the time the next frame reads the keyboard — so the
+   * edge, which is the whole of what a tap is, would be read by nobody and
+   * `specs/hopping.md`'s "a press released before the cooldown reaches 0 produces
+   * exactly one hop" would produce none. The edge is therefore held here until a
+   * tick has been offered it, and dropped by that tick whether it hopped or not,
+   * so a press inside the cooldown is ignored exactly once rather than saved up.
+   */
+  readonly pendingTap: Facing | null;
   /** The lunge left where a bear caught the critter. */
   readonly lunge: LungeState | null;
 

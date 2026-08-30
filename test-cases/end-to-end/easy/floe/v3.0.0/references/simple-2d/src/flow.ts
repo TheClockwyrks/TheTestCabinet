@@ -98,6 +98,7 @@ export function openingState(sprites: Sprites): FloeState {
     fishTimer: 0,
     lastFishBay: null,
     request: null,
+    pendingTap: null,
     lunge: null,
 
     sprites,
@@ -145,6 +146,7 @@ export function resetToTitle(sim: Sim, seed: number = DEFAULT_SEED): void {
   sim.nextId = 1;
   sim.rngState = seed;
   sim.request = null;
+  sim.pendingTap = null;
   sim.lunge = null;
 
   sim.slots = [

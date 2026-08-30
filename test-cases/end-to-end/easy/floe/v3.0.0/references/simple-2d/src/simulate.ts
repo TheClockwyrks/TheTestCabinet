@@ -41,6 +41,7 @@ import { advanceLanes, laneMotion } from "./lanes";
 import { endHold, fillBay, loseLife, LUNGE_HOLD } from "./flow";
 import { addScore } from "./scoring";
 import { anyCoversBody, bayAt } from "./strait";
+import type { Direction } from "./strait";
 import { newTickEvents, type Sim, type TickEvents } from "./sim";
 import { expired } from "./timing";
 import type { CueName } from "./constants";
@@ -58,10 +59,14 @@ function crushed(sim: Sim): boolean {
   return anyCoversBody(sim.vehicles, row, sim.critter.x);
 }
 
-/** Take the hop the frame asked for, where the cadence allows one. */
-function stepHop(sim: Sim, dt: number, events: TickEvents): boolean {
+/** Take the hop `request` asked for, where the cadence allows one. */
+function stepHop(
+  sim: Sim,
+  request: Direction | null,
+  dt: number,
+  events: TickEvents,
+): boolean {
   sim.critter.hopCooldown = Math.max(0, sim.critter.hopCooldown - dt);
-  const request = sim.request;
   if (request === null) return false;
   if (!expired(sim.critter.hopCooldown)) return false;
 
@@ -95,6 +100,13 @@ function stepHunt(sim: Sim, dt: number): void {
 
 /** One tick of live play, in whichever phase the crossing is in. */
 function stepPlaying(sim: Sim, dt: number, events: TickEvents): void {
+  // A press edge is offered to exactly ONE tick — this one — and dropped whether it
+  // hopped or not, so a press inside the cooldown is ignored once rather than saved
+  // up, and a press that landed on a frame too short to complete a tick is not lost
+  // (`specs/hopping.md`).
+  const request = sim.request ?? sim.pendingTap;
+  sim.pendingTap = null;
+
   advanceLanes(sim, dt);
   stepFish(sim, dt);
   stepHunt(sim, dt);
@@ -125,7 +137,7 @@ function stepPlaying(sim: Sim, dt: number, events: TickEvents): void {
     // tick: the carry belongs to the tile the critter was standing on, never to
     // the one it hopped onto (`specs/hopping.md`, `specs/water.md`).
     carryCritter(sim, dt);
-    if (stepHop(sim, dt, events)) return;
+    if (stepHop(sim, request, dt, events)) return;
 
     const caught = sim.gates.catchTest ? catcher(sim) : undefined;
     if (caught !== undefined) {
