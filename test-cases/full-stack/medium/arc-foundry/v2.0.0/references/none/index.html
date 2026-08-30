@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Arc Foundry — Salvage the Surge</title>
+    <title>Arc Foundry</title>
     <style>
       html,
       body {
@@ -12,16 +12,21 @@
         background: #05080c;
         overflow: hidden;
       }
-      body {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
+      /*
+        The canvas simply fills the window. Fitting the fixed 1280x720 logical
+        stage inside it — the uniform scale, the centered letterbox, and the
+        device pixel ratio — is the build's own work, so there is no sizing here.
+
+        `touch-action: none` keeps the browser from claiming a drag across the
+        canvas as a scroll or a zoom, which matters because the yard is built on
+        by pressing and dragging over the stage.
+      */
       #stage {
         display: block;
+        width: 100vw;
+        height: 100vh;
         background: #05080c;
         touch-action: none;
-        image-rendering: pixelated;
       }
     </style>
   </head>
