@@ -1,23 +1,97 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/handling/sweep-resolves-per-sample.test.ts
+// handling/sweep-resolves-per-sample — every pointer sample a frame delivers is
+// answered, in the order it arrived.
 //
-// The review item `handling.sweep-resolves-per-sample` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/controls.md: "Every sample a frame delivers is answered on its own, in the
+// order it arrived, so a press and the release that followed it inside one frame
+// both take effect and a gesture is never reduced to the last position of the frame
+// that carried it."
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE MEASUREMENT IS A WHOLE GESTURE INSIDE ONE FRAME. The press, the moves and the
+// release are all dispatched to the ENGINE's own pointer before a single frame runs,
+// and then one frame runs. A build that folds each sample in turn lifts the run on
+// the press, carries it across the moves and lands it on the release; a build that
+// keeps only the frame's last sample sees the release alone, has nothing in hand,
+// and leaves the card in its source column. So the completed move is the whole
+// reading.
 //
-// What this item must decide, from the manifest:
+// WHY NOT A SWEEP ACROSS SEVERAL PILES. Crossing a pile leaves no trace in this
+// game: a build that answered every sample and one that answered only the last would
+// both end over the same pile, and the two would be indistinguishable. Delivering
+// the gesture's beginning and its end inside one frame is what separates them.
 //
-//   Every pointer sample a frame delivers is answered
+// THIS IS THE ENGINE'S POINTER, NOT THE SURFACE'S. The surface's
+// `pointerDown`/`pointerMove`/`pointerUp` are immediate poses, each resolved before
+// the call returns (specs/instrumentation.md), so driving them could never ask a
+// build what it does with a frame's worth of samples. `sweepPointer` dispatches real
+// pointer events and then runs the one frame that delivers them.
 //
-//   A press on a column's lowest card, a move across the table and a release over a legal target, all delivered to the real pointer before a single frame's update, still lift the run and complete the drop. A build that folds only the frame's last sample sees the release alone, lifts nothing and fails.
+// THE TARGET ACCEPTS BY THE TABLEAU RULE: a column whose lowest card is the black six
+// accepts a run led by the red five (specs/tableau.md). The press is at the card's
+// center and the release at the center of the target's drop rectangle, so the
+// leading card's center lands well inside it (specs/table.md).
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openTable,
+  pileSpecs,
+  poseColumn,
+  pressPoint,
+  releasePoint,
+  sweepPointer,
+  type Harness,
+} from "../harness";
 
-it("handling.sweep-resolves-per-sample — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/handling/sweep-resolves-per-sample.test.ts is a scaffold stub, not a validator",
+/** The column the run is lifted from, and the run: one red five. */
+const FROM_COLUMN = 0;
+const RUN = "5H";
+
+/** The column it is dropped on, and its lowest card: a black six, which accepts. */
+const TO_COLUMN = 3;
+const TARGET = "6S";
+
+/** How many moves the gesture carries between its press and its release. */
+const STEPS = 4;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("lifts and lands a run whose whole gesture arrives inside one frame", async () => {
+  openTable(h);
+  poseColumn(h, FROM_COLUMN, [RUN]);
+  poseColumn(h, TO_COLUMN, [TARGET]);
+
+  await sweepPointer(
+    h,
+    pressPoint(h.snapshot(), "tableau", FROM_COLUMN, 0),
+    releasePoint(h.snapshot(), "tableau", TO_COLUMN),
+    STEPS,
+  );
+  const after = h.snapshot();
+  captureStill(h, "dropped");
+
+  assertDeepEqual(
+    pileSpecs(after.tableau[TO_COLUMN]),
+    [TARGET, RUN],
+    `column ${TO_COLUMN} after a press, ${STEPS} moves and a release all ` +
+      "delivered before one frame's update: every sample is answered on its " +
+      "own, so the press lifted the run and the release landed it " +
+      "(specs/controls.md)",
+  );
+  assertDeepEqual(
+    pileSpecs(after.tableau[FROM_COLUMN]),
+    [],
+    `column ${FROM_COLUMN} after that frame: the run left its source, which a ` +
+      "build that had seen only the frame's last sample never lifted " +
+      "(specs/controls.md)",
   );
 });
