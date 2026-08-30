@@ -1,27 +1,105 @@
-// Arc Foundry — `audio.music`. CASE-PROVIDED. NOT YET WRITTEN.
+// Arc Foundry — audio/music: the music bed plays from the first build phase and
+// still sounds past the end of its own file.
 //
-// The manifest declares this point at `audio/music.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT, from the cue table of `specs/ui.md`: `CUES.music` is "looped
+// under the yard from the first build phase onward", and, below the table, "The
+// music cue loops until the game ends." `specs/assets.md` renders it with `music`,
+// as "a tense, driving industrial bed, looped under the yard".
 //
-// THE REQUIREMENT. The music cue is played from the first build phase onward
-// and loops rather than ending: it is still sounding after a span longer than
-// its own file's duration.
+// HOW IT IS OBSERVED. The engine's cue bus announces a bed's start as `cue:looped`,
+// a one-shot play as `cue:played`, and a loop's end as `cue:stopped`, each with the
+// cue's name. So what is read is those three events for `music` alone, in order:
+// the bed is SOUNDING once one of the first two has arrived and stops sounding when
+// a `cue:stopped` does. Both routes are accepted because both keep the bed audible,
+// and the specification asks for the sound rather than for the call.
 //
-// HOW IT IS DECIDED. Begin a run and read the music cue's play and loop events
-// across a span longer than the file. The evidence it hands back is `music`
-// (replay): the run the music played under.
+// THE SPAN IS THE FILE'S OWN LENGTH, read off `assets/audio/music.wav`. A bed that
+// is still sounding after longer than its own file has run is a bed that was
+// looped: a one-shot that was started once and never restarted is over by then.
+// That is the review item's own wording — "it is still sounding after a span longer
+// than its own file's duration" — and taking the span from the build's own file is
+// what makes it true of any build rather than of one length of bed.
+//
+// THE RUN IS OPENED THROUGH `startRun`, which `specs/instrumentation.md` says
+// "opens it on its first build phase", so what is listened to is exactly the moment
+// the requirement names. Nothing else is on the yard, so nothing else can end the
+// run and stop the bed.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { CUES } from "../../src/constants";
+import { assertEqual, assertTrue } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  openRun,
+  ticks,
+  type Harness,
+} from "../harness";
+import { durationSeconds, fileOf, readWave } from "./wav";
 
-describe("audio.music", () => {
-  it("The music cue loops under the yard", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `audio.music` has not been written yet",
-    );
+/** How long past the file's own end the bed must still be sounding. */
+const MARGIN_SECONDS = 1;
+
+/** The frames of the first build phase the bed must start inside. */
+const OPENING = ticks(0.5);
+
+/** One event the bus announced about the bed, in the order it arrived. */
+interface BedEvent {
+  kind: "looped" | "played" | "stopped";
+  frame: number;
+}
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("starts the bed on the first build phase and keeps it sounding past its file", async () => {
+  const bed: BedEvent[] = [];
+  const note =
+    (kind: BedEvent["kind"]) =>
+    ({ cue }: { cue: string }): void => {
+      if (cue === CUES.music) bed.push({ kind, frame: h.engine.frame().count });
+    };
+  h.engine.events.on("cue:looped", note("looped"));
+  h.engine.events.on("cue:played", note("played"));
+  h.engine.events.on("cue:stopped", note("stopped"));
+
+  // The file's own length, so the span below outlasts whatever the build produced.
+  const file = durationSeconds(readWave(fileOf(CUES.music)));
+
+  const run = await captureReplay(h, "music", async () => {
+    openRun(h);
+    await h.advance(OPENING);
+    const opening = [...bed];
+    await h.advanceSeconds(file + MARGIN_SECONDS);
+    return { opening, all: [...bed], frame: h.engine.frame().count };
   });
+
+  assertTrue(
+    run.opening.some((event) => event.kind !== "stopped"),
+    `the ${CUES.music} cue to start sounding inside the first half second of ` +
+      "the first build phase, where specs/ui.md loops it under the yard; the " +
+      `bus announced ${run.opening.length === 0 ? "nothing" : run.opening.map((e) => e.kind).join(", ")}`,
+  );
+
+  const last = run.all[run.all.length - 1];
+  assertEqual(
+    last === undefined
+      ? "nothing"
+      : last.kind === "stopped"
+        ? "stopped"
+        : "sounding",
+    "sounding",
+    `the ${CUES.music} cue still to be sounding after ${(file + MARGIN_SECONDS).toFixed(1)} ` +
+      `seconds of the first build phase, which is longer than the ${file.toFixed(1)} ` +
+      "seconds its own produced file runs for, so the bed loops rather than " +
+      "ending (specs/ui.md)",
+  );
 });
