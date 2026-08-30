@@ -27,6 +27,7 @@
 import { DEFAULT_SEED, GEMSTONE_IDS, ITEM_IDS, ORE_IDS } from "./constants";
 import type {
   ComponentId,
+  CueName,
   DeathCause,
   Facing,
   ItemId,
@@ -50,6 +51,7 @@ import { createDebugApi } from "./debug";
 import type { DeepcoreDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { advanceEffects, installSystems, spawnEffects } from "./effects";
+import type { FxEvent } from "./effects";
 import { readActions, readPointer, registerActions } from "./input";
 import { renderGame } from "./render";
 import { stepGame } from "./simulation";
@@ -281,6 +283,12 @@ export interface DeepcoreState {
   readonly notice: Notice | null;
   readonly noticesFired: { readonly gas: boolean; readonly lava: boolean };
 
+  // What has been raised and not yet handed over. A frame's rules run before
+  // the frame plays what they raised, and a debug control raises the same two
+  // outside a frame, so both wait here until the next update drains them.
+  readonly cues: readonly CueName[];
+  readonly fx: readonly FxEvent[];
+
   /** The produced sprites, cycles, and systems, loaded once in `initialize`. */
   readonly assets: Assets;
 }
@@ -380,6 +388,8 @@ export function createInitialState(
     gasSeepIndex: 0,
     notice: null,
     noticesFired: { gas: false, lava: false },
+    cues: [],
+    fx: [],
     assets,
   };
   return placeMinerAtSpawn(state);
@@ -425,7 +435,6 @@ export const game: Game<DeepcoreState, DeepcoreDebugApi> = {
     dt: number,
   ): DeepcoreState {
     const d = draft(state);
-    d.muted = api.audio.muted();
     d.hasSave = hasSave();
     // The controls are read off the state the frame opened on, which is the
     // layout the previous frame drew and the one the pointer was aimed at.
@@ -434,7 +443,11 @@ export const game: Game<DeepcoreState, DeepcoreDebugApi> = {
     stepGame(d, dt);
     playFrame(api, d);
     spawnEffects(d.fx);
+    d.fx.length = 0;
     advanceEffects(dt);
+    // The mute bit is mirrored last, so a frame in which the player toggled it
+    // leaves the state agreeing with the bus rather than one frame behind.
+    d.muted = api.audio.muted();
     return commit(d);
   },
 

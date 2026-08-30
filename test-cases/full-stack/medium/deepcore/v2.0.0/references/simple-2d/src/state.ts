@@ -20,11 +20,12 @@
 // only replaced. So a draft that changes nothing shares the whole grid, and one
 // that breaks a cell copies one row.
 //
-// The draft also carries the frame's three OUTPUT QUEUES — the cues to play, the
-// loops that should be sounding, and the effects to spawn. They belong to the
-// moment rather than to the expedition, so `commit` drops them: `update` drains
-// them into the engine's audio and into the effects pool once the frame's rules
-// have all run.
+// The draft also carries the frame's OUTPUT QUEUES — the cues to play, the loops
+// that should be sounding, and the effects to spawn. `update` drains them into
+// the engine's audio and into the effects pool once the frame's rules have all
+// run. The cues and the bursts survive `commit`, because a control run through
+// the debug surface raises them outside a frame and the next update is what
+// hands them over; the loops are recomputed from scratch every frame.
 
 import { WORLD_COLS } from "./constants";
 import type { CueName, ItemId, OreId, TrackName } from "./constants";
@@ -101,11 +102,11 @@ export interface Draft {
   noticesFired: { gas: boolean; lava: boolean };
   assets: DeepcoreState["assets"];
 
-  /** One-shot cues this frame raised, played once each when it ends. */
+  /** One-shot cues raised and not yet played. */
   cues: CueName[];
   /** The loops that should be sounding when this frame ends. */
   loops: Set<LoopCue>;
-  /** The effect bursts this frame raised, spawned when it ends. */
+  /** The effect bursts raised and not yet spawned. */
   fx: FxEvent[];
 }
 
@@ -170,9 +171,12 @@ export function draft(state: DeepReadonly<DeepcoreState>): Draft {
     notice: state.notice === null ? null : { ...state.notice },
     noticesFired: { ...state.noticesFired },
     assets: state.assets,
-    cues: [],
+    // The two queues carry over: a control run through the debug surface raises
+    // a cue and a burst outside a frame, and the next update is what hands them
+    // to the engine. The loops are the frame's own, and start empty.
+    cues: [...state.cues],
     loops: new Set(),
-    fx: [],
+    fx: state.fx.map((event) => ({ ...event })),
   };
 }
 
@@ -230,6 +234,8 @@ export function commit(d: Draft): DeepcoreState {
     gasSeepIndex: d.gasSeepIndex,
     notice: d.notice,
     noticesFired: d.noticesFired,
+    cues: d.cues,
+    fx: d.fx,
     assets: d.assets,
   };
 }

@@ -29,13 +29,16 @@ import {
   STAGE_W,
   TILE,
 } from "./constants";
-import type { ActionName } from "./constants";
+import type { ActionName, CueName } from "./constants";
 import { ACTIONS } from "./constants";
 import type { DeepcoreDebugApi } from "./debug";
 import { noAssets } from "./assets";
 import { commit, draft } from "./state";
 import type { Draft } from "./state";
 import { BACKGROUND, createInitialState, game } from "./game";
+import type { MoveInput } from "./game";
+import { stepGame } from "./simulation";
+import type { FxEvent } from "./effects";
 import type { DeepcoreState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
@@ -281,4 +284,57 @@ export function posedAt(d: Draft, x: number, y: number): void {
   d.miner.y = y;
   d.miner.vx = 0;
   d.miner.vy = 0;
+}
+
+/** What a run of frames over a draft left behind, output queues included. */
+export interface DraftRun {
+  state: DeepcoreState;
+  fx: FxEvent[];
+  cues: CueName[];
+  loops: string[];
+}
+
+/**
+ * Run `seconds` of game time in `frames` whole frames, over drafts, with no
+ * engine in the way.
+ *
+ * The queues a frame raises are collected as they are raised, which is how a
+ * check reads what the frame asked to sound or to spark without a canvas and an
+ * audio bus taking part.
+ */
+export function runFrames(
+  state: DeepReadonly<DeepcoreState>,
+  seconds: number,
+  frames: number,
+): DraftRun {
+  const step = seconds / frames;
+  const fx: FxEvent[] = [];
+  const cues: CueName[] = [];
+  const loops = new Set<string>();
+  let current: DeepcoreState = state as DeepcoreState;
+  for (let i = 0; i < frames; i += 1) {
+    const d = draft(current);
+    stepGame(d, step);
+    fx.push(...d.fx);
+    cues.push(...d.cues);
+    for (const loop of d.loops) loops.add(loop);
+    current = commit(d);
+  }
+  return { state: current, fx, cues, loops: [...loops] };
+}
+
+/** Hold a set of actions for the frames that follow, in a draft. */
+export function holding(
+  state: DeepReadonly<DeepcoreState>,
+  input: Partial<MoveInput>,
+): DeepcoreState {
+  return inDraft(state, (d) => {
+    d.input = {
+      left: false,
+      right: false,
+      down: false,
+      thrust: false,
+      ...input,
+    };
+  });
 }
