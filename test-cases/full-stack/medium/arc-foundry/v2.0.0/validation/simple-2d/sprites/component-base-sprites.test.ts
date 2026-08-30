@@ -1,25 +1,56 @@
-// Arc Foundry — `sprites.component-base-sprites`. CASE-PROVIDED. NOT YET WRITTEN.
+// sprites/component-base-sprites — a mount for each of the eight base types.
 //
-// The manifest declares this point at `sprites/component-base-sprites.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
-//
-// THE REQUIREMENT. assets/components/<type>/base.png exists as a 40 by 40 PNG
-// for each of the eight base component identifiers.
-//
-// HOW IT IS DECIDED. Read the eight files and decode each one's dimensions.
-// The evidence it hands back is `mounts` (image): the eight component mounts.
+// `specs/assets.md`: `components/<type>/base.png` at `40 x 40`, "the fixed mount
+// a head turns on, one per base type", where `<type>` is a base component's
+// identifier. `specs/components.md` fixes those eight identifiers, the Regulator
+// included, and `specs/yard.md` fixes the `2` by `2` footprint the `40 x 40`
+// canvas covers.
 
-import { describe, it } from "vitest";
+import { it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  standComponent,
+} from "../harness";
+import { COMPONENT_TYPES } from "../../src/constants";
+import { canvasOf, componentBase } from "./png";
+import { serveProducedAssets } from "./host";
 
-import { fail } from "../assert";
+// The produced files, served to the engine off disk, so the still beside this
+// point's verdict shows the art the run made rather than the fallback a build
+// draws when nothing arrived.
+serveProducedAssets();
 
-describe("sprites.component-base-sprites", () => {
-  it("Every base component has a produced mount", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `sprites.component-base-sprites` has not been written yet",
+it("produces a mount for every base component type", async () => {
+  for (const type of COMPONENT_TYPES) {
+    const sprite = componentBase(type);
+    const canvas = canvasOf(sprite);
+    assertEqual(
+      canvas.width,
+      sprite.width,
+      `the width of assets/${sprite.path}`,
     );
-  });
+    assertEqual(
+      canvas.height,
+      sprite.height,
+      `the height of assets/${sprite.path}`,
+    );
+  }
+
+  const h = await createHarness();
+  try {
+    openYard(h);
+    let col = 6;
+    for (const type of COMPONENT_TYPES) {
+      standComponent(h, type, 1, col, 10);
+      col += 3;
+    }
+    h.debug.clearSelection();
+    await h.advance(1);
+    captureStill(h, "mounts");
+  } finally {
+    h.dispose();
+  }
 });

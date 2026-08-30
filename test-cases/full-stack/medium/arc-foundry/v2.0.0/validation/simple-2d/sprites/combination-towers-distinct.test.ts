@@ -1,27 +1,78 @@
-// Arc Foundry — `sprites.combination-towers-distinct`. CASE-PROVIDED. NOT YET WRITTEN.
+// sprites/combination-towers-distinct — twelve towers, and none of them a component.
 //
-// The manifest declares this point at `sprites/combination-towers-distinct.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/overview.md`: "a combination tower is unmistakable beside a base
+// component", and `specs/combinations.md` has each tower wear "an accent that is
+// not worn by any base component, so it reads as a combination tower on sight",
+// with "its look reads its dominant ability". `specs/assets.md` asks for one head
+// per tower.
 //
-// THE REQUIREMENT. The twelve combination tower head sprites are pairwise
-// different images, and each differs from every base component head, so a
-// tower is unmistakable beside a base component.
-//
-// HOW IT IS DECIDED. Decode the twelve tower heads and the forty component
-// heads and compare their pixels. The evidence it hands back is `towers`
-// (image): the twelve towers side by side.
+// So the twelve heads are held against each other and against all forty component
+// heads: a tower that shares a head with another tower is a tower a player cannot
+// name, and one that shares a head with a base component is exactly the thing the
+// specification says must never happen.
 
-import { describe, it } from "vitest";
+import { it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  TIERS,
+  captureStill,
+  createHarness,
+  openYard,
+  standCombo,
+} from "../harness";
+import { COMBO_IDS, COMPONENT_TYPES } from "../../src/constants";
+import { comboHead, componentHead, decode, samePixels } from "./png";
+import { serveProducedAssets } from "./host";
 
-import { fail } from "../assert";
+// The produced files, served to the engine off disk, so the still beside this
+// point's verdict shows the art the run made rather than the fallback a build
+// draws when nothing arrived.
+serveProducedAssets();
 
-describe("sprites.combination-towers-distinct", () => {
-  it("The twelve towers are twelve different images", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `sprites.combination-towers-distinct` has not been written yet",
-    );
-  });
+it("draws twelve tower heads, each unlike every other and every component", async () => {
+  const towers = COMBO_IDS.map((id) => ({ id, png: decode(comboHead(id)) }));
+  for (let i = 0; i < towers.length; i += 1) {
+    for (let j = i + 1; j < towers.length; j += 1) {
+      assertEqual(
+        samePixels(towers[i]!.png, towers[j]!.png),
+        false,
+        `whether assets/${comboHead(towers[i]!.id).path} and ` +
+          `assets/${comboHead(towers[j]!.id).path} are the same image`,
+      );
+    }
+  }
+
+  const components = COMPONENT_TYPES.flatMap((type) =>
+    TIERS.map((tier) => ({ sprite: componentHead(type, tier) })),
+  ).map((one) => ({ sprite: one.sprite, png: decode(one.sprite) }));
+  for (const tower of towers) {
+    for (const component of components) {
+      assertEqual(
+        samePixels(tower.png, component.png),
+        false,
+        `whether assets/${comboHead(tower.id).path} and ` +
+          `assets/${component.sprite.path} are the same image`,
+      );
+    }
+  }
+
+  const h = await createHarness();
+  try {
+    openYard(h);
+    let col = 4;
+    let row = 8;
+    for (const id of COMBO_IDS) {
+      standCombo(h, id, col, row);
+      col += 3;
+      if (col > 22) {
+        col = 4;
+        row += 3;
+      }
+    }
+    h.debug.clearSelection();
+    await h.advance(1);
+    captureStill(h, "towers");
+  } finally {
+    h.dispose();
+  }
 });
