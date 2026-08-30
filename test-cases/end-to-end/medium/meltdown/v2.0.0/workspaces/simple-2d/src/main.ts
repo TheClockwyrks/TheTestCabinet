@@ -30,7 +30,7 @@ const engine = createEngine({
   height: STAGE_H,
   game,
   // The stage background, which the engine clears the canvas to each frame so
-  // the letterbox bars match the reactor. The game owns the colour.
+  // the letterbox bars match the reactor. The game owns the color.
   background: BACKGROUND,
   // The floor is built on with the pointer, so the keyboard only moves a
   // highlight through the menus: a four-way pad and the menu vocabulary that

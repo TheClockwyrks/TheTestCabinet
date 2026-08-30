@@ -406,7 +406,7 @@ source = "specs/showcase.md.hbs"
 # own design, and `specs/overview.md` says so in as many words, stating instead a
 # legibility table of what a player must be able to READ -- an emitter's heat
 # along a ramp, a tripped tower apart from an online one, radiator faces apart
-# from plain ones, the surge apart from every colour a tower shows. A reference
+# from plain ones, the surge apart from every color a tower shows. A reference
 # view is a picture a build is compared AGAINST, so there is no honest one to seed
 # here: every build is expected to look different, and a screenshot diff would
 # score the build that copied the mockup best rather than the build that designed
@@ -1271,7 +1271,7 @@ validation = { script = "heat/two-phase-resolution.test.ts", outputs = [
 # with its thermal model on, firing enabled and a target in range, carried over by
 # the next shot. Every other item here poses an already-tripped tower through the
 # harness's poseTrippedTower, so none of them depends on targeting, range or the
-# fire clock. Nothing in this group asserts a colour or an animation: how a
+# fire clock. Nothing in this group asserts a color or an animation: how a
 # tripped tower is DRAWN is presentation.tripped-reads-apart's single
 # requirement.
 [[review.categories]]
@@ -3602,11 +3602,11 @@ validation = { script = "presentation/surge-reads-apart-from-the-floor.test.ts",
 [[review.categories.items]]
 id = "surge-off-the-heat-axis"
 title = "The surge never reads as heat"
-description = "Each surge type's colour is plainly distinct from every colour a tower shows anywhere across its heat range, tripped included."
+description = "Each surge type's color is plainly distinct from every color a tower shows anywhere across its heat range, tripped included."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/surge-off-the-heat-axis.test.ts", outputs = [
-  { id = "apart", name = "The surge against every colour the ramp shows", kind = "image" },
+  { id = "apart", name = "The surge against every color the ramp shows", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "ground-flyer-boss-read-apart"

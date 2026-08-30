@@ -28,8 +28,8 @@ the player's input. The instance's `initialize` registers every action in
 `ACTIONS` against its binding in `BINDINGS`, defines the ten `CUES`, and returns
 the debug surface.
 
-`src/game.ts` also exports `BACKGROUND`, a CSS colour string: the stage
-background `src/main.ts` hands the engine as the colour the canvas is cleared to
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background `src/main.ts` hands the engine as the color the canvas is cleared to
 each frame, so the letterbox bars around the stage match the reactor itself.
 
 **The heat model resolves in two phases, and it belongs in the mode's tick.**

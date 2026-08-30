@@ -15,7 +15,7 @@
 //
 // THE LOOK IS NOT HERE, AND THAT IS DELIBERATE. Meltdown fixes no palette, no
 // font, no tower artwork, no glow curve, no panel layout and no animation. There
-// is not a single colour or type face in this file, and there is not meant to be
+// is not a single color or type face in this file, and there is not meant to be
 // one. `specs/overview.md` states what a player has to be able to READ at a
 // glance — an emitter's heat along a ramp, a tripped tower apart from an online
 // one, radiator faces apart from plain ones — and how the reactor looks is the

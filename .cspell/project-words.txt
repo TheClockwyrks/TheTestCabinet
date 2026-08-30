@@ -238,6 +238,7 @@ Devstral
 difficultyselect
 diggable
 dischargerig
+distinguishability
 dmgboard
 dodgeable
 dogfighter
@@ -380,7 +381,9 @@ multishots
 muteable
 napi
 needbar
+neighbour
 neighbours
+nobuild
 nonfiring
 nonking
 nostack
@@ -441,6 +444,8 @@ reharmonize
 rehit
 Reliquary
 repath
+repathed
+repaths
 replayability
 reskin
 reskinned
@@ -487,6 +492,7 @@ Sentinel
 serp
 serpentines
 setmaze
+setpoints
 sideload
 sideloaded
 sideloading
@@ -498,6 +504,7 @@ skyshard
 Skyworks
 slagdriver
 slingshotting
+slowability
 slowable
 slowhit
 splitter
@@ -525,6 +532,7 @@ synthwave
 taiko
 tankier
 tanky
+tappable
 targ
 targetable
 tcab
@@ -580,6 +588,7 @@ unseeable
 unslowed
 unstaffed
 untargetable
+untargeted
 untimed
 varint
 verdite
