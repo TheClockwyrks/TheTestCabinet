@@ -1,28 +1,106 @@
-// Arc Foundry — `targeting.tie-to-further-along`. CASE-PROVIDED. NOT YET WRITTEN.
+// targeting/tie-to-further-along — a tie goes to the unit further along the chain.
 //
-// The manifest declares this point at `targeting/tie-to-further-along.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/components.md fixes the rule that makes every priority deterministic:
+// "Ties resolve toward the unit further along the chain, so the choice is
+// deterministic." It is its own point because it is what a build gets wrong by
+// leaving the choice to whatever order its own list happened to be in — which
+// looks fine until two units line up exactly.
 //
-// THE REQUIREMENT. Two in-range units that tie on the priority's own measure —
-// the same distance under nearest, the same health under strongest — resolve
-// toward the one further along the chain, so the choice is deterministic and
-// repeats across two identical runs.
-//
-// HOW IT IS DECIDED. Park two units tied on the measure at different
-// checkpoints and fire once under each tying priority. The evidence it hands
-// back is `tie` (replay): the tie resolved toward the further unit.
+// Two priorities are read, because a tie is reached differently under each. Under
+// `nearest` the pair stands at the same distance on opposite sides of the shooter;
+// under `strongest` the pair carries the same health. Both pairs head for
+// different checkpoints, which is what the tie-break resolves on. Each priority is
+// read twice, with the two units posed in the other order the second time, so a
+// build that answers with whichever unit it was handed first fails one of the two.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  releaseUnit,
+  type Harness,
+  type Targeting,
+} from "../harness";
+import { firstShotTarget, standShooter } from "./scenario";
 
-import { fail } from "../assert";
+/** The two checkpoints the tied pair head for. */
+const AHEAD = 6;
+const BEHIND = 2;
 
-describe("targeting.tie-to-further-along", () => {
-  it("A tie resolves toward the unit further along", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `targeting.tie-to-further-along` has not been written yet",
-    );
+/** The two places, the same distance from the centre on opposite sides. */
+const LEFT = { x: -60, y: 0 };
+const RIGHT = { x: 60, y: 0 };
+
+/** One health both units of the `strongest` pair carry. */
+const TIED_HP = 200;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+/**
+ * Pose a tied pair and read which of the two the structure shot.
+ *
+ * `aheadFirst` decides which of the two is released first, so the same tie can be
+ * put to the build in both orders.
+ */
+async function shootTiedPair(
+  harness: Harness,
+  priority: Targeting,
+  aheadFirst: boolean,
+): Promise<{ target: number | null; ahead: number }> {
+  harness.debug.clearStructures();
+  harness.debug.clearUnits();
+  harness.debug.clearProjectiles();
+  const shooter = standShooter(harness, priority);
+
+  const release = (
+    waypoint: number,
+    offset: { x: number; y: number },
+  ): number =>
+    releaseUnit(harness, "dynamo", {
+      waypoint,
+      at: { x: shooter.cx + offset.x, y: shooter.cy + offset.y },
+      hp: TIED_HP,
+      frozen: true,
+    });
+
+  let ahead: number;
+  if (aheadFirst) {
+    ahead = release(AHEAD, RIGHT);
+    release(BEHIND, LEFT);
+  } else {
+    release(BEHIND, LEFT);
+    ahead = release(AHEAD, RIGHT);
+  }
+
+  return { target: await firstShotTarget(harness), ahead };
+}
+
+it("resolves a tie under nearest and under strongest toward the further unit", async () => {
+  openYard(h, { wave: 1 });
+
+  await captureReplay(h, "tie", async () => {
+    for (const priority of ["nearest", "strongest"] as const) {
+      for (const aheadFirst of [true, false]) {
+        const shot = await shootTiedPair(h, priority, aheadFirst);
+        assertEqual(
+          shot.target,
+          shot.ahead,
+          `the unit heading for checkpoint ${AHEAD} rather than the one ` +
+            `heading for ${BEHIND}, with the pair tied under \`${priority}\` ` +
+            `and the further unit released ${aheadFirst ? "first" : "second"} ` +
+            `(specs/components.md)`,
+        );
+      }
+    }
   });
 });
