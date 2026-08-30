@@ -78,7 +78,25 @@ import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
-import { createCanvas, type Canvas, type SKRSContext2D } from "@napi-rs/canvas";
+import {
+  createCanvas,
+  Image,
+  type Canvas,
+  type SKRSContext2D,
+} from "@napi-rs/canvas";
+
+// The engine's recorder decides whether a draw source is a bitmap by matching the
+// host's own constructor names, and a name the host does not define never matches.
+// Node defines no `ImageBitmap`, so the images this harness draws from -- which are
+// `@napi-rs/canvas`'s `Image` -- were recorded as an opaque marker with no pixels
+// behind it. Every replay that drew a produced sprite therefore reached a reviewer
+// with the sprite missing from it.
+//
+// Naming that class `ImageBitmap` on the host is the whole fix, and it belongs here
+// rather than in the engine: matching by name is the engine's deliberate design, and
+// it is correct in the browser it is written for. This harness is the Node-side
+// adapter, so supplying the name the host lacks is its job.
+(globalThis as Record<string, unknown>).ImageBitmap ??= Image;
 import {
   ConstantClock,
   PlayerController,
@@ -143,6 +161,7 @@ import {
   type MapId,
   type MenuAction,
   type PanelAction,
+  type PressControl as PressAction,
   type StatusControl as StatusAction,
   type Tile,
 } from "../src/constants";
@@ -154,6 +173,7 @@ import type {
   MenuButton,
   OverlayName,
   PanelButton,
+  PressButton,
   Screen,
   SpawnType,
   StatusControl,
@@ -172,6 +192,7 @@ export {
   type MenuButton,
   type OverlayName,
   type PanelButton,
+  type PressButton,
   type ProjectileView,
   type Screen,
   type SpawnType,
@@ -1982,6 +2003,18 @@ export function panelControl(
   return found as PanelButton;
 }
 
+/** The panel's own control carrying that action, or a failure naming what was drawn. */
+export function pressControl(h: Harness, action: PressAction): PressButton {
+  const drawn = h.debug.pressControls();
+  const found = drawn.find((c) => c.action === action);
+  assertTruthy(
+    found,
+    `pressControls() to carry a \`${action}\` control ` +
+      `(specs/instrumentation.md); it carries ${describeControls(drawn)}`,
+  );
+  return found as PressButton;
+}
+
 /** The menu choice carrying that action, or a failure naming what was drawn. */
 export function menuControl(h: Harness, action: MenuAction): MenuButton {
   const drawn = h.debug.menuButtons();
@@ -2013,6 +2046,14 @@ export function pressPanel(
   label?: string,
 ): Promise<void> {
   return clickControl(h, panelControl(h, action, label));
+}
+
+/** Find the panel's own control by action and press its center. */
+export function pressPressControl(
+  h: Harness,
+  action: PressAction,
+): Promise<void> {
+  return clickControl(h, pressControl(h, action));
 }
 
 /** Find the menu choice by action and press its center. */
