@@ -1,18 +1,156 @@
-<!--
-SCAFFOLD PLACEHOLDER. This file is declared by test-case.toml so the case
-resolves, and its contents are written by the specification stage of the
-v3.0.0 rework. Nothing below is v3.0.0 text yet.
--->
+# Cascade — The pointer and the controls
 
-# The pointer and every control it answers
+This file defines how a player operates the game: what a press picks up, how a
+held run follows and lands, what separates a click from a drop, the double click,
+and the rectangle each on-screen control answers. The piles these gestures act on
+are in `specs/table.md`, and the rules that accept or refuse a move are in
+`specs/foundations.md`, `specs/tableau.md`, and `specs/stock.md`.
 
-This specification file has not been written yet.
+## How input reaches the game
 
-**Scope.** That a click is a tap and a drag is a touch drag, on the same
-footing; that every pointer sample a frame delivers is answered in the order it
-arrived; the grab rule; the drag threshold and what it decides; that a held run
-follows the pointer and a legal target under it is highlighted; the drop rule,
-resolved against the drop rectangles specs/table.md fixes; the double-click
-rule with its window and its slop, and the auto-move it performs; sole
-ownership of the hit rectangles for the two title items, the how-to BACK item
-and the three HUD controls; the overlay toggle key. Branches on engine.slug.
+{{#if (eq engine.slug "none")}}
+This game stands on no engine, so the pointer belongs to the runtime layer you
+write. What the game reads from that layer is a pointer position in the game's
+logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, and
+a release edge, one entry per event the page delivered, in the order they
+arrived.
+{{else if (eq engine.slug "simple-2d")}}
+The pointer belongs to the {{engine.name}} engine, which documents it in the
+`engine/` directory at the root of this repository. What the game reads from it
+is the samples delivered since the previous frame, each carrying a pointer
+position in the game's logical units on the `STAGE_W x STAGE_H` (`1280 x 720`)
+stage and its press or release edge, in the order they arrived.
+{{else}}
+The pointer belongs to the {{engine.name}} engine, which documents it in the
+`engine/` directory at the root of this repository. What the game reads from it
+is the samples the player controller is handed each frame, each carrying a
+pointer position in the game's logical units on the `STAGE_W x STAGE_H`
+(`1280 x 720`) stage and its press or release edge, in the order they arrived.
+{{/if}}
+
+Every sample a frame delivers is answered on its own, in the order it arrived, so
+a press and the release that followed it inside one frame both take effect and a
+gesture is never reduced to the last position of the frame that carried it.
+
+A mouse and a touchscreen stand on the same footing. A press is a mouse button
+going down or a finger touching down, a move is either one travelling, and a
+release is the button coming up or the finger lifting. Every control the game
+carries answers those three, so the game is complete on a touch device with no
+mouse attached, and dragging a card neither scrolls nor zooms the page.
+
+## What a press picks up
+
+A press resolves to the card drawn over every other card at the press point,
+which is the last card of the pile drawn there. What it lifts depends on that
+card:
+
+| The card under the press | What the press lifts |
+| --- | --- |
+| A face-up card in a column | That card and every card below it in the column, as the run `specs/tableau.md` defines |
+| The waste's top card | That card alone |
+| A foundation's top card | That card alone |
+| A face-down card | Nothing |
+| A card on the waste that is not its top card | Nothing |
+
+A press that lands on no card lifts nothing, and so does a press on the stock.
+
+The run enters the hand on the press itself, before the pointer has moved at all,
+and it is the run in hand from that moment until the gesture ends. The run holds
+the position the pointer gives it: it keeps the offset between the press point
+and the leading card's top-left, so the run travels exactly as far as the pointer
+does, and it is drawn above the piles it passes over.
+
+While a run is held, the pile that would accept it, if any, is the drop target,
+and it is drawn as highlighted. A pile is the drop target only while the release
+rule below would resolve the run to it and that pile accepts the run. The target
+is recomputed as the pointer moves.
+
+## A click and a drop
+
+A gesture runs from a press to the release that follows it. The release decides
+which of the two kinds of gesture it was:
+
+| The release point | The gesture |
+| --- | --- |
+| Within `DRAG_THRESHOLD` (`5`) of the press point | A click |
+| Farther than `DRAG_THRESHOLD` from the press point | A drop |
+
+A click does all of the following, in this order:
+
+1. It returns any held run to the pile it was lifted from, in the order it was
+   lifted, with every face unchanged.
+2. It activates the control whose hit rectangle contains the press point, when
+   the press point lies in one.
+3. It turns the stock, as `specs/stock.md` states, when the press point lies in
+   the stock's drop rectangle.
+
+A drop resolves the run in hand against the drop rectangles `specs/table.md`
+fixes. It activates no control and turns no stock.
+
+A release with nothing in hand and no control or stock under its press changes
+nothing.
+
+## Where a drop lands
+
+A drop resolves to the pile whose drop rectangle contains the **center of the
+run's leading card**, that card being the one drawn at the top of the held run.
+The rectangles do not overlap, so that center lies in at most one of them.
+
+| Where the leading card's center lies | The result |
+| --- | --- |
+| In the rectangle of a pile that accepts the run | The move is applied: the run leaves its source and lands on that pile |
+| In the rectangle of a pile that refuses the run | The run returns to the pile it was lifted from |
+| In no pile's rectangle | The run returns to the pile it was lifted from |
+
+An applied move is a move like any other, so a column it empties of face-up cards
+turns its newly exposed card, as `specs/tableau.md` states, and a board it
+completes wins the game, as `specs/victory.md` states.
+
+## The double click
+
+A press is a double click when all three hold:
+
+- it arrives within `DOUBLE_CLICK_WINDOW` (`0.30`) seconds of game time of the
+  previous press;
+- its point lies within `DOUBLE_CLICK_SLOP` (`20`) of the previous press's point;
+- it lands on a playable card.
+
+A playable card is the waste's top card or a column's lowest face-up card.
+
+A double click lifts nothing. Instead the card under it is sent to the foundation
+it belongs on, when that foundation accepts it by `specs/foundations.md`, and the
+gesture ends there; the release that follows changes nothing. A card the
+foundations refuse stays where it is. Sending a card home this way is a move like
+any other, so it turns a newly exposed column card and it can win the game.
+
+Every press records its point and the game time it arrived at, and that is the
+press the next one is measured against.
+
+## The controls
+
+Each control answers a click whose press point lies inside its rectangle. Every
+rectangle is given as `{ x, y, w, h }` in logical units, and each control's label
+is drawn inside its own rectangle. What each one does is in `specs/screens.md`.
+
+| Constant | Rectangle | Where it is |
+| --- | --- | --- |
+| `TITLE_NEW_GAME` | `{ x: 480, y: 448, w: 320, h: 52 }` | The title screen |
+| `TITLE_HOW_TO` | `{ x: 480, y: 516, w: 320, h: 52 }` | The title screen |
+| `HOWTO_BACK` | `{ x: 480, y: 600, w: 320, h: 52 }` | The how-to screen |
+| `HUD_NEW_GAME` | `{ x: 224, y: 680, w: 180, h: 36 }` | The HUD, during play |
+| `HUD_MENU` | `{ x: 420, y: 680, w: 120, h: 36 }` | The HUD, during play |
+| `HUD_SOUND` | `{ x: 556, y: 680, w: 120, h: 36 }` | The HUD, during play |
+
+A control answers only on the screen it belongs to.
+
+## The debug overlay
+
+{{#if (eq engine.slug "none")}}
+The read-only debug overlay `specs/instrumentation.md` describes is shown and
+hidden by the backtick key, `KeyboardEvent.code` `Backquote`. It is off when the
+game starts. The overlay and its toggle are part of the runtime layer you write.
+{{else}}
+The read-only debug overlay is the engine's, shown and hidden by the backtick
+key, `KeyboardEvent.code` `Backquote`, and off when the game starts. What it
+shows is in `specs/instrumentation.md`.
+{{/if}}

@@ -1,92 +1,99 @@
-<!--
-SCAFFOLD PLACEHOLDER. This text is carried forward from v2.1.0 under its old
-name specs/states.md, which the v3.0.0 decomposition splits into this file and
-specs/controls.md.hbs.
-The specification stage of the v3.0.0 rework rewrites it. Nothing below is
-v3.0.0 text yet.
--->
+# Cascade — The screens and the HUD
 
-# States
+This file defines the four screens the game moves between, what each one shows,
+and the three controls of the HUD. The rectangles these controls answer are in
+`specs/controls.md`, and the table the `playing` screen draws is in
+`specs/table.md`. Every piece of screen copy below carries the name this
+specification gives it, and the literal text it names is the text that is drawn.
 
-## Overview
+Every piece of text a screen shows is legible against whatever sits behind it at
+the logical stage size. The palette, the type, and the layout of each screen are
+yours.
 
-This file defines the game's states and screens, the controls, the on-table HUD,
-and what is out of scope. It refers to the layout in `specs/table.md`, the rules
-in `specs/rules.md`, the win animation in `specs/victory.md`, and the deal mode
-defined in `specs/rules.md`.
+## The screens
 
-## Game states
+The game is on exactly one of four screens at a time, and it opens on `title`.
 
-The game is a small state machine. Each state has a clear screen and controls.
+| Screen | What it is |
+| --- | --- |
+| `title` | The opening screen, and where the game starts. |
+| `howto` | How to play. |
+| `playing` | Live play on the table. |
+| `won` | The victory cascade and the message that follows it. |
 
-1. Title / main menu. Shows the title `CASCADE`, a short tagline (for example
-   `KLONDIKE SOLITAIRE`), and a vertical menu listing `NEW GAME` and `HOW TO
-   PLAY`, and, next to or beneath the title, a small label naming the deal mode
-   (see `specs/rules.md`). The felt table may show dimmed behind the menu. The
-   selected item is highlighted in the accent color.
-2. How to play. A simple screen describing the goal (build the four foundations
-   Ace-to-King by suit), the controls below, and the deal mode. Returns to
-   the menu.
-3. In game. The live table: stock, waste, four foundations, and the seven tableau
-   columns, played with a mouse or on a touchscreen. The HUD (below) sits clear of
-   the piles.
-4. Won. Entered the instant the last card reaches the foundations. The victory
-   cascade plays (see `specs/victory.md`) over the table, then a brief `YOU WIN`
-   message with a prompt to start a new game. Dismissing it (a click or the New
-   Game control) clears the cascade and deals a fresh game.
+### `title`
 
-There is no pause state and no timed loss; solitaire is untimed here, and this
-build keeps no score and no clock.
+| Element | Constant | Content |
+| --- | --- | --- |
+| Title | `TITLE_TEXT` | `CASCADE` |
+| Tagline | `TAGLINE_TEXT` | `KLONDIKE SOLITAIRE` |
+| Items | `TITLE_ITEMS` | `NEW GAME`, `HOW TO PLAY`, in that order |
+| Deal-mode label | `DEAL_MODE_LABEL` | This build's label, as `specs/stock.md` states |
 
-## Controls
+Each item's label is drawn inside the rectangle `specs/controls.md` fixes for it,
+`NEW GAME` in `TITLE_NEW_GAME` and `HOW TO PLAY` in `TITLE_HOW_TO`. The
+deal-mode label is drawn somewhere on the screen so a player sees which deal the
+game is played with.
 
-Cascade is pointer-driven and must be fully playable both with a mouse and on a
-touchscreen — the two are equal footing, not a desktop game with a touch
-afterthought. Each control below reads for the mouse and its direct touch
-equivalent: a click is a tap, a mouse drag is a touch drag (press, move a finger,
-lift), and a double-click is a double-tap. No control may depend on hover, a right
-click, a scroll wheel, or a keyboard, since a touchscreen has none of them; the
-game must be complete on a touch device with no mouse attached.
+| Item | Does |
+| --- | --- |
+| `NEW GAME` | Deals a fresh game, as `specs/deal.md` states, and moves to `playing`. |
+| `HOW TO PLAY` | Moves to `howto`. |
 
-- Turn the stock: click or tap the stock pile to turn the mode's turn count of
-  cards onto the waste; click or tap the empty stock slot to recycle the waste (see
-  `specs/rules.md`).
-- Move a card or run: press on a playable card (mouse button or finger) and drag
-  it. Grabbing a face-up tableau card picks up that card and every face-up card
-  below it as a run (`specs/rules.md`); grabbing the waste's top card picks up that
-  one card. Release (mouse up or lift the finger) over a target pile to drop. While
-  dragging, the held cards follow the pointer and float above the table; a legal
-  drop target under the pointer is highlighted in the drop-target color. Releasing
-  over a legal target completes the move; releasing anywhere else returns the cards
-  to their origin. Card and drop targets must be large enough to grab reliably with
-  a fingertip, and dragging must not scroll or zoom the page.
-- Auto-move to foundation: double-click or double-tap a playable card (the waste's
-  top card, or the bottom face-up card of a column) to send it to its foundation
-  when legal (`specs/rules.md`).
-- HUD controls: click or tap the on-table controls (below).
-- Menus: click or tap an item to select and activate it.
+The table may show behind the screen, dimmed or otherwise quieted, if that suits
+the look you design.
 
-A face-down card is never draggable, and a face-down tableau card that becomes the
-column's bottom card is turned face-up automatically (`specs/rules.md`).
+### `howto`
 
-## HUD
+How to play, written in a player's words rather than as rules of a system. It
+covers:
 
-The HUD is deliberately minimal (there is no score or clock):
+- the goal, which is to build all four foundations from Ace to King;
+- that a column builds down in rank and alternates in color, and that only a King
+  fills an empty column;
+- that the stock turns cards onto the waste and recycles when it runs out;
+- how a card is moved, and that a card is sent home by double-clicking it.
 
-- A small `NEW GAME` control, and a small `MENU` control, placed clear of the
-  piles (for example along the bottom edge of the table). `NEW GAME` deals a fresh
-  game immediately; `MENU` returns to the title.
-- A small, dim mode label (for example `DRAW THREE`) so the deal mode is always
-  visible during play. Its text comes from `specs/rules.md`.
-- If you implement undo, an `UNDO` control may sit alongside these.
+Whatever wording it uses, the screen carries each of these four tokens as a
+standalone word: `ACE`, `KING`, `STOCK`, and `DOUBLE-CLICK`.
+
+The screen carries one control, labelled `HOWTO_BACK_LABEL` (`BACK`) and drawn
+inside the `HOWTO_BACK` rectangle. It returns to `title`.
+
+### `playing`
+
+The live table. It draws all thirteen piles at the anchors `specs/table.md`
+fixes, the run in hand and the highlighted drop target `specs/controls.md`
+describes, and the HUD below.
+
+### `won`
+
+Reached by the win, as `specs/victory.md` states. The victory cascade runs over
+the table, and once it is done the screen shows `WIN_TEXT` (`YOU WIN`) over the
+painted table. A press deals a fresh game and returns to `playing`, as
+`specs/victory.md` states.
+
+## The HUD
+
+The HUD occupies the strip `specs/table.md` fixes along the bottom of the table,
+so it never overlaps a pile. It is drawn on the `playing` screen and carries
+three controls and one label.
+
+| Item | Constant | Rectangle | Does |
+| --- | --- | --- | --- |
+| `NEW GAME` | `HUD_ITEMS[0]` | `HUD_NEW_GAME` | Deals a fresh game and stays on `playing`. |
+| `MENU` | `HUD_ITEMS[1]` | `HUD_MENU` | Returns to `title`. |
+| `SOUND` | `HUD_ITEMS[2]` | `HUD_SOUND` | Toggles muting, as `specs/audio.md` states. |
+
+`HUD_ITEMS` is `["NEW GAME", "MENU", "SOUND"]`, and each label is drawn inside
+its own rectangle. `DEAL_MODE_LABEL` is drawn in the strip as well, so the deal
+mode is visible throughout play.
+
+The HUD carries nothing else. There is no score, no move counter, and no clock.
 
 ## Out of scope
 
-- Other solitaire games. FreeCell, Spider, Pyramid, and the like are not part of
-  this build. Build only the Klondike solitaire this specification describes.
-- Scoring, timers, statistics, or a move counter; this build tracks none of them.
-- Hints, an auto-solver, or an auto-complete button that finishes the game for the
-  player.
-- Persistence of games or settings between sessions.
-- Network, online, or multiplayer play, and gamepad input. (Mouse and touch input
-  are both required and in scope — see the controls above; only gamepad is out.)
+- Other patience games. This build is the Klondike this specification describes.
+- A score, a timer, statistics, hints, an auto-solver, and undo.
+- Persistence of a game or a setting between sessions. Each session starts fresh.
+- Network, online, or multiplayer play, and gamepad input.

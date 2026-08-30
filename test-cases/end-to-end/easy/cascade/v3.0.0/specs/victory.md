@@ -1,94 +1,103 @@
-<!--
-SCAFFOLD PLACEHOLDER. This text is carried forward from v2.1.0.
-The specification stage of the v3.0.0 rework rewrites it. Nothing below is
-v3.0.0 text yet.
--->
+# Cascade — Winning and the victory cascade
 
-# Victory cascade
+This file defines the win and the victory cascade that follows it: the cadence
+cards launch at, the motion of a card in flight, the trail it paints, and how the
+cascade ends. The anchors cards launch from are in `specs/table.md`, and the
+screen the cascade runs on is in `specs/screens.md`.
 
-## Overview
+## The win
 
-This file defines the victory cascade, the animation that plays when the game is
-won and the feature the game is named for. It builds on the layout in
-`specs/table.md`, the win condition in `specs/rules.md`, and the coordinate system
-in `specs/overview.md`. Implement it exactly; it is the game's signature mechanic.
+The game is won the instant all `DECK_SIZE` (`52`) cards are on the foundations,
+each foundation complete from its Ace to its King. The win is reached by whatever
+move put the last card home, whether a released drop or a double click, and the
+game moves to the `won` screen on that move. Play stops there: no further card is
+moved by the player and the table below is empty.
 
-## Trigger condition
+A game with no legal move left is simply unwinnable. There is no loss condition
+and no timer, and a player leaves such a game through the controls
+`specs/screens.md` states.
 
-The cascade begins the instant the game is won, with all 52 cards on the
-foundations (`specs/rules.md`). Normal play stops; the tableau, stock, and waste
-are now empty, and only the four completed foundations remain on the table. The
-cascade then launches those foundation cards, one at a time, to bounce down and
-across the table, each leaving a permanent painted trail, until the whole table is
-covered and every card has flown off the edges.
+## The cascade
 
-## Simulation
+The victory cascade begins with the win. Every card on the foundations launches
+in turn, arcs under gravity, bounces along the floor, paints itself onto the
+table as it goes, and drifts off a side edge.
 
-Run the animation on a fixed timestep of exactly 120 Hz — one step is `1/120` of a
-second of game time — decoupled from rendering, integrating each in-flight card's
-motion every step, so the motion is reproducible and independent of the render
-frame rate. The rate is mandatory, not a suggestion: a step is the unit the debug
-API advances the cascade in (`specs/instrumentation.md`), and a unit is only a
-unit if its length is fixed. All values below are in the
-logical-pixel space of `specs/overview.md` (`x` right, `y` down); acceleration is
-in `px/s²`, velocity in `px/s`.
+### The launch clock
 
-### Launching cards
+The cascade keeps a launch clock, in seconds, which holds `LAUNCH_INTERVAL`
+(`0.18`) when the cascade begins, so the first card launches on the cascade's
+first frame.
 
-- Cards launch one at a time at a steady cadence of one every `0.18 s` (about 5–6
-  per second).
-- Launch order cycles the four foundations: take the current top card of a
-  foundation, launch it, then move to the next foundation, and repeat. Because the
-  foundations are complete, this walks each foundation down from King to Ace over
-  its turns. Continue until all 52 cards have been launched.
-- A launched card starts at the on-table position of the foundation it came from
-  (`specs/table.md`) and becomes an independent falling card with an initial
-  velocity:
-  - horizontal: `vx` of random magnitude in `[180, 420]` with a random sign (left
-    or right), so every card eventually clears a side edge;
-  - vertical: `vy = −120` (a slight upward pop) so the card arcs before falling.
+Each frame the clock adds the frame's delta. While it holds at least
+`LAUNCH_INTERVAL` and cards remain unlaunched, `LAUNCH_INTERVAL` is subtracted
+from it and the next card launches. The remainder is carried, so after `t`
+seconds of a running cascade exactly `floor(t / LAUNCH_INTERVAL) + 1` cards have
+launched, capped at fifty-two, and the mean gap between successive launches is
+`LAUNCH_INTERVAL`.
 
-### Motion and bouncing
+### What launches
 
-Each in-flight card, every step:
+The launch order cycles the four foundations, taking foundation `0`, then `1`,
+then `2`, then `3`, then `0` again, and skipping a foundation that has been
+emptied. Each launch takes the current top card of the foundation whose turn it
+is, so each foundation walks its King down to its Ace over its turns, and the
+cascade launches all fifty-two cards.
 
-1. Apply gravity: `vy += 1800 * dt`.
-2. Advance: `x += vx * dt`, `y += vy * dt`.
-3. Bounce off the bottom. When the card's bottom edge reaches the table floor
-   (`y + 140 >= 720`) while moving down, reflect and damp the vertical velocity,
-   `vy = −vy * 0.80`, and seat the card back on the floor (`y = 720 − 140`). The
-   horizontal velocity is unchanged (no floor friction), so the card keeps
-   drifting sideways and its bounces lose height each time.
+A launched card leaves the foundation it came from and becomes a card in flight:
 
-The card does not collide with anything else, not the walls, not the other cards,
-not the foundations. It simply falls, bounces on the floor, and drifts off one
-side.
+| Quantity | Value |
+| --- | --- |
+| Its top-left | The anchor of the foundation it launched from, as `specs/table.md` fixes it |
+| `vy` | `LAUNCH_VY` (`-120`) |
+| `vx` | A magnitude drawn uniformly from `[LAUNCH_VX_MIN, LAUNCH_VX_MAX]` (`[180, 420]`), with a sign chosen with equal probability |
 
-### Painted card trail
+The magnitude and the sign are drawn from the game's seeded generator, as
+`specs/instrumentation.md` requires. A card launched in a frame takes no motion
+in that frame.
 
-This is what makes the cascade read the way it should: the in-flight cards are
-drawn onto a persistent layer that is not cleared between frames. Every step (or
-every rendered frame), each moving card is drawn at its current position on top of
-whatever is already painted, so a card leaves a dense trail of overlapping card
-images tracing its arc; the table fills with bouncing-card streaks rather than
-showing a single moving sprite. The trail is opaque card images, not a fade; the
-screen progressively fills as more cards launch and bounce.
+### Each frame of a running cascade
 
-- The four completed foundations (the cards not yet launched) remain drawn in
-  place beneath the accumulating trail until each is launched in turn.
-- Do not clear the painted trail while the cascade runs.
+Every card in flight is advanced, in order, by these five steps, against the
+frame's delta time `dt` in seconds:
 
-### Ending
+1. `vy += GRAVITY * dt`, with `GRAVITY` being `1800`.
+2. `x += vx * dt` and `y += vy * dt`.
+3. If `y >= FLOOR_Y` (`580`) while `vy` is greater than zero, then
+   `vy = -vy * BOUNCE_DAMP` with `BOUNCE_DAMP` being `0.80`, and `y = FLOOR_Y`.
+   `vx` is unchanged, so the card keeps its horizontal drift and each bounce
+   peaks lower than the one before it.
+4. The card is stamped onto the painted layer at its position.
+5. If `x + CARD_W < 0` or `x > STAGE_W`, the card retires and leaves the flight.
 
-- A card is retired once its entire footprint has passed beyond the left edge
-  (`x + 100 < 0`) or the right edge (`x > 1280`). Because every card carries a
-  minimum horizontal speed, all 52 retire in finite time.
-- When the last card has launched and retired, the cascade is complete. Show a
-  brief `YOU WIN` message over the painted table with a prompt to start a new game
-  (see `specs/states.md`). The painted trail stays behind the message until the
-  player starts a new game, which clears it and deals anew.
-- The player may dismiss early: a click or the New Game control at any point during
-  the cascade clears the painted layer and deals a new game.
+The launch clock is advanced after every card in flight has been advanced.
 
-The result is the classic patience finale, a screen slowly buried under arcs of
-bouncing cards, produced here from an original deck on an original table.
+`FLOOR_Y` is `STAGE_H - CARD_H`, so a card seated on the floor has its bottom
+edge on the bottom of the stage. A card in flight collides with nothing: not the
+side edges, not the piles beneath it, and not another card in flight, so two
+cards crossing the same point keep their velocities through the crossing and a
+card driven at a side edge crosses it rather than turning.
+
+### The painted layer
+
+The painted layer is a persistent surface the size of the stage. It is never
+cleared while the cascade runs, so the stamps a card leaves stay on the table
+long after the card has moved on, the painted area grows for as long as cards are
+flying, and the felt ends buried under overlapping cards.
+
+The layer is drawn beneath the cards still on the foundations, beneath the cards
+in flight, and beneath the `WIN_TEXT` message. The cards that have not launched
+yet stay drawn at their foundation anchors while the cascade runs above them.
+
+The painted layer is cleared by a new deal, as `specs/deal.md` states, and by
+nothing else.
+
+### The end of the cascade
+
+The cascade is done once all fifty-two cards have launched and no card is in
+flight. `specs/screens.md` states what the `won` screen shows from then on, and
+the painted table stays behind that message.
+
+A press anywhere, during the cascade or after it, deals a fresh game and moves to
+the `playing` screen. The deal clears the painted table, as `specs/deal.md`
+states.
