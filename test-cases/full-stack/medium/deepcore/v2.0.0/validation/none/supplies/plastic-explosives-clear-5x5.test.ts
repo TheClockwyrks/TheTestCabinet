@@ -1,25 +1,74 @@
-// Deepcore — supplies.plastic-explosives-clear-5x5. STUB: NOT YET AUTHORED.
+// Deepcore — supplies/plastic-explosives-clear-5x5: Plastic Explosives open the
+// wider block around the miner and nothing outside it.
 //
-// Plastic Explosives clear a wider block
+// `specs/items.md`: Plastic Explosives "Clears the `5x5` block of cells centered
+// on the miner's cell", "a radius of `2`", and "Using one consumes one". The
+// miner stands in a pocket cut out of solid rock, the charge is used through the
+// control `specs/instrumentation.md` names for it, and every cell of the block is
+// read as open tunnel afterwards while the whole ring one cell further out is
+// read as the rock it was.
 //
-// Using Plastic Explosives clears the 5 by 5 block of cells centered on the
-// miner cell, a radius of 2, and consumes one.
-//
-// Automated validation: pose solid rock around the miner, use Plastic
-// Explosives and read every cell of the block as tunnel with the ring beyond
-// it untouched.
-//
-// `test-case.toml` declares this suite as `supplies/plastic-explosives-clear-5x5.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (blast (replay)) around the drive.
+// A blast that cleared too little and one that cleared too much are both a wrong
+// radius, so both readings belong to this one requirement. The block is centred
+// on the cell the SNAPSHOT reports the miner in.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { PLASTIC_RADIUS } from "../constants";
+import { captureReplay, createHarness, type Harness } from "../harness";
+import {
+  AFTERMATH_FRAMES,
+  blockCells,
+  openBlastScene,
+  readCells,
+  ringCells,
+} from "./blast-scene";
 
-test("Plastic Explosives clear a wider block", () => {
-  throw new Error(
-    "Deepcore validator `supplies/plastic-explosives-clear-5x5` is declared in test-case.toml but has not been authored yet.",
+/** Held so the count can be read down by exactly one. */
+const HELD = 3;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("clears the 5 by 5 block around the miner and consumes one charge", async () => {
+  const centre = await openBlastScene(h);
+  await h.debug.setItemCount("plastic-explosives", HELD);
+
+  await captureReplay(h, "blast", async () => {
+    await h.debug.useItem("plastic-explosives");
+    await h.advance(AFTERMATH_FRAMES);
+  });
+
+  const cells = blockCells(centre, PLASTIC_RADIUS);
+  const inside = await readCells(h, cells);
+  for (const [i, tile] of inside.entries()) {
+    assertEqual(
+      tile.kind,
+      "tunnel",
+      `cell (${cells[i].col}, ${cells[i].row}) inside the block`,
+    );
+  }
+
+  const outside = ringCells(centre, PLASTIC_RADIUS + 1);
+  const ring = await readCells(h, outside);
+  for (const [i, tile] of ring.entries()) {
+    assertEqual(
+      tile.kind,
+      "rock",
+      `cell (${outside[i].col}, ${outside[i].row}) outside the block`,
+    );
+  }
+
+  assertEqual(
+    (await h.snapshot()).items["plastic-explosives"],
+    HELD - 1,
+    "Plastic Explosives left",
   );
 });

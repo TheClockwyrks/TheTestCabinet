@@ -1,25 +1,70 @@
-// Deepcore — supplies.using-with-nothing-to-change-is-a-no-op. STUB: NOT YET AUTHORED.
+// Deepcore — supplies/using-with-nothing-to-change-is-a-no-op: a supply with
+// nothing to do is not spent.
 //
-// A supply that would change nothing is not consumed
+// `specs/items.md`: "Using an item held zero of, or one that would change
+// nothing, is a no-op: a note is shown and nothing is consumed." The two supplies
+// that can have nothing to do are the two that fill a bar to a maximum, so the
+// scene is a full hull and a full tank with both of them held.
 //
-// Using a supply that would change nothing, such as nanobots at full hull or
-// emergency fuel at a full tank, is a no-op: a note is shown and nothing is
-// consumed.
-//
-// Automated validation: pose a full hull and a full tank with both supplies
-// held, use each and read the counts unchanged.
-//
-// `test-case.toml` declares this suite as `supplies/using-with-nothing-to-change-is-a-no-op.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (noop (image)) around the drive.
+// Each is used and the counts are read back unchanged. The hull and the tank are
+// read too, because a build that spent the supply and clamped the bar at its
+// maximum would leave the bars looking right and the pocket a supply lighter,
+// which is exactly what the specification says must not happen.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  stageItems,
+  standAtCamp,
+  type Harness,
+} from "../harness";
+import { openCampScene } from "./blast-scene";
 
-test("A supply that would change nothing is not consumed", () => {
-  throw new Error(
-    "Deepcore validator `supplies/using-with-nothing-to-change-is-a-no-op` is declared in test-case.toml but has not been authored yet.",
+/** Held so a consumption would be unmistakable. */
+const HELD = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("consumes nothing when the supply would change nothing", async () => {
+  await openCampScene(h);
+  await standAtCamp(h);
+  await stageItems(h, { nanobots: HELD, "emergency-fuel": HELD });
+
+  const { miner } = await h.snapshot();
+  await h.debug.setHull(miner.maxHull);
+  await h.debug.setFuel(miner.maxFuel);
+
+  await h.debug.useItem("nanobots");
+  await h.debug.useItem("emergency-fuel");
+  const after = await h.snapshot();
+
+  await h.advance(2);
+  await captureStill(h, "noop");
+
+  assertEqual(
+    after.items.nanobots,
+    HELD,
+    "nanobots held after using one at a full hull",
+  );
+  assertEqual(
+    after.items["emergency-fuel"],
+    HELD,
+    "emergency fuel held after using one at a full tank",
+  );
+  assertEqual(after.miner.hull, miner.maxHull, "hull after the refused repair");
+  assertEqual(
+    after.miner.fuel,
+    miner.maxFuel,
+    "the tank after the refused top-up",
   );
 });
