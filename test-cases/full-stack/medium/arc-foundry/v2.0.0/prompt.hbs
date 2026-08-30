@@ -1,106 +1,155 @@
 Build **Arc Foundry**, an electro-industrial tower-defense game that runs entirely in
-the browser, and **produce its art, effects, and audio yourself**, during this build,
-with the asset-generation tools on your `PATH`.
+the browser.
 
-Your project root is `{{workspace}}`. Create the game there.
+Your project root is `{{workspace}}`. Build the game there.
 
 ## Your starting point
 
-A starter project is already in place at `{{workspace}}`: a `package.json` that pins
-**Playwright** as a dev dependency and depends on the
-**`@test-cabinet/particle-runtime`** library (below). Its dependencies have already
-been installed for you: `node_modules/` is populated and Playwright's headless
-**Chromium** is downloaded, so you can build right away (see "Playwright and Chromium"
-below for what they are there for). Build on this project rather than replacing it:
-keep the `package.json`, add your framework, bundler, and a `build` script on top of
-it, and keep the lockfile in sync (see below).
+{{#if (eq engine.slug "none")}}
+A TypeScript project is already in place at `{{workspace}}`. Its dependencies are
+installed, so you can build and test right away: Vite builds it, Vitest tests it,
+ESLint lints it, and Prettier formats it. That toolchain is the whole of what it
+supplies.
+
+What is missing is everything under `src/` and everything under `assets/`, and
+neither directory exists yet. Nothing here supplies a frame loop, a canvas fit,
+input, audio, asset loading, an overlay, or a line of game code. `index.html` loads
+`/src/main.ts`, so that module is where your build starts.
+{{else if (eq engine.slug "simple-2d")}}
+A TypeScript project is already in place at `{{workspace}}`. Its dependencies are
+installed, so you can build and test right away. It is wired up end to end: Vite
+builds it, Vitest tests it, ESLint lints it, Prettier formats it, and `src/main.ts`
+already stands the engine up over the page's canvas and runs the game.
+
+What is missing is the game itself, `src/game.ts`, and everything under `assets/`,
+which does not exist yet. As seeded, `src/game.ts` is a stub whose `initialize`,
+`update`, and `render` throw `"not implemented"`. The stub is written against the
+`FoundryState` and `FoundryDebugApi` types the specification asks `src/game.ts` to
+declare, so the project does not type-check until those declarations exist.
+{{else}}
+A TypeScript project is already in place at `{{workspace}}`. Its dependencies are
+installed, so you can build and test right away. It is wired up end to end: Vite
+builds it, Vitest tests it, ESLint lints it, Prettier formats it, and `src/main.ts`
+already stands the engine up over the page's canvas and runs the game.
+
+What is missing is the game itself, `src/game.ts`, and everything under `assets/`,
+which does not exist yet. As seeded, `src/game.ts` is a stub game definition whose
+instance's `initialize` throws `"not implemented"`. The stub is written against the
+`FoundryState` and `FoundryDebugApi` types the specification asks `src/game.ts` to
+declare, so the project does not type-check until those declarations exist.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This build runs on no engine, so the layer beneath the game is yours as well: the
+frame loop and the delta time it hands each update, fitting the fixed logical stage
+onto the canvas, the pointer and the keyboard the player drives the game with, the
+audio, loading the produced asset files, and the on-screen debug overlay. The
+specification in `specs/` states what Arc Foundry needs from that layer and fixes
+nothing else about it.
+{{else if (eq engine.slug "simple-2d")}}
+## The {{engine.name}} engine
+
+This build runs on the **{{engine.name}}** engine, installed as a dependency of the
+project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install.
+
+The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
+description of the engine's API; the specification in `specs/` describes the game and
+does not restate the engine. The documentation also carries a complete worked example
+of unit-testing a game built on it.
+
+Build the game on the engine rather than beside it. The engine owns the frame loop
+and the delta time it hands your update, the input actions, the pointer, the audio
+cues, asset loading, and the on-screen debug overlay. It also holds the game's state,
+by value: each frame it hands `update` the current state read-only and keeps what
+`update` returns as the next, so a frame builds the next state from the current one
+rather than writing into it. Register what the game needs with the engine and use
+what it gives back. What remains yours is the game itself: its simulation and
+everything it draws.
+{{else}}
+## The {{engine.name}} engine
+
+This build runs on the **{{engine.name}}** engine, installed as a dependency of the
+project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install.
+
+The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
+description of the engine's API; the specification in `specs/` describes the game and
+does not restate the engine.
+
+Build the game inside the engine's framework rather than beside it. The engine owns
+the frame loop and the delta time it hands each tick, rendering and the camera, the
+input actions, the pointer, the audio cues, asset loading, and the on-screen debug
+overlay, and the game is written as subclasses of its classes: a game instance, a
+game mode, actors and their components, and the controllers that drive them. The
+engine constructs, ticks, and renders them in a fixed order. Register what the game
+needs with the engine and use what it gives back. What remains yours is the game
+itself: its rules, its state, and everything it draws through the engine's pipeline.
+{{/if}}
 
 ## What to read first
 
 The full specification is in the `specs/` directory at `{{workspace}}`, already
-present in your project. Read all of it before you start, and produce an
-implementation that matches the specification exactly. It is decomposed by concern:
-`specs/overview.md` (the pitch, goals, hard requirements, the stage, the palette and
-type, and the visual design), `specs/board.md` (the tile grid, the uniform component
-footprint, the waypoint pathing and mazing model, and the three maps),
-`specs/enemies.md` (the Load roster, the flyer, the Dynamo boss, and the per-wave HP
-scaling), `specs/towers.md` (the eight component types, the quality ladder, the stat
-tables, the combination towers, and the rotating-head and traveling-projectile
-rules), `specs/build.md` (the scrap-press build loop and the UPGRADE QUALITY track),
-`specs/gameplay.md` (the economy, Grid Integrity, the wave campaign, and the
-maze-rating finale), `specs/ui.md` (the game states, the required menus, and the HUD),
-`specs/modes.md` (the in-game difficulty and the
-map- and difficulty-select menus), `specs/controls.md`, `specs/assets.md` (the
-asset-production contract), `specs/instrumentation.md` (the debugging and automation
-API), and `specs/proof.md`.
+present in your project. Produce an implementation that matches the specification
+exactly. `specs/overview.md` states what you implement, which files stay as they are,
+the code quality the build is held to, and the commands that run over the finished
+repository.
 
-## Build requirements
+## The build interface
 
-Deliver a complete, polished, playable game, not a tech demo. The **hard
-requirements** — real graphics, no backend or credentials, the palette and type, a
-`README.md`, the game states, and the `window.__foundry` debugging and automation API
-and debug overlay (`specs/instrumentation.md`) — are stated in full in
-`specs/overview.md` (and the files it points to). That specification is
-authoritative; build to it rather than to a summary here. Three things bear
-restating, because the served build and the produced assets depend on them:
+`npm ci` then `npm run build` must produce the static site, with no other manual
+step, into `dist/` at the project root, with an `index.html` at the root of that
+directory. That directory must run when served as-is from any base path, at the root
+of a static file server or mounted under a sub-path of one. The scripts that do this
+are already in `package.json`.
 
-- **The fixed build/serve interface.** The project stays a **Node project** built
-  with only Node.js and npm-installed dependencies. Extend the provided `package.json`
-  at `{{workspace}}` and **commit a `package-lock.json`** (run `npm install` after you
-  change dependencies so the lockfile matches). `npm ci` then `npm run build` must
-  produce the static site, with no other manual step, into one of `dist/`, `build/`,
-  or `out/` at the project root, with an `index.html` at the root of that directory.
-  Serving that directory as-is must run the game, and it must work **at any base path**
-  (it is played back from a per-run sub-path, so any URL the build constructs at
-  runtime must be page-relative, never a leading `/`; for a bundler, set a relative
-  base such as `base: './'`). `specs/overview.md` and `specs/assets.md` state this in
-  full; follow it exactly.
-- **You PRODUCE the art, effects, and audio.** There is **no** pre-made game art in
-  this project. Instead, the run image puts six asset-generation tools on your
-  `PATH` — **`draw`** and **`draw-sheet`** (sprites and animated sprite sheets),
-  **`particle-2d`** (particle systems), and **`sfx-synth`**, **`sfx-sample`**, and
-  **`music`** (sound and music) — and you must **produce every asset the game plays
-  with these tools during this build**, then wire the produced files into the game.
-  Run each tool's `--help` to learn its operations. **`specs/assets.md` is the
-  authoritative contract**: it enumerates every sprite, animation, particle system,
-  and sound the game needs, names which tool produces each and where it lands under
-  `assets/`, and states how each is wired into the build, including that the
-  **electrical effects** (the arcs, chain-lightning, spark showers, and discharges
-  that are the headline of this build) are `particle-2d` systems played live through
-  the **`@test-cabinet/particle-runtime`** library already installed as a dependency
-  of your project (import it like any other dependency; do not fetch or reimplement
-  it). Load every produced file with page-relative URLs so it resolves from the served
-  sub-path.
-- **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are **illustrative examples, not targets to reproduce**, of the
-  title, map-select, gameplay, and Overload screens. Design your own menus and layout
-  from the specification; the images only illustrate one way the intended look can come
-  together.
+## The assets you produce
 
-## Playwright and Chromium
+`specs/assets.md` is the authoritative contract for the art, animation, particle
+effects, and sound this build ships. It names which tool produces each asset, the
+exact path each file lands at under `assets/`, the bar each meets, and how each is
+wired into the game.
 
-The project's **Playwright** and its headless **Chromium** are installed, and the
-container has network access, so you can drive the built game in a real browser. Using
-them to validate your build as you go — serving it, driving a wave, exercising the
-`window.__foundry` API — is a good way to catch problems, but whether and how far to do
-so is your call. (You will separately need them for the proof-of-implementation
-captures that `specs/proof.md` asks for.)
+The electrical effects are `particle-2d` systems played live through the particle
+runtime already installed as a dependency of the project. Import it like any other
+dependency.
 
-Whenever you do launch the browser, use the project's own Playwright: import it from
-your project (for example `import { chromium } from "playwright"`) or run the
-project-local CLI with `npx playwright`. There is **no** global Playwright on `PATH`;
-it lives in your project's `node_modules`, like any other dependency. Launch Chromium
-with the `--no-sandbox` argument: this container has no Chromium sandbox, so a default
-launch will fail.
+## Driving the game in a browser
+
+{{#if (eq engine.slug "none")}}
+The project's Playwright and its headless Chromium are installed, so you can serve
+the built game and drive it in a real browser, walk a wave, check for console errors,
+or exercise `window.__foundry`.
+{{else}}
+The project's Playwright and its headless Chromium are installed, so you can serve
+the built game and drive it in a real browser, walk a wave, and check for console
+errors.
+{{/if}}
+
+When you launch the browser, use the project's own Playwright: import it from your
+project (for example `import { chromium } from "playwright"`) or run the
+project-local CLI with `npx playwright`. There is no global Playwright on `PATH`; it
+lives in your project's `node_modules` like any other dependency. Launch Chromium
+with the `--no-sandbox` argument, since this container has no Chromium sandbox and a
+default launch fails.
+
+## The showcase
+
+The game ships with its store-page presentation: a `showcase/` directory at the
+project root holding a player-facing description of the game and a short carousel of
+captured media. `specs/showcase.md` defines its contents — the description, the
+`showcase.toml` carousel, and how the media are captured.
 
 ## Commit your work
 
-Your project root is a **git repository** — it was initialized before you started,
-with the starter files in its first commit. Your finished implementation is published
-directly from this repository's commits, so work you leave uncommitted is **not**
-published. When the build is complete, commit everything: run `git add -A` then `git
-commit`, and confirm `git status` reports a clean working tree with nothing
-uncommitted or untracked. A `.gitignore` already excludes `node_modules/` and the
-build output (`dist/`/`build/`/`out/`), so a clean tree does not mean committing those,
-but it does mean committing your source, your `package-lock.json`, your `README.md`,
-the **produced assets under `assets/`**, and the `proof/` artifacts.
+Your project root is a git repository, initialized before you started with the
+starter files in its first commit. Your finished implementation is published directly
+from this repository's commits, so work you leave uncommitted is not published. When
+the build is complete, commit everything: run `git add -A` then `git commit`, and
+confirm `git status` reports a clean working tree with nothing uncommitted or
+untracked. A `.gitignore` already excludes `node_modules/`, the build output, and
+coverage reports, so a clean tree means committing your source, your tests, your
+`package-lock.json`, the produced files under `assets/`, your `showcase/` directory,
+and your `README.md`.
