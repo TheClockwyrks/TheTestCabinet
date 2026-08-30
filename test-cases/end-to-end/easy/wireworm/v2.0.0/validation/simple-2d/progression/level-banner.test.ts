@@ -5,12 +5,12 @@
 // play*: *when the `banner` phase's timer runs out, the phase becomes `active`*.
 // `BANNER_TIME` is `1.3` s.
 //
-// ONE INTERVAL, READ AT BOTH ENDS. The two readings are the same window seen from
-// its two sides: the phase is `banner` a moment after the clear, and it is
-// `active` once `BANNER_TIME` has gone by. A build that never raises the banner
-// fails the first; a build that raises one and never lowers it fails the second; a
-// build that flashes it for a frame fails the first. Reading only the second would
-// pass all three.
+// THE BANNER IS MEASURED, NOT SAMPLED. A check that advanced `BANNER_TIME` and
+// found `active` would pass a build whose banner lasted a single frame, so the
+// transition is timed: the phase the clear left the run in is read, then the
+// frames between that and the phase becoming `active` are counted and the seconds
+// they cover are held against `1.3`. The `none` and `structured-2d` suites take
+// the same reading against the same tolerance.
 //
 // The clear is driven by a real shot into a motionless one-segment worm, exactly
 // as `progression/level-clears-on-last-segment` drives it, because the banner this
@@ -19,10 +19,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BANNER_TIME } from "../../src/constants";
-import { assertEqual } from "../assert";
+import { assertBetween, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
+  seconds,
   startPlaying,
   ticksFor,
   type Harness,
@@ -42,19 +43,23 @@ const WORM_ROW = 8;
 const SHOT_FRAMES = ticksFor(1);
 
 /**
- * Frames between the clear and the first reading.
+ * How far the measured banner may be from `BANNER_TIME`, in seconds.
  *
- * Two, so a build that raises the banner at the end of its own update is read
- * fairly. It is a sixtieth of `BANNER_TIME` (`1.3` s), so a banner that is genuinely
- * up is still up.
+ * `0.05` s. The clear lands on one frame boundary and the transition is read on
+ * another, so the reading is quantized by a couple of frames however exactly a
+ * build counts; `0.05` s is well above that and a twenty-sixth of the `1.3` s it
+ * is checking, so a build whose banner is a frame long, or twice the stated
+ * length, is nowhere near it. The `none` and `structured-2d` suites read the same
+ * figure.
  */
-const BANNER_SETTLE_FRAMES = 2;
+const BANNER_TOLERANCE = 0.05;
 
 /**
- * Frames run after the first reading, so that strictly more than `BANNER_TIME` has
- * passed since the clear once the settling frames above are counted in.
+ * How long past `BANNER_TIME` the banner is given to end, in seconds. Half a
+ * second, so a build that overruns is measured and failed on the figure rather
+ * than left un-decided by a sweep that stopped too soon.
  */
-const PAST_BANNER_FRAMES = ticksFor(BANNER_TIME) + 2;
+const BANNER_GRACE = 0.5;
 
 let harness: Harness;
 
@@ -73,16 +78,33 @@ it("opens the next level on its banner and gives way BANNER_TIME later", async (
   shootUpAt(harness, WORM_COL, WORM_ROW);
 
   await harness.until((s) => s.worms.length === 0, { maxFrames: SHOT_FRAMES });
-  await harness.advance(BANNER_SETTLE_FRAMES);
-
-  captureStill(harness, "banner");
-  assertEqual(harness.snapshot().phase, "banner", "just after the clear");
-
-  await harness.advance(PAST_BANNER_FRAMES);
-
   assertEqual(
     harness.snapshot().phase,
-    "active",
-    "once BANNER_TIME has passed",
+    "banner",
+    "the phase the clear leaves the run in",
+  );
+
+  // The frame that draws the banner, which is also the picture kept. It is one
+  // frame OF the banner, so it is counted in the elapsed time below.
+  await harness.advance(1);
+  captureStill(harness, "banner");
+
+  const active = await harness.until((s) => s.phase === "active", {
+    maxFrames: ticksFor(BANNER_TIME + BANNER_GRACE),
+  });
+  assertEqual(
+    active.hit,
+    true,
+    `the banner giving way to active play within ` +
+      `${BANNER_TIME + BANNER_GRACE} s`,
+  );
+
+  // One frame for the render above, plus the frames the sweep ran before the
+  // sample that found `active`.
+  assertBetween(
+    seconds(1 + active.frames),
+    BANNER_TIME - BANNER_TOLERANCE,
+    BANNER_TIME + BANNER_TOLERANCE,
+    "the seconds the level's banner lasted",
   );
 });
