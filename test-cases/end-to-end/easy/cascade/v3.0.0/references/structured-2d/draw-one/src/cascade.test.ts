@@ -17,7 +17,12 @@ import {
   STAGE_W,
   TOP_ROW_Y,
 } from "./constants";
-import { createHarness, openTable, poseNearlyWon, type Harness } from "./harness";
+import {
+  createHarness,
+  openTable,
+  poseNearlyWon,
+  type Harness,
+} from "./harness";
 import { COLOR, rgbOf } from "./theme";
 
 let h: Harness;
@@ -57,7 +62,10 @@ function onlyFlyer(
   return debug.snapshot().flyers[0].id;
 }
 
-function distance(a: [number, number, number], b: [number, number, number]): number {
+function distance(
+  a: [number, number, number],
+  b: [number, number, number],
+): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
@@ -89,7 +97,9 @@ describe("the launch", () => {
     expect(times).toHaveLength(Math.floor(3 / LAUNCH_INTERVAL) + 1);
     const mean = (times[times.length - 1] - times[0]) / (times.length - 1);
     expect(mean).toBeCloseTo(LAUNCH_INTERVAL, 3);
-    expect(Math.abs(mean - LAUNCH_INTERVAL) / LAUNCH_INTERVAL).toBeLessThan(0.02);
+    expect(Math.abs(mean - LAUNCH_INTERVAL) / LAUNCH_INTERVAL).toBeLessThan(
+      0.02,
+    );
   });
 
   it("cycles the four foundations and walks each one King down to Ace", async () => {
@@ -257,7 +267,10 @@ describe("the painted trail", () => {
     debug.addFlyer("clubs", 7, 700, 380, 600, 0);
     await h.advance(1);
     const stamped = debug.snapshot().flyers[0];
-    const at: [number, number] = [stamped.x + CARD_W / 2, stamped.y + CARD_H / 2];
+    const at: [number, number] = [
+      stamped.x + CARD_W / 2,
+      stamped.y + CARD_H / 2,
+    ];
     await h.advance(40);
     expect(debug.snapshot().trailStamps).toBeGreaterThan(1);
     expect(distance(h.pixel(...at), rgbOf(COLOR.felt))).toBeGreaterThan(60);
@@ -295,7 +308,11 @@ describe("the end of the cascade", () => {
     poseNearlyWon(debug);
     debug.move("tableau", 0, 0, "foundation", 3);
 
-    for (let block = 0; block < 60 && !debug.snapshot().cascadeDone; block += 1) {
+    for (
+      let block = 0;
+      block < 60 && !debug.snapshot().cascadeDone;
+      block += 1
+    ) {
       await h.seconds(0.5, 1 / 120);
     }
     const shot = debug.snapshot();

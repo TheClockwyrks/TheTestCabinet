@@ -55,22 +55,37 @@ describe("a foundation", () => {
   it("starts on an Ace of any suit and builds up in that suit", () => {
     expect(foundationAccepts([], [card("hearts", 1)])).toBe(true);
     expect(foundationAccepts([], [card("clubs", 1)])).toBe(true);
-    expect(foundationAccepts(upTo("hearts", 1), [card("hearts", 2)])).toBe(true);
-    expect(foundationAccepts(upTo("hearts", 12), [card("hearts", 13)])).toBe(true);
+    expect(foundationAccepts(upTo("hearts", 1), [card("hearts", 2)])).toBe(
+      true,
+    );
+    expect(foundationAccepts(upTo("hearts", 12), [card("hearts", 13)])).toBe(
+      true,
+    );
   });
 
   it("refuses everything else", () => {
     expect(foundationAccepts([], [card("hearts", 2)])).toBe(false);
     expect(foundationAccepts([], [card("spades", 13)])).toBe(false);
-    expect(foundationAccepts(upTo("hearts", 3), [card("spades", 4)])).toBe(false);
-    expect(foundationAccepts(upTo("hearts", 3), [card("hearts", 5)])).toBe(false);
-    expect(foundationAccepts(upTo("hearts", 3), [card("hearts", 2)])).toBe(false);
-    expect(foundationAccepts(upTo("hearts", 13), [card("hearts", 13)])).toBe(false);
+    expect(foundationAccepts(upTo("hearts", 3), [card("spades", 4)])).toBe(
+      false,
+    );
+    expect(foundationAccepts(upTo("hearts", 3), [card("hearts", 5)])).toBe(
+      false,
+    );
+    expect(foundationAccepts(upTo("hearts", 3), [card("hearts", 2)])).toBe(
+      false,
+    );
+    expect(foundationAccepts(upTo("hearts", 13), [card("hearts", 13)])).toBe(
+      false,
+    );
   });
 
   it("takes one card at a time, refusing a run whose leader alone would go", () => {
     expect(
-      foundationAccepts(upTo("hearts", 1), [card("hearts", 2), card("spades", 1)]),
+      foundationAccepts(upTo("hearts", 1), [
+        card("hearts", 2),
+        card("spades", 1),
+      ]),
     ).toBe(false);
   });
 });
@@ -78,7 +93,9 @@ describe("a foundation", () => {
 describe("a column", () => {
   it("takes a King, or a King-led run, on an empty column", () => {
     expect(columnAccepts([], [card("spades", 13)])).toBe(true);
-    expect(columnAccepts([], [card("spades", 13), card("hearts", 12)])).toBe(true);
+    expect(columnAccepts([], [card("spades", 13), card("hearts", 12)])).toBe(
+      true,
+    );
     expect(columnAccepts([], [card("spades", 12)])).toBe(false);
     expect(columnAccepts([], [card("spades", 1)])).toBe(false);
   });
@@ -100,9 +117,9 @@ describe("a column", () => {
 
   it("refuses a slice that is not an ordered run", () => {
     const column = [card("clubs", 8)];
-    expect(columnAccepts(column, [card("hearts", 7), card("diamonds", 6)])).toBe(
-      false,
-    );
+    expect(
+      columnAccepts(column, [card("hearts", 7), card("diamonds", 6)]),
+    ).toBe(false);
   });
 });
 

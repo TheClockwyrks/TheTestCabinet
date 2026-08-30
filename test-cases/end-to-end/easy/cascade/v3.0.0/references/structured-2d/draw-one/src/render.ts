@@ -28,7 +28,7 @@ import {
   STOCK_X,
   TOP_ROW_Y,
 } from "./constants";
-import { isRed, rankLabel, suitGlyph } from "./deck";
+import { isRed, rankLabel } from "./deck";
 import type { CascadeState, Suit } from "./game";
 import {
   columnCardY,
@@ -68,28 +68,40 @@ function drawPip(ctx: Ctx, cx: number, cy: number, size: number, suit: Suit) {
     case "hearts":
       ctx.moveTo(cx, cy + size * 0.92);
       ctx.bezierCurveTo(
-        cx - size * 1.35, cy - size * 0.2,
-        cx - size * 0.5, cy - size * 1.15,
-        cx, cy - size * 0.32,
+        cx - size * 1.35,
+        cy - size * 0.2,
+        cx - size * 0.5,
+        cy - size * 1.15,
+        cx,
+        cy - size * 0.32,
       );
       ctx.bezierCurveTo(
-        cx + size * 0.5, cy - size * 1.15,
-        cx + size * 1.35, cy - size * 0.2,
-        cx, cy + size * 0.92,
+        cx + size * 0.5,
+        cy - size * 1.15,
+        cx + size * 1.35,
+        cy - size * 0.2,
+        cx,
+        cy + size * 0.92,
       );
       ctx.closePath();
       break;
     case "spades":
       ctx.moveTo(cx, cy - size * 0.95);
       ctx.bezierCurveTo(
-        cx + size * 1.35, cy + size * 0.15,
-        cx + size * 0.5, cy + size * 1.05,
-        cx, cy + size * 0.28,
+        cx + size * 1.35,
+        cy + size * 0.15,
+        cx + size * 0.5,
+        cy + size * 1.05,
+        cx,
+        cy + size * 0.28,
       );
       ctx.bezierCurveTo(
-        cx - size * 0.5, cy + size * 1.05,
-        cx - size * 1.35, cy + size * 0.15,
-        cx, cy - size * 0.95,
+        cx - size * 0.5,
+        cy + size * 1.05,
+        cx - size * 1.35,
+        cy + size * 0.15,
+        cx,
+        cy - size * 0.95,
       );
       ctx.closePath();
       ctx.moveTo(cx - size * 0.28, cy + size);
@@ -125,20 +137,22 @@ function drawFace(ctx: Ctx, x: number, y: number, suit: Suit, rank: number) {
   ctx.lineWidth = 2;
   ctx.strokeRect(x + 1, y + 1, CARD_W - 2, CARD_H - 2);
 
-  const ink = suitColor(suit);
-  ctx.fillStyle = ink;
+  ctx.fillStyle = suitColor(suit);
+  const label = rankLabel(rank);
 
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
+  // Both corners carry the rank and the suit, so a card fanned under another
+  // still shows what it is from whichever corner is left uncovered. The suit is
+  // drawn as its own shape rather than as a character, so it never depends on a
+  // font carrying the four symbols.
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
   ctx.font = font(26);
-  ctx.fillText(rankLabel(rank), x + 9, y + 8);
-  ctx.font = font(20);
-  ctx.fillText(suitGlyph(suit), x + 10, y + 38);
+  ctx.fillText(label, x + 20, y + 22);
+  drawPip(ctx, x + 20, y + 50, 9, suit);
 
-  ctx.textAlign = "right";
-  ctx.textBaseline = "bottom";
-  ctx.font = font(22);
-  ctx.fillText(`${rankLabel(rank)}${suitGlyph(suit)}`, x + CARD_W - 9, y + CARD_H - 8);
+  ctx.font = font(26);
+  ctx.fillText(label, x + CARD_W - 20, y + CARD_H - 22);
+  drawPip(ctx, x + CARD_W - 20, y + CARD_H - 50, 9, suit);
 
   drawPip(ctx, x + CARD_W / 2, y + CARD_H / 2, 25, suit);
 }
@@ -263,7 +277,15 @@ export function renderPiles(state: CascadeState, ctx: Ctx): void {
       );
     });
   });
+}
 
+/**
+ * The ring around the pile a held run would land on, drawn ABOVE the run itself
+ * so it reads whatever the run is covering: a run carried onto a card-sized
+ * pile covers that pile exactly, and a highlight beneath it would be invisible
+ * at the very moment it matters (specs/controls.md, specs/overview.md).
+ */
+export function renderDropTarget(state: CascadeState, ctx: Ctx): void {
   const target = state.dropTarget;
   if (target === null) return;
   const rect = dropRect(state, target.pile, target.index);

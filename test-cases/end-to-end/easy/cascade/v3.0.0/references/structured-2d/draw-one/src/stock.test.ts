@@ -79,7 +79,11 @@ describe("a turn", () => {
     debug.reset();
     debug.deal();
     const stock = debug.snapshot().stock.map((card) => card.id);
-    for (let turns = 0; turns < 40 && debug.snapshot().stock.length > 0; turns += 1) {
+    for (
+      let turns = 0;
+      turns < 40 && debug.snapshot().stock.length > 0;
+      turns += 1
+    ) {
       debug.turnStock();
     }
     const shot = debug.snapshot();
@@ -92,11 +96,15 @@ describe("the set memory", () => {
   it("shrinks its newest set when the top card is played off", () => {
     const { debug } = h;
     openTable(debug);
-    poseWaste(debug, [
-      { suit: "spades", rank: 2 },
-      { suit: "hearts", rank: 3 },
-      { suit: "diamonds", rank: 4 },
-    ], [1, 2]);
+    poseWaste(
+      debug,
+      [
+        { suit: "spades", rank: 2 },
+        { suit: "hearts", rank: 3 },
+        { suit: "diamonds", rank: 4 },
+      ],
+      [1, 2],
+    );
     debug.addCard("foundation", 0, "diamonds", 3, true);
     expect(debug.snapshot().wasteVisibleCount).toBe(2);
     expect(debug.move("waste", 0, 2, "foundation", 0)).toBe(true);
@@ -141,10 +149,14 @@ describe("the set memory", () => {
   it("refuses a move naming a waste card below the top", () => {
     const { debug } = h;
     openTable(debug);
-    poseWaste(debug, [
-      { suit: "spades", rank: 1 },
-      { suit: "hearts", rank: 4 },
-    ], [2]);
+    poseWaste(
+      debug,
+      [
+        { suit: "spades", rank: 1 },
+        { suit: "hearts", rank: 4 },
+      ],
+      [2],
+    );
     expect(debug.move("waste", 0, 0, "foundation", 0)).toBe(false);
     expect(debug.snapshot().waste).toHaveLength(2);
   });
@@ -205,7 +217,9 @@ describe("recycling", () => {
       while (debug.snapshot().stock.length > 0) {
         debug.turnStock();
         const waste = debug.snapshot().waste;
-        turned.push(`${waste[waste.length - 1].suit}${waste[waste.length - 1].rank}`);
+        turned.push(
+          `${waste[waste.length - 1].suit}${waste[waste.length - 1].rank}`,
+        );
       }
       expect(turned).toEqual(["clubs5", "diamonds4", "hearts3", "spades2"]);
       debug.turnStock();

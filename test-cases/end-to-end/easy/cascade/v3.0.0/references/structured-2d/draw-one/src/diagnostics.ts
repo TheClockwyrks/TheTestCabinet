@@ -39,9 +39,18 @@ export function diagnosticSources(
     ],
     [
       "foundations",
-      () => read().foundations.map((pile) => pile.length).join(" "),
+      () =>
+        read()
+          .foundations.map((pile) => pile.length)
+          .join(" "),
     ],
-    ["columns", () => read().tableau.map((pile) => pile.length).join(" ")],
+    [
+      "columns",
+      () =>
+        read()
+          .tableau.map((pile) => pile.length)
+          .join(" "),
+    ],
     [
       "drag",
       () => {

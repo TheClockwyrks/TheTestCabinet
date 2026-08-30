@@ -90,7 +90,14 @@ export function hitCard(
     for (let row = column.length - 1; row >= 0; row -= 1) {
       const top = columnCardY(column, row);
       if (y >= top && y <= top + CARD_H) {
-        return { pile: "tableau", index: col, row, card: column[row], x: COLUMN_X[col], y: top };
+        return {
+          pile: "tableau",
+          index: col,
+          row,
+          card: column[row],
+          x: COLUMN_X[col],
+          y: top,
+        };
       }
     }
   }
@@ -99,7 +106,14 @@ export function hitCard(
   if (shown.length > 0 && inRect(dropRect(state, "waste", 0), x, y)) {
     const row = state.waste.length - 1;
     const [cx, cy] = cardTopLeft(state, "waste", 0, row);
-    return { pile: "waste", index: 0, row, card: state.waste[row], x: cx, y: cy };
+    return {
+      pile: "waste",
+      index: 0,
+      row,
+      card: state.waste[row],
+      x: cx,
+      y: cy,
+    };
   }
 
   for (let i = 0; i < FOUNDATION_X.length; i += 1) {
@@ -108,7 +122,14 @@ export function hitCard(
     if (!inRect(dropRect(state, "foundation", i), x, y)) continue;
     const row = foundation.length - 1;
     const [cx, cy] = cardTopLeft(state, "foundation", i, row);
-    return { pile: "foundation", index: i, row, card: foundation[row], x: cx, y: cy };
+    return {
+      pile: "foundation",
+      index: i,
+      row,
+      card: foundation[row],
+      x: cx,
+      y: cy,
+    };
   }
 
   return null;
@@ -132,9 +153,7 @@ export function updateDropTarget(state: CascadeState): void {
     (under.pile === "foundation"
       ? foundationAccepts(cards, drag.cards)
       : columnAccepts(cards, drag.cards));
-  state.dropTarget = accepts
-    ? { pile: under.pile, index: under.index }
-    : null;
+  state.dropTarget = accepts ? { pile: under.pile, index: under.index } : null;
 }
 
 /**
@@ -153,7 +172,12 @@ function isDoubleClick(state: CascadeState, x: number, y: number): boolean {
 }
 
 /** Put the run the press landed on into the hand, and highlight what would take it. */
-function liftAt(state: CascadeState, x: number, y: number, cues: FrameCues): void {
+function liftAt(
+  state: CascadeState,
+  x: number,
+  y: number,
+  cues: FrameCues,
+): void {
   if (state.drag !== null) return;
   const hit = hitCard(state, x, y);
   if (hit === null) return;
@@ -177,8 +201,7 @@ export function pointerDown(
   y: number,
   cues: FrameCues,
 ): void {
-  const doubleClick =
-    state.screen === "playing" && isDoubleClick(state, x, y);
+  const doubleClick = state.screen === "playing" && isDoubleClick(state, x, y);
 
   state.pointer.x = x;
   state.pointer.y = y;
@@ -276,12 +299,14 @@ export function pointerUp(
   const press = state.lastPress;
   const drag = state.drag;
   const click =
-    press !== null &&
-    Math.hypot(x - press.x, y - press.y) <= DRAG_THRESHOLD;
+    press !== null && Math.hypot(x - press.x, y - press.y) <= DRAG_THRESHOLD;
 
   if (click) {
     if (drag !== null) {
-      returnRun(state, drag.cards, { pile: drag.fromPile, index: drag.fromIndex });
+      returnRun(state, drag.cards, {
+        pile: drag.fromPile,
+        index: drag.fromIndex,
+      });
       state.drag = null;
     }
     state.dropTarget = null;

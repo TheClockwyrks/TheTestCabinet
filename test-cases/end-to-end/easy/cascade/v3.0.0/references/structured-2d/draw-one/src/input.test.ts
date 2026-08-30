@@ -58,7 +58,11 @@ function columnCardY(h: Harness, col: number, row: number): number {
  * with another card fanned below it is pressed on the sliver above that one
  * rather than at its own center.
  */
-function columnCardCenter(h: Harness, col: number, row: number): [number, number] {
+function columnCardCenter(
+  h: Harness,
+  col: number,
+  row: number,
+): [number, number] {
   const column = h.state.tableau[col];
   const y = columnCardY(h, col, row);
   const covered = row < column.length - 1;
@@ -131,10 +135,14 @@ describe("what a press lifts", () => {
   it("takes the waste's top card alone, and a foundation's top card alone", () => {
     const { debug } = h;
     openTable(debug);
-    poseWaste(debug, [
-      { suit: "clubs", rank: 4 },
-      { suit: "hearts", rank: 9 },
-    ], [1, 1]);
+    poseWaste(
+      debug,
+      [
+        { suit: "clubs", rank: 4 },
+        { suit: "hearts", rank: 9 },
+      ],
+      [1, 1],
+    );
     debug.pointerDown(...WASTE_CENTER);
     expect(debug.snapshot().drag?.cards).toHaveLength(1);
     debug.pointerUp(...WASTE_CENTER);
@@ -187,7 +195,10 @@ describe("a held run", () => {
     expect(debug.snapshot().drag?.y).toBeCloseTo(TABLEAU_Y - 20, 6);
 
     debug.pointerMove(...FOUNDATION_CENTER(2));
-    expect(debug.snapshot().dropTarget).toEqual({ pile: "foundation", index: 2 });
+    expect(debug.snapshot().dropTarget).toEqual({
+      pile: "foundation",
+      index: 2,
+    });
   });
 
   it("reports no target over a pile that would refuse it", () => {
@@ -314,10 +325,14 @@ describe("a click against a drop", () => {
   it("recycles the empty stock slot", () => {
     const { debug } = h;
     openTable(debug);
-    poseWaste(debug, [
-      { suit: "spades", rank: 2 },
-      { suit: "hearts", rank: 3 },
-    ], [1, 1]);
+    poseWaste(
+      debug,
+      [
+        { suit: "spades", rank: 2 },
+        { suit: "hearts", rank: 3 },
+      ],
+      [1, 1],
+    );
     clickAt(h, ...STOCK_CENTER);
     const shot = debug.snapshot();
     expect(shot.stock).toHaveLength(2);

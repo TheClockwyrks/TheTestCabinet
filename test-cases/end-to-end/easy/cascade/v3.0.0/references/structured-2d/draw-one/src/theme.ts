@@ -29,8 +29,8 @@ export const COLOR = {
   suitBlack: "#141418",
 
   /** A face-down card: its body, its lattice and the emblem at its middle. */
-  cardBack: "#1b2f6b",
-  cardBackLattice: "#2c47a0",
+  cardBack: "#22439c",
+  cardBackLattice: "#3d63c8",
   cardBackEmblem: "#e6be5a",
 
   /** The highlight around the pile a held run would land on. */
@@ -57,6 +57,7 @@ export const LAYER = {
   trail: 10,
   piles: 20,
   drag: 30,
+  highlight: 35,
   flyers: 40,
   hud: 50,
   screens: 60,

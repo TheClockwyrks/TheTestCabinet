@@ -84,7 +84,19 @@ describe("a column's fan", () => {
   });
 
   it("draws the full offset while the column fits above the limit", () => {
-    const cards = column([true, true, true, true, true, true, true, true, true, true, true]);
+    const cards = column([
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
     expect(faceUpOffsetFor(cards)).toBe(FACE_UP_OFFSET);
     expect(columnBottom(cards)).toBeLessThanOrEqual(COLUMN_BOTTOM_LIMIT);
   });
@@ -110,11 +122,20 @@ describe("a column's fan", () => {
   });
 
   it("leaves the face-down offset alone however far it compresses", () => {
-    const faces = [false, false, false, ...Array.from({ length: 14 }, () => true)];
+    const faces = [
+      false,
+      false,
+      false,
+      ...Array.from({ length: 14 }, () => true),
+    ];
     const cards = column(faces);
     expect(faceUpOffsetFor(cards)).toBeLessThan(FACE_UP_OFFSET);
-    expect(columnCardY(cards, 1) - columnCardY(cards, 0)).toBe(FACE_DOWN_OFFSET);
-    expect(columnCardY(cards, 2) - columnCardY(cards, 1)).toBe(FACE_DOWN_OFFSET);
+    expect(columnCardY(cards, 1) - columnCardY(cards, 0)).toBe(
+      FACE_DOWN_OFFSET,
+    );
+    expect(columnCardY(cards, 2) - columnCardY(cards, 1)).toBe(
+      FACE_DOWN_OFFSET,
+    );
   });
 
   it("expands again once the column has lost cards", () => {
@@ -165,7 +186,8 @@ describe("the drop rectangles", () => {
 
   it("leaves no point in two rectangles at once", () => {
     const tableau: CardState[][] = [[], [], [], [], [], [], []];
-    for (let i = 0; i < 7; i += 1) tableau[i] = column([true, true, true, true]);
+    for (let i = 0; i < 7; i += 1)
+      tableau[i] = column([true, true, true, true]);
     const state = table({ tableau });
     for (let x = 0; x < 1280; x += 7) {
       for (let y = 0; y < 720; y += 11) {

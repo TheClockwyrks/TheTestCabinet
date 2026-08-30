@@ -3,7 +3,13 @@
 // faculty (specs/instrumentation.md).
 
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
-import { CASCADE_DEBUG_VERSION, DEAL_MODE, DEAL_MODE_LABEL, LAUNCH_INTERVAL, TURN_COUNT } from "./constants";
+import {
+  CASCADE_DEBUG_VERSION,
+  DEAL_MODE,
+  DEAL_MODE_LABEL,
+  LAUNCH_INTERVAL,
+  TURN_COUNT,
+} from "./constants";
 import {
   createHarness,
   openTable,
@@ -93,11 +99,15 @@ describe("poses read back", () => {
     debug.setCardFaceUp(id, true);
     expect(debug.snapshot().tableau[2][0].faceUp).toBe(true);
 
-    poseWaste(debug, [
-      { suit: "clubs", rank: 2 },
-      { suit: "spades", rank: 3 },
-      { suit: "diamonds", rank: 4 },
-    ], [1, 2]);
+    poseWaste(
+      debug,
+      [
+        { suit: "clubs", rank: 2 },
+        { suit: "spades", rank: 3 },
+        { suit: "diamonds", rank: 4 },
+      ],
+      [1, 2],
+    );
     expect(debug.snapshot().wasteSets).toEqual([1, 2]);
     expect(debug.snapshot().wasteVisibleCount).toBe(2);
     debug.clearWasteSets();
@@ -227,7 +237,13 @@ describe("the table is posed one card at a time", () => {
     debug.setAutoFlip(false);
     debug.clearTable();
     shot = debug.snapshot();
-    expect(shot.stock.concat(shot.waste, shot.foundations.flat(), shot.tableau.flat())).toHaveLength(0);
+    expect(
+      shot.stock.concat(
+        shot.waste,
+        shot.foundations.flat(),
+        shot.tableau.flat(),
+      ),
+    ).toHaveLength(0);
     expect(shot.wasteSets).toEqual([]);
     expect(shot.flyers).toHaveLength(1);
     expect(shot.autoFlip).toBe(false);
@@ -252,7 +268,13 @@ describe("reset", () => {
     debug.reset();
     const shot = debug.snapshot();
     expect(shot.screen).toBe("title");
-    expect(shot.stock.concat(shot.waste, shot.foundations.flat(), shot.tableau.flat())).toHaveLength(0);
+    expect(
+      shot.stock.concat(
+        shot.waste,
+        shot.foundations.flat(),
+        shot.tableau.flat(),
+      ),
+    ).toHaveLength(0);
     expect(shot.wasteSets).toEqual([]);
     expect(shot.drag).toBeNull();
     expect(shot.dropTarget).toBeNull();
@@ -278,7 +300,9 @@ describe("reset", () => {
       const shot = debug.snapshot();
       return JSON.stringify(
         [...shot.tableau, shot.stock].map((pile) =>
-          pile.map((card) => `${card.suit}${card.rank}${card.faceUp ? "u" : "d"}`),
+          pile.map(
+            (card) => `${card.suit}${card.rank}${card.faceUp ? "u" : "d"}`,
+          ),
         ),
       );
     };
@@ -319,7 +343,9 @@ describe("the faculty gates", () => {
 
     openTable(debug);
     const again = poseNearlyWon(debug);
-    expect(debug.move("tableau", again.column, again.row, "foundation", 3)).toBe(true);
+    expect(
+      debug.move("tableau", again.column, again.row, "foundation", 3),
+    ).toBe(true);
     expect(debug.snapshot().screen).toBe("won");
   });
 
@@ -361,12 +387,12 @@ describe("the faculty gates", () => {
     const { debug } = h;
     debug.reset();
     const shot = debug.snapshot();
-    expect([shot.autoFlip, shot.winDetect, shot.launching, shot.trailPainting]).toEqual([
-      true,
-      true,
-      true,
-      true,
-    ]);
+    expect([
+      shot.autoFlip,
+      shot.winDetect,
+      shot.launching,
+      shot.trailPainting,
+    ]).toEqual([true, true, true, true]);
 
     debug.setScreen("playing");
     debug.addFlyer("hearts", 2, 400, 200, 40, 0);

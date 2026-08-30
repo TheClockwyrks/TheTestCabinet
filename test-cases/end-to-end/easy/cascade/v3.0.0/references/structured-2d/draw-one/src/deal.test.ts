@@ -105,9 +105,11 @@ describe("the deal", () => {
       debug.reset({ seed });
       debug.deal();
       return JSON.stringify(
-        debug.snapshot().tableau.map((column) =>
-          column.map((card) => `${card.suit}${card.rank}`),
-        ),
+        debug
+          .snapshot()
+          .tableau.map((column) =>
+            column.map((card) => `${card.suit}${card.rank}`),
+          ),
       );
     };
     expect(columns(1)).not.toBe(columns(2));

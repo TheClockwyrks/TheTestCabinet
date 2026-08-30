@@ -21,7 +21,12 @@ import type { FrameCues } from "./audio";
 import type { CardState, CascadeState, PileKind } from "./game";
 import { wasteVisibleCount } from "./layout";
 import { dropWasteCard, pileArray } from "./piles";
-import { boardComplete, columnAccepts, foundationAccepts, foundationFor } from "./rules";
+import {
+  boardComplete,
+  columnAccepts,
+  foundationAccepts,
+  foundationFor,
+} from "./rules";
 
 /** The pile a run came from, as the drag reports it. */
 export interface RunSource {
@@ -214,5 +219,13 @@ export function autoMoveFrom(
   if (playable === null) return false;
   const foundation = foundationFor(state, playable.card);
   if (foundation === null) return false;
-  return applyMove(state, pile, index, playable.row, "foundation", foundation, cues);
+  return applyMove(
+    state,
+    pile,
+    index,
+    playable.row,
+    "foundation",
+    foundation,
+    cues,
+  );
 }

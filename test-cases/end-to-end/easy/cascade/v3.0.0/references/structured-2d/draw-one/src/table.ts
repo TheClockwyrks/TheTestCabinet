@@ -24,6 +24,7 @@ import type { DrawApi } from "@test-cabinet/structured-2d";
 import { cascadeState, type CascadeState } from "./game";
 import {
   renderDrag,
+  renderDropTarget,
   renderFelt,
   renderFlyers,
   renderPiles,
@@ -43,7 +44,10 @@ abstract class TableLayer extends DrawComponent {
     this.paint(cascadeState(this.actor.world), api.ctx);
   }
 
-  protected abstract paint(state: CascadeState, ctx: CanvasRenderingContext2D): void;
+  protected abstract paint(
+    state: CascadeState,
+    ctx: CanvasRenderingContext2D,
+  ): void;
 }
 
 /** The felt, under everything. */
@@ -52,7 +56,10 @@ class Felt extends TableLayer {
     super(LAYER.felt);
   }
 
-  protected override paint(_state: CascadeState, ctx: CanvasRenderingContext2D) {
+  protected override paint(
+    _state: CascadeState,
+    ctx: CanvasRenderingContext2D,
+  ) {
     renderFelt(ctx);
   }
 }
@@ -76,6 +83,17 @@ class Drag extends TableLayer {
 
   protected override paint(state: CascadeState, ctx: CanvasRenderingContext2D) {
     renderDrag(state, ctx);
+  }
+}
+
+/** The ring around the pile a held run would land on, over the run itself. */
+class Highlight extends TableLayer {
+  constructor() {
+    super(LAYER.highlight);
+  }
+
+  protected override paint(state: CascadeState, ctx: CanvasRenderingContext2D) {
+    renderDropTarget(state, ctx);
   }
 }
 
@@ -130,6 +148,7 @@ export class CascadeTable extends Actor {
     this.attach(new Felt());
     this.attach(new Piles());
     this.attach(new Drag());
+    this.attach(new Highlight());
   }
 }
 

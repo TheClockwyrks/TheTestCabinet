@@ -31,7 +31,9 @@ export function pileArray(
         ? state.foundations[index]
         : null;
     case "tableau":
-      return index >= 0 && index < TABLEAU_COLUMNS ? state.tableau[index] : null;
+      return index >= 0 && index < TABLEAU_COLUMNS
+        ? state.tableau[index]
+        : null;
   }
 }
 
