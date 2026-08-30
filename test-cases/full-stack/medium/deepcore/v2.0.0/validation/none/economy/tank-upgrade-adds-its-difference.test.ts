@@ -1,26 +1,49 @@
-// Deepcore — economy.tank-upgrade-adds-its-difference. STUB: NOT YET AUTHORED.
+// economy/tank-upgrade-adds-its-difference — a bigger tank is not a refill.
 //
-// A tank upgrade raises the maximum and adds the same amount
-//
-// Buying a fuel tank tier raises the maximum and adds the same amount to the
-// fuel held, so a 100 to 175 tank at 30 of 100 becomes 105 of 175. It is not a
-// refill.
-//
-// Automated validation: pose a part-empty tank, buy the next fuel tier and
-// hold both the new maximum and the new fuel held against the stated
-// arithmetic.
-//
-// `test-case.toml` declares this suite as `economy/tank-upgrade-adds-its-difference.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (tank (image)) around the drive.
+// `specs/upgrades.md` states the arithmetic exactly: "A bigger fuel tank or hull
+// raises the maximum and adds the same amount to the current value, so a 100 to
+// 175 tank at 30/100 fuel becomes 105/175. It is not a refill: the rest is still
+// bought at the Fuel Depot." The two failures this separates are a purchase that
+// tops the tank up to the new maximum and one that raises the maximum alone and
+// leaves the fuel where it stood, so both figures are read.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual } from "../assert";
+import { FUEL_TANK_MAX, UPGRADE_PRICES } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { openCamp } from "./camp";
 
-test("A tank upgrade raises the maximum and adds the same amount", () => {
-  throw new Error(
-    "Deepcore validator `economy/tank-upgrade-adds-its-difference` is declared in test-case.toml but has not been authored yet.",
+/** The fuel held when the tier is bought, well short of the tier-1 maximum. */
+const FUEL_BEFORE = 30;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("raises maxFuel to the new tier and adds the same amount to the fuel held", async () => {
+  await openCamp(h);
+  await h.debug.setFuel(FUEL_BEFORE);
+  await h.debug.setCredits(UPGRADE_PRICES[2]);
+  await h.debug.setPanel("upgrade-shop");
+
+  await h.debug.buyUpgrade("fuel");
+  await h.advance(1);
+  await captureStill(h, "tank");
+
+  const after = await h.snapshot();
+  const added = FUEL_TANK_MAX[1] - FUEL_TANK_MAX[0];
+  assertEqual(after.tiers.fuel, 2, "specs/upgrades.md");
+  assertCloseTo(after.miner.maxFuel, FUEL_TANK_MAX[1], 6, "specs/upgrades.md");
+  assertCloseTo(
+    after.miner.fuel,
+    FUEL_BEFORE + added,
+    6,
+    "specs/upgrades.md, the difference added rather than a refill",
   );
 });

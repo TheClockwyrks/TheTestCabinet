@@ -1,24 +1,49 @@
-// Deepcore — economy.fill-pays-only-for-what-is-missing. STUB: NOT YET AUTHORED.
+// economy/fill-pays-only-for-what-is-missing — fill-to-full charges the shortfall.
 //
-// Filling to full pays only for the missing fuel
-//
-// Fill-to-full charges FUEL_PRICE for each unit the tank is short and no more,
-// so filling a tank at 40 of 100 costs 60 Credits.
-//
-// Automated validation: pose a part-empty tank with ample Credits, fill to
-// full and hold the Credits spent against the shortfall.
-//
-// `test-case.toml` declares this suite as `economy/fill-pays-only-for-what-is-missing.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (fill (image)) around the drive.
+// `specs/gameplay.md` fixes fill-to-full as paying `FUEL_PRICE` for each unit the
+// tank is short and no more, so a tank at 40 of 100 costs 60 Credits. The
+// balance is posed far above that shortfall, so what the check reads is the
+// price of the missing fuel rather than the ceiling the Credits impose — the
+// Credits ceiling is the sibling point `economy/fill-stops-at-the-credits`.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual } from "../assert";
+import { FUEL_PRICE, FUEL_TANK_MAX } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { openCamp } from "./camp";
 
-test("Filling to full pays only for the missing fuel", () => {
-  throw new Error(
-    "Deepcore validator `economy/fill-pays-only-for-what-is-missing` is declared in test-case.toml but has not been authored yet.",
+/** The tank the fill starts from, 60 units short of the tier-1 maximum. */
+const FUEL_BEFORE = 40;
+
+/** A balance far above the shortfall, so nothing here is capped by Credits. */
+const CREDITS_BEFORE = 500;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("fills the tank and charges FUEL_PRICE for each missing unit only", async () => {
+  await openCamp(h);
+  await h.debug.setFuel(FUEL_BEFORE);
+  await h.debug.setCredits(CREDITS_BEFORE);
+  await h.debug.setPanel("fuel-depot");
+
+  await h.debug.fillFuel();
+  await h.advance(1);
+  await captureStill(h, "fill");
+
+  const after = await h.snapshot();
+  const missing = FUEL_TANK_MAX[0] - FUEL_BEFORE;
+  assertCloseTo(after.miner.fuel, FUEL_TANK_MAX[0], 6, "specs/gameplay.md");
+  assertEqual(
+    after.credits,
+    CREDITS_BEFORE - missing * FUEL_PRICE,
+    "specs/gameplay.md",
   );
 });
