@@ -682,9 +682,6 @@ export function removeAssets(): void {
 
 /* ---- The save slot -------------------------------------------------------- */
 
-/** How many live harnesses asked for a storage slot. */
-let storageHosts = 0;
-
 /**
  * An in-memory `localStorage`, so the save checks have somewhere to write.
  *
@@ -694,7 +691,6 @@ let storageHosts = 0;
  * installs one that throws.
  */
 export function installStorage(): void {
-  storageHosts += 1;
   const held = new Map<string, string>();
   const slot: Storage = {
     getItem: (key: string) => held.get(key) ?? null,
@@ -717,9 +713,15 @@ export function installStorage(): void {
   });
 }
 
-/** Take the storage slot away again, as a browser that blocks site data does. */
+/**
+ * Take the storage slot away again, as a browser that blocks site data does.
+ *
+ * Unconditional, because it is BOTH the teardown of a harness that asked for a
+ * slot and the arrangement a check about a storage-less host poses: a run without
+ * storage is a requirement `specs/modes.md` states, and this is how a check
+ * reaches it. Each check builds its own harness, so the two never overlap.
+ */
 export function removeStorage(): void {
-  if (storageHosts > 0) storageHosts -= 1;
   Object.defineProperty(globalThis, "localStorage", {
     value: undefined,
     configurable: true,
