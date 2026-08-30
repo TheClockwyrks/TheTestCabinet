@@ -10,12 +10,14 @@
 // WHICH EDGE IS THE BUILD'S, SO THE CHECK READS THE EDGE IT USED. The spec fixes
 // the row, the descent and that the entry is from a side edge; it deliberately
 // leaves the SIDE open, and a build is free to draw it from the seeded generator.
-// So the reading is: every segment on row `0`; the worm reaching a side edge, read
-// as its distance from the nearer of the two, which must be zero; the horizontal
-// heading pointing inward from whichever edge that was; and the vertical heading
-// down. A build that entered mid-board fails on the distance, one that entered
-// heading back off the board fails on the heading, and one that entered rising
-// fails on the descent — each naming its own reading.
+// So the reading is: every segment on row `0`; the segments occupying a run of
+// consecutive columns; that run standing against column `0` or column `39`; the
+// head at the end furthest from that edge; the horizontal heading pointing inward
+// from it; and the vertical heading down. A build that entered mid-board fails on
+// the run standing against an edge, one that laid its segments apart fails on the
+// run being consecutive, one that entered tail-first fails on the head's column,
+// one that entered heading back off the board fails on the heading, and one that
+// entered rising fails on the descent — each naming its own reading.
 //
 // THE ENTRY GATE IS TURNED BACK ON, AND IT IS THIS POINT'S REQUIREMENT.
 // `startPlaying` shuts `wormEntry` so no other check is invaded by a worm it did
@@ -30,7 +32,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BANNER_TIME, COLS } from "../../src/constants";
-import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertLength,
+  assertTrue,
+} from "../assert";
 import {
   captureStill,
   createHarness,
@@ -89,17 +96,35 @@ it("lays the level's worm along row 0 at a side edge, heading inward and down", 
   const leftmost = Math.min(...columns);
   const rightmost = Math.max(...columns);
   assertEqual(
-    Math.min(leftmost, COLS - 1 - rightmost),
-    0,
-    "the entering worm's distance from the nearer side edge, in tiles",
+    rightmost - leftmost,
+    worm.segments.length - 1,
+    "the entering worm occupies a run of consecutive columns",
+  );
+
+  const fromLeft = leftmost === 0;
+  const fromRight = rightmost === COLS - 1;
+  assertTrue(
+    fromLeft || fromRight,
+    `the run to stand against column 0 or column ${COLS - 1}, which is what ` +
+      "entering from a side edge means",
+  );
+
+  // The head is the end furthest from the edge entered at, the tail the end
+  // nearest it.
+  assertEqual(
+    worm.segments[0].c,
+    fromLeft ? rightmost : leftmost,
+    fromLeft
+      ? "entering from the left: the head, furthest from column 0"
+      : `entering from the right: the head, furthest from column ${COLS - 1}`,
   );
 
   // Inward from whichever edge the build drew: rightward off the left edge,
   // leftward off the right edge.
   assertEqual(
     worm.dh,
-    leftmost === 0 ? 1 : -1,
-    `dh on entry, from the ${leftmost === 0 ? "left" : "right"} edge`,
+    fromLeft ? 1 : -1,
+    `dh on entry, from the ${fromLeft ? "left" : "right"} edge`,
   );
   assertEqual(worm.dv, 1, "dv on entry");
 });
