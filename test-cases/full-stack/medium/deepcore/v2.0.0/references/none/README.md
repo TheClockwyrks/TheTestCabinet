@@ -1,5 +1,23 @@
 # Deepcore — reference implementation (base variant)
 
+> **Status: carried forward from v1.0.0 and NOT yet ported.** This tree is
+> v1.0.0's build, byte for byte. It is the raw material for v2.0.0's engineless
+> reference, not that reference. It does not satisfy this version's
+> specification, and nothing should be captured from it or read as evidence
+> about it until the port lands.
+>
+> What the port has to close, at least:
+>
+> | Concern | This tree | What v2.0.0 fixes |
+> | --- | --- | --- |
+> | Debug surface | 40 compound operations (`teleport`, `addCargo`, `grantCredits`, `grantGear`, `startExpedition`, `openPanel`, `step`) | 52 atomic ones (`setMinerPosition`, `setCargo`, `setCredits`, `setTier`, `setScreen`, `setPanel`, `advance`), one field or one clock move each, per `specs/instrumentation.md` |
+> | Constant names and values | `TILE_SIZE = 80`, `ORE_DENSITY = 0.15` | `TILE` (`80`), `ORE_DENSITY` (`0.14`), and 37 further named figures the specification states |
+> | Specification | v1.0.0's fifteen specs | all fourteen rewritten; `specs/proof.md` gone |
+> | Camera | both axes | the vertical scroll `specs/world.md` fixes |
+>
+> The two sibling directories, `references/simple-2d/` and
+> `references/structured-2d/`, are empty for the same reason.
+
 A subterranean dig-and-build game that runs entirely in the browser. You are a lone
 prospector stranded on Vhera Deep: **drill down** through four depth bands, **sell ore**
 and **buy upgrades** at the surface camp, recover the exotic materials and the unstable
