@@ -5,7 +5,7 @@
 //
 // Every value is in the fixed 1280x720 logical coordinate space defined by
 // `specs/overview.md` (origin top-left, x right, y down), and every position the
-// game reports is a CENTRE. That space is the engine's logical design size: the
+// game reports is a CENTER. That space is the engine's logical design size: the
 // engine scales and letterboxes it onto the canvas, so no value here is ever
 // expressed in real pixels and gameplay never leaves logical space.
 //
@@ -15,11 +15,11 @@
 // the catch-up rule `specs/worm.md` states.
 //
 // THE LOOK IS NOT HERE, AND THAT IS DELIBERATE. Wireworm fixes no palette, no
-// font, no HUD layout, no glow and no background. There is not a single colour or
+// font, no HUD layout, no glow and no background. There is not a single color or
 // type face in this file, and there is not meant to be one. `specs/overview.md`
 // states what a player has to be able to read at a glance — the charge ramp, the
 // worm against the field, the cursor against the band, the three foes apart from
-// one another — and how the board looks is the build's to design. The one colour
+// one another — and how the board looks is the build's to design. The one color
 // value the project carries is `BACKGROUND`, which the build exports from
 // `src/game.ts` because the build chooses it.
 
@@ -54,7 +54,7 @@ export const BAND_TOP_Y = 656;
 /**
  * The tile-to-stage map, stated in `specs/board.md` and named here so nothing in
  * the build derives it a second time. `tileLeft` and `tileTop` give a tile's
- * top-left corner; `tileCX` and `tileCY` give its centre, which is where an
+ * top-left corner; `tileCX` and `tileCY` give its center, which is where an
  * entity standing on it is reported.
  */
 export function tileLeft(c: number): number {
@@ -143,7 +143,7 @@ export const CURSOR_SPEED = 430;
 export const CURSOR_HALF = 12;
 
 /**
- * The bounds the cursor's CENTRE is clamped to. The vertical band is only 32
+ * The bounds the cursor's CENTER is clamped to. The vertical band is only 32
  * units tall — the bottom two rows of the grid — so the cursor crosses it in
  * 0.074 s at `CURSOR_SPEED`.
  */

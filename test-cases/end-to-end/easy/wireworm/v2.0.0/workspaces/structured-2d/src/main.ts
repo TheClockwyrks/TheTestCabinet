@@ -34,7 +34,7 @@ const engine = createEngine({
   height: STAGE_H,
   game,
   // The stage background, which the engine clears the canvas to each frame so
-  // the letterbox bars match the board. The game owns the colour.
+  // the letterbox bars match the board. The game owns the color.
   background: BACKGROUND,
   // Four-way movement and a fire button, plus the menu and system vocabulary
   // that comes with the layout. specs/controls.md states which key drives which.

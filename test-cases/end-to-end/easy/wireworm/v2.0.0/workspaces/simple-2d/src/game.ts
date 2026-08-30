@@ -50,10 +50,10 @@ import type {
 import type { DeepReadonly } from "ts-essentials";
 
 /**
- * The stage background, a CSS colour string. `src/main.ts` hands it to the engine
- * as the colour the canvas is cleared to each frame, so the letterbox bars around
+ * The stage background, a CSS color string. `src/main.ts` hands it to the engine
+ * as the color the canvas is cleared to each frame, so the letterbox bars around
  * the stage match the board itself. This placeholder is replaced by the build
- * with the colour its board uses.
+ * with the color its board uses.
  */
 export const BACKGROUND = "#000";
 
