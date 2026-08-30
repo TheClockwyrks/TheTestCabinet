@@ -121,6 +121,19 @@ function releaseDelay(drone: MutDrone): number {
   return Math.max(0, drone.entryGroup) * ENTER_GROUP_GAP;
 }
 
+/**
+ * Whether the drone's group has been released.
+ *
+ * The wave's entry clock advances only while `waveEntry` is on, so a clock that
+ * has passed the group's delay is a released group even after the gate is turned
+ * off, and a drone already travelling its entrance flies it as usual. The
+ * comparison is strict so that a gate that was never on releases nothing, the
+ * first group's delay being zero.
+ */
+function released(sim: Sim, drone: MutDrone): boolean {
+  return sim.entryClock > releaseDelay(drone);
+}
+
 /** How many shots the drone's kind takes over one dive. */
 export function shotsPerDive(drone: MutDrone): number {
   return drone.kind === "prism" ? 2 : 1;
@@ -168,8 +181,8 @@ function swirlSign(drone: MutDrone): number {
 
 /** One entering drone's step, on a standard stage. */
 function stepEntrance(sim: Sim, drone: MutDrone, h: number): void {
+  if (!released(sim, drone)) return;
   const delay = releaseDelay(drone);
-  if (sim.entryClock < delay) return;
   const speed = ENTER_SPEED * droneSpeedScale(sim.stage);
   const travelled = Math.max(0, drone.phaseClock - delay);
   const swirl =
@@ -187,8 +200,8 @@ function stepEntrance(sim: Sim, drone: MutDrone, h: number): void {
 
 /** One entering drone's step, on a challenge stage: a sweep across and out. */
 function stepChallengeSweep(sim: Sim, drone: MutDrone, h: number): void {
+  if (!released(sim, drone)) return;
   const delay = releaseDelay(drone);
-  if (sim.entryClock < delay) return;
   const side = drone.entryGroup % 2 === 0 ? 1 : -1;
   const travelled = Math.max(0, drone.phaseClock - delay);
   const dy =
