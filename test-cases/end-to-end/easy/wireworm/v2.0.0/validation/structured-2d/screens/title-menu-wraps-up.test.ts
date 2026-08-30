@@ -1,19 +1,61 @@
-// Wireworm — screens.title-menu-wraps-up, under the `structured-2d` engine. CASE-PROVIDED.
+// Wireworm — screens/title-menu-wraps-up: `up` on the title's first item wraps
+// the highlight to the last.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// The other end of the rule `specs/controls.md` fixes: "`up` and `down` move the
+// highlight by one item and wrap at both ends, so ... moving up from the first
+// highlights the last". Its own check, so a build that wraps downward and not
+// upward grades apart from one that wraps neither way.
 //
-// The point it decides, from `test-case.toml`:
+// The first item is POSED with the surface's own `setMenuIndex` rather than left
+// to whatever `reset` happened to leave, so the edge the press is made from is
+// stated by this check rather than inherited.
 //
-// The title selection wraps past the first item
-//
-// Moving up from the first title item highlights the last.
+// The press is the `up` action's own bound key, dispatched as a real key event
+// at the target the engine listens on — the menus are keyboard only
+// (`specs/controls.md`).
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TITLE_ITEMS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  resetTo,
+  tapAction,
+  type Harness,
+} from "../harness";
 
-test("screens.title-menu-wraps-up", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/structured-2d/screens/title-menu-wraps-up.test.ts has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("wraps the title highlight from the first item to the last", async () => {
+  resetTo(h);
+  h.debug.setMenuIndex(0);
+  const posed = h.snapshot();
+  assertEqual(posed.screen, "title", "the press is made on the title screen");
+  assertEqual(
+    posed.menuIndex,
+    0,
+    "setMenuIndex rests the highlight on the first title item " +
+      "(specs/instrumentation.md)",
+  );
+
+  await tapAction(h, "up");
+  captureStill(h, "wrapped");
+
+  const wrapped = h.snapshot();
+  assertEqual(wrapped.screen, "title", "the wrap leaves the game on the title");
+  assertEqual(
+    wrapped.menuIndex,
+    TITLE_ITEMS.length - 1,
+    "one up press past the first item highlights the last " +
+      "(specs/controls.md)",
   );
 });
