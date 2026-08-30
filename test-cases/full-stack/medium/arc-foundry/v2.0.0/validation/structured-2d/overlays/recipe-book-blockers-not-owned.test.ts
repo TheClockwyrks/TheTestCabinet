@@ -1,27 +1,99 @@
-// Arc Foundry — `overlays.recipe-book-blockers-not-owned`. CASE-PROVIDED. NOT YET WRITTEN.
+// overlays/recipe-book-blockers-not-owned — a wall and a tower own nothing.
 //
-// The manifest declares this point at `overlays/recipe-book-blockers-not-owned.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/hud.md`: "blockers and combination towers are never ingredients and
+// never count as owned." `specs/scrap-press.md` gives a blocker "no type, no
+// quality", and `specs/combinations.md` states that "a combination tower is never
+// an ingredient".
 //
-// THE REQUIREMENT. A blocker and a combination tower never satisfy an
-// ingredient: a yard holding a blocker where a recipe wants a Capacitor reads
-// that ingredient as missing.
+// So a yard holding a blocker and a Static Web — a tower whose own recipe is
+// three base components — must read exactly like an empty yard in the book. The
+// control is the third pose: a Capacitor at Scrap, one of the Static Web's
+// ingredients, which must move the book. Without it a book that never marked
+// anything owned would pass this point by drawing nothing.
 //
-// HOW IT IS DECIDED. Stand a blocker and a tower on an otherwise empty yard
-// and sample the ingredients they might be mistaken for. The evidence it hands
-// back is `book` (image): the recipe book with nothing owned.
+// The comparison is over the book's own points, found by the double difference
+// `book.ts` describes, so the blocker's and the tower's sprites on the yard are
+// not what is being read.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  standBlocker,
+  standCombo,
+  standComponent,
+  type Harness,
+} from "../harness";
+import type { ComponentType, Tier } from "../harness";
 
-import { fail } from "../assert";
+import { readBook, movedPoints, type Pose } from "./book";
 
-describe("overlays.recipe-book-blockers-not-owned", () => {
-  it("Blockers and towers never count as owned", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `overlays.recipe-book-blockers-not-owned` has not been written yet",
-    );
-  });
+/** An ingredient of the Static Web (specs/combinations.md). */
+const TYPE: ComponentType = "capacitor";
+const TIER: Tier = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("counts neither a blocker nor a tower as an ingredient", async () => {
+  openYard(h);
+
+  const poses: Pose[] = [
+    {
+      name: "empty",
+      arrange: (harness) => {
+        harness.debug.clearStructures();
+      },
+    },
+    {
+      name: "a blocker and a tower",
+      arrange: (harness) => {
+        harness.debug.clearStructures();
+        standBlocker(harness, 10, 10);
+        standCombo(harness, "staticweb", 14, 10);
+      },
+    },
+    {
+      name: "a Capacitor at Scrap",
+      arrange: (harness) => {
+        harness.debug.clearStructures();
+        standComponent(harness, TYPE, TIER, 10, 10);
+      },
+    },
+  ];
+
+  const read = await readBook(h, "combos", poses);
+  captureStill(h, "book");
+  assertGreaterThan(
+    read.points,
+    0,
+    "how many points of the stage the recipe book was found to paint",
+  );
+
+  const [empty, walled, owned] = read.open as [
+    (typeof read.open)[number],
+    (typeof read.open)[number],
+    (typeof read.open)[number],
+  ];
+  assertGreaterThan(
+    movedPoints(empty, owned),
+    0,
+    "how many of the book's points a Capacitor at Scrap moves, which is what " +
+      "an ingredient becoming owned looks like",
+  );
+  assertEqual(
+    movedPoints(empty, walled),
+    0,
+    "how many of the book's points a blocker and a combination tower move, " +
+      "neither of which is ever an ingredient",
+  );
 });
