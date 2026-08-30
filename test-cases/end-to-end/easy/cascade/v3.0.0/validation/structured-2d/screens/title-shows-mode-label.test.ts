@@ -1,23 +1,66 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/screens/title-shows-mode-label.test.ts
+// screens/title-shows-mode-label — the title screen names the deal mode.
 //
-// The review item `screens.title-shows-mode-label` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/screens.md fixes a deal-mode label among the title screen's elements —
+// `DEAL_MODE_LABEL`, "this build's label, as `specs/stock.md` states" — and
+// requires that it "is drawn somewhere on the screen so a player sees which deal
+// the game is played with". specs/instrumentation.md reports that same label as
+// the snapshot's `dealModeLabel`.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE LABEL IS THE BUILD'S OWN, TAKEN FROM THE BUILD. What is compared is what
+// the frame DREW against what the build REPORTS, so the point decides one thing —
+// the screen names the deal mode this build plays — under either variant and
+// without this file knowing which. A build that draws `DRAW ONE` while reporting
+// `draw-three` fails here whichever of the two it meant, and the LITERAL each
+// variant owes (`DRAW ONE`, `DRAW THREE`) is the variant's own point.
 //
-// What this item must decide, from the manifest:
-//
-//   The title screen names the deal mode
-//
-//   The text drawn on the title screen carries the build's own deal-mode label, matched against the dealModeLabel the snapshot reports, so the item decides something under all three engines and under both variants.
+// THE REPORTED LABEL IS CHECKED FIRST, because an empty string is drawn by every
+// frame that draws any text at all: a build reporting nothing would otherwise
+// satisfy the match without naming anything. specs/stock.md fixes a non-empty
+// label under both deal modes.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  resetTo,
+  type Harness,
+} from "../harness";
 
-it("screens.title-shows-mode-label — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/screens/title-shows-mode-label.test.ts is a scaffold stub, not a validator",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws the deal-mode label the build reports on its title screen", async () => {
+  resetTo(h);
+  const opened = h.snapshot();
+  assertEqual(
+    opened.screen,
+    "title",
+    "posing: reset restores the title screen, which is the screen this point " +
+      "reads (specs/instrumentation.md)",
+  );
+  assertGreaterThan(
+    opened.dealModeLabel.trim().length,
+    0,
+    "the length of the deal-mode label the build reports, which is the text " +
+      "the title screen owes a player (specs/stock.md, specs/screens.md)",
+  );
+
+  const calls = await h.drawFrame();
+  captureStill(h, "title");
+
+  assertEqual(
+    drewText(calls, opened.dealModeLabel),
+    true,
+    `the title screen's frame to draw the deal-mode label the build reports, ` +
+      `${JSON.stringify(opened.dealModeLabel)} (specs/screens.md)`,
   );
 });

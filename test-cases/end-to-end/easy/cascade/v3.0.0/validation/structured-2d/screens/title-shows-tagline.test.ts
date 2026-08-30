@@ -1,23 +1,57 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/screens/title-shows-tagline.test.ts
+// screens/title-shows-tagline — the title screen draws its tagline.
 //
-// The review item `screens.title-shows-tagline` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/screens.md fixes the tagline as `TAGLINE_TEXT` (`KLONDIKE SOLITAIRE`),
+// and says of every piece of screen copy that "the literal text it names is the
+// text that is drawn". It is what tells a player which patience game this is
+// before a single card is dealt.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// The literal is read from `src/constants.ts`, which the case seeded, so the
+// string asserted is the case's own. What is read is the frame's own draw calls,
+// so a build that carries the tagline and never draws it fails; matching is by
+// substring and ignores case, because the type and any decoration around the run
+// are the build's.
 //
-// What this item must decide, from the manifest:
-//
-//   The title screen shows its tagline
-//
-//   TAGLINE_TEXT (KLONDIKE SOLITAIRE) is drawn on the title screen.
+// The title and the menu items are `screens/title-shows-title` and
+// `screens/title-shows-items`, so each literal is graded on its own.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TAGLINE_TEXT } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  resetTo,
+  type Harness,
+} from "../harness";
 
-it("screens.title-shows-tagline — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/screens/title-shows-tagline.test.ts is a scaffold stub, not a validator",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws TAGLINE_TEXT on the title screen", async () => {
+  resetTo(h);
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "posing: reset restores the title screen, which is the screen this point " +
+      "reads (specs/instrumentation.md)",
+  );
+
+  const calls = await h.drawFrame();
+  captureStill(h, "title");
+
+  assertEqual(
+    drewText(calls, TAGLINE_TEXT),
+    true,
+    `the title screen's frame to draw TAGLINE_TEXT (${JSON.stringify(
+      TAGLINE_TEXT,
+    )}) (specs/screens.md)`,
   );
 });

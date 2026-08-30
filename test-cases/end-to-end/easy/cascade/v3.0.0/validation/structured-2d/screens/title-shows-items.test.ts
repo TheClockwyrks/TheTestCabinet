@@ -1,23 +1,60 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/screens/title-shows-items.test.ts
+// screens/title-shows-items — the title screen draws both of its items.
 //
-// The review item `screens.title-shows-items` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/screens.md fixes the title screen's menu as `TITLE_ITEMS`, "`NEW GAME`,
+// `HOW TO PLAY`, in that order", and each item's label "is drawn inside the
+// rectangle `specs/controls.md` fixes for it". A player who cannot see the two
+// items has no way of knowing the screen answers a press at all, whatever the
+// press then does.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// BOTH LITERALS, ONE POINT. The two are the one requirement — the title screen
+// carries its menu — and splitting them would grade one menu twice. What each
+// item DOES is `screens/title-new-game-enters-play` and
+// `screens/title-how-to-opens`, so a build that draws both and answers neither
+// grades apart from one that draws neither.
 //
-// What this item must decide, from the manifest:
-//
-//   The title screen shows both items
-//
-//   Both TITLE_ITEMS literals, NEW GAME and HOW TO PLAY, are drawn on the title screen.
+// The literals are read from `src/constants.ts`, which the case seeded. Matching
+// is by substring over the frame's own draw calls and ignores case, because a
+// menu entry is commonly drawn with padding or a marker beside it.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TITLE_ITEMS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  resetTo,
+  type Harness,
+} from "../harness";
 
-it("screens.title-shows-items — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/screens/title-shows-items.test.ts is a scaffold stub, not a validator",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws both TITLE_ITEMS on the title screen", async () => {
+  resetTo(h);
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "posing: reset restores the title screen, which is the screen this point " +
+      "reads (specs/instrumentation.md)",
   );
+
+  const calls = await h.drawFrame();
+  captureStill(h, "title");
+
+  for (const item of TITLE_ITEMS) {
+    assertEqual(
+      drewText(calls, item),
+      true,
+      `the title screen's frame to draw the ${JSON.stringify(item)} item of ` +
+        "TITLE_ITEMS (specs/screens.md)",
+    );
+  }
 });
