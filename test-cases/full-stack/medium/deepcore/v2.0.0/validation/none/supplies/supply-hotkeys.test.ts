@@ -36,6 +36,9 @@ import { BLAST_COL, layRockAround, SHALLOW_ROW } from "./blast-scene";
 /** More than one of each, so a count taken to zero cannot be mistaken for the rule. */
 const HELD = 2;
 
+/** Frames each press is left on screen for, so the recording shows it. */
+const SHOWN_FRAMES = 24;
+
 /** A hull and a tank part spent, so the two topping supplies have work to do. */
 const POSED_HULL = 40;
 const POSED_FUEL = 40;
@@ -68,6 +71,9 @@ it("uses the supply of that number on each of Digit1 through Digit6", async () =
 
       await h.tap(`Digit${index + 1}`);
       readings.push({ ...(await h.snapshot()).items });
+      // The counts are already read; these frames are for the recording, so each
+      // press is a moment a reviewer can see rather than a single frame.
+      await h.advance(SHOWN_FRAMES);
     }
     return readings;
   });

@@ -131,5 +131,11 @@ export async function openCampScene(h: Harness): Promise<void> {
   await pinDrill(h);
 }
 
-/** Frames run after a blast so the recording carries the aftermath. */
-export const AFTERMATH_FRAMES = 30;
+/**
+ * Frames run after a blast so the recording carries the aftermath.
+ *
+ * Three quarters of a second at the harness's frame, which is long enough for a
+ * reviewer to see the hole the charge opened and whatever the build drew going
+ * off in it.
+ */
+export const AFTERMATH_FRAMES = 90;

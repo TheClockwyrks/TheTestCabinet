@@ -36,8 +36,17 @@ import {
 } from "../harness";
 import { CORE_COL, TILE } from "../constants";
 
-/** How long a driven span is divided into, in seconds of game time per frame. */
-const FRAME_SECONDS = 0.125;
+/**
+ * How long one frame of a driven span covers, in seconds of game time.
+ *
+ * Twenty-five a second: fine enough that a span recorded as a review item's
+ * replay plays back as motion rather than as a slideshow, and coarse enough that
+ * a ninety-second timer is a few hundred rendered frames rather than ten
+ * thousand. Nothing here depends on the division — `specs/instrumentation.md`
+ * fixes that an interval of game time reaches the same state however it was cut
+ * into frames.
+ */
+const FRAME_SECONDS = 0.04;
 
 /** Run `seconds` of game time in whole frames of about {@link FRAME_SECONDS}. */
 export function elapse(h: Harness, seconds: number): Promise<void> {

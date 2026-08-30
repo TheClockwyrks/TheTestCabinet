@@ -26,6 +26,9 @@ import {
 } from "../harness";
 import { openCampScene } from "./core-scene";
 
+/** Frames each refusal is left on screen for, so the recording shows the note. */
+const SHOWN_FRAMES = 60;
+
 /** Far more than the drive takes, so neither reading is taken after a detonation. */
 const POSED_TIMER = CORE_TIMER;
 
@@ -51,12 +54,12 @@ it("refuses to save while a Sample is carried or lying jettisoned", async () => 
     await h.debug.setCoreCarried(true);
     await h.debug.setCoreTimer(POSED_TIMER);
     await h.debug.save();
-    await h.advance(2);
+    await h.advance(SHOWN_FRAMES);
     const carried = await h.snapshot();
 
     await h.debug.jettison();
     await h.debug.save();
-    await h.advance(2);
+    await h.advance(SHOWN_FRAMES);
     const jettisoned = await h.snapshot();
 
     return { carried, jettisoned };

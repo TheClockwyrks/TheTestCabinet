@@ -47,6 +47,9 @@ const DRAWS = 16;
 const DEEP_COL = 10;
 const DEEP_FLOOR_ROW = 30;
 
+/** Frames each draw is left falling for, so the recording shows it. */
+const SHOWN_FRAMES = 8;
+
 /** Floating-point slack on a bound the specification states exactly. */
 const EPSILON = 0.001;
 
@@ -82,7 +85,8 @@ it("drops the miner over the camp inside the stated height and speed", async () 
         height: (SURFACE_Y - (miner.y + MINER_H)) / TILE,
         vy: miner.vy,
       });
-      await h.advance(2);
+      // The draw is already read; these frames are for the recording.
+      await h.advance(SHOWN_FRAMES);
     }
     return taken;
   });
