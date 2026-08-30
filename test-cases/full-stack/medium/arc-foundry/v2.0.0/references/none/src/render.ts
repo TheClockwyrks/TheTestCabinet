@@ -2316,33 +2316,37 @@ function drawInspector(
   );
 
   // COMBINATION-TOWER recipes in reach (specs/build.md, specs/towers.md) — each a one-click
-  // COMBINE SPECIAL → <tower> that folds this piece + matching partners into a terminal combo
-  // (which lands at LEVEL 0 and is upgraded from there). Listed from just under the stats down to
-  // the bottom buttons; a shift-multi-select picks exactly which duplicate copies fold.
+  // COMBINE SPECIAL -> <tower> that folds this piece + matching partners into a terminal combo
+  // (which lands at LEVEL 0 and is upgraded from there). A shift-multi-select picks exactly which
+  // duplicate copies fold.
+  //
+  // THE ROWS STACK WITH THE OTHER ACTIONS, upward from the same anchor, rather than being laid
+  // into whatever gap the stats block happened to leave under it. specs/build.md offers "one
+  // action per reachable recipe", with no clause about room, so a recipe the yard can reach is
+  // always offered: a layout that dropped the last row would take a tower the player has already
+  // assembled the parts for off the board entirely. Each row paints its own opaque backing, so a
+  // long stats block above it is covered rather than showing through.
   if (recipes.length > 0) {
-    text(ctx, "COMBINE SPECIAL", x, row + 4, 9, COL.combo, "left", "700", 0.5);
-    let ry = row + 16;
     const rh = 30;
-    const maxRy = ay - 6;
-    let shown = 0;
     for (const rec of recipes) {
-      if (ry + rh > maxRy) break;
       const def = COMBOS[rec.combo];
       const land = comboStats(rec.combo, 0);
-      roundRect(ctx, x, ry, w, rh, 5);
+      roundRect(ctx, x, ay, w, rh, 5);
+      ctx.fillStyle = COL.panel;
+      ctx.fill();
       ctx.fillStyle = hexA(def.color, 0.1);
       ctx.fill();
       ctx.strokeStyle = hexA(def.color, 0.5);
       ctx.lineWidth = 1;
       ctx.stroke();
-      text(ctx, def.name, x + 8, ry + 10, 10, def.color, "left", "700", 0.3);
+      text(ctx, def.name, x + 8, ay + 10, 10, def.color, "left", "700", 0.3);
       const tags = abilityTags(def);
       const prev = `${land.dmg} dmg (Lv0) · ${Math.round(land.range)} r${tags ? " · " + tags : ""}`;
       // Shrink-to-fit so a four-ability combo (Singularity) does not overrun the button border.
-      fitText(ctx, prev, x + 8, ry + 22, 8, COL.text2, w - 16, "500", 0.2);
+      fitText(ctx, prev, x + 8, ay + 22, 8, COL.text2, w - 16, "500", 0.2);
       clicks.push({
         x,
-        y: ry,
+        y: ay,
         w,
         h: rh,
         action: "combine-special",
@@ -2350,20 +2354,9 @@ function drawInspector(
         label: def.name,
         panel: true,
       });
-      ry += rh + 4;
-      shown++;
+      ay -= rh + rowGap;
     }
-    if (shown < recipes.length && ry + 2 < maxRy)
-      text(
-        ctx,
-        `+${recipes.length - shown} more (free space to see)`,
-        x,
-        ry + 2,
-        8,
-        COL.text3,
-        "left",
-        "500",
-      );
+    text(ctx, "COMBINE SPECIAL", x, ay + 10, 9, COL.combo, "left", "700", 0.5);
   }
 }
 
