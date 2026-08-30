@@ -1,29 +1,73 @@
-/*
- * Coil validator: `screens.title-copy`. PLACEHOLDER.
- *
- * The title screen draws its copy.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * The title frame draws TITLE_TEXT (COIL), TAGLINE_TEXT (GRID SERPENT),
- * BEST_LABEL (BEST) and the HOW TO PLAY menu entry.
- *
- * HOW:
- * reset to the title, read the frame's text draws, and capture it.
- *
- * MEDIA IT MUST CAPTURE: title (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// screens/title-copy — the title screen draws the copy specs/ui.md fixes for it.
+//
+// The `title` table names four things the screen carries: `TITLE_TEXT` (`COIL`),
+// `TAGLINE_TEXT` (`GRID SERPENT`), `BEST_LABEL` (`BEST`) above the session's best
+// score, and the menu, whose second item is `HOW TO PLAY`. Its first item is the
+// mode's own entry, which is stated per mode and decided by
+// `screens/title-mode-entry-*`.
+//
+// Matching is by substring and ignores case, because how a build sets its copy is
+// its own: a menu entry is commonly drawn with a selection marker beside it, and a
+// heading with padding around it. What is required is that the words are on the
+// screen.
+//
+// The title is reached by resetting rather than by pressing anything, so a build
+// whose menus do not work still has this point decided on what it draws.
 
-test("screens.title-copy", () => {
-  throw new Error("validator not implemented: screens/title-copy.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  BEST_LABEL,
+  TAGLINE_TEXT,
+  TITLE_ITEMS,
+  TITLE_TEXT,
+} from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  openTitle,
+  type Harness,
+} from "../harness";
+
+/** `HOW TO PLAY` is the second item of `TITLE_ITEMS` (specs/ui.md). */
+const HOWTO_ITEM = TITLE_ITEMS[1];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws the title, the tagline, the best label and HOW TO PLAY", async () => {
+  const title = openTitle(h);
+  assertEqual(title.screen, "title", "the screen the frame is read from");
+
+  const calls = await h.frameCalls();
+  captureStill(h, "title");
+
+  assertEqual(
+    drewText(calls, TITLE_TEXT),
+    true,
+    `the title drawing ${TITLE_TEXT}`,
+  );
+  assertEqual(
+    drewText(calls, TAGLINE_TEXT),
+    true,
+    `the title drawing ${TAGLINE_TEXT}`,
+  );
+  assertEqual(
+    drewText(calls, BEST_LABEL),
+    true,
+    `the title drawing ${BEST_LABEL}`,
+  );
+  assertEqual(
+    drewText(calls, HOWTO_ITEM),
+    true,
+    `the title drawing ${HOWTO_ITEM}`,
+  );
 });
