@@ -164,6 +164,11 @@ this project builds and tests against the engine's current source. A run
 receives the same package at `.tcab/engine/@test-cabinet/structured-2d/`
 instead, so the import in the sources is the same either way.
 
+One development dependency is added to the seeded set: `@types/node`, which the
+build's own test harness needs to read the seeded art off disk in a Node
+process. Nothing the game ships touches Node, and the declaration is scoped to
+`src/harness.test-support.ts` alone.
+
 ## Run in development
 
 ```sh
