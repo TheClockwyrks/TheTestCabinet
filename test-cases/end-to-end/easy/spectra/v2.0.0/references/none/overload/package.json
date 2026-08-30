@@ -1,0 +1,32 @@
+{
+  "name": "spectra",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Spectra — a fixed-position formation shooter with two-band polarity combat, running entirely in the browser, on no engine. The overload mode: a wrong-band shot charges the drone it hits.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@test-cabinet/particle-runtime": "file:../../../../../../../../packages/particle-runtime",
+    "@test-cabinet/run-record": "file:../../../../../../../../packages/run-record"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@napi-rs/canvas": "^0.1",
+    "@vitest/coverage-v8": "^3",
+    "eslint": "^9",
+    "playwright": "^1.61.0",
+    "prettier": "^3",
+    "typescript": "^5",
+    "typescript-eslint": "^8",
+    "vite": "^6",
+    "vitest": "^3"
+  }
+}
