@@ -1,23 +1,65 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/stock/turned-cards-face-up.test.ts
+// stock/turned-cards-face-up — a turn brings its cards over face-up.
 //
-// The review item `stock.turned-cards-face-up` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/stock.md: the cards "are taken one at a time from the top of the
+// stock and placed face-up on the waste". The stock is a face-down pile
+// (specs/deal.md), so the turn is what turns them: a build that carried them across
+// without changing their faces would show the player a waste of card backs and no
+// card to play.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE STOCK IS POSED FACE-DOWN, deliberately, which is what makes this a reading of
+// the turn rather than of the pose. `stockSpecs` marks every card face-down, and the
+// waste is empty before the turn, so every card on the waste afterwards is one the
+// turn put there.
 //
-// What this item must decide, from the manifest:
-//
-//   Turned cards are face-up
-//
-//   Every card the turn put on the waste is face-up.
+// EVERY TURNED CARD IS NAMED SEPARATELY, by the card it is, so a build that turns
+// the last card of a three-card group and leaves the other two face-down fails with
+// the first card that disagreed named rather than with a bare count.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openTable,
+  poseStock,
+  type Harness,
+} from "../harness";
+import { cardText, stockSpecs } from "./turning";
 
-it("stock.turned-cards-face-up — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/stock/turned-cards-face-up.test.ts is a scaffold stub, not a validator",
+/** Cards posed on the stock, longer than either deal mode's turn. */
+const STOCK_SIZE = 12;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("places every card a turn moves face-up on the waste", async () => {
+  openTable(h);
+  poseStock(h, stockSpecs(STOCK_SIZE));
+
+  h.debug.turnStock();
+  const after = h.snapshot();
+
+  await h.advance(1);
+  captureStill(h, "turned");
+
+  assertGreaterThanOrEqual(
+    after.waste.length,
+    1,
+    "cards a turn of a twelve-card stock put on the waste (specs/stock.md)",
   );
+  for (const reported of after.waste) {
+    assertEqual(
+      reported.faceUp,
+      true,
+      `the face of the ${cardText(reported)} the turn brought onto the waste ` +
+        "(specs/stock.md)",
+    );
+  }
 });
