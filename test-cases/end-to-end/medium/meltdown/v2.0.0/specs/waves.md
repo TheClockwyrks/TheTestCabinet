@@ -62,10 +62,13 @@ WAVE_OPENING = [mote, mote, sprint, swarm, mote, drift, mote, hulk]
 WAVE_CYCLE   = [mote, sprint, swarm, drift, hulk]
 ```
 
+`round` rounds a half upward, so `round(n / 2)` is `10` in a 20-wave run, `8` in
+a 15-wave run, and `13` in a 26-wave run.
+
 The two milestone waves, `round(n / 2)` and `n`, are Core waves whatever the
 opening list or the cycle would otherwise give. In a 20-wave run those are Wave
 10 and Wave 20, and Waves 11 through 19 read Swarm, Drift, Hulk, Mote, Sprint,
-Swarm, Drift, Hulk, Mote.
+Swarm, Drift, Hulk, Mote. In a 15-wave run they are Wave 8 and Wave 15.
 
 How many units a wave releases:
 
