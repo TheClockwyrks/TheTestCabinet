@@ -10,6 +10,7 @@
 // asset falls back to a neutral code drawing so the build never crashes (specs/assets.md).
 
 import {
+  ANIM_FPS,
   BAND_FILL,
   BUILDINGS,
   BUILDING_H,
@@ -18,6 +19,7 @@ import {
   FUEL_BUY_INCREMENT,
   FUEL_PRICE,
   HUD_H,
+  HURT_TIME,
   ITEMS,
   LOW_FUEL_FRACTION,
   LOW_HULL_FRACTION,
@@ -85,16 +87,6 @@ export interface View {
 }
 
 const P = PALETTE;
-const FPS: Record<MinerState, number> = {
-  idle: 3,
-  walk: 10,
-  "drill-down": 12,
-  "drill-side": 12,
-  jetpack: 14,
-  fall: 6,
-  hurt: 12,
-  "fuel-out": 3,
-};
 
 // ---------------------------------------------------------------------------
 // Text + primitives
@@ -1053,10 +1045,18 @@ function drawMiner(
   const sy = my + MINER_H - drawH;
   const screenY = sy + offY;
 
+  // specs/assets.md: every cycle advances at ANIM_FPS, against the game's own
+  // elapsed time rather than the wall clock, and every cycle loops but `hurt`,
+  // which plays once and then holds its last frame until the state gives way.
   const frames = assets.miner[m.state];
-  const img = frames.length
-    ? frames[Math.floor(view.time * FPS[m.state]) % frames.length]
-    : undefined;
+  const at =
+    m.state === "hurt"
+      ? Math.min(
+          frames.length - 1,
+          Math.floor((HURT_TIME - game.hurtT) * ANIM_FPS),
+        )
+      : Math.floor(game.simTime * ANIM_FPS) % Math.max(1, frames.length);
+  const img = frames.length ? frames[at] : undefined;
 
   ctx.save();
   if (m.facing === "west") {
