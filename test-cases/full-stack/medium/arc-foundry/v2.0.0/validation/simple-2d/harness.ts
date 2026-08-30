@@ -896,6 +896,31 @@ export async function createHarness(
     events.dispatchEvent(new PointerEvt(type, x, y));
   };
 
+  // WHY A DRIVE HANDS THE EVENT LOOP A TURN. `engine.advance(n)` returns a promise,
+  // but the `n` frames have already run by the time it does: the engine steps them
+  // synchronously and resolves after the last one. So a check that drives a wave to
+  // its clear holds this worker's event loop for as long as that simulation takes,
+  // and awaiting an already-settled promise does not give the loop back — it queues
+  // a microtask, which runs before the loop is reached at all. Vitest reports a
+  // running file to its runner over a socket served by that same loop, and a
+  // report left unanswered for long enough is abandoned, which spoils the RUN over
+  // a check that passed. `step` therefore lets one real turn of the loop through
+  // whenever the frames just run have held it for {@link YIELD_AFTER_MS}. Nothing
+  // measured here depends on wall-clock time — every check supplies its own clock
+  // and the engine reads no other — so the turn changes no reading, and it costs a
+  // microsecond, only after a drive has already spent a tenth of a second.
+  const YIELD_AFTER_MS = 100;
+  let yieldedAt = Date.now();
+  const step = async (frames: number): Promise<void> => {
+    await engine.advance(frames);
+    if (Date.now() - yieldedAt >= YIELD_AFTER_MS) {
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+      yieldedAt = Date.now();
+    }
+  };
+
   const harness: Harness = {
     engine,
     get state() {
@@ -913,8 +938,8 @@ export async function createHarness(
 
     snapshot: () => debug.snapshot(),
 
-    advance: (frames) => engine.advance(frames),
-    advanceSeconds: (s) => engine.advance(ticks(s)),
+    advance: (frames) => step(frames),
+    advanceSeconds: (s) => step(ticks(s)),
 
     async until(predicate, untilOptions = {}) {
       const maxFrames = untilOptions.maxFrames ?? 1200;
@@ -925,9 +950,9 @@ export async function createHarness(
 
       let frames = 0;
       while (frames < maxFrames) {
-        const step = Math.min(poll, maxFrames - frames);
-        await engine.advance(step);
-        frames += step;
+        const chunk = Math.min(poll, maxFrames - frames);
+        await step(chunk);
+        frames += chunk;
         snapshot = debug.snapshot();
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
       }
@@ -947,7 +972,7 @@ export async function createHarness(
     async tap(code) {
       key("keydown", code);
       key("keyup", code);
-      await engine.advance(1);
+      await step(1);
     },
 
     pointerMove: (x, y) => pointer("pointermove", x, y),
@@ -956,7 +981,7 @@ export async function createHarness(
 
     async frameCalls() {
       calls.length = 0;
-      await engine.advance(1);
+      await step(1);
       return [...calls];
     },
 
