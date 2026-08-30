@@ -1,26 +1,69 @@
-// Arc Foundry — `press.cancel-is-free`. CASE-PROVIDED. NOT YET WRITTEN.
+// press/cancel-is-free — putting a held rock away spends no stamp.
 //
-// The manifest declares this point at `press/cancel-is-free.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// The roll happens only on a successful drop (`specs/scrap-press.md`), so there
+// is nothing to pay for until the rock lands: a player who pulls the press, looks
+// at the yard and changes their mind has spent nothing. A build that charges on
+// the pull turns a look at the board into a cost, and the five-per-level
+// allowance into something the player has to ration by not thinking.
 //
-// THE REQUIREMENT. Putting a held rock away spends no stamp and places
-// nothing, because the roll happens only on a successful drop.
+// The rock is put away the way a player puts it away, with the `back` action at
+// the engine's own input surface, because the surface carries no key operation
+// under this engine.
 //
-// HOW IT IS DECIDED. Arm a rock, put it away, and read stampsLeft and the
-// structure count back. The evidence it hands back is `cancel` (image): the
-// yard after a cancelled rock.
+// The reading is the state after the cancel: the hand empty, the allowance whole,
+// and nothing on the yard.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { STAMPS_PER_LEVEL } from "../../src/constants";
+import { assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  clearHand,
+  createHarness,
+  openYard,
+  pressAction,
+  type Harness,
+} from "../harness";
 
-describe("press.cancel-is-free", () => {
-  it("Putting a held rock away is free", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `press.cancel-is-free` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("puts a held rock away with the allowance whole and the yard empty", async () => {
+  openYard(h);
+
+  await pressAction(h, "stamp");
+  const armed = h.snapshot();
+  assertEqual(
+    armed.held.active,
+    true,
+    "the rock the press armed on the cursor",
+  );
+
+  await clearHand(h);
+  const cancelled = h.snapshot();
+  captureStill(h, "cancel");
+
+  assertEqual(
+    cancelled.held.active,
+    false,
+    "the held rock after it was put away",
+  );
+  assertEqual(
+    cancelled.stampsLeft,
+    STAMPS_PER_LEVEL,
+    "the stamps left after a cancelled rock, which spends none",
+  );
+  assertLength(
+    cancelled.structures,
+    0,
+    "the structures on the yard after a cancelled rock",
+  );
 });
