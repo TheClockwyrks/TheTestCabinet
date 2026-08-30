@@ -430,7 +430,10 @@ async function main(): Promise<void> {
   function draw(): void {
     const { scale, offX, offY } = fit();
     const dpr = window.devicePixelRatio || 1;
-    input.setViewport(scale * dpr, offX * dpr, offY * dpr);
+    // A pointer event reports CSS pixels, so the device pixel ratio belongs to the drawing
+    // transform below and to nothing else. The canvas covers the window at the origin, so a
+    // client position maps onto the stage through the letterbox fit alone.
+    input.setViewport(scale, offX, offY);
 
     setRenderTime(elapsed);
     setMuted(game.muted);
