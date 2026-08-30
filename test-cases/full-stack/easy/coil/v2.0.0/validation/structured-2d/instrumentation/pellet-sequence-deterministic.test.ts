@@ -1,32 +1,97 @@
-/*
- * Coil validator: `instrumentation.pellet-sequence-deterministic`. PLACEHOLDER.
- *
- * The pellet sequence is seeded and reproducible.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * Two runs from reset({ seed }) with the same seed and the same sequence of
- * calls place their pellets on exactly the same cells in the same order.
- *
- * HOW:
- * seed a game, drive a run of eats and record the cell each pellet landed on,
- * then seed a second game the same way and compare the two sequences.
- *
- * MEDIA IT MUST CAPTURE: seeded (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// instrumentation/pellet-sequence-deterministic — the pellet generator is seeded,
+// and reseeding it replays the same draws.
+//
+// WHAT specs/instrumentation.md REQUIRES. The one draw the game makes is the cell
+// each pellet spawns on, it runs off a generator `reset` seeds, and the game
+// keeps that generator's whole state, "so reseeding and replaying the same calls
+// reproduces the same pellet sequence exactly". `reset({ seed })` names the seed.
+//
+// HOW THE RUN IS MADE REPRODUCIBLE. The only thing this point may vary is the
+// generator, so everything else is posed identically in both runs: the same
+// cleared board, the same chain, the same direction, and the same pellet cell fed
+// to each eat. `setPellet` is explicitly NOT a spawn — "the generator is not
+// drawn from and the seeded sequence is left where it stands" — so placing the
+// next meal by hand steers the head without disturbing the draw under test. Each
+// eat then spawns the pellet the generator chose, which is what is recorded.
+//
+// THE BOARD IS CLEARED FIRST because a mode's obstacle course is not what this
+// point is about, and clearing it makes the two runs read the same under either
+// mode. Both runs clear it identically, so the valid set the generator draws
+// from is the same set in both.
 
-test("instrumentation.pellet-sequence-deterministic", () => {
-  throw new Error(
-    "validator not implemented: instrumentation/pellet-sequence-deterministic.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
+import { DEFAULT_SEED } from "../../src/constants";
+import {
+  ahead,
+  captureReplay,
+  chainFrom,
+  clearObstacles,
+  createHarness,
+  type Cell,
+  type Harness,
+} from "../harness";
+
+/** Eats driven per run: enough draws that two agreeing sequences is no accident. */
+const EATS = 12;
+
+/** Where the chain starts, with a clear run to the right for every eat. */
+const HEAD: Cell = { col: 3, row: 8 };
+
+/** The seed both runs are laid with. */
+const SEED = DEFAULT_SEED + 7;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+/**
+ * Seed the game, drive `EATS` eats along one row, and answer the cell the
+ * generator put each replacement pellet on.
+ *
+ * Every call the run makes is fixed, in this order, so two runs differ in
+ * nothing but the generator's state.
+ */
+async function drawSequence(seed: number): Promise<Cell[]> {
+  const { debug } = h;
+  debug.reset({ seed });
+  clearObstacles(h);
+  debug.setSnake(chainFrom(HEAD, "right", 3));
+  debug.setDirection("right");
+  debug.clearTurns();
+  debug.setPelletRespawn(true);
+  debug.setScreen("playing");
+
+  const drawn: Cell[] = [];
+  let head = HEAD;
+  for (let eat = 0; eat < EATS; eat += 1) {
+    const meal = ahead(head, "right");
+    debug.setPellet(meal.col, meal.row);
+    const after = await h.tick();
+    assertEqual(after.pellet === null, false, `a pellet after eat ${eat + 1}`);
+    drawn.push(after.pellet as Cell);
+    head = meal;
+  }
+  return drawn;
+}
+
+it("places the same pellets, in the same order, from the same seed", async () => {
+  const first = await drawSequence(SEED);
+  assertEqual(first.length, EATS, "pellets drawn by the first run");
+
+  const second = await captureReplay(h, "seeded", () => drawSequence(SEED));
+
+  // Whether the draw VARIES is a different requirement, decided by
+  // `growth/respawn-varies`; what is decided here is only that it repeats.
+  assertDeepEqual(
+    second,
+    first,
+    "the same seed and the same sequence of calls",
   );
 });

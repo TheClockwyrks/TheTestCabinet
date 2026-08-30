@@ -1,33 +1,88 @@
-/*
- * Coil validator: `instrumentation.steering-switch`. PLACEHOLDER.
- *
- * The steering switch holds the snake's heading.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * With setSnakeSteering(false) the turn buffer stays empty and dir holds its
- * value however many steering requests arrive, while the head still advances
- * each tick along dir; turning it back on takes requests again.
- *
- * HOW:
- * turn steering off, request every direction over several ticks, and confirm
- * turns stays empty and dir never changes while the head keeps advancing.
- *
- * MEDIA IT MUST CAPTURE: held (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// instrumentation/steering-switch — `setSnakeSteering(false)` holds the snake's
+// heading while it keeps travelling.
+//
+// WHAT THE SWITCH IS FOR. specs/instrumentation.md gives the driver three
+// switches rather than one, "because a scenario holds one faculty still while it
+// watches another". With `steering` off, step 1 of the tick "takes nothing and no
+// request is taken into the buffer, so `turns` stays empty and `dir` holds the
+// value it carries", while "the head still advances each tick along `dir`". Both
+// halves are the requirement: a switch that also froze the snake would be a
+// different switch, and every later point that holds a heading still while the
+// chain runs rests on this one.
+//
+// THE REQUESTS ARE REAL KEY PRESSES because a steering request has no other
+// source: the surface carries no operation that buffers one, so the keyboard the
+// engine drives is what a request arrives on. What is decided here is what the
+// switch does with them, not the bindings, which the `controls` points own.
 
-test("instrumentation.steering-switch", () => {
-  throw new Error(
-    "validator not implemented: instrumentation/steering-switch.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import { BINDINGS } from "../../src/constants";
+import {
+  ahead,
+  arrangeStep,
+  captureReplay,
+  createHarness,
+  type Cell,
+  type Harness,
+} from "../harness";
+
+/** Where the chain is posed: row 8 with a long clear run to its right. */
+const HEAD: Cell = { col: 8, row: 8 };
+
+/** Every direction a request can name, pressed one per tick with steering off. */
+const REQUESTS = [
+  BINDINGS.up[0],
+  BINDINGS.down[0],
+  BINDINGS.left[0],
+  BINDINGS.right[0],
+] as const;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("keeps turns empty and dir fixed while the head keeps advancing", async () => {
+  const posed = arrangeStep(h, {
+    head: HEAD,
+    dir: "right",
+    length: 3,
+    steering: false,
+  });
+  assertEqual(posed.snapshot.steering, false, "the switch the scene posed");
+
+  const held = await captureReplay(h, "held", async () => {
+    for (const key of REQUESTS) {
+      await h.tap(key);
+      await h.tick();
+    }
+    return h.snapshot();
+  });
+
+  // Not one request was taken, and the heading is the one the scene posed.
+  assertDeepEqual(held.turns, [], "turns with steering off");
+  assertEqual(held.dir, "right", "dir with steering off");
+
+  // And travel is untouched: the head advanced one cell along `dir` for each
+  // tick that resolved, which is the other half of what the switch promises.
+  assertGreaterThan(held.ticks, 0, "ticks resolved while the switch was off");
+  assertDeepEqual(
+    held.snake[0],
+    ahead(HEAD, "right", held.ticks),
+    "the head after the ticks that resolved",
   );
+
+  // Turning the switch back on takes requests again, from wherever the game
+  // stands, with no catching up for the ticks it was off.
+  h.debug.setSnakeSteering(true);
+  await h.tap(BINDINGS.up[0]);
+  const taken = h.snapshot();
+  assertDeepEqual(taken.turns, ["up"], "turns with steering back on");
+  assertEqual((await h.tick()).dir, "up", "dir on the tick after the request");
 });
