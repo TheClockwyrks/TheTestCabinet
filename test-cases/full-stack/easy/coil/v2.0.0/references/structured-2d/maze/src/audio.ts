@@ -89,15 +89,33 @@ export function playTickEvents(audio: WorldAudio, events: TickEvents): void {
 }
 
 /**
- * Keep the music bed matching the screen (specs/ui.md).
+ * Sound the music bed for a round that has just begun (specs/ui.md).
  *
- * Reconciled every frame rather than started and stopped at the transitions,
- * because a round can also be entered and left through the debug surface, whose
- * poses write the state and play nothing.
+ * `specs/ui.md` plays `music` when "a round begins", so it is played from the one
+ * path that LAYS A ROUND OUT rather than reconciled against the screen. A screen
+ * reaching `playing` is not a round beginning: `RESUME` returns to the round
+ * already running, and `specs/instrumentation.md` says of a posed screen that it
+ * "runs the tick over the board as it stands rather than laying out a fresh
+ * round". Reconciling would sound the bed on both.
+ *
+ * A bed already running is stopped first, so a fresh round always starts the bed
+ * fresh — `RESTART` from the pause menu leaves the previous round's bed playing
+ * otherwise, and that round has ended.
  */
-export function syncMusic(screen: Screen, audio: WorldAudio): void {
-  const wanted = screen === "playing" || screen === "paused";
-  const looping = audio.looping(CUES.music);
-  if (wanted && !looping) audio.loop(CUES.music);
-  if (!wanted && looping) audio.stop(CUES.music);
+export function startMusic(audio: WorldAudio): void {
+  if (audio.looping(CUES.music)) audio.stop(CUES.music);
+  audio.loop(CUES.music);
+}
+
+/**
+ * Stop the music bed once the round it was playing under is over (specs/ui.md:
+ * it "loops under the game until the round ends").
+ *
+ * Reconciled every frame rather than stopped at the transitions, because a round
+ * can also be left through the debug surface. Only the STOP is reconciled this
+ * way: see {@link startMusic} for why the start is not.
+ */
+export function stopMusicOffTheRound(screen: Screen, audio: WorldAudio): void {
+  const under = screen === "playing" || screen === "paused";
+  if (!under && audio.looping(CUES.music)) audio.stop(CUES.music);
 }

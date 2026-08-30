@@ -24,6 +24,28 @@ import { menuItems } from "./menus";
 import { seedState } from "./rng";
 import { layChain, requestTurn, spawnPellet } from "./sim";
 
+/**
+ * What routing one press edge did that only the caller can answer for.
+ *
+ * One thing: a fresh round being LAID OUT. `specs/ui.md` sounds the music bed
+ * when "a round begins", and a round beginning is something the routing does
+ * rather than a screen the state lands on — three menu items lay a fresh round
+ * and a fourth returns to the round already running, and all four leave `screen`
+ * at `playing`. Reporting it keeps this file blind to the bus, as its header
+ * requires, while still letting the one caller that holds the bus sound the cue
+ * on exactly the frames a round began on.
+ */
+export interface Routed {
+  /** Whether this edge laid a fresh round out. */
+  roundBegan: boolean;
+}
+
+/** Nothing the caller has to answer for. */
+const ROUTED_NOTHING: Routed = { roundBegan: false };
+
+/** A fresh round was laid out. */
+const ROUTED_ROUND_BEGAN: Routed = { roundBegan: true };
+
 /** The actions that steer, and the direction each one asks for. */
 const STEER: Partial<Record<ActionName, Direction>> = {
   up: "up",
@@ -91,38 +113,37 @@ export function goTo(state: CoilState, screen: Screen): void {
  * of the state, so the controller reads that edge and flips the bus, and this
  * routes everything else.
  */
-export function handleAction(state: CoilState, action: ActionName): void {
+export function handleAction(state: CoilState, action: ActionName): Routed {
   if (state.screen === "playing") {
     const dir = STEER[action];
     if (dir) requestTurn(state, dir);
     else if (action === "back" || action === "pause") goTo(state, "paused");
-    return;
+    return ROUTED_NOTHING;
   }
-  routeMenu(state, action);
+  return routeMenu(state, action);
 }
 
-function routeMenu(state: CoilState, action: ActionName): void {
+function routeMenu(state: CoilState, action: ActionName): Routed {
   const items = menuItems(state.screen);
   switch (action) {
     case "up":
-      if (items.length === 0) return;
+      if (items.length === 0) return ROUTED_NOTHING;
       state.menuIndex = (state.menuIndex - 1 + items.length) % items.length;
-      return;
+      return ROUTED_NOTHING;
     case "down":
-      if (items.length === 0) return;
+      if (items.length === 0) return ROUTED_NOTHING;
       state.menuIndex = (state.menuIndex + 1) % items.length;
-      return;
+      return ROUTED_NOTHING;
     case "confirm":
-      accept(state);
-      return;
+      return accept(state);
     case "back":
       leave(state);
-      return;
+      return ROUTED_NOTHING;
     case "pause":
       if (state.screen === "paused") goTo(state, "playing");
-      return;
+      return ROUTED_NOTHING;
     default:
-      return;
+      return ROUTED_NOTHING;
   }
 }
 
@@ -132,28 +153,40 @@ function routeMenu(state: CoilState, action: ActionName): void {
  * Keyed by the item's index rather than by its label, so the title's first item
  * starts a round whatever the mode names it.
  */
-function accept(state: CoilState): void {
+function accept(state: CoilState): Routed {
   const index = state.menuIndex;
   switch (state.screen) {
     case "title":
-      if (index === 0) startRound(state);
-      else goTo(state, "howto");
-      return;
+      if (index !== 0) {
+        goTo(state, "howto");
+        return ROUTED_NOTHING;
+      }
+      startRound(state);
+      return ROUTED_ROUND_BEGAN;
     case "howto":
       goTo(state, "title");
-      return;
+      return ROUTED_NOTHING;
     case "paused":
-      if (index === 0) goTo(state, "playing");
-      else if (index === 1) startRound(state);
-      else goTo(state, "title");
-      return;
+      if (index === 0) {
+        goTo(state, "playing");
+        return ROUTED_NOTHING;
+      }
+      if (index !== 1) {
+        goTo(state, "title");
+        return ROUTED_NOTHING;
+      }
+      startRound(state);
+      return ROUTED_ROUND_BEGAN;
     case "gameover":
     case "cleared":
-      if (index === 0) startRound(state);
-      else goTo(state, "title");
-      return;
+      if (index !== 0) {
+        goTo(state, "title");
+        return ROUTED_NOTHING;
+      }
+      startRound(state);
+      return ROUTED_ROUND_BEGAN;
     default:
-      return;
+      return ROUTED_NOTHING;
   }
 }
 

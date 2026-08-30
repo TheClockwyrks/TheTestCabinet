@@ -36,7 +36,7 @@ import type {
 } from "@test-cabinet/structured-2d";
 import { Arena } from "./arena";
 import { loadSprites, NO_SPRITES, type SnakeSprites } from "./assets";
-import { defineCues, playTickEvents, syncMusic } from "./audio";
+import { defineCues, playTickEvents, stopMusicOffTheRound } from "./audio";
 import {
   DEFAULT_SEED,
   OBSTACLE_CELLS,
@@ -236,7 +236,7 @@ class CoilMode extends GameMode {
       state.accumulator += dt;
       runTicks(state, this.world.audio);
     }
-    syncMusic(state.screen, this.world.audio);
+    stopMusicOffTheRound(state.screen, this.world.audio);
 
     state.biteRemaining = Math.max(0, state.biteRemaining - dt);
     // The best rises the instant the live score passes it, during play rather

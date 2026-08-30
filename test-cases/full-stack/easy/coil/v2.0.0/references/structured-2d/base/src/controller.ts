@@ -16,6 +16,7 @@
 // result back for the HUD to read.
 
 import { PlayerController } from "@test-cabinet/structured-2d";
+import { startMusic } from "./audio";
 import { handleAction } from "./flow";
 import { coilState } from "./game";
 import { pressedActions } from "./input";
@@ -26,8 +27,10 @@ export class CoilController extends PlayerController {
     for (const action of pressedActions(this.input)) {
       if (action === "mute") {
         this.world.audio.setMuted(!this.world.audio.muted());
-      } else {
-        handleAction(state, action);
+      } else if (handleAction(state, action).roundBegan) {
+        // The one thing routing does that the state cannot record: a round
+        // BEGAN, which `specs/ui.md` sounds the music bed on.
+        startMusic(this.world.audio);
       }
     }
   }

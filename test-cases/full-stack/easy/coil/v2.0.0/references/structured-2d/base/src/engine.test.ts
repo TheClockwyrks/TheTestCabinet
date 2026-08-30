@@ -28,7 +28,7 @@ import {
   TICK_SECONDS,
   TITLE_ITEMS,
 } from "./constants";
-import { goTo, startRound } from "./flow";
+import { goTo, handleAction, startRound } from "./flow";
 import { game, type CoilDebugApi } from "./game";
 import {
   canvasOf,
@@ -280,6 +280,24 @@ describe("the cue bus", () => {
     goTo(h.state, "paused");
     await h.step(1);
     expect(h.stops).not.toContain(CUES.music);
+  });
+
+  it("starts the bed again on every menu item that lays a fresh round", () => {
+    // Title -> RESTART from the pause menu -> PLAY AGAIN from the game over.
+    handleAction(h.state, "confirm");
+    handleAction(h.state, "pause");
+    handleAction(h.state, "down");
+    const restart = handleAction(h.state, "confirm");
+    goTo(h.state, "gameover");
+    const again = handleAction(h.state, "confirm");
+    expect([restart.roundBegan, again.roundBegan]).toEqual([true, true]);
+  });
+
+  it("sounds nothing for a screen posed onto playing", async () => {
+    h.debug.setScreen("playing");
+    h.loops.length = 0;
+    await h.step(3);
+    expect(h.loops).toEqual([]);
   });
 
   it("plays the eat cue once on the tick a pellet is eaten", async () => {

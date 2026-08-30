@@ -2093,6 +2093,42 @@ validation = { script = "audio/music-cue-plays.test.ts", outputs = [
   { id = "music", name = "The music bed starting under a round", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "music-restarts-on-pause-restart"
+title = "Restarting from the pause menu starts the bed again"
+description = "confirm on RESTART begins a fresh round, and the music cue is asked for again on the frame that round begins."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: start a round from the title, pause it, confirm RESTART,
+# and read the cues the restart played. See
+# validation/<engine>/audio/music-restarts-on-pause-restart.test.ts.
+validation = { script = "audio/music-restarts-on-pause-restart.test.ts", outputs = [
+  { id = "restart", name = "The bed starting again on a restarted round", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "music-restarts-on-play-again"
+title = "Playing again from the game over starts the bed again"
+description = "confirm on PLAY AGAIN begins a fresh round, and the music cue is asked for again on the frame that round begins."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: drive a real death, confirm PLAY AGAIN, and read the cues
+# the fresh round played. See
+# validation/<engine>/audio/music-restarts-on-play-again.test.ts.
+validation = { script = "audio/music-restarts-on-play-again.test.ts", outputs = [
+  { id = "again", name = "The bed starting again on a round played again", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "music-not-played-by-a-posed-screen"
+title = "A posed playing screen sounds no music"
+description = "Setting the screen to playing runs the tick over the board as it stands rather than laying out a fresh round, so no music cue is asked for."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: pose an isolated board through the surface, set the
+# screen to playing, run several ticks, and read the cues. See
+# validation/<engine>/audio/music-not-played-by-a-posed-screen.test.ts.
+validation = { script = "audio/music-not-played-by-a-posed-screen.test.ts", outputs = [
+  { id = "silent", name = "A posed round running with the bed silent", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "eat-and-combo-on-one-tick"
 title = "An eat that raises the combo plays both cues"
 description = "A tick that both eats a pellet and raises the multiplier plays eat once and combo-up once."

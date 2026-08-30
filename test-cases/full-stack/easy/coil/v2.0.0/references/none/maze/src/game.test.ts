@@ -292,6 +292,23 @@ describe("audio", () => {
     expect(audio.loops).toEqual([CUES.music]);
   });
 
+  it("starts the bed again on every menu item that lays a fresh round", () => {
+    // Title -> RESTART from the pause menu -> PLAY AGAIN from the game over.
+    game.handleAction("confirm");
+    game.handleAction("pause");
+    game.handleAction("down");
+    game.handleAction("confirm");
+    game.goTo("gameover");
+    game.handleAction("confirm");
+    expect(audio.loops.filter((cue) => cue === CUES.music)).toHaveLength(3);
+  });
+
+  it("sounds nothing for a screen posed onto playing", () => {
+    game.setScreen("playing");
+    game.update(TICK_SECONDS);
+    expect(audio.loops).toEqual([]);
+  });
+
   it("stops the music when the round ends", () => {
     game.startRound();
     game.sim.clearPellet();

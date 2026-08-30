@@ -210,6 +210,33 @@ export function goTo(state: CoilState, screen: Screen): CoilState {
 // ---- Routing one press edge ----------------------------------------------
 
 /**
+ * What routing one press edge left: the next state, and whether it laid a fresh
+ * round out.
+ *
+ * The second is there because it is the one thing routing does that the state
+ * cannot record. `specs/ui.md` sounds the music bed when "a round begins", and
+ * three menu items lay a fresh round while a fourth returns to the round already
+ * running — all four leaving `screen` at `playing`. Reporting it keeps this file
+ * pure, as its own header requires, while still letting `update`, which holds the
+ * bus, sound the cue on exactly the frames a round began on.
+ */
+export interface Routed {
+  state: CoilState;
+  /** Whether this edge laid a fresh round out. */
+  roundBegan: boolean;
+}
+
+/** Routing that laid no round out. */
+function routed(state: CoilState): Routed {
+  return { state, roundBegan: false };
+}
+
+/** Routing that laid a fresh round out. */
+function began(state: CoilState): Routed {
+  return { state, roundBegan: true };
+}
+
+/**
  * Route one press edge to what it does on the screen the game is on
  * (specs/controls.md).
  *
@@ -217,36 +244,41 @@ export function goTo(state: CoilState, screen: Screen): CoilState {
  * field of the state, so `update` reads that edge and flips the bus, and this
  * routes everything else.
  */
-export function handleAction(state: CoilState, action: ActionName): CoilState {
+export function handleAction(state: CoilState, action: ActionName): Routed {
   if (state.screen === "playing") {
     const dir = STEER[action];
-    if (dir) return requestTurn(state, dir);
-    if (action === "back" || action === "pause") return goTo(state, "paused");
-    return state;
+    if (dir) return routed(requestTurn(state, dir));
+    if (action === "back" || action === "pause") {
+      return routed(goTo(state, "paused"));
+    }
+    return routed(state);
   }
   return routeMenu(state, action);
 }
 
-function routeMenu(state: CoilState, action: ActionName): CoilState {
+function routeMenu(state: CoilState, action: ActionName): Routed {
   const items = menuItems(state.screen);
   switch (action) {
     case "up":
-      if (items.length === 0) return state;
-      return {
+      if (items.length === 0) return routed(state);
+      return routed({
         ...state,
         menuIndex: (state.menuIndex - 1 + items.length) % items.length,
-      };
+      });
     case "down":
-      if (items.length === 0) return state;
-      return { ...state, menuIndex: (state.menuIndex + 1) % items.length };
+      if (items.length === 0) return routed(state);
+      return routed({
+        ...state,
+        menuIndex: (state.menuIndex + 1) % items.length,
+      });
     case "confirm":
       return accept(state);
     case "back":
-      return leave(state);
+      return routed(leave(state));
     case "pause":
-      return state.screen === "paused" ? goTo(state, "playing") : state;
+      return routed(state.screen === "paused" ? goTo(state, "playing") : state);
     default:
-      return state;
+      return routed(state);
   }
 }
 
@@ -256,22 +288,26 @@ function routeMenu(state: CoilState, action: ActionName): CoilState {
  * Keyed by the item's index rather than by its label, so the title's first item
  * starts a round whatever the mode names it.
  */
-function accept(state: CoilState): CoilState {
+function accept(state: CoilState): Routed {
   const index = state.menuIndex;
   switch (state.screen) {
     case "title":
-      return index === 0 ? startRound(state) : goTo(state, "howto");
+      return index === 0
+        ? began(startRound(state))
+        : routed(goTo(state, "howto"));
     case "howto":
-      return goTo(state, "title");
+      return routed(goTo(state, "title"));
     case "paused":
-      if (index === 0) return goTo(state, "playing");
-      if (index === 1) return startRound(state);
-      return goTo(state, "title");
+      if (index === 0) return routed(goTo(state, "playing"));
+      if (index === 1) return began(startRound(state));
+      return routed(goTo(state, "title"));
     case "gameover":
     case "cleared":
-      return index === 0 ? startRound(state) : goTo(state, "title");
+      return index === 0
+        ? began(startRound(state))
+        : routed(goTo(state, "title"));
     default:
-      return state;
+      return routed(state);
   }
 }
 
@@ -334,17 +370,35 @@ function runTicks(state: CoilState, api: UpdateApi): CoilState {
 }
 
 /**
- * Keep the music bed matching the screen (specs/ui.md).
+ * Sound the music bed for a round that has just begun (specs/ui.md).
  *
- * Reconciled every frame rather than started and stopped at the transitions,
- * because a round can also be entered and left through the debug surface, whose
- * poses are transitions over the state and play nothing.
+ * `specs/ui.md` plays `music` when "a round begins", so it is played from the one
+ * path that LAYS A ROUND OUT rather than reconciled against the screen. A screen
+ * reaching `playing` is not a round beginning: `RESUME` returns to the round
+ * already running, and `specs/instrumentation.md` says of a posed screen that it
+ * "runs the tick over the board as it stands rather than laying out a fresh
+ * round". Reconciling would sound the bed on both.
+ *
+ * A bed already running is stopped first, so a fresh round always starts the bed
+ * fresh — `RESTART` from the pause menu leaves the previous round's bed playing
+ * otherwise, and that round has ended.
  */
-function syncMusic(state: CoilState, api: UpdateApi): void {
-  const wanted = state.screen === "playing" || state.screen === "paused";
-  const looping = api.audio.looping(CUES.music);
-  if (wanted && !looping) api.audio.loop(CUES.music);
-  if (!wanted && looping) api.audio.stop(CUES.music);
+function startMusic(api: UpdateApi): void {
+  if (api.audio.looping(CUES.music)) api.audio.stop(CUES.music);
+  api.audio.loop(CUES.music);
+}
+
+/**
+ * Stop the music bed once the round it was playing under is over (specs/ui.md:
+ * it "loops under the game until the round ends").
+ *
+ * Reconciled every frame rather than stopped at the transitions, because a round
+ * can also be left through the debug surface. Only the STOP is reconciled this
+ * way: see {@link startMusic} for why the start is not.
+ */
+function stopMusicOffTheRound(state: CoilState, api: UpdateApi): void {
+  const under = state.screen === "playing" || state.screen === "paused";
+  if (!under && api.audio.looping(CUES.music)) api.audio.stop(CUES.music);
 }
 
 // ---- The game the engine drives ------------------------------------------
@@ -385,8 +439,15 @@ export const game: Game<CoilState, CoilDebugApi> = {
     let next: CoilState = state;
 
     for (const action of pressedActions(api)) {
-      if (action === "mute") api.audio.setMuted(!api.audio.muted());
-      else next = handleAction(next, action);
+      if (action === "mute") {
+        api.audio.setMuted(!api.audio.muted());
+        continue;
+      }
+      const result = handleAction(next, action);
+      next = result.state;
+      // The one thing routing does that the state cannot record: a round BEGAN,
+      // which `specs/ui.md` sounds the music bed on.
+      if (result.roundBegan) startMusic(api);
     }
 
     if (next.screen === "playing") {
@@ -399,7 +460,7 @@ export const game: Game<CoilState, CoilDebugApi> = {
         api,
       );
     }
-    syncMusic(next, api);
+    stopMusicOffTheRound(next, api);
 
     return {
       ...next,

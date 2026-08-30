@@ -162,13 +162,21 @@ export class Game {
     this.muted = this.audio.muted;
   }
 
-  /** Begin a round: the board as `specs/board.md` lays it, and the music under it. */
+  /**
+   * Begin a round: the board as `specs/board.md` lays it, and the music under it.
+   *
+   * The bed is STOPPED before it is started, so a fresh round always begins with
+   * a fresh bed. `RESTART` from the pause menu reaches here with the previous
+   * round's bed still looping — the pause never ended that round — and
+   * `specs/ui.md` sounds `music` when "a round begins", which this is.
+   */
   startRound(): void {
     this.sim.layRound();
     this.screen = "playing";
     this.menuIndex = 0;
     this.accumulator = 0;
     this.biteRemaining = 0;
+    this.audio.stopLoop(CUES.music);
     this.audio.startLoop(CUES.music);
   }
 

@@ -38,6 +38,8 @@ function opening(seed = 1): CoilState {
 interface Bus {
   readonly played: string[];
   readonly looping: Set<string>;
+  /** Every `loop` the frame asked for, so a restarted bed is told from a running one. */
+  readonly looped: string[];
   muted: boolean;
 }
 
@@ -56,7 +58,10 @@ function stubApi(bus: Bus, pressed: readonly ActionName[] = []): UpdateApi {
     },
     audio: {
       play: (cue) => bus.played.push(cue),
-      loop: (cue) => void bus.looping.add(cue),
+      loop: (cue) => {
+        bus.looped.push(cue);
+        bus.looping.add(cue);
+      },
       stop: (cue) => void bus.looping.delete(cue),
       looping: (cue) => bus.looping.has(cue),
       setMuted: (muted) => {
@@ -76,7 +81,7 @@ function stubApi(bus: Bus, pressed: readonly ActionName[] = []): UpdateApi {
 }
 
 function newBus(): Bus {
-  return { played: [], looping: new Set(), muted: false };
+  return { played: [], looping: new Set(), looped: [], muted: false };
 }
 
 /** Run `frames` frames covering `seconds`, through the game's own `update`. */
@@ -96,7 +101,7 @@ function advance(
 
 function press(state: CoilState, ...actions: ActionName[]): CoilState {
   let next = state;
-  for (const action of actions) next = handleAction(next, action);
+  for (const action of actions) next = handleAction(next, action).state;
   return next;
 }
 
@@ -397,14 +402,30 @@ describe("the cues one frame plays", () => {
     expect(bus.played).toEqual([CUES.death]);
   });
 
-  it("loops the music while a round is live and stops it when it ends", () => {
+  it("loops the music from the frame a round begins and stops it when it ends", () => {
     const bus = newBus();
-    let state = advance(startRound(opening()), TICK_SECONDS, 1, bus);
+    // A round begun the way a player begins one: `confirm` on the title's entry.
+    let state = tap(opening(), bus, "confirm");
     expect(bus.looping.has(CUES.music)).toBe(true);
     state = advance(press(state, "pause"), TICK_SECONDS, 1, bus);
     expect(bus.looping.has(CUES.music)).toBe(true);
     advance(goTo(state, "gameover"), TICK_SECONDS, 1, bus);
     expect(bus.looping.has(CUES.music)).toBe(false);
+  });
+
+  it("starts the bed again on every menu item that lays a fresh round", () => {
+    const bus = newBus();
+    // Title -> RESTART from the pause menu -> PLAY AGAIN from the game over.
+    let state = tap(opening(), bus, "confirm");
+    state = tap(press(state, "pause"), bus, "down", "confirm");
+    tap(goTo(state, "gameover"), bus, "confirm");
+    expect(bus.looped.filter((cue) => cue === CUES.music)).toHaveLength(3);
+  });
+
+  it("sounds nothing for a screen posed onto playing", () => {
+    const bus = newBus();
+    advance(goTo(opening(), "playing"), TICK_SECONDS, 1, bus);
+    expect(bus.looped).toEqual([]);
   });
 
   it("plays nothing on a frame that resolved no tick", () => {
