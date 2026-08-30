@@ -336,10 +336,18 @@ source = "specs/controls.md.hbs"
 source = "specs/assets.md.hbs"
 
 # The debugging and automation surface every build must expose: a deterministic core;
-# an API to pose and read the game from code; and a read-only debug overlay. Seeded for
-# every variant and framed as an ordinary developer affordance of the game.
+# an API to pose and read the game from code through its own real systems; and a
+# read-only debug overlay. Framed as an ordinary developer affordance of the game. It
+# branches on the engine for how the surface is reached, for the shape each operation
+# takes, and for the clock and input operations only an engineless build owns.
 [[spec]]
-source = "specs/instrumentation.md"
+source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished game ships beside its source: a player-facing description
+# and a short ordered carousel of captured media under `showcase/`, framed as the game's
+# store-page presentation. It branches on the engine for how motion is captured.
+[[spec]]
+source = "specs/showcase.md.hbs"
 
 # Scoring domains. The reviewer rates each independently while playing the build, and
 # the run's overall rating is the WORST across them — flawless GemTD systems cannot
