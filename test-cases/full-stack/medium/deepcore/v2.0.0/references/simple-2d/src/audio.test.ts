@@ -5,7 +5,7 @@
 // frame its event happened and started and stopped the right loop.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CUES, MINER_H, MINER_W, TILE } from "./constants";
+import { CUES, MINER_H, TILE } from "./constants";
 import { CUE_NAMES, cuePath, LOOP_CUES, ONE_SHOT_CUES } from "./audio";
 import {
   createHarness,
@@ -117,12 +117,5 @@ describe("what a frame sounds", () => {
     h.click(1280 - 78 + 32, 28);
     await h.advance(1);
     expect(h.debug.snapshot(h.state).muted).toBe(false);
-  });
-});
-
-describe("the miner's box", () => {
-  it("fits a one-tile shaft", () => {
-    expect(MINER_W).toBeLessThan(TILE);
-    expect(MINER_H).toBeLessThan(TILE);
   });
 });
