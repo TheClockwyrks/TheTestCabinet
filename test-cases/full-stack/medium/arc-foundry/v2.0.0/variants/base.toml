@@ -10,6 +10,12 @@ slug = "base"
 name = "Base"
 description = "The standard SALVAGE campaign: 10 starting Charge, 20 Grid Integrity, with Easy/Medium/Hard chosen in-game (they change only the wave count and enemy toughness)."
 
+# Curated presentation media for this variant, captured from the reference build
+# below: the directory holds `showcase.md`, `showcase.toml`, and the media the
+# carousel names, flat. `showcase/capture/` beside it holds the driver that
+# recorded them and the steps for doing it again.
+showcase = "showcase/base"
+
 # The authored correct build, one directory per supported engine, because the build a
 # reference demonstrates differs under each. This table must name EXACTLY the engines
 # the case supports (the resolver checks both directions), and the case supports
