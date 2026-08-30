@@ -21,6 +21,17 @@
 // The top row is excluded by the specification's own line — "The top row's
 // rectangles end at `y = 164` and the columns' begin at `y = 180`" — so the six
 // piles up there, and the marks they draw while empty, are never counted.
+//
+// AND THE READING IS BOTH WAYS ROUND. Counting boxes AT the anchor is not enough
+// on its own: a build is free to spend more than one card-sized shape on a card
+// — an outer plate and an inner panel — so a build that drew four of its seven
+// columns at `180` with two shapes each and the other three somewhere else would
+// still leave seven boxes at the anchor. So the check also reads that NO
+// card-sized box below the top row sits away from `180`. With one card posed on
+// each of the seven columns and every other pile empty, the only card-sized
+// shapes down there belong to those seven cards, so the two readings together
+// say every column's first card starts on the anchor and nothing of them starts
+// anywhere else.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -29,7 +40,7 @@ import {
   TABLEAU_Y,
   TOP_ROW_Y,
 } from "../../src/constants";
-import { assertGreaterThanOrEqual } from "../assert";
+import { assertDeepEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   alternatingRun,
   captureStill,
@@ -96,5 +107,16 @@ it("starts every posed column's first card at y = 180", async () => {
     `the first card of each of the ${TABLEAU_COLUMNS} posed columns drawn ` +
       `with its top edge at y = ${TABLEAU_Y}; below the top row the frame ` +
       `drew card-sized boxes at ${corners(tableau)}`,
+  );
+
+  const offAnchor = tableau.filter(
+    (box) => Math.abs(box.y - TABLEAU_Y) > ANCHOR_TOLERANCE,
+  );
+  assertDeepEqual(
+    offAnchor.map((box) => Math.round(box.y)),
+    [],
+    `the top edges of the card-sized boxes drawn below the top row away from ` +
+      `y = ${TABLEAU_Y}: every column holds exactly its first card, so nothing ` +
+      "down there begins anywhere but on the anchor (specs/table.md)",
   );
 });

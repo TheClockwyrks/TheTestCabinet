@@ -28,9 +28,23 @@
 // too. The rest of the table is empty, so the only card-sized marks in the top
 // row are the fan's and the empty-slot marks the stock and the four foundations
 // draw at their own anchors, which are excluded by name.
+//
+// AND THE FOUR FOUNDATION ANCHORS ARE COUNTED, because excluding them by name is
+// what would otherwise let the very fault this point exists to catch through: a
+// card of the fan drawn exactly ON a foundation's anchor is dropped from the fan
+// along with that foundation's own mark, and the surviving edges then sit inside
+// the bounds. The four foundations are empty alike and draw the same mark as each
+// other, so the number of card-sized marks at each of the four anchors is the
+// same number — and any difference between them is a card of the fan parked on
+// one. A card parked on foundation 0 raises 0's count above 1's; a card parked on
+// 3 raises 3's above 0's; either way the four stop agreeing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual, assertLessThan } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThan,
+} from "../assert";
 import {
   CARD_H,
   CARD_W,
@@ -106,11 +120,14 @@ it("draws the fan between the waste anchor and the first foundation", async () =
   const calls = await h.drawFrame();
   captureStill(h, "fan");
 
-  const fan = drawnShapes(h, calls).filter(
+  const topRow = drawnShapes(h, calls).filter(
     (shape: DrawnShape) =>
       Math.abs(shape.w - CARD_W) <= SIZE_TOLERANCE &&
       Math.abs(shape.h - CARD_H) <= SIZE_TOLERANCE &&
-      Math.abs(shape.y - TOP_ROW_Y) <= ANCHOR_TOLERANCE &&
+      Math.abs(shape.y - TOP_ROW_Y) <= ANCHOR_TOLERANCE,
+  );
+  const fan = topRow.filter(
+    (shape: DrawnShape) =>
       !NEIGHBOUR_X.some((x) => Math.abs(shape.x - x) <= ANCHOR_TOLERANCE),
   );
 
@@ -138,4 +155,23 @@ it("draws the fan between the waste anchor and the first foundation", async () =
     `the fan's rightmost edge, left of the first foundation ` +
       `(${FAN_RIGHT_LIMIT})`,
   );
+
+  // The four foundations are empty alike, so each of their anchors carries the
+  // same number of card-sized marks. A card of the fan drawn onto one of them
+  // was excluded from `fan` above and shows up here instead.
+  const marks = FOUNDATION_X.map(
+    (x) =>
+      topRow.filter((shape) => Math.abs(shape.x - x) <= ANCHOR_TOLERANCE)
+        .length,
+  );
+  marks.forEach((count, index) => {
+    assertEqual(
+      count,
+      marks[0],
+      `card-sized shapes drawn at foundation ${index}'s anchor ` +
+        `(${FOUNDATION_X[index]}), against foundation 0's ${marks[0]}: the ` +
+        "four hold nothing and draw the same empty mark, so a difference is a " +
+        "card of the fan parked on one of them (specs/table.md)",
+    );
+  });
 });
