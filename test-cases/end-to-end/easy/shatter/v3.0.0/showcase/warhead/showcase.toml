@@ -1,0 +1,6 @@
+# SCAFFOLD PLACEHOLDER. The Showcase stage replaces this file with the real
+# carousel: a leading twenty-to-forty-second take of sustained real play,
+# then the stills. See specs/showcase.md.hbs and the design plan.
+[[media]]
+file = "placeholder.png"
+name = "Placeholder — replaced by the Showcase stage"
