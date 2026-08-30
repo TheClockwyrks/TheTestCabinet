@@ -1,119 +1,113 @@
-# Art assets (provided; use them)
+# Wireworm — The sprite art
 
-Wireworm ships with a fixed set of pre-drawn sprite assets, seeded into your
-project under `assets/`. They are the canonical art for this game and are the same
-for every build; your job is to build the game around them, not to redraw them.
+Wireworm's art is supplied with the project, under `assets/`. Six folders cover
+the node, the data-worm, the cursor, and the three foes, and the build draws each
+of those elements from its folder rather than from art of its own. Everything
+else the game shows is drawn in code, and the last section of this file lists it.
 
-Render the game using these provided assets for every element they cover (the
-nodes, the worm, the cursor, and the three foes). Do not substitute your own art
-for these, and do not restyle or recolor them. Elements that have no asset (listed
-at the end) you draw in code as the other specs describe. Everything in this file
-is consistent with the grid, palette, and behavior defined across the other specs;
-when this file gives a size, it matches them.
+## How the folders are organized
 
-## Loading the assets so they work under any base path
+Each folder under `assets/` holds one PNG per frame, named by its frame index
+(`0.png`, `1.png`, and so on). Every PNG is `SPRITE_SIZE` (`32`) by `SPRITE_SIZE`
+with a transparent background in straight alpha, so only its drawn pixels are
+opaque and each frame composites cleanly over the dark board.
 
-The built site is not guaranteed to be served from the root of its origin. When
-the finished build is played back it is mounted under a sub-path, not at the domain
-root, so the build must run unchanged at any base path: every URL it requests has
-to resolve relative to the page, not to the origin root.
-
-- Never reference an asset by a root-absolute URL (anything with a leading `/`,
-  such as `/assets/node/3.png`). A root-absolute URL resolves against the origin
-  root, so under a sub-path it points outside the build and 404s.
-- Reference assets relative to the document or module instead, so each URL resolves
-  against wherever the page actually lives. Prefer letting your bundler resolve
-  them: import each PNG, or use a bundler directory glob (for example Vite's
-  `import.meta.glob('../assets/**/*.png', { eager: true, query: '?url' })`) and use
-  the URLs it returns. A runtime `new URL('./assets/…', import.meta.url)` also
-  works when your bundler can statically resolve it.
-- Configure your bundler's base path to be relative, so the emitted JS, CSS, and
-  asset URLs are all page-relative (for Vite, `base: './'`).
-
-This applies to every runtime request: the bundled JS and CSS and these art assets
-alike.
-
-## How the assets are organized
-
-Every asset is a folder under `assets/` holding one separate PNG per frame, named
-by its frame index (`0.png`, `1.png`, …). Frames are individual files, never strips
-or regions of a larger image. Every PNG is 32 x 32 with a transparent background
-(straight alpha); only the drawn pixels are opaque, so each composites cleanly over
-the dark board. They are pixel art: draw them at the 32 x 32 tile size with
-nearest-neighbor sampling (`image-rendering: pixelated` for DOM/CSS,
-`imageSmoothingEnabled = false` for Canvas) so they stay crisp and never blur when
-the stage is scaled to the window.
-
-| Asset | Folder | Frames | What it is |
+| Element | Folder | Frames | Constant |
 | --- | --- | --- | --- |
-| Node | `assets/node/` | 5 (`0`–`4`) | Capacitor node, one frame per charge state |
-| Worm | `assets/worm/` | 6 (`0`–`5`) | The data-worm's tileable parts |
-| Cursor | `assets/cursor/` | 1 (`0`) | The player's defrag cursor |
-| Glitch | `assets/glitch/` | 4 (`0`–`3`) | The node-eating foe (flicker) |
-| Dropper | `assets/dropper/` | 1 (`0`) | The packet-dropper foe |
-| Corruptor | `assets/corruptor/` | 4 (`0`–`3`) | The charge-slamming foe (crawl) |
+| Node | `assets/node/` | 5 (`0`–`4`) | `NODE_FRAMES` |
+| Data-worm | `assets/worm/` | 6 (`0`–`5`) | `WORM_FRAMES` |
+| Cursor | `assets/cursor/` | 1 (`0`) | `CURSOR_FRAMES` |
+| Glitch | `assets/glitch/` | 4 (`0`–`3`) | `GLITCH_FRAMES` |
+| Dropper | `assets/dropper/` | 1 (`0`) | `DROPPER_FRAMES` |
+| Corruptor | `assets/corruptor/` | 4 (`0`–`3`) | `CORRUPTOR_FRAMES` |
 
-## The node — `assets/node/` (5 frames)
+A tile is `32` units square, so a frame maps onto one tile at a scale of one. The
+frames are pixel art and stay crisp at every scale the stage is fitted to.
 
-One frame per charge state (`specs/charge.md`), drawn at the node's tile:
+## How they are loaded
 
-| Frame | Charge | Draw for |
-| --- | --- | --- |
-| 0 | inert (`C = 0`) | a node with no charge |
-| 1 | low (`C = 1`) | a node charged once |
-| 2 | charged (`C = 2`) | a node charged twice |
-| 3 | critical (`C = 3`) | a critical node |
-| 4 | critical, pulse peak | the alternate critical frame |
+{{#if (eq engine.slug "none")}}
+The build loads the frames itself. Every URL it requests resolves against the
+page rather than against the origin root, so the produced site runs unchanged
+whether it is served from the root of a static host or mounted under a sub-path.
+`vite.config.ts` serves the `assets/` tree from the project root in development
+and copies the same tree into `dist/assets/` when the site is built, so a frame
+reaches the produced site under the folder and file name this file gives it.
+{{else}}
+The {{engine.name}} engine provides the asset loader, documented in the `engine/`
+directory at the root of this repository. It resolves every path under one root,
+`assets/`, relative to the page the build is served from, and it fetches and
+decodes the file. The build loads each frame through that loader rather than
+requesting a URL of its own, writing the path relative to that root:
+`node/0.png`, `worm/3.png`.
 
-Pick the frame for a node's current charge. For a critical node, alternate frames
-`3` and `4` (about `6` fps) so it visibly pulses, marking it as loaded and ready to
-detonate.
+The produced site serves every seeded frame under that root, so a path the loader
+resolves reaches the seeded file at whatever base path the site is served from.
+{{/if}}
 
-## The worm — `assets/worm/` (6 frames)
+## The node: `assets/node/`
 
-The data-worm's tileable parts (`specs/worm.md`). It faces right; mirror it
-horizontally to draw a worm moving left.
+Five frames: one per charge state, plus a second critical frame.
 
-| Frames | Part | Use |
-| --- | --- | --- |
-| 0, 1 | head (closed, chomp) | the leading segment; alternate `0`/`1` (about `5` fps) as it moves |
-| 2, 3 | body (pose A, B) | every middle segment; alternate `2`/`3` (about `6` fps) for the crawl |
-| 4, 5 | tail (pose A, B) | the trailing segment; alternate `4`/`5` (about `6` fps) |
+| Frame | Drawn for |
+| --- | --- |
+| `0` | A node at charge `0` |
+| `1` | A node at charge `1` |
+| `2` | A node at charge `2` |
+| `3` | A node at charge `3` |
+| `4` | The alternate critical frame |
 
-Draw a worm by placing the head frame on its leading segment, the tail frame on its
-trailing segment, and the body frames on every segment between; mirror the frames
-when the segment is moving left. A one-segment worm is just the head.
+Every node on the board is drawn from this folder, centered on its tile. A node
+at charge `3` alternates frames `3` and `4` at `NODE_PULSE_FPS` (`6`) frames per
+second, so a critical node visibly pulses. A node below charge `3` holds the
+single frame for its charge.
 
-## The cursor — `assets/cursor/` (1 frame)
+## The data-worm: `assets/worm/`
 
-The player's craft (`specs/controls.md`), drawn at the cursor's position in the
-player band. It points up; draw it upright (do not rotate it).
+Six frames: a two-frame pair for each of the three parts of a chain.
 
-## The glitch — `assets/glitch/` (4 frames)
+| Frames | Part | Drawn on | Rate |
+| --- | --- | --- | --- |
+| `0`, `1` | Head | The leading segment of a worm | `WORM_HEAD_FPS` (`5`) |
+| `2`, `3` | Body | Every segment between the head and the tail | `WORM_BODY_FPS` (`6`) |
+| `4`, `5` | Tail | The trailing segment | `WORM_BODY_FPS` (`6`) |
 
-The node-eating foe (`specs/foes.md`). Play frames `0` through `3` as a fast
-flicker loop (about `10` fps) while it skitters, so it reads as unstable.
+Each pair alternates at its rate while the worm is on the board. A worm of one
+segment is a head, and it is drawn from the head pair alone.
 
-## The dropper — `assets/dropper/` (1 frame)
+The art faces right. A segment of a worm whose horizontal heading is left is
+drawn mirrored horizontally, so the same frame serves both directions.
 
-The packet-dropper foe (`specs/foes.md`), drawn at its position as it falls.
+## The cursor: `assets/cursor/`
 
-## The corruptor — `assets/corruptor/` (4 frames)
+One frame, drawn centered on the cursor's position in the player band. It points
+up and is drawn upright, never rotated.
 
-The charge-slamming foe (`specs/foes.md`). It faces right; mirror it to crawl left.
-Play frames `0` through `3` as a crawl loop (about `8` fps) while it moves.
+## The glitch: `assets/glitch/`
 
-## What has no asset — draw these in code
+Four frames, played as a loop at `GLITCH_FPS` (`10`) frames per second while the
+glitch is on the board, so it reads as unstable. The loop runs whichever way the
+glitch is darting.
 
-These are not provided and you render them yourself, exactly as the other specs
-describe (using the palette in `specs/overview.md`):
+## The dropper: `assets/dropper/`
 
-- The player's bolts, the upward shots (`specs/controls.md`): small bright `#57e0ff`
-  streaks.
-- The chain-arc discharge, the bright `#b8ffe6` lightning arcing between detonating
-  nodes and the flash of a detonation (`specs/charge.md`). This is an animated
-  effect, not a sprite.
-- The board: the dark background, the faint trace grid, and the tinted player band
-  (`specs/board.md`, `specs/overview.md`).
-- The entire HUD (score, lives, level, hazard indicator) and all text, menus,
-  panels, and overlays (`specs/ui.md`).
+One frame, drawn centered on the dropper's position as it falls.
+
+## The corruptor: `assets/corruptor/`
+
+Four frames, played as a loop at `CORRUPTOR_FPS` (`8`) frames per second while
+the corruptor crawls. The art faces right, and a corruptor crawling left is drawn
+mirrored horizontally.
+
+## What is drawn in code
+
+No folder covers the following. Each is rendered by the build, and the spec named
+beside it fixes its behavior.
+
+| Drawn in code | Fixed by |
+| --- | --- |
+| The board, its background, and the tinted player band | `specs/board.md`, `specs/overview.md` |
+| A bolt in flight | `specs/cursor.md` |
+| The arcs of a discharge | `specs/discharge.md` |
+| The HUD, every screen, every menu, the level banner, and all text | `specs/ui.md` |
+| The debug overlay | `specs/instrumentation.md` |

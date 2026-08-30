@@ -1,78 +1,169 @@
-# UI: screens, the HUD, and audio
+# Wireworm — Screens, the HUD, and audio
 
-## Overview
+This file defines the six screens the game moves between, what each shows, the
+three HUD readouts, and the ten audio cues. The keys the screens are driven by
+are in `specs/controls.md`, and the run the `playing` screen carries is in
+`specs/progression.md`. Every piece of screen copy below carries the name this
+specification gives it.
 
-This file defines the game's state machine, the main menu, the HUD, audio, and
-what is out of scope. It refers to the board in `specs/board.md`, the charge
-system in `specs/charge.md`, the worm in `specs/worm.md`, the foes in
-`specs/foes.md`, the controls in `specs/controls.md`, and the run rules in
-`specs/progression.md`.
+Every piece of text a screen shows is legible against whatever sits behind it at
+the logical stage size, `1280 x 720`. The palette, the type, and the layout of
+each screen are yours.
 
-## The game
+## The screens
 
-Wireworm is one continuous run down a single board: you hold the board of
-`specs/board.md` against the data-worm across all 12 levels, cutting the worm apart
-before it reaches your band, pacing the charge of the field to build and then
-release a chain-arc discharge at the right moment, and answering the three foes,
-shooting the glitch before it eats your charged cluster, cutting the dropper's
-reseed short, and detonating the corruptor's critical line before the worm dives
-it, until `LEVEL 12` is cleared or your lives run out. Every system behaves exactly
-as the other specs define it.
+The game is on exactly one of six screens at a time.
 
-## Game states
+| Screen | What it is |
+| --- | --- |
+| `title` | The main menu, and where the game opens. |
+| `howto` | How to play. |
+| `playing` | Live play, in the three phases `specs/progression.md` states. |
+| `paused` | The pause menu, over the frozen board. |
+| `victory` | The run was won. |
+| `gameover` | The run was lost. |
 
-The game is a small state machine. Each state has a clear screen and controls
-(controls are defined in `specs/controls.md`).
+### `title`
 
-1. Title / main menu. Shows the title `WIREWORM`, the tagline `CUT THE CURRENT`,
-   and a vertical menu with two entries, `DESCEND` (start a run) and then
-   `HOW TO PLAY`. The selected item is highlighted. A dim slice of board with a few
-   glowing nodes and a worm may show behind the menu for atmosphere.
-2. How to play. Describes the goal (cut the worm apart before it reaches your
-   band), the controls, the charge field and the chain-arc discharge, that critical
-   nodes make the worm dive, that shooting the worm grows the field, and the three
-   foes. Returns to the menu.
-3. In game. The live game: the board and its node field, the worm winding and
-   diving, your cursor firing, foes, discharges, and the HUD.
-4. Paused. Reachable in game. Offers Resume, Restart, and Quit to menu. The board
-   is visible but frozen behind the pause menu.
-5. Victory. Shown when level 12 is cleared with lives remaining. Displays the final
-   score, levels cleared (all 12), and lives remaining, with `PLAY AGAIN` and
-   `MENU`.
-6. Game over. Shown when lives reach 0. Displays the final score and the level
-   reached, with `PLAY AGAIN` and `MENU`.
+| Element | Constant | Content |
+| --- | --- | --- |
+| Title | `TITLE_TEXT` | `WIREWORM` |
+| Tagline | `TAGLINE_TEXT` | `CUT THE CURRENT` |
+| Menu | `TITLE_ITEMS` | `DESCEND`, `HOW TO PLAY`, in that order |
 
-## HUD
+The menu's items are stacked one above the next under the title and tagline. The
+highlighted item is drawn distinctly from the others, so a player always sees
+which item `confirm` would take, and the highlight rests on the first item on
+arriving at the title. `confirm` takes the highlighted item:
 
-The HUD lives in the top bar (`specs/board.md`) and carries three readouts across
-the full width:
+| Item | Does |
+| --- | --- |
+| `DESCEND` | Opens a new run, as `specs/progression.md` states, and moves to `playing`. |
+| `HOW TO PLAY` | Moves to `howto`, with its highlight at the first item. |
 
-- Score, the running score (`specs/progression.md`), the most prominent readout.
-- Lives, the cursor lives remaining, shown as a small row of cursor icons or a
-  count.
-- Level, the current level as `LEVEL n / 12`.
+`back` does nothing on this screen. The board may show behind the menu, dimmed or
+otherwise quieted, if that suits the look you design.
 
-A compact hazard indicator, for example a small note when a corruptor or dropper
-is active (`specs/foes.md`), is encouraged but not required. The HUD bar is always
-fully visible above the board (`specs/overview.md`). On the board, nodes show their
-charge by sprite (`specs/charge.md`), and the worm and foes carry no health bars.
+### `howto`
+
+How to play, written in a player's words rather than as rules of a system. It
+covers:
+
+- the goal, which is to cut every worm segment before one reaches the band;
+- that a node the worm is turned by gains charge, and that a fully charged node
+  detonates when it is shot and arcs through the charged cluster around it;
+- that a critical node the worm reaches sends the worm diving straight down;
+- that every segment cut by a bolt leaves a node behind, so the field thickens;
+- the three foes and what each does to the field;
+- the controls.
+
+The controls it names include the fire key, written as the standalone word
+`SPACE`, and the movement keys, written as the standalone words `ARROWS` and
+`WASD`.
+
+`back` returns to `title`, with the title's highlight at the first item.
+
+### `playing`
+
+The live board. It shows every node at its own charge, every worm, every foe,
+every bolt in flight, the arcs of a live discharge, and the cursor inside its
+band, together with the HUD bar above. During the `banner` phase it also shows
+the level's banner, naming the level about to be played, over the board.
+
+### `paused`
+
+Reached by `pause` during live play. The board stays visible behind the menu and
+is frozen: no worm steps, no foe moves, no bolt travels, no phase timer runs, and
+no cue plays, so a paused game is exactly where it was when it was paused.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Menu | `PAUSE_ITEMS` | `RESUME`, `RESTART`, `QUIT TO MENU`, in that order |
+
+| Item | Does |
+| --- | --- |
+| `RESUME` | Returns to `playing` with the board and the run exactly as they were. |
+| `RESTART` | Opens a new run, at level `1` with `START_LIVES` lives and a score of `0`, and moves to `playing`. |
+| `QUIT TO MENU` | Returns to `title`, with the title's highlight at the first item. |
+
+`back` on this screen does what `RESUME` does.
+
+### `victory` and `gameover`
+
+Both end screens carry the same menu, `ENDING_ITEMS`: `PLAY AGAIN`, then `MENU`.
+
+| Screen | Shows |
+| --- | --- |
+| `victory` | The final score, that all `TOTAL_LEVELS` (`12`) levels were cleared, and the lives remaining. |
+| `gameover` | The final score and the level the run reached. |
+
+| Item | Does |
+| --- | --- |
+| `PLAY AGAIN` | Opens a new run, at level `1` with `START_LIVES` lives and a score of `0`, and moves to `playing`. |
+| `MENU` | Returns to `title`, with the title's highlight at the first item. |
+
+## The HUD
+
+The HUD bar carries three readouts, all of them inside the bar's own region as
+`specs/board.md` states.
+
+| Readout | Shows |
+| --- | --- |
+| Score | The running score, as digits. It is the most prominent of the three. |
+| Lives | The lives remaining, as a row of icons or as a count. |
+| Level | `HUD_LEVEL_LABEL` (`LEVEL`), the current level's digits beside it, and `TOTAL_LEVELS` (`12`) on the bar as well. |
+
+How the level readout is composed around those three parts is yours. Nothing else
+is required on the bar, and a further readout of your own is welcome there.
 
 ## Audio
 
-Audio is required: synthesize it with the Web Audio API (no audio files), with
-distinct short cues for firing a bolt, cutting a worm segment, a chain-arc
-discharge going off, a node reaching critical, killing a foe, losing a life,
-clearing a level, and the Victory and Game-over stings. The game stays fully
-playable with sound muted and never fails to run or load if audio cannot start.
-Provide a mute toggle, and do not start audio until the player interacts (browsers
-block autoplay).
+{{#if (eq engine.slug "none")}}
+The audio layer is part of the runtime you write, synthesizing its sounds with
+the Web Audio API rather than loading audio files. Define and play exactly the
+ten cues below, under exactly these names, one per event.
+{{else if (eq engine.slug "simple-2d")}}
+Audio plays through the engine's cue bus. Define and play exactly the ten cues in
+`CUES`, under exactly these names, one per event.
+{{else}}
+Audio plays through the engine's cue bus: define exactly the ten cues in `CUES`
+from the game instance's `initialize` and play them from the world's audio inside
+a tick, under exactly these names, one per event.
+{{/if}}
+
+| Cue | Constant | Played when |
+| --- | --- | --- |
+| `fire` | `CUES.fire` | A bolt is fired. |
+| `cut` | `CUES.cut` | A bolt destroys a worm segment. |
+| `discharge` | `CUES.discharge` | A detonation's chain runs. |
+| `critical` | `CUES.critical` | A node reaches charge `3`. |
+| `foe` | `CUES.foe` | A foe is destroyed. |
+| `life` | `CUES.life` | A life is lost. |
+| `level-clear` | `CUES.levelClear` | A level clears. |
+| `victory` | `CUES.victory` | The `victory` screen opens. |
+| `game-over` | `CUES.gameOver` | The `gameover` screen opens. |
+| `menu` | `CUES.menu` | A menu highlight moves. |
+
+Each is a distinct short sound, so the ten events are told apart by ear. Each is
+played on the frame its event happens and at most once on that frame; a frame
+that raises more than one of them plays each of those once.
+
+{{#if (eq engine.slug "none")}}
+Muting is yours as well, and the `mute` action toggles it from any screen. While
+sound is muted every cue is silent and the game stays fully playable. Audio does
+not start until the player has interacted with the page, and a build whose audio
+cannot start still runs and still plays.
+{{else}}
+Muting and the first-interaction unlock belong to the engine. The game binds the
+`mute` action to the engine's mute bit and toggles it from any screen. While
+sound is muted every cue is silent and the game stays fully playable.
+{{/if}}
 
 ## Out of scope
 
-- Network or online multiplayer, and any saved or persisted progress between
-  sessions (including high scores).
-- Touch or gamepad input (mouse and keyboard only for this version).
-- A level editor, alternate boards, or difficulty menus. This is the one board and
-  the one 12-level run.
-- Power-ups, weapon upgrades, or an economy or shop. The cursor's one weapon is the
-  upward bolt.
+- Network or online play.
+- Pointer, touch, and gamepad input. The game is played from the keyboard.
+- Persistence of progress, scores, or settings between sessions. Each session
+  starts fresh.
+- Power-ups, weapon upgrades, or a shop. The cursor's one weapon is the upward
+  bolt.

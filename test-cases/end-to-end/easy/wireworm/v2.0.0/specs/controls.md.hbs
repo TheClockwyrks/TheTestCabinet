@@ -1,48 +1,89 @@
-# Controls
+# Wireworm — Controls
 
-## Overview
+Wireworm is played on the keyboard alone. This file defines every action the game
+answers to and the keys bound to it. What the cursor does when it moves and fires
+is in `specs/cursor.md`, and the screens the menu actions move between are in
+`specs/ui.md`.
 
-This file defines the controls: moving the cursor in the player band, firing, and
-pausing. It refers to the player band in `specs/board.md` and the shot rules in
-`specs/charge.md` and `specs/worm.md`.
+{{#if (eq engine.slug "none")}}
+## How input reaches the game
 
-## Moving the cursor
+This game stands on no engine, so the keyboard belongs to the runtime layer you
+write. It listens to the page and reports which keys are down, by their
+`KeyboardEvent.code` values, along with the press edge of each. Every key below
+is named by its `code`, so a binding is a physical key rather than a
+layout-dependent character.
+{{else}}
+## How input reaches the game
 
-The cursor is confined to the player band, the bottom 2 rows of the board
-(`specs/board.md`), and moves freely in logical pixels within it, not snapped to
-tiles.
+Input reaches the game as named actions from the {{engine.name}} engine, which
+documents them in the `engine/` directory at the root of this repository. The
+game registers the layout `LAYOUT` (`dpad-4-two-buttons`), which carries four-way
+movement and two buttons, and registers every action in `ACTIONS` against the
+keys `BINDINGS` gives it. `BINDINGS` names each key by its `KeyboardEvent.code`,
+so a binding is a physical key rather than a layout-dependent character.
 
-The arrow keys and WASD move the cursor: left and right across the full width of
-the band, and up and down within the two rows. Movement is smooth and continuous
-while a key is held. The cursor is clamped to the band: it can never leave it,
-never above row `18`, never past a side edge, never below the floor.
+The whole of `ACTIONS` is registered, so both buttons of the layout fire.
+{{/if}}
 
-Speed. A held movement key slides the cursor at `430 px/s`, fast enough to dodge a
-diving worm and a skittering glitch. The rate is the same in every direction, and
-holding two keys at once travels diagonally at that same `430 px/s` rather than
-faster along the diagonal.
+## The actions
 
-## Firing
+| Action | Effect |
+| --- | --- |
+| `up` | Moves the cursor up inside the band during play, and moves a menu highlight up. |
+| `down` | Moves the cursor down inside the band during play, and moves a menu highlight down. |
+| `left` | Moves the cursor left during play. |
+| `right` | Moves the cursor right during play. |
+| `a` | Fires a bolt. |
+| `b` | Fires a bolt. |
+| `confirm` | Accepts the highlighted menu item. |
+| `back` | Leaves the current screen. |
+| `pause` | Pauses live play, opening the pause screen. |
+| `mute` | Toggles sound, from any screen. |
 
-The cursor fires bolts straight up (`specs/charge.md`, `specs/worm.md`).
+The four movement actions and the two fire actions are read as holds: the cursor
+travels while a movement is held, and a held fire action produces a bolt every
+`FIRE_INTERVAL` while the cooldown and the cap allow one, as `specs/cursor.md`
+states. `confirm`, `back`, `pause`, and `mute` are read as press edges, once per
+press.
 
-- Fire key. Space fires. A held fire key auto-repeats at the fire cadence.
-- Fire cadence. A bolt may be fired at most every `0.15 s`; at most 3 bolts may be
-  in flight at once. These keep firing deliberate rather than a continuous beam.
-- Bolt travel. A bolt spawns at the cursor's muzzle and travels straight up at
-  about `900 px/s`, stopping at the first node, worm segment, or foe in its column
-  (resolving the hit per `specs/charge.md` for a node, `specs/worm.md` for a
-  segment, or `specs/foes.md` for a foe) or vanishing at the top of the board if it
-  hits nothing. A bolt hits at most one thing.
+## The bindings
 
-## Pause and system controls
+| Action | Keys |
+| --- | --- |
+| `up` | `ArrowUp`, `KeyW` |
+| `down` | `ArrowDown`, `KeyS` |
+| `left` | `ArrowLeft`, `KeyA` |
+| `right` | `ArrowRight`, `KeyD` |
+| `a` | `Space` |
+| `b` | `Space` |
+| `confirm` | `Enter`, `Space` |
+| `back` | `Escape` |
+| `pause` | `KeyP`, `Escape` |
+| `mute` | `KeyM` |
 
-- Pause. P or Escape pauses the game from the in-game state, opening the pause menu
-  (Resume, Restart, Quit to menu, see `specs/ui.md`). Pausing freezes the
-  simulation.
-- Menus. In the title and end screens, the menu is navigable by keyboard (arrow
-  keys or W/S to move the selection, Enter or Space to confirm).
-- Mute. Audio is required (`specs/ui.md`); provide a mute toggle, for example
-  M.
+Two keys drive two actions each, and the screen decides which one applies.
+`Space` fires while the game is being played and confirms on a screen showing a
+menu. `Escape` pauses while the game is being played and leaves the screen
+otherwise.
 
-Keyboard only for this version; no mouse, touch, or gamepad.
+## Menus
+
+Every menu is vertical and is driven by `up`, `down`, and `confirm`. `up` and
+`down` move the highlight by one item and wrap at both ends, so moving down from
+the last item highlights the first and moving up from the first highlights the
+last. `confirm` takes the highlighted item. `specs/ui.md` states each screen's
+items and where each one leads.
+
+## The debug overlay
+
+{{#if (eq engine.slug "none")}}
+The read-only debug overlay `specs/instrumentation.md` describes is shown and
+hidden by the backtick key, `KeyboardEvent.code` `Backquote`. It is off when the
+game starts. The overlay and its toggle are part of the runtime layer you write,
+and they are not registered as an action.
+{{else}}
+The read-only debug overlay is the engine's, shown and hidden by the backtick
+key, `KeyboardEvent.code` `Backquote`, and off when the game starts. It is not
+one of Wireworm's actions. What it shows is in `specs/instrumentation.md`.
+{{/if}}

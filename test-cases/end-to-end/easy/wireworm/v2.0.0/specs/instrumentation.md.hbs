@@ -1,252 +1,398 @@
-# Wireworm — Debug and automation API
+# Wireworm — Debug and automation surface
 
-Wireworm ships a small debugging and automation surface so the game can be driven
-and inspected from code, without touching the keyboard or waiting on real time. It
-is what you use to iterate on the charge and discharge rules, reproduce a specific
-worm scenario, script a scenario, and capture clean
-screenshots of an exact game state. This file defines that surface. Implement all
-of it, on the same footing as the game itself.
+{{#if (eq engine.slug "none")}}
+Wireworm carries a debugging and automation surface, `window.__wireworm`, so the
+game can be driven and inspected from code without holding a key or waiting on
+real time.
 
-Nothing here changes how a person plays. The debug API is inert during normal
-play, doing nothing until something calls it, and the debug overlay is off until
-toggled.
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__wireworm` as soon as the game
+has initialized. Every scenario driven from code reaches the game through it, so
+it is present and exactly as specified here.
+
+Each operation is a read of the game's state, a pose of one field of it, or a
+move of the clock. A pose arranges the board, and the game's own stepping,
+collision, charge, discharge, and scoring rules run from there exactly as they do
+in play, so a scenario driven from code behaves exactly like one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else if (eq engine.slug "simple-2d")}}
+Wireworm carries a debugging and automation surface so the game can be driven and
+inspected from code without holding a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on the
+page. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a reading or a pose of `WirewormState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a
+writable one. A pose takes the current state, as `DeepReadonly<WirewormState>`,
+and returns the next `WirewormState`; a reading takes the state the same way and
+returns what it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.setNode(s, 4, 4, 3))`, and a reading against the
+engine's current state, as `debug.snapshot(engine.state)`. A pose arranges the
+board, and the game's own stepping, collision, charge, discharge, and scoring
+rules run from there exactly as they do in play, so a scenario driven from code
+behaves exactly like one played by hand. `src/game.ts` declares and exports its
+type, `WirewormDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Wireworm carries a debugging and automation surface so the game can be driven and
+inspected from code without holding a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` returns the finished surface. The engine holds it
+and returns it from `engine.debug`, and it is reached that way alone: nothing is
+installed on the page. Every scenario driven from code reaches the game through
+it, so it is present and exactly as specified here.
+
+Each operation acts on the live game at the moment it is called. A pose takes
+only the parameters its row names, arranges the running game through the same
+systems play uses, and returns nothing; a reading returns plain data built at the
+call and changes nothing. A pose arranges the board, and the game's own stepping,
+collision, charge, discharge, and scoring rules run from there exactly as they do
+in play, so a scenario driven from code behaves exactly like one played by hand.
+`src/game.ts` declares and exports its type, `WirewormDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
 
 ## A deterministic core
 
-The whole surface rests on the simulation being deterministic and steppable. Two
-properties make that possible:
+The surface rests on the simulation being deterministic: every rate integrated
+against the delta time the game is given, so an interval of game time reaches the
+same state however it was divided into frames. The one clocked quantity is the
+worm's tile step, which accumulates that same delta and carries its remainder, as
+`specs/worm.md` states. Two more properties make the game driveable from code:
 
-- Render-free core. Game state advances by stepping the simulation and must not
-  depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
-  progress. The dependency runs one way: the simulation never reads from, waits
-  on, or is driven by the renderer.
-- Seeded randomness. Every source of randomness the game uses, the starting node
-  scatter, which edge the worm enters from, and when and where the foes spawn, runs
-  off a seedable generator, so reseeding and replaying the same calls reproduces
-  the same result exactly.
+- Render-free core. Game state advances from the elapsed time the game is handed,
+  independent of a canvas, of the frame loop that measured it, and of wall-clock
+  time. The dependency runs one way: the simulation reads nothing from the
+  renderer. Whether a step is blocked, whether a bolt resolves, and how far a
+  discharge chains are all decided from the board alone.
+- Seeded randomness. Any randomness the game uses runs off a generator seeded
+  from the state's generator field, and it keeps its whole generator state in
+  that field, so reseeding and replaying the same calls reproduces the same
+  result exactly. The starting scatter, the foes' arrival intervals and entry
+  positions, and an arc's drawn shape are all drawn from it.
 
-Given the same seed and the same sequence of API calls and steps, the game reaches
-the same state every time.
+Given the same seed and the same sequence of calls and elapsed game time, the
+game reaches the same state every time.
 
-## The manual clock
+## What the runtime provides instead
 
-The simulation advances on a fixed timestep of 120 Hz — a step of exactly 1/120 of
-a second of game time — supplied by a single fixed-step update that moves the whole
-game forward by it. The rate is fixed rather than a suggestion, because `step(ticks)`
-below advances the simulation in whole ticks of it: a tick is only a unit if its
-length is fixed. Where the timestep comes from is switchable, so you can either
-watch the game run in real time or drive it forward yourself one measured tick at a
-time.
+{{#if (eq engine.slug "none")}}
+The keyboard and the overlay belong to the runtime layer beneath the game, and
+the surface carries no operation for either. That layer reports which keys are
+down and draws and toggles the debug overlay.
 
-The game holds an `autoStep` flag, and it starts `true` (ordinary play). The
-animation-frame loop advances the simulation only while `autoStep` is `true`; when
-it is `false` the loop still renders every frame but does not advance the
-simulation on its own. In that manual mode, `step(ticks)` below is the only thing
-that moves the simulation forward, so a scripted scenario advances by exactly the
-number of ticks you ask for and is reproducible regardless of machine load, with no
-stray wall-clock frames slipping into a measurement.
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `advance` below.
 
-- `reset(...)` and `step(...)` both switch the game into manual mode
-  (`autoStep = false`), beginning a driver-clocked session.
-- `setAutoStep(enabled)` switches back and forth: `setAutoStep(true)` lets the game
-  advance itself in real time again (for watching or recording a motion clip);
-  `setAutoStep(false)` returns to manual stepping.
-- `keyDown`, `keyUp`, `press`, and the other control operations below do not change
-  `autoStep`.
+Muting is the other. There is no operation that sets it: `mute` is reached the
+way a player reaches it, through its binding in `specs/controls.md`, and the
+snapshot reports the result.
+{{else}}
+The clock, the keyboard, the audio bus, and the overlay belong to the
+{{engine.name}} engine, which documents them in the `engine/` directory at the
+root of this repository, and the surface carries no operation for any of them.
+The engine advances the game frame by frame and can take it off real time, it
+drives the actions the game registers, it owns muting, and it draws and toggles
+the debug overlay.
 
-This is an ordinary manual-step-versus-run-live debugging affordance: pause the
-clock to measure something exactly, let it run to watch it.
+There is therefore no operation that sets muting: `mute` is reached the way a
+player reaches it, through its binding in `specs/controls.md`, and the snapshot
+reports the result.
+{{/if}}
 
-## The `window.__wireworm` object
+What the overlay shows is Wireworm's, under Diagnostics below.
 
-Expose the API as a single object on the global `window.__wireworm`, installed once
-the game is running. It carries a `version` number (use `1`) and the operations
-below. Values are plain numbers, strings, and booleans so a caller can read them
-directly. Cursor, foe, bolt, and arc coordinates are in the logical-pixel space of
-`specs/overview.md`; node and worm-segment positions are tile coordinates
-`(c, r)` on the grid of `specs/board.md`.
+## Identity
 
-Every `(x, y)` this API reports or accepts is the entity's CENTER, per the
-convention in `specs/overview.md` — never the top-left corner of its sprite. That
-holds in both directions: `setCursor(x, y)` and `spawnFoe`'s `x`/`y` place the
-entity's center there, and `snapshot()` reports the center back. A caller aiming at
-a tile therefore passes that tile's center, `(32c + 16, 80 + 32r + 16)`, and reads
-the same value back for an entity sitting on it. Reporting a sprite's corner where
-its center is asked for is off by half a tile in each axis, which silently puts an
-entity on the wrong tile.
+Every worm, every foe, and every bolt carries an `id`: a number, distinct among
+the entities live at any moment, reported by `snapshot` and taken by every
+per-entity operation. Two rules make an id findable without an assignment scheme:
 
-### Core operations
+- An entity added through this surface is appended to its roster, so it is the
+  last entry and its id is read from there.
+- When a worm's segments are removed and the survivors fall into runs, the run
+  carrying the old head keeps the worm's id and each further run takes a fresh
+  one, as `specs/worm.md` states.
 
-- `reset(options)` returns the game to its initial title state and switches to
-  manual mode. `options` is optional, and `options.seed` (a number) seeds all of
-  the game's randomness so a scenario replays identically.
-- `step(ticks)` advances the simulation by exactly `ticks` fixed steps immediately,
-  running the fixed-timestep update internally rather than waiting for real frames,
-  and switches to manual mode. The unit is whole simulation ticks, not seconds: the
-  timestep is 120 Hz, so one tick is 1/120 of a second, `step(1)` runs a single
-  fixed step and `step(120)` advances one second of game time. Nothing is rounded
-  or approximated — the number of steps asked for is the number of steps run.
-  `ticks` must be a non-negative integer; `step(0)` is legal and does nothing, while
-  a fractional or negative value is invalid and the call fails loudly rather than
-  guessing what was meant. This runs the real systems forward from a set-up state to
-  see where they land. Stepping only advances the live game (the `playing` state);
-  it has no effect on a menu or end screen.
-- `snapshot()` returns a plain, JSON-serializable object describing the current
-  game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never
-  changes anything.
-- `setAutoStep(enabled)` sets the manual clock described above: `true` lets the
-  game run itself in real time, `false` returns to manual stepping.
+## The operations
 
-### Control operations
+The surface carries `version` (`WIREWORM_DEBUG_VERSION`, `1`), a plain number,
+and the operations below. Values are plain numbers, strings, and booleans. `c`
+and `r` are tile coordinates as `specs/board.md` defines them, and every `x` and
+`y` the surface takes or reports is an entity's center in the stage's logical
+units, so a caller aiming at a tile passes that tile's center,
+`(32c + 16, 80 + 32r + 16)`.
+{{#if (eq engine.slug "simple-2d")}}
 
-These set up a specific situation. Each one routes through the same systems normal
-play uses, arranging the world rather than faking outcomes. To see a mechanic fire,
-arrange its precondition with these, then `step()` and read the result from
-`snapshot()`.
+Each operation takes the current state, `DeepReadonly<WirewormState>`, as its
+first parameter. A pose returns the next `WirewormState`, built from the one it
+was handed, which it leaves as it was; a reading returns what it read. The
+signatures below name the parameters that follow the state, so `setNode(c, r,
+charge)` below is `setNode(state, c, r, charge)` on the surface and `snapshot()`
+is `snapshot(state)`.
+{{else if (eq engine.slug "structured-2d")}}
 
-None of these operations starts a run on its own. `step()` only advances live play,
-so a scenario that wants to run the simulation must first reach it — with
-`enterPlay()` below (instant, for a posed scenario) or `startRun()` (a real run,
-opening on its banner). Posing the world while the game sits on a menu is legal, but
-nothing will move until you do.
+Each operation takes only the parameters its signature names and acts on the live
+game the moment it is called. A pose returns nothing; a reading returns what it
+read and changes nothing.
+{{/if}}
 
-- `enterPlay()` puts the game directly into live play (`screen` `"playing"`, `phase`
-  `"active"`) and returns immediately, so a posed scenario is live the instant the
-  call returns. It lays a fresh scattered field and leaves the board clear of worms
-  and foes, the cursor centred in the band, and — unlike a real respawn — with **no
-  level banner and no spawn-in invulnerability**, so a posed hit lands on the very
-  next tick. Score, lives, and level are left as they are, so it can be called in any
-  order with the other control operations. If live play is already running it does
-  nothing. This is the operation a scripted check uses to reach a playable state
-  without spending ticks; `startRun()` is for exercising the real entry path.
-- `startRun()` starts a real run at level 1, exactly as choosing `DESCEND` from the
-  menu would. The run opens on its level banner; step past it to reach live play.
-- `setLevel(n)` sets the current level to `n` (`1..12`) as a precondition, and
-  spawns that level's worm for it (of the level's length and cadence,
-  `specs/worm.md`), so a scenario can start on a chosen level.
-- `setScore(n)` sets the score directly, as a precondition.
-- `setLives(n)` sets the lives remaining directly, as a precondition (for example
-  to `1`, so the next hit ends the game through the real loss path).
-- `setCursor(x, y)` places the defrag cursor at a logical-pixel position. The real
-  band clamp still applies, so the cursor never lands outside the player band.
-- `setNode(c, r, charge)` sets the node at tile `(c, r)` to `charge` (an integer in
-  `{0, 1, 2, 3}`), creating the node if the tile was empty; a negative `charge`
-  clears the tile. This arranges the terrain a scenario needs (an inert node, a
-  charged node, a critical cluster); what a shot or the worm then does to it is
-  produced by the real systems when you step.
-- `clearField()` removes every node from the board, for a clean starting field.
-- `setWorm(spec)` replaces the worms on the board with a single worm laid out by
-  `spec`: `spec.segments` is an array of `{ c, r }` tiles with `segments[0]` the
-  head and the rest trailing in order; `spec.dh` (`+1` right, `-1` left) and
-  `spec.dv` (`+1` down, `-1` up) set its heading (defaulting to right and down).
-  The worm then winds, charges, dives, splits, and is shot exactly like any other.
-- `spawnFoe(kind, options)` adds one foe of `kind` (`"glitch"`, `"dropper"`, or
-  `"corruptor"`) to the board. `options` may set `x` and `y` (the foe's CENTER, in
-  logical pixels), `vx` (horizontal velocity), and, for a corruptor, `row` (the grid
-  row it crawls, which places its center on that row's center line). The foe then
-  moves and interacts through its real behavior (`specs/foes.md`) when you step.
-- `fire()` fires a bolt straight up from the cursor's current position now,
-  bypassing the fire cadence so a scenario can shoot on demand. The bolt travels
-  and resolves its hit through the real shot code as the simulation steps.
+### The core
 
-A typical check calls `enterPlay()`, uses `clearField`, `setNode`, `setWorm`, and
-`setCursor` to arrange the exact situation wanted, calls `fire()`, then `step()` a
-handful of ticks to run the real resolution and reads the result from `snapshot()`.
-A check that means to exercise the real entry path uses `startRun()` instead and
-steps past the banner to reach live play.
+| Operation | Effect |
+| --- | --- |
+| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
+| `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
 
-### Input operations
+`reset` restores `screen` to `"title"`, `phase` to `"banner"`, `phaseTimer` to
+`0`, `menuIndex` to `0`, `score` to `0`, `lives` to `START_LIVES` (`3`), `level`
+to `1`, and `reachedLevel` to `1`; it empties the node field and the worm, foe,
+bolt, and arc rosters; it places the cursor at the band's center, `(640, 688)`,
+with `0` seconds of invulnerability and its contact test on; it sets
+`fireCooldown` to `0`, turns the world gates `foeSpawning` and `wormEntry` back
+on, clears the level's spawner clocks, and sets `simTime` to `0`.
 
-The control operations above pose the world directly. The API can also inject
-keyboard input, so a caller can drive the game the way a player does: navigate the
-menus, start a run, pause, toggle mute, move the cursor by holding a movement key,
-and fire by holding the fire key. Injected input flows through the same handling the
-real keyboard feeds, exercising the actual key bindings from `specs/controls.md`
-rather than a parallel path. Injecting input does not switch the manual clock, so a
-held movement key moves the cursor through the game's normal play code as the
-simulation is stepped, which is how a caller confirms the controls themselves work.
+`options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
+game's randomness. `muted` is left exactly as it stands, because muting is a
+player preference the runtime owns.
 
-- `keyDown(code)` presses a key down. `code` is a standard `KeyboardEvent.code`
-  (for example `"ArrowLeft"`, `"ArrowRight"`, `"ArrowUp"`, `"ArrowDown"`, `"KeyA"`,
-  `"KeyD"`, `"KeyW"`, `"KeyS"`, `"Space"`, `"Enter"`, `"Escape"`, `"KeyP"`,
-  `"KeyM"`). The key becomes held, so a movement key drives the cursor and a held
-  fire key fires while it is held and the simulation is stepped, and any one-shot
-  action the key triggers on the current screen (a menu move, a confirm, a pause, a
-  mute toggle) is applied immediately.
-- `keyUp(code)` releases a previously pressed key, ending its held state.
-- `press(code)` is a convenience tap, a `keyDown` immediately followed by `keyUp`.
-  This is the usual way to trigger a one-shot action (moving a menu selection,
-  confirming it, pausing, muting) without leaving the key held.
+{{#if (eq engine.slug "none")}}
+### The clock
 
-The usual shape for an input-driven scenario is to `press` through the menu to
-start a run, then `keyDown` a movement or fire key and `step` (or let real time
-pass) so the cursor moves or a bolt fires, then `keyUp` to release it, reading
-`snapshot()` to see what happened.
+| Operation | Effect |
+| --- | --- |
+| `setAutoStep(enabled)` | Takes the game off real time, and gives it back. |
+| `advance(seconds, frames)` | Runs whole frames of game time immediately. |
+
+`setAutoStep(false)` stops the frame loop advancing the simulation from the wall
+clock, so the game changes only when `advance` says so. `setAutoStep(true)`
+returns it to running itself, which is how a build starts and how it is played.
+Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
+the state the most recent frame left. It changes no game state.
+
+`advance(seconds, frames)` runs `frames` whole frames covering `seconds` of game
+time, each worth `seconds / frames`, immediately and in order. `frames` defaults
+to `1`. Each is a real frame, the same update the loop runs followed by a render,
+so the game's own rules produce the result and the canvas reflects it.
+
+Every rate in this game is per second and integrated against the frame's delta
+time, so `advance(1, 1)` and `advance(1, 60)` cover the same second of game time
+and reach the same outcome, beyond the drift a change in step size explains.
+
+{{/if}}
+### The screen and the run
+
+| Operation | Effect |
+| --- | --- |
+| `setScreen(screen)` | Sets the current screen: `"title"`, `"howto"`, `"playing"`, `"paused"`, `"victory"`, or `"gameover"`. |
+| `setPhase(phase)` | Sets the sub-phase of the `playing` screen: `"banner"`, `"active"`, or `"respawn"`. |
+| `setPhaseTimer(seconds)` | Sets the seconds left in the current phase. |
+| `setMenuIndex(n)` | Sets the highlighted item of whatever menu the current screen shows, counted from `0`. |
+| `setScore(n)` | Sets the score. |
+| `setLives(n)` | Sets the lives remaining. |
+| `setLevel(n)` | Sets the current level, a whole number from `1` to `TOTAL_LEVELS` (`12`). |
+| `setReachedLevel(n)` | Sets the level the end screens report. |
+
+`setScore` grants no bonus life, whatever boundary it carries the score across:
+the award belongs to the scoring path, and this is a precondition.
+
+`setLevel` spawns nothing and clears nothing. The level's step interval and worm
+length follow it, since both are derived from the level.
+
+### The world gates
+
+Three faculties belong to the level itself rather than to any one entity. Each
+has its own gate, each gates one faculty and nothing else, each is on by default
+and restored to on by `reset`, and each is reported by `snapshot`.
+
+| Operation | Gates |
+| --- | --- |
+| `setFoeSpawning(enabled)` | The level's own spawning of foes: the glitch's paced arrival, the corruptor's, and the dropper's sparse-field check. Off, no foe appears unless one is added. A foe already on the board still thinks, travels, and acts. |
+| `setWormEntry(enabled)` | The level's and the respawn's entry of a worm. Off, no worm appears unless one is added. A worm already on the board steps as usual. |
+| `setCursorContact(enabled)` | The cursor's contact test, which is whether a worm segment or a foe reaching the cursor costs a life. Off, the cursor still draws, still moves under input, and still fires, and no contact costs anything. |
+
+### The cursor and its bolts
+
+| Operation | Effect |
+| --- | --- |
+| `setCursor(x, y)` | Places the cursor's center at a logical stage position. The band's clamp applies, so the cursor never lands outside the player band. |
+| `setCursorInvulnerable(seconds)` | Sets the seconds of spawn-in invulnerability remaining, `0` for none. |
+| `setCursorContact(enabled)` | The cursor's contact gate, stated under The world gates above. |
+| `setFireCooldown(seconds)` | Sets the seconds until the cursor may fire again. |
+| `addBolt(x, y)` | Adds one bolt in flight, its center at a logical stage position, travelling up. It is appended to the bolt roster and takes a fresh id, and it then travels and resolves through the game's own shot rules. |
+| `removeBolt(id)` | Removes the bolt with that id. |
+| `clearBolts()` | Removes every bolt in flight. |
+
+There is no operation that fires. A caller that wants a bolt places one with
+`addBolt`; a caller checking firing itself holds the fire action and reads the
+bolts that appear.
+
+### The node field
+
+| Operation | Effect |
+| --- | --- |
+| `setNode(c, r, charge)` | Sets the node at tile `(c, r)` to `charge`, a whole number from `0` to `CHARGE_MAX` (`3`), creating the node if the tile was empty. |
+| `clearNode(c, r)` | Removes the node at tile `(c, r)`, leaving the tile empty. |
+| `clearNodes()` | Removes every node from the board, leaving the worms, foes, and bolts standing. |
+
+### The worms
+
+A worm is built one segment at a time, so no operation takes a layout.
+
+| Operation | Effect |
+| --- | --- |
+| `addWorm(c, r)` | Adds a worm of one segment, its head on tile `(c, r)`, heading right (`dh` `+1`), descending (`dv` `+1`), not diving, with both faculties on. It is appended to the worm roster and takes a fresh id, and its step clock starts at the call. |
+| `appendSegment(id, c, r)` | Appends one segment on tile `(c, r)` to the tail end of worm `id`. |
+| `setWormHeading(id, dh)` | Sets the horizontal heading: `+1` right, `-1` left. |
+| `setWormDescent(id, dv)` | Sets the vertical heading: `+1` down, `-1` up. |
+| `setWormDiving(id, diving)` | Sets the diving flag. |
+| `setWormStepping(id, enabled)` | Gates the worm's step alone: the block test on the tile ahead, the charge it deals, the heading change, the dive it enters, and the head's advance. Off, the worm takes no step and the rest of the board runs on. |
+| `setWormBody(id, enabled)` | Gates the body's follow alone. Off, the head steps as usual and every trailing segment holds its tile. |
+| `removeWorm(id)` | Removes the worm with that id. |
+| `clearWorms()` | Removes every worm, leaving the nodes, foes, and bolts standing. |
+
+### The foes
+
+| Operation | Effect |
+| --- | --- |
+| `addFoe(kind, x, y)` | Adds one foe of `kind` (`"glitch"`, `"dropper"`, or `"corruptor"`) with its center at a logical stage position, its velocity at that kind's own resting velocity, its hit flag `false`, and both faculties on. It is appended to the foe roster and takes a fresh id. A corruptor's held row is the row its center is on at the call. |
+| `setFoeVelocity(id, vx, vy)` | Sets the foe's velocity, in logical units per second. |
+| `setFoeHit(id, hit)` | Sets the dropper's taken-its-first-bolt flag. |
+| `setFoeMind(id, enabled)` | Gates the foe's own behavior alone: the glitch's dart and its eating, the dropper's node-laying, the corruptor's slam. Its travel runs on. |
+| `setFoeTravel(id, enabled)` | Gates the foe's locomotion alone: its position holds and its behavior runs on. |
+| `removeFoe(id)` | Removes the foe with that id. |
+| `clearFoes()` | Removes every foe, leaving the nodes, worms, and bolts standing. |
 
 ## Snapshot shape
 
-`snapshot()` returns an object with at least these fields:
+`snapshot` returns exactly this object. Every field an operation can set is
+present, so every operation is verifiable by setting a value and reading it back.
 
 ```js
 {
   version: 1,
   screen: "title" | "howto" | "playing" | "paused" | "victory" | "gameover",
-  phase: "banner" | "active" | "respawn",  // sub-phase while screen === "playing"
-  menuIndex: <number>,                      // highlighted row on a menu / end screen
+  phase: "banner" | "active" | "respawn",   // the sub-phase of "playing"
+  phaseTimer: <number>,                     // seconds left in the current phase
+  menuIndex: <number>,                      // highlighted item, from 0
   score: <number>,
   lives: <number>,
   level: <number>,                          // 1..12
-  reachedLevel: <number>,                   // the level reached, for the end screens
-  muted: <boolean>,                         // whether the mute toggle is on
-  wormStepInterval: <number>,               // seconds per worm tile step at this level
-  cursor: { x: <number>, y: <number>, invulnerable: <boolean> },
-  // Every node currently on the board, each with its charge (0..3).
+  reachedLevel: <number>,                   // the level the end screens report
+  muted: <boolean>,
+  foeSpawning: <boolean>,                   // the level's own foe spawning runs
+  wormEntry: <boolean>,                     // the level's and the respawn's worm entry runs
+  wormStepInterval: <number>,               // seconds per tile step at this level
+  wormLength: <number>,                     // segments this level's worm enters with
+  cursor: {
+    x: <number>,                            // the cursor's CENTER
+    y: <number>,
+    invulnerable: <number>,                 // seconds of invulnerability left, 0 for none
+    contact: <boolean>,                     // the cursor's contact test runs
+  },
+  fireCooldown: <number>,                   // seconds until the cursor may fire again
+  // Every node on the board, ascending by row then column.
   nodes: [ { c: <number>, r: <number>, charge: <number> } ],
-  // Every worm on the board; segments[0] is the head, the rest trail in order.
+  // Every worm on the board, in roster order. segments[0] is the head.
   worms: [
     {
+      id: <number>,
       segments: [ { c: <number>, r: <number> } ],
-      dh: <number>,       // horizontal heading: +1 right, -1 left
-      dv: <number>,       // vertical heading: +1 down, -1 up
-      diving: <boolean>,  // riding straight down a critical column
+      dh: <number>,                         // +1 right, -1 left
+      dv: <number>,                         // +1 down, -1 up
+      diving: <boolean>,
+      stepping: <boolean>,
+      body: <boolean>,
     },
   ],
-  // Every foe on the board.
+  // Every foe on the board, in roster order.
   foes: [
     {
+      id: <number>,
       kind: "glitch" | "dropper" | "corruptor",
-      // `x`/`y` are the CENTER of the foe (specs/overview.md), so the tile it is on
-      // is `floor(x / 32)`, `floor((y - 80) / 32)` — the same tile its effects (a
-      // glitch's eat, a dropper's drop, a corruptor's slam) land on.
-      // `vx`/`vy` are the foe's ACTUAL current velocity in logical px/s — what its
-      // position is changing by right now, including any weave or dart its movement
-      // applies. A foe whose horizontal motion reverses reports a `vx` that reverses
-      // sign with it; reporting only an underlying drift while the foe visibly moves
-      // some other way does not meet this contract.
-      x: <number>, y: <number>, vx: <number>, vy: <number>,
-      firstHit: <boolean>,  // a dropper that has taken its speed-up hit
+      x: <number>,                          // the foe's CENTER
+      y: <number>,
+      vx: <number>,                         // its actual current velocity, in units/s
+      vy: <number>,
+      hit: <boolean>,                       // a dropper that has taken its first bolt
+      mind: <boolean>,
+      travel: <boolean>,
     },
   ],
-  bolts: [ { x: <number>, y: <number> } ],
-  // Live discharge arcs, present only in the moments after a detonation.
-  arcs: [ { x1: <number>, y1: <number>, x2: <number>, y2: <number> } ],
-  simTime: <number>,  // accumulated simulation time, in seconds
+  // Every bolt in flight, in roster order.
+  bolts: [ { id: <number>, x: <number>, y: <number> } ],
+  // The links a live discharge is arcing along, one per conducted link.
+  arcs: [
+    { from: { c: <number>, r: <number> }, to: { c: <number>, r: <number> } },
+  ],
+  simTime: <number>,                        // accumulated simulation time, in seconds
 }
 ```
 
-`cursor.invulnerable` is `true` during the brief spawn-in invulnerability after a
-respawn. A node absent from `nodes` is an empty tile. `arcs` is empty except in the
-brief window while a discharge is drawn, so a detonation is visible as it fires.
+Every field is read straight off the game's state, so what the snapshot reports
+is what the game holds. Four are derived rather than stored:
 
-## The debug overlay
+| Field | Derived from |
+| --- | --- |
+| `wormStepInterval` | `wormStepInterval(level)` in `specs/worm.md` |
+| `wormLength` | `wormLength(level)` in `specs/worm.md` |
+| `cursor.contact` | The cursor's contact gate |
+| `arcs` | The live arcs, with each one's remaining life left out |
 
-Provide a read-only on-screen overlay showing the game's live internal state, so
-you can watch what the simulation is doing while you play. It is toggled with the
-backtick key (`` ` ``), off by default, and never changes gameplay; it only draws.
+Four more need a note:
 
-When on, it draws over the running game, legibly, in the game's monospace type, at
-least: the current `screen` and `phase`, the score, lives, and level, the count of
-nodes on the board, each worm's length, head tile, headings, and diving flag, each
-foe's kind and position, and the cursor's position, the same facts `snapshot()`
-reports. It is a diagnostic layer rather than part of the game's presentation, so
-keep it visually plain and clearly separate from the HUD.
+- `muted` is the game's copy of the runtime's mute bit, refreshed in every
+  update, so the snapshot reports the bit the runtime holds. No operation sets
+  it; the `mute` action does.
+- A foe's `vx` and `vy` are what its position is changing by right now, including
+  any dart, so a foe whose horizontal motion reverses reports a `vx` that
+  reverses sign with it.
+- `arcs` is empty except during the `ARC_LIFE` (`0.32` s) window after a
+  detonation, and each entry names the two tiles the link joined rather than any
+  drawn geometry.
+- `simTime` accumulates every update's delta, whatever the screen.
+
+## Diagnostics
+
+The debug overlay is read-only and shows the values the game registers with it as
+diagnostic sources. Register at least:
+
+- the current `screen` and `phase`;
+- the score, the lives, and the level;
+- how many nodes stand on the board;
+- for each worm, its id, its length, its head tile, its two headings, and its
+  diving flag;
+- for each foe, its id, its kind, and its position;
+- the cursor's position;
+- how many bolts are in flight.
+
+Keep each one short enough to read on a line, and keep every source a pure read,
+so watching the overlay leaves the game exactly as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, it is shown and hidden by the backtick key as `specs/controls.md`
+states, it is off when the game starts, and it reads the game without changing
+it.
+{{else if (eq engine.slug "simple-2d")}}
+Registering those values is the whole of Wireworm's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the read,
+as `DeepReadonly<WirewormState>`, and reads off that argument. Drawing the panel,
+toggling it, and keeping it read-only are the engine's.
+{{else}}
+Registering those values is the whole of Wireworm's part, through
+`world.diagnostics` in the game mode's `beginPlay`. Each source is a function of
+no arguments, called at each read; read the live state at the call, through the
+world the mode holds, so the panel reports the frame being drawn. Drawing the
+panel and toggling it are the engine's.
+{{/if}}
