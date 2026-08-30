@@ -1,26 +1,74 @@
-// Arc Foundry — `audio.fire-discharge`. CASE-PROVIDED. NOT YET WRITTEN.
+// Arc Foundry — audio/fire-discharge: the discharge cue sounds on the frame an
+// Arc-Node or a Discharge Rig fires, and on no frame before it.
 //
-// The manifest declares this point at `audio/fire-discharge.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT, from the cue table of `specs/ui.md`: `CUES.fireDischarge` is
+// played when "an Arc-Node or a Discharge Rig fires", and each cue is played "on the
+// update its event happens, and at most once on that update".
 //
-// THE REQUIREMENT. The fire-discharge cue is played on the frame an Arc-Node
-// or a Discharge Rig fires, and on no frame before it.
+// WHAT MARKS THE EVENT. `specs/components.md` puts every shot on a travelling
+// projectile, so the frame a projectile appears is the frame the structure fired.
 //
-// HOW IT IS DECIDED. Fire each of the two types once and read the cues played
-// on the frame of each shot. The evidence it hands back is `discharge`
-// (replay): the discharge whose cue is checked.
+// WHAT IS ASSERTED, AND WHAT CANNOT BE. That a sound was emitted, and on the frame
+// of the shot rather than before it. Each structure is stood up alone first and held
+// with nothing in range, where `specs/components.md` says it "holds fire", and every
+// sound from that moment on is recorded. What cannot be separated from outside an
+// engineless build is a build that plays the WRONG cue on the right event, because
+// the name of a sound is not observable; that half is the reviewer's, by ear.
+//
+// BOTH TYPES, BECAUSE THE REQUIREMENT NAMES BOTH. They are one point because they
+// are one cue on one event; each runs on its own emptied yard.
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import { FIRE_CUE, type ComponentType } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
+import { SETTLE, beforeFrame, fireOnce, onFrame } from "./cues";
 
-import { describe, it } from "vitest";
+/** The two types `specs/ui.md` binds to the discharge cue, per `FIRE_CUE`. */
+const TYPES: ComponentType[] = (
+  ["arcnode", "discharge"] as ComponentType[]
+).filter((type) => FIRE_CUE[type] === "fire-discharge");
 
-import { fail } from "../assert";
+let h: Harness;
 
-describe("audio.fire-discharge", () => {
-  it("The fire-discharge cue plays for an Arc-Node or a Discharge Rig", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `audio.fire-discharge` has not been written yet",
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("sounds on the frame each of the two fires, and not before", async () => {
+  await h.armAudio();
+  await openYard(h, { wave: 1 });
+  await h.advance(SETTLE);
+
+  for (const type of TYPES) {
+    const shot = await captureReplay(h, "discharge", () =>
+      fireOnce(h, type, 1),
     );
-  });
+
+    assertEqual(
+      shot.fired,
+      true,
+      `a Scrap ${type} with a unit inside its range to fire within four ` +
+        "seconds (specs/components.md)",
+    );
+    assertDeepEqual(
+      beforeFrame(shot.cues, shot.frame).map((cue) => cue.frame),
+      [],
+      `nothing to sound while a ${type} holds fire with nothing in range ` +
+        "(specs/ui.md)",
+    );
+    assertGreaterThan(
+      onFrame(shot.cues, shot.frame).length,
+      0,
+      `a cue to sound on the frame a ${type} fires (specs/ui.md)`,
+    );
+  }
 });
