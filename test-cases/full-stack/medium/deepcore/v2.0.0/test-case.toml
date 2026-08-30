@@ -363,13 +363,13 @@ description = "What the build looks and sounds like, above all the ANIMATED MINE
 # whose requirement could not be settled objectively is not a graded point at all — how GOOD the
 # miner animation feels, how handsome the tiles and buildings are, how the music sits under the
 # game: those are the run-wide aesthetic rating's, and they are absent from this list rather than
-# sitting in it as an unscorable item.
+# sitting in it as a point no validator could decide.
 #
 # `validation.script` names a suite RELATIVE TO `validation/<engine>/`, and the SAME relative
 # path must resolve inside every engine's validator project — a point decided under one engine
 # and left undecided under another would be the same case graded two ways. Each suite poses its
 # own isolated world through the debug surface `specs/instrumentation.md` fixes, exercises one
-# observable behaviour in one direction, and asserts against a figure the SPECIFICATION states
+# observable behavior in one direction, and asserts against a figure the SPECIFICATION states
 # plus an honest tolerance, never against whatever the reference happens to do.
 #
 # `outputs` are the evidence a reviewer sees beside the verdict, synthesized against the
@@ -758,7 +758,7 @@ description = "Lava cells cluster: more lava cells have at least one orthogonall
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: generate mines at several seeds, count lava cells with
-# and without an orthogonal lava neighbour, and hold the first count above the
+# and without an orthogonal lava neighbor, and hold the first count above the
 # second.
 validation = { script = "generation/lava-clusters.test.ts", outputs = [
   { id = "pool", name = "One lava pool in the deepstone", kind = "image" },
@@ -857,7 +857,7 @@ validation = { script = "movement/walk-speed.test.ts", outputs = [
 [[review.categories.items]]
 id = "air-drift"
 title = "Lateral movement works in the air as well as on the ground"
-description = "Holding left or right while airborne drifts the miner sideways at the same WALK_SPEED (250), so a fall can be steered into a neighbouring shaft."
+description = "Holding left or right while airborne drifts the miner sideways at the same WALK_SPEED (250), so a fall can be steered into a neighboring shaft."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: clear a wide open space, drop the miner with right
@@ -1031,11 +1031,11 @@ validation = { script = "drilling/drill-down-over-open-space.test.ts", outputs =
 [[review.categories.items]]
 id = "side-cut-starts-at-the-edge"
 title = "A side cut begins at the tile edge, not on the keypress"
-description = "Pressing left or right in mid-cell walks the miner across the cell it stands in first, and the cut into the neighbouring cell begins only once the miner box is flush against it, so lateral movement inside a wider tunnel is possible before committing to a dig."
+description = "Pressing left or right in mid-cell walks the miner across the cell it stands in first, and the cut into the neighboring cell begins only once the miner box is flush against it, so lateral movement inside a wider tunnel is possible before committing to a dig."
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: stand the miner mid-cell beside a posed solid cell,
-# hold right, and read the neighbouring cell health unchanged until the miner
+# hold right, and read the neighboring cell health unchanged until the miner
 # box reaches the cell face.
 validation = { script = "drilling/side-cut-starts-at-the-edge.test.ts", outputs = [
   { id = "walk-then-cut", name = "Walking to the edge, then cutting into the wall", kind = "replay" },
@@ -1922,10 +1922,10 @@ validation = { script = "hazards/lava-clears-to-tunnel.test.ts", outputs = [
 [[review.categories.items]]
 id = "lava-does-not-spread"
 title = "Lava neither flows nor spreads"
-description = "Lava stays in the cells it was generated in: over a long span no neighbouring cell becomes lava and no lava cell empties, so a route around a pool can be planned."
+description = "Lava stays in the cells it was generated in: over a long span no neighboring cell becomes lava and no lava cell empties, so a route around a pool can be planned."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: record a posed pool and its neighbourhood, advance a
+# Automated validation: record a posed pool and its neighborhood, advance a
 # long span and read every cell unchanged.
 validation = { script = "hazards/lava-does-not-spread.test.ts", outputs = [
   { id = "still", name = "A pool holding its shape", kind = "replay" },
@@ -1944,7 +1944,7 @@ validation = { script = "hazards/impact-safe-speed.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "impact-damage"
-title = "A hard landing costs hull in proportion to the overspeed"
+title = "A hard landing costs hull in proportion to how fast it was"
 description = "A landing at downward speed v deals max(0, v - IMPACT_SAFE_SPEED) * IMPACT_DAMAGE_RATE (0.1) hull, so an empty terminal-speed plunge at 950 costs 25 and a loaded one at 1600 costs 90."
 domains = ["simulation"]
 failure_cap = "scuffed"
@@ -2073,7 +2073,7 @@ title = "Field Supplies"
 [[review.categories.items]]
 id = "dynamite-clears-3x3"
 title = "Dynamite clears the block around the miner"
-description = "Using Dynamite clears the 3 by 3 block of cells centred on the miner cell, a radius of 1, and consumes one Dynamite."
+description = "Using Dynamite clears the 3 by 3 block of cells centered on the miner cell, a radius of 1, and consumes one Dynamite."
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: pose solid rock around the miner, use Dynamite and
@@ -2084,7 +2084,7 @@ validation = { script = "supplies/dynamite-clears-3x3.test.ts", outputs = [
 [[review.categories.items]]
 id = "plastic-explosives-clear-5x5"
 title = "Plastic Explosives clear a wider block"
-description = "Using Plastic Explosives clears the 5 by 5 block of cells centred on the miner cell, a radius of 2, and consumes one."
+description = "Using Plastic Explosives clears the 5 by 5 block of cells centered on the miner cell, a radius of 2, and consumes one."
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: pose solid rock around the miner, use Plastic
@@ -2203,7 +2203,7 @@ failure_cap = "passable"
 # Automated validation: use emergency fuel at a low tank and again within 30
 # of the maximum, holding the gain and the cap at each.
 validation = { script = "supplies/emergency-fuel-tops-up.test.ts", outputs = [
-  { id = "topup", name = "The tank topped up in the field", kind = "image" },
+  { id = "field-fuel", name = "The tank topped up in the field", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "using-consumes-one"
@@ -2748,7 +2748,7 @@ failure_cap = "passable"
 # then drive a full start, dig and save attempt and hold the game running with
 # hasSave false.
 validation = { script = "save/runs-without-storage.test.ts", outputs = [
-  { id = "nostore", name = "The game running with no storage behind it", kind = "replay" },
+  { id = "no-storage", name = "The game running with no storage behind it", kind = "replay" },
 ] }
 
 # --- World Size ---------------------------------------------------------------
@@ -2817,7 +2817,7 @@ failure_cap = "scuffed"
 # Automated validation: pose the miner at several columns in the middle of the
 # world and hold camera.x against the formula at each.
 validation = { script = "camera/centres-horizontally.test.ts", outputs = [
-  { id = "centre", name = "The miner centred in the view", kind = "image" },
+  { id = "centre", name = "The miner centered in the view", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "horizontal-clamp"
@@ -2839,7 +2839,7 @@ failure_cap = "passable"
 # Automated validation: pose the miner at a vertical speed under
 # CAM_STILL_SPEED, advance a sustained span and hold the lead at 0.
 validation = { script = "camera/lead-rests-at-zero.test.ts", outputs = [
-  { id = "still", name = "The miner centred while barely moving", kind = "replay" },
+  { id = "still", name = "The miner centered while barely moving", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "lead-builds-descending"
@@ -2868,7 +2868,7 @@ validation = { script = "camera/lead-builds-climbing.test.ts", outputs = [
 [[review.categories.items]]
 id = "lead-unwinds-faster"
 title = "The lead unwinds faster than it builds"
-description = "A move that takes the lead toward 0 runs at CAM_UNWIND_MULT (4) times the build rate, so reversing direction recentres the miner quickly rather than dragging the old lead along."
+description = "A move that takes the lead toward 0 runs at CAM_UNWIND_MULT (4) times the build rate, so reversing direction recenters the miner quickly rather than dragging the old lead along."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: build the lead to full on a descent, then stop, and
@@ -2926,7 +2926,7 @@ description = "The game opens on the title screen showing TITLE_TEXT (DEEPCORE),
 domains = ["simulation", "presentation"]
 failure_cap = "broken"
 # Automated validation: read the screen at start-up, then read the drawn frame
-# for the title text and a highlight distinct from the unhighlighted items.
+# for the title text and a highlight drawn differently from the other items.
 validation = { script = "screens/title-screen.test.ts", outputs = [
   { id = "title", name = "The title screen", kind = "image" },
 ] }
@@ -3546,7 +3546,7 @@ validation = { script = "audio/mute-toggle.test.ts", outputs = [
 [[review.categories.items]]
 id = "muted-play-continues"
 title = "Muting changes nothing but the sound"
-description = "Muting silences the audio and changes nothing else: the simulation carries on and cues still fire at the same moments, so unmuting mid-play picks up where the game is."
+description = "Muting silences the audio and changes nothing else: the simulation carries on and cues still fire at the same moments, so turning the sound back on mid-play picks up where the game is."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: drive one identical posed scenario muted and unmuted
@@ -3925,30 +3925,30 @@ id = "rendering"
 title = "The Mine on Screen"
 [[review.categories.items]]
 id = "stage-fit"
-title = "The stage is fitted and centred"
-description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the whole stage is inside the surface at its own aspect ratio, centred with even letterboxing."
+title = "The stage is fitted and centered"
+description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the whole stage is inside the surface at its own aspect ratio, centered with even letterboxing."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: size the surface wider, taller and at a raised ratio
-# in turn and hold the drawn stage extent, aspect and centring at each.
+# in turn and hold the drawn stage extent, aspect and centering at each.
 validation = { script = "rendering/stage-fit.test.ts", outputs = [
   { id = "fit", name = "The stage fitted in an off-aspect window", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "bands-are-distinguishable"
 title = "The four bands read as different rock"
-description = "The four bands rock is drawn distinctly: sampling the interior of a rock cell in each band, no two bands mean colour are within an RGB distance of 40 of one another, so the depth is readable from the wall."
+description = "The four bands rock is drawn distinctly: sampling the interior of a rock cell in each band, no two bands mean color are within an RGB distance of 40 of one another, so the depth is readable from the wall."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: pose a rock cell in each band, sample the interior of
-# each drawn cell and hold every pair of mean colours at least 40 apart.
+# each drawn cell and hold every pair of mean colors at least 40 apart.
 validation = { script = "rendering/bands-are-distinguishable.test.ts", outputs = [
   { id = "bands", name = "The four bands rock side by side", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "lava-is-distinguishable"
 title = "Lava reads as lava, not as rock"
-description = "A lava cell is drawn distinctly from its band rock: their sampled mean colours are at least an RGB distance of 60 apart, so a pool is visible before the miner is in it."
+description = "A lava cell is drawn distinctly from its band rock: their sampled mean colors are at least an RGB distance of 60 apart, so a pool is visible before the miner is in it."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: pose a lava cell beside a rock cell of the same band,
@@ -3959,7 +3959,7 @@ validation = { script = "rendering/lava-is-distinguishable.test.ts", outputs = [
 [[review.categories.items]]
 id = "ore-is-distinguishable"
 title = "An ore cell reads differently from plain rock"
-description = "An ore cell is drawn distinctly from plain rock of the same band, their sampled mean colours at least an RGB distance of 30 apart, so a vein is spotted rather than stumbled on."
+description = "An ore cell is drawn distinctly from plain rock of the same band, their sampled mean colors at least an RGB distance of 30 apart, so a vein is spotted rather than stumbled on."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: pose an ore cell beside a rock cell of the same band,
@@ -3970,7 +3970,7 @@ validation = { script = "rendering/ore-is-distinguishable.test.ts", outputs = [
 [[review.categories.items]]
 id = "stone-is-distinguishable"
 title = "Unbreakable stone reads as a harder material"
-description = "An unbreakable-stone cell is drawn distinctly from the band rock around it, their sampled mean colours at least an RGB distance of 30 apart, so a boulder is recognised before the drill is wasted on it."
+description = "An unbreakable-stone cell is drawn distinctly from the band rock around it, their sampled mean colors at least an RGB distance of 30 apart, so a boulder is recognized before the drill is wasted on it."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: pose a stone cell beside a rock cell of the same band,

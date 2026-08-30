@@ -2,17 +2,17 @@
 //
 // Lava neither flows nor spreads
 //
-// Lava stays in the cells it was generated in: over a long span no
-// neighbouring cell becomes lava and no lava cell empties, so a route around a
-// pool can be planned.
+// Lava stays in the cells it was generated in: over a long span no neighboring
+// cell becomes lava and no lava cell empties, so a route around a pool can be
+// planned.
 //
-// Automated validation: record a posed pool and its neighbourhood, advance a
+// Automated validation: record a posed pool and its neighborhood, advance a
 // long span and read every cell unchanged.
 //
 // `test-case.toml` declares this suite as `hazards/lava-does-not-spread.test.ts` and requires it
 // under every engine. Replace this stub with the real suite: pose an isolated
 // world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behaviour,
+// miner only the faculties this requirement exercises, drive the one behavior,
 // assert against the figure the specification states through `assert.ts`, and
 // capture the declared output (still (replay)) around the drive.
 

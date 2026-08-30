@@ -7,12 +7,12 @@
 // others.
 //
 // Automated validation: read the screen at start-up, then read the drawn frame
-// for the title text and a highlight distinct from the unhighlighted items.
+// for the title text and a highlight drawn differently from the other items.
 //
 // `test-case.toml` declares this suite as `screens/title-screen.test.ts` and requires it
 // under every engine. Replace this stub with the real suite: pose an isolated
 // world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behaviour,
+// miner only the faculties this requirement exercises, drive the one behavior,
 // assert against the figure the specification states through `assert.ts`, and
 // capture the declared output (title (image)) around the drive.
 

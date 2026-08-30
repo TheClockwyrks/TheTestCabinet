@@ -11,9 +11,9 @@
 // `test-case.toml` declares this suite as `supplies/emergency-fuel-tops-up.test.ts` and requires it
 // under every engine. Replace this stub with the real suite: pose an isolated
 // world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behaviour,
+// miner only the faculties this requirement exercises, drive the one behavior,
 // assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (topup (image)) around the drive.
+// capture the declared output (field-fuel (image)) around the drive.
 
 import { test } from "vitest";
 
