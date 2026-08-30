@@ -1,24 +1,65 @@
-// Deepcore — world.core-chamber. STUB: NOT YET AUTHORED.
+// world/core-chamber — the chamber is bedrock apart from the Core.
 //
-// The Core chamber is bedrock apart from the Core
+// `specs/world.md`: "The Core chamber is `row coreRow`. Every cell of it is
+// bedrock border except the Core tile, which sits at `CORE_COL` (`16`)." The Core
+// is what a Core Sample is drilled out of, so a chamber floored in plain bedrock
+// has no rocket in it, and one floored in rock has a mine with no bottom.
 //
-// Row coreRow is bedrock in every column except CORE_COL (16), which holds the
-// core tile.
-//
-// Automated validation: read tileAt across the whole of row coreRow and hold
-// every cell against bedrock apart from CORE_COL, which must read core.
-//
-// `test-case.toml` declares this suite as `world/core-chamber.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (chamber (image)) around the drive.
+// The reading is taken at every world size, because `coreRow` moves with the size
+// and the chamber has to move with it; the row it is read at is the `coreRow` the
+// game itself reports, so what is decided here is the chamber's contents rather
+// than where the size puts it. It is taken on generated mines, since it is
+// generation that lays the chamber.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
+import {
+  CORE_COL,
+  WORLD_COLS,
+  WORLD_SIZES,
+  type WorldSize,
+} from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { generatedMine, kindAt, look } from "../generation/mine-scan";
 
-test("The Core chamber is bedrock apart from the Core", () => {
-  throw new Error(
-    "Deepcore validator `world/core-chamber` is declared in test-case.toml but has not been authored yet.",
-  );
+const SEEDS = [1, 5] as const;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("lays the Core at column 16 and bedrock across the rest of the chamber", async () => {
+  let deepest = 0;
+  for (const size of WORLD_SIZES) {
+    for (const seed of SEEDS) {
+      const at = `the ${size} mine on seed ${seed}`;
+      const scan = await generatedMine(h, seed, size as WorldSize);
+      deepest = scan.coreRow;
+
+      assertEqual(
+        kindAt(scan, CORE_COL, scan.coreRow),
+        "core",
+        `the Core tile in ${at}`,
+      );
+
+      const wrong: string[] = [];
+      for (let col = 0; col < WORLD_COLS; col += 1) {
+        if (col === CORE_COL) continue;
+        const kind = kindAt(scan, col, scan.coreRow);
+        if (kind !== "bedrock")
+          wrong.push(`(${col}, ${scan.coreRow}) is ${kind}`);
+      }
+      assertDeepEqual(wrong.slice(0, 5), [], `the chamber of ${at}`);
+    }
+  }
+
+  // The picture: the chamber at the bottom of the mine last read.
+  await look(h, CORE_COL, deepest - 1);
+  await captureStill(h, "chamber");
 });
