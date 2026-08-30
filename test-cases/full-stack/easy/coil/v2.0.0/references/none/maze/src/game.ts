@@ -126,7 +126,10 @@ export class Game {
         }
       }
     }
-    if (this.biteRemaining > 0) {
+    // The bite runs on the ROUND'S own time (`specs/assets.md`), so it holds the
+    // frame it is on behind a pause and on every menu screen, and carries on from
+    // there when the round resumes.
+    if (this.screen === "playing" && this.biteRemaining > 0) {
       this.biteRemaining = Math.max(0, this.biteRemaining - dt);
     }
     // The best rises the instant the live score passes it, during play rather than

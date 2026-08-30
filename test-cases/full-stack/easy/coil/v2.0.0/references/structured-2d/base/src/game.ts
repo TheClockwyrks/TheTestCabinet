@@ -238,7 +238,12 @@ class CoilMode extends GameMode {
     }
     stopMusicOffTheRound(state.screen, this.world.audio);
 
-    state.biteRemaining = Math.max(0, state.biteRemaining - dt);
+    // The bite runs on the ROUND'S own time (`specs/assets.md`), so it holds the
+    // frame it is on behind a pause and on every menu screen, and carries on from
+    // there when the round resumes.
+    if (state.screen === "playing") {
+      state.biteRemaining = Math.max(0, state.biteRemaining - dt);
+    }
     // The best rises the instant the live score passes it, during play rather
     // than at the end of a round, so a best posed below the live score is raised
     // back to it on the very next frame.

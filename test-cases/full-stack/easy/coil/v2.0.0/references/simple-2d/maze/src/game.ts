@@ -464,7 +464,13 @@ export const game: Game<CoilState, CoilDebugApi> = {
 
     return {
       ...next,
-      biteRemaining: Math.max(0, next.biteRemaining - dt),
+      // The bite runs on the ROUND'S own time (`specs/assets.md`), so it holds
+      // the frame it is on behind a pause and on every menu screen, and carries
+      // on from there when the round resumes.
+      biteRemaining:
+        next.screen === "playing"
+          ? Math.max(0, next.biteRemaining - dt)
+          : next.biteRemaining,
       // The best rises the instant the live score passes it, during play rather
       // than at the end of a round, so a best posed below the live score is
       // raised back to it on the very next update.
