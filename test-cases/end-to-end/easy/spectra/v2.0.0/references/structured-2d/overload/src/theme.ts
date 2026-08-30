@@ -31,7 +31,7 @@
 // is normalised back onto that calibration point before the hue is applied and
 // every sprite lands on the same band colour.
 
-import { STAGE_H, STAGE_W } from "./constants";
+import { STAGE_W } from "./constants";
 import type { Band } from "./game";
 
 /** The two band colours, read off the seeded art. */
@@ -97,9 +97,8 @@ export const LAYER = {
   screens: 36,
 } as const;
 
-/** The centre of the stage, which every screen is laid out around. */
+/** The horizontal centre of the stage, which every screen is laid out around. */
 export const CENTER_X = STAGE_W / 2;
-export const CENTER_Y = STAGE_H / 2;
 
 /** The grey the band filter is calibrated on: the Shard's magenta. */
 const CALIBRATION_LUMA = 124;
@@ -109,9 +108,6 @@ export const BAND_LUMA: Readonly<Record<Band, number>> = {
   cyan: 191,
   magenta: 124,
 };
-
-/** The white the seeded highlights arrive as. */
-export const WHITE_LUMA = 255;
 
 /** Per band: the brightness that lands the calibration grey on the band. */
 const BAND_BRIGHTNESS: Readonly<Record<Band, number>> = {
