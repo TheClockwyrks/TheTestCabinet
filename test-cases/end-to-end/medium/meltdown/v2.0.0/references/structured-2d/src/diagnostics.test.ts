@@ -54,6 +54,25 @@ describe("the diagnostic sources", () => {
     harness.dispose();
   });
 
+  it("keeps a long roster to one readable line", async () => {
+    const harness = await createHarness();
+    startRun(harness);
+    for (let index = 0; index < 12; index += 1) {
+      poseTower(harness, "arc", 2 + index * 3, 2, 0);
+      harness.debug.addUnit("mote", "left");
+    }
+    const sources = new Map(
+      diagnosticSources(() => meltdownState(harness.engine.world)),
+    );
+    const towers = String(sources.get("towers")?.());
+    const surge = String(sources.get("surge")?.());
+    expect(towers).toContain("+8 more");
+    expect(surge).toContain("+8 more");
+    expect(towers.length).toBeLessThan(120);
+    expect(surge.length).toBeLessThan(120);
+    harness.dispose();
+  });
+
   it("reads an empty floor without a guard of the game's own", async () => {
     const harness = await createHarness();
     startRun(harness);

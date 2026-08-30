@@ -16,6 +16,24 @@ import { unitTile } from "./surge";
 import { figuresOf } from "./waves";
 import { meltdownState, type MeltdownState } from "./game";
 
+/**
+ * How many entries the tower and surge lines name before they summarise the
+ * rest. A run fields dozens of both, and a line the panel cannot fit is a line
+ * nobody reads (specs/instrumentation.md, Diagnostics).
+ */
+const LISTED = 4;
+
+/** One line naming at most `LISTED` entries, then how many were left over. */
+function listLine<T>(
+  entries: readonly T[],
+  describe: (entry: T) => string,
+): string {
+  if (entries.length === 0) return "none";
+  const shown = entries.slice(0, LISTED).map(describe).join("  ");
+  const rest = entries.length - LISTED;
+  return rest > 0 ? `${shown}  +${rest} more` : shown;
+}
+
 /** The sources, each named and each a read through `read` at the call. */
 export function diagnosticSources(
   read: () => MeltdownState,
@@ -43,34 +61,25 @@ export function diagnosticSources(
     ],
     [
       "towers",
-      () => {
-        const towers = read().towers;
-        if (towers.length === 0) return "none";
-        return towers
-          .map(
-            (tower) =>
-              `#${tower.id} ${tower.type} L${tower.level} ` +
-              `${tower.heat.toFixed(0)}/${redlineOf(tower)}` +
-              `${tower.tripped ? " TRIPPED" : ""} k${tower.kills}`,
-          )
-          .join("  ");
-      },
+      () =>
+        listLine(
+          read().towers,
+          (tower) =>
+            `#${tower.id} ${tower.type} L${tower.level} ` +
+            `${tower.heat.toFixed(0)}/${redlineOf(tower)}` +
+            `${tower.tripped ? " TRIPPED" : ""} k${tower.kills}`,
+        ),
     ],
     [
       "surge",
-      () => {
-        const surge = read().surge;
-        if (surge.length === 0) return "none";
-        return surge
-          .map((unit) => {
-            const tile = unitTile(unit);
-            return (
-              `#${unit.id} ${unit.type} (${tile.col},${tile.row}) ` +
-              `${unit.hp.toFixed(0)}${unit.slowFactor > 0 ? " SLOW" : ""}`
-            );
-          })
-          .join("  ");
-      },
+      () =>
+        listLine(read().surge, (unit) => {
+          const tile = unitTile(unit);
+          return (
+            `#${unit.id} ${unit.type} (${tile.col},${tile.row}) ` +
+            `${unit.hp.toFixed(0)}${unit.slowFactor > 0 ? " SLOW" : ""}`
+          );
+        }),
     ],
   ];
 }
