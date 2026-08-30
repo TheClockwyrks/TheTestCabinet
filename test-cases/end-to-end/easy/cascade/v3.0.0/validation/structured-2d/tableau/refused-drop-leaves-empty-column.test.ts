@@ -26,6 +26,14 @@
 // then left the Queen somewhere else — or emptied her column, or turned her over —
 // fails as well, and `drag` is read so a build that simply kept holding her fails
 // too.
+//
+// THE PRESS IS READ BEFORE THE CARD IS CARRIED ANYWHERE, and it has to be. "The
+// board is as it was" is exactly what a build that never picked the Queen up leaves
+// behind, so without that reading a build whose press grabs nothing would pass this
+// point by doing nothing at all. So the gesture is driven in three parts — the press,
+// the carry, the release — and the run in hand is read between the first and the
+// second: the Queen alone, off the column she was pressed on. What a press picks up
+// is `handling.press-grabs-column-run`'s requirement, and it is a precondition here.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertNull } from "../assert";
@@ -33,16 +41,19 @@ import {
   card,
   captureStill,
   createHarness,
-  drag,
   dropRectOf,
   grabPoint,
+  movePointerTo,
   openTable,
   poseColumn,
+  pressAt,
   QUEEN,
   rectCenter,
+  releaseAt,
   type Harness,
+  type Point,
 } from "../harness";
-import { boardText } from "./board";
+import { boardText, pileText } from "./board";
 
 /** The column that holds nothing, and the centre of the rectangle it answers. */
 const EMPTY_COLUMN = 0;
@@ -54,7 +65,27 @@ const QUEEN_CARD = card("spades", QUEEN);
 const QUEEN_TEXT = "QS";
 const QUEEN_ROW = 0;
 
+/**
+ * Moves the carry is delivered in, matching the shared `drag` helper.
+ *
+ * The gesture is driven here rather than through `drag` only so the run in hand
+ * can be read between the press and the carry; the samples are the same ones.
+ */
+const CARRY_STEPS = 8;
+
 let h: Harness;
+
+/** The carry: `CARRY_STEPS` moves interpolated from the press to the release. */
+function carry(from: Point, to: Point): void {
+  for (let step = 1; step <= CARRY_STEPS; step += 1) {
+    const along = step / CARRY_STEPS;
+    movePointerTo(
+      h,
+      from.x + (to.x - from.x) * along,
+      from.y + (to.y - from.y) * along,
+    );
+  }
+}
 
 beforeEach(async () => {
   h = await createHarness();
@@ -70,7 +101,20 @@ it("refuses a Queen released over an empty column and leaves the column empty", 
   const before = boardText(h.snapshot());
   const grab = grabPoint(h.snapshot(), SOURCE, QUEEN_ROW);
 
-  drag(h, grab, RELEASE_POINT);
+  pressAt(h, grab.x, grab.y);
+  const held = h.snapshot();
+
+  assertDeepEqual(
+    pileText(held.drag?.cards ?? []),
+    [QUEEN_TEXT],
+    `the run in hand after the press on ${QUEEN_TEXT} in column ${SOURCE}: a ` +
+      "press on a face-up card lifts it, and a board that stands as it was is " +
+      "what a press picking nothing up would leave behind too " +
+      "(specs/controls.md)",
+  );
+
+  carry(grab, RELEASE_POINT);
+  releaseAt(h, RELEASE_POINT.x, RELEASE_POINT.y);
   const after = h.snapshot();
   await h.advance(1);
   captureStill(h, "refused");
