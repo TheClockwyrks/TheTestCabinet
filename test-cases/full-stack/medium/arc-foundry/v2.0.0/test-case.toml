@@ -3260,6 +3260,19 @@ validation = { script = "build-panel/slots-fixed.test.ts", outputs = [
   { id = "panel", name = "The inspector's fixed action slots", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "disabled-slot-ignores-a-press"
+title = "A disabled inspector slot ignores a press"
+description = "A press at the centre of a panelButtons rectangle reported disabled commits nothing: an UPGRADE slot disabled at a combination tower's top level leaves the level, the Charge and the refinement track exactly as they were, and a DISMANTLE slot disabled during a wave leaves its structure standing on the yard."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: press the reported rectangle of a disabled UPGRADE slot
+# on a topped-out tower and of a disabled DISMANTLE slot during a wave, and read
+# the level, the Charge, the refinement track and the yard. See
+# validation/<engine>/build-panel/disabled-slot-ignores-a-press.test.ts.
+validation = { script = "build-panel/disabled-slot-ignores-a-press.test.ts", outputs = [
+  { id = "inert", name = "The disabled slot pressed and ignored", kind = "image" },
+] }
+[[review.categories.items]]
 id = "geometry-stable"
 title = "No change in game state moves a panel control"
 description = "A wave starting, Charge accruing and being spent, a combinable partner appearing on the yard, and a candidate reaching Tesla-Prime all leave every reported panel rectangle exactly where it was, changing only which controls are disabled."
