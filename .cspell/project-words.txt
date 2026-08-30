@@ -161,6 +161,7 @@ bitcrush
 bitfield
 blightcoil
 blit
+blits
 blitted
 blobbiness
 blockwork
@@ -364,6 +365,7 @@ midwave
 Mirrorwright
 misattributed
 misrotated
+mktemp
 modeselect
 Monatom
 Monatoms
@@ -580,6 +582,7 @@ unseeable
 unslowed
 unstaffed
 untargetable
+unthinned
 untimed
 varint
 verdite

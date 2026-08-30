@@ -35,8 +35,9 @@ cp "$PWD/$V/showcase/capture/showcase-capture.test.ts" \
   "$WORK/validation/showcase-capture.test.ts"
 
 # Let the capture keep more frames than the validators' 300-frame replay cap.
-perl -0pi -e 's/^const MAX_REPLAY_FRAMES = 300;$/const MAX_REPLAY_FRAMES = Number(\n  process.env.TCAB_SHOWCASE_MAX_REPLAY_FRAMES ?? "300",\n);/m' \
-  "$WORK/validation/harness.ts"
+perl -0pi -e 's/^const MAX_REPLAY_FRAMES = 300;$/const MAX_REPLAY_FRAMES = Number(
+  process.env.TCAB_SHOWCASE_MAX_REPLAY_FRAMES ?? "300",
+);/m' "$WORK/validation/harness.ts"
 
 cd "$WORK"
 TCAB_VALIDATION_MEDIA_DIR="$WORK/out" \
@@ -71,12 +72,33 @@ armed, and whatever the last render left on the canvas.
 Two debug operations, and no others:
 
 - `reset({ seed })`, which chooses the seed the pellet generator is laid with.
-  Choosing the session is what makes a take auditionable at all.
+  Choosing the session is what lets a take be auditioned at all.
 - `snapshot()`, a reading that changes nothing.
 
 Everything on screen is the game's own: the snake turns because an arrow key was
 struck, every pellet is where the round's generator put it, every point is the
 eat's, and the multiplier is whatever the window the game ran left standing.
+
+## The sprites, and why the driver names `ImageBitmap`
+
+The engine's recorder captures a drawn bitmap's pixels into the replay by asking
+whether the value is an instance of one of the host's own image classes. Node
+defines none of those names and the validator harness's `createImageBitmap`
+hands back `@napi-rs/canvas`'s `Image`, so under the harness every sprite a
+build blits records as `{ "$opaque": "Image" }` and a player skips it. Left
+alone, the showcase's leading entry would be a Coil with no snake in it.
+
+The driver therefore names that class as this host's `ImageBitmap` before it
+makes a harness, which is what `createImageBitmap` returns here anyway. The
+recorder then snaps each sprite once through its scratch canvas and the replay
+carries the produced art: seven `32x32` bitmaps, a few hundred bytes each. The
+fix lives in the driver and not in `validation/<engine>/harness.ts`, so every
+committed validation baseline stays exactly as it was captured — a validator's
+evidence clip is about a figure the harness read rather than about the picture,
+and re-capturing the whole baseline set to change one is not worth it.
+
+Check it after a capture: `images` should be non-empty and no `drawImage` should
+carry a `$opaque` argument.
 
 ## The knobs
 

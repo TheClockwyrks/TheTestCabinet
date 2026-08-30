@@ -13,6 +13,13 @@ description = "Maze mode: the grid-serpent run on a board laced with fixed fatal
 # the `maze` branch of the common `specs/mode.md.hbs`, selected by the variant
 # slug when that template is rendered for this variant.
 
+# The curated presentation this variant shows on the catalog and its case page: a
+# player-facing description and an ordered carousel, captured from the
+# `structured-2d` reference build below by `showcase/capture/`. The leading entry
+# is a replay of one sustained round rather than a moment, and both stills are
+# frames of that same take. Never seeded into a run.
+showcase = "showcase/maze"
+
 # The authored, *correct* playable build of this variant, one directory per supported
 # engine, because the build a reference demonstrates differs under each. Each is the
 # `base` project of the same engine with its single mode flipped to Maze, so it laces
