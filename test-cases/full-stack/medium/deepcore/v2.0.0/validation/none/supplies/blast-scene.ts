@@ -40,13 +40,14 @@ export const BLAST_COL = 10;
 export const SHALLOW_ROW = 19;
 
 /**
- * The miner's own cell for the gas checks, well inside the rockbed.
+ * The miner's own cell for the checks about a hazard the topsoil never holds.
  *
- * `specs/world.md` places gas from the rockbed down, so a pocket a check poses
- * sits in a band that really holds them and the damage read back is the damage
- * that depth really deals.
+ * `specs/world.md` places gas and unbreakable stone from the rockbed down, so a
+ * pocket or a boulder a check poses sits at a depth the mine really generates it
+ * at — and the gas damage read back is a real point on the depth curve rather
+ * than its floor.
  */
-export const GAS_ROW = 150;
+export const ROCKBED_ROW = 150;
 
 /** How far out from the miner's cell the scene is filled with rock. */
 export const PAD = 4;

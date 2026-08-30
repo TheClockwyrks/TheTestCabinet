@@ -22,7 +22,7 @@ import { depthFraction, gasDamageAt, HULL_MAX } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   AFTERMATH_FRAMES,
-  GAS_ROW,
+  ROCKBED_ROW,
   openBlastScene,
   readCells,
 } from "./blast-scene";
@@ -44,7 +44,7 @@ afterEach(async () => {
 });
 
 it("detonates every pocket in the block, at the sum of their damage", async () => {
-  const centre = await openBlastScene(h, GAS_ROW);
+  const centre = await openBlastScene(h, ROCKBED_ROW);
   await h.debug.setTier("hull", HULL_TIER);
   await h.debug.setHull(HULL_MAX[HULL_TIER - 1]);
 

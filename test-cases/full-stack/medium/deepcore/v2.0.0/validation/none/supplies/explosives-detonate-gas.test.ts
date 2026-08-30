@@ -23,7 +23,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
 import { depthFraction, gasDamageAt, HULL_MAX } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
-import { AFTERMATH_FRAMES, GAS_ROW, openBlastScene } from "./blast-scene";
+import { AFTERMATH_FRAMES, ROCKBED_ROW, openBlastScene } from "./blast-scene";
 
 /** Enough hull to survive a rockbed detonation with room to spare. */
 const HULL_TIER = 2;
@@ -39,7 +39,7 @@ afterEach(async () => {
 });
 
 it("detonates a gas pocket inside the block at that depth's damage", async () => {
-  const centre = await openBlastScene(h, GAS_ROW);
+  const centre = await openBlastScene(h, ROCKBED_ROW);
   await h.debug.setTier("hull", HULL_TIER);
   await h.debug.setHull(HULL_MAX[HULL_TIER - 1]);
 

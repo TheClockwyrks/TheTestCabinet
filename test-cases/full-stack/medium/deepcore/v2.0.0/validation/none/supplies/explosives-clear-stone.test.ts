@@ -10,12 +10,16 @@
 // one cell further out, outside the block, and read back as the stone it was:
 // what the charge cleared has to be the stone the block covered rather than every
 // boulder in the mine.
+//
+// The scene sits in the rockbed, which is where `specs/world.md` first places
+// unbreakable stone, so the boulders stand at a depth the mine really generates
+// them at.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { DYNAMITE_RADIUS } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
-import { AFTERMATH_FRAMES, openBlastScene } from "./blast-scene";
+import { AFTERMATH_FRAMES, ROCKBED_ROW, openBlastScene } from "./blast-scene";
 
 let h: Harness;
 
@@ -28,7 +32,7 @@ afterEach(async () => {
 });
 
 it("clears unbreakable stone caught inside the block", async () => {
-  const centre = await openBlastScene(h);
+  const centre = await openBlastScene(h, ROCKBED_ROW);
   const inside = { col: centre.col + DYNAMITE_RADIUS, row: centre.row };
   const beyond = { col: centre.col + DYNAMITE_RADIUS + 1, row: centre.row };
 
