@@ -251,7 +251,9 @@ describe("collision", () => {
       { col: 11, row: 11 },
       { col: 11, row: 10 },
     ];
-    expect(tick(posed(chain, "right", { col: 11, row: 10 })).ended).toBe("dead");
+    expect(tick(posed(chain, "right", { col: 11, row: 10 })).ended).toBe(
+      "dead",
+    );
   });
 
   it("ends the round on a body segment", () => {
@@ -337,7 +339,10 @@ describe("scoring and the combo", () => {
   it("reports the window as a fraction of a full one", () => {
     expect(comboFraction({ comboWindow: COMBO_WINDOW })).toBe(1);
     expect(comboFraction({ comboWindow: 0 })).toBe(0);
-    expect(comboFraction({ comboWindow: COMBO_WINDOW / 2 })).toBeCloseTo(0.5, 9);
+    expect(comboFraction({ comboWindow: COMBO_WINDOW / 2 })).toBeCloseTo(
+      0.5,
+      9,
+    );
   });
 });
 
