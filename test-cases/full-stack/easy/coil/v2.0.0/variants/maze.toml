@@ -2,8 +2,8 @@
 # obstacles. Threading the obstacle course is a distinct skill, so it is rated on its
 # own scoring domain alongside the common gameplay and presentation domains. This
 # variant seeds no mode spec of its own (the Maze mode is the `maze` branch of the
-# common `specs/gameplay.md.hbs`); it supplies its own `title` menu and the review
-# item that rolls up to the `maze` domain.
+# common `specs/gameplay.md.hbs`); it supplies the review items that roll up to the
+# `maze` domain.
 slug = "maze"
 name = "Maze"
 description = "Maze mode: the grid-serpent run on a board laced with fixed fatal interior obstacles to thread."
@@ -13,27 +13,25 @@ description = "Maze mode: the grid-serpent run on a board laced with fixed fatal
 # the `maze` branch of the common `specs/gameplay.md.hbs`, selected by the variant
 # slug when that template is rendered for this variant.
 
-# This variant's three views, all captured from a playable Maze build and served as-is
-# (the former `menu-maze.html` mockup is gone): the title menu (`MAZE` / `HOW TO PLAY`,
-# with the obstacle course dimmed behind it), the in-play board — laced with the fixed,
-# fatal obstacle bars this mode is about — and the game-over panel, through which those
-# bars and the `MAZE` HUD tag are still visible.
-reference = [
-  { view = "title", media = "reference/screenshots/maze/title.png" },
-  { view = "gameplay", media = "reference/screenshots/maze/gameplay.png" },
-  { view = "game-over", media = "reference/screenshots/maze/game-over.png" },
-]
+# The authored, *correct* playable build of this variant, one directory per supported
+# engine, because the build a reference demonstrates differs under each. Each is the
+# `base` project of the same engine with its single mode flipped to Maze, so it laces
+# the board with the fixed, fatal obstacle course. This table must name EXACTLY the
+# engines the case supports; the resolver checks both directions. No reference
+# directory is ever seeded into a run: each is the authored answer, built with the
+# case's own `[build]` commands and held to the same four toolchain gates a run is,
+# and each is what `tcab capture-baselines` drives to synthesize the baseline half of
+# the validation media for its engine. This is a full-stack case, so each of these
+# builds also PRODUCED its own snake sprites and audio during authoring, committed
+# beside it; the build itself only loads them, so `npm ci && npm run build` is
+# self-contained.
+[reference_implementation]
+none = "references/none/maze"
+"simple-2d" = "references/simple-2d/maze"
+"structured-2d" = "references/structured-2d/maze"
 
-# The authored, *correct* playable build of this variant — the Maze-mode reference-impl. It is a
-# copy of the `base` project with its single mode flipped to Maze (the one line in `src/mode.ts`),
-# so it laces the board with the four fixed, fatal obstacle bars. A directory (resolved against
-# the version folder) holding a buildable web project, built with this case's install/build
-# commands and deployed like a published run build, then shown on the case's "Reference" tab. It
-# is **never seeded into a run**. This is a full-stack case, so this build also PRODUCED its own
-# snake sprites and audio during authoring (committed under `reference-impl/maze/assets/`); the
-# build itself only loads them, so `npm ci && npm run build` is self-contained. Its three
-# reference screenshots above were captured from this very build.
-reference_implementation = "reference-impl/maze"
+# No `[workspaces]` override. The case's common per-engine table covers every run and
+# there is nothing about Maze mode to replace it with.
 
 [[domain]]
 id = "maze"

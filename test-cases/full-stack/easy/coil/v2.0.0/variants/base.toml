@@ -1,8 +1,6 @@
 # The default Coil variant: Classic mode on the open board. Listed first in the
-# manifest's `variants`, so it is the default. It supplies the `title` menu mockup;
-# `gameplay` and `game-over` are common, and the scoring domains and review items are
-# common. Every path resolves against the version folder, exactly like the main
-# manifest.
+# manifest's `variants`, so it is the default. Every path resolves against the version
+# folder, exactly like the main manifest.
 slug = "base"
 name = "Base"
 description = "Classic mode: grow the snake, thread the open board, and build the decaying combo — the base grid-serpent game."
@@ -12,20 +10,25 @@ description = "Classic mode: grow the snake, thread the open board, and build th
 # `specs/gameplay.md.hbs`, selected by the variant slug when that template is
 # rendered for this variant.
 
-# This variant's three views, all captured from a playable Classic build and served
-# as-is: the title menu (`CLASSIC` / `HOW TO PLAY`), the in-play board — open, with no
-# interior obstacles — and the game-over panel over that same open board.
-reference = [
-  { view = "title", media = "reference/screenshots/base/title.png" },
-  { view = "gameplay", media = "reference/screenshots/base/gameplay.png" },
-  { view = "game-over", media = "reference/screenshots/base/game-over.png" },
-]
+# The authored, *correct* playable build of this variant, one directory per supported
+# engine, because the build a reference demonstrates differs under each. This table
+# must name EXACTLY the engines the case supports; the resolver checks both
+# directions. No reference directory is ever seeded into a run: each is the authored
+# answer, built with the case's own `[build]` commands and held to the same four
+# toolchain gates a run is, and each is what `tcab capture-baselines` drives to
+# synthesize the baseline half of the validation media for its engine. This is a
+# full-stack case, so each of these builds also PRODUCED its own snake sprites and
+# audio during authoring, committed beside it; the build itself only loads them, so
+# `npm ci && npm run build` is self-contained.
+[reference_implementation]
+none = "references/none/base"
+"simple-2d" = "references/simple-2d/base"
+"structured-2d" = "references/structured-2d/base"
 
-# The authored, *correct* playable build of this variant — the Classic-mode reference-impl.
-# A directory (resolved against the version folder) holding a buildable web project, built
-# with this case's install/build commands and deployed like a published run build, then shown
-# on the case's "Reference" tab. It is **never seeded into a run**. This is a full-stack case,
-# so this build also PRODUCED its own snake sprites and audio during authoring (committed under
-# `reference-impl/base/assets/`); the build itself only loads them, so `npm ci && npm run build`
-# is self-contained. Its three reference screenshots above were captured from this very build.
-reference_implementation = "reference-impl/base"
+# No `[workspaces]` override. The case's common per-engine table covers every run and
+# there is nothing about Classic mode to replace it with.
+
+# No `[[domain]]` and no `[[review.categories]]` yet. Maze declares its own `maze`
+# domain and the four points that go with it; the points whose behavior differs
+# between the two modes move out of the case manifest into BOTH variant files, each
+# stating its own version, and that split lands with the checklist.
