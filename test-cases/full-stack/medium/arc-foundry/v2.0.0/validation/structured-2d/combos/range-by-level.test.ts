@@ -1,27 +1,64 @@
-// Arc Foundry — `combos.range-by-level`. CASE-PROVIDED. NOT YET WRITTEN.
+// combos/range-by-level — reach climbs the track by COMBO_RANGE_BONUS.
 //
-// The manifest declares this point at `combos/range-by-level.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/combinations.md fixes a landed tower's range as `referenceRange +
+// COMBO_RANGE_BONUS[level]`, with `COMBO_RANGE_BONUS` `[0, 4, 8, 12]`, so a Fork
+// Array's `118` reads `118`, `122`, `126` and `130` across its track. The bonus
+// is an addition rather than a multiplier, which is what this check separates: a
+// build that scaled range the way it scales damage reads `59` at level `0`.
 //
-// THE REQUIREMENT. A tower's range is referenceRange +
-// COMBO_RANGE_BONUS[level], with COMBO_RANGE_BONUS [0, 4, 8, 12], at each of
-// the four levels.
-//
-// HOW IT IS DECIDED. Set a tower to each level in turn and hold the reported
-// range against the table. The evidence it hands back is `levels` (image): the
-// tower's reach across its track.
+// Two towers are read at all four levels, one of long reach and one of short, so
+// a build that applied a fraction rather than the flat bonus fails on both
+// rather than only where the arithmetic happens to agree. Each stands alone: an
+// aura changes damage alone and never range (specs/components.md), but an empty
+// yard leaves nothing to argue about.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo } from "../assert";
+import { COMBO_RANGE_BONUS, type ComboId } from "../../src/constants";
+import {
+  captureStill,
+  COMBO_LEVELS,
+  comboDef,
+  comboRange,
+  createHarness,
+  openYard,
+  standCombo,
+  structureById,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+const TOWERS: ComboId[] = ["forkarray", "auroralance"];
+const ANCHOR = { col: 10, row: 10 };
 
-describe("combos.range-by-level", () => {
-  it("Range follows COMBO_RANGE_BONUS", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `combos.range-by-level` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("reports referenceRange + COMBO_RANGE_BONUS[level] at each of the four levels", async () => {
+  openYard(h);
+
+  for (const id of TOWERS) {
+    const tower = comboDef(id);
+    const placed = standCombo(h, id, ANCHOR.col, ANCHOR.row);
+    for (const level of COMBO_LEVELS) {
+      h.debug.setComboLevel(placed, level);
+      const view = structureById(h.snapshot(), placed);
+      assertCloseTo(
+        view.range,
+        comboRange(id, level),
+        6,
+        `${tower.name} at level ${level}: ${tower.range} + ` +
+          `COMBO_RANGE_BONUS[${level}] (${COMBO_RANGE_BONUS[level]})`,
+      );
+    }
+    await h.advance(1);
+    captureStill(h, "levels");
+    h.debug.dismantle(placed);
+  }
 });
