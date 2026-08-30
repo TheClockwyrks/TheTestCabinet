@@ -1,24 +1,91 @@
-// Deepcore — weight.dropped-ore-is-lost. STUB: NOT YET AUTHORED.
+// weight/dropped-ore-is-lost — a dropped unit is lost.
 //
-// A dropped unit is lost
+// specs/mining.md: each ore row in the inventory carries a drop control that
+// discards one unit of that ore, and "the dropped unit is lost".
+// specs/character.md says the same from the other side — dropped ore is lost
+// rather than sold — and specs/items.md closes the last door: "ordinary dropped
+// ore is not a ground item; a dropped unit is simply lost".
 //
-// Discarding a unit removes it from the bay without banking Credits, without
-// leaving a ground item and without returning it to the mine.
-//
-// Automated validation: pose a known bay and Credits, drop one unit and read
-// the bay, the Credits and the miner cell back.
-//
-// `test-case.toml` declares this suite as `weight/dropped-ore-is-lost.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (drop (image)) around the drive.
+// So the reading is what a drop leaves behind: one unit fewer in the bay, one
+// slot freed and its weight off the load, the Credits balance untouched, and
+// nothing on the ground. specs/instrumentation.md has `coreGround` name the one
+// ground item the game holds, a jettisoned Core Sample, so an ore that turned
+// into a ground item would show up there; and the cell the miner stands over is
+// read back to catch an ore put back into the mine as a tile.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNull } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  layFloor,
+  mineralOf,
+  openScene,
+  pinDrill,
+  pinMiner,
+  stageCargo,
+  standOn,
+  type Harness,
+} from "../harness";
 
-test("A dropped unit is lost", () => {
-  throw new Error(
-    "Deepcore validator `weight/dropped-ore-is-lost` is declared in test-case.toml but has not been authored yet.",
+/** A column and a row well clear of the camp, the cave mouth, and the Core. */
+const COL = 8;
+const ROW = 12;
+
+/** The bay posed, and the ore a unit is dropped from. */
+const ORE = "argenite";
+const HELD = 3;
+
+/** The balance posed, so a sale of the dropped unit would be visible. */
+const CREDITS = 500;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("discards the unit without banking it, dropping it, or returning it", async () => {
+  openScene(h);
+  layFloor(h, ROW);
+  standOn(h, COL, ROW);
+  pinMiner(h);
+  pinDrill(h);
+  h.debug.setCredits(CREDITS);
+  stageCargo(h, { [ORE]: HELD });
+  h.debug.setPanel("inventory");
+  await h.advance(1);
+
+  const before = h.snapshot();
+  assertEqual(before.cargo.slotsUsed, HELD, "specs/mining.md");
+  assertEqual(
+    before.cargo.loadKg,
+    HELD * mineralOf(ORE).weightKg,
+    "specs/mining.md",
   );
+
+  h.debug.dropOre(ORE);
+  await h.advance(1);
+  captureStill(h, "drop");
+
+  const after = h.snapshot();
+  assertEqual(after.cargo.ore[ORE], HELD - 1, "specs/mining.md");
+  assertEqual(after.cargo.slotsUsed, HELD - 1, "specs/mining.md");
+  assertEqual(
+    after.cargo.loadKg,
+    (HELD - 1) * mineralOf(ORE).weightKg,
+    "specs/mining.md",
+  );
+  // Lost rather than sold.
+  assertEqual(after.credits, CREDITS, "specs/character.md");
+  assertEqual(after.creditsEarned, 0, "specs/gameplay.md");
+  // Lost rather than dropped as a ground item.
+  assertNull(after.coreGround, "specs/items.md");
+  // Lost rather than put back into the mine.
+  assertEqual(h.tileAt(COL, ROW - 1).kind, "tunnel", "specs/items.md");
+  assertEqual(h.tileAt(COL, ROW).kind, "rock", "specs/items.md");
 });
