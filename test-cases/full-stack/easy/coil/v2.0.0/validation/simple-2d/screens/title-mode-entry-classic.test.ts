@@ -1,32 +1,73 @@
-/*
- * Coil validator: `screens.title-mode-entry-classic`. PLACEHOLDER.
- *
- * The title menu opens with the mode entry.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * The title frame draws MODE_ITEM (CLASSIC) as the first item of TITLE_ITEMS,
- * above HOW TO PLAY.
- *
- * HOW:
- * reset to the title, read the frame's text draws, and confirm the mode entry
- * heads the menu.
- *
- * MEDIA IT MUST CAPTURE: title (image).
- *
- * It is the `base` variant's own point, decided only when that variant runs.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// screens/title-mode-entry-classic — the mode's entry heads the title menu.
+//
+// specs/ui.md gives `TITLE_ITEMS` two entries in a fixed order: "The mode's
+// entry, then `HOW TO PLAY`", and specs/mode.md names this mode's entry
+// `MODE_ITEM` (`CLASSIC`). Both halves are read: the entry is on the screen, and it
+// sits ABOVE `HOW TO PLAY` — a menu whose first item is the how-to screen puts
+// `confirm` on the wrong thing for a player who has just loaded the game and
+// pressed it.
+//
+// The word is stated here rather than read off the seeded `src/constants.ts`,
+// which carries whichever mode's copy the project was seeded with: this point is
+// one of the three each mode states its own version of, so the entry it is about
+// is the one specs/mode.md fixes for THIS mode.
+//
+// Order is read from where the two runs were anchored, mapped through whatever
+// transform the build drew under, and `specs/controls.md` makes the highlight
+// move UP and DOWN a menu, so the entries run down the screen. Everything else
+// about how the menu looks is the build's.
+//
+// The title is reached by resetting rather than by pressing anything, so a build
+// whose menus do not work still has this point decided on what it draws.
 
-test("screens.title-mode-entry-classic", () => {
-  throw new Error(
-    "validator not implemented: screens/title-mode-entry-classic.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { TITLE_ITEMS } from "../../src/constants";
+import { assertEqual, assertLessThan, fail } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  openTitle,
+  type Harness,
+} from "../harness";
+import { topmostRunY } from "./copy";
+
+/** `MODE_ITEM` for this mode, as specs/mode.md tables it. */
+const MODE_ITEM = "CLASSIC";
+
+/** `HOW TO PLAY` is the second item of `TITLE_ITEMS` (specs/ui.md). */
+const HOWTO_ITEM = TITLE_ITEMS[1];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws the mode entry above HOW TO PLAY on the title menu", async () => {
+  const title = openTitle(h);
+  assertEqual(title.screen, "title", "the screen the frame is read from");
+
+  const calls = await h.frameCalls();
+  captureStill(h, "title");
+
+  assertEqual(
+    drewText(calls, MODE_ITEM),
+    true,
+    `the title menu drawing ${MODE_ITEM}`,
   );
+
+  const entry = topmostRunY(calls, MODE_ITEM);
+  const howto = topmostRunY(calls, HOWTO_ITEM);
+  if (entry === null || howto === null) {
+    fail(`the title menu drawing both ${MODE_ITEM} and ${HOWTO_ITEM}`, {
+      [MODE_ITEM]: entry,
+      [HOWTO_ITEM]: howto,
+    });
+  }
+  assertLessThan(entry, howto, `${MODE_ITEM} anchored above ${HOWTO_ITEM}`);
 });
