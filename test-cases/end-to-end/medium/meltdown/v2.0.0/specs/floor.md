@@ -94,9 +94,10 @@ footprintCentre(col, row, size) = (
 ## The openings
 
 The surge enters through two vents and leaves through two exhausts, each an
-opening cut into the casing at the middle of an edge and aligned to a run of tile
-rows or columns. The side openings are four tiles across and the top and bottom
-openings are eight, each centred on the floor.
+opening cut into the casing near the middle of an edge and aligned to a run of
+tile rows or columns. The side openings are four tiles across and the top and
+bottom openings are eight, and each covers exactly the run its opposite covers,
+so both vent-to-exhaust corridors run straight across the floor.
 
 | Opening | Constant | Casing edge | Tiles it opens onto |
 | --- | --- | --- | --- |
