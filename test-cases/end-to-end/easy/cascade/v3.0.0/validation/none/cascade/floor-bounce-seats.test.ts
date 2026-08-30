@@ -1,23 +1,74 @@
-// SCAFFOLD PLACEHOLDER — validation/none/cascade/floor-bounce-seats.test.ts
+// cascade/floor-bounce-seats — a bounced card is seated on the floor.
 //
-// The review item `cascade.floor-bounce-seats` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/victory.md's third step of every frame does two things, and this point
+// reads the second: with the sign reversed, "`y = FLOOR_Y`". `FLOOR_Y` is
+// `STAGE_H - CARD_H` (`580`), "so a card seated on the floor has its bottom edge
+// on the bottom of the stage" — the card is placed there rather than left
+// wherever the frame's advance had carried it past the line.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE POSE MAKES THE PLACEMENT VISIBLE. A card dropped from three hundred units
+// up arrives at about `1039` units per second, which is `4.3` units of travel in
+// a frame of `1/240` s, so a build that reversed the velocity and left the card
+// where the advance had put it lands somewhere below `580` rather than on it.
+// The tolerance below is a millionth of a unit, because the rule ASSIGNS the
+// value rather than integrating towards it.
 //
-// What this item must decide, from the manifest:
-//
-//   A bounced card is seated on the floor
-//
-//   Its y is FLOOR_Y (580) on the bounce.
+// The reversal itself is `floor-bounce-reflects`, and the speed that comes out is
+// `floor-bounce-damps`.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
+import { FLOOR_Y } from "../constants";
+import {
+  type Harness,
+  captureStill,
+  createHarness,
+  flyerById,
+  framesFor,
+  poseFlyer,
+  requireFlyer,
+} from "../harness";
+import { openFlight } from "./flight";
 
-it("cascade.floor-bounce-seats — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/cascade/floor-bounce-seats.test.ts is a scaffold stub, not a validator",
+/** A card dropped from rest, 300 units above the floor. */
+const DROP = { x: 400, y: FLOOR_Y - 300, vx: 0, vy: 0 };
+
+/** How far the sweep runs; the fall itself is 0.577 s. */
+const SWEEP_FRAMES = framesFor(0.8);
+
+/**
+ * How far the seated card may sit from `FLOOR_Y`, in logical units.
+ *
+ * The rule assigns `FLOOR_Y`, so the only slack the reading needs is the
+ * rounding of a double through JSON.
+ */
+const SEAT_TOLERANCE = 1e-6;
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.dispose();
+});
+
+it("puts a bounced card exactly on FLOOR_Y", async () => {
+  await openFlight(harness);
+  const id = await poseFlyer(harness, DROP);
+
+  const bounce = await harness.until((s) => (flyerById(s, id)?.vy ?? 0) < 0, {
+    maxFrames: SWEEP_FRAMES,
+    poll: 1,
+  });
+  await captureStill(harness, "seated");
+
+  assertEqual(bounce.hit, true, "the dropped card to bounce off the floor");
+  const seated = requireFlyer(bounce.snapshot, id, "seated on the floor");
+  assertLessThanOrEqual(
+    Math.abs(seated.y - FLOOR_Y),
+    SEAT_TOLERANCE,
+    `the y of the bounced card, which FLOOR_Y fixes at ${FLOOR_Y}`,
   );
 });

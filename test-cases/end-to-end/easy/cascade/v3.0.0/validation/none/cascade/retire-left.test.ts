@@ -1,23 +1,76 @@
-// SCAFFOLD PLACEHOLDER — validation/none/cascade/retire-left.test.ts
+// cascade/retire-left — a card that clears the left edge retires.
 //
-// The review item `cascade.retire-left` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/victory.md's fifth step of every frame: "If `x + CARD_W < 0` or
+// `x > STAGE_W`, the card retires and leaves the flight." This point reads the
+// left half of that rule: a card driven off the left side stops being a card in
+// flight once the whole of it is past the edge.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE CARD IS DRIVEN PAST THE LINE AND NOT MERELY UP TO IT. It starts at `x = 60`
+// and travels left at `300` units per second, so it is entirely off the table
+// `0.53` s later; the sweep runs to `1.2` s, which is more than twice that, and a
+// build that never retires the card fails with the sweep saying it was still in
+// flight. That a card only PARTLY over the edge stays is the opposite direction
+// and is `no-early-retire`'s.
 //
-// What this item must decide, from the manifest:
-//
-//   A flyer clearing the left edge retires
-//
-//   A flyer whose x + 100 falls below 0 leaves the flyer list.
+// The world is one card on an empty table with nothing launching, so "the flight
+// is empty" is a statement about this card and no other. It is released high
+// enough that it never reaches the floor, so the only thing that can remove it is
+// the edge.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLength } from "../assert";
+import { CARD_W } from "../constants";
+import {
+  type Harness,
+  captureReplay,
+  createHarness,
+  flyerById,
+  framesFor,
+  poseFlyer,
+} from "../harness";
+import { openFlight } from "./flight";
 
-it("cascade.retire-left — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/cascade/retire-left.test.ts is a scaffold stub, not a validator",
+/** A card sent off the left edge from just inside it. */
+const THROW = { x: 60, y: 150, vx: -300, vy: 0 };
+
+/**
+ * How far the sweep runs, in frames.
+ *
+ * The `160` units from the pose to `x + CARD_W < 0` take `0.53` s at the posed
+ * speed. This is more than twice that: a bound on the sweep, not a reading of
+ * when the card should go.
+ */
+const SWEEP_FRAMES = framesFor(1.2);
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.dispose();
+});
+
+it("takes a flyer out of the flight once it is wholly past the left edge", async () => {
+  await openFlight(harness);
+  const id = await poseFlyer(harness, THROW);
+
+  const gone = await captureReplay(harness, "retire", () =>
+    harness.until((s) => flyerById(s, id) === undefined, {
+      maxFrames: SWEEP_FRAMES,
+      poll: 1,
+    }),
+  );
+
+  assertEqual(
+    gone.hit,
+    true,
+    `the card to leave the flight once x + CARD_W (${CARD_W}) had fallen below 0`,
+  );
+  assertLength(
+    gone.snapshot.flyers,
+    0,
+    "cards left in flight once the only one has retired past the left edge",
   );
 });
