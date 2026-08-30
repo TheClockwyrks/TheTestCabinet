@@ -7,7 +7,7 @@
 // per second, so an interval of game time reaches the same state however it was
 // divided into frames.
 //
-// Nothing here reads the renderer or the canvas, so the whole simulation runs
+// Nothing here reads the drawing or the canvas, so the whole simulation runs
 // with no drawing surface taking part in the result. That is what makes a
 // scenario driveable from code and testable in Node.
 

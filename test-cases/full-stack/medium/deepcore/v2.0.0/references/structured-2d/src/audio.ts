@@ -7,10 +7,10 @@
 //
 // Ten of the thirteen are one-shots and three are loops, plus the music bed,
 // which loops under the whole game. A frame's rules push the one-shots it raised
-// onto the draft and set the loops that should be sounding when it ends; this
-// module plays each one-shot once and reconciles the loops, so a cue sounds on
-// the frame its event happened and a loop starts and stops on the frame its
-// condition changed.
+// onto the state and set the loops that should be sounding when it ends; the game
+// mode's tick then calls `playFrame`, which plays each one-shot once and
+// reconciles the loops, so a cue sounds on the frame its event happened and a
+// loop starts and stops on the frame its condition changed.
 //
 // Every cue is DECLARED before it is loaded. The engine throws on a play of a
 // name it does not know, and a produced clip that fails to decode leaves its

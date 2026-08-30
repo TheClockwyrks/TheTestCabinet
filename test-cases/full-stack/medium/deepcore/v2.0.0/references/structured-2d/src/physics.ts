@@ -8,8 +8,8 @@
 // motion alone: the fuel and hull economy and the choice of animation state
 // belong to the simulation.
 //
-// The miner it is handed is the FRAME'S OWN copy, from the draft the frame
-// opened, so writing to it never reaches the state the engine published.
+// The miner it is handed is the world's own, on the live game state, so this
+// module writes the box it is given in place.
 
 import { GRAVITY, MINER_H, MINER_W, WALK_SPEED } from "./constants";
 import type { Grid, Miner, MoveInput } from "./game";

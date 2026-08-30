@@ -101,7 +101,7 @@ function onScreen(screen: ScreenName): DeepcoreState {
   });
 }
 
-describe("the renderer", () => {
+describe("the drawing", () => {
   it("draws every screen and lists what can be clicked", () => {
     const ctx = context();
     for (const screen of SCREENS) {

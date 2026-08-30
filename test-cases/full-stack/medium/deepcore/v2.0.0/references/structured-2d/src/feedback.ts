@@ -3,7 +3,7 @@
 // A rule that fires does four kinds of thing besides changing the world: it
 // leaves a short line on screen, it flinches the miner, it shakes the view, and
 // it raises the one-time card explaining a hazard the player has just met. All
-// four are written to the frame's draft here, so a rule says `note(d, "...")`
+// four are written onto the live state here, so a rule says `note(d, "...")`
 // rather than reaching into the state's shape, and every one of them is bounded
 // — four notes at a time, one card at a time, and a shake that takes the
 // stronger of what is already running.

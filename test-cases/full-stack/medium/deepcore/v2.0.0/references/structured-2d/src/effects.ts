@@ -7,14 +7,15 @@
 // the engine hands `render`. Being simulated rather than baked, a burst varies
 // shot to shot.
 //
-// WHY THE POOL SITS BESIDE THE STATE. A running simulation is not a value: it
-// carries its own generator and its own live particles, and stepping it is
-// exactly the write the state contract forbids. So the effects that are on
-// screen live here, in the one place in this build that holds mutable data
-// across a frame, and the SIMULATION NEVER READS THEM. The traffic runs one way:
-// a frame's rules push `FxEvent`s onto the draft, `update` drains them here once
-// the frame's rules have all run, and `render` draws whatever is playing. Take
-// the pool away and the game plays identically, minus the sparks.
+// WHY THE POOL SITS OUTSIDE THE STATE. A running simulation is not part of the
+// game: it carries its own generator and its own live particles, nothing about a
+// rule depends on it, and reseeding the game reproduces the same outcome whatever
+// it is holding. So the bursts that are on screen live here rather than on the
+// world's game state, and the SIMULATION NEVER READS THEM. The traffic runs one
+// way: a frame's rules push `FxEvent`s onto the state, the game mode's tick
+// drains them here once those rules have all run, and the mine's effects layer
+// draws whatever is playing. Take the pool away and the game plays identically,
+// minus the sparks.
 //
 // The particles are drawn straight into the mine's own transform, in world
 // units, so a burst sits where its event happened and scrolls with the mine. A

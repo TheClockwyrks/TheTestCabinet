@@ -1,7 +1,7 @@
 // Deepcore — what each menu screen lists, and what choosing an item does
 // (specs/ui.md).
 //
-// The list lives here rather than in the renderer because the game owns the
+// The list lives here rather than in the drawing because the game owns the
 // highlighted index and has to know how long the current screen's menu is. The
 // renderer draws these items, the pointer hit-tests them, and `src/flow.ts` runs
 // the action choosing one names.

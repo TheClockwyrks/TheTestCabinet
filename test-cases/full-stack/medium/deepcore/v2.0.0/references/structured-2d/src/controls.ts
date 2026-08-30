@@ -3,15 +3,15 @@
 //
 // Every menu item, panel control, status-bar control, and surface building is
 // clickable, and each is also reachable from the keyboard. Both halves need the
-// same rectangles: `update` hit-tests a click against them and `render` draws
-// them. A renderer that pushed its rectangles out as it drew would make the
-// pointer depend on the previous frame's drawing, which is exactly what a state
-// held by value forbids — so the layout is computed here, from the state alone,
-// and the renderer draws what this module lists.
+// same rectangles: the player controller hit-tests a click against them, and the
+// HUD layer draws them. A drawing that pushed its rectangles out as it drew would
+// make the pointer depend on the previous frame's picture — and the controller
+// ticks before anything draws — so the layout is computed here, from the state
+// alone, and the drawing renders what this module lists.
 //
-// A control carries everything the renderer needs to draw its button: where it
-// is, what it reads, whether it is refused, and the accent it takes. What the
-// renderer adds around them is decoration.
+// A control carries everything the drawing needs for its button: where it is,
+// what it reads, whether it is refused, and the accent it takes. What the drawing
+// adds around them is decoration.
 
 import {
   FUEL_BUY_INCREMENT,
@@ -60,7 +60,7 @@ export interface Control {
   readonly accent: string;
 }
 
-/** A panel's frame, which the renderer draws and the controls sit inside. */
+/** A panel's frame, which the drawing renders and the controls sit inside. */
 export interface PanelFrame {
   readonly x: number;
   readonly y: number;
@@ -96,7 +96,7 @@ export function panelFrame(panel: PanelId): PanelFrame {
   };
 }
 
-/** The menu column's geometry, shared by the pointer and the renderer. */
+/** The menu column's geometry, shared by the pointer and the drawing. */
 export const MENU_COLUMN = { w: 320, h: 52, gap: 64 } as const;
 
 /** The row a screen's menu column starts at. */
@@ -465,7 +465,7 @@ export function controlAt(
   return null;
 }
 
-/** Whether a point is inside a rectangle, which the renderer uses for hover. */
+/** Whether a point is inside a rectangle, which the drawing uses for hover. */
 export function inside(
   c: { x: number; y: number; w: number; h: number },
   x: number,

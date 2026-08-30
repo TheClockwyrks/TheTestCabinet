@@ -12,7 +12,7 @@
 // for one that was never made.
 //
 // EVERY LOAD IS TOLERATED. A file that is missing or will not decode yields
-// `null`, and the renderer draws its neutral fallback for that one thing, so the
+// `null`, and the drawing falls back to code for that one thing, so the
 // project type-checks, builds, and runs before the assets land and a single
 // broken file never takes the game down. The audio is not here: a cue is loaded
 // straight onto the engine's audio bus in `src/audio.ts`.
@@ -93,7 +93,7 @@ export type IconSprite = (typeof ICON_SPRITES)[number];
 /** A produced sprite, or `null` where its file did not arrive. */
 export type Sprite = ImageBitmap | null;
 
-/** Every produced sprite and cycle the renderer draws. */
+/** Every produced sprite and cycle the drawing uses. */
 export interface Assets {
   /** One cycle per animation state, in frame order. */
   readonly miner: Readonly<Record<MinerState, readonly Sprite[]>>;
@@ -120,7 +120,7 @@ export interface Loaded {
   readonly systems: Partial<Record<FxKind, ParticleSystem>>;
 }
 
-/** An empty asset set, which the renderer draws its fallbacks for throughout. */
+/** An empty asset set, which the drawing falls back to code for throughout. */
 export function noAssets(): Assets {
   const miner = {} as Record<MinerState, readonly Sprite[]>;
   for (const state of MINER_STATES) miner[state] = [];
