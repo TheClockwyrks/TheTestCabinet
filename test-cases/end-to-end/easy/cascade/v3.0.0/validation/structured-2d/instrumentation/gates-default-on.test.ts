@@ -1,10 +1,11 @@
-// instrumentation/gates-default-on — `reset` turns all four faculties back on.
+// instrumentation/gates-default-on — all four faculties start on, and `reset`
+// turns them back on.
 //
-// THE RULE. specs/instrumentation.md, under The faculty gates: "each is on by
-// default and restored to on by `reset`", and the `reset` list says the same in
-// as many words — it "turns `autoFlip`, `winDetect`, `launching`, and
-// `trailPainting` back on". specs/state.md carries it too: all four are on when
-// a game begins.
+// THE RULE. specs/instrumentation.md, under The faculty gates: "each gates one
+// faculty and nothing else, each is on by default and restored to on by
+// `reset`, and each is reported by `snapshot`". That is TWO facts, and this
+// point owes both. specs/state.md carries the first in as many words: all four
+// "are on when a game begins, and the debugging surface poses them".
 //
 // WHY IT MATTERS ON ITS OWN. Every suite opens by resetting, and a check that
 // says nothing about a gate is relying on that reset to have left the faculty
@@ -14,9 +15,17 @@
 // of the reset list whose failure would be read as a fault in a rule rather
 // than in the reset.
 //
-// ALL FOUR ARE TURNED OFF FIRST, so the reading is a restoration rather than a
-// default that was never disturbed, and all four are read as one tuple, so a
-// build that restores three of them names the fourth.
+// TWO CHECKS, BECAUSE THEY FAIL ON DIFFERENT BUILDS. The first reads the game
+// as it STARTS, before anything has been posed at all, which is the state a
+// player meets; a build that declares its gates off fails it whatever its
+// `reset` does, and `createHarness` never resets, so the reading really is of
+// the pristine game. The second poses all four off and resets, which is what a
+// build that restores nothing fails — and it reads the four back off first, so
+// what follows is a reading of a restoration rather than of a gate that would
+// not go off in the first place.
+//
+// ALL FOUR ARE READ AS ONE TUPLE, so a build that gets three of them right
+// names the fourth rather than reporting a bare `false`.
 //
 // THE READING IS TAKEN WITH NO FRAME ADVANCED. Under this engine a pose acts on
 // the live game at the call, so the gates are back the moment `reset` returns.
@@ -30,13 +39,39 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 
-/** Every gate on: what the specification says `reset` restores. */
-const ALL_ON = {
+/** The four faculty gates, read as one comparable tuple. */
+interface Gates {
+  autoFlip: boolean;
+  winDetect: boolean;
+  launching: boolean;
+  trailPainting: boolean;
+}
+
+/** Every gate on: the value the specification gives all four. */
+const ALL_ON: Gates = {
   autoFlip: true,
   winDetect: true,
   launching: true,
   trailPainting: true,
-} as const;
+};
+
+/** Every gate off: what the four are posed to before the reset. */
+const ALL_OFF: Gates = {
+  autoFlip: false,
+  winDetect: false,
+  launching: false,
+  trailPainting: false,
+};
+
+/** The four gate fields of a snapshot, as one comparable tuple. */
+function gates(snapshot: Gates): Gates {
+  return {
+    autoFlip: snapshot.autoFlip,
+    winDetect: snapshot.winDetect,
+    launching: snapshot.launching,
+    trailPainting: snapshot.trailPainting,
+  };
+}
 
 let h: Harness;
 
@@ -48,11 +83,36 @@ afterEach(() => {
   h?.dispose();
 });
 
+it("reports every gate on in a game that has just started", async () => {
+  // Nothing posed and nothing reset: the game as a player meets it.
+  const opened = h.snapshot();
+
+  await h.advance(1);
+  captureStill(h, "opened");
+
+  assertDeepEqual(
+    gates(opened),
+    ALL_ON,
+    "the four faculty gates in a game that has just started, before " +
+      "anything has been posed: each is on by default " +
+      "(specs/instrumentation.md, specs/state.md)",
+  );
+});
+
 it("reports every gate on after a reset that followed all four being turned off", async () => {
   h.debug.setAutoFlip(false);
   h.debug.setWinDetect(false);
   h.debug.setLaunching(false);
   h.debug.setTrailPainting(false);
+
+  // The four really went off, so what the reset restores is a gate that was
+  // holding `false` rather than one that never moved.
+  assertDeepEqual(
+    gates(h.snapshot()),
+    ALL_OFF,
+    "the four faculty gates posed off, read before the reset — a gate that " +
+      "would not go off leaves the reset nothing to restore",
+  );
 
   h.debug.reset();
   const after = h.snapshot();
@@ -61,15 +121,10 @@ it("reports every gate on after a reset that followed all four being turned off"
   captureStill(h, "reset");
 
   assertDeepEqual(
-    {
-      autoFlip: after.autoFlip,
-      winDetect: after.winDetect,
-      launching: after.launching,
-      trailPainting: after.trailPainting,
-    },
+    gates(after),
     ALL_ON,
     "the four faculty gates after a reset that followed all four being " +
-      "turned off: each is on by default and restored to on by reset " +
+      "turned off: each is restored to on by reset " +
       "(specs/instrumentation.md)",
   );
 });
