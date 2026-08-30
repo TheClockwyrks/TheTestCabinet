@@ -33,8 +33,8 @@ multiplier changes how fast the game plays and never changes the outcome.
 {{#if (eq engine.slug "none")}}
 This game stands on no engine, so the pointer belongs to the runtime layer you write.
 What the game reads from that layer is a pointer position in the game's logical units on
-the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, a release edge, and a
-right-press edge. How the layer produces them is yours to decide.
+the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, and a release edge. How the
+layer produces them is yours to decide.
 {{else if (eq engine.slug "simple-2d")}}
 The pointer belongs to the engine, which documents it in the `engine/` directory at the
 root of this repository. What the game reads from it is a pointer position in the game's
@@ -48,7 +48,9 @@ release edge, delivered as the ordered samples the player controller reads each 
 {{/if}}
 
 Every screen and every control is fully operable with the pointer alone. The keyboard
-actions below are accelerators.
+actions below are accelerators, with one exception: `modify` stands in for no control at
+all and only modifies a pointer press, and the combine set it builds is a refinement of
+a combine the game otherwise resolves on its own.
 
 | Pointer act | Effect |
 | --- | --- |
@@ -56,8 +58,7 @@ actions below are accelerators.
 | Press on the yard while holding a rock | Drops the rock, when the footprint is legal. A press on an illegal footprint places nothing and keeps the rock held. |
 | Press on a structure | Selects it as the primary selection. |
 | Press on empty yard | Clears the selection. |
-| Right-press while holding a rock | Puts the rock away, spending no stamp. |
-| Shift-press on a base structure | Adds it to the explicit combine set, or removes it if it is already in the set. A press with no shift clears the set back to a single selection. |
+| Press on a base structure while `modify` is held | Adds it to the explicit combine set, or removes it if it is already in the set. A press with `modify` released clears the set back to a single selection. |
 | Move over the yard while holding a rock | Snaps the held footprint to the tile under the pointer and updates its legal read. |
 | Move over the maze-length readout | Draws the full ground route on the yard. |
 | Move over a leaderboard row | Spotlights that structure on the yard. |
@@ -72,7 +73,9 @@ each to the key that fires it.
 `ACTIONS` holds the actions the game registers with the engine, and `BINDINGS` maps each
 to the key that fires it.
 {{/if}}
-Each is read as a press edge, so holding a key fires its action once.
+Every action but `modify` is read as a press edge, so holding its key fires it once.
+`modify` is read as a level instead: what the game reads is whether its key is down at
+the moment it reads it, so it modifies whatever act it is held across.
 
 | Action | Key | Effect |
 | --- | --- | --- |
@@ -88,6 +91,7 @@ Each is read as a press edge, so holding a key fires its action once.
 | `combos` | `KeyV` | Toggles the recipe book. |
 | `damage` | `KeyL` | Toggles the damage leaderboard. |
 | `mute` | `KeyM` | Toggles audio mute. |
+| `modify` | `ShiftLeft`, `ShiftRight` | Held rather than pressed. A press on the yard made while it is held adds to or removes from the explicit combine set. |
 | `up` | `ArrowUp` | Moves the menu highlight up. |
 | `down` | `ArrowDown` | Moves the menu highlight down. |
 | `confirm` | `Enter` | Takes the highlighted menu entry. |
@@ -105,7 +109,7 @@ screen.
 | `stamp`, `keep`, `downgrade`, `dismantle` | During a build phase only. |
 | `combine` | During a build phase, and during a wave when it folds standing structures only. |
 | `upgrade`, `targeting` | In every phase, including during a wave and the finale. |
-| `speed`, `pause`, `combos`, `damage`, `mute` | On `playing`, in every phase. |
+| `speed`, `pause`, `combos`, `damage`, `mute`, `modify` | On `playing`, in every phase. |
 | `up`, `down`, `confirm` | On the menu screens. |
 | `back` | Everywhere. |
 

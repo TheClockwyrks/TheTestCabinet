@@ -18,7 +18,7 @@ import { describe, it } from "vitest";
 import { fail } from "../assert";
 
 describe("controls.press-edge-only", () => {
-  it("Every action is read as a press edge", () => {
+  it("Every action but modify is read as a press edge", () => {
     fail(
       "a validator deciding this point",
       "the suite for `controls.press-edge-only` has not been written yet",

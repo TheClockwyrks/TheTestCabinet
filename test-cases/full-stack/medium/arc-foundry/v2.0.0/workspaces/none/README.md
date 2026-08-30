@@ -23,8 +23,8 @@ on top of it.
 
 The yard is built with the pointer, so the pointer path is part of what you
 build: taking the cursor off the page and delivering its position in the game's
-logical units, with its press, release, and right-press edges, to the game.
-`specs/controls.md` states what Arc Foundry does with them.
+logical units, with its press and release edges, to the game. `specs/controls.md`
+states what Arc Foundry does with them.
 
 You also write the `window.__foundry` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how the

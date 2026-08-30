@@ -302,7 +302,7 @@ instead.
 | `placeBlocker(col, row)` | Places an inert blocker at the anchor tile. |
 | `select(id)` | Selects a structure, as a pointer press on it would, and clears the combine set back to that single selection. |
 | `clearSelection` | Clears the selection and the combine set. |
-| `addToCombineSet(id)` | Adds one base structure to the explicit combine set, or removes it when it is already in the set, as a shift-press on it would. |
+| `addToCombineSet(id)` | Adds one base structure to the explicit combine set, or removes it when it is already in the set, as a press on it with `modify` held would. |
 | `clearCombineSet` | Empties the explicit combine set and leaves the selection as it is. |
 | `keep(id)` | Harvests a candidate as a permanent component. It is the level's harvest, so it starts the wave. |
 | `downgrade(id)` | Harvests a candidate as a permanent component one quality tier lower. It is the harvest, so it starts the wave. |
@@ -366,15 +366,17 @@ effect immediately, when it is called, rather than being sampled once per update
 the pointer position `pointerMove` moves, they set no state of their own: what each
 changes is whatever the act it delivers changes.
 
+Each delivers one act, and a caller that wants a gesture made of several delivers them
+in order: a click is a `pointerDown` followed by a `pointerUp`, and a press modified by
+the `modify` action of `specs/controls.md` is a `keyDown` of its key around that pair.
+
 | Operation | Effect |
 | --- | --- |
 | `pointerMove(x, y)` | Moves the pointer to a logical position. The held footprint and every hover read of `specs/controls.md` follow it. |
-| `click(x, y)` | A press and release at a logical position. |
-| `rightClick(x, y)` | A right press and release at a logical position. |
-| `shiftClick(x, y)` | A press and release with shift held. |
-| `keyDown(code)` | Presses a key down. `code` is a standard `KeyboardEvent.code`. Any one-shot action it fires on the current screen applies immediately. |
+| `pointerDown(x, y)` | A press at a logical position. It moves the pointer there first, so a press needs no `pointerMove` before it. |
+| `pointerUp` | A release at the position the pointer is at. |
+| `keyDown(code)` | Presses a key down. `code` is a standard `KeyboardEvent.code`. Any one-shot action it fires on the current screen applies immediately, and a held action stays held until `keyUp`. |
 | `keyUp(code)` | Releases a key. |
-| `press(code)` | A `keyDown` immediately followed by a `keyUp`. |
 
 {{/if}}
 ## Snapshot shape

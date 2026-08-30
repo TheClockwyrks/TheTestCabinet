@@ -1016,6 +1016,7 @@ export const ACTIONS = [
   "combos",
   "damage",
   "mute",
+  "modify",
   "up",
   "down",
   "confirm",
@@ -1026,8 +1027,10 @@ export type ActionName = (typeof ACTIONS)[number];
 
 /**
  * The key each action is bound to, as a `KeyboardEvent.code` so a binding is a
- * physical key rather than a layout-dependent character. Each is read as a
- * press edge, so holding a key fires its action once.
+ * physical key rather than a layout-dependent character. Every action but
+ * `modify` is read as a press edge, so holding its key fires it once; `modify`
+ * is read as a level, so what the game reads is whether its key is down at the
+ * moment it reads it (specs/controls.md).
  */
 export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
   stamp: ["KeyB"],
@@ -1042,6 +1045,7 @@ export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
   combos: ["KeyV"],
   damage: ["KeyL"],
   mute: ["KeyM"],
+  modify: ["ShiftLeft", "ShiftRight"],
   up: ["ArrowUp"],
   down: ["ArrowDown"],
   confirm: ["Enter"],

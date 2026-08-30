@@ -2708,7 +2708,7 @@ validation = { script = "controls/key-mute.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "press-edge-only"
-title = "Every action is read as a press edge"
+title = "Every action but modify is read as a press edge"
 description = "Holding a bound key down fires its action exactly once: with KeyF held for sixty frames the speed multiplier steps once, not sixty times."
 domains = ["simulation"]
 failure_cap = "scuffed"
@@ -2812,26 +2812,28 @@ validation = { script = "input/pointer-clears-selection.test.ts", outputs = [
   { id = "cleared", name = "The cleared selection", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "pointer-right-press"
-title = "A right press puts a held rock away"
-description = "A right press while holding a rock puts it away, spending no stamp and placing nothing."
+id = "pointer-modify-press"
+title = "A press with modify held toggles a piece in the combine set"
+description = "A press on a base structure made while the modify action is held adds it to the explicit combine set, and a second such press on the same piece removes it."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: arm a rock, right press, and read the held state and
-# stampsLeft. See validation/<engine>/input/pointer-right-press.test.ts.
-validation = { script = "input/pointer-right-press.test.ts", outputs = [
-  { id = "away", name = "The rock put away by a right press", kind = "image" },
+# Automated validation: hold the modify key, press one structure twice, and read
+# the combine set after each. See
+# validation/<engine>/input/pointer-modify-press.test.ts.
+validation = { script = "input/pointer-modify-press.test.ts", outputs = [
+  { id = "set", name = "The combine set a modified press built", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "pointer-shift-press"
-title = "A shift press toggles a piece in the combine set"
-description = "A shift press on a base structure adds it to the explicit combine set, and a second shift press on the same piece removes it."
+id = "pointer-plain-press-clears-set"
+title = "A press with modify released clears the combine set"
+description = "A press on a base structure made with the modify action released clears the explicit combine set back to that single selection, however many pieces the set held."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: shift press one structure twice and read the combine
-# set after each. See validation/<engine>/input/pointer-shift-press.test.ts.
-validation = { script = "input/pointer-shift-press.test.ts", outputs = [
-  { id = "set", name = "The combine set a shift press built", kind = "image" },
+# Automated validation: build a combine set of several pieces with modify held,
+# then press one of them with modify released and read the set back. See
+# validation/<engine>/input/pointer-plain-press-clears-set.test.ts.
+validation = { script = "input/pointer-plain-press-clears-set.test.ts", outputs = [
+  { id = "cleared", name = "The combine set an unmodified press cleared", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "pointer-footprint-snaps"
