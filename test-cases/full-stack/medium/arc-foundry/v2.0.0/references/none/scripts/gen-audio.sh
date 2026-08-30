@@ -10,16 +10,17 @@
 # drone (specs/overview.md "electro-industrial").
 #
 # Produces, under assets/audio/, exactly the cues the game loads (src/assets.ts CUE_SOURCE):
-#   stamp.wav   — press/stamp clunk           (scrap-press stamps a component; specs/build.md)
-#   zap.wav     — sharp zap                    (Capacitor / Emitter single bolt; specs/towers.md)
-#   chain.wav   — crackling chain              (Coil chain-lightning; specs/towers.md)
-#   discharge.wav — heavy discharge boom       (Arc-Node / Discharge Rig; specs/towers.md)
-#   combine.wav — rising combine chime         (quality ladder climbs; specs/build.md)
-#   kill.wav    — ground-out pop               (a unit is destroyed; specs/enemies.md)
-#   leak.wav    — leak alarm                   (a unit grounds out, Grid Integrity drops; gameplay.md)
-#   settle.wav  — rock-settle thunk            (unkept rocks harden into blockers; specs/build.md)
-#   slow.wav    — icy hum                      (a Choke / slow combo slows a unit; specs/towers.md)
-#   burn.wav    — overcurrent sizzle           (a Rectifier / burn combo's DoT ticks; specs/towers.md)
+#   stamp.wav          — press/stamp clunk   (a rock lands and rolls)
+#   fire-bolt.wav      — a sharp single zap  (a Capacitor, a Choke, or a Rectifier fires)
+#   fire-spark.wav     — a short light spark (an Emitter fires; played several times a second)
+#   fire-chain.wav     — a crackling chain   (a Coil fires)
+#   fire-discharge.wav — a heavy discharge   (an Arc-Node or a Discharge Rig fires)
+#   combine.wav        — a rising chime      (a combine of either kind resolves)
+#   kill.wav           — a ground-out pop    (a unit dies)
+#   leak.wav           — a leak alarm        (a unit grounds out at the collector)
+#   slow.wav           — an icy shimmer      (a slow is applied to a unit)
+#   burn.wav           — an overcurrent sizzle (a burn is applied to a unit)
+#   settle.wav         — a rock-settle thunk (unharvested candidates harden into blockers)
 #   music.wav (+ music.mid) — the tense electro-industrial reactor bed, looped under the board
 #
 # Usage:  bash scripts/gen-audio.sh    (sfx-synth/music must be on PATH, or built under
@@ -29,7 +30,7 @@ set -euo pipefail
 # Resolve the tools: prefer PATH, else the cargo target release dir.
 for tool in sfx-synth music; do
   if ! command -v "$tool" >/dev/null 2>&1; then
-    REL="${CARGO_TARGET_DIR:-/cargo-target/the-test-cabinet}/release"
+    REL="${CARGO_TARGET_DIR:-/cargo-target/the-test-cabinet}/debug"
     [ -x "$REL/$tool" ] || { echo "$tool not found on PATH or in $REL" >&2; exit 1; }
     export PATH="$REL:$PATH"
   fi
@@ -85,7 +86,7 @@ x render
 # that fires fast and often. A saw core swept STEEPLY downward (the bolt's crack), a
 # ringmod for the inharmonic electric buzz, and a highpassed noise SIZZLE transient.
 # Bitcrushed a little so it reads digital-electric, not tonal.
-newsfx stereo 220 "$AUD/zap.wav"
+newsfx stereo 220 "$AUD/fire-bolt.wav"
 x add-voice --name bolt --wave saw --freq 1600 --gain -6 --start 0 --dur 120 --pan 0.0
 x set-envelope --voice bolt --env pluck
 x set-pitch --voice bolt --slide-to 420 --over 110
@@ -97,12 +98,26 @@ x add-bitcrush --bus master --bits 9 --rate 21000
 x add-reverb --bus master --size 0.28 --mix 0.1
 x render
 
+# ================================ FIRE-SPARK ==================================
+# The Emitter's rapid SPARK. It plays several times a second at the Emitter's cadence, so
+# it is very short, quiet, and bright — a flick rather than a crack, with nothing in the
+# low end to accumulate. A tiny highpassed noise tick over a fast falling triangle blip.
+newsfx mono 120 "$AUD/fire-spark.wav"
+x add-voice --name blip --wave triangle --freq 2600 --gain -11 --start 0 --dur 55
+x set-envelope --voice blip --env pluck
+x set-pitch --voice blip --slide-to 1500 --over 50
+x add-voice --name tick --wave noise --gain -14 --start 0 --dur 26
+x set-envelope --voice tick --env pluck
+x add-filter --voice tick --type highpass --cutoff 5200 --resonance 1.2
+x add-bitcrush --bus master --bits 10 --rate 22000
+x render
+
 # ================================= CHAIN ======================================
 # The Coil's CHAIN-LIGHTNING crackle: forked electricity LEAPING between units, dimming
 # per jump. A bandpassed noise CRACKLE fed through a feedback delay so it retriggers as a
 # string of receding taps (the "chain" of leaps), a ringmodded saw giving the arcs their
 # electric pitch, sweeping down as the chain runs out of charge. Restless and sputtering.
-newsfx stereo 620 "$AUD/chain.wav"
+newsfx stereo 620 "$AUD/fire-chain.wav"
 x add-voice --name arc --wave saw --freq 900 --gain -7 --start 0 --dur 260 --pan -0.1
 x set-envelope --voice arc --attack 2 --decay 120 --sustain 0.3 --release 160
 x set-pitch --voice arc --slide-to 340 --over 420
@@ -120,7 +135,7 @@ x render
 # (specs/towers.md: fatter and more violent than a Capacitor bolt). A deep sine SUB with a
 # punch body, a distorted saw CORE swept down for the crack, and a big noise BLAST. Longer
 # tail and heavier reverb so it lands with weight — the heaviest cue in the yard.
-newsfx stereo 780 "$AUD/discharge.wav"
+newsfx stereo 780 "$AUD/fire-discharge.wav"
 x add-voice --name sub --wave sine --freq 110 --gain -2 --start 0 --dur 380
 x set-envelope --voice sub --env punch
 x set-pitch --voice sub --slide-to 45 --over 320

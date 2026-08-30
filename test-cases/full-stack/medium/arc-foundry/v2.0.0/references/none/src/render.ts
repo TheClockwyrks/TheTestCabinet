@@ -60,6 +60,7 @@ import {
   YARD_ENTRY,
   YARD_HOUSING,
   YARD_SUBSTRATE,
+  YARD_WAYPOINT,
   loadStill,
   type Assets,
 } from "./assets";
@@ -564,7 +565,7 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
 
   drawFlow(ctx, board.chain);
   drawPlatforms(ctx, board);
-  drawWaypoints(ctx, board.chain, A);
+  drawWaypoints(ctx, game, board.chain, A);
 
   // Range / preview rings under the pieces so the pieces stay legible. A placed piece whose
   // roll is known (a firing component OR an uncommitted candidate) previews its range when
@@ -743,6 +744,7 @@ function drawFlow(
 
 function drawWaypoints(
   ctx: CanvasRenderingContext2D,
+  game: Game,
   chain: { col: number; row: number }[],
   A: Assets,
 ): void {
@@ -766,10 +768,18 @@ function drawWaypoints(
           FOOTPRINT_PX,
         );
     } else {
-      // Ordered waypoint pylon (its index number is drawn later, on top of everything).
-      if (A.has("board/pylon"))
-        blit(ctx, A.sprite("board/pylon"), p.x, p.y, 22, 22);
-      else ring(ctx, p.x, p.y, 8, COL.flow, 0.8);
+      // The checkpoint studs, one on each of the platform's four tiles, so the platform
+      // reads as the whole four-tile shape a footprint may never cover (specs/yard.md).
+      // Its order number is drawn later, over everything else on the yard.
+      if (A.has(YARD_WAYPOINT)) {
+        for (const t of game.board.platformTiles(
+          chain[i]!.col,
+          chain[i]!.row,
+        )) {
+          const c = tileCenter(t.col, t.row);
+          blit(ctx, A.sprite(YARD_WAYPOINT), c.x, c.y, TILE, TILE);
+        }
+      } else ring(ctx, p.x, p.y, 8, COL.flow, 0.8);
     }
   }
 }

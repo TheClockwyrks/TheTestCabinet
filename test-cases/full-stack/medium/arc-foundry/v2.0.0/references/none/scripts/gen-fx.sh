@@ -38,7 +38,7 @@ set -euo pipefail
 
 # Resolve the tool: prefer PATH, else the cargo target release dir.
 if ! command -v particle-2d >/dev/null 2>&1; then
-  REL="${CARGO_TARGET_DIR:-/cargo-target/the-test-cabinet}/release"
+  REL="${CARGO_TARGET_DIR:-/cargo-target/the-test-cabinet}/debug"
   [ -x "$REL/particle-2d" ] || { echo "particle-2d not found on PATH or in $REL" >&2; exit 1; }
   export PATH="$REL:$PATH"
 fi
@@ -50,7 +50,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 CFG="$TMP/cfg.json"
 
-# newfx <loop:true|false> <duration_ms> <out.system.json> : seed a fresh 128x128, 30fps
+# newfx <loop:true|false> <duration_ms> <out.json> : seed a fresh 128x128, 30fps
 #   system whose emitted system.json lands at <out>. Preview/action scratch -> $TMP.
 newfx() {
   printf '{ "width":128, "height":128, "duration_ms":%s, "fps":30, "loop":%s, "background":"transparent", "actions":"%s", "preview":"%s", "system":"%s" }\n' \
@@ -63,7 +63,7 @@ p() { particle-2d "$@" --config "$CFG" >/dev/null; }
 # The scrap-press stamps a component: a bright shower of hot sparks that arc up and rain
 # down, a white flash at the footprint, and a snap of blue-white arc crackle. charge #ffcf4a
 # hot sparks -> #ff9a46, arc core #eaf6ff -> capacitor blue #8fc4ff.
-newfx false 760 "$FX/buildspark.system.json"
+newfx false 760 "$FX/build.json"
 p add-emitter --name flash --shape point --x 64 --y 64 \
   --burst 7 --at 0 --lifetime 160 --lifetime-spread 40 --speed 22 --speed-spread 12 \
   --dir-y 1 --cone-angle 360 --seed 3
@@ -87,13 +87,13 @@ p set-particle --emitter arc --size-curve ease-out --size-from 0.5 --size-to 0.0
   --color-gradient "#eaf6ff@0,#8fc4ff@1"
 p set-timeline --loop false
 p render
-echo "produced buildspark.system.json"
+echo "produced build.json"
 
 # ============================ COMBINE FLASH (implosion → payoff, one-shot) =====
 # Two matching components combine one tier UP: a convergent implosion (particles rush INWARD
 # on a negative radial) that collapses into a brilliant white->gold flash, then a bright
 # outward payoff spray. primed violet #c78cff converging, tesla-gold #ffe45a payoff.
-newfx false 980 "$FX/combine.system.json"
+newfx false 980 "$FX/combine.json"
 p add-emitter --name converge --shape disc --x 64 --y 64 --radius 30 \
   --burst 40 --at 0 --lifetime 420 --lifetime-spread 90 --speed 8 --speed-spread 5 \
   --dir-y 1 --cone-angle 360 --seed 5
@@ -117,13 +117,13 @@ p set-particle --emitter payoff --size-curve ease-out --size-from 0.7 --size-to 
   --color-gradient "#ffffff@0,#ffe45a@0.4,#c78cff@1"
 p set-timeline --loop false
 p render
-echo "produced combine.system.json"
+echo "produced combine.json"
 
 # ============================ ARC BOLT (single bolt, one-shot, fires often) ====
 # A Capacitor / Discharge Rig unloads its single blue-white bolt: a hot core snap and a
 # violent burst of stretched fork streaks with hard crackle. Short + cheap (fires often);
 # the Discharge Rig scales it fatter via the tier scale + `big`. core #eaf6ff -> vent #4ac6ff.
-newfx false 400 "$FX/arcbolt.system.json"
+newfx false 400 "$FX/bolt.json"
 p add-emitter --name core --shape point --x 64 --y 64 \
   --burst 5 --at 0 --lifetime 150 --lifetime-spread 40 --speed 12 --speed-spread 7 \
   --dir-y 1 --cone-angle 360 --seed 2
@@ -147,13 +147,13 @@ p set-particle --emitter crackle --size-curve ease-out --size-from 0.4 --size-to
   --color-gradient "#ffffff@0,#8fc4ff@1"
 p set-timeline --loop false
 p render
-echo "produced arcbolt.system.json"
+echo "produced bolt.json"
 
 # ============================ CHAIN LIGHTNING (Coil chain, one-shot) ===========
 # A Coil arcs and CHAINS between units: a violet core snap and a spray of long, uneven fork
 # streaks (the wide speed spread reads as multiple leaps), dimming outward per jump. coil
 # violet #b98cff, forking to deep #8a5cff.
-newfx false 480 "$FX/chain.system.json"
+newfx false 480 "$FX/chain.json"
 p add-emitter --name core --shape point --x 64 --y 64 \
   --burst 6 --at 0 --lifetime 180 --lifetime-spread 45 --speed 14 --speed-spread 8 \
   --dir-y 1 --cone-angle 360 --seed 4
@@ -177,12 +177,12 @@ p set-particle --emitter crackle --size-curve ease-out --size-from 0.4 --size-to
   --color-gradient "#ffffff@0,#b98cff@1"
 p set-timeline --loop false
 p render
-echo "produced chain.system.json"
+echo "produced chain.json"
 
 # ============================ SPARK SPRAY (Emitter, one-shot, fires rapidly) ===
 # The rapid anti-swarm Emitter: a fast fan of small teal sparks and a tiny pop. Very short +
 # cheap because it fires constantly. emitter teal #7fe0c0.
-newfx false 320 "$FX/spray.system.json"
+newfx false 320 "$FX/spray.json"
 p add-emitter --name pop --shape point --x 64 --y 64 \
   --burst 4 --at 0 --lifetime 120 --lifetime-spread 30 --speed 20 --speed-spread 10 \
   --dir-y 1 --cone-angle 360 --seed 7
@@ -199,13 +199,13 @@ p set-particle --emitter sparks --size-curve ease-out --size-from 0.5 --size-to 
   --color-gradient "#ffffff@0,#7fe0c0@0.4,#46d6c0@1"
 p set-timeline --loop false
 p render
-echo "produced spray.system.json"
+echo "produced spray.json"
 
 # ============================ DISCHARGE RING (Arc-Node lands, one-shot) ========
 # An Arc-Node shot lands: an expanding RING of electrical discharge over its splash radius
 # (uniform launch speed + tight spread makes a coherent shell), a hot core, and inner
 # crackle. arc-node amber #ff9a46 -> discharge red #ff5470. The biggest footprint (78).
-newfx false 640 "$FX/ring.system.json"
+newfx false 640 "$FX/ring.json"
 p add-emitter --name shell --shape point --x 64 --y 64 \
   --burst 46 --at 0 --lifetime 480 --lifetime-spread 40 --speed 150 --speed-spread 12 \
   --dir-y 1 --cone-angle 360 --seed 6
@@ -229,12 +229,12 @@ p set-particle --emitter crackle --size-curve ease-out --size-from 0.4 --size-to
   --color-gradient "#eaf6ff@0,#ff9a46@1"
 p set-timeline --loop false
 p render
-echo "produced ring.system.json"
+echo "produced ring.json"
 
 # ============================ SPARK-BURST IMPACT (a shot hits, one-shot) =======
 # Any projectile / arc connects with a unit: a small burst of blue sparks and a pin-flash.
 # Tiny, cheap, fires very often. core #eaf6ff, sparks -> vent #4ac6ff.
-newfx false 260 "$FX/impact.system.json"
+newfx false 260 "$FX/impact.json"
 p add-emitter --name flash --shape point --x 64 --y 64 \
   --burst 3 --at 0 --lifetime 110 --lifetime-spread 25 --speed 16 --speed-spread 8 \
   --dir-y 1 --cone-angle 360 --seed 8
@@ -251,13 +251,13 @@ p set-particle --emitter sparks --size-curve ease-out --size-from 0.5 --size-to 
   --color-gradient "#ffffff@0,#8fc4ff@0.5,#4ac6ff@1"
 p set-timeline --loop false
 p render
-echo "produced impact.system.json"
+echo "produced impact.json"
 
 # ============================ DISCHARGE / DEATH BURST (a unit dies, one-shot) ==
 # A unit grounds its charge as it dies: an electrical pop — a flash, an outward spark shell,
 # and an EMP shock ring. The Dynamo boss reuses this scaled up via the `big` flag (2.2x),
 # where the EMP ring reads huge. load grey #c4cbd6, vent #4ac6ff, dynamo violet #a45cff.
-newfx false 640 "$FX/death.system.json"
+newfx false 640 "$FX/death.json"
 p add-emitter --name flash --shape point --x 64 --y 64 \
   --burst 8 --at 0 --lifetime 200 --lifetime-spread 50 --speed 26 --speed-spread 13 \
   --dir-y 1 --cone-angle 360 --seed 1
@@ -288,13 +288,13 @@ p set-particle --emitter crackle --size-curve ease-out --size-from 0.4 --size-to
   --color-gradient "#ffffff@0,#a45cff@1"
 p set-timeline --loop false
 p render
-echo "produced death.system.json"
+echo "produced death.json"
 
 # ============================ LEAK ALARM (unit grounds out, one-shot) ==========
 # A unit reaches the Collector and dumps its charge — Grid Integrity drops. A red danger
 # read at the sink: a rising warning flare, an alarm shock ring, a hot flash, and falling
 # embers. charge #ffcf4a -> alert red #ff5a52 / discharge #ff5470.
-newfx false 840 "$FX/leak.system.json"
+newfx false 840 "$FX/leak.json"
 p add-emitter --name flare --shape point --x 64 --y 82 \
   --burst 24 --at 0 --lifetime 620 --lifetime-spread 170 --speed 122 --speed-spread 52 \
   --dir-y 1 --cone-angle 55 --seed 10
@@ -325,29 +325,7 @@ p set-particle --emitter embers --size-curve ease-out --size-from 0.45 --size-to
   --color-gradient "#ff9a46@0,#ff5470@1"
 p set-timeline --loop false
 p render
-echo "produced leak.system.json"
-
-# ============================ MUZZLE GLOW (firing head, one-shot, fires often) =
-# A small hot glow at a firing head's muzzle — a welcome ambience extra (assets.md). Tiny +
-# cheap. core #ffffff -> capacitor blue #8fc4ff, a couple of vent-blue sparks.
-newfx false 220 "$FX/muzzle.system.json"
-p add-emitter --name glow --shape point --x 64 --y 64 \
-  --burst 5 --at 0 --lifetime 170 --lifetime-spread 40 --speed 18 --speed-spread 10 \
-  --dir-y 1 --cone-angle 360 --seed 25
-p set-forces --emitter glow --drag 4
-p set-particle --emitter glow --size-curve ease-out --size-from 1.6 --size-to 0.2 \
-  --opacity-curve ease-out --opacity-from 1.0 --opacity-to 0.0 \
-  --color-gradient "#ffffff@0,#8fc4ff@1"
-p add-emitter --name spark --shape point --x 64 --y 64 \
-  --burst 4 --at 0 --lifetime 140 --lifetime-spread 40 --speed 62 --speed-spread 32 \
-  --dir-y 1 --cone-angle 360 --seed 30
-p set-forces --emitter spark --drag 3
-p set-particle --emitter spark --size-curve ease-out --size-from 0.4 --size-to 0.0 \
-  --opacity-curve ease-out --opacity-from 1.0 --opacity-to 0.0 --stretch 0.08 \
-  --color-gradient "#eaf6ff@0,#4ac6ff@1"
-p set-timeline --loop false
-p render
-echo "produced muzzle.system.json"
+echo "produced leak.json"
 
 # ============================ SLOW SNAP (Choke / slow combo hits, one-shot) ====
 # A Choke or a slow-carrying combo lands its drag on a unit: a brief FROST / EM-DRAG snap
@@ -355,7 +333,7 @@ echo "produced muzzle.system.json"
 # pulls them in, size grows in as they set), a cold pin-flash at the hit, and a scatter of
 # slow-drifting icy motes that cling to the unit as its speed sags. Choke blue #66d9e8,
 # frost-white #eaffff core.
-newfx false 640 "$FX/slowhit.system.json"
+newfx false 640 "$FX/slow.json"
 p add-emitter --name frost --shape disc --x 64 --y 64 --radius 26 \
   --burst 22 --at 0 --lifetime 380 --lifetime-spread 90 --speed 6 --speed-spread 4 \
   --dir-y 1 --cone-angle 360 --seed 5
@@ -379,14 +357,14 @@ p set-particle --emitter motes --size-curve ease-out --size-from 0.45 --size-to 
   --color-gradient "#cbeef2@0,#66d9e8@1"
 p set-timeline --loop false
 p render
-echo "produced slowhit.system.json"
+echo "produced slow.json"
 
 # ============================ BURN FLARE (Rectifier / burn combo, one-shot) ====
 # A Rectifier or a burn-carrying combo's overcurrent DoT ticks: a small EMBER FLARE on the
 # hit and a lift of small RISING embers/sparks that curl up and settle (launched up in a
 # narrow fan; the positive gravity lets them rise then sag), plus a low ember-ticking
 # flicker on the unit. Rectifier orange #ff6b3d, hot ember #ff8a3d, spark-gold #ffd98a.
-newfx false 720 "$FX/burnhit.system.json"
+newfx false 720 "$FX/burn.json"
 p add-emitter --name flare --shape point --x 64 --y 64 \
   --burst 6 --at 0 --lifetime 190 --lifetime-spread 45 --speed 22 --speed-spread 12 \
   --dir-y 1 --cone-angle 360 --seed 8
@@ -410,7 +388,7 @@ p set-particle --emitter flicker --size-curve ease-out --size-from 0.4 --size-to
   --color-gradient "#ffb347@0,#ff6b3d@1"
 p set-timeline --loop false
 p render
-echo "produced burnhit.system.json"
+echo "produced burn.json"
 
 # ============================ AURA PULSE (Regulator / aura combo, one-shot) ====
 # A Regulator (or an aura combo) sits on the board and PROJECTS its support field — it never
@@ -418,7 +396,7 @@ echo "produced burnhit.system.json"
 # outward (uniform launch speed + tight spread + a gentle radial), a soft core swell blooms
 # at the source, and a few gentle motes lift and linger. Regulator lime #b6e05a, pale
 # #eaffcf core. Reads calm and supportive, not a violent burst.
-newfx false 820 "$FX/aura.system.json"
+newfx false 820 "$FX/aura.json"
 p add-emitter --name ring --shape point --x 64 --y 64 \
   --burst 40 --at 0 --lifetime 620 --lifetime-spread 40 --speed 95 --speed-spread 10 \
   --dir-y 1 --cone-angle 360 --seed 6
@@ -442,6 +420,6 @@ p set-particle --emitter motes --size-curve ease-out --size-from 0.42 --size-to 
   --color-gradient "#d8f0a8@0,#b6e05a@1"
 p set-timeline --loop false
 p render
-echo "produced aura.system.json"
+echo "produced aura.json"
 
 echo "all electrical particle systems produced under $FX"

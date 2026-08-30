@@ -25,13 +25,14 @@ set -euo pipefail
 
 # --- Resolve the tools: prefer PATH, else the cargo target release dir. ----------
 if ! command -v draw >/dev/null 2>&1; then
-  REL="${CARGO_TARGET_DIR:-/cargo-target/the-test-cabinet}/release"
+  REL="${CARGO_TARGET_DIR:-/cargo-target/the-test-cabinet}/debug"
   [ -x "$REL/draw" ] || { echo "draw not found on PATH or in $REL" >&2; exit 1; }
   export PATH="$REL:$PATH"
 fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 COMP="$ROOT/assets/components"
+COMBO="$ROOT/assets/combos"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 CFG="$TMP/cfg.json"
@@ -45,10 +46,10 @@ newsprite() { # newsprite <out.png> : fresh 40×40 transparent canvas -> <out.pn
 }
 d() { draw "$@" --config "$CFG" >/dev/null; }
 
-# --- sheet helpers (draw-sheet, 6 frames) ---------------------------------------
-newsheet() { # newsheet <dir> : 6-frame cycle -> <dir>/{0..5}.png
+# --- sheet helpers (draw-sheet, 4 frames) ---------------------------------------
+newsheet() { # newsheet <dir> : 4-frame cycle -> <dir>/{0..3}.png
   mkdir -p "$1"
-  printf '{ "width": 40, "height": 40, "background": "transparent", "frames": [0,1,2,3,4,5], "actions": "%s", "preview": "%s" }\n' \
+  printf '{ "width": 40, "height": 40, "background": "transparent", "frames": [0,1,2,3], "actions": "%s", "preview": "%s" }\n' \
     "$TMP/f_{frame}.json" "$1/{frame}.png" > "$CFG"
   draw-sheet init --config "$CFG" >/dev/null
 }
@@ -264,7 +265,7 @@ gen_head() { # gen_head <type> <tier>
   local -n coreArr="core_$type"
   MD=${tier_md[$tier]}; MM=${tier_mm[$tier]}; ML=${tier_ml[$tier]}
   CORE=${coreArr[$tier]}; CORE_HOT=${coreArr[5]}; ARC_GLOW=${coreArr[4]}
-  newsprite "$COMP/$type/head_$tier.png"
+  newsprite "$COMP/$type/head-$tier.png"
   "${type}_body"
   [ "$tier" -eq 1 ] && pit_body
   [ "$tier" -eq 5 ] && chrome_body
@@ -292,36 +293,61 @@ gen_base() { # gen_base <type>
   d fill-circle --cx 20 --cy 20 --r 1 --color "$acc"
 }
 
-# --- one type's 6-frame charge-and-discharge muzzle cycle ------------------------
+# --- one type's 4-frame charge-and-discharge muzzle cycle ------------------------
+# Played once on the frame the component fires (specs/assets.md): a glimmer, a charge, the
+# discharge, and the residue. The muzzle sits at the type's own barrel length and every
+# frame points +x, the canonical facing the game rotates the head from.
 gen_fire() { # gen_fire <type>
   local type=$1
   local -n coreArr="core_$type"
   local acc=${coreArr[3]} accd=${coreArr[2]} hot='#eaf6ff'
   local mx=${MZX[$type]} fx=$(( ${MZX[$type]} - 2 ))
   newsheet "$COMP/$type/fire"
+  # the charge halo over the head, swelling with the shot and fading after it
+  s fill-circle --frame 0 --cx 22 --cy 20 --r 9  --color "${accd}33"
+  s fill-circle --frame 1 --cx 23 --cy 20 --r 11 --color "${acc}44"
+  s fill-circle --frame 2 --cx 24 --cy 20 --r 14 --color "${acc}55"
+  s fill-circle --frame 3 --cx 22 --cy 20 --r 10 --color "${accd}33"
   # f0 pre-charge glimmer
   s fill-circle --frame 0 --cx $(( mx - 2 )) --cy 20 --r 2 --color "$accd"
-  # f1 charging
-  s fill-circle --frame 1 --cx "$mx" --cy 20 --r 3 --color "$acc"
-  s fill-circle --frame 1 --cx "$mx" --cy 20 --r 1 --color "$hot"
-  # f2 full charge, arc forming
-  s fill-circle --frame 2 --cx "$mx" --cy 20 --r 4 --color "$acc"
-  s fill-circle --frame 2 --cx "$mx" --cy 20 --r 2 --color "$hot"
-  s line --frame 2 --x0 "$mx" --y0 20 --x1 38 --y1 17 --color "$acc"
-  # f3 DISCHARGE — big flash + forked muzzle bolt east
-  s fill-circle --frame 3 --cx "$fx" --cy 20 --r 6 --color "$acc"
-  s fill-circle --frame 3 --cx "$fx" --cy 20 --r 4 --color "$hot"
-  s line --frame 3 --x0 "$mx" --y0 20 --x1 39 --y1 15 --color "$hot"
-  s line --frame 3 --x0 "$mx" --y0 20 --x1 39 --y1 25 --color "$hot"
-  s line --frame 3 --x0 "$mx" --y0 20 --x1 39 --y1 20 --color "$acc"
-  s fill-circle --frame 3 --cx 39 --cy 20 --r 1 --color "$hot"
-  # f4 fade
-  s fill-circle --frame 4 --cx "$mx" --cy 20 --r 4 --color "$acc"
-  s fill-circle --frame 4 --cx "$mx" --cy 20 --r 2 --color "$hot"
-  s line --frame 4 --x0 "$mx" --y0 20 --x1 38 --y1 20 --color "$acc"
-  # f5 residual speck
-  s fill-circle --frame 5 --cx $(( mx - 1 )) --cy 20 --r 2 --color "$accd"
-  s set-pixel --frame 5 --x 38 --y 19 --color "$acc"
+  # f1 full charge, arc forming
+  s fill-circle --frame 1 --cx "$mx" --cy 20 --r 4 --color "$acc"
+  s fill-circle --frame 1 --cx "$mx" --cy 20 --r 2 --color "$hot"
+  s line --frame 1 --x0 "$mx" --y0 20 --x1 38 --y1 17 --color "$acc"
+  # f2 DISCHARGE — a big flash and a forked muzzle bolt east
+  s fill-circle --frame 2 --cx "$fx" --cy 20 --r 6 --color "$acc"
+  s fill-circle --frame 2 --cx "$fx" --cy 20 --r 4 --color "$hot"
+  s line --frame 2 --x0 "$mx" --y0 20 --x1 39 --y1 15 --color "$hot"
+  s line --frame 2 --x0 "$mx" --y0 20 --x1 39 --y1 25 --color "$hot"
+  s line --frame 2 --x0 "$mx" --y0 20 --x1 39 --y1 20 --color "$acc"
+  s fill-circle --frame 2 --cx 39 --cy 20 --r 1 --color "$hot"
+  # f3 fade to a residual speck
+  s fill-circle --frame 3 --cx "$mx" --cy 20 --r 3 --color "$acc"
+  s fill-circle --frame 3 --cx "$mx" --cy 20 --r 1 --color "$hot"
+  s set-pixel --frame 3 --x 38 --y 19 --color "$accd"
+}
+
+# --- the Regulator's 4-frame aura pulse ------------------------------------------
+# The Regulator never fires, so its cycle is a LOOPING slow aura pulse rather than a shot
+# (specs/assets.md): a ring swelling out from the emitter core and fading.
+gen_regulator_pulse() {
+  local -n coreArr="core_regulator"
+  local acc=${coreArr[3]} accd=${coreArr[2]} hot=${coreArr[5]}
+  newsheet "$COMP/regulator/fire"
+  # the standing aura field the pulse rides over
+  s fill-circle --frame 0 --cx 20 --cy 20 --r 10 --color "${accd}33"
+  s fill-circle --frame 1 --cx 20 --cy 20 --r 13 --color "${accd}33"
+  s fill-circle --frame 2 --cx 20 --cy 20 --r 16 --color "${accd}2a"
+  s fill-circle --frame 3 --cx 20 --cy 20 --r 19 --color "${accd}22"
+  s stroke-circle --frame 0 --cx 20 --cy 20 --r 6  --color "$hot"
+  s stroke-circle --frame 0 --cx 20 --cy 20 --r 4  --color "$acc"
+  s stroke-circle --frame 1 --cx 20 --cy 20 --r 10 --color "$acc"
+  s stroke-circle --frame 1 --cx 20 --cy 20 --r 6  --color "$accd"
+  s stroke-circle --frame 2 --cx 20 --cy 20 --r 14 --color "$acc"
+  s stroke-circle --frame 2 --cx 20 --cy 20 --r 10 --color "$accd"
+  s stroke-circle --frame 3 --cx 20 --cy 20 --r 18 --color "$accd"
+  s stroke-circle --frame 3 --cx 20 --cy 20 --r 14 --color "$accd"
+  s fill-circle   --frame 3 --cx 20 --cy 20 --r 2  --color "$acc"
 }
 
 # =============================== COMBINATION TOWERS ============================
@@ -430,7 +456,7 @@ combo_body() {
 
 # --- one combo's fixed base/mount (gold-trimmed, accent socket) -------------------
 gen_combo_base() { # gen_combo_base <comboId>
-  newsprite "$COMP/combo/$1/base.png"
+  newsprite "$COMBO/$1/base.png"
   d fill-circle --cx 20 --cy 20 --r 15 --color '#0d141b'
   d stroke-circle --cx 20 --cy 20 --r 15 --color "$GOLD_D"       # gold outer ring
   d stroke-circle --cx 20 --cy 20 --r 13 --color '#1a222b'
@@ -446,28 +472,29 @@ gen_combo_base() { # gen_combo_base <comboId>
   d fill-circle --cx 20 --cy 20 --r 1 --color "$ACCH"
 }
 
-# --- one combo's 6-frame fire cycle (accent bolt with a GOLD discharge flash) -----
+# --- one combo's 4-frame fire cycle (an accent bolt with a GOLD discharge flash) --
 gen_combo_fire() { # gen_combo_fire <comboId>
   local mx=36 fx=34 hot='#fff4d6'
-  newsheet "$COMP/combo/$1/fire"
+  newsheet "$COMBO/$1/fire"
+  # the charge halo over the tower's head, swelling with the shot and fading after it
+  s fill-circle --frame 0 --cx 22 --cy 20 --r 9  --color "${ACC}33"
+  s fill-circle --frame 1 --cx 23 --cy 20 --r 11 --color "${ACC}44"
+  s fill-circle --frame 2 --cx 24 --cy 20 --r 14 --color "${GOLD}55"
+  s fill-circle --frame 3 --cx 22 --cy 20 --r 10 --color "${ACC}33"
   s fill-circle --frame 0 --cx 34 --cy 20 --r 2 --color "$ACC"
-  s fill-circle --frame 1 --cx "$mx" --cy 20 --r 3 --color "$ACC"
-  s fill-circle --frame 1 --cx "$mx" --cy 20 --r 1 --color "$hot"
-  s fill-circle --frame 2 --cx "$mx" --cy 20 --r 4 --color "$ACC"
-  s fill-circle --frame 2 --cx "$mx" --cy 20 --r 2 --color "$GOLD"
-  s line --frame 2 --x0 "$mx" --y0 20 --x1 38 --y1 17 --color "$ACC"
-  s fill-circle --frame 3 --cx "$fx" --cy 20 --r 6 --color "$ACC"
-  s fill-circle --frame 3 --cx "$fx" --cy 20 --r 4 --color "$GOLD"
-  s fill-circle --frame 3 --cx "$fx" --cy 20 --r 2 --color "$hot"
-  s line --frame 3 --x0 "$mx" --y0 20 --x1 39 --y1 15 --color "$hot"
-  s line --frame 3 --x0 "$mx" --y0 20 --x1 39 --y1 25 --color "$hot"
-  s line --frame 3 --x0 "$mx" --y0 20 --x1 39 --y1 20 --color "$GOLD"
-  s fill-circle --frame 3 --cx 39 --cy 20 --r 1 --color "$hot"
-  s fill-circle --frame 4 --cx "$mx" --cy 20 --r 4 --color "$ACC"
-  s fill-circle --frame 4 --cx "$mx" --cy 20 --r 2 --color "$GOLD"
-  s line --frame 4 --x0 "$mx" --y0 20 --x1 38 --y1 20 --color "$ACC"
-  s fill-circle --frame 5 --cx 35 --cy 20 --r 2 --color "$ACC"
-  s set-pixel --frame 5 --x 38 --y 19 --color "$GOLD"
+  s fill-circle --frame 1 --cx "$mx" --cy 20 --r 4 --color "$ACC"
+  s fill-circle --frame 1 --cx "$mx" --cy 20 --r 2 --color "$GOLD"
+  s line --frame 1 --x0 "$mx" --y0 20 --x1 38 --y1 17 --color "$ACC"
+  s fill-circle --frame 2 --cx "$fx" --cy 20 --r 6 --color "$ACC"
+  s fill-circle --frame 2 --cx "$fx" --cy 20 --r 4 --color "$GOLD"
+  s fill-circle --frame 2 --cx "$fx" --cy 20 --r 2 --color "$hot"
+  s line --frame 2 --x0 "$mx" --y0 20 --x1 39 --y1 15 --color "$hot"
+  s line --frame 2 --x0 "$mx" --y0 20 --x1 39 --y1 25 --color "$hot"
+  s line --frame 2 --x0 "$mx" --y0 20 --x1 39 --y1 20 --color "$GOLD"
+  s fill-circle --frame 2 --cx 39 --cy 20 --r 1 --color "$hot"
+  s fill-circle --frame 3 --cx "$mx" --cy 20 --r 3 --color "$ACC"
+  s fill-circle --frame 3 --cx "$mx" --cy 20 --r 1 --color "$GOLD"
+  s set-pixel --frame 3 --x 38 --y 19 --color "$GOLD"
 }
 
 # --- one whole combo: head + base + fire cycle -----------------------------------
@@ -475,7 +502,7 @@ gen_combo() { # gen_combo <comboId>
   local id=$1
   ACC=${COMBO_ACC[$id]}; ACCH=${COMBO_HOT[$id]}; ABIL=${COMBO_ABIL[$id]}
   ARC_GLOW=$ACC
-  newsprite "$COMP/combo/$id/head.png"
+  newsprite "$COMBO/$id/head.png"
   combo_body
   draw_arcs 3                                                    # superior towers stay lightly wreathed
   gen_combo_base "$id"
@@ -490,17 +517,18 @@ for type in "${TYPES[@]}"; do
   for tier in 1 2 3 4 5; do gen_head "$type" "$tier"; done
   gen_base "$type"
   if [ "$type" = "regulator" ]; then
-    echo "produced $type: head_1..5 + base (non-firing support — no fire cycle)"
+    gen_regulator_pulse
+    echo "produced $type: head-1..5 + base + a looping aura pulse at fire/0..3"
   else
     gen_fire "$type"
-    echo "produced $type: head_1..5 + base + fire/0..5"
+    echo "produced $type: head-1..5 + base + fire/0..3"
   fi
 done
 
 # The 12 combination towers (single grade).
 for id in "${COMBO_ORDER[@]}"; do
   gen_combo "$id"
-  echo "produced combo $id: head + base + fire/0..5"
+  echo "produced combo $id: head + base + fire/0..3"
 done
 
-echo "components written under $COMP"
+echo "components written under $COMP, combination towers under $COMBO"
