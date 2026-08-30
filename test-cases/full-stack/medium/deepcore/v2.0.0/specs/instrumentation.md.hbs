@@ -243,6 +243,7 @@ both faculties running, and `simTime` at `0`.
 expedition opens with. The save slot is untouched as well, because it outlives the
 session; `clearSave` is what deletes it.
 {{#if (eq engine.slug "none")}}
+
 `autoStep` is untouched, because moving the clock is not posing the world. Every
 held key is released.
 {{/if}}
@@ -348,7 +349,7 @@ with the drill running, and the animation state follows what it is actually doin
 | `setCargo(ore, count)` | The number of units of one ore or gemstone in the cargo bay, at least `0`, ignoring the slot cap so a scenario can pose any load. |
 | `setMaterial(material, count)` | The number of one exotic material in the satchel, `"resonite"` or `"cryenite"`, at least `0`. |
 | `setCoreCarried(carried)` | Whether a Core Sample is in the satchel. `setCoreCarried(true)` puts one there with its timer at `CORE_TIMER` and requires that no Core Sample is live; `setCoreCarried(false)` removes it and its timer with it, without detonating it. |
-| `setCoreTimer(seconds)` | The seconds left on the live Core Sample's timer, above `0`. A Core Sample is live, carried or jettisoned. |
+| `setCoreTimer(seconds)` | The seconds left on the live Core Sample's timer, above `0`. It requires a live Core Sample, carried or jettisoned. |
 | `setItemCount(item, count)` | The number of one field supply held, by its id, at least `0`. |
 | `setRocketInstalled(count)` | How many rocket components are installed, `0` through `5`, taken in the order the checklist builds them. It costs no Credits and consumes no material. |
 | `setNoticeFired(hazard, fired)` | Whether the one-time notice for `"gas"` or `"lava"` has already been raised this expedition. It raises no card and dismisses none. |
