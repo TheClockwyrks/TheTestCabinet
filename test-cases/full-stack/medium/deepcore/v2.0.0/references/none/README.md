@@ -13,10 +13,11 @@
 > | Debug surface | 40 compound operations (`teleport`, `addCargo`, `grantCredits`, `grantGear`, `startExpedition`, `openPanel`, `step`) | 52 atomic ones (`setMinerPosition`, `setCargo`, `setCredits`, `setTier`, `setScreen`, `setPanel`, `advance`), one field or one clock move each, per `specs/instrumentation.md` |
 > | Constant names and values | `TILE_SIZE = 80`, `ORE_DENSITY = 0.15` | `TILE` (`80`), `ORE_DENSITY` (`0.14`), and 37 further named figures the specification states |
 > | Specification | v1.0.0's fifteen specs | all fourteen rewritten; `specs/proof.md` gone |
-> | Camera | both axes | the vertical scroll `specs/world.md` fixes |
+> | Camera | a lead-based follow with `CAMERA_LEAD_FRACTION` (`0.335`), separate release (`1.1`) and reverse (`0.6`) times, and a `45` still-speed | the same shape restated as `CAM_LEAD_MAX` (`212`), `CAM_LEAD_RAMP` (`2`), one `CAM_UNWIND_MULT` (`4`) for both directions, and `CAM_STILL_SPEED` (`40`), with exact clamps and rates `specs/world.md` states |
 >
 > The two sibling directories, `references/simple-2d/` and
-> `references/structured-2d/`, are empty for the same reason.
+> `references/structured-2d/`, hold nothing but a README of their own for the
+> same reason.
 
 A subterranean dig-and-build game that runs entirely in the browser. You are a lone
 prospector stranded on Vhera Deep: **drill down** through four depth bands, **sell ore**

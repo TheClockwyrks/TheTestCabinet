@@ -62,5 +62,5 @@ reference. `specs/proof.md` went with them.
 
 A build now writes a short player-facing description of the game it made and a
 small ordered carousel of captured media beside its source, the way a store page
-presents a game. The case carries the same thing for itself, captured from the
-reference build.
+presents a game. `specs/showcase.md` states what the directory holds, what leads
+the carousel, and how the media are captured under each engine.
