@@ -1,23 +1,52 @@
-// SCAFFOLD PLACEHOLDER — validation/none/draw-three/mode-label-hud.test.ts
+// draw-three/mode-label-hud — the HUD names this build's deal mode during play.
 //
-// The review item `draw-three.mode-label-hud` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. `specs/stock.md` fixes this build's `DEAL_MODE_LABEL` as the literal
+// `DRAW THREE`, and `specs/screens.md` has the HUD carry it: "`DEAL_MODE_LABEL` is
+// drawn in the strip as well, so the deal mode is visible throughout play."
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THIS POINT DECIDES THE LITERAL, as `draw-three/mode-label-title` does for the
+// title screen. The common `screens.hud-shows-mode-label` holds the drawn text
+// against the `dealModeLabel` the snapshot reports, so that point decides
+// consistency and this one decides that the label this variant plays under is the
+// one drawn. The two screens are two points, so a build that names the mode on the
+// title screen and forgets it in the HUD misses one requirement rather than two.
 //
-// What this item must decide, from the manifest:
-//
-//   The HUD's label reads DRAW THREE
-//
-//   The HUD draws the literal DRAW THREE during play.
+// THE POSE. The live table, empty. The HUD is drawn on the `playing` screen
+// whatever the table holds, so posing cards would add nothing the requirement
+// concerns. Where within the strip the label sits is not decided here:
+// `specs/screens.md` fixes a rectangle for each of the three HUD controls and none
+// for the label.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertTrue } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  openTable,
+  type Harness,
+} from "../harness";
+import { DEAL_MODE_LABEL } from "./constants";
 
-it("draw-three.mode-label-hud — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/draw-three/mode-label-hud.test.ts is a scaffold stub, not a validator",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("draws DRAW THREE in the HUD during play", async () => {
+  await openTable(h);
+
+  const calls = await h.frameCalls();
+  await captureStill(h, "hud");
+
+  assertTrue(
+    drewText(calls, DEAL_MODE_LABEL),
+    `the HUD drawing the literal "${DEAL_MODE_LABEL}" during play, this ` +
+      "build's DEAL_MODE_LABEL (specs/stock.md, specs/screens.md)",
   );
 });
