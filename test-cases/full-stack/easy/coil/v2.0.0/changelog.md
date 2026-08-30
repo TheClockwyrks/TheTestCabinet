@@ -79,11 +79,11 @@ validator now states its own step by constructing its own clock.
 
 This version declares no `[[reference]]` views, no `[[proof]]` artifacts and no
 `[[check]]` comparisons, and seeds no `specs/proof.md`. A build is no longer given
-screenshots to match, so the palette, the type and the drawing of the board and
-the HUD are the build's, rated by a reviewer through the presentation domain. What
-the specs fix about appearance is legibility: a snake told apart from the board and
-from the pellet, a head told apart from the body, and the obstacles of the Maze
-board told apart from both.
+screenshots to match, so the palette, the type and the look of the board and the
+HUD are the build's, and how any of it looks is the presentation domain's
+aesthetic rating. What the specs fix about appearance is legibility: a snake told
+apart from the board and from the pellet, a head told apart from the body, and
+the obstacles of the Maze board told apart from both.
 
 In exchange, every behavior a validator reads is stated exactly, and each point on
 the checklist is one observable behavior with one validator behind it.
