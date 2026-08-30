@@ -384,7 +384,17 @@ function gone(state: SpectraState, drone: DroneState): boolean {
   );
 }
 
-/** One sub-step of the whole swarm: every drone's clock, path and fire. */
+/**
+ * One sub-step of the whole swarm: every drone's clock, path and fire.
+ *
+ * THE THREE FACULTIES ARE THREE GATES AND EACH GATES ONE THING. The band clock is
+ * outside the travel gate, and so is the fire a dive carries: a drone held still
+ * by `setDroneTravel(id, false)` keeps its phase, holds its exact centre, and its
+ * clock and its cannon run on, exactly as `specs/instrumentation.md` states. What
+ * travel holds is the path alone — the advance along an entrance, the ride on the
+ * sway, the dive, and the return — and with it the phase clock, so nothing about
+ * the phase is cancelled, completed, or resolved early either.
+ */
 export function stepSwarm(
   state: SpectraState,
   h: number,
@@ -392,7 +402,11 @@ export function stepSwarm(
 ): void {
   for (const drone of state.drones) {
     stepOscillation(state, drone, h);
-    if (!drone.travel) continue;
+    if (!drone.travel) {
+      // The body holds still and the cannon runs on.
+      if (drone.phase === "diving") fireOnDive(state, drone);
+      continue;
+    }
     switch (drone.phase) {
       case "entering":
         if (released(state, drone)) stepEntering(state, drone, h);
