@@ -15,6 +15,9 @@ moving down from the last row highlights the first, and moving up from the first
 row highlights the last. This holds on every menu in the game. `confirm` takes
 the highlighted row.
 
+Every row is also a pointer target, as `specs/controls.md` states, so each of
+these screens is navigable with the pointer alone and on a touchscreen.
+
 ## The eight screens
 
 | Screen | What it is |
@@ -37,6 +40,9 @@ of `TITLE_ITEMS`, `PLAY` and `HOW TO PLAY`.
 | --- | --- |
 | `PLAY` | `modeselect`. It starts no game of its own. |
 | `HOW TO PLAY` | `howto`. |
+
+`back` does nothing here. The title is where the game starts, and there is no
+screen behind it.
 
 ## `modeselect`
 
@@ -87,6 +93,9 @@ The floor is still drawn behind the menu.
 | `RESTART` | A fresh run of the same mode and difficulty, from its `opening` phase. |
 | `QUIT TO MENU` | `title`. |
 
+`back` resumes, returning to `playing` with the floor exactly as it was left,
+which is what `RESUME` does.
+
 ## `victory` and `gameover`
 
 Both draw the two rows of `ENDING_ITEMS`, `PLAY AGAIN` and `MENU`, and both open
@@ -101,3 +110,5 @@ with the highlight on `PLAY AGAIN`, at row `0`.
 | --- | --- |
 | `PLAY AGAIN` | A fresh run on the mode and difficulty the run just played, with that pair's starting money and lives. |
 | `MENU` | `title`. |
+
+`back` returns to `title` from either of them.
