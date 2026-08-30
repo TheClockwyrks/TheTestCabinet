@@ -95,14 +95,22 @@ export function renderGame(
     return;
   }
 
+  // Everything play consists of is drawn inside the board's own region. The
+  // clip is what makes that literal: a glow around a node on the entry row, or
+  // around a foe leaving at the floor, reaches past the board's edge, and play
+  // is confined to the board (specs/board.md).
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, BOARD_Y, BOARD_W, BOARD_H);
+  ctx.clip();
   drawField(ctx, state, sprites);
   drawWorms(ctx, state, sprites);
   drawFoes(ctx, state, sprites);
   drawArcs(ctx, state);
   drawBolts(ctx, state);
   drawCursor(ctx, state, sprites);
-  // Drawn after the board, so the glow of anything standing on the entry row
-  // cannot bleed into the bar above it.
+  ctx.restore();
+
   drawHud(ctx, state);
 
   if (state.screen === "playing" && state.phase === "banner") {
@@ -465,6 +473,9 @@ function drawPip(ctx: Ctx, x: number, y: number): void {
 /** A quiet decorative board behind the two menu screens. */
 function drawFurniture(ctx: Ctx, state: WirewormState, sprites: Sprites): void {
   ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, BOARD_Y, BOARD_W, BOARD_H);
+  ctx.clip();
   ctx.globalAlpha = 0.3;
   const pulse = pairFrame(state.simTime, NODE_PULSE_FPS);
   const nodes: [number, number, number][] = [

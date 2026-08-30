@@ -80,6 +80,38 @@ describe("the board", () => {
     rig.dispose();
   });
 
+  test("nothing of the board reaches into the HUD bar or past the floor", () => {
+    const rig = rigOnBoard();
+    // The three entities that reach closest to an edge: a node and a foe on the
+    // entry row, and a foe at the floor.
+    rig.debug.setNode(20, 0, CHARGE_MAX);
+    rig.debug.addFoe("dropper", tileCX(24), tileCY(0));
+    rig.debug.addFoe("glitch", tileCX(28), 718);
+    const log = captureDraws(rig);
+    draw(rig);
+    log.stop();
+    // Every image is drawn inside the board.
+    for (const call of log.calls) {
+      expect(call.y).toBeGreaterThanOrEqual(BOARD_Y - TILE / 2);
+    }
+    // And the bar carries the bar's own ground, whatever was drawn beneath it.
+    for (const x of [tileCX(20), tileCX(24), 4]) {
+      expect(separation(rig.sample(x, 8), rig.sample(4, 8))).toBeLessThan(8);
+    }
+    rig.dispose();
+  });
+
+  test("the board reads through the scrim a menu is laid over it on", () => {
+    const rig = rigOnBoard();
+    rig.debug.setNode(12, 8, 2);
+    rig.debug.setScreen("paused");
+    draw(rig);
+    const node = tileAverage(rig, tileLeft(12), tileTop(8), TILE);
+    const empty = tileAverage(rig, tileLeft(16), tileTop(8), TILE);
+    expect(separation(node, empty)).toBeGreaterThan(READS_APART);
+    rig.dispose();
+  });
+
   test("a node is drawn on the tile center the formula gives", () => {
     const rig = rigOnBoard();
     const tiles: [number, number][] = [

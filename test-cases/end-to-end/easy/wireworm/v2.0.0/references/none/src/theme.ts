@@ -52,7 +52,7 @@ export const COLOR = {
   arc: "#d8fff0",
   arcGlow: "rgba(140, 255, 224, 0.9)",
   /** The scrim a menu is laid over the board on. */
-  scrim: "rgba(4, 9, 14, 0.74)",
+  scrim: "rgba(4, 9, 14, 0.66)",
   /** The level banner. */
   banner: "#eafdff",
 } as const;
