@@ -326,11 +326,14 @@ source = "specs/ui.md.hbs"
 source = "specs/controls.md.hbs"
 
 # The asset-production contract: every asset the game needs, which of the six
-# on-PATH binaries produces it, where it lands in the workspace, and how it is wired
-# into the build. Seeded for every variant so the produced-asset review items and
-# this spec stay in lockstep. It is the defining spec of a full-stack case.
+# on-PATH binaries produces it, the exact path it lands at under `assets/`, and how it
+# is wired into the build. Seeded for every variant so the produced-asset review items
+# and this spec stay in lockstep. It is the defining spec of a full-stack case. It
+# branches on the engine for how a produced file is loaded (the build's own
+# page-relative loading under `none`, the engine's asset loader under a fixed root
+# otherwise) and for how a cue is played.
 [[spec]]
-source = "specs/assets.md"
+source = "specs/assets.md.hbs"
 
 # The debugging and automation surface every build must expose: a deterministic core;
 # an API to pose and read the game from code; and a read-only debug overlay. Seeded for
