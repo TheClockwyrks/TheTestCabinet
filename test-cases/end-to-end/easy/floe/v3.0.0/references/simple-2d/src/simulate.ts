@@ -19,8 +19,9 @@
 //   4. The hunt runs: slots fill, bears sense, route and travel, and traffic takes
 //      off any bear it has arrived on.
 //   5. A hold, where one is running, counts down and hands over when it expires.
-//   6. Otherwise the crossing itself: the hop, the carry, the catch, the three
-//      hazards, and the crossing timer.
+//   6. Otherwise the crossing itself: the carry, the hop, the catch, the three
+//      hazards, and the crossing timer. Every one of those but the timer is the
+//      critter's own, so all of them wait on a critter that is in play.
 //
 // NOTHING HERE READS THE RENDERER OR THE WALL CLOCK, which is what makes the same
 // starting state driven by the same calls over the same elapsed game time reach the
@@ -114,10 +115,18 @@ function stepPlaying(sim: Sim, dt: number, events: TickEvents): void {
     return;
   }
 
-  if (stepHop(sim, dt, events)) return;
-  carryCritter(sim, dt);
-
+  // Everything the critter does, and everything done to it, is the critter's own
+  // and happens only while it is on the strait: a critter taken off by
+  // `removeCritter` is out of play, so nothing on the strait reaches it, its
+  // cooldown holds, and no floe carries it.
   if (sim.critter.present) {
+    // The floe under it carries it BEFORE it may hop, so an accepted hop leaves
+    // the critter's centre exactly on the target tile's centre at the END of the
+    // tick: the carry belongs to the tile the critter was standing on, never to
+    // the one it hopped onto (`specs/hopping.md`, `specs/water.md`).
+    carryCritter(sim, dt);
+    if (stepHop(sim, dt, events)) return;
+
     const caught = sim.gates.catchTest ? catcher(sim) : undefined;
     if (caught !== undefined) {
       // The bear's lunge outlives the bear: every bear leaves the strait on the
@@ -161,10 +170,18 @@ function stepPlaying(sim: Sim, dt: number, events: TickEvents): void {
  * `simTime` accumulates whatever the screen is, so a build left alone on the title
  * screen still reports time passing; everything else is the `playing` screen's, and
  * a `paused` screen suspends all of it (`specs/progression.md`).
+ *
+ * `playing` is whether the frame this tick belongs to began on the `playing`
+ * screen; `advanceFrame` explains why a frame that did not is the menu's.
  */
-export function tick(sim: Sim, dt: number, events: TickEvents): void {
+export function tick(
+  sim: Sim,
+  dt: number,
+  events: TickEvents,
+  playing: boolean,
+): void {
   sim.simTime += dt;
-  if (sim.screen !== "playing") return;
+  if (!playing || sim.screen !== "playing") return;
   sim.animTime += dt;
   stepPlaying(sim, dt, events);
 }
@@ -176,14 +193,25 @@ export function tick(sim: Sim, dt: number, events: TickEvents): void {
  * How much one frame's delta may be worth is the clock's to bound rather than the
  * simulation's: the engine's own wall clock clamps a stalled frame, and a scripted
  * clock is asked for exactly what it delivers.
+ *
+ * `wasPlaying` is whether the screen was already `playing` when the frame began,
+ * BEFORE the frame's own input was read. A crossing advances only on a frame that
+ * both began and ended on that screen, so the frame a menu starts a run on belongs
+ * to the menu: the fresh crossing it laid down is left exactly as it was laid, its
+ * timer reading `timerMax` and nothing on the strait having moved yet. The frame
+ * that leaves the pause menu is the same case (`specs/ui.md`).
  */
-export function advanceFrame(sim: Sim, dt: number): FrameResult {
+export function advanceFrame(
+  sim: Sim,
+  dt: number,
+  wasPlaying: boolean,
+): FrameResult {
   const cues: CueName[] = [];
   sim.frameCarry += Math.max(0, dt);
   while (sim.frameCarry >= TICK_DT) {
     sim.frameCarry -= TICK_DT;
     const events = newTickEvents();
-    tick(sim, TICK_DT, events);
+    tick(sim, TICK_DT, events, wasPlaying);
     cues.push(...events.cues);
   }
   return { cues };

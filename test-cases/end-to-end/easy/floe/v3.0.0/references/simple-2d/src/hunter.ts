@@ -8,13 +8,14 @@
 // own faculty (`specs/instrumentation.md`):
 //
 //   1. Its SENSE reads the critter's tile into its target.
-//   2. Its ROUTING commits a step, where it is settled and has none.
-//   3. Its TRAVEL carries it along the step it is on. A tick whose travel would
+//   2. Its TRAVEL carries it along the step it is on. A tick whose travel would
 //      carry it past the centre it is heading for settles it exactly there, and the
 //      travel left over is carried into the next tick, so no distance is lost at a
-//      tile centre. On settling it chooses again, in that same tick, which is why a
-//      turn always lands on a tick whose centre IS a tile centre and why no tick
-//      ever changes both its centre `x` and its centre `y`.
+//      tile centre.
+//   3. Its ROUTING commits the next step, where the travel has left it settled. It
+//      runs AFTER the travel, in that same tick, which is why a turn always lands on
+//      a tick whose centre IS a tile centre and why no tick ever changes both its
+//      centre `x` and its centre `y`.
 //   4. Traffic and the catch are tested, by the caller.
 //
 // THE ROUTE IS A BREADTH-FIRST PASS over the tiles open to a bear, from the target

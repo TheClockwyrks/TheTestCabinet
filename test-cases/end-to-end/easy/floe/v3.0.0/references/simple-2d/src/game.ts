@@ -250,6 +250,11 @@ export const game: Game<FloeState, FloeDebugApi> = {
   ): FloeState {
     const sim = toSim(state);
 
+    // Read before the input is: a crossing advances only on a frame that BOTH began
+    // and ended on the `playing` screen, so the frame a menu starts a run on leaves
+    // the fresh crossing it laid down exactly as it laid it.
+    const wasPlaying = sim.screen === "playing";
+
     // Input is resolved once per frame: an edge fires once per press, and a held
     // direction is left on the state as the request the ticks consume.
     const frame = newTickEvents();
@@ -259,7 +264,7 @@ export const game: Game<FloeState, FloeDebugApi> = {
     // where the audio bus is reachable, and `muted` mirrors the result.
     if (outcome.toggleMute) api.audio.setMuted(!api.audio.muted());
 
-    const advanced = advanceFrame(sim, dt);
+    const advanced = advanceFrame(sim, dt, wasPlaying);
 
     sim.muted = api.audio.muted();
     for (const cue of frame.cues) api.audio.play(cue);

@@ -11,10 +11,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   ACTIONS,
+  BAYFILL_PAUSE,
   BAYS,
+  BEAR_EMERGE_DELAY,
   BEAR_ICE_SPEED,
   BEAR_SWIM_SPEED,
   BONUS_LIFE_EVERY,
+  CLEAR_PAUSE,
+  DEATH_PAUSE,
   DEFAULT_SEED,
   FISH_INTERVAL,
   FISH_LINGER,
@@ -670,25 +674,43 @@ describe("the run", () => {
 // ---- The clock's rounding ---------------------------------------------
 
 describe("a countdown", () => {
-  it("has run out inside half a tick of zero", () => {
-    expect(SPENT).toBeCloseTo(TICK_DT / 2, 12);
+  /** The tick a duration counted down one `TICK_DT` at a time is spent on. */
+  function spentAt(duration: number): number {
+    let remaining = duration;
+    for (let tick = 1; tick <= 5000; tick += 1) {
+      remaining = Math.max(0, remaining - TICK_DT);
+      if (expired(remaining)) return tick;
+    }
+    return -1;
+  }
+
+  it("has run out at zero, and absorbs no more than the counting's own noise", () => {
+    expect(SPENT).toBeLessThan(TICK_DT / 1000);
     expect(expired(0)).toBe(true);
     expect(expired(-1e-15)).toBe(true);
-    expect(expired(TICK_DT / 4)).toBe(true);
+    expect(expired(TICK_DT / 4)).toBe(false);
     expect(expired(TICK_DT)).toBe(false);
   });
 
-  it("spends the hop cooldown at the nearest whole tick to its figure", () => {
-    let remaining = HOP_COOLDOWN;
-    let spentAt = 0;
-    for (let tick = 1; tick <= 20; tick += 1) {
-      remaining = Math.max(0, remaining - TICK_DT);
-      if (expired(remaining)) {
-        spentAt = tick;
-        break;
-      }
+  it("spends a whole-tick duration on exactly that many ticks", () => {
+    for (const duration of [
+      BAYFILL_PAUSE,
+      BEAR_EMERGE_DELAY,
+      DEATH_PAUSE,
+      CLEAR_PAUSE,
+      FISH_LINGER,
+      FISH_INTERVAL,
+      crossingTimer(1),
+    ]) {
+      expect(spentAt(duration)).toBe(Math.round(duration / TICK_DT));
     }
-    expect(spentAt).toBe(Math.round(HOP_COOLDOWN / TICK_DT));
+  });
+
+  it("spends the hop cooldown on the first tick that leaves none of it", () => {
+    // `HOP_COOLDOWN` is 14.4 ticks, which no whole number of ticks reaches:
+    // `specs/hopping.md` ignores a press while the cooldown is running, so the
+    // fifteenth tick is the first at which one is not.
+    expect(spentAt(HOP_COOLDOWN)).toBe(Math.ceil(HOP_COOLDOWN / TICK_DT));
   });
 });
 

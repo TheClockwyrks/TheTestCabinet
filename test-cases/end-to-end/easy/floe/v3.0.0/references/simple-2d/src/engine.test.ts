@@ -468,6 +468,26 @@ describe("hopping", () => {
     expect(critter.x).toBe(tileCX(11));
     expect(critter.y).toBe(tileCY(4));
   });
+
+  it("lands on that centre exactly with both lanes still drifting", async () => {
+    // The carry belongs to the tile the critter was standing on, never to the one
+    // it hopped onto, so a hop onto a moving floe is still exactly on its centre at
+    // the end of the tick it was taken on.
+    h.pose((s) => h.debug.addFloe(s, 5, "raft4", tileCX(10) - 16));
+    h.pose((s) => h.debug.addFloe(s, 4, "raft3", tileCX(10) - 16));
+    h.pose((s) => h.debug.setCritterTile(s, 11, 5));
+    h.pose((s) => h.debug.setCritterX(s, tileCX(11) + 11));
+    h.pose((s) => h.debug.setHopCooldown(s, 0));
+    expect(h.snapshot().waterLanes[5 - 2].speed).toBeGreaterThan(0);
+    expect(h.snapshot().waterLanes[4 - 2].speed).toBeGreaterThan(0);
+
+    h.tap("ArrowUp");
+    await h.frames(1);
+    const { critter } = h.snapshot();
+    expect(critter.footing).toBe("floe");
+    expect(critter.x).toBe(tileCX(11));
+    expect(critter.y).toBe(tileCY(4));
+  });
 });
 
 // ---- The bands ----------------------------------------------------------
@@ -1373,6 +1393,23 @@ describe("the controls", () => {
     expect(s.critter.present).toBe(true);
   });
 
+  it("leaves the crossing the title laid down exactly as it laid it", async () => {
+    // A crossing advances only on a frame that both began and ended on the
+    // `playing` screen, so the frame the menu started the run on is the menu's: the
+    // timer reads its full length and the critter has not been reached by anything.
+    h.tap("Enter");
+    await h.frames(1);
+    const s = h.snapshot();
+    expect(s.screen).toBe("playing");
+    expect(s.timer).toBe(s.timerMax);
+    expect(s.timer).toBe(crossingTimer(1));
+    expect(s.phase).toBe("crossing");
+    expect(s.phaseTimer).toBe(0);
+    expect(s.critter.x).toBe(tileCX(START_COL));
+    expect(s.critter.y).toBe(tileCY(ROW_NEAR));
+    expect(s.bears).toHaveLength(0);
+  });
+
   it("pauses on either pause key and freezes the strait", async () => {
     for (const code of ["KeyP", "Escape"] as const) {
       startCrossing();
@@ -1656,6 +1693,28 @@ describe("the debug surface", () => {
     expect(s.bays).toEqual([false, false, false, false, false]);
     expect(s.level).toBe(1);
     expect(s.phase).toBe("crossing");
+  });
+
+  it("leaves a critter it has removed out of play entirely", async () => {
+    startCrossing();
+    h.pose((s) => h.debug.addFloe(s, 5, "raft4", tileCX(10) - 16));
+    h.pose((s) => h.debug.setCritterTile(s, 11, 5));
+    h.pose((s) => h.debug.setHopCooldown(s, 0.05));
+    h.pose((s) => h.debug.removeCritter(s));
+    const before = h.snapshot().critter;
+    expect(before.present).toBe(false);
+    expect(h.snapshot().waterLanes[5 - 2].speed).toBeGreaterThan(0);
+
+    h.hold("ArrowUp");
+    await h.advance(1);
+    h.release("ArrowUp");
+
+    const after = h.snapshot().critter;
+    expect(after.present).toBe(false);
+    expect(after.x).toBe(before.x);
+    expect(after.y).toBe(before.y);
+    expect(after.hopCooldown).toBe(before.hopCooldown);
+    expect(h.snapshot().lives).toBe(START_LIVES);
   });
 
   it("gives every entity a distinct id it keeps across a second", async () => {
