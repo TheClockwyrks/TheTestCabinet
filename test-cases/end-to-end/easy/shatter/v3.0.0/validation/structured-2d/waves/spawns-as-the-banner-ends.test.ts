@@ -1,0 +1,20 @@
+// SCAFFOLD STUB — NOT A VALIDATOR.
+//
+// waves/spawns-as-the-banner-ends — The rocks arrive as the banner ends
+//
+// Every rock of the announced wave is on the field within a tick of the banner
+// reaching 0.
+//
+// Declared by test-case.toml as validation.script "waves/spawns-as-the-banner-
+// ends.test.ts", so the manifest resolves only while this file exists. The
+// Validators stage of the v3.0.0 rework replaces it with the real suite,
+// written against the structured-2d harness in
+// validation/structured-2d/harness.ts and the spec-derived oracle in
+// validation/structured-2d/geometry.ts — never against a reference build.
+//
+// It THROWS on import rather than passing, so a stub the Validators stage
+// forgets fails loudly instead of silently scoring a point.
+
+throw new Error(
+  "Shatter v3.0.0: validation/structured-2d/waves/spawns-as-the-banner-ends.test.ts is a scaffold stub and has not been written yet",
+);

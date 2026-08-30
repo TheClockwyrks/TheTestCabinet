@@ -1,0 +1,21 @@
+// SCAFFOLD STUB — NOT A VALIDATOR.
+//
+// screens/resume-returns-to-play — RESUME returns to the game in progress
+//
+// Confirming entry 0 gives screen playing with the score, lives, wave and
+// every body exactly as they stood, per the rule specs/ui.md states that
+// RESUME returns to the game as it stood.
+//
+// Declared by test-case.toml as validation.script "screens/resume-returns-to-
+// play.test.ts", so the manifest resolves only while this file exists. The
+// Validators stage of the v3.0.0 rework replaces it with the real suite,
+// written against the structured-2d harness in
+// validation/structured-2d/harness.ts and the spec-derived oracle in
+// validation/structured-2d/geometry.ts — never against a reference build.
+//
+// It THROWS on import rather than passing, so a stub the Validators stage
+// forgets fails loudly instead of silently scoring a point.
+
+throw new Error(
+  "Shatter v3.0.0: validation/structured-2d/screens/resume-returns-to-play.test.ts is a scaffold stub and has not been written yet",
+);

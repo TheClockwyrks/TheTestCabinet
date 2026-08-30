@@ -1,0 +1,20 @@
+// SCAFFOLD STUB — NOT A VALIDATOR.
+//
+// waves/speed-scales-per-wave — Each wave drifts 4 percent faster
+//
+// The rocks of wave 6 have base speeds scaled by 1 + WAVE_SPEED_STEP x 5
+// against wave 1's, within 3 percent.
+//
+// Declared by test-case.toml as validation.script "waves/speed-scales-per-
+// wave.test.ts", so the manifest resolves only while this file exists. The
+// Validators stage of the v3.0.0 rework replaces it with the real suite,
+// written against the simple-2d harness in validation/simple-2d/harness.ts and
+// the spec-derived oracle in validation/simple-2d/geometry.ts — never against
+// a reference build.
+//
+// It THROWS on import rather than passing, so a stub the Validators stage
+// forgets fails loudly instead of silently scoring a point.
+
+throw new Error(
+  "Shatter v3.0.0: validation/simple-2d/waves/speed-scales-per-wave.test.ts is a scaffold stub and has not been written yet",
+);
