@@ -1,27 +1,67 @@
-// Arc Foundry — `refinement.refused-unaffordable`. CASE-PROVIDED. NOT YET WRITTEN.
+// refinement/refused-unaffordable — refining is refused with the price not met.
 //
-// The manifest declares this point at `refinement/refused-unaffordable.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/scrap-press.md fixes the refusal: refining "is refused at `R8` and when the
+// player cannot afford the next level". specs/controls.md says the same of the
+// control that commits it: upgrading "when the selection is not a combination
+// tower, refines the press one level", and "Both are refused at their top rung and
+// when unaffordable". specs/instrumentation.md carries the refusal into the
+// operation: an operation standing for a control "is refused wherever the control
+// is refused and does nothing when it is", and "The refusal is readable in the
+// snapshot: ... no Charge leaves the bank".
 //
-// THE REQUIREMENT. With less Charge than the next level costs, refining
-// changes nothing: the level and the Charge are both unchanged and the panel's
-// refinement control is disabled.
-//
-// HOW IT IS DECIDED. Set Charge one short of the next cost, attempt the
-// refinement, and read the level and Charge back. The evidence it hands back
-// is `refused` (image): the disabled refinement control.
+// The bank is posed one Charge short of the next rung, twice: at the foot of the
+// track, and part-way up it, because a build that checks the price only for the
+// first rung is a different build from one that never checks it. Nothing is on the
+// yard and no wave is running, so the only thing that could move either figure is
+// the purchase being refused or going through.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  refinementCost,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** The rung part-way up the track the second attempt is made from. */
+const MIDWAY = 4;
 
-describe("refinement.refused-unaffordable", () => {
-  it("Refining is refused when it cannot be afforded", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `refinement.refused-unaffordable` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("changes neither the level nor the bank when the next rung is one Charge out of reach", async () => {
+  // At the foot of the track: R1 costs 20, and the bank holds 19.
+  const short = refinementCost(1) - 1;
+  openYard(h, { charge: short, refinement: 0 });
+  await h.advance(1);
+  captureStill(h, "refused");
+
+  h.debug.upgradeQuality();
+  let s = h.snapshot();
+  assertEqual(s.refinement, 0, "the level after a refinement one Charge short");
+  assertEqual(s.charge, short, "the bank after a refinement one Charge short");
+
+  // And part-way up it, where the price is a different figure.
+  const shortMidway = refinementCost(MIDWAY + 1) - 1;
+  h.debug.setRefinement(MIDWAY);
+  h.debug.setCharge(shortMidway);
+
+  h.debug.upgradeQuality();
+  s = h.snapshot();
+  assertEqual(
+    s.refinement,
+    MIDWAY,
+    `the level after a refusal at R${MIDWAY}, where R${MIDWAY + 1} costs ` +
+      `${refinementCost(MIDWAY + 1)}`,
+  );
+  assertEqual(s.charge, shortMidway, `the bank after a refusal at R${MIDWAY}`);
 });
