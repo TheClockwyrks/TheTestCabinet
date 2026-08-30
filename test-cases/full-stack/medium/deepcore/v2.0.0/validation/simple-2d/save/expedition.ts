@@ -55,7 +55,7 @@ export const SURFACE_ROW = 0;
  * The title menu with no save banked: `TITLE_ITEMS` without its first entry.
  *
  * specs/ui.md fixes `CONTINUE` as present only while a save exists, and first
- * when present, so the menu a slotless title carries is the rest of the list.
+ * when present, so the menu a title with an empty slot carries is the rest of it.
  */
 export const TITLE_ITEMS_NO_SAVE = TITLE_ITEMS.slice(1);
 
