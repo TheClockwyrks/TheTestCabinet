@@ -1,26 +1,84 @@
-// Arc Foundry — `input.pointer-selects`. CASE-PROVIDED. NOT YET WRITTEN.
+// input/pointer-selects — a press on a structure selects it.
 //
-// The manifest declares this point at `input/pointer-selects.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/controls.md`: "Press on a structure — Selects it as the
+// primary selection", and, on the line below, "A press with `modify` released
+// clears the set back to a single selection."
+// `specs/instrumentation.md` says the same of the operation that stands for this
+// press: it "selects a structure, as a pointer press on it would, and clears the
+// combine set back to that single selection."
 //
-// THE REQUIREMENT. Pressing on a standing structure makes it the primary
-// selection and clears the combine set back to that single selection.
+// HOW IT IS DECIDED. Two base structures stand on an otherwise empty yard and both
+// are put into the explicit combine set, so the set holds something a press has to
+// clear. One of them is then pressed at its own centre, with no modifier held, and
+// two things are read: it is the primary selection, and the OTHER piece is no
+// longer in the combine set. The second read is the one that matters — a build
+// that moves the selection and leaves a stale set folds pieces the player is no
+// longer pointing at.
 //
-// HOW IT IS DECIDED. Stand two structures, add both to the combine set, press
-// on one, and read the selection and the set. The evidence it hands back is
-// `select` (image): the structure the press selected.
+// The check does not insist on whether the pressed piece itself remains listed in
+// the set, because "back to that single selection" is honoured by a build that
+// lists it and by one that empties the set and leans on `selected`. What it
+// insists on is that nothing else survives.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  clickStructure,
+  createHarness,
+  openYard,
+  standComponent,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** Two footprints clear of the chain and of each other. */
+const PRESSED = { col: 10, row: 0 };
+const OTHER = { col: 13, row: 0 };
 
-describe("input.pointer-selects", () => {
-  it("A press on a structure selects it", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `input.pointer-selects` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("makes the pressed structure the primary selection and clears the set", async () => {
+  await openYard(h);
+  const pressed = await standComponent(
+    h,
+    "capacitor",
+    2,
+    PRESSED.col,
+    PRESSED.row,
+  );
+  const other = await standComponent(h, "emitter", 2, OTHER.col, OTHER.row);
+
+  await h.debug.addToCombineSet(pressed);
+  await h.debug.addToCombineSet(other);
+  assertLength(
+    (await h.snapshot()).combineSet,
+    2,
+    "an explicit combine set holding both pieces before the press " +
+      "(specs/instrumentation.md)",
+  );
+
+  await clickStructure(h, PRESSED.col, PRESSED.row);
+  await captureStill(h, "select");
+
+  const after = await h.snapshot();
+  assertEqual(
+    after.selected,
+    pressed,
+    `pressing the structure at (${PRESSED.col}, ${PRESSED.row}) to make it the ` +
+      "primary selection (specs/controls.md)",
+  );
+  assertDeepEqual(
+    after.combineSet.filter((id) => id !== pressed),
+    [],
+    "the combine set after an unmodified press, which is cleared back to that " +
+      "single selection (specs/controls.md)",
+  );
 });

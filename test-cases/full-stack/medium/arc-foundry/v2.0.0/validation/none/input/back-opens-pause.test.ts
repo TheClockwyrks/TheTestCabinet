@@ -1,26 +1,75 @@
-// Arc Foundry — `input.back-opens-pause`. CASE-PROVIDED. NOT YET WRITTEN.
+// input/back-opens-pause — `back` opens the pause menu on `playing`.
 //
-// The manifest declares this point at `input/back-opens-pause.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/controls.md` gives `back` one ordered list to resolve
+// against, and the pause menu is the FOURTH of the six: "a held rock is put away;
+// the selection is cleared; an open overlay is closed; on `playing` the pause menu
+// opens". So with the cursor empty, nothing selected and both overlays closed,
+// `back` on `playing` is what a player uses to reach the pause menu.
+// `specs/ui.md` names the screen it reaches: `paused`, "the pause menu, over a yard
+// that is visible and frozen behind it".
 //
-// THE REQUIREMENT. With nothing held, nothing selected and no overlay open,
-// the back action on playing opens the pause menu.
-//
-// HOW IT IS DECIDED. Clear the yard state, take back on playing, and read the
-// screen. The evidence it hands back is `back` (image): the pause menu the
-// back action opened.
+// HOW IT IS DECIDED. The three rungs above this one are all cleared explicitly on
+// an otherwise empty yard — nothing held, nothing selected, both overlays closed —
+// and then `back` is pressed once as a player presses it, a real browser key event
+// through the build's own keyboard layer. The screen is read back.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNull } from "../assert";
+import { keyFor } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+let h: Harness;
 
-describe("input.back-opens-pause", () => {
-  it("back opens the pause menu on playing", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `input.back-opens-pause` has not been written yet",
-    );
-  });
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("opens the pause menu when nothing above it in back's list applies", async () => {
+  await openYard(h);
+  await h.debug.clearSelection();
+  await h.debug.setOverlay("combos", false);
+  await h.debug.setOverlay("damage", false);
+
+  const posed = await h.snapshot();
+  assertEqual(
+    posed.screen,
+    "playing",
+    "a run on the playing screen before back is pressed (specs/ui.md)",
+  );
+  assertEqual(
+    posed.held.active,
+    false,
+    "nothing held on the cursor, so back's first rung does not apply " +
+      "(specs/controls.md)",
+  );
+  assertNull(
+    posed.selected,
+    "nothing selected, so back's second rung does not apply " +
+      "(specs/controls.md)",
+  );
+  assertEqual(
+    posed.overlays.combos || posed.overlays.damage,
+    false,
+    "no overlay open, so back's third rung does not apply (specs/controls.md)",
+  );
+
+  await h.tap(keyFor("back"));
+  await captureStill(h, "back");
+
+  assertEqual(
+    (await h.snapshot()).screen,
+    "paused",
+    `pressing ${keyFor("back")} on playing with nothing held, nothing ` +
+      "selected and no overlay open to open the pause menu " +
+      "(specs/controls.md, specs/ui.md)",
+  );
 });
