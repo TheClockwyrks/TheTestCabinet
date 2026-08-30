@@ -38,6 +38,7 @@ import {
   shotDestroys,
 } from "./bands";
 import { addBurst } from "./bursts";
+import { ofWave } from "./drones";
 import { dischargeSpent, endDischarge, fillResonance } from "./discharge";
 import { loseLife } from "./flow";
 import { chargeDrone } from "./overload";
@@ -68,7 +69,7 @@ export function destroyDrone(sim: Sim, drone: MutDrone, ev: FrameEvents): void {
   if (isChallengeStage(sim.stage)) sim.challengeHits += 1;
   addBurst(sim, drone.x, drone.y, droneFootprint(drone));
   sim.drones = sim.drones.filter((candidate) => candidate !== drone);
-  ev.dronesRemoved += 1;
+  if (ofWave(drone)) ev.waveDronesRemoved += 1;
 }
 
 /** What one of the player's bullets does to the drone it reached. */

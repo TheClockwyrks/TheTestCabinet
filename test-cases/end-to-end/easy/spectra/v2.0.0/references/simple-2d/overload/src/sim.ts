@@ -33,20 +33,21 @@ import type { DeepReadonly } from "ts-essentials";
  *
  * Cues are gathered rather than played as they happen, so a frame that raises one
  * twice still plays it once, which is what `specs/ui.md` asks for.
- * `dronesRemoved` is what the stage-clear rule reads: `specs/stages.md` makes a
- * clear the MOMENT the last drone of a wave is destroyed, or, on a challenge
+ * `waveDronesRemoved` is what the stage-clear rule reads: `specs/stages.md` makes
+ * a clear the MOMENT the last drone of a wave is destroyed, or, on a challenge
  * stage, the moment the last of its drones has left the field, so a wave that
  * holds no drone and has had none removed is being played rather than cleared.
- * That is a fact about the frame rather than about the field.
+ * That is a fact about the frame rather than about the field, and it counts the
+ * wave's own drones alone, so a drone a scenario placed clears no stage.
  */
 export interface FrameEvents {
   readonly cues: Set<CueName>;
-  dronesRemoved: number;
+  waveDronesRemoved: number;
 }
 
 /** A fresh record of what a frame produced. */
 export function newFrameEvents(): FrameEvents {
-  return { cues: new Set<CueName>(), dronesRemoved: 0 };
+  return { cues: new Set<CueName>(), waveDronesRemoved: 0 };
 }
 
 export interface MutShip {

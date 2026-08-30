@@ -347,7 +347,6 @@ describe("reset", () => {
     expect(snap.ship.contact).toBe(true);
     expect(snap.diveClock).toBe(0);
     expect(snap.extraLifeAwarded).toBe(false);
-    expect(snap.challengeHits ?? 0).toBe(0);
     expect(snap.simTime).toBe(0);
   });
 

@@ -54,16 +54,33 @@ import {
 } from "./sim";
 
 /**
- * The entry group a Shard carries while it is in its Overload plunge.
+ * The entry group a drone carries when it arrived through the debug surface
+ * rather than with a wave.
+ *
+ * `specs/swarm.md` counts an entry group from `0`, so a drone that arrived with no
+ * wave has none. Two rules read it: such a drone is released the moment it is
+ * added rather than on the wave's own schedule, and the stage-clear rule counts
+ * the wave's own drones alone, so destroying a drone a scenario placed never
+ * clears a stage.
+ */
+export const NO_GROUP = -1;
+
+/**
+ * The shot count a Shard carries through its Overload plunge.
  *
  * `specs/mode.md` gives an overloaded Shard a dive at `OVERLOAD_DIVE_SCALE` times
- * the ordinary dive speed, and `specs/state.md` declares no field for it. A group
- * index is the one declared field a diving drone no longer reads: the snapshot does
- * not report it, no operation poses it, and it is consulted only while a drone is
- * `entering`. The sentinel is cleared as the plunge ends, so a later launch of the
- * same drone is an ordinary dive.
+ * the ordinary dive speed, and `specs/state.md` declares no field to hold that
+ * apart from an ordinary dive. A plunge is a dive that has already spent every
+ * shot its kind takes, which is what this count says and what makes the plunge
+ * silent; it returns to `0` with the phase, so a later launch of the same drone is
+ * an ordinary dive.
  */
-export const PLUNGE_GROUP = -1;
+const PLUNGE_SHOTS = 9;
+
+/** Whether the drone came in with the stage's own wave. */
+export function ofWave(drone: MutDrone): boolean {
+  return drone.entryGroup >= 0;
+}
 
 /** How far the swirl bends an entrance at its start, and how fast it decays. */
 const ENTER_SWIRL = 0.85;
@@ -95,7 +112,13 @@ const DIVE_EDGE_MARGIN = 12;
 
 /** Whether the drone is in an Overload plunge rather than an ordinary dive. */
 export function plunging(drone: MutDrone): boolean {
-  return drone.entryGroup === PLUNGE_GROUP;
+  return drone.kind === "shard" && drone.shotsFired >= PLUNGE_SHOTS;
+}
+
+/** Put the drone into its Overload plunge, which is a dive it fires nothing in. */
+export function enterPlunge(drone: MutDrone): void {
+  enterPhase(drone, "diving");
+  drone.shotsFired = PLUNGE_SHOTS;
 }
 
 /** Move the drone into a phase, restarting the clock the phase runs on. */
@@ -112,7 +135,6 @@ export function enterDive(drone: MutDrone): void {
 
 /** End the drone's run and send it home, ending any plunge with it. */
 export function enterReturn(drone: MutDrone): void {
-  if (plunging(drone)) drone.entryGroup = 0;
   enterPhase(drone, "returning");
 }
 
@@ -131,6 +153,9 @@ function releaseDelay(drone: MutDrone): number {
  * first group's delay being zero.
  */
 function released(sim: Sim, drone: MutDrone): boolean {
+  // A drone the surface added arrives the moment it is added, whatever the wave's
+  // own release is doing.
+  if (!ofWave(drone)) return true;
   return sim.entryClock > releaseDelay(drone);
 }
 
@@ -343,7 +368,7 @@ export function advanceDrones(sim: Sim, h: number, ev: FrameEvents): void {
       drone.x > FIELD_RIGHT + CHALLENGE_EXIT,
   );
   if (left.length === 0) return;
-  ev.dronesRemoved += left.length;
+  ev.waveDronesRemoved += left.filter(ofWave).length;
   sim.drones = sim.drones.filter((drone) => !left.includes(drone));
 }
 

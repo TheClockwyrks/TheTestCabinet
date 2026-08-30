@@ -33,7 +33,7 @@ import { addPlayerBullet, advanceBullets } from "./bullets";
 import { advanceBursts } from "./bursts";
 import { resolveContacts } from "./contacts";
 import { advanceDischarge, releaseDischarge } from "./discharge";
-import { advanceDrones, advanceEntry, launchDives } from "./drones";
+import { advanceDrones, advanceEntry, launchDives, ofWave } from "./drones";
 import {
   advanceStage,
   beginWave,
@@ -181,11 +181,12 @@ function stepWave(
   launchDives(sim, h);
   resolveContacts(sim, ev);
 
-  // The clear is the removal, so a wave that never held a drone never clears.
+  // The clear is the removal of the wave's own last drone, so a wave that never
+  // held one never clears and a drone a scenario placed clears nothing.
   if (
     sim.screen === "inWave" &&
-    ev.dronesRemoved > 0 &&
-    sim.drones.length === 0
+    ev.waveDronesRemoved > 0 &&
+    !sim.drones.some(ofWave)
   ) {
     clearStage(sim, ev);
   }

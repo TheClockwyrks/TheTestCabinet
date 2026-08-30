@@ -41,7 +41,9 @@ function drone(patch: Partial<BandedDrone> = {}): BandedDrone {
 describe("effective band", () => {
   it("is the stored band with no swap standing", () => {
     expect(effectiveDroneBand(drone(), 1, 0)).toBe("cyan");
-    expect(effectiveDroneBand(drone({ band: "magenta" }), 1, 0)).toBe("magenta");
+    expect(effectiveDroneBand(drone({ band: "magenta" }), 1, 0)).toBe(
+      "magenta",
+    );
   });
 
   it("is the opposite for a Prism whose shell has broken", () => {

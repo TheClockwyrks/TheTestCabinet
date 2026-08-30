@@ -13,7 +13,12 @@ import {
 } from "./constants";
 import { emptyArt } from "./assets";
 import { openingState } from "./flow";
-import { buildWave, freeFormationSlot, waveFluxPairs, wavePrisms } from "./wave";
+import {
+  buildWave,
+  freeFormationSlot,
+  waveFluxPairs,
+  wavePrisms,
+} from "./wave";
 import { toSim, type Sim } from "./sim";
 
 function simAt(stage: number, seed = 1): Sim {
@@ -103,7 +108,8 @@ describe("a standard wave", () => {
     const prism = sim.drones.find((drone) => drone.kind === "prism");
     expect(prism).toBeDefined();
     const escorts = sim.drones.filter(
-      (drone) => drone.kind === "shard" && drone.entryGroup === prism?.entryGroup,
+      (drone) =>
+        drone.kind === "shard" && drone.entryGroup === prism?.entryGroup,
     );
     expect(escorts).toHaveLength(2);
     expect(new Set(escorts.map((drone) => drone.band)).size).toBe(2);

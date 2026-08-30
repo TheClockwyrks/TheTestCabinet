@@ -23,7 +23,7 @@ import {
   PRISM_MUZZLE_SPREAD,
   muzzleY,
 } from "./bullets";
-import { PLUNGE_GROUP, enterDive } from "./drones";
+import { enterPlunge } from "./drones";
 import { drawInt, type FrameEvents, type MutDrone, type Sim } from "./sim";
 import { freeFormationSlot, freshDrone } from "./wave";
 import type { Band } from "./game";
@@ -62,8 +62,7 @@ function runOverload(sim: Sim, drone: MutDrone): void {
 
 /** A Shard plunges headlong down the field toward the ship's current x. */
 function overloadShard(drone: MutDrone): void {
-  drone.entryGroup = PLUNGE_GROUP;
-  enterDive(drone);
+  enterPlunge(drone);
 }
 
 /** A Flux flips its band, opens a fresh window, and sprays its new band. */

@@ -53,6 +53,7 @@ import {
   addEnemyBullet as addEnemyBulletAt,
   addPlayerBullet as addPlayerBulletAt,
 } from "./bullets";
+import { NO_GROUP } from "./drones";
 import { resetToTitle } from "./flow";
 import { MODE } from "./overload";
 import { bulletById, droneById, toSim, type MutDrone, type Sim } from "./sim";
@@ -448,6 +449,8 @@ export function createDebugApi(): SpectraDebugApi {
       pose((sim) => {
         const drone = freshDrone(sim, kind, x, y, "cyan");
         drone.phase = "formation";
+        // It arrived with no wave, so no stage clears when it is destroyed.
+        drone.entryGroup = NO_GROUP;
         sim.drones.push(drone);
       })(state),
 
