@@ -104,7 +104,7 @@ export const REQUIRED_OPS = [
 ] as const;
 
 /** The version the surface reports (`REFRACT_DEBUG_VERSION`). */
-export const REFRACT_DEBUG_VERSION = 1;
+export const REFRACT_DEBUG_VERSION = 2;
 
 /** The screens the game can be on. */
 export type Screen =
@@ -155,9 +155,27 @@ export interface RefractSnapshot {
   beams: Partial<Record<Channel, BeamView>>;
   solved: boolean;
   tracing: { channel: Channel; live: { col: number; row: number } } | null;
-  pointer: { x: number; y: number; down: boolean };
+  pointer: { x: number; y: number; down: boolean; device: PointerDevice };
+  /** The current screen's pointer targets, under the ids and in the order
+   * specs/controls.md fixes for that screen. */
+  targets: TargetSnapshot[];
   muted: boolean;
   simTime: number;
+}
+
+/** Which device drove the pointer, as `specs/controls.md` names them. */
+export type PointerDevice = "mouse" | "pen" | "touch";
+
+/**
+ * One pointer target: the rectangle a screen is worked through, in the stage's
+ * logical units, under the id `specs/controls.md` fixes for it.
+ */
+export interface TargetSnapshot {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /** The operations a check poses the game through. Every one crosses into the page. */
@@ -168,9 +186,9 @@ export interface RefractDebugApi {
   snapshot(): Promise<RefractSnapshot>;
   startMode(mode: Mode): Promise<void>;
   loadBoard(board: readonly string[]): Promise<void>;
-  pointerDown(x: number, y: number): Promise<void>;
-  pointerMove(x: number, y: number): Promise<void>;
-  pointerUp(): Promise<void>;
+  pointerDown(x: number, y: number, device?: PointerDevice): Promise<void>;
+  pointerMove(x: number, y: number, device?: PointerDevice): Promise<void>;
+  pointerUp(device?: PointerDevice): Promise<void>;
   trace(cells: readonly { col: number; row: number }[]): Promise<void>;
   clear(): Promise<void>;
 }
@@ -2093,4 +2111,65 @@ export async function solveGenerated(
     }
   }
   return { boards, verdicts, afterSolve };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Pointer targets                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The target the current screen reports under `id`, or a failure naming what it
+ * did report.
+ *
+ * specs/controls.md fixes the id set per screen, so a build that carries the
+ * target but names it something else fails here on the id rather than silently
+ * later on a press that lands nowhere.
+ */
+export function targetById(
+  snapshot: RefractSnapshot,
+  id: string,
+): TargetSnapshot {
+  const found = snapshot.targets?.find((target) => target.id === id);
+  if (found === undefined) {
+    return fail(
+      `the ${snapshot.screen} screen reports a pointer target "${id}" ` +
+        "(specs/controls.md, Pointer targets)",
+      (snapshot.targets ?? []).map((target) => target.id),
+    );
+  }
+  return found;
+}
+
+/** The middle of a target, which is where every pointer check aims. */
+export function targetCenter(target: TargetSnapshot): {
+  x: number;
+  y: number;
+} {
+  return { x: target.x + target.w / 2, y: target.y + target.h / 2 };
+}
+
+/** Whether two target rectangles share any area. */
+export function targetsOverlap(a: TargetSnapshot, b: TargetSnapshot): boolean {
+  return (
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  );
+}
+
+/**
+ * Press at a point, release at another, and settle a frame — the gesture every
+ * target is taken by. Both points are in the stage's logical units, and the
+ * release defaults to the press.
+ */
+export async function pressRelease(
+  h: Harness,
+  press: { x: number; y: number },
+  release: { x: number; y: number } = press,
+  device: PointerDevice = "mouse",
+): Promise<void> {
+  await h.debug.pointerDown(press.x, press.y, device);
+  if (release.x !== press.x || release.y !== press.y) {
+    await h.debug.pointerMove(release.x, release.y, device);
+  }
+  await h.debug.pointerUp(device);
+  await h.advance(1);
 }

@@ -29,7 +29,7 @@
 // a perfectly conformant build.
 
 /** The surface's version, reported as `version`. */
-export const REFRACT_DEBUG_VERSION = 1;
+export const REFRACT_DEBUG_VERSION = 2;
 
 /** The seed `reset()` restores when the caller names none. */
 export const DEFAULT_SEED = 1;
@@ -94,10 +94,25 @@ export interface TracingSnapshot {
 }
 
 /** The pointer as of the current frame, in logical stage units. */
+export type PointerDevice = "mouse" | "pen" | "touch";
+
 export interface PointerSnapshot {
   x: number;
   y: number;
   down: boolean;
+  device: PointerDevice;
+}
+
+/**
+ * One pointer target: the rectangle a screen is worked through, in the stage's
+ * logical units, under the id `specs/controls.md` fixes for it.
+ */
+export interface TargetSnapshot {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /**
@@ -132,6 +147,9 @@ export interface RefractSnapshot {
   solved: boolean;
   tracing: TracingSnapshot | null;
   pointer: PointerSnapshot;
+  /** The current screen's pointer targets, under the ids and in the order
+   * specs/controls.md fixes for that screen. */
+  targets: TargetSnapshot[];
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
@@ -155,9 +173,9 @@ export interface RefractDebugApi {
   startMode(mode: Mode): void;
   /** Poses a board written in specs/board.md notation, one string per row. */
   loadBoard(board: readonly string[]): void;
-  pointerDown(x: number, y: number): void;
-  pointerMove(x: number, y: number): void;
-  pointerUp(): void;
+  pointerDown(x: number, y: number, device?: PointerDevice): void;
+  pointerMove(x: number, y: number, device?: PointerDevice): void;
+  pointerUp(device?: PointerDevice): void;
   /** Sugar over the pointer operations: press, move per cell, release. */
   trace(cells: readonly CellRef[]): void;
   clear(): void;

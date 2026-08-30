@@ -145,6 +145,78 @@ export function domSurface(canvas: HTMLCanvasElement): SurfaceMetrics {
       const rect = canvas.getBoundingClientRect();
       return { x: rect.left, y: rect.top };
     },
+    claimGestures: (): (() => void) => claimGestures(canvas),
+    capturePointer: (pointerId: number): void => {
+      // A capture on a pointer the element never saw throws, and a pointer that
+      // ended between the event and this call is exactly that case.
+      try {
+        canvas.setPointerCapture(pointerId);
+      } catch {
+        // The pointer is already gone; there is nothing to route.
+      }
+    },
+    releasePointerCapture: (pointerId: number): void => {
+      try {
+        canvas.releasePointerCapture(pointerId);
+      } catch {
+        // Already released, by the browser or by the pointer ending.
+      }
+    },
+  };
+}
+
+/**
+ * Takes the browser's own pointer gestures on the canvas, and returns the
+ * function that gives them back.
+ *
+ * Four claims, and each one is a way a browser otherwise takes an input the game
+ * was meant to receive:
+ *
+ * - `touch-action: none` stops a touch drag being taken for a pan or a
+ *   pinch-zoom. Without it the browser claims the gesture part way through and
+ *   the game receives a `pointercancel` instead of the rest of the drag, which
+ *   is why touch appears to work for a moment and then stop.
+ * - `user-select: none` and a transparent tap highlight stop a drag selecting
+ *   the page around the canvas and stop a tap flashing a highlight rectangle.
+ * - The `contextmenu` listener keeps the secondary button in the game rather
+ *   than opening a menu over it.
+ * - The non-passive `wheel` listener keeps the page from scrolling under the
+ *   canvas. It is registered on the element rather than the document, so the
+ *   page still scrolls everywhere else.
+ *
+ * Every claim is undone by the returned function, and the styles are restored to
+ * whatever the page had set rather than cleared, so an engine torn down and
+ * rebuilt over the same canvas leaves the page as it found it.
+ */
+function claimGestures(canvas: HTMLCanvasElement): () => void {
+  const style = canvas.style as CSSStyleDeclaration & {
+    webkitUserSelect?: string;
+    webkitTapHighlightColor?: string;
+  };
+  const previous = {
+    touchAction: style.touchAction,
+    userSelect: style.userSelect,
+    webkitUserSelect: style.webkitUserSelect,
+    webkitTapHighlightColor: style.webkitTapHighlightColor,
+  };
+  style.touchAction = "none";
+  style.userSelect = "none";
+  style.webkitUserSelect = "none";
+  style.webkitTapHighlightColor = "transparent";
+
+  const swallow = (event: Event): void => {
+    event.preventDefault();
+  };
+  canvas.addEventListener("contextmenu", swallow);
+  canvas.addEventListener("wheel", swallow, { passive: false });
+
+  return (): void => {
+    style.touchAction = previous.touchAction;
+    style.userSelect = previous.userSelect;
+    style.webkitUserSelect = previous.webkitUserSelect ?? "";
+    style.webkitTapHighlightColor = previous.webkitTapHighlightColor ?? "";
+    canvas.removeEventListener("contextmenu", swallow);
+    canvas.removeEventListener("wheel", swallow);
   };
 }
 

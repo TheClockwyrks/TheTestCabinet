@@ -251,9 +251,12 @@ function readInput(api: UpdateApi): Controls {
   const confirm = api.input.pressed("confirm");
   const pause = api.input.pressed("pause");
 
-  // The samples delivered since the input frame last closed: a pointer that has
-  // not moved leaves the aim to the turn actions.
-  const samples = api.input.pointerSamples();
+  // The samples the primary pointer delivered since the input frame last closed:
+  // a pointer that has not moved leaves the aim to the turn actions, and a
+  // second finger on a touchscreen aims nothing.
+  const samples = api.input
+    .pointerSamples()
+    .filter((sample) => sample.primary);
   const last = samples[samples.length - 1];
   const pointer: Point | null =
     last === undefined ? null : { x: last.x, y: last.y };

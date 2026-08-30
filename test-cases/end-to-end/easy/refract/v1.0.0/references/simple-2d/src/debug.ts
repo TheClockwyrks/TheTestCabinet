@@ -21,8 +21,17 @@ import { cellCenter, emptyBeams, parseBoard } from "./board";
 import { DEFAULT_SEED, REFRACT_DEBUG_VERSION } from "./constants";
 import { createInitialState, startMode as startModePose } from "./flow";
 import { beamComplete, boardSolved, spentAt } from "./rules";
-import { clearBeams, pointerDown, pointerMove, pointerUp } from "./tracing";
-import type { Channel, Mode, NodeKind, RefractState, Screen } from "./game";
+import { pointerDown, pointerMove, pointerUp } from "./pointer";
+import { clearBeams } from "./tracing";
+import { targetsFor } from "./layout";
+import type {
+  Channel,
+  Mode,
+  NodeKind,
+  PointerDevice,
+  RefractState,
+  Screen,
+} from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 // ---- The snapshot shape (specs/instrumentation.md) -----------------------
@@ -68,9 +77,25 @@ export interface RefractSnapshot {
   /** R9, derived rather than stored. */
   solved: boolean;
   tracing: { channel: Channel; live: { col: number; row: number } } | null;
-  pointer: { x: number; y: number; down: boolean };
+  pointer: {
+    x: number;
+    y: number;
+    down: boolean;
+    device: PointerDevice;
+  };
+  /** The current screen's pointer targets, in the order specs/controls.md fixes. */
+  targets: SnapshotTarget[];
   muted: boolean;
   simTime: number;
+}
+
+/** One pointer target, as the snapshot reports it. */
+export interface SnapshotTarget {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 // ---- The surface ---------------------------------------------------------
@@ -95,13 +120,18 @@ export interface RefractDebugApi {
     state: DeepReadonly<RefractState>,
     x: number,
     y: number,
+    device?: PointerDevice,
   ): RefractState;
   pointerMove(
     state: DeepReadonly<RefractState>,
     x: number,
     y: number,
+    device?: PointerDevice,
   ): RefractState;
-  pointerUp(state: DeepReadonly<RefractState>): RefractState;
+  pointerUp(
+    state: DeepReadonly<RefractState>,
+    device?: PointerDevice,
+  ): RefractState;
   trace(
     state: DeepReadonly<RefractState>,
     cells: readonly { col: number; row: number }[],
@@ -189,7 +219,9 @@ export function createDebugApi(): RefractDebugApi {
           x: state.pointer.x,
           y: state.pointer.y,
           down: state.pointer.down,
+          device: state.pointer.device,
         },
+        targets: targetsFor(state).map((target) => ({ ...target })),
         muted: state.muted,
         simTime: state.simTime,
       };
@@ -222,19 +254,22 @@ export function createDebugApi(): RefractDebugApi {
       };
     },
 
-    /** A press, resolved immediately through the real input path. */
-    pointerDown(state, x, y) {
-      return pointerDown(state, x, y).state;
+    /**
+     * A press, resolved immediately through the real input path: the target it
+     * lands in, or the board behind it.
+     */
+    pointerDown(state, x, y, device = "mouse") {
+      return pointerDown(state, x, y, device).state;
     },
 
-    /** A move, resolved immediately: extend, retract, or a refused no-op. */
-    pointerMove(state, x, y) {
-      return pointerMove(state, x, y).state;
+    /** A move, resolved immediately: a hover, an extend, a retract, or a no-op. */
+    pointerMove(state, x, y, device = "mouse") {
+      return pointerMove(state, x, y, device).state;
     },
 
-    /** A release: the trace ends and the beam stays exactly as drawn. */
-    pointerUp(state) {
-      return pointerUp(state).state;
+    /** A release: it takes an armed target, or ends a trace as drawn. */
+    pointerUp(state, device = "mouse") {
+      return pointerUp(state, device).state;
     },
 
     /**
@@ -246,12 +281,12 @@ export function createDebugApi(): RefractDebugApi {
     trace(state, cells) {
       if (cells.length === 0) return { ...state };
       const [firstX, firstY] = cellCenter(cells[0], state.board);
-      let next = pointerDown(state, firstX, firstY).state;
+      let next = pointerDown(state, firstX, firstY, "mouse").state;
       for (const cell of cells.slice(1)) {
         const [x, y] = cellCenter(cell, next.board);
-        next = pointerMove(next, x, y).state;
+        next = pointerMove(next, x, y, "mouse").state;
       }
-      return pointerUp(next).state;
+      return pointerUp(next, "mouse").state;
     },
 
     /** The `clear` action: every beam emptied, on the playing screen alone. */

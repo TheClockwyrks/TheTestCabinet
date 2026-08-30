@@ -88,8 +88,8 @@ The keyboard, the pointer, and the overlay belong to the runtime layer beneath t
 game, and the surface carries no operation for the registered actions or for the
 overlay. That layer delivers the actions the game registers from the key bindings
 this specification fixes, it reports the pointer position in the stage's logical
-units along with the press and release edges, and it draws and toggles the debug
-overlay.
+units along with the press and release edges and the device driving them, and it
+draws and toggles the debug overlay.
 
 The clock is the exception, because nothing outside this build owns it. The
 surface is what takes the game off real time and advances it, through
@@ -100,28 +100,28 @@ The clock, the keyboard, the pointer, and the overlay belong to the
 root of this repository, and the surface carries no operation for any of them.
 The engine advances the game frame by frame and can take it off real time, it
 drives the actions the game registers, it reports the pointer position in the
-stage's logical units along with the press and release edges, and it draws and
-toggles the debug overlay.
+stage's logical units along with the press and release edges and the device
+driving them, and it draws and toggles the debug overlay.
 {{else}}
 The clock, the keyboard, the pointer, and the overlay belong to the
 {{engine.name}} engine, which documents them in the `engine/` directory at the
 root of this repository, and the surface carries no operation for any of them.
 The engine advances the game frame by frame and can take it off real time, it
 drives the actions the game registers, it hands the game the pointer's ordered
-samples in the stage's logical units with the press and release edges, and it
-draws and toggles the debug overlay.
+samples in the stage's logical units with the press and release edges and the
+device driving them, and it draws and toggles the debug overlay.
 {{/if}}
 
 What the overlay shows is Refract's, under Diagnostics below.
 
 The surface's pointer operations do not stand in for that pointer. They feed the
 same input path it feeds, so a posed press and a player's press are the same event
-to the game, and nothing is bypassed: the hit radius, the grab rules, and the
-limits all run exactly as they do for a player.
+to the game, and nothing is bypassed: the pointer targets, the hit radius, the
+grab rules, and the limits all run exactly as they do for a player.
 
 ## The operations
 
-The surface carries `version` (`REFRACT_DEBUG_VERSION`, `1`), a plain number, and
+The surface carries `version` (`REFRACT_DEBUG_VERSION`, `2`), a plain number, and
 the operations below. Values are plain numbers, strings, and booleans. `x` and `y`
 are in the stage's logical units, and `col` and `row` are cell coordinates as
 `specs/board.md` defines them.
@@ -181,6 +181,8 @@ only the opening board is unlocked, and the cascade progression back to its
 opening state, `solvedCount` at `0` and `tier` at `1`. `options.seed` seeds
 `rngState`, defaulting to `DEFAULT_SEED` (`1`).
 
+No pointer target is armed afterwards.
+
 `muted` is untouched; the runtime owns muting.
 
 {{#if (eq engine.slug "none")}}
@@ -234,19 +236,28 @@ A board posed this way is a board like any other, and the rules in
 `specs/beams.md` apply to it unchanged.
 
 {{#if (eq engine.slug "none")}}
-### `pointerDown(x, y)`, `pointerMove(x, y)`, `pointerUp()`
+### `pointerDown(x, y, device)`, `pointerMove(x, y, device)`, `pointerUp(device)`
 {{else if (eq engine.slug "simple-2d")}}
-### `pointerDown(state, x, y)`, `pointerMove(state, x, y)`, `pointerUp(state)`
+### `pointerDown(state, x, y, device)`, `pointerMove(state, x, y, device)`, `pointerUp(state, device)`
 {{else}}
-### `pointerDown(x, y)`, `pointerMove(x, y)`, `pointerUp()`
+### `pointerDown(x, y, device)`, `pointerMove(x, y, device)`, `pointerUp(device)`
 {{/if}}
 
-Report a press, a move, and a release at a logical stage position. A press targets
-the node whose cell center is within `NODE_HIT_R` (`44`) of `(x, y)` and begins a
-trace by exactly the grab rules in `specs/controls.md`. A move extends the beam to
-an adjacent node, or retracts it, under those same rules, and a move the limits
-refuse changes nothing and leaves the trace live. The release ends the trace and
-leaves the beam as drawn.
+Report a press, a move, and a release at a logical stage position, from `device`,
+which is `"mouse"`, `"pen"`, or `"touch"` and defaults to `"mouse"`. The three
+drive the same path a player's pointer drives, so a posed touch and a posed mouse
+differ only in the `device` the state reports.
+
+On the screens that carry pointer targets the three operate those targets by
+exactly the rules in `specs/controls.md`: a move highlights, a press highlights
+and arms, and a release inside the armed target takes it.
+
+On `playing`, outside that screen's targets, a press targets the node whose cell
+center is within `NODE_HIT_R` (`44`) of `(x, y)` and begins a trace by exactly the
+grab rules in `specs/controls.md`. A move extends the beam to an adjacent node, or
+retracts it, under those same rules, and a move the limits refuse changes nothing
+and leaves the trace live. The release ends the trace and leaves the beam as
+drawn.
 
 Each of the three **takes effect immediately**, when it is called, rather than
 {{#if (eq engine.slug "none")}}
@@ -281,8 +292,9 @@ nothing.
 {{/if}}
 
 Sugar over the three pointer operations: a press at the first cell's center, a
-move to each remaining cell's center in turn, then a release. `cells` is a list of
-`{ col, row }`, and each center comes from the formula in `specs/board.md`.
+move to each remaining cell's center in turn, then a release, all from a mouse.
+`cells` is a list of `{ col, row }`, and each center comes from the formula in
+`specs/board.md`.
 Because each of those operations takes effect as it is made, one call draws the
 whole route.
 
@@ -317,7 +329,7 @@ emptied and any live trace ends. It applies on the `playing` screen alone.
 
 ```js
 {
-  version: 1,
+  version: 2,
   screen: "title" | "howto" | "select" | "playing" | "solved" | "complete",
   mode: "campaign" | "cascade",
   menuIndex: <number>,         // the screen's highlighted menu item, from 0
@@ -344,7 +356,11 @@ emptied and any live trace ends. It applies on the `playing` screen alone.
   },
   solved: <boolean>,
   tracing: { channel: <string>, live: { col, row } } | null,
-  pointer: { x: <number>, y: <number>, down: <boolean> },
+  pointer: { x: <number>, y: <number>, down: <boolean>,
+             device: "mouse" | "pen" | "touch" },
+  targets: [
+    { id: <string>, x: <number>, y: <number>, w: <number>, h: <number> },
+  ],
   muted: <boolean>,
   simTime: <number>,   // accumulated simulation time, in seconds
 }
@@ -367,6 +383,12 @@ not use reports its resting value rather than going missing:
 
 `menuIndex` is live on every screen with a menu and rests at `0` on `playing`.
 
+`targets` lists the current screen's pointer targets, under the ids and in the
+order `specs/controls.md` fixes for that screen, each with its top-left corner
+and its size in the stage's logical units. A target's rectangle is the one the
+game actually hit-tests against, so pressing at a listed target's center takes
+that target.
+
 Every field is read straight off the game's state, so what the snapshot reports is
 what the game holds. Four are derived rather than stored:
 
@@ -388,8 +410,8 @@ a resumed trace extends. `tracing` is `null` whenever no trace is live, and
 
 Three fields need the game to keep them honest every frame:
 
-- `pointer` mirrors the position the pointer input reports and whether the
-  pointer is currently pressed, refreshed in every update.
+- `pointer` mirrors the position the pointer input reports, whether the pointer
+  is currently pressed, and the device driving it, refreshed in every update.
 - `muted` mirrors the runtime's mute bit, refreshed in every update, since the
   runtime owns muting and this is the game's readable copy of it.
 - `simTime` accumulates the delta time of every update, whatever the screen.
@@ -400,7 +422,7 @@ The runtime's debug overlay shows the values the game registers with it as
 diagnostic sources. Register at least the current `screen` and `mode`, the board's
 `cols` and `rows`, each channel's beam length and whether it is complete, each
 crystal's spent and total charges, whether the board is solved, and the pointer
-position, the same facts the snapshot reports. Keep each one short enough to read
+position and its device, the same facts the snapshot reports. Keep each one short enough to read
 on a line, and keep every source a pure read, so watching the overlay leaves the
 game as it is.
 

@@ -89,10 +89,13 @@ export interface TraceState {
   channel: Channel;
 }
 
+export type PointerDevice = "mouse" | "pen" | "touch";
+
 export interface PointerState {
   x: number;
   y: number;
   down: boolean;
+  device: PointerDevice;
 }
 
 export class RefractState extends GameState {
@@ -112,7 +115,8 @@ export class RefractState extends GameState {
   solvedCount = 0;
   tier = 1;
 
-  pointer: PointerState = { x: 0, y: 0, down: false };
+  pointer: PointerState = { x: 0, y: 0, down: false, device: "mouse" };
+  armedTarget: string | null = null;
   simTime = 0;
   muted = false;
   rngState = DEFAULT_SEED;

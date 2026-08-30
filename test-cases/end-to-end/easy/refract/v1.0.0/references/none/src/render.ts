@@ -11,15 +11,15 @@
 // centers they link, and every piece of text readable at the stage size.
 
 import { cellX, cellY } from "./board";
-import { campaignSolvedItems } from "./flow";
 import {
+  BACK_LABEL,
   BINDINGS,
   CAMPAIGN_LENGTH,
+  CLEAR_LABEL,
   HUD_SOLVED_LABEL,
   HUD_TIER_LABEL,
   NODE_R,
   SET_LABELS,
-  SOLVED_ITEMS,
   SOLVED_TITLE_TEXT,
   STAGE_CX,
   STAGE_H,
@@ -28,6 +28,29 @@ import {
   TITLE_ITEMS,
   TITLE_TEXT,
 } from "./constants";
+import {
+  completePanel,
+  CONTROL_H,
+  CONTROL_W,
+  HOWTO_BACK,
+  PANEL_CX,
+  PANEL_MENU_GAP,
+  PANEL_MENU_SIZE,
+  PANEL_W,
+  PLAYING_BACK,
+  PLAYING_CLEAR,
+  SELECT_BACK,
+  SELECT_COLS,
+  SELECT_FIRST_X,
+  solvedPanel,
+  TILE_H,
+  TILE_PITCH_X,
+  TILE_W,
+  tileCenter,
+  TITLE_MENU_FIRST_Y,
+  TITLE_MENU_GAP,
+  TITLE_MENU_SIZE,
+} from "./layout";
 import { beamComplete, spentAt } from "./rules";
 import { CHANNEL_COLOR, COLOR, font, withAlpha } from "./theme";
 import { channelsOn } from "./board";
@@ -47,6 +70,34 @@ function keyLabel(code: string): string {
 }
 
 const CLEAR_KEY = keyLabel(BINDINGS.clear[0]);
+
+/**
+ * One of the on-screen controls the pointer works a screen through, drawn on
+ * the rectangle `src/layout.ts` hit-tests, with the key that does the same
+ * thing named beneath it.
+ */
+function drawControl(
+  ctx: Ctx,
+  center: { x: number; y: number },
+  label: string,
+  key: string,
+): void {
+  pathRoundRect(
+    ctx,
+    center.x - CONTROL_W / 2,
+    center.y - CONTROL_H / 2,
+    CONTROL_W,
+    CONTROL_H,
+    12,
+  );
+  ctx.fillStyle = withAlpha(COLOR.bright, 0.06);
+  ctx.fill();
+  ctx.strokeStyle = COLOR.dim;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  text(ctx, label, center.x, center.y - 4, 20, COLOR.text, "center", 700);
+  text(ctx, key, center.x, center.y + 20, 14, COLOR.dim);
+}
 
 // ---- Shared furniture ----------------------------------------------------
 
@@ -387,10 +438,11 @@ function drawPlayingHud(state: RefractState, ctx: Ctx): void {
     );
   }
 
-  // The footer: the clear control named on screen, and per-channel progress
+  // The footer: the two on-screen controls, each carrying its pointer target
+  // and naming the key that does the same thing, and per-channel progress
   // carried on each channel's own hue and silhouette.
-  text(ctx, `${CLEAR_KEY} — CLEAR`, 120, 694, 18, COLOR.dim, "left");
-  text(ctx, "ESC — LEAVE", STAGE_W - 120, 694, 18, COLOR.dim, "right");
+  drawControl(ctx, PLAYING_CLEAR, CLEAR_LABEL, CLEAR_KEY);
+  drawControl(ctx, PLAYING_BACK, BACK_LABEL, "ESC");
 
   const channels = channelsOn(state.board);
   const pitch = 64;
@@ -456,11 +508,19 @@ function drawTitle(state: RefractState, ctx: Ctx): void {
   text(ctx, TITLE_TEXT, STAGE_CX, 268, 96, COLOR.text, "center", 700);
   text(ctx, TAGLINE_TEXT, STAGE_CX, 336, 24, COLOR.dim);
 
-  drawMenu(ctx, TITLE_ITEMS, state.menuIndex, STAGE_CX, 442, 56, 30);
+  drawMenu(
+    ctx,
+    TITLE_ITEMS,
+    state.menuIndex,
+    STAGE_CX,
+    TITLE_MENU_FIRST_Y,
+    TITLE_MENU_GAP,
+    TITLE_MENU_SIZE,
+  );
 
   text(
     ctx,
-    "ARROWS / WASD — MOVE · ENTER — SELECT · M — SOUND",
+    "CLICK, TAP, OR ARROWS / WASD · ENTER — SELECT · M — SOUND",
     STAGE_CX,
     668,
     16,
@@ -495,16 +555,8 @@ function drawHowto(ctx: Ctx): void {
   HOWTO_LINES.forEach((line, index) => {
     text(ctx, line, 248, 138 + index * 27, 19, COLOR.text, "left", 500);
   });
-  text(ctx, "ESC — BACK", STAGE_CX, 682, 18, COLOR.dim);
+  drawControl(ctx, HOWTO_BACK, BACK_LABEL, "ESC");
 }
-
-// The select grid's geometry: six columns of four set rows, centered.
-const SELECT_COLS = 6;
-const TILE_W = 96;
-const TILE_H = 82;
-const TILE_PITCH_X = 122;
-const TILE_PITCH_Y = 110;
-const GRID_TOP = 208;
 
 function drawLock(ctx: Ctx, x: number, y: number): void {
   ctx.strokeStyle = COLOR.dim;
@@ -530,12 +582,11 @@ function drawCheck(ctx: Ctx, x: number, y: number): void {
 function drawSelect(state: RefractState, ctx: Ctx): void {
   text(ctx, "SELECT BOARD", STAGE_CX, 92, 40, COLOR.text, "center", 700);
 
-  const firstX = STAGE_CX - ((SELECT_COLS - 1) * TILE_PITCH_X) / 2;
+  const firstX = SELECT_FIRST_X;
   for (let index = 0; index < CAMPAIGN_LENGTH; index++) {
     const col = index % SELECT_COLS;
     const row = Math.floor(index / SELECT_COLS);
-    const cx = firstX + col * TILE_PITCH_X;
-    const cy = GRID_TOP + row * TILE_PITCH_Y;
+    const { x: cx, y: cy } = tileCenter(index);
     const locked = index >= state.unlockedCount;
     const solved = state.solvedBoards.includes(index);
 
@@ -600,21 +651,8 @@ function drawSelect(state: RefractState, ctx: Ctx): void {
     }
   }
 
-  text(
-    ctx,
-    "ARROWS — MOVE · ENTER — PLAY · ESC — BACK",
-    STAGE_CX,
-    682,
-    16,
-    COLOR.dim,
-  );
+  drawControl(ctx, SELECT_BACK, BACK_LABEL, "ESC");
 }
-
-// The over-the-board panel sits in the strip to the right of the board — the
-// largest board's nodes reach x 958, so the finished board and every beam on
-// it stay visible behind the screen, as both modes' solved screens require.
-const PANEL_CX = 1114;
-const PANEL_W = 300;
 
 /** The light wash and side panel every over-the-board screen is drawn on. */
 function drawOverlayPanel(ctx: Ctx, height: number): number {
@@ -631,9 +669,10 @@ function drawOverlayPanel(ctx: Ctx, height: number): number {
 }
 
 function drawSolvedOverlay(state: RefractState, ctx: Ctx): void {
+  const panel = solvedPanel(state);
+  drawOverlayPanel(ctx, panel.height);
+  const top = panel.top;
   if (state.mode === "campaign") {
-    const items = campaignSolvedItems(state.boardIndex);
-    const top = drawOverlayPanel(ctx, 132 + items.length * 42);
     text(
       ctx,
       `BOARD ${state.boardIndex + 1} SOLVED`,
@@ -644,9 +683,7 @@ function drawSolvedOverlay(state: RefractState, ctx: Ctx): void {
       "center",
       700,
     );
-    drawMenu(ctx, items, state.menuIndex, PANEL_CX, top + 110, 42, 19);
   } else {
-    const top = drawOverlayPanel(ctx, 160 + SOLVED_ITEMS.length * 42);
     text(
       ctx,
       SOLVED_TITLE_TEXT,
@@ -665,13 +702,22 @@ function drawSolvedOverlay(state: RefractState, ctx: Ctx): void {
       19,
       COLOR.dim,
     );
-    drawMenu(ctx, SOLVED_ITEMS, state.menuIndex, PANEL_CX, top + 134, 42, 19);
   }
+  drawMenu(
+    ctx,
+    panel.items,
+    state.menuIndex,
+    PANEL_CX,
+    panel.firstY,
+    PANEL_MENU_GAP,
+    PANEL_MENU_SIZE,
+  );
 }
 
 function drawCompleteOverlay(state: RefractState, ctx: Ctx): void {
-  const items = ["BACK TO SELECT", "BACK TO TITLE"];
-  const top = drawOverlayPanel(ctx, 164 + items.length * 42);
+  const panel = completePanel();
+  drawOverlayPanel(ctx, panel.height);
+  const top = panel.top;
   text(ctx, "CAMPAIGN", PANEL_CX, top + 40, 26, COLOR.text, "center", 700);
   text(ctx, "COMPLETE", PANEL_CX, top + 70, 26, COLOR.text, "center", 700);
   text(
@@ -682,7 +728,15 @@ function drawCompleteOverlay(state: RefractState, ctx: Ctx): void {
     16,
     COLOR.dim,
   );
-  drawMenu(ctx, items, state.menuIndex, PANEL_CX, top + 148, 42, 18);
+  drawMenu(
+    ctx,
+    panel.items,
+    state.menuIndex,
+    PANEL_CX,
+    panel.firstY,
+    PANEL_MENU_GAP,
+    PANEL_MENU_SIZE,
+  );
 }
 
 // ---- Entry ---------------------------------------------------------------

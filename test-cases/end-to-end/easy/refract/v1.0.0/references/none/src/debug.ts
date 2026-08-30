@@ -29,13 +29,31 @@ import { cellCenter, emptyBeams, parseBoard } from "./board";
 import { DEFAULT_SEED, REFRACT_DEBUG_VERSION } from "./constants";
 import { createInitialState, startMode as startModePose } from "./flow";
 import { beamComplete, boardSolved, spentAt } from "./rules";
-import { clearBeams, pointerDown, pointerMove, pointerUp } from "./tracing";
-import type { Channel, Mode, NodeKind, RefractState, Screen } from "./game";
+import { pointerDown, pointerMove, pointerUp } from "./game-pointer";
+import { targetsFor } from "./layout";
+import { clearBeams } from "./tracing";
+import type {
+  Channel,
+  Mode,
+  NodeKind,
+  PointerDevice,
+  RefractState,
+  Screen,
+} from "./game";
 
 /** The `window` property the installed API is published on. */
 export const REFRACT_HANDLE = "__refract";
 
 // ---- The snapshot shape (specs/instrumentation.md) -----------------------
+
+/** One pointer target, as the snapshot reports it. */
+export interface SnapshotTarget {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 export interface SnapshotNode {
   col: number;
@@ -80,7 +98,14 @@ export interface RefractSnapshot {
   /** R9, derived rather than stored. */
   solved: boolean;
   tracing: { channel: Channel; live: { col: number; row: number } } | null;
-  pointer: { x: number; y: number; down: boolean };
+  pointer: {
+    x: number;
+    y: number;
+    down: boolean;
+    device: PointerDevice;
+  };
+  /** The current screen's pointer targets, in the order specs/controls.md fixes. */
+  targets: SnapshotTarget[];
   muted: boolean;
   simTime: number;
 }
@@ -98,9 +123,19 @@ export interface RefractDebugApi {
   snapshot(state: RefractState): RefractSnapshot;
   startMode(state: RefractState, mode: Mode): RefractState;
   loadBoard(state: RefractState, board: readonly string[]): RefractState;
-  pointerDown(state: RefractState, x: number, y: number): RefractState;
-  pointerMove(state: RefractState, x: number, y: number): RefractState;
-  pointerUp(state: RefractState): RefractState;
+  pointerDown(
+    state: RefractState,
+    x: number,
+    y: number,
+    device?: PointerDevice,
+  ): RefractState;
+  pointerMove(
+    state: RefractState,
+    x: number,
+    y: number,
+    device?: PointerDevice,
+  ): RefractState;
+  pointerUp(state: RefractState, device?: PointerDevice): RefractState;
   trace(
     state: RefractState,
     cells: readonly { col: number; row: number }[],
@@ -188,7 +223,9 @@ export function createDebugApi(): RefractDebugApi {
           x: state.pointer.x,
           y: state.pointer.y,
           down: state.pointer.down,
+          device: state.pointer.device,
         },
+        targets: targetsFor(state).map((target) => ({ ...target })),
         muted: state.muted,
         simTime: state.simTime,
       };
@@ -222,18 +259,18 @@ export function createDebugApi(): RefractDebugApi {
     },
 
     /** A press, resolved immediately through the real input path. */
-    pointerDown(state, x, y) {
-      return pointerDown(state, x, y).state;
+    pointerDown(state, x, y, device = "mouse") {
+      return pointerDown(state, x, y, device).state;
     },
 
     /** A move, resolved immediately: extend, retract, or a refused no-op. */
-    pointerMove(state, x, y) {
-      return pointerMove(state, x, y).state;
+    pointerMove(state, x, y, device = "mouse") {
+      return pointerMove(state, x, y, device).state;
     },
 
     /** A release: the trace ends and the beam stays exactly as drawn. */
-    pointerUp(state) {
-      return pointerUp(state).state;
+    pointerUp(state, device = "mouse") {
+      return pointerUp(state, device).state;
     },
 
     /**
@@ -245,12 +282,12 @@ export function createDebugApi(): RefractDebugApi {
     trace(state, cells) {
       if (cells.length === 0) return { ...state };
       const [firstX, firstY] = cellCenter(cells[0], state.board);
-      let next = pointerDown(state, firstX, firstY).state;
+      let next = pointerDown(state, firstX, firstY, "mouse").state;
       for (const cell of cells.slice(1)) {
         const [x, y] = cellCenter(cell, next.board);
-        next = pointerMove(next, x, y).state;
+        next = pointerMove(next, x, y, "mouse").state;
       }
-      return pointerUp(next).state;
+      return pointerUp(next, "mouse").state;
     },
 
     /** The `clear` action: every beam emptied, on the playing screen alone. */
@@ -290,9 +327,9 @@ export interface RefractWindowApi {
   snapshot(): RefractSnapshot;
   startMode(mode: Mode): void;
   loadBoard(board: readonly string[]): void;
-  pointerDown(x: number, y: number): void;
-  pointerMove(x: number, y: number): void;
-  pointerUp(): void;
+  pointerDown(x: number, y: number, device?: PointerDevice): void;
+  pointerMove(x: number, y: number, device?: PointerDevice): void;
+  pointerUp(device?: PointerDevice): void;
   trace(cells: readonly { col: number; row: number }[]): void;
   clear(): void;
 }
@@ -349,16 +386,16 @@ export function createWindowApi(
     // The three pointer poses and `trace` take effect the moment they are
     // called, in the state `apply` stores back — no frame need pass between
     // them, so a whole route draws from code without advancing the game.
-    pointerDown(x, y) {
-      host.apply((state) => api.pointerDown(state, x, y));
+    pointerDown(x, y, device = "mouse") {
+      host.apply((state) => api.pointerDown(state, x, y, device));
     },
 
-    pointerMove(x, y) {
-      host.apply((state) => api.pointerMove(state, x, y));
+    pointerMove(x, y, device = "mouse") {
+      host.apply((state) => api.pointerMove(state, x, y, device));
     },
 
-    pointerUp() {
-      host.apply((state) => api.pointerUp(state));
+    pointerUp(device = "mouse") {
+      host.apply((state) => api.pointerUp(state, device));
     },
 
     trace(cells) {

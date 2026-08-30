@@ -23,8 +23,9 @@ and refuse it, and four completion conditions are evaluated over a finished
 board and never refuse anything. A build that confuses the two halves rejects
 the first segment of every board, because an empty beam does not yet satisfy a
 condition phrased with "exactly". Around that sit a seeded board generator,
-pointer input resolved against a hit radius, six screens across two modes, and a
-debug surface that drives the real input path.
+pointer input resolved against a hit radius, six screens across two modes worked
+by mouse, touch, and keyboard alike, and a debug surface that drives the real
+input path.
 
 ## The two modes
 
@@ -56,9 +57,11 @@ Refract is designed for three engines, and seeds a different project for each:
 | `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored at seed time, plus the same `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts`: the `GameDefinition` with its single level, the game instance whose `initialize` returns the debug surface, the game mode that runs the screens, the `RefractState` class the world holds live as its game state, and `BACKGROUND`. The engine serves the surface from `engine.debug`. The world is live, so the surface's poses take only their own arguments and act on it at the call, and its readings return plain data.                                      |
 
 On both engine runs the pointer belongs to the engine and reaches the build
-already in logical stage units with press and release edges. Simple 2D hands it
-over as a per-frame position and edges, Structured 2D as the ordered per-frame
-samples of its input system. An engineless build maps the page's pointer itself.
+already in logical stage units with press and release edges and the device
+driving them. Simple 2D hands it over as a per-frame position and edges,
+Structured 2D as the ordered per-frame samples of its input system. An engineless
+build maps the page's pointer itself and takes the browser's own gestures on the
+canvas, which the two engines do for a build that stands on them.
 `specs/controls.md` branches accordingly. The game the three projects describe
 is the same one, so a score recorded under one engine is comparable with a score
 recorded under another.
@@ -91,18 +94,18 @@ seeded for every run. The `.hbs` templates branch on `engine.slug` alone.
 The specification is split across `specs/` by concern, and every file is seeded
 for every run:
 
-| Spec                 | Covers                                                                                                   |
-| -------------------- | -------------------------------------------------------------------------------------------------------- |
-| `overview.md`        | What is built, what stays as it is, the code quality, and the commands run over the finished repository. |
-| `board.md`           | The grid, the cell-center formula, the node kinds, and the notation boards are written in.               |
-| `beams.md`           | Rules `R1`–`R9`: the five limits, the four completion conditions, and how each half is enforced.         |
-| `controls.md`        | Beginning, extending, retracting, and releasing a trace; the grab table; the keyboard actions.           |
-| `state.md`           | What the game's state carries.                                                                           |
-| `instrumentation.md` | The debug and automation surface and the diagnostics overlay.                                            |
-| `ui.md`              | The `title`, `howto`, and `playing` screens, the menus, and the audio cues.                              |
-| `campaign-boards.md` | The twenty-four campaign boards, authoritative for every layout.                                         |
-| `modes/campaign.md`  | The course, its progression, and the `select` and `complete` screens.                                    |
-| `modes/cascade.md`   | The endless sequence, the generator's contract, and the tier ladder.                                     |
+| Spec                 | Covers                                                                                                                                             |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `overview.md`        | What is built, what stays as it is, the code quality, and the commands run over the finished repository.                                           |
+| `board.md`           | The grid, the cell-center formula, the node kinds, and the notation boards are written in.                                                         |
+| `beams.md`           | Rules `R1`–`R9`: the five limits, the four completion conditions, and how each half is enforced.                                                   |
+| `controls.md`        | Beginning, extending, retracting, and releasing a trace; the grab table; the pointer targets every screen is worked through; the keyboard actions. |
+| `state.md`           | What the game's state carries.                                                                                                                     |
+| `instrumentation.md` | The debug and automation surface and the diagnostics overlay.                                                                                      |
+| `ui.md`              | The `title`, `howto`, and `playing` screens, the menus and their on-screen controls, and the audio cues.                                           |
+| `campaign-boards.md` | The twenty-four campaign boards, authoritative for every layout.                                                                                   |
+| `modes/campaign.md`  | The course, its progression, and the `select` and `complete` screens.                                                                              |
+| `modes/cascade.md`   | The endless sequence, the generator's contract, and the tier ladder.                                                                               |
 
 `board.md`, `beams.md` and `campaign-boards.md` are plain Markdown, identical
 under every engine. `overview.md.hbs`, `controls.md.hbs`, `state.md.hbs`,

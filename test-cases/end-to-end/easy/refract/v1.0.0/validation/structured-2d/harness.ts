@@ -87,11 +87,13 @@ import type {
   CellRef,
   Channel,
   Mode,
+  PointerDevice,
   RefractDebugApi,
   RefractSnapshot,
+  TargetSnapshot,
 } from "./surface";
 
-export type { CellRef, Channel, Mode };
+export type { CellRef, Channel, Mode, PointerDevice, RefractSnapshot, TargetSnapshot };
 
 /** The case's surface, exactly as `surface.ts` specifies it. */
 export type RefractSurface = RefractDebugApi;
@@ -1539,5 +1541,69 @@ export function clearCues(h: Harness): void {
 export async function toggleOverlay(h: Harness): Promise<void> {
   h.hold("Backquote");
   h.release("Backquote");
+  await h.advance(1);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Pointer targets                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The target the current screen reports under `id`, or a failure naming what it
+ * did report.
+ *
+ * specs/controls.md fixes the id set per screen, so a build that carries the
+ * target but names it something else fails here on the id rather than silently
+ * later on a press that lands nowhere.
+ */
+export function targetById(
+  snapshot: RefractSnapshot,
+  id: string,
+): TargetSnapshot {
+  const found = snapshot.targets?.find((target) => target.id === id);
+  if (found === undefined) {
+    return fail(
+      `the ${snapshot.screen} screen reports a pointer target "${id}" ` +
+        "(specs/controls.md, Pointer targets)",
+      (snapshot.targets ?? []).map((target) => target.id),
+    );
+  }
+  return found;
+}
+
+/** The middle of a target, which is where every pointer check aims. */
+export function targetCenter(target: TargetSnapshot): {
+  x: number;
+  y: number;
+} {
+  return { x: target.x + target.w / 2, y: target.y + target.h / 2 };
+}
+
+/** Whether two target rectangles share any area. */
+export function targetsOverlap(
+  a: TargetSnapshot,
+  b: TargetSnapshot,
+): boolean {
+  return (
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  );
+}
+
+/**
+ * Press at a point, release at another, and settle a frame — the gesture every
+ * target is taken by. Both points are in the stage's logical units, and the
+ * release defaults to the press.
+ */
+export async function pressRelease(
+  h: Harness,
+  press: { x: number; y: number },
+  release: { x: number; y: number } = press,
+  device: PointerDevice = "mouse",
+): Promise<void> {
+  h.debug.pointerDown(press.x, press.y, device);
+  if (release.x !== press.x || release.y !== press.y) {
+    h.debug.pointerMove(release.x, release.y, device);
+  }
+  h.debug.pointerUp(device);
   await h.advance(1);
 }

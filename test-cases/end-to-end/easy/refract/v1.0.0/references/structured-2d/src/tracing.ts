@@ -23,11 +23,16 @@
 // mode's own solve transition runs, so the release edge that follows begins
 // nothing and changes nothing.
 
-import type { PointerSample } from "@test-cabinet/structured-2d";
 import { sameCell, targetNode } from "./board";
 import { onSolved } from "./flow";
 import { beamComplete, boardSolved, canExtend } from "./rules";
-import type { BeamState, Cell, Channel, RefractState } from "./game";
+import type {
+  BeamState,
+  Cell,
+  Channel,
+  PointerDevice,
+  RefractState,
+} from "./game";
 
 /** What a resolved press, move, or release did, for the frame's cues. */
 export interface TraceEvents {
@@ -35,6 +40,8 @@ export interface TraceEvents {
   retract: boolean;
   channelComplete: boolean;
   solved: boolean;
+  /** Raised by the `clear` target, which the pointer reaches through here. */
+  cleared: boolean;
 }
 
 /** A fresh all-quiet event record. */
@@ -44,6 +51,7 @@ export function noEvents(): TraceEvents {
     retract: false,
     channelComplete: false,
     solved: false,
+    cleared: false,
   };
 }
 
@@ -53,6 +61,7 @@ export function mergeEvents(into: TraceEvents, from: TraceEvents): void {
   into.retract = into.retract || from.retract;
   into.channelComplete = into.channelComplete || from.channelComplete;
   into.solved = into.solved || from.solved;
+  into.cleared = into.cleared || from.cleared;
 }
 
 /** The beam belonging to a channel. Every present channel has exactly one. */
@@ -92,8 +101,9 @@ export function pointerDown(
   state: RefractState,
   x: number,
   y: number,
+  device: PointerDevice = "mouse",
 ): TraceEvents {
-  state.pointer = { x, y, down: true };
+  state.pointer = { x, y, down: true, device };
   const events = noEvents();
   if (state.screen !== "playing" || state.tracing !== null) return events;
   const node = targetNode(state.board, x, y);
@@ -157,8 +167,9 @@ export function pointerMove(
   state: RefractState,
   x: number,
   y: number,
+  device: PointerDevice = "mouse",
 ): TraceEvents {
-  state.pointer = { x, y, down: state.pointer.down };
+  state.pointer = { x, y, down: state.pointer.down, device };
   const events = noEvents();
   if (state.screen !== "playing" || state.tracing === null) return events;
   const node = targetNode(state.board, x, y);
@@ -193,34 +204,17 @@ export function pointerMove(
  * stays exactly as drawn. A trace that added no segment leaves its channel's
  * beam carrying none, so a later press on either emitter starts it afresh.
  */
-export function pointerUp(state: RefractState): TraceEvents {
-  state.pointer = { ...state.pointer, down: false };
+export function pointerUp(
+  state: RefractState,
+  device: PointerDevice = "mouse",
+): TraceEvents {
+  state.pointer = { ...state.pointer, down: false, device };
   const events = noEvents();
   if (state.screen !== "playing" || state.tracing === null) return events;
   const beam = beamOf(state, state.tracing.channel);
   if (beam.cells.length < 2) beam.cells = [];
   state.tracing = null;
   return events;
-}
-
-/**
- * One of the engine's ordered pointer samples, resolved on its own — the
- * dispatch the player controller runs per sample, in arrival order, so a
- * sweep that crossed several nodes between two frames grows or unwinds the
- * beam node by node rather than jumping to the last position.
- */
-export function applySample(
-  state: RefractState,
-  sample: PointerSample,
-): TraceEvents {
-  switch (sample.type) {
-    case "down":
-      return pointerDown(state, sample.x, sample.y);
-    case "move":
-      return pointerMove(state, sample.x, sample.y);
-    case "up":
-      return pointerUp(state);
-  }
 }
 
 /**

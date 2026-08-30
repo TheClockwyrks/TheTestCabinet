@@ -9,3 +9,10 @@ that holds every board to its tier's measured difficulty floor, the tier
 climbing as they fall — across the engineless run, the [Simple 2D](/engines/simple-2d/)
 engine, and the [Structured 2D](/engines/structured-2d/) engine, on a single
 `base` variant.
+
+Every screen is worked from the pointer as well as the keyboard, and the pointer
+is a mouse, a pen, or a finger: each screen carries a set of named, fingertip-sized
+pointer targets that the debug surface reports, moving over one highlights it, and
+a press and release inside one takes it. `howto` and `playing` gain the on-screen
+`BACK` and `CLEAR` controls that give a pointer-only player a way off every
+screen.

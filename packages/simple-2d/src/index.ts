@@ -386,9 +386,11 @@ export function createEngine<S, D = unknown>(
       value: (name): number => input.value(name),
       pressed: (name): boolean => input.pressed(name),
       pointer: () => pointer.snapshot(),
-      pointerPressed: (): boolean => pointer.pressed(),
-      pointerReleased: (): boolean => pointer.released(),
+      pointerPressed: (button): boolean => pointer.pressed(button),
+      pointerReleased: (button): boolean => pointer.released(button),
       pointerSamples: () => pointer.samples(),
+      pointerContacts: () => pointer.contacts(),
+      wheel: () => pointer.wheel(),
     },
     audio: {
       play: (cue): void => audio.play(cue),

@@ -27,13 +27,12 @@ import { cellCenter, emptyBeams, parseBoard } from "./board";
 import { DEFAULT_SEED, REFRACT_DEBUG_VERSION } from "./constants";
 import { resetState, startMode as startModePose } from "./flow";
 import { beamComplete, boardSolved, spentAt } from "./rules";
+import { targetsFor } from "./layout";
+import { pointerDown, pointerMove, pointerUp } from "./pointer";
 import {
   clearBeams,
   mergeEvents,
   noEvents,
-  pointerDown,
-  pointerMove,
-  pointerUp,
   type TraceEvents,
 } from "./tracing";
 import {
@@ -41,11 +40,21 @@ import {
   type Channel,
   type Mode,
   type NodeKind,
+  type PointerDevice,
   type RefractState,
   type Screen,
 } from "./game";
 
 // ---- The snapshot shape (specs/instrumentation.md) -----------------------
+
+/** One pointer target, as the snapshot reports it. */
+export interface SnapshotTarget {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 export interface SnapshotNode {
   col: number;
@@ -90,7 +99,14 @@ export interface RefractSnapshot {
   /** R9, derived rather than stored. */
   solved: boolean;
   tracing: { channel: Channel; live: { col: number; row: number } } | null;
-  pointer: { x: number; y: number; down: boolean };
+  pointer: {
+    x: number;
+    y: number;
+    down: boolean;
+    device: PointerDevice;
+  };
+  /** The current screen's pointer targets, in the order specs/controls.md fixes. */
+  targets: SnapshotTarget[];
   muted: boolean;
   simTime: number;
 }
@@ -107,9 +123,9 @@ export interface RefractDebugApi {
   snapshot(): RefractSnapshot;
   startMode(mode: Mode): void;
   loadBoard(board: readonly string[]): void;
-  pointerDown(x: number, y: number): void;
-  pointerMove(x: number, y: number): void;
-  pointerUp(): void;
+  pointerDown(x: number, y: number, device?: PointerDevice): void;
+  pointerMove(x: number, y: number, device?: PointerDevice): void;
+  pointerUp(device?: PointerDevice): void;
   trace(cells: readonly { col: number; row: number }[]): void;
   clear(): void;
 }
@@ -202,7 +218,9 @@ export function createDebugApi(world: () => World): RefractDebugApi {
           x: live.pointer.x,
           y: live.pointer.y,
           down: live.pointer.down,
+          device: live.pointer.device,
         },
+        targets: targetsFor(live).map((target) => ({ ...target })),
         muted: live.muted,
         simTime: live.simTime,
       };
@@ -234,18 +252,18 @@ export function createDebugApi(world: () => World): RefractDebugApi {
     },
 
     /** A press, resolved immediately through the real input path. */
-    pointerDown(x, y) {
-      play(pointerDown(state(), x, y));
+    pointerDown(x, y, device = "mouse") {
+      play(pointerDown(state(), x, y, device));
     },
 
     /** A move, resolved immediately: extend, retract, or a refused no-op. */
-    pointerMove(x, y) {
-      play(pointerMove(state(), x, y));
+    pointerMove(x, y, device = "mouse") {
+      play(pointerMove(state(), x, y, device));
     },
 
     /** A release: the trace ends and the beam stays exactly as drawn. */
-    pointerUp() {
-      play(pointerUp(state()));
+    pointerUp(device = "mouse") {
+      play(pointerUp(state(), device));
     },
 
     /**
@@ -260,12 +278,12 @@ export function createDebugApi(world: () => World): RefractDebugApi {
       const live = state();
       const events = noEvents();
       const [firstX, firstY] = cellCenter(cells[0], live.board);
-      mergeEvents(events, pointerDown(live, firstX, firstY));
+      mergeEvents(events, pointerDown(live, firstX, firstY, "mouse"));
       for (const cell of cells.slice(1)) {
         const [x, y] = cellCenter(cell, live.board);
-        mergeEvents(events, pointerMove(live, x, y));
+        mergeEvents(events, pointerMove(live, x, y, "mouse"));
       }
-      mergeEvents(events, pointerUp(live));
+      mergeEvents(events, pointerUp(live, "mouse"));
       play(events);
     },
 

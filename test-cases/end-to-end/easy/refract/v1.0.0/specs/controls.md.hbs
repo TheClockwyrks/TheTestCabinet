@@ -1,39 +1,116 @@
 # Refract — Controls
 
 This file defines how a player operates the game: the pointer draws beams on the
-board, and the keyboard clears the board and drives the menus. Which segments the
-rules permit is in `specs/beams.md`, and the cell centers the pointer is measured
-against are in `specs/board.md`. Every figure below carries the name this
-specification gives it.
+board and works every screen's controls, and the keyboard does the same from the
+other side. Which segments the rules permit is in `specs/beams.md`, and the cell
+centers the pointer is measured against are in `specs/board.md`. Every figure
+below carries the name this specification gives it.
 
 ## The pointer
+
+A mouse, a pen, and a finger on a touchscreen all drive the pointer, and the
+game reads them the same way. Everything the pointer does below is done by all
+three.
 
 {{#if (eq engine.slug "none")}}
 This game stands on no engine, so the pointer belongs to the runtime layer you
 write. What the game reads from that layer is a pointer position in the game's
-logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, and
-a release edge. How the layer produces those three is yours to decide.
+logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, a
+release edge, and which of `mouse`, `pen`, and `touch` drove it. That layer
+delivers all three devices on that one path, and it takes the browser's own
+gestures on the canvas — panning, pinch-zoom, double-tap zoom, text selection,
+and the context menu — so a drag on a touchscreen reaches the game whole rather
+than being taken for a scroll part way through. How the layer produces those is
+yours to decide.
 {{else if (eq engine.slug "simple-2d")}}
 The pointer belongs to the engine, which documents it in the `engine/`
 directory at the root of this repository. What the game reads from it is a
 pointer position in the game's logical units on the `STAGE_W x STAGE_H`
-(`1280 x 720`) stage, a press edge, and a release edge.
+(`1280 x 720`) stage, a press edge, a release edge, and the device that drove
+it.
 {{else}}
 The pointer belongs to the engine, which documents it in the `engine/`
 directory at the root of this repository. What the game reads from it is a
 pointer position in the game's logical units on the `STAGE_W x STAGE_H`
-(`1280 x 720`) stage, a press edge, and a release edge, delivered as the
-ordered samples the player controller reads from the engine each frame, so a
-sweep that crossed several nodes between two frames arrives as every position
-it visited rather than as the last one alone.
+(`1280 x 720`) stage, a press edge, a release edge, and the device that drove
+it, delivered as the ordered samples the player controller reads from the engine
+each frame, so a sweep that crossed several nodes between two frames arrives as
+every position it visited rather than as the last one alone.
 {{/if}}
 
-The game acts on those three alone, and this file states what it does with them.
-Each pointer position the game reads is resolved on its own, in the order the
-positions arrive, so a beam grows and unwinds one node at a time as the pointer
-travels.
+The game acts on the primary pointer alone, so a second finger resting on the
+screen changes nothing. Each pointer position the game reads is resolved on its
+own, in the order the positions arrive, so a beam grows and unwinds one node at a
+time as the pointer travels.
 
-Menu navigation runs through the actions listed at the end of this file.
+`state.pointer` mirrors the position, the press state, and the device every
+frame, as `specs/state.md` describes.
+
+## Pointer targets
+
+Every screen carries a set of pointer targets: axis-aligned rectangles the
+pointer operates the screen through. A target has an id, a position, and a size
+in the stage's logical units, and `specs/instrumentation.md` reports the current
+screen's targets under those ids.
+
+| Screen | Targets, in this order |
+| --- | --- |
+| `title` | `menu-0`, `menu-1`, `menu-2`, one per entry of `TITLE_ITEMS` |
+| `howto` | `back` |
+| `select` | `board-1` through `board-24`, then `back` |
+| `playing` | `clear`, `back` |
+| `solved` | one `menu-<i>` per choice the screen offers, in the order it offers them |
+| `complete` | `menu-0`, `menu-1` |
+
+Every target on every screen satisfies all four of these:
+
+| Requirement | Value |
+| --- | --- |
+| Width | at least `TARGET_MIN_W` (`96`) |
+| Height | at least `TARGET_MIN_H` (`72`) |
+| Placement | wholly within the stage |
+| Separation | no two targets on one screen overlap |
+
+The width and the height are what a fingertip needs, so every target is worked by
+touch as readily as by a mouse.
+
+A `menu-<i>` target covers the drawn menu item that `state.menuIndex` `i`
+highlights, and a `board-<n>` target covers the drawn grid cell for campaign
+board `n`. The `back` target covers a drawn control reading `BACK_LABEL` (`BACK`)
+and the `clear` target one reading `CLEAR_LABEL` (`CLEAR`), each legible at the
+stage size. What each target looks like is the build's to design, within the
+requirements in `specs/overview.md`.
+
+On `playing` the `clear` and `back` targets sit clear of the board, whose extent
+is in `specs/board.md`, so a target never covers a node.
+
+## Operating a screen with the pointer
+
+A pointer position lies in at most one target, since no two on a screen overlap.
+
+| The pointer | What happens |
+| --- | --- |
+| Moves within a `menu-<i>` target while pressed on nothing | `state.menuIndex` becomes `i`. |
+| Moves within a `board-<n>` target while pressed on nothing | `state.selectIndex` becomes `n - 1`. |
+| Presses within a target | The highlight moves as the rows above describe, and that target is armed. |
+| Releases within the armed target | The target is taken, and it is disarmed. |
+| Releases anywhere else | Nothing is taken, and the armed target is disarmed. |
+
+Taking a target does exactly what the same choice does from the keyboard:
+
+| Target | Taken |
+| --- | --- |
+| `menu-<i>` | The same as `confirm` with `state.menuIndex` at `i`. |
+| `board-<n>` | The same as `confirm` on `select` with `state.selectIndex` at `n - 1`. |
+| `back` | The same as the `back` action on that screen. |
+| `clear` | The same as the `clear` action. |
+
+A press outside every target arms nothing. Leaving a screen disarms whatever was
+armed on it, so a press carried across a screen change takes nothing.
+
+The highlight moving on a press is what makes a touchscreen behave as a mouse
+does: a finger has no hover, so the press is what tells the player which item
+their release will take.
 
 ## Targeting a node
 
@@ -53,6 +130,9 @@ begins one according to that node's place on the board. The rows below are
 | An emitter of a channel whose beam carries no segments | Starts that channel's beam at that emitter. |
 | Either end of a channel's beam | Resumes that beam from that end. |
 | A node exactly one beam passes through | Shortens that beam to end at that node, and resumes it from there. |
+
+A press inside the `clear` or the `back` target is taken by that target and begins
+no trace, whatever lies behind it, so the two are resolved before the board is.
 
 A press that matches no row begins no trace and leaves the board unchanged. That
 covers a press on an empty cell, a press off the board, a press on a node that
@@ -107,7 +187,8 @@ drawn, and the release edge that follows begins nothing and changes nothing.
 
 The `clear` action empties every beam on the board at once and leaves the board's
 nodes untouched, so a player can start a board over without leaving it. It is
-read on the `playing` screen and does nothing on any other screen.
+read on the `playing` screen and does nothing on any other screen. Taking the
+`clear` target does the same thing.
 
 ## Actions and bindings
 
@@ -130,3 +211,6 @@ a press edge.
 carries the keys a player reaches for by habit. The screens these actions move
 between, and where each one leads, are in `specs/ui.md`,
 `specs/modes/campaign.md`, and `specs/modes/cascade.md`.
+
+Every screen is reachable and every choice on it is takeable from the pointer
+alone and from the keyboard alone, so the game is played end to end with either.

@@ -19,7 +19,7 @@ are original to it.
 The specification spans several files under `specs/`. `specs/board.md` gives the
 board, its cell geometry, and the notation boards are written in;
 `specs/beams.md` the rules every beam obeys; `specs/controls.md` the pointer and
-keyboard input; `specs/state.md` what the game's state carries;
+keyboard input and the targets every screen is worked through; `specs/state.md` what the game's state carries;
 `specs/instrumentation.md` the debug and automation surface; `specs/ui.md` the
 screens, the menus, and the audio cues; `specs/campaign-boards.md` the fixed set
 of boards; and `specs/modes/campaign.md` and `specs/modes/cascade.md` the two
@@ -31,7 +31,8 @@ as one cohesive whole.
 
 This game stands on no engine, so the runtime under it is yours to write: the
 frame loop and the delta time it measures, the canvas fit, input from both the
-keyboard and the pointer, audio cues, and the debug overlay. Where this
+keyboard and the pointer, with the pointer carrying a mouse, a pen, and a touch
+alike, audio cues, and the debug overlay. Where this
 specification speaks of the runtime it means that layer, and it states only what
 Refract needs from it. How the layer is structured is yours to decide.
 {{else if (eq engine.slug "simple-2d")}}
@@ -39,14 +40,15 @@ Refract needs from it. How the layer is structured is yours to decide.
 
 The game is built on the {{engine.name}} engine, which documents itself in the
 `engine/` directory at the root of this repository. It owns the frame loop and
-the delta time the game is given, the input actions the menus are driven by,
-the pointer the board is traced with, audio cues, asset loading, the canvas
-fit, and the debug overlay. Read its documentation before you start. This
+the delta time the game is given, the input actions the screens are driven by,
+the pointer the board and the screens are worked with, audio cues, asset
+loading, the canvas fit, and the debug overlay. Read its documentation before you start. This
 specification states only what is specific to Refract.
 
 The pointer reaches the game from the engine already in the stage's logical
-units, with its press and release edges. `specs/controls.md` states what
-Refract does with them.
+units, with its press and release edges and the device driving it, and the
+engine takes the browser's own gestures on the canvas so a touch drag arrives
+whole. `specs/controls.md` states what Refract does with them.
 {{else}}
 ## The runtime
 
@@ -56,16 +58,18 @@ as much as a runtime: the game is written as subclasses of its classes, a game
 instance, a game mode, actors and their components, and the controllers that
 drive them, and the engine constructs, ticks, and renders them in a fixed
 order. It owns the frame loop and the delta time the game is given, rendering
-and the camera, the canvas fit, the input actions the menus are driven by, the
-pointer the board is traced with, audio cues, asset loading, and the debug
-overlay. Read its documentation before you start. This specification states
+and the camera, the canvas fit, the input actions the screens are driven by, the
+pointer the board and the screens are worked with, audio cues, asset loading, and
+the debug overlay. Read its documentation before you start. This specification states
 only what is specific to Refract.
 
 The logical design field handed to the engine is the stage, and the game leaves
 the camera at rest, so world units and the stage's logical units coincide and
 every position in this specification is both. The pointer reaches the game from
 the engine already in those units, as ordered samples carrying its press and
-release edges. `specs/controls.md` states what Refract does with them.
+release edges and the device driving it, and the engine takes the browser's own
+gestures on the canvas so a touch drag arrives whole. `specs/controls.md` states
+what Refract does with them.
 {{/if}}
 
 ## The project you build in

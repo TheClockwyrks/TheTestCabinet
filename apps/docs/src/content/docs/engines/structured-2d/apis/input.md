@@ -80,9 +80,11 @@ interface InputReader {
   value(name: string): number;
   pressed(name: string): boolean;
   pointer(): PointerSnapshot;
-  pointerPressed(): boolean;
-  pointerReleased(): boolean;
+  pointerPressed(button?: PointerButton): boolean;
+  pointerReleased(button?: PointerButton): boolean;
   pointerSamples(): PointerSample[];
+  pointerContacts(): PointerContact[];
+  wheel(): WheelDelta;
 }
 ```
 
@@ -114,53 +116,142 @@ still renders and still closes its input frame.
 ## The pointer
 
 ```ts
+type PointerDevice = "mouse" | "pen" | "touch";
+type PointerButton = "primary" | "secondary" | "auxiliary" | "back" | "forward";
 type PointerSampleType = "down" | "move" | "up";
 
 interface PointerSample {
   readonly type: PointerSampleType;
   readonly x: number;
   readonly y: number;
+  readonly id: number;
+  readonly primary: boolean;
+  readonly device: PointerDevice;
+  readonly button: PointerButton | null;
+  readonly buttons: readonly PointerButton[];
 }
 
 interface PointerSnapshot {
   x: number;
   y: number;
   down: boolean;
+  device: PointerDevice;
+  buttons: PointerButton[];
+}
+
+interface PointerContact {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+  readonly primary: boolean;
+  readonly device: PointerDevice;
+  readonly buttons: readonly PointerButton[];
+}
+
+interface WheelDelta {
+  readonly x: number;
+  readonly y: number;
 }
 ```
 
-The engine tracks one logical pointer in the logical design coordinates handed
-to `createEngine`: each event's client position is taken relative to the
-surface's origin, multiplied by the device pixel ratio, and passed through the
-inverse [viewport map](/engines/structured-2d/apis/camera/). A game that needs
-the position in world units maps it through
-[`camera.logicalToWorld`](/engines/structured-2d/apis/camera/). A point inside
-a letterbox bar maps outside `0..width` or `0..height`, and a game clamps it or
+| Field | Meaning |
+| --- | --- |
+| `id` | The pointer a sample or contact belongs to. A mouse keeps one id for the life of the page, and each touch gets its own. |
+| `primary` | Whether this is the primary pointer, the one the snapshot and the edges follow. A mouse is always primary, and among touches the first one down is. |
+| `device` | Which kind of device drove it. |
+| `button` | The button whose state a sample reports, or `null` when the sample reports movement alone. |
+| `buttons` | Every button held once the sample has been applied, in the order `PointerButton` lists them. A pen or a touch in contact holds `primary`. |
+| `WheelDelta.x`, `.y` | Wheel travel over one input frame, in logical units, positive rightward and downward. |
+
+The engine maps every pointer into the logical design coordinates handed to
+`createEngine`: each event's client position is taken relative to the surface's
+origin, multiplied by the device pixel ratio, and passed through the inverse
+[viewport map](/engines/structured-2d/apis/camera/). A controller that needs the
+position in world units maps it through
+[`camera.logicalToWorld`](/engines/structured-2d/apis/camera/). A point inside a
+letterbox bar maps outside `0..width` or `0..height`, and a game clamps it or
 treats it as a miss.
 
 | Member | Result | Semantics |
 | --- | --- | --- |
-| `pointer()` | `PointerSnapshot` | The most recent position and whether the pointer is held, as a fresh copy. Before the first pointer event the position is `(0, 0)` and `down` is `false`. |
-| `pointerPressed()` | `boolean` | `true` exactly once per press edge per player controller, and the call consumes that controller's copy. |
-| `pointerReleased()` | `boolean` | `true` exactly once per release edge per player controller, and the call consumes that controller's copy. |
-| `pointerSamples()` | `PointerSample[]` | Every sample delivered since the input frame last closed, in arrival order, as a fresh copy. Reading does not consume the list. |
+| `pointer()` | `PointerSnapshot` | The primary pointer's most recent position, whether it is held, the device that last drove it, and the buttons it holds, as a fresh copy. Before the first pointer event the position is `(0, 0)`, `down` is `false`, `device` is `"mouse"`, and `buttons` is empty. |
+| `pointerPressed(button?)` | `boolean` | `true` exactly once per press edge of `button` per player controller, and the call consumes that controller's copy. `button` defaults to `"primary"`. |
+| `pointerReleased(button?)` | `boolean` | `true` exactly once per release edge of `button` per player controller, and the call consumes that controller's copy. `button` defaults to `"primary"`. |
+| `pointerSamples()` | `PointerSample[]` | Every sample every pointer delivered since the input frame last closed, in arrival order, as a fresh copy. Reading does not consume the list. |
+| `pointerContacts()` | `PointerContact[]` | Every pointer in contact with the surface, in the order they came into contact, as a fresh copy. |
+| `wheel()` | `WheelDelta` | The wheel travel accumulated since the input frame last closed, as a fresh copy. |
 
-The samples are what a game that resolves each position on its own reads: a
-sweep that crossed several targets between two frames arrives as the ordered
-positions it visited rather than as the last one alone. `pointerSamples()` lists
-at most 1024 samples per frame; a burst past that bound still moves the snapshot
-and the edges, and the samples past it are not listed.
+The snapshot is what aiming and hovering read. The samples are what a game that
+resolves each position on its own reads: a sweep that crossed several targets
+between two frames arrives as the ordered positions it visited rather than as
+the last one alone. A game driving one thing with one pointer keeps the samples
+whose `primary` is `true`.
 
-The engine closes the pointer's frame with the actions': when the input frame
-closes, the sample list empties and unconsumed edges are discarded.
+`pointerSamples()` lists at most 1024 samples per frame; a burst past that bound
+still moves the snapshot, the contacts, and the edges, and the samples past it
+are not listed. When the input frame closes, the sample list empties, the
+accumulated wheel travel returns to zero, and unconsumed edges are discarded.
+The contacts persist, because a pointer held across a frame boundary is still in
+contact.
+
+## Devices and buttons
+
+A mouse, a pen, and a touch reach the game as pointers on the same reads, so a
+game written against the pointer is playable with any of them. What separates
+them is `device` and `buttons`, which a game reads where it wants to differ:
+sizing a hit area for a fingertip, or putting a second control on the secondary
+button.
+
+A pointer is held while it holds at least one button. A touch or a pen in
+contact holds `primary`, so a game that asks only about `down` or calls
+`pointerPressed()` with no argument behaves identically under all three devices.
+
+Each button carries its own press and release edges. Pressing the secondary
+button while the primary is already held arms the secondary's press edge alone,
+and releasing it arms the secondary's release edge while the pointer stays held.
+
+## Multiple pointers
+
+Every pointer the surface reports is tracked. `pointerContacts()` lists the ones
+in contact, which is what a pinch, a two-finger drag, or two players on one
+screen read, and every sample names the `id` it came from.
+
+The snapshot and the edges follow the primary pointer alone, so a game built for
+one pointer is unaffected by a second finger landing on the screen.
+
+## The wheel
+
+`wheel()` reports the travel a wheel or a trackpad scroll gesture accumulated
+over the input frame, converted into logical units through the same map
+positions go through. A wheel reporting its travel in lines is converted at 16
+CSS pixels per line, and one reporting pages at the surface's CSS height per
+page.
+
+## Gesture ownership
+
+The engine claims the browser's own pointer gestures on the surface as the
+pointer attaches, through the surface's
+[`claimGestures`](/engines/structured-2d/apis/engine/), and gives them back when it
+detaches. That claim is what makes touch work: without it the browser takes a drag for
+panning or a zoom and the game receives a `pointercancel` part way through the
+gesture. It is also what lets the secondary button reach the game rather than
+opening the context menu, and what keeps the wheel from scrolling the page under
+the canvas.
+
+Each pointer is captured as it comes into contact and released as it leaves, so
+a drag that travels off the canvas keeps delivering moves and its release is
+seen. A surface implementing neither hook behaves the same in every other
+respect.
 
 ## Pointer events
 
-The engine attaches its `pointerdown`, `pointermove`, `pointerup`, and
-`pointercancel` listeners to the same event target its key listeners go on. Each
-listener reads `clientX`, `clientY`, and `isPrimary`, and leaves the event
-otherwise untouched. A non-primary pointer — the second touch of a multi-touch
-gesture — is ignored.
+The engine attaches its `pointerdown`, `pointermove`, `pointerup`,
+`pointercancel`, and `wheel` listeners to the same event target its key
+listeners go on. Each pointer listener reads `clientX`, `clientY`, `pointerId`,
+`pointerType`, `isPrimary`, `button`, and `buttons`; the wheel listener reads
+`deltaX`, `deltaY`, and `deltaMode`. Each leaves the event otherwise untouched.
+An event carrying no numeric client position is ignored, an unrecognized
+`pointerType` reads as `"mouse"`, and an absent `pointerId` reads as `0`.
 
 The client position is mapped to the stage against the origin
 [`SurfaceMetrics.origin`](/engines/structured-2d/apis/engine/) reports.
@@ -169,12 +260,13 @@ a player's does; over a surface with no `origin`, the origin is `(0, 0)` and a
 dispatched event's client position is read as CSS pixels from the canvas's
 top-left corner.
 
-A `pointerdown` while the pointer is already held, or a `pointerup` while it is
-not, moves the pointer without arming an edge, so the listed samples alternate
-`down` and `up` strictly. A `pointercancel` ends a hold as a release at the last
-known position. While the viewport is degenerate (a `scale` of `0`), a `down`
-or `move` has no place on the stage and is dropped; a release still ends the
-hold at the last known position.
+Per pointer, `down` and `up` samples alternate strictly: a `down` is the pointer
+coming into contact, and an `up` is it leaving. A button pressed or released
+while the pointer stays in contact records a `move` sample naming that button. A
+`pointercancel` ends a contact as a release at the last known position. While
+the viewport is degenerate (a `scale` of `0`), a `down` or a `move` has no place
+on the stage and is dropped; a release still ends the contact at the last known
+position.
 
 ## Key events
 
@@ -218,6 +310,7 @@ actions, so `TOUCH_LAYOUTS["single-vertical"].actions` is `["up", "down",
 ## Exports
 
 `ActionKind`, `ActionBinding`, `RegisteredAction`, `TouchLayout`,
-`InputReader`, `PointerSampleType`, `PointerSample`, and `PointerSnapshot` are
+`InputReader`, `PointerDevice`, `PointerButton`, `PointerSampleType`,
+`PointerSample`, `PointerSnapshot`, `PointerContact`, and `WheelDelta` are
 exported as types from `@test-cabinet/structured-2d`, and `TOUCH_LAYOUTS` is
 exported as a value.

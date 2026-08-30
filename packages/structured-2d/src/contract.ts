@@ -209,6 +209,27 @@ export interface SurfaceMetrics {
    * corner.
    */
   origin?(): { x: number; y: number };
+  /**
+   * Takes the browser's own pointer gestures on the surface, and returns the
+   * function that gives them back.
+   *
+   * Those gestures are panning, pinch-zoom, double-tap zoom, text selection,
+   * the wheel's page scroll, and the context menu. Claimed, a drag, a wheel,
+   * and a press of the secondary button reach the game instead of the page,
+   * which is what makes touch and the secondary button usable at all. The
+   * engine claims them as the pointer attaches and gives them back when it
+   * detaches. A surface with no element behind it owns no gestures and omits
+   * this.
+   */
+  claimGestures?(): () => void;
+  /**
+   * Routes every later event for `pointerId` to the surface, so a drag that
+   * leaves the element keeps delivering moves and its release is seen. The
+   * engine captures each pointer as it comes into contact.
+   */
+  capturePointer?(pointerId: number): void;
+  /** Ends the capture `capturePointer` began. */
+  releasePointerCapture?(pointerId: number): void;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -256,27 +277,92 @@ export interface TouchLayout {
   actions: string[];
 }
 
-/** What kind of pointer sample a frame delivered. */
-export type PointerSampleType = "down" | "move" | "up";
+/**
+ * The kind of device driving a pointer.
+ *
+ * A game reads it where it wants to differ between them, sizing a hit area for
+ * a fingertip or naming a button rather than a tap, and otherwise ignores it:
+ * all three arrive on the same reads.
+ */
+export type PointerDevice = "mouse" | "pen" | "touch";
 
 /**
- * One pointer sample, in the engine's logical design coordinates. The listed
- * samples alternate `down` and `up` strictly.
+ * A button on a pointing device.
+ *
+ * A pen or a touch in contact holds `primary`, which is what lets a game
+ * written against the primary button alone play identically on all three
+ * devices.
  */
+export type PointerButton =
+  | "primary"
+  | "secondary"
+  | "auxiliary"
+  | "back"
+  | "forward";
+
+/**
+ * What kind of pointer sample a frame delivered.
+ *
+ * The three describe the pointer's contact: a `down` is the pointer coming into
+ * contact, an `up` is it leaving, and a `move` is everything else it did, a
+ * change of position or a change of which buttons it holds. Per pointer, `down`
+ * and `up` therefore alternate strictly.
+ */
+export type PointerSampleType = "down" | "move" | "up";
+
+/** One pointer sample, in the engine's logical design coordinates. */
 export interface PointerSample {
   readonly type: PointerSampleType;
   readonly x: number;
   readonly y: number;
+  /** The pointer this sample came from. */
+  readonly id: number;
+  /** Whether it came from the primary pointer, the one the snapshot follows. */
+  readonly primary: boolean;
+  /** The device that drove it. */
+  readonly device: PointerDevice;
+  /** The button whose state it reports, or `null` when it reports movement. */
+  readonly button: PointerButton | null;
+  /** Every button held once the sample has been applied. */
+  readonly buttons: readonly PointerButton[];
 }
 
 /**
- * The pointer's most recent position and hold state, as a fresh copy. Before
- * the first pointer event the position is `(0, 0)` and `down` is `false`.
+ * The primary pointer's most recent position, hold state, device, and held
+ * buttons, as a fresh copy. Before the first pointer event the position is
+ * `(0, 0)`, `down` is `false`, `device` is `"mouse"`, and `buttons` is empty.
  */
 export interface PointerSnapshot {
   x: number;
   y: number;
   down: boolean;
+  device: PointerDevice;
+  buttons: PointerButton[];
+}
+
+/**
+ * One pointer in contact with the surface.
+ *
+ * The contact list is what a pinch, a two-finger drag, or two players on one
+ * screen read. A controller driving one thing with one pointer reads the
+ * snapshot instead, which follows the primary pointer alone.
+ */
+export interface PointerContact {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+  readonly primary: boolean;
+  readonly device: PointerDevice;
+  readonly buttons: readonly PointerButton[];
+}
+
+/**
+ * Wheel travel over one input frame, in logical design units, positive
+ * rightward and downward.
+ */
+export interface WheelDelta {
+  readonly x: number;
+  readonly y: number;
 }
 
 /**
@@ -301,12 +387,18 @@ export interface InputReader {
    * this controller's copy. `false` for an unregistered name.
    */
   pressed(name: string): boolean;
-  /** The most recent position and whether the pointer is held, as a fresh copy. */
+  /** The primary pointer's position, hold, device, and buttons, as a fresh copy. */
   pointer(): PointerSnapshot;
-  /** `true` exactly once per press edge per player controller; consuming. */
-  pointerPressed(): boolean;
-  /** `true` exactly once per release edge per player controller; consuming. */
-  pointerReleased(): boolean;
+  /**
+   * `true` exactly once per press edge of `button` per player controller;
+   * consuming. `button` defaults to `"primary"`.
+   */
+  pointerPressed(button?: PointerButton): boolean;
+  /**
+   * `true` exactly once per release edge of `button` per player controller;
+   * consuming. `button` defaults to `"primary"`.
+   */
+  pointerReleased(button?: PointerButton): boolean;
   /**
    * Every sample delivered since the input frame last closed, in arrival order,
    * as a fresh copy. Reading does not consume the list. At most 1024 samples
@@ -314,6 +406,10 @@ export interface InputReader {
    * the edges.
    */
   pointerSamples(): PointerSample[];
+  /** Every pointer in contact, in the order they came into contact, as a copy. */
+  pointerContacts(): PointerContact[];
+  /** The wheel travel accumulated since the input frame last closed, as a copy. */
+  wheel(): WheelDelta;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -32,7 +32,12 @@
 import { AudioBus, type AudioContextSource, type CueSpec } from "./audio-bus";
 import { Keyboard, asKeyboardEvent } from "./keyboard";
 import { Diagnostics, OVERLAY_KEY } from "./overlay";
-import { Pointer, type PointerPosition, type PointerSample } from "./pointer";
+import {
+  claimGestures,
+  Pointer,
+  type PointerPosition,
+  type PointerSample,
+} from "./pointer";
 import {
   clientToStage,
   deviceSize,
@@ -186,9 +191,17 @@ export function createRuntime<S, D>(
   const { canvas, width, height, game, background } = options;
   const surface = options.surface ?? domSurface(canvas);
   const keyboard = new Keyboard(surface.events());
-  const pointer = new Pointer(surface.events(), (clientX, clientY) =>
-    clientToStage(viewport, surface.origin(), surface.dpr(), clientX, clientY),
+  const pointer = new Pointer(
+    surface.events(),
+    (clientX, clientY) =>
+      clientToStage(viewport, surface.origin(), surface.dpr(), clientX, clientY),
+    canvas,
   );
+  // The browser's own gestures on the canvas belong to the game while it runs:
+  // without the claim a touch drag is taken for a pan and cancelled part way
+  // through, and the secondary button opens a menu over the board
+  // (specs/controls.md, The pointer).
+  const releaseGestures = claimGestures(canvas);
   const audio = new AudioBus(options.audioContext);
   const diagnostics = new Diagnostics<S>();
 
@@ -454,6 +467,7 @@ export function createRuntime<S, D>(
       surface.events().removeEventListener("keydown", onOverlayKey);
       keyboard.detach();
       pointer.detach();
+      releaseGestures();
       audio.dispose();
       live = null;
     },

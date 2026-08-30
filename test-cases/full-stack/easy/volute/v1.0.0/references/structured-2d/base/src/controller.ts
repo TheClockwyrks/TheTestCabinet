@@ -63,7 +63,11 @@ export class InjectorController extends PlayerController {
    * moves the aim on from wherever the pointer last put it.
    */
   private readPlaying(mode: HallMode, dt: number): void {
-    const samples = this.input.pointerSamples();
+    // The primary pointer alone aims: a second finger on a touchscreen is not a
+    // second aim.
+    const samples = this.input
+      .pointerSamples()
+      .filter((sample) => sample.primary);
     const last = samples[samples.length - 1];
     if (last !== undefined) {
       const dx = last.x - INJECTOR_X;

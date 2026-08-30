@@ -48,9 +48,12 @@ The main menu, and where the game opens. It is the only place a mode is chosen.
 
 The menu's items are stacked one above the next under the title and tagline. The
 item at `state.menuIndex` is highlighted and drawn **distinctly** from the
-others, so a player always sees which item `confirm` would accept. `menuIndex`
-is `0` on arriving at the title. `up` and `down` move the highlight by one item
-and wrap at both ends. `back` does nothing.
+others, so a player always sees which item would be accepted. `menuIndex` is `0`
+on arriving at the title. `up` and `down` move the highlight by one item and wrap
+at both ends. `back` does nothing.
+
+Each item carries the pointer target `specs/controls.md` names for it, so the
+menu is worked by mouse and by touch as well as by the keyboard.
 
 `confirm` takes the highlighted item:
 
@@ -90,7 +93,9 @@ rules are the same in both modes, so one screen serves both. It covers:
   it was;
 - the controls, naming the key bound to the `clear` action.
 
-`back` returns to `title` with `menuIndex = 0`.
+The screen draws a `BACK_LABEL` (`BACK`) control carrying the `back` pointer
+target. Taking it, or the `back` action, returns to `title` with
+`menuIndex = 0`.
 
 ### `playing`
 
@@ -102,7 +107,8 @@ modes and works the same way in each. It shows:
 | The board | Every cell of the current board, each node drawn at its cell center. |
 | The beams | Every segment drawn so far, in its channel's hue, visibly connecting the centers of the cells it links. |
 | Per-channel progress | For each channel present on the board, whether that channel's beam is complete, carried on that channel's own hue and silhouette so a player reads at a glance which channels are still open. |
-| The clear control | The key bound to the `clear` action, named on screen. |
+| The clear control | A `CLEAR_LABEL` (`CLEAR`) control carrying the `clear` pointer target, with the key bound to the `clear` action named beside it. |
+| The back control | A `BACK_LABEL` (`BACK`) control carrying the `back` pointer target. |
 
 A crystal shows its charge count and how many of those charges are currently
 spent, as `specs/board.md` describes, so a player tracks a crystal without
@@ -110,7 +116,8 @@ counting segments.
 
 The current mode adds its own readouts to this screen, and states them itself:
 `specs/modes/campaign.md` for Campaign and `specs/modes/cascade.md` for Cascade.
-Those sit clear of the board, whose extent is given in `specs/board.md`.
+Those sit clear of the board, whose extent is given in `specs/board.md`, as do
+the two controls.
 
 ## What advances on each screen
 
@@ -126,10 +133,18 @@ Nothing advances on the screens the modes add.
 
 ## Menu navigation
 
-Menus are keyboard only, through the registered actions in `specs/controls.md`:
-`up` and `down` move the highlight, `confirm` accepts the highlighted item, and
-`back` returns. The pointer draws beams and does not operate menus. `mute` is
-read on every screen.
+Every menu is worked from the keyboard and from the pointer, and the two reach
+the same choices.
+
+From the keyboard, through the registered actions in `specs/controls.md`: `up`
+and `down` move the highlight, `confirm` accepts the highlighted item, and `back`
+returns. `mute` is read on every screen.
+
+From the pointer, through the pointer targets in `specs/controls.md`: moving over
+an item's target highlights it, and a press followed by a release inside the same
+target accepts it. The pointer is a mouse, a pen, or a finger, and all three work
+every screen. On `playing` the pointer draws beams everywhere outside that
+screen's two targets.
 
 ## Audio
 
@@ -181,7 +196,6 @@ with sound muted.
 ## Out of scope
 
 - Network or online play.
-- Touch and gamepad input. The board is drawn with the pointer, and the menus
-  are driven from the keyboard.
+- Gamepad input. The game is played with the pointer and the keyboard.
 - Persistence of progress or settings between sessions. Each session starts
   fresh.

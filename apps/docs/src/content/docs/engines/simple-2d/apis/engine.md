@@ -61,6 +61,9 @@ interface SurfaceMetrics {
   dpr(): number;
   events(): EventTarget;
   origin?(): { x: number; y: number };
+  claimGestures?(): () => void;
+  capturePointer?(pointerId: number): void;
+  releasePointerCapture?(pointerId: number): void;
 }
 ```
 
@@ -76,9 +79,25 @@ before mapping a pointer position onto the stage. Absent, the origin reads
 `(0, 0)`, so a dispatched pointer event's client position is read as CSS pixels
 from the canvas's corner.
 
+`claimGestures()` takes the browser's own pointer gestures on the surface, and
+returns the function that gives them back. Those gestures are panning,
+pinch-zoom, double-tap zoom, text selection, the wheel's page scroll, and the
+context menu, and while they are claimed a drag, a wheel, and a press of the
+secondary button all reach the game instead. The engine calls it once as the
+pointer attaches and calls the returned function when the pointer detaches.
+
+`capturePointer(pointerId)` routes every later event for that pointer to the
+surface until `releasePointerCapture(pointerId)`, so a drag that leaves the
+canvas keeps delivering moves and its release is seen. The engine captures each
+pointer as it comes into contact and releases it as it leaves.
+
+The three are optional, and a surface with no element behind it supplies none of
+them. The default surface implements all three against the canvas element.
+
 Absent entirely, the engine reads `clientWidth`, `clientHeight`, the owning
 window's `devicePixelRatio`, and the canvas's bounding rectangle for the origin,
-and listens on the canvas's owning document.
+listens on the canvas's owning document, and claims and captures pointers on the
+canvas element.
 
 ## `Engine`
 
