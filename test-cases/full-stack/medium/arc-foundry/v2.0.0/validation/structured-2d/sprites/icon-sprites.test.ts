@@ -1,26 +1,50 @@
-// Arc Foundry — `sprites.icon-sprites`. CASE-PROVIDED. NOT YET WRITTEN.
+// sprites/icon-sprites — the ten marks the bar and the panel are drawn with.
 //
-// The manifest declares this point at `sprites/icon-sprites.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
-//
-// THE REQUIREMENT. assets/icons/charge.png, integrity.png and type-<type>.png
-// for each of the eight base types each exist as a 16 by 16 PNG.
-//
-// HOW IT IS DECIDED. Read the ten files and decode each one's dimensions. The
-// evidence it hands back is `icons` (image): the produced icons in the bar and
-// the panel.
+// `specs/assets.md`: `icons/charge.png` and `icons/integrity.png` at `16 x 16`,
+// "the status bar's Charge mark" and "its Grid Integrity mark", and
+// `icons/type-<type>.png` at `16 x 16`, "one glyph per base component type, for
+// the panel" — eight of them, so ten in all. `specs/hud.md` is what asks for
+// them: the bar's Charge and Grid Integrity reads each carry an icon.
 
-import { describe, it } from "vitest";
+import { it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  standComponent,
+} from "../harness";
+import { ICON_SPRITES, canvasOf } from "./png";
+import { serveProducedAssets } from "./host";
 
-import { fail } from "../assert";
+// The produced files, served to the engine off disk, so the still beside this
+// point's verdict shows the art the run made rather than the fallback a build
+// draws when nothing arrived.
+serveProducedAssets();
 
-describe("sprites.icon-sprites", () => {
-  it("The status and panel icons are produced", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `sprites.icon-sprites` has not been written yet",
+it("produces the bar's and the panel's icons at sixteen square", async () => {
+  for (const sprite of ICON_SPRITES) {
+    const canvas = canvasOf(sprite);
+    assertEqual(
+      canvas.width,
+      sprite.width,
+      `the width of assets/${sprite.path}`,
     );
-  });
+    assertEqual(
+      canvas.height,
+      sprite.height,
+      `the height of assets/${sprite.path}`,
+    );
+  }
+
+  const h = await createHarness();
+  try {
+    openYard(h, { charge: 473 });
+    const id = standComponent(h, "capacitor", 3, 10, 10);
+    h.debug.select(id);
+    await h.advance(1);
+    captureStill(h, "icons");
+  } finally {
+    h.dispose();
+  }
 });

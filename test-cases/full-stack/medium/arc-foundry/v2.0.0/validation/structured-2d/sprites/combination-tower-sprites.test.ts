@@ -1,26 +1,56 @@
-// Arc Foundry — `sprites.combination-tower-sprites`. CASE-PROVIDED. NOT YET WRITTEN.
+// sprites/combination-tower-sprites — a mount and a head for each of the twelve.
 //
-// The manifest declares this point at `sprites/combination-tower-sprites.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
-//
-// THE REQUIREMENT. assets/combos/<id>/base.png and head.png each exist as a 40
-// by 40 PNG for all twelve combination tower identifiers.
-//
-// HOW IT IS DECIDED. Read the twenty-four files and decode each one's
-// dimensions. The evidence it hands back is `towers` (image): the twelve
-// combination towers.
+// `specs/assets.md`: `combos/<id>/base.png` and `combos/<id>/head.png`, both at
+// `40 x 40`, "one per tower", and "a tower has no tier variants" — so it is
+// twenty-four files rather than the sixty a quality ladder would give.
+// `specs/combinations.md` fixes the twelve identifiers.
 
-import { describe, it } from "vitest";
+import { it } from "vitest";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, openYard, standCombo } from "../harness";
+import { COMBO_IDS } from "../../src/constants";
+import { canvasOf, comboBase, comboHead } from "./png";
+import { serveProducedAssets } from "./host";
 
-import { fail } from "../assert";
+// The produced files, served to the engine off disk, so the still beside this
+// point's verdict shows the art the run made rather than the fallback a build
+// draws when nothing arrived.
+serveProducedAssets();
 
-describe("sprites.combination-tower-sprites", () => {
-  it("Every combination tower has a produced mount and head", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `sprites.combination-tower-sprites` has not been written yet",
-    );
-  });
+it("produces a mount and a head for every combination tower", async () => {
+  for (const id of COMBO_IDS) {
+    for (const sprite of [comboBase(id), comboHead(id)]) {
+      const canvas = canvasOf(sprite);
+      assertEqual(
+        canvas.width,
+        sprite.width,
+        `the width of assets/${sprite.path}`,
+      );
+      assertEqual(
+        canvas.height,
+        sprite.height,
+        `the height of assets/${sprite.path}`,
+      );
+    }
+  }
+
+  const h = await createHarness();
+  try {
+    openYard(h);
+    let col = 4;
+    let row = 8;
+    for (const id of COMBO_IDS) {
+      standCombo(h, id, col, row);
+      col += 3;
+      if (col > 22) {
+        col = 4;
+        row += 3;
+      }
+    }
+    h.debug.clearSelection();
+    await h.advance(1);
+    captureStill(h, "towers");
+  } finally {
+    h.dispose();
+  }
 });
