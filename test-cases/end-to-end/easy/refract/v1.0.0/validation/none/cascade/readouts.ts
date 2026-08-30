@@ -12,6 +12,12 @@
 // of it. The radius is two cell pitches (2 x CELL_PITCH = 192, rounded to 200
 // logical px): a value drawn further from its label than two whole board cells
 // no longer reads as "beside the label" at the stage's logical size.
+//
+// The draws handed in are the frame's COALESCED runs (the harness's
+// `drawnTextRuns`), not its raw `fillText` calls: canvas has no portable
+// letter-spacing property, so a build that tracks its HUD draws a glyph per
+// call, and a label read off the raw calls would never be found on a build
+// that drew exactly the right words.
 
 import { CELL_PITCH } from "../notation";
 import { BOARD_EXTENT } from "../constants";

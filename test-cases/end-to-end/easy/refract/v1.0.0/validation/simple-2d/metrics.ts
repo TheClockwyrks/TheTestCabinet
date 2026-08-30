@@ -7,11 +7,21 @@
  * no engine, no reference implementation. The measures are defined over a
  * board's SOLUTIONS (one complete beam per channel present satisfying R9, two
  * being the same when every channel carries the same segment set), so the
- * heart of the module is a bounded enumeration of them. The bounds are honest
- * ones: the ladder caps `solutions` from above, so the enumeration may stop
- * one past the cap and report the board over it, and a generous expansion
- * budget is a runaway stop for a board the search cannot crack, reported as
- * `capped` rather than as any verdict.
+ * heart of the module is a bounded enumeration of them.
+ *
+ * TWO STOPS, REPORTED SEPARATELY, because they mean opposite things. The
+ * ladder caps `solutions` from above, so a caller passes one past the bound it
+ * is reading against and the enumeration stops there: `capped` is then a
+ * MEASUREMENT — the board really does carry more solutions than its tier
+ * permits, and `solutions` is the honest `bound + 1` that says so. The
+ * expansion budget (`DIFFICULTY_MAX_EXPANSIONS`) is a runaway stop for a board
+ * this search cannot crack, and `budget` is the ORACLE admitting it could not
+ * measure: it is a fact about this module, never a verdict on the board, so a
+ * caller must not read it as a failure. BOTH walks raise it — the solution
+ * enumeration and the per-channel route count — because a route walk that runs
+ * out of expansions can only do so before it has found the routes asked for,
+ * so the count it returns is a floor and reading it as a measurement fails the
+ * board for this module's own limit.
  *
  * Reading order — rows top to bottom, cells left to right within a row — is
  * the spec's tie-break, and it appears twice: the emitter a replayed beam is
@@ -30,8 +40,10 @@ import {
 export interface Difficulty {
   /** Distinct solutions found, up to the enumeration's cap. */
   readonly solutions: number;
-  /** Whether enumeration stopped at a cap, leaving `solutions` a floor. */
+  /** Whether enumeration stopped at the solutions cap: the board is over it. */
   readonly capped: boolean;
+  /** Whether the expansion budget stopped either walk: the board went UNMEASURED. */
+  readonly budget: boolean;
   /** Segments of one solution (identical across solutions), 0 if none. */
   readonly segmentCount: number;
   /** Channel-and-segment pairs in every solution, as a share of segmentCount. */
@@ -184,6 +196,8 @@ interface Search {
   readonly spent: Int32Array;
   expansions: number;
   stopped: boolean;
+  /** Set when the stop above was the expansion budget rather than a cap. */
+  budget: boolean;
 }
 
 function searchOver(ix: Indexed): Search {
@@ -195,6 +209,7 @@ function searchOver(ix: Indexed): Search {
     spent: new Int32Array(ix.count),
     expansions: 0,
     stopped: false,
+    budget: false,
   };
 }
 
@@ -305,12 +320,15 @@ type Solution = readonly (readonly number[])[];
 
 /**
  * Every solution of the board, stopping at `maxSolutions` found or at the
- * expansion budget; `capped` reports a stop either way.
+ * expansion budget. The two stops are reported apart: `capped` says the walk
+ * reached the solutions cap — a reading of the board — and `budget` says the
+ * expansion budget ran out, which is this module's own limit and no reading at
+ * all.
  */
 function enumerateSolutions(
   ix: Indexed,
   maxSolutions: number,
-): { solutions: Solution[]; capped: boolean } {
+): { solutions: Solution[]; capped: boolean; budget: boolean } {
   const s = searchOver(ix);
   const solutions: Solution[] = [];
   const chosen: number[][] = ix.present.map(() => []);
@@ -339,6 +357,7 @@ function enumerateSolutions(
         s.expansions += 1;
         if (s.expansions > DIFFICULTY_MAX_EXPANSIONS) {
           s.stopped = true;
+          s.budget = true;
           return;
         }
         const nb = flat[t];
@@ -369,7 +388,7 @@ function enumerateSolutions(
   };
 
   stage(0);
-  return { solutions, capped: s.stopped };
+  return { solutions, capped: s.stopped && !s.budget, budget: s.budget };
 }
 
 // ---- The five measures ----------------------------------------------------
@@ -502,8 +521,22 @@ function sharedOver(ix: Indexed, solutions: readonly Solution[]): number {
  * Complete beams one channel admits with the other channels' beams undrawn
  * (their nodes still standing and excluded by R2, crystal capacity still
  * limiting crossings), counted up to `cap` distinct segment sets.
+ *
+ * The count comes back with the SAME two-stop distinction the enumeration
+ * makes, because the two mean opposite things here too. Reaching `cap` is a
+ * measurement: the caller asked for no more than `cap` routes and got them.
+ * Exhausting `DIFFICULTY_MAX_EXPANSIONS` is this module admitting it could not
+ * measure, and it can only happen BELOW the cap — the walk stops the moment
+ * `cap` routes are seen — so the count it comes back with is a floor and not a
+ * reading. Handing that floor to {@link meetsFloor} as if it were a reading
+ * would fail the board for the oracle's own limit, so `budget` travels with it
+ * and {@link measureDifficulty} folds it into `Difficulty.budget`.
  */
-function routesFor(ix: Indexed, ch: Channel, cap: number): number {
+function routesFor(
+  ix: Indexed,
+  ch: Channel,
+  cap: number,
+): { count: number; budget: boolean } {
   const s = searchOver(ix);
   const [from, far] = ix.emitters.get(ch) ?? [0, 0];
   const lenses = ix.lenses.get(ch) ?? [];
@@ -516,6 +549,7 @@ function routesFor(ix: Indexed, ch: Channel, cap: number): number {
       s.expansions += 1;
       if (s.expansions > DIFFICULTY_MAX_EXPANSIONS) {
         s.stopped = true;
+        s.budget = true;
         return;
       }
       const nb = flat[t];
@@ -538,7 +572,7 @@ function routesFor(ix: Indexed, ch: Channel, cap: number): number {
     }
   };
   walk(from);
-  return seen.size;
+  return { count: seen.size, budget: s.budget };
 }
 
 // ---- Reading the floor ----------------------------------------------------
@@ -546,7 +580,12 @@ function routesFor(ix: Indexed, ch: Channel, cap: number): number {
 /**
  * The five measures of one board. `maxSolutions` bounds the enumeration; pass
  * one past the largest `solutions` bound being read against, so an
- * over-the-cap board reports `capped` with the cap-full count.
+ * over-the-cap board reports `capped` with the cap-full count — which
+ * {@link meetsFloor}'s upper-bound test then rejects on the number itself,
+ * needing no special case. A board the expansion budget abandoned instead
+ * reports `budget`, and its measures were never read. `routeCap` bounds the
+ * per-channel route count the same way; a walk that hit the expansion budget
+ * instead of that cap raises `budget` too.
  */
 export function measureDifficulty(
   board: Board,
@@ -555,11 +594,12 @@ export function measureDifficulty(
 ): Difficulty | null {
   const ix = index(board);
   if (ix === null) return null;
-  const { solutions, capped } = enumerateSolutions(ix, maxSolutions);
+  const { solutions, capped, budget } = enumerateSolutions(ix, maxSolutions);
   if (solutions.length === 0) {
     return {
       solutions: 0,
       capped,
+      budget,
       segmentCount: 0,
       determinedShare: 0,
       branching: 0,
@@ -568,14 +608,18 @@ export function measureDifficulty(
     };
   }
   const segmentCount = solutions[0].reduce((sum, segs) => sum + segs.length, 0);
+  const counted = ix.present.map((ch) => routesFor(ix, ch, routeCap));
   return {
     solutions: solutions.length,
     capped,
+    // Either walk may have run out of expansions; either way the board went
+    // unmeasured, and `routes` below is then a floor rather than a reading.
+    budget: budget || counted.some((route) => route.budget),
     segmentCount,
     determinedShare: determinedOver(solutions, segmentCount),
     branching: branchingOver(ix, solutions),
     sharedCrystals: sharedOver(ix, solutions),
-    routes: ix.present.map((ch) => routesFor(ix, ch, routeCap)),
+    routes: counted.map((route) => route.count),
   };
 }
 
@@ -593,7 +637,15 @@ export function meetsFloor(measured: Difficulty, tier: TierSpec): boolean {
   return measured.routes.every((count) => count >= tier.minRoutes);
 }
 
-/** The tier's floor, measured and judged in one call. */
+/**
+ * The tier's floor, measured and judged in one call.
+ *
+ * `budget` alone withholds the verdict, because it is the oracle saying it
+ * could not measure. A `capped` board needs no special case: `solutions` is
+ * then `tier.solutions[1] + 1` and {@link meetsFloor}'s upper bound rejects it
+ * on the honest count. Callers decide separately what an unmeasured board
+ * means for them — it is not a build defect.
+ */
 export function measuresUpToTier(
   board: Board,
   tierNumber: number,
@@ -608,6 +660,6 @@ export function measuresUpToTier(
     tier.minRoutes,
   );
   const ok =
-    measured !== null && !measured.capped && meetsFloor(measured, tier);
+    measured !== null && !measured.budget && meetsFloor(measured, tier);
   return { measured, ok };
 }

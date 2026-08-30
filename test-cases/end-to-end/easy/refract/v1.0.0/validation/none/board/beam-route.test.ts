@@ -8,14 +8,33 @@
 // two different channels — the point every straight center-to-center segment
 // passes through, comfortably clear of the node forms at either end. Each
 // midpoint stands more than 50 of 441 apart from the bench, and sits closer
-// in RGB to its own channel's sampled fill than to either other channel's,
-// read against all three channels posed on the board.
+// in RGB to its own channel's hue than to either other channel's, read against
+// all three channels posed on the board.
+//
+// HOW A CHANNEL'S HUE IS READ. As the median color of that channel's lens
+// form, against the board's own ground, and not as the lens's center pixel:
+// specs/board.md fixes that each channel carries one distinct hue and fixes
+// nothing about where inside a node its hue is shown, so a build that lays an
+// iris or a socket over the middle of its filled silhouette would hand all
+// three comparisons one ornament color. Nor as the form's loudest pixel, which
+// on a dark board is a white specular pip or a white outline rather than the
+// hue it sits on; the median is the color the form is mostly made of, and no
+// ornament covering a minority of it can move it. The three references are read BEFORE
+// anything is traced, so no beam's own pixels color them.
+//
+// A KNOWN NARROWING, recorded here and deliberately not acted on. "Sits closer
+// in RGB to its own channel's color than to either other channel's" is a proxy
+// for specs/board.md's "it carries its channel's hue", and it is a narrow one:
+// specs/board.md pins beam rendering nowhere, so a build drawing a pale core
+// inside a colored halo carries its channel's hue perfectly well while its
+// midpoint reads nearest white. No build of this cohort fails on it, so the
+// reading stands as written and the requirement is one for the next version of
+// this case to state exactly or for the assertion to drop.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLessThan } from "../assert";
 import {
   captureStill,
-  center,
   colorDistance,
   createHarness,
   loadBoard,
@@ -26,8 +45,8 @@ import {
   type Harness,
   type Rgb,
 } from "../harness";
-import { type Channel } from "../notation";
-import { DISTINCT_MIN } from "./sampling";
+import { cellCenter, NODE_R, type Channel } from "../notation";
+import { bodyColor, bodyMask, DISTINCT_MIN, groundSample } from "./sampling";
 
 /**
  * All three channels posed: triangle down the left column (an orthogonal
@@ -40,7 +59,7 @@ t.sd
 TS.D
 `;
 
-/** Where each channel's fill is sampled: a lens off both routes' midpoints. */
+/** Where each channel's hue is read: a lens off both routes' midpoints. */
 const LENS_CELLS: Record<Channel, { col: number; row: number }> = {
   triangle: { col: 0, row: 1 },
   square: { col: 2, row: 1 },
@@ -57,7 +76,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** The midpoint sits nearer its own channel's fill than either other's. */
+/** The midpoint sits nearer its own channel's hue than either other's. */
 function assertNearestOwnHue(
   midpoint: Rgb,
   own: Channel,
@@ -70,7 +89,7 @@ function assertNearestOwnHue(
     assertLessThan(
       toOwn,
       colorDistance(midpoint, fills[other]),
-      `${what}: nearer the ${own} fill than the ${other} fill in RGB`,
+      `${what}: nearer the ${own} hue than the ${other} hue in RGB`,
     );
   }
 }
@@ -78,16 +97,17 @@ function assertNearestOwnHue(
 it("draws an orthogonal and a diagonal segment through their midpoints, each in its channel's hue", async () => {
   const board = await loadBoard(h, THREE_CHANNEL_BOARD);
   const bench = await sampleBench(h);
+  const ground = await groundSample(h, board);
 
-  // Each channel's fill, sampled from a lens BEFORE anything is traced, so no
-  // beam's own pixels color the reference readings.
+  // Each channel's hue, read off a lens BEFORE anything is traced, so no beam's
+  // own pixels color the reference readings.
   const fills = {} as Record<Channel, Rgb>;
   for (const [channel, cell] of Object.entries(LENS_CELLS) as [
     Channel,
     { col: number; row: number },
   ][]) {
-    const at = center(board, cell);
-    fills[channel] = await sampleColor(h, at.x, at.y);
+    const at = cellCenter(cell.col, cell.row, board.cols, board.rows);
+    fills[channel] = bodyColor(await bodyMask(h, at.x, at.y, NODE_R, ground));
   }
 
   // One orthogonal triangle segment, one diagonal square segment, both from

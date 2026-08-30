@@ -8,14 +8,11 @@
 // camera is read where its pixels really landed rather than where they should
 // have been.
 //
-// The masks are the checklist's "hue-independent" silhouette reading: a pixel
-// belongs to a node's mask when it differs from the background sample by more
-// than the checklist's own 50 of 441 line for a body clearly apart from the
-// bench — the same figure the item descriptions quote — so the mask captures
-// where the form IS, whatever hue the build chose for it. Two masks are
-// compared by intersection-over-union after their centroids are aligned to the
-// nearest whole pixel, so a form's identity is judged on shape alone and not on
-// where inside its cell the build happened to center it.
+// A node's form is read as a BODY MASK: the disc about its cell center,
+// binarized against the board's own ground at half the form's own strongest
+// reading. {@link bodyMask} says why the cut is relative and why the region is
+// a disc; {@link groundSample} says why the comparand is the board's ground and
+// not the bench off it.
 
 import { colorDistance, sampleColor, type Harness, type Rgb } from "../harness";
 import { cellCenter, type Board } from "../notation";
@@ -50,84 +47,6 @@ export function readRegion(
 }
 
 /**
- * The checklist's line for a body clearly apart from the bench, used here to
- * binarize a region: a pixel this far from the background belongs to the form.
- */
-export const BINARIZE_MIN = 50;
-
-/** A region binarized against `background`: `true` where the form is. */
-export function maskRegion(region: Region, background: Rgb): boolean[] {
-  return region.pixels.map(
-    (pixel) => colorDistance(pixel, background) > BINARIZE_MIN,
-  );
-}
-
-/** How many pixels a mask holds. */
-export function maskArea(mask: readonly boolean[]): number {
-  let area = 0;
-  for (const bit of mask) if (bit) area += 1;
-  return area;
-}
-
-/** A mask's centroid in region coordinates, or `null` for an empty mask. */
-export function maskCentroid(
-  mask: readonly boolean[],
-  size: number,
-): { x: number; y: number } | null {
-  let sumX = 0;
-  let sumY = 0;
-  let area = 0;
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      if (!mask[y * size + x]) continue;
-      sumX += x;
-      sumY += y;
-      area += 1;
-    }
-  }
-  if (area === 0) return null;
-  return { x: sumX / area, y: sumY / area };
-}
-
-/**
- * Intersection-over-union of two same-sized masks after their centroids are
- * aligned to the nearest whole pixel: `b` is shifted so the two forms sit on
- * top of one another, then overlap is counted. Two empty masks are identical
- * (IoU 1), and an empty mask against a non-empty one shares nothing (IoU 0) —
- * both degenerate readings a check turns into its own verdict.
- */
-export function iouAfterAlignment(
-  a: readonly boolean[],
-  b: readonly boolean[],
-  size: number,
-): number {
-  const ca = maskCentroid(a, size);
-  const cb = maskCentroid(b, size);
-  if (ca === null && cb === null) return 1;
-  if (ca === null || cb === null) return 0;
-  const dx = Math.round(ca.x - cb.x);
-  const dy = Math.round(ca.y - cb.y);
-  let intersection = 0;
-  let union = 0;
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const inA = a[y * size + x] === true;
-      const sx = x - dx;
-      const sy = y - dy;
-      const inB =
-        sx >= 0 &&
-        sx < size &&
-        sy >= 0 &&
-        sy < size &&
-        b[sy * size + sx] === true;
-      if (inA && inB) intersection += 1;
-      if (inA || inB) union += 1;
-    }
-  }
-  return union === 0 ? 1 : intersection / union;
-}
-
-/**
  * The largest RGB distance between the same-positioned pixels of two regions:
  * how much the two renderings differ, at the point they differ most. Zero for
  * two identical regions.
@@ -140,75 +59,6 @@ export function maxRegionDifference(a: Region, b: Region): number {
     if (d > largest) largest = d;
   }
   return largest;
-}
-
-/**
- * The board's own ground: the sampled center of the first empty cell of the
- * posed board.
- *
- * specs/board.md lets a build draw an empty cell as nothing OR as quiet
- * background texture, so inside the board's area the bench a node sits on is
- * the CELL GROUND, not necessarily the bare stage background off the board.
- * A reading that asks whether a point inside the board shows "nothing" —
- * an emitter's open center, the ring outside a node's radius — therefore
- * compares against this sample: it is what the build draws where no node
- * sits, and against the bare off-board background such a check would fail a
- * conformant build for its legal empty-cell texture.
- */
-export function groundSample(h: Harness, board: Board): Rgb {
-  const occupied = new Set(
-    board.nodes.map((node) => `${node.col},${node.row}`),
-  );
-  for (let row = 0; row < board.rows; row += 1) {
-    for (let col = 0; col < board.cols; col += 1) {
-      if (occupied.has(`${col},${row}`)) continue;
-      const center = cellCenter(col, row, board.cols, board.rows);
-      return sampleColor(h, center.x, center.y);
-    }
-  }
-  throw new Error("the posed board holds no empty cell to sample");
-}
-
-/**
- * The strongest reading of a node's drawn form about its center: the largest
- * RGB distance from `background` over the center cluster and rings swept
- * inside NODE_R. A FILLED form is loudest at the center itself; an OUTLINED
- * one is open there and loudest on its stroke (specs/board.md "Nodes"), so a
- * check that a node is DRAWN at a point reads the whole form, not one pixel.
- */
-export function strongestAboutCenter(
-  h: Harness,
-  cx: number,
-  cy: number,
-  background: Rgb,
-): number {
-  let strongest = colorDistance(sampleColor(h, cx, cy), background);
-  for (const radius of [8, 14, 20, 26]) {
-    for (const point of ringPoints(cx, cy, radius, 24)) {
-      const [r, g, b] = h.pixel(point.x, point.y);
-      const d = colorDistance({ r, g, b }, background);
-      if (d > strongest) strongest = d;
-    }
-  }
-  return strongest;
-}
-
-/** `count` points evenly spaced on the circle of `radius` about `(cx, cy)`. */
-export function ringPoints(
-  cx: number,
-  cy: number,
-  radius: number,
-  count: number,
-): { x: number; y: number }[] {
-  const points: { x: number; y: number }[] = [];
-  for (let i = 0; i < count; i += 1) {
-    const angle = (2 * Math.PI * i) / count;
-    points.push({
-      x: cx + radius * Math.cos(angle),
-      y: cy + radius * Math.sin(angle),
-    });
-  }
-  return points;
 }
 
 /**
@@ -241,4 +91,277 @@ export function sampleMidpointAlong(
     bch += pb;
   }
   return { r: r / steps.length, g: g / steps.length, b: bch / steps.length };
+}
+
+/* -------------------------------------------------------------------------- */
+/* The shared board primitives                                                */
+/* -------------------------------------------------------------------------- */
+//
+// Three readings the whole category rests on: the board's own ground, a node's
+// body, and the color that body is made of. They are the same in every
+// engine project, in code and in wording, so one build is judged by the same
+// reading whichever engine it was written for. Only how a disc of pixels is
+// fetched differs, because that is the one thing the engines genuinely do
+// differently.
+
+/** The case's line for a reading clearly apart from the bench: 50 of 441. */
+export const APART_MIN = 50;
+
+/**
+ * The board's own ground: the sampled center of an EMPTY CELL of the posed
+ * board, read on the frame as it stands.
+ *
+ * specs/board.md leaves the background to the build — "It does not pin a
+ * palette, a font, node artwork, beam rendering, a background, or animation" —
+ * so a reading taken INSIDE the board's extent is compared against the board's
+ * own ground rather than against a stage-edge sample, which on a build that
+ * draws a vignette measures the vignette. An empty cell is what specs/board.md
+ * says a cell shows when nothing fills it — "drawn as nothing, or as quiet
+ * background texture of the build's choosing" — so it is the bench a node on
+ * this board really sits on. A reading genuinely off the board keeps the
+ * far-field bench sample.
+ */
+export function groundSample(h: Harness, board: Board): Rgb {
+  const occupied = new Set(
+    board.nodes.map((node) => `${node.col},${node.row}`),
+  );
+  for (let row = 0; row < board.rows; row += 1) {
+    for (let col = 0; col < board.cols; col += 1) {
+      if (occupied.has(`${col},${row}`)) continue;
+      const center = cellCenter(col, row, board.cols, board.rows);
+      return sampleColor(h, center.x, center.y);
+    }
+  }
+  throw new Error("the posed board holds no empty cell to sample");
+}
+
+/** A node's form, read off the rendered pixels and binarized against a ground. */
+export interface BodyMask {
+  /** Every sampled offset from the region's center, in whole sample steps. */
+  offsets: readonly { dx: number; dy: number }[];
+  /** Logical px per sample step: an offset sits `hypot(dx, dy) * unit` out. */
+  unit: number;
+  /** Whether each sampled offset stands in the body, in the same order. */
+  inBody: readonly boolean[];
+  /** The rendered color under each sampled offset, in the same order. */
+  colors: readonly Rgb[];
+  /** Each sampled offset's distance from the ground, in the same order. */
+  distances: readonly number[];
+  /** The greatest distance from the ground anywhere in the region. */
+  peak: number;
+  /** The line the body was binarized at: `max(APART_MIN, 0.5 * peak)`, or
+   * whatever line the caller handed {@link bodyMask} instead. */
+  cut: number;
+}
+
+/**
+ * Binarize a sampled disc against `ground` at `max(APART_MIN, 0.5 * peak)`,
+ * where `peak` is the greatest distance from the ground anywhere in the disc —
+ * or at `at`, when the caller has already read that line off a smaller region.
+ *
+ * THE HALFWAY LINE IS THE SPECIFICATION'S OWN. specs/board.md item 4 of
+ * "Presentation is yours" says a node's silhouette is drawn inside `NODE_R`,
+ * and that a halo, a backing, or a highlight drawn around it may reach
+ * `CELL_PITCH / 2` from the center, "and everywhere outside `NODE_R` it stays
+ * faint: less than halfway from the background it is drawn on to the strongest
+ * color the silhouette shows against that background". A pixel stands in the
+ * BODY when it is at least that halfway, so the binarization draws exactly the
+ * line the specification draws and invents no figure of its own.
+ *
+ * `at` exists because that line is measured against the strongest color THE
+ * SILHOUETTE shows. A caller reading a region wider than `NODE_R` reads the cut
+ * off the silhouette's own disc first and passes it in, so an ornament out in
+ * the wider region cannot raise the line that is there to exclude it.
+ *
+ * The floor at `APART_MIN` keeps the cut from collapsing onto a bench carrying
+ * nothing but its own quiet texture: below that line nothing in the region is a
+ * form at all, and the body comes back empty, which is a caller's own verdict.
+ */
+function binarizeDisc(
+  offsets: readonly { dx: number; dy: number }[],
+  unit: number,
+  colors: readonly Rgb[],
+  ground: Rgb,
+  at?: number,
+): BodyMask {
+  const distances = colors.map((color) => colorDistance(color, ground));
+  let peak = 0;
+  for (const distance of distances) if (distance > peak) peak = distance;
+  const cut = at ?? Math.max(APART_MIN, 0.5 * peak);
+  return {
+    offsets,
+    unit,
+    inBody: distances.map((distance) => distance > cut),
+    colors,
+    distances,
+    peak,
+    cut,
+  };
+}
+
+/** How many sampled offsets stand in the body. */
+export function bodyArea(mask: BodyMask): number {
+  let area = 0;
+  for (const bit of mask.inBody) if (bit) area += 1;
+  return area;
+}
+
+/** The farthest an in-body offset sits from the center, in logical px. */
+export function bodyReach(mask: BodyMask): number {
+  let reach = 0;
+  for (const [index, offset] of mask.offsets.entries()) {
+    if (!mask.inBody[index]) continue;
+    const out = Math.hypot(offset.dx, offset.dy) * mask.unit;
+    if (out > reach) reach = out;
+  }
+  return reach;
+}
+
+/**
+ * The in-body share of the sampled offsets lying within `radius` logical px of
+ * the center: how much of that inner disc the form covers, 0 to 1.
+ */
+export function bodyCoverage(mask: BodyMask, radius: number): number {
+  let inside = 0;
+  let covered = 0;
+  for (const [index, offset] of mask.offsets.entries()) {
+    if (Math.hypot(offset.dx, offset.dy) * mask.unit > radius) continue;
+    inside += 1;
+    if (mask.inBody[index]) covered += 1;
+  }
+  return inside === 0 ? 0 : covered / inside;
+}
+
+/**
+ * The body's centroid, in logical px from the center, or null for an empty
+ * body: where the mass of the drawn form sits relative to the point the region
+ * was read about.
+ */
+export function bodyCentroid(mask: BodyMask): { x: number; y: number } | null {
+  const steps = stepCentroid(mask);
+  if (steps === null) return null;
+  return { x: steps.x * mask.unit, y: steps.y * mask.unit };
+}
+
+/** The body's centroid in whole sample steps, or null for an empty body. */
+function stepCentroid(mask: BodyMask): { x: number; y: number } | null {
+  let sumX = 0;
+  let sumY = 0;
+  let area = 0;
+  for (const [index, offset] of mask.offsets.entries()) {
+    if (!mask.inBody[index]) continue;
+    sumX += offset.dx;
+    sumY += offset.dy;
+    area += 1;
+  }
+  return area === 0 ? null : { x: sumX / area, y: sumY / area };
+}
+
+/**
+ * The color a node's form is made of: the median of its body's pixels, read
+ * channel by channel. An empty body has no color and reads as black, which is
+ * a caller's own verdict.
+ *
+ * specs/board.md fixes that the three channel hues are distinct and told apart
+ * at a glance. It does not fix WHERE in a node its hue is shown, and a build
+ * may lay an iris, a socket, or a bevel over the very center of the form, so
+ * the center pixel is not the channel's hue.
+ *
+ * NOR IS THE BODY'S LOUDEST PIXEL. Read as the pixel standing farthest from the
+ * ground, the reading lands on whatever a node wears that is most extreme
+ * against its background — on a dark board a white specular pip or a white
+ * outline, and not the hue underneath it. Three lenses each wearing the same
+ * pip would then report one and the same color and read as carrying no distinct
+ * hues at all, which is the very verdict this reading exists to reach honestly.
+ * The MEDIAN is the color the form is mostly made of: an ornament covering a
+ * minority of the body cannot move it, in any direction, and no single pixel
+ * decides.
+ */
+export function bodyColor(mask: BodyMask): Rgb {
+  const reds: number[] = [];
+  const greens: number[] = [];
+  const blues: number[] = [];
+  for (const [index, inBody] of mask.inBody.entries()) {
+    if (!inBody) continue;
+    reds.push(mask.colors[index].r);
+    greens.push(mask.colors[index].g);
+    blues.push(mask.colors[index].b);
+  }
+  if (reds.length === 0) return { r: 0, g: 0, b: 0 };
+  return { r: middle(reds), g: middle(greens), b: middle(blues) };
+}
+
+/** The middle value of a non-empty list of numbers, sorted in place. */
+function middle(values: number[]): number {
+  values.sort((a, b) => a - b);
+  return values[values.length >> 1];
+}
+
+/**
+ * Intersection-over-union of two bodies after their centroids are aligned to
+ * the nearest whole sample step, so a form's identity is judged on shape alone
+ * and not on where inside its cell the build happened to center it. Two bodies
+ * sampled at the same radius share one grid, so their offsets compare directly.
+ * An empty body shares nothing with anything; callers assert non-emptiness
+ * first, and read the 0 as its own verdict if they do not.
+ */
+export function bodyIoU(a: BodyMask, b: BodyMask): number {
+  const centroidA = stepCentroid(a);
+  const centroidB = stepCentroid(b);
+  if (centroidA === null || centroidB === null) return 0;
+  const shiftX = Math.round(centroidA.x - centroidB.x);
+  const shiftY = Math.round(centroidA.y - centroidB.y);
+  const inA = new Set<string>();
+  for (const [index, offset] of a.offsets.entries()) {
+    if (a.inBody[index]) inA.add(`${offset.dx},${offset.dy}`);
+  }
+  let intersection = 0;
+  let areaB = 0;
+  for (const [index, offset] of b.offsets.entries()) {
+    if (!b.inBody[index]) continue;
+    areaB += 1;
+    if (inA.has(`${offset.dx + shiftX},${offset.dy + shiftY}`)) {
+      intersection += 1;
+    }
+  }
+  const union = inA.size + areaB - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/**
+ * The body of the form drawn within `radius` (logical px) of `(cx, cy)`, read
+ * in one `getImageData` over the canvas the engine drew into. Offsets are in
+ * device pixels through the same fit `h.device` uses, so two discs of one
+ * radius sample the same offsets in the same order. `at` overrides the line
+ * the region is binarized at (see {@link binarizeDisc}).
+ */
+export function bodyMask(
+  h: Harness,
+  cx: number,
+  cy: number,
+  radius: number,
+  ground: Rgb,
+  at?: number,
+): BodyMask {
+  const view = h.engine.viewport();
+  const center = h.device(cx, cy);
+  const step = Math.ceil(radius * view.scale);
+  const side = 2 * step + 1;
+  const { data } = h.ctx.getImageData(
+    center.x - step,
+    center.y - step,
+    side,
+    side,
+  );
+  const offsets: { dx: number; dy: number }[] = [];
+  const colors: Rgb[] = [];
+  for (let dy = -step; dy <= step; dy += 1) {
+    for (let dx = -step; dx <= step; dx += 1) {
+      if (dx * dx + dy * dy > step * step) continue;
+      const at = ((dy + step) * side + (dx + step)) * 4;
+      offsets.push({ dx, dy });
+      colors.push({ r: data[at], g: data[at + 1], b: data[at + 2] });
+    }
+  }
+  return binarizeDisc(offsets, 1 / view.scale, colors, ground, at);
 }

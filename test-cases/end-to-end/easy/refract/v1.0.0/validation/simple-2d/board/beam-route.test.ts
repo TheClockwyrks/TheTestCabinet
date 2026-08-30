@@ -9,12 +9,32 @@
 //
 //   - the midpoint cluster differs from the background sample by more than 50
 //     of 441 RGB distance (the beam is there);
-//   - it sits closer in RGB to its own channel's sampled node color than to
-//     either other channel's (it carries its channel's hue).
+//   - it sits closer in RGB to its own channel's hue than to either other
+//     channel's (it carries its channel's hue).
 //
-// The three channel colors are sampled off the same posed board's lens fills
+// The three channel colors are read off the same posed board's lens forms
 // before anything is traced, so the references and the beams come from the
 // same build and the same frame size.
+//
+// HOW A CHANNEL'S HUE IS READ. As the median color of that channel's lens
+// form, against the board's own ground, and not as the lens's center pixel:
+// specs/board.md fixes that each channel carries one distinct hue and fixes
+// nothing about where inside a node its hue is shown, so a build that lays an
+// iris or a socket over the middle of its filled silhouette would hand all
+// three comparisons one ornament color. Nor as the form's loudest pixel, which
+// on a dark board is a white specular pip or a white outline rather than the
+// hue it sits on; the median is the color the form is mostly made of, and no
+// ornament covering a minority of it can move it. The three references are read BEFORE
+// anything is traced, so no beam's own pixels color them.
+//
+// A KNOWN NARROWING, recorded here and deliberately not acted on. "Sits closer
+// in RGB to its own channel's color than to either other channel's" is a proxy
+// for specs/board.md's "it carries its channel's hue", and it is a narrow one:
+// specs/board.md pins beam rendering nowhere, so a build drawing a pale core
+// inside a colored halo carries its channel's hue perfectly well while its
+// midpoint reads nearest white. No build of this cohort fails on it, so the
+// reading stands as written and the requirement is one for the next version of
+// this case to state exactly or for the assertion to drop.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertGreaterThan, assertLessThan } from "../assert";
@@ -31,7 +51,8 @@ import {
   type Harness,
   type Rgb,
 } from "../harness";
-import { CHANNELS, type Channel } from "../notation";
+import { CHANNELS, NODE_R, parseBoard, type Channel } from "../notation";
+import { bodyColor, bodyMask, groundSample } from "./masks";
 
 /** The review item's distance: the beam clearly apart from the background. */
 const APART_MIN = 50;
@@ -98,13 +119,17 @@ it("draws each segment through its midpoint, in its own channel's hue", async ()
   await resetTo(h, 1);
   await loadBoard(h, ROUTE_BOARD);
 
-  // The three channel colors, sampled before anything is traced.
+  // The three channel hues, read before anything is traced.
   const background = sampleBackground(h);
+  const ground = groundSample(h, parseBoard(ROUTE_BOARD));
   const reference = new Map<Channel, Rgb>();
   for (const channel of CHANNELS) {
     const at = LENS_AT[channel];
     const center = nodeCenter(at.col, at.row, COLS, ROWS);
-    reference.set(channel, sampleColor(h, center.x, center.y));
+    reference.set(
+      channel,
+      bodyColor(bodyMask(h, center.x, center.y, NODE_R, ground)),
+    );
   }
 
   // Draw the two segments; each trace takes effect as it is made.
@@ -149,7 +174,7 @@ it("draws each segment through its midpoint, in its own channel's hue", async ()
         own,
         colorDistance(sampled, reference.get(other) as Rgb),
         `the ${segment.name} segment's midpoint against the ${other} ` +
-          `channel's color (specs/board.md: a beam carries its channel's ` +
+          `channel's hue (specs/board.md: a beam carries its channel's ` +
           "hue)",
       );
     }

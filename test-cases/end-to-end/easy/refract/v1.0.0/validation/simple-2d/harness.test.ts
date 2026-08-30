@@ -205,17 +205,9 @@ it("reads the overlay's text off the recorded context", async () => {
 it("captures cues, stamped with the frame they played on", async () => {
   // The plumbing is proven over the REAL pointer path: a player's segment add
   // plays the connect cue from the update that reads the sample, and the
-  // handler stamps it with that frame's own count.
-  //
-  // KNOWN REFERENCE BUG (see this stage's report): the same segment added
-  // through the debug surface's pointer operations or `trace` plays NO cue in
-  // the current reference, although specs/instrumentation.md says the posed
-  // press and a player's press are the same event to the game and specs/ui.md
-  // plays connect "when a segment is added". The audio suites assert the
-  // spec's reading — pose, advance one frame, cue on that frame — and are
-  // expected to fail against the reference until it is fixed. This self-check
-  // deliberately uses the path that works, because its job is to prove the
-  // capture machinery, not to decide that point.
+  // handler stamps it with that frame's own count. This self-check drives that
+  // path because its job is to prove the capture machinery, not to decide the
+  // cue point, which the audio suites own.
   await resetTo(h, 1);
   await loadBoard(h, GEO_3X3);
   const played = watchCues(h);

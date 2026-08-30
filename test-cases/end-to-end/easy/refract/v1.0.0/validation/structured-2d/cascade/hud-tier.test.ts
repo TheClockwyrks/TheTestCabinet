@@ -7,7 +7,11 @@
 // beside it — within one CELL_PITCH, the spec's own unit of adjacent
 // placement, or in the label's own run — and both clear of the current
 // board's extent widened by NODE_R. The fresh sequence's other readout reads
-// "SOLVED 0", so no other digit on the frame reads 1 by accident.
+// "SOLVED 0", so no other figure on the frame reads 1 by accident.
+//
+// The frame's text is read as COALESCED RUNS rather than as raw `fillText`
+// calls, because a build is free to letter-space its HUD and canvas has no
+// portable property for it, so tracked copy is drawn a glyph at a time.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { HUD_TIER_LABEL } from "../../src/constants";
@@ -15,7 +19,7 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnTextSpans,
+  drawnTextRuns,
   startCascade,
   type Harness,
 } from "../harness";
@@ -51,7 +55,7 @@ it("draws TIER with the current tier's digit beside it, clear of the board", asy
   captureStill(h, "hud");
 
   assertLabeledDigitClear(
-    drawnTextSpans(h),
+    drawnTextRuns(h),
     HUD_TIER_LABEL,
     OPENING_TIER,
     boardKeepOut(snapshot.board),

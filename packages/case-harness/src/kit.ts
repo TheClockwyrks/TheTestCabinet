@@ -86,7 +86,7 @@ export interface CaseHarnessKit<S, D> extends TickMath {
 
 /** Bind the shared harness to one case, once. */
 export function createCaseHarness<S, D extends object>(
-  config: CaseConfig,
+  config: CaseConfig<S>,
 ): CaseHarnessKit<S, D> {
   const resolved = resolveConfig(config);
   const requirement = surfaceRequirement(resolved.handle, resolved.specPath);

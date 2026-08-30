@@ -9,6 +9,15 @@
 //
 // The declared output is a REPLAY: the frames the build drew around the move,
 // showing the segment appearing on the held trace.
+//
+// specs/controls.md phrases this requirement about the pointer a PLAYER holds,
+// so the drag is driven through the engine's own pointer input rather than
+// through the debug surface's pointer operations. Those resolve between frames
+// (specs/instrumentation.md), and no rule says a posed press is still held
+// after a frame has advanced — driving them across the `advance` calls this
+// replay needs would grade that unstated behavior instead of this one. Each
+// player helper raises the real sample and then runs the one frame that
+// delivers it, and the replay's own frames follow.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
@@ -18,7 +27,9 @@ import {
   centerOf,
   createHarness,
   loadBoard,
-  pressCell,
+  playerMoveToPoint,
+  playerPress,
+  playerRelease,
   resetTo,
   type Harness,
 } from "../harness";
@@ -43,7 +54,7 @@ it("while the trace is held, a move within NODE_HIT_R of an adjacent node adds t
   await resetTo(h, 1);
   await loadBoard(h, GEO_3X3);
 
-  pressCell(h, EMITTER);
+  await playerPress(h, EMITTER);
   assertDeepEqual(
     h.snapshot().beams.triangle?.cells,
     [EMITTER],
@@ -53,7 +64,7 @@ it("while the trace is held, a move within NODE_HIT_R of an adjacent node adds t
   const lens = centerOf(h, LENS);
   await captureReplay(h, "extend", async () => {
     await h.advance(6);
-    h.debug.pointerMove(lens.x + OFFSET, lens.y);
+    await playerMoveToPoint(h, lens.x + OFFSET, lens.y);
     await h.advance(12);
   });
 
@@ -69,5 +80,5 @@ it("while the trace is held, a move within NODE_HIT_R of an adjacent node adds t
     "the targeted node becomes the new live end",
   );
 
-  h.debug.pointerUp();
+  await playerRelease(h, LENS);
 });

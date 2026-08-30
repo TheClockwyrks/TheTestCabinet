@@ -9,16 +9,35 @@
 //   1. VISIBLE: the midpoint cluster differs from the background sample by
 //      more than the item's 50 of 441 RGB distance, for an orthogonal and for
 //      a diagonal segment — the two orientations a route is drawn in.
-//   2. ITS OWN HUE: each midpoint sits closer in RGB to its own channel's
-//      sampled node color than to either other channel's, so the route also
-//      says WHOSE it is. The channel colors are sampled at the three lens
-//      centers — the filled silhouettes — on the same frame.
+//   2. ITS OWN HUE: each midpoint sits closer in RGB to its own channel's hue
+//      than to either other channel's, so the route also says WHOSE it is. The
+//      channel hues are read off the three lens forms — the filled silhouettes.
 //
 // The board carries all three channels so both comparisons have all three
 // hues to compare against; the two segments are traced on two different
 // channels through the build's own pointer path, one orthogonal and one
 // diagonal, each between the traced channel's own nodes so no rule refuses
 // them.
+//
+// HOW A CHANNEL'S HUE IS READ. As the median color of that channel's lens
+// form, against the board's own ground, and not as the lens's center pixel:
+// specs/board.md fixes that each channel carries one distinct hue and fixes
+// nothing about where inside a node its hue is shown, so a build that lays an
+// iris or a socket over the middle of its filled silhouette would hand all
+// three comparisons one ornament color. Nor as the form's loudest pixel, which
+// on a dark board is a white specular pip or a white outline rather than the
+// hue it sits on; the median is the color the form is mostly made of, and no
+// ornament covering a minority of it can move it. The three references are read BEFORE
+// anything is traced, so no beam's own pixels color them.
+//
+// A KNOWN NARROWING, recorded here and deliberately not acted on. "Sits closer
+// in RGB to its own channel's color than to either other channel's" is a proxy
+// for specs/board.md's "it carries its channel's hue", and it is a narrow one:
+// specs/board.md pins beam rendering nowhere, so a build drawing a pale core
+// inside a colored halo carries its channel's hue perfectly well while its
+// midpoint reads nearest white. No build of this cohort fails on it, so the
+// reading stands as written and the requirement is one for the next version of
+// this case to state exactly or for the assertion to drop.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertGreaterThan, assertLessThan } from "../assert";
@@ -29,12 +48,16 @@ import {
   loadBoard,
   resetTo,
   sampleBackground,
-  sampleColor,
   type Harness,
   type Rgb,
 } from "../harness";
-import { cellCenter, type Board, type Channel } from "../notation";
-import { sampleMidpointAlong } from "./pixels";
+import { cellCenter, NODE_R, type Board, type Channel } from "../notation";
+import {
+  bodyColor,
+  bodyMask,
+  groundSample,
+  sampleMidpointAlong,
+} from "./pixels";
 
 /** The item's line for a beam clearly apart from the bench: 50 of 441. */
 const APART_MIN = 50;
@@ -81,6 +104,22 @@ function lensCenters(board: Board): Record<Channel, { x: number; y: number }> {
 it("draws an orthogonal and a diagonal segment visibly, each in its channel's hue", async () => {
   const board = await loadBoard(h, THREE_CHANNELS);
 
+  // The three channel hues, read off the lens forms BEFORE anything is traced,
+  // so no beam's own pixels color the reference readings.
+  const ground = groundSample(h, board);
+  const hues = lensCenters(board);
+  const channelColors: Record<Channel, Rgb> = {
+    triangle: bodyColor(
+      bodyMask(h, hues.triangle.x, hues.triangle.y, NODE_R, ground),
+    ),
+    square: bodyColor(
+      bodyMask(h, hues.square.x, hues.square.y, NODE_R, ground),
+    ),
+    diamond: bodyColor(
+      bodyMask(h, hues.diamond.x, hues.diamond.y, NODE_R, ground),
+    ),
+  };
+
   // The two segments, through the build's own pointer path.
   h.debug.trace([
     { col: 0, row: 0 },
@@ -113,12 +152,6 @@ it("draws an orthogonal and a diagonal segment visibly, each in its channel's hu
   captureStill(h, "beams");
 
   const background = sampleBackground(h);
-  const hues = lensCenters(board);
-  const channelColors: Record<Channel, Rgb> = {
-    triangle: sampleColor(h, hues.triangle.x, hues.triangle.y),
-    square: sampleColor(h, hues.square.x, hues.square.y),
-    diamond: sampleColor(h, hues.diamond.x, hues.diamond.y),
-  };
 
   const segments = [
     {

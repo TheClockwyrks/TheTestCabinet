@@ -149,9 +149,11 @@ S.S
 /**
  * Shared-node two-beam board: the crystal carries two charges and both
  * channels cross it once — triangle straight across the top, square by two
- * diagonals (different blocks) underneath. After both beams pass, two beams
- * run through one node: a press there begins no trace (specs/controls.md — a
- * node more than one beam passes through matches no row). Solvable, with the
+ * diagonals (different blocks) underneath. After both beams pass, two beams run
+ * through the crystal. A press on a node BOTH beams merely pass through begins
+ * no trace; a press on a node that is one beam's END matches the second row
+ * first and resumes that beam, whatever else runs through it
+ * (specs/controls.md, the grab table, evaluated in order). Solvable, with the
  * crystal's charges exactly spent.
  */
 export const SHARED_CRYSTAL = `

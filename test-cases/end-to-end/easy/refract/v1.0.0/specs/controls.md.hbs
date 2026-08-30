@@ -130,14 +130,16 @@ begins one according to that node's place on the board. The rows below are
 | An emitter of a channel whose beam carries no segments | Starts that channel's beam at that emitter. |
 | Either end of a channel's beam | Resumes that beam from that end. |
 | A node exactly one beam passes through | Shortens that beam to end at that node, and resumes it from there. |
+| Anything else | Begins no trace and leaves the board unchanged. |
 
 A press inside the `clear` or the `back` target is taken by that target and begins
 no trace, whatever lies behind it, so the two are resolved before the board is.
 
-A press that matches no row begins no trace and leaves the board unchanged. That
-covers a press on an empty cell, a press off the board, a press on a node that
-carries no beam and is not an emitter of a channel whose beam carries no
-segments, and a press on a node that **more than one beam** passes through.
+A node reaches the last row only once every row above it has been tried and
+missed, so a node two beams run through reaches it only when it is **neither
+beam's end**. The last row also catches a press on an empty cell, a press off
+the board, and a press on a node that carries no beam and is not an emitter of a
+channel whose beam carries no segments.
 
 The trace carries the channel of the beam it began, and the node it began at is
 the live end.
@@ -175,9 +177,12 @@ unwound one segment at a time by backing the pointer along it without releasing.
 
 The release edge ends the trace and leaves the beam exactly as drawn, complete or
 not. A partial beam persists on the board, and a later press on either of its
-ends resumes it. A trace that added no segment leaves its channel's beam carrying
-none, so a later press on either of that channel's emitters starts the beam
-afresh.
+ends resumes it. A beam persists only once it carries a segment. A trace
+released at the node it began on added none, and the release takes back the one
+cell the press placed: that channel's beam is left carrying **no cells at all**,
+so a later press on either of that channel's emitters starts the beam afresh.
+The single cell a beam holds between its press and its release lives only while
+that trace is live, and it is the one thing a release does not leave as drawn.
 
 A trace also ends the moment the board is solved. On the frame a segment
 satisfies the solved condition the trace ends and the beams stay exactly as

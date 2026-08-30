@@ -206,6 +206,70 @@ export interface RefractDebugApi {
 }
 
 /* -------------------------------------------------------------------------- */
+/* What a snapshot is compared on                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A snapshot with every beam cell narrowed to the two fields the specs fix.
+ *
+ * specs/state.md declares `interface Cell { col, row }` and
+ * specs/instrumentation.md's Snapshot shape writes `cells: [{ col, row }]`, so
+ * `col` and `row` are what a cell means. Neither says a cell may carry nothing
+ * else, and specs/state.md's contract grants the build fields that "hold derived
+ * data you can rebuild from the declared ones" — a cell that also names its
+ * node's kind or channel is exactly that. So every check compares on the two
+ * fields the specs fix, and no check grades the rest either way. A cell missing
+ * `col` or `row` still fails: the projection reads those two properties and
+ * yields `undefined`.
+ *
+ * The snapshot the page returned is never touched. Every container the
+ * projection rewrites is a fresh object, so a check holding an earlier snapshot
+ * sees what it saw.
+ *
+ * Handed to the shared harness as its `projectSnapshot`, so it runs at every
+ * point a snapshot crosses back out of the page — `h.snapshot()`,
+ * `h.debug.snapshot()`, and the states a driven run reads — and no check can
+ * hold an unprojected one. It is the same narrowing the `simple-2d` and
+ * `structured-2d` harnesses apply at their own single read point, so a build
+ * that passes there passes here.
+ */
+function projectCells(snapshot: RefractSnapshot): RefractSnapshot {
+  const projected: RefractSnapshot = { ...snapshot };
+
+  const beams: unknown = snapshot.beams;
+  if (typeof beams === "object" && beams !== null) {
+    const narrowed: Record<string, unknown> = { ...beams };
+    for (const [channel, beam] of Object.entries(narrowed)) {
+      if (typeof beam !== "object" || beam === null) continue;
+      const cells: unknown = (beam as { cells?: unknown }).cells;
+      if (!Array.isArray(cells)) continue;
+      narrowed[channel] = {
+        ...beam,
+        cells: (cells as { col: number; row: number }[]).map((cell) => ({
+          col: cell.col,
+          row: cell.row,
+        })),
+      };
+    }
+    projected.beams = narrowed as RefractSnapshot["beams"];
+  }
+
+  const tracing = snapshot.tracing;
+  if (typeof tracing === "object" && tracing !== null) {
+    const live: unknown = tracing.live;
+    if (typeof live === "object" && live !== null) {
+      const cell = live as { col: number; row: number };
+      projected.tracing = {
+        ...tracing,
+        live: { col: cell.col, row: cell.row },
+      };
+    }
+  }
+
+  return projected;
+}
+
+/* -------------------------------------------------------------------------- */
 /* The harness, bound to this case                                            */
 /* -------------------------------------------------------------------------- */
 //
@@ -254,6 +318,15 @@ const kit = createCaseHarness<RefractSnapshot, RefractDebugApi>({
   // is generous against a conformant build and bounds the cost of one with no
   // surface at all, which pays it once per harness.
   surfaceTimeoutMs: 5_000,
+  // Every beam cell narrowed to `col` and `row` before any check sees it, for
+  // the reason on {@link projectCells}.
+  projectSnapshot: projectCells,
+  // Refract reads WHERE its copy sits, not only which strings were drawn — the
+  // select grid's numbers cluster into rows and columns, a HUD figure is held
+  // beside its label and clear of the board, and a heading letter-spaced a glyph
+  // per `fillText` has to read as the one run it spells. All of that is measured
+  // extent, so the harness measures each text call in the page.
+  measureText: true,
   projectRoot: dirname(fileURLToPath(import.meta.url)),
 });
 
@@ -306,6 +379,8 @@ export {
   closeWorkerBrowser,
   colorDistance,
   drawnText,
+  drawnTextLines,
+  drawnTextRuns,
   drewText,
   mouseGlide,
   mousePress,
@@ -317,7 +392,7 @@ export {
   thinReplay,
 } from "./case-harness/index";
 
-export type { Rgb, TextDraw } from "./case-harness/index";
+export type { Rgb, TextDraw, TextGeometry } from "./case-harness/index";
 
 /* -------------------------------------------------------------------------- */
 /* Colour sampling                                                            */

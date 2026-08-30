@@ -38,7 +38,7 @@ Two radii govern a node:
 
 | Constant | Value | Governs |
 | --- | --- | --- |
-| `NODE_R` | `30` | Every node's drawn form fits inside this radius of its cell center. |
+| `NODE_R` | `30` | A node's silhouette is drawn inside this radius of its cell center. The silhouette is the form that carries the node's kind and its channel. |
 | `NODE_HIT_R` | `44` | A node is targeted by the pointer when the pointer is within this radius of the node's cell center. |
 
 ## Nodes
@@ -91,8 +91,12 @@ What the look must deliver:
    outlined against a lens's fill.
 3. A crystal is never mistaken for a channel node, and its charges and its spent
    count are both readable without counting slowly.
-4. Every node's drawn form fits inside `NODE_R` (`30`) of its cell center, so
-   neighboring nodes never collide.
+4. Each node's silhouette is drawn inside `NODE_R` (`30`) of its cell center, so
+   neighboring nodes never collide. A halo, a backing, or a highlight drawn
+   around the silhouette may reach `CELL_PITCH / 2` (`48`) from that center, and
+   everywhere outside `NODE_R` it stays faint: less than halfway from the
+   background it is drawn on to the strongest color the silhouette shows against
+   that background.
 5. A drawn beam visibly connects the centers of the cells it links, so its route
    is unambiguous, and it carries its channel's hue.
 6. Text is legible against whatever it is drawn on at the logical stage size.

@@ -22,12 +22,16 @@ Whatever its shape, the state carries the following:
   formula in `specs/board.md` rather than from the state.
 - One beam per channel present on the board, each carrying the cells it runs
   through in the order they were drawn. Consecutive cells are joined by a
-  segment, so a beam of `n` cells carries `n - 1` segments and a beam that has
-  been started and not yet extended carries one cell and no segments. The first
-  cell is the node the trace that drew it began at, and the last cell is the end
-  the most recent trace worked from: whenever a trace begins on a beam, the beam
-  is oriented first so that the end being extended is its last cell, reversing
-  the stored order when the trace begins at the other end.
+  segment, so a beam of `n` cells carries `n - 1` segments, and a beam whose
+  trace has begun at an emitter and not yet extended carries one cell and no
+  segments for as long as that trace is live. At every other moment a beam
+  holding no segment carries no cells at all: before anybody touches it, and
+  again once a trace that added none is released (`specs/controls.md`,
+  Releasing). The first cell is the node the trace that drew it began at, and
+  the last cell is the end the most recent trace worked from: whenever a trace
+  begins on a beam, the beam is oriented first so that the end being extended is
+  its last cell, reversing the stored order when the trace begins at the other
+  end.
 - How much of each crystal is spent. A charge is spent the moment a beam enters
   the crystal, so the spent count is the number of times that crystal's cell
   appears across the beams, whether or not the crossing has been left again.
@@ -50,8 +54,13 @@ Whatever its shape, the state carries the following:
 - The state of the seeded random generator, which Cascade draws its boards from.
 
 Both modes' progress is carried whatever the mode being played, so the state has
-one shape. The progress of the mode that is not being played holds the values it
-carries before that mode is entered.
+one shape. The two progressions are independent and neither is cleared by the
+other: entering a mode leaves the other mode's progress exactly as that mode
+left it, so the campaign's progress survives a run of Cascade and the run's
+survives a return to the campaign, as `specs/modes/campaign.md` and
+`specs/modes/cascade.md` require. On a fresh state, and after a `reset`, the
+snapshot reports `boardIndex` `0`, `solvedBoards` empty, `unlockedCount` `1`,
+`selectIndex` `0`, `solvedCount` `0`, and `tier` the opening tier.
 {{else if (eq engine.slug "simple-2d")}}
 `src/game.ts` declares and exports the state the game is written against. This
 section is that declaration: write it into `src/game.ts` exactly as it stands
@@ -179,9 +188,11 @@ One channel's beam.
 - `channel` — the channel the beam belongs to.
 - `cells` — the cells the beam runs through, in the order they were drawn.
   Consecutive cells are joined by a segment, so a beam of `n` cells carries
-  `n - 1` segments, a beam that has been started at an emitter and not yet
-  extended carries one cell and no segments, and a beam nobody has touched
-  carries none.
+  `n - 1` segments, and a beam whose trace has begun at an emitter and not yet
+  extended carries one cell and no segments for as long as that trace is live.
+  At every other moment a beam holding no segment carries no cells at all:
+  before anybody touches it, and again once a trace that added none is released
+  (`specs/controls.md`, Releasing).
 
 A beam's stored order is what makes its two ends distinguishable. The first cell
 is the node the trace that drew it began at, and the last cell is the end the
@@ -263,10 +274,14 @@ the fields posed and read back by reading them.
   result. Cascade draws its boards from it, and Campaign never reads it.
 
 The four course fields and the two run fields are declared whatever `mode`
-holds, so the state has one shape. The fields belonging to the mode that is not
-being played hold the values they carry before that mode is entered:
-`boardIndex` `0`, `solvedBoards` empty, `unlockedCount` `1`, `selectIndex` `0`,
-`solvedCount` `0`, and `tier` the opening tier.
+holds, so the state has one shape. The two progressions are independent and
+neither is cleared by the other: entering a mode leaves the other mode's fields
+exactly as that mode left them, so the campaign's progress survives a run of
+Cascade and the run's survives a return to the campaign, as
+`specs/modes/campaign.md` and `specs/modes/cascade.md` require. On a fresh
+state, and after a `reset`, they hold `boardIndex` `0`, `solvedBoards` empty,
+`unlockedCount` `1`, `selectIndex` `0`, `solvedCount` `0`, and `tier` the
+opening tier.
 
 ## The contract
 
@@ -424,9 +439,11 @@ One channel's beam.
 - `channel` — the channel the beam belongs to.
 - `cells` — the cells the beam runs through, in the order they were drawn.
   Consecutive cells are joined by a segment, so a beam of `n` cells carries
-  `n - 1` segments, a beam that has been started at an emitter and not yet
-  extended carries one cell and no segments, and a beam nobody has touched
-  carries none.
+  `n - 1` segments, and a beam whose trace has begun at an emitter and not yet
+  extended carries one cell and no segments for as long as that trace is live.
+  At every other moment a beam holding no segment carries no cells at all:
+  before anybody touches it, and again once a trace that added none is released
+  (`specs/controls.md`, Releasing).
 
 A beam's stored order is what makes its two ends distinguishable. The first cell
 is the node the trace that drew it began at, and the last cell is the end the
@@ -515,10 +532,14 @@ run on `screen` rather than on the match phase: the mode never calls
 player the mode adds is `players[0]`, whose controller is where input is read.
 
 The four course fields and the two run fields are carried whatever `mode`
-holds, so the state has one shape. The fields belonging to the mode that is not
-being played hold the values they carry before that mode is entered:
-`boardIndex` `0`, `solvedBoards` empty, `unlockedCount` `1`, `selectIndex` `0`,
-`solvedCount` `0`, and `tier` the opening tier.
+holds, so the state has one shape. The two progressions are independent and
+neither is cleared by the other: entering a mode leaves the other mode's fields
+exactly as that mode left them, so the campaign's progress survives a run of
+Cascade and the run's survives a return to the campaign, as
+`specs/modes/campaign.md` and `specs/modes/cascade.md` require. On a fresh
+state, and after a `reset`, they hold `boardIndex` `0`, `solvedBoards` empty,
+`unlockedCount` `1`, `selectIndex` `0`, `solvedCount` `0`, and `tier` the
+opening tier.
 
 ## The contract
 

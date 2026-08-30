@@ -8,6 +8,10 @@
 // in a digits run anchored within readouts.ts's adjacency), with both anchors
 // outside the largest board's extent widened by NODE_R (constants.ts
 // BOARD_EXTENT).
+//
+// The frame's text is read as COALESCED RUNS rather than as raw `fillText`
+// calls, because a build is free to letter-space its HUD and canvas has no
+// portable property for it, so tracked copy is drawn a glyph at a time.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -15,8 +19,8 @@ import { HUD_TIER_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,
+  drawnTextRuns,
   startCascade,
-  textDraws,
   type Harness,
 } from "../harness";
 import { findReadouts, outsideBoardExtent } from "./readouts";
@@ -40,7 +44,7 @@ it("draws TIER with the current tier's digit beside it, clear of the board's ext
   await captureStill(h, "hud");
 
   const readouts = findReadouts(
-    textDraws(calls),
+    drawnTextRuns(calls),
     HUD_TIER_LABEL,
     playing.tier,
   ).filter(

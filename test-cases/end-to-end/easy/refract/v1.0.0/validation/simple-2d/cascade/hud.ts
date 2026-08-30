@@ -25,9 +25,22 @@ export const ADJACENT = 200;
 const ASCENT = 36;
 const DESCENT = 10;
 
-/** The run's digits, read together: "SOLVED: 12" reads 12. NaN when none. */
-export function digitsOf(span: TextSpan): number {
-  return Number.parseInt(span.text.replace(/\D/g, ""), 10);
+/**
+ * The WHOLE NUMBERS a run carries, in order: `"SOLVED: 12"` reads `[12]` and a
+ * one-line HUD `"CASCADE · SOLVED 1 · TIER 1"` reads `[1, 1]`.
+ *
+ * Reading a run's digits stripped of everything else instead would spell one
+ * number out of two — that same line would read as eleven — and the
+ * same-run allowance below would then never fire on the very layout it exists
+ * for. The specification fixes the labels and the values, not the layout
+ * ("where they sit and how they are styled is the build's"), so a build is
+ * free to draw both readouts on one line and each number in it must still read
+ * as itself.
+ */
+export function numbersIn(span: TextSpan): number[] {
+  return (span.text.match(/\d+/g) ?? []).map((digits) =>
+    Number.parseInt(digits, 10),
+  );
 }
 
 /** The midpoint of the run's glyphs. */
@@ -46,7 +59,13 @@ export function beside(label: TextSpan, figure: TextSpan): boolean {
 /**
  * The label run with `figure` beside it, or a named failure listing what the
  * frame drew instead. `label` is matched as a substring, ignoring case, the
- * way the shared `drewText` matches copy.
+ * way the shared `drewText` matches copy, and `figure` is matched as one of
+ * the whole numbers a run carries.
+ *
+ * `spans` is the frame's COALESCED runs (the harness's `drawnTextRuns`), not
+ * its raw `fillText` calls: canvas has no portable letter-spacing property, so
+ * a build that tracks its HUD draws a glyph per call, and a label read off the
+ * raw calls would never be found on a build that drew exactly the right words.
  */
 export function findLabelWithFigure(
   spans: readonly TextSpan[],
@@ -60,7 +79,7 @@ export function findLabelWithFigure(
   );
   for (const labelSpan of labels) {
     for (const span of spans) {
-      if (digitsOf(span) !== figure) continue;
+      if (!numbersIn(span).includes(figure)) continue;
       if (beside(labelSpan, span)) return { label: labelSpan, figure: span };
     }
   }

@@ -57,6 +57,7 @@ import {
   unexposedSurface,
 } from "./surface";
 import { toDrawCall, type DrawCall, type RecordedOp } from "./draw-calls";
+import { DEFAULT_FONT, DEFAULT_TEXT_ALIGN } from "./text";
 import { mediaDestination } from "./media";
 import { type Recording } from "./replay/format";
 import { thinReplay } from "./replay/retable";
@@ -422,6 +423,115 @@ async function sweep<S>(
   return swept(false, count, snapshot);
 }
 
+/* ---- Measuring the text a frame drew --------------------------------------- */
+
+/** One text call, and the text state the walk found in force at it. */
+interface PendingMeasure {
+  call: Extract<DrawCall, { kind: "call" }>;
+  text: string;
+  font: string;
+  textAlign: string;
+}
+
+/**
+ * Attach a measured width and the alignment in force to every text call of a
+ * recorded frame.
+ *
+ * The recorder records `font` and `textAlign` as ordinary property sets, and
+ * `save`/`restore` stack them exactly as they stack the transform, so the state
+ * at each call is recovered by walking the frame. The widths themselves are
+ * measured IN THE PAGE, against an offscreen 2D context, so a run is measured
+ * under the build's own loaded fonts — in ONE crossing, over the distinct
+ * (text, font) pairs the frame used, however many calls spelled them.
+ *
+ * The walk starts from the context's own defaults, because a frame's operation
+ * list holds what that frame issued and not what it inherited. A build that sets
+ * its font every frame, which is the ordinary render, is measured exactly; one
+ * that sets it once and relies on the inheritance is measured against the
+ * default font, which under-reports the width and so only ever leaves runs apart
+ * that would otherwise have joined.
+ */
+async function measureTextCalls(page: Page, calls: DrawCall[]): Promise<void> {
+  const pending: PendingMeasure[] = [];
+  const stack: { font: string; textAlign: string }[] = [];
+  let current = { font: DEFAULT_FONT, textAlign: DEFAULT_TEXT_ALIGN };
+
+  for (const call of calls) {
+    if (call.kind === "set") {
+      if (call.property === "font" && typeof call.value === "string") {
+        current = { ...current, font: call.value };
+      } else if (
+        call.property === "textAlign" &&
+        typeof call.value === "string"
+      ) {
+        current = { ...current, textAlign: call.value };
+      }
+      continue;
+    }
+    if (call.method === "save") {
+      stack.push(current);
+      continue;
+    }
+    if (call.method === "restore") {
+      const popped = stack.pop();
+      if (popped !== undefined) current = popped;
+      continue;
+    }
+    if (call.method !== "fillText" && call.method !== "strokeText") continue;
+    const text = call.args[0];
+    if (typeof text !== "string" || text.length === 0) continue;
+    pending.push({
+      call,
+      text,
+      font: current.font,
+      textAlign: current.textAlign,
+    });
+  }
+  if (pending.length === 0) return;
+
+  const distinct = new Map<string, { font: string; text: string }>();
+  for (const item of pending) {
+    distinct.set(measureKey(item.font, item.text), {
+      font: item.font,
+      text: item.text,
+    });
+  }
+  const wanted = [...distinct.values()];
+
+  const widths = (await page.evaluate((items) => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (ctx === null) {
+      throw new Error("case-harness: no 2D context to measure text in");
+    }
+    return items.map((item) => {
+      ctx.font = item.font;
+      return ctx.measureText(item.text).width;
+    });
+  }, wanted)) as number[];
+
+  const measured = new Map<string, number>();
+  for (const [index, item] of wanted.entries()) {
+    measured.set(measureKey(item.font, item.text), widths[index] as number);
+  }
+  for (const item of pending) {
+    item.call.text = {
+      width: measured.get(measureKey(item.font, item.text)) ?? 0,
+      textAlign: item.textAlign,
+    };
+  }
+}
+
+/**
+ * One (font, text) pair as a map key.
+ *
+ * The separator is a newline, which neither a CSS font shorthand nor a run of
+ * canvas text can contain, so no two distinct pairs ever collide on one key.
+ */
+function measureKey(font: string, text: string): string {
+  return `${font}\n${text}`;
+}
+
 /**
  * Bind {@link Harness} to one case, and hand back the `createHarness` its suites
  * call.
@@ -434,9 +544,14 @@ async function sweep<S>(
  * operation, the arming gesture — arrives in one object.
  */
 export function createHarnessFactory<S, D extends object>(
-  config: CaseConfig,
+  config: CaseConfig<S>,
 ): (options?: HarnessOptions) => Promise<Harness<S, D>> {
   const resolved = resolveConfig(config);
+  // The case's own narrowing, or none. Held here rather than on `ResolvedConfig`
+  // because it is the one member of a case's config that reads the case's own
+  // snapshot type, and `ResolvedConfig` is handed to every check as `h.config`.
+  const project: (snapshot: S) => S =
+    config.projectSnapshot?.bind(config) ?? ((snapshot) => snapshot);
   const requirement = surfaceRequirement(resolved.handle, resolved.specPath);
   const failSurface = makeFailSurface(requirement);
   const tickMs = 1000 / resolved.tickHz;
@@ -479,11 +594,16 @@ export function createHarnessFactory<S, D extends object>(
       args: unknown[],
     ): Promise<unknown> => {
       if (surfaceFault !== null) refuse();
-      return page.evaluate(
+      const returned = await page.evaluate(
         ([handle, name, rest]) =>
           (window as unknown as PageGlobals)[handle]![name]!(...rest),
         [resolved.handle, operation, args] as const,
       );
+      // One of the points a snapshot crosses back out of the page, and the one
+      // every read of the surface's own `snapshot` goes through — `h.snapshot()`,
+      // `h.debug.snapshot()`, the opening read, and every sweep. The driven runs
+      // below are the others.
+      return operation === "snapshot" ? project(returned as S) : returned;
     };
 
     const debug =
@@ -589,6 +709,7 @@ export function createHarnessFactory<S, D extends object>(
           sample,
         ] as const,
       )) as { snapshots: S[]; sounds: number[] };
+      result.snapshots = result.snapshots.map(project);
 
       for (const [index, delta] of deltas.entries()) {
         frameCount += 1;
@@ -636,7 +757,7 @@ export function createHarnessFactory<S, D extends object>(
       )) as S;
       frameCount += count;
       timeMs += totalMs;
-      return snapshot;
+      return project(snapshot);
     };
 
     /**
@@ -721,7 +842,9 @@ export function createHarnessFactory<S, D extends object>(
           ]!.last(),
         resolved.recorderGlobal,
       )) as RecordedOp[];
-      return ops.map(toDrawCall);
+      const calls = ops.map(toDrawCall);
+      if (resolved.measureText) await measureTextCalls(page, calls);
+      return calls;
     };
 
     const harness: Harness<S, D> = {
