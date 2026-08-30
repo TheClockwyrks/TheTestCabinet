@@ -31,6 +31,24 @@ differ only in how they stand a build up. The one `base` variant ships a
 reference implementation per engine, under `references/<engine>/`, and the case's
 Reference tab offers a switch between them.
 
+## The produced code is type-checked, linted, formatted and tested
+
+`v1.0.0` declared no toolchain at all. `npm ci` and `npm run build` were the
+whole of what ran over a produced tree, so a build that compiled loosely, lint
+errors and all, or that shipped no tests of its own, arrived for review looking
+exactly like one that did neither. A `[toolchain]` table now declares four
+commands run over the produced repository once its dependencies are installed:
+`npx tsc --noEmit`, `npx eslint .`, `npx prettier --check .` and
+`npx vitest run --coverage`. They run against the code the model wrote, and their
+results are carried on the run. `specs/overview.md` names the same four, so the
+build knows what it is held to, and it asks for unit tests beside the sources as
+`src/**/*.test.ts` covering the simulation, which `v1.0.0` asked for nowhere.
+
+The build output is pinned with them. `v1.0.0` accepted `dist/`, `build/` or
+`out/` at the project root; `v2.0.0` accepts `dist/` alone, because the seeded
+project's own `npm run build` already produces it and there is nothing left for a
+build to choose.
+
 ## There is no fixed timestep
 
 `v1.0.0` mandated a 60 Hz fixed timestep and advanced the debug surface in whole
@@ -70,8 +88,9 @@ the game running on its own clock, and the speed toggle.
 The checklist grew from `107` items to `343`, and the twenty-nine categories that
 held them became eighteen. Every one of the `343` names a Vitest suite under
 `validation/<engine>/`, the domains its failure lowers, and how far it lowers
-them. The `101` standalone `.mjs` browser drivers of `v1.0.0` are gone, and so
-are the six items it left for a reviewer to decide from a screenshot.
+them. The `100` standalone `.mjs` browser drivers of `v1.0.0`, and the single
+module they shared, are gone, and so are the seven items it left for a reviewer
+to decide from a screenshot alone.
 
 Under `none` a suite drives the built site in headless Chromium through
 `window.__meltdown`; under either engine the same scenario runs in process
@@ -120,6 +139,18 @@ empty a floor without paying a refund, costing a life or paying a bounty.
 `canPlace` is gone: a check that wants to know whether a placement is legal arms
 the tower, poses the preview and reads the snapshot's `build.valid`, which is the
 value the player's own press is decided by.
+
+`setScreen` and `setPhase` are poses in the same sense: each sets its field and
+runs no entry effect. It matters because a screen or phase entry is where
+Meltdown pays its interest and its wave-clear bonus, scores that clear, ends a
+tower's freshness, focuses PLAY AGAIN on an end screen and raises the wave-clear,
+victory and game-over cues. An operation that fired those on the way in would
+assert the very outcome an item exists to decide, which is exactly what
+`v1.0.0`'s `startGame` and `setWave` did on the way to a wave's build phase.
+Thirteen items whose requirement is an entry effect therefore reach the
+transition the way the game reaches it — a wave clearing, a send, a build timer
+running out, lives running out, a final wave cleared — rather than by posing the
+destination.
 
 Where a player's act genuinely has several consequences, the act stays whole:
 `place`, `upgradeTower` and `sellTower` run through the game's own code, and each
