@@ -1,27 +1,124 @@
-// Arc Foundry — `combos.recipe-multiset`. CASE-PROVIDED. NOT YET WRITTEN.
+// combos/recipe-multiset — a recipe counts its ingredients as a multiset.
 //
-// The manifest declares this point at `combos/recipe-multiset.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/combinations.md: "A recipe is an exact multiset of base `(type, tier)`
+// ingredients. The Singularity's recipe calls for two Arc-Nodes at different
+// tiers, and a recipe is satisfied only when the yard holds every ingredient it
+// lists, counted as a multiset." The Singularity is `arcnode@5` +
+// `regulator@4` + `rectifier@2` + `arcnode@2`, and it is the one recipe that
+// names a type twice.
 //
-// THE REQUIREMENT. The Singularity calls for arcnode@5, regulator@4,
-// rectifier@2 and arcnode@2, so a yard holding one Arc-Node offers no
-// Singularity and a yard holding both, at the two different tiers, does.
+// The yard is posed with three of the four, holding one Arc-Node where the
+// recipe wants two, and the inspector's recipe rows are read: none, because no
+// recipe in the table is satisfied by that set. The second Arc-Node is then
+// stood up at the OTHER tier the recipe names, and the rows are read again: one,
+// labelled with the tower it would build (specs/instrumentation.md fixes a
+// `combine-special` row's label as naming that tower). Committing it produces
+// the Singularity, so what the row offered is what the fold builds.
 //
-// HOW IT IS DECIDED. Stand the recipe short of its second Arc-Node, read the
-// offered actions, add it, and read them again. The evidence it hands back is
-// `multiset` (image): the recipe reaching completion on its second Arc-Node.
+// The two Arc-Nodes stand at different tiers throughout, so no quality-fold is
+// ever available and the rows read here can only be recipe rows.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertContains, assertEqual, assertLength } from "../assert";
+import { comboDef } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  standComponent,
+  type Harness,
+} from "../harness";
+import { anchored, letters, offeredFolds, offeredRecipes } from "./towers";
 
-import { fail } from "../assert";
+const TOWER = comboDef("singularity");
+/** The recipe's four ingredients, the repeated Arc-Node last. */
+const [FIRST, SECOND, THIRD, REPEAT] = [
+  TOWER.recipe[0]!,
+  TOWER.recipe[1]!,
+  TOWER.recipe[2]!,
+  TOWER.recipe[3]!,
+];
+const ANCHORS = [
+  { col: 10, row: 10 },
+  { col: 14, row: 10 },
+  { col: 18, row: 10 },
+  { col: 22, row: 10 },
+];
 
-describe("combos.recipe-multiset", () => {
-  it("A recipe counts its ingredients as a multiset", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `combos.recipe-multiset` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("reaches the Singularity only once both of its Arc-Nodes stand", async () => {
+  await openYard(h);
+  const first = await standComponent(
+    h,
+    FIRST.type,
+    FIRST.tier,
+    ANCHORS[0]!.col,
+    ANCHORS[0]!.row,
+  );
+  const second = await standComponent(
+    h,
+    SECOND.type,
+    SECOND.tier,
+    ANCHORS[1]!.col,
+    ANCHORS[1]!.row,
+  );
+  const third = await standComponent(
+    h,
+    THIRD.type,
+    THIRD.tier,
+    ANCHORS[2]!.col,
+    ANCHORS[2]!.row,
+  );
+
+  // Three of the four ingredients: the multiset is one Arc-Node short.
+  await h.debug.select(first);
+  assertLength(
+    offeredRecipes(await h.debug.panelButtons()),
+    0,
+    "no recipe is satisfied while the Singularity is an Arc-Node short",
+  );
+
+  const repeat = await standComponent(
+    h,
+    REPEAT.type,
+    REPEAT.tier,
+    ANCHORS[3]!.col,
+    ANCHORS[3]!.row,
+  );
+  await h.debug.select(first);
+  await h.advance(1);
+  await captureStill(h, "multiset");
+
+  const rows = offeredRecipes(await h.debug.panelButtons());
+  assertLength(rows, 1, "the completed multiset offers exactly one recipe");
+  assertContains(
+    letters(rows[0]!.label),
+    letters(TOWER.name),
+    `the row names the ${TOWER.name} it would build`,
+  );
+  // The two Arc-Nodes are at different tiers, so nothing here is a quality fold.
+  assertLength(
+    offeredFolds(await h.debug.panelButtons()),
+    0,
+    "two Arc-Nodes at different tiers are not a matching pair",
+  );
+
+  await h.debug.select(first);
+  await h.debug.addToCombineSet(second);
+  await h.debug.addToCombineSet(third);
+  await h.debug.addToCombineSet(repeat);
+  await h.debug.combine(first);
+
+  const tower = anchored(await h.snapshot(), ANCHORS[0]!.col, ANCHORS[0]!.row);
+  assertEqual(tower.kind, "combo", "the fold's result is a combination tower");
+  assertEqual(tower.type, TOWER.id, `the ${TOWER.name} the multiset names`);
 });

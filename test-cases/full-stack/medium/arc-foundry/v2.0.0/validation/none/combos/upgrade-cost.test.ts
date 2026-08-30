@@ -1,28 +1,74 @@
-// Arc Foundry — `combos.upgrade-cost`. CASE-PROVIDED. NOT YET WRITTEN.
+// combos/upgrade-cost — an upgrade spends its fraction of the reference damage.
 //
-// The manifest declares this point at `combos/upgrade-cost.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/combinations.md: "Raising a tower one level costs a fraction of its
+// reference damage in Charge, rounded to the nearest integer with an exact half
+// rounding up", with `COMBO_UPGRADE_COST_FRAC` `[0.8, 1.5, 2.8]` for reaching
+// levels `1`, `2` and `3`. The Static Web's reference damage is `34`, so its
+// three upgrades cost `round(27.2)` = `27`, `round(51)` = `51` and
+// `round(95.2)` = `95`.
 //
-// THE REQUIREMENT. Raising a tower one level spends round(referenceDamage *
-// COMBO_UPGRADE_COST_FRAC[level - 1]) Charge, with the three fractions 0.8,
-// 1.5 and 2.8, so the three upgrades of a Static Web at 34 reference damage
-// cost 27, 51 and 95.
-//
-// HOW IT IS DECIDED. Bank enough Charge, raise a tower through all three
-// levels, and read the Charge spent at each. The evidence it hands back is
-// `cost` (image): the Charge each upgrade spent.
+// The bank is posed well past the whole track, the tower is raised a level at a
+// time through the panel's own upgrade operation, and the Charge spent on each
+// step is read as the difference. The level is read alongside it, because a
+// build that charged correctly and raised nothing would otherwise pass. Charge
+// has one other income and one other sink in the whole game — a bounty, a
+// wave-clear bonus, and the refinement track (specs/economy.md) — and none of
+// them is reachable here: the yard holds one tower, no wave is live, and nothing
+// refines the press.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  COMBO_MAX_LEVEL,
+  COMBO_UPGRADE_COST_FRAC,
+  comboDef,
+  comboUpgradeCost,
+} from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  standCombo,
+  structureById,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+const TOWER = comboDef("staticweb");
+const ANCHOR = { col: 10, row: 10 };
+/** Comfortably past `27 + 51 + 95`, so no step is ever refused for want of Charge. */
+const BANK = 500;
 
-describe("combos.upgrade-cost", () => {
-  it("An upgrade costs its fraction of the reference damage", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `combos.upgrade-cost` has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("spends round(referenceDamage * COMBO_UPGRADE_COST_FRAC) on each level", async () => {
+  await openYard(h, { charge: BANK });
+  const id = await standCombo(h, TOWER.id, ANCHOR.col, ANCHOR.row);
+
+  let charge = (await h.snapshot()).charge;
+  assertEqual(charge, BANK, "the bank the run was posed with");
+
+  for (let level = 1; level <= COMBO_MAX_LEVEL; level += 1) {
+    await h.debug.upgradeCombo(id);
+    const s = await h.snapshot();
+    const tower = structureById(s, id);
+    assertEqual(tower.level, level, `the ${TOWER.name} reached level ${level}`);
+    assertEqual(
+      charge - s.charge,
+      comboUpgradeCost(TOWER.id, level),
+      `reaching level ${level} spends round(${TOWER.damage} * ` +
+        `${COMBO_UPGRADE_COST_FRAC[level - 1]})`,
     );
-  });
+    charge = s.charge;
+  }
+
+  await h.advance(1);
+  await captureStill(h, "cost");
 });
