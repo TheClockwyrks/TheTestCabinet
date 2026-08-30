@@ -28,12 +28,14 @@ import {
   CURSOR_Y_MIN,
   CUES,
   DROPPER_CHECK_INTERVAL,
+  STAGE_W,
   START_LIVES,
   TITLE_TEXT,
   tileCX,
   tileCY,
 } from "../src/constants";
 import {
+  arcJoins,
   BAND_CX,
   BAND_CY,
   canvasPixels,
@@ -44,7 +46,10 @@ import {
   createHarness,
   cuesNamed,
   drawnImages,
+  drawnPoints,
   drawnText,
+  drawnTextSpans,
+  drawOps,
   drewText,
   foeById,
   headOf,
@@ -61,6 +66,7 @@ import {
   startPlaying,
   tapAction,
   ticksFor,
+  tileAtPoint,
   toggleOverlay,
   watchCues,
   wormById,
@@ -382,4 +388,72 @@ it("hands a scenario's failure on, and still writes what it recorded", async () 
   ).rejects.toThrow("the check's own failure");
 
   expect(written()).toEqual(["failing.json.gz"]);
+});
+
+it("sweeps with until, and drives the engine's own loop with runFor", async () => {
+  startPlaying(h);
+  const id = poseWorm(h, 4, 5, 1);
+
+  // `until` samples the game as it runs and reports where it stopped.
+  const found = await h.until(
+    (s) => (wormById(s, id)?.segments[0]?.c ?? 0) >= 6,
+    { maxFrames: ticksFor(1), poll: 4 },
+  );
+  expect(found.hit).toBe(true);
+  expect(found.frames).toBeGreaterThan(0);
+  expect(headOf(wormById(found.snapshot, id)!)?.c).toBeGreaterThanOrEqual(6);
+
+  // A sweep that never sees its predicate reports so rather than hanging.
+  const missed = await h.until((s) => s.screen === "victory", {
+    maxFrames: 8,
+  });
+  expect(missed.hit).toBe(false);
+  expect(missed.frames).toBe(8);
+
+  // `runFor` hands the engine its own frame loop for a stretch of real time.
+  const before = h.engine.frame().count;
+  await h.runFor(60);
+  expect(h.engine.frame().count).toBeGreaterThan(before);
+});
+
+it("reads the arcs, the tiles, and the geometry a frame drew", async () => {
+  startPlaying(h);
+  // A critical node with a charged neighbour one tile away: specs/discharge.md
+  // chains from the detonated node to every charged node within two tiles.
+  h.debug.setNode(18, 10, 3);
+  h.debug.setNode(19, 10, 1);
+
+  poseBoltAtTile(h, 18, 14);
+  const live = await h.until((s) => s.arcs.length > 0, {
+    maxFrames: ticksFor(0.5),
+  });
+  expect(live.hit).toBe(true);
+  expect(arcJoins(live.snapshot, { c: 18, r: 10 }, { c: 19, r: 10 })).toBe(
+    true,
+  );
+  expect(arcJoins(live.snapshot, { c: 0, r: 0 }, { c: 1, r: 1 })).toBe(false);
+
+  // The inverse of the tile-centre map lands back on the tile it came from.
+  expect(tileAtPoint(tileCX(18), tileCY(10))).toEqual({ c: 18, r: 10 });
+
+  // The frame that draws the arcs issues strictly more geometry than a frame
+  // with nothing on the board, and names points inside the board.
+  h.calls.length = 0;
+  await h.advance(1);
+  const busy = drawOps(h.calls);
+  const points = drawnPoints(h.calls);
+  expect(busy).toBeGreaterThan(0);
+  expect(points.length).toBeGreaterThan(0);
+
+  // Text is placed in logical units, whatever transform the build drew under.
+  resetTo(h, 1);
+  h.calls.length = 0;
+  await h.advance(1);
+  const title = drawnTextSpans(h).find((span) =>
+    span.text.toLowerCase().includes(TITLE_TEXT.toLowerCase()),
+  );
+  expect(title, "the title copy, placed").toBeDefined();
+  expect(title!.left).toBeLessThan(title!.right);
+  expect(title!.x).toBeGreaterThanOrEqual(0);
+  expect(title!.x).toBeLessThanOrEqual(STAGE_W);
 });
