@@ -65,7 +65,9 @@ exists for the duration of one run.
   the artifact service, which serves it to the console for review. It runs under
   its own `ServiceAccount` with no Kubernetes API access. Artifact bytes flow
   from the driver to the artifact service to the console, and the backend
-  reports where they live through `TCAB_ARTIFACTS_PUBLIC_URL`.
+  reports where they live through `TCAB_ARTIFACTS_PUBLIC_URL`. The backend also
+  calls the service over its own in-cluster `TCAB_ARTIFACTS_URL` to prune a
+  deleted run's tree and to sweep the trees no run row references.
 
 | Service | Kubernetes shape | Persistent storage | External egress |
 | ------- | ---------------- | ------------------ | --------------- |

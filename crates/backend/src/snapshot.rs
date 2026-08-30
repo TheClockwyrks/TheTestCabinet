@@ -206,9 +206,10 @@ pub struct SnapshotBuilder {
     runs: Vec<StoredRun>,
     cases: Vec<StoredManifest>,
     store: DefinitionStore,
-    /// The artifact service's base URL, used to fall back for a run's proof/asset
-    /// media when it is absent from the local store. `None` disables the fallback
-    /// (store-only) — the dev/single-box default, and what the unit tests use.
+    /// The artifact service's **in-cluster** base URL, used to fall back for a run's
+    /// proof/asset media when it is absent from the local store. `None` disables the
+    /// fallback (store-only) — the dev/single-box default, and what the unit tests
+    /// use.
     artifacts_url: Option<String>,
     /// The HTTP client for that fallback. Unused when `artifacts_url` is `None`.
     http: reqwest::Client,
@@ -453,7 +454,8 @@ impl SnapshotBuilder {
 
     /// Enable the artifact-service fallback: when a run's proof/asset media is not in
     /// the local store, the builder fetches it from `artifacts_url` (the artifact
-    /// service's public read endpoint) using `http`.
+    /// service's in-cluster base URL, the one the backend itself can reach) using
+    /// `http`.
     ///
     /// The backend store that media is normally mirrored into is an ephemeral
     /// emptyDir in production, so it can be wiped between a run finishing and a later
@@ -1787,8 +1789,9 @@ impl SnapshotBuilder {
         self.fetch_artifact(run_id, kind, file).await
     }
 
-    /// Fetch one run media file from the artifact service's public read endpoint
-    /// (`GET {artifacts_url}/runs/{run_id}/{kind}/{file}`), or `None` when the
+    /// Fetch one run media file from the artifact service over the backend's
+    /// in-cluster URL (`GET {artifacts_url}/runs/{run_id}/{kind}/{file}`, an ungated
+    /// media read), or `None` when the
     /// fallback is disabled (`artifacts_url` unset), the file is absent (404), or the
     /// request fails. A non-404 failure is logged — it means the durable copy could
     /// not be read, so the media will be missing from the snapshot until the next

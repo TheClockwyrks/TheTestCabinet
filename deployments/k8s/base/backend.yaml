@@ -58,6 +58,15 @@ spec:
             # the backend — this is just the URL the console fetches them from.
             - name: TCAB_ARTIFACTS_PUBLIC_URL
               value: "http://tcab-artifacts:8790"
+            # The artifact service as THIS POD reaches it. Distinct from the
+            # advertised URL above, which is whatever a browser can resolve and is
+            # repointed per overlay (a port forward locally, a VPN hostname on the
+            # azure overlays). The backend calls this one itself, to prune a deleted
+            # run's tree and to sweep the trees no run row references. Set in the base
+            # so every overlay inherits it; an overlay that repoints the advertised URL
+            # must leave this one on in-cluster Service DNS.
+            - name: TCAB_ARTIFACTS_URL
+              value: "http://tcab-artifacts:8790"
             # The public base URL of the arena service, reported to the console via
             # GET /config so it can POST adversarial matches/tournaments and stream
             # live tournament progress against the data plane. The arena talks HTTP

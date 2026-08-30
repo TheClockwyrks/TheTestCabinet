@@ -62,6 +62,7 @@ mod m20260824_000035_probe_forced_submission;
 mod m20260824_000036_probe_docview_scenarios;
 mod m20260824_000037_add_validator_ratings;
 mod m20260827_000038_add_review_aesthetic;
+mod m20260830_000039_add_run_record_readability;
 
 pub struct Migrator;
 
@@ -111,6 +112,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260824_000036_probe_docview_scenarios::Migration),
             Box::new(m20260824_000037_add_validator_ratings::Migration),
             Box::new(m20260827_000038_add_review_aesthetic::Migration),
+            Box::new(m20260830_000039_add_run_record_readability::Migration),
         ]
     }
 }

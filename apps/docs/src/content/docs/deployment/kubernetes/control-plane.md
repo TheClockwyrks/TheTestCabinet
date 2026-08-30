@@ -46,7 +46,7 @@ R2 and deploy-hook calls need no inbound exposure.
 
 ### Wiring variables
 
-Beyond the store and checkout paths, four values wire the backend into the rest
+Beyond the store and checkout paths, five values wire the backend into the rest
 of the deployment.
 
 | Variable | Purpose |
@@ -54,6 +54,7 @@ of the deployment.
 | `TCAB_BACKEND_AUTH_URL` | The auth service the backend verifies every bearer token against, in-cluster (`http://tcab-auth:8789`) |
 | `TCAB_BACKEND_SERVICE_TOKEN` | The shared service token the dispatcher's claim is verified against. It must equal the dispatcher's copy, or the queue never drains |
 | `TCAB_ARTIFACTS_PUBLIC_URL` | The console-facing artifact base URL, reported through `GET /config` |
+| `TCAB_ARTIFACTS_URL` | The in-cluster artifact base URL (`http://tcab-artifacts:8790`) the backend prunes and [sweeps](/components/backend/overview/#artifact-reclamation) run trees through |
 | `TCAB_ARENA_PUBLIC_URL` | The console-facing arena base URL, reported through `GET /config` |
 
 `TCAB_SNAPSHOT_PUBLIC_URL` is the public read base of the snapshot bucket,

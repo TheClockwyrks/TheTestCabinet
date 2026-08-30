@@ -340,3 +340,44 @@ fn the_run_detail_always_emits_its_rating_aesthetic_and_score_keys() {
     assert_eq!(json["score"], serde_json::Value::Null);
     assert_eq!(json["validatorRated"], false);
 }
+
+#[test]
+fn an_unreadable_run_carries_its_lifted_identity_and_its_error_onto_the_wire() {
+    // The row has no readable record, so everything a console shows has to come off
+    // the lifted columns; the error is the field that tells an operator why the run
+    // is on this listing at all.
+    let run = crate::db::UnreadableRun {
+        id: "r1".to_string(),
+        started_at: "2026-06-17T20:40:00Z".to_string(),
+        finished_at: "2026-06-17T21:30:00Z".to_string(),
+        test_case_slug: "pong".to_string(),
+        test_case_version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        engine_slug: Some("simple-2d".to_string()),
+        harness_slug: "claude".to_string(),
+        model_id: "claude-sonnet-4-5".to_string(),
+        gg_preset: None,
+        test_type: "end-to-end".to_string(),
+        run_state: "completed".to_string(),
+        published: false,
+        review_count: 2,
+        error: "missing field `interp`".to_string(),
+    };
+
+    let json = serde_json::to_value(unreadable_run_out(&run)).unwrap();
+    assert_eq!(json["id"], "r1");
+    assert_eq!(json["testCaseSlug"], "pong");
+    assert_eq!(json["testCaseVersion"], "v1.0.0");
+    assert_eq!(json["variant"], "base");
+    assert_eq!(json["engineSlug"], "simple-2d");
+    assert_eq!(json["harnessSlug"], "claude");
+    assert_eq!(json["modelId"], "claude-sonnet-4-5");
+    assert_eq!(json["ggPreset"], serde_json::Value::Null);
+    assert_eq!(json["testType"], "end-to-end");
+    // The run's terminal state travels as `state`, matching the summary card's key
+    // rather than the column's name.
+    assert_eq!(json["state"], "completed");
+    assert_eq!(json["published"], false);
+    assert_eq!(json["reviewCount"], 2);
+    assert_eq!(json["error"], "missing field `interp`");
+}

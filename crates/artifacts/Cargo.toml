@@ -28,6 +28,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 dotenvy = { workspace = true }
+# RFC-3339 formatting for the stored-tree listing's `modifiedAt`. The store reports
+# a `SystemTime`; the backend's sweep parses the wire form with the same crate.
+time = { workspace = true }
 
 axum = { workspace = true }
 tower = { workspace = true }

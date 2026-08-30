@@ -1,0 +1,78 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/halo" as h;
+
+.empty {
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// The worklist: one row per undecodable run, identity and the decode error on the
+// left, the delete control on the right.
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: t.$space-md;
+  padding: t.$space-md 0;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  flex-wrap: wrap;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+// The case title, matching the run log's uppercase accent treatment. Not a link:
+// the run has no readable detail page.
+.test {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+}
+
+.meta {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The decode error, wrapped rather than truncated: it is the reason the row is
+// here and is often the only thing worth reading on it.
+.detail {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-warning;
+  overflow-wrap: anywhere;
+}
+
+.error {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-negative;
+  @include h.halo;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex: none;
+}
+
+.publishedTag {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}

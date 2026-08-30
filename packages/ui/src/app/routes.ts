@@ -174,6 +174,10 @@ export const routes = {
   // instead of hunting through the all-runs listing. Nothing on the public gallery
   // could appear here by definition.
   runUnpublished: (): string => "/runs/unpublished",
+  // The unreadable-runs worklist (consoles only): stored runs whose records the
+  // backend can no longer decode, which appear in no other listing and are deleted
+  // from here. Static segment beside `/runs/:runId`, like the others.
+  runUnreadable: (): string => "/runs/unreadable",
   // The harness-comparisons list — the Runs section's "Comparisons" tab, beside
   // "Tests". Rendered on BOTH hosts (read-only on the static site, off the
   // snapshot); a static segment beside `/runs/:runId`, like the others.
@@ -437,6 +441,7 @@ export const routePatterns = {
   runFailures: "/runs/failures",
   runUnreviewed: "/runs/unreviewed",
   runUnpublished: "/runs/unpublished",
+  runUnreadable: "/runs/unreadable",
   runsComparisons: "/runs/comparisons",
   runNew: "/runs/new",
   // gg run-execution routes. The literal `/runs/gg` segment outranks the

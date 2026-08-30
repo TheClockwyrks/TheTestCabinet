@@ -44,6 +44,7 @@ import type {
   Specification,
   StoredRun,
   TestCase,
+  UnreadableRunPage,
   VersionInfo,
   WorkerIdentity,
 } from "./types";
@@ -1148,6 +1149,21 @@ export interface WorkerClient {
    * delete affordance where it is absent.
    */
   deleteRun?(id: string, token: string): Promise<void>;
+
+  /**
+   * One page of the stored runs whose records the backend cannot decode (`GET
+   * /runs/unreadable`), with the total the cabinet holds. Every other listing
+   * filters these out, so this is the only surface they are reachable from; the
+   * console's Unreadable tab reads it and offers {@link deleteRun} per row.
+   * `limit` and `offset` page it, and `total` counts every unreadable run, so a
+   * pager sized from it offers only pages that hold rows.
+   * Optional: a read-only transport with no such listing omits it, and the console
+   * hides the tab where it is absent.
+   */
+  listUnreadableRuns?(opts?: {
+    limit?: number;
+    offset?: number;
+  }): Promise<UnreadableRunPage>;
 
   /**
    * Kill an in-flight run (`POST /jobs/{id}/cancel`, Bearer): the backend moves it

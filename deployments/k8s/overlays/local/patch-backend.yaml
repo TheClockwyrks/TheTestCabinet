@@ -13,6 +13,10 @@
 # console's `<img>`/`<iframe>` build, asset/proof media, and match/tournament POSTs
 # all target a name the browser cannot resolve. (The auth URL the console uses comes
 # from the dev server's `VITE_AUTH_URL`, so it needs no override here.)
+#
+# Only the `*_PUBLIC_URL`s move. The backend's own artifact calls — the prune of a
+# deleted run's tree and the reclamation sweep — go through `TCAB_ARTIFACTS_URL`,
+# which stays on the base's in-cluster `tcab-artifacts:8790`.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:

@@ -142,12 +142,14 @@ export function RunsPage() {
   // same way, so jump back to the first page here.
   useResetPageOnChange(setPage, `${sort}:${dir}`);
 
+  // The backend's `total` counts exactly the rows the same query can serve, so a
+  // page this sizes is a page that holds rows.
   const pageCount = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);
 
-  // If the result set shrank under the current page (the total dropped below the
-  // requested offset), fall back onto the last real page so the list can't strand
-  // on an out-of-range, empty window.
+  // If the result set shrank under the current page (a run deleted or unpublished
+  // between the pager being sized and this read), fall back onto the last real page
+  // so the list can't strand on an out-of-range, empty window.
   useEffect(() => {
     if (!loading && page > pageCount - 1)
       setPage(pageCount - 1, { replace: true });

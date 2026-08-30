@@ -61,6 +61,7 @@ import type {
   StoredRun,
   TestCase,
   TestType,
+  UnreadableRunPage,
   VersionInfo,
   WorkerIdentity,
 } from "../client";
@@ -2326,6 +2327,24 @@ export function createBackendExec(
         backendUrl,
         `/runs/${encodeURIComponent(id)}`,
         token,
+      );
+    },
+
+    async listUnreadableRuns(opts?: {
+      limit?: number;
+      offset?: number;
+    }): Promise<UnreadableRunPage> {
+      // `GET /runs/unreadable` is an open read like the other run reads, and is the
+      // one listing that serves the runs whose records the backend cannot decode. It
+      // carries the same numbered pager (limit + offset) as the other worklists, and
+      // its `total` counts every such run so a pager sized from it lands on rows.
+      const params = new URLSearchParams();
+      if (opts?.limit != null) params.set("limit", String(opts.limit));
+      if (opts?.offset != null) params.set("offset", String(opts.offset));
+      const query = params.toString();
+      return getJson<UnreadableRunPage>(
+        backendUrl,
+        `/runs/unreadable${query ? `?${query}` : ""}`,
       );
     },
 

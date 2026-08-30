@@ -837,3 +837,98 @@ async fn the_pre_compressed_archive_is_not_re_encoded() {
         "an already-gzipped archive must not be gzipped a second time"
     );
 }
+
+/// A `GET /runs` request, optionally presenting `token` as a bearer.
+fn list_request(token: Option<&str>) -> Request<Body> {
+    let mut builder = Request::builder().method("GET").uri("/runs");
+    if let Some(token) = token {
+        builder = builder.header("authorization", format!("Bearer {token}"));
+    }
+    builder.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn listing_with_the_service_token_reports_every_stored_tree() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+    seed_upload(&app, "run-a").await;
+    seed_upload(&app, "run-b").await;
+
+    let response = app
+        .clone()
+        .oneshot(list_request(Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let runs = body.get("runs").unwrap().as_array().unwrap();
+
+    let mut ids: Vec<&str> = runs
+        .iter()
+        .map(|run| run.get("id").unwrap().as_str().unwrap())
+        .collect();
+    ids.sort();
+    assert_eq!(ids, vec!["run-a", "run-b"]);
+
+    // Every entry carries an RFC-3339 `modifiedAt`, which is what the backend's
+    // sweep measures its grace window against.
+    for run in runs {
+        let modified = run.get("modifiedAt").unwrap().as_str().unwrap();
+        time::OffsetDateTime::parse(modified, &time::format_description::well_known::Rfc3339)
+            .unwrap_or_else(|err| panic!("`{modified}` is not RFC 3339: {err}"));
+    }
+
+    // A deleted tree leaves the listing, so the two management routes agree on what
+    // the store holds.
+    assert_eq!(
+        app.clone()
+            .oneshot(delete_request("run-a", Some(SERVICE_TOKEN)))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+    let response = app
+        .clone()
+        .oneshot(list_request(Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let runs = body.get("runs").unwrap().as_array().unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].get("id").unwrap().as_str(), Some("run-b"));
+}
+
+#[tokio::test]
+async fn listing_without_or_with_a_wrong_token_is_rejected() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+    seed_upload(&app, "run-a").await;
+
+    for token in [None, Some("not-the-secret")] {
+        let response = app.clone().oneshot(list_request(token)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+}
+
+#[tokio::test]
+async fn listing_when_no_service_token_is_configured_is_disabled() {
+    let stub = spawn_stub().await;
+    // Tree management disabled (no service token): even a bearer token is rejected,
+    // exactly as the delete route is.
+    let (app, _store, _dir) = app_with_service_token(&stub, None).await;
+    seed_upload(&app, "run-a").await;
+
+    let response = app
+        .clone()
+        .oneshot(list_request(Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}

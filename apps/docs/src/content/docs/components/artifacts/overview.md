@@ -13,12 +13,21 @@ uploads each run's tree here when it finishes, and a
 before it is published.
 
 The service is a data-plane peer of the control-plane
-[backend](/components/backend/overview/). Artifact bytes never transit the
-backend, and serving them scales independently of the run queue. The backend
-only tells the console where the artifacts live: it reports the artifact
+[backend](/components/backend/overview/). A console reads a run's bytes from the
+service directly, so serving them scales independently of the run queue. The
+backend tells the console where the artifacts live by reporting the artifact
 service's public base URL (`TCAB_ARTIFACTS_PUBLIC_URL`) via `GET /config`, and
 the console resolves a pre-publish run's `playableBuild` link and its media
 against that.
+
+The backend is also a caller in its own right, over an in-cluster URL of its own
+(`TCAB_ARTIFACTS_URL`). It prunes a deleted run's tree, enumerates stored trees
+for its [reclamation sweep](/components/backend/overview/#artifact-reclamation),
+and reads a published run's media here when baking the public snapshot, for the
+runs whose media has aged out of its own ephemeral store. The two URLs are
+separate because the advertised one is whatever a browser can resolve, which in a
+port-forwarded development cluster is a loopback address the backend pod cannot
+reach.
 
 Keeping the two apart keeps the control plane light and lets serving scale on
 its own. The backing store is a local filesystem, and can move to an object
@@ -33,9 +42,10 @@ is the run record's id.
 | --- | --- |
 | `POST /runs/{id}/artifacts` | The driver, uploading a finished run's tree as a tar |
 | `DELETE /runs/{id}/artifacts` | The backend, pruning a deleted run's tree |
+| `GET /runs` | The backend, listing every stored tree for its reclamation sweep |
 | `GET /runs/{id}/tree.tar` | The publisher Job, pulling the source tree to release |
 | `GET /runs/{id}/build[/{path}]` | A console, loading the playable build |
-| `GET /runs/{id}/proof/{file}`, `/asset/{file}`, `/validation/{file}`, `/showcase/{file}` | A console, loading a run's media |
+| `GET /runs/{id}/proof/{file}`, `/asset/{file}`, `/validation/{file}`, `/showcase/{file}` | A console, loading a run's media; the backend, baking a published run's media into the snapshot |
 | `GET /runs/{id}/events.jsonl`, `/raw.jsonl` | A console, reading the recorded logs |
 | `GET /runs/{id}/archive.tar.gz` | A reviewer, downloading the whole run |
 
@@ -60,12 +70,16 @@ The artifact service has no Kubernetes API access. It only talks HTTP.
   which is a different UUID from the run id in the upload path, so the driver
   sends its job id in the `x-tcab-job-id` header and the service verifies
   against that. Only the driver holding a job's token can upload for it.
-- Deletes present the shared control-plane service token
-  (`TCAB_BACKEND_SERVICE_TOKEN`, the same secret the backend and dispatcher
-  share), so only a trusted control-plane caller can prune a tree. When the
-  token is unset the route rejects every caller, which is the safe default for a
-  setup that never deletes through the data plane. The backend issues the delete
-  best-effort when a run is deleted.
+- The tree delete and the `GET /runs` listing present the shared control-plane
+  service token (`TCAB_BACKEND_SERVICE_TOKEN`, the same secret the backend and
+  dispatcher share), so only a trusted control-plane caller can enumerate or
+  prune trees. When the token is unset both routes reject every caller, which is
+  the safe default for a setup that never manages trees through the data plane.
+
+  `GET /runs` answers one entry per stored tree carrying the run id and the
+  tree's last-modified time, which is when the driver uploaded it. An upload in
+  flight is spooled to an unnamed scratch file, so it is listed only once it has
+  been unpacked into a run directory.
 - The publisher's `tree.tar` pull presents its per-publish-job token, verified
   the same way against the backend's publish-job endpoint, with the publish job
   id in the `x-tcab-publish-job-id` header. This is the one gated read. It is a

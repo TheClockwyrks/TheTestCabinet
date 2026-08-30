@@ -212,8 +212,16 @@ slow-timeout = { period = "600s", terminate-after = 3 }
 # `cargo nextest run --workspace` runs at 49.0 s and 73.3 s, which is the same spread its twin has
 # and on the wrong side of the warning line in the second. Named now, so the pair is bounded
 # together and a fifth sweep has a list to be added to rather than a precedent to rediscover.
+#
+# The AUTHORSHIP gate is that fifth, and it is the heaviest of them: it drives every registered arm's
+# module step and its program step twice, through that arm's real preparation and its real compiler,
+# so it is three preparations per arm where the four above are one. Measured under
+# `cargo nextest run --workspace` at 37.1 s on an 18-core dev container and reported at 60.6 s on a
+# busier one — where the attempt before it was terminated against the 60 s x 2 default it had no
+# override for, and the run recorded a flaky result, which this repo counts as a failure. That is the
+# coin flip every sweep in this list is bounded away from, so it joins them.
 [[profile.default.overrides]]
-filter = 'package(test-cabinet-gg) and (test(=sandbox::language::isolation::tests::no_two_preparations_of_a_language_are_handed_the_same_workspace) or test(=sandbox::tests::compile_tests::every_language_reports_what_compiling_its_program_cost) or test(=sandbox::language::tests::every_language_writes_the_program_that_opens_a_documentation_view) or test(=sandbox::language::tests::every_language_writes_the_program_that_opens_the_session))'
+filter = 'package(test-cabinet-gg) and (test(=sandbox::language::isolation::tests::no_two_preparations_of_a_language_are_handed_the_same_workspace) or test(=sandbox::tests::compile_tests::every_language_reports_what_compiling_its_program_cost) or test(=sandbox::language::tests::every_language_writes_the_program_that_opens_a_documentation_view) or test(=sandbox::language::tests::every_language_writes_the_program_that_opens_the_session) or test(=sandbox::language::authorship::tests::every_registered_arm_compiles_the_bytes_it_was_handed_or_records_what_it_does_instead))'
 slow-timeout = { period = "180s", terminate-after = 3 }
 
 # The Java arm's warm-JVM measurement, for the same reason as the Ruby arm's per-turn reading above

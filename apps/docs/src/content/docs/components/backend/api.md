@@ -547,18 +547,43 @@ reporting the links the run already carries, when the run is already published.
 ### `DELETE /runs/{id}`
 
 Permanently delete a run: its record, its reviews, its links, and its stored
-media. A published run is refused (`422`), because a public run is in the
-snapshot and the gallery. `404` if unknown. The response reports the run id and
-`deleted: true`.
+media. A published run whose record this build can read is refused (`422`),
+because a public run is in the snapshot and the gallery. A published run whose
+record this build cannot read is deleted, since it is already absent from both.
+`404` if unknown. The response reports the run id and `deleted: true`.
 
 The run's playable build and recorded logs live in the separate [artifact
-service](/components/artifacts/overview/), which the backend asks to prune the
-run's tree as well. That prune is best-effort and never fails the delete; it
-runs only when the artifact service URL and the service token are both
-configured.
+service](/components/artifacts/overview/), which the backend asks over
+`TCAB_ARTIFACTS_URL` to prune the run's tree as well. That prune is best-effort
+and never fails the delete; it runs only when that URL and the service token are
+both configured. A tree a failed prune leaves behind is reclaimed by the
+[sweep](/components/backend/overview/#artifact-reclamation).
 
 The consoles expose this as a Delete run control on the run detail page, shown
 only for an unpublished run.
+
+Deletion acts on the stored row rather than on the record, so it also deletes a
+run whose stored record this build cannot read. The consoles offer that from the
+runs section's Unreadable tab, which reads
+[`GET /runs/unreadable`](#get-runsunreadable).
+
+### `GET /runs/unreadable`
+
+The stored runs whose records this build cannot read, as `{ runs, total }`,
+newest first by finish time. Each row carries the run's lifted identity — its id,
+timestamps, case slug, version, variant and engine, harness, model, gg
+configuration, test type, run state, published flag and review count — together
+with the `error` its stored record produces when decoded now. An open read.
+
+`offset` and `limit` page it as the numbered mode of [`GET /runs`](#get-runs)
+does, with `limit` defaulting to 50 and clamped to 200, and `total` counts every
+unreadable run the cabinet holds, so a pager sized from it offers only pages that
+hold rows.
+
+This is how a run that appears in no listing stays reachable: an operator reads
+why the record no longer decodes and deletes the run with [`DELETE
+/runs/{id}`](#delete-runsid). A re-push of the same run with a record this build
+can read returns it to the ordinary listings.
 
 ### `GET /runs`
 
@@ -629,6 +654,11 @@ not a publishable failure, so the other selectors omit it.
   filters, which is enough to drive a jump-to-page pager without walking the
   set. Available with `fields=summary`.
 
+Both projections and both modes serve only the runs whose stored record this
+build can read, and `total` counts exactly those rows, so a numbered pager sized
+from it offers only pages that hold rows. A run this build cannot read is listed
+by [`GET /runs/unreadable`](#get-runsunreadable) instead.
+
 The offset mode additionally accepts:
 
 - Filters `testCase`, `model`, `harness`, `variant`, `version`, and `engine`,
@@ -690,6 +720,10 @@ it carries with each reviewer's identity, whether it is published, its links,
 and the run's ratings and score. Each review carries the `ratings` or the
 run-wide `aesthetic` its run's channel accepts. `404` if unknown. The same
 shape is what the default projection of [`GET /runs`](#get-runs) lists per row.
+
+This endpoint answers with the record, so a run whose stored record this build
+cannot read answers `404` here and is reached through [`GET
+/runs/unreadable`](#get-runsunreadable).
 
 - `validatorRated`: whether the run's case version is
   [validator-rated](/testing/end-to-end/evaluation/#rating-channels), so a
@@ -1036,6 +1070,10 @@ party on the caller's behalf, like the OpenRouter form fill.
 The cabinet's whole-of-corpus headline figures, folded over every stored run
 whatever its state or publication. An open read, backing the home page's totals
 band and activity chart.
+
+Every figure here is folded from lifted columns, so the corpus covers the runs
+whose records this build cannot read as well. This count and a listing's `total`
+therefore answer different questions.
 
 - `runs`: the total recorded run count.
 - `tokens`: the summed total tokens, with `unreportedRuns` counting the runs

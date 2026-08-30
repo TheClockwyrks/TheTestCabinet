@@ -50,7 +50,7 @@ fn publishable_failure_states_match_the_contract() {
 }
 
 /// Build a minimal valid run record with the given id.
-fn record(id: &str) -> RunRecord {
+pub(crate) fn record(id: &str) -> RunRecord {
     RunRecord {
         id: id.to_string(),
         started_at: "2026-06-17T20:40:00Z".to_string(),
@@ -202,7 +202,7 @@ fn review() -> StoredReview {
 }
 
 /// A review from `account` giving `rating` to the `gameplay` domain.
-fn review_by(account: &str, rating: Rating) -> StoredReview {
+pub(super) fn review_by(account: &str, rating: Rating) -> StoredReview {
     use test_cabinet_core::review::VerdictStatus;
     StoredReview {
         reviewer: reviewer(account),
@@ -224,7 +224,7 @@ fn review_by(account: &str, rating: Rating) -> StoredReview {
     }
 }
 
-fn links() -> RunLinks {
+pub(crate) fn links() -> RunLinks {
     RunLinks {
         source_repo: Some("https://github.com/x/y".to_string()),
         playable_build: Some("https://abc.pages.dev".to_string()),
@@ -297,6 +297,11 @@ async fn a_record_that_no_longer_deserializes_is_skipped_not_fatal() {
     // assembly), while the good run still reads back.
     assert!(db.get_run("legacy").await.unwrap().is_none());
     assert!(db.get_run("good").await.unwrap().is_some());
+
+    // Assembly also marks the row unreadable, which is what takes it out of the
+    // count as well as out of the page.
+    assert!(!lifted(&db, "legacy").await.record_readable);
+    assert!(lifted(&db, "good").await.record_readable);
 }
 
 #[tokio::test]
@@ -661,6 +666,29 @@ async fn all_published_returns_only_published_runs_newest_first() {
     assert_eq!(all.len(), 2);
     assert_eq!(all[0].record.id, "r2");
     assert_eq!(db.run_count().await.unwrap(), 2);
+}
+
+#[tokio::test]
+async fn all_run_ids_reports_every_stored_run_and_drops_a_deleted_one() {
+    // The set the artifact reclamation sweep protects a stored tree with: every run
+    // the record store holds, whatever its state, and nothing else.
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
+    db.push(&record("r2"), &links(), None, None).await.unwrap();
+
+    let ids = db.all_run_ids().await.unwrap();
+    assert_eq!(
+        ids,
+        ["r1", "r2"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<std::collections::HashSet<_>>()
+    );
+
+    // A deleted run leaves the set, which is what makes its tree an orphan.
+    db.delete_run("r1").await.unwrap();
+    let ids = db.all_run_ids().await.unwrap();
+    assert_eq!(ids, std::iter::once("r2".to_string()).collect());
 }
 
 #[tokio::test]
@@ -2543,7 +2571,7 @@ fn record_with_metrics(id: &str) -> RunRecord {
 }
 
 /// Read the lifted sort/filter columns off the raw `run` row.
-async fn lifted(db: &Db, id: &str) -> run::Model {
+pub(super) async fn lifted(db: &Db, id: &str) -> run::Model {
     run::Entity::find_by_id(id.to_string())
         .one(&db.connection())
         .await
@@ -2777,7 +2805,7 @@ async fn seed_metric(db: &Db, id: &str, tokens: u64, cost: Option<f64>, rating: 
 }
 
 /// The `SummaryFilter` for the unpublished slice (where these tests seed).
-fn unpublished_filter() -> SummaryFilter {
+pub(super) fn unpublished_filter() -> SummaryFilter {
     SummaryFilter {
         state: SummaryState::Unpublished,
         ..SummaryFilter::default()
@@ -3268,8 +3296,9 @@ async fn list_summaries_filters_by_engine_with_null_matching_only_none() {
     let db = Db::connect_in_memory().await.unwrap();
     seed_engine(&db, "a", "none").await;
     seed_engine(&db, "b", "simple-2d").await;
-    // Simulate a pre-column row the backfill could not lift (its record no longer
-    // deserializes, so the column stays NULL — the engine is unknown).
+    // Simulate a pre-column row the backfill could not lift, leaving the column
+    // NULL so the engine is unknown. The row's record still reads, so it is listed
+    // like any other; only its engine is in question.
     seed_engine(&db, "c", "simple-2d").await;
     let mut active = lifted(&db, "c").await.into_active_model();
     active.engine_slug = Set(None);

@@ -35,6 +35,19 @@ const DEFAULT_COALESCE_MS: u64 = 60_000;
 /// `TCAB_SNAPSHOT_RETENTION_HOURS` is unset. Long enough that any site build already
 /// reading a just-superseded generation finishes against a complete dataset.
 const DEFAULT_SNAPSHOT_RETENTION_HOURS: u64 = 24;
+/// The default interval between artifact reclamation sweeps, in hours, when
+/// `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` is unset. An orphaned tree costs only disk,
+/// so a few passes a day reclaim it well within the volume's headroom while keeping
+/// the artifact service's listing load negligible.
+const DEFAULT_ARTIFACT_SWEEP_INTERVAL_HOURS: u64 = 6;
+/// The default grace window before a run-less tree is swept, in hours, when
+/// `TCAB_ARTIFACT_SWEEP_GRACE_HOURS` is unset.
+///
+/// A driver uploads a run's tree *before* it reports the run terminal, so a tree
+/// with no run row is the normal state of a run that is still finishing. The window
+/// has to exceed the longest upload-to-report gap, which is seconds; a day of it
+/// leaves the sweep correct under any restart or clock skew a deployment can produce.
+const DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS: u64 = 24;
 
 /// The R2 (S3-compatible) credentials and bucket the public snapshot is uploaded
 /// to.
@@ -138,14 +151,37 @@ pub struct Config {
     /// answer `503` naming that script, and nothing else about the backend is
     /// affected.
     pub gg_reference: PathBuf,
-    /// The public base URL of the **artifact service** (`TCAB_ARTIFACTS_PUBLIC_URL`),
-    /// reported to the console via `GET /config` so it can resolve a pre-publish
-    /// run's `links.playable_build` (and its proof/asset media) against the data
-    /// plane. `None` when artifacts are not served separately (e.g. a single-box
-    /// dev setup with no artifact service) — the console then leaves those links
-    /// unresolved. This is the one data-plane URL the control plane exposes; the
-    /// artifact bytes themselves never transit the backend.
-    pub artifacts_url: Option<String>,
+    /// The **advertised** base URL of the **artifact service**
+    /// (`TCAB_ARTIFACTS_PUBLIC_URL`), reported to the console via `GET /config` so it
+    /// can resolve a pre-publish run's `links.playable_build` (and its proof/asset
+    /// media) against the data plane. `None` when artifacts are not served separately
+    /// (e.g. a single-box dev setup with no artifact service) — the console then
+    /// leaves those links unresolved.
+    ///
+    /// Advertised only: it is whatever a *browser* can resolve, which in a
+    /// port-forwarded development cluster is a loopback address no backend pod can
+    /// reach. Every call the backend makes itself goes through
+    /// [`artifacts_internal_url`](Self::artifacts_internal_url).
+    pub artifacts_public_url: Option<String>,
+    /// The base URL of the **artifact service** as the backend itself reaches it
+    /// (`TCAB_ARTIFACTS_URL`) — the same in-cluster Service address the dispatcher
+    /// hands its driver Jobs.
+    ///
+    /// This is what every backend-originated artifact call uses: pruning a deleted
+    /// run's tree, the periodic reclamation sweep (see [`crate::artifacts`]), and the
+    /// snapshot builder's fallback read of a run's proof/asset media. `None` disables
+    /// all three, which is correct for a single-box dev setup with no artifact
+    /// service and is warned about at startup for a deployment that advertises a
+    /// public URL without supplying this one.
+    pub artifacts_internal_url: Option<String>,
+    /// How often the artifact reclamation sweep runs
+    /// (`TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`). `Duration::ZERO` disables the sweep,
+    /// leaving the delete-time prune as the only reclamation.
+    pub artifact_sweep_interval: Duration,
+    /// How old a tree with no run row must be before a sweep deletes it
+    /// (`TCAB_ARTIFACT_SWEEP_GRACE_HOURS`). Bounds the window in which a run that has
+    /// uploaded its tree but not yet reported terminal is protected from the sweep.
+    pub artifact_sweep_grace: Duration,
     /// The public base URL of the **arena service** (`TCAB_ARENA_PUBLIC_URL`),
     /// reported to the console via `GET /config` so it can POST adversarial
     /// matches/tournaments and stream live tournament progress against the data
@@ -160,7 +196,7 @@ pub struct Config {
     /// and desktop setups, and any overlay that omits the observability component) —
     /// the console then simply hides the link.
     ///
-    /// Unlike `artifacts_url` and `arena_url` this is not a data-plane URL: the
+    /// Unlike `artifacts_public_url` and `arena_url` this is not a data-plane URL: the
     /// backend never calls Grafana, and Grafana never calls the backend. It is
     /// advertised here purely because `GET /config` is already how the console
     /// learns per-environment URLs, and threading one more through the console
@@ -184,7 +220,7 @@ pub struct Config {
     /// published reference frames (see `test_cabinet_core::asset_reference`), whose
     /// keys the client builds itself from the case triple and a frame index. Joining
     /// them onto a base is the client's job; the backend only advertises the base,
-    /// exactly as it does for `artifacts_url` and `arena_url`.
+    /// exactly as it does for `artifacts_public_url` and `arena_url`.
     ///
     /// The static gallery reaches the same base under its own build-time name
     /// (`TCAB_SNAPSHOT_URL`, see `.env.site.example`); it bakes the value in at build
@@ -245,17 +281,21 @@ impl Config {
 
         let allow_experimental = truthy("TCAB_BACKEND_ALLOW_EXPERIMENTAL");
 
-        let artifacts_url =
-            nonempty("TCAB_ARTIFACTS_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
+        let artifacts_public_url = base_url("TCAB_ARTIFACTS_PUBLIC_URL");
+        let artifacts_internal_url = base_url("TCAB_ARTIFACTS_URL");
+        let arena_url = base_url("TCAB_ARENA_PUBLIC_URL");
+        let grafana_url = base_url("TCAB_GRAFANA_PUBLIC_URL");
+        let snapshot_url = base_url("TCAB_SNAPSHOT_PUBLIC_URL");
 
-        let arena_url =
-            nonempty("TCAB_ARENA_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
+        let artifact_sweep_interval_hours = std::env::var("TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_ARTIFACT_SWEEP_INTERVAL_HOURS);
 
-        let grafana_url =
-            nonempty("TCAB_GRAFANA_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
-
-        let snapshot_url =
-            nonempty("TCAB_SNAPSHOT_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
+        let artifact_sweep_grace_hours = std::env::var("TCAB_ARTIFACT_SWEEP_GRACE_HOURS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS);
 
         Ok(Self {
             bind,
@@ -273,7 +313,14 @@ impl Config {
             snapshot_retention: Duration::from_secs(snapshot_retention_hours * 3600),
             reference_browser,
             gg_reference,
-            artifacts_url,
+            artifacts_public_url,
+            artifacts_internal_url,
+            artifact_sweep_interval: Duration::from_secs(
+                artifact_sweep_interval_hours.saturating_mul(3600),
+            ),
+            artifact_sweep_grace: Duration::from_secs(
+                artifact_sweep_grace_hours.saturating_mul(3600),
+            ),
             arena_url,
             grafana_url,
             snapshot_url,
@@ -336,6 +383,13 @@ fn require(key: &'static str) -> Result<String, ConfigError> {
 /// Read a non-empty environment variable, returning `None` when unset or empty.
 fn nonempty(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())
+}
+
+/// Read a service base URL, normalized so callers can join a rooted path onto it
+/// with a plain `format!`: unset or empty is `None`, and a trailing `/` is trimmed
+/// so `{base}/runs/{id}` never doubles the separator.
+fn base_url(key: &str) -> Option<String> {
+    nonempty(key).map(|url| url.trim_end_matches('/').to_string())
 }
 
 #[cfg(test)]

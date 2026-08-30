@@ -119,6 +119,22 @@ pub struct Model {
     /// The full `RunRecord` serialized verbatim (links populated).
     #[sea_orm(column_type = "Text")]
     pub record_json: String,
+    /// Whether [`record_json`](Self::record_json) deserialized into the current
+    /// `RunRecord` when this row's readability was last decided.
+    ///
+    /// Every run listing filters on this column, so a listing's `COUNT(*)` and the
+    /// page it serves run one predicate and the total a listing reports equals the
+    /// number of rows it returns. A row marked unreadable is served only by the
+    /// unreadable listing, which reports the error its record produces now, and is
+    /// deleted through the ordinary delete path (which reads the row, not the
+    /// record).
+    pub record_readable: bool,
+    /// The `RUN_RECORD_FORMAT` generation this row's
+    /// [`record_readable`](Self::record_readable) was decided under. A row whose
+    /// stamp differs from the running build's is re-decided by the startup sweep
+    /// (`Db::revalidate_run_records`), which is the whole corpus exactly once after
+    /// a record-contract change and no rows in the steady state.
+    pub record_format: i32,
     /// The run's recorded normalized event stream as a JSON array, or `NULL`.
     #[sea_orm(column_type = "Text", nullable)]
     pub events_json: Option<String>,
@@ -133,6 +149,12 @@ pub struct Model {
     /// reinstates a stale document in the in-memory index that reconciles against
     /// this column, and nothing fails loudly when it does. Do not set the field on
     /// an `ActiveModel` by hand.
+    ///
+    /// The readability marker ([`record_readable`](Self::record_readable) and
+    /// [`record_format`](Self::record_format)) is the one exception: it records
+    /// whether this build can decode the row, which is a fact about the build rather
+    /// than a change to the run. Stamping it would make the document index reload,
+    /// every cycle, a run whose document can never be built.
     ///
     /// Compared for **inequality**, never ordered: the RFC 3339 rendering drops the
     /// fractional part when it is exactly zero, so string ordering is unreliable

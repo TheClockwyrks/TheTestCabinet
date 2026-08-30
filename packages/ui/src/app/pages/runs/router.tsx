@@ -4,6 +4,7 @@ import { RunsPage } from "./RunsPage";
 import { RunFailuresPage } from "./RunFailuresPage";
 import { UnreviewedPage } from "./UnreviewedPage";
 import { UnpublishedPage } from "./UnpublishedPage";
+import { UnreadableRunsPage } from "./UnreadableRunsPage";
 import { NewRunPage } from "./NewRunPage";
 import { RunCodePage } from "./[runId]/RunCodePage";
 import { RunEventsPage } from "./[runId]/RunEventsPage";
@@ -87,6 +88,16 @@ export function runsRoutes(canExecute: boolean) {
         <Route
           path={routePatterns.runUnpublished}
           element={<UnpublishedPage />}
+        />
+      )}
+      {/* The stored runs whose records the backend cannot decode. Console-only
+          like the worklists above: they are reachable from no other listing, and
+          the static site holds none by definition. Static path, so it outranks the
+          `/runs/:runId` dynamic route. */}
+      {canExecute && (
+        <Route
+          path={routePatterns.runUnreadable}
+          element={<UnreadableRunsPage />}
         />
       )}
       {canExecute && (
