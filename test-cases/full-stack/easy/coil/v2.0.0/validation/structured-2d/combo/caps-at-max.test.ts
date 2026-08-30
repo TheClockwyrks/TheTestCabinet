@@ -1,30 +1,43 @@
-/*
- * Coil validator: `combo.caps-at-max`. PLACEHOLDER.
- *
- * The multiplier caps at COMBO_MAX.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * An eat resolved at COMBO_MAX (5) with an open window leaves M at 5 rather
- * than raising it further.
- *
- * HOW:
- * pose M at COMBO_MAX with an open window, eat a pellet, and read the
- * multiplier.
- *
- * MEDIA IT MUST CAPTURE: cap (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// combo/caps-at-max — the multiplier stops at COMBO_MAX.
+//
+// specs/scoring.md: `M` "is capped at `COMBO_MAX` (`5`)", and the table that
+// raises it on an open window says "One higher, up to `COMBO_MAX`".
+//
+// Its own point because a cap is an edge case and edge cases are where a build's
+// arithmetic shows: a build that adds one and clamps somewhere else, or that
+// clamps the award but not the multiplier, is right for every eat but this one.
+// The window is posed full and open, so nothing but the cap can hold the
+// multiplier where it is.
 
-test("combo.caps-at-max", () => {
-  throw new Error("validator not implemented: combo/caps-at-max.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import { COMBO_MAX, COMBO_WINDOW } from "../../src/constants";
+import {
+  arrangeEat,
+  captureReplay,
+  createHarness,
+  type Harness,
+} from "../harness";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("leaves the multiplier at COMBO_MAX on an eat inside the window", async () => {
+  const scene = arrangeEat(h, {
+    combo: COMBO_MAX,
+    comboWindow: COMBO_WINDOW,
+  });
+  assertEqual(scene.snapshot.combo, COMBO_MAX, "the posed multiplier");
+  assertGreaterThan(scene.snapshot.comboWindow, 0, "the window at the eat");
+
+  const after = await captureReplay(h, "cap", () => h.tick());
+
+  assertEqual(after.combo, COMBO_MAX, "the multiplier after an eat at the cap");
 });
