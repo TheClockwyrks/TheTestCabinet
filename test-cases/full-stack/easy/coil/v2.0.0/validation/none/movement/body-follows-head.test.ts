@@ -13,7 +13,7 @@
 // it, so the corners travel down the body as the head moves on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import { assertDeepEqual, assertLength } from "../assert";
 import { type Cell } from "../constants";
 import {
   ahead,
@@ -60,7 +60,11 @@ it("hands every segment the cell the one ahead of it held", async () => {
 
   const after = await captureReplay(h, "follow", () => h.tick());
 
-  assertLength(after.snake, CHAIN.length, "the chain after a tick that ate nothing");
+  assertLength(
+    after.snake,
+    CHAIN.length,
+    "the chain after a tick that ate nothing",
+  );
   assertDeepEqual(
     after.snake[0],
     ahead(CHAIN[0], "right"),

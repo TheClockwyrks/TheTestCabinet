@@ -51,7 +51,11 @@ it("opens every round with its pellet clear of the starting chain", async () => 
       await captureStill(h, "first");
     }
 
-    assertEqual(opened.screen, "playing", `the round opened under seed ${seed}`);
+    assertEqual(
+      opened.screen,
+      "playing",
+      `the round opened under seed ${seed}`,
+    );
     assertNotNull(opened.pellet, `the first pellet under seed ${seed}`);
     const pellet = opened.pellet as Cell;
     assertEqual(

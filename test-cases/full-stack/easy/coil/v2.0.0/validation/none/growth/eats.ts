@@ -72,7 +72,9 @@ export async function driveEats(
   const start = options.start ?? 3;
   const path = serpentine();
 
-  await debug.reset(options.seed === undefined ? undefined : { seed: options.seed });
+  await debug.reset(
+    options.seed === undefined ? undefined : { seed: options.seed },
+  );
   await clearObstacles(h);
   await debug.setSnake(path.slice(0, start).reverse());
   await debug.clearTurns();

@@ -88,5 +88,9 @@ it("places the same pellets, in the same order, from the same seed", async () =>
 
   // Whether the draw VARIES is a different requirement, decided by
   // `growth/respawn-varies`; what is decided here is only that it repeats.
-  assertDeepEqual(second, first, "the same seed and the same sequence of calls");
+  assertDeepEqual(
+    second,
+    first,
+    "the same seed and the same sequence of calls",
+  );
 });

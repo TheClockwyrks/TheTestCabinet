@@ -42,7 +42,11 @@ it("puts the next pellet on the board on the tick the last was eaten", async () 
   const after = await captureReplay(h, "respawn", () => h.tick());
 
   assertEqual(after.ticks, 1, "ticks resolved");
-  assertEqual(sameCell(after.snake[0], scene.pellet), true, "the pellet was eaten");
+  assertEqual(
+    sameCell(after.snake[0], scene.pellet),
+    true,
+    "the pellet was eaten",
+  );
   // WHERE it landed is decided by the three points that follow; what is decided
   // here is that the tick which ate one left another behind.
   assertNotNull(after.pellet, "the pellet on the board when the tick resolved");

@@ -15,7 +15,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { arrangeEat, captureReplay, createHarness, type Harness } from "../harness";
+import {
+  arrangeEat,
+  captureReplay,
+  createHarness,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -29,8 +34,16 @@ afterEach(async () => {
 
 it("leaves the board without a pellet when one is eaten", async () => {
   const scene = await arrangeEat(h, { pelletRespawn: false });
-  assertEqual(scene.snapshot.pelletRespawn, false, "the switch the scene posed");
-  assertDeepEqual(scene.snapshot.pellet, scene.pellet, "the pellet to be eaten");
+  assertEqual(
+    scene.snapshot.pelletRespawn,
+    false,
+    "the switch the scene posed",
+  );
+  assertDeepEqual(
+    scene.snapshot.pellet,
+    scene.pellet,
+    "the pellet to be eaten",
+  );
   const before = scene.snapshot;
 
   const after = await captureReplay(h, "unreplaced", () => h.tick());

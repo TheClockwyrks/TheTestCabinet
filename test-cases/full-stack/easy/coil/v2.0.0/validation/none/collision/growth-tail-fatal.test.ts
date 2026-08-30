@@ -53,7 +53,11 @@ afterEach(async () => {
 it("ends the round when the head enters a tail the eat keeps", async () => {
   const { debug } = h;
   const tail = CHAIN[CHAIN.length - 1];
-  assertDeepEqual(ahead(CHAIN[0], "right"), tail, "the tail cell the head enters");
+  assertDeepEqual(
+    ahead(CHAIN[0], "right"),
+    tail,
+    "the tail cell the head enters",
+  );
 
   await debug.reset();
   await clearObstacles(h);

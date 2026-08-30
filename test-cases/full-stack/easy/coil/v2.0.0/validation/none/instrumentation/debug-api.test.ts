@@ -133,7 +133,12 @@ it("takes the game off the wall clock, and runs whole frames on demand", async (
   await h.page.waitForTimeout(FROZEN_MS);
   const still = await h.snapshot();
   assertEqual(still.ticks, posed.ticks, "ticks with the clock disconnected");
-  assertCloseTo(still.simTime, posed.simTime, 9, "simTime with it disconnected");
+  assertCloseTo(
+    still.simTime,
+    posed.simTime,
+    9,
+    "simTime with it disconnected",
+  );
   assertDeepEqual(still.snake, posed.snake, "the chain with it disconnected");
 
   // And an advance runs real frames: one second of game time is the eight ticks
@@ -142,7 +147,10 @@ it("takes the game off the wall clock, and runs whole frames on demand", async (
   const driven = await h.snapshot();
   assertEqual(driven.ticks, posed.ticks + FRAME_HZ / FRAMES_PER_TICK);
   assertCloseTo(driven.simTime - posed.simTime, 1, 6, "a second of game time");
-  assertDeepEqual(driven.snake[0], { col: POSED_HEAD.col + 8, row: POSED_HEAD.row });
+  assertDeepEqual(driven.snake[0], {
+    col: POSED_HEAD.col + 8,
+    row: POSED_HEAD.row,
+  });
 });
 
 it("reports the whole documented snapshot shape, off a driven game", async () => {
@@ -185,7 +193,11 @@ it("reports the whole documented snapshot shape, off a driven game", async () =>
     assertEqual(typeof cell.col, "number", "a cell's col");
     assertEqual(typeof cell.row, "number", "a cell's row");
   }
-  assertEqual(s.pellet === null || typeof s.pellet.col === "number", true, "pellet");
+  assertEqual(
+    s.pellet === null || typeof s.pellet.col === "number",
+    true,
+    "pellet",
+  );
 
   // Live values rather than a shape filled with zeroes: the round the scene
   // posed has been ticked, so the clock, the figures and the chain all moved

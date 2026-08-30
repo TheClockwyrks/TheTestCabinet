@@ -44,7 +44,11 @@ it("moves the head one cell along dir on one tick", async () => {
   const after = await captureReplay(h, "move", () => h.tick());
 
   assertEqual(after.ticks, 1, "ticks resolved");
-  assertDeepEqual(after.snake[0], ahead(HEAD, "right"), "the head after a tick");
+  assertDeepEqual(
+    after.snake[0],
+    ahead(HEAD, "right"),
+    "the head after a tick",
+  );
   // And no further: a build that advanced two cells, or that advanced along some
   // other axis, is a different head cell than the one above, and a build that
   // moved the head off the grid it counts in is caught by the same reading.

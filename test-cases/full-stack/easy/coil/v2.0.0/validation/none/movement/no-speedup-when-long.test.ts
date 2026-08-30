@@ -51,7 +51,11 @@ it("advances eight cells in a second at thirty cells long", async () => {
     return h.snapshot();
   });
 
-  assertEqual(after.ticks, TICKS_PER_SECOND, "ticks in one second at thirty cells");
+  assertEqual(
+    after.ticks,
+    TICKS_PER_SECOND,
+    "ticks in one second at thirty cells",
+  );
   assertDeepEqual(
     after.snake[0],
     ahead(head, "down", TICKS_PER_SECOND),

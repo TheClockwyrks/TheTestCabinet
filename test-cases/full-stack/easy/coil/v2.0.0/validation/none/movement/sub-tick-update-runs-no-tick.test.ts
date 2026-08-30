@@ -55,11 +55,19 @@ it("resolves no tick under TICK_SECONDS, then lands one when the time is made up
 
   // Half a tick resolved nothing, and nothing moved.
   assertEqual(carried.short.ticks, 0, "ticks after half a tick of game time");
-  assertDeepEqual(carried.short.snake, posed.snapshot.snake, "the chain after it");
+  assertDeepEqual(
+    carried.short.snake,
+    posed.snapshot.snake,
+    "the chain after it",
+  );
 
   // The remainder carried, so the second half made the tick up rather than being
   // measured from zero again.
-  assertEqual(carried.made.ticks, 1, "ticks once the accumulator reached TICK_SECONDS");
+  assertEqual(
+    carried.made.ticks,
+    1,
+    "ticks once the accumulator reached TICK_SECONDS",
+  );
   assertDeepEqual(
     carried.made.snake[0],
     ahead(HEAD, "right"),

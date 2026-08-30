@@ -55,7 +55,11 @@ it("discards a third request, and never turns the snake by it", async () => {
     return { buffered, first, second, third };
   });
 
-  assertLength(run.buffered.turns, TURN_QUEUE_MAX, "the buffer with three made");
+  assertLength(
+    run.buffered.turns,
+    TURN_QUEUE_MAX,
+    "the buffer with three made",
+  );
   assertDeepEqual(
     run.buffered.turns,
     ["down", "left"],

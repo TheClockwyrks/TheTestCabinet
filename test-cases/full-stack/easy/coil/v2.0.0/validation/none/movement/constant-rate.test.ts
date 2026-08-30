@@ -46,7 +46,11 @@ it("resolves eight ticks, and eight cells of travel, in one second", async () =>
     return h.snapshot();
   });
 
-  assertEqual(after.ticks, TICKS_PER_SECOND, "ticks in one second of game time");
+  assertEqual(
+    after.ticks,
+    TICKS_PER_SECOND,
+    "ticks in one second of game time",
+  );
   assertCloseTo(after.simTime, 1, 6, "the second of game time delivered");
   assertDeepEqual(
     after.snake[0],

@@ -48,5 +48,9 @@ it("turns down from a rightward run, on the tick after the request", async () =>
   });
 
   assertEqual(turned.dir, "down", "dir after the tick");
-  assertDeepEqual(turned.snake[0], ahead(HEAD, "down"), "the head after the tick");
+  assertDeepEqual(
+    turned.snake[0],
+    ahead(HEAD, "down"),
+    "the head after the tick",
+  );
 });

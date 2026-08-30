@@ -71,7 +71,11 @@ it("places the next pellet on the one cell the valid set still holds", async () 
   await debug.setScreen("playing");
 
   const posed = await h.snapshot();
-  assertLength(posed.snake, INTERIOR_CELLS - 2, "the chain covering all but two cells");
+  assertLength(
+    posed.snake,
+    INTERIOR_CELLS - 2,
+    "the chain covering all but two cells",
+  );
 
   const after = await h.tick();
   // The board the reading is taken off, kept as the point's evidence.

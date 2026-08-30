@@ -48,10 +48,18 @@ it("buffers the request, and applies it on the next tick", async () => {
   // waiting on the buffer.
   assertEqual(turn.requested.ticks, 0, "ticks at the request");
   assertEqual(turn.requested.dir, "right", "dir at the request");
-  assertDeepEqual(turn.requested.snake, posed.snapshot.snake, "the chain at the request");
+  assertDeepEqual(
+    turn.requested.snake,
+    posed.snapshot.snake,
+    "the chain at the request",
+  );
   assertDeepEqual(turn.requested.turns, ["up"], "the buffered request");
 
   // On the next tick: step 1 applied it, and the head advanced the new way.
   assertEqual(turn.turned.dir, "up", "dir after the tick");
-  assertDeepEqual(turn.turned.snake[0], ahead(HEAD, "up"), "the head after the tick");
+  assertDeepEqual(
+    turn.turned.snake[0],
+    ahead(HEAD, "up"),
+    "the head after the tick",
+  );
 });

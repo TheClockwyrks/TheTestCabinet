@@ -53,13 +53,29 @@ afterEach(async () => {
 
 it("carries the round on when the head takes the cell the tail leaves", async () => {
   const tail = CHAIN[CHAIN.length - 1];
-  const posed = await poseScene(h, { snake: CHAIN, dir: "right", pellet: null });
-  assertDeepEqual(ahead(CHAIN[0], "right"), tail, "the tail cell the head enters");
+  const posed = await poseScene(h, {
+    snake: CHAIN,
+    dir: "right",
+    pellet: null,
+  });
+  assertDeepEqual(
+    ahead(CHAIN[0], "right"),
+    tail,
+    "the tail cell the head enters",
+  );
   assertEqual(posed.pellet, null, "the board the tick runs over");
 
   const after = await captureReplay(h, "tail", () => h.tick());
 
-  assertEqual(after.screen, "playing", "the round after the head took the tail cell");
+  assertEqual(
+    after.screen,
+    "playing",
+    "the round after the head took the tail cell",
+  );
   assertDeepEqual(after.snake[0], tail, "the head on the cell the tail left");
-  assertLength(after.snake, CHAIN.length, "the chain after a tick that ate nothing");
+  assertLength(
+    after.snake,
+    CHAIN.length,
+    "the chain after a tick that ate nothing",
+  );
 });

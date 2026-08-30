@@ -47,8 +47,16 @@ it("holds the chain still over many ticks, and still takes a turn", async () => 
 
   const held = await captureReplay(h, "held", () => h.tick(HELD_TICKS));
 
-  assertEqual(held.ticks, HELD_TICKS, "ticks resolved while the switch was off");
-  assertDeepEqual(held.snake, posed.snapshot.snake, "the chain with travel off");
+  assertEqual(
+    held.ticks,
+    HELD_TICKS,
+    "ticks resolved while the switch was off",
+  );
+  assertDeepEqual(
+    held.snake,
+    posed.snapshot.snake,
+    "the chain with travel off",
+  );
   assertEqual(held.screen, "playing", "the screen with travel off");
 
   // Steering is untouched: the request is taken and `dir` changes, so the snake
@@ -56,5 +64,9 @@ it("holds the chain still over many ticks, and still takes a turn", async () => 
   await h.tap(KEY.up);
   const turned = await h.tick();
   assertEqual(turned.dir, "up", "dir after a request with travel off");
-  assertDeepEqual(turned.snake, posed.snapshot.snake, "the chain after the turn");
+  assertDeepEqual(
+    turned.snake,
+    posed.snapshot.snake,
+    "the chain after the turn",
+  );
 });
