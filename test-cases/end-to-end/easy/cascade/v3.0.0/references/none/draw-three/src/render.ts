@@ -434,7 +434,6 @@ function drawDropTarget(
 function drawDrag(state: CascadeState, ctx: CanvasRenderingContext2D): void {
   const drag = state.drag;
   if (drag === null) return;
-  ctx.save();
   ctx.shadowColor = COLOR.shadow;
   ctx.shadowBlur = 18;
   ctx.shadowOffsetX = 6;
@@ -442,7 +441,13 @@ function drawDrag(state: CascadeState, ctx: CanvasRenderingContext2D): void {
   for (let i = 0; i < drag.cards.length; i += 1) {
     drawCard(ctx, drag.cards[i], drag.x, drag.y + i * FACE_UP_OFFSET);
   }
-  ctx.restore();
+  // Cleared by hand rather than by a restore: a 2D context is not obliged to
+  // carry every property through save and restore, and a leaked shadow would
+  // smear the next thing drawn.
+  ctx.shadowColor = "rgba(0, 0, 0, 0)";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
 }
 
 /** Every card in flight, at its position. */
