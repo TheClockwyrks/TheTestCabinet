@@ -125,7 +125,9 @@ export function toggleInventory(d: DeepcoreState): void {
 
 /** Open the pause menu, or close an open panel (specs/controls.md). */
 export function openPauseMenu(d: DeepcoreState): void {
-  if (d.screen !== "in-mine") return;
+  // specs/modes.md: play does not resume from a death, so once one has been
+  // taken nothing puts the mine back in front of the player.
+  if (d.screen !== "in-mine" || d.dying) return;
   if (d.panel) {
     closePanel(d);
     return;

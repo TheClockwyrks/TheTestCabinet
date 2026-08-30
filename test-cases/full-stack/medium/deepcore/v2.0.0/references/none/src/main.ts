@@ -96,7 +96,9 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
 
   function openPauseMenu(): void {
-    if (game.screen !== "in-mine") return;
+    // specs/modes.md: play does not resume from a death, so once one has been
+    // taken nothing puts the mine back in front of the player.
+    if (game.screen !== "in-mine" || game.dying) return;
     if (game.panel) {
       game.closePanel();
       return;

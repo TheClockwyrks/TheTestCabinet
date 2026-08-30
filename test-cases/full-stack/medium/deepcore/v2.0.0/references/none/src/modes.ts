@@ -31,13 +31,28 @@ export function triggerDeath(game: Game, cause: DeathCause): void {
   game.deathCause = cause;
   game.dying = { cause, t: 0 };
   game.panel = null;
+
+  // specs/modes.md: a death takes effect the moment its cause holds, and the
+  // mode's consequence is applied then rather than when the Game Over screen
+  // arrives — so nothing done after the death changes what it costs.
+  applyModeCost(game);
+}
+
+/**
+ * Apply what the mode charges for a death (specs/modes.md).
+ *
+ * Standard keeps the save; Hardcore deletes it. Idempotent, because it runs at
+ * the death itself rather than at the screen the death leads to.
+ */
+function applyModeCost(game: Game): void {
+  if (game.mode === "hardcore") clearSave();
 }
 
 /** Apply the mode's outcome once the death has played out. */
 export function finalizeDeath(game: Game): void {
   const cause = game.dying?.cause ?? "hull-destroyed";
   game.dying = null;
-  if (game.mode === "hardcore") clearSave();
+  // The mode's cost was charged at the death itself; the screen only reports it.
   game.summary = game.makeSummary(cause);
   game.menuIndex = 0;
   game.screen = "game-over";

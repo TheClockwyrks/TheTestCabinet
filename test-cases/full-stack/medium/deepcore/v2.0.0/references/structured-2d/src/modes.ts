@@ -48,16 +48,30 @@ export function triggerDeath(d: DeepcoreState, cause: DeathCause): void {
   d.deathCause = cause;
   d.dying = { cause, t: 0 };
   d.panel = null;
+
+  // specs/modes.md: a death takes effect the moment its cause holds, and the
+  // mode's consequence is applied then rather than when the Game Over screen
+  // arrives — so nothing done after the death changes what it costs.
+  applyModeCost(d);
+}
+
+/**
+ * Apply what the mode charges for a death (specs/modes.md).
+ *
+ * Standard keeps the save; Hardcore deletes it. Idempotent, because it runs at
+ * the death itself rather than at the screen the death leads to.
+ */
+function applyModeCost(d: DeepcoreState): void {
+  if (d.mode !== "hardcore") return;
+  clearSave();
+  d.hasSave = hasSave();
 }
 
 /** Apply the mode's outcome once the death has played out. */
 export function finalizeDeath(d: DeepcoreState): void {
   const cause = d.dying?.cause ?? "hull-destroyed";
   d.dying = null;
-  if (d.mode === "hardcore") {
-    clearSave();
-    d.hasSave = hasSave();
-  }
+  // The mode's cost was charged at the death itself; the screen only reports it.
   makeSummary(d, cause);
   d.menuIndex = 0;
   d.screen = "game-over";

@@ -2610,6 +2610,29 @@ validation = { script = "modes/hardcore-deletes-the-save.test.ts", outputs = [
   { id = "gone", name = "The Hardcore game-over screen", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "hardcore-death-deletes-the-save-at-once"
+title = "A Hardcore death deletes the save the moment it happens"
+description = "The mode's consequence is applied at the death itself rather than when the game-over screen arrives, so a Hardcore save is already gone on the frame a hull standing at 0 ends the expedition."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: bank a Hardcore save, empty the hull and read hasSave
+# false two frames later, before the game-over screen is reached.
+validation = { script = "modes/hardcore-death-deletes-the-save-at-once.test.ts", outputs = [
+  { id = "gone", name = "The save gone on the frame of the death", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "death-cannot-be-resumed"
+title = "Play does not resume from a death"
+description = "A death cannot be undone: once its cause holds, pause never reaches the pause menu and the expedition carries on to the game-over screen rather than back to live play."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: empty the hull, strike pause repeatedly while the death
+# plays out and read the screen never paused and the expedition ending at
+# game-over.
+validation = { script = "modes/death-cannot-be-resumed.test.ts", outputs = [
+  { id = "over", name = "The death carrying through a pause", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "hardcore-play-again-is-fresh"
 title = "Hardcore PLAY AGAIN starts a completely fresh expedition"
 description = "PLAY AGAIN after a Hardcore death starts a fresh Hardcore expedition at the same world size, with tier 1 on every track, 0 Credits, nothing held and no component installed."
