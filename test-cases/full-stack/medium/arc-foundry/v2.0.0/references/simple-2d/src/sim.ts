@@ -405,6 +405,14 @@ export function fixedStep(w: FoundryWorld, dt: number): void {
   if (w.screen !== "playing" || w.paused) return;
   w.simTime += dt;
 
+  // Grid Integrity at or below zero ends the run at any point, so defeat is resolved
+  // before the phase decides how much of the tick runs: a build phase with the grid
+  // already at zero ends in defeat exactly as a live wave does.
+  if (w.integrity <= 0) {
+    lose(w);
+    return;
+  }
+
   if (w.phase === "build") {
     // A build phase is untimed: nothing starts the wave but the level's harvest. The
     // clock still runs, so a status effect posed in a build phase runs down.
@@ -420,8 +428,13 @@ export function fixedStep(w: FoundryWorld, dt: number): void {
   // Shots move after the units do, so homing stays accurate within the tick.
   stepProjectiles(w, dt);
   cullDead(w);
+  // Defeat resolves immediately, so the leak that empties the grid on the very tick
+  // that would clear the wave ends the run instead of opening a build phase.
+  if (w.integrity <= 0) {
+    lose(w);
+    return;
+  }
   checkWaveEnd(w);
-  if (w.integrity <= 0) lose(w);
 }
 
 function spawnDue(w: FoundryWorld, occ: Occupancy): void {

@@ -285,6 +285,14 @@ export class Game {
     this.cuesThisStep.clear();
     this.simTime += dt;
 
+    // Grid Integrity at or below zero ends the run at any point (specs/economy.md), so
+    // defeat is resolved before the phase decides how much of the tick runs: a build
+    // phase with the grid already at zero ends in defeat exactly as a live wave does.
+    if (this.integrity <= 0) {
+      this.lose();
+      return;
+    }
+
     if (this.phase === "build") {
       // A build phase is untimed (specs/campaign.md): nothing starts the wave but the level's
       // harvest. The clock still runs, so a status effect posed in a build phase runs down.
@@ -300,8 +308,13 @@ export class Game {
     this.stepUnits(dt);
     this.stepProjectiles(dt); // move shots after units move, so homing stays accurate
     this.cullDead();
+    // Defeat resolves immediately, so the leak that empties the grid on the very tick
+    // that would clear the wave ends the run instead of opening a build phase.
+    if (this.integrity <= 0) {
+      this.lose();
+      return;
+    }
     this.checkWaveEnd();
-    if (this.integrity <= 0) this.lose();
   }
 
   private spawnDue(): void {

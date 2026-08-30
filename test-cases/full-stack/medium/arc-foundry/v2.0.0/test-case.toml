@@ -2159,6 +2159,30 @@ validation = { script = "campaign/defeat-at-zero.test.ts", outputs = [
   { id = "overload", name = "The overload at zero Grid Integrity", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "defeat-in-a-build-phase"
+title = "Grid Integrity at zero ends the run in a build phase too"
+description = "Grid Integrity standing at 0 during a build phase, with no wave running and no unit on the yard, ends the run in defeat on the next advance, on the overload screen, because the rule holds at any point and not only mid-wave."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open a build phase on an empty yard, put Grid Integrity
+# at 0, advance, and read the screen. See validation/<engine>/campaign/defeat-
+# in-a-build-phase.test.ts.
+validation = { script = "campaign/defeat-in-a-build-phase.test.ts", outputs = [
+  { id = "overload", name = "The defeat resolved from a build phase", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "defeat-beats-the-wave-clear"
+title = "The last leak that empties the grid ends the run rather than clearing the wave"
+description = "The advance on which the wave's final unit grounds out and takes Grid Integrity to 0 reaches the overload screen, not a build phase, because defeat resolves immediately and a defeated run has no wave-clear bonus."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: hold one unit as the whole wave, walk it into the
+# collector one Grid Integrity from the end, and read the screen and the
+# Charge. See validation/<engine>/campaign/defeat-beats-the-wave-clear.test.ts.
+validation = { script = "campaign/defeat-beats-the-wave-clear.test.ts", outputs = [
+  { id = "overload", name = "The clearing leak that ends the run", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "no-regeneration"
 title = "Grid Integrity never regenerates"
 description = "Grid Integrity is unchanged across a wave cleared without a leak, across a build phase, across a refinement and across a combine, so nothing in the game returns it."
