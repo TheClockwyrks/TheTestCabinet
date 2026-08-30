@@ -59,10 +59,12 @@ What it lifts depends on that card:
 A press that lands on no card lifts nothing, and so does a press on the stock.
 
 The run enters the hand on the press itself, before the pointer has moved at all,
-and it is the run in hand from that moment until the gesture ends. The run holds
-the position the pointer gives it: it keeps the offset between the press point
-and the leading card's top-left, so the run travels exactly as far as the pointer
-does, and it is drawn above the piles it passes over.
+and it is the run in hand from that moment until the gesture ends. It leaves the
+pile it was lifted from as it enters the hand, so that pile holds only the cards
+left behind for as long as the gesture lasts. The run holds the position the
+pointer gives it: it keeps the offset between the press point and the leading
+card's top-left, so the run travels exactly as far as the pointer does, and it is
+drawn above the piles it passes over.
 
 While a run is held, the pile that would accept it, if any, is the drop target,
 and it is drawn as highlighted. A pile is the drop target only while the release
