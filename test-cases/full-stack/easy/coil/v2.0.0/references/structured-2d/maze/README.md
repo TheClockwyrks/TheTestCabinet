@@ -84,12 +84,12 @@ every screen is a value of `CoilState.screen`, so the world and its state live
 for the whole session and starting a round is not a level transition. The pieces
 are the framework's own:
 
-| Piece               | Is                                                                                          |
-| ------------------- | ------------------------------------------------------------------------------------------- |
-| `CoilInstance`      | Registers the actions, defines the four cues over the produced files, loads the sprite set, and returns the debug surface. |
-| `CoilMode`          | Names `CoilState` as its `gameStateClass`, adds the one player, registers the diagnostics, and runs the fixed tick. |
-| `CoilController`    | The one seat the registered actions are read from, one edge per frame.                       |
-| `Arena`             | The one actor the level places; its two `DrawComponent`s are the board layer and the UI layer. |
+| Piece            | Is                                                                                                                         |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `CoilInstance`   | Registers the actions, defines the four cues over the produced files, loads the sprite set, and returns the debug surface. |
+| `CoilMode`       | Names `CoilState` as its `gameStateClass`, adds the one player, registers the diagnostics, and runs the fixed tick.        |
+| `CoilController` | The one seat the registered actions are read from, one edge per frame.                                                     |
+| `Arena`          | The one actor the level places; its two `DrawComponent`s are the board layer and the UI layer.                             |
 
 ## The fixed tick
 
