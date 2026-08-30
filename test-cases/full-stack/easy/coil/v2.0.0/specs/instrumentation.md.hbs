@@ -182,7 +182,8 @@ which is how a build starts and how it is played. It changes no game state.
 
 Drawing and input are unaffected either way: the loop keeps rendering and keeps
 reading the actions, so a menu still answers a key press and a steering request
-still lands in the buffer while the simulation is held.
+still lands in the buffer while the simulation is held. The snapshot reports the
+switch as `autoStep`.
 
 ### `advance(seconds, frames)`
 
@@ -220,7 +221,9 @@ no obstacle cell on the board,
 and all three driver switches on. `options` is optional, and `options.seed` seeds
 the pellet generator, defaulting to `DEFAULT_SEED` (`1`).
 {{#if (eq engine.slug "none")}}
-A reset also re-arms manual stepping, leaving the game off the wall clock.
+A reset also re-arms manual stepping, leaving the game off the wall clock, so
+`autoStep` reads `false` after one rather than the `true` a freshly loaded build
+opens on.
 {{/if}}
 
 `muted` is untouched, because muting is a player preference rather than a value a
@@ -451,6 +454,9 @@ way.
   combo: <number>,       // the multiplier M, in [1, COMBO_MAX]
   comboWindow: <number>, // seconds left on the window; 0 is closed
   muted: <boolean>,
+{{#if (eq engine.slug "none")}}
+  autoStep: <boolean>,   // whether the frame loop advances the simulation
+{{/if}}
   ticks: <number>,       // ticks resolved since the last reset
   simTime: <number>,     // simulation time accumulated since then, in seconds
   dir: "up" | "down" | "left" | "right",
@@ -477,6 +483,12 @@ is the course `specs/mode.md` fixes until a call changes it.
 `obstacles` is empty, because this mode places no obstacle cell.
 {{/if}}
 
+{{#if (eq engine.slug "none")}}
+`autoStep` is `true` while the frame loop advances the simulation from the wall
+clock, which is how a build starts and how it is played, and `false` while
+`setAutoStep(false)` holds the simulation off it.
+
+{{/if}}
 Every field is read straight off the game's state, so what the snapshot reports
 is what the game holds. Four are kept honest rather than posed.
 

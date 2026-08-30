@@ -420,7 +420,7 @@ validation = { script = "instrumentation/debug-api.test.ts", outputs = [
 [[review.categories.items]]
 id = "reset-restores"
 title = "reset restores the opening state"
-description = "reset() returns every field the snapshot reports to its opening value: the title screen, menuIndex 0, score and best 0, combo 1 with a closed window, ticks and simTime 0, the starting chain of specs/board.md facing right, an empty turn buffer, no live pellet, and all three driver switches on."
+description = "reset() returns the game to its opening values: the title screen, menuIndex 0, score and best 0, combo 1 with a closed window, ticks and simTime 0, the starting chain of specs/board.md facing right, an empty turn buffer, no live pellet, and all three driver switches on."
 domains = ["gameplay"]
 failure_cap = "passable"
 # Automated validation: pose a thoroughly disturbed game (a moved snake, a
