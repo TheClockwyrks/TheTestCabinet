@@ -527,7 +527,7 @@ description = "What the game looks and sounds like: the screens and their menus,
 # same scenarios; only how they reach the build differs. The directory for the run's
 # engine is what gets staged into the built workspace at `validation/`. Both
 # variant categories' directories ship in every engine's project; resolution runs
-# one variant at a time, so the other simply goes unrun.
+# one variant at a time, so the other simply does not run.
 #
 # EVERY SCENARIO IS POSED, AND POSED EMPTY. The shared harness's `startPosed`
 # clears the drones, bullets and bursts, turns the three world gates off, and opens
@@ -2425,7 +2425,7 @@ validation = { script = "controls/flip-no-autorepeat.test.ts", outputs = [
   { id = "once", name = "The band flipped exactly once by the held key", kind = "image" },
 ] }
 # The key and nothing else. That the meter is spent is
-# `resonance.discharge-spends`: one behaviour is graded once, and v1.0.0 cost a
+# `resonance.discharge-spends`: one behavior is graded once, and v1.0.0 cost a
 # build a controls point for a meter fault though its key was wired correctly.
 [[review.categories.items]]
 id = "discharge-x"
@@ -2821,7 +2821,7 @@ validation = { script = "screens/ready-banner.test.ts", outputs = [
 # NO POINT ASSERTS A HEX VALUE, and there is no palette to assert one against: Spectra
 # v2.0.0 fixes no palette and no typeface, and specs/overview.md's legibility table
 # states the RELATIONSHIPS a player must be able to read instead. So these check
-# presence and distinguishability against a stated RGB distance out of 441. Two rows of
+# that a thing is drawn and that two things are told apart, against a stated RGB distance out of 441. Two rows of
 # that table are deliberately left to the reviewer rather than given a point — whether a
 # band's shape accent is used consistently everywhere a band appears, and how bright the
 # starfield reads — because neither is a question pixels can decide without asserting a
@@ -2904,7 +2904,7 @@ validation = { script = "presentation/prism-core-alone.test.ts", outputs = [
 [[review.categories.items]]
 id = "cyan-magenta-distinct"
 title = "The two bands are told apart"
-description = "A cyan drone and a magenta drone render in colours separated by an RGB distance of at least 60 of 441."
+description = "A cyan drone and a magenta drone render in colors separated by an RGB distance of at least 60 of 441."
 domains = ["polarity", "presentation"]
 failure_cap = "broken"
 validation = { script = "presentation/cyan-magenta-distinct.test.ts", outputs = [
@@ -2954,7 +2954,7 @@ validation = { script = "presentation/bullets-code-drawn.test.ts", outputs = [
 [[review.categories.items]]
 id = "bullet-reads-band"
 title = "A bullet reads its band"
-description = "A cyan bullet and a magenta bullet render in colours separated by an RGB distance of at least 60 of 441."
+description = "A cyan bullet and a magenta bullet render in colors separated by an RGB distance of at least 60 of 441."
 domains = ["polarity", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/bullet-reads-band.test.ts", outputs = [
@@ -2962,11 +2962,11 @@ validation = { script = "presentation/bullet-reads-band.test.ts", outputs = [
 ] }
 # This is the legibility table's "One palette for both" row, and the one
 # relationship Spectra genuinely needs pinned: a build painting its bullets a third
-# pair of colours passes `bullet-reads-band` and is incoherent all the same.
+# pair of colors passes `bullet-reads-band` and is incoherent all the same.
 [[review.categories.items]]
 id = "bands-share-one-palette"
 title = "Code-drawn bands match the art's bands"
-description = "A code-drawn cyan bullet's sampled colour is nearer the cyan drone's sampled colour than the magenta drone's, and a magenta bullet's is nearer the magenta drone's. No hex is asserted."
+description = "A code-drawn cyan bullet's sampled color is nearer the cyan drone's sampled color than the magenta drone's, and a magenta bullet's is nearer the magenta drone's. No hex is asserted."
 domains = ["polarity", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/bands-share-one-palette.test.ts", outputs = [
@@ -2975,7 +2975,7 @@ validation = { script = "presentation/bands-share-one-palette.test.ts", outputs 
 [[review.categories.items]]
 id = "drones-distinct"
 title = "The three drones read apart"
-description = "A Shard, a Flux and a Prism sample pairwise-distinct colours, and each differs from the field behind it, by more than 40 of 441."
+description = "A Shard, a Flux and a Prism sample pairwise-distinct colors, and each differs from the field behind it, by more than 40 of 441."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/drones-distinct.test.ts", outputs = [
