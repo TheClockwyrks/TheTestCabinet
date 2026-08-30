@@ -137,6 +137,11 @@ export class Sim {
   /** A fresh round on the board as the mode lays it, with its first pellet. */
   layRound(): void {
     this.layChain();
+    // The board carries NO pellet at the moment the first one is drawn
+    // (`specs/board.md`), so the cell the round before left its pellet on is in
+    // the set that draw is made from like any other. Held over, it would be the
+    // one interior cell a fresh round could never open on.
+    this.pellet = null;
     // Placed after the chain is laid, so it never lands under a starting cell.
     this.spawnPellet();
   }
