@@ -39,6 +39,7 @@ import {
   captureStill,
   clearColor,
   clickControl,
+  clickStructure,
   colorDistance,
   createHarness,
   emptyYard,
@@ -63,6 +64,7 @@ import {
   tileCenter,
   unitById,
   watchCues,
+  withModify,
   type Harness,
 } from "./harness";
 
@@ -310,6 +312,22 @@ it("fires one action per press from the keyboard", async () => {
   expect(h.snapshot().held.active).toBe(true);
   await pressAction(h, "back");
   expect(h.snapshot().held.active).toBe(false);
+});
+
+it("holds the modifier across a click, as a level rather than an edge", async () => {
+  // `modify` is the one action the game reads as a LEVEL: what it answers is
+  // whether the key is down at the moment the press is resolved, so the helper has
+  // to hold it ACROSS the frame that resolves the click rather than tapping it. An
+  // implementation that armed an edge instead would leave the second structure
+  // selected on its own and the combine set holding one id.
+  openYard(h);
+  const first = standComponent(h, "capacitor", 1, 10, 10);
+  const second = standComponent(h, "capacitor", 1, 14, 10);
+  await clickStructure(h, 10, 10);
+  expect(h.snapshot().combineSet).toEqual([first]);
+
+  await withModify(h, () => clickStructure(h, 14, 10));
+  expect(h.snapshot().combineSet).toEqual([first, second]);
 });
 
 it("reports the cues the build played, by name and by frame", async () => {
