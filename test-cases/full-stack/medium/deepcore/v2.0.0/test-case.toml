@@ -3147,6 +3147,18 @@ validation = { script = "screens/pause-freezes-the-mine.test.ts", outputs = [
   { id = "frozen", name = "The mine frozen behind the pause menu", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "pause-screen-offers-no-mine-controls"
+title = "The pause screen offers only its own menu"
+description = "The mine's status-bar controls are not operable on the pause screen: no point of the status bar answers a click there, including the point that opens the inventory in the mine, so nothing opens a panel, leaves the menu or toggles mute."
+domains = ["simulation", "presentation"]
+failure_cap = "great"
+# Automated validation: find a status-bar point that answers a click in the
+# mine, open the pause menu and read that point and the whole bar answering
+# nothing.
+validation = { script = "screens/pause-screen-offers-no-mine-controls.test.ts", outputs = [
+  { id = "inert", name = "The pause screen over an inert status bar", kind = "image" },
+] }
+[[review.categories.items]]
 id = "pause-resume"
 title = "RESUME returns to the mine where it stopped"
 description = "RESUME closes the pause menu back to in-mine and the simulation continues from exactly where it stopped."

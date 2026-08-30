@@ -1427,7 +1427,11 @@ function drawStatusBar(
     ctx.fill();
   }
 
-  // Inventory (BAG) + Pause + Mute controls (right).
+  // Inventory (BAG) + Pause + Mute controls (right). They belong to the MINE:
+  // specs/ui.md pins the bar to `in-mine`, and specs/controls.md offers a control
+  // only where it acts — so the pause screen carries its own menu and none of
+  // these, while the readouts above stay on screen over the frozen world.
+  if (game.screen !== "in-mine") return;
   button(ctx, cl, view, STAGE_W - 222, 12, 64, 32, "BAG", "sys:inventory", {
     selected: game.panel === "inventory",
   });

@@ -156,7 +156,12 @@ export function controlsFor(state: DeepcoreState): readonly Control[] {
     if (state.screen === "in-mine" && !state.panel) {
       controls.push(...buildingControls(state));
     }
-    controls.push(...statusBarControls(state));
+    // The status bar's own controls belong to the mine. specs/ui.md pins the bar
+    // to `in-mine`, and specs/controls.md offers a control only where it acts —
+    // so the pause screen carries its own menu and nothing of the mine's.
+    if (state.screen === "in-mine") {
+      controls.push(...statusBarControls(state));
+    }
     if (state.screen === "in-mine" && state.panel) {
       controls.push(...panelControls(state, state.panel));
     }
