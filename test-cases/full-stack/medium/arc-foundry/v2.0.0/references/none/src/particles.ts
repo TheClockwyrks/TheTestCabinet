@@ -4,7 +4,7 @@
 // @test-cabinet/particle-runtime's canvas binding — not a flat flash or a hand-coded loop.
 // A burst is simulated on its own offscreen field canvas and composited additively over
 // the yard at the event's position, so — being simulated — it varies shot to shot, and
-// its intensity is escalated with the firing component's quality tier (specs/towers.md).
+// its intensity is escalated with the firing component's quality tier (specs/assets.md).
 
 import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";

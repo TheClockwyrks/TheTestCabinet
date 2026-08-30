@@ -20,7 +20,7 @@
 // ---- Kinds (the two orthogonal component axes, the Load, difficulty) -----------
 
 // The eight BASE COMPONENT TYPES — an electrical part with a distinct firing identity and
-// signature VFX (specs/towers.md). Kept distinct from the quality-TIER names so the two
+// signature VFX (specs/components.md). Kept distinct from the quality-TIER names so the two
 // axes never collide. The last three are the redesign additions: `choke` slows the units
 // it hits, `rectifier` applies an overcurrent burn (damage-over-time), and `regulator` is
 // a NON-firing support node that buffs the damage of nearby towers via an aura.
@@ -34,7 +34,7 @@ export type ComponentType =
   | "rectifier"
   | "regulator";
 
-// The twelve COMBINATION TOWERS (specs/towers.md, specs/build.md). Each is assembled by a
+// The twelve COMBINATION TOWERS (specs/combinations.md, specs/scrap-press.md). Each is assembled by a
 // RECIPE — a specific multiset of base (type, quality) ingredients folds into one unique
 // combo tower. Combos are SINGLE-GRADE and TERMINAL: no quality tier, cannot be
 // quality-combined, cannot be an ingredient in another recipe. Their stats live in
@@ -54,17 +54,17 @@ export type ComboType =
   | "auroralance"
   | "singularity";
 
-// The QUALITY tier on the five-rung ladder (specs/towers.md): 1 = Scrap, 2 = Tuned,
+// The QUALITY tier on the five-rung ladder (specs/components.md): 1 = Scrap, 2 = Tuned,
 // 3 = Charged, 4 = Primed, 5 = Tesla-Prime. The power axis; combining climbs one rung.
 export type Tier = 1 | 2 | 3 | 4 | 5;
 
-// The Refinement level R on the UPGRADE QUALITY track (specs/build.md): 0..8 (GemTD's
+// The Refinement level R on the UPGRADE QUALITY track (specs/scrap-press.md): 0..8 (GemTD's
 // nine-rung upgrade-chances tree). Higher R biases the stamp's QUALITY roll toward higher
 // tiers. Persistent for the run.
 export type Refinement = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 // Per-component targeting priority — which valid in-range unit it fires at
-// (specs/towers.md, specs/controls.md). FIRST (default) is furthest along the waypoint
+// (specs/components.md). FIRST (default) is furthest along the waypoint
 // chain, LAST the least far; NEAREST ranks by straight-line distance from the component;
 // STRONGEST / WEAKEST by most / least remaining hit points.
 export type TargetingMode =
@@ -76,7 +76,7 @@ export type TargetingMode =
 export type LoadType =
   "mote" | "spark" | "slug" | "cluster" | "filament" | "dynamo";
 
-// The in-game difficulty (specs/modes.md): changes ONLY wave count and enemy HP scaling.
+// The in-game difficulty (specs/difficulty.md): changes ONLY wave count and enemy HP scaling.
 export type Difficulty = "easy" | "medium" | "hard";
 
 // ---- Board: tiles, waypoints, maps ---------------------------------------------
@@ -86,13 +86,13 @@ export interface Pt {
   y: number;
 }
 
-// A tile address on the 50×33 grid (specs/board.md).
+// A tile address on the 50×33 grid (specs/yard.md).
 export interface TileCoord {
   col: number;
   row: number;
 }
 
-// A tile's build/walk state (specs/board.md). `open` is empty yard the Load crosses and
+// A tile's build/walk state (specs/yard.md). `open` is empty yard the Load crosses and
 // the player may build on; `blocked` is a component / candidate / blocker footprint (a
 // wall); `fixed` is a map's pre-placed housing (impassable AND never buildable);
 // `waypoint` is a tile of a 4-tile waypoint platform (walkable but never buildable).
@@ -102,7 +102,7 @@ export type TileState = "open" | "blocked" | "fixed" | "waypoint";
 export type MapEdge = "left" | "right" | "top" | "bottom" | "center";
 
 // A fixed-blocked rectangle of tiles (Map C's transformer housings), inclusive on both
-// ends (specs/board.md).
+// ends (specs/yard.md).
 export interface HousingRect {
   col0: number;
   row0: number;
@@ -110,7 +110,7 @@ export interface HousingRect {
   row1: number;
 }
 
-// A map's TOPOLOGY (specs/board.md): the ordered waypoint chain and any fixed housings.
+// A map's TOPOLOGY (specs/yard.md): the ordered waypoint chain and any fixed housings.
 // Every map plays the same campaign, economy, roster, and scaling — only the topology
 // differs. The pathing chain is [entry, ...waypoints, collector], traversed in order;
 // each waypoint coordinate is the ANCHOR of a 4-tile T-shaped platform (the extra tiles
@@ -131,7 +131,7 @@ export interface MapDef {
 // ---- Placed structures: components, candidates, blockers ------------------------
 
 // Fields common to everything placed on the yard. Components, candidates, and blockers
-// all occupy a uniform 2×2 footprint anchored at (col, row) and are WALLS (specs/board.md).
+// all occupy a uniform 2×2 footprint anchored at (col, row) and are WALLS (specs/yard.md).
 export interface StructureBase {
   id: number;
   col: number; // top-left anchor tile of the 2×2 footprint
@@ -139,9 +139,9 @@ export interface StructureBase {
 }
 
 // An ACTIVE component: fires automatically at its type/quality stats AND walls
-// (specs/towers.md). Its head rotates to face the target; each shot is a travelling
+// (specs/components.md). Its head rotates to face the target; each shot is a travelling
 // projectile / arc that carries the hit on impact. Created only by KEEPing a candidate or
-// by a COMBINE (specs/build.md). Permanent — there is no selling.
+// by a COMBINE (specs/scrap-press.md). Permanent — there is no selling.
 export interface Component extends StructureBase {
   kind: "component";
   type: ComponentType; // for a combo, the initiating ingredient's type (drives base tint only)
@@ -152,13 +152,13 @@ export interface Component extends StructureBase {
   cooldown: number; // seconds until it may fire again
   fireAnim: number; // seconds since last shot (drives the firing sheet / muzzle)
   aimAngle: number; // the head's heading — tracks the current target
-  kills: number; // units this component has destroyed (inspector tally, specs/towers.md)
+  kills: number; // units this component has destroyed (inspector tally, specs/components.md)
   damageDealt: number; // total damage this component has applied (inspector tally)
   auraBonus: number; // cached external aura buff (sum of nearby Regulator/aura auras, 0..1); recomputed on maze change
 }
 
 // A CANDIDATE: a rock placed THIS build phase that has rolled a random type + quality and
-// is eligible to be kept or combined this level only (specs/build.md). Walls its footprint
+// is eligible to be kept or combined this level only (specs/scrap-press.md). Walls its footprint
 // but does not fire (there are no units on the floor during the build phase). At wave
 // start every un-harvested candidate hardens into a Blocker.
 export interface Candidate extends StructureBase {
@@ -167,7 +167,7 @@ export interface Candidate extends StructureBase {
   tier: Tier;
 }
 
-// A BLOCKER: an inert fused-scrap rock — walls but never fires (specs/build.md). The maze
+// A BLOCKER: an inert fused-scrap rock — walls but never fires (specs/scrap-press.md). The maze
 // material. A future stamp may be dropped onto a blocker to reroll it into a candidate.
 export interface Blocker extends StructureBase {
   kind: "blocker";
@@ -176,14 +176,14 @@ export interface Blocker extends StructureBase {
 // Everything on the yard the maze is built from.
 export type Structure = Component | Candidate | Blocker;
 
-// The level's single KEEP choice (specs/build.md): what the SEND resolves into the one new
+// The level's single KEEP choice (specs/scrap-press.md): what the SEND resolves into the one new
 // permanent firing component from this level's rolled candidates. `keep` promotes a candidate;
 // every OTHER un-kept candidate hardens into a blocker at SEND. Reversible until SEND.
 //
 // NOTE (redesign): COMBINING is no longer a harvest. A combine (quality-climb OR a
 // combination-tower recipe) is an IMMEDIATE action, available in the build phase AND during a
 // live wave, taken as many times as ingredients allow — it resolves the instant it is
-// committed, not at SEND (specs/build.md, specs/controls.md). So the only thing SEND resolves
+// committed, not at SEND (specs/scrap-press.md, specs/controls.md). So the only thing SEND resolves
 // is the one KEEP; the harvest type carries just that.
 export type Harvest = { mode: "none" } | { mode: "keep"; id: number };
 
@@ -191,7 +191,7 @@ export type Harvest = { mode: "none" } | { mode: "keep"; id: number };
 
 // A live unit of the Load (specs/enemies.md). It spawns at Entry, traverses the waypoint
 // chain in order, and grounds out (leaks) at the Collector. `flies` units ignore the maze
-// and straight-line through the waypoints (specs/board.md).
+// and straight-line through the waypoints (specs/pathing.md).
 export interface Unit {
   id: number;
   type: LoadType;
@@ -215,7 +215,7 @@ export interface Unit {
   progress: number; // scalar "how far along the chain" for first/last targeting
   animT: number; // seconds alive (charge-cycle / boss wobble frame)
   hitFlash: number; // seconds since last hit (a brief flash)
-  // Status effects (specs/enemies.md, specs/towers.md). No armor/damage-type system —
+  // Status effects (specs/enemies.md, specs/components.md). No armor/damage-type system —
   // these only change speed or apply extra HP loss. Strongest active effect wins; a fresh
   // hit refreshes its duration.
   slowFactor: number; // effective-speed multiplier while slowed (1 = unslowed); min over active slows
@@ -223,7 +223,7 @@ export interface Unit {
   burnDps: number; // active overcurrent burn damage per second (0 = none)
   burnUntil: number; // sim time (s) the burn expires
   burnSourceId: number; // firing component id the burn attributes kills/damage back to
-  // The post-final MAZE-RATING boss (specs/enemies.md, specs/gameplay.md): an OVERLOAD DYNAMO that
+  // The post-final MAZE-RATING boss (specs/enemies.md, specs/campaign.md): an OVERLOAD DYNAMO that
   // walks the maze once after the final wave is cleared. It CANNOT die — every shot's full
   // damage is tallied into the run's Maze Rating instead of removing HP — and it costs no
   // integrity when it grounds out (the run is already won). `invincible` marks it.
@@ -238,7 +238,7 @@ export interface Unit {
 
 // ---- Projectiles ---------------------------------------------------------------
 
-// A shot in flight (specs/towers.md). A component launches one toward its target; it
+// A shot in flight (specs/components.md). A component launches one toward its target; it
 // travels and applies the component's effect on IMPACT (never a hitscan). It carries a
 // snapshot of the firing component's shot so the effect is faithful even if the component
 // is later combined, and misses harmlessly if its target is gone.
@@ -264,7 +264,7 @@ export interface Projectile {
   chain: number; // extra leaps after the primary hit (0 = no chain)
   chainRange: number; // max jump distance between hit units
   chainFalloff: number; // damage multiplier applied per leap
-  // Status-effect payload carried to impact (specs/towers.md).
+  // Status-effect payload carried to impact (specs/components.md).
   slowAmt: number; // 0 = no slow; else the fraction of speed removed
   slowDur: number; // slow duration (s)
   burnFrac: number; // 0 = no burn; else DoT-per-second as a fraction of this shot's dmg
@@ -292,7 +292,7 @@ export interface Wave {
 
 // ---- Game state machine, presentation events, UI hit-testing -------------------
 
-// The reachable game states (specs/ui.md, specs/modes.md). `playing` covers both the
+// The reachable game states (specs/ui.md). `playing` covers both the
 // build phase and a live wave (see Phase); `paused` is the Esc overlay MENU (distinct
 // from the in-place pause, which is a boolean on the game state). `defeat` is Overload.
 export type GameState =
@@ -306,7 +306,7 @@ export type GameState =
   | "overload";
 
 // A level is a BUILD phase (untimed; you place rocks, keep, combine, upgrade quality)
-// then a WAVE phase (the Load runs; building is disabled). specs/gameplay.md.
+// then a WAVE phase (the Load runs; building is disabled). specs/campaign.md.
 export type Phase = "build" | "wave";
 
 // The produced electrical particle systems, fired at each event (specs/assets.md — THE

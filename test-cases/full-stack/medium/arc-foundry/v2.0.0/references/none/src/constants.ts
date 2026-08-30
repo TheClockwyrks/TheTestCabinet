@@ -3,7 +3,8 @@
 // three maps, the Load roster and its per-wave HP scaling, the economy, and the
 // difficulty table. Every number that specs/*.md pins lives here so the simulation reads
 // exactly as written, and this is the single balance surface a later workflow tunes
-// (specs/towers.md, specs/build.md, specs/enemies.md, specs/gameplay.md, specs/modes.md).
+// (specs/components.md, specs/combinations.md, specs/scrap-press.md, specs/enemies.md,
+// specs/economy.md, specs/campaign.md, specs/difficulty.md, specs/yard.md).
 //
 // The model (specs/overview.md): a GemTD reskin. A base component has a TYPE (one of eight
 // firing/support identities) and a quality TIER (Scrap → Tesla-Prime); damage/range derive
@@ -36,7 +37,7 @@ export const BOARD_Y0 = STATUS_H;
 export const BOARD_X1 = PANEL_X;
 export const BOARD_Y1 = STAGE_H;
 
-// ---- Tile grid (specs/board.md §2.2) -------------------------------------------
+// ---- Tile grid (specs/yard.md) -------------------------------------------------
 export const TILE = 20; // 20 × 20 px tiles
 export const GRID_COLS = 50; // columns c = 0..49
 export const GRID_ROWS = 33; // rows r = 0..32
@@ -52,7 +53,7 @@ export function tileCenter(col: number, row: number): { x: number; y: number } {
   };
 }
 
-// ---- Component footprint (specs/board.md §2.3 — uniform 2×2) --------------------
+// ---- Component footprint (specs/yard.md — uniform 2×2) --------------------------
 export const FOOTPRINT_TILES = 2; // every component / candidate / blocker is 2×2 tiles (40×40 px)
 export const FOOTPRINT_PX = FOOTPRINT_TILES * TILE; // 40
 // Legal anchor range for a 2×2 footprint: col 0..48, row 0..31.
@@ -93,7 +94,8 @@ export const COL = {
   text: "#e8eef5",
   text2: "#93a2b2",
   text3: "#5d6b7a",
-  // Per-component-type accents (specs/towers.md).
+  // Per-component-type accents. No spec fixes the palette; specs/overview.md asks only
+  // that each of the eight types read as its own type, coded distinctly from quality.
   capacitor: "#5ac8ff",
   coil: "#9b7bff",
   emitter: "#7fe6b0",
@@ -108,7 +110,7 @@ export const COL = {
 
 export const FONT = `"SF Mono", "JetBrains Mono", "Fira Mono", "DejaVu Sans Mono", "Menlo", "Consolas", monospace`;
 
-// ---- Component types (specs/towers.md) -----------------------------------------
+// ---- Component types (specs/components.md) -------------------------------------
 // Eight base types: the five original firing identities plus Choke (slow), Rectifier
 // (burn/DoT), and Regulator (a non-firing aura/support node).
 export const COMPONENT_ORDER: ComponentType[] = [
@@ -134,8 +136,8 @@ export const COMPONENT_LABEL: Record<ComponentType, string> = {
 };
 
 // A one-to-two-sentence description of each component, shown in the inspector when a
-// component or candidate is selected (specs/towers.md) so the player knows what it does.
-// A plain description of what each component DOES (specs/towers.md), shown in the inspector.
+// component or candidate is selected (specs/hud.md) so the player knows what it does.
+// A plain description of what each component DOES (specs/components.md), shown in the inspector.
 // It states the component's behaviour and identity — not tactics or how to counter anything.
 export const COMPONENT_DESC: Record<ComponentType, string> = {
   capacitor:
@@ -166,7 +168,7 @@ export const COMPONENT_COLOR: Record<ComponentType, string> = {
   regulator: COL.regulator,
 };
 
-// ---- The quality ladder (specs/towers.md §1.2, §5.2) ---------------------------
+// ---- The quality ladder (specs/components.md) ----------------------------------
 export const TIERS: Tier[] = [1, 2, 3, 4, 5];
 export const TIER_NAME: Record<Tier, string> = {
   1: "SCRAP",
@@ -180,7 +182,7 @@ export const QUALITY_MULT: number[] = [0, 1.0, 3.0, 9.0, 40, 110];
 export const RANGE_PER_TIER = 8; // range += 8 px per tier above T1 (carries reach a little farther)
 export const MAX_TIER: Tier = 5; // Tesla-Prime is the apex — cannot combine further
 
-// ---- Targeting (specs/towers.md, specs/controls.md) ----------------------------
+// ---- Targeting (specs/components.md, specs/controls.md) ------------------------
 export const TARGETING_ORDER: TargetingMode[] = [
   "first",
   "last",
@@ -196,7 +198,7 @@ export const TARGETING_LABEL: Record<TargetingMode, string> = {
   weakest: "WEAKEST",
 };
 
-// ---- Base (Scrap / T1) component stats (specs/towers.md) ------------------------
+// ---- Base (Scrap / T1) component stats (specs/components.md) --------------------
 // Base towers are FEEDSTOCK — deliberately weak; the power comes from climbing the
 // quality ladder and, above all, assembling COMBINATION TOWERS (below). `crit` and
 // `multishot` are combo-only, so base types never carry them.
@@ -333,7 +335,7 @@ export const COMPONENTS: Record<ComponentType, ComponentDef> = {
   },
 };
 
-// Coil chain (specs/towers.md): the bolt leaps to the nearest not-yet-hit unit within
+// Coil chain (specs/components.md): the bolt leaps to the nearest not-yet-hit unit within
 // CHAIN_RANGE, each leap dealing ×CHAIN_FALLOFF of the previous. Max ADDITIONAL leaps by
 // tier: 2 (T1–T2), 3 (T3–T4), 4 (Tesla-Prime).
 // The Arc-Node's splash radius by tier: 42 at Scrap and 5 more per rung
@@ -350,7 +352,7 @@ export function coilLeaps(tier: Tier): number {
 export const AURA_BONUS_CAP = 1.0; // +100% max total external aura on any one tower
 
 // Projectile travel speed by component (logical px/s). A shot is a real travelling
-// projectile that deals its effect on impact, not a hitscan (specs/towers.md). The
+// projectile that deals its effect on impact, not a hitscan (specs/components.md). The
 // non-firing Regulator launches none (0 is a placeholder to satisfy the record).
 export const PROJECTILE_SPEED = 520;
 
@@ -365,7 +367,7 @@ export const PROJECTILE_HIT_R = 6;
 // itself against it.
 export const OVERLOAD_SPEED = 55;
 
-// ---- Derived effective stats (the single source, specs/towers.md) --------------
+// ---- Derived effective stats (specs/components.md, specs/combinations.md) ------
 // The complete live behaviour of ANY firing tower — base component OR combination tower —
 // reduces to a CompStats. `deriveStats(type,tier)` builds one for a base component;
 // `comboStats(combo)` (below) builds one for a combination tower.
@@ -431,7 +433,7 @@ export function deriveStats(type: ComponentType, tier: Tier): CompStats {
   };
 }
 
-// ---- Combination towers (specs/towers.md, specs/build.md) ----------------------
+// ---- Combination towers (specs/combinations.md, specs/scrap-press.md) ----------
 // Assembled by a RECIPE — a specific multiset of base (type, quality) ingredients folds
 // into one unique combination tower. Single-grade + terminal (no quality tier, cannot
 // quality-combine, cannot be an ingredient). Each carries its own fixed stat block and
@@ -711,7 +713,7 @@ export const COMBO_ORDER: ComboType[] = [
   "singularity",
 ];
 
-// ---- Combination-tower UPGRADES (specs/towers.md, specs/build.md) --------------
+// ---- Combination-tower UPGRADES (specs/combinations.md) ------------------------
 // A combination tower is NO LONGER a single fixed block. To SOFTEN the power spike when a
 // combo lands and to give kill income a real SINK, a combo carries an UPGRADE LEVEL 0..3:
 //   • a recipe-combine LANDS the combo at level 0 — a REDUCED fraction of its reference block
@@ -780,13 +782,13 @@ export const RECIPE_INDEX: Map<string, ComboType> = new Map(
   COMBO_ORDER.map((c) => [recipeKey(COMBOS[c].recipe), c] as const),
 );
 
-// ---- The scrap-press build loop (specs/build.md) -------------------------------
+// ---- The scrap-press build loop (specs/scrap-press.md) -------------------------
 // GemTD-faithful: place up to BUILDS_PER_LEVEL rocks a level, keep exactly one, the rest
 // harden into blockers. The ROLL happens on placement, not on the STAMP click. Placing rocks
 // is FREE — the five-per-level allowance is the only limit, exactly as in GemTD.
 export const BUILDS_PER_LEVEL = 5; // fixed 5-stamp allowance per level (hard cap, constant across difficulty)
 
-// Type roll: uniform 12.5% each across the eight types (specs/build.md). Independent of
+// Type roll: uniform 12.5% each across the eight types (specs/scrap-press.md). Independent of
 // Refinement.
 export const STAMP_TYPE_WEIGHT: Record<ComponentType, number> = {
   capacitor: 0.125,
@@ -799,7 +801,7 @@ export const STAMP_TYPE_WEIGHT: Record<ComponentType, number> = {
   regulator: 0.125,
 };
 
-// Quality roll by Refinement level R (specs/build.md — UPGRADE QUALITY). Each row is a
+// Quality roll by Refinement level R (specs/scrap-press.md — Refinement). Each row is a
 // 5-tier distribution [T1..T5] that sums to 1.0; higher R biases upward. Indexed R = 0..8.
 // This is GemTD's "Upgrade chances" tree, reskinned (Chipped→Scrap, Flawed→Tuned,
 // Normal→Charged, Flawless→Primed, Perfect→Tesla-Prime): at R0 the press rolls ONLY Scrap
@@ -826,7 +828,7 @@ export const MAX_REFINEMENT: Refinement = 8;
 
 // UPGRADE QUALITY cost to REACH each Refinement level (from the previous), Charge.
 // Indexed by target level; index 0 unused (you start at R0). GemTD's exact upgrade-chances
-// tree: each step costs 30 more than the last, and R0→R8 totals 1000 Charge. specs/build.md.
+// tree: each step costs 30 more than the last, and R0→R8 totals 1000 Charge. specs/scrap-press.md.
 export const REFINE_COST: number[] = [0, 20, 50, 80, 110, 140, 170, 200, 230];
 
 // Cost to buy the next level from the current one, or null if already at the apex.
@@ -834,7 +836,7 @@ export function nextRefineCost(r: Refinement): number | null {
   return r >= MAX_REFINEMENT ? null : REFINE_COST[r + 1]!;
 }
 
-// ---- The Load roster (specs/enemies.md §7 — base Wave-1, Medium) ---------------
+// ---- The Load roster (specs/enemies.md — base Wave-1, Medium) ------------------
 export interface LoadDef {
   type: LoadType;
   label: string;
@@ -847,11 +849,11 @@ export interface LoadDef {
   boss: boolean;
 }
 
-// Bounties are on the GemTD SCALE (specs/enemies.md, specs/gameplay.md): a wave-1 basic unit pays
+// Bounties are on the GemTD SCALE (specs/enemies.md, specs/economy.md): a wave-1 basic unit pays
 // ~1 Charge, not the old ~3, so gold is SCARCE and every stamp is a real decision (the old
 // bounties made Charge almost free). Integer-only — a basic unit pays 1, and the rest scale
 // around it: a tanky Slug 3, a flyer 2, the Dynamo boss 40. Kill income is deliberately thin;
-// the only other income is a small wave-clear bonus (there is no interest, specs/gameplay.md).
+// the only other income is a small wave-clear bonus (there is no interest, specs/economy.md).
 export const LOAD: Record<LoadType, LoadDef> = {
   mote: {
     type: "mote",
@@ -946,12 +948,12 @@ export const LOAD_DESC: Record<LoadType, string> = {
     "The boss: a massive health pool that costs 5 Grid Integrity if it grounds out. Anchors the milestone waves.",
 };
 
-// Per-wave HP scaling (specs/enemies.md §7.1):
+// Per-wave HP scaling (specs/enemies.md — per-wave health scaling):
 //   HP(w) = round( baseHP × baseMult × [ (1 + k·(w−1)) + c·(r^(w−1) − 1) ] ).
 // The bracket is the CURRENT LINEAR ramp (1 + k·(w−1)) PLUS a late-game exponential
 // SURCHARGE c·(r^(w−1) − 1) that is ~0 in the opening/mid waves (r^0 − 1 = 0) and only
 // bites in the back third, so early/mid difficulty is preserved while the final waves
-// climb steeply (specs/modes.md, specs/enemies.md). baseMult, k, c, r are set by
+// climb steeply (specs/difficulty.md, specs/enemies.md). baseMult, k, c, r are set by
 // difficulty; only HP grows — speeds, bounties, leaks are fixed. The product is a real
 // number and the spec rounds it to a whole number, halves up, which is Math.round for
 // the positive values here — a Wave-1 Medium Mote's 9.68 is 10 HP.
@@ -965,8 +967,8 @@ export function scaledHp(
   return Math.round(baseHp * diff.baseMult * (linear + surcharge));
 }
 
-// ---- Economy (specs/gameplay.md — constant across difficulty) ----------------------
-// Every build phase is UNTIMED (specs/gameplay.md): no countdown and no early-send bonus.
+// ---- Economy (specs/economy.md — constant across difficulty) -----------------------
+// Every build phase is UNTIMED (specs/campaign.md): no countdown and no early-send bonus.
 // Placing rocks is FREE (GemTD-faithful) — Charge is spent only on UPGRADE QUALITY (REFINE_COST)
 // and UPGRADING COMBINATION TOWERS (comboUpgradeCost); there is no selling or slagging.
 //
@@ -981,13 +983,13 @@ export function waveClearBonus(wave: number): number {
   return 8 + 2 * wave;
 }
 
-// ---- Maze rating (specs/gameplay.md) -----------------------------------------------
+// ---- Maze rating (specs/campaign.md) -----------------------------------------------
 // The run keeps NO running score. Its one end-of-run number is the MAZE RATING: the total
 // damage the player's maze deals to the post-final invincible Overload Dynamo on its single
-// walk through the maze (specs/enemies.md, specs/gameplay.md). Grid Integrity only decides
+// walk through the maze (specs/enemies.md, specs/campaign.md). Grid Integrity only decides
 // win/lose, never score. A defeat has no rating (the finale is never reached).
 
-// ---- Difficulty table (specs/modes.md §9.2 — wave count + toughness ONLY) ------
+// ---- Difficulty table (specs/difficulty.md — wave count + toughness ONLY) ------
 export interface DifficultyDef {
   key: Difficulty;
   label: string;
@@ -1001,7 +1003,7 @@ export interface DifficultyDef {
 }
 
 // baseMult + k are the (unchanged) linear ramp; surchargeC + surchargeR add the exponential
-// back-third climb (specs/modes.md §9.2). Easy stays gentle (tiny surcharge), Hard reaches the
+// back-third climb (specs/difficulty.md). Easy stays gentle (tiny surcharge), Hard reaches the
 // steepest late HP — a Hard Wave-60 total pool of a few million, roughly matching a fully-built maze.
 export const DIFFICULTY: Record<Difficulty, DifficultyDef> = {
   easy: {
@@ -1041,12 +1043,12 @@ export const DIFFICULTY: Record<Difficulty, DifficultyDef> = {
 
 export const DIFFICULTY_ORDER: Difficulty[] = ["easy", "medium", "hard"];
 
-// A wave carries a Dynamo boss if it is a milestone wave (specs/gameplay.md §9.1).
+// A wave carries a Dynamo boss if it is a milestone wave (specs/campaign.md).
 export function isMilestoneWave(wave: number, diff: DifficultyDef): boolean {
   return diff.milestones.includes(wave);
 }
 
-// ---- The three maps (specs/board.md §4 — tile coordinates) ---------------------
+// ---- The three maps (specs/yard.md — tile coordinates) -------------------------
 // Every map plays the same campaign; only the topology (waypoint placement and Map C's
 // fixed housings) differs. The pathing chain is [entry, ...waypoints, collector].
 
@@ -1054,7 +1056,7 @@ export function isMilestoneWave(wave: number, diff: DifficultyDef): boolean {
 // platform's side arm sits one tile off the anchor, so the OUTER gap between the arm and
 // the edge is (inset − 1) ≥ 3 tiles — enough to build a 2×2 wall there AND keep a 1-tile
 // pass lane, so the maze can wrap the route around a waypoint's far side, not just its
-// inner side (specs/board.md). Each map now runs SIX waypoints (a longer, loopier route),
+// inner side (specs/yard.md). Each map now runs SIX waypoints (a longer, loopier route),
 // so mazing matters far more.
 
 // Map A — "The Substation": a perimeter spiral serpentine (six long legs) that folds

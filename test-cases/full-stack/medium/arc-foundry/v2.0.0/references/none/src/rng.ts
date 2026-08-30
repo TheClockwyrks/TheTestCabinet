@@ -1,7 +1,7 @@
 // A tiny deterministic PRNG (mulberry32). The scrap-press roll and each wave's
 // composition are seeded so a given pull sequence / wave plays the same each time it is
 // reached — reproducible for verification and for the headless balance harness — while
-// still varying pull to pull and wave to wave (specs/build.md, specs/controls.md).
+// still varying pull to pull and wave to wave (specs/instrumentation.md — a deterministic core).
 export class Rng {
   private state: number;
   constructor(seed: number) {

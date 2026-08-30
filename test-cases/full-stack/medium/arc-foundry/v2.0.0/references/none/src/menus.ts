@@ -1,8 +1,8 @@
-// Arc Foundry — menu definitions (specs/ui.md "Required menus", specs/modes.md).
+// Arc Foundry — menu definitions (specs/ui.md).
 //
 // A single source of truth for each menu's items so the renderer draws them and the input
 // layer's pointer + keyboard navigation drive the same list. The Salvage start opens the
-// MAP SELECT and then the DIFFICULTY SELECT before play (specs/ui.md, specs/modes.md).
+// MAP SELECT and then the DIFFICULTY SELECT before play (specs/ui.md).
 
 import { DIFFICULTY_ORDER, DIFFICULTY, MAPS, TITLE_ITEMS } from "./constants";
 import type { GameState } from "./types";

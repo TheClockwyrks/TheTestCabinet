@@ -1,7 +1,7 @@
 // Arc Foundry — the tile grid, the ordered-waypoint pathing, and placement legality
-// (specs/board.md).
+// (specs/yard.md, specs/pathing.md).
 //
-// The yard is a 50×33 grid of 20 px tiles (specs/board.md §2.2). Each map defines an
+// The yard is a 50×33 grid of 20 px tiles (specs/yard.md). Each map defines an
 // ORDERED waypoint chain [entry, WP1…WPk, collector]; a non-flying unit heads to each
 // node in sequence, taking the shortest OPEN route (grid A*, with the diagonal corner-cut
 // rule) around the walls between consecutive nodes. Every component, candidate, and blocker
@@ -108,7 +108,7 @@ class MinHeap {
 
 export class Board {
   readonly map: MapDef;
-  // The full ordered pathing chain: [entry, ...waypoints, collector] (specs/board.md §3.1).
+  // The full ordered pathing chain: [entry, ...waypoints, collector] (specs/pathing.md).
   readonly chain: TileCoord[];
   // The tiles of every waypoint PLATFORM (walkable but never buildable), as row*COLS+col.
   readonly waypointTiles: Set<number>;
@@ -125,7 +125,7 @@ export class Board {
     }
   }
 
-  // The 4 tiles of a waypoint's T-shaped platform (specs/board.md): the three-in-a-row
+  // The 4 tiles of a waypoint's T-shaped platform (specs/yard.md): the three-in-a-row
   // (c−1,r), (c,r), (c+1,r) and one stem tile toward the board's vertical center (row 16).
   platformTiles(col: number, row: number): TileCoord[] {
     const stemRow = row < 16 ? row + 1 : row - 1;
@@ -246,9 +246,10 @@ export class Board {
 
   // ---- Pathing ----------------------------------------------------------------
 
-  // Grid A* between two tiles over the open tiles, honouring the diagonal corner-cut rule
-  // (§3.3): a diagonal step is allowed only when both orthogonally-adjacent tiles are also
-  // open. Returns the route as tile-center points (start..goal inclusive), or null.
+  // Grid A* between two tiles over the open tiles, honouring the diagonal corner-cut
+  // rule (specs/pathing.md — steps): a diagonal step is allowed only when both
+  // orthogonally-adjacent tiles are also open. Returns the route as tile-center points
+  // (start..goal inclusive), or null.
   pathTiles(from: TileCoord, to: TileCoord, occ: Occupancy): Pt[] | null {
     const start = from.row * GRID_COLS + from.col;
     const goal = to.row * GRID_COLS + to.col;
@@ -396,8 +397,8 @@ export class Board {
     return true;
   }
 
-  // The never-seal test (§3.4): would placing a 2×2 at (col, row) block any chain segment,
-  // or strand a walking unit with no route to its next waypoint?
+  // The never-seal test (specs/pathing.md): would placing a 2×2 at (col, row) block
+  // any chain segment, or strand a walking unit with no route to its next waypoint?
   wouldSeal(
     col: number,
     row: number,
@@ -423,7 +424,7 @@ export class Board {
 
   // A full legality check for a dropped rock: in bounds, footprint clear of walls/housings,
   // not covering a waypoint platform, clear of any live ground unit, and not sealing the maze
-  // (specs/board.md placement).
+  // (specs/yard.md placement legality, specs/pathing.md never-seal).
   canPlace(
     col: number,
     row: number,
@@ -449,7 +450,7 @@ export class Board {
   }
 
   // The current-leg route for a unit at `from` heading to chain node `wpIndex`; flyers get a
-  // straight line to the node (they ignore the maze, §3.6). Re-derived on every re-path. The
+  // straight line to the node (they ignore the maze, specs/pathing.md). Re-derived on every re-path. The
   // returned route excludes the unit's current tile — route[0] is the next step to walk to,
   // and the last point is the target node's center.
   routeFor(from: Pt, wpIndex: number, occ: Occupancy, flying: boolean): Pt[] {

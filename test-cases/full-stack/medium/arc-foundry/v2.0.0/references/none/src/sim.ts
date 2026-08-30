@@ -1,5 +1,5 @@
-// Arc Foundry — the simulation (specs/board.md, specs/towers.md, specs/build.md,
-// specs/gameplay.md).
+// Arc Foundry — the simulation (specs/yard.md, specs/pathing.md, specs/components.md,
+// specs/combinations.md, specs/scrap-press.md, specs/campaign.md, specs/economy.md).
 //
 // A fixed-step model of the Load mazing the ordered-waypoint chain around the walls, the
 // GemTD scrap-press build (place a rock that rolls a random component ON PLACEMENT, KEEP
@@ -78,23 +78,23 @@ import { Rng } from "./rng";
 // exactly; the wave composition seeds itself per wave (waves.ts).
 const PRESS_SEED = 0x51a6c0de;
 
-// The seed for the COMBAT rng — crit rolls (specs/towers.md). Separate from the press so
+// The seed for the COMBAT rng — crit rolls (specs/components.md). Separate from the press so
 // build rolls and combat randomness are independent and each stays deterministic.
 const COMBAT_SEED = 0x2f9d3b17;
 
 export class Game {
-  map: MapDef; // the chosen yard (specs/board.md); set by startOn() before a run
+  map: MapDef; // the chosen yard (specs/yard.md); set by startOn() before a run
   board: Board; // the grid, waypoint chain, and pathing of the current map
-  diff: DifficultyDef = DIFFICULTY.medium; // the chosen difficulty (specs/modes.md)
+  diff: DifficultyDef = DIFFICULTY.medium; // the chosen difficulty (specs/difficulty.md)
 
   state: GameState = "title";
   phase: Phase = "build";
   paused = false;
 
-  charge = 0; // money (specs/gameplay.md)
+  charge = 0; // money (specs/economy.md)
   integrity = 0; // Grid Integrity (lives)
   maxIntegrity = 0;
-  // The run keeps NO running score (specs/gameplay.md). Its one end-of-run number is the MAZE
+  // The run keeps NO running score (specs/campaign.md). Its one end-of-run number is the MAZE
   // RATING: total damage dealt to the post-final invincible Overload Dynamo. It accrues only
   // during the finale; a defeat never reaches it (0). Integrity only gates win/lose.
   mazeRating = 0;
@@ -103,8 +103,9 @@ export class Game {
   speed: 1 | 2 | 4 | 8 = 1;
 
   units: Unit[] = [];
-  projectiles: Projectile[] = []; // shots / arcs in flight (specs/towers.md)
-  structures: Structure[] = []; // components, candidates, and blockers — the maze (specs/board.md)
+  projectiles: Projectile[] = []; // shots / arcs in flight (specs/components.md)
+  // components, candidates, and blockers — the maze (specs/scrap-press.md)
+  structures: Structure[] = [];
 
   // The scrap-press seed. `reset` is what sets it and the only thing that does, so the
   // same seed and the same calls reach the same run every time (specs/instrumentation.md).
@@ -114,7 +115,7 @@ export class Game {
   // The highlighted entry on the menu screen showing, counted from 0 (specs/ui.md). It lives
   // on the game because `reset` restores it and the snapshot reports it.
   menuIndex = 0;
-  holding = false; // a blank rock is on the cursor (rolls on placement, specs/build.md)
+  holding = false; // a blank rock is on the cursor (rolls on placement, specs/scrap-press.md)
   selectedId: number | null = null; // the PRIMARY selection (drives the inspector + range ring)
   // The EXPLICIT combine set, the primary first: the player shift-clicks the exact copies
   // to fold (specs/controls.md, specs/scrap-press.md). It is state of its own rather than a
@@ -122,7 +123,7 @@ export class Game {
   // and the game then resolves a combine's ingredients itself.
   combineIds: number[] = [];
   stampsUsed = 0; // rocks placed of the level's BUILDS_PER_LEVEL allowance (decrements on PLACEMENT)
-  refinement: Refinement = 0; // UPGRADE QUALITY level (biases the quality roll, specs/build.md)
+  refinement: Refinement = 0; // UPGRADE QUALITY level (biases the quality roll, specs/scrap-press.md)
   harvest: Harvest = { mode: "none" }; // transient: the level's keep/combine, resolved as it launches the wave
   pointerX = -1; // logical-space pointer, for the held-rock ghost / range preview
   pointerY = -1;
@@ -164,11 +165,12 @@ export class Game {
   private simTime = 0; // seconds of live-wave sim elapsed this run (drives status-effect timers)
   private nextId = 1;
   private press: Rng;
-  private combat: Rng; // crit rolls (specs/towers.md) — deterministic, separate from the press
+  private combat: Rng; // crit rolls (specs/components.md) — deterministic, separate from the press
   private occ: Occupancy; // cached occupancy of the current structures + housings
   // Cached ground maze route + its length in tiles (the HUD readout + hover overlay). The
   // route only changes when the walls do, so it is recomputed lazily and invalidated on any
-  // structure change (specs/board.md — the Load takes the shortest OPEN route). Null = dirty.
+  // structure change (specs/pathing.md — the route is recomputed the moment the
+  // walls change). Null = dirty.
   private mazeCache: { path: Pt[]; lenTiles: number } | null = null;
 
   constructor(
@@ -371,7 +373,7 @@ export class Game {
     return u;
   }
 
-  // ---- Re-path (specs/board.md) -----------------------------------------------
+  // ---- Re-path (specs/pathing.md) ---------------------------------------------
   // Rebuild the cached occupancy and re-route every walking unit from where it stands —
   // called whenever the maze changes (a rock placed, a combine freeing a footprint).
   private rePath(): void {
@@ -390,7 +392,7 @@ export class Game {
     this.recomputeAuras();
   }
 
-  // ---- Aura (specs/towers.md) -------------------------------------------------
+  // ---- Aura (specs/components.md) ---------------------------------------------
   // A Regulator (and some combination towers) projects a passive damage aura. Cache each
   // firing tower's total external aura bonus (sum of every aura source whose radius covers
   // its center, capped) so firing reads it cheaply. Recomputed whenever the maze changes and
@@ -444,7 +446,7 @@ export class Game {
       : deriveStats(c.type, c.tier);
   }
 
-  // ---- Component fire (specs/towers.md) ---------------------------------------
+  // ---- Component fire (specs/components.md) -----------------------------------
   private stepComponents(dt: number): void {
     for (const s of this.structures) {
       if (s.kind !== "component") continue;
@@ -606,7 +608,7 @@ export class Game {
     }
   }
 
-  // ---- Projectiles in flight (specs/towers.md) --------------------------------
+  // ---- Projectiles in flight (specs/components.md) ----------------------------
   private stepProjectiles(dt: number): void {
     for (const pr of this.projectiles) {
       if (pr.dead) continue;
@@ -645,7 +647,7 @@ export class Game {
     });
 
     // Arc-Node: an expanding discharge ring dealing full damage to every unit in the splash
-    // radius of the impact point (specs/towers.md §5.3).
+    // radius of the impact point (specs/components.md — the Arc-Node's splash).
     if (pr.splash > 0) {
       this.fxQueue.push({ kind: "ring", x: pr.x, y: pr.y, tier: pr.tier });
       for (const u of this.units) {
@@ -658,7 +660,7 @@ export class Game {
     }
 
     // Coil: the bolt leaps to the nearest not-yet-hit unit within chainRange, each leap
-    // dealing ×chainFalloff of the previous (specs/towers.md §5.3).
+    // dealing ×chainFalloff of the previous (specs/components.md — the Coil's chain).
     if (pr.chain > 0) {
       let leaps = pr.chain;
       let fx = pr.x;
@@ -701,13 +703,13 @@ export class Game {
 
   // Apply one landed shot to one unit (once), removing HP and killing it if it hits zero.
   // The damage and any kill are attributed back to the firing component for its inspector
-  // tally (specs/towers.md) via the projectile's sourceId.
+  // tally (specs/components.md) via the projectile's sourceId.
   private hit(pr: Projectile, u: Unit, dmg: number): void {
     if (u.dead || pr.hitIds.includes(u.id)) return;
     pr.hitIds.push(u.id);
     u.hitFlash = 0;
     // The post-final Overload Dynamo cannot die: every shot's FULL damage is tallied into the
-    // Maze Rating (specs/enemies.md, specs/gameplay.md), and it still takes slow/burn so a maze that
+    // Maze Rating (specs/enemies.md, specs/campaign.md), and it still takes slow/burn so a maze that
     // controls it keeps it under fire longer — but its HP never falls and it is never killed.
     if (u.invincible) {
       this.tallyRating(dmg, pr.sourceId);
@@ -725,7 +727,7 @@ export class Game {
       this.kill(u);
       return;
     }
-    // The unit survived: apply the shot's status effects (specs/towers.md). A burn's DoT is a
+    // The unit survived: apply the shot's status effects (specs/components.md). A burn's DoT is a
     // fraction of the primary shot's damage, and attributes its ticks back to the firing tower.
     if (pr.slowAmt > 0) this.applySlow(u, pr.slowAmt, pr.slowDur);
     if (pr.burnFrac > 0)
@@ -734,14 +736,14 @@ export class Game {
 
   // Credit damage dealt to the invincible finale boss: it adds to the run's MAZE RATING and to
   // the firing component's DMG-dealt tally (so the DMG board still ranks towers), and never
-  // touches HP or a kill (specs/gameplay.md).
+  // touches HP or a kill (specs/campaign.md).
   private tallyRating(dmg: number, srcId: number): void {
     this.mazeRating += dmg;
     const src = this.componentById(srcId);
     if (src) src.damageDealt += dmg;
   }
 
-  // Slow (specs/towers.md): a unit's effective speed becomes base × slowFactor while active.
+  // Slow (specs/enemies.md): a unit's effective speed becomes base × slowFactor while active.
   // The strongest active slow wins; each hit refreshes the duration.
   private applySlow(u: Unit, amt: number, dur: number): void {
     const activeFactor = this.simTime < u.slowUntil ? u.slowFactor : 1;
@@ -751,7 +753,7 @@ export class Game {
     this.raiseCue("slow");
   }
 
-  // Burn (specs/towers.md): an overcurrent DoT ticking each step. Strongest burnDps wins; each
+  // Burn (specs/enemies.md): an overcurrent DoT ticking each step. Strongest burnDps wins; each
   // hit refreshes the duration. The ticks (in stepUnits) attribute to the applying tower.
   private applyBurn(u: Unit, dps: number, dur: number, srcId: number): void {
     const activeDps = this.simTime < u.burnUntil ? u.burnDps : 0;
@@ -788,7 +790,7 @@ export class Game {
     return null;
   }
 
-  // ---- Movement / leaks (specs/board.md, specs/enemies.md) --------------------
+  // ---- Movement / leaks (specs/pathing.md, specs/enemies.md) ------------------
   private stepUnits(dt: number): void {
     for (const u of this.units) {
       if (u.dead) continue;
@@ -833,7 +835,7 @@ export class Game {
       );
       u.routeStep = 0;
     }
-    let budget = u.speed * u.slowFactor * dt; // slowed units cover less ground (specs/towers.md)
+    let budget = u.speed * u.slowFactor * dt; // slowed units cover less ground (specs/enemies.md)
     while (budget > 0 && u.routeStep < u.route.length) {
       const tgt = u.route[u.routeStep]!;
       const dx = tgt.x - u.x;
@@ -897,7 +899,7 @@ export class Game {
     const c = this.board.chain[this.board.chain.length - 1]!;
     const p = tileCenter(c.col, c.row);
     // The invincible finale boss grounding out ENDS the finale and wins the run — it costs no
-    // integrity (the run is already won); its Maze Rating is already tallied (specs/gameplay.md).
+    // integrity (the run is already won); its Maze Rating is already tallied (specs/campaign.md).
     if (u.invincible) {
       this.fxQueue.push({ kind: "leak", x: p.x, y: p.y });
       this.win();
@@ -916,7 +918,7 @@ export class Game {
       this.projectiles = this.projectiles.filter((p) => !p.dead);
   }
 
-  // ---- Wave flow (specs/gameplay.md) ----------------------------------------------
+  // ---- Wave flow (specs/campaign.md) ----------------------------------------------
   private checkWaveEnd(): void {
     const w = this.activeWave;
     if (!w) return;
@@ -952,7 +954,7 @@ export class Game {
     this.nextWave = buildWave(this.wave + 1, this.diff);
   }
 
-  // Begin the post-final MAZE-RATING finale (specs/enemies.md, specs/gameplay.md): spawn ONE
+  // Begin the post-final MAZE-RATING finale (specs/enemies.md, specs/campaign.md): spawn ONE
   // invincible Overload Dynamo at the Entry that walks the maze once. It cannot die — every
   // shot's full damage tallies into the Maze Rating (hit / tallyRating) — and when it grounds
   // out the run is won (leak → win). Building stays disabled (phase "wave"); the sim keeps
@@ -971,8 +973,8 @@ export class Game {
     this.recomputeAuras();
   }
 
-  // Resolve the level's harvest (keep / combine) and start the wave (specs/build.md,
-  // specs/gameplay.md). The kept candidate becomes a firing component; every un-harvested
+  // Resolve the level's harvest (keep / combine) and start the wave (specs/scrap-press.md,
+  // specs/campaign.md). The kept candidate becomes a firing component; every un-harvested
   // candidate hardens into a blocker.
   private beginWave(): void {
     this.resolveHarvest();
@@ -993,7 +995,7 @@ export class Game {
     );
   }
 
-  // Resolve this level's KEEP (specs/build.md): promote the one kept candidate to a permanent
+  // Resolve this level's KEEP (specs/scrap-press.md): promote the one kept candidate to a permanent
   // firing component, and harden every OTHER remaining candidate into an inert blocker.
   // COMBINING is resolved immediately when committed (it may already have run this level and
   // consumed some candidates and launched the wave itself), so here only a plain keep settles.
@@ -1056,7 +1058,7 @@ export class Game {
     return null;
   }
 
-  // IMMEDIATE quality-combine (specs/build.md): fold `anchorId` and `partnerId` — two base
+  // IMMEDIATE quality-combine (specs/scrap-press.md): fold `anchorId` and `partnerId` — two base
   // structures of the SAME type + quality (each a candidate OR an existing component) — into one
   // component a tier higher, landing at the ANCHOR's footprint (so a combine can REPLACE an
   // existing tower, triggered from any tower in the set). The partner is consumed but its 2×2
@@ -1075,7 +1077,7 @@ export class Game {
     )
       return false;
     // A combine that folds in any candidate placed THIS build phase consumes the phase's roll —
-    // it is the harvest, so it ends the build phase and launches the wave (specs/build.md).
+    // it is the harvest, so it ends the build phase and launches the wave (specs/scrap-press.md).
     const consumedFreshRoll =
       anchor.kind === "candidate" || partner.kind === "candidate";
     const newTier = (anchor.tier + 1) as Tier;
@@ -1113,7 +1115,7 @@ export class Game {
     this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: comp.tier });
     this.raiseCue("combine");
     // A fresh-roll combine (COMBINE SPECIAL) is the phase's SOLE harvest: it discards any marked
-    // KEEP (only one new tower a phase, specs/build.md) and sends the wave.
+    // KEEP (only one new tower a phase, specs/scrap-press.md) and sends the wave.
     if (consumedFreshRoll && this.phase === "build") {
       this.harvest = { mode: "none" };
       this.beginWave();
@@ -1121,12 +1123,13 @@ export class Game {
     return true;
   }
 
-  // IMMEDIATE recipe-combine (specs/build.md, specs/towers.md): fold `ingredientIds` (base
+  // IMMEDIATE recipe-combine (specs/scrap-press.md, specs/combinations.md): fold `ingredientIds` (base
   // structures — candidates and/or existing base components — whose (type, tier) multiset
   // exactly matches `combo`'s recipe) into the combination tower `combo`, landing at `anchorId`
   // (which must be one of the ingredients). Every OTHER consumed ingredient HARDENS INTO A
   // BLOCKER in place (wall-neutral). Runs the instant it is committed — build phase OR live wave
-  // — and re-paths. A combo lands at UPGRADE LEVEL 0 (the reduced landing block, specs/towers.md).
+  // — and re-paths. A combo lands at UPGRADE LEVEL 0 (the reduced landing block,
+  // specs/combinations.md).
   private combineRecipeNow(
     anchorId: number,
     combo: ComboType,
@@ -1136,7 +1139,7 @@ export class Game {
     const anchor = this.baseStructById(anchorId);
     if (!anchor || !ingredientIds.includes(anchorId)) return false;
     if (!this.recipeSatisfied(combo, ingredientIds)) return false;
-    // Folding in any candidate placed THIS build phase consumes the phase's roll (specs/build.md):
+    // Folding in any candidate placed THIS build phase consumes the phase's roll (specs/scrap-press.md):
     // the combine is the harvest, so it ends the build phase and launches the wave.
     const consumedFreshRoll = ingredientIds.some(
       (iid) => this.candidateById(iid) !== null,
@@ -1161,7 +1164,8 @@ export class Game {
       type: anchor.type, // an ingredient type, drives the base tint only
       tier: MAX_TIER, // sentinel; a combo's power axis is its comboLevel, not tier
       combo,
-      comboLevel: 0, // lands WEAK (specs/towers.md — softened spike); upgrade to climb it
+      // lands WEAK (specs/combinations.md — half its reference damage); upgrade to climb it
+      comboLevel: 0,
       col: anchor.col,
       row: anchor.row,
       targeting: "first",
@@ -1187,7 +1191,7 @@ export class Game {
     });
     this.raiseCue("combine");
     // A fresh-roll combine (COMBINE SPECIAL) is the phase's SOLE harvest: it discards any marked
-    // KEEP (only one new tower a phase, specs/build.md) and sends the wave.
+    // KEEP (only one new tower a phase, specs/scrap-press.md) and sends the wave.
     if (consumedFreshRoll && this.phase === "build") {
       this.harvest = { mode: "none" };
       this.beginWave();
@@ -1196,7 +1200,7 @@ export class Game {
   }
 
   private win(): void {
-    // Victory: the Maze Rating is already tallied over the finale (specs/gameplay.md). Integrity
+    // Victory: the Maze Rating is already tallied over the finale (specs/campaign.md). Integrity
     // decided win/lose only — it adds nothing to the rating.
     this.finale = false;
     this.state = "victory";
@@ -1213,7 +1217,7 @@ export class Game {
     this.activeWave = null;
   }
 
-  // ---- The scrap-press build loop (specs/build.md) ----------------------------
+  // ---- The scrap-press build loop (specs/scrap-press.md) ----------------------
 
   stampsLeft(): number {
     return Math.max(0, BUILDS_PER_LEVEL - this.stampsUsed);
@@ -1229,7 +1233,7 @@ export class Game {
     );
   }
 
-  // Pull the press: arm a BLANK rock on the cursor (specs/build.md). No roll yet — the roll
+  // Pull the press: arm a BLANK rock on the cursor (specs/scrap-press.md). No roll yet — the roll
   // happens when the rock lands (placeStamp). Placement is free. Returns true if armed.
   pullPress(): boolean {
     if (!this.canStamp()) return false;
@@ -1247,7 +1251,7 @@ export class Game {
     return COMPONENT_ORDER[COMPONENT_ORDER.length - 1]!;
   }
 
-  // Quality roll biased by the current Refinement level (specs/build.md — UPGRADE QUALITY).
+  // Quality roll biased by the current Refinement level (specs/scrap-press.md — Refinement).
   private rollTier(): Tier {
     const odds = QUALITY_ODDS_BY_R[this.refinement]!;
     let r = this.press.next();
@@ -1259,7 +1263,7 @@ export class Game {
   }
 
   // Is the 2×2 anchor (col, row) exactly an existing blocker's footprint? Dropping a rock onto
-  // a blocker rerolls it into a fresh candidate (specs/build.md).
+  // a blocker rerolls it into a fresh candidate (specs/scrap-press.md).
   private blockerAtAnchor(col: number, row: number): Blocker | null {
     for (const s of this.structures) {
       if (s.kind === "blocker" && s.col === col && s.row === row) return s;
@@ -1268,7 +1272,7 @@ export class Game {
   }
 
   // Where a rock may land: an empty legal footprint, OR exactly onto an existing blocker
-  // (which it rerolls). specs/build.md, specs/board.md.
+  // (which it rerolls). specs/scrap-press.md, specs/yard.md.
   canPlaceAt(col: number, row: number): boolean {
     if (this.state !== "playing" || this.phase !== "build") return false;
     if (this.blockerAtAnchor(col, row)) return true;
@@ -1277,7 +1281,7 @@ export class Game {
 
   // Drop a rock at the 2×2 anchor (col, row): the roll happens HERE (a random type + quality
   // on the current Refinement odds), spending one stamp of the level's allowance and landing a
-  // CANDIDATE that walls and re-paths the floor (specs/build.md, specs/board.md). Placement is
+  // CANDIDATE that walls and re-paths the floor (specs/scrap-press.md, specs/yard.md). Placement is
   // FREE — no Charge. Dropping onto a blocker rerolls it in place. Returns the placed candidate,
   // or null if refused. Re-arms another rock afterward if the allowance still permits (continuous
   // placement). If no rock is held (the headless one-shot path), it arms one implicitly.
@@ -1313,7 +1317,7 @@ export class Game {
     this.structures.push(cand);
     this.selectedId = cand.id;
     this.combineIds = [cand.id];
-    // Continuous placement (specs/build.md): release the placed rock, then immediately re-arm
+    // Continuous placement (specs/scrap-press.md): release the placed rock, then immediately re-arm
     // another if the allowance still permits. canStamp() requires !holding, so holding MUST be
     // cleared first — otherwise it always reads false and the hand empties after one drop.
     this.holding = false;
@@ -1329,7 +1333,7 @@ export class Game {
     this.holding = false; // nothing was rolled or spent — cancelling a held rock is free
   }
 
-  // ---- Dismantle — remove a misplaced structure between waves (specs/build.md) --
+  // ---- Dismantle (specs/scrap-press.md) — remove a misplaced structure -------
   // A correction tool, BUILD-PHASE only: clears a component, candidate, or blocker's 2×2
   // footprint and re-paths live. It NEVER refunds the stamp — a refund would let a player place a
   // rock, reject its roll, dismantle it, and re-roll indefinitely, defeating the scrap-press RNG.
@@ -1357,13 +1361,13 @@ export class Game {
     if (this.selectedId != null) this.removeStructure(this.selectedId);
   }
 
-  // ---- Keep (the one harvest per level) + IMMEDIATE combining (specs/build.md) --
+  // ---- Keep (the one harvest) + IMMEDIATE combining (specs/scrap-press.md) ---
   // KEEP is the level's single harvest — committing it IMMEDIATELY launches the wave (one
   // candidate → a permanent firing component; the rest harden into blockers). There is no SEND and
   // no reversible keep. COMBINING is separate: it is IMMEDIATE and may be done as often as
   // ingredients allow, in the build phase AND during a live wave — a fresh-consuming combine is
   // itself the harvest (and launches the wave), while a standing-only combine climbs the quality
-  // ladder / builds the combo roster without ending the phase (specs/build.md, specs/controls.md).
+  // ladder / builds the combo roster without ending the phase (specs/scrap-press.md, specs/controls.md).
 
   candidateById(id: number): Candidate | null {
     const s = this.structures.find((x) => x.id === id);
@@ -1376,10 +1380,10 @@ export class Game {
   }
 
   // KEEP the selected candidate as this level's harvest — and, because a harvest IS the wave
-  // trigger (there is no SEND button, specs/build.md, specs/gameplay.md), it **immediately launches
+  // trigger (there is no SEND button, specs/scrap-press.md, specs/hud.md), it **immediately launches
   // the wave**: the candidate becomes a permanent firing component and every other candidate
   // hardens into a blocker. There is no reversible/deferred keep — place and compare all rocks
-  // first, then commit the one you want. Every level must harvest to advance (specs/build.md).
+  // first, then commit the one you want. Every level must harvest to advance (specs/scrap-press.md).
   keep(id: number): void {
     // A control the player operates is refused wherever that control is refused, and the
     // pause menu takes the input: on `paused` every control on the yard is inert
@@ -1397,11 +1401,12 @@ export class Game {
 
   // Does a same-type + same-quality match exist for this base structure (another candidate or an
   // existing base component), so a quality-COMBINE is offered? Tesla-Prime never combines, and a
-  // combination tower / blocker is never a base structure (specs/build.md).
+  // combination tower / blocker is never a base structure (specs/scrap-press.md).
   canCombine(c: Candidate | Component): boolean {
     return c.tier < MAX_TIER && this.combinePartnerOf(c) !== null;
   }
-  // Auto-picks a partner, PRIORITIZING a fresh candidate over a standing component (specs/build.md):
+  // Auto-picks a partner, PRIORITIZING a fresh candidate over a standing component
+  // (specs/scrap-press.md):
   // consuming a build-phase roll (→ COMBINE SPECIAL, ends the phase) is preferred to eating an
   // invested tower, so an un-targeted combine spends the expendable rolls first.
   combinePartnerOf(c: Candidate | Component): Candidate | Component | null {
@@ -1483,7 +1488,7 @@ export class Game {
   }
 
   // The exact combo an explicit ingredient set assembles, or null: the set's (type,tier)
-  // multiset must equal a recipe's, with every id a valid base structure (specs/towers.md).
+  // multiset must equal a recipe's, with every id a valid base structure (specs/combinations.md).
   private comboMatching(ids: number[]): ComboType | null {
     const keys: string[] = [];
     const seen = new Set<number>();
@@ -1501,7 +1506,8 @@ export class Game {
     return null;
   }
 
-  // ---- Recipe combine — assemble a combination tower (specs/build.md, specs/towers.md) ---
+  // ---- Recipe combine — assemble a combination tower ------------------------
+  // (specs/scrap-press.md, specs/combinations.md)
   // The board's INGREDIENT pool: candidates and base components (not blockers, not existing
   // combos — combos are terminal and cannot be ingredients). Each contributes its (type,tier).
   private ingredientKeyOf(s: Structure): string | null {
@@ -1525,7 +1531,7 @@ export class Game {
       if (!avail.has(k)) avail.set(k, []);
       avail.get(k)!.push(s.id);
     }
-    // Auto-pick prioritizes CONSUMING fresh candidates over standing components (specs/build.md):
+    // Auto-pick prioritizes CONSUMING fresh candidates over standing components (specs/scrap-press.md):
     // sort each ingredient pool candidate-first so an un-targeted recipe spends this phase's rolls
     // (→ COMBINE SPECIAL, ends the phase) before eating invested towers.
     for (const list of avail.values()) {
@@ -1609,13 +1615,13 @@ export class Game {
       : false;
   }
 
-  // ---- UPGRADE QUALITY — the Refinement track (specs/build.md) -----------------
+  // ---- UPGRADE QUALITY — the Refinement track (specs/scrap-press.md) -----------
 
   refineCost(): number | null {
     return nextRefineCost(this.refinement);
   }
   canUpgradeQuality(): boolean {
-    // Refining the press is allowed in ANY phase (specs/build.md): it only biases FUTURE rolls,
+    // Refining the press is allowed in ANY phase (specs/scrap-press.md): it only biases FUTURE rolls,
     // so there is no reason to block it during a live wave — and it keeps Charge sinks available
     // while the wave runs, consistent with combining and combo upgrades being any-phase.
     const cost = this.refineCost();
@@ -1629,7 +1635,7 @@ export class Game {
     return true;
   }
 
-  // ---- DOWNGRADE a candidate — KEEP it one tier lower (specs/build.md) ----------
+  // ---- DOWNGRADE a candidate — KEEP it one tier lower (specs/scrap-press.md) ----
   // Refining the press biases rolls UP, which can leave a player unable to produce a LOW-tier
   // ingredient a recipe still needs. DOWNGRADE fixes that: it is a **KEEP at one quality tier
   // lower** — it harvests the selected CANDIDATE (a rock placed this phase) as a permanent
@@ -1658,9 +1664,9 @@ export class Game {
     if (this.selectedId != null) this.downgrade(this.selectedId);
   }
 
-  // ---- UPGRADE a combination tower (specs/towers.md, specs/build.md) -----------
+  // ---- UPGRADE a combination tower (specs/combinations.md) ---------------------
   // A combo lands at level 0 (weakened) and CLIMBS with Charge — the softened spike + gold sink.
-  // Allowed in ANY phase (specs/towers.md, specs/build.md), up to MAX_COMBO_LEVEL; each level
+  // Allowed in ANY phase (specs/combinations.md), up to MAX_COMBO_LEVEL; each level
   // scales its damage/range (comboStats). Upgrading mid-wave is consistent with combining mid-wave
   // and makes the upgrade affordance visible while a wave is live.
   comboUpgradeCostFor(c: Component): number | null {
@@ -1696,7 +1702,7 @@ export class Game {
     if (this.selectedId != null) this.upgradeCombo(this.selectedId);
   }
 
-  // ---- Targeting (specs/towers.md, specs/controls.md) -------------------------
+  // ---- Targeting (specs/components.md, specs/controls.md) ---------------------
 
   setTargeting(c: Component, mode: TargetingMode): void {
     c.targeting = mode;
@@ -1769,10 +1775,10 @@ export class Game {
     return out;
   }
 
-  // ---- Wave control (specs/gameplay.md, specs/controls.md) ------------------------
+  // ---- Wave control (specs/campaign.md, specs/controls.md) ------------------------
   // There is NO player SEND: a wave starts when the level's HARVEST is committed — a KEEP or a
   // fresh-consuming COMBINE (which call beginWave themselves). Every level must harvest to
-  // advance (specs/build.md), so no separate start action is surfaced to the player. startWave()
+  // advance (specs/scrap-press.md), so no separate start action is surfaced to the player. startWave()
   // remains only as the HEADLESS/dev launcher (the balance harness builds via dev helpers, then
   // launches the wave directly); it is never wired to a button or key.
   startWave(): void {
@@ -1792,7 +1798,7 @@ export class Game {
     return Math.min(1, this.spawnCursor / w.events.length);
   }
 
-  // ---- Maze length (specs/board.md, specs/controls.md) ------------------------
+  // ---- Maze length (specs/pathing.md, specs/hud.md) ---------------------------
   // The GROUND route the Load walks: the shortest OPEN path through the ordered waypoint
   // chain around the current walls, as tile-center points. Flyers ignore the maze, so this is
   // the walking units' route only. Cached until the walls change (lazy; recomputed here).
@@ -1830,7 +1836,7 @@ export class Game {
     return this.computeMaze().lenTiles;
   }
 
-  // ---- Combine highlight (specs/build.md, specs/controls.md) ------------------
+  // ---- Combine highlight (specs/scrap-press.md, specs/controls.md) ------------
   // The structures that will FOLD TOGETHER if the player combines now, so the renderer pulses
   // them and the player sees exactly what folds. With an EXPLICIT multi-select (≥2 base
   // structures), those exact pieces are marked as "committed" (the precise set a combine folds).
@@ -1865,7 +1871,7 @@ export class Game {
   }
 
   // Every base structure that could fold into SOME combine right now — a quality pair or a
-  // reachable combination-tower recipe (specs/build.md). The renderer pulses these AT ALL TIMES
+  // reachable combination-tower recipe (specs/scrap-press.md). The renderer pulses these AT ALL TIMES
   // (not only when one is selected) so the player is told, unprompted, that combines are available
   // and exactly which pieces can fold. A piece with no partner and no reachable recipe is omitted.
   combinablePieces(): Set<number> {
@@ -1897,7 +1903,7 @@ export class Game {
 
   // ---- Queries ----------------------------------------------------------------
 
-  // A component's live stats INCLUDING its cached external aura buff (specs/towers.md). A
+  // A component's live stats INCLUDING its cached external aura buff (specs/components.md). A
   // combination tower reads its fixed block; a base component derives from (type, tier).
   statsOf(c: Component): CompStats {
     const st = this.baseStatsOf(c);
@@ -2515,7 +2521,8 @@ function fireFamily(c: Component): Cue {
   return c.combo ? COMBO_FIRE_CUE[c.combo] : FIRE_CUE[c.type];
 }
 
-// The ability tags a firing tower's live stats carry (specs/towers.md), for the snapshot.
+// The ability tags a firing tower's live stats carry (specs/components.md), for
+// the snapshot of specs/instrumentation.md.
 function abilitiesOf(st: CompStats): string[] {
   const a: string[] = [];
   if (st.splash > 0) a.push("splash");

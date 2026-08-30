@@ -1,11 +1,11 @@
-// Arc Foundry — wave composition (specs/enemies.md §7.2, specs/gameplay.md).
+// Arc Foundry — wave composition (specs/enemies.md, specs/campaign.md).
 //
 // A wave is a timed sequence of Load units released from the map's single Entry
-// (specs/board.md). Early waves are mostly Motes and Sparks; mid waves add Clusters
+// (specs/yard.md). Early waves are mostly Motes and Sparks; mid waves add Clusters
 // (splash/chain answer) and Slugs (heavy single-hit answer); late waves press dense mixes.
 // FILAMENTS (the flyer) appear ONLY on every fourth wave (w % 4 === 0), never otherwise
 // (specs/enemies.md). Milestone waves (round(N/2) and N) fold in a Dynamo boss
-// (specs/gameplay.md). HP scaling is applied per-unit at spawn from the difficulty
+// (specs/campaign.md). HP scaling is applied per-unit at spawn from the difficulty
 // (specs/enemies.md), NOT here — this module only picks the type sequence and timing,
 // seeded per wave so a given wave plays the same each time it is reached.
 

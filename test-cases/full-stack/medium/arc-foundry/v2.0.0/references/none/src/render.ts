@@ -1,5 +1,5 @@
-// Arc Foundry — the renderer (specs/board.md, specs/towers.md, specs/build.md,
-// specs/gameplay.md, specs/ui.md, specs/controls.md, specs/assets.md).
+// Arc Foundry — the renderer (specs/yard.md, specs/components.md, specs/combinations.md,
+// specs/scrap-press.md, specs/hud.md, specs/ui.md, specs/controls.md, specs/assets.md).
 //
 // Draws the whole fixed 1280×720 stage every frame from the simulation state, reading it
 // and never mutating it: the yard substrate + faint tile grid, each map's waypoint pylons /
@@ -11,7 +11,7 @@
 // the blank held-rock ghost with its legal/illegal placement cue and the range rings (only
 // on placed pieces, whose roll is known). Returns the frame's hit-testable UI regions so the input layer can route pointer
 // events (specs/controls.md) without re-deriving the layout. Component TYPE and quality
-// TIER must both read at a glance (specs/overview.md, specs/towers.md).
+// TIER must both read at a glance (specs/overview.md).
 
 import {
   BOARD_X0,
@@ -499,7 +499,7 @@ export function render(
   bursts.draw(ctx);
   drawBuildCursor(ctx, game, A);
   // Waypoint index numbers are drawn LAST of the board layer so towers / rocks / units never
-  // render over them (specs/board.md — the ordered chain must always read).
+  // render over them (specs/pathing.md — the order numbers are drawn last).
   drawWaypointNumbers(ctx, game.board.chain);
   drawStatusBar(ctx, game, A, clicks);
   drawPanel(ctx, game, A, clicks);
@@ -599,7 +599,7 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   }
 
   // The maze: firing components, this-level candidates, and inert blockers — every piece is
-  // a 2×2 wall (specs/board.md). When a DAMAGE BOARD row is hovered, every piece EXCEPT the
+  // a 2×2 wall (specs/yard.md). When a DAMAGE BOARD row is hovered, every piece EXCEPT the
   // hovered tower is drawn grayscale so the leaderboard tower stands out (specs/controls.md).
   for (const s of game.structures) {
     const dim = boardFocusId !== null && s.id !== boardFocusId;
@@ -613,12 +613,13 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
     if (dim) ctx.restore();
   }
 
-  // Pulse the pieces that will FOLD TOGETHER for this level's harvest (specs/build.md) so the
+  // Pulse the pieces that will FOLD TOGETHER for this level's harvest (specs/hud.md) so the
   // player can see exactly what folds together — drawn over the pieces so it always reads.
   drawCombinePulses(ctx, game);
 }
 
-// A pulsing marker on the pieces that can combine (specs/build.md). AMBIENT layer: every piece
+// A pulsing marker on the pieces that can combine (specs/hud.md,
+// specs/scrap-press.md). AMBIENT layer: every piece
 // that could fold into some combine right now pulses softly AT ALL TIMES — the pulse's job is to
 // announce, unprompted, that combines are available and which pieces can fold, so it must not
 // wait on a selection. FOCUSED layer: once a base piece is selected, the exact set it will fold
@@ -687,7 +688,7 @@ function drawCombinePulses(ctx: CanvasRenderingContext2D, game: Game): void {
 }
 
 // The waypoint PLATFORMS — each interior waypoint is a 4-tile T of walkable-but-never-
-// buildable plating (specs/board.md). Draw the plate distinctly so a platform never reads
+// buildable plating (specs/yard.md). Draw the plate distinctly so a platform never reads
 // as buildable open yard (you cannot drop a rock on it).
 function drawPlatforms(
   ctx: CanvasRenderingContext2D,
@@ -709,7 +710,7 @@ function drawPlatforms(
 }
 
 // The ordered waypoint chain, drawn as a guide line with animated flow chevrons pointing
-// toward the Collector (specs/board.md — a clear sense of flow direction).
+// toward the Collector (specs/overview.md — the flow reads from the entry toward the collector).
 function drawFlow(
   ctx: CanvasRenderingContext2D,
   chain: { col: number; row: number }[],
@@ -797,7 +798,7 @@ function drawWaypoints(
 }
 
 // The waypoint index badges, drawn LAST (after the maze / units) so a placed tower or a
-// walking unit can never obscure the ordered chain (specs/board.md). Each interior waypoint
+// walking unit can never obscure the ordered chain (specs/pathing.md). Each interior waypoint
 // gets a small pill with its 1-based order number.
 function drawWaypointNumbers(
   ctx: CanvasRenderingContext2D,
@@ -887,7 +888,7 @@ function codeHead(
 }
 
 // The Regulator's read: a pulsing hex support core with NO barrel — it must never look like it
-// shoots (specs/towers.md — a non-firing buff node).
+// shoots (specs/components.md — the Regulator never fires).
 function supportCore(
   ctx: CanvasRenderingContext2D,
   cx: number,
@@ -941,7 +942,8 @@ function auraPulse(
 }
 
 // The full aura RADIUS ring (support color, dashed) — shown when an aura tower is selected, so
-// the player sees exactly which towers a Regulator / aura combo buffs (specs/towers.md).
+// the player sees exactly which towers a Regulator / aura combo buffs
+// (specs/hud.md, specs/components.md).
 function drawAuraRange(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -999,7 +1001,7 @@ function abilityTags(def: ComboDef): string {
 
 // A single component: fixed base + rotatable per-tier head, the tier finish escalating each
 // rung (glow, an at-rest arc from Primed up), the firing cycle when it just fired, plus a
-// glanceable quality read — a tier ring and a Roman badge (specs/towers.md). A
+// glanceable quality read — a tier ring and a Roman badge (specs/assets.md, specs/overview.md). A
 // combination tower (c.combo set) is drawn distinctly by drawComboTower; the Regulator draws a
 // non-firing support core instead of a gun head.
 function drawComponent(
@@ -1116,7 +1118,7 @@ function drawComponent(
   text(ctx, ROMAN[c.tier], bx + bw / 2, by + 6, 8, tierC, "center", "800");
 }
 
-// A COMBINATION TOWER (specs/towers.md, specs/build.md): a single-grade, terminal tower with
+// A COMBINATION TOWER (specs/combinations.md): a single-grade, terminal tower with
 // its own accent + a gold combo badge and a rotating head (combos fire). No quality tier is
 // drawn (no pips / Roman). An aura combo also shows the faint on-board aura pulse.
 function drawComboTower(
@@ -1217,7 +1219,7 @@ function drawComboTower(
 }
 
 // An inert BLOCKER — a hardened fused-scrap rock with no head, unmistakably dead: it walls
-// the Load but never fires (specs/build.md). Every un-kept candidate hardens into one of
+// the Load but never fires (specs/scrap-press.md). Every un-kept candidate hardens into one of
 // these at wave start.
 function drawBlocker(
   ctx: CanvasRenderingContext2D,
@@ -1249,7 +1251,7 @@ function drawBlocker(
 }
 
 // A CANDIDATE — a rock placed THIS build phase that has rolled a random type + quality and
-// is eligible to be KEPT or COMBINED this level only (specs/build.md). It draws its rolled
+// is eligible to be KEPT or COMBINED this level only (specs/scrap-press.md). It draws its rolled
 // component sprite with an UNCOMMITTED treatment (dimmed, a pulsing dashed outline, a "NEW"
 // tag) so it never reads as a settled firing component, and a bright KEEP / COMBINE marker
 // when it is this level's harvest choice.
@@ -1304,7 +1306,8 @@ function drawCandidate(
   text(ctx, ROMAN[c.tier], bx + bw / 2, by + 6, 8, tierC, "center", "800");
 
   // A small "NEW" tag at the bottom so an uncommitted candidate reads as a fresh roll. A candidate
-  // is never a persisted "kept" marker now — KEEP is immediate and sends the wave (specs/build.md).
+  // is never a persisted "kept" marker now — KEEP is immediate and sends the wave
+  // (specs/scrap-press.md).
   roundRect(ctx, ctr.x - 12, ctr.y + size / 2 - 11, 24, 11, 3);
   ctx.fillStyle = hexA(typeC, 0.85);
   ctx.fill();
@@ -1330,7 +1333,7 @@ function drawCandidate(
 }
 
 // ---- projectiles --------------------------------------------------------------
-// Every shot is a visible travelling projectile (specs/towers.md). Single-bolt types
+// Every shot is a visible travelling projectile (specs/components.md). Single-bolt types
 // (Capacitor / Emitter / Discharge) carry a produced sprite; the Coil and Arc-Node bolts
 // (whose payloads are the chain / ring particle effects) draw a code bolt in their accent.
 function drawProjectiles(
@@ -1431,7 +1434,7 @@ function drawUnit(
     ctx.fill();
   }
 
-  // Status readouts (specs/enemies.md, specs/towers.md) — kept small and off the health bar.
+  // Status readouts (specs/enemies.md, specs/components.md) — kept small and off the health bar.
   // Slowed: a thin icy ring + faint cyan wash (Choke's EM-drag). Burning: an ember flicker
   // (Rectifier's overcurrent DoT). Both read at 2× speed without clutter.
   if (u.slowFactor < 1) {
@@ -1474,7 +1477,7 @@ function drawHealthBar(
 }
 
 // ---- held-rock ghost (position + legal/illegal cue) ----------------------------
-// specs/controls.md, specs/build.md: a GENERIC blank rock is held on the cursor as its 2×2
+// specs/controls.md, specs/scrap-press.md: a GENERIC blank rock is held on the cursor as its 2×2
 // footprint, snapped to the grid, with a legal/illegal placement cue. There is NO range
 // ring and NO head — the type + quality only ROLL when the rock lands (placeStamp).
 function drawBuildCursor(
@@ -1577,11 +1580,11 @@ function drawStatusBar(
     sub = "PAUSED";
     subColor = COL.alert;
   } else if (game.finale) {
-    // The post-final Overload Dynamo is walking the maze (specs/gameplay.md).
+    // The post-final Overload Dynamo is walking the maze (specs/campaign.md, specs/hud.md).
     sub = "OVERLOAD";
     subColor = COL.boss;
   } else if (game.phase === "build") {
-    // The build phase is UNTIMED (specs/gameplay.md) — no countdown, SEND when ready.
+    // The build phase is UNTIMED (specs/campaign.md, specs/hud.md) — no countdown, SEND when ready.
     sub = "BUILD";
     subColor = COL.integrity;
   } else {
@@ -1589,7 +1592,7 @@ function drawStatusBar(
   }
   text(ctx, sub, 470, 37, 12, subColor, "left", "600", 1);
 
-  // The run keeps NO running score (specs/gameplay.md). During the post-final OVERLOAD finale, this
+  // The run keeps NO running score (specs/hud.md). During the post-final OVERLOAD finale, this
   // slot shows the live MAZE RATING accruing on the invincible boss; otherwise it is blank.
   if (game.finale) {
     text(ctx, "OVERLOAD", 560, 20, 10, COL.boss, "left", "800", 1);
@@ -1605,9 +1608,10 @@ function drawStatusBar(
     );
   }
 
-  // MAZE LENGTH readout (specs/board.md, specs/controls.md) — how long the ground route the
-  // Load walks is, in tiles. A longer maze keeps the Load under fire longer. Hovering it draws
-  // the full ground path on the board (air units ignore the maze, so they are not shown).
+  // MAZE LENGTH readout (specs/hud.md, specs/pathing.md, specs/controls.md) — how
+  // long the ground route the Load walks is, in tiles. A longer maze keeps the Load
+  // under fire longer. Hovering it draws the full ground path on the board (air
+  // units ignore the maze, so they are not shown).
   const mazeLen = Math.round(game.mazeLengthTiles());
   const mzX = 700;
   const mzY = 8;
@@ -1704,7 +1708,7 @@ function toggle(
 }
 
 // Draw the ground maze route as a bright line with a start/end marker, over the board — the
-// hover preview for the MAZE readout (specs/board.md). Flyers are not shown (they ignore it).
+// hover preview for the MAZE readout (specs/hud.md). Flyers are not shown (they ignore it).
 function drawMazePath(ctx: CanvasRenderingContext2D, game: Game): void {
   const pts = game.mazePath();
   if (pts.length < 2) return;
@@ -1779,11 +1783,11 @@ function drawPanel(
   const px = PANEL_X + 14;
   const w = pw - 28;
 
-  // --- Live QUALITY ODDS for the next roll, at the TOP of the panel (specs/build.md) ---
+  // --- Live QUALITY ODDS for the next roll, at the TOP of the panel (specs/hud.md) -----
   // Always visible so the player can read the quality probabilities before placing a rock.
   const oddsBottom = drawQualityOdds(ctx, game, px, 74, w);
 
-  // --- UPGRADE QUALITY (Refinement track) control (specs/build.md) ---
+  // --- UPGRADE QUALITY (Refinement track) control (specs/hud.md, specs/scrap-press.md) -
   // Spend Charge to raise Refinement R, biasing every future roll toward higher tiers.
   const upY = oddsBottom + 8;
   const upH = 44;
@@ -1850,7 +1854,7 @@ function drawPanel(
     press: true,
   });
 
-  // --- Scrap-press (STAMP) control (specs/build.md) ---
+  // --- Scrap-press (STAMP) control (specs/hud.md) -----
   // Arms a BLANK rock; the roll happens on placement. Placing is FREE — it spends one of the
   // level's 5 stamps per placed rock, and the cap is 5 per level.
   const stampY = upY + upH + 10;
@@ -1928,8 +1932,8 @@ function drawPanel(
   );
 }
 
-// The current QUALITY ROLL odds for a placed rock at the live Refinement level (specs/build.md
-// — UPGRADE QUALITY). A stacked bar over the five tiers (Scrap…Tesla-Prime) plus a legend, so
+// The current QUALITY ROLL odds for a placed rock at the live Refinement level (specs/hud.md,
+// specs/scrap-press.md). A stacked bar over the five tiers (Scrap…Tesla-Prime) plus a legend, so
 // the player can always see the probability of each quality BEFORE placing. Returns the y just
 // below the block it drew.
 function drawQualityOdds(
@@ -2045,7 +2049,7 @@ function drawHeldInfo(
  */
 const PANEL_PROMPT_Y = STAGE_H - 34;
 
-// The selected-piece inspector (specs/board.md, specs/build.md, specs/controls.md).
+// The selected-piece inspector (specs/hud.md, specs/scrap-press.md, specs/controls.md).
 // A CANDIDATE offers KEEP / COMBINE (build phase); a COMPONENT offers the targeting cycle;
 // a BLOCKER is inert (no stats, no actions).
 function drawInspector(
@@ -2171,7 +2175,7 @@ function drawInspector(
     text(ctx, sub, x + 44, y + 42, 8, subC, "left", "500", 0.5);
   }
 
-  // What this piece does (specs/towers.md) — its role at a glance.
+  // What this piece does (specs/components.md, specs/combinations.md) — its role at a glance.
   const desc = isCombo ? COMBOS[comp!.combo!].desc : COMPONENT_DESC[s.type];
   const descEnd = wrap(ctx, desc, x, y + 68, w, 10, COL.text2, 14);
 
@@ -2225,7 +2229,8 @@ function drawInspector(
   if (comp) {
     if (stats.fires)
       line("TARGET", TARGETING_LABEL[comp.targeting], COL.integrity);
-    // Per-component performance tally (specs/towers.md) — like Meltdown's tower inspector.
+    // Per-component performance tally (specs/components.md — tallies) — like
+    // Meltdown's tower inspector.
     line("KILLS", `${comp.kills}`, COL.charge);
     line(
       "DMG DEALT",
@@ -2234,7 +2239,7 @@ function drawInspector(
     );
   }
 
-  // ---- Action area (specs/build.md, specs/controls.md) ----
+  // ---- Action area (specs/hud.md, specs/controls.md) ------
   // The action set is FIXED per structure kind: every action a kind can ever offer holds the same
   // slot for as long as that piece is selected, and an action that is momentarily unusable is
   // DRAWN DISABLED rather than removed. Nothing here is conditional on the phase, on Charge, or
@@ -2310,7 +2315,8 @@ function drawInspector(
       live,
     );
 
-  // KEEP is a candidate's harvest — committing it LAUNCHES the wave (specs/build.md, no SEND).
+  // KEEP is a candidate's harvest — committing it LAUNCHES the wave
+  // (specs/scrap-press.md, no send control).
   // DOWNGRADE harvests it one quality tier lower instead, for a recipe that still needs a
   // low-tier ingredient; it is likewise the harvest, so it too sends the wave. Scrap (T1) has no
   // rung below it, so DOWNGRADE sits disabled there rather than vanishing.
@@ -2325,7 +2331,7 @@ function drawInspector(
   }
 
   // COMBINE — fold a matching (type + quality) pair one rung higher, landing at THIS piece. A
-  // fold that consumes a fresh roll is the level's harvest and SENDS the wave (specs/build.md); a
+  // fold that consumes a fresh roll is the level's harvest and SENDS the wave (specs/scrap-press.md); a
   // fold of only standing towers leaves the phase running (and is the wave-time combine).
   stack(
     explicit ? "COMBINE SELECTED" : "COMBINE",
@@ -2335,13 +2341,14 @@ function drawInspector(
     26,
   );
 
-  // COMBINATION-TOWER recipes in reach (specs/build.md, specs/towers.md) — each a one-click
+  // COMBINATION-TOWER recipes in reach (specs/scrap-press.md,
+  // specs/combinations.md) — each a one-click
   // COMBINE SPECIAL -> <tower> that folds this piece + matching partners into a terminal combo
   // (which lands at LEVEL 0 and is upgraded from there). A shift-multi-select picks exactly which
   // duplicate copies fold.
   //
   // THE ROWS STACK WITH THE OTHER ACTIONS, upward from the same anchor, rather than being laid
-  // into whatever gap the stats block happened to leave under it. specs/build.md offers "one
+  // into whatever gap the stats block happened to leave under it. specs/scrap-press.md offers "one
   // action per reachable recipe", with no clause about room, so a recipe the yard can reach is
   // always offered: a layout that dropped the last row would take a tower the player has already
   // assembled the parts for off the board entirely. Each row paints its own opaque backing, so a
@@ -2381,7 +2388,7 @@ function drawInspector(
   }
 }
 
-// The next-wave preview (specs/enemies.md, specs/gameplay.md) — shown when nothing is selected.
+// The next-wave preview (specs/hud.md, specs/enemies.md) — shown when nothing is selected.
 function drawNextWave(
   ctx: CanvasRenderingContext2D,
   game: Game,
@@ -2581,7 +2588,7 @@ function selectedIngredient(
 
 // The board's INGREDIENT pool as counts keyed `type@tier`: every base piece that could serve as a
 // combo ingredient (a standing base component or an uncommitted candidate; a blocker or a
-// combination tower never is, specs/build.md), EXCLUDING the current selection so the book can
+// combination tower never is, specs/hud.md), EXCLUDING the current selection so the book can
 // draw the piece in the player's hand apart from the pieces they already own (specs/controls.md).
 function ownedIngredients(game: Game): Map<string, number> {
   const selId = game.selected()?.id ?? null;
@@ -2642,7 +2649,7 @@ function leaderboardHoverId(game: Game): number | null {
   return null;
 }
 
-// The COMBINATIONS reference book (specs/build.md, specs/towers.md) — every combination tower
+// The COMBINATIONS reference book (specs/hud.md, specs/combinations.md) — every combination tower
 // with its exact recipe and stats, so the player can plan combines in-game. A modal panel over
 // the board; a background swallow keeps a click behind it from reaching the yard.
 function drawCombosBook(
@@ -3480,7 +3487,7 @@ function drawEnd(
   );
   if (won) {
     // The run's one end-of-run number is the MAZE RATING: total damage the maze dealt to the
-    // post-final invincible Overload Dynamo (specs/gameplay.md). Integrity is shown but is not scored.
+    // post-final invincible Overload Dynamo (specs/campaign.md). Integrity is shown but is not scored.
     text(
       ctx,
       `ALL ${game.diff.waves} WAVES SURVIVED`,
