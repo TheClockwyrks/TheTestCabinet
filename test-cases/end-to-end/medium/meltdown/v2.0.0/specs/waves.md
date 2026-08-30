@@ -48,7 +48,8 @@ Wave `N` ends the run rather than advancing, so the number never passes `N`.
 ## What a wave carries
 
 Each wave fields a single type, given by the wave number `w` and the run's wave
-count `n`:
+count `n`. `specs/modes.md` names the one mode whose single wave is mixed, and
+the figures it replaces:
 
 ```
 milestoneWaves(n) = [round(n / 2), n]
@@ -102,7 +103,8 @@ hpScale(w) = 1 + 0.62 * (w - 1)
 
 Nothing else scales with the wave. Speeds, bounties, and leak values are the same
 on the last wave as on the first, and every other system is unchanged across a
-run.
+run. `specs/modes.md` names the one mode that scales hp by a fixed figure
+instead.
 
 ## Clearing a wave
 

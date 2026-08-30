@@ -6,8 +6,8 @@ choose them are in `specs/screens.md`.
 
 Every mode plays the same game: the same floor, the same mazing and re-pathing,
 the same heat model and trip, the same tower roster and upgrades, the same surge,
-the same controls, and the same economy. A mode changes only the figures its own
-row below states.
+the same controls, and the same economy. A mode changes the figures its own row
+below states, and nothing else beyond what its own section names.
 
 ## The derived figures
 
