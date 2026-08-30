@@ -326,6 +326,26 @@ it("adds an observer that possesses nothing and drives nothing", async () => {
   expect(h.world.players().length).toBe(2);
 });
 
+it("leaves the game running exactly as it does with no observer watching", async () => {
+  // `addPlayer` builds the game mode's OWN player controller class when its
+  // options name none, and that class is where a build reads its input and runs
+  // its screen machine — so an observer built that way would be a second seat
+  // driving the game. This is the check that says the observer is inert: the
+  // menu answers one press once, whether or not anything is watching, and the
+  // observer's own copy of the edge is left unread so nothing but its presence
+  // can account for a difference.
+  openScene(h, { screen: "title" });
+  await h.tap(ACTION_KEY.down);
+  const alone = h.snapshot().menuIndex;
+
+  openScene(h, { screen: "title" });
+  h.addObserver();
+  await h.tap(ACTION_KEY.down);
+
+  expect(alone).toBe(1);
+  expect(h.snapshot().menuIndex).toBe(alone);
+});
+
 /* -------------------------------------------------------------------------- */
 /* Isolation                                                                  */
 /* -------------------------------------------------------------------------- */

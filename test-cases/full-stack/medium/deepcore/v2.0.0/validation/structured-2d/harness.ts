@@ -86,8 +86,8 @@ import {
   type GameDefinition,
   type GameInstance,
   type GameState,
+  PlayerController,
   type PathSegment,
-  type PlayerController,
   type RecordedFrame,
   type Recording,
   type Resource,
@@ -457,18 +457,27 @@ export interface Harness {
   tap(code: string): Promise<void>;
 
   /**
-   * Add a player controller of the harness's own, possessing nothing, and hand
-   * it back so a check can read the actions the frame delivered.
+   * Add a player controller of the harness's own, possessing nothing and doing
+   * nothing, and hand it back so a check can read the actions the frame
+   * delivered.
    *
    * THE ONE WAY A CHECK READS INPUT. An armed edge is `pressed` once per player
    * controller and the call consumes that controller's copy, so reading
    * `world.players()[0].input` takes the press the BUILD's controller was going
    * to read and the build behaves as though the key was never struck. An
-   * observer has its own copy of every edge, so reading it changes nothing the
-   * build sees.
+   * observer has a copy of every edge of its own, so reading it changes nothing
+   * the build sees.
    *
-   * It possesses no pawn, so it adds nothing to the world but a seat at the
-   * input.
+   * IT IS THE ENGINE'S BARE `PlayerController`, NEVER THE BUILD'S. `addPlayer`
+   * builds the mode's own `playerControllerClass` when its options name none,
+   * and the build's controller is where the build reads its input and runs its
+   * screen machine — so an observer built that way would be a SECOND seat
+   * driving the game, moving the menu, resolving the pointer and consuming a
+   * press of its own every frame. The engine's own class ticks and does nothing,
+   * which is the whole of what an observer is for.
+   *
+   * It possesses no pawn either, so it adds nothing to the world but a seat at
+   * the input.
    */
   addObserver(name?: string): PlayerController;
 
@@ -881,7 +890,11 @@ export async function createHarness(
     },
 
     addObserver: (name = "observer") =>
-      engine.world.mode.addPlayer({ name, pawn: null }),
+      engine.world.mode.addPlayer({
+        name,
+        controller: PlayerController,
+        pawn: null,
+      }),
 
     pointerDown: (x, y) => pointer("pointerdown", x, y),
     pointerMove: (x, y) => pointer("pointermove", x, y),
