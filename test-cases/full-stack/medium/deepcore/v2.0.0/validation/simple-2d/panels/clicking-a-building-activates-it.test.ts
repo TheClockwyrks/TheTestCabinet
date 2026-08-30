@@ -1,24 +1,62 @@
-// Deepcore — panels.clicking-a-building-activates-it. STUB: NOT YET AUTHORED.
+// panels/clicking-a-building-activates-it — the mouse opens a building.
 //
-// Clicking a surface building activates it
+// `specs/controls.md`: clicking a surface building activates it, exactly as
+// `activate` does while standing at it. So the miner is stood at the building and
+// the building is CLICKED; `activate` is never pressed, so the panel that opens
+// is the click's doing and nothing else's.
 //
-// Clicking a surface building activates it exactly as the activate action does
-// while standing at it.
-//
-// Automated validation: click each panelled building with the miner standing
-// at it and read the matching panel opening.
-//
-// `test-case.toml` declares this suite as `panels/clicking-a-building-activates-it.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (click (replay)) around the drive.
+// Where the building is drawn follows from `specs/world.md` alone: `buildings()`
+// reports the footprint in world units, and `worldToStage` maps its middle
+// through the camera the snapshot reports. A frame runs first so the camera has
+// settled on the miner before the point is computed.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  layCamp,
+  openScene,
+  pinDrill,
+  standAtBuilding,
+  worldToStage,
+  type Harness,
+} from "../harness";
+import { clickStage } from "./mouse";
 
-test("Clicking a surface building activates it", () => {
-  throw new Error(
-    "Deepcore validator `panels/clicking-a-building-activates-it` is declared in test-case.toml but has not been authored yet.",
-  );
+/** The building the click is aimed at. */
+const BUILDING = "ore-market";
+
+/** Frames the clip runs on after the reading, so it shows the panel it opened. */
+const SETTLE = 60;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("opens a building's panel from a click on the building", async () => {
+  openScene(h);
+  layCamp(h);
+  pinDrill(h);
+  const box = standAtBuilding(h, BUILDING);
+  h.debug.setPanel(null);
+  await h.advance(2);
+
+  const panel = await captureReplay(h, "click", async () => {
+    const snapshot = h.snapshot();
+    const at = worldToStage(snapshot, box.x + box.w / 2, box.y + box.h / 2);
+    await clickStage(h, at.x, at.y);
+    await h.advance(2);
+    const opened = h.snapshot().panel;
+    await h.advance(SETTLE);
+    return opened;
+  });
+
+  assertEqual(panel, BUILDING, "specs/controls.md");
 });
