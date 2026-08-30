@@ -22,6 +22,16 @@ export const CYAN = "#34e2ff";
 /** The magenta band, exactly as the seeded art paints it. */
 export const MAGENTA = "#ff4ec7";
 
+/**
+ * The band's colour lifted most of the way toward white.
+ *
+ * A band-carrying CORE — the ship's, and a Flux settled on a band — is drawn in
+ * this rather than in the band's own colour, so a core reads as the hot centre of
+ * a body rather than as one more patch of the same colour as the body around it.
+ * It is the same hue, so the band still reads correctly.
+ */
+export const BAND_CORE = { cyan: "#a8f4ff", magenta: "#ffc3e8" } as const;
+
 /** The palette this build draws with. */
 export const COLOR = {
   /** The stage background, which the engine clears the canvas to each frame. */

@@ -44,7 +44,6 @@ import { bulletBand, droneBand, inverted, isShimmering } from "./bands";
 import { clampLane } from "./ship";
 import { dischargeReady } from "./discharge";
 import { resetToTitle } from "./flow";
-import { waveBulletScale } from "./swarm";
 import {
   droneById,
   bulletById,
@@ -609,7 +608,7 @@ export function createDebugApi(): SpectraDebugApi {
           x,
           y,
           vx: 0,
-          vy: ENEMY_BULLET_SPEED * waveBulletScale(sim.stage),
+          vy: ENEMY_BULLET_SPEED * bulletSpeedScale(sim.stage),
           band,
           friendly: false,
         });

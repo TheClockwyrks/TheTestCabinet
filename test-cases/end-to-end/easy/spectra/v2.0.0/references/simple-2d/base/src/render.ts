@@ -54,10 +54,10 @@ import {
   TITLE_TEXT,
   isChallengeStage,
 } from "./constants";
-import { droneBand, inverted, isShimmering } from "./bands";
+import { droneBand, inverted, isShimmering, opposite } from "./bands";
 import { dischargeReady } from "./discharge";
 import { droneSize } from "./simulate";
-import { CYAN, COLOR, FONT, MAGENTA } from "./theme";
+import { BAND_CORE, CYAN, COLOR, FONT, MAGENTA } from "./theme";
 import type { Band, SpectraState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
@@ -300,7 +300,7 @@ function drawEntities(state: State, ctx: Ctx): void {
     const band = bullet.friendly
       ? bullet.band
       : swapped
-        ? bandFlip(bullet.band)
+        ? opposite(bullet.band)
         : bullet.band;
     drawBullet(ctx, bullet.x, bullet.y, band, bullet.friendly);
   }
@@ -309,11 +309,6 @@ function drawEntities(state: State, ctx: Ctx): void {
   }
   if (state.discharge.active) drawDischarge(state, ctx);
   drawBursts(state, ctx);
-}
-
-/** The other band, for the one place a flip is read outside `bands.ts`. */
-function bandFlip(band: Band): Band {
-  return band === "cyan" ? "magenta" : "cyan";
 }
 
 /** One drone: its own seeded silhouette, in the band it reads as. */
@@ -330,7 +325,7 @@ function drawDrone(
   const y = drone.y - size / 2;
 
   if (drone.kind === "prism") {
-    drawPrism(state, ctx, drone, band, swapped);
+    drawPrism(state, ctx, drone, band);
     return;
   }
 
@@ -339,10 +334,22 @@ function drawDrone(
   if (sprite !== null) {
     ctx.drawImage(sprite, x, y, size, size);
     // A shimmering Flux is left exactly as the seeded art paints it — both bands
-    // at once — which is what makes it visibly different from one holding a band.
+    // at once — which is half of what makes it visibly different from one holding
+    // a band.
     if (!shimmering) tint(ctx, x, y, size, size, band);
   } else {
     drawFallbackDrone(ctx, drone.x, drone.y, size, band, shimmering);
+  }
+  // The other half: a Flux SETTLED on a band carries that band's hot core, and a
+  // shimmering one carries none, so the two are told apart at the body's centre
+  // and not only at its edge.
+  if (drone.kind === "flux" && !shimmering) {
+    ctx.save();
+    ctx.fillStyle = BAND_CORE[band];
+    ctx.beginPath();
+    ctx.arc(drone.x, drone.y, Math.max(2.5, size * 0.17), 0, TAU);
+    ctx.fill();
+    ctx.restore();
   }
   if (shimmering) {
     // Neither accent, because the Flux is settled on neither band: a double ring
@@ -358,21 +365,15 @@ function drawDrone(
 }
 
 /** A Prism: two layers of opposite bands, or the core alone once the shell is gone. */
-function drawPrism(
-  state: State,
-  ctx: Ctx,
-  drone: Drone,
-  band: Band,
-  swapped: boolean,
-): void {
+function drawPrism(state: State, ctx: Ctx, drone: Drone, band: Band): void {
   const size = droneSize(drone);
   const x = drone.x - size / 2;
   const y = drone.y - size / 2;
   const sprite = state.art.prism;
   // `band` is what the Prism READS as, which is the exposed layer's band; the
   // hidden layer is always the other one.
-  const shell = drone.shellAlive ? band : bandFlip(band);
-  const core = bandFlip(shell);
+  const shell = drone.shellAlive ? band : opposite(band);
+  const core = opposite(shell);
 
   drawGlow(ctx, drone.x, drone.y, size * 0.62, size * 0.62, band);
   if (sprite === null) {
@@ -403,7 +404,6 @@ function drawPrism(
   drawAccent(ctx, drone.x, drone.y, size * 0.58, shell);
   if (!drone.shellAlive)
     drawAccent(ctx, drone.x, drone.y, size * 0.34, core, 1.5);
-  void swapped;
 }
 
 /** A drone where the seeded art did not arrive: its silhouette, drawn in code. */
@@ -493,7 +493,7 @@ function drawShip(state: State, ctx: Ctx): void {
   // `specs/assets.md` asks the other band-state to be.
   ctx.save();
   ctx.globalAlpha = 0.92;
-  ctx.fillStyle = band === "cyan" ? "#a8f4ff" : "#ffc3e8";
+  ctx.fillStyle = BAND_CORE[band];
   ctx.beginPath();
   ctx.arc(state.ship.x, SHIP_Y, 4.5, 0, TAU);
   ctx.fill();

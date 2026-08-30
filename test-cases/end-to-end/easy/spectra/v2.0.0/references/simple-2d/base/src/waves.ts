@@ -15,6 +15,13 @@
 // both bands as the bulk of it; a later stage widens the block, deepens it, and
 // leans further on Fluxes and Prisms.
 //
+// WHICH SLOT OF THAT RECTANGLE HOLDS WHICH KIND IS DRAWN FROM THE GAME'S OWN
+// GENERATOR, as `specs/simulation.md` requires of the wave's layout: the columns
+// the Prisms anchor, the slots the Fluxes take and the phase of the Shards'
+// two-band checkerboard are all drawn. The rectangle itself is not, so the block
+// stays mirror-symmetric and deliberate however the draw falls, and a run
+// replayed from one seed lays out exactly the same wave.
+//
 // A CHALLENGE STAGE is not a wave at all. Its five groups of eight fly in from
 // alternate sides as a line abreast — every drone of a group crossing into the
 // field in the same instant, which is what makes a group a group a player can
@@ -36,14 +43,21 @@ import {
   slotX,
   slotY,
 } from "./constants";
-import { randomBetween, takeId, type MutDrone, type Sim } from "./sim";
+import {
+  randomBetween,
+  randomIndex,
+  takeId,
+  type MutDrone,
+  type Sim,
+} from "./sim";
+import { opposite } from "./bands";
 import type { Band, DroneKind } from "./game";
 
 /** How far outside the field's side a challenge group starts. */
 export const CHALLENGE_MARGIN = 48;
 
 /** How far out from its slot, above the field, an entering drone starts. */
-const ENTER_START_OUT = 60;
+const ENTER_START_OUT = 24;
 
 /** How far above `FIELD_TOP` the first row's starts sit, and the stack between rows. */
 const ENTER_START_GAP = 10;
@@ -90,43 +104,87 @@ function columns(stage: number): number[] {
   return Array.from({ length: cols }, (_unused, i) => first + i);
 }
 
-/** Whether the column is filled by a wave at `stage`. */
-function filled(stage: number, col: number): boolean {
-  return columns(stage).includes(col);
-}
-
-/** The columns the Prisms of a wave at `stage` sit in, on the top row. */
-function prismColumns(stage: number): number[] {
-  return wavePrisms(stage) === 1 ? [4] : [2, 6];
+/** The rows a wave at `stage` fills. */
+function rows(stage: number): number[] {
+  return Array.from({ length: waveRows(stage) }, (_unused, row) => row);
 }
 
 /**
- * The columns a wave's Fluxes sit in, on the second row.
+ * Take `count` entries of `pool` at random, without repetition.
  *
- * Taken from the middle outward, so a wave that fills fewer columns still
- * places every Flux it holds, and the layout stays symmetric.
+ * The draws run off the game's own generator, so a wave laid out after
+ * `reset({ seed })` is the same wave every time and two seeds lay out two
+ * different ones.
  */
-function fluxColumns(stage: number): number[] {
-  const preference = [3, 5, 2, 6, 1, 7];
-  return preference
-    .filter((col) => filled(stage, col))
-    .slice(0, waveFluxes(stage));
+function drawDistinct<T>(sim: Sim, pool: readonly T[], count: number): T[] {
+  const rest = [...pool];
+  const taken: T[] = [];
+  while (taken.length < count && rest.length > 0) {
+    taken.push(...rest.splice(randomIndex(sim, rest.length), 1));
+  }
+  return taken;
 }
 
 /**
- * A standard wave's placements: one Prism per `prismColumns` with a Shard of
- * each band beside it, the Fluxes of the second row, and Shards everywhere else.
+ * The columns the wave's Prisms anchor, on the top row.
  *
- * The band of an ordinary Shard follows its column's parity, so the block always
- * holds both bands and the two alternate across it. The escorts are the one
- * exception: each Prism's pair is forced to opposite bands, which is what
- * `specs/drones.md` asks an escort to be.
+ * A Prism needs a filled column either side to bring its escort in, so it never
+ * takes an outermost column of the block, and two Prisms stand at least three
+ * columns apart so neither takes the other's escort slot.
  */
-function standardPlacements(stage: number): Placement[] {
-  const cols = columns(stage);
-  const rows = waveRows(stage);
-  const prisms = prismColumns(stage);
-  const fluxes = fluxColumns(stage);
+function prismColumns(sim: Sim, filled: readonly number[]): number[] {
+  const wanted = wavePrisms(sim.stage);
+  const interior = filled.slice(1, -1);
+  const chosen: number[] = [];
+  for (const col of drawDistinct(sim, interior, interior.length)) {
+    if (chosen.length >= wanted) break;
+    if (chosen.every((other) => Math.abs(other - col) >= 3)) chosen.push(col);
+  }
+  return chosen.sort((a, b) => a - b);
+}
+
+/** One slot of the filled rectangle. */
+interface Slot {
+  readonly col: number;
+  readonly row: number;
+}
+
+/**
+ * The slots the wave's Fluxes take, drawn from every row below the top one.
+ *
+ * The top row is left to the Prisms, their escorts and the Shards around them,
+ * so an escort always has its slot; every other filled slot is a candidate.
+ */
+function fluxSlots(sim: Sim, filled: readonly number[]): Slot[] {
+  const candidates: Slot[] = [];
+  for (const row of rows(sim.stage)) {
+    if (row === 0) continue;
+    for (const col of filled) candidates.push({ col, row });
+  }
+  return drawDistinct(sim, candidates, waveFluxes(sim.stage));
+}
+
+/**
+ * A standard wave's placements: one Prism per drawn column with a Shard of each
+ * band beside it, the drawn Fluxes, and Shards everywhere else.
+ *
+ * The band of an ordinary Shard follows a two-band checkerboard over the grid,
+ * whose phase is drawn, so the block always holds both bands and the two
+ * alternate across it whichever way the draw fell. The escorts are the one
+ * exception: each Prism's pair is forced to opposite bands, because the two
+ * columns beside a Prism share a parity and the checkerboard would give them the
+ * same band, and `specs/drones.md` asks an escort pair for one of each.
+ */
+function standardPlacements(sim: Sim): Placement[] {
+  const stage = sim.stage;
+  const filled = columns(stage);
+  const phase = randomIndex(sim, 2);
+  const prisms = prismColumns(sim, filled);
+  const fluxes = fluxSlots(sim, filled);
+
+  /** The checkerboard's band at a slot. */
+  const checker = (col: number, row: number): Band =>
+    (col + row + phase) % 2 === 0 ? "cyan" : "magenta";
 
   // The group each placement rides in, before the empty groups are squeezed out:
   // the Prisms and their escorts first, then the Fluxes, then a group per row of
@@ -144,19 +202,20 @@ function standardPlacements(stage: number): Placement[] {
   for (const col of prisms) {
     placements.push({
       kind: "prism",
-      band: col % 2 === 0 ? "cyan" : "magenta",
+      band: checker(col, 0),
       slotX: slotX(col),
       slotY: slotY(0),
       group: ESCORT_GROUP,
     });
     claim(col, 0);
     // The escort: two Shards, one of each band, entering with the Prism.
+    const left = checker(col - 1, 0);
     const escorts: [number, Band][] = [
-      [col - 1, "cyan"],
-      [col + 1, "magenta"],
+      [col - 1, left],
+      [col + 1, opposite(left)],
     ];
     for (const [escortCol, band] of escorts) {
-      if (!filled(stage, escortCol) || taken.has(`${escortCol},0`)) continue;
+      if (!filled.includes(escortCol) || taken.has(`${escortCol},0`)) continue;
       placements.push({
         kind: "shard",
         band,
@@ -168,24 +227,24 @@ function standardPlacements(stage: number): Placement[] {
     }
   }
 
-  for (const col of fluxes) {
-    if (rows < 2) break;
+  for (const slot of fluxes) {
+    if (taken.has(`${slot.col},${slot.row}`)) continue;
     placements.push({
       kind: "flux",
-      band: col % 2 === 0 ? "cyan" : "magenta",
-      slotX: slotX(col),
-      slotY: slotY(1),
+      band: checker(slot.col, slot.row),
+      slotX: slotX(slot.col),
+      slotY: slotY(slot.row),
       group: FLUX_GROUP,
     });
-    claim(col, 1);
+    claim(slot.col, slot.row);
   }
 
-  for (let row = 0; row < rows; row++) {
-    for (const col of cols) {
+  for (const row of rows(stage)) {
+    for (const col of filled) {
       if (taken.has(`${col},${row}`)) continue;
       placements.push({
         kind: "shard",
-        band: col % 2 === 0 ? "cyan" : "magenta",
+        band: checker(col, row),
         slotX: slotX(col),
         slotY: slotY(row),
         group: shardGroup(row),
@@ -255,7 +314,7 @@ export function buildWave(sim: Sim): void {
   const challenge = isChallengeStage(sim.stage);
   const placements = challenge
     ? challengePlacements()
-    : standardPlacements(sim.stage);
+    : standardPlacements(sim);
 
   // Number the groups that actually hold a drone consecutively, so the wave
   // releases one group every `ENTER_GROUP_GAP` with no silent gap between two.

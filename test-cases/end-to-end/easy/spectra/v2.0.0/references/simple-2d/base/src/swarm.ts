@@ -72,14 +72,40 @@ const DIVE_WEAVE = 0.85;
 /** How long one weave takes. */
 const DIVE_WEAVE_PERIOD = 1.7;
 
-/** How long an entrance takes to straighten out of its opening arc. */
-const ENTER_TURN = 0.85;
+/**
+ * The entrance's two legs.
+ *
+ * A drone sweeps down INTO the field first, aiming at a waypoint out to its own
+ * side and well down the play field, and only then climbs back to its slot, so
+ * the entrance reads as the swoop `specs/swarm.md` allows — "the path may cross
+ * the upper field and curve back" — rather than as a straight drop onto the
+ * block. It also keeps an entrance a second and a half of flying at the very
+ * least, which is what makes an entrance something a player watches arrive.
+ *
+ * `ENTER_LEG` is how long the first leg aims at the waypoint and `ENTER_BLEND`
+ * how long the aim takes to slide from the waypoint onto the slot, so the turn is
+ * a curve rather than a corner.
+ */
+const ENTER_DEEP = 440;
+const ENTER_BOW = 150;
+const ENTER_LEG = 1.3;
+const ENTER_BLEND = 0.5;
 
 /** How far aside an entrance's steering starts, as the tangent of the angle. */
-const ENTER_SWIRL = 0.7;
+const ENTER_SWIRL = 0.5;
 
 /** How far below the field a wrapping dive aims. */
 const DIVE_DEPTH_WRAP = FIELD_BOTTOM + 60;
+
+/**
+ * How far above `FIELD_TOP` a wrapped dive re-appears.
+ *
+ * `specs/swarm.md` puts the drone back ABOVE the field rather than on its top
+ * edge, so the wrap reads as the one discontinuity it is: the drone leaves below
+ * `FIELD_BOTTOM` and comes back in from over the top strip, the same way it
+ * arrived when the wave opened.
+ */
+const WRAP_ABOVE = 24;
 
 /** How far down the field a looping dive turns back. */
 const DIVE_DEPTH_LOOP = 612;
@@ -170,20 +196,28 @@ function stepEntering(sim: Sim, drone: MutDrone, h: number): void {
   }
   drone.phaseClock += h;
   const slot = slotPoint(drone, sim.swayClock);
-  // The entrance aims at the slot from the first instant and sweeps in on an arc
-  // that straightens over `ENTER_TURN`, so the path curves toward the block from
-  // the drone's own side of it rather than running a straight diagonal.
-  const turn = Math.min(1, drone.phaseClock / ENTER_TURN);
   const side = drone.slotX < FORM_CENTER_X ? -1 : 1;
-  const lateral = ENTER_SWIRL * side * (1 - turn);
+
+  // The aim slides from the waypoint the first leg sweeps down to onto the slot
+  // itself, so the two legs meet as one curve.
+  const onto = Math.min(
+    1,
+    Math.max(0, (drone.phaseClock - ENTER_LEG) / ENTER_BLEND),
+  );
+  const aimX = (1 - onto) * (drone.slotX + side * ENTER_BOW) + onto * slot.x;
+  const aimY = (1 - onto) * ENTER_DEEP + onto * slot.y;
+  // A swirl that decays over the first leg, so the sweep reads as a bank rather
+  // than as a straight run at the waypoint.
+  const lateral =
+    ENTER_SWIRL * side * (1 - Math.min(1, drone.phaseClock / ENTER_LEG));
   const arrived = steer(
     drone,
-    slot.x,
-    slot.y,
+    aimX,
+    aimY,
     lateral,
     ENTER_SPEED * waveSpeedScale(sim.stage) * h,
   );
-  if (arrived) enterPhase(drone, "formation");
+  if (arrived && onto >= 1) enterPhase(drone, "formation");
 }
 
 /** One sub-step of a challenge drone sweeping across the field. */
@@ -254,7 +288,7 @@ function stepDiving(
   if (drone.y > FIELD_BOTTOM) {
     // The one discontinuity a dive may hold: out through the bottom and back in
     // above the top, where the run ends and the drone turns for its slot.
-    drone.y -= FIELD_BOTTOM - FIELD_TOP;
+    drone.y -= FIELD_BOTTOM - FIELD_TOP + WRAP_ABOVE;
     enterPhase(drone, "returning");
     return;
   }
@@ -352,7 +386,13 @@ function gone(sim: Sim, drone: MutDrone): boolean {
 export function stepSwarm(sim: Sim, h: number, events: FrameEvents): void {
   for (const drone of sim.drones) {
     stepOscillation(sim, drone, h);
-    if (!drone.travel) continue;
+    if (!drone.travel) {
+      // The travel gate holds the drone's LOCOMOTION alone
+      // (`specs/instrumentation.md`): its band clock, above, and its firing,
+      // here, run on exactly as they would have.
+      if (drone.phase === "diving") fireOnDive(sim, drone);
+      continue;
+    }
     switch (drone.phase) {
       case "entering":
         if (released(sim, drone)) stepEntering(sim, drone, h);
