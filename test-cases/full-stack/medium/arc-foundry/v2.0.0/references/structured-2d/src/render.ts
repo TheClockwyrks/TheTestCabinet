@@ -610,7 +610,10 @@ function drawYard(
  * focused layer marks the exact set the current selection would fold, brighter and on
  * top, in the combo accent once the set is explicit.
  */
-function drawCombineMarks(g: FoundryState, ctx: CanvasRenderingContext2D): void {
+function drawCombineMarks(
+  g: FoundryState,
+  ctx: CanvasRenderingContext2D,
+): void {
   const byId = new Map<number, Structure>();
   for (const s of g.structures) byId.set(s.id, s);
 

@@ -290,12 +290,7 @@ export interface FoundryDebugApi {
   setNextRoll(type: string, quality: number): void;
   clearNextRoll(): void;
   placeRock(col: number, row: number): void;
-  placeComponent(
-    type: string,
-    quality: number,
-    col: number,
-    row: number,
-  ): void;
+  placeComponent(type: string, quality: number, col: number, row: number): void;
   placeCombo(combo: string, col: number, row: number): void;
   placeBlocker(col: number, row: number): void;
   select(id: number): void;
@@ -635,7 +630,12 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
     setDifficulty(id) {
       setDifficulty(
         live(),
-        oneOf("setDifficulty", "difficulty", id, DIFFICULTY_IDS) as DifficultyId,
+        oneOf(
+          "setDifficulty",
+          "difficulty",
+          id,
+          DIFFICULTY_IDS,
+        ) as DifficultyId,
       );
     },
 
@@ -823,7 +823,11 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
       if (!comboById(state, n)) {
         invalid("setComboLevel", "an id a combination tower carries", id);
       }
-      setComboLevel(state, n, int("setComboLevel", "level", level, 0, COMBO_MAX_LEVEL));
+      setComboLevel(
+        state,
+        n,
+        int("setComboLevel", "level", level, 0, COMBO_MAX_LEVEL),
+      );
     },
 
     upgradeQuality() {
@@ -891,7 +895,8 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
       const state = live();
       const u = ownUnit(state, unit("setUnitSlow", state, id))!;
       const a = num("setUnitSlow", "amount", amount);
-      if (a < 0 || a > 1) invalid("setUnitSlow", "amount to be in 0..1", amount);
+      if (a < 0 || a > 1)
+        invalid("setUnitSlow", "amount to be in 0..1", amount);
       const s = num("setUnitSlow", "seconds", seconds);
       if (s < 0) invalid("setUnitSlow", "seconds to be at least 0", seconds);
       applySlow(state, u, a, s);

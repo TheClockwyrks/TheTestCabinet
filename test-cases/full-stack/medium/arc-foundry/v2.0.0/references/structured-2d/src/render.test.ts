@@ -1,15 +1,17 @@
 // Every screen, every overlay, and every inspector, drawn.
 //
-// The renderer is one pass over the state, so what is worth checking is that each state
+// The renderer is two passes over the state — the yard layer and the heads-up layer the
+// engine's pipeline calls in that order — so what is worth checking is that each state
 // the game can be in draws without a canvas call failing and that what it drew is
-// visibly different from an empty stage. Where a control sits is `src/layout.ts`, which
+// visibly different from an empty stage. The helper below stands in for the pipeline:
+// it clears the stage to the background the engine clears to and calls both layers, in
+// the order their layer numbers put them in. Where a control sits is `src/layout.ts`, which
 // the pointer and the debug surface read too, so the rectangles are checked here against
 // the game they belong to rather than against a screenshot.
 
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { noAssets } from "./assets";
 import { STAGE_H, STAGE_W } from "./constants";
 import { snapshot } from "./debug";
 import {
@@ -23,7 +25,7 @@ import {
   panelButtonControls,
   statusBarControls,
 } from "./layout";
-import { renderGame } from "./render";
+import { renderUiLayer, renderYardLayer } from "./render";
 import {
   addToCombineSet,
   advance,
@@ -49,7 +51,8 @@ import {
   armNextRoll,
 } from "./sim";
 import { footprintCenter } from "./tables";
-import type { FoundryWorld } from "./types";
+import type { FoundryState } from "./state";
+import { BACKGROUND } from "./game";
 
 let ctx: SKRSContext2D;
 
@@ -58,10 +61,19 @@ beforeEach(() => {
   ctx = canvas.getContext("2d");
 });
 
-/** Draw a state and report how many pixels are not the empty background. */
-function draw(w: FoundryWorld): number {
+/** The pipeline's own frame: the engine's clear, then both layers in layer order. */
+function paint(w: FoundryState): void {
+  const c = ctx as unknown as CanvasRenderingContext2D;
   ctx.clearRect(0, 0, STAGE_W, STAGE_H);
-  renderGame(w, ctx as unknown as CanvasRenderingContext2D);
+  ctx.fillStyle = BACKGROUND;
+  ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+  renderYardLayer(w, c);
+  renderUiLayer(w, c);
+}
+
+/** Draw a state and report how many pixels are not the empty background. */
+function draw(w: FoundryState): number {
+  paint(w);
   const { data } = ctx.getImageData(0, 0, STAGE_W, STAGE_H);
   let lit = 0;
   for (let i = 0; i < data.length; i += 4) {
@@ -71,17 +83,16 @@ function draw(w: FoundryWorld): number {
 }
 
 /** Draw a state and report a digest of the pixels, for comparing two frames. */
-function digest(w: FoundryWorld): number {
-  ctx.clearRect(0, 0, STAGE_W, STAGE_H);
-  renderGame(w, ctx as unknown as CanvasRenderingContext2D);
+function digest(w: FoundryState): number {
+  paint(w);
   const { data } = ctx.getImageData(0, 0, STAGE_W, STAGE_H);
   let hash = 0;
   for (let i = 0; i < data.length; i += 997) hash = (hash * 31 + data[i]!) | 0;
   return hash;
 }
 
-function opened(): FoundryWorld {
-  const w = createWorld(noAssets());
+function opened(): FoundryState {
+  const w = createWorld();
   resetWorld(w);
   startRun(w);
   clearStructures(w);
@@ -91,7 +102,7 @@ function opened(): FoundryWorld {
 
 describe("every screen draws", () => {
   it("draws the title, the map select, the difficulty select, and the rules", () => {
-    const w = createWorld(noAssets());
+    const w = createWorld();
     for (const screen of [
       "title",
       "mapselect",

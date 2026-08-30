@@ -876,18 +876,12 @@ function kill(w: FoundryState, u: Unit): void {
   raiseCue(w, "kill");
 }
 
-export function unitById(
-  w: FoundryState,
-  id: number,
-): Unit | null {
+export function unitById(w: FoundryState, id: number): Unit | null {
   for (const u of w.units) if (u.id === id) return u;
   return null;
 }
 
-export function componentById(
-  w: FoundryState,
-  id: number,
-): Component | null {
+export function componentById(w: FoundryState, id: number): Component | null {
   for (const s of w.structures)
     if (s.id === id && s.kind === "component") return s;
   return null;
@@ -1321,18 +1315,13 @@ export function removeSelected(w: FoundryState): void {
 
 // ---- Harvest and combining -----------------------------------------------
 
-export function candidateById(
-  w: FoundryState,
-  id: number,
-): Candidate | null {
+export function candidateById(w: FoundryState, id: number): Candidate | null {
   const s = w.structures.find((x) => x.id === id);
   return s && s.kind === "candidate" ? s : null;
 }
 
 export function candidates(w: FoundryState): Candidate[] {
-  return w.structures.filter(
-    (s): s is Candidate => s.kind === "candidate",
-  );
+  return w.structures.filter((s): s is Candidate => s.kind === "candidate");
 }
 
 /** A structure usable as a combine ingredient: it carries a type and a quality. */
@@ -1396,10 +1385,7 @@ export function downgradeSelected(w: FoundryState): void {
 }
 
 /** Whether a same-type, same-quality partner exists, so a quality fold is offered. */
-export function canCombine(
-  w: FoundryState,
-  c: Candidate | Component,
-): boolean {
+export function canCombine(w: FoundryState, c: Candidate | Component): boolean {
   return c.quality < MAX_QUALITY && combinePartnerOf(w, c) !== null;
 }
 
@@ -1600,7 +1586,10 @@ export function combineSelection(w: FoundryState): boolean {
 }
 
 /** The tower an explicit ingredient set assembles, or `null`. */
-function comboMatching(w: FoundryState, ids: readonly number[]): ComboId | null {
+function comboMatching(
+  w: FoundryState,
+  ids: readonly number[],
+): ComboId | null {
   const keys: string[] = [];
   const seen = new Set<number>();
   for (const id of ids) {
@@ -2267,25 +2256,16 @@ export function setUnitFrozen(u: Unit, frozen: boolean): void {
 
 // ---- Lookups an argument is validated against ----------------------------
 
-export function structureById(
-  w: FoundryState,
-  id: number,
-): Structure | null {
+export function structureById(w: FoundryState, id: number): Structure | null {
   return w.structures.find((s) => s.id === id) ?? null;
 }
 
-export function liveUnitById(
-  w: FoundryState,
-  id: number,
-): Unit | null {
+export function liveUnitById(w: FoundryState, id: number): Unit | null {
   const u = unitById(w, id);
   return u && !u.dead ? u : null;
 }
 
-export function comboById(
-  w: FoundryState,
-  id: number,
-): Component | null {
+export function comboById(w: FoundryState, id: number): Component | null {
   const c = componentById(w, id);
   return c && c.combo ? c : null;
 }

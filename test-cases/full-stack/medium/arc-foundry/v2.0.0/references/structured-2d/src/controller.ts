@@ -290,7 +290,8 @@ export class FoundryController extends PlayerController {
     for (const sample of this.input.pointerSamples()) {
       w.pointerX = sample.x;
       w.pointerY = sample.y;
-      if (sample.type === "down") this.handlePress(w, audio, sample.x, sample.y);
+      if (sample.type === "down")
+        this.handlePress(w, audio, sample.x, sample.y);
       else if (sample.type === "move") syncMenuIndex(w, controls(w));
     }
   }

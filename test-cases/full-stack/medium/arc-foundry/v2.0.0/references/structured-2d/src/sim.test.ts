@@ -6,7 +6,6 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { noAssets } from "./assets";
 import { snapshot } from "./debug";
 import {
   FIXED_STEP,
@@ -46,11 +45,11 @@ import {
   startRun,
 } from "./sim";
 import { footprintCenter, tileCenter } from "./tables";
-import type { FoundryWorld } from "./types";
+import type { FoundryState } from "./state";
 
 /** A run posed on an empty yard with nothing but what a check puts on it. */
-function openRun(seed = 1): FoundryWorld {
-  const w = createWorld(noAssets());
+function openRun(seed = 1): FoundryState {
+  const w = createWorld();
   resetWorld(w, seed);
   startRun(w);
   clearStructures(w);
@@ -59,7 +58,7 @@ function openRun(seed = 1): FoundryWorld {
 }
 
 /** The world's collector tile, in logical units. */
-function collectorAt(w: FoundryWorld): { x: number; y: number } {
+function collectorAt(w: FoundryState): { x: number; y: number } {
   const chain = board(w).chain;
   const node = chain[chain.length - 1]!;
   return tileCenter(node.col, node.row);
@@ -67,7 +66,7 @@ function collectorAt(w: FoundryWorld): { x: number; y: number } {
 
 describe("a run opens", () => {
   it("on its first build phase with the stated allocation", () => {
-    const w = createWorld(noAssets());
+    const w = createWorld();
     resetWorld(w);
     startRun(w);
     const s = snapshot(w);
@@ -277,7 +276,7 @@ describe("combining", () => {
 });
 
 describe("firing", () => {
-  let w: FoundryWorld;
+  let w: FoundryState;
   beforeEach(() => {
     w = openRun();
     setWave(w, 1);
@@ -588,7 +587,7 @@ describe("the maze", () => {
 
 describe("the maps and difficulties", () => {
   it("opens a run on the map and the difficulty last chosen", () => {
-    const w = createWorld(noAssets());
+    const w = createWorld();
     resetWorld(w);
     setMap(w, "transformer");
     setDifficulty(w, "easy");
@@ -603,7 +602,7 @@ describe("the maps and difficulties", () => {
 
 describe("a whole run", () => {
   /** The first anchor on the grid a structure may stand at, or `null` when the yard is full. */
-  function freeAnchor(w: FoundryWorld): { col: number; row: number } | null {
+  function freeAnchor(w: FoundryState): { col: number; row: number } | null {
     const b = board(w);
     for (let row = 0; row <= 31; row += 2) {
       for (let col = 0; col <= 48; col += 2) {
@@ -619,7 +618,7 @@ describe("a whole run", () => {
     // and cleared for real. The yard is stood up with apex structures and its integrity
     // held at full, because what is checked is that the campaign RESOLVES rather than
     // whether this particular maze is good enough to survive forty waves.
-    const w = createWorld(noAssets());
+    const w = createWorld();
     resetWorld(w, 5);
     setDifficulty(w, "easy");
     startRun(w);
