@@ -1,32 +1,69 @@
-/*
- * Coil validator: `presentation.body-drawn-from-sprite`. PLACEHOLDER.
- *
- * The body is drawn from a sprite.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * A live frame paints a straight body cell with an image draw rather than a
- * shape drawn in code.
- *
- * HOW:
- * pose a chain with a straight run, render a frame, and confirm an image draw
- * covers a middle body cell.
- *
- * MEDIA IT MUST CAPTURE: body (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// presentation/body-drawn-from-sprite — a straight body cell is painted with a
+// bitmap, not with a shape drawn in code.
+//
+// WHAT THE SPECIFICATION FIXES. `specs/assets.md` requires the snake "drawn from
+// produced sprites rather than from shapes drawn in code", and gives "a body cell
+// whose two neighbors lie opposite each other" the straight sprite, "turned to
+// that run's axis". It states the consequence too: "a body cell is never drawn as
+// a bare square". The closing table of things that stay drawn in code does not
+// hold the snake.
+//
+// WHAT IS READ. Whether an image draw landed on a body cell of a straight run.
+// The harness records every `drawImage` with the transform in force at the call
+// and maps its destination rectangle through it, so the cell a blit belongs to is
+// the cell its centre falls in whatever transform or quarter turn the build drew
+// under. Which file was painted is not read here: that a bend and a straight are
+// painted with DIFFERENT files is `presentation/corner-at-a-bend`, and that the
+// last cell is painted with another is `presentation/tail-at-the-last-cell`.
+//
+// THE CELL IT READS. Index `1` of a chain of four laid in one straight line: its
+// two neighbours are the head ahead of it and a body cell behind it, lying
+// opposite each other, and it is not the last cell of the chain — so it is the
+// straight run's own case rather than the bend's or the tail's.
+//
+// THE WORLD THIS POSES. The chain alone: the pellet cleared, the obstacle course
+// cleared, travel switched off, so nothing else could have blitted on that cell.
 
-test("presentation.body-drawn-from-sprite", () => {
-  throw new Error(
-    "validator not implemented: presentation/body-drawn-from-sprite.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertNotNull } from "../assert";
+import {
+  captureStill,
+  chainFrom,
+  createHarness,
+  HOME_HEAD,
+  poseScene,
+  spriteOnCell,
+  type Harness,
+} from "../harness";
+
+/** Head, two straight body cells, and the tail. */
+const LENGTH = 4;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("paints a straight body cell with an image draw", async () => {
+  const chain = chainFrom(HOME_HEAD, "right", LENGTH);
+  poseScene(h, {
+    snake: chain,
+    dir: "right",
+    pellet: null,
+    travel: false,
+  });
+
+  const blits = await h.frameBlits();
+  captureStill(h, "body");
+
+  const body = chain[1];
+  assertNotNull(
+    spriteOnCell(h, blits, body.col, body.row),
+    "the sprite an image draw painted on a straight body cell",
   );
 });

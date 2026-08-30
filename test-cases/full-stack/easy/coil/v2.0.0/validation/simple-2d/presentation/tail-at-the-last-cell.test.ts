@@ -1,32 +1,76 @@
-/*
- * Coil validator: `presentation.tail-at-the-last-cell`. PLACEHOLDER.
- *
- * The last cell is drawn with the tail sprite.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * In a chain holding a straight run, the image painted on the last cell of the
- * chain is not the image painted on a middle cell of that run.
- *
- * HOW:
- * pose a straight chain, render a frame, and compare the image painted on the
- * last cell against the one painted on a middle cell.
- *
- * MEDIA IT MUST CAPTURE: tail (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// presentation/tail-at-the-last-cell — the last cell of the chain is painted
+// with a different sprite from the run in front of it.
+//
+// WHAT THE SPECIFICATION FIXES. `specs/assets.md` gives "the last cell of the
+// chain" its own produced sprite, "the tail sprite, turned toward its one
+// neighbor", authored "with its one neighbor lying to the right". Every other
+// body cell takes the straight or the corner, so the end of the snake is a
+// different picture from the middle of it and the coil reads as a coil with an
+// end rather than as a tube stopping.
+//
+// WHAT IS READ, AND WHAT IS NOT. That the image painted on the last cell is not
+// the image painted on a middle cell of the same straight run. The harness names
+// a blit's source by the produced file its bytes were served from, so two blits
+// carry the same identity exactly when they painted the same file. It is
+// deliberately NOT read that the cell took `assets/snake/tail.png` by name — how
+// a build names the images it loads its produced files into is the build's, and
+// the file's own existence is `presentation/tail-sprite-produced`.
+//
+// THE CHAIN THIS POSES. Four cells laid in one straight line along row 8, so
+// that the run holds a middle cell whose two neighbours lie opposite each other
+// and the comparison is against the STRAIGHT sprite rather than the corner's.
+// Index `1` is that middle cell and index `3` is the last.
+//
+// THE WORLD THIS POSES. The chain alone: the pellet cleared, the obstacle course
+// cleared, travel switched off so the chain stays the chain that was posed.
 
-test("presentation.tail-at-the-last-cell", () => {
-  throw new Error(
-    "validator not implemented: presentation/tail-at-the-last-cell.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertNotEqual, assertNotNull } from "../assert";
+import {
+  captureStill,
+  chainFrom,
+  createHarness,
+  HOME_HEAD,
+  poseScene,
+  spriteOnCell,
+  type Harness,
+} from "../harness";
+
+/** Head, two straight body cells, and the last cell. */
+const LENGTH = 4;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("paints the last cell with a different sprite from a middle cell", async () => {
+  const chain = chainFrom(HOME_HEAD, "right", LENGTH);
+  poseScene(h, {
+    snake: chain,
+    dir: "right",
+    pellet: null,
+    travel: false,
+  });
+
+  const blits = await h.frameBlits();
+  captureStill(h, "tail");
+
+  const last = chain[chain.length - 1];
+  const middle = chain[1];
+  const onLast = spriteOnCell(h, blits, last.col, last.row);
+  const onMiddle = spriteOnCell(h, blits, middle.col, middle.row);
+  assertNotNull(onLast, "the sprite painted on the last cell of the chain");
+  assertNotNull(onMiddle, "the sprite painted on a middle cell of the run");
+
+  assertNotEqual(
+    onLast,
+    onMiddle,
+    "the sprite painted on the last cell, against the one on a middle cell",
   );
 });
