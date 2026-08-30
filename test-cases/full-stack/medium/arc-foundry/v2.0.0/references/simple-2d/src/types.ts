@@ -34,16 +34,22 @@ import type {
 import type { Burst } from "./particles";
 import type { Assets } from "./assets";
 
-/** A point on the stage, in logical units. */
+/**
+ * A point on the stage, in logical units.
+ *
+ * Immutable, as every geometric record below is: a route, a chain, and a footprint are
+ * BUILT rather than edited, so a frame replaces them wholesale and a copy of the world
+ * can carry them across untouched.
+ */
 export interface Pt {
-  x: number;
-  y: number;
+  readonly x: number;
+  readonly y: number;
 }
 
 /** A tile of the yard grid. */
 export interface TileRef {
-  col: number;
-  row: number;
+  readonly col: number;
+  readonly row: number;
 }
 
 /**
@@ -113,7 +119,8 @@ export type Structure = Component | Candidate | Blocker;
  * A combine resolves the instant it is committed, so the only thing left to settle here
  * is the one keep.
  */
-export type Harvest = { mode: "none" } | { mode: "keep"; id: number };
+export type Harvest =
+  { readonly mode: "none" } | { readonly mode: "keep"; readonly id: number };
 
 // ---- The Load ------------------------------------------------------------
 
@@ -142,7 +149,7 @@ export interface Unit {
   /** The checkpoint it is heading for, indexing `[entry, WP1..WP6, collector]`. */
   wpIndex: number;
   /** The current leg's route around the walls, as tile centers. Empty for a flyer. */
-  route: Pt[];
+  route: readonly Pt[];
   routeStep: number;
   /** The remaining route to that checkpoint, in tiles. */
   progress: number;
@@ -206,18 +213,19 @@ export interface Projectile {
 
 export interface SpawnEvent {
   /** When in the wave the unit is released, in milliseconds. */
-  atMs: number;
-  type: LoadType;
+  readonly atMs: number;
+  readonly type: LoadType;
 }
 
+/** A composed wave. Built once and never edited, so it is carried rather than copied. */
 export interface Wave {
-  wave: number;
-  events: SpawnEvent[];
-  durationMs: number;
+  readonly wave: number;
+  readonly events: readonly SpawnEvent[];
+  readonly durationMs: number;
   /** The distinct types present, in roster order, for the next-wave preview. */
-  types: LoadType[];
-  hasBoss: boolean;
-  hasAir: boolean;
+  readonly types: readonly LoadType[];
+  readonly hasBoss: boolean;
+  readonly hasAir: boolean;
 }
 
 // ---- Presentation events -------------------------------------------------
@@ -230,13 +238,13 @@ export interface Wave {
  * discharge a Dynamo's death and an apex tower's shot throw.
  */
 export interface FxEvent {
-  kind: EffectName;
-  x: number;
-  y: number;
-  x2?: number;
-  y2?: number;
-  quality?: number;
-  big?: boolean;
+  readonly kind: EffectName;
+  readonly x: number;
+  readonly y: number;
+  readonly x2?: number;
+  readonly y2?: number;
+  readonly quality?: number;
+  readonly big?: boolean;
 }
 
 // ---- The world -----------------------------------------------------------
@@ -291,7 +299,7 @@ export interface FoundryWorld {
   refinement: number;
   harvest: Harvest;
   /** The exact roll the surface armed for the next placed rock. */
-  armedRoll: { type: ComponentType; quality: number } | null;
+  armedRoll: { readonly type: ComponentType; readonly quality: number } | null;
 
   // ---- Run tallies ----
   kills: number;
@@ -326,7 +334,7 @@ export interface FoundryWorld {
   combatRng: number;
 
   // ---- The ground route, recomputed whenever the walls move ----
-  mazePath: Pt[];
+  mazePath: readonly Pt[];
   /** The route's length, in tiles. */
   mazeLength: number;
 

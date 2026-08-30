@@ -17,7 +17,12 @@
 // WHAT PLAYS WHEN. `specs/ui.md` fixes one cue per event, and the simulation raises each
 // at most once per frame, so a frame on which a whole pack dies plays one kill cue.
 
-import { CUES, type ComboId, type ComponentType, type CueName } from "./constants";
+import {
+  CUES,
+  type ComboId,
+  type ComponentType,
+  type CueName,
+} from "./constants";
 import type { Component } from "./types";
 import type { CueSpec, UpdateApi } from "@test-cabinet/simple-2d";
 

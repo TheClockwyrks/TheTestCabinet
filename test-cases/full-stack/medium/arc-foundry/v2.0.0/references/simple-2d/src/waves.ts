@@ -37,7 +37,10 @@ const POOL: readonly Weighted[] = [
  * the scaled pools the growth rule is stated over.
  */
 function basePool(events: readonly SpawnEvent[]): number {
-  return events.reduce((total, e) => total + LOAD_BY_TYPE[e.type].baseHealth, 0);
+  return events.reduce(
+    (total, e) => total + LOAD_BY_TYPE[e.type].baseHealth,
+    0,
+  );
 }
 
 /**
@@ -50,7 +53,8 @@ function basePool(events: readonly SpawnEvent[]): number {
  */
 function requiredBase(wave: number, diff: Difficulty): number {
   let most = 0;
-  for (let w = 1; w <= wave; w++) most = Math.max(most, basePool(rawMix(w, diff)));
+  for (let w = 1; w <= wave; w++)
+    most = Math.max(most, basePool(rawMix(w, diff)));
   return most;
 }
 
@@ -76,7 +80,9 @@ export function buildWave(wave: number, diff: Difficulty): Wave {
   }
 
   events.sort((a, b) => a.atMs - b.atMs);
-  const durationMs = events.length ? events[events.length - 1]!.atMs + 1500 : 1500;
+  const durationMs = events.length
+    ? events[events.length - 1]!.atMs + 1500
+    : 1500;
 
   const present = new Set(events.map((e) => e.type));
   const types = LOAD_TYPES.filter((t) => present.has(t));

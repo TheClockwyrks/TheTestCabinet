@@ -75,7 +75,10 @@ export const FOOTPRINT_PX = FOOTPRINT * TILE;
 
 /** A tile's center, in logical units. */
 export function tileCenter(col: number, row: number): Pt {
-  return { x: GRID_X0 + TILE * col + TILE / 2, y: GRID_Y0 + TILE * row + TILE / 2 };
+  return {
+    x: GRID_X0 + TILE * col + TILE / 2,
+    y: GRID_Y0 + TILE * row + TILE / 2,
+  };
 }
 
 /** A footprint's center, which is what range, targeting, and drawing use. */
@@ -85,9 +88,8 @@ export function footprintCenter(col: number, row: number): Pt {
 
 // ---- Keyed lookups over the specification's ordered tables ---------------
 
-export const MAP_BY_ID: Readonly<Record<MapId, FoundryMap>> = Object.fromEntries(
-  MAPS.map((m) => [m.id, m]),
-) as Record<MapId, FoundryMap>;
+export const MAP_BY_ID: Readonly<Record<MapId, FoundryMap>> =
+  Object.fromEntries(MAPS.map((m) => [m.id, m])) as Record<MapId, FoundryMap>;
 
 export const LOAD_BY_TYPE: Readonly<Record<LoadType, LoadUnitType>> =
   Object.fromEntries(LOAD_ROSTER.map((u) => [u.type, u])) as Record<
@@ -233,7 +235,9 @@ export function comboStats(combo: ComboId, level = 0): Stats {
  */
 export function comboUpgradeCost(combo: ComboId, level: number): number | null {
   if (level >= COMBO_MAX_LEVEL) return null;
-  return Math.round(COMBO_BY_ID[combo].damage * COMBO_UPGRADE_COST_FRAC[level]!);
+  return Math.round(
+    COMBO_BY_ID[combo].damage * COMBO_UPGRADE_COST_FRAC[level]!,
+  );
 }
 
 /** The Charge that buys refinement level `level + 1`, or `null` at the top rung. */

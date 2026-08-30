@@ -15,7 +15,14 @@
 // and the units it is about. Nothing in this module draws or reads a clock, so the
 // pathing runs identically under a browser frame and under a counted advance.
 
-import { GRID_COLS, GRID_ROWS, MAPS, TILE, type FoundryMap, type MapId } from "./constants";
+import {
+  GRID_COLS,
+  GRID_ROWS,
+  MAPS,
+  TILE,
+  type FoundryMap,
+  type MapId,
+} from "./constants";
 import {
   GRID_X0,
   GRID_Y0,
@@ -148,7 +155,12 @@ export class Board {
   /** Whether a tile lies inside one of the map's fixed housings. */
   isFixed(col: number, row: number): boolean {
     for (const h of this.map.housings) {
-      if (col >= h.minCol && col <= h.maxCol && row >= h.minRow && row <= h.maxRow)
+      if (
+        col >= h.minCol &&
+        col <= h.maxCol &&
+        row >= h.minRow &&
+        row <= h.maxRow
+      )
         return true;
     }
     return false;
@@ -160,7 +172,9 @@ export class Board {
 
   /** Whether a footprint anchored here fits wholly on the grid. */
   anchorInBounds(col: number, row: number): boolean {
-    return col >= 0 && col <= MAX_ANCHOR_COL && row >= 0 && row <= MAX_ANCHOR_ROW;
+    return (
+      col >= 0 && col <= MAX_ANCHOR_COL && row >= 0 && row <= MAX_ANCHOR_ROW
+    );
   }
 
   /** The four tiles a footprint anchored here covers. */
@@ -348,7 +362,8 @@ export class Board {
   /** Whether every consecutive segment of the chain still has an open route. */
   chainOpen(occ: Occupancy): boolean {
     for (let i = 1; i < this.chain.length; i++) {
-      if (!this.segmentOpen(this.chain[i - 1]!, this.chain[i]!, occ)) return false;
+      if (!this.segmentOpen(this.chain[i - 1]!, this.chain[i]!, occ))
+        return false;
     }
     return true;
   }
@@ -396,7 +411,12 @@ export class Board {
     for (const u of units) {
       if (u.dead || u.flies) continue;
       const at = this.pixelToTile(u.x, u.y);
-      if (at.col >= col && at.col <= col + 1 && at.row >= row && at.row <= row + 1)
+      if (
+        at.col >= col &&
+        at.col <= col + 1 &&
+        at.row >= row &&
+        at.row <= row + 1
+      )
         return false;
     }
     return !this.wouldSeal(col, row, structures, units);
@@ -415,7 +435,11 @@ export class Board {
     const nodeCenter = tileCenter(node.col, node.row);
     if (flying) return [nodeCenter];
     const fromTile = this.pixelToTile(from.x, from.y);
-    const path = this.pathTiles(fromTile, { col: node.col, row: node.row }, occ);
+    const path = this.pathTiles(
+      fromTile,
+      { col: node.col, row: node.row },
+      occ,
+    );
     if (!path || path.length <= 1) return [nodeCenter];
     return path.slice(1);
   }

@@ -69,7 +69,9 @@ import {
   type Stats,
 } from "./tables";
 import { buildWave } from "./waves";
+import type { FoundryView } from "./world";
 import type { Assets } from "./assets";
+import type { DeepReadonly } from "ts-essentials";
 import type {
   Blocker,
   Candidate,
@@ -101,21 +103,48 @@ const PRESS_SEED = 0x51a6c0de;
 /** What the crit generator is derived from, so the two streams never run in step. */
 const COMBAT_SALT = 0x2f9d3b17;
 
-// ---- Derivations off the world -------------------------------------------
+// ---- Reading a world, and advancing one ----------------------------------
+//
+// A function that ADVANCES the world takes a `FoundryWorld`: a world the caller owns
+// outright, which `src/world.ts` produced for it. A function that only READS one takes a
+// `FoundryView`, so the renderer, the diagnostics, and the surface's readings — none of
+// which owns a world — reach exactly the same queries the simulation does, and a caller
+// that does own one passes it straight in. A reader hands back what it found under the
+// same read-only view it was reading, so nothing that came out of a query can be
+// written through.
 
 /** The board of the world's map. */
-export function board(w: FoundryWorld): Board {
+export function board(w: FoundryView): Board {
   return boardOf(w.mapId);
 }
 
 /** The world's difficulty. */
-export function difficulty(w: FoundryWorld) {
+export function difficulty(w: FoundryView) {
   return DIFFICULTY_BY_ID[w.difficultyId];
 }
 
 /** The occupancy of the yard as it now stands. */
-export function occupancyOf(w: FoundryWorld): Occupancy {
+export function occupancyOf(w: FoundryView): Occupancy {
   return board(w).occupancy(w.structures);
+}
+
+/** The component with this identity, in a world the caller may advance. */
+function ownComponent(w: FoundryWorld, id: number): Component | null {
+  for (const s of w.structures)
+    if (s.id === id && s.kind === "component") return s;
+  return null;
+}
+
+/** The candidate with this identity, in a world the caller may advance. */
+function ownCandidate(w: FoundryWorld, id: number): Candidate | null {
+  const s = w.structures.find((x) => x.id === id);
+  return s && s.kind === "candidate" ? s : null;
+}
+
+/** The live unit with this identity, in a world the caller may advance. */
+export function ownUnit(w: FoundryWorld, id: number): Unit | null {
+  const u = w.units.find((x) => x.id === id);
+  return u && !u.dead ? u : null;
 }
 
 /** The next draw from the scrap-press generator, advancing the world's copy of it. */
@@ -512,7 +541,13 @@ export function refreshMaze(w: FoundryWorld): void {
  * sum is capped, so a wall of Regulators cannot run away with the run.
  */
 export function recomputeAuras(w: FoundryWorld): void {
-  const sources: { x: number; y: number; r2: number; bonus: number; id: number }[] = [];
+  const sources: {
+    x: number;
+    y: number;
+    r2: number;
+    bonus: number;
+    id: number;
+  }[] = [];
   for (const s of w.structures) {
     if (s.kind !== "component") continue;
     const st = unbuffedStats(s);
@@ -546,8 +581,10 @@ export function recomputeAuras(w: FoundryWorld): void {
 }
 
 /** A structure's own block, before any aura on it. */
-export function unbuffedStats(c: Component): Stats {
-  return c.combo ? comboStats(c.combo, c.comboLevel) : baseStats(c.type, c.quality);
+export function unbuffedStats(c: DeepReadonly<Component>): Stats {
+  return c.combo
+    ? comboStats(c.combo, c.comboLevel)
+    : baseStats(c.type, c.quality);
 }
 
 /**
@@ -556,9 +593,10 @@ export function unbuffedStats(c: Component): Stats {
  * The buffed figure is deliberately not rounded: the aura multiplies the per-shot
  * damage and the product carries its fraction into the hit.
  */
-export function statsOf(c: Component): Stats {
+export function statsOf(c: DeepReadonly<Component>): Stats {
   const st = unbuffedStats(c);
-  if (c.auraBonus > 0 && st.dmg > 0) return { ...st, dmg: st.dmg * (1 + c.auraBonus) };
+  if (c.auraBonus > 0 && st.dmg > 0)
+    return { ...st, dmg: st.dmg * (1 + c.auraBonus) };
   return st;
 }
 
@@ -573,7 +611,10 @@ function stepComponents(w: FoundryWorld, dt: number): void {
     const center = footprintCenter(s.col, s.row);
     const targets = pickTargets(w, s, stats, center);
     if (targets.length > 0) {
-      s.aimAngle = Math.atan2(targets[0]!.y - center.y, targets[0]!.x - center.x);
+      s.aimAngle = Math.atan2(
+        targets[0]!.y - center.y,
+        targets[0]!.x - center.x,
+      );
     }
     s.cooldown -= dt;
     if (s.cooldown > 0 || targets.length === 0) continue;
@@ -614,12 +655,7 @@ function pickTargets(
  * Every priority breaks its ties toward the unit further along the chain, and then by
  * identity, so the choice never depends on the order the units happen to sit in.
  */
-function rank(
-  mode: TargetingPriority,
-  a: Unit,
-  b: Unit,
-  center: Pt,
-): number {
+function rank(mode: TargetingPriority, a: Unit, b: Unit, center: Pt): number {
   let primary = 0;
   switch (mode) {
     case "first":
@@ -725,7 +761,7 @@ function launchProjectile(
 function stepProjectiles(w: FoundryWorld, dt: number): void {
   for (const p of w.projectiles) {
     if (p.dead) continue;
-    const target = unitById(w, p.targetId);
+    const target = w.units.find((u) => u.id === p.targetId) ?? null;
     if (!target || target.dead) {
       // The target is gone, so the shot misses and is spent.
       p.dead = true;
@@ -827,13 +863,14 @@ function hit(w: FoundryWorld, p: Projectile, u: Unit, dmg: number): void {
   if (u.invincible) {
     tallyRating(w, dmg, p.sourceId);
     if (p.slowAmt > 0) applySlow(w, u, p.slowAmt, p.slowDur);
-    if (p.burnFrac > 0) applyBurn(w, u, p.dmg * p.burnFrac, p.burnDur, p.sourceId);
+    if (p.burnFrac > 0)
+      applyBurn(w, u, p.dmg * p.burnFrac, p.burnDur, p.sourceId);
     return;
   }
   // Only damage that lands is tallied, never the overkill past zero.
   const applied = Math.min(dmg, Math.max(0, u.hp));
   u.hp -= dmg;
-  const src = componentById(w, p.sourceId);
+  const src = ownComponent(w, p.sourceId);
   if (src) src.damageDealt += applied;
   if (u.hp <= 0) {
     if (src) src.kills += 1;
@@ -841,13 +878,14 @@ function hit(w: FoundryWorld, p: Projectile, u: Unit, dmg: number): void {
     return;
   }
   if (p.slowAmt > 0) applySlow(w, u, p.slowAmt, p.slowDur);
-  if (p.burnFrac > 0) applyBurn(w, u, p.dmg * p.burnFrac, p.burnDur, p.sourceId);
+  if (p.burnFrac > 0)
+    applyBurn(w, u, p.dmg * p.burnFrac, p.burnDur, p.sourceId);
 }
 
 /** Credit damage dealt to the finale's boss: the run's rating, and the tower's tally. */
 function tallyRating(w: FoundryWorld, dmg: number, sourceId: number): void {
   w.mazeRating += dmg;
-  const src = componentById(w, sourceId);
+  const src = ownComponent(w, sourceId);
   if (src) src.damageDealt += dmg;
 }
 
@@ -891,13 +929,20 @@ function kill(w: FoundryWorld, u: Unit): void {
   raiseCue(w, "kill");
 }
 
-export function unitById(w: FoundryWorld, id: number): Unit | null {
+export function unitById(
+  w: FoundryView,
+  id: number,
+): DeepReadonly<Unit> | null {
   for (const u of w.units) if (u.id === id) return u;
   return null;
 }
 
-export function componentById(w: FoundryWorld, id: number): Component | null {
-  for (const s of w.structures) if (s.id === id && s.kind === "component") return s;
+export function componentById(
+  w: FoundryView,
+  id: number,
+): DeepReadonly<Component> | null {
+  for (const s of w.structures)
+    if (s.id === id && s.kind === "component") return s;
   return null;
 }
 
@@ -920,7 +965,7 @@ function stepUnits(w: FoundryWorld, dt: number, occ: Occupancy): void {
       } else {
         const applied = Math.min(bd, Math.max(0, u.hp));
         u.hp -= bd;
-        const src = componentById(w, u.burnSourceId);
+        const src = ownComponent(w, u.burnSourceId);
         if (src) src.damageDealt += applied;
         if (u.hp <= 0) {
           if (src) src.kills += 1;
@@ -1089,7 +1134,10 @@ function beginWave(w: FoundryWorld): void {
   w.waveClock = 0;
   recomputeAuras(w);
   refreshMaze(w);
-  w.nextWave = buildWave(Math.min(w.wave + 1, difficulty(w).waves), difficulty(w));
+  w.nextWave = buildWave(
+    Math.min(w.wave + 1, difficulty(w).waves),
+    difficulty(w),
+  );
 }
 
 function resolveHarvest(w: FoundryWorld): void {
@@ -1114,7 +1162,13 @@ function resolveHarvest(w: FoundryWorld): void {
 function promoteToComponent(w: FoundryWorld, cand: Candidate): void {
   const i = w.structures.findIndex((s) => s.id === cand.id);
   if (i < 0) return;
-  const comp = newComponent(cand.id, cand.type, cand.quality, cand.col, cand.row);
+  const comp = newComponent(
+    cand.id,
+    cand.type,
+    cand.quality,
+    cand.col,
+    cand.row,
+  );
   w.structures[i] = comp;
   const at = footprintCenter(comp.col, comp.row);
   w.fxQueue.push({ kind: "combine", x: at.x, y: at.y, quality: comp.quality });
@@ -1170,12 +1224,12 @@ function lose(w: FoundryWorld): void {
 
 // ---- The scrap-press -----------------------------------------------------
 
-export function stampsLeft(w: FoundryWorld): number {
+export function stampsLeft(w: FoundryView): number {
   return Math.max(0, STAMPS_PER_LEVEL - w.stampsUsed);
 }
 
 /** The press may be pulled in a build phase, with a stamp of the allowance left. */
-export function canStamp(w: FoundryWorld): boolean {
+export function canStamp(w: FoundryView): boolean {
   return (
     w.screen === "playing" &&
     w.phase === "build" &&
@@ -1214,7 +1268,11 @@ function rollQuality(w: FoundryWorld): number {
 }
 
 /** The blocker whose footprint is exactly this anchor, which a rock would reroll. */
-function blockerAtAnchor(w: FoundryWorld, col: number, row: number): Blocker | null {
+function blockerAtAnchor(
+  w: FoundryView,
+  col: number,
+  row: number,
+): DeepReadonly<Blocker> | null {
   for (const s of w.structures) {
     if (s.kind === "blocker" && s.col === col && s.row === row) return s;
   }
@@ -1222,7 +1280,7 @@ function blockerAtAnchor(w: FoundryWorld, col: number, row: number): Blocker | n
 }
 
 /** Where a rock may land: a legal empty footprint, or exactly onto a blocker. */
-export function canPlaceAt(w: FoundryWorld, col: number, row: number): boolean {
+export function canPlaceAt(w: FoundryView, col: number, row: number): boolean {
   if (w.screen !== "playing" || w.phase !== "build") return false;
   if (blockerAtAnchor(w, col, row)) return true;
   return board(w).canPlace(col, row, w.structures, w.units);
@@ -1250,7 +1308,8 @@ export function placeStamp(
     // An illegal spot: the rock stays on the cursor and nothing is spent.
     return null;
   }
-  if (onBlocker) w.structures = w.structures.filter((s) => s.id !== onBlocker.id);
+  if (onBlocker)
+    w.structures = w.structures.filter((s) => s.id !== onBlocker.id);
   w.stampsUsed += 1;
   const armed = w.armedRoll;
   w.armedRoll = null;
@@ -1283,7 +1342,7 @@ export function cancelHeld(w: FoundryWorld): void {
 
 // ---- Dismantle -----------------------------------------------------------
 
-export function canRemove(w: FoundryWorld, id: number): boolean {
+export function canRemove(w: FoundryView, id: number): boolean {
   if (w.screen !== "playing" || w.phase !== "build") return false;
   return w.structures.some((s) => s.id === id);
 }
@@ -1299,7 +1358,8 @@ export function removeStructure(w: FoundryWorld, id: number): boolean {
   if (w.screen !== "playing" || w.phase !== "build") return false;
   const i = w.structures.findIndex((s) => s.id === id);
   if (i < 0) return false;
-  if (w.harvest.mode === "keep" && w.harvest.id === id) w.harvest = { mode: "none" };
+  if (w.harvest.mode === "keep" && w.harvest.id === id)
+    w.harvest = { mode: "none" };
   w.structures.splice(i, 1);
   if (w.selectedId === id) w.selectedId = null;
   const at = w.selectedIds.indexOf(id);
@@ -1314,20 +1374,25 @@ export function removeSelected(w: FoundryWorld): void {
 
 // ---- Harvest and combining -----------------------------------------------
 
-export function candidateById(w: FoundryWorld, id: number): Candidate | null {
+export function candidateById(
+  w: FoundryView,
+  id: number,
+): DeepReadonly<Candidate> | null {
   const s = w.structures.find((x) => x.id === id);
   return s && s.kind === "candidate" ? s : null;
 }
 
-export function candidates(w: FoundryWorld): Candidate[] {
-  return w.structures.filter((s): s is Candidate => s.kind === "candidate");
+export function candidates(w: FoundryView): DeepReadonly<Candidate>[] {
+  return w.structures.filter(
+    (s): s is DeepReadonly<Candidate> => s.kind === "candidate",
+  );
 }
 
 /** A structure usable as a combine ingredient: it carries a type and a quality. */
 export function baseStructureById(
-  w: FoundryWorld,
+  w: FoundryView,
   id: number,
-): Candidate | Component | null {
+): DeepReadonly<Candidate | Component> | null {
   const s = w.structures.find((x) => x.id === id);
   if (!s) return null;
   if (s.kind === "candidate") return s;
@@ -1355,7 +1420,7 @@ export function keepSelected(w: FoundryWorld): void {
 }
 
 /** Whether a candidate may be harvested one rung lower. */
-export function canDowngrade(w: FoundryWorld, id: number): boolean {
+export function canDowngrade(w: FoundryView, id: number): boolean {
   if (w.screen !== "playing" || w.phase !== "build") return false;
   const cand = candidateById(w, id);
   return !!cand && cand.quality > 1;
@@ -1370,7 +1435,7 @@ export function canDowngrade(w: FoundryWorld, id: number): boolean {
  */
 export function downgrade(w: FoundryWorld, id: number): boolean {
   if (!canDowngrade(w, id)) return false;
-  const cand = candidateById(w, id)!;
+  const cand = ownCandidate(w, id)!;
   cand.quality -= 1;
   const at = footprintCenter(cand.col, cand.row);
   w.fxQueue.push({ kind: "build", x: at.x, y: at.y, quality: cand.quality });
@@ -1384,7 +1449,10 @@ export function downgradeSelected(w: FoundryWorld): void {
 }
 
 /** Whether a same-type, same-quality partner exists, so a quality fold is offered. */
-export function canCombine(w: FoundryWorld, c: Candidate | Component): boolean {
+export function canCombine(
+  w: FoundryView,
+  c: DeepReadonly<Candidate | Component>,
+): boolean {
   return c.quality < MAX_QUALITY && combinePartnerOf(w, c) !== null;
 }
 
@@ -1394,11 +1462,11 @@ export function canCombine(w: FoundryWorld, c: Candidate | Component): boolean {
  * structure already invested in.
  */
 export function combinePartnerOf(
-  w: FoundryWorld,
-  c: Candidate | Component,
-): Candidate | Component | null {
+  w: FoundryView,
+  c: DeepReadonly<Candidate | Component>,
+): DeepReadonly<Candidate | Component> | null {
   if (c.quality >= MAX_QUALITY) return null;
-  let standing: Component | null = null;
+  let standing: DeepReadonly<Component> | null = null;
   for (const s of w.structures) {
     if (s.id === c.id) continue;
     if (s.kind === "candidate") {
@@ -1411,7 +1479,7 @@ export function combinePartnerOf(
 }
 
 /** The explicit combine set: the primary first, then the added structures. */
-export function combineSet(w: FoundryWorld): number[] {
+export function combineSet(w: FoundryView): number[] {
   const ids: number[] = [];
   const push = (id: number | null): void => {
     if (id === null) return;
@@ -1439,7 +1507,8 @@ function combineQualityNow(
   const partner = baseStructureById(w, partnerId);
   if (!anchor || !partner || anchor.id === partner.id) return false;
   if (anchor.quality >= MAX_QUALITY) return false;
-  if (partner.type !== anchor.type || partner.quality !== anchor.quality) return false;
+  if (partner.type !== anchor.type || partner.quality !== anchor.quality)
+    return false;
 
   const consumedFreshRoll =
     anchor.kind === "candidate" || partner.kind === "candidate";
@@ -1495,7 +1564,9 @@ function combineRecipeNow(
   if (!anchor || !ingredientIds.includes(anchorId)) return false;
   if (!recipeSatisfied(w, combo, ingredientIds)) return false;
 
-  const consumedFreshRoll = ingredientIds.some((id) => candidateById(w, id) !== null);
+  const consumedFreshRoll = ingredientIds.some(
+    (id) => candidateById(w, id) !== null,
+  );
   for (const id of ingredientIds) {
     if (id === anchor.id) continue;
     const idx = w.structures.findIndex((s) => s.id === id);
@@ -1553,7 +1624,11 @@ export function combineSelection(w: FoundryWorld): boolean {
     if (set.length === 2) {
       const a = baseStructureById(w, set[0]!)!;
       const b = baseStructureById(w, set[1]!)!;
-      if (a.quality < MAX_QUALITY && a.type === b.type && a.quality === b.quality) {
+      if (
+        a.quality < MAX_QUALITY &&
+        a.type === b.type &&
+        a.quality === b.quality
+      ) {
         return combineQualityNow(w, anchor, set[1]!);
       }
     }
@@ -1567,13 +1642,18 @@ export function combineSelection(w: FoundryWorld): boolean {
   if (partner) return combineQualityNow(w, anchor, partner.id);
   const recipes = reachableCombos(w, base);
   if (recipes.length >= 1) {
-    return combineRecipeNow(w, anchor, recipes[0]!.combo, recipes[0]!.ingredientIds);
+    return combineRecipeNow(
+      w,
+      anchor,
+      recipes[0]!.combo,
+      recipes[0]!.ingredientIds,
+    );
   }
   return false;
 }
 
 /** The tower an explicit ingredient set assembles, or `null`. */
-function comboMatching(w: FoundryWorld, ids: readonly number[]): ComboId | null {
+function comboMatching(w: FoundryView, ids: readonly number[]): ComboId | null {
   const keys: string[] = [];
   const seen = new Set<number>();
   for (const id of ids) {
@@ -1585,12 +1665,13 @@ function comboMatching(w: FoundryWorld, ids: readonly number[]): ComboId | null 
     keys.push(k);
   }
   const key = keys.sort().join(",");
-  for (const combo of COMBOS) if (recipeKey(combo.recipe) === key) return combo.id;
+  for (const combo of COMBOS)
+    if (recipeKey(combo.recipe) === key) return combo.id;
   return null;
 }
 
 /** A structure's ingredient key, or `null` when it can never be an ingredient. */
-function ingredientKeyOf(s: Structure): string | null {
+function ingredientKeyOf(s: DeepReadonly<Structure>): string | null {
   if (s.kind === "candidate") return `${s.type}@${s.quality}`;
   if (s.kind === "component" && !s.combo) return `${s.type}@${s.quality}`;
   return null;
@@ -1604,8 +1685,8 @@ function ingredientKeyOf(s: Structure): string | null {
  * this phase's rolls before it eats standing structures.
  */
 export function reachableCombos(
-  w: FoundryWorld,
-  anchor: Candidate | Component,
+  w: FoundryView,
+  anchor: DeepReadonly<Candidate | Component>,
 ): { combo: ComboId; ingredientIds: number[] }[] {
   const anchorKey = `${anchor.type}@${anchor.quality}`;
   const avail = new Map<string, number[]>();
@@ -1639,7 +1720,8 @@ export function reachableCombos(
     const ids: number[] = [];
     for (const [k, count] of need) {
       let list = avail.get(k)!.slice();
-      if (k === anchorKey) list = [anchor.id, ...list.filter((id) => id !== anchor.id)];
+      if (k === anchorKey)
+        list = [anchor.id, ...list.filter((id) => id !== anchor.id)];
       for (let i = 0; i < count; i++) ids.push(list[i]!);
     }
     out.push({ combo: combo.id, ingredientIds: ids });
@@ -1649,7 +1731,7 @@ export function reachableCombos(
 
 /** The reachable recipes for a structure identity, empty unless it is a base structure. */
 export function reachableCombosFor(
-  w: FoundryWorld,
+  w: FoundryView,
   id: number,
 ): { combo: ComboId; ingredientIds: number[] }[] {
   const base = baseStructureById(w, id);
@@ -1658,7 +1740,7 @@ export function reachableCombosFor(
 
 /** Whether a set of identities still exactly matches a recipe's multiset. */
 function recipeSatisfied(
-  w: FoundryWorld,
+  w: FoundryView,
   combo: ComboId,
   ingredientIds: readonly number[],
 ): boolean {
@@ -1683,7 +1765,11 @@ function recipeSatisfied(
  * player chooses which duplicates fold; otherwise the ingredients are picked from the
  * yard.
  */
-export function combineRecipe(w: FoundryWorld, id: number, combo: ComboId): boolean {
+export function combineRecipe(
+  w: FoundryWorld,
+  id: number,
+  combo: ComboId,
+): boolean {
   const base = baseStructureById(w, id);
   if (!base) return false;
   const set = combineSet(w);
@@ -1695,7 +1781,10 @@ export function combineRecipe(w: FoundryWorld, id: number, combo: ComboId): bool
   return combineRecipeNow(w, id, combo, option.ingredientIds);
 }
 
-export function combineRecipeSelected(w: FoundryWorld, combo: ComboId): boolean {
+export function combineRecipeSelected(
+  w: FoundryWorld,
+  combo: ComboId,
+): boolean {
   return w.selectedId !== null ? combineRecipe(w, w.selectedId, combo) : false;
 }
 
@@ -1713,7 +1802,7 @@ export function combineFrom(w: FoundryWorld, id: number): boolean {
 
 // ---- Refinement ----------------------------------------------------------
 
-export function refineCost(w: FoundryWorld): number | null {
+export function refineCost(w: FoundryView): number | null {
   return refinementCost(w.refinement);
 }
 
@@ -1721,7 +1810,7 @@ export function refineCost(w: FoundryWorld): number | null {
  * Refining is allowed in any phase: it only biases future rolls, so there is no reason
  * to close it during a live wave, and it keeps a Charge sink open while one runs.
  */
-export function canUpgradeQuality(w: FoundryWorld): boolean {
+export function canUpgradeQuality(w: FoundryView): boolean {
   const cost = refineCost(w);
   return w.screen === "playing" && cost !== null && w.charge >= cost;
 }
@@ -1736,11 +1825,11 @@ export function upgradeQuality(w: FoundryWorld): boolean {
 
 // ---- Combination-tower upgrades ------------------------------------------
 
-export function comboUpgradeCostFor(c: Component): number | null {
+export function comboUpgradeCostFor(c: DeepReadonly<Component>): number | null {
   return c.combo ? comboUpgradeCost(c.combo, c.comboLevel) : null;
 }
 
-export function canUpgradeCombo(w: FoundryWorld, id: number): boolean {
+export function canUpgradeCombo(w: FoundryView, id: number): boolean {
   if (w.screen !== "playing") return false;
   const s = w.structures.find((x) => x.id === id);
   if (!s || s.kind !== "component" || !s.combo) return false;
@@ -1750,7 +1839,7 @@ export function canUpgradeCombo(w: FoundryWorld, id: number): boolean {
 
 export function upgradeCombo(w: FoundryWorld, id: number): boolean {
   if (!canUpgradeCombo(w, id)) return false;
-  const s = w.structures.find((x) => x.id === id) as Component;
+  const s = ownComponent(w, id)!;
   const cost = comboUpgradeCost(s.combo!, s.comboLevel)!;
   w.charge -= cost;
   s.comboLevel = Math.min(COMBO_MAX_LEVEL, s.comboLevel + 1);
@@ -1783,8 +1872,9 @@ export function cycleTargeting(c: Component): void {
 }
 
 export function cycleTargetingSelected(w: FoundryWorld): void {
-  const s = selected(w);
-  if (s && s.kind === "component") cycleTargeting(s);
+  if (w.selectedId === null) return;
+  const c = ownComponent(w, w.selectedId);
+  if (c) cycleTargeting(c);
 }
 
 export function setTargetingById(
@@ -1792,7 +1882,7 @@ export function setTargetingById(
   id: number,
   priority: TargetingPriority,
 ): void {
-  const c = componentById(w, id);
+  const c = ownComponent(w, id);
   if (c) setTargeting(c, priority);
 }
 
@@ -1848,24 +1938,33 @@ export function clearCombineSet(w: FoundryWorld): void {
   w.selectedIds = [];
 }
 
-export function structureAt(w: FoundryWorld, x: number, y: number): Structure | null {
+export function structureAt(
+  w: FoundryView,
+  x: number,
+  y: number,
+): DeepReadonly<Structure> | null {
   const t = board(w).pixelToTile(x, y);
   for (const s of w.structures) {
-    if (t.col >= s.col && t.col <= s.col + 1 && t.row >= s.row && t.row <= s.row + 1) {
+    if (
+      t.col >= s.col &&
+      t.col <= s.col + 1 &&
+      t.row >= s.row &&
+      t.row <= s.row + 1
+    ) {
       return s;
     }
   }
   return null;
 }
 
-export function selected(w: FoundryWorld): Structure | null {
+export function selected(w: FoundryView): DeepReadonly<Structure> | null {
   if (w.selectedId === null) return null;
   return w.structures.find((s) => s.id === w.selectedId) ?? null;
 }
 
 /** The explicitly added structures that still exist, for the renderer. */
-export function extraSelected(w: FoundryWorld): Structure[] {
-  const out: Structure[] = [];
+export function extraSelected(w: FoundryView): DeepReadonly<Structure>[] {
+  const out: DeepReadonly<Structure>[] = [];
   for (const id of w.selectedIds) {
     const s = w.structures.find((x) => x.id === id);
     if (s) out.push(s);
@@ -1875,15 +1974,15 @@ export function extraSelected(w: FoundryWorld): Structure[] {
 
 // ---- The wave, as the HUD reads it ---------------------------------------
 
-export function currentWave(w: FoundryWorld): Wave {
+export function currentWave(w: FoundryView): Wave {
   return w.activeWave ?? w.nextWave;
 }
 
-export function nextWavePreview(w: FoundryWorld): Wave {
+export function nextWavePreview(w: FoundryView): Wave {
   return w.nextWave;
 }
 
-export function waveProgress(w: FoundryWorld): number {
+export function waveProgress(w: FoundryView): number {
   const wave = w.activeWave;
   if (!wave || wave.events.length === 0) return 0;
   return Math.min(1, w.spawnCursor / wave.events.length);
@@ -1905,7 +2004,7 @@ export function startWave(w: FoundryWorld): void {
  * one base structure selected, every piece it could fold with is marked: its quality
  * partner and every ingredient of every recipe it reaches.
  */
-export function combineHighlight(w: FoundryWorld): {
+export function combineHighlight(w: FoundryView): {
   primaryId: number | null;
   partnerIds: Set<number>;
   committed: boolean;
@@ -1917,7 +2016,10 @@ export function combineHighlight(w: FoundryWorld): {
     return { primaryId: set[0]!, partnerIds, committed: true };
   }
   const sel = selected(w);
-  if (sel && (sel.kind === "candidate" || (sel.kind === "component" && !sel.combo))) {
+  if (
+    sel &&
+    (sel.kind === "candidate" || (sel.kind === "component" && !sel.combo))
+  ) {
     const partner = combinePartnerOf(w, sel);
     if (partner) partnerIds.add(partner.id);
     for (const rec of reachableCombos(w, sel)) {
@@ -1934,12 +2036,16 @@ export function combineHighlight(w: FoundryWorld): {
  * The renderer pulses these at all times rather than only when one is selected, so a
  * player is told which pieces can fold without having to ask.
  */
-export function combinablePieces(w: FoundryWorld): Set<number> {
+export function combinablePieces(w: FoundryView): Set<number> {
   const ids = new Set<number>();
   for (const s of w.structures) {
-    if (s.kind !== "candidate" && !(s.kind === "component" && !s.combo)) continue;
-    const base = s as Candidate | Component;
-    if (combinePartnerOf(w, base) !== null || reachableCombos(w, base).length > 0) {
+    if (s.kind !== "candidate" && !(s.kind === "component" && !s.combo))
+      continue;
+    const base = s as DeepReadonly<Candidate | Component>;
+    if (
+      combinePartnerOf(w, base) !== null ||
+      reachableCombos(w, base).length > 0
+    ) {
       ids.add(base.id);
     }
   }
@@ -2100,8 +2206,12 @@ export function placeBlocker(
   return b;
 }
 
-export function setComboLevel(w: FoundryWorld, id: number, level: number): void {
-  const c = componentById(w, id);
+export function setComboLevel(
+  w: FoundryWorld,
+  id: number,
+  level: number,
+): void {
+  const c = ownComponent(w, id);
   if (c) c.comboLevel = level;
 }
 
@@ -2124,7 +2234,10 @@ export function clearProjectiles(w: FoundryWorld): void {
  * empty, so the units on the yard are exactly the ones released this way, and that wave
  * clears the ordinary way once they have all died or leaked.
  */
-export function spawnUnit(w: FoundryWorld, type: LoadType | "overload"): Unit | null {
+export function spawnUnit(
+  w: FoundryWorld,
+  type: LoadType | "overload",
+): Unit | null {
   if (w.screen !== "playing") return null;
   if (w.phase === "build") {
     w.phase = "wave";
@@ -2207,27 +2320,39 @@ export function setUnitFrozen(u: Unit, frozen: boolean): void {
 
 // ---- Lookups an argument is validated against ----------------------------
 
-export function structureById(w: FoundryWorld, id: number): Structure | null {
+export function structureById(
+  w: FoundryView,
+  id: number,
+): DeepReadonly<Structure> | null {
   return w.structures.find((s) => s.id === id) ?? null;
 }
 
-export function liveUnitById(w: FoundryWorld, id: number): Unit | null {
+export function liveUnitById(
+  w: FoundryView,
+  id: number,
+): DeepReadonly<Unit> | null {
   const u = unitById(w, id);
   return u && !u.dead ? u : null;
 }
 
-export function comboById(w: FoundryWorld, id: number): Component | null {
+export function comboById(
+  w: FoundryView,
+  id: number,
+): DeepReadonly<Component> | null {
   const c = componentById(w, id);
   return c && c.combo ? c : null;
 }
 
-export function firingStructureById(w: FoundryWorld, id: number): Component | null {
+export function firingStructureById(
+  w: FoundryView,
+  id: number,
+): DeepReadonly<Component> | null {
   const c = componentById(w, id);
   return c && unbuffedStats(c).fires ? c : null;
 }
 
 /** The phase as `specs/instrumentation.md` reports it, or `null` off the yard. */
-export function reportedPhase(w: FoundryWorld): PhaseName | null {
+export function reportedPhase(w: FoundryView): PhaseName | null {
   if (w.screen !== "playing") return null;
   return w.finale ? "finale" : w.phase;
 }

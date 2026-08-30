@@ -56,7 +56,10 @@ export function componentBaseSprite(type: ComponentType): string {
 }
 
 /** A base component's rotating head, one per type per quality rung. */
-export function componentHeadSprite(type: ComponentType, quality: number): string {
+export function componentHeadSprite(
+  type: ComponentType,
+  quality: number,
+): string {
   return `components/${type}/head-${quality}`;
 }
 
@@ -134,14 +137,17 @@ function spritePaths(): string[] {
   for (let i = 0; i < CYCLE_FRAMES; i++) paths.push(`press/${i}`);
   for (const type of COMPONENT_TYPES) {
     paths.push(componentBaseSprite(type), typeIcon(type));
-    for (let q = 1; q <= MAX_QUALITY; q++) paths.push(componentHeadSprite(type, q));
-    for (let i = 0; i < CYCLE_FRAMES; i++) paths.push(`components/${type}/fire/${i}`);
+    for (let q = 1; q <= MAX_QUALITY; q++)
+      paths.push(componentHeadSprite(type, q));
+    for (let i = 0; i < CYCLE_FRAMES; i++)
+      paths.push(`components/${type}/fire/${i}`);
     // The Regulator never fires, so it launches no shot and has no projectile.
     if (type !== "regulator") paths.push(projectileSprite(type));
   }
   for (const combo of COMBO_IDS) {
     paths.push(comboBaseSprite(combo), comboHeadSprite(combo));
-    for (let i = 0; i < CYCLE_FRAMES; i++) paths.push(`combos/${combo}/fire/${i}`);
+    for (let i = 0; i < CYCLE_FRAMES; i++)
+      paths.push(`combos/${combo}/fire/${i}`);
   }
   for (const type of LOAD_SPRITE_TYPES) {
     for (let i = 0; i < CYCLE_FRAMES; i++) paths.push(`load/${type}/${i}`);
@@ -160,7 +166,9 @@ function spritePaths(): string[] {
  */
 export async function loadAssets(
   api: Pick<InitApi, "assets" | "audio">,
-  cueSpecs: Readonly<Record<CueName, Parameters<InitApi["audio"]["define"]>[1]>>,
+  cueSpecs: Readonly<
+    Record<CueName, Parameters<InitApi["audio"]["define"]>[1]>
+  >,
 ): Promise<Assets> {
   const images = new Map<string, Sprite>();
   const systems = new Map<string, ParticleSystem>();
@@ -212,9 +220,11 @@ export async function loadAssets(
     componentFire.set(type, frames(`components/${type}/fire`));
   }
   const comboFire = new Map<ComboId, Sprite[]>();
-  for (const combo of COMBO_IDS) comboFire.set(combo, frames(`combos/${combo}/fire`));
+  for (const combo of COMBO_IDS)
+    comboFire.set(combo, frames(`combos/${combo}/fire`));
   const loadFrames = new Map<string, Sprite[]>();
-  for (const type of LOAD_SPRITE_TYPES) loadFrames.set(type, frames(`load/${type}`));
+  for (const type of LOAD_SPRITE_TYPES)
+    loadFrames.set(type, frames(`load/${type}`));
   const press = frames("press");
 
   return {
