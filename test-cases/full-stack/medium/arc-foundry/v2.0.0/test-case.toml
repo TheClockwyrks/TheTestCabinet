@@ -668,6 +668,18 @@ validation = { script = "yard/occupied-tile-refused.test.ts", outputs = [
   { id = "refused", name = "The refused placement under a standing unit", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "flyer-does-not-block-placement"
+title = "A flying unit overhead does not refuse a placement"
+description = "A placement whose footprint a live Filament is currently over is accepted and lands the structure, because a flying unit passes over the yard, while the same footprint under a ground unit is refused."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: hold a Filament over a footprint and place there, then
+# hold a Mote over the same footprint and place again. See
+# validation/<engine>/yard/flyer-does-not-block-placement.test.ts.
+validation = { script = "yard/flyer-does-not-block-placement.test.ts", outputs = [
+  { id = "landed", name = "The placement landed under a flyer", kind = "image" },
+] }
+[[review.categories.items]]
 id = "housings-fixed-blocked"
 title = "The Transformer Yard's housings are fixed and unbuildable"
 description = "On The Transformer Yard the two housing rectangles — col 12-19 by row 6-12 and col 30-37 by row 20-26 — are Fixed-blocked: a placement covering any of their tiles is refused, and the base waypoint chain still has an open route around both."
