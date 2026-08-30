@@ -494,6 +494,18 @@ it("hears the looping cue a round begins under", async () => {
   expect(music[0].loop).toBe(true);
 });
 
+it("reads a bed as sounding only from the moment it starts", async () => {
+  // The reading the audio points take from the probe, checked against the span
+  // it is kept over: nothing loops before a round is begun, and the round's own
+  // bed does.
+  await h.armAudio();
+  expect(await h.looping(CUES.music)).toBe(false);
+
+  await startRoundWithKeys(h);
+
+  expect(await h.looping(CUES.music)).toBe(true);
+});
+
 it("hears nothing at all on a tick that resolves no event", async () => {
   await h.armAudio();
   await poseScene(h, { pellet: null, travel: false });

@@ -634,6 +634,18 @@ export interface Harness {
   /** Every asset the build failed to load, oldest first. */
   readonly assetFailures: AssetFailure[];
 
+  /**
+   * Whether the build has the cue `name` looping at this moment.
+   *
+   * The engine's cue bus carries the same reading, and the bus announces every
+   * transition of it — `cue:looped` when a loop starts and `cue:stopped` when it
+   * ends, each exactly once — so the set kept from those two events is that
+   * reading rather than an approximation of it. What {@link watchCues} records is
+   * the other thing: the moments a cue was ASKED for. A bed that was started and
+   * never stopped shows one entry in the log and reads `true` here.
+   */
+  looping(name: string): boolean;
+
   /** Frames run since the engine started. */
   frame(): number;
   /** The simulated time those frames covered, in milliseconds. */
@@ -898,6 +910,8 @@ export async function createHarness(
     assetFailures.push({ path, reason });
   });
   const sinks: TimedCue[][] = [];
+  // The names looping right now, tracked across the bus's own two announcements.
+  const loops = new Set<string>();
   const noteCue =
     (loop: boolean) => (played: { cue: string; t: number; gain: number }) => {
       const timed: TimedCue = {
@@ -907,11 +921,15 @@ export async function createHarness(
         loop,
         gain: played.gain,
       };
+      if (loop) loops.add(played.cue);
       cues.push(timed);
       for (const sink of sinks) sink.push(timed);
     };
   engine.events.on("cue:played", noteCue(false));
   engine.events.on("cue:looped", noteCue(true));
+  engine.events.on("cue:stopped", ({ cue }) => {
+    loops.delete(cue);
+  });
 
   const instance = await engine.initialize();
   const debug = readDebugSurface(engine);
@@ -935,6 +953,8 @@ export async function createHarness(
     calls,
     cues,
     assetFailures,
+
+    looping: (name) => loops.has(name),
 
     frame: () => engine.frame().count,
     timeMs: () => engine.frame().timeMs,

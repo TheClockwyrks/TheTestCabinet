@@ -26,6 +26,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import type { Recording } from "@test-cabinet/structured-2d";
 import {
   COMBO_WINDOW,
+  CUES,
   OBSTACLE_CELLS,
   SPRITE_PATHS,
   START_CELLS,
@@ -342,6 +343,17 @@ it("watches only the cues that sounded during the drive", async () => {
 
   expect(cues.map((cue) => cue.name)).toContain("eat");
   expect(cues.every((cue) => cue.frame > 0)).toBe(true);
+});
+
+it("reads a bed as sounding only from the moment it starts", async () => {
+  // The reading the audio points take from the bus, checked against the two
+  // announcements it is kept from: nothing loops before a round is begun, and
+  // the round's own bed does.
+  expect(h.looping(CUES.music)).toBe(false);
+
+  await startRoundWithKeys(h);
+
+  expect(h.looping(CUES.music)).toBe(true);
 });
 
 /* -------------------------------------------------------------------------- */

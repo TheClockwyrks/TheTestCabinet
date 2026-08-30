@@ -320,6 +320,17 @@ export interface Harness {
   /** Give the build a real, browser-trusted gesture, so its audio can open. */
   armAudio(): Promise<void>;
 
+  /**
+   * Whether the build has the cue `name` sounding as a loop at this moment.
+   *
+   * `audio-init.js` holds each looping source from the moment it starts until
+   * something ends it, so this is a reading of what is playing NOW rather than of
+   * what was once asked for. {@link watchCues} records the other thing: the
+   * moments a cue was ASKED for. A bed that was started and never stopped shows
+   * one entry in the log and reads `true` here.
+   */
+  looping(name: string): Promise<boolean>;
+
   /** Release anything held, and let the page go. */
   dispose(): Promise<void>;
 }
@@ -963,6 +974,16 @@ export async function createHarness(
         )
         .catch(() => undefined);
       await page.keyboard.press(UNBOUND_KEY);
+    },
+
+    async looping(name) {
+      const sounding = (await page.evaluate(() => {
+        const audio = (
+          window as unknown as { __coilAudio: { looping(): string[] } }
+        ).__coilAudio;
+        return audio.looping();
+      })) as string[];
+      return sounding.includes(name);
     },
 
     async dispose() {

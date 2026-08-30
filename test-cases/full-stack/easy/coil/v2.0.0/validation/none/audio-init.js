@@ -47,11 +47,23 @@
  * arrives with a `name` of `null` and is still counted, so it is never mistaken
  * for one of the four and never silently dropped.
  *
+ * AND WHICH LOOPS ARE STILL SOUNDING. A log of starts cannot answer whether the
+ * bed is playing NOW, so a loop is held from the moment it starts until the
+ * moment it ends, and `looping()` names the cues currently running. A loop ends
+ * the three ways a build can end one: it is `stop()`ped, it is `disconnect()`ed
+ * from the graph, or the browser reports it `ended`. An `<audio>` element ends
+ * one by being paused. A build that silences its bed by some other route — a gain
+ * driven to zero, a whole master bus disconnected — is not stopping it, and is
+ * read here as still playing.
+ *
  * Exposed as `window.__coilAudio`. Nothing here is ever seeded into a run.
  */
 (() => {
   /** Every sound the page has emitted since it loaded, oldest first. */
   const plays = [];
+
+  /** The cue name each loop still sounding was started under, by its source. */
+  const running = new Map();
 
   /** Bytes fetched, by the URL they came from. */
   const bytesFrom = new WeakMap();
@@ -96,11 +108,26 @@
   };
 
   const record = (url, loop) => {
+    const name = cueName(url);
     plays.push({
-      name: cueName(url),
+      name,
       url: typeof url === "string" ? url : null,
       loop: loop === true,
     });
+    return name;
+  };
+
+  /** Hold `source` as a loop of `name` until something ends it. */
+  const beginLoop = (source, name) => {
+    running.set(source, name);
+    if (typeof source.addEventListener === "function") {
+      source.addEventListener("ended", () => running.delete(source));
+    }
+  };
+
+  /** Release `source`, whether or not it was ever held. */
+  const endLoop = (source) => {
+    running.delete(source);
   };
 
   window.__coilAudio = {
@@ -110,6 +137,9 @@
     since: (from) => plays.slice(from),
     /** The cues whose files have finished decoding, oldest first. */
     decoded: () => decoded.slice(),
+    /** The cues sounding as loops at this moment, each named once. */
+    looping: () =>
+      Array.from(new Set(running.values())).filter((name) => name !== null),
   };
 
   /* ---- Road one: the bytes, the decode, and the source -------------------- */
@@ -190,15 +220,43 @@
     if (!descriptor || typeof descriptor.value !== "function") return;
     const original = descriptor.value;
     proto.start = function (...args) {
-      record(bufferFrom.get(this.buffer), this.loop);
+      const name = record(bufferFrom.get(this.buffer), this.loop);
+      if (this.loop === true) beginLoop(this, name);
       return original.apply(this, args);
     };
   };
 
-  wrapStart(window.AudioScheduledSourceNode?.prototype);
-  wrapStart(window.OscillatorNode?.prototype);
-  wrapStart(window.AudioBufferSourceNode?.prototype);
-  wrapStart(window.ConstantSourceNode?.prototype);
+  /** Wrap one prototype's own `stop`, the same way and for the same reason. */
+  const wrapStop = (proto) => {
+    const descriptor = proto && Object.getOwnPropertyDescriptor(proto, "stop");
+    if (!descriptor || typeof descriptor.value !== "function") return;
+    const original = descriptor.value;
+    proto.stop = function (...args) {
+      endLoop(this);
+      return original.apply(this, args);
+    };
+  };
+
+  for (const proto of [
+    window.AudioScheduledSourceNode?.prototype,
+    window.OscillatorNode?.prototype,
+    window.AudioBufferSourceNode?.prototype,
+    window.ConstantSourceNode?.prototype,
+  ]) {
+    wrapStart(proto);
+    wrapStop(proto);
+  }
+
+  // A source cut out of the graph is no longer sounding, whether or not it was
+  // also stopped.
+  const node = window.AudioNode?.prototype;
+  if (node && typeof node.disconnect === "function") {
+    const disconnect = node.disconnect;
+    node.disconnect = function (...args) {
+      endLoop(this);
+      return disconnect.apply(this, args);
+    };
+  }
 
   /* ---- Road two: an element pointed at the file ---------------------------- */
 
@@ -206,8 +264,16 @@
   if (media && typeof media.play === "function") {
     const play = media.play;
     media.play = function (...args) {
-      record(this.currentSrc || this.src, this.loop);
+      const name = record(this.currentSrc || this.src, this.loop);
+      if (this.loop === true) beginLoop(this, name);
       return play.apply(this, args);
+    };
+  }
+  if (media && typeof media.pause === "function") {
+    const pause = media.pause;
+    media.pause = function (...args) {
+      endLoop(this);
+      return pause.apply(this, args);
     };
   }
 })();
