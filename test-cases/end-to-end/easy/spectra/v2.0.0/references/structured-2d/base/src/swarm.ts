@@ -91,6 +91,16 @@ const ENTER_SWIRL = 0.5;
 /** How far below the field a wrapping dive aims. */
 const DIVE_DEPTH_WRAP = FIELD_BOTTOM + 60;
 
+/**
+ * How far above `FIELD_TOP` a wrapped dive re-appears.
+ *
+ * `specs/swarm.md` puts the drone back ABOVE the field rather than on its top
+ * edge, so the wrap reads as the one discontinuity it is: the drone leaves below
+ * `FIELD_BOTTOM` and comes back in from over the top strip, the same way it
+ * arrived when the wave opened.
+ */
+const WRAP_ABOVE = 24;
+
 /** How far down the field a looping dive turns back. */
 const DIVE_DEPTH_LOOP = 612;
 
@@ -282,7 +292,7 @@ function stepDiving(
   if (drone.y > FIELD_BOTTOM) {
     // The one discontinuity a dive may hold: out through the bottom and back in
     // above the top, where the run ends and the drone turns for its slot.
-    drone.y -= FIELD_BOTTOM - FIELD_TOP;
+    drone.y -= FIELD_BOTTOM - FIELD_TOP + WRAP_ABOVE;
     enterPhase(drone, "returning");
     return;
   }
@@ -384,17 +394,7 @@ function gone(state: SpectraState, drone: DroneState): boolean {
   );
 }
 
-/**
- * One sub-step of the whole swarm: every drone's clock, path and fire.
- *
- * THE THREE FACULTIES ARE THREE GATES AND EACH GATES ONE THING. The band clock is
- * outside the travel gate, and so is the fire a dive carries: a drone held still
- * by `setDroneTravel(id, false)` keeps its phase, holds its exact centre, and its
- * clock and its cannon run on, exactly as `specs/instrumentation.md` states. What
- * travel holds is the path alone — the advance along an entrance, the ride on the
- * sway, the dive, and the return — and with it the phase clock, so nothing about
- * the phase is cancelled, completed, or resolved early either.
- */
+/** One sub-step of the whole swarm: every drone's clock, path and fire. */
 export function stepSwarm(
   state: SpectraState,
   h: number,
@@ -403,7 +403,9 @@ export function stepSwarm(
   for (const drone of state.drones) {
     stepOscillation(state, drone, h);
     if (!drone.travel) {
-      // The body holds still and the cannon runs on.
+      // The travel gate holds the drone's LOCOMOTION alone
+      // (`specs/instrumentation.md`): its band clock, above, and its firing,
+      // here, run on exactly as they would have.
       if (drone.phase === "diving") fireOnDive(state, drone);
       continue;
     }

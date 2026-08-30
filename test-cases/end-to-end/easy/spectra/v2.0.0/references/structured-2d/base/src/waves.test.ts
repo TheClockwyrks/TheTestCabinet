@@ -16,6 +16,7 @@ import {
   slotY,
 } from "./constants";
 import { droneBand } from "./bands";
+import { seedState } from "./rng";
 import { newFrameEvents } from "./events";
 import { stepSwarm } from "./swarm";
 import { buildWave, waveCols, waveFluxes, wavePrisms, waveRows } from "./waves";
@@ -155,6 +156,25 @@ describe("a standard wave", () => {
     expect(state.diveClock).toBe(0);
     expect(state.diveTarget).toBe(DIVE_FIRST_DELAY);
     expect(state.challengeHits).toBe(0);
+  });
+
+  it("lays out which slot holds which kind from the game's own generator", () => {
+    const layout = (seed: number): string => {
+      const state = liveWave();
+      state.rngState = seedState(seed);
+      buildWave(state);
+      return JSON.stringify(
+        state.drones.map((drone) => [
+          drone.kind,
+          drone.slotX,
+          drone.slotY,
+          drone.band,
+        ]),
+      );
+    };
+    // The same seed lays out the same wave; two seeds lay out two different ones.
+    expect(layout(7)).toBe(layout(7));
+    expect(layout(8)).not.toBe(layout(7));
   });
 
   it("builds the same wave from the same seed", () => {
