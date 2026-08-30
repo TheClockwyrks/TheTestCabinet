@@ -1514,6 +1514,19 @@ fn every_shippable_package_carries_a_ui_description() {
     assert!(shippable_package_description("@test-cabinet/not-a-real-package").is_none());
 }
 
+#[test]
+fn the_shared_validator_harness_is_not_a_package_a_case_may_declare() {
+    // `@test-cabinet/case-harness` is staged into the same host package store as the
+    // shippable runtimes (scripts/stage-tcab-packages.mjs), and the vitest validator
+    // copies it into the STAGED validator project after the container is gone. This
+    // allowlist is the other direction entirely: what it admits, a case's manifest
+    // `packages` key may name, and the seeder then vendors into the run repository —
+    // in front of the model. Admitting the harness here would hand a model the suites
+    // it is about to be measured by, so its absence is asserted rather than assumed.
+    assert!(!is_shippable_package("@test-cabinet/case-harness"));
+    assert!(shippable_package_description("@test-cabinet/case-harness").is_none());
+}
+
 /// Write a `demo/v1.0.0` version with the given manifest and supporting files
 /// (relative path -> contents), returning the temp dir (kept alive) and a
 /// catalog rooted at it. Unlike [`catalog_with_manifest`], the caller supplies

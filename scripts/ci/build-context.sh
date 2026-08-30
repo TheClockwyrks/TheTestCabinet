@@ -544,6 +544,128 @@ while IFS= read -r hit; do
 	problems=$((problems + 1))
 done < <(grep -Hno 'include_\(str\|bytes\)! *( *"[^"]*"' -- "${rust_sources[@]}" || true)
 
+# --- what a COPY cannot tell you, part three: the host package store ---------
+
+# The third build input no `COPY` names. The services image's `tcab-packages` stage
+# (deployments/images/services.Dockerfile) does `COPY . .`, `npm ci`, and then
+# `node scripts/stage-tcab-packages.mjs` — which reads the SHIPPABLE list in its own
+# source, resolves each name to a directory under `packages/`, and bakes it into
+# /opt/tcab-packages. A name in that list whose directory the allowlist forgets is
+# invisible to every check above, because a whole-context copy is deliberately
+# unchecked: it takes whatever the allowlist admits, and the stage then dies on
+#
+#     Error: shippable package @test-cabinet/<name> not found under packages/
+#
+# which reads as a broken checkout and takes EVERY service image down at once — they
+# all share that Dockerfile. The `tcab-packages` stage is the driver's, but a
+# multi-target build of that file builds it regardless.
+#
+# The list is read from the staging script rather than restated here, for the reason
+# the include_str! check gives: the next package staged into the store is covered the
+# day it is added, which a hand-kept list would not be. The transitive
+# `@test-cabinet/*` dependencies are walked too, because the script stages the closure
+# and `npm run build` compiles each member against its siblings.
+#
+# The directory itself must survive, not merely something under it: the script copies
+# each package's `files` entries whole, so `context_includes_dir`'s weaker question
+# (does the copy transfer ANYTHING) would pass a package admitted through some
+# unrelated glob and still leave the store without a `dist/` or a `src/`.
+#
+# Root allowlist only, as above: this is a statement about the builds that STAGE the
+# store, every one of which reads the root file.
+
+STAGING_SCRIPT="scripts/stage-tcab-packages.mjs"
+
+# The package names in the staging script's SHIPPABLE array, one per line. Read from
+# the array's own text: every entry is a quoted name, and a `//` comment inside the
+# array is dropped before the names are pulled out of the line.
+shippable_names() {
+	awk '
+		/^const SHIPPABLE = \[/ { inside = 1; next }
+		inside && /^\]/ { inside = 0; next }
+		inside {
+			line = $0
+			sub(/\/\/.*/, "", line)
+			while (match(line, /"[^"]+"/)) {
+				print substr(line, RSTART + 1, RLENGTH - 2)
+				line = substr(line, RSTART + RLENGTH)
+			}
+		}
+	' "$REPO_ROOT/$STAGING_SCRIPT"
+}
+
+# The `packages/<dir>` holding the package named `$1`, by the `name` its manifest
+# declares — which is what the staging script maps by, and is not always the
+# directory name. Prints nothing and returns 1 when no manifest claims that name.
+package_dir_for() {
+	local name="$1" manifest
+	for manifest in "${package_manifests[@]}"; do
+		if grep -qE "^[[:space:]]*\"name\"[[:space:]]*:[[:space:]]*\"$name\"[[:space:]]*,?[[:space:]]*$" \
+			"$REPO_ROOT/$manifest"; then
+			dirname "$manifest"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# The `@test-cabinet/*` names the manifest at `$1` uses as dependency KEYS, in any
+# block. Deliberately not only `dependencies`: the staging stage also BUILDS each
+# member, and a dev-time dependency on a sibling is a source tree that build reads.
+# The manifest's own `"name"` line is not matched, the scoped name being its value.
+tcab_dependency_names() {
+	grep -oE '"@test-cabinet/[A-Za-z0-9._-]+"[[:space:]]*:' "$1" |
+		sed -E 's/^"([^"]+)".*/\1/'
+}
+
+load_dockerignore "$REPO_ROOT/.dockerignore"
+# Read off the filesystem rather than out of git, exactly as the staging script's own
+# readdirSync does: a package added and not yet committed is a real build input, and a
+# gate that ran before `git add` and rejected it would be wrong. The glob does not
+# descend, so a workspace's own `node_modules` cannot be mistaken for a member.
+package_manifests=()
+for staged_manifest in "$REPO_ROOT"/packages/*/package.json; do
+	[[ -f "$staged_manifest" ]] || continue
+	package_manifests+=("${staged_manifest#"$REPO_ROOT/"}")
+done
+((${#package_manifests[@]} > 0)) || {
+	echo "error: no packages/*/package.json found; this check would pass vacuously." >&2
+	exit 1
+}
+mapfile -t staged_names < <(shippable_names)
+((${#staged_names[@]} > 0)) || {
+	echo "error: no SHIPPABLE names found in $STAGING_SCRIPT; this check would pass vacuously." >&2
+	exit 1
+}
+
+# Breadth-first over the closure, exactly as the staging script's own `visit` walks it.
+staged_seen=""
+staged_queue=("${staged_names[@]}")
+staged_checked=0
+while ((${#staged_queue[@]} > 0)); do
+	staged_name="${staged_queue[0]}"
+	staged_queue=("${staged_queue[@]:1}")
+	[[ "$staged_seen" == *"|$staged_name|"* ]] && continue
+	staged_seen="$staged_seen|$staged_name|"
+	if ! staged_dir="$(package_dir_for "$staged_name")"; then
+		echo "error: $STAGING_SCRIPT stages '$staged_name', and no packages/*/package.json declares that name." >&2
+		problems=$((problems + 1))
+		continue
+	fi
+	for staged_dep in $(tcab_dependency_names "$REPO_ROOT/$staged_dir/package.json"); do
+		staged_queue+=("$staged_dep")
+	done
+	staged_checked=$((staged_checked + 1))
+	checked=$((checked + 1))
+	context_includes "$staged_dir" && continue
+	echo "error: .dockerignore keeps '$staged_dir' OUT of the build context, and $STAGING_SCRIPT stages '$staged_name' from it." >&2
+	echo "       No COPY names it — the services image's package-store stage copies the whole context" >&2
+	echo "       and then runs that script, so this fails as: Error: shippable package $staged_name" >&2
+	echo "       not found under packages/ — which takes every image in services.Dockerfile down." >&2
+	echo "       Fix: add '!/$staged_dir' to the .dockerignore allowlist, with a comment saying what stages it." >&2
+	problems=$((problems + 1))
+done
+
 # --- what an allowlist lets in by accident -----------------------------------
 
 # Everything above asks "does the context still contain what a build READS". This asks
@@ -611,11 +733,11 @@ done
 
 ((problems == 0)) || {
 	echo >&2
-	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, ${#guest_packages[@]} gg guest packages, $baked_checked baked-in includes and ${#ignored_paths[@]} git-ignored paths." >&2
+	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, ${#guest_packages[@]} gg guest packages, $baked_checked baked-in includes, $staged_checked staged packages and ${#ignored_paths[@]} git-ignored paths." >&2
 	exit 1
 }
 
 # A count of CHECKS rather than of distinct paths: a Dockerfile with a sibling
 # allowlist has its sources checked against both, which is the point.
-echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it, plus the ${#guest_packages[@]} packages/gg-sandbox* trees the driver image's gg stage compiles and the $baked_checked path(s) the workspace bakes in with include_str! — all survive."
+echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it, plus the ${#guest_packages[@]} packages/gg-sandbox* trees the driver image's gg stage compiles, the $baked_checked path(s) the workspace bakes in with include_str! and the $staged_checked package(s) $STAGING_SCRIPT bakes into the host package store — all survive."
 echo "$ignored_checked exclusion check(s) — ${#ignored_paths[@]} git-ignored path(s) against each allowlist — none reach the build context."

@@ -1,5 +1,5 @@
 /*
- * Refract — the injected draw-command recorder. CASE-PROVIDED.
+ * The injected draw-command recorder for an engineless (`none`) build.
  *
  * A replay output is the operations the build itself issued against its 2D
  * context, frame by frame, so what a reviewer scrubs is the build's own drawing
@@ -78,10 +78,11 @@
  * HOW A FRAME IS BRACKETED HERE. Under the engine the loop closes the frame it
  * just ran. Here the frame boundary belongs to whoever is driving: a check
  * running the game off its own clock calls `begin()` / `end(deltaMs)` around each
- * `__refract.advance(dt, 1)`, all inside one synchronous evaluation, so nothing the
- * page's own `requestAnimationFrame` renders can interleave with it. The one
- * check that lets the loop run in real time switches the recorder to `"raf"`
- * mode, where the animation frame closes the frame instead.
+ * driven step of the build's own debug surface, all inside one synchronous
+ * evaluation, so nothing the page's own `requestAnimationFrame` renders can
+ * interleave with it. The one check that lets the loop run in real time switches
+ * the recorder to `"raf"` mode, where the animation frame closes the frame
+ * instead.
  *
  * DECIMATION HAPPENS HERE, NOT AFTERWARDS. A section driven for half a minute of
  * game time is thousands of frames of a couple of hundred operations each, and
@@ -101,7 +102,7 @@
  * frames the document will HOLD name — so a section that captures and then throws
  * away is not charged for what it threw away.
  *
- * Exposed as `window.__refractRec`. Nothing here is ever seeded into a run.
+ * Exposed as `window.__tcabRec`. Nothing here is ever seeded into a run.
  */
 (() => {
   /** The recording format version the console's player understands. */
@@ -550,6 +551,146 @@
       : BITMAP_SOURCES.some((name) => isHostInstance(value, name))
         ? "bitmap"
         : null;
+
+  /* ------------------------------------------------------------------------ */
+  /* Image IDENTITY — one addition to the engine's recorder                   */
+  /* ------------------------------------------------------------------------ */
+  //
+  // WHY THIS IS HERE. A case's review points can turn on WHICH picture a frame
+  // drew — that a sprite is drawn from a produced bitmap rather than from
+  // code-drawn geometry, that a HUD draws the same picture the field does, that
+  // a sheet's frames advance across an animation. The recording pools an image
+  // as its PIXELS (`{ $img: n }`), which is what a reviewer's player needs, but
+  // a suite reading `last()` runs OUTSIDE any capture, where the engine's
+  // recorder writes `{ $opaque: "HTMLImageElement" }` — a marker that says a
+  // picture was drawn and nothing about which.
+  //
+  // So the idle encoding names the source instead: a per-page identity, its kind,
+  // its natural size, and a hash of wherever it came from. That is enough to tell
+  // two sprites apart, to recognize the same sprite drawn twice, and to ask for
+  // its pixels back — and it costs nothing per frame beyond one weak-map lookup.
+  //
+  // THE HASH RATHER THAN THE URL, deliberately. A build resolves the files it
+  // ships through the bundler, and a bundler inlines a small PNG as a `data:`
+  // URI — so a source string is either a short path or a hundred kilobytes of
+  // base64, and the suite crosses out of the page with it on every frame it
+  // reads. The hash is the same length either way and identifies the file just
+  // as well; the string itself travels only when it is short enough to be a
+  // path, which is exactly when a reader can do something with it.
+
+  /** How long a source string may be before only its hash travels. */
+  const SRC_INLINE_MAX = 256;
+
+  /** Identities handed out to bitmap sources, so the same source keeps one. */
+  const imageIds = new WeakMap();
+
+  /** Every identified source, by identity, so its pixels can be asked for. */
+  const imagesById = new Map();
+
+  /** How many sources the registry holds before it stops taking new ones. */
+  const IMAGE_REGISTRY_MAX = 512;
+
+  let nextImageId = 0;
+
+  /** A 32-bit FNV-1a hash, as an unsigned decimal string. */
+  const hashString = (text) => {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < text.length; i += 1) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return String(h >>> 0);
+  };
+
+  /** Wherever a source came from, or null when it names nowhere. */
+  const sourceUrl = (value) => {
+    try {
+      const raw = value.currentSrc || value.src || value.href;
+      return typeof raw === "string" && raw.length > 0 ? raw : null;
+    } catch {
+      // A canvas, an `ImageBitmap`, a `VideoFrame`: no URL, and that is a fact
+      // about the source rather than a failure.
+      return null;
+    }
+  };
+
+  /**
+   * A bitmap source as an idle frame names it, or null when the value is not one.
+   *
+   * `id` is identity within this page: the same `<img>` drawn on a hundred frames
+   * carries one id, and two different produced sprites never share one. `src` is
+   * present only when it is short enough to be a path rather than an inlined
+   * file; `srcHash` is there either way, so a check can pair a sprite drawn in
+   * one place with the same sprite drawn in another without either of them
+   * carrying a `data:` URI across the wire.
+   */
+  const identifyImage = (value) => {
+    const kind = kindOf(value);
+    if (kind === null) return null;
+    let id = imageIds.get(value);
+    if (id === undefined) {
+      nextImageId += 1;
+      id = nextImageId;
+      imageIds.set(value, id);
+      if (imagesById.size < IMAGE_REGISTRY_MAX) imagesById.set(id, value);
+    }
+    let size = null;
+    try {
+      size = sourceSize(value);
+    } catch {
+      size = null;
+    }
+    const url = sourceUrl(value);
+    return {
+      $src: {
+        id,
+        kind,
+        name: opaqueName(value),
+        width: size === null ? 0 : size.width,
+        height: size === null ? 0 : size.height,
+        src: url !== null && url.length <= SRC_INLINE_MAX ? url : null,
+        srcHash: url === null ? null : hashString(url),
+      },
+    };
+  };
+
+  /**
+   * The RGBA bytes of an identified source, as a plain array, or null.
+   *
+   * Drawn onto a scratch canvas at its natural size and read back, so a check
+   * that has to look at a produced sprite's own pixels — telling two sprites
+   * apart with colour removed, say — reads the file the build shipped rather
+   * than the corner of the field it happened to land on.
+   */
+  const readImagePixels = (id) => {
+    const value = imagesById.get(id);
+    if (value === undefined) return null;
+    try {
+      if (isHostInstance(value, "ImageData")) {
+        return {
+          width: value.width,
+          height: value.height,
+          data: Array.from(value.data),
+        };
+      }
+      const size = sourceSize(value);
+      if (size === null) return null;
+      const scratch = document.createElement("canvas");
+      scratch.width = size.width;
+      scratch.height = size.height;
+      const ctx = scratch.getContext("2d", { willReadFrequently: true });
+      if (ctx === null) return null;
+      ctx.drawImage(value, 0, 0, size.width, size.height);
+      const pixels = ctx.getImageData(0, 0, size.width, size.height);
+      return {
+        width: pixels.width,
+        height: pixels.height,
+        data: Array.from(pixels.data),
+      };
+    } catch {
+      return null;
+    }
+  };
 
   /**
    * A matrix as the six numbers `setTransform` accepts, or null if this is not one.
@@ -1538,6 +1679,13 @@
       if (pooled) {
         const image = this.captureImage(subject);
         if (image !== null) return { $img: image };
+      } else {
+        // An idle frame names a bitmap source rather than writing an opaque
+        // marker over it. Nothing the recording carries changes — this branch
+        // runs only when `pooled` is false, which is the self-contained encoding
+        // `last()` hands the suite.
+        const named = identifyImage(subject);
+        if (named !== null) return named;
       }
 
       return this.encodeData(subject, depth, walk, (entry, next, scope) =>
@@ -2404,7 +2552,7 @@
   }
   requestAnimationFrame(tick);
 
-  window.__refractRec = {
+  window.__tcabRec = {
     /** Whether the page has created a 2D context yet. */
     ready: () => primary() !== null,
 
@@ -2458,6 +2606,15 @@
       bound = null;
       if (recorder === null || !recorder.active) return null;
       return recorder.stop();
+    },
+
+    /**
+     * The RGBA bytes of a source an idle frame named, by its `$src` identity.
+     *
+     * For the review points that read a produced sprite's own pixels.
+     */
+    imagePixels(id) {
+      return readImagePixels(id);
     },
 
     /** How many frames were closed while armed, before any decimation. */

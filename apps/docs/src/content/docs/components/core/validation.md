@@ -106,6 +106,18 @@ Deciding the run's points means running that project:
   config derives its root from its own location so a validator resolves the build's
   modules by the paths the build itself uses. Staging happens after everything that
   measures the code the model wrote has already measured it.
+- Stage the shared validator harness beside it, at `validation/case-harness/`. The
+  engineless validators of every case that has them are written over one harness —
+  the browser lifecycle, the injected draw-command recorder, the assertions, the
+  replay format — which the repository holds as the `@test-cabinet/case-harness`
+  package. It is TypeScript source vitest transpiles rather than a dependency the
+  tree installs, so it is copied in as a sibling of the case's own harness: one
+  import line then resolves both in the case's `validation/<engine>/` directory and
+  in the staged project. It is read from the host package store the seeder vendors
+  engine runtimes out of, with a repository-checkout fallback, and a host carrying
+  neither leaves every point the validators back for the reviewer. It is not a
+  package a case may declare: nothing seeds it into a run repository, where the
+  model would read the suites it is measured by.
 - Run vitest over that project from the implementation's repository root, naming
   the project's config explicitly so the build's own config is never the one that
   runs, naming **the suites this run's variant declares** as vitest's file filters,

@@ -20,6 +20,24 @@
 //! own location, so a suite resolves the build's modules by the same relative paths
 //! the build itself uses.
 //!
+//! # The shared harness is staged beside the case's own
+//!
+//! The engineless (`none`) validators of every case that has them are written over one
+//! shared harness — the browser lifecycle, the injected draw-command recorder, the
+//! assertions, the replay format — which lives in the repository as the
+//! `@test-cabinet/case-harness` npm package rather than as a copy per case. It is not
+//! a dependency the produced tree installs: it is TypeScript source vitest transpiles,
+//! so it is COPIED into the staged project as `validation/case-harness/`, a sibling of
+//! the case's own `harness.ts`. That sibling placement is the whole trick — one import
+//! line resolves both in the case's `validation/<engine>/` directory in the checkout
+//! and in the staged `validation/` here.
+//!
+//! It is read from the host package store the seeder vendors engine runtimes out of
+//! (see [`crate::seeding`]), with a repository-checkout fallback, and it is
+//! deliberately NOT one of the [`crate::test_case::SHIPPABLE_PACKAGES`] a case may
+//! request: nothing may vendor the validators into the run repository, where the model
+//! would read them.
+//!
 //! # The whole directory is staged; only the run's own suites are run
 //!
 //! A case ships ONE validator directory per engine, holding the suites of every
@@ -142,6 +160,26 @@ pub const VALIDATION_MEDIA_ENV: &str = "TCAB_VALIDATION_MEDIA_DIR";
 
 /// The local vitest binary a produced tree's install leaves behind.
 const VITEST_BIN: &str = "node_modules/.bin/vitest";
+
+/// The directory inside the staged validator project the shared harness package is
+/// staged at. Every case's suites reach it by a path relative to their own file, so
+/// the name is fixed here rather than declared per case.
+const CASE_HARNESS_DIR: &str = "case-harness";
+
+/// The shared harness package's name in the host package store.
+///
+/// Deliberately absent from [`crate::test_case::SHIPPABLE_PACKAGES`]: that allowlist
+/// is what a case manifest's `packages` key is validated against, and a case that
+/// could name this one would vendor the validators into the run repository — handing
+/// the model the tests it is being measured by.
+const CASE_HARNESS_PACKAGE: &str = "@test-cabinet/case-harness";
+
+/// Where the shared harness package's `src/` is looked for when the host package
+/// store does not carry it, relative to the current directory. Mirrors
+/// [`crate::browser::driver_path`]'s candidates, and for the same reason: runs are
+/// launched from the repository root, where the npm workspace lives.
+const CASE_HARNESS_CANDIDATES: [&str; 2] =
+    ["packages/case-harness/src", "../packages/case-harness/src"];
 
 /// How often a running suite is checked for completion while the cap runs down.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -382,7 +420,7 @@ fn quote(value: &str) -> String {
 }
 
 /// Copy the case's validator project for the run's engine into `dest`, replacing
-/// whatever stands there.
+/// whatever stands there, and stage the shared harness package beside it.
 ///
 /// The destination is the project's required location, so a tree that already carries
 /// a directory of that name has it replaced: the case's validators are what decides
@@ -394,7 +432,64 @@ fn stage_project(project: &Path, dest: &Path) -> Result<(), String> {
             .map_err(|err| format!("could not clear `{}`: {err}", dest.display()))?;
     }
     crate::copy_tree(project, dest)
-        .map_err(|err| format!("could not stage the case's validator project: {err}"))
+        .map_err(|err| format!("could not stage the case's validator project: {err}"))?;
+    stage_case_harness(dest)
+}
+
+/// Copy the shared validator harness into the staged project, so every case's suites
+/// resolve it at one relative path.
+///
+/// The package is SOURCE-only — vitest transpiles the TypeScript in it exactly as it
+/// transpiles the case's own, and there is no build step — so what is staged is its
+/// `src/` directory and nothing else. It lands as a sibling of the case's own
+/// `harness.ts`, which is what makes one import line resolve both in the case's
+/// `validation/<engine>/` in the checkout and in the staged `validation/` here.
+///
+/// It is copied AFTER the case's tree and over the top of anything standing at that
+/// name: the package is what decides the case's points, and a case must not be able
+/// to shadow it with a stale copy of its own.
+///
+/// A host with no staged copy is a failure of the runner rather than of the build, so
+/// it is reported as such — every point the validators back is left for the reviewer
+/// — and the message names both ways to fix it.
+fn stage_case_harness(dest: &Path) -> Result<(), String> {
+    let source = case_harness_source().ok_or_else(|| {
+        format!(
+            "the shared validator harness `{CASE_HARNESS_PACKAGE}` was not found in the package \
+             store at `{}` — the driver image bakes it there; for a local checkout run \
+             `node scripts/stage-tcab-packages.mjs` or point `TCAB_PACKAGE_STORE` at a staged copy",
+            crate::seeding::package_store_dir().display(),
+        )
+    })?;
+    let at = dest.join(CASE_HARNESS_DIR);
+    if at.exists() {
+        std::fs::remove_dir_all(&at)
+            .map_err(|err| format!("could not clear `{}`: {err}", at.display()))?;
+    }
+    crate::copy_tree(&source, &at)
+        .map_err(|err| format!("could not stage `{CASE_HARNESS_PACKAGE}`: {err}"))
+}
+
+/// The shared harness package's `src/` on this host.
+///
+/// The package store first — what the driver image bakes and what `TCAB_PACKAGE_STORE`
+/// overrides, the SAME store the seeder vendors engine runtimes out of, so the two can
+/// never disagree about what a run was validated against — then the repository
+/// checkout a `tcab` invoked from the repo root sits in. The checkout candidates are
+/// relative to the current directory, exactly as
+/// [`crate::browser::driver_path`]'s are: a run is launched from the repository root,
+/// which is also where the npm workspace lives.
+fn case_harness_source() -> Option<PathBuf> {
+    let stored = crate::seeding::package_store_dir()
+        .join(CASE_HARNESS_PACKAGE)
+        .join("src");
+    if stored.is_dir() {
+        return Some(stored);
+    }
+    CASE_HARNESS_CANDIDATES
+        .iter()
+        .map(PathBuf::from)
+        .find(|path| path.is_dir())
 }
 
 /// Make sure the tree's dependencies are installed, installing only when nothing has.

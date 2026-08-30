@@ -1,0 +1,180 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>case-harness fixture</title>
+<style>
+  html,
+  body {
+    margin: 0;
+    background: #000;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+</style>
+<canvas id="stage"></canvas>
+<script>
+  // The fixture build the package's own suite drives.
+  //
+  // It is deliberately NOT a game: it is the smallest thing that satisfies what
+  // `specs/instrumentation.md` asks of an engineless build, so the harness can be
+  // checked against a build whose every answer is known in advance. A case's own
+  // `harness.test.ts` can only check the harness against that case's reference
+  // implementation, which is why the four cases could never agree on what the
+  // shared machinery does — this can.
+  //
+  // What it conforms to, and what each part is here to let a check pin down:
+  //
+  //   - A canvas fitted to the window on the uniform-scale letterbox every case's
+  //     `specs/overview.md` fixes, so a pixel read at a logical point can be
+  //     checked at more than one window shape.
+  //   - A debug surface on `window.__fixture` with `setAutoStep`, `reset`,
+  //     `snapshot` and a `count`-shaped `advance`, plus three operations of its
+  //     own so a check can pose it.
+  //   - Its own animation-frame loop, which keeps DRAWING while the game is off
+  //     the wall clock — the behaviour the recorder's framing has to survive.
+  //   - One sound every fourth tick of live play, so a cue lands on a frame a
+  //     check can name.
+  (() => {
+    const STAGE_W = 200;
+    const STAGE_H = 100;
+
+    /** Where a sound lands: every fourth tick of live play, and no other. */
+    const CUE_EVERY = 4;
+
+    const canvas = document.getElementById("stage");
+    const ctx = canvas.getContext("2d");
+
+    const state = {
+      screen: "title",
+      auto: true,
+      frames: 0,
+      seed: null,
+      x: 0,
+      sounds: 0,
+      /** Ticks that ran with at least one key held, which is what a tap makes. */
+      heldTicks: 0,
+      clicks: 0,
+      pointer: { x: -1, y: -1 },
+    };
+    const held = new Set();
+
+    let audio = null;
+    function blip() {
+      audio ??= new (window.AudioContext || window.webkitAudioContext)();
+      const source = audio.createOscillator();
+      source.connect(audio.destination);
+      source.start();
+      source.stop(audio.currentTime + 0.01);
+      state.sounds += 1;
+    }
+
+    function fit() {
+      const dpr = window.devicePixelRatio;
+      canvas.width = Math.round(window.innerWidth * dpr);
+      canvas.height = Math.round(window.innerHeight * dpr);
+    }
+
+    function draw() {
+      const dpr = window.devicePixelRatio;
+      const cssScale = Math.min(
+        window.innerWidth / STAGE_W,
+        window.innerHeight / STAGE_H,
+      );
+      const scale = cssScale * dpr;
+      const offsetX = (canvas.width - STAGE_W * scale) / 2;
+      const offsetY = (canvas.height - STAGE_H * scale) / 2;
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+      ctx.fillStyle = "#101820";
+      ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+
+      // A landmark that never moves, so a pixel read at one logical point is the
+      // same answer at every window shape the fit maps.
+      ctx.fillStyle = "#ff0000";
+      ctx.fillRect(100, 50, 10, 10);
+
+      // And one that does, so two recorded frames are not the same picture.
+      ctx.fillStyle = "#00c8ff";
+      ctx.fillRect(state.x, 4, 6, 6);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "10px sans-serif";
+      ctx.fillText(state.screen.toUpperCase(), 8, 20);
+    }
+
+    function tick() {
+      state.frames += 1;
+      state.x = (state.x + 2) % STAGE_W;
+      if (held.size > 0) state.heldTicks += 1;
+      if (state.screen === "playing" && state.frames % CUE_EVERY === 0) blip();
+      draw();
+    }
+
+    function loop() {
+      requestAnimationFrame(loop);
+      if (state.auto) tick();
+      else draw();
+    }
+
+    window.addEventListener("resize", fit);
+    window.addEventListener("keydown", (event) => held.add(event.code));
+    window.addEventListener("keyup", (event) => held.delete(event.code));
+    window.addEventListener("mousemove", (event) => {
+      state.pointer = { x: event.clientX, y: event.clientY };
+    });
+    window.addEventListener("mousedown", () => {
+      state.clicks += 1;
+    });
+
+    window.__fixture = {
+      version: 3,
+      setAutoStep(on) {
+        state.auto = on === true;
+      },
+      reset(options) {
+        state.screen = "title";
+        state.frames = 0;
+        state.x = 0;
+        state.sounds = 0;
+        state.heldTicks = 0;
+        state.clicks = 0;
+        state.seed = options?.seed ?? null;
+        held.clear();
+        draw();
+      },
+      advance(count) {
+        for (let i = 0; i < count; i += 1) tick();
+      },
+      startPlaying() {
+        state.screen = "playing";
+        draw();
+      },
+      blip,
+      snapshot() {
+        return {
+          screen: state.screen,
+          auto: state.auto,
+          frames: state.frames,
+          seed: state.seed,
+          x: state.x,
+          sounds: state.sounds,
+          heldTicks: state.heldTicks,
+          clicks: state.clicks,
+          keys: [...held].sort(),
+          pointer: { ...state.pointer },
+        };
+      },
+    };
+
+    fit();
+    draw();
+    requestAnimationFrame(loop);
+  })();
+</script>

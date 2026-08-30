@@ -1179,3 +1179,169 @@ fn the_exported_media_directory_is_absolute() {
     );
     assert!(Path::new(&absolute(Path::new("relative/media"))).is_absolute());
 }
+
+// --- Staging the shared harness ---------------------------------------------
+
+/// A package store carrying `@test-cabinet/case-harness` with `src/` holding
+/// `index.ts` and a `page/` subdirectory, returned with the temp dir that owns it.
+fn package_store_with_case_harness() -> tempfile::TempDir {
+    let store = tempfile::tempdir().expect("a scratch package store");
+    let src = store.path().join(CASE_HARNESS_PACKAGE).join("src");
+    std::fs::create_dir_all(src.join("page")).expect("the package's source tree");
+    std::fs::write(src.join("index.ts"), "export const kit = 1;\n").expect("the barrel");
+    std::fs::write(src.join("page/recorder-init.js"), "// recorder\n").expect("a page script");
+    store
+}
+
+/// Point `package_store_dir` at `store` for the rest of this test's process.
+///
+/// Sound because nextest runs each test in its own process, so the variable cannot
+/// leak into a test running beside this one.
+fn use_package_store(store: &Path) {
+    unsafe { std::env::set_var("TCAB_PACKAGE_STORE", store) };
+}
+
+#[test]
+fn the_shared_harness_is_staged_beside_the_cases_own_project() {
+    // The sibling placement is the whole contract: one import line has to resolve in
+    // the case's `validation/<engine>/` in the checkout and in the staged
+    // `validation/` here, which it only does if the package lands next to the case's
+    // `harness.ts` rather than anywhere else.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+
+    let project = tempfile::tempdir().expect("a scratch validator project");
+    std::fs::write(project.path().join("harness.ts"), "// the case's own\n").expect("the harness");
+    std::fs::create_dir_all(project.path().join("board")).expect("a suite directory");
+    std::fs::write(project.path().join("board/beams.test.ts"), "// a suite\n").expect("a suite");
+
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let dest = repo.path().join(VALIDATION_SCRIPT_DIR);
+    stage_project(project.path(), &dest).expect("the project stages");
+
+    assert!(
+        dest.join("harness.ts").is_file(),
+        "the case's own files stage"
+    );
+    assert!(dest.join("board/beams.test.ts").is_file());
+    assert!(
+        dest.join(CASE_HARNESS_DIR).join("index.ts").is_file(),
+        "the package's barrel is a sibling of the case's harness",
+    );
+    assert!(
+        dest.join(CASE_HARNESS_DIR)
+            .join("page/recorder-init.js")
+            .is_file(),
+        "the package's subdirectories stage with it",
+    );
+}
+
+#[test]
+fn only_the_packages_sources_are_staged() {
+    // The package is staged as source for vitest to transpile, not installed: its
+    // manifest and its own suite have no business in a case's validator project — and
+    // a `*.test.ts` under it would be collected by every case's `validation/**` glob.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+    let package = store.path().join(CASE_HARNESS_PACKAGE);
+    std::fs::write(package.join("package.json"), "{}\n").expect("the manifest");
+    std::fs::create_dir_all(package.join("test")).expect("the package's own suite");
+    std::fs::write(package.join("test/replay.spec.ts"), "// spec\n").expect("a spec");
+
+    let project = tempfile::tempdir().expect("a scratch validator project");
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let dest = repo.path().join(VALIDATION_SCRIPT_DIR);
+    stage_project(project.path(), &dest).expect("the project stages");
+
+    let staged = dest.join(CASE_HARNESS_DIR);
+    assert!(staged.join("index.ts").is_file());
+    assert!(
+        !staged.join("package.json").exists(),
+        "only `src/` is staged, so nothing but source reaches the project",
+    );
+    assert!(!staged.join("test").exists());
+}
+
+#[test]
+fn a_stale_copy_in_the_case_is_replaced_by_the_package() {
+    // The package decides the case's points, so a case cannot shadow it with a copy of
+    // its own that has drifted — whatever stands at that name is replaced wholesale.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+
+    let project = tempfile::tempdir().expect("a scratch validator project");
+    let stale = project.path().join(CASE_HARNESS_DIR);
+    std::fs::create_dir_all(&stale).expect("the case's stale copy");
+    std::fs::write(stale.join("index.ts"), "export const kit = 0;\n").expect("a stale barrel");
+    std::fs::write(stale.join("gone.ts"), "// dropped\n").expect("a stale extra");
+
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let dest = repo.path().join(VALIDATION_SCRIPT_DIR);
+    stage_project(project.path(), &dest).expect("the project stages");
+
+    let staged = dest.join(CASE_HARNESS_DIR);
+    assert_eq!(
+        std::fs::read_to_string(staged.join("index.ts")).expect("the staged barrel"),
+        "export const kit = 1;\n",
+        "the store's copy wins over the one standing in the case",
+    );
+    assert!(
+        !staged.join("gone.ts").exists(),
+        "the stale copy is cleared rather than merged into",
+    );
+}
+
+#[test]
+fn a_host_with_no_staged_harness_is_a_runner_failure_that_names_both_fixes() {
+    // Reported as a failure of the runner rather than of the build, which is what
+    // leaves every point it backs for the reviewer. The message has to carry the two
+    // ways out, because the store is a host fact no case can do anything about.
+    let store = tempfile::tempdir().expect("an empty package store");
+    use_package_store(store.path());
+
+    let project = tempfile::tempdir().expect("a scratch validator project");
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let message = stage_project(project.path(), &repo.path().join(VALIDATION_SCRIPT_DIR))
+        .expect_err("an empty store cannot stage the harness");
+
+    assert!(message.contains(CASE_HARNESS_PACKAGE), "{message}");
+    assert!(
+        message.contains(&store.path().display().to_string()),
+        "{message}"
+    );
+    assert!(message.contains("stage-tcab-packages.mjs"), "{message}");
+    assert!(message.contains("TCAB_PACKAGE_STORE"), "{message}");
+}
+
+#[test]
+fn the_package_store_is_preferred_over_the_checkout() {
+    // The store is what the driver image bakes and what `TCAB_PACKAGE_STORE` points
+    // at, and it is the same store the seeder vendors engine runtimes out of — so a
+    // run and its validators can never disagree about which sources they were built
+    // from. The checkout is only the fallback for a `tcab` run out of the repository.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+
+    assert_eq!(
+        case_harness_source().expect("the store carries the package"),
+        store.path().join(CASE_HARNESS_PACKAGE).join("src"),
+    );
+}
+
+#[test]
+fn a_store_without_the_package_falls_back_to_the_checkout() {
+    // With neither a store nor a checkout under the current directory there is no
+    // source at all, which is the case the error above reports. The candidates are
+    // relative to the current directory, so this asserts the fallback is consulted
+    // rather than that this test's own directory happens to be the repository root.
+    let store = tempfile::tempdir().expect("an empty package store");
+    use_package_store(store.path());
+
+    assert_eq!(
+        case_harness_source(),
+        CASE_HARNESS_CANDIDATES
+            .iter()
+            .map(PathBuf::from)
+            .find(|path| path.is_dir()),
+    );
+}

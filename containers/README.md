@@ -343,8 +343,14 @@ design: the script's shippable list is everything staged into the store, while t
 `SHIPPABLE_PACKAGES` allowlist in
 [`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs) is the smaller
 set a case may declare with `packages`. An engine package appears in the staging
-list alone, because a run selects it. Every name in the allowlist must appear in
-the staging list, so a case only ever names a package the image carries.
+list alone, because a run selects it. So does `@test-cabinet/case-harness`, the
+shared harness a case's engineless validators are written over: nothing seeds it
+into a run repository at all, the reporter copying it out of the store into the
+staged validator project once the container is gone (see
+[Validation](../apps/docs/src/content/docs/components/core/validation.md)). A case
+able to declare it would be handed the suites it is measured by. Every name in the
+allowlist must appear in the staging list, so a case only ever names a package the
+image carries.
 
 ### Adding a package to the shippable set
 
