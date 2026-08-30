@@ -314,10 +314,10 @@ impl ProgramErrorKind {
     /// "the program faulted" and "the program was fighting a call it could not make", and all three
     /// land under [`ProgramFault`](crate::limits::TurnErrorKind::ProgramFault) at the base level.
     ///
-    /// **It is reached only where a guest reports the throw**, which
-    /// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) requires of every
-    /// guest whose runtime delivers an uncaught failure to its entry point: the interpreted arms,
-    /// the ECMAScript arms and C++ report, and an uncaught failed call is
+    /// **It is reached only where a guest reports the throw**, which [the failure rule](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures)
+    /// requires of every guest whose runtime delivers an uncaught failure to its entry point: the
+    /// interpreted arms,
+    /// the ECMAScript arms, C++ and C# report, and an uncaught failed call is
     /// [`ProgramApiError`](TurnErrorType::ProgramApiError) on all of them. On an arm whose program
     /// dies the way its runtime kills it before anything can report — Rust, Swift and the JVM arms
     /// — nothing is handed up, the failure arrives as [`SandboxError::Trap`] and the turn is

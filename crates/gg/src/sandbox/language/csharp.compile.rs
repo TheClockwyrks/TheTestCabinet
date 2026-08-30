@@ -115,6 +115,8 @@
 //! | exit 0 | compiled | the assembly, base64-encoded |
 //! | non-zero, and the **parser** refused it | a typo | [`PrepareError::Syntax`] — the parser's own diagnostics, at the model's own coordinates |
 //! | non-zero, and only the **binder** refused it | a program written whole against the wrong surface | [`PrepareError::Compile`] — Roslyn's own diagnostics, at the model's own coordinates |
+//! | non-zero, and a diagnostic named [gg's arrangement](ARRANGEMENT_CODES) | a source, a reference or an output path gg got wrong | [`PrepareFailure::Toolchain`] — the whole invocation, located diagnostics beside it and all |
+//! | non-zero, over a [rebuilt code module](bind_module) | this arm disagreeing with itself about a file the model did not write | [`PrepareFailure::Lowering`] — gg's own defect, and the run ends on it |
 //! | anything else | the compiler could not finish | [`PrepareFailure::Toolchain`] — **not** the model's, and never shown to it as its own |
 //!
 //! Every diagnostic a program's compile can produce is located in the model's own file, because the
@@ -457,6 +459,18 @@ fn build_module(
 
 /// The library the module bound at `module.name` is referenced through, compiling it first when this
 /// agent's workspace holds no build made from these bytes.
+///
+/// The rebuild is the miss rather than the rule — a module reaching a program's compile was
+/// [read](compile_module) and accepted before any program named it — and it happens when this
+/// agent's workspace holds no build for these bytes: the recorded source differs, or the artifact it
+/// recorded is gone. It is what keeps a program handed a module this workspace never saw compiling,
+/// which is the authorship gate's own scope and every test that drives the program step directly.
+///
+/// **Every way it can fail is [gg's](ours)**, and that is what this function exists to state. The
+/// module's bytes were accepted at the read that loaded them, so this arm refusing them now is this
+/// arm disagreeing with itself over a file the model did not write. Handing the module author's
+/// diagnostic to the model charges it for a program it wrote correctly and names a file it cannot
+/// open.
 fn bind_module(
     root: &Path,
     workspace: &Workspace,
@@ -466,7 +480,8 @@ fn bind_module(
     match workspace.module_build(&module.name, &module.source) {
         Some(artifacts) if !artifacts.is_empty() => Ok(artifacts[0].clone()),
         _ => {
-            let wrapped = source::wrap_module(&module.source, &module.name)?;
+            let wrapped = source::wrap_module(&module.source, &module.name)
+                .map_err(|failure| ours(&module.name, failure))?;
             build_module(
                 root,
                 workspace,
@@ -475,7 +490,39 @@ fn bind_module(
                 &module.source,
                 context,
             )
+            .map_err(|failure| ours(&module.name, failure))
         }
+    }
+}
+
+/// Re-attribute a [rebuilt module](bind_module)'s refusal to gg, whichever of the model-facing bands
+/// it arrived in.
+///
+/// Both producers are covered because both are reachable and both are equally gg's here: the
+/// [wrap](source::wrap_module), which refuses a module whose shape this arm has no lowering for, and
+/// the compile under it, which refuses one Roslyn read and disagreed with. A fix that re-attributed
+/// only the second would leave a module offering nothing public reaching a model as its own
+/// `Unsupported` refusal, over a file it did not write.
+///
+/// A [toolchain failure](PrepareFailure::Toolchain) passes through. A compiler that could not
+/// finish is the run image's rather than anybody's source, whichever file it was reading, and it
+/// already ends the run without the model reading it.
+fn ours(key: &str, failure: PrepareFailure) -> PrepareFailure {
+    let binding = format!("{}.{key}", source::NAMESPACE);
+    match failure {
+        PrepareFailure::Program(error @ (PrepareError::Syntax(_) | PrepareError::Compile(_))) => {
+            PrepareFailure::Lowering(format!(
+                "csc refused the code module gg compiled as `{binding}` beside the program, which \
+                 compiled on its own when it was loaded:\n{error}"
+            ))
+        }
+        PrepareFailure::Program(error @ PrepareError::Unsupported(_)) => {
+            PrepareFailure::Lowering(format!(
+                "gg could not lower the code module bound at `{binding}` beside the program, which \
+                 it accepted when it was loaded:\n{error}"
+            ))
+        }
+        other => other,
     }
 }
 
@@ -728,6 +775,9 @@ fn response_file(
     sources: &[PathBuf],
     output: &Path,
 ) -> Result<String, PrepareFailure> {
+    let sep = std::path::MAIN_SEPARATOR;
+    let quote = |value: &str| quoted(value).map_err(PrepareFailure::Toolchain);
+    let mapped = |value: &str| path_map(value).map_err(PrepareFailure::Toolchain);
     let mut lines = vec![
         "-nologo".to_string(),
         "-nostdlib+".to_string(),
@@ -737,22 +787,67 @@ fn response_file(
         "-optimize+".to_string(),
         "-debug:embedded".to_string(),
         format!(
-            "-pathmap:{}{sep}=.{sep}",
-            work.display(),
-            sep = std::path::MAIN_SEPARATOR
+            "-pathmap:{}={}",
+            mapped(&format!("{}{sep}", work.display()))?,
+            mapped(&format!(".{sep}"))?,
         ),
         "-deterministic".to_string(),
         "-utf8output".to_string(),
-        format!("-out:{}", output.display()),
+        format!("-out:{}", quote(&output.display().to_string())?),
     ];
     for reference in references(root)?.iter().chain(libraries) {
-        lines.push(format!("-r:{}", reference.display()));
+        lines.push(format!("-r:{}", quote(&reference.display().to_string())?));
     }
     for file in sources {
-        lines.push(format!("{}", file.display()));
+        lines.push(quote(&file.display().to_string())?);
     }
     lines.push(String::new());
     Ok(lines.join("\n"))
+}
+
+/// One value a response-file line carries, wrapped in the quotes Roslyn's own lexer strips off it
+/// again.
+///
+/// Roslyn splits a response file **on whitespace**, exactly as a shell splits a command line, and a
+/// quoted run is one token however many spaces are inside it. Every path this arm writes into one
+/// comes from somewhere gg does not choose the spelling of — the compile
+/// [workspace](crate::sandbox::Workspace) under the machine's temporary directory, the toolchain
+/// root under `$HOME` or [`DOTNET_HOME_ENV`] — so a `TMPDIR` or a `HOME` holding a space is a
+/// machine on which every unquoted line arrives as two arguments. Measured against this arm's own
+/// toolchain, an unquoted response file over a workspace whose path holds a space fails the whole
+/// invocation with `error CS8101: The pathmap option was incorrectly formatted.` — one of the
+/// [codes that describe gg's own arrangement](ARRANGEMENT_CODES) — before `csc` reads a line of the
+/// program.
+///
+/// A path holding a `"` has no spelling in that format at all, and gg refuses to write one rather
+/// than emit a line the compiler will re-lex into something else. It is a
+/// [toolchain failure](PrepareFailure::Toolchain) because the machine's own directory names are what
+/// it is about, and it names the path so an operator can see which one.
+fn quoted(value: &str) -> Result<String, String> {
+    if value.contains('"') {
+        return Err(format!(
+            "gg cannot pass {value} to csc: Roslyn's response-file format has no spelling for a \
+             path holding a quote character. Put TMPDIR and the .NET toolchain \
+             ({DOTNET_HOME_ENV}) under directory names without one.",
+        ));
+    }
+    Ok(format!("\"{value}\""))
+}
+
+/// One side of the [`-pathmap`](response_file) pair, in the spelling Roslyn's own option parser
+/// reads a path back out of.
+///
+/// `-pathmap` carries `key=value` pairs separated by `,`, and its parser reads a **doubled**
+/// separator as one literal character. A `=` or a `,` inside a path written straight into that
+/// option therefore re-lexes into an extra pair or an extra field, and the invocation fails with
+/// `CS8101` over a program `csc` never read. Doubling both is the format's own escape, and the
+/// quoting the value still needs is the [response file's](quoted), which is a separate lexer and
+/// runs first.
+///
+/// Every path this option carries is the agent's compile workspace, rooted under `TMPDIR`, so the
+/// characters in it are the machine's to choose and not gg's.
+fn path_map(value: &str) -> Result<String, String> {
+    quoted(&value.replace(',', ",,").replace('=', "=="))
 }
 
 /// The reference assemblies a program is compiled against: every `.dll` under `ref/`, sorted.
@@ -915,7 +1010,8 @@ fn arrangement_failure(lead: &str, report: &CompilerReport) -> String {
 /// and for a program it could not read the references for. What only a rejection produces is a line
 /// shaped `program.cs(7,9): error CS0117: …`, and gg keeps exactly those lines — a compiler that
 /// fell over without producing one is reported as a toolchain failure and never shown to the model
-/// as its own mistake.
+/// as its own mistake. A line whose code names [gg's arrangement](ARRANGEMENT_CODES) is a toolchain
+/// failure too, because what it reports on is the invocation rather than the C# inside it.
 ///
 /// Every diagnostic an invocation here can produce is located in the file that invocation was given,
 /// because gg supplies its SDK and every code module as references rather than as sources. A defect
@@ -979,6 +1075,19 @@ fn verdict(report: &CompilerReport) -> Result<(), PrepareFailure> {
             "csc {} without reporting a diagnostic{}",
             report.status,
             report.stderr_tail(),
+        )));
+    }
+    // One [arrangement diagnostic](ARRANGEMENT_CODES) makes the whole invocation a toolchain
+    // failure, beside located diagnostics in the model's own file and all. `csc` was reading inputs
+    // gg got wrong — a source it could not open, a reference it could not resolve — so everything
+    // else it said about the program is downstream of an input the program had no part in, and a
+    // model handed the located half would rewrite a program that was never the problem. It is the
+    // same safe direction [`is_error`] takes.
+    if reported.iter().any(|line| is_arrangement(line)) {
+        return Err(PrepareFailure::Toolchain(arrangement_failure(
+            "csc reported on the compilation gg arranged rather than on the program in it, which \
+             is gg's arrangement failing rather than the program",
+            report,
         )));
     }
     // Deduplicated and capped through the seam's own [bound](SHOWN), because Roslyn reports one
@@ -1118,34 +1227,7 @@ fn parser(root: &Path, context: &PrepareContext) -> Result<PathBuf, String> {
         std::fs::write(&source, PARSER_SOURCE)
             .map_err(|error| format!("could not write {}: {error}", source.display()))?;
         let response = into.join("parse.rsp");
-        let mut arguments = vec![
-            "-nologo".to_string(),
-            "-nostdlib+".to_string(),
-            "-target:exe".to_string(),
-            format!("-langversion:{LANGUAGE_VERSION}"),
-            "-nullable:enable".to_string(),
-            "-optimize+".to_string(),
-            "-deterministic".to_string(),
-            "-main:Tools.Parse".to_string(),
-            format!("-out:{}", into.join(PARSER_ASSEMBLY).display()),
-            format!(
-                "-r:{}",
-                bincore.join("Microsoft.CodeAnalysis.dll").display()
-            ),
-            format!(
-                "-r:{}",
-                bincore.join("Microsoft.CodeAnalysis.CSharp.dll").display()
-            ),
-        ];
-        for reference in references(root).map_err(|failure| match failure {
-            PrepareFailure::Toolchain(message) => message,
-            other => format!("{other:?}"),
-        })? {
-            arguments.push(format!("-r:{}", reference.display()));
-        }
-        arguments.push(format!("{}", source.display()));
-        arguments.push(String::new());
-        std::fs::write(&response, arguments.join("\n"))
+        std::fs::write(&response, parser_response(root, &bincore, into, &source)?)
             .map_err(|error| format!("could not write {}: {error}", response.display()))?;
 
         let report = invoke(root, &response, context)?;
@@ -1159,6 +1241,53 @@ fn parser(root: &Path, context: &PrepareContext) -> Result<PathBuf, String> {
         }
     })?;
     Ok(tree.join(PARSER_ASSEMBLY))
+}
+
+/// Every argument the [parse classifier](parser)'s own build is given, as Roslyn's response-file
+/// format.
+///
+/// It is its own function rather than a vector inside the build, because it is the **second**
+/// producer of a response file on this arm and it was the one that got forgotten: a fix that quoted
+/// only [`response_file`] would leave the classifier that runs on every rejection broken on a path
+/// holding a space, and its failure surfaces as the band widening from
+/// [`Syntax`](PrepareError::Syntax) to [`Compile`](PrepareError::Compile) rather than as anything an
+/// operator would read as an error. Every path here goes through [`quoted`] for that reason.
+///
+/// The driver is not compiled against gg's flags for the model's sake — it is gg's own program — so
+/// it names Roslyn's two assemblies out of `bincore` and the reference pack beside them, and asks
+/// for the one entry point `Parse.cs` declares.
+fn parser_response(
+    root: &Path,
+    bincore: &Path,
+    into: &Path,
+    source: &Path,
+) -> Result<String, String> {
+    let quote = |path: &Path| quoted(&path.display().to_string());
+    let mut arguments = vec![
+        "-nologo".to_string(),
+        "-nostdlib+".to_string(),
+        "-target:exe".to_string(),
+        format!("-langversion:{LANGUAGE_VERSION}"),
+        "-nullable:enable".to_string(),
+        "-optimize+".to_string(),
+        "-deterministic".to_string(),
+        "-main:Tools.Parse".to_string(),
+        format!("-out:{}", quote(&into.join(PARSER_ASSEMBLY))?),
+        format!("-r:{}", quote(&bincore.join("Microsoft.CodeAnalysis.dll"))?),
+        format!(
+            "-r:{}",
+            quote(&bincore.join("Microsoft.CodeAnalysis.CSharp.dll"))?
+        ),
+    ];
+    for reference in references(root).map_err(|failure| match failure {
+        PrepareFailure::Toolchain(message) => message,
+        other => format!("{other:?}"),
+    })? {
+        arguments.push(format!("-r:{}", quote(&reference)?));
+    }
+    arguments.push(quote(source)?);
+    arguments.push(String::new());
+    Ok(arguments.join("\n"))
 }
 
 /// A stamp of the toolchain the driver is built and run against — the compiler's size and
@@ -1191,8 +1320,13 @@ fn fingerprint(bytes: &[u8]) -> u64 {
 /// Whether one line of `csc`'s output is an **error** about the compilation.
 ///
 /// Roslyn writes `program.cs(7,9): error CS0117: 'string' does not contain a definition for 'Nope'`
-/// and, for something not attached to a location, a bare `error CS2001: Source file … not found`.
-/// Both are kept; a summary line, a blank, or anything else is not.
+/// and, for something not attached to a location, a bare `error CS1729: 'Program' does not contain
+/// a constructor that takes 1 arguments`. Both are kept; a summary line, a blank, or anything else
+/// is not.
+///
+/// It answers one question — is this Roslyn's error format — and a line's **code** decides
+/// separately, in [`verdict`], whose failure the compilation was. A location settles neither: an
+/// unlocated `CS1729` is the model's, and a located [`CS2001`](ARRANGEMENT_CODES) is gg's.
 ///
 /// **A `warning CS` line is not one**, and that is a decision about each of the two things this
 /// predicate feeds.
@@ -1208,11 +1342,79 @@ fn fingerprint(bytes: &[u8]) -> u64 {
 /// error at all did not fail for anything in them, so a report built out of them would hand the model
 /// a diagnostic it cannot act on in place of the failure it is looking for.
 fn is_error(line: &str) -> bool {
-    let after_location = match line.split_once("): ") {
+    reported(line).starts_with("error CS")
+}
+
+/// One diagnostic line with its `file(line,col): ` prefix removed, when it had one.
+///
+/// Roslyn locates a diagnostic in the source it was reading and leaves one unlocated when it never
+/// got that far, so both shapes have to be read the same way by everything that reads a line at all.
+fn reported(line: &str) -> &str {
+    match line.split_once("): ") {
         Some((_, rest)) => rest,
         None => line.trim_start(),
-    };
-    after_location.starts_with("error CS")
+    }
+}
+
+/// The `CSxxxx` code one of Roslyn's [error lines](is_error) carries.
+fn error_code(line: &str) -> Option<&str> {
+    reported(line)
+        .strip_prefix("error ")
+        .and_then(|rest| rest.split_once(':'))
+        .map(|(code, _)| code)
+}
+
+/// The codes that describe **the compilation gg arranged** rather than the program inside it.
+///
+/// Each is one fact about who supplied what, and gg supplied all of it:
+///
+/// * `CS0006` — a reference could not be found. gg supplies every reference: the toolchain's own
+///   pack, its [SDK](sdk_assembly), and one library per code module in scope.
+/// * `CS1504` — a source file could not be opened. gg writes every source in the invocation.
+/// * `CS2001` — a source file could not be found. The same fact, for a file that was not there at
+///   all rather than one that would not open.
+/// * `CS2012` — the output could not be opened for writing. gg owns the output path.
+/// * `CS8101` — the `-pathmap` option was incorrectly formatted. gg writes that option, out of a
+///   workspace path it did not choose the spelling of.
+///
+/// A model's program cannot produce one. What can is a `-pathmap` line the compiler
+/// [re-lexed](quoted), a workspace something swept while the compile was in flight, or a volume
+/// that filled. Each is the run's environment failing rather than the program in it, which is what
+/// makes them [toolchain failures](PrepareFailure::Toolchain): the run ends on the operator's terms
+/// with the compiler's own words on their stream, and nothing is charged to the model.
+const ARRANGEMENT_CODES: &[&str] = &["CS0006", "CS1504", "CS2001", "CS2012", "CS8101"];
+
+/// Whether one of Roslyn's error lines is about [gg's arrangement](ARRANGEMENT_CODES).
+fn is_arrangement(line: &str) -> bool {
+    error_code(line).is_some_and(|code| ARRANGEMENT_CODES.contains(&code))
+}
+
+/// **The namespaces Roslyn said this program could not reach**, read out of the diagnostics this
+/// arm's [verdict] rendered.
+///
+/// Two codes name one, and they carry the name differently. `CS0246` quotes the whole unresolved
+/// name (`The type or namespace name 'Newtonsoft' could not be found`). `CS0234` quotes the leaf and
+/// the namespace it looked in separately (`The type or namespace name 'Jsn' does not exist in the
+/// namespace 'System.Text'`), so the two are rejoined: a `using System.Text.Jsn;` is the name
+/// `System.Text.Jsn`, and the leaf alone would match nothing.
+pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
+    diagnostic
+        .lines()
+        .filter_map(|line| {
+            let names = crate::sandbox::language::diagnostics::named(line, "'", "'");
+            if line.contains("CS0246") {
+                return names.into_iter().next();
+            }
+            if line.contains("CS0234") {
+                return match names.as_slice() {
+                    [name, owner, ..] => Some(format!("{owner}.{name}")),
+                    [name] => Some(name.clone()),
+                    [] => None,
+                };
+            }
+            None
+        })
+        .collect()
 }
 
 #[cfg(test)]

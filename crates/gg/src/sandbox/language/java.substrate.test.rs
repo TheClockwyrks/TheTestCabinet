@@ -268,9 +268,9 @@ pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
 /// A runtime failure on this arm arrives as a [`Trap`](SandboxError::Trap) carrying the guest's own
 /// standard error, and not as a structured `ProgramError`: nothing in this arm's SDK and nothing in
 /// gg's generated entry class intercepts a failure to report one, so what the host has is what
-/// TeaVM's runtime wrote before it aborted. That is the
-/// [D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) shape — capture rather than
-/// interception — and it is why these tests read a string rather than a struct.
+/// TeaVM's runtime wrote before it aborted. That is the [failure rule's](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures)
+/// shape — capture rather than interception — and it is why these tests read a string rather than a
+/// struct.
 pub(super) fn trap(outcome: &SandboxOutcome) -> &str {
     match &outcome.result {
         Ok(result) => panic!(
@@ -369,7 +369,7 @@ fn the_ambient_wasi_surface_reaches_a_java_program() {
 /// **An uncaught failure reaches the model as its own runtime's dying words**, at the model's own
 /// file and lines — and gg catches nothing on the way.
 ///
-/// Two halves, and ruling D8a asks for both: **what** went wrong, which is the exception's own
+/// Two halves, and the failure rule asks for both: **what** went wrong, which is the exception's own
 /// header, and **where**, which is TeaVM's own stack trace over the model's own file. Neither
 /// reaches the model through anything gg wrote: `GgEntry` has no `catch`, and what is read here is
 /// the guest's standard error.
@@ -416,8 +416,8 @@ fn an_uncaught_failure_reaches_the_model_in_its_runtimes_own_words() {
 /// **A failure names the class it was, whatever class that is** — including one the model declared
 /// itself and one carrying no message at all.
 ///
-/// The half of [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) that says
-/// a failure names *what* went wrong, on the arm where it was hardest to get: TeaVM emits a class's
+/// The half of [the failure rule](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures) that
+/// says a failure names *what* went wrong, on the arm where it was hardest to get: TeaVM emits a class's
 /// name string only for the classes its dependency analysis sees reaching `Class.getName()`, and it
 /// lowers `athrow` into a call long after that analysis has run. What answers it is
 /// `gg.internal.ThrowableNames`, a TeaVM plugin in this arm's SDK jar that propagates **every
@@ -611,15 +611,31 @@ fn a_program_that_writes_no_line_reaching_a_module_does_not_compile() {
 }
 
 /// **One module cannot see another**, because each is compiled against the SDK and the toolchain and
-/// nothing else — and a module that does not compile is a refusal naming the key it is bound at.
+/// nothing else — and a module that does not compile is refused in the module's own coordinates.
 ///
-/// The two claims are one compile. Modules share the package `lib`, which is what makes
-/// `lib.<key>` the name a program writes; what keeps them from being one namespace is that no
-/// module's classes are ever on another module's classpath. So a body reaching for a sibling is a
-/// body that does not compile, whatever else the session has loaded, and the agent is told which
-/// module to fix rather than being handed a diagnostic about its own program.
+/// Modules share the package `lib`, which is what makes `lib.<key>` the name a program writes; what
+/// keeps them from being one namespace is that no module's classes are ever on another module's
+/// classpath. So a body reaching for a sibling is a body that does not compile, whatever else the
+/// session has loaded.
+///
+/// Both readings of that refusal are driven. The read that binds the module hands its author the
+/// diagnostic, located in the module's own file. The same bytes reaching a program's compile with
+/// no build recorded for them is gg rebuilding a source it already accepted, so it is gg's own
+/// failure naming the key rather than a compiler error charged to a model that wrote a program
+/// which compiles.
 #[test]
 fn a_module_is_compiled_against_the_sdk_alone_and_a_broken_one_names_its_key() {
+    let sibling = "public static String call() { return helpers.shout(\"gg\"); }\n";
+    let at_the_read = compile_module("other", sibling, &PrepareContext::detached())
+        .expect_err("a module reaching for a sibling does not compile");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &at_the_read else {
+        panic!("a module read is the author's own compile error: {at_the_read:?}");
+    };
+    assert!(
+        rendered.contains("other.java:1"),
+        "the refusal is at the module's own line: {rendered}"
+    );
+
     let modules = vec![
         CodeModule {
             name: "helpers".to_string(),
@@ -628,7 +644,7 @@ fn a_module_is_compiled_against_the_sdk_alone_and_a_broken_one_names_its_key() {
         },
         CodeModule {
             name: "other".to_string(),
-            source: "public static String call() { return helpers.shout(\"gg\"); }\n".to_string(),
+            source: sibling.to_string(),
         },
     ];
     let failure = compile_program(
@@ -637,8 +653,8 @@ fn a_module_is_compiled_against_the_sdk_alone_and_a_broken_one_names_its_key() {
         &PrepareContext::detached(),
     )
     .expect_err("a module reaching for a sibling does not compile");
-    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
-        panic!("a code module that does not compile is the model's to act on: {failure:?}");
+    let PrepareFailure::Lowering(rendered) = &failure else {
+        panic!("a module gg rebuilt beside a program is gg's own failure, not {failure:?}");
     };
     assert!(
         rendered.contains("`other`") && rendered.contains("other.java:1"),

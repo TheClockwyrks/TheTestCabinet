@@ -33,11 +33,11 @@
 //! ([`classify`]), and the guest then returns normally. It used to write the rendering to standard
 //! error and `abort`, so that the crossing ended in a trap; the owner's ruling retired that: an
 //! uncaught `ApiError` is the program's fault and must be filed as `program_api_error` on this arm
-//! exactly as Python, Ruby and C++ file it, and a `sandbox_*` type is reserved for a ceiling gg
-//! imposed or a real wasmtime trap — never for an API failure a program did not catch. Reporting is
-//! still not interception: there is no `catch` between the program and the engine, no chain built
-//! to type a throw, and the message is the engine's words. The WIT's `run` export states the rule
-//! for every guest.
+//! exactly as every other guest that sees the throw files it, and a `sandbox_*` type is reserved
+//! for a ceiling gg imposed or a real wasmtime trap — never for an API failure a program did not
+//! catch. Reporting is still not interception: there is no `catch` between the program and the
+//! engine, no chain built to type a throw, and the message is the engine's words. The WIT's `run`
+//! export states the rule for every guest.
 //!
 //! Four shapes are reported that way, and the last two were silent or opaque on the incumbent:
 //!

@@ -512,7 +512,8 @@ fn build_module(
 ///
 /// A module reaching here was built at the read that loaded it, so this names that build. A module
 /// this agent's workspace holds no build of — the one a test or the authorship gate hands straight to
-/// the program step — is built here and recorded, so the program after it names one.
+/// the program step — is built here and recorded, so the program after it names one. A refusal of
+/// that rebuild is [gg's own](ours).
 fn build_modules(
     modules: &[CodeModule],
     guest: &Guest,
@@ -539,12 +540,42 @@ fn build_modules(
                 home,
                 workspace,
                 context,
-            )?,
+            )
+            .map_err(|failure| ours(&module.name, failure))?,
         };
         search.push(built.0);
         objects.push(built.1);
     }
     Ok(Some(Modules { search, objects }))
+}
+
+/// Re-attribute a [rebuilt module](build_modules)'s refusal to gg, whichever of the model-facing
+/// bands it arrived in.
+///
+/// A module is compiled at the read that binds it, so its author already read this diagnostic in
+/// their own coordinates and this arm refusing the same bytes now is this arm disagreeing with
+/// itself. The program beside it compiles, and `module_<key>.swift` is a file that program's author
+/// never wrote, so handing the diagnostic back under `Compiler error` charges a model for a program
+/// it wrote correctly and offers it nothing to change.
+///
+/// A [toolchain failure](PrepareFailure::Toolchain) passes through, already being gg's rather than
+/// the model's.
+fn ours(key: &str, failure: PrepareFailure) -> PrepareFailure {
+    match failure {
+        PrepareFailure::Program(error @ (PrepareError::Syntax(_) | PrepareError::Compile(_))) => {
+            PrepareFailure::Lowering(format!(
+                "swiftc refused the code module gg compiled as `{key}` beside the program, which \
+                 compiled on its own when it was loaded:\n{error}"
+            ))
+        }
+        PrepareFailure::Program(error @ PrepareError::Unsupported(_)) => {
+            PrepareFailure::Lowering(format!(
+                "gg could not lower the code module bound at `{key}` beside the program, which it \
+                 accepted when it was loaded:\n{error}"
+            ))
+        }
+        other => other,
+    }
 }
 
 /// Refuse a binding key that names a Swift module every compile here already supplies.
@@ -1161,6 +1192,20 @@ fn materialise_libraries() -> Result<PathBuf, String> {
         Ok(())
     })?;
     Ok(tree)
+}
+
+/// **The modules `swiftc` said this program could not import**, read out of the text this arm
+/// [renders](rendered).
+///
+/// `swiftc` reports an unresolved `import` at the model's own line and column as
+/// `no such module 'Algorithms'`, quoting the module and nothing else.
+pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
+    diagnostic
+        .lines()
+        .flat_map(|line| {
+            crate::sandbox::language::diagnostics::named(line, "no such module '", "'")
+        })
+        .collect()
 }
 
 #[cfg(test)]

@@ -633,8 +633,8 @@ console.log(text);
                 located: Located::At("program.js:6:3"),
                 answered: Answered::AtRuntime,
                 // The guest reads the `code` off the uncaught `ApiError` and reports it, so the
-                // turn is filed as the program fighting the API — as on Python, Ruby and C++ —
-                // and never as a sandbox trap.
+                // turn is filed as the program fighting the API — as on every arm whose guest sees
+                // the throw — and never as a sandbox trap.
                 recorded: Some(TurnErrorType::ProgramApiError),
             },
             Case {

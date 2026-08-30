@@ -183,6 +183,12 @@ impl ProgramLanguage for Rust {
         Some("rustc")
     }
 
+    /// [What `rustc` says a program could not import](compile::unresolved_imports), read out of the
+    /// `E0432` and `E0433` wording this arm's own diagnostics carry.
+    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
+        compile::unresolved_imports(diagnostic)
+    }
+
     /// Unpack the embedded library set now, so the first code turn does not.
     ///
     /// The whole of this arm's warm-up, and the smallest of any compiled arm's: there is no daemon

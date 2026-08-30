@@ -366,3 +366,26 @@ fn the_bound_does_not_decide_whose_failure_it_is() {
         "a compiler that reported no error was blamed on the model: {failure}"
     );
 }
+
+/// **An unresolved import is answered with the modules of this arm's set that match it.**
+///
+/// The one cell of the [cross-arm gate](crate::sandbox::language::imports) that needs `rustc`: it
+/// drives a program importing a near-miss of a module this arm really carries through this arm's
+/// real preparation, and holds what comes back to the name the program wrote. What it catches is a
+/// compiler that reworded its own sentence, which is silent otherwise — the arm recovers nothing,
+/// every rejection falls back to the whole inventory, and nothing reports it.
+#[test]
+fn an_unresolved_import_is_answered_with_the_candidates_that_match_it() {
+    crate::sandbox::language::imports::gate(test_cabinet_core::gg::GgProgramLanguage::Rust);
+}
+
+/// **A code module gg rebuilt beside a program is gg's own failure and never the model's.**
+///
+/// The one cell of the [cross-arm gate](crate::sandbox::language::rebuilds) that needs rustc: it
+/// hands this arm's program step a module this workspace holds no build of and that rustc refuses,
+/// and reads the band of what comes back. What it catches is a rebuild's diagnostic reaching a model
+/// under `Compiler error`, over a program that compiles and a file the model never wrote.
+#[test]
+fn a_code_module_refused_beside_a_program_is_ggs_failure() {
+    crate::sandbox::language::rebuilds::gate(test_cabinet_core::gg::GgProgramLanguage::Rust);
+}

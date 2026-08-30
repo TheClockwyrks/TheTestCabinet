@@ -109,7 +109,7 @@ pub(crate) mod signatures;
 pub use invoker::OperationApi;
 pub use language::{
     FileWindow, ModuleExport, ModuleExportKind, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, all_languages, language, library_set, resolve_program_language, spell,
+    ProgramLanguage, all_languages, language, resolve_program_language, spell, supporting,
 };
 
 // The one reading of an export list. Compiled for the tests alone, because every reader left is a

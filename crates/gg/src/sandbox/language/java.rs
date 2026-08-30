@@ -156,6 +156,12 @@ impl ProgramLanguage for Java {
         Some("javac")
     }
 
+    /// [What `javac` says a program could not import](compile::unresolved_imports), read out of the
+    /// `package … does not exist` wording this arm's own diagnostics carry.
+    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
+        compile::unresolved_imports(diagnostic)
+    }
+
     /// Start one JVM and place the compiler driver and the SDK jar now, so the first code turn pays
     /// for neither.
     ///
@@ -212,7 +218,7 @@ impl ProgramLanguage for Java {
     /// `:83` and `:82` — gg's own SDK internals, named as the site of the model's bug. The *function*
     /// names in the same backtrace are right, and they are kept; the file and line are what go. A
     /// failure's real location on this arm arrives on the guest's own standard error, in the model's
-    /// own coordinates, which is where ruling D8a says to read it.
+    /// own coordinates, which is where the failure rule says to read it.
     fn wasm_frames_are_located(&self) -> bool {
         false
     }

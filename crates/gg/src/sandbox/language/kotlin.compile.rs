@@ -50,8 +50,8 @@
 //! Nothing. gg catches nothing, describes nothing and re-reports nothing. A program that throws dies
 //! the way TeaVM kills it — `printHeader(); printStack(); abort();` — and what the model reads is the
 //! exception's own message and the model's own file and lines, off the guest's standard error, which
-//! is where [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) says to read
-//! it. The one thing gg changed is that upstream TeaVM printed the frames and not the header; see
+//! is where [the failure rule](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures) says to
+//! read it. The one thing gg changed is that upstream TeaVM printed the frames and not the header; see
 //! `packages/gg-sandbox-jvm/vendor/org/teavm/runtime/ExceptionHandling.java`.
 //!
 //! There is no source map on this road and no offset anywhere in this file. A location arrives in the
@@ -341,9 +341,9 @@ fn bind_module(workspace: &Workspace, module: &CodeModule) -> Result<String, Pre
         return Ok(module_classes(workspace, key));
     }
     let wrapped = source::wrap_module(&module.source, &source::module_package(key))
-        .map_err(|failure| about(key, failure))?;
+        .map_err(|failure| ours(key, failure))?;
     build_module(workspace, key, &wrapped.source, &module.source)
-        .map_err(|failure| about(key, failure))?;
+        .map_err(|failure| ours(key, failure))?;
     Ok(module_classes(workspace, key))
 }
 
@@ -380,24 +380,37 @@ fn build_module(
     Ok(())
 }
 
-/// One of [`build_module`]'s failures, said as something about the code this session loaded.
+/// Re-attribute a [rebuilt module](bind_module)'s refusal to gg, whichever of the model-facing
+/// bands it arrived in.
 ///
-/// Only the model-facing bands are renamed: a toolchain failure is the operator's whatever compiled
-/// when it happened, and saying a key in front of it would blame a skill for a JVM that would not
-/// start.
-fn about(key: &str, failure: PrepareFailure) -> PrepareFailure {
-    let said = match failure {
-        PrepareFailure::Program(PrepareError::Syntax(said) | PrepareError::Compile(said)) => {
-            PrepareError::Compile(format!(
-                "the code this session loaded at `{key}` does not compile: {said}"
+/// A module is compiled at the read that binds it, so its author already read this diagnostic in
+/// their own coordinates and this arm refusing the same bytes now is this arm disagreeing with
+/// itself. The program beside it compiles, and the file the diagnostic names is one that program's
+/// author never wrote, so handing it back under `Compiler error` charges a model for a program it
+/// wrote correctly and offers it nothing to change.
+///
+/// Both producers are covered because both are gg's here: the [wrap](source::wrap_module), which
+/// refuses a module whose shape this arm has no lowering for, and the compile under it, which
+/// refuses one `kotlinc` read and disagreed with.
+///
+/// A [toolchain failure](PrepareFailure::Toolchain) passes through. A JVM that would not start is
+/// already gg's rather than the model's, and saying a key in front of it would blame a skill for it.
+fn ours(key: &str, failure: PrepareFailure) -> PrepareFailure {
+    match failure {
+        PrepareFailure::Program(error @ (PrepareError::Syntax(_) | PrepareError::Compile(_))) => {
+            PrepareFailure::Lowering(format!(
+                "kotlinc refused the code module gg compiled as `{key}` beside the program, which \
+                 compiled on its own when it was loaded:\n{error}"
             ))
         }
-        PrepareFailure::Program(PrepareError::Unsupported(said)) => PrepareError::Unsupported(
-            format!("the code this session loaded at `{key}` cannot be built: {said}"),
-        ),
-        other => return other,
-    };
-    PrepareFailure::Program(said)
+        PrepareFailure::Program(error @ PrepareError::Unsupported(_)) => {
+            PrepareFailure::Lowering(format!(
+                "gg could not lower the code module bound at `{key}` beside the program, which it \
+                 accepted when it was loaded:\n{error}"
+            ))
+        }
+        other => other,
+    }
 }
 
 /// The main class, target file and entry file that ask [the driver](super::super::jvm) for the
@@ -909,6 +922,35 @@ fn jar(classpath: &str, prefix: &str) -> Result<String, String> {
         })
         .map(ToString::to_string)
         .ok_or_else(|| format!("gg found no {prefix}*.jar; run scripts/ci/install-kotlin.sh"))
+}
+
+/// **The names `kotlinc` said this program could not resolve**, read out of the rendering
+/// [`Diagnostic::render`](Diagnostic::render) produced.
+///
+/// One sentence covers an unresolved import and an unresolved identifier alike, and it names only
+/// the first segment that resolved to nothing: `import kotlin.mathh.abs` is reported as
+/// `Unresolved reference 'mathh'.` Four spellings of it are read, because the compiler capitalises
+/// the sentence and quotes the name in the pinned release and did neither in earlier ones, so an
+/// image on either is answered.
+///
+/// A misspelt local name reaches [matching](crate::sandbox::supporting) too, which is why that rule
+/// holds a name to a module's own path segments rather than to a substring.
+pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
+    diagnostic
+        .lines()
+        .flat_map(|line| {
+            let quoted = ["Unresolved reference '", "unresolved reference '"]
+                .into_iter()
+                .flat_map(|opens| crate::sandbox::language::diagnostics::named(line, opens, "'"));
+            let bare = ["Unresolved reference: ", "unresolved reference: "]
+                .into_iter()
+                .flat_map(|opens| line.split(opens).skip(1))
+                .filter_map(|rest| rest.split_whitespace().next())
+                .map(|name| name.trim_end_matches('.').to_string())
+                .filter(|name| !name.is_empty());
+            quoted.chain(bare).collect::<Vec<String>>()
+        })
+        .collect()
 }
 
 #[cfg(test)]

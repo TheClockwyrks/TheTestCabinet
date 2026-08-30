@@ -292,9 +292,8 @@ pub(super) const ENTRY_CLASS: &str = "GgEntry";
 /// (`Program.main(new String[0]);` against `ProgramKt.main();`). There is **no `try` and no
 /// `catch`**: what replaced the twelve-clause chain both arms used to hold is the runtime itself. A
 /// program that throws dies the way TeaVM kills it and its own dying words reach the model on
-/// standard error, which is what
-/// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) asks for and what a
-/// catch chain made impossible.
+/// standard error, which is what [the failure rule](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures)
+/// asks for and what a catch chain made impossible.
 ///
 /// It declares **no `main` of its own**, on purpose: TeaVM is given the *model's* class as its main
 /// class, so nothing in the dependency graph reaches this one and `setClassesToPreserve` in

@@ -85,9 +85,8 @@ rather than intercepting the throw. An arm whose guest can see an uncaught
 failure at its entry point reports it over `feedback.report-error` with the
 failure's class, so an uncaught failed call is `program_api_error`, an unknown
 name `program_unknown_name` and anything else `program_throw` — the same event
-files the same way on every arm that reports. Python, Ruby, C++, TypeScript,
-JavaScript and PureScript report; C# reports but with no code, so its failed
-calls land in `program_throw`.
+files the same way on every arm that reports. Python, Ruby, C++, C#, TypeScript,
+JavaScript and PureScript report.
 
 `sandbox_limit` is reserved for a ceiling gg imposed or a real wasmtime trap.
 `sandbox_timeout` and `sandbox_out_of_memory` are the two ceilings;

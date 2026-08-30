@@ -36,7 +36,7 @@ arguments so a path holding a space reaches Roslyn intact.
 
 ## Done when
 
-- [ ] A diagnostic in a loaded module is reported as gg's failure.
-- [ ] `CS2001`, `CS0006` and `CS2012` are reported as toolchain failures.
-- [ ] The response file quotes its arguments, and a path holding a space compiles.
-- [ ] Gates green.
+- [x] A diagnostic in a loaded module is reported as gg's failure.
+- [x] `CS2001`, `CS0006` and `CS2012` are reported as toolchain failures.
+- [x] The response file quotes its arguments, and a path holding a space compiles.
+- [x] Gates green.

@@ -6,6 +6,8 @@
 //! and this file asserts what happens to it afterwards — a bug in the second is a bug in every arm
 //! at once, and it should not need a toolchain installed to catch.
 
+use test_cabinet_core::gg::GgProgramLanguage;
+
 use super::*;
 
 /// Three distinct renderings, in the order a compiler would have found them.
@@ -256,4 +258,223 @@ fn the_two_shapes_print_the_same_sentence_about_what_they_dropped() {
     let lines = capped_lines(&format!("{}\n{}", group(7), group(9)), opens_on_error, 1);
     assert!(items.ends_with("… and 2 more like these."), "{items}");
     assert!(lines.ends_with("… and 1 more like these."), "{lines}");
+}
+
+// The supporting material a compile failure carries: the matching that decides which of an arm's
+// library set answers a diagnostic, and the one bound every arm holds the result to.
+
+/// The names a rendered block offers, read back out of the lines a model reads.
+fn offered(block: &str) -> Vec<String> {
+    block
+        .lines()
+        .filter_map(|line| line.strip_prefix("- "))
+        .filter_map(|line| line.split_once(": "))
+        .flat_map(|(_, modules)| modules.split(", ").map(str::to_string))
+        .collect()
+}
+
+/// Every distinct first path segment an arm's catalogue holds, offered at once — the largest
+/// candidate list this arm's matcher can be asked to produce, since every module shares its first
+/// segment with one of them.
+fn every_namespace(catalogue: &crate::sandbox::signatures::SignatureCatalogue) -> Vec<String> {
+    let mut names: Vec<String> = catalogue
+        .libraries
+        .iter()
+        .flat_map(|group| group.modules.iter())
+        .filter_map(|module| segments(module).into_iter().next())
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// **Every arm that declares a library set holds its supporting material to one bound.**
+///
+/// The assertion the whole design rests on: what a compile failure costs the next turn is
+/// comparable from one arm to the next. It is asked of every registered arm rather than of a list,
+/// so a twelfth arm is covered the day it is registered, and it is asked in both the case that
+/// carries nothing but a diagnostic and the largest case the arm's own catalogue can produce.
+#[test]
+fn every_arm_holds_its_supporting_material_to_one_bound() {
+    for language in crate::sandbox::all_languages() {
+        let arm = language.id();
+        let catalogue = language.catalogue();
+        let Some(whole) = supporting(catalogue, &[]) else {
+            assert!(
+                catalogue.libraries.is_empty(),
+                "{arm} declares a library set and answered a rejection with nothing"
+            );
+            continue;
+        };
+        let declared: Vec<&str> = catalogue
+            .libraries
+            .iter()
+            .flat_map(|group| group.modules.iter().map(String::as_str))
+            .collect();
+
+        for (case, block) in [
+            ("a diagnostic naming no import", whole.clone()),
+            (
+                "a diagnostic naming every namespace this arm has",
+                supporting(catalogue, &every_namespace(catalogue))
+                    .expect("an arm that declares a set answers with something"),
+            ),
+        ] {
+            assert!(
+                block.len() <= SUPPORTING,
+                "{arm} answers {case} with {} bytes, over the {SUPPORTING} every arm holds to",
+                block.len()
+            );
+            let offered = offered(&block);
+            assert!(
+                !offered.is_empty(),
+                "{arm} answers {case} with a heading and no library at all:\n{block}"
+            );
+            for name in &offered {
+                assert!(
+                    declared.contains(&name.as_str()),
+                    "{arm} answers {case} with `{name}`, which its catalogue does not declare — a \
+                     name was cut in half rather than dropped whole:\n{block}"
+                );
+            }
+            let dropped = declared.len() - offered.len();
+            assert_eq!(
+                block.contains("… and "),
+                dropped > 0,
+                "{arm} dropped {dropped} of {} names answering {case}, and the block says \
+                 otherwise:\n{block}",
+                declared.len()
+            );
+            if dropped > 0 {
+                assert!(
+                    block.ends_with(&more(dropped)),
+                    "{arm} closes {case} with a count of what it dropped:\n{block}"
+                );
+            }
+        }
+    }
+}
+
+/// **A name matches the module it meant, and nothing it did not.**
+///
+/// The three ways one matches, each written as the mistake it answers, and the neighbours that must
+/// stay out. One rule for every arm, so this is where it is stated once rather than eleven times.
+#[test]
+fn a_name_matches_the_module_it_meant() {
+    // The arm carries it: the diagnostic was about something else, and saying so is the most
+    // informative of the three answers.
+    assert!(matched("java.util", "java.util"));
+    assert!(matched("Data.Array", "data.array"));
+
+    // One extends the other at a separator. The name reached into a module that exists, or named a
+    // namespace whose modules do.
+    assert!(matched("java.util", "java.util.Stuff"));
+    assert!(matched("kotlin.math", "kotlin"));
+    assert!(matched("std::collections", "std"));
+    assert!(
+        !matched("java.utility", "java.util"),
+        "a prefix that stops inside a segment is not a path"
+    );
+
+    // The misspelling this whole path exists for, on the last segment.
+    assert!(matched("java.util", "java.utl"));
+    assert!(matched("itertools", "itertool"));
+    assert!(matched("System.Text.Json", "System.Text.Jsn"));
+    assert!(matched("Data.Array", "Data.Arary"));
+    assert!(matched("Algorithms", "Algorithm"));
+    assert!(
+        matched("System.Text.Json", "System.Xml.Jsn"),
+        "the segments in front of the last one are not compared, so a name is answered wherever \
+         its author filed it"
+    );
+    assert!(
+        !matched("System.Text.Json", "System.Text.Xml"),
+        "a sibling under the same namespace is not a resemblance"
+    );
+    assert!(
+        !matched("Data.Array", "Data.Lens"),
+        "two modules of one namespace do not answer for each other"
+    );
+    assert!(
+        !matched("std::fmt", "std::ops"),
+        "two edits over three letters is not a resemblance, so a short segment is held to equality"
+    );
+
+    // Both sides are normalised: a compiler quotes a name, and the C++ catalogue spells a module
+    // with the brackets a program writes around it.
+    assert!(matched("<vector>", "'vectr'"));
+    assert!(matched("<vector>", "vector"));
+    assert!(matched("Algorithms", "`Algorithm`"));
+}
+
+/// **A cut block drops whole names and says how many.**
+///
+/// The one cut in this module that would otherwise lie: a truncated module name reads as a library
+/// the arm does not have, which is the false negative the set is carried to prevent. So names go
+/// whole and the count is what keeps the rest honest.
+#[test]
+fn a_cut_block_drops_whole_names_and_counts_them() {
+    let catalogue = crate::sandbox::language(GgProgramLanguage::PureScript).catalogue();
+    let whole = supporting(catalogue, &[]).expect("this arm declares a library set");
+    let declared: usize = catalogue
+        .libraries
+        .iter()
+        .map(|group| group.modules.len())
+        .sum();
+    let offered = offered(&whole);
+    assert!(
+        offered.len() < declared,
+        "this arm's whole set is under the bound, so nothing here is being measured"
+    );
+    assert!(whole.ends_with(&more(declared - offered.len())));
+    assert!(whole.len() <= SUPPORTING);
+}
+
+/// **A diagnostic naming an import the arm carries nothing like is answered with the whole set.**
+///
+/// The fallback is load-bearing rather than a leftover. A model that misremembered a name badly
+/// enough to match nothing is the one that has learned least about what this arm offers, and the
+/// set exists nowhere else: no prompt carries a package inventory.
+#[test]
+fn a_name_that_matches_nothing_is_answered_with_the_whole_set() {
+    let catalogue = crate::sandbox::language(GgProgramLanguage::Rust).catalogue();
+    let whole = supporting(catalogue, &[]).expect("this arm declares a library set");
+    assert_eq!(
+        supporting(catalogue, &["nlohmann".to_string()]),
+        Some(whole),
+        "a name resembling nothing this arm carries is answered with the inventory"
+    );
+}
+
+/// **The parse the arms share reads what is between the delimiters and nothing else.**
+#[test]
+fn a_name_is_read_between_the_delimiters_the_arm_states() {
+    assert_eq!(
+        named("unresolved import `serd`", "`", "`"),
+        vec!["serd".to_string()]
+    );
+    assert_eq!(
+        named(
+            "The type or namespace name 'Jsn' does not exist in the namespace 'System.Text'",
+            "'",
+            "'"
+        ),
+        vec!["Jsn".to_string(), "System.Text".to_string()]
+    );
+    assert_eq!(
+        named(
+            "package java.utl does not exist",
+            "package ",
+            " does not exist"
+        ),
+        vec!["java.utl".to_string()]
+    );
+    assert!(
+        named("no such module 'Algorithm", "no such module '", "'").is_empty(),
+        "a delimiter the line never closed is a sentence this arm did not recognise"
+    );
+    assert!(
+        named("nothing to see here", "`", "`").is_empty(),
+        "a line with no delimiter names nothing"
+    );
 }

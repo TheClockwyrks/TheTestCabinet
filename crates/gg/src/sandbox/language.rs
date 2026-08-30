@@ -146,7 +146,7 @@ mod comments;
 #[path = "language/heads.rs"]
 mod heads;
 
-pub use diagnostics::library_set;
+pub use diagnostics::supporting;
 
 /// The shared [code-mask](mask::CodeMask) vocabulary the per-language byte lexers fill in.
 #[path = "language/mask.rs"]
@@ -274,6 +274,24 @@ mod docs;
 #[cfg(test)]
 #[path = "language/g8.rs"]
 mod g8;
+
+/// **The gate that holds every arm's module rebuild to one band** — a code module an arm refuses
+/// beside a program is gg's own failure rather than the model's.
+///
+/// `#[cfg(test)]` because each cell drives one real compiler. Its module documentation carries the
+/// row every registered arm answers with.
+#[cfg(test)]
+#[path = "language/rebuilds.rs"]
+mod rebuilds;
+
+/// **The gate that holds every arm's unresolved-import answer to one shape** — the modules of its
+/// own library set that match what the program could not import, within the bound every arm shares.
+///
+/// `#[cfg(test)]` because each cell drives one real compiler. Its module documentation carries the
+/// row every registered arm answers with.
+#[cfg(test)]
+#[path = "language/imports.rs"]
+mod imports;
 
 /// A **second implementation of this trait, for tests only** — the thing that makes the seam an
 /// abstraction rather than one implementation wearing a trait.
@@ -522,6 +540,31 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// declare it would be an arm that looks free and is not. A new language cannot be registered
     /// without answering.
     fn checker(&self) -> Option<&'static str>;
+
+    /// **The library names this arm's own compiler said a program could not import**, read out of a
+    /// diagnostic this arm rendered.
+    ///
+    /// What a rejection carries beside the diagnostic is drawn from this arm's library set by
+    /// matching these names ([`supporting`]), so a program that misremembered one name is answered
+    /// with the modules that resemble it rather than with the whole inventory.
+    ///
+    /// The arm answers rather than the seam, for the reason [`shown`](diagnostics) is the arm's
+    /// number: the words are its compiler's. `rustc` writes ``unresolved import `serd` ``, `javac`
+    /// writes `package java.utl does not exist`, `swiftc` writes `no such module 'Algorithm'`, and
+    /// a shared parser over the union of those sentences would be gg guessing at eight compilers at
+    /// once. It reads this arm's **own rendering** — the string the model is about to be handed —
+    /// so what it parses is text this arm's tests already pin.
+    ///
+    /// The default is empty, which is the answer for an arm whose catalogue declares no library set
+    /// and for an arm whose compiler reports an unresolved import in no wording of its own. Such an
+    /// arm is answered with the whole set, as is any diagnostic whose names match nothing.
+    ///
+    /// A name may be any depth and carry the punctuation its compiler quoted it with; matching
+    /// normalises both sides.
+    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
+        let _ = diagnostic;
+        Vec::new()
+    }
 
     /// Whether this language's [prepare step](Self::prepare_program) invokes a compiler — which is
     /// to say whether it [names one](Self::checker). Derived rather than declared, so the two can

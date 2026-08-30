@@ -231,9 +231,9 @@ fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
         "{rendered}"
     );
 
-    // A code module's own compile is where its diagnostics are read, and the refusal names the key
-    // the module is bound at: the module is the thing to fix or to stop loading, and a session told
-    // nothing would meet it again on every turn.
+    // A code module's own compile is where its diagnostics are read, so its author reads them
+    // located in the module's own file. A rebuild of the same bytes beside a program is gg's, and
+    // the refusal names the key so an operator can see which binding failed.
     let report = Report {
         ok: false,
         internal: None,
@@ -247,22 +247,41 @@ fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
             message: "cannot find symbol".to_string(),
         }],
     };
-    let refused = about(
-        "helpers",
-        verdict(&report, "helpers.java").expect_err("refused"),
+    let read = verdict(&report, "helpers.java").expect_err("refused");
+    assert!(
+        matches!(&read, PrepareFailure::Program(PrepareError::Compile(rendered))
+            if rendered.contains("helpers.java:4:9")),
+        "a module read is the author's own compile error: {read:?}"
     );
-    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &refused else {
-        panic!("a code module that does not compile is the model's to act on: {refused:?}");
+    let refused = ours("helpers", read);
+    let PrepareFailure::Lowering(rendered) = &refused else {
+        panic!(
+            "a module gg rebuilt beside a program is gg's own failure, not {refused:?}. The model \
+             wrote a program that compiles and is being handed a diagnostic in a file it never saw."
+        );
     };
     assert!(
         rendered.contains("`helpers`") && rendered.contains("helpers.java:4:9"),
         "{rendered}"
     );
+    // A module this arm refuses before javac reads it is gg's on the same terms.
+    assert!(
+        matches!(
+            ours(
+                "helpers",
+                PrepareFailure::Program(PrepareError::Unsupported(
+                    "this module offers nothing".to_string()
+                ))
+            ),
+            PrepareFailure::Lowering(ref said) if said.contains("`helpers`")
+        ),
+        "a module gg could not lower beside a program was handed to the model"
+    );
     // A toolchain failure of that same compile stays the operator's: a JVM that would not start is
     // nothing a skill did.
     assert!(
         matches!(
-            about("helpers", PrepareFailure::Toolchain("no JVM".to_string())),
+            ours("helpers", PrepareFailure::Toolchain("no JVM".to_string())),
             PrepareFailure::Toolchain(_)
         ),
         "a toolchain failure was blamed on a skill"
@@ -305,9 +324,9 @@ fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
     verdict(&report, PROGRAM_FILE).expect("a warning is not a verdict");
 }
 
-/// **The generated entry class catches nothing**, which is what ruling D8a asks of every arm: a
-/// failure reaches the model as its own runtime's dying words rather than as gg's description of
-/// them. It is the world's two exports and a call, and nothing else.
+/// **The generated entry class catches nothing**, which is what the failure rule asks of every
+/// arm: a failure reaches the model as its own runtime's dying words rather than as gg's description
+/// of them. It is the world's two exports and a call, and nothing else.
 #[test]
 fn the_entry_class_catches_nothing_and_names_the_model_s_own_class() {
     let entry = entry_class();
@@ -497,7 +516,7 @@ fn the_bound_does_not_decide_whose_failure_it_is() {
     // compiling names one problem per call site exactly as a program does. Its own file is what that
     // build's verdict is read against, and the key rides in front of the whole bounded report rather
     // than in front of each diagnostic.
-    let failure = about(
+    let failure = ours(
         "helpers",
         verdict(
             &Report {
@@ -519,9 +538,32 @@ fn the_bound_does_not_decide_whose_failure_it_is() {
         )
         .expect_err("refused"),
     );
-    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
-        panic!("a code module that does not compile is the model's to act on: {failure:?}");
+    let PrepareFailure::Lowering(rendered) = &failure else {
+        panic!("a module gg rebuilt beside a program is gg's own failure: {failure:?}");
     };
     assert!(rendered.contains("`helpers`"), "{rendered}");
     assert!(rendered.contains("… and 42 more like these."), "{rendered}");
+}
+
+/// **An unresolved import is answered with the modules of this arm's set that match it.**
+///
+/// The one cell of the [cross-arm gate](crate::sandbox::language::imports) that needs `javac`: it
+/// drives a program importing a near-miss of a module this arm really carries through this arm's
+/// real preparation, and holds what comes back to the name the program wrote. What it catches is a
+/// compiler that reworded its own sentence, which is silent otherwise — the arm recovers nothing,
+/// every rejection falls back to the whole inventory, and nothing reports it.
+#[test]
+fn an_unresolved_import_is_answered_with_the_candidates_that_match_it() {
+    crate::sandbox::language::imports::gate(test_cabinet_core::gg::GgProgramLanguage::Java);
+}
+
+/// **A code module gg rebuilt beside a program is gg's own failure and never the model's.**
+///
+/// The one cell of the [cross-arm gate](crate::sandbox::language::rebuilds) that needs javac: it
+/// hands this arm's program step a module this workspace holds no build of and that javac refuses,
+/// and reads the band of what comes back. What it catches is a rebuild's diagnostic reaching a model
+/// under `Compiler error`, over a program that compiles and a file the model never wrote.
+#[test]
+fn a_code_module_refused_beside_a_program_is_ggs_failure() {
+    crate::sandbox::language::rebuilds::gate(test_cabinet_core::gg::GgProgramLanguage::Java);
 }

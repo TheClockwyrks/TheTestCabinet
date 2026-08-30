@@ -27,7 +27,13 @@ declares `-nostdlib+`, `-langversion:14.0`, `-nullable:enable`, `-optimize+`,
 `-debug:embedded`, `-pathmap:`, `-deterministic`, `-utf8output`, the target, the
 output path, `-r:` for every `.dll` under the toolchain's `ref/` directory,
 sorted, and then `-r:` for gg's SDK assembly and for each module library in
-scope. `-debug:embedded`
+scope. Every path a line of that file carries is quoted, because Roslyn splits a
+response file on whitespace and a compile workspace under a `TMPDIR` or a `HOME`
+holding a space would otherwise reach the compiler as several arguments. A path
+holding a quote character has no spelling in that format and is refused as a
+toolchain failure naming it. The `-pathmap:` option carries a list of its own,
+separated by `,` and `=`, so a workspace path holding either has it doubled,
+which is that option's own escape. `-debug:embedded`
 puts a portable PDB inside the assembly, which is the only place one can travel
 to the guest, and `-pathmap:` maps the compile workspace onto `./` so
 that what a stack trace names is `./program.cs` rather than a path that differs
@@ -191,7 +197,25 @@ allowed to decide a band.
 | --- | --- |
 | Roslyn's parser refused it | a syntax error, at the model's own coordinates |
 | Only the binder refused it | a compile error, at the model's own coordinates |
+| A diagnostic describes gg's own arrangement | a toolchain failure |
+| A code module rebuilt beside the program was refused | a lowering failure naming the binding |
 | No diagnostic was reported at all | a toolchain failure |
+
+`CS0006`, `CS1504`, `CS2001`, `CS2012` and `CS8101` describe the compilation gg
+arranged rather than the program in it: gg writes every source file the
+invocation reads, supplies every reference it resolves, owns the path it writes
+its output to, and writes the `-pathmap:` option out of a workspace path the
+machine chose the spelling of. One of them anywhere in the output makes the
+whole compile a toolchain failure, diagnostics located in the model's own file
+included, because the compiler was working from inputs gg got wrong and
+everything else it said follows from that. The report carries the exit status,
+the stderr tail and Roslyn's own output, as every toolchain failure on this arm
+does.
+
+A code module is compiled at the read that binds it, so a program compile that
+holds no build for one in scope rebuilds a source this arm already accepted.
+Every way that rebuild can fail is a lowering failure naming `lib.<Key>`: a
+diagnostic in the module's own file, and a module whose shape this arm refuses.
 
 Roslyn's command line does not say which stage raised a diagnostic, so gg asks
 its parser. `packages/gg-sandbox-csharp/tools/Parse.cs` is a parse-only driver
@@ -212,6 +236,11 @@ message and the managed frames. Each frame carries the file and line the
 assembly's own debug information gives for it, so a frame in the model's program
 reads `./program.cs:line 5`. The guest initialises Mono's debug lookup before it
 loads the runtime, which is what makes that information readable.
+
+An unhandled `Gg.ApiException` is reported with the failure's own code, read off
+the thrown exception. The host classifies the turn from that code, so an
+uncaught refusal is a `program_unknown_name` and any other uncaught failed call
+a `program_api_error`.
 
 A program that ends by returning a non-zero status from its entry point is
 reported with the status it chose. That is the one failure C# reports without
@@ -240,8 +269,8 @@ scope.
 The arm names `csc` as its [checker](/gg/languages/compilation/), so the shared
 body states that a program is compiled before it runs, that one the compiler
 refuses is not executed, and that a call the run withheld compiles and fails
-when it runs. The referenced namespace set is carried by a compile failure
-rather than by the prompt.
+when it runs. The referenced namespace set is reached through a compile failure
+rather than through the prompt.
 
 Source gg synthesizes for this arm is written in the same idiom:
 `Gg.Views.OpenFile("src/Program.cs");`, with a window passed as the call's own

@@ -923,7 +923,10 @@ Console.WriteLine(text);
                 names: &["Gg.ApiException", "Files.ReadFile", "missing.md"],
                 located: Located::At("./program.cs:line 5"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::ProgramThrow),
+                // The guest reads the `Code` off the uncaught `Gg.ApiException` and reports it, so
+                // the turn is filed as the program fighting the API — as on Python, Ruby, C++ and
+                // the ECMAScript arms.
+                recorded: Some(TurnErrorType::ProgramApiError),
             },
             Case {
                 shape: Shape::NativeFault,

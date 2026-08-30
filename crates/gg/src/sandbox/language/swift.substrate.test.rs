@@ -711,17 +711,11 @@ public func show(_ path: String) throws {
 
     // And the same module without the line, which is the compiler saying the surface is not in
     // scope in a file that did not ask for it — at the author's own line, since nothing gg wrote
-    // stands above it.
-    let bare = CodeModule {
-        name: "notes".to_string(),
-        source: "public func show(_ path: String) throws {\n    try views.openText(path, body: \"\")\n}\n"
-            .to_string(),
-    };
-    match compile_program(
-        "import gg\nimport notes\n\ntry notes.show(\"notes.md\")\n",
-        std::slice::from_ref(&bare),
-        &PrepareContext::detached(),
-    ) {
+    // stands above it. It is read at the read that binds the module, which is where its author
+    // meets it.
+    let bare =
+        "public func show(_ path: String) throws {\n    try views.openText(path, body: \"\")\n}\n";
+    match compile::compile_module("notes", bare, &PrepareContext::detached()) {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
             assert!(
@@ -731,6 +725,24 @@ public func show(_ path: String) throws {
             );
         }
         other => panic!("a module naming a surface it never imported does not compile: {other:?}"),
+    }
+
+    // And the same bytes reaching a program's compile with no build recorded for them is gg's own
+    // failure rather than the model's: the program compiles, and the file the diagnostic names is
+    // one that program's author never wrote.
+    match compile_program(
+        "import gg\nimport notes\n\ntry notes.show(\"notes.md\")\n",
+        &[CodeModule {
+            name: "notes".to_string(),
+            source: bare.to_string(),
+        }],
+        &PrepareContext::detached(),
+    ) {
+        Err(PrepareFailure::Lowering(rendered)) => assert!(
+            rendered.contains("`notes`") && rendered.contains("module_notes.swift:2:"),
+            "the operator is not told which binding failed, or what swiftc said: {rendered}"
+        ),
+        other => panic!("a module gg rebuilt beside a program is gg's own failure, not {other:?}"),
     }
 }
 

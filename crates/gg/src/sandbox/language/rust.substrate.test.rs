@@ -243,9 +243,9 @@ pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
 ///
 /// A runtime failure on this arm arrives as a [`Trap`](SandboxError::Trap) carrying the guest's own
 /// standard error, and not as a structured [`ProgramError`]: nothing in this arm's SDK intercepts a
-/// failure to report one, so what the host has is what the runtime wrote before it died. That is the
-/// [D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) shape — capture rather than
-/// interception — and it is why these tests read a string rather than a struct.
+/// failure to report one, so what the host has is what the runtime wrote before it died. That is
+/// the [failure rule's](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures) shape — capture rather
+/// than interception — and it is why these tests read a string rather than a struct.
 pub(super) fn trap(outcome: &SandboxOutcome) -> &str {
     match &outcome.result {
         Ok(result) => panic!(

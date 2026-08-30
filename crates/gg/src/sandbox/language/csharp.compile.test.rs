@@ -13,6 +13,16 @@
 //! toolchain works — it is by definition the machine where it does not — so the invocation is
 //! spelled out as the [`report`] the crash really produced: `ok=false`, killed by a signal, an
 //! empty stdout and everything the runtime had to say on stderr.
+//!
+//! Three claims here are asked of the real compiler, and have to be. What gg writes into a response
+//! file is only correct if Roslyn's own lexer reads it back the way gg meant it, and the defect that
+//! makes that worth asserting was gg guessing at that lexer. So
+//! [`every_path_holding_a_space_really_compiles`] drives one real `csc` with every path in the
+//! invocation — the workspace and the toolchain root both — under a directory whose name holds a
+//! space, [`a_workspace_whose_path_holds_a_separator_really_compiles`] does the same for the two
+//! characters `-pathmap` reads as its own, and
+//! [`a_reference_gg_could_not_supply_is_really_reported_as_ggs_own`] drives one into an arrangement
+//! diagnostic and reads the band back. Everything around them reads what gg wrote.
 
 use super::*;
 
@@ -171,15 +181,19 @@ fn a_programs_compile_reads_the_models_file_and_nothing_else() {
     .expect("the response file renders");
     let lines: Vec<&str> = rendered.lines().collect();
 
-    let sources: Vec<&&str> = lines.iter().filter(|line| line.ends_with(".cs")).collect();
+    // Every path a line carries is quoted, so a source line is the file inside a pair of them.
+    let sources: Vec<&&str> = lines
+        .iter()
+        .filter(|line| line.ends_with(".cs\""))
+        .collect();
     assert_eq!(
         sources,
-        [&path.join(PROGRAM_FILE).display().to_string().as_str()],
+        [&format!("\"{}\"", path.join(PROGRAM_FILE).display()).as_str()],
         "a program's compile was given a source that is not the model's own file"
     );
     for library in libraries {
         assert!(
-            lines.contains(&format!("-r:{}", library.display()).as_str()),
+            lines.contains(&format!("-r:\"{}\"", library.display()).as_str()),
             "gg's own library is not a reference: {rendered}"
         );
     }
@@ -191,10 +205,10 @@ fn a_programs_compile_reads_the_models_file_and_nothing_else() {
 
 #[test]
 fn a_diagnostic_with_no_location_is_still_the_models() {
-    // `CS2001` and friends are reported without a `file(line,col)` prefix. They are still Roslyn
-    // telling gg what it thought of the compilation rather than a compiler falling over, so they
-    // reach the model — which is the difference between "gg could not find your source" and a
-    // silence the model cannot act on.
+    // `CS1729` and its like are reported without a `file(line,col)` prefix. They are still Roslyn
+    // telling gg what it thought of the **program** rather than a compiler falling over, so they
+    // reach the model. A location is not what decides that: the codes that describe gg's own
+    // arrangement are unlocated too, and the case below asserts that those go the other way.
     let rejected = report(
         false,
         "exited with status 1",
@@ -209,6 +223,101 @@ fn a_diagnostic_with_no_location_is_still_the_models() {
         ),
         "an unlocated diagnostic did not reach the model"
     );
+}
+
+/// **A diagnostic about gg's own arrangement is never the model's**, whatever else the invocation
+/// said.
+///
+/// The four codes are one fact each about who supplied what, and gg supplied all of it. A model
+/// handed one of them reads a sentence about a file it did not write, a reference it did not name,
+/// or a path it does not know, and there is nothing in its program to change.
+#[test]
+fn a_diagnostic_about_ggs_own_arrangement_is_a_toolchain_failure() {
+    for (code, sentence) in [
+        (
+            "CS0006",
+            "Metadata file '/tmp/gg/Gg.dll' could not be found",
+        ),
+        (
+            "CS1504",
+            "Source file '/tmp/gg/program.cs' could not be opened (Permission denied)",
+        ),
+        (
+            "CS2001",
+            "Source file '/tmp/gg/program.cs' could not be found.",
+        ),
+        (
+            "CS2012",
+            "Cannot open '/tmp/gg/output/GgProgram.dll' for writing",
+        ),
+    ] {
+        let arranged = report(
+            false,
+            "exited with status 1",
+            &format!("error {code}: {sentence}\n"),
+            "",
+        );
+        match verdict(&arranged) {
+            Err(PrepareFailure::Toolchain(message)) => {
+                assert!(
+                    message.contains("exited with status 1") && message.contains(sentence),
+                    "{code}'s report does not carry what an operator needs: {message}"
+                );
+            }
+            other => {
+                panic!("{code} describes gg's arrangement and is not the model's, not {other:?}")
+            }
+        }
+    }
+
+    // Every code the table names is one this arm really acts on, so a code added to it without a
+    // reader would be caught here rather than looking implemented.
+    for code in ARRANGEMENT_CODES {
+        assert!(
+            is_arrangement(&format!("error {code}: something")),
+            "{code} is listed as gg's arrangement and is not recognised as one"
+        );
+    }
+    assert!(!is_arrangement(
+        "program.cs(3,17): error CS0029: Cannot implicitly convert type 'string' to 'int'"
+    ));
+    assert!(!is_arrangement(
+        "error CS1729: 'Program' does not contain a constructor that takes 1 arguments"
+    ));
+    // A location does not change what a code means. Roslyn locates `CS2012` at the output file when
+    // it has one to name, and it is still gg's path.
+    assert!(is_arrangement(
+        "GgProgram.dll(1,1): error CS2012: Cannot open 'GgProgram.dll' for writing"
+    ));
+}
+
+/// **One arrangement diagnostic makes the whole invocation gg's**, beside real diagnostics in the
+/// model's own file.
+///
+/// This is the assertion a partial fix fails. `csc` reads a response file whose paths
+/// [arrived in pieces](super::quoted) and reports both at once: the source it could not find, and
+/// every name in the program that did not resolve because a reference went with it. Handing back the
+/// located half sends a model rewriting a program that compiles.
+#[test]
+fn an_arrangement_diagnostic_decides_the_whole_invocation() {
+    let mixed = report(
+        false,
+        "exited with status 1",
+        "program.cs(3,17): error CS0246: The type or namespace name 'Gg' could not be found\n\
+         error CS0006: Metadata file '/tmp/gg dir/Gg.dll' could not be found\n\
+         program.cs(4,1): error CS0103: The name 'Views' does not exist in the current context\n",
+        "",
+    );
+    match verdict(&mixed) {
+        Err(PrepareFailure::Toolchain(message)) => assert!(
+            message.contains("Metadata file"),
+            "the report drops what actually failed: {message}"
+        ),
+        other => panic!(
+            "a compile whose references gg failed to supply is gg's, not {other:?}. Everything else \
+             the compiler said follows from the reference it never read."
+        ),
+    }
 }
 
 #[test]
@@ -245,6 +354,8 @@ fn what_counts_as_a_diagnostic_is_roslyns_own_error_format_and_nothing_else() {
     assert!(is_error(
         "program.cs(3,17): error CS0029: Cannot implicitly convert type 'string' to 'int'"
     ));
+    // An arrangement code is Roslyn's error format, so it is one of these. Whose failure it is gets
+    // decided in `verdict`, over the code, and the cases above assert that separately.
     assert!(is_error("error CS2001: Source file could not be found"));
     assert!(!is_error(""));
     assert!(!is_error("Microsoft (R) Visual C# Compiler version 5.0.0"));
@@ -406,7 +517,7 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
     );
     assert_eq!(
         *named[3],
-        format!("-r:{}", path.join(SDK_ASSEMBLY).display()).as_str(),
+        format!("-r:\"{}\"", path.join(SDK_ASSEMBLY).display()).as_str(),
         "gg's own SDK is not the last library named"
     );
 }
@@ -671,4 +782,387 @@ fn a_compiler_that_disagreed_with_ggs_own_c_sharp_still_reads_as_its_diagnostics
         ),
         "gg's own C# SDK did not compile: timed out after 60s",
     );
+}
+
+/// How many arguments Roslyn reads one response-file line as.
+///
+/// Its lexer is the one a shell has: a `"` toggles quoting rather than being a character, and
+/// whitespace outside a quoted run ends the token. A line gg means as one argument and this counts as
+/// two is a line the compiler will act on as two.
+fn arguments(line: &str) -> usize {
+    let mut counted = 0;
+    let mut quoted = false;
+    let mut inside = false;
+    for character in line.chars() {
+        match character {
+            '"' => quoted = !quoted,
+            character if character.is_whitespace() && !quoted => {
+                inside = false;
+                continue;
+            }
+            _ => {}
+        }
+        if !inside {
+            inside = true;
+            counted += 1;
+        }
+    }
+    counted
+}
+
+/// **Every path a response file carries is one token**, measured the way Roslyn measures it.
+///
+/// Roslyn splits a response file on whitespace, and every path this arm writes into one is rooted
+/// somewhere gg does not choose the spelling of: the compile workspace under `TMPDIR`, the toolchain
+/// under `$HOME`. A developer whose either holds a space had every line of every compile arrive as
+/// two arguments, and the compile reported gg's own arrangement as the model's failure on every
+/// turn.
+#[test]
+fn every_path_in_a_response_file_survives_a_space() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let spaced = root.path().join("gg toolchains").join("dotnet home");
+    let references = spaced.join("ref/net10.0");
+    std::fs::create_dir_all(&references).expect("the reference directory");
+    std::fs::write(references.join("System.Runtime.dll"), "").expect("a reference assembly");
+
+    let work = spaced.join("work space");
+    let rendered = response_file(
+        &spaced,
+        Target::Exe,
+        &work,
+        &[
+            spaced.join(SDK_ASSEMBLY),
+            spaced.join(module_assembly("Kit")),
+        ],
+        &[work.join(PROGRAM_FILE)],
+        &work.join(PROGRAM_ASSEMBLY),
+    )
+    .expect("the response file renders");
+
+    for line in rendered.lines() {
+        assert!(
+            arguments(line) <= 1,
+            "this line reaches csc as {} arguments rather than one: {line}",
+            arguments(line)
+        );
+    }
+
+    // And the quotes are around the paths rather than anywhere that made the count come out right:
+    // what each line means has to survive too.
+    let lines: Vec<&str> = rendered.lines().collect();
+    assert!(
+        lines.contains(&format!("-out:\"{}\"", work.join(PROGRAM_ASSEMBLY).display()).as_str()),
+        "the output path is not quoted whole: {rendered}"
+    );
+    assert!(
+        lines.contains(&format!("-r:\"{}\"", spaced.join(SDK_ASSEMBLY).display()).as_str()),
+        "gg's own SDK is not quoted whole: {rendered}"
+    );
+    assert!(
+        lines.contains(&format!("\"{}\"", work.join(PROGRAM_FILE).display()).as_str()),
+        "the model's own source is not quoted whole: {rendered}"
+    );
+    assert!(
+        lines.contains(
+            &format!(
+                "-pathmap:\"{}{sep}\"=\".{sep}\"",
+                work.display(),
+                sep = std::path::MAIN_SEPARATOR
+            )
+            .as_str()
+        ),
+        "the path map is not quoted, so a stack frame would name a path the model cannot open: \
+         {rendered}"
+    );
+}
+
+/// **The `-pathmap` line escapes the two characters that option reads as its own.**
+///
+/// Roslyn's option parser splits `-pathmap` into `key=value` pairs on `,` and each pair on `=`, and
+/// reads a doubled separator as one literal character. Quoting does not reach that parser: the
+/// response-file lexer has already stripped the quotes by the time it runs.
+#[test]
+fn a_path_map_escapes_the_separators_its_own_parser_reads() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let references = root.path().join("ref");
+    std::fs::create_dir_all(&references).expect("the reference directory");
+    std::fs::write(references.join("System.Runtime.dll"), "").expect("a reference assembly");
+
+    let sep = std::path::MAIN_SEPARATOR;
+    let work = root.path().join("gg=prepare, staged").join("work space");
+    let rendered = response_file(
+        root.path(),
+        Target::Exe,
+        &work,
+        &[],
+        &[work.join(PROGRAM_FILE)],
+        &work.join(PROGRAM_ASSEMBLY),
+    )
+    .expect("the response file renders");
+
+    let mapped = rendered
+        .lines()
+        .find(|line| line.starts_with("-pathmap:"))
+        .expect("the response file carries a path map");
+    assert_eq!(
+        mapped,
+        format!(
+            "-pathmap:\"{}{sep}\"=\".{sep}\"",
+            work.display()
+                .to_string()
+                .replace(',', ",,")
+                .replace('=', "==")
+        ),
+        "the path map hands its own parser a separator to re-lex on"
+    );
+
+    // The source line beside it carries the same path unescaped, because the response-file lexer is
+    // the only reader of that one and neither character means anything to it.
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line == format!("\"{}\"", work.join(PROGRAM_FILE).display())),
+        "the model's own source was escaped for a parser that never reads it: {rendered}"
+    );
+}
+
+/// A path holding a quote character has no spelling in Roslyn's response-file format, so gg refuses
+/// to write one rather than emit a line the compiler will re-lex into something else.
+#[test]
+fn a_path_that_cannot_be_written_into_a_response_file_is_refused() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let awkward = root.path().join("gg\"s tree");
+    let references = awkward.join("ref");
+    std::fs::create_dir_all(&references).expect("the reference directory");
+    std::fs::write(references.join("System.Runtime.dll"), "").expect("a reference assembly");
+
+    match response_file(
+        &awkward,
+        Target::Exe,
+        &awkward,
+        &[],
+        &[awkward.join(PROGRAM_FILE)],
+        &awkward.join(PROGRAM_ASSEMBLY),
+    ) {
+        Err(PrepareFailure::Toolchain(message)) => assert!(
+            message.contains("quote character") && message.contains(DOTNET_HOME_ENV),
+            "an operator is not told which path gg cannot pass, or where to put it instead: \
+             {message}"
+        ),
+        other => panic!("a path gg cannot spell is a toolchain failure, not {other:?}"),
+    }
+}
+
+/// The **second** producer of a response file on this arm, asserted directly.
+///
+/// [`parser`] builds its own argument list, and a fix that quoted only [`response_file`] would leave
+/// the classifier that runs on every rejection broken on a spaced path. What that costs is silent:
+/// the classifier cannot answer, so every typo is reported as a compile error rather than a syntax
+/// error and nothing anywhere says why.
+#[test]
+fn the_parse_classifiers_own_response_file_is_quoted_too() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let spaced = root.path().join("dotnet home");
+    let bincore = spaced.join("roslyn/bincore");
+    let references = spaced.join("ref");
+    std::fs::create_dir_all(&bincore).expect("the compiler directory");
+    std::fs::create_dir_all(&references).expect("the reference directory");
+    std::fs::write(references.join("System.Runtime.dll"), "").expect("a reference assembly");
+
+    let into = spaced.join("parser tree");
+    let rendered = parser_response(&spaced, &bincore, &into, &into.join("Parse.cs"))
+        .expect("the classifier's response file renders");
+    for line in rendered.lines().filter(|line| line.contains(' ')) {
+        assert!(
+            line.contains('"'),
+            "a path holding a space reaches csc as two arguments: {line}"
+        );
+    }
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line == format!("-out:\"{}\"", into.join(PARSER_ASSEMBLY).display())),
+        "the classifier's own output path is not quoted whole: {rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line == format!("\"{}\"", into.join("Parse.cs").display())),
+        "the classifier's own source is not quoted whole: {rendered}"
+    );
+}
+
+/// A view of the machine's real .NET toolchain under a directory whose name holds a space.
+///
+/// One symbolic link per top-level entry rather than a copy, because the tree is hundreds of
+/// megabytes and every path gg reads out of it — the [launcher](super::LAUNCHER), `roslyn/bincore`,
+/// the reference pack, the [vendored libraries](super::LIBRARY_DIRECTORY) — resolves through one.
+/// What the compile is then handed is a `-r:` per reference and a launcher path, every one of them
+/// holding the space.
+///
+/// It builds that directory rather than moving `$HOME` or [`DOTNET_HOME_ENV`], because a
+/// process-wide environment change is not something a test may make.
+fn awkward_toolchain(inside: &std::path::Path, named: &str) -> PathBuf {
+    let root = dotnet_home().unwrap_or_else(|| panic!("{}", missing_toolchain()));
+    let view = inside.join(named);
+    std::fs::create_dir_all(&view).expect("a toolchain root whose path holds a space");
+    for entry in std::fs::read_dir(&root).expect("the toolchain tree is readable") {
+        let entry = entry.expect("a toolchain entry");
+        std::os::unix::fs::symlink(entry.path(), view.join(entry.file_name()))
+            .expect("the toolchain entry is linked into the view");
+    }
+    view
+}
+
+/// Compile one program out of `work`, against the toolchain at `root`, and hand back what `csc`
+/// said.
+fn really_compile(root: &std::path::Path, work: &std::path::Path) -> CompilerReport {
+    std::fs::create_dir_all(work).expect("the workspace");
+    let program = work.join(PROGRAM_FILE);
+    std::fs::write(&program, "System.Console.WriteLine(\"hello\");\n")
+        .expect("the program is written");
+    let output = work.join(PROGRAM_ASSEMBLY);
+    let response = work.join(response_name(PROGRAM_ASSEMBLY));
+    std::fs::write(
+        &response,
+        response_file(root, Target::Exe, work, &[], &[program], &output)
+            .expect("the response file renders"),
+    )
+    .expect("the response file is written");
+    invoke(root, &response, &PrepareContext::detached()).expect("csc runs")
+}
+
+/// **The claim, asked of the real compiler**: a compile whose every path holds a space produces an
+/// assembly.
+///
+/// Every assertion above reads what gg wrote. This one asks Roslyn, which is the only reader whose
+/// answer settles it — the defect was gg guessing at another program's lexer, and a fixture written
+/// by the author of the guess proves nothing on its own.
+///
+/// **Every** path, which is what makes it the whole claim rather than half of it: the workspace gg
+/// writes the program and the response file into, and the [toolchain root](awkward_toolchain) every
+/// `-r:` and the launcher itself are rooted at. A machine whose `TMPDIR` holds a space and a machine
+/// whose `$HOME` does are two different exposures, and the second is the one a developer really has.
+#[test]
+fn every_path_holding_a_space_really_compiles() {
+    let tree = tempfile::tempdir().expect("a temporary directory");
+    let root = awkward_toolchain(tree.path(), "dotnet home");
+    let work = tree.path().join("gg prepare").join("work space");
+
+    let report = really_compile(&root, &work);
+    assert!(
+        report.ok,
+        "csc could not compile with every path in the invocation holding a space: {}\n{}",
+        report.status, report.stdout
+    );
+    assert!(
+        work.join(PROGRAM_ASSEMBLY).exists(),
+        "csc reported success and wrote no assembly out of a directory holding a space"
+    );
+    // And the verdict agrees, which is the half that decides what a model is told.
+    assert!(
+        verdict(&report).is_ok(),
+        "a compile out of a directory holding a space was read as a failure"
+    );
+}
+
+/// **A workspace path holding `=` or `,` compiles**, asked of the real compiler.
+///
+/// The two characters `-pathmap` reads as its own, and quoting does not save either: the
+/// response-file lexer strips the quotes and hands the option parser a path it then re-lexes into an
+/// extra pair or an extra field. Measured before [`path_map`](super::path_map) doubled them, a
+/// workspace at `…/gg=prepare/work space` failed the whole invocation with `CS8101` over a program
+/// `csc` never read.
+#[test]
+fn a_workspace_whose_path_holds_a_separator_really_compiles() {
+    let tree = tempfile::tempdir().expect("a temporary directory");
+    let root = awkward_toolchain(tree.path(), "dotnet home");
+
+    for awkward in ["gg=prepare", "gg,prepare"] {
+        let work = tree.path().join(awkward).join("work space");
+        let report = really_compile(&root, &work);
+        assert!(
+            report.ok,
+            "csc could not compile out of a workspace named `{awkward}`: {}\n{}",
+            report.status, report.stdout
+        );
+        assert!(
+            verdict(&report).is_ok(),
+            "a compile out of a workspace named `{awkward}` was read as a failure"
+        );
+    }
+}
+
+/// **A reference gg named and could not supply is really reported as gg's own**, asked of the real
+/// compiler.
+///
+/// The [table](super::ARRANGEMENT_CODES) is a list of codes, and what settles that the list is the
+/// right one is Roslyn emitting one of them for a compilation gg arranged wrongly. gg supplies every
+/// reference in the invocation — the toolchain's own pack, its SDK, one library per code module in
+/// scope — so a library that is not on disk is the miss a swept workspace really produces, and the
+/// model's program is faultless throughout.
+#[test]
+fn a_reference_gg_could_not_supply_is_really_reported_as_ggs_own() {
+    let root = dotnet_home().unwrap_or_else(|| panic!("{}", missing_toolchain()));
+    let tree = tempfile::tempdir().expect("a temporary directory");
+    let work = tree.path().join("work");
+    std::fs::create_dir_all(&work).expect("the workspace");
+
+    let program = work.join(PROGRAM_FILE);
+    std::fs::write(&program, "System.Console.WriteLine(\"hello\");\n")
+        .expect("the program is written");
+    let response = work.join(response_name(PROGRAM_ASSEMBLY));
+    std::fs::write(
+        &response,
+        response_file(
+            &root,
+            Target::Exe,
+            &work,
+            &[work.join(module_assembly("Swept"))],
+            &[program],
+            &work.join(PROGRAM_ASSEMBLY),
+        )
+        .expect("the response file renders"),
+    )
+    .expect("the response file is written");
+
+    let report = invoke(&root, &response, &PrepareContext::detached()).expect("csc runs");
+    assert!(
+        report.stdout.contains("CS0006"),
+        "csc did not report the missing reference the way this arm's table expects: {}",
+        report.stdout
+    );
+    match verdict(&report) {
+        Err(PrepareFailure::Toolchain(message)) => assert!(
+            message.contains("CS0006"),
+            "the report drops what actually failed: {message}"
+        ),
+        other => panic!(
+            "a reference gg named and did not supply is gg's own, not {other:?}. The program in \
+             that invocation compiles."
+        ),
+    }
+}
+
+/// **An unresolved import is answered with the modules of this arm's set that match it.**
+///
+/// The one cell of the [cross-arm gate](crate::sandbox::language::imports) that needs Roslyn: it
+/// drives a program importing a near-miss of a module this arm really carries through this arm's
+/// real preparation, and holds what comes back to the name the program wrote. What it catches is a
+/// compiler that reworded its own sentence, which is silent otherwise — the arm recovers nothing,
+/// every rejection falls back to the whole inventory, and nothing reports it.
+#[test]
+fn an_unresolved_import_is_answered_with_the_candidates_that_match_it() {
+    crate::sandbox::language::imports::gate(test_cabinet_core::gg::GgProgramLanguage::CSharp);
+}
+
+/// **A code module gg rebuilt beside a program is gg's own failure and never the model's.**
+///
+/// The one cell of the [cross-arm gate](crate::sandbox::language::rebuilds) that needs Roslyn: it
+/// hands this arm's program step a module this workspace holds no build of and that Roslyn refuses,
+/// and reads the band of what comes back. What it catches is a rebuild's diagnostic reaching a model
+/// under `Compiler error`, over a program that compiles and a file the model never wrote.
+#[test]
+fn a_code_module_refused_beside_a_program_is_ggs_failure() {
+    crate::sandbox::language::rebuilds::gate(test_cabinet_core::gg::GgProgramLanguage::CSharp);
 }

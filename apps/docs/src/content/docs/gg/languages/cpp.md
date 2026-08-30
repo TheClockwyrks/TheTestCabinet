@@ -209,8 +209,8 @@ list beside the segment carries that module's own `#include` line.
 The arm names `clang++` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one the
 compiler refuses is not executed, and that a call the run withheld compiles and
-fails when it runs. The header set is carried by a compile failure rather than
-by the prompt.
+fails when it runs. The header set is reached through a compile failure rather
+than through the prompt.
 
 Source gg synthesizes for this arm is a whole program by the same rules. The
 file-view program, the documentation-view program and the bootstrap program each
