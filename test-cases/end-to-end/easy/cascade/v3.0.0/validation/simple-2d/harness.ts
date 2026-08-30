@@ -443,6 +443,16 @@ export interface Harness {
   readonly calls: DrawCall[];
   /** Every cue the build played, oldest first. */
   readonly cues: PlayedCue[];
+  /**
+   * The event target the engine's own listeners are attached to.
+   *
+   * The engine takes it from the `SurfaceMetrics` this harness supplies, and the
+   * one listener it puts there that Cascade has anything to do with is the
+   * `Backquote` keydown that toggles the diagnostics overlay (engine docs,
+   * `diagnostics.md`). {@link toggleOverlay} is what dispatches to it; a check
+   * has no other reason to reach this.
+   */
+  readonly events: EventTarget;
 
   /** A fresh read of the game's state through the case's `snapshot`. */
   snapshot(): CascadeSnapshot;
@@ -477,6 +487,25 @@ export interface Harness {
 
   /** Drop the engine's listeners and release the canvas. */
   dispose(): void;
+}
+
+/**
+ * A `KeyboardEvent`-shaped event: the engine's overlay listener reads `code` and
+ * `repeat`, structurally, so a plain `Event` carrying them drives it exactly as a
+ * browser's does.
+ *
+ * Cascade binds no key of its own (specs/controls.md), so the only listener this
+ * reaches is the engine's own overlay toggle.
+ */
+class KeyEvent extends Event {
+  readonly code: string;
+  readonly repeat: boolean;
+
+  constructor(type: "keydown" | "keyup", code: string, repeat = false) {
+    super(type);
+    this.code = code;
+    this.repeat = repeat;
+  }
 }
 
 /**
@@ -731,6 +760,7 @@ export async function createHarness(
     canvas,
     calls,
     cues,
+    events,
 
     snapshot: () => debug.snapshot(),
 
@@ -1981,6 +2011,29 @@ export async function drawFrame(h: Harness): Promise<DrawCall[]> {
   h.calls.length = 0;
   await h.advance(1);
   return [...h.calls];
+}
+
+/**
+ * Toggle the engine's diagnostics overlay and hand back the frame that draws — or
+ * stops drawing — it.
+ *
+ * The overlay is ENGINE CHROME under this engine: the backtick key (`Backquote`)
+ * toggles it through a keydown listener the engine itself owns on the harness's
+ * event target (engine docs, `diagnostics.md`), and Cascade binds no key of its
+ * own (specs/controls.md), so nothing the build wrote answers this. What the
+ * BUILD owns is which diagnostic sources it registers, and the engine draws each
+ * of them after the game's `render`, through the same context this harness
+ * records — so with the panel up, the registered values land among the returned
+ * calls as ordinary text draws, readable with {@link drawnText}.
+ *
+ * What comes back is that one frame's calls alone, exactly as {@link drawFrame}
+ * hands them over, so a frame with the panel up is compared against a frame
+ * without it rather than against everything drawn before either.
+ */
+export async function toggleOverlay(h: Harness): Promise<DrawCall[]> {
+  h.events.dispatchEvent(new KeyEvent("keydown", "Backquote"));
+  h.events.dispatchEvent(new KeyEvent("keyup", "Backquote"));
+  return drawFrame(h);
 }
 
 /* ---- Where a frame put its shapes ----------------------------------------- */
