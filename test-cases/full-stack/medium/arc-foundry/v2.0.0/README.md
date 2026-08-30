@@ -121,7 +121,7 @@ This case is validator-rated: every point on the checklist carries a Vitest suit
 and the validators decide the functional rating through each point's failure cap.
 A reviewer rates the run's aesthetics and may override a verdict.
 
-The checklist runs to 282 points across 24 categories, one observable behavior
+The checklist runs to 287 points across 24 categories, one observable behavior
 each, and each names the scoring domains its failure lowers. There are three:
 `simulation` for how the foundry plays, `presentation` for the produced sprites,
 animation cycles and electrical effects along with the code-drawn interface that

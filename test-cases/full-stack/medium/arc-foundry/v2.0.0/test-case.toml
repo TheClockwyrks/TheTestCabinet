@@ -1846,6 +1846,54 @@ failure_cap = "passable"
 validation = { script = "combos/upgrade-refused-at-max.test.ts", outputs = [
   { id = "refused", name = "The upgrade control at the top of the track", kind = "image" },
 ] }
+[[review.categories.items]]
+id = "stat-blocks"
+title = "Each of the twelve towers carries its reference block"
+description = "Every one of the twelve combination towers reports the range, the fire rate, the damage and the abilities its row of COMBOS fixes, scaled by its level, so a Rupture Node reads a splash of 60 and a burn of 0.5 over 2.0 seconds and an Aurora Lance reads a reach of 190 and a slow of 0.4 over 1.8."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: stand each of the twelve towers at level 3 and hold
+# every reported stat and ability parameter against its row. See
+# validation/<engine>/combos/stat-blocks.test.ts.
+validation = { script = "combos/stat-blocks.test.ts", outputs = [
+  { id = "twelve", name = "The twelve towers standing on the yard", kind = "image" },
+] }
+[[review.categories.items]]
+id = "crit"
+title = "A crit deals its multiplier of the shot's damage"
+description = "A tower carrying crit rolls the stated chance on each shot off the game's seeded generator, and a shot that crits removes critMult times its damage instead of its damage: over a long run at a fixed seed both figures appear and neither is any other value."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: park a frozen invincible target under a Slag Driver
+# and record the damage of every shot over a long run at a fixed seed. See
+# validation/<engine>/combos/crit.test.ts.
+validation = { script = "combos/crit.test.ts", outputs = [
+  { id = "crit", name = "The critical hit among the ordinary ones", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "multishot"
+title = "A multishot fires at N distinct targets at once"
+description = "A tower carrying multishot(N) launches one projectile at each of up to N distinct in-range units on each cadence, choosing the top N by its targeting priority, so a Fork Array with five units in range puts three projectiles at three different targets on the frame it fires and only one when a single unit is in range."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: park five frozen units in range of a Fork Array,
+# advance to one cadence, and read the projectiles and their targets. See
+# validation/<engine>/combos/multishot.test.ts.
+validation = { script = "combos/multishot.test.ts", outputs = [
+  { id = "fork", name = "The three shots a Fork Array launched", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "never-an-ingredient"
+title = "A combination tower is never an ingredient"
+description = "A combination tower cannot be quality-combined and never satisfies a recipe: two identical towers offer no fold, and a recipe calling for a base component is not satisfied by a tower built from that component."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: stand two identical towers, read the offered actions,
+# and attempt a combine on each. See validation/<engine>/combos/never-an-
+# ingredient.test.ts.
+validation = { script = "combos/never-an-ingredient.test.ts", outputs = [
+  { id = "refused", name = "The pair of towers that offers no fold", kind = "image" },
+] }
 
 # --- The Load -----------------------------------------------------------------
 # The roster's figures, the per-wave scaling, and the composition rules a wave
@@ -2169,6 +2217,18 @@ failure_cap = "scuffed"
 # validation/<engine>/campaign/maze-rating-tallies.test.ts.
 validation = { script = "campaign/maze-rating-tallies.test.ts", outputs = [
   { id = "rating", name = "The Maze Rating accruing over the finale", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "finale-takes-status"
+title = "The Overload Dynamo takes slow and burn"
+description = "The Overload Dynamo carries a slow and a burn like any other unit: a Choke's hit lowers its speed by the stated amount for the stated duration, and a Rectifier's burn tallies into the Maze Rating while it runs."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: hit the Overload Dynamo with a Choke and a Rectifier
+# and read its speed, its slow and burn fields, and the Maze Rating. See
+# validation/<engine>/campaign/finale-takes-status.test.ts.
+validation = { script = "campaign/finale-takes-status.test.ts", outputs = [
+  { id = "status", name = "The Overload Dynamo slowed and burning", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "finale-leak-is-free"
