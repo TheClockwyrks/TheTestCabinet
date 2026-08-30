@@ -1091,6 +1091,11 @@ function checkWaveEnd(w: FoundryWorld): void {
 function endWave(w: FoundryWorld): void {
   w.activeWave = null;
   w.projectiles = [];
+  // The wave's end takes the finale with it. A driver-released Overload Dynamo puts the
+  // run into the finale while it is on the yard, and that wave clears the ordinary way,
+  // so the phase it clears into is a build phase and not a finale nothing is walking
+  // (specs/instrumentation.md). The real finale sets the flag again below.
+  w.finale = false;
   if (w.wave >= difficulty(w).waves) {
     // The last wave is cleared, so the run is won. Before the victory screen the
     // finale's Overload Dynamo walks the yard once so its damage rates the maze. No

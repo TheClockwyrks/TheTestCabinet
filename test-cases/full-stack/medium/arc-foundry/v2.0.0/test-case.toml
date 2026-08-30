@@ -537,6 +537,18 @@ failure_cap = "scuffed"
 validation = { script = "instrumentation/spawner-hold.test.ts", outputs = [
   { id = "hold", name = "The single released unit walking an otherwise empty wave", kind = "replay" },
 ] }
+[[review.categories.items]]
+id = "overload-driver-wave-clears"
+title = "A driver-released Overload Dynamo leaves the phase where it found it"
+description = "spawnUnit(\"overload\") reads phase finale while the Dynamo is on the yard, and once it has gone the wave clears the ordinary way: the phase reads build, the wave number is unchanged, and no Overload Dynamo remains."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: release an Overload Dynamo from a build phase, read the
+# phase, clear the yard and read it again. See
+# validation/<engine>/instrumentation/overload-driver-wave-clears.test.ts.
+validation = { script = "instrumentation/overload-driver-wave-clears.test.ts", outputs = [
+  { id = "cleared", name = "The phase after the driver's Overload Dynamo has gone", kind = "replay" },
+] }
 
 # --- The yard and placement ---------------------------------------------------
 # The grid, the footprint, and where a structure may stand. Every position in the

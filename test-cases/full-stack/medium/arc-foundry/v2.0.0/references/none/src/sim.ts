@@ -935,6 +935,11 @@ export class Game {
   private endWave(): void {
     this.activeWave = null;
     this.projectiles = [];
+    // The wave's end takes the finale with it. A driver-released Overload Dynamo puts the
+    // run into the finale while it is on the yard, and that wave clears the ordinary way, so
+    // the phase it clears into is a build phase and not a finale nothing is walking
+    // (specs/instrumentation.md). The real finale sets the flag again below.
+    this.finale = false;
     if (this.wave >= this.diff.waves) {
       // The final wave is cleared — the run is WON. Before the Victory screen, the post-final
       // invincible OVERLOAD DYNAMO walks the maze once so its total damage rates the maze
