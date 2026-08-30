@@ -11,11 +11,18 @@ maze built out of rolls you did not pick. Each level yields exactly one firing t
 hardens the rest into inert blockers; power comes from folding matched rolls up a
 five-rung quality ladder and into recipe-built combination towers.
 
-This build runs on the **Simple 2D** engine, which owns the frame loop and its delta
-time, the fit of the fixed 1280x720 stage onto the canvas, the keyboard and the pointer,
-the audio bus, the asset loader, and the diagnostics overlay. Everything under `src/` is
-the game itself. Every sprite, effect, and sound it plays is a file produced during the
-build and committed under `assets/`.
+This build runs on the **Structured 2D** engine, which is a gameplay framework as much
+as a runtime: the game is written as subclasses of its classes — a game instance, a game
+mode, an actor and its draw components, and the controller the single player's input is
+read through — and the engine constructs, ticks, and renders them in a fixed order. It
+owns the frame loop and its delta time, the fit of the fixed 1280x720 stage onto the
+canvas, the camera, the rendering pipeline, the keyboard and the pointer, the audio bus,
+the asset loader, and the diagnostics overlay. Everything under `src/` is the game
+itself. Every sprite, effect, and sound it plays is a file produced during the build and
+committed under `assets/`.
+
+The camera is left at rest, so world units and the stage's logical units coincide and no
+coordinate anywhere in this build is converted between the two.
 
 ## Running it
 
@@ -84,7 +91,7 @@ it, and clear the selection by pressing on empty yard.
 | `public/assets` | A link to `assets/`, so the built site serves every produced file under the asset root the engine resolves against. |
 | `.tcab/packages/` | The prebuilt particle runtime the produced effects are played through. |
 
-The engine is resolved from this repository's own `packages/simple-2d` through a relative
+The engine is resolved from this repository's own `packages/structured-2d` through a relative
 `file:` dependency rather than from the copy a run is seeded with, so the reference is
 always built against the engine as it now stands. That path is the one line of
 `package.json` that differs from the project a run receives.
@@ -95,21 +102,24 @@ specification fixes. Everything else is this build's.
 
 | Module | Holds |
 | --- | --- |
-| `types.ts` | The state, field by field, as the simulation works in it. |
-| `world.ts` | The one seam between the read-only state the engine hands out and the world a frame advances. |
+| `state.ts` | The whole of the game's state, field by field: the `GameState` the world holds. |
+| `types.ts` | The records that state carries, as the simulation works in them. |
 | `tables.ts` | The live behavior the figures in `constants.ts` add up to. |
 | `theme.ts` | The palette, the type face, and the words drawn on screen. |
 | `board.ts` | The tile grid, the pathing, and the never-seal rule. |
 | `waves.ts` | What each wave releases, and when. |
-| `sim.ts` | The simulation: functions over one world. |
+| `sim.ts` | The simulation: functions over one state. |
 | `layout.ts` | Where every control sits, shared by the drawing, the pointer, and the surface. |
-| `render.ts` | The drawing, which only ever reads. |
+| `render.ts` | The drawing, in the two layers the pipeline calls. |
 | `particles.ts` | The produced effects, simulated and composited. |
+| `controller.ts` | The one seat the frame's actions and pointer samples are read from. |
+| `yard.ts` | The level's one actor, and the two draw components that render it. |
 | `assets.ts` `audio.ts` `input.ts` `diagnostics.ts` | What the game asks of the engine. |
 | `debug.ts` | The debugging and automation surface. |
-| `game.ts` | The three functions the engine drives. |
+| `game.ts` | The game definition: the instance, the level, and the mode that runs it. |
+| `harness.ts` | A real engine over a canvas with no document, for the tests below. |
 
 The simulation touches no canvas, no clock, and no input, which is what lets the unit
 tests drive it in Node and what lets a driven scenario reproduce exactly. The renderer
-reads the state and returns nothing, so the compiler is what says drawing changes
-nothing.
+takes the state and returns nothing, and writes no field of it, so the picture a frame
+draws cannot move the game.

@@ -5,18 +5,19 @@
 // event's position. A burst is simulated rather than played back, so it varies shot to
 // shot, and its size escalates with the quality of the structure that threw it.
 //
-// THE PURE SIMULATOR, COMPOSITED HERE. The runtime also ships a canvas binding, which
-// owns an offscreen canvas of its own and draws the system into it. This build uses the
-// simulator directly and draws the particles itself onto the context the engine hands
-// `render`, because that has no second drawing surface behind it: one field's worth of
-// discs is composited straight into stage coordinates. That is what lets the same code
+// THE PURE SIMULATOR, COMPOSITED HERE. The engine's declarative pipeline draws no
+// particles, so a produced system is drawn from a draw component handed the raw context.
+// The runtime also ships a canvas binding, which owns an offscreen canvas of its own and
+// draws the system into it; this build uses the simulator directly and composites the
+// particles itself, because that needs no second drawing surface behind it — one field's
+// worth of discs goes straight into stage coordinates. That is what lets the same code
 // run under the browser's canvas and under a canvas with no document behind it.
 //
-// A BURST IS CARRIED BY THE STATE. `FoundryWorld.bursts` holds the ones still playing.
-// The simulator behind one is a live object the record points at, the way a decoded
-// sprite is: the record around it is replaced each frame with its clock advanced, and
-// the simulator itself is stepped in place. `BurstPlayer` is the narrow surface the
-// state names it under, so nothing outside this module holds the runtime's own type.
+// A BURST IS CARRIED BY THE STATE. `FoundryState.bursts` holds the ones still playing:
+// the simulator behind one is a live object the record points at, the way a decoded
+// sprite is, and the game mode's tick steps every one of them each frame.
+// `BurstPlayer` is the narrow surface the state names it under, so nothing outside this
+// module holds the runtime's own type.
 
 import { ParticleSimulator } from "@test-cabinet/particle-runtime";
 import type { EffectName } from "./constants";
@@ -27,9 +28,9 @@ import type { FxEvent } from "./types";
 /**
  * A burst's simulation, as the state names it.
  *
- * Deliberately a handful of functions rather than the runtime's class: the state is
- * handed out as a read-only view, and a view of an object's METHODS is still callable,
- * where a view of its fields is a different type.
+ * Deliberately a handful of operations rather than the runtime's class, so the state
+ * names only what a burst is asked to do and the runtime's own type stays inside this
+ * module.
  */
 export interface BurstPlayer {
   /** Advance the simulation by a span of real seconds. */
