@@ -453,7 +453,7 @@ description = "What the game looks and sounds like: the screens and their menus,
 # `[[review.categories]]` is a CATEGORY — a bare name grouping the points — and
 # each item entry under it is one graded review item, worth one point (the default
 # weight), so a category is worth the number of items it holds. No item declares a
-# `weight`: every observable behaviour on this checklist counts the same, and the
+# `weight`: every observable behavior on this checklist counts the same, and the
 # relative importance of a failure is carried by `failure_cap`, not by arithmetic.
 #
 # A category carries no prose of its own; each item states in `description` the
@@ -466,7 +466,7 @@ description = "What the game looks and sounds like: the screens and their menus,
 # plus a numeric tolerance stated in the item.
 #
 # EVERY point carries a validation script, and every point is ONE OBSERVABLE
-# BEHAVIOUR, so a build fails exactly the rule it breaks: the drop that passes
+# BEHAVIOR, so a build fails exactly the rule it breaks: the drop that passes
 # through a node and the charge that node keeps are two points, not one. Each
 # script is a vitest suite under `validation/<engine>/<category>/<item id>.test.ts`.
 # The `<engine>` level is the ENGINE the suite is written against — a validator
@@ -1748,8 +1748,9 @@ validation = { script = "foes/corruptor-arrives.test.ts", outputs = [
 # a level clears on the step in which the last of its segments is removed, and a
 # board that never held one is playing rather than cleared. The second direction
 # is what makes the shared harness's empty posed board safe, so a build that
-# fails it makes every mechanic scenario in the suite unposeable — which is why
-# it is capped `broken` in its own right rather than folded into the first.
+# fails it makes every mechanic scenario in the suite impossible to pose —
+# which is why it is capped `broken` in its own right rather than folded into
+# the first.
 [[review.categories]]
 id = "progression"
 title = "The run"
@@ -1846,13 +1847,13 @@ validation = { script = "progression/level-clears-on-last-segment.test.ts", outp
 [[review.categories.items]]
 id = "empty-board-does-not-clear"
 title = "An empty board is playing, not cleared"
-description = "A board posed with no worm, from which no segment has been removed, is still on the same level and still active several seconds later. This is the rule the whole harness rests on — startPlaying poses an empty board — so a build that clears on it makes every mechanic scenario in the suite unposeable."
+description = "A board posed with no worm, from which no segment has been removed, is still on the same level and still active several seconds later. This is the rule the whole harness rests on — startPlaying poses an empty board — so a build that clears on it makes every mechanic scenario in the suite impossible to pose."
 domains = ["worm", "arcade"]
 failure_cap = "broken"
 # Load-bearing for the whole suite: the shared harness's `startPlaying` poses an
 # EMPTY board, which is safe only because a level clears on a transition rather
 # than on a predicate. A build that clears on an empty board makes every mechanic
-# scenario here unposeable, so this is capped `broken` in its own right.
+# scenario here impossible to pose, so this is capped `broken` in its own right.
 validation = { script = "progression/empty-board-does-not-clear.test.ts", outputs = [
   { id = "playing", name = "The empty board still on its level", kind = "image" },
 ] }
@@ -2353,8 +2354,8 @@ validation = { script = "screens/ending-menu.test.ts", outputs = [
 
 # --- Look and readouts --------------------------------------------------------
 # This case seeds no palette and no typeface, so there is no hex value on this
-# checklist to assert. Every colour point instead checks PRESENCE and
-# DISTINGUISHABILITY, against a stated RGB distance out of 441 — which is exactly
+# checklist to assert. Every color point instead checks PRESENCE and
+# SEPARATION, against a stated RGB distance out of 441 — which is exactly
 # what specs/overview.md's legibility table asks a player to be able to read at a
 # glance, and nothing more. A build that designs a beautiful board its own way
 # passes every one of them.
@@ -2369,7 +2370,7 @@ title = "Look and readouts"
 [[review.categories.items]]
 id = "node-ramp-distinct"
 title = "The four charge states are told apart"
-description = "Four nodes posed at charges 0..3 sample four colours that differ pairwise by more than 40 of 441."
+description = "Four nodes posed at charges 0..3 sample four colors that differ pairwise by more than 40 of 441."
 domains = ["charge", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/node-ramp-distinct.test.ts", outputs = [
@@ -2396,7 +2397,7 @@ validation = { script = "presentation/critical-pulses.test.ts", outputs = [
 [[review.categories.items]]
 id = "worm-distinct"
 title = "The worm reads apart from the board and the nodes"
-description = "A posed worm's sampled colour differs from the board background and from each of the four node charge colours by more than 40 of 441."
+description = "A posed worm's sampled color differs from the board background and from each of the four node charge colors by more than 40 of 441."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/worm-distinct.test.ts", outputs = [
@@ -2405,7 +2406,7 @@ validation = { script = "presentation/worm-distinct.test.ts", outputs = [
 [[review.categories.items]]
 id = "cursor-distinct"
 title = "The cursor reads apart from the band"
-description = "The cursor's sampled colour differs from the band tint by more than 40 of 441."
+description = "The cursor's sampled color differs from the band tint by more than 40 of 441."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/cursor-distinct.test.ts", outputs = [
@@ -2414,7 +2415,7 @@ validation = { script = "presentation/cursor-distinct.test.ts", outputs = [
 [[review.categories.items]]
 id = "foes-distinct"
 title = "The three foes read apart"
-description = "The three foes' sampled colours differ pairwise, and each from the board background, by more than 40 of 441."
+description = "The three foes' sampled colors differ pairwise, and each from the board background, by more than 40 of 441."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/foes-distinct.test.ts", outputs = [
