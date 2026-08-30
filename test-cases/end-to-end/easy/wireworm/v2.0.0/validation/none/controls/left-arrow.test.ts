@@ -8,7 +8,7 @@
 // THIS POINT DECIDES DIRECTION, NOT RATE. How fast a held key moves the cursor is
 // `cursor.move-speed`'s requirement, measured there over an exact one-second
 // window, and how the travel stops at the band's edge is `cursor.clamped-left`'s.
-// So every reading below is a strict inequality against where the cursor was
+// So the reading below is a floor of half a tile on the travel from where the cursor was
 // posed rather than a distance: a build that moves the cursor left at any rate
 // passes, and a build that moves it right, or not at all, fails — whatever its
 // speed. Nothing about the length of the hold can therefore smuggle in a rate.
@@ -26,7 +26,8 @@
 // is the cursor, and the only thing that can move it is the key under test.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLessThan, assertLessThanOrEqual } from "../assert";
+import { TILE } from "../constants";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -41,8 +42,9 @@ const KEY = "ArrowLeft";
 /**
  * How long the key is held, in frames of the harness's 100 Hz clock.
  *
- * NOT a tolerance and not a rate. The reading it feeds is a strict inequality, so
- * any hold a build can run its own integration across decides the same verdict.
+ * NOT a tolerance and not a rate. The reading it feeds is a floor of half a tile,
+ * a thirteenth of the rate specs/cursor.md fixes, so any hold a build can run its
+ * own integration across decides the same verdict.
  * Half a second is chosen only so the clamp never enters the reading: at the
  * `CURSOR_SPEED` (430) specs/cursor.md fixes it carries the cursor 215 units,
  * which from the band's centre (640) stops far short of `CURSOR_X_MIN` (16).
@@ -51,6 +53,19 @@ const HOLD_FRAMES = framesFor(0.5);
 
 /** How long the check watches after the release, on the same reasoning. */
 const SETTLE_FRAMES = framesFor(0.5);
+
+/**
+ * The least travel on this key's own axis that reads as "it went that way", in
+ * logical units.
+ *
+ * Half a tile (`16`). Over `HOLD_FRAMES` that is a floor of `32` units a second,
+ * a thirteenth of the `CURSOR_SPEED` (`430`) specs/cursor.md fixes — far above
+ * any rounding drift and far below the rate, because how FAST the cursor travels
+ * is `cursor.move-speed`'s point and asserting it here would cost one build two
+ * points for one fault. The `simple-2d` and `structured-2d` suites hold the
+ * horizontal pair to the same floor.
+ */
+const MOVED = TILE / 2;
 
 /**
  * How far the axis this key does not drive may drift over the hold, in logical
@@ -97,10 +112,11 @@ it("moves the cursor left while ArrowLeft is held, and stops on the release", as
   const settled = (await h.snapshot()).cursor;
   await captureStill(h, "moved");
 
-  assertLessThan(
-    held.x,
-    posed.x,
-    `the cursor's centre x after ${HOLD_FRAMES} frames of ArrowLeft, posed at ${posed.x}`,
+  assertGreaterThanOrEqual(
+    posed.x - held.x,
+    MOVED,
+    `logical units of LEFTWARD travel over ${HOLD_FRAMES} frames with ` +
+      `${KEY} held from ${posed.x}`,
   );
   assertLessThanOrEqual(
     Math.abs(held.y - posed.y),

@@ -2068,7 +2068,7 @@ validation = { script = "controls/right-arrow.test.ts", outputs = [
 [[review.categories.items]]
 id = "up-arrow"
 title = "ArrowUp moves the cursor up within the band"
-description = "Held from CURSOR_Y_MAX (704) on a live board, ArrowUp lowers the cursor's centre y within the band and leaves its centre x where it was."
+description = "Held from CURSOR_Y_MAX (704) on a live board, ArrowUp lowers the cursor's centre y by at least a quarter of the band and leaves its centre x where it was. Where the travel stops is cursor.clamped-top."
 domains = ["arcade"]
 failure_cap = "broken"
 validation = { script = "controls/up-arrow.test.ts", outputs = [
@@ -2077,7 +2077,7 @@ validation = { script = "controls/up-arrow.test.ts", outputs = [
 [[review.categories.items]]
 id = "down-arrow"
 title = "ArrowDown moves the cursor down within the band"
-description = "Held from CURSOR_Y_MIN (672) on a live board, ArrowDown raises the cursor's centre y within the band and leaves its centre x where it was."
+description = "Held from CURSOR_Y_MIN (672) on a live board, ArrowDown raises the cursor's centre y by at least a quarter of the band and leaves its centre x where it was. Where the travel stops is cursor.clamped-bottom."
 domains = ["arcade"]
 failure_cap = "broken"
 validation = { script = "controls/down-arrow.test.ts", outputs = [
@@ -2104,7 +2104,7 @@ validation = { script = "controls/key-d.test.ts", outputs = [
 [[review.categories.items]]
 id = "key-w"
 title = "KeyW moves the cursor up"
-description = "KeyW is bound to the same upward movement as ArrowUp: held from CURSOR_Y_MAX it lowers the cursor's centre y within the band."
+description = "KeyW is bound to the same upward movement as ArrowUp: held from CURSOR_Y_MAX it lowers the cursor's centre y by at least a quarter of the band."
 domains = ["arcade"]
 failure_cap = "scuffed"
 validation = { script = "controls/key-w.test.ts", outputs = [
@@ -2113,7 +2113,7 @@ validation = { script = "controls/key-w.test.ts", outputs = [
 [[review.categories.items]]
 id = "key-s"
 title = "KeyS moves the cursor down"
-description = "KeyS is bound to the same downward movement as ArrowDown: held from CURSOR_Y_MIN it raises the cursor's centre y within the band."
+description = "KeyS is bound to the same downward movement as ArrowDown: held from CURSOR_Y_MIN it raises the cursor's centre y by at least a quarter of the band."
 domains = ["arcade"]
 failure_cap = "scuffed"
 validation = { script = "controls/key-s.test.ts", outputs = [

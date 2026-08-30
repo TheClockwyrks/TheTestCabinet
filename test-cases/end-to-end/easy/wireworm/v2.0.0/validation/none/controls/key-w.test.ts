@@ -14,24 +14,20 @@
 // THIS POINT DECIDES DIRECTION, NOT RATE. specs/cursor.md fixes one
 // `CURSOR_SPEED` for every direction and `cursor.move-speed` measures it, over two
 // HORIZONTAL probes, because the band is only 32 units tall and a build at the
-// stated rate crosses it in 0.074 s. The reading below is a strict inequality
-// against the posed y, which any upward rate satisfies and no downward or absent
-// one does.
+// stated rate crosses it in 0.074 s. The reading below is a floor on the UPWARD
+// travel, a quarter of the band, which any upward rate clears and no downward or
+// absent one does.
 //
-// THE BAND IS A FLOOR HERE, NOT A RESTING PLACE. Where exactly the cursor comes to
-// rest is `cursor.clamped-top`'s reading; what this point requires is that the
-// movement stays inside the band the cursor is confined to.
+// WHERE THE TRAVEL STOPS IS NOT READ HERE. That the cursor comes to rest exactly
+// on `CURSOR_Y_MIN`, and never passes it, is `cursor.clamped-top`'s requirement.
+// This point reads the direction alone.
 //
 // THE WORLD IS THE CURSOR ALONE. `startPlaying` empties the four rosters and shuts
 // the three world gates, and this check puts nothing back.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BAND_CX, CURSOR_Y_MAX, CURSOR_Y_MIN } from "../constants";
-import {
-  assertGreaterThanOrEqual,
-  assertLessThan,
-  assertLessThanOrEqual,
-} from "../assert";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -46,12 +42,28 @@ const KEY = "KeyW";
 /**
  * How long the key is held, in frames of the harness's 100 Hz clock.
  *
- * NOT a tolerance and not a rate: the direction reading is a strict inequality,
- * which any upward rate satisfies over any hold. Half a second is thirteen
+ * NOT a tolerance and not a rate: the direction reading is a floor of a quarter
+ * of the band, which any upward rate clears over this hold. Half a second is thirteen
  * hundredths of a second more than the 0.074 s a build at the `CURSOR_SPEED`
  * (430) specs/cursor.md fixes needs to cross the band's whole 32 units.
  */
 const HOLD_FRAMES = framesFor(0.5);
+
+/** The band's height, `CURSOR_Y_MAX - CURSOR_Y_MIN` (`32`), from specs/cursor.md. */
+const BAND_H = CURSOR_Y_MAX - CURSOR_Y_MIN;
+
+/**
+ * The least travel on this key's own axis that reads as "it went that way", in
+ * logical units.
+ *
+ * A quarter of the band (`8`). Over `HOLD_FRAMES` that is a floor of `16` units
+ * a second against the `CURSOR_SPEED` (`430`) specs/cursor.md fixes — a
+ * twenty-seventh of the rate, so nothing but the DIRECTION is being asked for,
+ * and far above any rounding drift. The `simple-2d` and `structured-2d` suites
+ * hold the vertical pair to the same floor, so the one requirement is decided
+ * against the same threshold on all three engines.
+ */
+const MOVED = BAND_H / 4;
 
 /**
  * How far the axis this key does not drive may drift over the hold, in logical
@@ -64,16 +76,6 @@ const HOLD_FRAMES = framesFor(0.5);
  */
 const OFF_AXIS_MAX = 0.5;
 
-/**
- * How far past `CURSOR_Y_MIN` the cursor may sit and still count as inside the
- * band, in logical units.
- *
- * The clamp specs/cursor.md states is exact, so the honest figure is zero and the
- * same half unit is rounding room for a build that computes its bound rather than
- * writing it down.
- */
-const BAND_FLOOR_SLACK = 0.5;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -84,7 +86,7 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it("moves the cursor up inside the band while KeyW is held", async () => {
+it("lifts the cursor up the band while KeyW is held", async () => {
   await startPlaying(h);
   await h.debug.setCursor(BAND_CX, CURSOR_Y_MAX);
   await h.advance(1);
@@ -94,15 +96,11 @@ it("moves the cursor up inside the band while KeyW is held", async () => {
   const held = (await h.snapshot()).cursor;
   await captureStill(h, "moved");
 
-  assertLessThan(
-    held.y,
-    posed.y,
-    `the cursor's centre y after ${HOLD_FRAMES} frames of KeyW, posed at CURSOR_Y_MAX (${CURSOR_Y_MAX})`,
-  );
   assertGreaterThanOrEqual(
-    held.y,
-    CURSOR_Y_MIN - BAND_FLOOR_SLACK,
-    `the cursor's centre y, which never leaves the band's top bound CURSOR_Y_MIN (${CURSOR_Y_MIN})`,
+    posed.y - held.y,
+    MOVED,
+    `logical units of UPWARD travel over ${HOLD_FRAMES} frames with ` +
+      `${KEY} held from CURSOR_Y_MAX (${CURSOR_Y_MAX}) `,
   );
   assertLessThanOrEqual(
     Math.abs(held.x - posed.x),
