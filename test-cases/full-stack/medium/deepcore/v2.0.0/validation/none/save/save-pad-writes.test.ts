@@ -1,24 +1,69 @@
-// Deepcore — save.save-pad-writes. STUB: NOT YET AUTHORED.
+// save/save-pad-writes — activating the Save Pad writes the save on the spot.
 //
-// Activating the Save Pad saves on the spot
+// specs/gameplay.md: "The Save Pad is the only way to save... Activating the pad
+// writes the save on the spot", and specs/world.md gives the pad the id
+// `save-pad` and says it is the one surface building that opens no panel: it
+// saves directly. So a miner standing at it and pressing `activate` leaves
+// `hasSave` true with no panel open.
 //
-// Activating the Save Pad writes the save immediately and shows a note
-// confirming it, leaving hasSave true.
+// THE PAD IS ASKED WHERE IT IS. specs/world.md fixes only that each building's
+// footprint sits on the ground line inside the playable columns, so the layout is
+// the build's; the harness reads `buildings()` and centres the miner on the
+// footprint it reports.
 //
-// Automated validation: stand the miner at the Save Pad, activate and read
-// hasSave true with no panel opened.
-//
-// `test-case.toml` declares this suite as `save/save-pad-writes.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (saved (image)) around the drive.
+// ISOLATION. An empty mine with the camp's ground laid back as generation leaves
+// it, the slot cleared first so the reading is this save rather than an older
+// one, and nothing held, carried or installed.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNull } from "../assert";
+import {
+  ACTION_KEY,
+  captureStill,
+  createHarness,
+  standAtBuilding,
+  type Harness,
+} from "../harness";
+import { openAtCamp } from "./expedition";
 
-test("Activating the Save Pad saves on the spot", () => {
-  throw new Error(
-    "Deepcore validator `save/save-pad-writes` is declared in test-case.toml but has not been authored yet.",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("saves on the spot at the Save Pad, opening no panel", async () => {
+  await openAtCamp(h);
+
+  const empty = await h.snapshot();
+  assertEqual(
+    empty.hasSave,
+    false,
+    "the slot was cleared before the pad was activated",
+  );
+
+  await standAtBuilding(h, "save-pad");
+  await h.advance(1);
+  await h.tap(ACTION_KEY.activate);
+
+  const saved = await h.snapshot();
+  await captureStill(h, "saved");
+  assertEqual(
+    saved.hasSave,
+    true,
+    "specs/gameplay.md: activating the Save Pad writes the save on the spot",
+  );
+  assertNull(
+    saved.panel,
+    "specs/ui.md: the Save Pad has no panel; activating it saves directly",
+  );
+  assertEqual(
+    saved.screen,
+    "in-mine",
+    "specs/ui.md: saving leaves the game in the mine",
   );
 });

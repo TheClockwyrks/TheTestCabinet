@@ -23,8 +23,14 @@ import { SPAWN_COL } from "../constants";
 import {
   ACTION_KEY,
   layCamp,
+  minerXOn,
+  minerYOn,
   openScene,
+  pinDrill,
+  pinMiner,
   standAtCamp,
+  type DeathCause,
+  type DeepcoreSnapshot,
   type Harness,
   type Mode,
   type WorldSize,
@@ -118,4 +124,71 @@ export async function menuLength(h: Harness, limit = 12): Promise<number> {
     if ((await h.snapshot()).menuIndex === 0) return step;
   }
   return limit + 1;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Driving a death                                                            */
+/* -------------------------------------------------------------------------- */
+
+/** The cell a death that has to happen underground is driven at. */
+const DEATH_COL = 12;
+const DEATH_ROW = 60;
+
+/** The seconds a Core Sample's timer is wound down to before it is run out. */
+const CORE_FUSE = 0.5;
+
+/**
+ * Bring one of the three deaths specs/modes.md names about, and run the game on
+ * until the expedition has ended at the Game Over screen.
+ *
+ * NOTHING HERE POSES THE OUTCOME. Each cause is arranged as the condition the
+ * specification states — an empty tank below the ground line, a hull standing at
+ * `0`, a Core Sample's timer running out while it is carried — and the game's own
+ * continuous check is what ends the expedition, exactly as
+ * specs/instrumentation.md says of `setHull(0)`.
+ *
+ * The miner's body and drill are both gated, because no death here is about
+ * either: what the gate leaves running is everything that matters, life support,
+ * the hull check and the Sample's timer included.
+ *
+ * The wait afterwards is a sweep rather than a single frame. How long a build
+ * plays a death out before it shows the summary is the build's, so this runs the
+ * game on in whole seconds until the screen changes, up to a generous ceiling.
+ */
+export async function driveDeath(
+  h: Harness,
+  cause: DeathCause,
+): Promise<DeepcoreSnapshot> {
+  await pinMiner(h);
+  await pinDrill(h);
+  if (cause === "hull-destroyed") {
+    await h.debug.setHull(0);
+  } else if (cause === "fuel-out") {
+    await h.debug.setMinerPosition(minerXOn(DEATH_COL), minerYOn(DEATH_ROW));
+    await h.debug.setMinerVelocity(0, 0);
+    await h.debug.setFuel(0);
+  } else {
+    await h.debug.setCoreCarried(true);
+    await h.debug.setCoreTimer(CORE_FUSE);
+  }
+  return waitForGameOver(h);
+}
+
+/** Seconds of game time a death is given to play out before it counts as failed. */
+const DEATH_CEILING = 8;
+
+/** Run the game on until it reaches the Game Over screen, and say so if it never does. */
+export async function waitForGameOver(h: Harness): Promise<DeepcoreSnapshot> {
+  let snapshot = await h.snapshot();
+  for (let second = 0; second < DEATH_CEILING; second += 1) {
+    if (snapshot.screen === "game-over") return snapshot;
+    await h.advanceSeconds(1, 8);
+    snapshot = await h.snapshot();
+  }
+  assertEqual(
+    snapshot.screen,
+    "game-over",
+    `specs/modes.md: a death ends the expedition at the Game Over screen, within ${DEATH_CEILING}s`,
+  );
+  return snapshot;
 }

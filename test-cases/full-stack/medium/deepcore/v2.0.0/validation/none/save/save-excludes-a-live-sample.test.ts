@@ -1,24 +1,101 @@
-// Deepcore — save.save-excludes-a-live-sample. STUB: NOT YET AUTHORED.
+// save/save-excludes-a-live-sample — no save ever holds a live Core Sample.
 //
-// A live Core Sample is never carried in the save
+// specs/gameplay.md: "Saving is refused while a Core Sample's timer runs, carried
+// or jettisoned", and specs/items.md repeats it, adding that "item counts are
+// carried in the save; a live Core Sample never is". The consequence this check
+// decides is the one a player meets: a restored expedition always opens with
+// `coreTimer` null and nothing in the satchel's Sample slot, however the
+// expedition that was restored from ended.
 //
-// Because saving is refused while a Sample is live, no save ever holds one: a
-// restored expedition always begins with coreTimer null.
+// TWO READINGS OF THE SAME RULE.
 //
-// Automated validation: save cleanly, extract a Sample, die, continue and read
-// coreTimer null on the restored expedition.
+//   - The refusal. A save is banked cleanly at a marked Credits balance, a Sample
+//     is then extracted and the save attempted again at a different balance. The
+//     slot must still hold the FIRST balance, because the second save was refused
+//     rather than taken.
+//   - The restore. The expedition is then ended by a death in Standard, which
+//     specs/modes.md says leaves the save intact and destroys a Sample held, and
+//     the restored expedition is read for a Sample that is not there.
 //
-// `test-case.toml` declares this suite as `save/save-excludes-a-live-sample.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (clean (image)) around the drive.
+// ISOLATION. One Standard expedition on an empty mine with the slot cleared
+// first, the miner standing at the camp, and its body and drill gated, since
+// neither is what a Sample's timer or a save exercises.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNull } from "../assert";
+import { CORE_TIMER } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  bankSave,
+  continueFromTitle,
+  driveDeath,
+  openAtCamp,
+} from "./expedition";
 
-test("A live Core Sample is never carried in the save", () => {
-  throw new Error(
-    "Deepcore validator `save/save-excludes-a-live-sample` is declared in test-case.toml but has not been authored yet.",
+/** The balance the clean save is taken at, and the one the refused save carries. */
+const SAVED_CREDITS = 900;
+const REFUSED_CREDITS = 4200;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("refuses a save while a Sample is live, so a restore opens with none", async () => {
+  await openAtCamp(h, { mode: "standard" });
+  await h.debug.setCredits(SAVED_CREDITS);
+  await bankSave(h);
+
+  await h.debug.setCoreCarried(true);
+  const carrying = await h.snapshot();
+  assertEqual(
+    carrying.satchel.coreSample,
+    true,
+    "specs/instrumentation.md: setCoreCarried(true) puts a Sample in the satchel",
+  );
+  assertEqual(
+    carrying.coreTimer,
+    CORE_TIMER,
+    "specs/instrumentation.md: a Sample put there starts at CORE_TIMER",
+  );
+
+  await h.debug.setCredits(REFUSED_CREDITS);
+  await h.debug.save();
+  assertEqual(
+    (await h.snapshot()).hasSave,
+    true,
+    "the earlier save is still in the slot",
+  );
+
+  const over = await driveDeath(h, "hull-destroyed");
+  assertEqual(
+    over.hasSave,
+    true,
+    "specs/modes.md: a Standard death leaves the save intact",
+  );
+
+  await continueFromTitle(h);
+  await h.advance(1);
+
+  const restored = await h.snapshot();
+  await captureStill(h, "clean");
+  assertEqual(
+    restored.credits,
+    SAVED_CREDITS,
+    "specs/gameplay.md: saving is refused while a Core Sample's timer runs",
+  );
+  assertNull(
+    restored.coreTimer,
+    "specs/items.md: a restored expedition opens with no Sample live",
+  );
+  assertEqual(
+    restored.satchel.coreSample,
+    false,
+    "specs/items.md: a live Core Sample is never carried in the save",
   );
 });

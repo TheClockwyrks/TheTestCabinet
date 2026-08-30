@@ -1,24 +1,94 @@
-// Deepcore — save.new-expedition-abandons-the-save. STUB: NOT YET AUTHORED.
+// save/new-expedition-abandons-the-save — starting a new expedition throws the
+// old save away.
 //
-// Starting a new expedition abandons the save
+// specs/gameplay.md: "There is one save slot, and saving overwrites it. Starting
+// a new expedition abandons any existing save." So the save and the new
+// expedition never coexist: once the size choice begins a run, `hasSave` is
+// false and the title carries no `CONTINUE` back into the abandoned one.
 //
-// Starting a new expedition from the menu abandons any existing save rather
-// than keeping it alongside the new run.
+// THE NEW EXPEDITION IS STARTED THE WAY A PLAYER STARTS ONE, because that is what
+// the requirement is about and there is no operation for it: `NEW EXPEDITION` on
+// the title, a mode, then a size, which specs/ui.md says begins the expedition at
+// once. The title's items shift with the save — `CONTINUE` leads while one
+// exists — so the highlight is put on `NEW EXPEDITION` by index rather than by
+// counting presses from a menu whose length is what this check is about.
 //
-// Automated validation: save, return to the title, start a new expedition and
-// read the save no longer restorable.
-//
-// `test-case.toml` declares this suite as `save/new-expedition-abandons-the-save.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (abandon (image)) around the drive.
+// ISOLATION. One expedition on an empty mine with the slot cleared first, so the
+// save that is abandoned is the one this check banked.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  MODE_ITEMS,
+  SIZE_ITEMS,
+  TITLE_ITEMS,
+  TITLE_ITEMS_NO_SAVE,
+} from "../constants";
+import {
+  ACTION_KEY,
+  captureStill,
+  createHarness,
+  drewText,
+  type Harness,
+} from "../harness";
+import { bankSave, menuLength, openAtCamp } from "./expedition";
 
-test("Starting a new expedition abandons the save", () => {
-  throw new Error(
-    "Deepcore validator `save/new-expedition-abandons-the-save` is declared in test-case.toml but has not been authored yet.",
+/** Where each choice sits on its own menu, as specs/ui.md lists them. */
+const NEW_EXPEDITION = TITLE_ITEMS.indexOf("NEW EXPEDITION");
+const STANDARD_MODE = MODE_ITEMS.indexOf("STANDARD");
+const STANDARD_SIZE = SIZE_ITEMS.indexOf("STANDARD");
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("leaves no save behind once a new expedition has begun", async () => {
+  await openAtCamp(h);
+  await bankSave(h);
+
+  await h.debug.setScreen("title");
+  await h.debug.setMenuIndex(NEW_EXPEDITION);
+  await h.tap(ACTION_KEY.activate);
+  assertEqual(
+    (await h.snapshot()).screen,
+    "mode-select",
+    "specs/ui.md: NEW EXPEDITION goes to mode-select",
+  );
+
+  await h.debug.setMenuIndex(STANDARD_MODE);
+  await h.tap(ACTION_KEY.activate);
+  await h.debug.setMenuIndex(STANDARD_SIZE);
+  await h.tap(ACTION_KEY.activate);
+
+  const started = await h.snapshot();
+  await captureStill(h, "abandon");
+  assertEqual(
+    started.screen,
+    "in-mine",
+    "specs/ui.md: choosing a size begins the expedition",
+  );
+  assertEqual(
+    started.hasSave,
+    false,
+    "specs/gameplay.md: starting a new expedition abandons any existing save",
+  );
+
+  await h.debug.setScreen("title");
+  const calls = await h.frameCalls();
+  assertEqual(
+    await menuLength(h),
+    TITLE_ITEMS_NO_SAVE.length,
+    "specs/ui.md: the title carries no CONTINUE once the save is abandoned",
+  );
+  assertEqual(
+    drewText(calls, TITLE_ITEMS[0]),
+    false,
+    "specs/ui.md: CONTINUE is absent while no save exists",
   );
 });
