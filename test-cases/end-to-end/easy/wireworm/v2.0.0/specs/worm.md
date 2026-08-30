@@ -65,10 +65,19 @@ segments, with `WORM_BASE_LENGTH` (`10`) and `WORM_LENGTH_PER_LEVEL` (`2`). That
 is `10` segments at level 1 and `32` at level 12.
 
 The worm enters along row `0`, the entry row, from the left edge or the right
-edge. Every one of its segments is laid on row `0`, the head furthest from the
-edge it entered at and the tail nearest it. Its horizontal heading points inward
-from that edge, and its vertical heading is down. `specs/progression.md` states
-when the worm enters.
+edge. Which of the two edges it enters at is drawn from the run's seeded
+generator, as `specs/instrumentation.md` states.
+
+Every one of its segments is laid on row `0`, in a run of consecutive columns
+that stands against the edge it entered at. Entering from the left, the tail
+occupies column `0` and the head column `wormLength(level) - 1`; entering from
+the right, the tail occupies column `39` and the head column
+`40 - wormLength(level)`. The head is the end furthest from that edge and the
+tail the end nearest it.
+
+Its horizontal heading points inward from that edge — `dh` is `+1` entering from
+the left and `-1` entering from the right — and its vertical heading `dv` is `+1`,
+down. `specs/progression.md` states when the worm enters.
 
 ## Winding down the board
 

@@ -85,13 +85,10 @@ export const game: Game<WirewormState, WirewormDebugApi> = {
    * Runs once per frame, before `render`: the next state, from the current one.
    *
    * `dt` is the real elapsed SECONDS of this frame, and `simTime` accumulates it
-   * on every update whatever the screen. Advance each worm's own step clock and
-   * run every step it covers, in order; integrate the cursor, the bolts and the
-   * foes against `dt`; resolve the collisions, the charge changes and the
-   * discharges specs/nodes.md and specs/discharge.md state; play cues; and mirror
-   * the engine's mute bit into the returned state's `muted`. The value returned
-   * is what `render` draws and what the next `update` receives; `state` itself is
-   * read-only and stays as it was.
+   * on every update whatever the screen. Read input, advance the simulation, play
+   * cues, and mirror the engine's mute bit into the returned state's `muted`. The
+   * value returned is what `render` draws and what the next `update` receives;
+   * `state` itself is read-only and stays as it was.
    */
   update(
     _state: DeepReadonly<WirewormState>,

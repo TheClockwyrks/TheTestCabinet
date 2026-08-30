@@ -54,7 +54,8 @@ Whatever its shape, the state carries the following.
   the screen.
 - Whether sound is muted, refreshed from the runtime's mute bit in every update.
 - The state of the seeded random generator, which the starting scatter, the
-  foes' arrival intervals, and the arcs' drawn shapes are all drawn from.
+  foes' arrival intervals and entry positions, the edge a worm enters at, and the
+  arcs' drawn shapes are all drawn from.
 - Whatever the game needs to hand a fresh id to the next worm, foe, or bolt it
   creates, so no two entities live at one moment share an id.
 
@@ -369,8 +370,8 @@ One foe on the board.
   every update. The runtime owns muting, and this field is what the debug surface
   reports.
 - `rngState` — the state of the game's seeded random generator. The starting
-  scatter, the foes' arrival intervals and entry positions, and the drawn shape of
-  an arc are all drawn from it.
+  scatter, the foes' arrival intervals and entry positions, the edge a worm enters
+  at, and the drawn shape of an arc are all drawn from it.
 
 The level's step interval and the level's worm length are derived from `level` by
 the formulas in `specs/worm.md` rather than stored.

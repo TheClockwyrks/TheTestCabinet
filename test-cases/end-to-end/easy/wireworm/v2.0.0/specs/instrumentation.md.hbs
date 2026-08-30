@@ -78,7 +78,8 @@ worm's tile step, which accumulates that same delta and carries its remainder, a
   from the state's generator field, and it keeps its whole generator state in
   that field, so reseeding and replaying the same calls reproduces the same
   result exactly. The starting scatter, the foes' arrival intervals and entry
-  positions, and an arc's drawn shape are all drawn from it.
+  positions, the edge of the board a worm enters at, and an arc's drawn shape are
+  all drawn from it.
 
 Given the same seed and the same sequence of calls and elapsed game time, the
 game reaches the same state every time.
@@ -211,15 +212,14 @@ length follow it, since both are derived from the level.
 
 ### The world gates
 
-Three faculties belong to the level itself rather than to any one entity. Each
-has its own gate, each gates one faculty and nothing else, each is on by default
-and restored to on by `reset`, and each is reported by `snapshot`.
+Two faculties belong to the level itself rather than to any one entity. Each has
+its own gate, each gates one faculty and nothing else, both are on by default and
+restored to on by `reset`, and both are reported by `snapshot`.
 
 | Operation | Gates |
 | --- | --- |
 | `setFoeSpawning(enabled)` | The level's own spawning of foes: the glitch's paced arrival, the corruptor's, and the dropper's sparse-field check. Off, no foe appears unless one is added. A foe already on the board still thinks, travels, and acts. |
 | `setWormEntry(enabled)` | The level's and the respawn's entry of a worm. Off, no worm appears unless one is added. A worm already on the board steps as usual. |
-| `setCursorContact(enabled)` | The cursor's contact test, which is whether a worm segment or a foe reaching the cursor costs a life. Off, the cursor still draws, still moves under input, and still fires, and no contact costs anything. |
 
 ### The cursor and its bolts
 
@@ -227,7 +227,7 @@ and restored to on by `reset`, and each is reported by `snapshot`.
 | --- | --- |
 | `setCursor(x, y)` | Places the cursor's center at a logical stage position. The band's clamp applies, so the cursor never lands outside the player band. |
 | `setCursorInvulnerable(seconds)` | Sets the seconds of spawn-in invulnerability remaining, `0` for none. |
-| `setCursorContact(enabled)` | The cursor's contact gate, stated under The world gates above. |
+| `setCursorContact(enabled)` | The cursor's contact test, which is whether a worm segment or a foe reaching the cursor costs a life. It is on by default and restored to on by `reset`. Off, the cursor still draws, still moves under input, and still fires, and no contact costs anything. |
 | `setFireCooldown(seconds)` | Sets the seconds until the cursor may fire again. |
 | `addBolt(x, y)` | Adds one bolt in flight, its center at a logical stage position, travelling up. It is appended to the bolt roster and takes a fresh id, and it then travels and resolves through the game's own shot rules. |
 | `removeBolt(id)` | Removes the bolt with that id. |
