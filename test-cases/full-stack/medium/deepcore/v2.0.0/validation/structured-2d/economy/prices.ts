@@ -1,7 +1,7 @@
 // economy — the two price tables as a check reads them.
 //
 // Not a suite: the lookups several of them share. `specs/upgrades.md` holds one
-// ladder for the six five-tier tracks, indexed by the tier being LEFT, and gives
+// ladder for the six five-tier tracks, indexed by the tier being REACHED, and gives
 // the scanner the first two rungs of the same ladder; `specs/items.md` prices the
 // six field supplies. `src/constants.ts` is the case's own module and carries
 // both, so nothing here is a figure of its own — each is only the arithmetic that
