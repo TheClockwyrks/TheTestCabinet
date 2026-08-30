@@ -19,6 +19,12 @@
 //   a turn on the press AND on the release   ->  2 * TURN_COUNT on the waste
 //   nothing                                  ->  an empty waste
 //
+// AND THE STOCK IS READ AS WELL AS THE WASTE. A turn MOVES cards; it does not
+// copy them. A build that appends to the waste and leaves the stock as it was
+// gives a player a deck that never runs out and a game that cannot be lost, so
+// both sides of the move are read off the one click: `SPARE` cards left behind,
+// and `TURN_COUNT` arrived.
+//
 // THE CLICK IS AT ZERO DISTANCE, which is inside `DRAG_THRESHOLD` by any reading;
 // `handling/drag-threshold` is the point that decides where the threshold lies.
 // The press lands on the centre of the stock's own drop rectangle, so nothing
@@ -80,5 +86,13 @@ it("grows the waste by the turn count when a press and release land on the stock
     `the cards on the waste after one click on the stock, which turns this ` +
       `build's TURN_COUNT of them off a stock holding ` +
       `${String(CARDS.length)} (specs/controls.md, specs/stock.md)`,
+  );
+  assertLength(
+    after.stock,
+    SPARE,
+    `the cards left on the stock after that click: the ` +
+      `${String(CARDS.length)} it held less the TURN_COUNT the turn moved — a ` +
+      "turn moves its cards onto the waste rather than copying them " +
+      "(specs/stock.md)",
   );
 });

@@ -34,6 +34,11 @@
 // from the `DRAG_THRESHOLD` the seeded `src/constants.ts` carries, so the check
 // reads back what the build was handed rather than a literal restated here.
 //
+// BOTH SIDES OF THE DROP ARE READ. An empty waste is what a build that turned
+// nothing leaves, and it is also what a build that took cards off the stock and
+// lost them leaves, so the stock is read as well: after the long gesture it still
+// holds every card it was posed with.
+//
 // THE LONG GESTURE RUNS FIRST, so the picture kept at the end holds both halves at
 // once: a waste carrying exactly one turn's cards is a waste the six-unit gesture
 // did not turn and the four-unit gesture did.
@@ -125,6 +130,13 @@ it("turns the stock on a release inside the threshold and not on one outside it"
       `${String(DROP_DISTANCE)} units away, which is farther than ` +
       `DRAG_THRESHOLD (${String(DRAG_THRESHOLD)}) and so is a drop: a drop ` +
       "turns no stock (specs/controls.md)",
+  );
+  assertLength(
+    afterDrop.stock,
+    CARDS.length,
+    `the cards left on the stock after that ${String(DROP_DISTANCE)}-unit ` +
+      `gesture, which is the ${String(CARDS.length)} it was posed with: a ` +
+      "drop turns no stock, so nothing left it (specs/controls.md)",
   );
   assertLength(
     afterClick.waste,
