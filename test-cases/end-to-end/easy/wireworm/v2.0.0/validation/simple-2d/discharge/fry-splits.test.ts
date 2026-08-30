@@ -5,32 +5,36 @@
 // the rule `specs/worm.md` states for a worm whose segments are removed."
 // specs/worm.md is that rule: "the segments that survive fall into runs of
 // consecutive segments, counted from the head end. Each run becomes a worm of its
-// own", and "New worms are appended to the roster in order from the head end."
+// own", the first run's "leading segment is its head", and for each further run
+// "Its leading segment is the one that was nearest the break, and that segment is
+// its head".
 //
 // THE CUT IS A COLUMN THROUGH THE MIDDLE OF A LONG WORM. The worm lies flat along
-// one row, `WORM_LENGTH` segments of it, and the critical node stands
-// `DISCHARGE_RADIUS` rows BELOW that row — so the blast's `5 x 5` block covers
-// exactly the `2 * DISCHARGE_RADIUS + 1` columns centered on the node, and the
-// segments on those columns are the ones destroyed. The head-side run and the
-// tail-side run are each `RUN_LENGTH` segments, both non-empty, so the answer is
-// two worms and not one.
+// one row, `WORM_LENGTH` segments of it, and the critical node stands ONE row
+// below that row, in the column at the middle of the chain — so the blast takes
+// the middle segments and leaves a run at each end.
 //
 // THE NODE IS BELOW THE WORM, NOT ABOVE IT, and that is forced: a bolt climbs, so
 // a node above the worm would sit behind a segment in the same column and
-// specs/cursor.md would have the bolt strike the SEGMENT instead of the node.
-// Posed below, the bolt reaches the node first and no segment is ever shot — this
-// point is about a discharge cutting a worm, never about a bolt cutting one,
-// which is `worm.shot-middle-splits`.
+// specs/cursor.md would have the bolt strike the SEGMENT instead. Posed under,
+// the bolt reaches the node first and no segment is ever shot — this point is
+// about a discharge cutting a worm, never about a bolt cutting one, which is
+// `worm.shot-middle-splits`.
+//
+// NOTHING HERE TURNS ON HOW WIDE THE CUT IS. The worm is long enough that the old
+// head and the old tail survive a cut of any width the specification could be
+// read as fixing, and the readings are: two worms; the piece holding the old head
+// is LED by it; the other piece holds the old tail and is led from its break end.
+// A build whose blast reaches a tile too far is named by
+// `spares-segments-beyond-reach`, not docked a second time here.
 //
 // THE WORM IS POSED AS A TARGET. Its STEP faculty is off, so its tiles are where
 // the scenario put them when the blast resolves; whether it winds at all is the
-// `worm` category's requirement, and this reading must not be able to fail
-// because the worm moved a tile first.
+// `worm` category's requirement.
 //
 // WHAT THIS DOES NOT DECIDE. Which ID each piece carries is
 // `fry-split-keeps-head-id`'s requirement, so the pieces are found here by the
-// TILES they stand on and never by their ids or their roster positions: a build
-// that splits correctly and numbers wrongly is docked once, there.
+// TILES they stand on and never by their ids or their roster positions.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -39,13 +43,20 @@ import {
   CHARGE_MAX,
   DISCHARGE_RADIUS,
 } from "../../src/constants";
-import { assertDeepEqual, assertLength, assertTrue } from "../assert";
+import {
+  assertDeepEqual,
+  assertGreaterThan,
+  assertLength,
+  assertTrue,
+} from "../assert";
 import {
   captureReplay,
   createHarness,
+  headOf,
   poseBolt,
   poseWorm,
   startPlaying,
+  tailOf,
   ticksFor,
   type Harness,
   type WormSnapshot,
@@ -54,10 +65,10 @@ import {
 /** The row the worm lies along: clear of the entry row, the band and the edges. */
 const WORM_R = 6;
 
-/** Segments each surviving run keeps, on each side of the cut. */
+/** Segments beyond the widest cut the reach could take, at each end. */
 const RUN_LENGTH = 3;
 
-/** The columns the blast covers: the `5 x 5` block's width. */
+/** The columns a blast of `DISCHARGE_RADIUS` covers: the `5 x 5` block's width. */
 const CUT_WIDTH = 2 * DISCHARGE_RADIUS + 1;
 
 /** A worm long enough to leave a run of `RUN_LENGTH` on each side of the cut. */
@@ -70,26 +81,15 @@ const HEAD_C = 20;
 const TAIL_C = HEAD_C - (WORM_LENGTH - 1);
 
 /**
- * The critical node's tile: `DISCHARGE_RADIUS` rows below the worm's row, in the
- * column at the middle of the chain.
+ * The critical node's tile: one row below the middle segment of the chain.
  *
- * At that offset the blast's Chebyshev reach into the worm's row is exactly
- * `DISCHARGE_RADIUS` columns each side, so the cut is `CUT_WIDTH` wide.
+ * One row rather than `DISCHARGE_RADIUS`, so the cut lands on the middle of the
+ * worm under any reach the specification could be read as fixing. How far the
+ * blast reaches is `fries-segments-in-reach`'s requirement and
+ * `spares-segments-beyond-reach`'s; what it leaves behind is this one's.
  */
-const STRUCK_C = HEAD_C - (RUN_LENGTH + DISCHARGE_RADIUS);
-const STRUCK_R = WORM_R + DISCHARGE_RADIUS;
-
-/** The head-side run: the `RUN_LENGTH` segments in front of the cut. */
-const HEAD_RUN = Array.from({ length: RUN_LENGTH }, (_, i) => ({
-  c: HEAD_C - i,
-  r: WORM_R,
-}));
-
-/** The tail-side run: the `RUN_LENGTH` segments behind the cut, head end first. */
-const TAIL_RUN = Array.from({ length: RUN_LENGTH }, (_, i) => ({
-  c: TAIL_C + (RUN_LENGTH - 1) - i,
-  r: WORM_R,
-}));
+const STRUCK_C = HEAD_C - (WORM_LENGTH - 1) / 2;
+const STRUCK_R = WORM_R + 1;
 
 /**
  * The most frames the bolt is given to resolve.
@@ -101,13 +101,13 @@ const TAIL_RUN = Array.from({ length: RUN_LENGTH }, (_, i) => ({
  */
 const BOLT_SWEEP_TICKS = ticksFor(BOARD_H / BOLT_SPEED);
 
-/** The worm standing on `tile`, or `undefined` where no piece holds it. */
+/** The worm standing on `(c, WORM_R)`, or `undefined` where no piece holds it. */
 function pieceOn(
   worms: readonly WormSnapshot[],
-  tile: { c: number; r: number },
+  c: number,
 ): WormSnapshot | undefined {
   return worms.find((worm) =>
-    worm.segments.some((seg) => seg.c === tile.c && seg.r === tile.r),
+    worm.segments.some((seg) => seg.c === c && seg.r === WORM_R),
   );
 }
 
@@ -139,20 +139,28 @@ it("leaves the head-side and tail-side runs as two worms", async () => {
   assertLength(
     swept.snapshot.worms,
     2,
-    `the worms on the board after a discharge cut ${CUT_WIDTH} segments out ` +
-      `of the middle of a ${WORM_LENGTH}-segment worm`,
+    `the worms on the board after a discharge cut the middle out of a ` +
+      `${WORM_LENGTH}-segment worm`,
   );
 
+  const headSide = pieceOn(swept.snapshot.worms, HEAD_C);
+  const tailSide = pieceOn(swept.snapshot.worms, TAIL_C);
   assertDeepEqual(
-    pieceOn(swept.snapshot.worms, HEAD_RUN[0])?.segments,
-    HEAD_RUN,
-    "the segments of the piece standing where the worm's head was: the " +
-      "surviving run in front of the cut, its leading segment first",
+    headSide === undefined ? undefined : headOf(headSide),
+    { c: HEAD_C, r: WORM_R },
+    "the head tile of the piece that kept the worm's old head: the first " +
+      "surviving run is led by its leading segment",
   );
   assertDeepEqual(
-    pieceOn(swept.snapshot.worms, TAIL_RUN[0])?.segments,
-    TAIL_RUN,
-    "the segments of the piece standing behind the cut: the surviving run " +
-      "from the break to the old tail, the segment nearest the break first",
+    tailSide === undefined ? undefined : tailOf(tailSide),
+    { c: TAIL_C, r: WORM_R },
+    "the tail tile of the trailing piece: the run behind the break keeps the " +
+      "old tail at its far end",
+  );
+  assertGreaterThan(
+    tailSide === undefined ? Number.NaN : headOf(tailSide).c,
+    TAIL_C,
+    "the column of the trailing piece's own head, which must be the segment " +
+      "that was nearest the break rather than the old tail",
   );
 });

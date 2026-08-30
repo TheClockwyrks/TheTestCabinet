@@ -11,10 +11,12 @@
 // named for the one it got wrong rather than passing on the strength of the
 // other.
 //
-// THE PIECES ARE FOUND BY THE TILES THEY STAND ON, never by their roster
-// positions — which is the whole point of the ids, and what
-// `instrumentation.entity-ids` holds the surface to. So this reading does not
-// depend on the order the roster grew in.
+// THE PIECES ARE FOUND BY THE TILES THEY STAND ON — the old head's tile and the
+// old tail's — never by their roster positions, which is the whole point of the
+// ids and what `instrumentation.entity-ids` holds the surface to. Both tiles
+// survive a cut of any width the specification could be read as fixing, so this
+// reading does not turn on how far the blast reaches, which is
+// `fries-segments-in-reach`'s requirement and `spares-segments-beyond-reach`'s.
 //
 // THE TRAILING PIECE IS READ AS "NOT THE OLD ID" rather than as any particular
 // number. specs/instrumentation.md promises only that an id is "unique among the
@@ -24,10 +26,9 @@
 // requirement: which piece inherits the identity.
 //
 // THE GEOMETRY IS `fry-splits`'s, and the same two guards apply — the node sits
-// `DISCHARGE_RADIUS` rows BELOW the worm so the climbing bolt reaches it rather
-// than a segment, and the worm's STEP faculty is off so its tiles are where the
-// scenario put them. That the cut leaves two pieces at all is `fry-splits`'s
-// requirement and is graded there; here it is the scenario's precondition.
+// BELOW the worm so the climbing bolt reaches it rather than a segment, and the
+// worm's STEP faculty is off so its tiles are where the scenario put them. That the cut leaves two pieces at all is `fry-splits`'s
+// requirement; here it is the scenario's precondition.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -51,7 +52,7 @@ import {
 /** The row the worm lies along: clear of the entry row, the band and the edges. */
 const WORM_R = 6;
 
-/** Segments each surviving run keeps, on each side of the cut. */
+/** Segments beyond the widest cut the reach could take, at each end. */
 const RUN_LENGTH = 3;
 
 /** A worm long enough to leave a run of `RUN_LENGTH` on each side of the cut. */
@@ -63,18 +64,16 @@ const HEAD_C = 20;
 /** The tail's tile, `WORM_LENGTH - 1` columns behind the head. */
 const TAIL_C = HEAD_C - (WORM_LENGTH - 1);
 
-/** The tile the leading segment of the head-side run stands on: the old head. */
-const HEAD_PIECE_C = HEAD_C;
-
-/** The tile the leading segment of the tail-side run stands on. */
-const TAIL_PIECE_C = TAIL_C + RUN_LENGTH - 1;
-
 /**
- * The critical node's tile: `DISCHARGE_RADIUS` rows below the worm's row, in the
- * column at the middle of the chain, so the cut is centered on the worm.
+ * The critical node's tile: one row below the middle segment of the chain.
+ *
+ * One row rather than `DISCHARGE_RADIUS`, so the cut lands on the middle of the
+ * worm under any reach the specification could be read as fixing. How far the
+ * blast reaches is `fries-segments-in-reach`'s requirement and
+ * `spares-segments-beyond-reach`'s; what it leaves behind is this one's.
  */
-const STRUCK_C = HEAD_C - (RUN_LENGTH + DISCHARGE_RADIUS);
-const STRUCK_R = WORM_R + DISCHARGE_RADIUS;
+const STRUCK_C = HEAD_C - (WORM_LENGTH - 1) / 2;
+const STRUCK_R = WORM_R + 1;
 
 /**
  * The most frames the bolt is given to resolve.
@@ -124,15 +123,15 @@ it("keeps the worm's id on the head-side piece and gives the trailing one a fres
 
   const worms = swept.snapshot.worms;
   assertEqual(
-    pieceOn(worms, HEAD_PIECE_C).id,
+    pieceOn(worms, HEAD_C).id,
     before,
     "the id of the piece carrying the old head: the first surviving run, " +
       "counted from the head end, keeps the worm's id",
   );
   assertNotEqual(
-    pieceOn(worms, TAIL_PIECE_C).id,
+    pieceOn(worms, TAIL_C).id,
     before,
-    "the id of the trailing piece, which must be a fresh one rather than the " +
-      "id the worm carried before the discharge",
+    "the id of the piece carrying the old tail, which must be a fresh id " +
+      "rather than the one the worm carried before the discharge",
   );
 });

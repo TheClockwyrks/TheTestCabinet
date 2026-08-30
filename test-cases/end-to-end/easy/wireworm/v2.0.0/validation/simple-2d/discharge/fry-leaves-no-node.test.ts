@@ -4,38 +4,44 @@
 // no node is laid on the tile it stood on." specs/nodes.md states the rule this
 // is the exception to — "Every worm segment destroyed by a BOLT leaves a fresh
 // node at charge `0` on the tile it died on" — so the two routes out of a segment
-// differ in exactly this, and a build that runs every segment death through one
-// path leaves inert nodes here and is named for it.
+// differ in exactly this, and a build that runs every segment death down one path
+// leaves inert nodes here and is named for it.
 //
 // THE TWO TILES START EMPTY OF NODES. `startPlaying` clears the field and the
-// scenario lays exactly one node, the critical one the bolt strikes, well away
-// from the worm. So a node standing on either segment tile afterwards can only
-// have been laid by the fry.
+// scenario lays exactly one node, the critical one the bolt strikes. So a node
+// standing on either segment tile afterwards can only have been laid by the fry.
 //
-// BOTH SEGMENTS ARE INSIDE THE REACH — Chebyshev `1` and `2` from the detonation
-// — and the worm is posed as a target with its STEP faculty off, so it holds the
-// two tiles the reading is about instead of winding out of them.
+// THE WORM IS A VERTICAL PAIR ONE COLUMN OFF THE BLAST, so both segments sit at
+// Chebyshev `1` — well inside `DISCHARGE_RADIUS` and inside a reach of `1` too.
+// That is deliberate: this point is about what a fried segment LEAVES, so it must
+// not turn on how far the fry reaches, which is `fries-segments-in-reach`'s
+// requirement and `spares-segments-beyond-reach`'s. The pair is posed with
+// `addWorm` and `appendSegment` rather than through the harness's row helper
+// because the two tiles are stacked, which is the shape a worm holds after a
+// drop; consecutive segments are orthogonally adjacent either way
+// (specs/worm.md).
+//
+// NEITHER SEGMENT IS IN THE BOLT'S COLUMN, so specs/cursor.md's rule that a bolt
+// resolves against the first thing in its path — and that a segment beats a node
+// on a shared tile — cannot divert the strike away from the node.
+//
+// THE WORM IS POSED AS A TARGET. Its STEP faculty is off, so it holds the two
+// tiles the reading is about instead of winding out of them.
 //
 // THE FRY IS GUARDED. "No node stands where the segments stood" is trivially true
-// of a board where the segments were never destroyed, so the two tiles are read
-// as empty of SEGMENTS first, as the scenario's precondition. That the discharge
-// destroys a segment in reach at all is `fries-segments-in-reach`'s requirement
-// and is graded there; here it is only what makes this reading a reading.
+// of a board whose segments were never destroyed, so the two tiles are read as
+// empty of SEGMENTS first, as the scenario's precondition. That a discharge
+// destroys a segment in reach at all is `fries-segments-in-reach`'s requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BOARD_H,
-  BOLT_SPEED,
-  CHARGE_MAX,
-  DISCHARGE_RADIUS,
-} from "../../src/constants";
+import { BOARD_H, BOLT_SPEED, CHARGE_MAX } from "../../src/constants";
 import { assertEqual, assertNull, assertTrue } from "../assert";
 import {
   captureStill,
   chargeAt,
   createHarness,
+  lastWorm,
   poseBolt,
-  poseWorm,
   segmentAt,
   startPlaying,
   ticksFor,
@@ -46,24 +52,17 @@ import {
 const STRUCK_C = 12;
 const STRUCK_R = 6;
 
-/** The worm's head, at the far edge of the reach along the struck node's row. */
-const HEAD_C = STRUCK_C + DISCHARGE_RADIUS;
-const WORM_R = STRUCK_R;
-
-/** Two segments, so the reading covers a head and a tail rather than one tile. */
-const WORM_LENGTH = 2;
-
 /**
- * The tiles the worm stands on, head first.
+ * The worm's two tiles, head first: a vertical pair in the next column along.
  *
- * `poseWorm` lays the body behind a right-heading head, so the pair is
- * `(HEAD_C, r)` and `(HEAD_C - 1, r)` — Chebyshev `2` and `1` from the
- * detonation, both inside `DISCHARGE_RADIUS`.
+ * Both are Chebyshev `1` from the detonation — inside the blast under any reach
+ * the specification could be read as fixing — and neither is in the column the
+ * bolt climbs.
  */
-const SEGMENT_TILES = Array.from({ length: WORM_LENGTH }, (_, i) => ({
-  c: HEAD_C - i,
-  r: WORM_R,
-}));
+const SEGMENT_TILES = [
+  { c: STRUCK_C + 1, r: STRUCK_R },
+  { c: STRUCK_C + 1, r: STRUCK_R - 1 },
+];
 
 /**
  * The most frames the bolt is given to resolve.
@@ -88,8 +87,13 @@ afterEach(() => {
 it("lays no node on the tiles a discharge's fried segments stood on", async () => {
   startPlaying(h);
   h.debug.setNode(STRUCK_C, STRUCK_R, CHARGE_MAX);
-  const worm = poseWorm(h, HEAD_C, WORM_R, WORM_LENGTH);
+
+  const [head, behind] = SEGMENT_TILES;
+  h.debug.addWorm(head.c, head.r);
+  const worm = lastWorm(h.snapshot()).id;
+  h.debug.appendSegment(worm, behind.c, behind.r);
   h.debug.setWormStepping(worm, false);
+
   poseBolt(h, STRUCK_C, STRUCK_R + 1);
 
   const swept = await h.until((s) => s.bolts.length === 0, {
