@@ -65,7 +65,7 @@ kilograms alongside.
 
 - Slots limit how much is picked up.
 - Weight limits whether the haul can be flown out, through the jetpack's lift.
-- The bay is emptied by selling. Refuelling and repairing do not empty it.
+- The bay is emptied by selling. Refueling and repairing do not empty it.
 - Exotic materials are not cargo: they take no slot, carry no weight, and ride in
   a separate satchel.
 
