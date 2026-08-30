@@ -1,9 +1,0 @@
-{
-  "name": "shatter",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Shatter — a neon top-down space-rock shooter with a central gravity well that runs entirely in the browser.",
-  "devDependencies": {
-    "playwright": "1.61.0"
-  }
-}
