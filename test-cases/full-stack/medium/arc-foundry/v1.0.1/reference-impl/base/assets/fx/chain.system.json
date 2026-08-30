@@ -1,0 +1,194 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 480,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "core",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 6,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 180.0,
+      "lifetimeSpread": 45.0,
+      "speed": 14.0,
+      "speedSpread": 8.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 4,
+      "forces": {
+        "drag": 4.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.6,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#b98cff",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "forks",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 24,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 350.0,
+      "lifetimeSpread": 100.0,
+      "speed": 160.0,
+      "speedSpread": 88.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 13,
+      "forces": {
+        "drag": 2.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.6,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#eaf6ff",
+            "at": 0.0
+          },
+          {
+            "color": "#b98cff",
+            "at": 0.5
+          },
+          {
+            "color": "#8a5cff",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.15
+      }
+    },
+    {
+      "name": "crackle",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 12,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 250.0,
+      "lifetimeSpread": 70.0,
+      "speed": 82.0,
+      "speedSpread": 48.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 26,
+      "forces": {
+        "drag": 3.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.4,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#b98cff",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.06
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}
