@@ -1,30 +1,46 @@
-/*
- * Coil validator: `controls.menu-highlight-moves`. PLACEHOLDER.
- *
- * The highlight moves down the menu.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * down on a menu-bearing screen moves menuIndex on by one item.
- *
- * HOW:
- * open the title on its first item, dispatch down, and read the highlight.
- *
- * MEDIA IT MUST CAPTURE: moved (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// controls/menu-highlight-moves — down moves the highlight on one item.
+//
+// specs/controls.md, on a menu-bearing screen: `down` "Moves the highlight down
+// one item, wrapping at the ends." specs/ui.md makes `menuIndex` the highlighted
+// item and sets it to `0` on arriving at the screen, so one press of `down` from
+// a freshly opened title lands on item `1`.
+//
+// Exactly one press, and exactly one item: a build that moved the highlight two
+// at a time, or that jumped to the end of the menu, fails here. That the
+// highlight WRAPS at the ends is `controls/menu-highlight-wraps`.
+//
+// The title is opened by resetting, so the highlight starts where specs/ui.md
+// says it starts and nothing but the one press has moved it.
 
-test("controls.menu-highlight-moves", () => {
-  throw new Error(
-    "validator not implemented: controls/menu-highlight-moves.test.ts",
-  );
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { KEY } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openTitle,
+  type Harness,
+} from "../harness";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("moves the title highlight from the first item to the second", async () => {
+  const title = await openTitle(h);
+  assertEqual(title.screen, "title", "the screen the key is pressed on");
+  assertEqual(title.menuIndex, 0, "the highlighted item before the press");
+
+  await h.tap(KEY.down);
+  await captureStill(h, "moved");
+
+  const moved = await h.snapshot();
+  assertEqual(moved.menuIndex, 1, "the highlighted item after one down");
+  assertEqual(moved.screen, "title", "the screen after the press");
 });

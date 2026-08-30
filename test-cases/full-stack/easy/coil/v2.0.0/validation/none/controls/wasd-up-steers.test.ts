@@ -1,28 +1,42 @@
-/*
- * Coil validator: `controls.wasd-up-steers`. PLACEHOLDER.
- *
- * KeyW steers up.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * KeyW does exactly what ArrowUp does on the playing screen.
- *
- * HOW:
- * pose the chain facing right, dispatch KeyW, run one tick, and read dir.
- *
- * MEDIA IT MUST CAPTURE: up (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// controls/wasd-up-steers — KeyW requests a turn to up.
+//
+// specs/controls.md binds `KeyW` to the `up` action and, on the `playing`
+// screen, makes `up` "Request a turn to `up`".
+// specs/movement.md then has step 1 of the next tick take that request and apply
+// it, "only when it is perpendicular to the direction the snake is travelling in
+// on this tick" — so the chain is posed on a horizontal heading, where `up`
+// is perpendicular and the turn is one the rules accept.
+//
+// `KeyW` is the SECOND key `specs/controls.md` binds to `up`, and the file
+// says the two sets "are interchangeable": "`KeyW` does exactly what `ArrowUp`
+// does, wherever `up` is read." So this is its own point rather than a repeat of
+// the arrow's: a build that bound only the arrows is fully playable and loses
+// this alone.
+//
+// `steering.ts` states what is posed and why the snake's travel is held still.
 
-test("controls.wasd-up-steers", () => {
-  throw new Error("validator not implemented: controls/wasd-up-steers.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { WASD } from "../constants";
+import { createHarness, type Harness } from "../harness";
+import { steerOnce } from "./steering";
+
+/** The heading the chain is posed on, which `up` is perpendicular to. */
+const FROM = "right";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("turns the snake up on the tick after KeyW is pressed", async () => {
+  const drive = await steerOnce(h, WASD.up, FROM, "up");
+
+  assertEqual(drive.posed.dir, FROM, "the heading the request is made on");
+  assertEqual(drive.after.dir, "up", "the direction the tick applied");
 });
