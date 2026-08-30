@@ -34,7 +34,7 @@
 // on a canvas in a browser rather than on one this process holds.
 
 import { STAGE_H, STAGE_W, TILE, tileCX, tileCY } from "../constants";
-import { colorDistance, type Harness, type Rgb } from "../harness";
+import { colorDistance, type Blit, type Harness, type Rgb } from "../harness";
 
 /* -------------------------------------------------------------------------- */
 /* Boxes                                                                      */
@@ -260,4 +260,43 @@ export async function furthestFrom(
 /** A sampled colour, written the way a failure message reads it. */
 export function rgb(colour: Rgb): string {
   return `rgb(${colour.r.toFixed(0)}, ${colour.g.toFixed(0)}, ${colour.b.toFixed(0)})`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Attributing a draw to the body it was drawn for                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every bitmap the frame blitted whose destination box is centred within
+ * `within` logical units of `at`.
+ *
+ * The harness's own {@link drawnFrom} answers the same question of one seeded
+ * folder; this answers it of ALL of them, which is what a failure message needs
+ * to say what the build drew there instead.
+ */
+export function blitsNear(
+  blits: readonly Blit[],
+  at: { x: number; y: number },
+  within: number,
+): Blit[] {
+  return blits.filter(
+    (blit) => Math.hypot(blit.x - at.x, blit.y - at.y) <= within,
+  );
+}
+
+/**
+ * What a run of blits drew, as a failure message names it: each one either the
+ * seeded frames it is identical to, or the size of the bitmap it was instead.
+ */
+export function describeBlits(blits: readonly Blit[]): string {
+  if (blits.length === 0) return "no bitmap was blitted there";
+  return blits
+    .map((blit) =>
+      blit.matches.length === 0
+        ? `a ${blit.source.width}x${blit.source.height} bitmap of the build's own`
+        : blit.matches
+            .map((frame) => `assets/${frame.sheet}/${frame.index}.png`)
+            .join(" = "),
+    )
+    .join(", ");
 }
