@@ -58,8 +58,7 @@ export const OBSTACLE_OPS = ["clearObstacles", "addObstacle"] as const;
 
 /** The name of one operation the surface carries. */
 export type OperationName =
-  | (typeof REQUIRED_OPS)[number]
-  | (typeof OBSTACLE_OPS)[number];
+  (typeof REQUIRED_OPS)[number] | (typeof OBSTACLE_OPS)[number];
 
 /** `reset`'s options: the seed the pellet generator is laid with. */
 export interface ResetOptions {

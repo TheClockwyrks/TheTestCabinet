@@ -162,12 +162,7 @@ export const BODY_FILES: readonly string[] = SPRITE_FILES.slice(HEAD_FRAMES);
 
 /** The screen the game is in, as the snapshot reports it. */
 export type Screen =
-  | "title"
-  | "howto"
-  | "playing"
-  | "paused"
-  | "gameover"
-  | "cleared";
+  "title" | "howto" | "playing" | "paused" | "gameover" | "cleared";
 
 /** Every screen, in the order `specs/ui.md` tables them. */
 export const SCREENS: readonly Screen[] = [
@@ -327,12 +322,13 @@ export const KEY: Readonly<Record<Action, string>> = {
 };
 
 /** The key each direction action's SECOND binding is, which does the same thing. */
-export const WASD: Readonly<Record<"up" | "down" | "left" | "right", string>> = {
-  up: BINDINGS.up[1],
-  down: BINDINGS.down[1],
-  left: BINDINGS.left[1],
-  right: BINDINGS.right[1],
-};
+export const WASD: Readonly<Record<"up" | "down" | "left" | "right", string>> =
+  {
+    up: BINDINGS.up[1],
+    down: BINDINGS.down[1],
+    left: BINDINGS.left[1],
+    right: BINDINGS.right[1],
+  };
 
 /**
  * A key no action is bound to.

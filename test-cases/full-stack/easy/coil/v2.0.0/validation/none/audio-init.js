@@ -60,6 +60,17 @@
   const bufferFrom = new WeakMap();
 
   /**
+   * The cues whose files have finished decoding, in the order they finished.
+   *
+   * A build fetches and decodes its audio after the page has loaded, so a check
+   * that drove the game the instant the page settled could reach the eat before
+   * the eat's own clip had arrived, and read silence from a build that is simply
+   * still starting up. The harness waits on this, under a bound: a build that
+   * never decodes anything is one whose cue points fail, not one that hangs.
+   */
+  const decoded = [];
+
+  /**
    * The cue name a URL stands for: its basename, less the extension and less a
    * bundler's content hash.
    *
@@ -97,6 +108,8 @@
     count: () => plays.length,
     /** The sounds emitted since the log held `from` of them, oldest first. */
     since: (from) => plays.slice(from),
+    /** The cues whose files have finished decoding, oldest first. */
+    decoded: () => decoded.slice(),
   };
 
   /* ---- Road one: the bytes, the decode, and the source -------------------- */
@@ -145,7 +158,11 @@
     audioContext.decodeAudioData = function (bytes, onDone, onFail) {
       const url = bytesFrom.get(bytes);
       const remember = (buffer) => {
-        if (buffer && typeof url === "string") bufferFrom.set(buffer, url);
+        if (buffer && typeof url === "string") {
+          bufferFrom.set(buffer, url);
+          const name = cueName(url);
+          if (name !== null && !decoded.includes(name)) decoded.push(name);
+        }
         return buffer;
       };
       const wrapped =
