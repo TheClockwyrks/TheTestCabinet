@@ -40,7 +40,7 @@ import {
 } from "./world";
 
 /** How near a cell's edge the box must be before a side cut begins. */
-const EDGE_MARGIN = 5;
+export const EDGE_MARGIN = 5;
 
 /** How fast the miner is eased into alignment with the cell it is cutting. */
 const BRACE_RATE = 433;

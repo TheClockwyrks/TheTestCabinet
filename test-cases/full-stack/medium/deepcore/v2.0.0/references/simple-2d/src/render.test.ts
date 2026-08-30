@@ -11,6 +11,7 @@ import { createCanvas } from "@napi-rs/canvas";
 import { describe, expect, it } from "vitest";
 import {
   GEMSTONE_IDS,
+  HUD_H,
   MINER_STATES,
   ORE_IDS,
   PANELS,
@@ -24,6 +25,7 @@ import type { MinerState, PanelId, ScreenName } from "./constants";
 import { controlsFor } from "./controls";
 import type { DeepcoreState } from "./game";
 import { renderGame } from "./render";
+import { BAND_FILL, PALETTE } from "./theme";
 import { writeTile } from "./state";
 import { bareState, inDraft, posedAt } from "./test-support";
 import { makeMaterialTile, makeOreTile, makeTile } from "./world";
@@ -179,6 +181,44 @@ describe("the renderer", () => {
       d.camY = -TILE;
     });
     expect(() => renderGame(launching, ctx)).not.toThrow();
+  });
+
+  it("draws a carved cell inset, with the band's dirt keeping its corners", () => {
+    const canvas = createCanvas(STAGE_W, STAGE_H);
+    const ctx = canvas.getContext("2d") as unknown as CanvasRenderingContext2D;
+    const col = 8;
+    const row = 200;
+    const state = inDraft(onScreen("in-mine"), (d) => {
+      // One open cell in a solid band, with the camera on it.
+      for (let r = row - 1; r <= row + 1; r += 1) {
+        for (let c = col - 1; c <= col + 1; c += 1) {
+          d.grid = writeTile(d.grid, c, r, makeTile("rock", "rockbed"));
+        }
+      }
+      d.grid = writeTile(d.grid, col, row, makeTile("tunnel", "rockbed"));
+      posedAt(d, col * TILE, (row - 4) * TILE);
+      d.camX = (col - 6) * TILE;
+      d.camY = (row - 4) * TILE;
+    });
+    renderGame(state, ctx);
+    const at = (wx: number, wy: number): [number, number, number] => {
+      const x = Math.round(wx - state.camX);
+      const y = Math.round(wy - state.camY + HUD_H);
+      const { data } = canvas.getContext("2d").getImageData(x, y, 1, 1);
+      return [data[0], data[1], data[2]];
+    };
+    const hex = (rgb: [number, number, number]): string =>
+      `#${rgb.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+    // The middle of the cell is the carved interior.
+    expect(hex(at(col * TILE + TILE / 2, row * TILE + TILE / 2))).toBe(
+      PALETTE.tunnel,
+    );
+    // Its corners, inside the lip, are still the band's rock: a hole in solid
+    // rock is inset on every side and rounded at every corner.
+    expect(hex(at(col * TILE + 2, row * TILE + 2))).toBe(BAND_FILL.rockbed);
+    expect(hex(at(col * TILE + TILE - 2, row * TILE + TILE - 2))).toBe(
+      BAND_FILL.rockbed,
+    );
   });
 
   it("paints the whole stage, letterbox background included", () => {

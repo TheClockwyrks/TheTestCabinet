@@ -9,8 +9,10 @@ import {
   DRILL_HIT_INTERVAL,
   LIFE_SUPPORT_BURN,
   MINER_H,
+  MINER_W,
   TILE,
 } from "./constants";
+import { EDGE_MARGIN } from "./drill";
 import { cargoCap } from "./figures";
 import {
   createHarness,
@@ -137,6 +139,59 @@ describe("what a cut refuses", () => {
     await h.seconds(1);
     h.release("up");
     expect(h.debug.tileAt(h.state, 5, TOPSOIL - 2).kind).toBe("rock");
+  });
+});
+
+describe("cutting sideways", () => {
+  /** Stand the miner on a floor with a wall beside it, `gap` units clear of it. */
+  function facingWall(gap: number): void {
+    h.pose((debug, state) => debug.setTile(state, 5, TOPSOIL, "rock"));
+    h.pose((debug, state) => debug.setTile(state, 6, TOPSOIL - 1, "rock"));
+    h.pose((debug, state) =>
+      debug.setMinerPosition(
+        state,
+        6 * TILE - MINER_W - gap,
+        TOPSOIL * TILE - MINER_H,
+      ),
+    );
+    h.pose((debug, state) => debug.setMinerVelocity(state, 0, 0));
+    h.pose((debug, state) => debug.setFuel(state, 100));
+    // The body is pinned, so the gap the cut is judged against is the posed one.
+    h.pose((debug, state) => debug.setMinerTravel(state, false));
+  }
+
+  it("starts no cut until the box is flush against the cell", async () => {
+    facingWall(EDGE_MARGIN + 20);
+    h.hold("right");
+    await h.seconds(1);
+    h.release("right");
+    const snapshot = h.debug.snapshot(h.state);
+    expect(snapshot.miner.drilling).toBeNull();
+    expect(h.debug.tileAt(h.state, 6, TOPSOIL - 1).kind).toBe("rock");
+  });
+
+  it("cuts the cell beside it once it is", async () => {
+    facingWall(EDGE_MARGIN - 1);
+    h.hold("right");
+    await h.seconds(1);
+    h.release("right");
+    expect(h.debug.tileAt(h.state, 6, TOPSOIL - 1).kind).toBe("tunnel");
+  });
+
+  it("cuts to the west with left held, and faces that way", async () => {
+    h.pose((debug, state) => debug.setTile(state, 5, TOPSOIL, "rock"));
+    h.pose((debug, state) => debug.setTile(state, 4, TOPSOIL - 1, "rock"));
+    h.pose((debug, state) =>
+      debug.setMinerPosition(state, 5 * TILE + 1, TOPSOIL * TILE - MINER_H),
+    );
+    h.pose((debug, state) => debug.setMinerVelocity(state, 0, 0));
+    h.pose((debug, state) => debug.setFuel(state, 100));
+    h.pose((debug, state) => debug.setMinerTravel(state, false));
+    h.hold("left");
+    await h.seconds(1);
+    h.release("left");
+    expect(h.debug.tileAt(h.state, 4, TOPSOIL - 1).kind).toBe("tunnel");
+    expect(h.debug.snapshot(h.state).miner.facing).toBe("west");
   });
 });
 

@@ -12,6 +12,8 @@ import {
   METERS_PER_ROW,
   MINER_H,
   MINER_W,
+  PLAYABLE_COL_MAX,
+  PLAYABLE_COL_MIN,
   ROCKET_TOTAL_CREDITS,
   ROCKET_COMPONENTS,
   SPAWN_COL,
@@ -124,9 +126,18 @@ describe("the surface camp", () => {
       const gap = sorted[i].x - (sorted[i - 1].x + sorted[i - 1].w);
       expect(gap).toBeGreaterThanOrEqual(BUILDING_GAP);
     }
-    // The rightmost stands well left of the cave mouth.
-    const last = sorted[sorted.length - 1];
-    expect(last.x + last.w).toBeLessThan(CAVE_MOUTH_COL * TILE);
+    for (const box of boxes) {
+      // Inside the playable columns, and clear of the cell the camp leads down
+      // through.
+      expect(box.x).toBeGreaterThanOrEqual(PLAYABLE_COL_MIN * TILE);
+      expect(box.x + box.w).toBeLessThanOrEqual((PLAYABLE_COL_MAX + 1) * TILE);
+      const overlapsMouth =
+        box.x < (CAVE_MOUTH_COL + 1) * TILE &&
+        box.x + box.w > CAVE_MOUTH_COL * TILE &&
+        box.y < 2 * TILE &&
+        box.y + box.h > TILE;
+      expect(overlapsMouth).toBe(false);
+    }
   });
 
   it("names the building the miner is standing at, and none away from one", () => {
