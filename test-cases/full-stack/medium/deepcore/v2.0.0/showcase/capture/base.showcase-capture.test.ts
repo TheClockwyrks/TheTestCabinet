@@ -35,8 +35,9 @@
 // audition it won on — so the take that was judged is provably the take that was
 // committed.
 //
-// Run from the reference workspace root:
-//   TCAB_VALIDATION_MEDIA_DIR=<out> TCAB_SHOWCASE_MAX_REPLAY_FRAMES=1100 \
+// Run from a PRIVATE COPY of the reference workspace, never from the reference
+// itself — `showcase/capture/README.md` has the staging steps and the knobs:
+//   TCAB_VALIDATION_MEDIA_DIR=<out> TCAB_SHOWCASE_MAX_REPLAY_FRAMES=1200 \
 //     npx vitest run --config validation/vitest.config.ts \
 //     validation/showcase-capture.test.ts
 
@@ -101,7 +102,9 @@ const EXIT_Y = Number(process.env.TCAB_SHOWCASE_EXIT_Y ?? "-20");
  * prospector watching the gauge: the dig ends when the bay is full or when what
  * is left is only just enough to get home on.
  */
-const RESERVE_PER_ROW = Number(process.env.TCAB_SHOWCASE_RESERVE_PER_ROW ?? "1.25");
+const RESERVE_PER_ROW = Number(
+  process.env.TCAB_SHOWCASE_RESERVE_PER_ROW ?? "1.25",
+);
 const RESERVE_FLOOR = Number(process.env.TCAB_SHOWCASE_RESERVE_FLOOR ?? "6");
 const reserve = (row: number): number => row * RESERVE_PER_ROW + RESERVE_FLOOR;
 
@@ -152,7 +155,11 @@ function judge(take: Take): number {
   // and a comfortable one does not. An empty tank at the surface is a stranding
   // by another name and is punished as one.
   const margin =
-    spare <= 0 ? -100 : spare < 0.2 ? 40 - spare * 100 : Math.max(0, 30 - spare * 100);
+    spare <= 0
+      ? -100
+      : spare < 0.2
+        ? 40 - spare * 100
+        : Math.max(0, 30 - spare * 100);
   return (
     (take.slots / take.slotCap) * 40 +
     take.credits / 25 +
@@ -261,8 +268,13 @@ class Session {
   /** Walk along the camp until the miner stands in the middle of `box`. */
   async walkTo(box: BuildingBox): Promise<void> {
     const target = box.x + box.w / 2 - MINER_W / 2;
-    const code = target > this.snapshot().miner.x ? ACTION_KEY.right : ACTION_KEY.left;
-    await this.holdUntil(code, (v) => Math.abs(v.miner.x - target) < 10, seconds(10));
+    const code =
+      target > this.snapshot().miner.x ? ACTION_KEY.right : ACTION_KEY.left;
+    await this.holdUntil(
+      code,
+      (v) => Math.abs(v.miner.x - target) < 10,
+      seconds(10),
+    );
   }
 }
 
@@ -302,8 +314,12 @@ async function play(h: Harness, seed: number, label: string): Promise<Take> {
     // The gauge is watched THROUGHOUT the bore, not only where the plan stops. A
     // long run of rows whose walls show nothing would otherwise spend the whole
     // reserve before the next chance to turn around.
-    const sank = await g.cut(ACTION_KEY.down, SHAFT, row, seconds(8), (v) =>
-      v.miner.fuel <= reserve(v.miner.row),
+    const sank = await g.cut(
+      ACTION_KEY.down,
+      SHAFT,
+      row,
+      seconds(8),
+      (v) => v.miner.fuel <= reserve(v.miner.row),
     );
     if (!sank) break;
     if (g.bayFull()) break;
