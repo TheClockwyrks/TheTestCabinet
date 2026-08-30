@@ -6,7 +6,7 @@
 // something legible from a state posed for it.
 
 import { describe, expect, it } from "vitest";
-import { diagnosticSources } from "./diagnostics";
+import { diagnosticSources, registerDiagnostics } from "./diagnostics";
 import type { DeepcoreState } from "./game";
 import { writeTile } from "./state";
 import { bareState, posing, posedAt } from "./test-support";
@@ -48,6 +48,23 @@ function posed(): DeepcoreState {
     };
   });
 }
+
+describe("registering them", () => {
+  it("puts every source on the WORLD's registry, where a level drops it", () => {
+    const registered: string[] = [];
+    const state = posed();
+    const world = {
+      state,
+      diagnostics: {
+        register: (name: string) => {
+          registered.push(name);
+        },
+      },
+    } as unknown as Parameters<typeof registerDiagnostics>[0];
+    registerDiagnostics(world);
+    expect(registered).toEqual([...sources(state).keys()]);
+  });
+});
 
 describe("the diagnostic sources", () => {
   it("names every fact the specification lists", () => {
