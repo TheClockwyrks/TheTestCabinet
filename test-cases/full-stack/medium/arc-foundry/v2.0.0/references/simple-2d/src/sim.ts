@@ -1416,6 +1416,10 @@ export function baseStructureById(
  * rock first, then commit the one to keep.
  */
 export function keep(w: FoundryWorld, id: number): boolean {
+  // A control the player operates is refused wherever that control is refused, and the
+  // pause menu takes the input: on `paused` every control on the yard is inert
+  // (specs/controls.md).
+  if (w.screen !== "playing") return false;
   if (w.phase !== "build") return false;
   if (!candidateById(w, id)) return false;
   w.harvest = { mode: "keep", id };
@@ -1511,6 +1515,7 @@ function combineQualityNow(
   anchorId: number,
   partnerId: number,
 ): boolean {
+  if (w.screen !== "playing") return false;
   const anchor = baseStructureById(w, anchorId);
   const partner = baseStructureById(w, partnerId);
   if (!anchor || !partner || anchor.id === partner.id) return false;
@@ -1568,6 +1573,7 @@ function combineRecipeNow(
   combo: ComboId,
   ingredientIds: readonly number[],
 ): boolean {
+  if (w.screen !== "playing") return false;
   const anchor = baseStructureById(w, anchorId);
   if (!anchor || !ingredientIds.includes(anchorId)) return false;
   if (!recipeSatisfied(w, combo, ingredientIds)) return false;
@@ -1882,6 +1888,7 @@ export function cycleTargeting(c: Component): void {
 }
 
 export function cycleTargetingSelected(w: FoundryWorld): void {
+  if (w.screen !== "playing") return;
   if (w.selectedId === null) return;
   const c = ownComponent(w, w.selectedId);
   if (c) cycleTargeting(c);
@@ -1892,6 +1899,7 @@ export function setTargetingById(
   id: number,
   priority: TargetingPriority,
 ): void {
+  if (w.screen !== "playing") return;
   const c = ownComponent(w, id);
   if (c) setTargeting(c, priority);
 }
@@ -2371,8 +2379,13 @@ export function firingStructureById(
   return c && unbuffedStats(c).fires ? c : null;
 }
 
-/** The phase as `specs/instrumentation.md` reports it, or `null` off the yard. */
+/**
+ * The phase as `specs/instrumentation.md` reports it, or `null` off the yard.
+ *
+ * The yard is shown on `playing` and `paused`, so a run frozen behind the pause menu is
+ * still in the phase it was in, and only a screen with no yard reports none.
+ */
 export function reportedPhase(w: FoundryView): PhaseName | null {
-  if (w.screen !== "playing") return null;
+  if (w.screen !== "playing" && w.screen !== "paused") return null;
   return w.finale ? "finale" : w.phase;
 }

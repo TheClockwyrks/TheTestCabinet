@@ -2518,6 +2518,18 @@ validation = { script = "screens/difficultyselect-starts.test.ts", outputs = [
   { id = "run", name = "The run begun from the menus", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "paused-refuses-the-yard-controls"
+title = "The pause menu takes the input, so the yard's controls commit nothing"
+description = "With a candidate standing and the pause menu open, a keep, a downgrade, a combine and a dismantle each change nothing: no candidate is harvested, no structure is removed and no wave starts, because the pause menu's own choices are what the player operates there."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: stand two matching candidates in a build phase, open the
+# pause menu, commit all four acts and read the yard back. See
+# validation/<engine>/screens/paused-refuses-the-yard-controls.test.ts.
+validation = { script = "screens/paused-refuses-the-yard-controls.test.ts", outputs = [
+  { id = "refused", name = "The yard unchanged behind the pause menu", kind = "image" },
+] }
+[[review.categories.items]]
 id = "howto-names-the-keys"
 title = "The how-to screen names the controls"
 description = "The how-to screen draws text naming each key BINDINGS binds, so a player reads the controls without leaving it."

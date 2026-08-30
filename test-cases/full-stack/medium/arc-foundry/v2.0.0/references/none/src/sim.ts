@@ -1064,6 +1064,7 @@ export class Game {
   // hole). Runs the instant it is committed — build phase OR live wave — and re-paths. Returns
   // true if it resolved.
   private combineQualityNow(anchorId: number, partnerId: number): boolean {
+    if (this.state !== "playing") return false;
     const anchor = this.baseStructById(anchorId);
     const partner = this.baseStructById(partnerId);
     if (!anchor || !partner || anchor.id === partner.id) return false;
@@ -1131,6 +1132,7 @@ export class Game {
     combo: ComboType,
     ingredientIds: number[],
   ): boolean {
+    if (this.state !== "playing") return false;
     const anchor = this.baseStructById(anchorId);
     if (!anchor || !ingredientIds.includes(anchorId)) return false;
     if (!this.recipeSatisfied(combo, ingredientIds)) return false;
@@ -1379,6 +1381,10 @@ export class Game {
   // hardens into a blocker. There is no reversible/deferred keep — place and compare all rocks
   // first, then commit the one you want. Every level must harvest to advance (specs/build.md).
   keep(id: number): void {
+    // A control the player operates is refused wherever that control is refused, and the
+    // pause menu takes the input: on `paused` every control on the yard is inert
+    // (specs/controls.md).
+    if (this.state !== "playing") return;
     if (this.phase !== "build") return;
     if (!this.candidateById(id)) return;
     this.harvest = { mode: "keep", id };
@@ -1700,6 +1706,7 @@ export class Game {
     c.targeting = TARGETING_ORDER[(i + 1) % TARGETING_ORDER.length]!;
   }
   cycleTargetingSelected(): void {
+    if (this.state !== "playing") return;
     const s = this.selected();
     if (s && s.kind === "component") this.cycleTargeting(s);
   }
@@ -2160,6 +2167,7 @@ export class Game {
 
   // A firing structure's targeting priority.
   debugSetTargeting(id: number, mode: TargetingMode): void {
+    if (this.state !== "playing") return;
     const c = this.componentById(id);
     if (c) this.setTargeting(c, mode);
   }
@@ -2318,8 +2326,10 @@ export class Game {
     return {
       version: FOUNDRY_DEBUG_VERSION,
       screen: this.state,
+      // The yard is shown on `playing` and `paused`, so a run frozen behind the pause
+      // menu is still in the phase it was in; only a screen with no yard reports none.
       phase:
-        this.state === "playing"
+        this.state === "playing" || this.state === "paused"
           ? this.finale
             ? ("finale" as const)
             : this.phase
