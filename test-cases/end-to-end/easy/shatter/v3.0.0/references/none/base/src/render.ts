@@ -437,20 +437,29 @@ function drawAward(ctx: CanvasRenderingContext2D): void {
 
 // ---- The screens ---------------------------------------------------------
 
-/** The title: the name, the tagline, and the two entries under them. */
+/**
+ * The title: the name and the tagline above the star, and the two entries below
+ * it.
+ *
+ * Both plates are clear of the star, so the well the game is built around is the
+ * first thing the screen shows and each run of text still reads against a
+ * backing of its own.
+ */
 function drawTitle(state: ShatterState, ctx: CanvasRenderingContext2D): void {
-  panel(ctx, 300, 110, 680, 480);
-  text(ctx, TITLE_TEXT, FIELD_W / 2, 210, TYPE.title, COLOR.text, "center");
+  panel(ctx, 300, 84, 680, 160);
+  text(ctx, TITLE_TEXT, FIELD_W / 2, 152, TYPE.title, COLOR.text, "center");
   text(
     ctx,
     TAGLINE_TEXT,
     FIELD_W / 2,
-    280,
+    216,
     TYPE.tagline,
     COLOR.textDim,
     "center",
   );
-  menu(ctx, TITLE_ITEMS, FIELD_W / 2, 420, 58, state.menuIndex);
+
+  panel(ctx, 440, 506, 400, 142);
+  menu(ctx, TITLE_ITEMS, FIELD_W / 2, 552, 58, state.menuIndex);
 }
 
 /** How to play, in a player's words. */

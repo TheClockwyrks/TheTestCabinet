@@ -174,13 +174,18 @@ describe("the field's look", () => {
     expect(luminance).toBeLessThan(0.25);
   });
 
-  it("draws the star's core at its own radius", () => {
+  it("draws the star's core at its own radius, on the field and at the title", () => {
     const { state } = scene();
-    const frame = draw(state);
-    expect(frame.fromBackground(STAR_X, STAR_Y)).toBeGreaterThan(60);
-    expect(frame.fromBackground(STAR_X + CORE_R - 4, STAR_Y)).toBeGreaterThan(
-      60,
-    );
+    // On the field, and on the screen the game opens on: the title's two plates
+    // are placed clear of the star so the well is the first thing it shows.
+    for (const screen of ["playing", "title"] as const) {
+      state.screen = screen;
+      const frame = draw(state);
+      expect(frame.fromBackground(STAR_X, STAR_Y)).toBeGreaterThan(60);
+      expect(frame.fromBackground(STAR_X + CORE_R - 4, STAR_Y)).toBeGreaterThan(
+        60,
+      );
+    }
   });
 
   it("fades the star's halo outward and draws nothing past 1.5 halo radii", () => {
@@ -437,10 +442,10 @@ describe("the screens", () => {
     const { state } = scene();
     state.screen = "title";
     const frame = draw(state);
-    expect(frame.lit({ x: 400, y: 170, w: 480, h: 80 })).toBeGreaterThan(400);
-    expect(frame.lit({ x: 440, y: 266, w: 400, h: 28 })).toBeGreaterThan(100);
-    const first = frame.lit({ x: 460, y: 400, w: 360, h: 40 });
-    const second = frame.lit({ x: 460, y: 458, w: 360, h: 40 });
+    expect(frame.lit({ x: 400, y: 112, w: 480, h: 80 })).toBeGreaterThan(400);
+    expect(frame.lit({ x: 440, y: 202, w: 400, h: 28 })).toBeGreaterThan(100);
+    const first = frame.lit({ x: 460, y: 532, w: 360, h: 40 });
+    const second = frame.lit({ x: 460, y: 590, w: 360, h: 40 });
     expect(first).toBeGreaterThan(50);
     expect(second).toBeGreaterThan(50);
     expect(TITLE_ITEMS).toHaveLength(2);
@@ -450,13 +455,13 @@ describe("the screens", () => {
     const { state } = scene();
     state.screen = "title";
     state.menuIndex = 0;
-    const firstInk = draw(state).ink({ x: 460, y: 400, w: 360, h: 40 });
-    const secondInk = draw(state).ink({ x: 460, y: 458, w: 360, h: 40 });
+    const firstInk = draw(state).ink({ x: 460, y: 532, w: 360, h: 40 });
+    const secondInk = draw(state).ink({ x: 460, y: 590, w: 360, h: 40 });
     expect(distance(firstInk, secondInk)).toBeGreaterThan(20);
 
     state.menuIndex = 1;
-    const movedFirst = draw(state).ink({ x: 460, y: 400, w: 360, h: 40 });
-    const movedSecond = draw(state).ink({ x: 460, y: 458, w: 360, h: 40 });
+    const movedFirst = draw(state).ink({ x: 460, y: 532, w: 360, h: 40 });
+    const movedSecond = draw(state).ink({ x: 460, y: 590, w: 360, h: 40 });
     expect(distance(movedFirst, firstInk)).toBeGreaterThan(20);
     expect(distance(movedSecond, secondInk)).toBeGreaterThan(20);
   });
@@ -499,7 +504,7 @@ describe("the screens", () => {
 
   it("draws legible text on every one of the five screens", () => {
     const boxes = {
-      title: { x: 400, y: 180, w: 480, h: 60 },
+      title: { x: 400, y: 122, w: 480, h: 60 },
       howto: { x: 460, y: 100, w: 360, h: 40 },
       playing: { x: 30, y: 24, w: 200, h: 60 },
       paused: { x: 520, y: 240, w: 240, h: 44 },
