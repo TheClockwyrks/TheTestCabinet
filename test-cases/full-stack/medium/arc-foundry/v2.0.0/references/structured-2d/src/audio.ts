@@ -24,7 +24,7 @@ import {
   type CueName,
 } from "./constants";
 import type { Component } from "./types";
-import type { CueSpec, UpdateApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, WorldAudio } from "@test-cabinet/structured-2d";
 
 /**
  * The synthesized shape each cue is declared with, before the produced clip is loaded
@@ -162,12 +162,12 @@ export function fireCue(c: Component): CueName {
  * event.
  */
 export function playFrameCues(
-  api: Pick<UpdateApi, "audio">,
+  audio: WorldAudio,
   cues: readonly CueName[],
   playing: boolean,
 ): void {
-  for (const cue of cues) if (cue !== CUES.music) api.audio.play(cue);
-  const looping = api.audio.looping(CUES.music);
-  if (playing && !looping) api.audio.loop(CUES.music);
-  if (!playing && looping) api.audio.stop(CUES.music);
+  for (const cue of cues) if (cue !== CUES.music) audio.play(cue);
+  const looping = audio.looping(CUES.music);
+  if (playing && !looping) audio.loop(CUES.music);
+  if (!playing && looping) audio.stop(CUES.music);
 }

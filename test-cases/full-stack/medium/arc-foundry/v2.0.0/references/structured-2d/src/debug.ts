@@ -1,20 +1,18 @@
 // Arc Foundry — the debugging and automation surface (specs/instrumentation.md).
 //
-// `initialize` returns this object beside the state it built, as `[state, debug]`, and
-// the engine hands that same object back from `engine.debug`. That is the one way a
-// caller reaches it: nothing is installed on the page, and the surface holds no state of
-// its own.
+// The game instance's `initialize` returns this object, and the engine hands that same
+// object back from `engine.debug`. That is the one way a caller reaches it: nothing is
+// installed on the page, and the surface holds no state of its own.
 //
-// EVERY OPERATION IS WRITTEN IN THE SHAPE OF `update`. A POSE takes the current state, as
-// the read-only view the engine hands out, and returns the next state, built from a
-// world of its own; a READING takes the current state and returns what it read. A caller
-// drives a pose through `engine.apply((s) => debug.setCharge(s, 500))` and a reading
-// against `engine.state`. Nothing here mutates the state it was handed.
+// EVERY OPERATION ACTS ON THE LIVE WORLD at the moment it is called, reaching it through
+// the accessor the instance supplies — `engine.world` at the call — and takes only the
+// parameters its own entry names. A POSE arranges the running game through the systems
+// play itself uses and returns nothing; a READING returns plain data built at the call
+// and changes nothing.
 //
 // EVERY OPERATION IS ATOMIC: it sets one field, reads one value, or commits one control,
-// and leaves the rest of the game as it stands. A pose arranges the yard through the
-// systems play itself uses, so it establishes a precondition and never an outcome, and
-// what happens next comes from advancing the real simulation.
+// and leaves the rest of the game as it stands. A pose establishes a precondition and
+// never an outcome, so what happens next comes from advancing the real simulation.
 //
 // TWO RULES COVER EVERY OPERATION. An argument outside the domain its operation states is
 // invalid and the call fails loudly rather than guessing what was meant, and so is a call
@@ -122,8 +120,8 @@ import {
   statusBarControls,
 } from "./layout";
 import { abilityTags } from "./tables";
-import { thaw, type FoundryView } from "./world";
-import type { FoundryWorld } from "./types";
+import { foundryState, type FoundryState } from "./state";
+import type { World } from "@test-cabinet/structured-2d";
 
 // ---- The shapes the readings return (specs/instrumentation.md) -----------
 
@@ -253,99 +251,76 @@ export interface FoundrySnapshot {
 
 // ---- The surface ---------------------------------------------------------
 
-/** The state as the surface names it: the read-only view the engine hands out. */
-export type FoundryStateView = FoundryView;
-
 /**
  * The surface `specs/instrumentation.md` specifies.
  *
- * Every member takes the current state first. A pose returns the next state; a reading
- * returns what it read.
+ * Every member acts on the live world at the moment it is called and takes only the
+ * parameters its own entry names. A pose returns nothing; a reading returns what it
+ * read and changes nothing.
  */
 export interface FoundryDebugApi {
   version: number;
 
   // Readings.
-  snapshot(state: FoundryView): FoundrySnapshot;
-  panelButtons(state: FoundryView): ButtonSnapshot[];
-  menuButtons(state: FoundryView): ButtonSnapshot[];
-  statusControls(state: FoundryView): StatusSnapshot[];
+  snapshot(): FoundrySnapshot;
+  panelButtons(): ButtonSnapshot[];
+  menuButtons(): ButtonSnapshot[];
+  statusControls(): StatusSnapshot[];
 
   // The run.
-  reset(state: FoundryView, options?: { seed?: number }): FoundryWorld;
-  setMap(state: FoundryView, map: string): FoundryWorld;
-  setDifficulty(state: FoundryView, difficulty: string): FoundryWorld;
-  startRun(state: FoundryView): FoundryWorld;
-  setScreen(state: FoundryView, screen: string): FoundryWorld;
-  setMenuIndex(state: FoundryView, index: number): FoundryWorld;
-  setPaused(state: FoundryView, paused: boolean): FoundryWorld;
-  setSpeed(state: FoundryView, multiplier: number): FoundryWorld;
-  setOverlay(state: FoundryView, overlay: string, open: boolean): FoundryWorld;
+  reset(options?: { seed?: number }): void;
+  setMap(map: string): void;
+  setDifficulty(difficulty: string): void;
+  startRun(): void;
+  setScreen(screen: string): void;
+  setMenuIndex(index: number): void;
+  setPaused(paused: boolean): void;
+  setSpeed(multiplier: number): void;
+  setOverlay(overlay: string, open: boolean): void;
 
   // Resources and progress.
-  setCharge(state: FoundryView, amount: number): FoundryWorld;
-  setIntegrity(state: FoundryView, amount: number): FoundryWorld;
-  setRefinement(state: FoundryView, level: number): FoundryWorld;
-  setWave(state: FoundryView, n: number): FoundryWorld;
-  setStamps(state: FoundryView, n: number): FoundryWorld;
+  setCharge(amount: number): void;
+  setIntegrity(amount: number): void;
+  setRefinement(level: number): void;
+  setWave(n: number): void;
+  setStamps(n: number): void;
 
   // Structures.
-  clearStructures(state: FoundryView): FoundryWorld;
-  setNextRoll(state: FoundryView, type: string, quality: number): FoundryWorld;
-  clearNextRoll(state: FoundryView): FoundryWorld;
-  placeRock(state: FoundryView, col: number, row: number): FoundryWorld;
+  clearStructures(): void;
+  setNextRoll(type: string, quality: number): void;
+  clearNextRoll(): void;
+  placeRock(col: number, row: number): void;
   placeComponent(
-    state: FoundryView,
     type: string,
     quality: number,
     col: number,
     row: number,
-  ): FoundryWorld;
-  placeCombo(
-    state: FoundryView,
-    combo: string,
-    col: number,
-    row: number,
-  ): FoundryWorld;
-  placeBlocker(state: FoundryView, col: number, row: number): FoundryWorld;
-  select(state: FoundryView, id: number): FoundryWorld;
-  clearSelection(state: FoundryView): FoundryWorld;
-  addToCombineSet(state: FoundryView, id: number): FoundryWorld;
-  clearCombineSet(state: FoundryView): FoundryWorld;
-  keep(state: FoundryView, id: number): FoundryWorld;
-  downgrade(state: FoundryView, id: number): FoundryWorld;
-  combine(state: FoundryView, id: number): FoundryWorld;
-  dismantle(state: FoundryView, id: number): FoundryWorld;
-  setTargeting(state: FoundryView, id: number, priority: string): FoundryWorld;
-  setComboLevel(state: FoundryView, id: number, level: number): FoundryWorld;
-  upgradeQuality(state: FoundryView): FoundryWorld;
-  upgradeCombo(state: FoundryView, id: number): FoundryWorld;
+  ): void;
+  placeCombo(combo: string, col: number, row: number): void;
+  placeBlocker(col: number, row: number): void;
+  select(id: number): void;
+  clearSelection(): void;
+  addToCombineSet(id: number): void;
+  clearCombineSet(): void;
+  keep(id: number): void;
+  downgrade(id: number): void;
+  combine(id: number): void;
+  dismantle(id: number): void;
+  setTargeting(id: number, priority: string): void;
+  setComboLevel(id: number, level: number): void;
+  upgradeQuality(): void;
+  upgradeCombo(id: number): void;
 
   // The Load.
-  clearUnits(state: FoundryView): FoundryWorld;
-  clearProjectiles(state: FoundryView): FoundryWorld;
-  spawnUnit(state: FoundryView, type: string): FoundryWorld;
-  setUnitPosition(
-    state: FoundryView,
-    id: number,
-    x: number,
-    y: number,
-  ): FoundryWorld;
-  setUnitWaypoint(state: FoundryView, id: number, index: number): FoundryWorld;
-  setUnitHp(state: FoundryView, id: number, hp: number): FoundryWorld;
-  setUnitSlow(
-    state: FoundryView,
-    id: number,
-    amount: number,
-    seconds: number,
-  ): FoundryWorld;
-  setUnitBurn(
-    state: FoundryView,
-    id: number,
-    dps: number,
-    seconds: number,
-  ): FoundryWorld;
-  setUnitFrozen(state: FoundryView, id: number, frozen: boolean): FoundryWorld;
+  clearUnits(): void;
+  clearProjectiles(): void;
+  spawnUnit(type: string): void;
+  setUnitPosition(id: number, x: number, y: number): void;
+  setUnitWaypoint(id: number, index: number): void;
+  setUnitHp(id: number, hp: number): void;
+  setUnitSlow(id: number, amount: number, seconds: number): void;
+  setUnitBurn(id: number, dps: number, seconds: number): void;
+  setUnitFrozen(id: number, frozen: boolean): void;
 }
 
 // ---- Argument validation -------------------------------------------------
@@ -414,7 +389,7 @@ function anchor(
 }
 
 /** A structure the yard currently carries, or a loud failure. */
-function structure(op: string, state: FoundryView, id: unknown): number {
+function structure(op: string, state: FoundryState, id: unknown): number {
   const n = num(op, "id", id);
   if (!structureById(state, n))
     invalid(op, "an id a live structure carries", id);
@@ -422,7 +397,7 @@ function structure(op: string, state: FoundryView, id: unknown): number {
 }
 
 /** A live unit's identity, or a loud failure. */
-function unit(op: string, state: FoundryView, id: unknown): number {
+function unit(op: string, state: FoundryState, id: unknown): number {
   const n = num(op, "id", id);
   if (!liveUnitById(state, n)) invalid(op, "an id a live unit carries", id);
   return n;
@@ -431,7 +406,7 @@ function unit(op: string, state: FoundryView, id: unknown): number {
 // ---- The readings --------------------------------------------------------
 
 /** A pure read of the whole observable state. */
-export function snapshot(state: FoundryView): FoundrySnapshot {
+export function snapshot(state: FoundryState): FoundrySnapshot {
   const chain = board(state).chain;
   const entry = chain[0]!;
   const collector = chain[chain.length - 1]!;
@@ -591,29 +566,24 @@ export function snapshot(state: FoundryView): FoundrySnapshot {
 // ---- Building the surface ------------------------------------------------
 
 /**
- * Build the surface. It holds nothing: every operation is handed the state it acts on,
- * and a pose builds the next state from a world of its own.
+ * Build the surface over an accessor for the open world.
+ *
+ * It holds nothing: every operation reads the world at the moment it is called and acts
+ * on the state that world carries, so the surface follows the live game for the life of
+ * the engine and a `reset` never leaves it pointing at a stale object.
  */
-export function createDebugApi(): FoundryDebugApi {
-  /** Run a change against a world of the caller's own, and hand back the result. */
-  const pose = (
-    state: FoundryView,
-    change: (w: FoundryWorld) => void,
-  ): FoundryWorld => {
-    const w = thaw(state);
-    change(w);
-    return w;
-  };
+export function createDebugApi(world: () => World): FoundryDebugApi {
+  const live = (): FoundryState => foundryState(world());
 
   return {
     version: FOUNDRY_DEBUG_VERSION,
 
     // ---- Readings ---------------------------------------------------------
 
-    snapshot,
+    snapshot: () => snapshot(live()),
 
-    panelButtons: (state) =>
-      panelButtonControls(state).map((c) => ({
+    panelButtons: () =>
+      panelButtonControls(live()).map((c) => ({
         action: c.action,
         label: c.label,
         x: c.x,
@@ -623,8 +593,8 @@ export function createDebugApi(): FoundryDebugApi {
         disabled: c.disabled,
       })),
 
-    menuButtons: (state) =>
-      menuControls(state).map((c) => ({
+    menuButtons: () =>
+      menuControls(live()).map((c) => ({
         action: c.action,
         label: c.label,
         x: c.x,
@@ -634,8 +604,9 @@ export function createDebugApi(): FoundryDebugApi {
         disabled: c.disabled,
       })),
 
-    statusControls: (state) =>
-      statusBarControls(state).map((c) => ({
+    statusControls: () => {
+      const state = live();
+      return statusBarControls(state).map((c) => ({
         action: c.action,
         label: c.label,
         x: c.x,
@@ -643,282 +614,268 @@ export function createDebugApi(): FoundryDebugApi {
         w: c.w,
         h: c.h,
         state: barState(state, c.action as never),
-      })),
+      }));
+    },
 
     // ---- The run ----------------------------------------------------------
 
-    reset: (state, options) =>
-      pose(state, (w) =>
-        resetWorld(
-          w,
-          options?.seed === undefined
-            ? DEFAULT_SEED
-            : num("reset", "options.seed", options.seed),
-        ),
-      ),
+    reset(options) {
+      resetWorld(
+        live(),
+        options?.seed === undefined
+          ? DEFAULT_SEED
+          : num("reset", "options.seed", options.seed),
+      );
+    },
 
-    setMap: (state, map) =>
-      pose(state, (w) =>
-        setMap(w, oneOf("setMap", "map", map, MAP_IDS) as MapId),
-      ),
+    setMap(map) {
+      setMap(live(), oneOf("setMap", "map", map, MAP_IDS) as MapId);
+    },
 
-    setDifficulty: (state, id) =>
-      pose(state, (w) =>
-        setDifficulty(
-          w,
-          oneOf(
-            "setDifficulty",
-            "difficulty",
-            id,
-            DIFFICULTY_IDS,
-          ) as DifficultyId,
-        ),
-      ),
+    setDifficulty(id) {
+      setDifficulty(
+        live(),
+        oneOf("setDifficulty", "difficulty", id, DIFFICULTY_IDS) as DifficultyId,
+      );
+    },
 
-    startRun: (state) => pose(state, (w) => startRun(w)),
+    startRun() {
+      startRun(live());
+    },
 
-    setScreen: (state, screen) =>
-      pose(state, (w) =>
-        setScreen(
-          w,
-          oneOf("setScreen", "screen", screen, SCREENS) as ScreenName,
-        ),
-      ),
+    setScreen(screen) {
+      setScreen(
+        live(),
+        oneOf("setScreen", "screen", screen, SCREENS) as ScreenName,
+      );
+    },
 
-    setMenuIndex: (state, index) =>
-      pose(state, (w) =>
-        setMenuIndex(w, int("setMenuIndex", "index", index, 0, 64)),
-      ),
+    setMenuIndex(index) {
+      setMenuIndex(live(), int("setMenuIndex", "index", index, 0, 64));
+    },
 
-    setPaused: (state, paused) =>
-      pose(state, (w) => setPaused(w, bool("setPaused", "paused", paused))),
+    setPaused(paused) {
+      setPaused(live(), bool("setPaused", "paused", paused));
+    },
 
-    setSpeed: (state, multiplier) =>
-      pose(state, (w) => {
-        const m = num("setSpeed", "multiplier", multiplier);
-        if (!(SPEEDS as readonly number[]).includes(m)) {
-          invalid(
-            "setSpeed",
-            `multiplier to be one of ${SPEEDS.join(", ")}`,
-            multiplier,
-          );
-        }
-        setSpeed(w, m as Speed);
-      }),
+    setSpeed(multiplier) {
+      const m = num("setSpeed", "multiplier", multiplier);
+      if (!(SPEEDS as readonly number[]).includes(m)) {
+        invalid(
+          "setSpeed",
+          `multiplier to be one of ${SPEEDS.join(", ")}`,
+          multiplier,
+        );
+      }
+      setSpeed(live(), m as Speed);
+    },
 
-    setOverlay: (state, overlay, open) =>
-      pose(state, (w) =>
-        setOverlay(
-          w,
-          oneOf("setOverlay", "overlay", overlay, OVERLAYS),
-          bool("setOverlay", "open", open),
-        ),
-      ),
+    setOverlay(overlay, open) {
+      setOverlay(
+        live(),
+        oneOf("setOverlay", "overlay", overlay, OVERLAYS),
+        bool("setOverlay", "open", open),
+      );
+    },
 
     // ---- Resources and progress -------------------------------------------
 
-    setCharge: (state, amount) =>
-      pose(state, (w) => {
-        const a = num("setCharge", "amount", amount);
-        if (a < 0) invalid("setCharge", "amount to be at least 0", amount);
-        setCharge(w, a);
-      }),
+    setCharge(amount) {
+      const a = num("setCharge", "amount", amount);
+      if (a < 0) invalid("setCharge", "amount to be at least 0", amount);
+      setCharge(live(), a);
+    },
 
-    setIntegrity: (state, amount) =>
-      pose(state, (w) =>
-        setIntegrity(w, num("setIntegrity", "amount", amount)),
-      ),
+    setIntegrity(amount) {
+      setIntegrity(live(), num("setIntegrity", "amount", amount));
+    },
 
-    setRefinement: (state, level) =>
-      pose(state, (w) =>
-        setRefinement(
-          w,
-          int("setRefinement", "level", level, 0, REFINEMENT_MAX),
-        ),
-      ),
+    setRefinement(level) {
+      setRefinement(
+        live(),
+        int("setRefinement", "level", level, 0, REFINEMENT_MAX),
+      );
+    },
 
-    setWave: (state, n) =>
-      pose(state, (w) => {
-        const value = num("setWave", "n", n);
-        if (!Number.isInteger(value) || value < 0) {
-          invalid("setWave", "n to be a whole number of at least 0", n);
-        }
-        setWave(w, value);
-      }),
+    setWave(n) {
+      const value = num("setWave", "n", n);
+      if (!Number.isInteger(value) || value < 0) {
+        invalid("setWave", "n to be a whole number of at least 0", n);
+      }
+      setWave(live(), value);
+    },
 
-    setStamps: (state, n) =>
-      pose(state, (w) =>
-        setStamps(w, int("setStamps", "n", n, 0, STAMPS_PER_LEVEL)),
-      ),
+    setStamps(n) {
+      setStamps(live(), int("setStamps", "n", n, 0, STAMPS_PER_LEVEL));
+    },
 
     // ---- Structures -------------------------------------------------------
 
-    clearStructures: (state) => pose(state, (w) => clearStructures(w)),
+    clearStructures() {
+      clearStructures(live());
+    },
 
-    setNextRoll: (state, type, quality) =>
-      pose(state, (w) =>
-        armNextRoll(
-          w,
-          oneOf("setNextRoll", "type", type, COMPONENT_TYPES) as ComponentType,
-          int("setNextRoll", "quality", quality, 1, MAX_QUALITY),
-        ),
-      ),
+    setNextRoll(type, quality) {
+      armNextRoll(
+        live(),
+        oneOf("setNextRoll", "type", type, COMPONENT_TYPES) as ComponentType,
+        int("setNextRoll", "quality", quality, 1, MAX_QUALITY),
+      );
+    },
 
-    clearNextRoll: (state) => pose(state, (w) => clearNextRoll(w)),
+    clearNextRoll() {
+      clearNextRoll(live());
+    },
 
     // The rock enters through the real placement path, so it is refused exactly as a
     // pointer press would be when the footprint is illegal or the allowance is spent.
-    placeRock: (state, col, row) =>
-      pose(state, (w) => {
-        const at = anchor("placeRock", col, row);
-        placeStamp(w, at.col, at.row);
-      }),
-
-    placeComponent: (state, type, quality, col, row) =>
-      pose(state, (w) => {
-        const t = oneOf(
-          "placeComponent",
-          "type",
-          type,
-          COMPONENT_TYPES,
-        ) as ComponentType;
-        const q = int("placeComponent", "quality", quality, 1, MAX_QUALITY);
-        const at = anchor("placeComponent", col, row);
-        placeComponent(w, t, q, at.col, at.row);
-      }),
-
-    placeCombo: (state, combo, col, row) =>
-      pose(state, (w) => {
-        const id = oneOf("placeCombo", "combo", combo, COMBO_IDS) as ComboId;
-        const at = anchor("placeCombo", col, row);
-        placeCombo(w, id, at.col, at.row);
-      }),
-
-    placeBlocker: (state, col, row) =>
-      pose(state, (w) => {
-        const at = anchor("placeBlocker", col, row);
-        placeBlocker(w, at.col, at.row);
-      }),
-
-    select: (state, id) => {
-      const n = structure("select", state, id);
-      return pose(state, (w) => select(w, n));
+    placeRock(col, row) {
+      const at = anchor("placeRock", col, row);
+      placeStamp(live(), at.col, at.row);
     },
 
-    clearSelection: (state) => pose(state, (w) => select(w, null)),
+    placeComponent(type, quality, col, row) {
+      const t = oneOf(
+        "placeComponent",
+        "type",
+        type,
+        COMPONENT_TYPES,
+      ) as ComponentType;
+      const q = int("placeComponent", "quality", quality, 1, MAX_QUALITY);
+      const at = anchor("placeComponent", col, row);
+      placeComponent(live(), t, q, at.col, at.row);
+    },
 
-    addToCombineSet: (state, id) => {
+    placeCombo(combo, col, row) {
+      const id = oneOf("placeCombo", "combo", combo, COMBO_IDS) as ComboId;
+      const at = anchor("placeCombo", col, row);
+      placeCombo(live(), id, at.col, at.row);
+    },
+
+    placeBlocker(col, row) {
+      const at = anchor("placeBlocker", col, row);
+      placeBlocker(live(), at.col, at.row);
+    },
+
+    select(id) {
+      const state = live();
+      select(state, structure("select", state, id));
+    },
+
+    clearSelection() {
+      select(live(), null);
+    },
+
+    addToCombineSet(id) {
+      const state = live();
       const n = num("addToCombineSet", "id", id);
       if (!baseStructureById(state, n)) {
         invalid("addToCombineSet", "an id a base structure carries", id);
       }
-      return pose(state, (w) => addToCombineSet(w, n));
+      addToCombineSet(state, n);
     },
 
-    clearCombineSet: (state) => pose(state, (w) => clearCombineSet(w)),
-
-    keep: (state, id) => {
-      const n = structure("keep", state, id);
-      return pose(state, (w) => {
-        keep(w, n);
-      });
+    clearCombineSet() {
+      clearCombineSet(live());
     },
 
-    downgrade: (state, id) => {
-      const n = structure("downgrade", state, id);
-      return pose(state, (w) => {
-        downgrade(w, n);
-      });
+    keep(id) {
+      const state = live();
+      keep(state, structure("keep", state, id));
     },
 
-    combine: (state, id) => {
-      const n = structure("combine", state, id);
-      return pose(state, (w) => {
-        combineFrom(w, n);
-      });
+    downgrade(id) {
+      const state = live();
+      downgrade(state, structure("downgrade", state, id));
     },
 
-    dismantle: (state, id) => {
-      const n = structure("dismantle", state, id);
-      return pose(state, (w) => {
-        removeStructure(w, n);
-      });
+    combine(id) {
+      const state = live();
+      combineFrom(state, structure("combine", state, id));
     },
 
-    setTargeting: (state, id, priority) => {
+    dismantle(id) {
+      const state = live();
+      removeStructure(state, structure("dismantle", state, id));
+    },
+
+    setTargeting(id, priority) {
+      const state = live();
       const n = num("setTargeting", "id", id);
       if (!firingStructureById(state, n)) {
         invalid("setTargeting", "an id a firing structure carries", id);
       }
-      const p = oneOf(
-        "setTargeting",
-        "priority",
-        priority,
-        TARGETING_PRIORITIES,
-      ) as TargetingPriority;
-      return pose(state, (w) => setTargetingById(w, n, p));
+      setTargetingById(
+        state,
+        n,
+        oneOf(
+          "setTargeting",
+          "priority",
+          priority,
+          TARGETING_PRIORITIES,
+        ) as TargetingPriority,
+      );
     },
 
-    setComboLevel: (state, id, level) => {
+    setComboLevel(id, level) {
+      const state = live();
       const n = num("setComboLevel", "id", id);
       if (!comboById(state, n)) {
         invalid("setComboLevel", "an id a combination tower carries", id);
       }
-      const lvl = int("setComboLevel", "level", level, 0, COMBO_MAX_LEVEL);
-      return pose(state, (w) => setComboLevel(w, n, lvl));
+      setComboLevel(state, n, int("setComboLevel", "level", level, 0, COMBO_MAX_LEVEL));
     },
 
-    upgradeQuality: (state) =>
-      pose(state, (w) => {
-        upgradeQuality(w);
-      }),
+    upgradeQuality() {
+      upgradeQuality(live());
+    },
 
-    upgradeCombo: (state, id) => {
+    upgradeCombo(id) {
+      const state = live();
       const n = num("upgradeCombo", "id", id);
       if (!comboById(state, n)) {
         invalid("upgradeCombo", "an id a combination tower carries", id);
       }
-      return pose(state, (w) => {
-        upgradeCombo(w, n);
-      });
+      upgradeCombo(state, n);
     },
 
     // ---- The Load ---------------------------------------------------------
 
-    clearUnits: (state) => pose(state, (w) => clearUnits(w)),
-
-    clearProjectiles: (state) => pose(state, (w) => clearProjectiles(w)),
-
-    spawnUnit: (state, type) =>
-      pose(state, (w) => {
-        spawnUnit(
-          w,
-          oneOf("spawnUnit", "type", type, SPAWNABLE) as LoadType | "overload",
-        );
-      }),
-
-    setUnitPosition: (state, id, x, y) => {
-      const n = unit("setUnitPosition", state, id);
-      const px = num("setUnitPosition", "x", x);
-      const py = num("setUnitPosition", "y", y);
-      return pose(state, (w) => {
-        const u = ownUnit(w, n);
-        if (u) setUnitPosition(w, u, px, py);
-      });
+    clearUnits() {
+      clearUnits(live());
     },
 
-    setUnitWaypoint: (state, id, index) => {
-      const n = unit("setUnitWaypoint", state, id);
-      const at = int("setUnitWaypoint", "index", index, 1, 7);
-      return pose(state, (w) => {
-        const u = ownUnit(w, n);
-        if (u) setUnitWaypoint(w, u, at);
-      });
+    clearProjectiles() {
+      clearProjectiles(live());
     },
 
-    setUnitHp: (state, id, hp) => {
-      const n = unit("setUnitHp", state, id);
-      const u = liveUnitById(state, n)!;
+    spawnUnit(type) {
+      spawnUnit(
+        live(),
+        oneOf("spawnUnit", "type", type, SPAWNABLE) as LoadType | "overload",
+      );
+    },
+
+    setUnitPosition(id, x, y) {
+      const state = live();
+      const u = ownUnit(state, unit("setUnitPosition", state, id))!;
+      setUnitPosition(
+        state,
+        u,
+        num("setUnitPosition", "x", x),
+        num("setUnitPosition", "y", y),
+      );
+    },
+
+    setUnitWaypoint(id, index) {
+      const state = live();
+      const u = ownUnit(state, unit("setUnitWaypoint", state, id))!;
+      setUnitWaypoint(state, u, int("setUnitWaypoint", "index", index, 1, 7));
+    },
+
+    setUnitHp(id, hp) {
+      const state = live();
+      const u = ownUnit(state, unit("setUnitHp", state, id))!;
       // The Overload Dynamo carries no depleting health, so it takes no health change.
       if (u.invincible) {
         invalid("setUnitHp", "an id a unit with depleting health carries", id);
@@ -927,45 +884,34 @@ export function createDebugApi(): FoundryDebugApi {
       if (value < 1 || value > u.maxHp) {
         invalid("setUnitHp", `hp to be in 1..${u.maxHp}`, hp);
       }
-      return pose(state, (w) => {
-        const live = ownUnit(w, n);
-        if (live) setUnitHp(live, value);
-      });
+      setUnitHp(u, value);
     },
 
-    setUnitSlow: (state, id, amount, seconds) => {
-      const n = unit("setUnitSlow", state, id);
+    setUnitSlow(id, amount, seconds) {
+      const state = live();
+      const u = ownUnit(state, unit("setUnitSlow", state, id))!;
       const a = num("setUnitSlow", "amount", amount);
-      if (a < 0 || a > 1)
-        invalid("setUnitSlow", "amount to be in 0..1", amount);
+      if (a < 0 || a > 1) invalid("setUnitSlow", "amount to be in 0..1", amount);
       const s = num("setUnitSlow", "seconds", seconds);
       if (s < 0) invalid("setUnitSlow", "seconds to be at least 0", seconds);
-      return pose(state, (w) => {
-        const u = ownUnit(w, n);
-        if (u) applySlow(w, u, a, s);
-      });
+      applySlow(state, u, a, s);
     },
 
-    setUnitBurn: (state, id, dps, seconds) => {
-      const n = unit("setUnitBurn", state, id);
+    setUnitBurn(id, dps, seconds) {
+      const state = live();
+      const u = ownUnit(state, unit("setUnitBurn", state, id))!;
       const d = num("setUnitBurn", "dps", dps);
       if (d < 0) invalid("setUnitBurn", "dps to be at least 0", dps);
       const s = num("setUnitBurn", "seconds", seconds);
       if (s < 0) invalid("setUnitBurn", "seconds to be at least 0", seconds);
       // A posed burn is credited to no structure.
-      return pose(state, (w) => {
-        const u = ownUnit(w, n);
-        if (u) applyBurn(w, u, d, s, 0);
-      });
+      applyBurn(state, u, d, s, 0);
     },
 
-    setUnitFrozen: (state, id, frozen) => {
-      const n = unit("setUnitFrozen", state, id);
-      const value = bool("setUnitFrozen", "frozen", frozen);
-      return pose(state, (w) => {
-        const u = ownUnit(w, n);
-        if (u) setUnitFrozen(u, value);
-      });
+    setUnitFrozen(id, frozen) {
+      const state = live();
+      const u = ownUnit(state, unit("setUnitFrozen", state, id))!;
+      setUnitFrozen(u, bool("setUnitFrozen", "frozen", frozen));
     },
   };
 }

@@ -2,41 +2,69 @@
 //
 // The overlay itself is the engine's: it owns the panel, the backtick key that toggles
 // it, drawing it outside the recorded frame, and keeping it read-only. Arc Foundry's
-// whole part is to name the values it wants on it, which is what this file does.
+// whole part is to name the values it wants on it, which is what this file does, through
+// the world's diagnostic registry from the game mode's `beginPlay`.
 //
-// Every source is a PURE READ of the state it is handed — the state current at the
-// moment the overlay reads it, which the engine passes in because a frame replaces the
-// state rather than editing it, and a source that closed over the state built at
-// start-up would report the title screen forever. Each line is short enough to read at a
-// glance while the game runs.
+// Every source is a function of NO ARGUMENTS, called at each read, and every one is a
+// PURE READ of the live state it reaches through the world the mode holds, so the panel
+// reports the frame being drawn and watching the overlay leaves the game exactly as it
+// is. Each line is short enough to read at a glance while the game runs.
 
+import type { World } from "@test-cabinet/structured-2d";
+import { foundryState, type FoundryState } from "./state";
 import { difficulty, reportedPhase, stampsLeft, statsOf } from "./sim";
-import type { FoundryView } from "./world";
-import type { InitApi } from "@test-cabinet/simple-2d";
 
-/** Register every diagnostic source, each a read of the state it is given. */
-export function registerDiagnostics(
-  api: Pick<InitApi<FoundryView>, "diagnostics">,
-): void {
-  api.diagnostics.register("screen", (s) => {
-    const phase = reportedPhase(s);
-    return `${s.screen}${phase ? ` / ${phase}` : ""}${s.paused ? " (paused)" : ""}`;
-  });
-  api.diagnostics.register("wave", (s) => `${s.wave} / ${difficulty(s).waves}`);
-  api.diagnostics.register("charge", (s) => s.charge);
-  api.diagnostics.register("integrity", (s) => s.integrity);
-  api.diagnostics.register("refinement", (s) => `R${s.refinement}`);
-  api.diagnostics.register("stamps", (s) => stampsLeft(s));
-  api.diagnostics.register("speed", (s) => `${s.speed}x`);
-  api.diagnostics.register("maze", (s) => `${s.mazeLength.toFixed(1)} tiles`);
-  api.diagnostics.register("units", (s) => s.units.length);
-  api.diagnostics.register("structures", (s) => s.structures.length);
-  api.diagnostics.register("selected", (s) => {
-    if (s.selectedId === null) return "none";
-    const sel = s.structures.find((x) => x.id === s.selectedId);
-    if (!sel) return "none";
-    if (sel.kind !== "component") return `#${sel.id} ${sel.kind}`;
-    const st = statsOf(sel);
-    return `#${sel.id}  dmg ${Math.round(st.dmg)}  rng ${Math.round(st.range)}`;
-  });
+/**
+ * The sources, each named and each a read through `read` at the call.
+ *
+ * Split from the registration so the build's own tests can drive the same sources over
+ * a state of their own, with no engine and no overlay behind them.
+ */
+export function diagnosticSources(
+  read: () => FoundryState,
+): [string, () => unknown][] {
+  return [
+    [
+      "screen",
+      () => {
+        const s = read();
+        const phase = reportedPhase(s);
+        return `${s.screen}${phase ? ` / ${phase}` : ""}${s.paused ? " (paused)" : ""}`;
+      },
+    ],
+    [
+      "wave",
+      () => {
+        const s = read();
+        return `${s.wave} / ${difficulty(s).waves}`;
+      },
+    ],
+    ["charge", () => read().charge],
+    ["integrity", () => read().integrity],
+    ["refinement", () => `R${read().refinement}`],
+    ["stamps", () => stampsLeft(read())],
+    ["speed", () => `${read().speed}x`],
+    ["maze", () => `${read().mazeLength.toFixed(1)} tiles`],
+    ["units", () => read().units.length],
+    ["structures", () => read().structures.length],
+    [
+      "selected",
+      () => {
+        const s = read();
+        if (s.selectedId === null) return "none";
+        const sel = s.structures.find((x) => x.id === s.selectedId);
+        if (!sel) return "none";
+        if (sel.kind !== "component") return `#${sel.id} ${sel.kind}`;
+        const st = statsOf(sel);
+        return `#${sel.id}  dmg ${Math.round(st.dmg)}  rng ${Math.round(st.range)}`;
+      },
+    ],
+  ];
+}
+
+/** Register every source with the world's overlay registry. */
+export function registerDiagnostics(world: World): void {
+  for (const [name, source] of diagnosticSources(() => foundryState(world))) {
+    world.diagnostics.register(name, source);
+  }
 }

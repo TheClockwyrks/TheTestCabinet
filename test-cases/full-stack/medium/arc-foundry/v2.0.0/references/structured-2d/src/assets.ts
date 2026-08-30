@@ -31,7 +31,7 @@ import {
   type EffectName,
 } from "./constants";
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@test-cabinet/structured-2d";
 
 /** The seven idle cycles: the six roster types and the finale's Overload Dynamo. */
 export const LOAD_SPRITE_TYPES: readonly string[] = [

@@ -6,13 +6,11 @@
 // combination towers firing travelling shots, the status effects, the economy, and the
 // campaign with its milestone bosses and its finale.
 //
-// EVERYTHING HERE IS A FUNCTION OVER A WORLD. Each takes the `FoundryWorld` it acts on
-// as its first argument and advances it in place, and the world it is handed is always
-// one the caller owns: `update` copies the read-only state the engine gave it into a
-// fresh world before a step touches anything, and a debug pose does the same
-// (`src/world.ts`). So a frame never writes to the state the previous frame left, and
-// the fact that nothing but a transition can change the game is the type system's, not
-// a convention.
+// EVERYTHING HERE IS A FUNCTION OVER THE STATE. Each takes the `FoundryState` it acts
+// on as its first argument and advances it in place. That state is the live one the
+// world carries (`src/state.ts`), so the game mode's tick, the player controller, and
+// every debug pose reach the same object and the same functions, and there is exactly
+// one path by which the game changes.
 //
 // The simulation is free of the canvas, the clock, and input: it advances from the
 // elapsed time it is handed and from the seeded generators the world carries, so an
@@ -69,14 +67,12 @@ import {
   type Stats,
 } from "./tables";
 import { buildWave } from "./waves";
-import type { FoundryView } from "./world";
-import type { Assets } from "./assets";
-import type { DeepReadonly } from "ts-essentials";
+import { COMBAT_SALT, FoundryState } from "./state";
+import { noAssets, type Assets } from "./assets";
 import type {
   Blocker,
   Candidate,
   Component,
-  FoundryWorld,
   Pt,
   Projectile,
   Structure,
@@ -97,58 +93,49 @@ export const FIXED_STEP = 1 / 60;
 /** The most ticks one frame may drain, so a tab returning from the background catches up. */
 const MAX_STEPS_PER_FRAME = 600;
 
-/** The default state of the scrap-press generator, before a seed replaces it. */
-const PRESS_SEED = 0x51a6c0de;
-
-/** What the crit generator is derived from, so the two streams never run in step. */
-const COMBAT_SALT = 0x2f9d3b17;
-
-// ---- Reading a world, and advancing one ----------------------------------
+// ---- Reading the state, and advancing it ---------------------------------
 //
-// A function that ADVANCES the world takes a `FoundryWorld`: a world the caller owns
-// outright, which `src/world.ts` produced for it. A function that only READS one takes a
-// `FoundryView`, so the renderer, the diagnostics, and the surface's readings — none of
-// which owns a world — reach exactly the same queries the simulation does, and a caller
-// that does own one passes it straight in. A reader hands back what it found under the
-// same read-only view it was reading, so nothing that came out of a query can be
-// written through.
+// Every function below takes the live `FoundryState`, whether it advances the game or
+// only reads it, so the renderer, the diagnostics, and the surface's readings reach
+// exactly the same queries the simulation does. Which of the two a function is, is
+// stated by its name and its return: a reader returns what it found and writes nothing.
 
 /** The board of the world's map. */
-export function board(w: FoundryView): Board {
+export function board(w: FoundryState): Board {
   return boardOf(w.mapId);
 }
 
 /** The world's difficulty. */
-export function difficulty(w: FoundryView) {
+export function difficulty(w: FoundryState) {
   return DIFFICULTY_BY_ID[w.difficultyId];
 }
 
 /** The occupancy of the yard as it now stands. */
-export function occupancyOf(w: FoundryView): Occupancy {
+export function occupancyOf(w: FoundryState): Occupancy {
   return board(w).occupancy(w.structures);
 }
 
 /** The component with this identity, in a world the caller may advance. */
-function ownComponent(w: FoundryWorld, id: number): Component | null {
+function ownComponent(w: FoundryState, id: number): Component | null {
   for (const s of w.structures)
     if (s.id === id && s.kind === "component") return s;
   return null;
 }
 
 /** The candidate with this identity, in a world the caller may advance. */
-function ownCandidate(w: FoundryWorld, id: number): Candidate | null {
+function ownCandidate(w: FoundryState, id: number): Candidate | null {
   const s = w.structures.find((x) => x.id === id);
   return s && s.kind === "candidate" ? s : null;
 }
 
 /** The live unit with this identity, in a world the caller may advance. */
-export function ownUnit(w: FoundryWorld, id: number): Unit | null {
+export function ownUnit(w: FoundryState, id: number): Unit | null {
   const u = w.units.find((x) => x.id === id);
   return u && !u.dead ? u : null;
 }
 
 /** The next draw from the scrap-press generator, advancing the world's copy of it. */
-function pressDraw(w: FoundryWorld): number {
+function pressDraw(w: FoundryState): number {
   const rng = stream(w.pressRng);
   const value = next(rng);
   w.pressRng = rng.state;
@@ -156,7 +143,7 @@ function pressDraw(w: FoundryWorld): number {
 }
 
 /** The next draw from the crit generator, advancing the world's copy of it. */
-function combatDraw(w: FoundryWorld): number {
+function combatDraw(w: FoundryState): number {
   const rng = stream(w.combatRng);
   const value = next(rng);
   w.combatRng = rng.state;
@@ -165,59 +152,19 @@ function combatDraw(w: FoundryWorld): number {
 
 // ---- Building a world ----------------------------------------------------
 
-/** A world on the title screen, with every field at the value `reset` restores. */
-export function createWorld(assets: Assets): FoundryWorld {
-  const w: FoundryWorld = {
-    screen: "title",
-    phase: "build",
-    paused: false,
-    menuIndex: 0,
-    mapId: "substation",
-    difficultyId: "medium",
-    charge: START_CHARGE,
-    integrity: START_INTEGRITY,
-    maxIntegrity: START_INTEGRITY,
-    mazeRating: 0,
-    finale: false,
-    wave: 0,
-    speed: 1,
-    units: [],
-    projectiles: [],
-    structures: [],
-    holding: false,
-    selectedId: null,
-    selectedIds: [],
-    stampsUsed: 0,
-    refinement: 0,
-    harvest: { mode: "none" },
-    armedRoll: null,
-    kills: 0,
-    leakCount: 0,
-    activeWave: null,
-    spawnerHeld: false,
-    nextWave: buildWave(1, DIFFICULTY_BY_ID.medium),
-    spawnCursor: 0,
-    waveClock: 0,
-    simTime: 0,
-    stepAcc: 0,
-    renderAlpha: 0,
-    clockTime: 0,
-    nextId: 1,
-    pressRng: PRESS_SEED,
-    pressSeed: PRESS_SEED,
-    combatRng: (PRESS_SEED ^ COMBAT_SALT) >>> 0,
-    mazePath: [],
-    mazeLength: 0,
-    muted: false,
-    pointerX: -1,
-    pointerY: -1,
-    showCombos: false,
-    showDamage: false,
-    bursts: [],
-    fxQueue: [],
-    cueQueue: [],
-    assets,
-  };
+/**
+ * A state on the title screen, with every field at the value `reset` restores.
+ *
+ * The engine builds the state the game runs in itself, from the mode's
+ * `gameStateClass`, so this is not that path: it is how a caller with no engine — the
+ * build's own tests — stands one up. Both agree by construction, because the field
+ * values are the class's own initializers; all this adds is the ground route, which is
+ * derived from the map's walls rather than declared, and which the game mode's
+ * `beginPlay` computes for the state the engine built.
+ */
+export function createWorld(assets: Assets = noAssets()): FoundryState {
+  const w = new FoundryState();
+  w.assets = assets;
   refreshMaze(w);
   return w;
 }
@@ -229,12 +176,12 @@ export function createWorld(assets: Assets): FoundryWorld {
  * and the pointer are deliberately left alone, because both belong to the runtime
  * rather than to the game, and so are the loaded assets and the bursts still playing.
  */
-export function resetWorld(w: FoundryWorld, seed: number = DEFAULT_SEED): void {
+export function resetWorld(w: FoundryState, seed: number = DEFAULT_SEED): void {
   w.pressSeed = seed >>> 0;
   w.mapId = "substation";
   w.difficultyId = "medium";
   w.screen = "title";
-  w.phase = "build";
+  w.runPhase = "build";
   w.menuIndex = 0;
   w.paused = false;
   w.charge = START_CHARGE;
@@ -281,9 +228,9 @@ export function resetWorld(w: FoundryWorld, seed: number = DEFAULT_SEED): void {
  * It never reseeds, so a seeded scenario stays reproducible; the browser reseeds the
  * press itself, once, when a player starts a run from the menu.
  */
-export function startRun(w: FoundryWorld): void {
+export function startRun(w: FoundryState): void {
   w.screen = "playing";
-  w.phase = "build";
+  w.runPhase = "build";
   w.paused = false;
   w.charge = START_CHARGE;
   w.integrity = START_INTEGRITY;
@@ -328,7 +275,7 @@ export function startRun(w: FoundryWorld): void {
  * playthroughs draw the same components. A run entered through the debug surface keeps
  * the seed `reset` set, so a driven scenario stays reproducible.
  */
-export function reseedPress(w: FoundryWorld, seed: number): void {
+export function reseedPress(w: FoundryState, seed: number): void {
   w.pressSeed = seed >>> 0;
   w.pressRng = w.pressSeed;
   w.combatRng = (w.pressSeed ^ COMBAT_SALT) >>> 0;
@@ -342,7 +289,7 @@ export function reseedPress(w: FoundryWorld, seed: number): void {
  * A frame on which a whole pack dies plays one kill cue rather than one per unit
  * (specs/ui.md). The queue is drained by the same frame that filled it.
  */
-function raiseCue(w: FoundryWorld, cue: CueName): void {
+function raiseCue(w: FoundryState, cue: CueName): void {
   if (w.cueQueue.includes(cue)) return;
   w.cueQueue.push(cue);
 }
@@ -359,7 +306,7 @@ function raiseCue(w: FoundryWorld, cue: CueName): void {
  * tick over a second, which would leave the same interval in two different places
  * depending on how it was divided into frames.
  */
-export function advance(w: FoundryWorld, seconds: number): void {
+export function advance(w: FoundryState, seconds: number): void {
   w.clockTime += seconds;
   if (w.screen === "playing" && !w.paused) {
     w.stepAcc += seconds * w.speed;
@@ -389,7 +336,7 @@ export function advance(w: FoundryWorld, seconds: number): void {
  * body stood when the tick began and where it stands now. Nothing here feeds back into
  * the simulation.
  */
-function syncView(w: FoundryWorld): void {
+function syncView(w: FoundryState): void {
   for (const u of w.units) {
     u.prevX = u.x;
     u.prevY = u.y;
@@ -401,11 +348,11 @@ function syncView(w: FoundryWorld): void {
 }
 
 /** One tick of the simulation. */
-export function fixedStep(w: FoundryWorld, dt: number): void {
+export function fixedStep(w: FoundryState, dt: number): void {
   if (w.screen !== "playing" || w.paused) return;
   w.simTime += dt;
 
-  if (w.phase === "build") {
+  if (w.runPhase === "build") {
     // A build phase is untimed: nothing starts the wave but the level's harvest. The
     // clock still runs, so a status effect posed in a build phase runs down.
     for (const s of w.structures) if (s.kind === "component") s.fireAnim += dt;
@@ -424,7 +371,7 @@ export function fixedStep(w: FoundryWorld, dt: number): void {
   if (w.integrity <= 0) lose(w);
 }
 
-function spawnDue(w: FoundryWorld, occ: Occupancy): void {
+function spawnDue(w: FoundryState, occ: Occupancy): void {
   const wave = w.activeWave;
   if (!wave) return;
   while (
@@ -445,7 +392,7 @@ function spawnDue(w: FoundryWorld, occ: Occupancy): void {
  * unit of its own, so a unit released while the counter still reads `0` takes wave
  * `1`'s health, which is the lowest the scaling defines.
  */
-function makeUnit(w: FoundryWorld, type: LoadType, occ: Occupancy): Unit {
+function makeUnit(w: FoundryState, type: LoadType, occ: Occupancy): Unit {
   const def = LOAD_BY_TYPE[type];
   const b = board(w);
   const hp = scaledHealth(def.baseHealth, Math.max(1, w.wave), difficulty(w));
@@ -490,7 +437,7 @@ function makeUnit(w: FoundryWorld, type: LoadType, occ: Occupancy): Unit {
  * Rebuild every walking unit's route from where it stands, refresh the auras, and
  * recompute the ground route. Called whenever the walls move.
  */
-export function rePath(w: FoundryWorld): void {
+export function rePath(w: FoundryState): void {
   const occ = occupancyOf(w);
   const b = board(w);
   for (const u of w.units) {
@@ -508,7 +455,7 @@ export function rePath(w: FoundryWorld): void {
  * The route changes only when the walls do, so it is recomputed where they change
  * rather than every frame, and the renderer and the snapshot read the stored value.
  */
-export function refreshMaze(w: FoundryWorld): void {
+export function refreshMaze(w: FoundryState): void {
   const b = board(w);
   const occ = occupancyOf(w);
   const path: Pt[] = [];
@@ -540,7 +487,7 @@ export function refreshMaze(w: FoundryWorld): void {
  * firing structure whose center falls inside it. A structure never buffs itself, and the
  * sum is capped, so a wall of Regulators cannot run away with the run.
  */
-export function recomputeAuras(w: FoundryWorld): void {
+export function recomputeAuras(w: FoundryState): void {
   const sources: {
     x: number;
     y: number;
@@ -581,7 +528,7 @@ export function recomputeAuras(w: FoundryWorld): void {
 }
 
 /** A structure's own block, before any aura on it. */
-export function unbuffedStats(c: DeepReadonly<Component>): Stats {
+export function unbuffedStats(c: Component): Stats {
   return c.combo
     ? comboStats(c.combo, c.comboLevel)
     : baseStats(c.type, c.quality);
@@ -593,7 +540,7 @@ export function unbuffedStats(c: DeepReadonly<Component>): Stats {
  * The buffed figure is deliberately not rounded: the aura multiplies the per-shot
  * damage and the product carries its fraction into the hit.
  */
-export function statsOf(c: DeepReadonly<Component>): Stats {
+export function statsOf(c: Component): Stats {
   const st = unbuffedStats(c);
   if (c.auraBonus > 0 && st.dmg > 0)
     return { ...st, dmg: st.dmg * (1 + c.auraBonus) };
@@ -602,7 +549,7 @@ export function statsOf(c: DeepReadonly<Component>): Stats {
 
 // ---- Firing --------------------------------------------------------------
 
-function stepComponents(w: FoundryWorld, dt: number): void {
+function stepComponents(w: FoundryState, dt: number): void {
   for (const s of w.structures) {
     if (s.kind !== "component") continue;
     s.fireAnim += dt;
@@ -631,7 +578,7 @@ function stepComponents(w: FoundryWorld, dt: number): void {
  * several at once.
  */
 function pickTargets(
-  w: FoundryWorld,
+  w: FoundryState,
   c: Component,
   stats: Stats,
   center: Pt,
@@ -690,7 +637,7 @@ function dist2(u: Unit, center: Pt): number {
 }
 
 function launchProjectile(
-  w: FoundryWorld,
+  w: FoundryState,
   c: Component,
   stats: Stats,
   center: Pt,
@@ -758,7 +705,7 @@ function launchProjectile(
 
 // ---- Shots in flight -----------------------------------------------------
 
-function stepProjectiles(w: FoundryWorld, dt: number): void {
+function stepProjectiles(w: FoundryState, dt: number): void {
   for (const p of w.projectiles) {
     if (p.dead) continue;
     const target = w.units.find((u) => u.id === p.targetId) ?? null;
@@ -784,7 +731,7 @@ function stepProjectiles(w: FoundryWorld, dt: number): void {
   }
 }
 
-function onImpact(w: FoundryWorld, p: Projectile, primary: Unit): void {
+function onImpact(w: FoundryState, p: Projectile, primary: Unit): void {
   hit(w, p, primary, p.dmg);
   w.fxQueue.push({
     kind: "impact",
@@ -856,7 +803,7 @@ function onImpact(w: FoundryWorld, p: Projectile, primary: Unit): void {
  * instead of removing health, and it still takes a slow and a burn, so a yard that
  * controls it keeps it under fire longer.
  */
-function hit(w: FoundryWorld, p: Projectile, u: Unit, dmg: number): void {
+function hit(w: FoundryState, p: Projectile, u: Unit, dmg: number): void {
   if (u.dead || p.hitIds.includes(u.id)) return;
   p.hitIds.push(u.id);
   u.hitFlash = 0;
@@ -883,7 +830,7 @@ function hit(w: FoundryWorld, p: Projectile, u: Unit, dmg: number): void {
 }
 
 /** Credit damage dealt to the finale's boss: the run's rating, and the tower's tally. */
-function tallyRating(w: FoundryWorld, dmg: number, sourceId: number): void {
+function tallyRating(w: FoundryState, dmg: number, sourceId: number): void {
   w.mazeRating += dmg;
   const src = ownComponent(w, sourceId);
   if (src) src.damageDealt += dmg;
@@ -891,7 +838,7 @@ function tallyRating(w: FoundryWorld, dmg: number, sourceId: number): void {
 
 /** The strongest active slow wins, and each hit refreshes the duration. */
 export function applySlow(
-  w: FoundryWorld,
+  w: FoundryState,
   u: Unit,
   amount: number,
   seconds: number,
@@ -905,7 +852,7 @@ export function applySlow(
 
 /** The strongest active burn wins, and each hit refreshes the duration. */
 export function applyBurn(
-  w: FoundryWorld,
+  w: FoundryState,
   u: Unit,
   dps: number,
   seconds: number,
@@ -921,7 +868,7 @@ export function applyBurn(
   raiseCue(w, "burn");
 }
 
-function kill(w: FoundryWorld, u: Unit): void {
+function kill(w: FoundryState, u: Unit): void {
   u.dead = true;
   w.charge += u.bounty;
   w.kills++;
@@ -930,17 +877,17 @@ function kill(w: FoundryWorld, u: Unit): void {
 }
 
 export function unitById(
-  w: FoundryView,
+  w: FoundryState,
   id: number,
-): DeepReadonly<Unit> | null {
+): Unit | null {
   for (const u of w.units) if (u.id === id) return u;
   return null;
 }
 
 export function componentById(
-  w: FoundryView,
+  w: FoundryState,
   id: number,
-): DeepReadonly<Component> | null {
+): Component | null {
   for (const s of w.structures)
     if (s.id === id && s.kind === "component") return s;
   return null;
@@ -948,7 +895,7 @@ export function componentById(
 
 // ---- Movement and leaks --------------------------------------------------
 
-function stepUnits(w: FoundryWorld, dt: number, occ: Occupancy): void {
+function stepUnits(w: FoundryState, dt: number, occ: Occupancy): void {
   for (const u of w.units) {
     if (u.dead) continue;
     u.animT += dt;
@@ -981,7 +928,7 @@ function stepUnits(w: FoundryWorld, dt: number, occ: Occupancy): void {
   }
 }
 
-function moveUnit(w: FoundryWorld, u: Unit, dt: number, occ: Occupancy): void {
+function moveUnit(w: FoundryState, u: Unit, dt: number, occ: Occupancy): void {
   const b = board(w);
   if (u.route.length === 0) {
     u.route = b.routeFor({ x: u.x, y: u.y }, u.wpIndex, occ, u.flies);
@@ -1042,7 +989,7 @@ function aheadOf(a: Unit, b: Unit): number {
   return 0;
 }
 
-function leak(w: FoundryWorld, u: Unit): void {
+function leak(w: FoundryState, u: Unit): void {
   u.dead = true;
   const b = board(w);
   const node = b.chain[b.chain.length - 1]!;
@@ -1060,7 +1007,7 @@ function leak(w: FoundryWorld, u: Unit): void {
   raiseCue(w, "leak");
 }
 
-function cullDead(w: FoundryWorld): void {
+function cullDead(w: FoundryState): void {
   if (w.units.some((u) => u.dead)) w.units = w.units.filter((u) => !u.dead);
   if (w.projectiles.some((p) => p.dead)) {
     w.projectiles = w.projectiles.filter((p) => !p.dead);
@@ -1069,13 +1016,13 @@ function cullDead(w: FoundryWorld): void {
 
 // ---- The wave ------------------------------------------------------------
 
-function checkWaveEnd(w: FoundryWorld): void {
+function checkWaveEnd(w: FoundryState): void {
   const wave = w.activeWave;
   if (!wave) return;
   if (w.spawnCursor >= wave.events.length && w.units.length === 0) endWave(w);
 }
 
-function endWave(w: FoundryWorld): void {
+function endWave(w: FoundryState): void {
   w.activeWave = null;
   w.projectiles = [];
   if (w.wave >= difficulty(w).waves) {
@@ -1086,7 +1033,7 @@ function endWave(w: FoundryWorld): void {
     return;
   }
   w.charge += waveClearBonus(w.wave);
-  w.phase = "build";
+  w.runPhase = "build";
   w.stampsUsed = 0;
   w.harvest = { mode: "none" };
   w.holding = false;
@@ -1100,9 +1047,9 @@ function endWave(w: FoundryWorld): void {
  * grounds out the run is won. Building stays disabled and no wave is scheduled, so it
  * simply walks and is shot at.
  */
-function startFinale(w: FoundryWorld): void {
+function startFinale(w: FoundryState): void {
   w.finale = true;
-  w.phase = "wave";
+  w.runPhase = "wave";
   w.selectedId = null;
   w.selectedIds = [];
   const u = makeUnit(w, "dynamo", occupancyOf(w));
@@ -1122,10 +1069,10 @@ function startFinale(w: FoundryWorld): void {
  * hardens into a blocker, so the yard the wave runs against is settled before the first
  * unit is released.
  */
-function beginWave(w: FoundryWorld): void {
+function beginWave(w: FoundryState): void {
   resolveHarvest(w);
   w.wave += 1;
-  w.phase = "wave";
+  w.runPhase = "wave";
   w.paused = false;
   w.holding = false;
   w.activeWave = w.nextWave;
@@ -1140,7 +1087,7 @@ function beginWave(w: FoundryWorld): void {
   );
 }
 
-function resolveHarvest(w: FoundryWorld): void {
+function resolveHarvest(w: FoundryState): void {
   const h = w.harvest;
   if (h.mode === "keep") {
     const cand = candidateById(w, h.id);
@@ -1159,7 +1106,7 @@ function resolveHarvest(w: FoundryWorld): void {
 }
 
 /** Replace a candidate in place with a firing component of its rolled type and quality. */
-function promoteToComponent(w: FoundryWorld, cand: Candidate): void {
+function promoteToComponent(w: FoundryState, cand: Candidate): void {
   const i = w.structures.findIndex((s) => s.id === cand.id);
   if (i < 0) return;
   const comp = newComponent(
@@ -1204,7 +1151,7 @@ function newComponent(
   };
 }
 
-function win(w: FoundryWorld): void {
+function win(w: FoundryState): void {
   w.finale = false;
   w.screen = "victory";
   w.menuIndex = 0;
@@ -1212,7 +1159,7 @@ function win(w: FoundryWorld): void {
   w.projectiles = [];
 }
 
-function lose(w: FoundryWorld): void {
+function lose(w: FoundryState): void {
   w.integrity = 0;
   w.finale = false;
   w.screen = "overload";
@@ -1224,22 +1171,22 @@ function lose(w: FoundryWorld): void {
 
 // ---- The scrap-press -----------------------------------------------------
 
-export function stampsLeft(w: FoundryView): number {
+export function stampsLeft(w: FoundryState): number {
   return Math.max(0, STAMPS_PER_LEVEL - w.stampsUsed);
 }
 
 /** The press may be pulled in a build phase, with a stamp of the allowance left. */
-export function canStamp(w: FoundryView): boolean {
+export function canStamp(w: FoundryState): boolean {
   return (
     w.screen === "playing" &&
-    w.phase === "build" &&
+    w.runPhase === "build" &&
     !w.holding &&
     stampsLeft(w) > 0
   );
 }
 
 /** Pull the press: a blank rock is armed on the cursor. It rolls when it lands. */
-export function pullPress(w: FoundryWorld): boolean {
+export function pullPress(w: FoundryState): boolean {
   if (!canStamp(w)) return false;
   w.holding = true;
   raiseCue(w, "stamp");
@@ -1247,7 +1194,7 @@ export function pullPress(w: FoundryWorld): boolean {
 }
 
 /** The type roll: every base type equally likely, whatever the refinement. */
-function rollType(w: FoundryWorld): ComponentType {
+function rollType(w: FoundryState): ComponentType {
   let r = pressDraw(w);
   for (const type of COMPONENT_TYPES) {
     r -= TYPE_ROLL_ODDS;
@@ -1257,7 +1204,7 @@ function rollType(w: FoundryWorld): ComponentType {
 }
 
 /** The quality roll, on the odds the current refinement level gives. */
-function rollQuality(w: FoundryWorld): number {
+function rollQuality(w: FoundryState): number {
   const odds = REFINEMENT_ODDS[w.refinement]!;
   let r = pressDraw(w);
   for (let q = 1; q <= MAX_QUALITY; q++) {
@@ -1269,10 +1216,10 @@ function rollQuality(w: FoundryWorld): number {
 
 /** The blocker whose footprint is exactly this anchor, which a rock would reroll. */
 function blockerAtAnchor(
-  w: FoundryView,
+  w: FoundryState,
   col: number,
   row: number,
-): DeepReadonly<Blocker> | null {
+): Blocker | null {
   for (const s of w.structures) {
     if (s.kind === "blocker" && s.col === col && s.row === row) return s;
   }
@@ -1280,8 +1227,8 @@ function blockerAtAnchor(
 }
 
 /** Where a rock may land: a legal empty footprint, or exactly onto a blocker. */
-export function canPlaceAt(w: FoundryView, col: number, row: number): boolean {
-  if (w.screen !== "playing" || w.phase !== "build") return false;
+export function canPlaceAt(w: FoundryState, col: number, row: number): boolean {
+  if (w.screen !== "playing" || w.runPhase !== "build") return false;
   if (blockerAtAnchor(w, col, row)) return true;
   return board(w).canPlace(col, row, w.structures, w.units);
 }
@@ -1296,11 +1243,11 @@ export function canPlaceAt(w: FoundryView, col: number, row: number): boolean {
  * immediately afterward if the allowance still permits.
  */
 export function placeStamp(
-  w: FoundryWorld,
+  w: FoundryState,
   col: number,
   row: number,
 ): Candidate | null {
-  if (w.screen !== "playing" || w.phase !== "build") return null;
+  if (w.screen !== "playing" || w.runPhase !== "build") return null;
   if (!w.holding && !canStamp(w)) return null;
   if (stampsLeft(w) <= 0) return null;
   const onBlocker = blockerAtAnchor(w, col, row);
@@ -1336,14 +1283,14 @@ export function placeStamp(
 }
 
 /** Put a held rock away. Nothing was rolled and nothing was spent. */
-export function cancelHeld(w: FoundryWorld): void {
+export function cancelHeld(w: FoundryState): void {
   w.holding = false;
 }
 
 // ---- Dismantle -----------------------------------------------------------
 
-export function canRemove(w: FoundryView, id: number): boolean {
-  if (w.screen !== "playing" || w.phase !== "build") return false;
+export function canRemove(w: FoundryState, id: number): boolean {
+  if (w.screen !== "playing" || w.runPhase !== "build") return false;
   return w.structures.some((s) => s.id === id);
 }
 
@@ -1354,8 +1301,8 @@ export function canRemove(w: FoundryView, id: number): boolean {
  * roll, dismantle it, and roll again without limit. A dismantle only ever opens routes,
  * so it can never seal the yard.
  */
-export function removeStructure(w: FoundryWorld, id: number): boolean {
-  if (w.screen !== "playing" || w.phase !== "build") return false;
+export function removeStructure(w: FoundryState, id: number): boolean {
+  if (w.screen !== "playing" || w.runPhase !== "build") return false;
   const i = w.structures.findIndex((s) => s.id === id);
   if (i < 0) return false;
   if (w.harvest.mode === "keep" && w.harvest.id === id)
@@ -1368,31 +1315,31 @@ export function removeStructure(w: FoundryWorld, id: number): boolean {
   return true;
 }
 
-export function removeSelected(w: FoundryWorld): void {
+export function removeSelected(w: FoundryState): void {
   if (w.selectedId !== null) removeStructure(w, w.selectedId);
 }
 
 // ---- Harvest and combining -----------------------------------------------
 
 export function candidateById(
-  w: FoundryView,
+  w: FoundryState,
   id: number,
-): DeepReadonly<Candidate> | null {
+): Candidate | null {
   const s = w.structures.find((x) => x.id === id);
   return s && s.kind === "candidate" ? s : null;
 }
 
-export function candidates(w: FoundryView): DeepReadonly<Candidate>[] {
+export function candidates(w: FoundryState): Candidate[] {
   return w.structures.filter(
-    (s): s is DeepReadonly<Candidate> => s.kind === "candidate",
+    (s): s is Candidate => s.kind === "candidate",
   );
 }
 
 /** A structure usable as a combine ingredient: it carries a type and a quality. */
 export function baseStructureById(
-  w: FoundryView,
+  w: FoundryState,
   id: number,
-): DeepReadonly<Candidate | Component> | null {
+): Candidate | Component | null {
   const s = w.structures.find((x) => x.id === id);
   if (!s) return null;
   if (s.kind === "candidate") return s;
@@ -1406,22 +1353,22 @@ export function baseStructureById(
  * A harvest is the wave trigger, so there is no separate send: place and compare every
  * rock first, then commit the one to keep.
  */
-export function keep(w: FoundryWorld, id: number): boolean {
-  if (w.phase !== "build") return false;
+export function keep(w: FoundryState, id: number): boolean {
+  if (w.runPhase !== "build") return false;
   if (!candidateById(w, id)) return false;
   w.harvest = { mode: "keep", id };
   beginWave(w);
   return true;
 }
 
-export function keepSelected(w: FoundryWorld): void {
+export function keepSelected(w: FoundryState): void {
   const s = selected(w);
   if (s && s.kind === "candidate") keep(w, s.id);
 }
 
 /** Whether a candidate may be harvested one rung lower. */
-export function canDowngrade(w: FoundryView, id: number): boolean {
-  if (w.screen !== "playing" || w.phase !== "build") return false;
+export function canDowngrade(w: FoundryState, id: number): boolean {
+  if (w.screen !== "playing" || w.runPhase !== "build") return false;
   const cand = candidateById(w, id);
   return !!cand && cand.quality > 1;
 }
@@ -1433,7 +1380,7 @@ export function canDowngrade(w: FoundryView, id: number): boolean {
  * ingredient a recipe still needs. This is a keep at one rung lower, so like a keep it
  * is the level's harvest and it launches the wave.
  */
-export function downgrade(w: FoundryWorld, id: number): boolean {
+export function downgrade(w: FoundryState, id: number): boolean {
   if (!canDowngrade(w, id)) return false;
   const cand = ownCandidate(w, id)!;
   cand.quality -= 1;
@@ -1444,14 +1391,14 @@ export function downgrade(w: FoundryWorld, id: number): boolean {
   return true;
 }
 
-export function downgradeSelected(w: FoundryWorld): void {
+export function downgradeSelected(w: FoundryState): void {
   if (w.selectedId !== null) downgrade(w, w.selectedId);
 }
 
 /** Whether a same-type, same-quality partner exists, so a quality fold is offered. */
 export function canCombine(
-  w: FoundryView,
-  c: DeepReadonly<Candidate | Component>,
+  w: FoundryState,
+  c: Candidate | Component,
 ): boolean {
   return c.quality < MAX_QUALITY && combinePartnerOf(w, c) !== null;
 }
@@ -1462,11 +1409,11 @@ export function canCombine(
  * structure already invested in.
  */
 export function combinePartnerOf(
-  w: FoundryView,
-  c: DeepReadonly<Candidate | Component>,
-): DeepReadonly<Candidate | Component> | null {
+  w: FoundryState,
+  c: Candidate | Component,
+): Candidate | Component | null {
   if (c.quality >= MAX_QUALITY) return null;
-  let standing: DeepReadonly<Component> | null = null;
+  let standing: Component | null = null;
   for (const s of w.structures) {
     if (s.id === c.id) continue;
     if (s.kind === "candidate") {
@@ -1479,7 +1426,7 @@ export function combinePartnerOf(
 }
 
 /** The explicit combine set: the primary first, then the added structures. */
-export function combineSet(w: FoundryView): number[] {
+export function combineSet(w: FoundryState): number[] {
   const ids: number[] = [];
   const push = (id: number | null): void => {
     if (id === null) return;
@@ -1499,7 +1446,7 @@ export function combineSet(w: FoundryView): number[] {
  * the phase's harvest, so it launches the wave.
  */
 function combineQualityNow(
-  w: FoundryWorld,
+  w: FoundryState,
   anchorId: number,
   partnerId: number,
 ): boolean {
@@ -1538,7 +1485,7 @@ function combineQualityNow(
   const at = footprintCenter(comp.col, comp.row);
   w.fxQueue.push({ kind: "combine", x: at.x, y: at.y, quality: comp.quality });
   raiseCue(w, "combine");
-  if (consumedFreshRoll && w.phase === "build") {
+  if (consumedFreshRoll && w.runPhase === "build") {
     // The fold is the phase's sole harvest, so it discards any marked keep.
     w.harvest = { mode: "none" };
     beginWave(w);
@@ -1555,7 +1502,7 @@ function combineQualityNow(
  * the phase's harvest.
  */
 function combineRecipeNow(
-  w: FoundryWorld,
+  w: FoundryState,
   anchorId: number,
   combo: ComboId,
   ingredientIds: readonly number[],
@@ -1601,7 +1548,7 @@ function combineRecipeNow(
     big: true,
   });
   raiseCue(w, "combine");
-  if (consumedFreshRoll && w.phase === "build") {
+  if (consumedFreshRoll && w.runPhase === "build") {
     w.harvest = { mode: "none" };
     beginWave(w);
   }
@@ -1616,7 +1563,7 @@ function combineRecipeNow(
  * With one selected, resolve it: fold the quality pair the game picks, or else assemble
  * the one reachable recipe.
  */
-export function combineSelection(w: FoundryWorld): boolean {
+export function combineSelection(w: FoundryState): boolean {
   const set = combineSet(w);
   if (set.length === 0) return false;
   const anchor = set[0]!;
@@ -1653,7 +1600,7 @@ export function combineSelection(w: FoundryWorld): boolean {
 }
 
 /** The tower an explicit ingredient set assembles, or `null`. */
-function comboMatching(w: FoundryView, ids: readonly number[]): ComboId | null {
+function comboMatching(w: FoundryState, ids: readonly number[]): ComboId | null {
   const keys: string[] = [];
   const seen = new Set<number>();
   for (const id of ids) {
@@ -1671,7 +1618,7 @@ function comboMatching(w: FoundryView, ids: readonly number[]): ComboId | null {
 }
 
 /** A structure's ingredient key, or `null` when it can never be an ingredient. */
-function ingredientKeyOf(s: DeepReadonly<Structure>): string | null {
+function ingredientKeyOf(s: Structure): string | null {
   if (s.kind === "candidate") return `${s.type}@${s.quality}`;
   if (s.kind === "component" && !s.combo) return `${s.type}@${s.quality}`;
   return null;
@@ -1685,8 +1632,8 @@ function ingredientKeyOf(s: DeepReadonly<Structure>): string | null {
  * this phase's rolls before it eats standing structures.
  */
 export function reachableCombos(
-  w: FoundryView,
-  anchor: DeepReadonly<Candidate | Component>,
+  w: FoundryState,
+  anchor: Candidate | Component,
 ): { combo: ComboId; ingredientIds: number[] }[] {
   const anchorKey = `${anchor.type}@${anchor.quality}`;
   const avail = new Map<string, number[]>();
@@ -1731,7 +1678,7 @@ export function reachableCombos(
 
 /** The reachable recipes for a structure identity, empty unless it is a base structure. */
 export function reachableCombosFor(
-  w: FoundryView,
+  w: FoundryState,
   id: number,
 ): { combo: ComboId; ingredientIds: number[] }[] {
   const base = baseStructureById(w, id);
@@ -1740,7 +1687,7 @@ export function reachableCombosFor(
 
 /** Whether a set of identities still exactly matches a recipe's multiset. */
 function recipeSatisfied(
-  w: FoundryView,
+  w: FoundryState,
   combo: ComboId,
   ingredientIds: readonly number[],
 ): boolean {
@@ -1766,7 +1713,7 @@ function recipeSatisfied(
  * yard.
  */
 export function combineRecipe(
-  w: FoundryWorld,
+  w: FoundryState,
   id: number,
   combo: ComboId,
 ): boolean {
@@ -1782,18 +1729,18 @@ export function combineRecipe(
 }
 
 export function combineRecipeSelected(
-  w: FoundryWorld,
+  w: FoundryState,
   combo: ComboId,
 ): boolean {
   return w.selectedId !== null ? combineRecipe(w, w.selectedId, combo) : false;
 }
 
-export function combineSelected(w: FoundryWorld): boolean {
+export function combineSelected(w: FoundryState): boolean {
   return combineSelection(w);
 }
 
 /** Commit a combine from an initiator, as the surface's `combine` does. */
-export function combineFrom(w: FoundryWorld, id: number): boolean {
+export function combineFrom(w: FoundryState, id: number): boolean {
   const set = combineSet(w);
   if (set.length >= 2 && set[0] === id) return combineSelection(w);
   select(w, id);
@@ -1802,7 +1749,7 @@ export function combineFrom(w: FoundryWorld, id: number): boolean {
 
 // ---- Refinement ----------------------------------------------------------
 
-export function refineCost(w: FoundryView): number | null {
+export function refineCost(w: FoundryState): number | null {
   return refinementCost(w.refinement);
 }
 
@@ -1810,12 +1757,12 @@ export function refineCost(w: FoundryView): number | null {
  * Refining is allowed in any phase: it only biases future rolls, so there is no reason
  * to close it during a live wave, and it keeps a Charge sink open while one runs.
  */
-export function canUpgradeQuality(w: FoundryView): boolean {
+export function canUpgradeQuality(w: FoundryState): boolean {
   const cost = refineCost(w);
   return w.screen === "playing" && cost !== null && w.charge >= cost;
 }
 
-export function upgradeQuality(w: FoundryWorld): boolean {
+export function upgradeQuality(w: FoundryState): boolean {
   const cost = refineCost(w);
   if (!canUpgradeQuality(w) || cost === null) return false;
   w.charge -= cost;
@@ -1825,11 +1772,11 @@ export function upgradeQuality(w: FoundryWorld): boolean {
 
 // ---- Combination-tower upgrades ------------------------------------------
 
-export function comboUpgradeCostFor(c: DeepReadonly<Component>): number | null {
+export function comboUpgradeCostFor(c: Component): number | null {
   return c.combo ? comboUpgradeCost(c.combo, c.comboLevel) : null;
 }
 
-export function canUpgradeCombo(w: FoundryView, id: number): boolean {
+export function canUpgradeCombo(w: FoundryState, id: number): boolean {
   if (w.screen !== "playing") return false;
   const s = w.structures.find((x) => x.id === id);
   if (!s || s.kind !== "component" || !s.combo) return false;
@@ -1837,7 +1784,7 @@ export function canUpgradeCombo(w: FoundryView, id: number): boolean {
   return cost !== null && w.charge >= cost;
 }
 
-export function upgradeCombo(w: FoundryWorld, id: number): boolean {
+export function upgradeCombo(w: FoundryState, id: number): boolean {
   if (!canUpgradeCombo(w, id)) return false;
   const s = ownComponent(w, id)!;
   const cost = comboUpgradeCost(s.combo!, s.comboLevel)!;
@@ -1856,7 +1803,7 @@ export function upgradeCombo(w: FoundryWorld, id: number): boolean {
   return true;
 }
 
-export function upgradeComboSelected(w: FoundryWorld): void {
+export function upgradeComboSelected(w: FoundryState): void {
   if (w.selectedId !== null) upgradeCombo(w, w.selectedId);
 }
 
@@ -1871,14 +1818,14 @@ export function cycleTargeting(c: Component): void {
   c.targeting = TARGETING_PRIORITIES[(i + 1) % TARGETING_PRIORITIES.length]!;
 }
 
-export function cycleTargetingSelected(w: FoundryWorld): void {
+export function cycleTargetingSelected(w: FoundryState): void {
   if (w.selectedId === null) return;
   const c = ownComponent(w, w.selectedId);
   if (c) cycleTargeting(c);
 }
 
 export function setTargetingById(
-  w: FoundryWorld,
+  w: FoundryState,
   id: number,
   priority: TargetingPriority,
 ): void {
@@ -1888,7 +1835,7 @@ export function setTargetingById(
 
 // ---- Selection -----------------------------------------------------------
 
-export function select(w: FoundryWorld, id: number | null): void {
+export function select(w: FoundryState, id: number | null): void {
   w.selectedId = id;
   w.selectedIds = [];
 }
@@ -1898,7 +1845,7 @@ export function select(w: FoundryWorld, id: number | null): void {
  * explicit combine set. The primary stays the inspector's subject.
  */
 export function selectAt(
-  w: FoundryWorld,
+  w: FoundryState,
   x: number,
   y: number,
   additive = false,
@@ -1922,7 +1869,7 @@ export function selectAt(
 }
 
 /** Add a structure to the explicit combine set, or remove it when it is already in. */
-export function addToCombineSet(w: FoundryWorld, id: number): void {
+export function addToCombineSet(w: FoundryState, id: number): void {
   if (w.selectedId === null) {
     w.selectedId = id;
     w.selectedIds = [];
@@ -1934,15 +1881,15 @@ export function addToCombineSet(w: FoundryWorld, id: number): void {
   else w.selectedIds.push(id);
 }
 
-export function clearCombineSet(w: FoundryWorld): void {
+export function clearCombineSet(w: FoundryState): void {
   w.selectedIds = [];
 }
 
 export function structureAt(
-  w: FoundryView,
+  w: FoundryState,
   x: number,
   y: number,
-): DeepReadonly<Structure> | null {
+): Structure | null {
   const t = board(w).pixelToTile(x, y);
   for (const s of w.structures) {
     if (
@@ -1957,14 +1904,14 @@ export function structureAt(
   return null;
 }
 
-export function selected(w: FoundryView): DeepReadonly<Structure> | null {
+export function selected(w: FoundryState): Structure | null {
   if (w.selectedId === null) return null;
   return w.structures.find((s) => s.id === w.selectedId) ?? null;
 }
 
 /** The explicitly added structures that still exist, for the renderer. */
-export function extraSelected(w: FoundryView): DeepReadonly<Structure>[] {
-  const out: DeepReadonly<Structure>[] = [];
+export function extraSelected(w: FoundryState): Structure[] {
+  const out: Structure[] = [];
   for (const id of w.selectedIds) {
     const s = w.structures.find((x) => x.id === id);
     if (s) out.push(s);
@@ -1974,23 +1921,23 @@ export function extraSelected(w: FoundryView): DeepReadonly<Structure>[] {
 
 // ---- The wave, as the HUD reads it ---------------------------------------
 
-export function currentWave(w: FoundryView): Wave {
+export function currentWave(w: FoundryState): Wave {
   return w.activeWave ?? w.nextWave;
 }
 
-export function nextWavePreview(w: FoundryView): Wave {
+export function nextWavePreview(w: FoundryState): Wave {
   return w.nextWave;
 }
 
-export function waveProgress(w: FoundryView): number {
+export function waveProgress(w: FoundryState): number {
   const wave = w.activeWave;
   if (!wave || wave.events.length === 0) return 0;
   return Math.min(1, w.spawnCursor / wave.events.length);
 }
 
 /** The dev launcher for a wave. No control is wired to it; a harvest starts a wave. */
-export function startWave(w: FoundryWorld): void {
-  if (w.screen !== "playing" || w.phase !== "build") return;
+export function startWave(w: FoundryState): void {
+  if (w.screen !== "playing" || w.runPhase !== "build") return;
   w.holding = false;
   beginWave(w);
 }
@@ -2004,7 +1951,7 @@ export function startWave(w: FoundryWorld): void {
  * one base structure selected, every piece it could fold with is marked: its quality
  * partner and every ingredient of every recipe it reaches.
  */
-export function combineHighlight(w: FoundryView): {
+export function combineHighlight(w: FoundryState): {
   primaryId: number | null;
   partnerIds: Set<number>;
   committed: boolean;
@@ -2036,12 +1983,12 @@ export function combineHighlight(w: FoundryView): {
  * The renderer pulses these at all times rather than only when one is selected, so a
  * player is told which pieces can fold without having to ask.
  */
-export function combinablePieces(w: FoundryView): Set<number> {
+export function combinablePieces(w: FoundryState): Set<number> {
   const ids = new Set<number>();
   for (const s of w.structures) {
     if (s.kind !== "candidate" && !(s.kind === "component" && !s.combo))
       continue;
-    const base = s as DeepReadonly<Candidate | Component>;
+    const base = s as Candidate | Component;
     if (
       combinePartnerOf(w, base) !== null ||
       reachableCombos(w, base).length > 0
@@ -2054,33 +2001,33 @@ export function combinablePieces(w: FoundryView): Set<number> {
 
 // ---- Speed, pause, and the screens ---------------------------------------
 
-export function cycleSpeed(w: FoundryWorld): void {
+export function cycleSpeed(w: FoundryState): void {
   w.speed = w.speed === 1 ? 2 : w.speed === 2 ? 4 : w.speed === 4 ? 8 : 1;
 }
 
-export function setSpeed(w: FoundryWorld, multiplier: Speed): void {
+export function setSpeed(w: FoundryState, multiplier: Speed): void {
   w.speed = multiplier;
 }
 
-export function togglePause(w: FoundryWorld): void {
+export function togglePause(w: FoundryState): void {
   if (w.screen === "playing") w.paused = !w.paused;
 }
 
-export function setPaused(w: FoundryWorld, paused: boolean): void {
+export function setPaused(w: FoundryState, paused: boolean): void {
   w.paused = paused;
 }
 
-export function setScreen(w: FoundryWorld, screen: ScreenName): void {
+export function setScreen(w: FoundryState, screen: ScreenName): void {
   w.screen = screen;
   w.menuIndex = 0;
 }
 
-export function setMenuIndex(w: FoundryWorld, index: number): void {
+export function setMenuIndex(w: FoundryState, index: number): void {
   w.menuIndex = index;
 }
 
 export function setOverlay(
-  w: FoundryWorld,
+  w: FoundryState,
   overlay: "combos" | "damage",
   open: boolean,
 ): void {
@@ -2089,34 +2036,34 @@ export function setOverlay(
 }
 
 /** The map the next run opens on. The chain a snapshot reports is its from now. */
-export function setMap(w: FoundryWorld, map: MapId): void {
+export function setMap(w: FoundryState, map: MapId): void {
   w.mapId = map;
   refreshMaze(w);
 }
 
-export function setDifficulty(w: FoundryWorld, id: DifficultyId): void {
+export function setDifficulty(w: FoundryState, id: DifficultyId): void {
   w.difficultyId = id;
   w.nextWave = buildWave(Math.max(1, w.wave + 1), difficulty(w));
 }
 
 // ---- Resources and progress ----------------------------------------------
 
-export function setCharge(w: FoundryWorld, amount: number): void {
+export function setCharge(w: FoundryState, amount: number): void {
   w.charge = amount;
 }
 
 /** Grid Integrity resolves no defeat by itself; the rules resolve on the next advance. */
-export function setIntegrity(w: FoundryWorld, amount: number): void {
+export function setIntegrity(w: FoundryState, amount: number): void {
   w.integrity = amount;
   w.maxIntegrity = Math.max(w.maxIntegrity, amount);
 }
 
-export function setRefinement(w: FoundryWorld, level: number): void {
+export function setRefinement(w: FoundryState, level: number): void {
   w.refinement = level;
 }
 
 /** The wave units released from now on scale to. */
-export function setWave(w: FoundryWorld, n: number): void {
+export function setWave(w: FoundryState, n: number): void {
   w.wave = n;
   w.nextWave = buildWave(
     Math.max(1, Math.min(n + 1, difficulty(w).waves)),
@@ -2124,14 +2071,14 @@ export function setWave(w: FoundryWorld, n: number): void {
   );
 }
 
-export function setStamps(w: FoundryWorld, n: number): void {
+export function setStamps(w: FoundryState, n: number): void {
   w.stampsUsed = STAMPS_PER_LEVEL - n;
 }
 
 // ---- Standing structures up directly -------------------------------------
 
 /** Remove everything from the yard, reopen its tiles, and recompute the route. */
-export function clearStructures(w: FoundryWorld): void {
+export function clearStructures(w: FoundryState): void {
   w.structures = [];
   w.selectedId = null;
   w.selectedIds = [];
@@ -2140,14 +2087,14 @@ export function clearStructures(w: FoundryWorld): void {
 }
 
 export function armNextRoll(
-  w: FoundryWorld,
+  w: FoundryState,
   type: ComponentType,
   quality: number,
 ): void {
   w.armedRoll = { type, quality };
 }
 
-export function clearNextRoll(w: FoundryWorld): void {
+export function clearNextRoll(w: FoundryState): void {
   w.armedRoll = null;
 }
 
@@ -2158,7 +2105,7 @@ export function clearNextRoll(w: FoundryWorld): void {
  * is subject to the same placement conditions and the same never-seal rule a rock is.
  */
 export function placeComponent(
-  w: FoundryWorld,
+  w: FoundryState,
   type: ComponentType,
   quality: number,
   col: number,
@@ -2173,7 +2120,7 @@ export function placeComponent(
 
 /** Stand a combination tower up at an anchor, at upgrade level `0`. */
 export function placeCombo(
-  w: FoundryWorld,
+  w: FoundryState,
   combo: ComboId,
   col: number,
   row: number,
@@ -2195,7 +2142,7 @@ export function placeCombo(
 
 /** Stand an inert blocker up at an anchor. */
 export function placeBlocker(
-  w: FoundryWorld,
+  w: FoundryState,
   col: number,
   row: number,
 ): Blocker | null {
@@ -2207,7 +2154,7 @@ export function placeBlocker(
 }
 
 export function setComboLevel(
-  w: FoundryWorld,
+  w: FoundryState,
   id: number,
   level: number,
 ): void {
@@ -2218,12 +2165,12 @@ export function setComboLevel(
 // ---- The Load, posed -----------------------------------------------------
 
 /** Remove every live unit. None is killed and none leaks. */
-export function clearUnits(w: FoundryWorld): void {
+export function clearUnits(w: FoundryState): void {
   w.units = [];
 }
 
 /** Remove every shot in flight without applying its damage or crediting a tally. */
-export function clearProjectiles(w: FoundryWorld): void {
+export function clearProjectiles(w: FoundryState): void {
   w.projectiles = [];
 }
 
@@ -2235,12 +2182,12 @@ export function clearProjectiles(w: FoundryWorld): void {
  * clears the ordinary way once they have all died or leaked.
  */
 export function spawnUnit(
-  w: FoundryWorld,
+  w: FoundryState,
   type: LoadType | "overload",
 ): Unit | null {
   if (w.screen !== "playing") return null;
-  if (w.phase === "build") {
-    w.phase = "wave";
+  if (w.runPhase === "build") {
+    w.runPhase = "wave";
     w.harvest = { mode: "none" };
     w.holding = false;
   }
@@ -2259,7 +2206,7 @@ export function spawnUnit(
 }
 
 /** The hold itself: a live wave with an empty schedule, which still clears. */
-function holdSpawner(w: FoundryWorld): void {
+function holdSpawner(w: FoundryState): void {
   if (w.spawnerHeld && w.activeWave) return;
   w.spawnerHeld = true;
   w.activeWave = {
@@ -2282,7 +2229,7 @@ function holdSpawner(w: FoundryWorld): void {
  * for.
  */
 export function setUnitPosition(
-  w: FoundryWorld,
+  w: FoundryState,
   u: Unit,
   x: number,
   y: number,
@@ -2297,7 +2244,7 @@ export function setUnitPosition(
 }
 
 /** Set the checkpoint a unit is heading for. It moves the unit nowhere. */
-export function setUnitWaypoint(w: FoundryWorld, u: Unit, index: number): void {
+export function setUnitWaypoint(w: FoundryState, u: Unit, index: number): void {
   u.wpIndex = index;
   u.route = board(w).routeFor(
     { x: u.x, y: u.y },
@@ -2321,38 +2268,38 @@ export function setUnitFrozen(u: Unit, frozen: boolean): void {
 // ---- Lookups an argument is validated against ----------------------------
 
 export function structureById(
-  w: FoundryView,
+  w: FoundryState,
   id: number,
-): DeepReadonly<Structure> | null {
+): Structure | null {
   return w.structures.find((s) => s.id === id) ?? null;
 }
 
 export function liveUnitById(
-  w: FoundryView,
+  w: FoundryState,
   id: number,
-): DeepReadonly<Unit> | null {
+): Unit | null {
   const u = unitById(w, id);
   return u && !u.dead ? u : null;
 }
 
 export function comboById(
-  w: FoundryView,
+  w: FoundryState,
   id: number,
-): DeepReadonly<Component> | null {
+): Component | null {
   const c = componentById(w, id);
   return c && c.combo ? c : null;
 }
 
 export function firingStructureById(
-  w: FoundryView,
+  w: FoundryState,
   id: number,
-): DeepReadonly<Component> | null {
+): Component | null {
   const c = componentById(w, id);
   return c && unbuffedStats(c).fires ? c : null;
 }
 
 /** The phase as `specs/instrumentation.md` reports it, or `null` off the yard. */
-export function reportedPhase(w: FoundryView): PhaseName | null {
+export function reportedPhase(w: FoundryState): PhaseName | null {
   if (w.screen !== "playing") return null;
-  return w.finale ? "finale" : w.phase;
+  return w.finale ? "finale" : w.runPhase;
 }

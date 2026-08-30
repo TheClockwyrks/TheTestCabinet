@@ -1,96 +1,57 @@
-// Arc Foundry — the game: the state contract, the frame, and the three functions the
-// engine drives.
+// Arc Foundry — the game: the framework objects the engine drives.
 //
-// A `Game<S, D>` is three functions, a state type, and the debug surface the game hands
-// to the engine. `initialize` runs once and returns the state and the surface together
-// as `[state, debug]`. `update` and `render` then run once each per frame — `update`
-// first, with the frame's real elapsed SECONDS, then `render`.
+// The game is ONE `GameDefinition` with ONE level. The engine opens that level at
+// `startLevel` and the game never opens another: every screen is a value of the state's
+// `screen` field, so the world and its game state live for the whole session, and a pose
+// that changes the screen takes effect at the call rather than riding a transition.
 //
-// THE STATE IS A VALUE. The engine hands `update` the current state as a read-only view
-// and stores what it returns; `render` draws that. `FoundryState` below is that value:
-// the read-only view of `FoundryWorld`, whose every field is declared, named, and
-// explained in `src/types.ts`. A frame never writes through the view it was handed — it
-// copies it into a world of its own (`src/world.ts`), advances that, and returns it — so
-// "rendering changes nothing" and "nothing but the update advances the simulation" are
-// facts the compiler checks rather than comments.
+// `FoundryInstance.initialize` runs once, before the level opens: it registers every
+// action against its keys, declares the twelve cues and backs each with its produced
+// clip, loads every produced sprite and particle system, and returns the debug surface,
+// which the engine holds and returns from `engine.debug`. The instance keeps what it
+// loaded, because the instance is what outlives a world, and seeds it onto each world's
+// state as that world opens.
 //
-// WHAT THE FRAME DOES, in order: read this frame's action edges once each and act on
-// them, resolve the pointer's samples in the order they arrived, advance the simulation
-// by the elapsed time the engine measured, play the cues the advance raised, raise the
-// particle bursts it raised and step the ones already playing, and refresh the mirrors of
-// what the runtime owns.
+// `FoundryMode` runs the level. Its `gameStateClass` is `FoundryState`, so the engine
+// builds the state in `src/state.ts` when the world opens; its `beginPlay` computes the
+// ground route the field initializers cannot state, adds the single player possessing
+// nothing — whose controller is where the frame's actions and pointer are read — and
+// registers the diagnostic sources; and its `tick` is the whole of the frame's
+// bookkeeping: advance the simulation by the elapsed time the engine measured, play the
+// cues that advance raised, raise the bursts it raised and step the ones already
+// playing, and refresh the mirror of the mute bit the runtime owns.
+//
+// THE ORDER IS THE ENGINE'S, and it is why the split falls where it does. Controllers
+// tick first, so the input for this frame is resolved before anything advances; the game
+// mode ticks last, after every actor, so it advances a settled world; and the pipeline
+// renders after that, so the yard's draw components draw the frame the tick produced.
+//
+// The camera is left at rest, so world units and the stage's logical units coincide.
+// Arc Foundry never calls `setPhase` either: the engine's match phase is not the game's
+// build/wave/finale phase, which is `runPhase` on the state.
 
-import { createDebugApi, type FoundryDebugApi } from "./debug";
-import { loadAssets } from "./assets";
-import { CUE_SPECS, playFrameCues } from "./audio";
-import { registerDiagnostics } from "./diagnostics";
-import { modifyHeld, pressed, registerActions } from "./input";
-import { controls, inRect, type Control } from "./layout";
-import { menuItems } from "./menus";
-import { renderGame } from "./render";
-import { spawnBurst, stepBursts } from "./particles";
-import {
-  BOARD_X,
-  BOARD_Y,
-  PANEL_X,
-  STAGE_H,
-  type ActionName,
-  type ComboId,
-  type DifficultyId,
-  type MapId,
-} from "./constants";
-import { boardOf } from "./board";
-import {
-  advance,
-  cancelHeld,
-  combineRecipeSelected,
-  combineSelected,
-  createWorld,
-  cycleSpeed,
-  cycleTargetingSelected,
-  downgradeSelected,
-  keepSelected,
-  placeStamp,
-  pullPress,
-  removeSelected,
-  reseedPress,
-  select,
-  selectAt,
-  selected,
-  setDifficulty,
-  setMap,
-  setMenuIndex,
-  setOverlay,
-  setPaused,
-  setScreen,
-  startRun,
-  togglePause,
-  upgradeComboSelected,
-  upgradeQuality,
-} from "./sim";
-import { COL } from "./theme";
-import { thaw, type FoundryView } from "./world";
-import type { FoundryWorld } from "./types";
+import { GameInstance, GameMode } from "@test-cabinet/structured-2d";
 import type {
-  Game,
+  GameDefinition,
   InitApi,
-  PointerSample,
-  RenderApi,
-  UpdateApi,
-} from "@test-cabinet/simple-2d";
+  World,
+} from "@test-cabinet/structured-2d";
+import { loadAssets, noAssets, type Assets } from "./assets";
+import { CUE_SPECS, playFrameCues } from "./audio";
+import { FoundryController } from "./controller";
+import { createDebugApi, type FoundryDebugApi } from "./debug";
+import { registerDiagnostics } from "./diagnostics";
+import { registerActions } from "./input";
+import { spawnBurst, stepBursts } from "./particles";
+import { advance, refreshMaze } from "./sim";
+import { FoundryState, foundryState } from "./state";
+import { COL } from "./theme";
+import { Yard } from "./yard";
 
-// The surface is part of the module contract and is declared beside the game it types,
-// so it is exported from here whichever module implements it.
+// Both halves of the module contract are declared beside the game they type, so they are
+// exported from here whichever module implements them.
+export { FoundryState };
 export type { FoundryDebugApi };
-
-/**
- * The whole of Arc Foundry's state, as everything but a transition sees it.
- *
- * `FoundryWorld` in `src/types.ts` is the same shape written as the simulation works in
- * it; this is the read-only view of exactly that, and it is what the engine holds, hands
- * out, and stores.
- */
-export type FoundryState = FoundryView;
 
 /**
  * The stage background. `src/main.ts` hands it to the engine as the color the canvas is
@@ -98,316 +59,57 @@ export type FoundryState = FoundryView;
  */
 export const BACKGROUND: string = COL.void;
 
-/** The right edge of the yard, past which a press belongs to the panel. */
-const YARD_RIGHT = PANEL_X;
-
-/** A fresh seed for an interactive run, so no two playthroughs draw the same rolls. */
-function freshSeed(): number {
-  return Math.floor(Math.random() * 0x100000000) >>> 0;
-}
-
-// ---- Acting on a control -------------------------------------------------
-
 /**
- * Commit one control, whether a press or a key reached it.
+ * The whole game: the one framework object that outlives the world.
  *
- * Every control in the game funnels through here, so a pointer press on a control and
- * the key bound to the same act do exactly the same thing.
+ * The produced files are loaded once, here, because they are the whole game's rather
+ * than one level's, and they survive every reset the debug surface performs.
  */
-function activate(
-  w: FoundryWorld,
-  api: Pick<UpdateApi, "audio">,
-  action: string,
-  payload?: string,
-): void {
-  if (action.startsWith("map-")) {
-    setMap(w, action.slice(4) as MapId);
-    setScreen(w, "difficultyselect");
-    return;
-  }
-  if (action.startsWith("difficulty-")) {
-    setDifficulty(w, action.slice(11) as DifficultyId);
-    startRun(w);
-    reseedPress(w, freshSeed());
-    return;
-  }
-  switch (action) {
-    case "salvage":
-      setScreen(w, "mapselect");
-      break;
-    case "howto":
-      setScreen(w, "howto");
-      break;
-    case "back":
-      setScreen(w, w.screen === "difficultyselect" ? "mapselect" : "title");
-      break;
-    case "restart":
-    case "again":
-      startRun(w);
-      reseedPress(w, freshSeed());
-      break;
-    case "quit":
-    case "menu":
-      setScreen(w, "title");
-      break;
-    case "resume":
-      setScreen(w, "playing");
-      // Resuming from the menu clears any in-place pause too.
-      setPaused(w, false);
-      break;
-    case "stamp":
-      pullPress(w);
-      break;
-    case "keep":
-      keepSelected(w);
-      break;
-    case "downgrade":
-      downgradeSelected(w);
-      break;
-    case "combine":
-      combineSelected(w);
-      break;
-    case "combine-special":
-      if (payload) combineRecipeSelected(w, payload as ComboId);
-      break;
-    case "upgrade": {
-      // Upgrading raises the selected combination tower's level, and refines the press
-      // when the selection is not a combination tower (specs/controls.md).
-      const sel = selected(w);
-      if (sel && sel.kind === "component" && sel.combo) upgradeComboSelected(w);
-      else upgradeQuality(w);
-      break;
-    }
-    case "targeting":
-      cycleTargetingSelected(w);
-      break;
-    case "dismantle":
-      removeSelected(w);
-      break;
-    case "speed":
-      cycleSpeed(w);
-      break;
-    case "pause":
-      togglePause(w);
-      break;
-    case "mute":
-      api.audio.setMuted(!api.audio.muted());
-      break;
-    case "combos":
-      setOverlay(w, "combos", !w.showCombos);
-      break;
-    case "damage":
-      setOverlay(w, "damage", !w.showDamage);
-      break;
-    default:
-      // A press swallowed by an open overlay's backdrop commits nothing.
-      break;
-  }
-}
+class FoundryInstance extends GameInstance<FoundryDebugApi> {
+  private assets: Assets = noAssets();
 
-/**
- * Back out, against the first of these that applies: a held rock is put away, the
- * selection is cleared, an open overlay is closed, on `playing` the pause menu opens, on
- * `paused` it closes, and on any other screen the game returns to the previous screen.
- */
-function back(w: FoundryWorld, api: Pick<UpdateApi, "audio">): void {
-  if (w.screen === "playing") {
-    if (w.holding) {
-      cancelHeld(w);
-      return;
-    }
-    if (w.selectedId !== null) {
-      select(w, null);
-      return;
-    }
-    if (w.showCombos) {
-      setOverlay(w, "combos", false);
-      return;
-    }
-    if (w.showDamage) {
-      setOverlay(w, "damage", false);
-      return;
-    }
-    setScreen(w, "paused");
-    return;
-  }
-  if (w.screen === "paused") {
-    activate(w, api, "resume");
-    return;
-  }
-  if (
-    w.screen === "howto" ||
-    w.screen === "mapselect" ||
-    w.screen === "difficultyselect"
-  ) {
-    activate(w, api, "back");
-    return;
-  }
-  if (w.screen === "victory" || w.screen === "overload")
-    activate(w, api, "menu");
-}
-
-// ---- The keyboard --------------------------------------------------------
-
-/** The actions the yard's own controls answer to, in the order they are checked. */
-const YARD_ACTIONS: readonly ActionName[] = [
-  "stamp",
-  "keep",
-  "downgrade",
-  "combine",
-  "upgrade",
-  "targeting",
-  "dismantle",
-  "speed",
-  "pause",
-  "combos",
-  "damage",
-];
-
-/**
- * Read this frame's action edges, once each, and act on them.
- *
- * Every edge is read here and nowhere else, which is what the engine's consume-on-read
- * edges ask for: two readers of the same action in one frame would split one press
- * between them. They are all read before any is acted on, so an action's availability
- * never depends on what an earlier one in the same frame did.
- */
-function handleKeys(w: FoundryWorld, api: UpdateApi): void {
-  const muteNow = pressed(api, "mute");
-  const backNow = pressed(api, "back");
-  const upNow = pressed(api, "up");
-  const downNow = pressed(api, "down");
-  const confirmNow = pressed(api, "confirm");
-  const yard = YARD_ACTIONS.map((a) => pressed(api, a));
-
-  // Muting is bound to the engine's own bit, so it works from every screen.
-  if (muteNow) activate(w, api, "mute");
-  if (backNow) {
-    back(w, api);
-    return;
-  }
-
-  if (w.screen === "playing") {
-    for (let i = 0; i < YARD_ACTIONS.length; i++) {
-      if (yard[i]) activate(w, api, YARD_ACTIONS[i]!);
-    }
-    return;
-  }
-
-  const items = menuItems(w.screen);
-  if (items.length === 0) return;
-  if (upNow) setMenuIndex(w, (w.menuIndex - 1 + items.length) % items.length);
-  else if (downNow) setMenuIndex(w, (w.menuIndex + 1) % items.length);
-  else if (confirmNow) {
-    const item = items[w.menuIndex];
-    if (item) activate(w, api, item.action);
-  }
-}
-
-// ---- The pointer ---------------------------------------------------------
-
-/** Move the highlight to whichever menu entry the pointer is over. */
-function syncMenuIndex(w: FoundryWorld, list: readonly Control[]): void {
-  const items = list.filter((c) => c.kind === "menu");
-  for (let i = 0; i < items.length; i++) {
-    const c = items[i]!;
-    if (inRect(w.pointerX, w.pointerY, c.x, c.y, c.w, c.h)) {
-      setMenuIndex(w, i);
-      return;
-    }
-  }
-}
-
-/**
- * Resolve one press at the pointer's position.
- *
- * The topmost control first, because a later-drawn control is drawn over an earlier one,
- * and only navigation fires off the yard, so a press aimed at the pause menu can never
- * reach the panel frozen behind it. A press that lands on no control and inside the yard
- * drops a held rock, or selects what stands there.
- */
-function handlePress(
-  w: FoundryWorld,
-  api: UpdateApi,
-  x: number,
-  y: number,
-): void {
-  const list = controls(w);
-  for (let i = list.length - 1; i >= 0; i--) {
-    const c = list[i]!;
-    if (c.disabled) continue;
-    if (w.screen !== "playing" && c.kind !== "menu") continue;
-    if (!inRect(x, y, c.x, c.y, c.w, c.h)) continue;
-    activate(w, api, c.action, c.payload);
-    return;
-  }
-  if (w.screen !== "playing") return;
-  if (x >= YARD_RIGHT || y <= BOARD_Y || y > STAGE_H || x < BOARD_X) return;
-  if (w.holding) {
-    const at = boardOf(w.mapId).pixelToAnchor(x, y);
-    placeStamp(w, at.col, at.row);
-  } else {
-    selectAt(w, x, y, modifyHeld(api));
-  }
-}
-
-/**
- * Resolve this frame's pointer samples, one at a time, in the order they arrived.
- *
- * The pointer is read from the samples rather than from the frame's last position, so a
- * press that arrived part way through a sweep is resolved where it happened rather than
- * where the pointer ended up.
- */
-function handlePointer(w: FoundryWorld, api: UpdateApi): void {
-  const samples: readonly PointerSample[] = api.input.pointerSamples();
-  for (const sample of samples) {
-    w.pointerX = sample.x;
-    w.pointerY = sample.y;
-    if (sample.type === "down") handlePress(w, api, sample.x, sample.y);
-    else if (sample.type === "move") syncMenuIndex(w, controls(w));
-    // A release commits nothing: every control commits on its press.
-  }
-}
-
-// ---- The game the engine drives ------------------------------------------
-
-export const game: Game<FoundryState, FoundryDebugApi> = {
-  /**
-   * Runs once, before any frame: register every action against its keys, declare the
-   * twelve cues and back each with its produced clip, load every produced sprite and
-   * particle system, register the diagnostic sources, and build the complete initial
-   * state on the title screen.
-   *
-   * Neither a diagnostic source nor the surface holds the state: a source is handed the
-   * state current at the read, and every operation on the surface takes the state it
-   * poses and returns the next one.
-   */
-  async initialize(
-    api: InitApi<FoundryState>,
-  ): Promise<[FoundryState, FoundryDebugApi]> {
+  override async initialize(api: InitApi): Promise<FoundryDebugApi> {
     registerActions(api);
-    registerDiagnostics(api);
-    const assets = await loadAssets(api, CUE_SPECS);
-    return [createWorld(assets), createDebugApi()];
-  },
+    this.assets = await loadAssets(api, CUE_SPECS);
+    return createDebugApi(() => this.engine.world);
+  }
 
-  /** Runs once per frame, before `render`: the next state, from the current one. */
-  update(state: FoundryState, api: UpdateApi, dt: number): FoundryState {
-    const w = thaw(state);
+  /** Seed the opening world's state with what was loaded before the first frame. */
+  override worldOpened(world: World): void {
+    foundryState(world).assets = this.assets;
+  }
+}
 
-    // The pointer's position is refreshed before anything reads it, so a hit test in
-    // this frame is against where the pointer is now.
-    const pointer = api.input.pointer();
-    w.pointerX = pointer.x;
-    w.pointerY = pointer.y;
+/**
+ * The rules of the one level the game runs in: the screen machine, the build phase and
+ * the wave, the single player, and the per-frame bookkeeping.
+ */
+class FoundryMode extends GameMode {
+  declare readonly state: FoundryState;
 
-    handleKeys(w, api);
-    handlePointer(w, api);
+  override gameStateClass = FoundryState;
+  override playerControllerClass = FoundryController;
 
+  override beginPlay(): void {
+    // The route around the walls is derived from the map rather than declared, so it is
+    // computed once here for the state the engine built.
+    refreshMaze(this.state);
+    // `pawnClass` stays `null`, so the one player possesses nothing; its controller is
+    // where the frame's actions and pointer samples are read.
+    this.addPlayer();
+    registerDiagnostics(this.world);
+  }
+
+  override tick(dt: number): void {
+    const w = this.state;
+
+    // `dt` is already seconds. The multiplier, the fixed tick, and the freeze off the
+    // playing screen or under the in-place pause are all inside `advance`.
     advance(w, dt);
 
-    // The advance raised its cues and its effects; the frame that raised them plays them.
-    playFrameCues(api, w.cueQueue, w.screen === "playing");
+    // The advance raised its cues and its effects; the frame that raised them plays
+    // them, once each.
+    playFrameCues(this.world.audio, w.cueQueue, w.screen === "playing");
     w.cueQueue = [];
     const raised = w.fxQueue;
     w.fxQueue = [];
@@ -418,16 +120,17 @@ export const game: Game<FoundryState, FoundryDebugApi> = {
     }
     w.bursts = bursts;
 
-    // The mirrors of what the runtime owns, refreshed on the state the frame leaves.
-    w.muted = api.audio.muted();
-    const settled = api.input.pointer();
-    w.pointerX = settled.x;
-    w.pointerY = settled.y;
-    return w;
-  },
+    // The game's readable copy of the engine's mute bit, refreshed each frame.
+    w.muted = this.world.audio.muted();
+  }
+}
 
-  /** Runs once per frame, after `update`. Draws the state it is handed. */
-  render(state: FoundryState, api: RenderApi): void {
-    renderGame(state, api.ctx);
-  },
+/**
+ * The game this build's engine drives: the instance, the single level and the one actor
+ * that draws it, and the name `engine.initialize` opens it under.
+ */
+export const game: GameDefinition<FoundryDebugApi> = {
+  instance: FoundryInstance,
+  levels: { yard: { mode: FoundryMode, actors: [{ type: Yard }] } },
+  startLevel: "yard",
 };

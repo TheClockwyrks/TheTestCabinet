@@ -1,19 +1,17 @@
-// Arc Foundry — the working shapes the simulation advances, and the world it advances.
+// Arc Foundry — the working shapes the simulation advances.
 //
-// THE STATE IS A VALUE. The engine holds the game's state, hands every reader a
-// read-only view of it, and stores whatever `update` returns as the next state
-// (`engine/frame.md`). `FoundryWorld` below is that state written as the shape the
-// simulation WORKS in — plainly mutable — and `FoundryState`, in `src/game.ts`, is the
-// read-only view of exactly this type that the engine hands out. The one place the two
-// meet is `thaw` in `src/world.ts`: a frame copies the view it was handed into a fresh
-// world, advances that, and returns it. Nothing ever writes through a view, and the
-// value the engine holds from one frame is never touched by the next.
+// Everything here is data: the records a step edits, and nothing else. There is no
+// class, no method, and nothing that reaches outside itself. The state that HOLDS them
+// is `FoundryState` in `src/state.ts`, the one live object the world carries; the
+// arithmetic over these records lives in `src/sim.ts`, the grid and the pathing in
+// `src/board.ts`, and the drawing in `src/render.ts`, so the simulation runs with no
+// canvas, no clock, and no input — which is what lets a scenario advance it a counted
+// number of steps and read the result.
 //
-// Everything here is data. There is no class, no method, and nothing that reaches
-// outside itself: the arithmetic over these records lives in `src/sim.ts`, the grid and
-// the pathing in `src/board.ts`, and the drawing in `src/render.ts`, so the simulation
-// runs with no canvas, no clock, and no input — which is what lets a scenario advance
-// it a counted number of steps and read the result.
+// The geometric records are `readonly` throughout, because a route, a chain, a
+// footprint, and a composed wave are BUILT rather than edited: a step replaces one
+// wholesale rather than writing into it. The records a step does edit — a unit, a shot,
+// a structure — carry plainly mutable fields, and a step writes them in place.
 //
 // The vocabulary — the eight base types, the twelve towers, the six Load types, the
 // three maps, the eight screens — is `src/constants.ts`, and is not restated here.
@@ -21,18 +19,10 @@
 import type {
   ComboId,
   ComponentType,
-  CueName,
-  DifficultyId,
   EffectName,
   LoadType,
-  MapId,
-  PhaseName,
-  ScreenName,
-  Speed,
   TargetingPriority,
 } from "./constants";
-import type { Burst } from "./particles";
-import type { Assets } from "./assets";
 
 /**
  * A point on the stage, in logical units.
@@ -245,117 +235,4 @@ export interface FxEvent {
   readonly y2?: number;
   readonly quality?: number;
   readonly big?: boolean;
-}
-
-// ---- The world -----------------------------------------------------------
-
-/**
- * The whole of Arc Foundry's state.
- *
- * Every field is declared here under its name, its type, and its meaning, and
- * `initialize` builds all of them in one go, so no field is ever absent and no frame
- * branches on a not-yet-loaded value. `reset` on the debug surface restores exactly the
- * fields `specs/instrumentation.md` names, and everything else the game keeps across
- * frames is derived from those.
- */
-export interface FoundryWorld {
-  // ---- Where the game is ----
-  screen: ScreenName;
-  /** The phase of a live run. It reads `build` off the yard, where it means nothing. */
-  phase: PhaseName;
-  /** The in-place pause. The screen stays `playing`. */
-  paused: boolean;
-  /** The highlighted entry on whichever menu is showing, counted from `0`. */
-  menuIndex: number;
-
-  // ---- The run ----
-  mapId: MapId;
-  difficultyId: DifficultyId;
-  charge: number;
-  integrity: number;
-  /** The highest Grid Integrity this run has held, which the bar reads against. */
-  maxIntegrity: number;
-  /** Damage tallied on the finale's Overload Dynamo. The run's one number. */
-  mazeRating: number;
-  /** The post-final Overload Dynamo is walking. */
-  finale: boolean;
-  wave: number;
-  speed: Speed;
-
-  // ---- The yard ----
-  units: Unit[];
-  projectiles: Projectile[];
-  structures: Structure[];
-
-  // ---- Building ----
-  /** A blank rock is on the cursor. It rolls when it lands. */
-  holding: boolean;
-  /** The primary selection, which drives the inspector and the range ring. */
-  selectedId: number | null;
-  /** The explicitly added structures of the combine set, excluding the primary. */
-  selectedIds: number[];
-  /** Rocks placed of the level's `STAMPS_PER_LEVEL` allowance. */
-  stampsUsed: number;
-  refinement: number;
-  harvest: Harvest;
-  /** The exact roll the surface armed for the next placed rock. */
-  armedRoll: { readonly type: ComponentType; readonly quality: number } | null;
-
-  // ---- Run tallies ----
-  kills: number;
-  leakCount: number;
-
-  // ---- The wave schedule ----
-  activeWave: Wave | null;
-  /** The surface's hold on the spawner: a live wave with an empty schedule. */
-  spawnerHeld: boolean;
-  nextWave: Wave;
-  spawnCursor: number;
-  /** Milliseconds into the active wave. */
-  waveClock: number;
-
-  // ---- Clocks ----
-  /** The simulation clock, in seconds. Every rate and duration is measured on it. */
-  simTime: number;
-  /** Unspent simulation time, in seconds, between whole fixed steps. */
-  stepAcc: number;
-  /** The fraction of the next step the frame has already covered, for interpolation. */
-  renderAlpha: number;
-  /** Real elapsed seconds, which drives the cycles and pulses the yard is drawn with. */
-  clockTime: number;
-
-  // ---- Identity ----
-  nextId: number;
-  /** The scrap-press generator's state: the type and quality rolls. */
-  pressRng: number;
-  /** The seed `reset` set, which `startRun` restores the press to. */
-  pressSeed: number;
-  /** The combat generator's state: the crit rolls. */
-  combatRng: number;
-
-  // ---- The ground route, recomputed whenever the walls move ----
-  mazePath: readonly Pt[];
-  /** The route's length, in tiles. */
-  mazeLength: number;
-
-  // ---- Mirrors of what the runtime owns ----
-  /** The engine's mute bit, refreshed every update. */
-  muted: boolean;
-  /** The pointer, in logical units, refreshed every update. */
-  pointerX: number;
-  pointerY: number;
-
-  // ---- The two read-only overlays ----
-  showCombos: boolean;
-  showDamage: boolean;
-
-  // ---- Presentation ----
-  /** Particle bursts raised by the simulation and still playing. */
-  bursts: Burst[];
-  /** Bursts the step raised, drained by the frame that raised them. */
-  fxQueue: FxEvent[];
-  /** Cues the step raised, each at most once, drained by the same frame. */
-  cueQueue: CueName[];
-  /** The produced files, loaded once before the first frame. */
-  assets: Assets;
 }

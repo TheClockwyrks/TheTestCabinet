@@ -47,7 +47,7 @@ import {
 } from "./sim";
 import { COMBO_BY_ID, baseStats } from "./tables";
 import { QUALITY_LABEL, TARGETING_LABEL, qualityIndex } from "./theme";
-import type { FoundryView } from "./world";
+import type { FoundryState } from "./state";
 import type { Component } from "./types";
 
 /**
@@ -164,7 +164,7 @@ export const BOARD_ROW0 = BOARD_PANEL.y + BOARD_PANEL.headH + 6;
 export const BOARD_ROWS = 8;
 
 /** The leaderboard's ranking: every firing structure that has dealt damage. */
-export function leaderboardTop(w: FoundryView): Component[] {
+export function leaderboardTop(w: FoundryState): Component[] {
   const firing = w.structures.filter(
     (s): s is Component => s.kind === "component" && s.damageDealt > 0,
   );
@@ -174,7 +174,7 @@ export function leaderboardTop(w: FoundryView): Component[] {
 }
 
 /** The structure whose leaderboard row the pointer is over, or `null`. */
-export function leaderboardHoverId(w: FoundryView): number | null {
+export function leaderboardHoverId(w: FoundryState): number | null {
   if (!w.showDamage || w.screen !== "playing") return null;
   const top = leaderboardTop(w);
   for (let i = 0; i < top.length; i++) {
@@ -210,7 +210,7 @@ export function inRect(
 // ---- The whole list ------------------------------------------------------
 
 /** Every control the current state draws, in draw order: the last is on top. */
-export function controls(w: FoundryView): Control[] {
+export function controls(w: FoundryState): Control[] {
   switch (w.screen) {
     case "title":
       return verticalMenu(w, 410, 62, 400, 52, 26);
@@ -227,7 +227,7 @@ export function controls(w: FoundryView): Control[] {
 
 /** The title menu: one full-width row per choice, centered. */
 function verticalMenu(
-  w: FoundryView,
+  w: FoundryState,
   y0: number,
   gap: number,
   width: number,
@@ -241,7 +241,7 @@ function verticalMenu(
 
 /** One menu choice's control, from the screen's own list. */
 function menu(
-  w: FoundryView,
+  w: FoundryState,
   index: number,
   x: number,
   y: number,
@@ -262,7 +262,7 @@ function menu(
 }
 
 /** The map cards, in a row, and the entry that backs out. */
-function mapSelectControls(w: FoundryView): Control[] {
+function mapSelectControls(w: FoundryState): Control[] {
   const cardW = 356;
   const gap = 28;
   const total = MAPS.length * cardW + (MAPS.length - 1) * gap;
@@ -289,7 +289,7 @@ export const DIFF_CARD_Y = 170;
 export const DIFF_CARD_H = 340;
 
 /** The difficulty cards, in a row, and the entry that backs out. */
-function difficultySelectControls(w: FoundryView): Control[] {
+function difficultySelectControls(w: FoundryState): Control[] {
   const cardW = 320;
   const gap = 30;
   const n = DIFFICULTIES.length;
@@ -311,7 +311,7 @@ function difficultySelectControls(w: FoundryView): Control[] {
  * The order is the drawing order, so a press resolved from the end of the list reaches
  * the topmost control first.
  */
-function yardControls(w: FoundryView): Control[] {
+function yardControls(w: FoundryState): Control[] {
   const out: Control[] = [...barControls(w), ...panelControls(w)];
   if (w.screen === "playing" && w.showCombos) out.push(...bookControls());
   if (w.screen === "playing" && w.showDamage) out.push(...damageControls(w));
@@ -332,7 +332,7 @@ function yardControls(w: FoundryView): Control[] {
 }
 
 /** The status bar's five controls, each reading its own current value. */
-function barControls(w: FoundryView): Control[] {
+function barControls(w: FoundryState): Control[] {
   return BAR_SLOTS.map((slot) => ({
     x: slot.x,
     y: BAR_Y,
@@ -346,7 +346,7 @@ function barControls(w: FoundryView): Control[] {
 }
 
 /** What each status-bar control draws. */
-export function barLabel(w: FoundryView, action: StatusControlName): string {
+export function barLabel(w: FoundryState, action: StatusControlName): string {
   switch (action) {
     case "combos":
       return "COMBOS";
@@ -363,7 +363,7 @@ export function barLabel(w: FoundryView, action: StatusControlName): string {
 
 /** The value each status-bar control currently reads (specs/instrumentation.md). */
 export function barState(
-  w: FoundryView,
+  w: FoundryState,
   action: StatusControlName,
 ): boolean | number {
   switch (action) {
@@ -381,7 +381,7 @@ export function barState(
 }
 
 /** The panel's two standing controls, then the inspector's actions. */
-function panelControls(w: FoundryView): Control[] {
+function panelControls(w: FoundryState): Control[] {
   const out: Control[] = [
     {
       x: PANEL_CONTENT_X,
@@ -419,10 +419,10 @@ function panelControls(w: FoundryView): Control[] {
  * disabled, because the structure has no priority to cycle at all: a candidate, which
  * does not fire, and a Regulator, which never does (specs/hud.md).
  */
-export function inspectorControls(w: FoundryView): Control[] {
+export function inspectorControls(w: FoundryState): Control[] {
   const sel = selected(w);
   if (!sel) return [];
-  const inBuild = w.phase === "build";
+  const inBuild = w.runPhase === "build";
   const out: Control[] = [];
   let y = ACTION_BOTTOM - 26;
 
@@ -550,7 +550,7 @@ function bookControls(): Control[] {
 }
 
 /** The damage leaderboard: its body, which swallows presses, and its close control. */
-function damageControls(w: FoundryView): Control[] {
+function damageControls(w: FoundryState): Control[] {
   const rows = Math.max(1, leaderboardTop(w).length);
   const h = BOARD_PANEL.headH + 8 + rows * BOARD_PANEL.rowH + 8;
   const close = 20;
@@ -579,31 +579,31 @@ function damageControls(w: FoundryView): Control[] {
 }
 
 /** The menu choices of the screen showing, in the order they are presented. */
-export function menuControls(w: FoundryView): Control[] {
+export function menuControls(w: FoundryState): Control[] {
   if (!isMenuScreen(w.screen)) return [];
   return controls(w).filter((c) => c.kind === "menu");
 }
 
 /** The inspector's action controls, in slot order. */
-export function panelButtonControls(w: FoundryView): Control[] {
+export function panelButtonControls(w: FoundryState): Control[] {
   return controls(w).filter((c) => c.kind === "panel");
 }
 
 /** The status bar's controls, and none at all on a screen with no bar. */
-export function statusBarControls(w: FoundryView): Control[] {
+export function statusBarControls(w: FoundryState): Control[] {
   if (isMenuScreen(w.screen)) return [];
   return controls(w).filter((c) => c.kind === "bar");
 }
 
 /** Whether a structure's own block would ever offer a targeting priority. */
-export function everFires(w: FoundryView): boolean {
+export function everFires(w: FoundryState): boolean {
   const sel = selected(w);
   if (!sel || sel.kind !== "component") return false;
   return unbuffedStats(sel).fires;
 }
 
 /** The menu entry the pointer is over, or `null`. */
-export function menuHoverIndex(w: FoundryView): number | null {
+export function menuHoverIndex(w: FoundryState): number | null {
   const items = menuControls(w);
   for (let i = 0; i < items.length; i++) {
     const c = items[i]!;
@@ -613,7 +613,7 @@ export function menuHoverIndex(w: FoundryView): number | null {
 }
 
 /** Whether a menu entry is drawn as the highlighted one. */
-export function isHighlighted(w: FoundryView, index: number): boolean {
+export function isHighlighted(w: FoundryState, index: number): boolean {
   if (w.menuIndex === index) return true;
   return menuHoverIndex(w) === index;
 }

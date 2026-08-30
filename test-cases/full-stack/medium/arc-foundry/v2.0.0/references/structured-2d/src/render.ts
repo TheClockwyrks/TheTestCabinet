@@ -1,18 +1,21 @@
 // Arc Foundry — the renderer (specs/overview.md, specs/yard.md, specs/hud.md,
 // specs/ui.md, specs/assets.md).
 //
-// The engine owns no drawing at all: it hands `render` a 2D context that arrives
-// cleared, already carrying the logical transform, and everything on the stage is drawn
-// here, in `STAGE_W x STAGE_H` logical units. The yard substrate and its grid, each
-// map's platforms and its entry and collector, the flow toward the sink, the maze of
-// produced component, candidate, and blocker sprites with the quality ladder escalating
-// rung by rung, the Load with its health bars and idle cycles, the shots in flight, the
-// produced particle bursts, and the whole heads-up display and every menu.
+// Nothing the engine's declarative pipeline states could draw this stage, so the whole
+// picture is drawn directly, through the two `DrawComponent`s the yard actor carries
+// (`src/yard.ts`). Each is handed a context that arrives cleared and already carrying
+// the world-to-device transform, and the game leaves the camera at rest, so everything
+// below is in `STAGE_W x STAGE_H` units that are world and logical units at once. The
+// yard substrate and its grid, each map's platforms and its entry and collector, the
+// flow toward the sink, the maze of produced component, candidate, and blocker sprites
+// with the quality ladder escalating rung by rung, the Load with its health bars and
+// idle cycles, the shots in flight, the produced particle bursts, and the whole
+// heads-up display and every menu.
 //
-// IT ONLY READS. The state arrives as a read-only view and this module returns nothing,
-// so a frame's drawing cannot move the simulation — the type is what says so rather than
-// a convention. Where a control sits is `src/layout.ts`, which the pointer and the debug
-// surface read too, so what is drawn and what a press activates can never drift apart.
+// IT ONLY READS. Every function here takes the live state and returns nothing, and none
+// of them writes a field of it, so a frame's drawing never moves the simulation. Where
+// a control sits is `src/layout.ts`, which the pointer and the debug surface read too,
+// so what is drawn and what a press activates can never drift apart.
 //
 // EVERY PRODUCED SPRITE HAS A CODE FALLBACK, in the piece's own accent. A file that did
 // not arrive costs that file and nothing else, and the yard stays fully readable.
@@ -124,8 +127,7 @@ import {
   qualityIndex,
 } from "./theme";
 import type { Candidate, Component, Structure, Unit } from "./types";
-import type { FoundryView } from "./world";
-import type { DeepReadonly } from "ts-essentials";
+import type { FoundryState } from "./state";
 
 /** The right panel's width, and the yard's extent, as the drawing uses them. */
 const BOARD_X1 = BOARD_X + BOARD_W;
@@ -410,19 +412,62 @@ function byAction(
   return list.find((c) => c.action === action);
 }
 
-// ---- The frame -----------------------------------------------------------
+// ---- The two layers `src/yard.ts` draws ----------------------------------
+//
+// The split is the engine's rendering order made explicit: the yard and everything
+// standing on it below, the heads-up display and every screen above. A screen that is
+// not the yard draws nothing in the lower layer, which is what leaves the menus over
+// the stage background the engine cleared to rather than over a half-drawn field.
+//
+// Both layers draw from the same `controls(g)` list `src/layout.ts` builds, which is
+// what the pointer resolves a press against, so a control is drawn exactly where it is
+// activated.
 
-/** Draw the whole stage from the state it is handed. */
-export function renderGame(
-  g: FoundryView,
+/** Whether this screen shows the yard behind whatever the upper layer draws. */
+function onTheYard(g: FoundryState): boolean {
+  return (
+    g.screen === "playing" ||
+    g.screen === "paused" ||
+    g.screen === "victory" ||
+    g.screen === "overload"
+  );
+}
+
+/**
+ * The lower layer: the yard, the Load walking it, the shots in flight, the produced
+ * bursts, and the rock on the cursor.
+ *
+ * The waypoint numbers are drawn last, so a structure or a unit can never cover the
+ * ordered chain.
+ */
+export function renderYardLayer(
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
 ): void {
   ctx.imageSmoothingEnabled = true;
-  ctx.fillStyle = COL.void;
-  ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+  if (!onTheYard(g)) return;
 
-  const list = controls(g);
   const frame: Frame = { tooltip: null, focusId: leaderboardHoverId(g) };
+  drawYard(g, ctx, frame);
+  drawUnits(g, ctx);
+  drawProjectiles(g, ctx);
+  drawBursts(ctx, g.bursts);
+  drawBuildCursor(g, ctx);
+  drawWaypointNumbers(g, ctx);
+}
+
+/**
+ * The upper layer: the current screen's chrome, its menus, and its overlays.
+ *
+ * The tooltip a hovered row raises is collected while the panel is drawn and floated
+ * last, over everything, so the row it belongs to is never what covers it.
+ */
+export function renderUiLayer(
+  g: FoundryState,
+  ctx: CanvasRenderingContext2D,
+): void {
+  ctx.imageSmoothingEnabled = true;
+  const list = controls(g);
 
   switch (g.screen) {
     case "title":
@@ -441,14 +486,7 @@ export function renderGame(
       break;
   }
 
-  drawYard(g, ctx, frame);
-  drawUnits(g, ctx);
-  drawProjectiles(g, ctx);
-  drawBursts(ctx, g.bursts);
-  drawBuildCursor(g, ctx);
-  // The waypoint numbers are drawn last of the yard layer, so a structure or a unit can
-  // never cover the ordered chain.
-  drawWaypointNumbers(g, ctx);
+  const frame: Frame = { tooltip: null, focusId: leaderboardHoverId(g) };
   drawStatusBar(g, ctx, list);
   drawPanel(g, ctx, list, frame);
   drawTooltip(ctx, frame);
@@ -465,7 +503,7 @@ export function renderGame(
 // ---- The yard ------------------------------------------------------------
 
 function drawYard(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   frame: Frame,
 ): void {
@@ -572,8 +610,8 @@ function drawYard(
  * focused layer marks the exact set the current selection would fold, brighter and on
  * top, in the combo accent once the set is explicit.
  */
-function drawCombineMarks(g: FoundryView, ctx: CanvasRenderingContext2D): void {
-  const byId = new Map<number, DeepReadonly<Structure>>();
+function drawCombineMarks(g: FoundryState, ctx: CanvasRenderingContext2D): void {
+  const byId = new Map<number, Structure>();
   for (const s of g.structures) byId.set(s.id, s);
 
   const mark = (
@@ -631,7 +669,7 @@ function drawCombineMarks(g: FoundryView, ctx: CanvasRenderingContext2D): void {
 }
 
 /** Each waypoint's platform: walkable plating a footprint may never cover. */
-function drawPlatforms(g: FoundryView, ctx: CanvasRenderingContext2D): void {
+function drawPlatforms(g: FoundryState, ctx: CanvasRenderingContext2D): void {
   const board = boardOf(g.mapId);
   ctx.save();
   for (const key of board.waypointTiles) {
@@ -649,7 +687,7 @@ function drawPlatforms(g: FoundryView, ctx: CanvasRenderingContext2D): void {
 }
 
 /** The ordered chain, as a guide line with chevrons marching toward the collector. */
-function drawFlow(g: FoundryView, ctx: CanvasRenderingContext2D): void {
+function drawFlow(g: FoundryState, ctx: CanvasRenderingContext2D): void {
   const pts = boardOf(g.mapId).chain.map((t) => tileCenter(t.col, t.row));
   ctx.save();
   ctx.strokeStyle = hexA(COL.flow, 0.35);
@@ -688,7 +726,7 @@ function drawFlow(g: FoundryView, ctx: CanvasRenderingContext2D): void {
 }
 
 /** The entry vent, the collector sink, and the studs on each waypoint platform. */
-function drawWaypoints(g: FoundryView, ctx: CanvasRenderingContext2D): void {
+function drawWaypoints(g: FoundryState, ctx: CanvasRenderingContext2D): void {
   const chain = boardOf(g.mapId).chain;
   const A = g.assets;
   for (let i = 0; i < chain.length; i++) {
@@ -730,7 +768,7 @@ function drawWaypoints(g: FoundryView, ctx: CanvasRenderingContext2D): void {
 
 /** The order numbers, drawn over everything else on the yard. */
 function drawWaypointNumbers(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
 ): void {
   if (g.screen === "title" || g.screen === "mapselect") return;
@@ -788,7 +826,7 @@ function drawAuraRange(
 }
 
 /** The ground route, drawn while the maze readout is hovered. */
-function drawMazePath(g: FoundryView, ctx: CanvasRenderingContext2D): void {
+function drawMazePath(g: FoundryState, ctx: CanvasRenderingContext2D): void {
   const pts = g.mazePath;
   if (pts.length < 2) return;
   ctx.save();
@@ -863,7 +901,7 @@ function codeHead(
 
 /** The Regulator's read: a pulsing core with no barrel, so it never looks like it fires. */
 function supportCore(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
@@ -897,7 +935,7 @@ function supportCore(
 
 /** A faint pulse around an aura source, so its support role reads on the yard. */
 function auraPulse(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
@@ -982,9 +1020,9 @@ function selectionOutline(
  * distinctly, and the Regulator draws a support core rather than a head.
  */
 function drawComponent(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
-  c: DeepReadonly<Component>,
+  c: Component,
 ): void {
   const at = footprintCenter(c.col, c.row);
   const size = FOOTPRINT_PX;
@@ -1092,9 +1130,9 @@ function drawFireCycle(
 
 /** A combination tower: a single-grade keystone with its own accent and badge. */
 function drawComboTower(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
-  c: DeepReadonly<Component>,
+  c: Component,
   cx: number,
   cy: number,
   size: number,
@@ -1164,9 +1202,9 @@ function drawComboTower(
 
 /** An inert blocker: a hardened rock with no head, unmistakably dead. */
 function drawBlocker(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
-  s: DeepReadonly<Structure>,
+  s: Structure,
 ): void {
   const at = footprintCenter(s.col, s.row);
   const size = FOOTPRINT_PX;
@@ -1196,9 +1234,9 @@ function drawBlocker(
  * as a settled firing structure, while its type and quality still read at a glance.
  */
 function drawCandidate(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
-  c: DeepReadonly<Candidate>,
+  c: Candidate,
 ): void {
   const at = footprintCenter(c.col, c.row);
   const size = FOOTPRINT_PX;
@@ -1254,7 +1292,7 @@ function drawCandidate(
 // ---- Shots and the Load --------------------------------------------------
 
 /** Every shot in flight, drawn between where it stood and where it stands. */
-function drawProjectiles(g: FoundryView, ctx: CanvasRenderingContext2D): void {
+function drawProjectiles(g: FoundryState, ctx: CanvasRenderingContext2D): void {
   const alpha = g.renderAlpha;
   for (const p of g.projectiles) {
     const px = p.prevX + (p.x - p.prevX) * alpha;
@@ -1278,7 +1316,7 @@ function drawProjectiles(g: FoundryView, ctx: CanvasRenderingContext2D): void {
   }
 }
 
-function drawUnits(g: FoundryView, ctx: CanvasRenderingContext2D): void {
+function drawUnits(g: FoundryState, ctx: CanvasRenderingContext2D): void {
   for (const u of g.units) {
     if (u.dead) continue;
     drawUnit(g, ctx, u);
@@ -1287,9 +1325,9 @@ function drawUnits(g: FoundryView, ctx: CanvasRenderingContext2D): void {
 }
 
 function drawUnit(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
-  u: DeepReadonly<Unit>,
+  u: Unit,
 ): void {
   const alpha = g.renderAlpha;
   const ux = u.prevX + (u.x - u.prevX) * alpha;
@@ -1364,9 +1402,9 @@ function drawUnit(
 }
 
 function drawHealthBar(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
-  u: DeepReadonly<Unit>,
+  u: Unit,
 ): void {
   const alpha = g.renderAlpha;
   const ux = u.prevX + (u.x - u.prevX) * alpha;
@@ -1403,7 +1441,7 @@ function drawHealthBar(
  * A blank lump and a question mark: the type and the quality only roll when it lands, so
  * there is no head and no range ring to draw.
  */
-function drawBuildCursor(g: FoundryView, ctx: CanvasRenderingContext2D): void {
+function drawBuildCursor(g: FoundryState, ctx: CanvasRenderingContext2D): void {
   if (g.screen !== "playing" || !g.holding) return;
   const px = g.pointerX;
   const py = g.pointerY;
@@ -1445,7 +1483,7 @@ function drawBuildCursor(g: FoundryView, ctx: CanvasRenderingContext2D): void {
 // ---- The status bar ------------------------------------------------------
 
 function drawStatusBar(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   list: readonly Control[],
 ): void {
@@ -1500,7 +1538,7 @@ function drawStatusBar(
   } else if (g.finale) {
     sub = "OVERLOAD";
     subColor = COL.boss;
-  } else if (g.phase === "build") {
+  } else if (g.runPhase === "build") {
     sub = "BUILD";
     subColor = COL.integrity;
   } else {
@@ -1610,7 +1648,7 @@ function drawStatusBar(
 // ---- The build panel -----------------------------------------------------
 
 function drawPanel(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   list: readonly Control[],
   frame: Frame,
@@ -1758,7 +1796,7 @@ function drawPanel(
 
 /** The quality-roll odds at the live refinement level, as a stacked bar and a legend. */
 function drawQualityOdds(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -1825,7 +1863,7 @@ function drawQualityOdds(
 
 /** While a rock is on the cursor: no type and no quality, because it has not rolled. */
 function drawHeldInfo(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -1866,9 +1904,9 @@ function drawHeldInfo(
 
 /** The selected structure: what it is, what it does, and the actions it offers. */
 function drawInspector(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
-  s: DeepReadonly<Structure>,
+  s: Structure,
   list: readonly Control[],
 ): void {
   const x = INSPECT_X;
@@ -2075,7 +2113,7 @@ function drawInspector(
 }
 
 /** The accent an inspector action is drawn in. */
-function actionAccent(action: string, s: DeepReadonly<Structure>): string {
+function actionAccent(action: string, s: Structure): string {
   switch (action) {
     case "dismantle":
       return COL.alert;
@@ -2103,7 +2141,7 @@ function actionAccent(action: string, s: DeepReadonly<Structure>): string {
  * rather than showing through.
  */
 function drawRecipeRow(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   c: Control,
 ): void {
@@ -2128,7 +2166,7 @@ function drawRecipeRow(
 
 /** With nothing selected, the coming wave's types and counts. */
 function drawNextWave(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -2291,7 +2329,7 @@ function recipeStates(
 
 /** The selection's own ingredient, when it is one, for the book to fold against. */
 function selectedIngredient(
-  g: FoundryView,
+  g: FoundryState,
 ): { type: ComponentType; quality: number } | null {
   const sel = selected(g);
   if (!sel) return null;
@@ -2303,7 +2341,7 @@ function selectedIngredient(
 }
 
 /** The yard's ingredient pool, as counts, excluding the current selection. */
-function ownedIngredients(g: FoundryView): Map<string, number> {
+function ownedIngredients(g: FoundryState): Map<string, number> {
   const selectedId = selected(g)?.id ?? null;
   const out = new Map<string, number>();
   for (const s of g.structures) {
@@ -2318,7 +2356,7 @@ function ownedIngredients(g: FoundryView): Map<string, number> {
 
 /** A recipe as its ingredient list, each token in the state the yard puts it in. */
 function drawRecipe(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   combo: ComboId,
   states: readonly IngredientState[],
@@ -2367,7 +2405,7 @@ function drawRecipe(
 
 /** The read-only reference of all twelve towers, their recipes, and their stats. */
 function drawRecipeBook(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   list: readonly Control[],
 ): void {
@@ -2488,7 +2526,7 @@ function drawRecipeBook(
 
 /** A card describing what a hovered tower does, clamped inside the book. */
 function drawComboTooltip(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   combo: ComboId,
 ): void {
@@ -2522,7 +2560,7 @@ function drawComboTooltip(
 // ---- The damage leaderboard ----------------------------------------------
 
 function drawLeaderboard(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   list: readonly Control[],
   frame: Frame,
@@ -2642,7 +2680,7 @@ function drawLeaderboard(
 
 /** A dim slice of yard behind a menu, for atmosphere. */
 function drawSubstrateWash(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
 ): void {
   const tile = g.assets.sprite(YARD_SUBSTRATE);
@@ -2661,7 +2699,7 @@ function drawSubstrateWash(
 }
 
 function drawTitle(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   list: readonly Control[],
 ): void {
@@ -2775,7 +2813,7 @@ function drawMapPreview(
 }
 
 function drawMapSelect(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   list: readonly Control[],
 ): void {
@@ -2855,7 +2893,7 @@ function drawMapSelect(
 }
 
 function drawDifficultySelect(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   list: readonly Control[],
 ): void {
@@ -2995,7 +3033,7 @@ function drawDifficultySelect(
 
 /** The rules, in a player's words. */
 function drawHowto(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   list: readonly Control[],
 ): void {
@@ -3107,7 +3145,7 @@ function panelBox(
 }
 
 function drawPauseMenu(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   list: readonly Control[],
 ): void {
@@ -3120,7 +3158,7 @@ function drawPauseMenu(
 }
 
 function drawEnd(
-  g: FoundryView,
+  g: FoundryState,
   ctx: CanvasRenderingContext2D,
   list: readonly Control[],
   won: boolean,
