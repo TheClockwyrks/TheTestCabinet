@@ -428,6 +428,22 @@ it("withOwnClock hands the clock over and takes it back, however it ends", async
     "and the harness has it back after",
   );
 
+  // And the one-window form, reached through a reference to the method rather
+  // than through the harness, because a caller is free to lift it out.
+  const { settle } = h;
+  const opened = await h.snapshot();
+  await settle(250);
+  assertGreaterThan(
+    (await h.snapshot()).simTime,
+    opened.simTime,
+    "settle spends real time on the build's own clock",
+  );
+  assertEqual(
+    (await h.snapshot()).autoStep,
+    false,
+    "and hands the clock back too",
+  );
+
   // And after a scenario that threw, which is the case a `finally` is for.
   let threw = false;
   try {

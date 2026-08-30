@@ -1261,6 +1261,54 @@ export async function createHarness(
     },
   };
 
+  /** {@link Harness.withOwnClock}, hoisted so `settle` can reach it too. */
+  const withOwnClock = async <T>(
+    scenario: (clock: OwnClock) => Promise<T>,
+  ): Promise<T> => {
+    if (surfaceFault !== null) refuse();
+    // Real elapsed time is the one thing a browser's own idea of which page
+    // matters can distort. The launch already turns the throttling off;
+    // bringing the page forward as well means this does not rest on a flag
+    // alone.
+    await page.bringToFront().catch(() => undefined);
+    await page.evaluate(
+      ([handle]) => {
+        (
+          window as unknown as { __meltdownRec: { setMode(m: string): void } }
+        ).__meltdownRec.setMode("raf");
+        (
+          window as unknown as Record<
+            string,
+            { setAutoStep(on: boolean): void }
+          >
+        )[handle].setAutoStep(true);
+      },
+      [HANDLE] as const,
+    );
+    try {
+      return await scenario(ownClock);
+    } finally {
+      // In a `finally`, so a scenario that threw still leaves the clock where
+      // every other helper in this file expects to find it.
+      await page.evaluate(
+        ([handle]) => {
+          (
+            window as unknown as Record<
+              string,
+              { setAutoStep(on: boolean): void }
+            >
+          )[handle].setAutoStep(false);
+          (
+            window as unknown as {
+              __meltdownRec: { setMode(m: string): void };
+            }
+          ).__meltdownRec.setMode("manual");
+        },
+        [HANDLE] as const,
+      );
+    }
+  };
+
   const harness: Harness = {
     page,
     debug,
@@ -1315,54 +1363,9 @@ export async function createHarness(
       return { hit: false, elapsed, snapshot };
     },
 
-    async withOwnClock(scenario) {
-      if (surfaceFault !== null) refuse();
-      // Real elapsed time is the one thing a browser's own idea of which page
-      // matters can distort. The launch already turns the throttling off;
-      // bringing the page forward as well means this does not rest on a flag
-      // alone.
-      await page.bringToFront().catch(() => undefined);
-      await page.evaluate(
-        ([handle]) => {
-          (
-            window as unknown as { __meltdownRec: { setMode(m: string): void } }
-          ).__meltdownRec.setMode("raf");
-          (
-            window as unknown as Record<
-              string,
-              { setAutoStep(on: boolean): void }
-            >
-          )[handle].setAutoStep(true);
-        },
-        [HANDLE] as const,
-      );
-      try {
-        return await scenario(ownClock);
-      } finally {
-        // In a `finally`, so a scenario that threw still leaves the clock where
-        // every other helper in this file expects to find it.
-        await page.evaluate(
-          ([handle]) => {
-            (
-              window as unknown as Record<
-                string,
-                { setAutoStep(on: boolean): void }
-              >
-            )[handle].setAutoStep(false);
-            (
-              window as unknown as {
-                __meltdownRec: { setMode(m: string): void };
-              }
-            ).__meltdownRec.setMode("manual");
-          },
-          [HANDLE] as const,
-        );
-      }
-    },
+    withOwnClock,
 
-    settle(ms) {
-      return this.withOwnClock((clock) => clock.settle(ms));
-    },
+    settle: (ms) => withOwnClock((clock) => clock.settle(ms)),
 
     hold: (code) => page.keyboard.down(code),
     release: (code) => page.keyboard.up(code),
