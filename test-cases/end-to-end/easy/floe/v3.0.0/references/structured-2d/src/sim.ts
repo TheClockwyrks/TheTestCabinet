@@ -150,7 +150,7 @@ export function noIntents(): Intents {
  * exactly one hop. The edge is cleared by the tick that read it, so it asks for
  * one hop and no more.
  */
-export function requested(intents: Intents): Facing | null {
+function requested(intents: Intents): Facing | null {
   if (intents.held !== null) return intents.held;
   if (intents.up) return "up";
   if (intents.down) return "down";
@@ -227,7 +227,7 @@ export function resetGame(
 }
 
 /** Open a run at level 1 with a fresh crossing (specs/progression.md). */
-export function startRun(world: World, state: FloeState): void {
+function startRun(world: World, state: FloeState): void {
   state.level = 1;
   state.reachedLevel = 1;
   state.lives = START_LIVES;
@@ -243,7 +243,7 @@ export function startRun(world: World, state: FloeState): void {
 }
 
 /** Put a fresh critter on the near shore and start its timer over. */
-export function beginCrossing(world: World, state: FloeState): void {
+function beginCrossing(world: World, state: FloeState): void {
   freshCritter(critterOf(world));
   state.timer = crossingTimer(state.level);
   state.phase = "crossing";
@@ -272,7 +272,7 @@ function openLevel(world: World, state: FloeState, level: number): void {
  * Every award in the game runs through here, and a POSED score does not: a pose
  * is a precondition, and the award belongs to the scoring path.
  */
-export function addScore(state: FloeState, points: number, bus: Bus): void {
+function addScore(state: FloeState, points: number, bus: Bus): void {
   const before = Math.floor(state.score / BONUS_LIFE_EVERY);
   state.score += points;
   const earned = Math.floor(state.score / BONUS_LIFE_EVERY) - before;
@@ -298,7 +298,7 @@ const DEATH_CUE: Record<Death, CueName | null> = {
  * The critter leaves the strait for the whole of the hold, so nothing on the
  * strait can reach it and no second life is lost, and every bear leaves with it.
  */
-export function loseLife(
+function loseLife(
   world: World,
   state: FloeState,
   cause: Death,
@@ -324,7 +324,7 @@ export function loseLife(
 // ---- The hop -------------------------------------------------------------
 
 /** Whether a hop onto a tile is refused (specs/hopping.md). */
-export function hopRefused(
+function hopRefused(
   world: World,
   state: FloeState,
   col: number,
@@ -340,7 +340,7 @@ export function hopRefused(
 }
 
 /** Take one hop, if the rules accept it. Returns whether the critter moved. */
-export function tryHop(
+function tryHop(
   world: World,
   state: FloeState,
   facing: Facing,
@@ -409,7 +409,7 @@ function fillBay(world: World, state: FloeState, bay: number, bus: Bus): void {
 // ---- The screens ---------------------------------------------------------
 
 /** How many items the current screen's menu carries. */
-export function menuLength(state: FloeState): number {
+function menuLength(state: FloeState): number {
   switch (state.screen) {
     case "title":
       return TITLE_ITEMS.length;

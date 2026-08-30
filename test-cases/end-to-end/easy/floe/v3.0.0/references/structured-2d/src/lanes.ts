@@ -214,7 +214,7 @@ export function laneAt(state: FloeState, row: number): LaneState | null {
 }
 
 /** The ring the row's items wrap around, or `null` where the row carries none. */
-export function ringAt(state: FloeState, row: number): LaneRing | null {
+function ringAt(state: FloeState, row: number): LaneRing | null {
   return state.laneRings.find((ring) => ring.row === row) ?? null;
 }
 
@@ -262,7 +262,7 @@ function moveBand(
 }
 
 /** The covering rule (specs/ice.md): a point on the item's own row. */
-export function coversPoint(item: LaneBody, x: number): boolean {
+function coversPoint(item: LaneBody, x: number): boolean {
   return x >= item.transform.x && x < item.transform.x + TILE * item.len;
 }
 

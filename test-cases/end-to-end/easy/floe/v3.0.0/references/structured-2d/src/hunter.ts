@@ -64,7 +64,7 @@ export function bearSwimming(world: World, bear: Bear): boolean {
 }
 
 /** A bear's speed, in stage units per second: its footing and the level decide it. */
-export function bearSpeed(world: World, state: FloeState, bear: Bear): number {
+function bearSpeed(world: World, state: FloeState, bear: Bear): number {
   const tiles = bearSwimming(world, bear)
     ? bearSwimSpeed(state.level)
     : bearIceSpeed(state.level);
@@ -75,7 +75,7 @@ export function bearSpeed(world: World, state: FloeState, bear: Bear): number {
  * Whether a tile is closed to a bear: off the grid, on the far shore, or covered
  * by a vehicle (specs/hunter.md).
  */
-export function tileClosed(world: World, col: number, row: number): boolean {
+function tileClosed(world: World, col: number, row: number): boolean {
   if (!inBounds(col, row)) return true;
   if (row === ROW_CAP || row === ROW_BAYS) return true;
   for (const item of vehiclesOf(world)) {

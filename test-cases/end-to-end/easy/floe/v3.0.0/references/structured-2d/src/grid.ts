@@ -45,19 +45,6 @@ export function facingDY(facing: Facing): number {
 /** The four grid directions, in the fixed order every tie is broken by. */
 export const DIRECTIONS: readonly Facing[] = ["up", "down", "left", "right"];
 
-/** The facing that steps from one tile to a neighboring one. */
-export function facingBetween(
-  fromCol: number,
-  fromRow: number,
-  toCol: number,
-  toRow: number,
-): Facing {
-  if (toRow < fromRow) return "up";
-  if (toRow > fromRow) return "down";
-  if (toCol < fromCol) return "left";
-  return "right";
-}
-
 /** The tile distance between two tiles: the sum of the absolute differences. */
 export function tileDistance(
   aCol: number,

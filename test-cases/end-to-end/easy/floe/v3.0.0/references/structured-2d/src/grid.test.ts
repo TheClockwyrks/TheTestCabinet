@@ -29,7 +29,6 @@ import {
   bayCenterX,
   bayColumns,
   bayIndexAtCol,
-  facingBetween,
   facingDX,
   facingDY,
   isWaterRow,
@@ -120,13 +119,6 @@ describe("directions", () => {
     expect([facingDX("down"), facingDY("down")]).toEqual([0, 1]);
     expect([facingDX("left"), facingDY("left")]).toEqual([-1, 0]);
     expect([facingDX("right"), facingDY("right")]).toEqual([1, 0]);
-  });
-
-  it("names the facing between two neighboring tiles", () => {
-    expect(facingBetween(5, 5, 5, 4)).toBe("up");
-    expect(facingBetween(5, 5, 5, 6)).toBe("down");
-    expect(facingBetween(5, 5, 4, 5)).toBe("left");
-    expect(facingBetween(5, 5, 6, 5)).toBe("right");
   });
 
   it("measures tile distance as the sum of the differences", () => {

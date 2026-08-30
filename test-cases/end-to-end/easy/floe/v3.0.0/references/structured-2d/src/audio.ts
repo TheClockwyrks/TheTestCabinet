@@ -20,7 +20,7 @@ import type { CueSpec, InitApi, World } from "@test-cabinet/structured-2d";
 import { CUES, type CueName } from "./constants";
 
 /** The synthesis behind each of the ten cues. */
-export const CUE_SPECS: Readonly<Record<CueName, CueSpec>> = {
+const CUE_SPECS: Readonly<Record<CueName, CueSpec>> = {
   [CUES.hop]: {
     wave: "square",
     freq: 520,

@@ -69,7 +69,7 @@ export function freshCritter(critter: Critter): void {
  * Read for the critter, and read again for the tile a bear is travelling into,
  * because a bear's speed depends on the same three-way answer.
  */
-export function footingAt(world: World, x: number, row: number): Footing {
+function footingAt(world: World, x: number, row: number): Footing {
   if (!isWaterRow(row)) return "solid";
   return floeAtPoint(world, x, row) === null ? "water" : "floe";
 }
