@@ -147,7 +147,13 @@ export class AudioBus implements AudioPort {
   /** Open the context, degrading to silence where the platform has none. */
   private open(): void {
     if (this.context !== null) return;
-    const context = this.source();
+    let context: AudioContext | null = null;
+    try {
+      context = this.source();
+    } catch {
+      // A platform that refuses a context leaves the game silent, never broken.
+      return;
+    }
     if (context === null) return;
     this.context = context;
     void context.resume().catch(() => undefined);

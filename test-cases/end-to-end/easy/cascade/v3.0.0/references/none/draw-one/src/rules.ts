@@ -24,11 +24,6 @@ export function isRun(cards: readonly Card[]): boolean {
   return true;
 }
 
-/** The colour a card is drawn in. */
-export function cardColor(card: Card): "red" | "black" {
-  return suitColor(card.suit);
-}
-
 /**
  * Whether a foundation accepts `cards`.
  *

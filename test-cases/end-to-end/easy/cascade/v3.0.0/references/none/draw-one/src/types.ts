@@ -105,8 +105,3 @@ export function suitColor(suit: Suit): CardColor {
 export function pointInRect(x: number, y: number, r: Rect): boolean {
   return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
 }
-
-/** The centre of a rectangle. */
-export function rectCenter(r: Rect): { x: number; y: number } {
-  return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
-}

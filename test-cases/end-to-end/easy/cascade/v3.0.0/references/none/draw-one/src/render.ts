@@ -49,7 +49,12 @@ import {
 } from "./constants";
 import { wasteVisibleCount } from "./board";
 import type { CascadeState } from "./state";
-import { columnCardYs, columnDropRect, foundationRect } from "./table";
+import {
+  columnCardYs,
+  columnDropRect,
+  foundationRect,
+  hudStrip,
+} from "./table";
 import { COLOR, SUIT_GLYPH, UI_FONT } from "./theme";
 import type { Card, Rect } from "./types";
 
@@ -187,9 +192,10 @@ function drawHeldRun(state: CascadeState, ctx: CanvasRenderingContext2D): void {
 /* ---- The HUD ------------------------------------------------------------- */
 
 function drawHud(ctx: CanvasRenderingContext2D): void {
+  const strip = hudStrip();
   ctx.save();
   ctx.fillStyle = "rgba(6, 44, 27, 0.72)";
-  ctx.fillRect(0, HUD_Y, STAGE_W, HUD_H);
+  ctx.fillRect(strip.x, strip.y, strip.w, strip.h);
   ctx.restore();
 
   drawButton(ctx, HUD_NEW_GAME, HUD_ITEMS[0]);

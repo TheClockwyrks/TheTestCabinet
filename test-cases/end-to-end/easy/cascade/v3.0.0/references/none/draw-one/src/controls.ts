@@ -17,7 +17,6 @@ import type { AudioPort } from "./audio-bus";
 import {
   CARD_H,
   CARD_W,
-  COLUMN_X,
   CUES,
   DOUBLE_CLICK_SLOP,
   DOUBLE_CLICK_WINDOW,
@@ -44,7 +43,7 @@ import {
 import type { PointerSample } from "./pointer";
 import type { CascadeState } from "./state";
 import {
-  columnCardYs,
+  columnCardRect,
   foundationRect,
   stockRect,
   wasteRect,
@@ -133,10 +132,7 @@ export function playableAt(
     if (column.length === 0) continue;
     const row = column.length - 1;
     if (!column[row].faceUp) continue;
-    const top = columnCardYs(column)[row];
-    if (
-      pointInRect(x, y, { x: COLUMN_X[index], y: top, w: CARD_W, h: CARD_H })
-    ) {
+    if (pointInRect(x, y, columnCardRect(index, column, row))) {
       return { pile: "tableau", index };
     }
   }
@@ -209,11 +205,10 @@ function grabTarget(
   for (let index = 0; index < TABLEAU_COLUMNS; index += 1) {
     const column = state.tableau[index];
     if (column.length === 0) continue;
-    const ys = columnCardYs(column);
     // The card drawn over every other card at the point is the LOWEST of the
     // cards whose footprint contains it, so the scan runs from the bottom up.
     for (let row = column.length - 1; row >= 0; row -= 1) {
-      const rect = { x: COLUMN_X[index], y: ys[row], w: CARD_W, h: CARD_H };
+      const rect = columnCardRect(index, column, row);
       if (!pointInRect(x, y, rect)) continue;
       if (!column[row].faceUp) return null;
       return {
