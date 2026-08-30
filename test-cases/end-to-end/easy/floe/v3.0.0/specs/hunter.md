@@ -35,6 +35,11 @@ tick and the travel left over is added to the next tick's travel, so no distance
 is lost at a tile center. On settling it chooses its next step, and its facing is
 the direction of the step it is travelling on.
 
+Two properties follow, and both hold on every tick. A bear's step, and with it
+its facing and the axis it travels on, changes only on a tick whose center is
+exactly a tile center. And a tick moves a bear along one axis, so no tick changes
+both its center `x` and its center `y`.
+
 ## Speed
 
 A bear's footing is the footing of the tile it is travelling into. It is
