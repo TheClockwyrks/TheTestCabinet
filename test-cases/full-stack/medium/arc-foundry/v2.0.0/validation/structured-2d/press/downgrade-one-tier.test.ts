@@ -1,27 +1,86 @@
-// Arc Foundry — `press.downgrade-one-tier`. CASE-PROVIDED. NOT YET WRITTEN.
+// press/downgrade-one-tier — DOWNGRADE harvests the candidate one quality tier
+// lower, at the same type, and starts the wave the same way KEEP does.
 //
-// The manifest declares this point at `press/downgrade-one-tier.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// WHY A PLAYER WOULD EVER WANT IT. `specs/combinations.md` fixes the recipes at
+// exact `(type, quality)` pairs, so a Charged Rectifier is worth less than a
+// Tuned one to a player who needs a Tuned one — and DOWNGRADE is the only way
+// down the ladder. It is a harvest like any other, which means it is also the
+// commitment that ends the build phase.
 //
-// THE REQUIREMENT. Downgrading the selected candidate makes it a permanent
-// component at one tier below the one it rolled, at the same type, and starts
-// the wave the same way a keep does.
-//
-// HOW IT IS DECIDED. Arm a Charged roll, drop it, downgrade it, and read the
-// resulting quality back. The evidence it hands back is `downgraded` (image):
-// the component a downgrade produced.
+// SO THREE THINGS ARE READ: the tier fell by exactly one, the type did not move,
+// and the wave started. A build that drops two tiers, or that changes the type
+// on the way, breaks a recipe the player was assembling; one that leaves the
+// phase running has a level that yields two harvests.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  standCandidate,
+  structureById,
+  type Harness,
+} from "../harness";
 
-describe("press.downgrade-one-tier", () => {
-  it("DOWNGRADE harvests one quality tier lower", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `press.downgrade-one-tier` has not been written yet",
-    );
-  });
+/** The roll that is downgraded, and where it lands. */
+const ROLLS = { type: "coil", quality: 3 } as const;
+const AT = { col: 20, row: 10 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("harvests one tier lower, at the same type, and launches the wave", async () => {
+  openYard(h);
+  const opened = h.snapshot();
+  assertEqual(opened.phase, "build", "the phase the run opens on");
+  assertEqual(opened.wave, 0, "the wave counter before the first harvest");
+
+  const candidate = standCandidate(
+    h,
+    ROLLS.type,
+    ROLLS.quality,
+    AT.col,
+    AT.row,
+  );
+  h.debug.select(candidate);
+  h.debug.downgrade(candidate);
+
+  const harvested = h.snapshot();
+  await h.advance(1);
+  captureStill(h, "downgraded");
+
+  const component = structureById(harvested, candidate);
+  assertEqual(component.kind, "component", "what DOWNGRADE leaves standing");
+  assertEqual(
+    component.type,
+    ROLLS.type,
+    "the type a downgraded component carries, which the harvest does not move",
+  );
+  assertEqual(
+    component.quality,
+    ROLLS.quality - 1,
+    `the quality a downgraded component carries, one tier below the ` +
+      `${ROLLS.quality} it rolled`,
+  );
+
+  // It is a harvest, so it is what starts the wave.
+  assertEqual(
+    harvested.phase,
+    "wave",
+    "the phase a downgrade leaves the run in",
+  );
+  assertEqual(
+    harvested.wave,
+    opened.wave + 1,
+    "the wave the downgrade launched",
+  );
 });
