@@ -25,7 +25,7 @@ export const COLOR = {
   background: BACKGROUND,
   /** The ship's hull and its outline. */
   ship: "#9fe8ff",
-  shipFill: "#0d2a44",
+  shipFill: "#1c5a86",
   /** The nose marker that makes the facing legible at a glance. */
   shipNose: "#ffffff",
   /** The thrust flame. */
@@ -42,8 +42,8 @@ export const COLOR = {
   bullet: "#ffe066",
   /** The saucer's bullets. */
   enemyBullet: "#ff5f5f",
-  /** The star: a bright core inside a halo that fades outward. */
-  core: "#fff2c4",
+  /** The star: a white-hot core inside a warm halo that fades outward. */
+  core: "#ffffff",
   coreEdge: "#ffc65a",
   halo: "#ffab3d",
   /** Text and the HUD. */

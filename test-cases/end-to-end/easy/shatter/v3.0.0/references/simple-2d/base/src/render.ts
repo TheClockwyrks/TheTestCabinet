@@ -304,11 +304,13 @@ function drawSaucer(ctx: Ctx, saucer: DeepReadonly<SaucerState>): void {
     ctx.ellipse(0, 0, SAUCER_R, SAUCER_R * 0.44, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // Below the centre, so the saucer's own hue is what a reading of its
+    // position lands on.
     ctx.strokeStyle = COLOR.saucerDome;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(-SAUCER_R, 0);
-    ctx.lineTo(SAUCER_R, 0);
+    ctx.moveTo(-SAUCER_R * 0.9, 3.2);
+    ctx.lineTo(SAUCER_R * 0.9, 3.2);
     ctx.stroke();
 
     for (const at of [-0.55, 0, 0.55]) {
