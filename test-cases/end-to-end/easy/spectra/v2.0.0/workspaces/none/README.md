@@ -7,9 +7,9 @@ how the rest of the specification is organized.
 This build runs on **no engine**. Nothing here supplies a frame loop, input,
 audio, asset loading, or an overlay, and there is no game code to start from.
 What the project supplies is the toolchain, already configured and installed:
-TypeScript, Vite, Vitest, ESLint and Prettier, wired to the commands below — the
-sprite art and the particle system under `assets/`, and the particle runtime that
-plays the latter.
+TypeScript, Vite, Vitest, ESLint and Prettier, wired to the commands below; the
+sprite art and the particle system under `assets/`; and the particle runtime that
+plays the particle system.
 
 ## What you own
 
