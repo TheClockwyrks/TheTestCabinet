@@ -331,8 +331,10 @@ echo "produced leak.json"
 # A Choke or a slow-carrying combo lands its drag on a unit: a brief FROST / EM-DRAG snap
 # that reads as "it's slowed". Icy shards CONVERGE inward and crystallize (a negative radial
 # pulls them in, size grows in as they set), a cold pin-flash at the hit, and a scatter of
-# slow-drifting icy motes that cling to the unit as its speed sags. Choke blue #66d9e8,
-# frost-white #eaffff core.
+# slow-drifting icy motes that cling to the unit as its speed sags. A DEEP ELECTRIC
+# BLUE, well away from the blue-WHITE of the firing effects: specs/assets.md asks the
+# slow, burn and aura systems each to carry a colour of their own, distinct from each
+# other and from the firing effects, and a pale cyan snap reads as an arc bolt.
 newfx false 640 "$FX/slow.json"
 p add-emitter --name frost --shape disc --x 64 --y 64 --radius 26 \
   --burst 22 --at 0 --lifetime 380 --lifetime-spread 90 --speed 6 --speed-spread 4 \
@@ -340,21 +342,21 @@ p add-emitter --name frost --shape disc --x 64 --y 64 --radius 26 \
 p set-forces --emitter frost --radial -240 --drag 1.4
 p set-particle --emitter frost --size-curve ease-in --size-from 0.75 --size-to 0.18 \
   --opacity-curve ease-in-out --opacity-from 0.9 --opacity-to 0.0 --stretch 0.05 \
-  --color-gradient "#eaffff@0,#66d9e8@1"
+  --color-gradient "#7fd4ff@0,#1e4fd6@1"
 p add-emitter --name snap --shape point --x 64 --y 64 \
   --burst 6 --at 0 --lifetime 200 --lifetime-spread 50 --speed 20 --speed-spread 10 \
   --dir-y 1 --cone-angle 360 --seed 14
 p set-forces --emitter snap --drag 5
 p set-particle --emitter snap --size-curve ease-out --size-from 1.6 --size-to 0.0 \
   --opacity-curve ease-out --opacity-from 1.0 --opacity-to 0.0 \
-  --color-gradient "#ffffff@0,#a8f0f5@1"
+  --color-gradient "#bfeaff@0,#2a63e8@1"
 p add-emitter --name motes --shape point --x 64 --y 64 \
   --burst 11 --at 0 --lifetime 560 --lifetime-spread 160 --speed 34 --speed-spread 20 \
   --dir-y 1 --cone-angle 360 --seed 21
 p set-forces --emitter motes --gravity 22 --drag 3.6
 p set-particle --emitter motes --size-curve ease-out --size-from 0.45 --size-to 0.0 \
   --opacity-curve ease-out --opacity-from 0.9 --opacity-to 0.0 --stretch 0.04 \
-  --color-gradient "#cbeef2@0,#66d9e8@1"
+  --color-gradient "#6fc4f2@0,#1638b4@1"
 p set-timeline --loop false
 p render
 echo "produced slow.json"

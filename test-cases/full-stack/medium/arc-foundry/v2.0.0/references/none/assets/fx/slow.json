@@ -45,11 +45,11 @@
         },
         "colorGradient": [
           {
-            "color": "#eaffff",
+            "color": "#7fd4ff",
             "at": 0.0
           },
           {
-            "color": "#66d9e8",
+            "color": "#1e4fd6",
             "at": 1.0
           }
         ],
@@ -92,11 +92,11 @@
         },
         "colorGradient": [
           {
-            "color": "#ffffff",
+            "color": "#bfeaff",
             "at": 0.0
           },
           {
-            "color": "#a8f0f5",
+            "color": "#2a63e8",
             "at": 1.0
           }
         ]
@@ -139,11 +139,11 @@
         },
         "colorGradient": [
           {
-            "color": "#cbeef2",
+            "color": "#6fc4f2",
             "at": 0.0
           },
           {
-            "color": "#66d9e8",
+            "color": "#1638b4",
             "at": 1.0
           }
         ],
