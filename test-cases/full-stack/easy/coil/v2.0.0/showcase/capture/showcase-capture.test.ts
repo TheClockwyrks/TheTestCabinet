@@ -35,7 +35,6 @@
 //     npx vitest run --config validation/vitest.config.ts \
 //     validation/showcase-capture.test.ts
 
-import { Image } from "@napi-rs/canvas";
 import { it } from "vitest";
 
 import { BINDINGS, COMBO_MAX } from "../src/constants";
@@ -54,35 +53,6 @@ import {
   type Dir,
   type Harness,
 } from "./harness";
-
-/* -------------------------------------------------------------------------- */
-/* Telling this host what its bitmaps are                                     */
-/* -------------------------------------------------------------------------- */
-//
-// THE ONE THING THE HARNESS CANNOT DO FOR A SHOWCASE, AND WHY IT IS FIXED HERE.
-//
-// The engine's recorder captures a drawn bitmap's pixels into the replay so a
-// player can redraw it, and it decides what IS a bitmap by asking whether the
-// value is an instance of one of the host's own image classes —
-// `globalThis.ImageBitmap` among them. Node defines none of those names, and
-// this harness's `createImageBitmap` hands back `@napi-rs/canvas`'s `Image`, so
-// every sprite the build blits records as `{ $opaque: "Image" }` and a player
-// skips it. That is harmless for a validator's evidence clip, where the check is
-// about a figure the harness read rather than about the picture — but the
-// showcase's leading entry IS the picture, and a Coil drawn with no snake in it
-// is not a showcase.
-//
-// Naming that class as this host's `ImageBitmap` is the whole fix: it is
-// literally what `createImageBitmap` returns here, the recorder then captures
-// each sprite once through its scratch canvas, and the replay carries the
-// produced art the build actually drew. Installed before any harness is made,
-// and left in place, because the recorder reads it at every blit.
-//
-// Nothing in the engine or the build reads this global — `ImageBitmap` is a TYPE
-// to both of them — so the game runs exactly as it does without it, and the
-// harness is untouched, which is what keeps every committed validation baseline
-// exactly as it was captured.
-(globalThis as Record<string, unknown>).ImageBitmap ??= Image;
 
 /* -------------------------------------------------------------------------- */
 /* The clip's shape                                                           */

@@ -53,6 +53,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import {
   createCanvas,
+  Image,
   loadImage,
   type Canvas,
   type SKRSContext2D,
@@ -480,7 +481,8 @@ function digest(bytes: Uint8Array): string {
 }
 
 /**
- * Stand `fetch` and `createImageBitmap` up over the workspace, once.
+ * Stand `fetch`, `createImageBitmap` and `ImageBitmap` up over the workspace,
+ * once.
  *
  * Idempotent and never undone: a Node process has no page for a relative URL to
  * resolve against and no image decoder at all, so this is what the host lacks
@@ -522,6 +524,26 @@ function serveWorkspaceAssets(): void {
     if (path !== undefined) bitmapPaths.set(image as object, path);
     return image;
   };
+
+  // WHY A GLOBAL IS NAMED HERE, AND WHY DELETING IT SILENTLY BREAKS THE MEDIA.
+  //
+  // The engine's recorder captures a drawn bitmap's pixels into the replay so a
+  // player can redraw it, and it decides what IS a bitmap by asking whether the
+  // value is an instance of one of the host's own image classes, `ImageBitmap`
+  // among them. A browser has that class; Node has no image type at all, which
+  // is why `createImageBitmap` above had to be supplied, and what it hands back
+  // is `@napi-rs/canvas`'s `Image`. With no `globalThis.ImageBitmap` to match,
+  // every sprite a build blits records as `{ $opaque: "Image" }`, the replay
+  // carries no image data, and a player skips the blit — so a clip of a game
+  // drawn from produced sprites plays back with those sprites missing.
+  //
+  // Naming that class as this host's `ImageBitmap` is the whole fix: it is
+  // literally what `createImageBitmap` returns here, so the recorder captures
+  // each sprite once and the replay carries the art the build actually drew.
+  // `??=` because a host that already has the real class keeps it, and nothing
+  // in the engine or in a build READS this global — to both of them
+  // `ImageBitmap` is a type — so the game runs exactly as it does without it.
+  host.ImageBitmap ??= Image;
 }
 
 /**
