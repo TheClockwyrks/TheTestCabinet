@@ -1,27 +1,83 @@
-// Arc Foundry — `campaign.maze-rating-tallies`. CASE-PROVIDED. NOT YET WRITTEN.
+// campaign/maze-rating-tallies — the Maze Rating is the damage dealt to the Dynamo.
 //
-// The manifest declares this point at `campaign/maze-rating-tallies.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/campaign.md: "Every point of damage dealt to it, direct hits and burn
+// ticks alike, is added to the Maze Rating instead of removing health ... The
+// Maze Rating is that total damage." specs/components.md keeps the other half of
+// the equation: every firing structure keeps "the total damage it dealt", and
+// "Burn damage counts toward the tallies of the structure that applied the
+// burn."
 //
-// THE REQUIREMENT. The Maze Rating rises by every point of damage dealt to the
-// Overload Dynamo, burn ticks included, and equals the total the structures'
-// own damage tallies grew by over the finale.
+// So the same damage is read twice, from the two ends, and the two must agree.
+// The yard carries a Capacitor, whose shots are direct hits, and a Rectifier,
+// whose shots also set a burn — so what the structures tally between them
+// includes both kinds of point the rule names. The Maze Rating starts at `0`
+// (specs/instrumentation.md's resting value, "before the finale") and what it
+// rises by must be exactly what those two structures' tallies rose by.
 //
-// HOW IT IS DECIDED. Run a finale past a known set of structures and hold the
-// Maze Rating against the damage they tallied. The evidence it hands back is
-// `rating` (replay): the Maze Rating accruing over the finale.
+// The Dynamo is reached through `spawnUnit` and its travel is held, so it stands
+// in reach of both for the whole reading and nothing else on the yard can add a
+// point to either total.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  parkUnit,
+  standComponent,
+  structureById,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+const GUN = { col: 10, row: 10 };
+const BURNER = { col: 16, row: 10 };
+const TARGET = { x: 280, y: 300 };
 
-describe("campaign.maze-rating-tallies", () => {
-  it("The Maze Rating is the damage dealt to the Dynamo", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `campaign.maze-rating-tallies` has not been written yet",
-    );
-  });
+/** Ten seconds: many cadences of both, and several burn durations. */
+const WINDOW = 10 * 120;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("raises the Maze Rating by exactly what the structures tallied", async () => {
+  openYard(h);
+  const gun = standComponent(h, "capacitor", 3, GUN.col, GUN.row);
+  const burner = standComponent(h, "rectifier", 3, BURNER.col, BURNER.row);
+  parkUnit(h, "overload", TARGET);
+
+  const opening = h.snapshot();
+  assertEqual(opening.mazeRating, 0, "the Maze Rating before any damage");
+  const dealtBefore =
+    structureById(opening, gun).damageDealt +
+    structureById(opening, burner).damageDealt;
+
+  await captureReplay(h, "rating", () => h.advance(WINDOW));
+
+  const after = h.snapshot();
+  const dealt =
+    structureById(after, gun).damageDealt +
+    structureById(after, burner).damageDealt -
+    dealtBefore;
+
+  assertGreaterThan(dealt, 0, "the two structures dealt damage to the Dynamo");
+  assertGreaterThan(
+    after.mazeRating,
+    0,
+    "the Maze Rating rose as the Dynamo took that damage",
+  );
+  assertCloseTo(
+    after.mazeRating / dealt,
+    1,
+    3,
+    `the Maze Rating of ${after.mazeRating} against the ${dealt} the ` +
+      "structures tallied, direct hits and burn ticks alike",
+  );
 });
