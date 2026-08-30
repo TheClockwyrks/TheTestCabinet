@@ -34,6 +34,12 @@
 // so a build that authored no system still gets none, a build that authored an
 // empty one still gets that, and every point that reads a produced file off disk
 // reads the same bytes the loader was handed.
+//
+// AND IT CAN WITHHOLD ONE. A path named in the withhold list is answered with the
+// same `404` a path the build never produced gets, with every other produced file
+// still served. That is the reading for "this is the produced system rather than a
+// shape drawn in code at the same place": both put something on the yard, and only
+// the produced one stops when its file does not arrive.
 
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -49,13 +55,32 @@ const ASSET_ROOT = "assets/";
 let installed = false;
 
 /**
- * Answer the engine's asset requests from the produced tree, once per process.
+ * The produced paths this process is answering `404` for, under the asset root.
  *
- * Idempotent, so every suite in this category may call it from its own
- * `beforeEach` without caring whether another already did. A request for anything
- * outside the asset root is handed to the host's own `fetch` untouched.
+ * Empty for every suite that just wants the files served. Replaced wholesale by
+ * each call, so a suite that serves everything and then serves everything but one
+ * file names the withheld one on the second call and nothing on the first.
  */
-export function serveProducedAssets(): void {
+let withheld: ReadonlySet<string> = new Set();
+
+/**
+ * Answer the engine's asset requests from the produced tree, once per process,
+ * withholding the paths named.
+ *
+ * Idempotent in what it installs, so every suite in this category may call it from
+ * its own `beforeEach` without caring whether another already did. A request for
+ * anything outside the asset root is handed to the host's own `fetch` untouched.
+ *
+ * `withhold` names produced paths RELATIVE TO THE ASSET ROOT, as
+ * `specs/assets.md` writes them (`fx/aura.json`). Each one is answered with the
+ * same `404` the served site answers a path the build never produced, so a check
+ * can ask what the game draws WITHOUT one produced file while every other file it
+ * made is still in hand. That is the only way to tell a produced system being
+ * played apart from a shape the build draws in code at the same place: both put
+ * something there, and only the first stops when the file does not arrive.
+ */
+export function serveProducedAssets(withhold: readonly string[] = []): void {
+  withheld = new Set(withhold);
   if (installed) return;
   installed = true;
 
@@ -63,8 +88,9 @@ export function serveProducedAssets(): void {
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (!url.startsWith(ASSET_ROOT)) return host(input, init);
-    const at = ASSETS + url.slice(ASSET_ROOT.length);
-    if (!existsSync(at)) {
+    const path = url.slice(ASSET_ROOT.length);
+    const at = ASSETS + path;
+    if (withheld.has(path) || !existsSync(at)) {
       return Promise.resolve(new Response(null, { status: 404 }));
     }
     return Promise.resolve(new Response(readFileSync(at)));

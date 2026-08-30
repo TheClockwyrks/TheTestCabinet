@@ -262,6 +262,30 @@ export interface HarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
   dpr?: number;
+  /**
+   * Produced files this page is not given, named by the path `specs/assets.md`
+   * fixes for each under `assets/` (`fx/aura.json`).
+   *
+   * WHY A CHECK WOULD WANT THIS. A produced particle system played at a place and a
+   * shape the build draws in code at the same place look alike from outside, and
+   * only the first stops when its file does not arrive. So a check that has to tell
+   * them apart gives the build everything it produced except one file and reads the
+   * same scene again.
+   *
+   * WHY IT IS MATCHED ON CONTENT RATHER THAN ON A URL. An engineless build bundles
+   * its own files, and the bundler configuration is seeded rather than the build's
+   * to write: a produced file leaves the build under a hashed name of the bundler's
+   * choosing, and a small one leaves it carried inside another file as a base64
+   * `data:` URI. Neither is the path the file was committed at, so the file is
+   * recognised by its BYTES, read off disk here, in both of the shapes a site can
+   * carry it in — see {@link withholdProduced}.
+   *
+   * WHAT IT CANNOT REACH, which every check built on it states in its own header: a
+   * build that imports a produced file as a module carries it as parsed source, and
+   * neither shape is on the wire. Such a build is out of this reading's reach, so a
+   * withheld reading may only ever PASS one, never fail it.
+   */
+  withhold?: readonly string[];
 }
 
 /** How far a sweep may run, and how many frames separate two samples. */
@@ -370,6 +394,9 @@ const INIT_SCRIPTS = ["recorder-init.js", "audio-init.js"] as const;
 
 /** This module's directory: the validator project's root. */
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
+
+/** `assets/` at the root of the produced repository, as `specs/assets.md` fixes it. */
+const PRODUCED_ASSETS = join(PROJECT_ROOT, "..", "assets");
 
 /**
  * How long the surface is waited for before the build is called non-conformant.
@@ -540,6 +567,63 @@ async function readSurfaceFault(page: Page): Promise<string | null> {
 
 /* ---- Building one --------------------------------------------------------- */
 
+/** What a build that never produced a file gets when it asks the site for one. */
+const WITHHELD_BODY = "withheld";
+
+/** The kinds of response a produced file can reach the page inside. */
+const CARRIERS = /\.(?:js|mjs|css|html|json)$/;
+
+/**
+ * Keep the produced files named out of this page, whichever way the site carries
+ * them.
+ *
+ * Two shapes, because a bundler chooses between them by size and the choice is not
+ * the build's to make here:
+ *
+ * - **Its own file.** Answered `404`, exactly as the site answers a path the build
+ *   never produced. Matched on the body rather than the URL, since the emitted name
+ *   is a hash rather than the path the file was committed at.
+ * - **Base64 inside another file.** The payload is swapped for bytes that will not
+ *   parse as what the build asked for, which is what its loader would see from a
+ *   file that did not arrive. The carrier itself still arrives, so nothing else in
+ *   it is disturbed.
+ *
+ * Only the response kinds a produced file can be carried in are inspected, so the
+ * sprites, the audio and the bundle's own requests are not copied through the host
+ * for nothing.
+ */
+async function withholdProduced(
+  page: Page,
+  withhold: readonly string[],
+): Promise<void> {
+  if (withhold.length === 0) return;
+  const files = withhold.map((path) =>
+    readFileSync(join(PRODUCED_ASSETS, path)),
+  );
+  const inlined = files.map((file) => file.toString("base64"));
+  const replacement = Buffer.from(WITHHELD_BODY).toString("base64");
+
+  await page.route(
+    (url) => CARRIERS.test(url.pathname),
+    async (route) => {
+      const response = await route.fetch();
+      const body = Buffer.from(await response.body());
+      if (files.some((file) => file.equals(body))) {
+        await route.fulfill({ status: 404, body: WITHHELD_BODY });
+        return;
+      }
+      let text = body.toString("utf8");
+      let touched = false;
+      for (const payload of inlined) {
+        if (!text.includes(payload)) continue;
+        text = text.split(payload).join(replacement);
+        touched = true;
+      }
+      await route.fulfill({ response, body: touched ? text : body });
+    },
+  );
+}
+
 /**
  * Load the built site in a browser, take the game off the wall clock, and hand
  * back everything a check reads.
@@ -558,6 +642,10 @@ export async function createHarness(
   const context = await contextFor(cssWidth, cssHeight, dpr);
   const page = await context.newPage();
   openPages.add(page);
+
+  // Installed before the page is ever navigated, so the build's own loader meets a
+  // missing file rather than one that went missing halfway through loading.
+  await withholdProduced(page, options.withhold ?? []);
 
   // Whatever this page throws or logs as an error while THIS harness drives it.
   // The page belongs to one harness, so the log cannot pick up what some other

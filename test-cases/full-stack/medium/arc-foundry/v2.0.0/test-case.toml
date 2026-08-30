@@ -3975,6 +3975,19 @@ validation = { script = "effects/aura-pulse.test.ts", outputs = [
   { id = "aura", name = "The pulse at an aura source", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "aura-pulse-is-the-produced-system"
+title = "The pulse at an aura source is the system the run produced"
+description = "With assets/fx/aura.json in hand, motion is drawn in the annulus around a Regulator standing on the yard; with that one file withheld and every other produced file served, no motion is drawn there, so the pulse is the produced system rather than a shape the build draws in code."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: read the ring around a standing Regulator twice, once
+# with every produced file served and once with that one system withheld, and
+# hold the second against a Capacitor standing on the same anchor. See
+# validation/<engine>/effects/aura-pulse-is-the-produced-system.test.ts.
+validation = { script = "effects/aura-pulse-is-the-produced-system.test.ts", outputs = [
+  { id = "withheld", name = "The aura source with its system withheld", kind = "image" },
+] }
+[[review.categories.items]]
 id = "bolt-escalates"
 title = "A Tesla-Prime bolt is not a Scrap bolt"
 description = "The pixels drawn along the line from head to target while a Tesla-Prime Capacitor's shot travels differ from those drawn in the identical scenario under a Scrap Capacitor, so the quality ladder reads in the effect as well as in the sprite."
