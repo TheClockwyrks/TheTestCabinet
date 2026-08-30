@@ -1,23 +1,165 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/winning/win-by-drop.test.ts
+// winning/win-by-drop — dragging the last card home wins the game.
 //
-// The review item `winning.win-by-drop` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/victory.md: the win "is reached by whatever move put the last
+// card home, whether a released drop or a double click". specs/controls.md says
+// what a released drop is and what it does: a gesture whose release lies farther
+// than `DRAG_THRESHOLD` (`5`) from its press point is a drop, it "resolves the run
+// in hand against the drop rectangles", and "an applied move is a move like any
+// other, so ... a board it completes wins the game, as `specs/victory.md` states".
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// So this point holds the build to the win being reachable BY THE GESTURE a player
+// actually makes with a card. `winning/win-at-fifty-two` reaches the same win
+// through `move`, which is the rule stated as a rule; here the same rule has to hold
+// at the end of a real press, a real carry and a real release, and the companion
+// point `winning/win-by-double-click` holds it for the other gesture. Three ways of
+// arriving at one screen, and a build can lose any one of them on its own.
 //
-// What this item must decide, from the manifest:
+// THE RELEASE IS WHAT WINS, and the reading says so. The screen is read after the
+// press and after every move of the carry, and it is still `playing` there: the run
+// is in hand, out of its column, and no card has landed. It is read again straight
+// after the release, with no frame advanced, and it is `won`. A build that sent the
+// card home on the PRESS — or that resolved the drop from a stale pointer sample
+// before the release arrived — reads `won` on the first of those and fails naming
+// the moment it jumped.
 //
-//   Dragging the last card home wins
+// AND THE CASCADE IS RUNNING WHEN THE GESTURE IS OVER. specs/victory.md: "The
+// victory cascade begins with the win." A build that reaches the won screen and
+// then sits there has not finished the move the player made, so the frames after the
+// release are run and the launch counter has to have moved. HOW SOON it moves — on
+// the cascade's very first frame — is `winning/cascade-begins-on-win`, and the
+// cadence it keeps afterwards is `cascade/launch-cadence`; this point asks only that
+// the cascade is under way, over a span generous enough that no build meeting either
+// of those can fail it.
 //
-//   The win is reached by a released drag and the cascade is running when the gesture is over.
+// WHERE THE GESTURE PRESSES AND RELEASES. The King is the only card in its column,
+// so `grabPoint` is that card's own centre (specs/controls.md: a press resolves to
+// the card drawn over every other at the point, and a column's lowest card has
+// nothing below it). Pressing the centre leaves no offset between the press point
+// and the card's centre, so while the run is carried its leading card's centre is
+// exactly where the pointer is — and specs/controls.md resolves a drop by "the
+// center of the run's leading card". Releasing at the centre of the foundation's own
+// drop rectangle therefore puts that centre inside that rectangle and nowhere else,
+// the rectangles being non-overlapping. The two points lie hundreds of units apart,
+// far outside `DRAG_THRESHOLD`, so the gesture is unambiguously a drop; the
+// threshold itself is `handling`'s and no figure of it is asserted here.
+//
+// THE GESTURE IS DRIVEN THROUGH THE DEBUG POINTER, which specs/instrumentation.md
+// puts on exactly the player's path: "a posed press and a player's press are the
+// same event to the game, and nothing is bypassed: the hit test, the grab rule, the
+// drop rule, and the double-click rule all run exactly as they do for a player". A
+// frame is run between the samples so the recording carries the carry rather than a
+// single frame in which everything happened.
+//
+// THE TRAIL IS LEFT PAINTING. The recording covers the win and the cascade's first
+// fractions of a second, nowhere near the recorder's image budget, and the trail is
+// most of what there is to see; the `cascade` group's rule to gate it off is that
+// group's, for its own much longer sweeps.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { DECK_SIZE, LAUNCH_INTERVAL } from "../../src/constants";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import {
+  captureReplay,
+  cardsHome,
+  createHarness,
+  dropRectIn,
+  framesFor,
+  grabPoint,
+  poseNearlyWon,
+  rectCenter,
+  type Harness,
+} from "../harness";
 
-it("winning.win-by-drop — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/winning/win-by-drop.test.ts is a scaffold stub, not a validator",
+/**
+ * Frames of the nearly-won board recorded before the gesture starts.
+ *
+ * Evidence rather than measurement: the reviewer sees the board the drop was made
+ * on. Nothing happens over them, because Cascade has no autonomous entity and the
+ * game moves only when this check moves it.
+ */
+const LEAD_FRAMES = 12;
+
+/** How many samples the carry is broken into, one frame apart. */
+const CARRY_STEPS = 4;
+
+/**
+ * How long the cascade is watched after the release, in frames.
+ *
+ * Two launch intervals (`LAUNCH_INTERVAL` is `0.18` s, specs/victory.md), so a
+ * build that launches its first card anywhere inside the first interval has crossed
+ * this span with a card away. It is deliberately far looser than the "on the
+ * cascade's first frame" this case fixes elsewhere: what is being read here is that
+ * the cascade is running at all.
+ */
+const CASCADE_FRAMES = framesFor(2 * LAUNCH_INTERVAL);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("wins the game on the release of a drag that lands the last card home", async () => {
+  const pending = poseNearlyWon(h);
+
+  const posed = h.snapshot();
+  assertEqual(
+    cardsHome(posed),
+    DECK_SIZE - 1,
+    "cards on the foundations before the drag, which leaves exactly one to " +
+      "carry home (specs/victory.md)",
+  );
+  const from = grabPoint(posed, pending.column, pending.row);
+  const to = rectCenter(dropRectIn(posed, "foundation", pending.foundation));
+
+  const gesture = await captureReplay(h, "drop", async () => {
+    await h.advance(LEAD_FRAMES);
+
+    h.debug.pointerDown(from.x, from.y);
+    await h.advance(1);
+    for (let step = 1; step <= CARRY_STEPS; step += 1) {
+      const t = step / CARRY_STEPS;
+      h.debug.pointerMove(
+        from.x + (to.x - from.x) * t,
+        from.y + (to.y - from.y) * t,
+      );
+      await h.advance(1);
+    }
+    const carrying = h.snapshot();
+
+    h.debug.pointerUp(to.x, to.y);
+    const released = h.snapshot();
+
+    await h.advance(CASCADE_FRAMES);
+    return { carrying, released, after: h.snapshot() };
+  });
+
+  assertEqual(
+    gesture.carrying.screen,
+    "playing",
+    "the screen with the last card lifted and carried over its foundation but " +
+      "not yet released, which is a gesture still in progress and no win " +
+      "(specs/controls.md)",
+  );
+  assertEqual(
+    gesture.released.screen,
+    "won",
+    "the screen the release of the drag left, read on the release itself with " +
+      "no frame advanced (specs/victory.md)",
+  );
+  assertEqual(
+    cardsHome(gesture.released),
+    DECK_SIZE,
+    "cards on the foundations once the drop had landed (specs/victory.md)",
+  );
+  assertGreaterThanOrEqual(
+    gesture.after.launched,
+    1,
+    `cards the cascade had launched ${String(CASCADE_FRAMES)} frames after ` +
+      "the gesture ended, the cascade beginning with the win (specs/victory.md)",
   );
 });
