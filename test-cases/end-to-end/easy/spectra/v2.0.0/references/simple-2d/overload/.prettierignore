@@ -1,0 +1,14 @@
+# Everything that is not the build's own source: installed packages, build
+# output, coverage reports, and the files seeded with the project. The seeded
+# specification, the seeded art and the engine's own documentation are read, not
+# written, so they are not this project's formatting to answer for.
+node_modules/
+dist/
+build/
+out/
+coverage/
+package-lock.json
+.tcab/
+assets/
+engine/
+specs/
