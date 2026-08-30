@@ -1,19 +1,55 @@
-// Wireworm — progression.life-lost-decrements, under the `structured-2d` engine. CASE-PROVIDED.
+// progression/life-lost-decrements — a contact with lives to spare costs exactly
+// one life.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/progression.md, Losing a life: on a contact with lives to spare, lives
+// falls by one. specs/cursor.md fixes what a contact is — a worm segment whose
+// tile overlaps the cursor's box reaches the cursor — and `poseContact` poses
+// exactly that, on the empty, quiet board `startPlaying` leaves behind.
 //
-// The point it decides, from `test-case.toml`:
+// ONE LIFE, NOT MERELY FEWER. The count is asserted as an exact figure, so a
+// build that charges two lives for one touch, or empties the whole store, is
+// told apart from one that charges the one life the specification names. Lives
+// are posed at `START_LIVES` so the contact has lives to spare and the run
+// cannot end on it — the end of a run is `game-over-at-zero-lives`'s point.
 //
-// A contact with lives to spare costs one life
-//
-// With three lives, one contact leaves two.
+// What the respawn does with the board is not read here. Every other consequence
+// of the same event — the swept rosters, the re-centred cursor, the
+// invulnerability — is its own point, so a build that decrements correctly and
+// respawns badly is docked once, on the thing it got wrong.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { START_LIVES } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startPlaying,
+  type Harness,
+} from "../harness";
+import { poseContact } from "./contact";
 
-test("progression.life-lost-decrements", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/structured-2d/progression/life-lost-decrements.test.ts has not been written yet",
-  );
+/** The one life specs/progression.md says a contact costs. */
+const LIFE_COST = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("takes exactly one life on a contact with lives to spare", async () => {
+  startPlaying(h);
+  h.debug.setLives(START_LIVES);
+  poseContact(h);
+
+  // One frame: the contact test runs at the end of every update, so the touch
+  // posed above is resolved by the first update that runs at all.
+  await h.advance(1);
+  captureStill(h, "lives");
+
+  assertEqual(h.snapshot().lives, START_LIVES - LIFE_COST);
 });
