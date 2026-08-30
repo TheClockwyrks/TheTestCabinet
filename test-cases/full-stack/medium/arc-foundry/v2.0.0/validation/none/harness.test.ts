@@ -104,7 +104,10 @@ interface WrittenRecording {
   height: number;
   background: string | null;
   images: unknown[];
-  resources: { make: { method: string; args: unknown[] }; then: RecordedOp[] }[];
+  resources: {
+    make: { method: string; args: unknown[] };
+    then: RecordedOp[];
+  }[];
   ops: RecordedOp[];
   states: {
     properties: Record<string, unknown>;

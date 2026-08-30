@@ -1374,7 +1374,9 @@ function writeReplay(destination: string, recording: Recording | null): void {
     mkdirSync(dirname(destination), { recursive: true });
     writeFileSync(destination, gzipSync(JSON.stringify(thinReplay(recording))));
   } catch (error) {
-    console.warn(`arc foundry: could not write ${destination}: ${String(error)}`);
+    console.warn(
+      `arc foundry: could not write ${destination}: ${String(error)}`,
+    );
   }
 }
 
@@ -1442,7 +1444,9 @@ export async function captureStill(
     mkdirSync(dirname(destination), { recursive: true });
     await h.page.screenshot({ path: destination, type: "png" });
   } catch (error) {
-    console.warn(`arc foundry: could not write ${destination}: ${String(error)}`);
+    console.warn(
+      `arc foundry: could not write ${destination}: ${String(error)}`,
+    );
   }
 }
 
@@ -1487,7 +1491,6 @@ export function watchCues(h: Harness): TimedCue[] {
   return played;
 }
 
-
 /* -------------------------------------------------------------------------- */
 /* Reading a snapshot                                                         */
 /* -------------------------------------------------------------------------- */
@@ -1498,10 +1501,7 @@ export function watchCues(h: Harness): TimedCue[] {
 // few lines later and reporting a `TypeError` where a verdict belonged.
 
 /** The live unit that id, or a failure naming the id and what was on the yard. */
-export function unitById(
-  snapshot: FoundrySnapshot,
-  id: number,
-): UnitView {
+export function unitById(snapshot: FoundrySnapshot, id: number): UnitView {
   const found = snapshot.units.find((u) => u.id === id);
   assertTruthy(
     found,
@@ -1569,9 +1569,7 @@ export function structureAt(
 }
 
 /** Every structure that fires: the seven firing base types and the towers. */
-export function firingStructures(
-  snapshot: FoundrySnapshot,
-): StructureView[] {
+export function firingStructures(snapshot: FoundrySnapshot): StructureView[] {
   return snapshot.structures.filter((s) => s.targeting !== null);
 }
 
@@ -1584,7 +1582,8 @@ export function firingStructures(
  * and the tie-break every targeting priority resolves toward.
  */
 export function compareAlongChain(a: UnitView, b: UnitView): number {
-  if (a.waypointIndex !== b.waypointIndex) return b.waypointIndex - a.waypointIndex;
+  if (a.waypointIndex !== b.waypointIndex)
+    return b.waypointIndex - a.waypointIndex;
   return a.progress - b.progress;
 }
 
@@ -1594,10 +1593,7 @@ export function alongChain(snapshot: FoundrySnapshot): UnitView[] {
 }
 
 /** The priority `steps` activations of the targeting control past `current`. */
-export function targetingAfter(
-  current: Targeting,
-  steps: number,
-): Targeting {
+export function targetingAfter(current: Targeting, steps: number): Targeting {
   const at = TARGETING_PRIORITIES.indexOf(current);
   assertTruthy(at >= 0, `a targeting priority; received ${String(current)}`);
   const n = TARGETING_PRIORITIES.length;
@@ -1817,10 +1813,7 @@ function placed(
 }
 
 /** Select a structure, as a pointer press on it would. */
-export async function selectStructure(
-  h: Harness,
-  id: number,
-): Promise<void> {
+export async function selectStructure(h: Harness, id: number): Promise<void> {
   await h.debug.select(id);
 }
 
@@ -1978,11 +1971,7 @@ export function controlCenter(rect: ControlRect): Point {
 }
 
 /** A press and a release at a logical point: one click. */
-export async function clickAt(
-  h: Harness,
-  x: number,
-  y: number,
-): Promise<void> {
+export async function clickAt(h: Harness, x: number, y: number): Promise<void> {
   await h.debug.pointerDown(x, y);
   await h.debug.pointerUp();
 }
@@ -2065,9 +2054,7 @@ export async function statusControl(
   return found as StatusControl;
 }
 
-function describeControls(
-  drawn: readonly { action: string }[],
-): string {
+function describeControls(drawn: readonly { action: string }[]): string {
   return drawn.length === 0
     ? "none"
     : drawn.map((c) => `\`${c.action}\``).join(", ");
@@ -2083,10 +2070,7 @@ export async function pressPanel(
 }
 
 /** Find the menu choice by action and press its center. */
-export async function pressMenu(
-  h: Harness,
-  action: MenuAction,
-): Promise<void> {
+export async function pressMenu(h: Harness, action: MenuAction): Promise<void> {
   await clickControl(h, await menuControl(h, action));
 }
 
@@ -2106,10 +2090,7 @@ export async function pressStatus(
  * one-shot applies immediately, at the call, rather than being sampled on the
  * next frame.
  */
-export async function pressAction(
-  h: Harness,
-  action: Action,
-): Promise<void> {
+export async function pressAction(h: Harness, action: Action): Promise<void> {
   const key = keyFor(action);
   await h.debug.keyDown(key);
   await h.debug.keyUp(key);

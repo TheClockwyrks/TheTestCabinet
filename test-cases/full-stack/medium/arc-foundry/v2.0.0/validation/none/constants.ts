@@ -277,12 +277,7 @@ export function scaledHp(
 /* -------------------------------------------------------------------------- */
 
 export type LoadType =
-  | "mote"
-  | "spark"
-  | "slug"
-  | "cluster"
-  | "filament"
-  | "dynamo";
+  "mote" | "spark" | "slug" | "cluster" | "filament" | "dynamo";
 
 /** Every type `spawnUnit` takes: the roster, plus the finale's Overload Dynamo. */
 export type SpawnType = LoadType | "overload";
