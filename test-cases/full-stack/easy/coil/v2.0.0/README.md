@@ -73,7 +73,7 @@ points.
 | `references/`          | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.       |
 | `validation/`          | No             | The validator suites deciding every review point, `<engine>/`.          |
 | `validation-baseline/` | No             | The baseline media, captured from each reference build.                 |
-| `showcase/`            | No             | Each variant's demo media and description for the catalog.              |
+| `showcase/`            | No             | Each variant's catalog media and description, plus its capture driver.  |
 | `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                           |
 | `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
 | `variants/`            | No             | One TOML file per variant (listed in `variants`).                       |

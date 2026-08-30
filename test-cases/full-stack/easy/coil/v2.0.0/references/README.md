@@ -59,16 +59,24 @@ change to it means regenerating and re-committing the affected PNG in every one.
 
 ## The showcase directories
 
-`none/base/showcase` and `none/maze/showcase` hold media captured by
-`scripts/capture-showcase.mjs`, which serves the built site, plays it with real
-key presses, and writes the clip and the stills. They are a convenience of those
-two builds and nothing resolves against them: this version declares no
-case-level `showcase/<variant>/` and no `showcase` key on either variant. The
-four engine-backed builds ship none, which is what the cases already on this
-style do — no reference of `carom` `v3.0.0`, `refract` `v1.0.0` or `fathom`
-`v3.0.0` ships a `showcase/` either, and no review item reads one. The showcase
-is asked of a build as its own store-page presentation rather than as evidence
-any point is judged on.
+There are two unrelated things called a showcase here, and only one of them is
+the case's.
+
+`none/base/showcase` and `none/maze/showcase` are the RUN showcase
+`specs/showcase.md` asks every build for: a build's own store-page presentation
+of itself, captured by `scripts/capture-showcase.mjs`, which serves the built
+site, plays it with real key presses, and writes the clip and the stills. They
+are a convenience of those two builds, nothing resolves against them, and no
+review item reads one. The four engine-backed builds ship none, which is also
+what every reference of `carom` `v3.0.0`, `refract` `v1.0.0` and `fathom`
+`v3.0.0` does.
+
+The CASE showcase is the version's own `showcase/<variant>/`, declared as
+`showcase = "showcase/<variant>"` on each variant, and it is what the catalog
+and the case page render. Its media is captured from `structured-2d/base` and
+`structured-2d/maze` by the driver in `showcase/capture/`, which stages into a
+PRIVATE copy of the reference rather than into the reference itself — see that
+directory's README. A reference is never modified to produce it.
 
 ## Known accommodations
 
