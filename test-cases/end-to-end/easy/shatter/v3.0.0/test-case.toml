@@ -317,9 +317,10 @@ source = "specs/collision.md.hbs"
 [[spec]]
 source = "specs/progression.md"
 
-# Every score figure, and the extra ship.
+# Every score figure, and the extra ship. It branches on the variant so that only
+# warhead is told a hit can leave a rock standing.
 [[spec]]
-source = "specs/scoring.md"
+source = "specs/scoring.md.hbs"
 
 # The keys: every action the game answers to and what is bound to it.
 [[spec]]

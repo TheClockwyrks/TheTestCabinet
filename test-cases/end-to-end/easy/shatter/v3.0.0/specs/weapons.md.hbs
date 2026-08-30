@@ -53,7 +53,7 @@ The ship holds one torpedo charge, a number from `0` to `1`. A game begins with
 the charge at `1`, ready to fire.
 
 - Launching a torpedo spends the charge, taking it to `0`.
-- The charge then rises **linearly** from `0` to `1` over `TORPEDO_RECHARGE`
+- The charge then rises linearly from `0` to `1` over `TORPEDO_RECHARGE`
   (`10` seconds) of game time, so it reads `0.5` at five seconds and `0.25` at two
   and a half.
 - The torpedo key does nothing while the charge is below `1`.
