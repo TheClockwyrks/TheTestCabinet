@@ -121,6 +121,40 @@ describe("the Fuel Depot", () => {
   });
 });
 
+describe("what the depot refuses", () => {
+  it("buys nothing, at either control, when the tank and the hull are full", () => {
+    h.pose((debug, state) => debug.setCredits(state, 1000));
+    for (const buy of [
+      "buyFuel",
+      "fillFuel",
+      "buyRepair",
+      "repairFull",
+    ] as const) {
+      h.pose((debug, state) => debug[buy](state));
+    }
+    expect(h.debug.snapshot(h.state).credits).toBe(1000);
+  });
+
+  it("repairs nothing with no Credits at all", () => {
+    h.pose((debug, state) => debug.setHull(state, 10));
+    h.pose((debug, state) => debug.setCredits(state, 0));
+    h.pose((debug, state) => debug.repairFull(state));
+    h.pose((debug, state) => debug.buyRepair(state));
+    const snapshot = h.debug.snapshot(h.state);
+    expect(snapshot.miner.hull).toBe(10);
+    expect(snapshot.credits).toBe(0);
+  });
+
+  it("never lets the balance go below zero", () => {
+    h.pose((debug, state) => debug.setCredits(state, 5));
+    h.pose((debug, state) => debug.setFuel(state, 0));
+    h.pose((debug, state) => debug.fillFuel(state));
+    const snapshot = h.debug.snapshot(h.state);
+    expect(snapshot.credits).toBe(0);
+    expect(snapshot.miner.fuel).toBe(5);
+  });
+});
+
 describe("the Upgrade Shop", () => {
   it("charges the shared ladder and applies the tier at once", () => {
     h.pose((debug, state) => debug.setCredits(state, UPGRADE_PRICES[0]));

@@ -22,7 +22,8 @@ import {
   VIEW_H,
   WORLD_SIZES,
 } from "./constants";
-import { buildings, nearbyBuilding } from "./flow";
+import type { ScreenName } from "./constants";
+import { activate, buildings, nearbyBuilding } from "./flow";
 import { depthMeters } from "./figures";
 import { writeTile } from "./state";
 import {
@@ -354,6 +355,42 @@ describe("through the engine", () => {
     expect(snapshot.depthMeters).toBeLessThan(deep);
   });
 
+  it("goes back from every screen that has a back", async () => {
+    const back: [ScreenName, ScreenName][] = [
+      ["mode-select", "title"],
+      ["size-select", "mode-select"],
+      ["how-to-play", "title"],
+      ["victory", "title"],
+      ["game-over", "title"],
+    ];
+    for (const [from, to] of back) {
+      h.pose((debug, state) => debug.setScreen(state, from));
+      h.tap("pause");
+      await h.advance(1);
+      expect(h.debug.snapshot(h.state).screen, from).toBe(to);
+    }
+  });
+
+  it("uses a field supply from its number key, and jettisons from its own", async () => {
+    openScene(h);
+    placeAt(h, 8 * TILE, 300 * TILE);
+    h.pose((debug, state) => debug.setMinerTravel(state, false));
+    h.pose((debug, state) => debug.setItemCount(state, "dynamite", 1));
+    h.pose((debug, state) => debug.setTile(state, 8, 301, "rock"));
+    h.tap("supply1");
+    await h.advance(1);
+    const blasted = h.debug.snapshot(h.state);
+    expect(blasted.items.dynamite).toBe(0);
+    expect(h.debug.tileAt(h.state, 8, 301).kind).toBe("tunnel");
+
+    h.pose((debug, state) => debug.setCoreCarried(state, true));
+    h.tap("jettison");
+    await h.advance(1);
+    const dropped = h.debug.snapshot(h.state);
+    expect(dropped.satchel.coreSample).toBe(false);
+    expect(dropped.coreGround).not.toBeNull();
+  });
+
   it("dismisses the hazard notice with a click on the card", async () => {
     openScene(h);
     h.pose((debug, state) =>
@@ -369,6 +406,69 @@ describe("through the engine", () => {
     h.click(640, 640);
     await h.advance(1);
     expect(h.debug.snapshot(h.state).notice).toBeNull();
+  });
+});
+
+describe("every control a player can choose", () => {
+  it("runs through one entry point, whichever path chose it", () => {
+    const posed = inDraft(bareState(), (d) => {
+      d.credits = 100000;
+      d.cargo.ferron = 2;
+      d.items.dynamite = 1;
+      d.satchel.coreSample = true;
+      d.coreTimer = 60;
+      posedAt(d, colCenterX(8, MINER_W), SURFACE_Y - MINER_H);
+    });
+
+    // Every action `src/controls.ts` can name, run in turn. What each does is
+    // checked in the module that owns it; what is checked here is that the one
+    // entry point reaches all of them and refuses none by accident.
+    const actions = [
+      "sell",
+      "buyfuel:increment",
+      "buyfuel:full",
+      "buyrepair:increment",
+      "buyrepair:full",
+      "buy:drill",
+      "buyitem:nanobots",
+      "useitem:dynamite",
+      "drop:ferron",
+      "jettison",
+      "fabricate",
+      "open:ore-market",
+      "panel:close",
+      "sys:inventory",
+      "sys:pause",
+      "notice:dismiss",
+      "save",
+      "launch",
+      "nav:title",
+      "mode:hardcore",
+      "size:quick",
+      "restart",
+      "again",
+      "continue",
+      "resume",
+      "a name no control carries",
+    ];
+    let state = posed;
+    for (const action of actions) {
+      state = inDraft(state, (d) => activate(d, action));
+    }
+    // The last few restarted the expedition, so the game is in the mine.
+    expect(state.screen).toBe("in-mine");
+  });
+
+  it("opens a panel only at its building, and the inventory anywhere", () => {
+    const deep = inDraft(bareState(), (d) => {
+      posedAt(d, colCenterX(8, MINER_W), 300 * TILE);
+    });
+    expect(
+      inDraft(deep, (d) => activate(d, "open:ore-market")).panel,
+    ).toBeNull();
+    expect(inDraft(deep, (d) => activate(d, "sys:inventory")).panel).toBe(
+      "inventory",
+    );
   });
 });
 
