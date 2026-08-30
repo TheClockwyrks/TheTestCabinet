@@ -175,6 +175,13 @@ on, and the two prettier files carry the formatting configuration a case's
 `format` [toolchain command](/testing/end-to-end/manifests/#the-typescript-toolchain)
 checks the produced code against.
 
+That command formats code and nothing else, so the shipped `.prettierignore`
+excludes Markdown. Most of the Markdown in a run tree is the case's seeded specs
+and the engine's seeded documentation, which the build never wrote, so a
+workspace that formatted Markdown would report a failure the build cannot act on.
+Authored prose is linted on the authoring side by
+[`npm run lint:specs`](/development/building/) instead.
+
 The workspace, the specs, the assets, and the seeded reference media all land in
 the one run tree, so no two of them may claim the same destination. A collision
 is rejected at resolution.
