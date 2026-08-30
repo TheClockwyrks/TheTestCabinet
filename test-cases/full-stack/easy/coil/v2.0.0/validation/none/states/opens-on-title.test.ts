@@ -1,28 +1,47 @@
-/*
- * Coil validator: `states.opens-on-title`. PLACEHOLDER.
- *
- * The game opens on the title screen.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * A freshly loaded game is on the title screen with menuIndex at 0.
- *
- * HOW:
- * load the build and read the screen and the highlight before any input.
- *
- * MEDIA IT MUST CAPTURE: title (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// states/opens-on-title — a freshly loaded game is on the title, on its first
+// menu item.
+//
+// specs/ui.md: "the game opens on `title`", and "Arriving at any of these screens
+// sets `menuIndex` to `0`." Both are read off the game as it stands the moment it
+// has initialized, before a key is pressed and before anything is posed.
+//
+// It is read from a SECOND LOAD of the same build rather than through the harness
+// this suite opened with, because a harness resets the game before it hands the
+// page over and specs/instrumentation.md has a reset restore the title screen and
+// a `menuIndex` of `0` whatever the build did at load. Reading it after one would
+// decide the reset rather than the load, and a build that opened on its own
+// how-to screen would pass. `session.ts` explains the second page in full.
 
-test("states.opens-on-title", () => {
-  throw new Error("validator not implemented: states/opens-on-title.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { openFreshSession } from "./session";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("loads onto the title screen with the first item highlighted", async () => {
+  const fresh = await openFreshSession(h);
+  try {
+    await captureStill({ ...h, page: fresh.page }, "title");
+    assertEqual(
+      fresh.snapshot.screen,
+      "title",
+      "the screen a freshly loaded game is on",
+    );
+    assertEqual(
+      fresh.snapshot.menuIndex,
+      0,
+      "the highlighted item of the title menu",
+    );
+  } finally {
+    await fresh.page.close().catch(() => undefined);
+  }
 });

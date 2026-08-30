@@ -1,32 +1,52 @@
-/*
- * Coil validator: `states.menu-index-resets`. PLACEHOLDER.
- *
- * Arriving at a menu screen highlights its first item.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * Leaving a menu-bearing screen with the highlight moved off its first item
- * and arriving at another sets menuIndex to 0.
- *
- * HOW:
- * open the title, move the highlight off the first item, confirm into another
- * menu-bearing screen, and read the highlight on arrival.
- *
- * MEDIA IT MUST CAPTURE: reset (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// states/menu-index-resets — arriving at a menu-bearing screen highlights its
+// first item.
+//
+// specs/ui.md: "Arriving at any of these screens sets `menuIndex` to `0`." The
+// screen left is the title with its highlight moved OFF the first item, because a
+// build that simply never touches `menuIndex` would arrive on `0` from a screen
+// that was already on `0` and pass without doing anything.
+//
+// The highlight is moved through the surface rather than by pressing `down`,
+// because which item `down` lands on is `controls/menu-highlight-moves`; what is
+// pressed here is the `confirm` that makes the crossing.
 
-test("states.menu-index-resets", () => {
-  throw new Error(
-    "validator not implemented: states/menu-index-resets.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { KEY } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openTitle,
+  type Harness,
+} from "../harness";
+
+/** `HOW TO PLAY` is the second item of `TITLE_ITEMS` (specs/ui.md). */
+const HOWTO_INDEX = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("sets menuIndex to zero on arriving from a menu left off its first item", async () => {
+  await openTitle(h);
+  await h.debug.setMenuIndex(HOWTO_INDEX);
+  const left = await h.snapshot();
+  assertEqual(
+    left.menuIndex,
+    HOWTO_INDEX,
+    "the highlighted item the title is left on",
   );
+
+  await h.tap(KEY.confirm);
+  await captureStill(h, "reset");
+
+  const arrived = await h.snapshot();
+  assertEqual(arrived.screen, "howto", "the screen arrived at");
+  assertEqual(arrived.menuIndex, 0, "the highlighted item on arrival");
 });
