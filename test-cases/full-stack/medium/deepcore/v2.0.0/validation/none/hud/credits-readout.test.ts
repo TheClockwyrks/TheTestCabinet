@@ -1,24 +1,57 @@
-// Deepcore — hud.credits-readout. STUB: NOT YET AUTHORED.
+// hud/credits-readout — the bar states the Credits balance.
 //
-// The status bar reads the Credits
+// `specs/ui.md`: the status bar shows the Credits. `specs/gameplay.md` makes them
+// the one currency, so the figure on the bar is what a player checks a sale
+// against. A balance is a number, so it is drawn as a number, and the frame's own
+// text runs anchored inside the band are read back and searched for it.
 //
-// The Credits balance is drawn on the status bar and follows the balance, so a
-// sale is visible on the bar.
-//
-// Automated validation: pose several balances and read each off the drawn
-// status bar.
-//
-// `test-case.toml` declares this suite as `hud/credits-readout.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (credits (image)) around the drive.
+// Two balances are posed rather than one, so a bar that draws a fixed figure —
+// the `0` a fresh expedition opens on, say — cannot pass. `numbersOf` reads a run
+// both as its digit groups and with every separator stripped, so `4,207` and
+// `4207` both state the same balance.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  layCamp,
+  openScene,
+  pinDrill,
+  standAtCamp,
+  type Harness,
+} from "../harness";
+import { barText, numbersOf } from "./bar";
 
-test("The status bar reads the Credits", () => {
-  throw new Error(
-    "Deepcore validator `hud/credits-readout` is declared in test-case.toml but has not been authored yet.",
+/** Two balances, neither one a figure the bar shows for another reason. */
+const BALANCES = [4207, 39] as const;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("states each posed balance on the bar", async () => {
+  await openScene(h);
+  await layCamp(h);
+  await pinDrill(h);
+  await standAtCamp(h);
+
+  const stated: string[] = [];
+  for (const balance of BALANCES) {
+    await h.debug.setCredits(balance);
+    stated.push(`${balance}: ${numbersOf(await barText(h)).has(balance)}`);
+  }
+  await captureStill(h, "credits");
+
+  assertEqual(
+    stated.join(", "),
+    BALANCES.map((balance) => `${balance}: true`).join(", "),
+    "specs/ui.md",
   );
 });

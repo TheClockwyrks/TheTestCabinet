@@ -1,24 +1,72 @@
-// Deepcore — hud.core-countdown-on-the-ground. STUB: NOT YET AUTHORED.
+// hud/core-countdown-on-the-ground — a dropped Sample counts down on its cell.
 //
-// A jettisoned Sample shows its countdown on its cell
+// `specs/ui.md`: a jettisoned Sample shows its countdown over its ground cell
+// instead of over the miner, which is what lets a player back away and watch it
+// from outside the blast. `specs/items.md` fixes the ground item: it sits on its
+// cell with its countdown still visible, and its timer keeps running.
 //
-// A jettisoned Sample shows its countdown over its ground cell instead of over
-// the miner, so the player can watch it from a safe distance.
-//
-// Automated validation: jettison a Sample, move the miner clear and read the
-// countdown drawn at the ground cell rather than at the miner.
-//
-// `test-case.toml` declares this suite as `hud/core-countdown-on-the-ground.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (ground (image)) around the drive.
+// So a Sample is placed on a cell through the surface, the miner stands well
+// clear of it along the same floor, and the run of text that states the timer is
+// found among the frame's own runs over the mine viewport. What is asserted is
+// where it was drawn: nearer the Sample's cell than the miner. No radius is
+// named, because `specs/ui.md` fixes none — "over its ground cell instead" is a
+// comparison between two places, and that is what is read.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan, assertLessThan } from "../assert";
+import { MINER_H, MINER_W, PLAYABLE_COL_MIN } from "../constants";
+import {
+  captureStill,
+  cellCenter,
+  createHarness,
+  layFloor,
+  openScene,
+  pinDrill,
+  standOn,
+  worldToStage,
+  type Harness,
+} from "../harness";
+import { countdownRuns, worldText } from "./bar";
 
-test("A jettisoned Sample shows its countdown on its cell", () => {
-  throw new Error(
-    "Deepcore validator `hud/core-countdown-on-the-ground` is declared in test-case.toml but has not been authored yet.",
+const ROW = 100;
+const MINER_COL = PLAYABLE_COL_MIN + 5;
+
+/** How far along the floor the Sample is dropped, in columns. */
+const APART = 6;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("draws the countdown at the dropped Sample rather than at the miner", async () => {
+  await openScene(h);
+  await layFloor(h, ROW);
+  await pinDrill(h);
+  await standOn(h, MINER_COL, ROW);
+  // The cell above the floor, so the Sample rests on the ground the miner walks.
+  await h.debug.placeCoreSample(MINER_COL + APART, ROW - 1);
+  await h.advance(2);
+
+  const snapshot = await h.snapshot();
+  const runs = countdownRuns(await worldText(h), snapshot.coreTimer ?? 0);
+  await captureStill(h, "ground");
+
+  const cell = cellCenter(MINER_COL + APART, ROW - 1);
+  const atCell = worldToStage(snapshot, cell.x, cell.y);
+  const atMiner = worldToStage(
+    snapshot,
+    snapshot.miner.x + MINER_W / 2,
+    snapshot.miner.y + MINER_H / 2,
   );
+  const nearest = (to: { x: number; y: number }): number =>
+    Math.min(...runs.map((run) => Math.hypot(run.x - to.x, run.y - to.y)));
+
+  assertGreaterThan(runs.length, 0, "specs/ui.md");
+  assertLessThan(nearest(atCell), nearest(atMiner), "specs/ui.md");
 });
