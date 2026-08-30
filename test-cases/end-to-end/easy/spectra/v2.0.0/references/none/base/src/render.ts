@@ -159,7 +159,11 @@ function drawStage(state: SpectraState, ctx: CanvasRenderingContext2D): void {
   ctx.fillRect(0, FIELD_TOP - 1, STAGE_W, 1);
   ctx.fillRect(0, HUD_BOTTOM_TOP, STAGE_W, 1);
 
-  // Everything the field carries, inside the field.
+  // Everything the field carries is drawn INSIDE the field: the ship, the drones
+  // and the bullets are the play field's, and clipping them there is what keeps
+  // the two HUD strips carrying nothing but their own readouts. A drone crossing
+  // a strip in transit — one flying in from above, or a dive wrapping through the
+  // bottom — is off the field for those few frames and simply is not drawn.
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, FIELD_TOP, STAGE_W, FIELD_H);
