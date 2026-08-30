@@ -144,7 +144,8 @@ mute.
 src/            the game: its state, its simulation, its drawing, and its debug surface
 assets/         the produced art, effects, and audio (committed; see ASSET-LAYOUT.md)
 public/assets   a link to assets/, which is how the bundler copies them into dist/
-scripts/        the asset-generation scripts (gen-*.sh)
+scripts/        the asset-generation scripts (gen-*.sh) and the showcase capture
+showcase/       the store-page description and its captured media
 dist/           the production build (git-ignored)
 ```
 
@@ -176,3 +177,17 @@ own, with a `ConstantClock`, and drives the game with the same key and pointer e
 player's input sends — so it needs no browser. A rule that does not need a frame around it
 is exercised over a bare `DeepcoreState` directly. Every rate is per second and integrated
 against the delta the tick is handed, and the simulation reads nothing from the drawing.
+
+## The showcase
+
+`showcase/` holds the store-page description and its media. The carousel leads with a
+**replay** — the engine's own recording of the frames the build drew, gzipped — rather
+than a video, so what a reader sees is the game's own drawing. Recapture it with:
+
+```
+node scripts/capture-showcase.mjs
+```
+
+The capture rig under `scripts/showcase/` stands the same game up on the same engine with
+a `ConstantClock`, drives one expedition with the same key events a keyboard sends, and
+reads what it needs back through `engine.debug`. None of it is bundled into `dist/`.
