@@ -1,19 +1,51 @@
-// Wireworm — screens.ending-menu, under the `none` engine. CASE-PROVIDED.
+// Wireworm — screens/ending-menu: confirming MENU leaves the game on the title.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/ui.md's ending menu: `MENU`, the second entry of `ENDING_ITEMS`,
+// "Returns to `title`".
 //
-// The point it decides, from `test-case.toml`:
-//
-// MENU returns to the title
-//
-// Confirming the second ending item leaves the game on the title screen.
+// It is confirmed from `gameover`, the same screen `screens/ending-play-again`
+// confirms the other entry from, with the highlight posed on the second entry so
+// the confirm is the only thing this decides.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { ENDING_ITEMS } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { CONFIRM_KEY, poseEnding } from "./screens";
 
-test("screens.ending-menu", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/none/screens/ending-menu.test.ts has not been written yet",
+/** Which entry of `ENDING_ITEMS` is `MENU`. */
+const MENU_ITEM = ENDING_ITEMS.indexOf("MENU");
+
+/** The lost run the title is returned to from. */
+const POSED_SCORE = 4720;
+const POSED_LEVEL = 9;
+const POSED_LIVES = 0;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("leaves the game on the title screen on MENU", async () => {
+  await poseEnding(h, "gameover", {
+    score: POSED_SCORE,
+    lives: POSED_LIVES,
+    level: POSED_LEVEL,
+    reachedLevel: POSED_LEVEL,
+    menuIndex: MENU_ITEM,
+  });
+
+  await h.tap(CONFIRM_KEY);
+  await captureStill(h, "title");
+
+  assertEqual(
+    (await h.snapshot()).screen,
+    "title",
+    "the screen MENU returned to",
   );
 });
