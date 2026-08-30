@@ -1,26 +1,55 @@
-// Arc Foundry — `screens.pause-quit`. CASE-PROVIDED. NOT YET WRITTEN.
+// screens/pause-quit — QUIT TO MENU returns to the title.
 //
-// The manifest declares this point at `screens/pause-quit.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/ui.md`, of `paused`: "`QUIT TO MENU` returns to
+// `title`." It is the only way out of a run that a player has not lost or won, so
+// a build without it traps the player in whatever campaign they last started.
 //
-// THE REQUIREMENT. Taking QUIT TO MENU from the pause menu moves the screen to
-// title.
-//
-// HOW IT IS DECIDED. Open the pause menu mid-run, take QUIT TO MENU, and read
-// the screen. The evidence it hands back is `title` (image): the title
-// returned to from a run.
+// HOW IT IS DECIDED. A run is posed mid-campaign with structures standing on the
+// yard, so what is left is a run in progress rather than an untouched one, and the
+// pause menu is opened directly through the operation that reaches a screen
+// "exactly as reaching it in play does". `QUIT TO MENU` is found by the action it
+// carries rather than by where it was drawn, and pressed at the centre of the
+// rectangle the build itself reported for it. The screen is read back.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  pressMenu,
+  standComponent,
+  type Harness,
+} from "../harness";
 
-describe("screens.pause-quit", () => {
-  it("QUIT TO MENU returns to the title", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `screens.pause-quit` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("returns to the title from a run in progress", async () => {
+  openYard(h, { wave: 9, charge: 400 });
+  standComponent(h, "capacitor", 3, 10, 0);
+
+  h.debug.setScreen("paused");
+  assertEqual(
+    h.snapshot().screen,
+    "paused",
+    "the pause menu showing before QUIT TO MENU is taken (specs/ui.md)",
+  );
+
+  await pressMenu(h, "quit");
+  captureStill(h, "title");
+
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "the screen QUIT TO MENU returns to (specs/ui.md)",
+  );
 });

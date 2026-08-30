@@ -1,26 +1,50 @@
-// Arc Foundry — `screens.difficultyselect-back`. CASE-PROVIDED. NOT YET WRITTEN.
+// screens/difficultyselect-back — the difficulty select's BACK returns to the map
+// select.
 //
-// The manifest declares this point at `screens/difficultyselect-back.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/ui.md`, of `difficultyselect`: "A `BACK` choice returns
+// to `mapselect`." It is what lets a player who has picked a map change their mind
+// about it, and it is the one step back that does NOT go to the title, so a build
+// that treats every BACK the same fails here while passing the map select's.
 //
-// THE REQUIREMENT. Taking the BACK entry from the difficulty select moves the
-// screen to mapselect.
-//
-// HOW IT IS DECIDED. Open the difficulty select, take BACK, and read the
-// screen. The evidence it hands back is `mapselect` (image): the map select
-// returned to.
+// HOW IT IS DECIDED. The difficulty select is opened directly, through the
+// operation that reaches a screen "exactly as reaching it in play does", so a
+// build with a broken map select still has this point decided on its own terms.
+// The BACK choice is found by the action it carries rather than by where it was
+// drawn, and pressed at the centre of the rectangle the build itself reported for
+// it. The screen is read back.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openMenu,
+  pressMenu,
+  type Harness,
+} from "../harness";
 
-describe("screens.difficultyselect-back", () => {
-  it("The difficulty select's BACK returns to the map select", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `screens.difficultyselect-back` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("returns to the map select when BACK is taken from the difficulty select", async () => {
+  h.debug.reset();
+  openMenu(h, "difficultyselect");
+
+  await pressMenu(h, "back");
+  captureStill(h, "mapselect");
+
+  assertEqual(
+    h.snapshot().screen,
+    "mapselect",
+    "the screen the difficulty select's BACK choice returns to " +
+      "(specs/ui.md)",
+  );
 });

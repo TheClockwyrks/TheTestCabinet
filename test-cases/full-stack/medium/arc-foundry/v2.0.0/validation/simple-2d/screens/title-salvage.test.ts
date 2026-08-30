@@ -1,26 +1,56 @@
-// Arc Foundry — `screens.title-salvage`. CASE-PROVIDED. NOT YET WRITTEN.
+// screens/title-salvage — SALVAGE leads to the map select.
 //
-// The manifest declares this point at `screens/title-salvage.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/ui.md`, of the title's two entries: "`SALVAGE` leads to
+// `mapselect` and `HOW TO PLAY` leads to `howto`." This is the first step of the
+// only route into a run, so a build that draws the title and goes nowhere from it
+// is unplayable from the front door.
 //
-// THE REQUIREMENT. Taking SALVAGE from the title moves the screen to
-// mapselect.
-//
-// HOW IT IS DECIDED. Reset, highlight SALVAGE, confirm it, and read the
-// screen. The evidence it hands back is `mapselect` (image): the map select
-// reached from the title.
+// HOW IT IS DECIDED. The game is reset to the title and the SALVAGE entry is
+// highlighted and taken. Which index that entry sits at is read off the build's
+// own `menuButtons`, in the order it presents its choices, so nothing here
+// assumes an ordering; the entry is then confirmed with a real key event
+// dispatched at the engine's own surface, which is the layer the game reads its
+// `confirm` action through, and the screen is read.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  keyFor,
+  openMenu,
+  type Harness,
+} from "../harness";
 
-describe("screens.title-salvage", () => {
-  it("SALVAGE leads to the map select", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `screens.title-salvage` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("moves to the map select when SALVAGE is taken", async () => {
+  h.debug.reset();
+  const entries = openMenu(h, "title");
+  const index = entries.findIndex((entry) => entry.action === "salvage");
+  assertGreaterThanOrEqual(
+    index,
+    0,
+    "the title to present a SALVAGE choice (specs/ui.md, " +
+      "specs/instrumentation.md)",
+  );
+
+  h.debug.setMenuIndex(index);
+  await h.tap(keyFor("confirm"));
+  captureStill(h, "mapselect");
+
+  assertEqual(
+    h.snapshot().screen,
+    "mapselect",
+    "the screen SALVAGE leads to from the title (specs/ui.md)",
+  );
 });

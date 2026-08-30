@@ -1,26 +1,68 @@
-// Arc Foundry — `screens.difficultyselect-lists-three`. CASE-PROVIDED. NOT YET WRITTEN.
+// screens/difficultyselect-lists-three — the difficulty select shows each
+// difficulty's figures.
 //
-// The manifest declares this point at `screens/difficultyselect-lists-three.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/ui.md`, of `difficultyselect`: it "lists Easy, Medium
+// and Hard, each showing its wave count and how tough its Load grows, as
+// `specs/difficulty.md` states, before it is chosen." `specs/difficulty.md` says
+// the same from its own side: "The difficulty select screen shows each
+// difficulty's wave count and how tough its Load grows before it is chosen." The
+// point of the screen is that the choice is INFORMED: a player picking Hard has
+// been told it is sixty waves and that its Load climbs far past a Medium run's.
 //
-// THE REQUIREMENT. The difficulty select draws Easy, Medium and Hard, each
-// with its wave count and how tough its Load grows, before one is chosen.
+// HOW IT IS DECIDED. The difficulty select is opened directly, through the
+// operation that reaches a screen "exactly as reaching it in play does", so a
+// build with a broken map select still has this point decided on its own terms.
+// The frame's own text draws are read for the three names and for the three wave
+// counts, each as a number of its own so that `40` is not found inside `140`.
 //
-// HOW IT IS DECIDED. Open the difficulty select and read the text draws. The
-// evidence it hands back is `difficulty` (image): the difficulty select and
-// its figures.
+// WHAT IS DECIDED HERE AND WHAT IS NOT. "How tough its Load grows" is a phrase
+// rather than a figure: `specs/difficulty.md` fixes four constants per difficulty
+// and gives each a one-line character, and leaves how a build says that to the
+// build. There is no wording a check could require that would be fair to every
+// build that says it well, so the toughness half is left to the reviewer, who has
+// the captured still in front of them. The wave count, which the specification
+// does fix as a number, is decided here.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { DIFFICULTIES } from "../../src/constants";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { drewNumber, drewText } from "./reading";
 
-describe("screens.difficultyselect-lists-three", () => {
-  it("The difficulty select shows each difficulty's figures", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `screens.difficultyselect-lists-three` has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("names the three difficulties and shows the waves each one runs", async () => {
+  h.debug.reset();
+  h.debug.setScreen("difficultyselect");
+  const calls = await h.frameCalls();
+  captureStill(h, "difficulty");
+
+  assertEqual(
+    h.snapshot().screen,
+    "difficultyselect",
+    "the difficulty select showing (specs/ui.md)",
+  );
+
+  for (const difficulty of DIFFICULTIES) {
+    assertEqual(
+      drewText(calls, difficulty.id),
+      true,
+      `the difficulty select to name ${difficulty.id} (specs/ui.md)`,
     );
-  });
+    assertEqual(
+      drewNumber(calls, difficulty.waves),
+      true,
+      `the difficulty select to show the ${difficulty.waves} waves ` +
+        `${difficulty.id} runs (specs/ui.md, specs/difficulty.md)`,
+    );
+  }
 });

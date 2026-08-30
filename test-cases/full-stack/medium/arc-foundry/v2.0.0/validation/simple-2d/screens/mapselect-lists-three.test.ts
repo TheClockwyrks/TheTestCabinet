@@ -1,27 +1,61 @@
-// Arc Foundry — `screens.mapselect-lists-three`. CASE-PROVIDED. NOT YET WRITTEN.
+// screens/mapselect-lists-three — the map select lists the three maps.
 //
-// The manifest declares this point at `screens/mapselect-lists-three.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/ui.md`: the map select "lists the three maps of
+// `specs/yard.md`, The Substation, The Switchyard and The Transformer Yard, each
+// with its name and a preview of its waypoint layout, and The Transformer Yard's
+// preview showing its two fixed housings." The names are the part the
+// specification fixes as text; the preview is drawn work whose look, like every
+// other look in this game, belongs to the build.
 //
-// THE REQUIREMENT. The map select draws the names of The Substation, The
-// Switchyard and The Transformer Yard and a preview of each map's waypoint
-// layout, with The Transformer Yard's preview showing its two fixed housings.
+// HOW IT IS DECIDED. The map select is opened directly, through the operation that
+// reaches a screen "exactly as reaching it in play does", so a build with a broken
+// title menu still has this point decided on its own terms. The frame's own text
+// draws are then read for all three names, and the screen is kept as a still.
 //
-// HOW IT IS DECIDED. Open the map select, read the text draws, and read the
-// drawn previews back. The evidence it hands back is `maps` (image): the three
-// maps and their previews.
+// WHAT IS DECIDED HERE AND WHAT IS NOT. Neither `specs/ui.md` nor
+// `specs/instrumentation.md` gives a preview any machine-readable form: no
+// reading reports the preview's geometry, and `specs/ui.md` fixes no layout for
+// the screen, so there is no coordinate a check could sample and no shape it
+// could count that would be fair to every conforming build. What this check
+// decides is that the screen names all three maps; the previews and the
+// Transformer Yard's two housings are left to the reviewer, who has the captured
+// still in front of them.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { MAPS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { drewText } from "./reading";
 
-describe("screens.mapselect-lists-three", () => {
-  it("The map select lists the three maps", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `screens.mapselect-lists-three` has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("names all three maps on the map select", async () => {
+  h.debug.reset();
+  h.debug.setScreen("mapselect");
+  const calls = await h.frameCalls();
+  captureStill(h, "maps");
+
+  assertEqual(
+    h.snapshot().screen,
+    "mapselect",
+    "the map select showing (specs/ui.md)",
+  );
+
+  for (const map of MAPS) {
+    assertEqual(
+      drewText(calls, map.name),
+      true,
+      `the map select to draw the name ${map.name} (specs/ui.md, ` +
+        "specs/yard.md)",
     );
-  });
+  }
 });
