@@ -28,6 +28,10 @@ row = clamp(round((y - FLOOR_Y0) / TILE - size / 2), 0, ROWS - size)
 clamp is why a pointer at any corner of the floor still leaves the whole
 footprint on the grid at every size.
 
+The held preview is drawn on the floor: the tiles of its footprint, drawn plainly
+apart valid and invalid, its radiator faces at the held rotation, and a range
+ring at the held type's range, centred on the footprint's centre.
+
 ## Valid and invalid
 
 A held footprint is valid exactly when all six of these hold:
@@ -73,9 +77,9 @@ Building is allowed whatever phase the run is in.
 
 ## Selecting
 
-Selecting a placed tower opens its inspector on it and draws its range ring.
-Selecting is by tower: one tower is selected at a time, or none. Deselecting
-leaves no tower selected.
+Selecting a placed tower opens its inspector on it and draws a range ring at that
+tower's range, centred on its footprint's centre. Selecting is by tower: one
+tower is selected at a time, or none. Deselecting leaves no tower selected.
 
 ## Upgrading
 

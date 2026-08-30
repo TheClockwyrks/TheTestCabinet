@@ -39,12 +39,17 @@ when the frame opened:
 
 ```
 airLoss(T)   = (RAD_K * radiatorEdges(T) + BASE_K * plainEdges(T)) * (H_T / 100)
-conduct(T)   = sum over emitter neighbours N of COND_K * sharedEdges(T, N) * (H_N - H_T)
-forgeGain(T) = sum over touching Forges F of FORGE_K * sharedEdges(T, F) * max(0, setpoint(F) - H_T)
-sinkLoss(T)  = sum over touching Sinks S of output(S) * sharedEdges(T, S) * (H_T / 100)
 shotGain(T)  = shotsFired(T, dt) * heatPerShot(T)
 
-dH_T = (shotGain(T) + (conduct(T) + forgeGain(T) - airLoss(T) - sinkLoss(T)) * dt) / mass(T)
+conduct(T)   = COND_K * sharedEdges(T, N) * (H_N - H_T),
+                 summed over every emitter N that T touches
+forgeGain(T) = FORGE_K * sharedEdges(T, F) * max(0, setpoint(F) - H_T),
+                 summed over every Forge F that T touches
+sinkLoss(T)  = output(S) * sharedEdges(T, S) * (H_T / 100),
+                 summed over every Sink S that T touches
+
+dH_T = (shotGain(T)
+        + (conduct(T) + forgeGain(T) - airLoss(T) - sinkLoss(T)) * dt) / mass(T)
 ```
 
 Every term is computed from the heats the frame opened with. Only when every
@@ -78,8 +83,8 @@ drains each emitter it touches through a face that would otherwise shed nothing,
 which is the only way a boxed-in tower loses heat. Both stack: two Forges or two
 Sinks on one emitter add both flows.
 
-Movers carry no heat, so they neither conduct with an emitter nor equalise with
-each other; they only drive the flows above into and out of the emitters they
+Movers carry no heat, so they neither conduct with an emitter nor exchange with
+each other. They only drive the flows above into and out of the emitters they
 touch.
 
 ## Heat is damage

@@ -456,7 +456,8 @@ Notes on the shape:
   distance to its exhaust divided by the tile size.
 - `radiatorFaces` are reported in world orientation, so they name the faces that
   point outward after the tower's placement rotation.
-- `slowed` is true exactly when `slowFactor` is above `0`.
+- A unit's `baseSpeed` is its type's speed and its `speed` is that base reduced
+  by any live slow. `slowed` is true exactly when `slowFactor` is above `0`.
 - `controls` reports where the build panel put each control, refreshed at the
   call. It is a diagnostic read: no operation sets it and nothing in the game
   depends on it.
@@ -467,6 +468,12 @@ Notes on the shape:
   update, so the snapshot reports the bit the runtime holds. It is not read at
   the call. No operation sets it; the `mute` action and the panel's mute control
   do.
+- A tower's `size`, `redline`, `refund`, and `upgradeCost` are the figures
+  `specs/towers.md` and `specs/building.md` give it at its current level.
+  `heatMult` is `heatMultiplier(heat, redline)`, `damage` is the per-shot damage
+  `specs/combat.md` states, `slowFactor` is a Rime's `slowFactor(heat)` at its
+  level and `0` on every other tower, and `output` is a mover's figure at its
+  level.
 - `heatMult` and `damage` are `0` for the Forge and the Sink and for nothing
   else. The Rime reports both like any other emitter, because it is one.
 - `simTime` accumulates the game time the simulation advanced by, so it holds
