@@ -667,7 +667,7 @@ export type TagName = (typeof TAGS)[keyof typeof TAGS];
 /**
  * The floor is built on with the pointer, so the keyboard moves a menu highlight
  * and nothing else: a four-way pad and the menu vocabulary that comes with it.
- * The fourteen actions Meltdown registers beyond that vocabulary sit outside the
+ * The thirteen actions Meltdown registers beyond that vocabulary sit outside the
  * layout, and every touch interaction is a tap on a panel control rather than a
  * virtual pad, which is why the layout carries no action buttons.
  */
