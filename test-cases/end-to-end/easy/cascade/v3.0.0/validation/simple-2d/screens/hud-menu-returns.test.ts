@@ -1,23 +1,67 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/screens/hud-menu-returns.test.ts
+// screens/hud-menu-returns — the HUD's MENU returns the player to the title.
 //
-// The review item `screens.hud-menu-returns` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/screens.md's HUD table: `HUD_ITEMS[1]`, `MENU`, in the
+// `HUD_MENU` rectangle, "returns to `title`". specs/controls.md fixes that
+// rectangle as `{ x: 420, y: 680, w: 120, h: 36 }` and states that a control
+// answers a CLICK whose press point lies inside it.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// ONE REQUIREMENT, IN ONE DIRECTION: that the click LEAVES play for the title. It
+// is the player's way out of a game with no legal move left, which is why
+// specs/victory.md names the controls specs/screens.md states as the way out of an
+// unwinnable game.
 //
-// What this item must decide, from the manifest:
+// DRIVEN THROUGH THE ENGINE'S OWN POINTER, at the rectangle's center, so what is
+// exercised is the player's path.
 //
-//   The HUD's MENU returns to the title
+// THE TABLE IS EMPTY under the HUD. Nothing this point reads concerns a card, and
+// `openTable` is the isolated live table the suite stands on.
 //
-//   A press inside HUD_MENU reaches title.
+// WHAT THIS DOES NOT DECIDE. That the `MENU` label is drawn in its rectangle,
+// which is `presentation/hud-labels-drawn`, nor what the title screen shows once
+// it is reached, which is the four `title-shows-*` points.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { HUD_MENU } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openTable,
+  tapPointer,
+  type Harness,
+} from "../harness";
 
-it("screens.hud-menu-returns — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/screens/hud-menu-returns.test.ts is a scaffold stub, not a validator",
+/** A point inside `HUD_MENU`: its center (specs/controls.md). */
+const PRESS = {
+  x: HUD_MENU.x + HUD_MENU.w / 2,
+  y: HUD_MENU.y + HUD_MENU.h / 2,
+};
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reaches the title screen when the HUD's MENU is clicked", async () => {
+  openTable(h);
+  assertEqual(
+    h.snapshot().screen,
+    "playing",
+    "posing: the game is in live play, where HUD_MENU answers " +
+      "(specs/controls.md: a control answers only on the screen it belongs to)",
+  );
+
+  await tapPointer(h, PRESS.x, PRESS.y);
+  captureStill(h, "title");
+
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "the screen after a click inside HUD_MENU (specs/screens.md)",
   );
 });
