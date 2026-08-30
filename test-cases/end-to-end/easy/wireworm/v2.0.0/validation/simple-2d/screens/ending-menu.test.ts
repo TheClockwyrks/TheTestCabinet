@@ -1,19 +1,74 @@
-// Wireworm — screens.ending-menu, under the `simple-2d` engine. CASE-PROVIDED.
+// Wireworm — screens/ending-menu: confirming MENU on an ending screen returns to
+// the title.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// One transition of the menu state machine `specs/ui.md` fixes for both end
+// screens: MENU "returns to `title`, with the title's highlight at the first
+// item".
 //
-// The point it decides, from `test-case.toml`:
+// It is taken from `victory`, the screen a run reaches by winning;
+// `screens/ending-play-again` takes its own transition from `gameover`, so the
+// shared ENDING_ITEMS menu is decided on both screens across the two.
 //
-// MENU returns to the title
+// The highlight is posed onto the second ending item with `setMenuIndex` — so
+// what this decides is the transition rather than how a menu moves — and it is
+// posed AWAY from 0, which is what makes the title's highlight a reading of what
+// the return did rather than of where the ending menu happened to be sitting.
 //
-// Confirming the second ending item leaves the game on the title screen.
+// The accept is the `confirm` action's own bound key, dispatched as a real key
+// event at the target the engine listens on.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { ENDING_ITEMS, TOTAL_LEVELS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
 
-test("screens.ending-menu", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/simple-2d/screens/ending-menu.test.ts has not been written yet",
+/** The won run MENU is taken from. */
+const RUN_SCORE = 8460;
+const RUN_LIVES = 2;
+
+/** `confirm`'s own bound key; `Enter` drives nothing else (specs/controls.md). */
+const CONFIRM_KEY = "Enter";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("returns to the title from the second ending item", async () => {
+  h.debug.reset();
+  h.debug.setScore(RUN_SCORE);
+  h.debug.setLives(RUN_LIVES);
+  h.debug.setLevel(TOTAL_LEVELS);
+  h.debug.setReachedLevel(TOTAL_LEVELS);
+  h.debug.setScreen("victory");
+  assertEqual(ENDING_ITEMS[1], "MENU", "MENU is the second ending item");
+  h.debug.setMenuIndex(1);
+  const won = h.snapshot();
+  assertEqual(won.screen, "victory", "the press is made on an ending screen");
+  assertEqual(
+    won.menuIndex,
+    1,
+    "the ending menu's highlight rests on MENU before the confirm",
+  );
+
+  await h.tap(CONFIRM_KEY);
+  await h.advance(1);
+  captureStill(h, "title");
+
+  const title = h.snapshot();
+  assertEqual(
+    title.screen,
+    "title",
+    "confirming MENU leaves the game on the title (specs/ui.md)",
+  );
+  assertEqual(
+    title.menuIndex,
+    0,
+    "the title's highlight is at its first item (specs/ui.md)",
   );
 });
