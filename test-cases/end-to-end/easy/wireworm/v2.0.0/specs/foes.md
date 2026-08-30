@@ -1,82 +1,138 @@
-# Support Foes
+# Wireworm — The support foes
 
-## Overview
+Three foes work the board alongside the worm, each reshaping the node field in
+its own way. This file defines each one's motion, its effect on the field, how
+many bolts it takes, and the level it starts appearing at. What a foe reaching
+the cursor costs is in `specs/cursor.md`, and what killing one pays is in
+`specs/scoring.md`.
 
-This file defines the three support foes that harass you and reshape the field
-alongside the worm: the glitch, the packet-dropper, and the corruptor. Each is
-rendered from its provided sprite (`specs/assets.md`) and each interacts with the
-charge field (`specs/charge.md`) or the player band (`specs/board.md`) in its own
-way. Bounties and spawn pacing are given in `specs/progression.md`; the behaviors
-here are fixed.
+## How a foe acts on the field
 
-All three are hostile to the cursor: contact with the cursor costs a life
-(`specs/progression.md`), the same as a worm segment reaching you. You destroy
-them by shooting them (`specs/controls.md`).
+A foe acts on the tile its center occupies, and only on that tile. A foe standing
+still therefore acts on the one tile it stands on, and a travelling foe acts on
+each tile its center crosses in turn. `specs/board.md` gives the tile a center
+falls in.
 
-## The Glitch (node-eater)
+Every foe carries a velocity in logical units per second, integrated against the
+delta time of each update.
 
-The glitch is a corrupted sprite that skitters through the lower board and eats
-the field.
+## The glitch
 
-- Behavior. It enters from a side edge somewhere in the middle or lower rows and
-  moves in a restless zig-zag, descending in steps and darting sideways, roaming
-  across and down into the player band. It is quick and erratic, not a straight
-  line.
-- It eats nodes. Whenever the glitch passes over a tile holding a node, that node
-  is removed (of any charge; it eats a critical node just as readily as an inert
-  one), thinning your field and defusing charge you were building for a discharge.
-  A glitch left alone can strip a charged cluster you were saving.
-- Threat and reward. It is deadly on contact with the cursor. It dies to a single
-  bolt and pays a bounty when killed.
-- Spawning. Glitches begin appearing from level 2 onward, at most one or two on
-  the board at once.
+The glitch skitters through the lower board and eats the field.
 
-## The Packet-Dropper (field-refiller)
+| Figure | Constant | Value |
+| --- | --- | --- |
+| Horizontal speed | `GLITCH_H_SPEED` | `210` units per second |
+| Downward speed | `GLITCH_V_SPEED` | `62` units per second |
+| Dart interval | `GLITCH_DART_INTERVAL` | `0.32` s |
+| Bolts to destroy it | | `1` |
 
-The dropper is a data packet that falls straight down and reseeds the field,
-refilling terrain when it has thinned.
+### Motion
 
-- Trigger. A dropper appears when the field has grown too sparse, for example when
-  the count of nodes in the lower half of the board falls below a threshold you
-  choose. It is the board's answer to a player who clears too much: the emptier you
-  keep the field, the more droppers you draw.
-- Behavior. It enters at the top and falls straight down a column, dropping a fresh
-  inert node (`C = 0`) into empty tiles it passes on its way, laying a vertical
-  trail of new terrain, then exits at the bottom. The nodes it drops are ordinary
-  nodes from then on.
-- Threat and reward. It is deadly on contact with the cursor. It takes two bolts to
-  destroy: the first hit does not kill it but makes it speed up (it drops faster
-  for the rest of its fall), and the second kills it and pays its bounty. A dropper
-  you let finish reseeds a lane of terrain; one you kill early drops fewer nodes.
-- Spawning. Droppers begin from level 3 onward, triggered by the sparse-field
-  condition rather than on a fixed timer.
+A glitch travels horizontally at `GLITCH_H_SPEED` in its current horizontal
+direction and downward at `GLITCH_V_SPEED`, both at once.
 
-## The Corruptor (charge-slammer)
+Its horizontal direction reverses at each `GLITCH_DART_INTERVAL`, so it darts
+back and forth as it descends. The dart clock starts when the glitch comes into
+existence and runs on the same accumulate-and-carry rule the worm's step clock
+uses, so a frame covering several intervals makes several reversals. The
+horizontal direction also reverses when the glitch's center reaches a side edge
+of the board, at `x` of `0` or `1280`.
 
-The corruptor is a leggy crawler that scuttles across the upper board and slams
-the field to critical, setting up both a detonation cluster and a worm dive-lane.
+A glitch whose center passes below the board, at `y` past `720`, leaves the board
+and is gone.
 
-- Behavior. It enters from a side edge on an upper row and crawls horizontally
-  across the board to the far edge, then leaves. It does not descend; it works the
-  top of the field.
-- It charges nodes to critical. Every node the corruptor crawls over is slammed
-  straight to critical (`C = 3`, `specs/charge.md`), not `+1` but full charge in
-  one pass. A corruptor leaves a line of critical nodes in its wake: a detonation
-  cluster for you, but also a wide dive-lane that will fast-track the worm straight
-  down when it reaches it (`specs/charge.md`, `specs/worm.md`). Its amber stinger
-  is the same amber a critical node shows, marking what it does.
-- Threat and reward. It is deadly on contact with the cursor, though it stays high,
-  so contact is rare. It dies to a single bolt and pays the largest bounty of the
-  three. Killing it early cuts its critical line short.
-- Spawning. Corruptors begin from level 5 onward, crossing occasionally.
+### What it does
 
-## Summary
+A glitch removes the node on the tile its center occupies, whatever that node's
+charge. A critical node eaten this way is removed without detonating, so no
+discharge fires and no arc is reported.
 
-| Foe | Role | Bolts to kill | Danger |
-| --- | --- | --- | --- |
-| Glitch | Eats nodes (any charge), skitters the lower board | 1 | Contact; strips your charged arsenal |
-| Packet-dropper | Reseeds the field when it is too sparse | 2 (speeds up after the first) | Contact; thickens the field |
-| Corruptor | Slams a row of nodes to critical across the top | 1 | Contact; sets a worm dive-lane |
+### When one appears
 
-All three cost a life on contact with the cursor and are destroyed by your bolts.
-Their bounties and how often they appear are given in `specs/progression.md`.
+Glitches begin at `GLITCH_FROM_LEVEL` (`2`), and none appears at level `1`. From
+that level on, a glitch enters after an interval drawn from the run's seeded
+generator between `GLITCH_MIN_INTERVAL` (`7.0` s) and `GLITCH_MAX_INTERVAL`
+(`12.0` s), timed from the moment the level's play becomes active, and each
+further glitch after another such interval.
+
+At most `GLITCH_MAX_ON_BOARD` (`2`) glitches are on the board at once. While two
+are on it, no further glitch enters.
+
+A glitch enters at the left or right edge of the board with its center on the
+board, on a row from `8` to `15`, and its horizontal direction pointing inward
+from that edge.
+
+## The dropper
+
+The dropper falls down a column and reseeds the field beneath it.
+
+| Figure | Constant | Value |
+| --- | --- | --- |
+| Fall speed | `DROPPER_SPEED` | `150` units per second |
+| Fall speed after its first bolt | `DROPPER_SPEED_HIT` | `320` units per second |
+| Bolts to destroy it | | `2` |
+
+### Motion
+
+A dropper falls straight down at `DROPPER_SPEED`. Its center `x` never changes
+for the whole of its fall, and it never moves upward. A dropper whose center
+passes below the board, at `y` past `720`, leaves the board and is gone.
+
+### What it does
+
+A dropper lays a fresh node at charge `0` on the tile its center occupies
+whenever that tile is empty and lies in rows `1` to `17`. A tile that already
+holds a node is left exactly as it is, at the charge it had, and no node is laid
+in row `0` or in the player band.
+
+### What a bolt does to it
+
+The first bolt into a dropper does not destroy it. It sets the dropper's hit
+flag, and from that moment the dropper falls at `DROPPER_SPEED_HIT` for the rest
+of its fall. A bolt into a dropper whose hit flag is already set destroys it.
+
+### When one appears
+
+Droppers begin at `DROPPER_FROM_LEVEL` (`3`), and none appears at levels `1` and
+`2`. From that level on, the nodes standing in rows `10` to `19` are counted
+every `DROPPER_CHECK_INTERVAL` (`2.5` s) of active play. When that count is below
+`DROPPER_SPARSE_THRESHOLD` (`8`), one dropper enters; when it is `8` or above,
+none does.
+
+A dropper enters at row `0`, its center on the center of a column drawn from the
+run's seeded generator, falling.
+
+## The corruptor
+
+The corruptor crawls across the upper board and slams the field to critical.
+
+| Figure | Constant | Value |
+| --- | --- | --- |
+| Crawl speed | `CORRUPTOR_SPEED` | `130` units per second |
+| Bolts to destroy it | | `1` |
+
+### Motion
+
+A corruptor crawls horizontally at `CORRUPTOR_SPEED` in the direction it entered
+from. Its center `y` never changes: it holds the row it entered on for the whole
+crossing and never descends. A corruptor whose center passes a side edge of the
+board, at `x` past `0` or `1280`, leaves the board and is gone.
+
+### What it does
+
+A corruptor sets the node on the tile its center occupies to `CHARGE_MAX` (`3`),
+whatever charge that node held, so a node it crosses goes straight to critical
+rather than up one level. It lays no node on an empty tile.
+
+### When one appears
+
+Corruptors begin at `CORRUPTOR_FROM_LEVEL` (`5`), and none appears at levels `1`
+through `4`. From that level on, a corruptor enters after an interval drawn from
+the run's seeded generator between `CORRUPTOR_MIN_INTERVAL` (`14.0` s) and
+`CORRUPTOR_MAX_INTERVAL` (`22.0` s), timed from the moment the level's play
+becomes active, and each further corruptor after another such interval.
+
+A corruptor enters at the left or right edge of the board with its center on the
+board, on a row from `1` to `6`, and its direction pointing inward from that
+edge.

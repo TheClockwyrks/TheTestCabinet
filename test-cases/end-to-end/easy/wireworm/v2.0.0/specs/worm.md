@@ -1,121 +1,159 @@
-# The Data-Worm
+# Wireworm — The data-worm
 
-## Overview
-
-This file defines the data-worm: how it is built from segments, how it winds down
-the board, how your shots split and shorten it, and how it grows the field. It
-builds on the tile grid in `specs/board.md` and the charge rules in
-`specs/charge.md`. The numeric values here are fixed; implement them exactly as
-written.
+The data-worm is what a level is fought against. This file defines how a worm is
+built, the clock it steps on, how it winds down the board, when it dives, and
+what happens when its segments are removed. The tile grid it steps over is in
+`specs/board.md`, and what a block does to the node that caused it is in
+`specs/nodes.md`.
 
 ## Structure
 
-A worm is a chain of segments, each occupying one tile (`specs/board.md`) and
-rendered from the provided worm sprite (`specs/assets.md`):
+A worm is a chain of segments, each occupying one tile. The segments are ordered
+from the head:
 
-- The leading segment is the head (it carries the sensor eye and mandibles).
-- The trailing segment is the tail (tapered).
-- Every segment between them is a body segment.
+| Segment | Position in the chain |
+| --- | --- |
+| Head | The first segment, which leads. |
+| Body | Every segment between the head and the tail. |
+| Tail | The last segment. |
 
-The body follows the head: each segment moves into the tile the segment ahead of
-it just left, so the chain snakes along the head's exact path one tile at a time,
-and a body segment is never diagonal to its neighbor. The head leads; the rest
-trail.
+A worm of one segment is a head alone. Consecutive segments always occupy
+orthogonally adjacent tiles, because the chain follows the head's own path.
+
+A worm carries two headings and a diving flag:
+
+| Field | Values |
+| --- | --- |
+| `dh`, the horizontal heading | `+1` for right, `-1` for left |
+| `dv`, the vertical heading | `+1` for down, `-1` for up |
+| `diving` | Whether the worm is driving straight down its column |
+
+## The step clock
+
+A worm moves in whole tile steps rather than continuously. Each worm carries its
+own step clock, which accumulates the simulated time that passes. Each time the
+accumulated time reaches the level's step interval, the worm takes one step and
+the interval is taken off the accumulator, so a frame covering several intervals
+runs several steps in order and the remainder carries into the next frame.
+
+A worm's step clock starts at zero when the worm comes into existence: entering
+at the start of a level, entering after a respawn, or being created as a
+surviving run of a worm whose segments were removed.
+
+The interval is the level's, and it shortens as the run climbs:
+
+```
+wormStepInterval(level) =
+  max(WORM_STEP_FLOOR, WORM_STEP_L1 * WORM_STEP_DECAY ^ (level - 1))
+```
+
+with `WORM_STEP_L1` (`0.14`), `WORM_STEP_DECAY` (`0.95`), and `WORM_STEP_FLOOR`
+(`0.07`), all in seconds. Level 1 steps every `0.14` s and level 12 every
+`0.0796` s. The floor is a bound the twelve levels of a run never reach, so the
+interval within a run is always the decayed figure. Every worm on the board at a
+level steps on that level's interval.
+
+## Length and entry
+
+A level brings in one worm, carrying
+
+```
+wormLength(level) = WORM_BASE_LENGTH + WORM_LENGTH_PER_LEVEL * (level - 1)
+```
+
+segments, with `WORM_BASE_LENGTH` (`10`) and `WORM_LENGTH_PER_LEVEL` (`2`). That
+is `10` segments at level 1 and `32` at level 12.
+
+The worm enters along row `0`, the entry row, from the left edge or the right
+edge. Every one of its segments is laid on row `0`, the head furthest from the
+edge it entered at and the tail nearest it. Its horizontal heading points inward
+from that edge, and its vertical heading is down. `specs/progression.md` states
+when the worm enters.
 
 ## Winding down the board
 
-The worm moves in discrete tile steps at a fixed cadence. It travels horizontally
-along its current row until something turns it:
+Each step the head either winds or dives.
 
-- On each step the head advances one tile in its current horizontal direction
-  (left or right).
-- When the head is blocked, by a node in the next tile, by another worm segment,
-  or by the side edge of the board, the worm drops one row (in its current
-  vertical direction, see below) and reverses its horizontal direction. The body
-  follows along the same path on the following steps.
-- A node the head is blocked by is charged by that collision (`specs/charge.md`:
-  `C = min(3, C + 1)`). Hitting the side edge or another segment turns the worm
-  but charges nothing.
-- Only a horizontal step can be blocked. A drop passes through whatever occupies
-  the tile it lands on: the head enters the tile one row down (or up) in its own
-  column even when a node or another worm segment already stands there, and that
-  node or segment is left exactly as it was, neither charged nor destroyed nor
-  able to turn the worm. What the edges of the board do to a drop is below.
+### Winding
 
-Vertical direction. The worm starts moving down (each drop takes it one row
-lower). When a drop would take it below the bottom row (row `19`), it instead
-flips its vertical direction to up; when a later drop would take it above the top
-playable row, it flips back to down. So the worm descends to the floor, then
-climbs, then descends again, oscillating across the lower board and spending
-dangerous time in the player band (`specs/board.md`) until you clear it. It never
-leaves the board through an edge; edges only turn it.
+The head attempts to move one tile horizontally, to the tile at `(c + dh, r)`.
+That step is blocked when the target tile is any of:
 
-Entry. At the start of a level the worm enters along the top row (row `0`) from
-the left or right edge, moving horizontally, vertical direction down
-(`specs/board.md`).
+- off the board, which is a column outside `0` to `39`;
+- a tile holding a node;
+- a tile holding a worm segment, of this worm or of any other.
 
-Speed. At level 1 the worm takes one tile step every `0.14 s` (about 7 tiles per
-second). Each level shortens the step interval by about `5%`, so the worm quickens
-as levels climb, down to a floor of about `0.07 s`. Speed does not otherwise
-change during a level.
+When the step is not blocked, the head moves to that tile and the worm holds its
+row and both headings.
 
-## Diving on a critical node
+When the step is blocked, the worm turns instead, all within the same step:
 
-When the head is blocked by a critical node (`C = 3`), the worm dives instead of
-winding: it drives straight down its current column, one row per step, ignoring
-nodes and walls, until it reaches the bottom row or the player band, then resumes
-normal winding (`specs/charge.md`). A diving worm is a worm plunging at you, the
-reason a standing critical cluster is a threat, not just a weapon.
+1. Its horizontal heading reverses, so `dh` becomes `-dh`.
+2. Its vertical heading is checked. If the row at `r + dv` is off the board, which
+   is a row outside `0` to `19`, the vertical heading flips first, so `dv` becomes
+   `-dv`.
+3. The head moves one row in its vertical heading, to `(c, r + dv)`, staying in
+   its own column.
 
-## Shooting the worm: split, shorten, and grow the field
+A worm on the floor row (`19`) heading down therefore flips to heading up and
+rises a row, and a worm on the entry row (`0`) heading up flips to heading down
+and drops a row, so a worm oscillates across the lower board rather than leaving
+it. A worm never leaves the board through an edge.
 
-Your bolt travels up its column and hits the first worm segment in its path
-(`specs/controls.md`). Where a segment stands on a tile that also holds a node, the
-bolt strikes the segment. What happens depends on which segment it hits:
+Only a horizontal step can be blocked. The vertical move a block produces always
+takes the head into the tile at `(c, r + dv)`, whatever stands there. A node or a
+worm segment on that tile neither turns the worm nor is destroyed by it, and a
+node keeps the charge it had.
 
-- A head or tail (an end segment): the worm shortens. The end segment is destroyed
-  and the worm is one segment shorter; the next segment in becomes the new head (or
-  tail).
-- A body (middle) segment: the worm splits. The hit segment is destroyed and the
-  chain breaks in two at that point, becoming two independent worms: the part ahead
-  of the break (which keeps the old head) and the part behind it (whose leading
-  segment becomes a new head, taking the head sprite and leading that worm from
-  then on). Each new worm winds and is shot exactly like any other. A one-segment
-  worm is just a head.
-- Every segment destroyed by a shot leaves a fresh inert node (`C = 0`) in the
-  tile where it died (`specs/charge.md`, `specs/board.md`), except where that tile
-  already holds a node, which keeps the charge it had. This is the
-  field-growth engine: the more you cut the worm, the more nodes stand on the
-  board, and the denser the field, the faster it steers the worm down at you. A
-  segment destroyed by a discharge leaves no node (`specs/charge.md`).
+### Diving
 
-Splitting is the heart of the fight: a long worm cut in the middle becomes two
-shorter, faster-turning threats, each of which you must also clear, while every
-cut you make salts the board with more nodes. Cutting near an end trades less
-splitting for the same field growth.
+A block by a node at charge `3`, the critical charge, starts a dive when the head
+is above the player band, which is any row above row `BAND_TOP_ROW` (`18`). The
+step that starts the dive sets `diving` and moves the head one row down, to
+`(c, r + 1)`, staying in its column. A block by a critical node when the head is
+already on row `18` or `19` turns the worm the ordinary way instead.
 
-## Length and level composition
+While a worm is diving, each step advances the head one tile down its own column,
+to `(c, r + 1)`, whatever stands on the tile it enters. The tile's node or
+segment is left exactly as it was, and neither turns the worm nor is destroyed.
+The horizontal heading is unchanged throughout.
 
-- A level's worm is a single chain of `10 + 2 * (level - 1)` segments (10 at level
-  1, growing to 32 by level 12) entering from the top. You may instead split a
-  level's budget across two shorter worms entering together in the later levels if
-  it plays better; the total segment count is the guide, not a hard rule.
-- A level is cleared when every worm segment on the board is gone, killed by shots
-  or discharges, or lost if one reaches you (that costs a life,
-  `specs/progression.md`, but still removes it). Clearing the level advances to the
-  next (`specs/progression.md`); the node field stays as it is (`specs/board.md`).
-- The worm is not slowed, poisoned, or otherwise affected by charge except as
-  stated here (charging nodes it hits, and diving on criticals). It has no health
-  bar; every segment dies in one hit.
+The dive ends at the end of the step in which the head reaches row
+`BAND_TOP_ROW` (`18`) or row `19`. `diving` clears, and the worm winds normally
+from the next step.
 
-## Key numbers
+## The body follows
 
-| Quantity | Value |
-| --- | --- |
-| Tile step interval (level 1) | `0.14 s` |
-| Step interval reduction per level | ~`5%` (floor ~`0.07 s`) |
-| Drop on collision | 1 row |
-| Charge added to a bumped node | `+1` (cap `3`, `specs/charge.md`) |
-| Worm length | `10 + 2 * (level - 1)` segments |
-| Node left by a shot-killed segment | 1 inert node (`C = 0`) |
-| Node left by a discharge-killed segment | none |
+Every step, once the head has moved, each remaining segment moves into the tile
+the segment ahead of it occupied before that step. The chain therefore travels
+the head's exact path, one tile behind the segment ahead of it.
+
+## Cutting the worm
+
+A bolt travelling up a column destroys the first worm segment in its path, as
+`specs/cursor.md` states. A discharge destroys every segment within its reach, as
+`specs/discharge.md` states.
+
+Whenever segments are removed from a worm, whatever removed them, the segments
+that survive fall into runs of consecutive segments, counted from the head end.
+Each run becomes a worm of its own:
+
+- The first surviving run, counted from the head end, keeps the worm's id, its
+  two headings, and its diving flag. Its leading segment is its head.
+- Each further run becomes a new worm, taking a fresh id and the same two
+  headings and diving flag as the worm it came from. Its leading segment is the
+  one that was nearest the break, and that segment is its head and leads it from
+  then on.
+- New worms are appended to the roster in order from the head end, and each one's
+  step clock starts at the moment it is created.
+- A worm all of whose segments are removed is gone from the roster.
+
+A bolt into the head therefore leaves one worm, one segment shorter, led by what
+was the second segment. A bolt into the tail leaves one worm, one segment
+shorter, with the same head. A bolt into a middle segment leaves two worms, the
+head-side run and the tail-side run.
+
+Every segment destroyed by a bolt leaves a node behind, and every segment
+destroyed by a discharge leaves nothing; `specs/nodes.md` and
+`specs/discharge.md` state both. Every segment dies to one hit, whatever its
+place in the chain.
