@@ -35,9 +35,9 @@ import {
   createHarness,
   drawnFrom,
   frameIndexes,
-  lastWorm,
   poseWorm,
   startPlaying,
+  wormById,
   type Harness,
 } from "../harness";
 import { blitsNear, describeBlits } from "./reading";
@@ -72,7 +72,7 @@ afterEach(async () => {
 
 it("blits a head frame of the seeded worm art on the head's tile", async () => {
   await startPlaying(h);
-  await poseWorm(h, {
+  const id = await poseWorm(h, {
     c: HEAD_COLUMN,
     r: WORM_ROW,
     length: WORM_LENGTH,
@@ -83,7 +83,7 @@ it("blits a head frame of the seeded worm art on the head's tile", async () => {
   // The posed worm, drawn from the seeded art.
   await captureStill(h, "head");
 
-  const posed = lastWorm(await h.snapshot());
+  const posed = wormById(await h.snapshot(), id);
   assertEqual(
     posed?.segments.length,
     WORM_LENGTH,

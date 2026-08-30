@@ -20,15 +20,16 @@
 // WHAT THAT READING DOES NOT SEE is a turn of some angle between the quarters,
 // which reverses neither axis. It squeezes the mapped box instead, so the box a
 // square frame lands in stops being square, and that is the second half of the
-// reading: the seeded frames are `SPRITE_SIZE` (`32`) square, so an upright draw
-// of one lands in a box whose sides are in the ratio the build drew it at, and
-// {@link SQUARE_TOLERANCE} allows the build every reasonable choice of that.
+// reading: the seeded frames are `SPRITE_SIZE` (`32`) square (specs/assets.md),
+// so an upright draw of one lands in a box the build's own choice of size made,
+// and {@link SQUARE_MIN} leaves that choice wide open while excluding the
+// squeeze a turn produces.
 //
 // NOTHING ELSE IS ON THE BOARD. `startPlaying` leaves no node, worm, foe or
 // bolt, so the cursor resting at its band's centre is the only body drawn.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLessThanOrEqual, fail } from "../assert";
+import { assertGreaterThanOrEqual, fail } from "../assert";
 import { SPRITE_SIZE, TILE } from "../constants";
 import {
   blitsOfFrame,
@@ -50,19 +51,19 @@ import { blitsNear, describeBlits } from "./reading";
 const PLACED_MAX = TILE / 2;
 
 /**
- * How far the mapped box's sides may differ in length, as a fraction of the
- * longer of them, and still be the box a square frame drawn upright lands in.
+ * The least the mapped box's shorter side may be as a fraction of its longer,
+ * for the box to be one an upright draw of a square frame lands in.
  *
- * A seeded frame is `SPRITE_SIZE` (`32`) square (specs/assets.md), and a build
- * choosing to draw the cursor at some other aspect than its art's is a design
- * choice the specification leaves open — so this is generous: a quarter of the
- * longer side, which admits a cursor drawn half again as tall as it is wide. It
- * is not a bound on an angle. What it excludes is the squeeze a turn between the
- * quarter turns produces: a frame turned by a sixth of a turn lands in a box
- * whose sides differ by nearly three quarters, and one turned by an eighth lands
- * in a box with no width at all.
+ * The specification fixes no size for the cursor's mark, so a build is free to
+ * draw the square frame into a box of its own proportions, and this leaves that
+ * open all the way from three units by five to five by three. It is not a bound
+ * on an angle. What it excludes is the SQUEEZE a turn between the quarter turns
+ * produces, which no choice of size explains: a frame turned by a sixth of a
+ * right angle lands in a box whose shorter side is well under this, one turned
+ * by a third of one lands in a box a quarter as wide as it is tall, and one
+ * turned by half a right angle lands in a box with no width at all.
  */
-const SQUARE_TOLERANCE = 0.25;
+const SQUARE_MIN = 0.6;
 
 let h: Harness;
 
@@ -111,12 +112,12 @@ it("blits the seeded cursor frame on the cursor, unflipped and unturned", async 
 
   const box = upright[0];
   const longer = Math.max(box.width, box.height);
-  assertLessThanOrEqual(
-    longer === 0 ? 1 : Math.abs(box.width - box.height) / longer,
-    SQUARE_TOLERANCE,
-    `the ${SPRITE_SIZE}-square cursor frame blitted into a box of its own ` +
-      `proportions rather than one a turn squeezed (specs/assets.md: it points ` +
-      `up and is drawn upright, never rotated); it was blitted into a box ` +
-      `${box.width.toFixed(1)} wide by ${box.height.toFixed(1)} tall`,
+  assertGreaterThanOrEqual(
+    longer === 0 ? 0 : Math.min(box.width, box.height) / longer,
+    SQUARE_MIN,
+    `the ${SPRITE_SIZE}-square cursor frame blitted into a box of the build's ` +
+      `own proportions rather than one a turn squeezed (specs/assets.md: it ` +
+      `points up and is drawn upright, never rotated); it was blitted into a ` +
+      `box ${box.width.toFixed(1)} wide by ${box.height.toFixed(1)} tall`,
   );
 });

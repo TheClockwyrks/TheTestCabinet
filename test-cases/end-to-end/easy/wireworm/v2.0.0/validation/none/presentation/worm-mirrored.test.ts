@@ -31,9 +31,9 @@ import {
   captureStill,
   createHarness,
   drawnFrom,
-  lastWorm,
   poseWorm,
   startPlaying,
+  wormById,
   type Blit,
   type Harness,
 } from "../harness";
@@ -74,7 +74,7 @@ afterEach(async () => {
 async function wormBlits(dh: number): Promise<Blit[][]> {
   await h.debug.clearWorms();
   const head = dh > 0 ? LEFT_COLUMN + WORM_LENGTH - 1 : LEFT_COLUMN;
-  await poseWorm(h, {
+  const id = await poseWorm(h, {
     c: head,
     r: WORM_ROW,
     length: WORM_LENGTH,
@@ -83,7 +83,7 @@ async function wormBlits(dh: number): Promise<Blit[][]> {
   });
 
   const blits = await blitsOfFrame(h);
-  const posed = lastWorm(await h.snapshot());
+  const posed = wormById(await h.snapshot(), id);
   assertEqual(
     posed?.dh,
     dh,
