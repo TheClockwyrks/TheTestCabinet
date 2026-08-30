@@ -940,16 +940,19 @@ export class Game {
     // the phase it clears into is a build phase and not a finale nothing is walking
     // (specs/instrumentation.md). The real finale sets the flag again below.
     this.finale = false;
+    // The bonus is a function of the wave number and of nothing else, so it is paid on
+    // every wave the run clears, the last one included (specs/economy.md). Building stays
+    // available during the finale, so it is Charge the player can still spend. There is NO
+    // interest — Charge stays scarce.
+    this.charge += waveClearBonus(this.wave);
     if (this.wave >= this.diff.waves) {
       // The final wave is cleared — the run is WON. Before the Victory screen, the post-final
       // invincible OVERLOAD DYNAMO walks the maze once so its total damage rates the maze
-      // (specs/enemies.md, specs/gameplay.md). No build phase follows, so no wave-clear bonus is paid.
+      // (specs/campaign.md). No build phase follows it.
       this.startFinale();
       return;
     }
-    // Open the next (untimed) between-wave build phase; pay the small wave-clear bonus and
-    // refresh the allowance. There is NO interest (specs/gameplay.md) — Charge stays scarce.
-    this.charge += waveClearBonus(this.wave);
+    // Open the next (untimed) between-wave build phase and refresh the allowance.
     this.phase = "build";
     this.stampsUsed = 0; // the 5-stamp allowance refreshes at the start of the build phase
     this.harvest = { mode: "none" };

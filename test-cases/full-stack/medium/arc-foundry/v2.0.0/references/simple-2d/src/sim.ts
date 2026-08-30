@@ -1096,14 +1096,17 @@ function endWave(w: FoundryWorld): void {
   // so the phase it clears into is a build phase and not a finale nothing is walking
   // (specs/instrumentation.md). The real finale sets the flag again below.
   w.finale = false;
+  // The bonus is a function of the wave number and of nothing else, so it is paid on
+  // every wave the run clears, the last one included (specs/economy.md). Building stays
+  // available during the finale, so it is Charge the player can still spend.
+  w.charge += waveClearBonus(w.wave);
   if (w.wave >= difficulty(w).waves) {
     // The last wave is cleared, so the run is won. Before the victory screen the
     // finale's Overload Dynamo walks the yard once so its damage rates the maze. No
-    // build phase follows, so no wave-clear bonus is paid.
+    // build phase follows it.
     startFinale(w);
     return;
   }
-  w.charge += waveClearBonus(w.wave);
   w.phase = "build";
   w.stampsUsed = 0;
   w.harvest = { mode: "none" };

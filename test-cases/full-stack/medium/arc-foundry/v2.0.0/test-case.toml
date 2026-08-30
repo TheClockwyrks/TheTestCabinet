@@ -2147,6 +2147,18 @@ validation = { script = "campaign/wave-clear-bonus.test.ts", outputs = [
   { id = "bonus", name = "The bonus landing as the wave clears", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "final-wave-pays-the-bonus"
+title = "Clearing the final wave pays its bonus before the finale"
+description = "Clearing wave N pays WAVE_BONUS_BASE + WAVE_BONUS_STEP * N in Charge like any other wave, and the run then enters the finale, so the bonus is available to spend while the Overload Dynamo walks."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: stand the run on its final wave, clear it, and read the
+# Charge and the phase. See validation/<engine>/campaign/final-wave-pays-the-
+# bonus.test.ts.
+validation = { script = "campaign/final-wave-pays-the-bonus.test.ts", outputs = [
+  { id = "bonus", name = "The final wave's bonus paid into the finale", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "bonus-independent-of-play"
 title = "The bonus is a function of the wave alone"
 description = "The same wave clear pays the same bonus whether the player is broke or sitting on a hoard, and whether the wave was killed off or leaked through, and banked Charge earns no interest over a build phase."
