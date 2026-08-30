@@ -1,23 +1,82 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/stock/empty-stock-recycles.test.ts
+// stock/empty-stock-recycles — an empty stock takes the whole waste back.
 //
-// The review item `stock.empty-stock-recycles` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/stock.md: "A turn of an empty stock recycles instead: every card
+// on the waste returns to the stock face-down". Every card, not some of them, and
+// face-down, because the stock is a face-down pile and the recycled cards are turned
+// up again by the passes that follow. Without this the game ends the moment the
+// stock runs out.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THREE THINGS ARE READ, and they are the three the sentence states: the stock holds
+// as many cards as the waste did, it holds exactly THOSE cards, and every one of
+// them is face-down. The cards are matched by id, which a card keeps for as long as
+// it is on the table (specs/instrumentation.md), so a build that refilled the stock
+// with new cards of the same ranks is caught; they are compared as a sorted set,
+// because the ORDER the recycle leaves them in is `stock/recycle-preserves-order`.
 //
-// What this item must decide, from the manifest:
+// THE WASTE IS POSED FACE-UP, which is what a card on the waste is (specs/stock.md),
+// so the face read afterwards is one the recycle turned rather than one the pose
+// supplied.
 //
-//   An empty stock recycles the waste
-//
-//   Turning an empty stock returns every waste card to the stock, face-down.
+// The stock is posed EMPTY, by `openTable`, because that is the precondition the
+// rule names. A turn of a stock that still holds cards is
+// `stock/no-recycle-with-cards`, and what the recycle leaves behind on the waste is
+// `stock/recycle-clears-waste` and `stock/recycle-clears-sets`.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  cardSpec,
+  createHarness,
+  openTable,
+  poseWaste,
+  type Harness,
+} from "../harness";
 
-it("stock.empty-stock-recycles — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/stock/empty-stock-recycles.test.ts is a scaffold stub, not a validator",
+/**
+ * The waste the recycle takes back: three face-up cards under two sets. Which cards
+ * they are decides nothing; the recycle reads no rank and no suit.
+ */
+const POSED_WASTE = ["2C", "9D", "4S"] as const;
+const POSED_SETS = [1, 2] as const;
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(() => {
+  harness?.dispose();
+});
+
+it("returns every waste card to the stock, face-down", async () => {
+  openTable(harness);
+  const ids = poseWaste(harness, POSED_WASTE, POSED_SETS);
+  harness.debug.turnStock();
+
+  await harness.advance(1);
+  captureStill(harness, "recycled");
+
+  const after = harness.snapshot();
+  assertLength(
+    after.stock,
+    POSED_WASTE.length,
+    "cards on the stock after a turn of an empty stock recycled the waste " +
+      "(specs/stock.md)",
   );
+  assertDeepEqual(
+    after.stock.map((card) => card.id).sort((a, b) => a - b),
+    [...ids].sort((a, b) => a - b),
+    "the ids the recycled stock holds, which are the cards that were on the " +
+      "waste (specs/stock.md)",
+  );
+  for (const card of after.stock) {
+    assertEqual(
+      card.faceUp,
+      false,
+      `the face of the ${cardSpec({ ...card, faceUp: true })} the recycle ` +
+        "returned to the stock (specs/stock.md)",
+    );
+  }
 });
