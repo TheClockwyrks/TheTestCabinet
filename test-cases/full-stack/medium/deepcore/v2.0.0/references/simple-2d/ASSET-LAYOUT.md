@@ -16,9 +16,9 @@ self-contained: it bundles these committed files and never invokes the tools. Re
 ## How assets are loaded (`src/assets.ts`)
 
 - Everything goes through the **engine's own loader** (`InitApi.assets`, documented in
-  `engine/assets.md`), which resolves each path under its asset root, `assets/`, relative to
-  the page. Nothing here fetches a file itself and no URL is root-absolute, so the built
-  site runs under any sub-path.
+  `engine/assets.md`), which resolves each path under its asset root, `assets/`, relative
+  to the page. Nothing here fetches a file itself and no URL is root-absolute, so the
+  built site runs under any sub-path.
 - What is loaded is a **manifest, not a directory scan**: `src/assets.ts` states the frame
   count of each cycle and the variant count of each band, because the build knows exactly
   which files it produced. A scan would either miss a file or ask the loader for one that

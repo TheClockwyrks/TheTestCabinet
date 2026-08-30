@@ -27,6 +27,7 @@ import {
   ANIM_FPS,
   FUEL_PRICE,
   HUD_H,
+  CAVE_MOUTH_COL,
   HURT_TIME,
   ITEMS,
   LOW_FUEL_FRACTION,
@@ -38,7 +39,6 @@ import {
   OVERLOAD,
   REPAIR_PRICE,
   ROCKET_COMPONENTS,
-  SPAWN_COL,
   STAGE_H,
   STAGE_W,
   SURFACE_Y,
@@ -787,13 +787,39 @@ function drawMaterialFallback(
 
 // ---- The surface camp ----------------------------------------------------
 
+/** The height the produced sky band and ground strip are drawn at, in units. */
+const SKY_BAND_H = 128;
+const GROUND_BAND_H = 48;
+
+/**
+ * Repeat a horizontally tileable sprite across the world's width, with its
+ * bottom edge on `bottom`.
+ */
+function tileAcross(
+  ctx: CanvasRenderingContext2D,
+  sprite: Sprite,
+  bottom: number,
+  height: number,
+): boolean {
+  if (!sprite) return false;
+  const width = (sprite.width / sprite.height) * height;
+  for (let x = 0; x < WORLD_COLS * TILE; x += width) {
+    ctx.drawImage(sprite, x, bottom - height, width, height);
+  }
+  return true;
+}
+
 function drawSurface(
   ctx: CanvasRenderingContext2D,
   state: DeepReadonly<DeepcoreState>,
 ): void {
-  // The camp ground strip, on top of row 1, across the whole world width.
-  ctx.fillStyle = P.surfaceGround;
-  ctx.fillRect(0, SURFACE_Y - 10, WORLD_COLS * TILE, 10);
+  // The produced sky band sits behind the camp, on the flat dusk fill the
+  // viewport is already painted with, and the ground strip in front of it.
+  tileAcross(ctx, state.assets.surface.sky, SURFACE_Y, SKY_BAND_H);
+  if (!tileAcross(ctx, state.assets.surface.ground, SURFACE_Y, GROUND_BAND_H)) {
+    ctx.fillStyle = P.surfaceGround;
+    ctx.fillRect(0, SURFACE_Y - 10, WORLD_COLS * TILE, 10);
+  }
 
   for (const id of CAMP_ORDER) {
     const place = buildingPlace(id);
@@ -814,9 +840,10 @@ function drawSurface(
 
   drawRocket(ctx, state);
 
+  // The way down out of the camp, drawn on the one open cell of row 1.
   const mouth = state.assets.surface["cave-mouth"];
   if (mouth) {
-    ctx.drawImage(mouth, SPAWN_COL * TILE, SURFACE_Y - 8, TILE, 30);
+    ctx.drawImage(mouth, CAVE_MOUTH_COL * TILE, SURFACE_Y - 8, TILE, 30);
   }
 }
 
