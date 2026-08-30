@@ -1,23 +1,68 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/deal/column-sizes.test.ts
+// deal/column-sizes — column `n` receives `n + 1` cards.
 //
-// The review item `deal.column-sizes` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/deal.md deals `DEAL_TABLEAU_CARDS` (`28`) cards to the seven
+// columns, left to right: "column `0` receives one card, column `1` two, and so on
+// to column `6`, which receives seven". So the seven column lengths are exactly
+// `1, 2, 3, 4, 5, 6, 7`, and the triangle is what makes the layout Klondike's
+// rather than a row of equal piles.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// EVERY COLUMN IS NAMED SEPARATELY. Each column is its own assertion, carrying its
+// own index as context, so a build that deals `1..7` into the wrong order, or
+// deals four cards everywhere, fails with the first column that disagreed named
+// rather than with a bare "the tableau is wrong".
 //
-// What this item must decide, from the manifest:
+// THE TOTAL IS ASSERTED TOO, and last. `DEAL_TABLEAU_CARDS` is the figure
+// specs/deal.md fixes for the whole tableau, and a build whose columns are each
+// individually plausible but sum to something other than twenty-eight has still
+// dealt a board the specification does not describe. It is read after the seven,
+// so the seven name the fault first when they can.
 //
-//   Column n receives n cards
-//
-//   The seven columns hold 1, 2, 3, 4, 5, 6, 7 cards.
+// The counts alone are decided here. Which cards are face-up is
+// `deal/lowest-face-up` and `deal/rest-face-down`, and how many columns there are
+// at all is `deal/seven-columns`.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { DEAL_TABLEAU_CARDS, TABLEAU_COLUMNS } from "../../src/constants";
+import { assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openTable,
+  type Harness,
+} from "../harness";
 
-it("deal.column-sizes — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/deal/column-sizes.test.ts is a scaffold stub, not a validator",
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(() => {
+  harness?.dispose();
+});
+
+it("deals one card to the first column and seven to the last", async () => {
+  openTable(harness);
+  harness.debug.deal();
+
+  await harness.advance(1);
+  captureStill(harness, "dealt");
+
+  const { tableau } = harness.snapshot();
+  let dealt = 0;
+  for (let column = 0; column < TABLEAU_COLUMNS; column += 1) {
+    const cards = tableau[column] ?? [];
+    dealt += cards.length;
+    assertLength(
+      cards,
+      column + 1,
+      `cards in column ${column} after a deal (specs/deal.md)`,
+    );
+  }
+
+  assertEqual(
+    dealt,
+    DEAL_TABLEAU_CARDS,
+    "cards a deal puts on the tableau in total (specs/deal.md)",
   );
 });
