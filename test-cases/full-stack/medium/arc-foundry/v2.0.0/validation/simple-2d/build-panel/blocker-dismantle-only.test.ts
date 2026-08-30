@@ -72,6 +72,9 @@ it("reports dismantle alone for a blocker, and draws it no stats", async () => {
   h.debug.select(blocker);
 
   const buttons = h.debug.panelButtons();
+  // Every reading this point makes is taken through the surface, which under
+  // an engine runs no frame, so the still is of the frame this one draws.
+  await h.advance(1);
   captureStill(h, "panel");
   assertLength(
     buttons.map((b) => b.action),

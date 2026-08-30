@@ -62,6 +62,9 @@ it("holds every panel rectangle across four changes of game state", async () => 
   };
 
   const opening = panelOf();
+  // Every reading this point makes is taken through the surface, which under
+  // an engine runs no frame, so the still is of the frame this one draws.
+  await h.advance(1);
   captureStill(h, "panel");
 
   // Charge accruing, and then being spent back down.

@@ -49,6 +49,9 @@ it("reports the five controls, in order, each reading its own value", async () =
   openYard(h);
 
   const controls = h.debug.statusControls();
+  // Every reading this point makes is taken through the surface, which under
+  // an engine runs no frame, so the still is of the frame this one draws.
+  await h.advance(1);
   captureStill(h, "controls");
 
   assertDeepEqual(

@@ -50,6 +50,9 @@ it("produces a projectile for every firing base type", async () => {
     parkUnit(h, "dynamo", { x: center.x + 110, y: center.y });
     await h.advanceSeconds(0.5);
     h.debug.clearSelection();
+    // The one frame that draws the yard with nothing selected, so the still is
+    // of the shots in flight rather than of a range ring over them.
+    await h.advance(1);
     captureStill(h, "shots");
   } finally {
     h.dispose();

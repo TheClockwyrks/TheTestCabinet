@@ -55,6 +55,9 @@ it("draws the same slots in the same order once a partner appears", async () => 
   h.debug.select(alone);
 
   const before = h.debug.panelButtons();
+  // Every reading this point makes is taken through the surface, which under
+  // an engine runs no frame, so the still is of the frame this one draws.
+  await h.advance(1);
   captureStill(h, "panel");
 
   assertEqual(

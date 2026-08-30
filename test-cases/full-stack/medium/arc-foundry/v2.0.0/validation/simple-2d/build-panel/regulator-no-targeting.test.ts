@@ -49,7 +49,11 @@ it("offers no targeting control on a Regulator, candidate or component", async (
       h.debug.select(id);
 
       const actions = h.debug.panelButtons().map((b) => b.action);
-      if (tier === 1 && kind === "candidate") captureStill(h, "panel");
+      if (tier === 1 && kind === "candidate") {
+        // Nothing above runs a frame, so the still is of the one drawn here.
+        await h.advance(1);
+        captureStill(h, "panel");
+      }
       assertEqual(
         actions.includes("targeting"),
         false,

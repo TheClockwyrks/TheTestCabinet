@@ -53,7 +53,11 @@ it("offers no targeting control on a candidate, at any type or tier", async () =
     h.debug.select(candidate);
 
     const actions = h.debug.panelButtons().map((b) => b.action);
-    if (type === CANDIDATES[0]![0]) captureStill(h, "panel");
+    if (type === CANDIDATES[0]![0]) {
+      // Nothing above runs a frame, so the still is of the one drawn here.
+      await h.advance(1);
+      captureStill(h, "panel");
+    }
     assertEqual(
       actions.includes("targeting"),
       false,
