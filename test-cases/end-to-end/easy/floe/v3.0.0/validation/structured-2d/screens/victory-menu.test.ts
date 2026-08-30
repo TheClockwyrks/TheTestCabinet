@@ -1,0 +1,26 @@
+// Floe — screens/victory-menu: SCAFFOLD STUB, NOT A VALIDATOR.
+//
+// The Validators stage of the Floe v3.0.0 rework replaces this file with the
+// real suite for the `screens.victory-menu` review item, written
+// against the `structured-2d` engine. Until then it FAILS, deliberately and loudly: a
+// stub that passed would score the item a point the build never earned, and a
+// stub the Validators stage forgot would be indistinguishable from a passing
+// check.
+//
+// The item this file decides, from test-case.toml:
+//
+//   MENU on the victory screen returns to the title
+//
+//   On the victory screen with MENU highlighted, confirming returns to title.
+//
+// Its declared media: image `title`.
+
+import { it } from "vitest";
+
+const NOT_WRITTEN =
+  "Floe: this validator is a scaffold stub and has not been implemented. " +
+  "It fails by design; the Validators stage replaces it.";
+
+it("screens/victory-menu has not been written yet", () => {
+  throw new Error(NOT_WRITTEN);
+});
