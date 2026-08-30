@@ -1,20 +1,64 @@
-// Wireworm — progression.game-over-at-zero-lives, under the `simple-2d` engine. CASE-PROVIDED.
+// progression/game-over-at-zero-lives — the contact that takes the last life ends
+// the run.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// THE RULE. `specs/progression.md`, *Losing a life*: *a contact that takes lives to
+// `0` ends the run instead: the game moves to the `gameover` screen, reporting `0`
+// lives*. It is the OTHER branch of the same contact `progression/life-lost-decrements`
+// reads — one life left rather than lives to spare — so the two together say that a
+// build takes the right branch at the boundary.
 //
-// The point it decides, from `test-case.toml`:
+// THE COUNT IS POSED AT ONE, so the branch is reached by the game's own arithmetic
+// rather than by posing zero and hoping. The screen and the count are one reading:
+// a build that ends the run but leaves the last life on the HUD, and a build that
+// empties the count but plays on, both differ from what the specification states.
 //
-// Losing the last life ends the run
-//
-// A contact with one life left leaves the game on the gameover screen with
-// lives 0.
+// The world is the contact and nothing else: an empty, quiet board, and a single
+// motionless worm segment standing in the cursor with the contact gate — this
+// point's own requirement — turned back on.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startPlaying,
+  ticksFor,
+  type Harness,
+} from "../harness";
+import { poseContact } from "./scenario";
 
-test("progression.game-over-at-zero-lives", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/simple-2d/progression/game-over-at-zero-lives.test.ts has not been written yet",
-  );
+/** The last life: one more contact and the run is over. */
+const LAST_LIFE = 1;
+
+/** What the ended run must report. */
+const NO_LIVES = 0;
+
+/**
+ * How long the contact is given to resolve, in frames. 0.05 s, which is a frame
+ * for a build that answers inside the update the segment arrives in and a handful
+ * more for one that settles it at the end of its own.
+ */
+const CONTACT_FRAMES = ticksFor(0.05);
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(() => {
+  harness?.dispose();
+});
+
+it("moves to the gameover screen with no lives left", async () => {
+  startPlaying(harness);
+  harness.debug.setLives(LAST_LIFE);
+  poseContact(harness);
+
+  await harness.advance(CONTACT_FRAMES);
+
+  captureStill(harness, "gameover");
+  const ended = harness.snapshot();
+  assertEqual(ended.screen, "gameover", "screen");
+  assertEqual(ended.lives, NO_LIVES, "lives");
 });
