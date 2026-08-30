@@ -34,7 +34,7 @@ import {
   poseColumn,
   type Harness,
 } from "../harness";
-import { cardCorners, clusterTops } from "./geometry";
+import { CARD_SEARCH_TOLERANCE, cardCorners, clusterTops } from "./geometry";
 
 /**
  * How far a first card's top edge may sit from `TABLEAU_Y`, in logical units.
@@ -76,7 +76,7 @@ it("starts every column's first card at the tableau anchor y", async () => {
   const calls = await drawFrame(harness);
   captureStill(harness, "column");
 
-  const boxes = cardBoxes(drawnBoxes(harness, calls));
+  const boxes = cardBoxes(drawnBoxes(harness, calls), CARD_SEARCH_TOLERANCE);
   // One card is drawn with as many calls as the build likes, so the seven cards
   // are the seven distinct top edges below the top row, not the seven boxes.
   const belowTopRow = boxes.filter(

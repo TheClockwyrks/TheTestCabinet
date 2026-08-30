@@ -40,7 +40,7 @@ import {
   poseColumn,
   type Harness,
 } from "../harness";
-import { cardCorners, overlapsBand } from "./geometry";
+import { CARD_SEARCH_TOLERANCE, cardCorners, overlapsBand } from "./geometry";
 
 /**
  * How far a drawn card's left edge may sit from its column's `x`, in logical
@@ -85,7 +85,7 @@ it("stands each column at its own x and leaves the gaps between them bare", asyn
   const calls = await drawFrame(harness);
   captureStill(harness, "columns");
 
-  const boxes = cardBoxes(drawnBoxes(harness, calls));
+  const boxes = cardBoxes(drawnBoxes(harness, calls), CARD_SEARCH_TOLERANCE);
 
   for (let column = 0; column < COLUMN_X.length; column += 1) {
     const anchorX = COLUMN_X[column];

@@ -31,7 +31,7 @@ import {
   posePile,
   type Harness,
 } from "../harness";
-import { cardCorners } from "./geometry";
+import { CARD_SEARCH_TOLERANCE, cardCorners } from "./geometry";
 
 /**
  * How far a drawn card's top-left may sit from the anchor, in logical units.
@@ -61,7 +61,7 @@ it("draws the stock's card at the stock anchor", async () => {
   const calls = await drawFrame(harness);
   captureStill(harness, "stock");
 
-  const boxes = cardBoxes(drawnBoxes(harness, calls));
+  const boxes = cardBoxes(drawnBoxes(harness, calls), CARD_SEARCH_TOLERANCE);
   if (boxAt(boxes, STOCK_X, TOP_ROW_Y, ANCHOR_TOLERANCE) === null) {
     fail(
       `a card-sized box with its top-left at (${STOCK_X}, ${TOP_ROW_Y}), the ` +

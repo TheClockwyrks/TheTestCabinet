@@ -36,7 +36,7 @@ import {
   poseWaste,
   type Harness,
 } from "../harness";
-import { cardCorners } from "./geometry";
+import { CARD_SEARCH_TOLERANCE, cardCorners } from "./geometry";
 
 /**
  * How far the drawn card's top-left may sit from the anchor, in logical units.
@@ -68,7 +68,7 @@ it("draws the bottom-most shown waste card at the waste anchor", async () => {
   const calls = await drawFrame(harness);
   captureStill(harness, "waste");
 
-  const boxes = cardBoxes(drawnBoxes(harness, calls));
+  const boxes = cardBoxes(drawnBoxes(harness, calls), CARD_SEARCH_TOLERANCE);
   if (boxAt(boxes, WASTE_X, TOP_ROW_Y, ANCHOR_TOLERANCE) === null) {
     fail(
       `a card-sized box with its top-left at (${WASTE_X}, ${TOP_ROW_Y}), the ` +

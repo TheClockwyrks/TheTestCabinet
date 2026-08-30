@@ -27,26 +27,45 @@
 // inside the surface's, and its far corner is at or inside the far edge, so every
 // one of the `1280 x 720` units has somewhere on the canvas to land.
 //
-// THE STILL IS TAKEN AT THE NARROWEST SHAPE, the portrait window, because that is
+// THE PIXELS ARE READ AT THE NARROWEST SHAPE, the portrait window, because that is
 // where a table that was not fitted would spill: it is the shape whose letterbox
-// bars are largest and whose scale is smallest.
+// bars are largest and whose scale is smallest. Two readings decide it, and both
+// come from specs/overview.md rather than from anything about this build's look:
+// the bars carry "the stage's background color", so a build drawing outside the
+// fit is caught putting the table in them, and a card posed on the stock is found
+// UNDER ITS OWN LOGICAL COORDINATE, so a build drawing in device pixels is caught
+// putting the table nowhere near it. Whether that card is legible against the felt
+// is `presentation.back-distinct-from-table`; all this asks is whether anything at
+// all was drawn where the card belongs.
 
 import { afterEach, it } from "vitest";
-import { COLUMN_X, STAGE_H, STAGE_W } from "../../src/constants";
+import {
+  CARD_H,
+  CARD_W,
+  COLUMN_X,
+  STAGE_H,
+  STAGE_W,
+  STOCK_X,
+  TOP_ROW_Y,
+} from "../../src/constants";
 import {
   assertBetween,
   assertCloseTo,
   assertDeepEqual,
   assertEqual,
+  assertGreaterThan,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
 import {
   captureStill,
+  clearColor,
+  colorDistance,
   createHarness,
   openTable,
   poseColumn,
   posePile,
+  sampleColor,
   type Harness,
 } from "../harness";
 
@@ -71,7 +90,11 @@ const SCALE_DIGITS = 6;
 
 /** The four window shapes, each read at both pixel ratios. */
 const SHAPES = [
-  { name: "a window the size of the stage", cssWidth: STAGE_W, cssHeight: STAGE_H },
+  {
+    name: "a window the size of the stage",
+    cssWidth: STAGE_W,
+    cssHeight: STAGE_H,
+  },
   { name: "a window wider than the stage", cssWidth: 1600, cssHeight: 720 },
   { name: "a window taller than the stage", cssWidth: 1280, cssHeight: 960 },
   { name: "a portrait window", cssWidth: 600, cssHeight: 900 },
@@ -90,6 +113,19 @@ const NARROWEST = SHAPES[3];
 
 /** The cards the still's columns are built from, the lowest turned face-up. */
 const COLUMN_CARDS = ["#4D", "#9C", "KH"];
+
+/**
+ * How far a sampled color may sit from the rasterized `BACKGROUND` and still be
+ * read as untouched, in RGB distance out of about `441`.
+ *
+ * A letterbox bar lies outside the logical space, so a build that draws only in
+ * that space never touches it and it holds exactly what the engine cleared the
+ * canvas to — the build's own exported `BACKGROUND` (specs/overview.md). This is
+ * rounding room for rasterizing a CSS color string, not a style allowance: the
+ * table is `1280 x 720` of drawn cards, felt and HUD, and anything of it that
+ * landed in a bar reads tens of units away.
+ */
+const CLEARED_MAX = 3;
 
 let harnesses: Harness[] = [];
 
@@ -180,7 +216,11 @@ it("draws a full table inside the fit at the narrowest window shape", async () =
   posePile(h, "stock", 0, ["#2C", "#5H"]);
   posePile(h, "foundation", 0, ["AS"]);
   for (let column = 0; column < COLUMN_X.length; column += 1) {
-    poseColumn(h, column, COLUMN_CARDS.slice(COLUMN_CARDS.length - 1 - (column % 3)));
+    poseColumn(
+      h,
+      column,
+      COLUMN_CARDS.slice(COLUMN_CARDS.length - 1 - (column % 3)),
+    );
   }
   await h.advance(1);
   captureStill(h, "fitted");
@@ -189,6 +229,7 @@ it("draws a full table inside the fit at the narrowest window shape", async () =
   // logical unit of the table has a device pixel to be drawn on.
   const origin = h.device(0, 0);
   const far = h.device(STAGE_W, STAGE_H);
+  const cleared = clearColor();
   assertGreaterThanOrEqual(origin.x, 0, "the device x of the stage's origin");
   assertGreaterThanOrEqual(origin.y, 0, "the device y of the stage's origin");
   assertLessThanOrEqual(
@@ -200,5 +241,35 @@ it("draws a full table inside the fit at the narrowest window shape", async () =
     far.y,
     h.canvas.height,
     "the device y of the stage's far corner, against the canvas's height",
+  );
+
+  // The bars above and below the fitted stage carry nothing the game drew. They
+  // are outside the logical space, so they are read in device pixels directly.
+  for (const deviceY of [
+    Math.floor(origin.y / 2),
+    (far.y + h.canvas.height) >> 1,
+  ]) {
+    const bar = h.ctx.getImageData(h.canvas.width >> 1, deviceY, 1, 1).data;
+    assertLessThanOrEqual(
+      colorDistance({ r: bar[0], g: bar[1], b: bar[2] }, cleared),
+      CLEARED_MAX,
+      `the color of the letterbox bar at device y ${deviceY}, against the ` +
+        `background the build handed the runtime to clear to ` +
+        `(specs/overview.md)`,
+    );
+  }
+
+  // And the table is under its own logical coordinates: the card posed on the
+  // stock is found by asking for the middle of the stock's own anchor, which only
+  // maps to the right device pixel if the build drew in logical units.
+  assertGreaterThan(
+    colorDistance(
+      sampleColor(h, STOCK_X + CARD_W / 2, TOP_ROW_Y + CARD_H / 2),
+      cleared,
+    ),
+    CLEARED_MAX,
+    "how far the middle of the card posed on the stock sits from the bare " +
+      "cleared background: something was drawn at the stock's own logical " +
+      "coordinate (specs/overview.md)",
   );
 });

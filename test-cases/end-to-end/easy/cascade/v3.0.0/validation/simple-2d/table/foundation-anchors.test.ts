@@ -39,7 +39,7 @@ import {
   posePile,
   type Harness,
 } from "../harness";
-import { cardCorners } from "./geometry";
+import { CARD_SEARCH_TOLERANCE, cardCorners } from "./geometry";
 
 /**
  * How far a drawn card's top-left may sit from its anchor, in logical units.
@@ -75,7 +75,7 @@ it("draws each foundation's card at its own anchor and none at 468", async () =>
   const calls = await drawFrame(harness);
   captureStill(harness, "foundations");
 
-  const boxes = cardBoxes(drawnBoxes(harness, calls));
+  const boxes = cardBoxes(drawnBoxes(harness, calls), CARD_SEARCH_TOLERANCE);
 
   for (let index = 0; index < FOUNDATION_X.length; index += 1) {
     const anchorX = FOUNDATION_X[index];

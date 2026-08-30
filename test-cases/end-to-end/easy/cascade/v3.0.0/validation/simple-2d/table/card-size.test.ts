@@ -3,34 +3,40 @@
 // THE RULE. specs/table.md opens with the footprint: "Every card occupies a
 // `CARD_W x CARD_H` (`100 x 140`) rectangle. That is its footprint wherever it
 // sits: in a pile, overlapped in a column, held in hand, or in flight during the
-// victory cascade." So the size is a constant of the game and not a property of
-// the pile a card is on, which is why this point reads it at two unrelated places:
-// a squared pile in the top row, and the first card of a tableau column.
+// victory cascade." So the size is a constant of the game and not a property of the
+// pile a card is on, and it belongs to a card drawn "face-up, showing its rank and
+// its suit, or face-down, showing its back" alike. Both faces are posed, on two
+// unrelated piles, so a build that draws its backs at some other size fails here
+// rather than passing on the strength of its faces.
 //
-// IT DECIDES THE SIZE, NOT THE PLACE. The card is found by looking for the drawn
-// box NEAREST its pile's anchor within a generous radius, rather than by demanding
-// a box exactly at the anchor: a build whose stock sits a few units off should
-// fail `table/stock-anchor` and still have its footprint graded here. The radius
-// is far smaller than the `122` that separates two pile positions, so what it
-// finds can only be the card this point posed.
+// IT DECIDES THE SIZE, NOT THE PLACE. Each card is found by looking for the box
+// drawn NEAREST its pile's anchor within a generous radius, rather than by
+// demanding a box exactly at the anchor: a build whose stock sits a few units off
+// should fail `table/stock-anchor` and still have its footprint graded here. The
+// radius is far smaller than the `122` that separates two pile positions, so what
+// it finds can only be the card this point posed.
 //
-// FACE-UP AND FACE-DOWN BOTH. specs/table.md gives the footprint to a card "drawn
-// face-up ... or face-down, showing its back", so the two are posed together: a
-// build that draws its backs at some other size fails here rather than passing on
-// the strength of its faces.
+// IT LOOKS AT NO SIZE FILTER, which is why the two cards sit on TOP-ROW piles
+// rather than on a tableau column. Every other point in this group finds a card by
+// its `100 x 140` footprint, and this point cannot: the footprint is the question.
+// So it needs the two anchors specs/table.md fixes outright, and the anchors of the
+// stock and the foundations are exactly that, while a column's cards are fanned
+// from theirs by the offsets `table/face-down-offset` and `table/face-up-offset`
+// decide. A card drawn at some other size ANYWHERE, a column included, is still
+// caught: every other point in this group reads its cards through that footprint,
+// and a column drawn at some other size fails those points' own counts.
 //
-// THE MEASUREMENT IS OF THE BOX, NOT OF THE FOOTPRINT IT SHOULD HAVE. `drawnBoxes`
-// maps each drawn rectangle's own corners through the transform the build issued
-// it under, so a card drawn small and scaled up, or drawn about the origin under a
-// translate, is measured where it landed on the stage.
+// THE MEASUREMENT IS OF THE BOX, NOT OF THE FOOTPRINT IT SHOULD HAVE.
+// `drawnBoxes` maps each drawn rectangle's own corners through the transform the
+// build issued it under, so a card drawn small and scaled up, or drawn about the
+// origin under a translate, is measured where it landed on the stage.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
   CARD_H,
   CARD_W,
-  COLUMN_X,
+  FOUNDATION_X,
   STOCK_X,
-  TABLEAU_Y,
   TOP_ROW_Y,
 } from "../../src/constants";
 import { assertBetween, fail } from "../assert";
@@ -40,7 +46,6 @@ import {
   drawFrame,
   drawnBoxes,
   openTable,
-  poseColumn,
   posePile,
   type Harness,
 } from "../harness";
@@ -68,8 +73,8 @@ const SIZE_TOLERANCE = 2;
  */
 const SEARCH_RADIUS = 40;
 
-/** The column the face-down card is posed on, well away from the stock. */
-const COLUMN = 4;
+/** The foundation the face-down card is posed on, well away from the stock. */
+const FOUNDATION = 2;
 
 let harness: Harness;
 
@@ -84,7 +89,7 @@ afterEach(() => {
 it("draws a card over its 100 x 140 footprint wherever it sits", async () => {
   openTable(harness);
   posePile(harness, "stock", 0, ["QH"]);
-  poseColumn(harness, COLUMN, ["#8D"]);
+  posePile(harness, "foundation", FOUNDATION, ["#8D"]);
 
   const calls = await drawFrame(harness);
   captureStill(harness, "card");
@@ -93,9 +98,9 @@ it("draws a card over its 100 x 140 footprint wherever it sits", async () => {
   const places = [
     { what: "the face-up card on the stock", x: STOCK_X, y: TOP_ROW_Y },
     {
-      what: `the face-down card on column ${COLUMN}`,
-      x: COLUMN_X[COLUMN],
-      y: TABLEAU_Y,
+      what: `the face-down card on foundation ${FOUNDATION}`,
+      x: FOUNDATION_X[FOUNDATION],
+      y: TOP_ROW_Y,
     },
   ];
 
