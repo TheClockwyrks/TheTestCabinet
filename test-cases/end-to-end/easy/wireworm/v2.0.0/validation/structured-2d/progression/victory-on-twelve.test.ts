@@ -1,19 +1,44 @@
-// Wireworm — progression.victory-on-twelve, under the `structured-2d` engine. CASE-PROVIDED.
+// progression/victory-on-twelve — clearing level TOTAL_LEVELS wins the run.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/progression.md, Winning and losing: the run is won when the last worm
+// segment of level `12` is removed, and the game moves to the `victory` screen.
+// That is the one place the twelve-level run ends in anything but a game over,
+// and it is the reason `level-advances`'s "up by one" has a last level to stop
+// at.
 //
-// The point it decides, from `test-case.toml`:
-//
-// Clearing level 12 wins the run
-//
-// Clearing the worm at level 12 leaves the game on the victory screen.
+// THE REMOVAL IS DRIVEN, NOT POSED, and it is the same removal
+// `level-clears-on-last-segment` drives — the clear is the removal itself. What
+// separates the two points is the level it happens on: a build that treats the
+// twelfth level like any other advances to a thirteenth and is still `playing`
+// here, and a build that ends the run one level early never reaches this at all.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TOTAL_LEVELS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { clearLastSegment } from "./clear";
 
-test("progression.victory-on-twelve", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/structured-2d/progression/victory-on-twelve.test.ts has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("moves to the victory screen when level 12's last segment goes", async () => {
+  const cleared = await clearLastSegment(h, TOTAL_LEVELS);
+
+  // One frame past the clear, so the picture kept is the victory screen itself.
+  // The reading below is `cleared`, so this decides nothing.
+  await h.advance(1);
+  captureStill(h, "victory");
+
+  assertEqual(
+    cleared.screen,
+    "victory",
+    `the screen clearing level ${TOTAL_LEVELS} opens`,
   );
 });
