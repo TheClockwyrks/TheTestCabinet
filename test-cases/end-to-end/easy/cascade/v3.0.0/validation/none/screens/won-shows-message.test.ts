@@ -24,7 +24,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { WIN_TEXT } from "../constants";
+import {
+  CARD_W,
+  DECK_SIZE,
+  LAUNCH_INTERVAL,
+  LAUNCH_VX_MIN,
+  STAGE_W,
+  WIN_TEXT,
+} from "../constants";
 import {
   captureStill,
   createHarness,
@@ -37,15 +44,31 @@ import {
 /**
  * How long the cascade is given to finish, in seconds of game time.
  *
- * `specs/victory.md` fixes the launching at `LAUNCH_INTERVAL` (`0.18`) a card,
- * so the fifty-second card leaves at `51 * 0.18 = 9.18` s. It then flies until it
- * passes a side edge, and the slowest a launch can travel is
- * `LAUNCH_VX_MIN` (`180`) units a second; the longest crossing available to it is
- * from foundation `3` at `x = 956` leftwards off the stage, `1056` units, which
- * is `5.87` s. So `16` s covers the whole of the slowest cascade the
- * specification allows, with better than a third of it to spare.
+ * A BOUND ON THE WAIT, not a reading of it: nothing below asserts how long a
+ * cascade took, only that it ended and what the screen shows once it has. It is
+ * arithmetic over the figures `specs/victory.md` fixes, and it over-pays at both
+ * ends deliberately.
+ *
+ * The launching: `DECK_SIZE` (`52`) cards `LAUNCH_INTERVAL` (`0.18`) apart is
+ * `9.36` s. The last card in fact leaves at `51 * 0.18 = 9.18` s, so the term is
+ * already one interval generous.
+ *
+ * The flight: a launched card's `vx` never changes — `specs/victory.md` gives a
+ * card in flight no collision, "not the side edges" — so its time in the air is
+ * decided by the horizontal crossing alone, and the gravity, the bounces and the
+ * damping cost it nothing. The widest crossing on the stage is `STAGE_W + CARD_W`
+ * (`1380`) units and the slowest launch the specification allows is
+ * `LAUNCH_VX_MIN` (`180`) units a second: `7.67` s. That over-pays too, because a
+ * card starts at a foundation anchor rather than at an edge, and the furthest of
+ * the four (`x = 956`, leftwards) has only `1056` units to cover.
+ *
+ * Together, `17.03` s against a true worst case of `9.18 + 1056 / 180 = 15.05` s
+ * — close to two seconds of slack. Written as the expression rather than as its
+ * value so it follows the constants if a figure moves, and matching the same
+ * bound the `cascade` group takes for the same wait.
  */
-const CASCADE_SECONDS = 16;
+const CASCADE_SECONDS =
+  DECK_SIZE * LAUNCH_INTERVAL + (STAGE_W + CARD_W) / LAUNCH_VX_MIN;
 
 /** How much game time each sample of the wait covers. */
 const POLL_SECONDS = 0.5;
@@ -86,7 +109,7 @@ it("draws the win message once the cascade has ended", async () => {
   assertEqual(
     ended.hit,
     true,
-    `the cascade to report cascadeDone within ${CASCADE_SECONDS} s of game time (specs/victory.md)`,
+    `the cascade to report cascadeDone within ${CASCADE_SECONDS.toFixed(2)} s of game time (specs/victory.md)`,
   );
   assertEqual(
     ended.snapshot.screen,
