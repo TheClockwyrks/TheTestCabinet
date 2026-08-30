@@ -54,9 +54,10 @@ of the column positions above:
 | Foundation `3` | `(FOUNDATION_X[3], TOP_ROW_Y)`, `(956, 24)` |
 
 `FOUNDATION_X` is `[590, 712, 834, 956]`. The third column position, `x = 468`,
-carries no pile in the top row and nothing card-sized is drawn there. It is the
-space that separates the two draw piles on the left from the foundations on the
-right.
+carries no pile in the top row. It is the space that separates the two draw piles
+on the left from the foundations on the right{{#if (eq variant.slug "draw-three")}}, and the only thing drawn over any
+of it is the right end of the waste's fan{{else}}, and nothing card-sized is drawn
+there{{/if}}.
 
 The stock and the foundations are squared piles: every card sits at the pile's
 anchor, so the pile shows its top card alone.
@@ -120,7 +121,7 @@ how a release resolves against them.
 | Pile | Its drop rectangle |
 | --- | --- |
 | The stock | `CARD_W x CARD_H` at `(STOCK_X, TOP_ROW_Y)` |
-| The waste | `CARD_W x CARD_H` at `(WASTE_X, TOP_ROW_Y)`, whatever the shown set fans to |
+| The waste | `CARD_W x CARD_H` at `(WASTE_X, TOP_ROW_Y)`{{#if (eq variant.slug "draw-three")}}, whatever the shown set fans to{{/if}} |
 | A foundation | `CARD_W x CARD_H` at `(FOUNDATION_X[i], TOP_ROW_Y)` |
 | An empty column | `CARD_W x CARD_H` at `(COLUMN_X[i], TABLEAU_Y)` |
 | A column holding cards | `CARD_W` wide at `COLUMN_X[i]`, running from `TABLEAU_Y` down to the bottom edge of that column's lowest drawn card |
