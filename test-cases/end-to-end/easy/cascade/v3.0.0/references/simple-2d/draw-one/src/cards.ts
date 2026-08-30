@@ -60,7 +60,7 @@ export function drawCardFront(
   // The suit itself, large enough to read at a glance across the table.
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  setFont(ctx, 54);
+  setFont(ctx, 64);
   ctx.fillText(glyph, x + CARD_W / 2, y + CARD_H / 2);
 }
 

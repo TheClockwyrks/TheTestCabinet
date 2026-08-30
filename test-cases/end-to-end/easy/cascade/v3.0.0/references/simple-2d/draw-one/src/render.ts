@@ -204,6 +204,7 @@ function drawHowTo(ctx: Ctx): void {
   ctx.fillStyle = COLOR.text;
   setFont(ctx, 22);
   for (let i = 0; i < HOWTO_LINES.length; i++) {
+    if (HOWTO_LINES[i] === "") continue;
     ctx.fillText(HOWTO_LINES[i], STAGE_W / 2, 200 + i * 30);
   }
   drawControl(ctx, HOWTO_BACK, HOWTO_BACK_LABEL);
