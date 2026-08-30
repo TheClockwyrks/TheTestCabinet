@@ -1,28 +1,56 @@
-/*
- * Coil validator: `controls.p-pauses`. PLACEHOLDER.
- *
- * KeyP pauses a live round.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * KeyP on the playing screen sets screen to paused.
- *
- * HOW:
- * start a round, dispatch KeyP, and read the screen.
- *
- * MEDIA IT MUST CAPTURE: paused (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// controls/p-pauses — KeyP pauses a live round.
+//
+// specs/controls.md binds `pause` to `KeyP` and, on the `playing` screen, makes
+// `pause` "Pause the round"; the file adds that "`back` and `pause` both pause a
+// live round, so a player reaches the pause menu with either `Escape` or `KeyP`."
+// This is its own point rather than a repeat of the `Escape` one, because a build
+// that bound only `Escape` is fully playable and loses this alone.
+//
+// The round is reached through the surface rather than through the title menu, so
+// a build whose menus do not work still has this key decided, and the chain is
+// held still with nothing on the board so the round cannot end underneath the
+// press.
 
-test("controls.p-pauses", () => {
-  throw new Error("validator not implemented: controls/p-pauses.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import { BINDINGS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  HOME_HEAD,
+  captureStill,
+  chainFrom,
+  createHarness,
+  poseScene,
+  type Harness,
+} from "../harness";
+
+/** The key `specs/controls.md` binds to `pause`. */
+const PAUSE = BINDINGS.pause[0];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("sets the screen to paused on KeyP during a round", async () => {
+  const live = poseScene(h, {
+    snake: chainFrom(HOME_HEAD, "right", 4),
+    dir: "right",
+    pellet: null,
+    travel: false,
+  });
+  assertEqual(live.screen, "playing", "the screen the key is pressed on");
+
+  await h.tap(PAUSE);
+  captureStill(h, "paused");
+
+  assertEqual(
+    h.snapshot().screen,
+    "paused",
+    "the screen KeyP opened from a live round",
+  );
 });

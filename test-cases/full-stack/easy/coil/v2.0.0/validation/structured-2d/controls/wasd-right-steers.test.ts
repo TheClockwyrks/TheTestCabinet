@@ -1,30 +1,43 @@
-/*
- * Coil validator: `controls.wasd-right-steers`. PLACEHOLDER.
- *
- * KeyD steers right.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * KeyD does exactly what ArrowRight does on the playing screen.
- *
- * HOW:
- * pose the chain facing up, dispatch KeyD, run one tick, and read dir.
- *
- * MEDIA IT MUST CAPTURE: right (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// controls/wasd-right-steers — KeyD requests a turn to right.
+//
+// specs/controls.md binds `KeyD` to the `right` action and, on the `playing`
+// screen, makes `right` "Request a turn to `right`".
+// specs/movement.md then has step 1 of the next tick take that request and apply
+// it, "only when it is perpendicular to the direction the snake is travelling in
+// on this tick" — so the chain is posed on a vertical heading, where `right`
+// is perpendicular and the turn is one the rules accept.
+//
+// `KeyD` is the SECOND key `specs/controls.md` binds to `right`, and the file
+// says the two sets "are interchangeable": a build that bound only the arrows is
+// fully playable and loses this point alone.
+//
+// `steering.ts` states what is posed and why the snake's travel is held still.
 
-test("controls.wasd-right-steers", () => {
-  throw new Error(
-    "validator not implemented: controls/wasd-right-steers.test.ts",
-  );
+import { afterEach, beforeEach, it } from "vitest";
+import { BINDINGS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import { createHarness, type Harness } from "../harness";
+import { steerOnce } from "./steering";
+
+/** The key this point is about, as `specs/controls.md` binds it. */
+const KEY = BINDINGS.right[1];
+
+/** The heading the chain is posed on, which `right` is perpendicular to. */
+const FROM = "up";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("turns the snake right on the tick after KeyD is pressed", async () => {
+  const drive = await steerOnce(h, KEY, FROM, "right");
+
+  assertEqual(drive.posed.dir, FROM, "the heading the request is made on");
+  assertEqual(drive.after.dir, "right", "the direction the tick applied");
 });

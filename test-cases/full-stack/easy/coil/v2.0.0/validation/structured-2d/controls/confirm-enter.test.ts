@@ -1,30 +1,48 @@
-/*
- * Coil validator: `controls.confirm-enter`. PLACEHOLDER.
- *
- * Enter accepts the highlighted item.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * Enter on a menu-bearing screen accepts the highlighted item, so Enter on the
- * title's mode entry starts a round.
- *
- * HOW:
- * open the title with the mode entry highlighted, dispatch Enter, and read the
- * screen.
- *
- * MEDIA IT MUST CAPTURE: enter (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// controls/confirm-enter — Enter accepts the highlighted menu item.
+//
+// specs/controls.md binds `confirm` to `Enter` and `Space`, and on a menu-bearing
+// screen `confirm` "Accepts the highlighted item". specs/ui.md then makes the
+// title's first item the mode's entry, whose acceptance "starts a round, which
+// sets `screen` to `playing`" — so the screen the game is on afterwards is the
+// reading that says the key was accepted.
+//
+// The title is opened by resetting, so the highlight is on the first item without
+// a key having moved it, and the ONE key this point is about is the one pressed.
 
-test("controls.confirm-enter", () => {
-  throw new Error("validator not implemented: controls/confirm-enter.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import { BINDINGS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openTitle,
+  type Harness,
+} from "../harness";
+
+/** `Enter` is the first key `specs/controls.md` binds to `confirm`. */
+const ENTER = BINDINGS.confirm[0];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("accepts the highlighted title item on Enter", async () => {
+  const title = openTitle(h);
+  assertEqual(title.screen, "title", "the screen the key is pressed on");
+  assertEqual(title.menuIndex, 0, "the highlighted item");
+
+  await h.tap(ENTER);
+  captureStill(h, "enter");
+
+  assertEqual(
+    h.snapshot().screen,
+    "playing",
+    "the screen Enter on the mode entry opened",
+  );
 });
