@@ -1,23 +1,92 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/runs/reject-non-king-run-empty.test.ts
+// runs/reject-non-king-run-empty — an empty column refuses a run not led by a
+// King.
 //
-// The review item `runs.reject-non-king-run-empty` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/tableau.md gives an empty column exactly one thing it accepts: "a run led
+// by a King". Every other run offered to it is refused, however well ordered it
+// is.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// This is the refusing direction of `runs/king-run-to-empty`, so a build that
+// takes a King-led run and refuses everything else grades differently from one
+// that takes anything.
 //
-// What this item must decide, from the manifest:
+// THE POSE MAKES THE KING THE ONLY THING MISSING. The run is `10S, 9H, 8S`: three
+// cards in run order, led by the highest rank below a King. A build that never
+// checks the leading rank accepts it, a build that compares with `>=` rather than
+// equality accepts it, and only a build that asks for a King refuses. The source
+// column carries a `4D` above the run, so the source does not empty and the
+// arrangement holds one empty column and one only.
 //
-//   An empty column refuses a run not led by a King
-//
-//   A run led by a 10 is refused by an empty column.
+// specs/tableau.md has a refused move change nothing, and "a column that was empty
+// when a run was refused by it is still empty", so the board is read afterwards
+// too.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openTable,
+  pileSpecs,
+  poseColumn,
+  type Harness,
+} from "../harness";
 
-it("runs.reject-non-king-run-empty — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/runs/reject-non-king-run-empty.test.ts is a scaffold stub, not a validator",
+/** The column the run is lifted out of. */
+const SOURCE = 0;
+
+/** The column offered the run, left empty by `openTable`. */
+const TARGET = 1;
+
+/**
+ * The source column, bottom card first. `4D` is not in run order with the `10S`
+ * beneath it, so a grab at {@link GRAB_ROW} takes `10S`, `9H`, `8S`, which descend
+ * by one and alternate black, red, black.
+ */
+const SOURCE_CARDS = ["4D", "10S", "9H", "8S"];
+
+/** The run's leading card, counted from the column's bottom card at `0`. */
+const GRAB_ROW = 1;
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(() => {
+  harness?.dispose();
+});
+
+it("refuses a run led by a 10 at an empty column", async () => {
+  openTable(harness);
+  poseColumn(harness, SOURCE, SOURCE_CARDS);
+
+  const accepted = harness.debug.move(
+    "tableau",
+    SOURCE,
+    GRAB_ROW,
+    "tableau",
+    TARGET,
+  );
+  await harness.advance(1);
+  captureStill(harness, "refused");
+
+  assertEqual(
+    accepted,
+    false,
+    "an empty column to refuse a well-ordered run led by a 10, because only a " +
+      "run led by a King fills an empty column",
+  );
+
+  const after = harness.snapshot();
+  assertLength(
+    after.tableau[TARGET],
+    0,
+    "cards on the column that refused the run, which was empty and stays empty",
+  );
+  assertDeepEqual(
+    pileSpecs(after.tableau[SOURCE]),
+    SOURCE_CARDS,
+    "the source column, unchanged by the refusal",
   );
 });
