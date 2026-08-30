@@ -155,6 +155,8 @@ stub exports a placeholder; replace it with the color your field uses.
 - `engine/`, the engine's own documentation.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
   `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+  `vite.config.ts` serves `assets/` in development and copies the same tree into
+  `dist/` when the site is built.
 
 `package.json` takes one kind of change: a dependency you genuinely need, added
 along with the updated `package-lock.json`. Its existing entries and scripts stay as
@@ -212,6 +214,8 @@ frame, so the letterbox bars around the stage match the field itself.
 - `engine/`, the engine's own documentation.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
   `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+  `vite.config.ts` serves `assets/` in development and copies the same tree into
+  `dist/` when the site is built.
 
 `package.json` takes one kind of change: a dependency you genuinely need, added
 along with the updated `package-lock.json`. Its existing entries and scripts stay as

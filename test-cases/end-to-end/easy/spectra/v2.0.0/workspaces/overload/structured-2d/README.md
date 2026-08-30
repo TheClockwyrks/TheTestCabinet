@@ -88,7 +88,8 @@ afterwards. The engine's documentation defines every other piece of that recipe.
 - **`index.html`** — the page and the canvas the engine fits the stage into.
 - **`assets/`** — the art and the particle system seeded with the project.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
+  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
+  and `.gitignore`.
 - **`.tcab/`** — the vendored engine and the vendored particle runtime.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
