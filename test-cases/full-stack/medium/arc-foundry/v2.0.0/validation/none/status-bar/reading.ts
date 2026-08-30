@@ -55,7 +55,8 @@ export const PANEL: Region = {
 /** The yard (`specs/overview.md`). */
 export const YARD: Region = { x0: 0, y0: BAR_H, x1: PANEL_X, y1: STAGE_H };
 
-function holds(region: Region, x: number, y: number): boolean {
+/** A point falls inside a region. */
+export function inRegion(region: Region, x: number, y: number): boolean {
   return x >= region.x0 && x <= region.x1 && y >= region.y0 && y <= region.y1;
 }
 
@@ -110,9 +111,22 @@ export interface TextDraw {
   index: number;
 }
 
-/** Every text draw of a frame, each anchored where it actually landed. */
-export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
-  const draws: TextDraw[] = [];
+/** One operation of a frame, with the transform that was in force at it. */
+interface Placed {
+  call: { method: string; args: unknown[] };
+  matrix: Matrix;
+  index: number;
+}
+
+/**
+ * Every call of a frame, each paired with the transform in force when it ran.
+ *
+ * The transform is tracked rather than assumed, because a build is free to draw
+ * its yard, its bar, and its panel from any origin it likes and the
+ * specification fixes only where the result lands.
+ */
+function placedCalls(calls: readonly DrawCall[]): Placed[] {
+  const placed: Placed[] = [];
   const stack: Matrix[] = [];
   let m: Matrix = IDENTITY;
   calls.forEach((call, index) => {
@@ -143,15 +157,82 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
       m = v ? (v as Matrix) : IDENTITY;
     } else if (method === "resetTransform") {
       m = IDENTITY;
-    } else if (method === "fillText" || method === "strokeText") {
-      const text = args[0];
-      const v = numbers(args, 1, 2);
-      if (typeof text === "string" && v) {
-        const point = at(m, v[0]!, v[1]!);
-        draws.push({ text, x: point.x, y: point.y, index });
-      }
     }
+    placed.push({ call: { method, args }, matrix: m, index });
   });
+  return placed;
+}
+
+/** Every text draw of a frame, each anchored where it actually landed. */
+export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
+  const draws: TextDraw[] = [];
+  for (const { call, matrix, index } of placedCalls(calls)) {
+    if (call.method !== "fillText" && call.method !== "strokeText") continue;
+    const text = call.args[0];
+    const v = numbers(call.args, 1, 2);
+    if (typeof text !== "string" || !v) continue;
+    const point = at(matrix, v[0]!, v[1]!);
+    draws.push({ text, x: point.x, y: point.y, index });
+  }
+  return draws;
+}
+
+/** One `drawImage`, with the destination it blitted to mapped onto the stage. */
+export interface ImageDraw {
+  /** The destination rectangle's bounding box on the stage. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Its center, which is where a rotated head lands whatever it was rotated by. */
+  cx: number;
+  cy: number;
+  /** Where it sat in the frame's operations, so two draws can be ordered. */
+  index: number;
+}
+
+/**
+ * Every image a frame blitted, mapped onto the stage.
+ *
+ * A `drawImage` carries its destination in the last two or four of its
+ * arguments; the three-argument form leaves the size to the image itself, which
+ * the recorder cannot see, so that form reports a point rather than a rectangle.
+ */
+export function imageDraws(calls: readonly DrawCall[]): ImageDraw[] {
+  const draws: ImageDraw[] = [];
+  for (const { call, matrix, index } of placedCalls(calls)) {
+    if (call.method !== "drawImage") continue;
+    const args = call.args;
+    const box =
+      args.length >= 9
+        ? numbers(args, 5, 4)
+        : args.length >= 5
+          ? numbers(args, 1, 4)
+          : (() => {
+              const point = numbers(args, 1, 2);
+              return point === null ? null : [point[0]!, point[1]!, 0, 0];
+            })();
+    if (box === null) continue;
+    const [dx, dy, dw, dh] = box as [number, number, number, number];
+    const corners = [
+      at(matrix, dx, dy),
+      at(matrix, dx + dw, dy),
+      at(matrix, dx, dy + dh),
+      at(matrix, dx + dw, dy + dh),
+    ];
+    const xs = corners.map((c) => c.x);
+    const ys = corners.map((c) => c.y);
+    const center = at(matrix, dx + dw / 2, dy + dh / 2);
+    draws.push({
+      x: Math.min(...xs),
+      y: Math.min(...ys),
+      w: Math.max(...xs) - Math.min(...xs),
+      h: Math.max(...ys) - Math.min(...ys),
+      cx: center.x,
+      cy: center.y,
+      index,
+    });
+  }
   return draws;
 }
 
@@ -174,7 +255,7 @@ export function textLines(
   region: Region,
 ): string[] {
   const draws = textDraws(calls)
-    .filter((d) => holds(region, d.x, d.y))
+    .filter((d) => inRegion(region, d.x, d.y))
     .sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
   const lines: string[] = [];
   let baseline: number | null = null;
