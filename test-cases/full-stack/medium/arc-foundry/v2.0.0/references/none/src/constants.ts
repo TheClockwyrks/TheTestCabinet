@@ -336,6 +336,10 @@ export const COMPONENTS: Record<ComponentType, ComponentDef> = {
 // Coil chain (specs/towers.md): the bolt leaps to the nearest not-yet-hit unit within
 // CHAIN_RANGE, each leap dealing ×CHAIN_FALLOFF of the previous. Max ADDITIONAL leaps by
 // tier: 2 (T1–T2), 3 (T3–T4), 4 (Tesla-Prime).
+// The Arc-Node's splash radius by tier: 42 at Scrap and 5 more per rung
+// (specs/components.md). Indexed by tier - 1.
+export const ARC_SPLASH_BY_TIER: readonly number[] = [42, 47, 52, 57, 62];
+
 export const COIL_CHAIN_RANGE = 70;
 export const COIL_CHAIN_FALLOFF = 0.7;
 export function coilLeaps(tier: Tier): number {
