@@ -183,7 +183,12 @@ it("restores every declared field to its title value and leaves muted alone", as
     h.debug.setWormStepping(id, false);
   }
   FOE_COLS.forEach((c, index) => {
-    const id = poseFoe(h, (["glitch", "dropper", "corruptor"] as const)[index], c, FOE_ROW);
+    const id = poseFoe(
+      h,
+      (["glitch", "dropper", "corruptor"] as const)[index],
+      c,
+      FOE_ROW,
+    );
     h.debug.setFoeTravel(id, false);
     h.debug.setFoeMind(id, false);
   });
