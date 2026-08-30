@@ -740,8 +740,6 @@ validation = { script = "validation/camera/lead-descend.mjs", outputs = [{ id = 
 id = "window-fit"
 title = "Window fit"
 description = "The entire 1280x720 stage — the status bar and the full mine viewport, all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
-reference = "title"
-proof = "title"
 
 # --- Color (sampled from the rendered canvas) ---------------------------------
 [[review.categories]]
@@ -962,20 +960,14 @@ validation = { script = "validation/presentation/miner-animation.mjs", outputs =
 id = "tiles-ore"
 title = "Produced band tiles, ore, and gems"
 description = "The four band rock tiles (each drawn from several variants so a wall does not repeat one texture, in a roughly uniform grain), the ten ore veins (each an embedded smear, distinguishable from one another), and the three faceted gemstones are drawn from produced sprites and read at a glance against one another."
-reference = "mine"
-proof = "mine"
 [[review.categories.items]]
 id = "tunnel-shaping"
 title = "Carved-tunnel shaping"
 description = "A carved tunnel is rendered inset with a dirt lip and rounded corners so a shaft is slightly narrower than a full tile, joins its neighbors orthogonally, and stays separate from diagonally-touching holes."
-reference = "mine"
-proof = "mine"
 [[review.categories.items]]
 id = "buildings-rocket"
 title = "Produced buildings and the assembling rocket"
 description = "The six surface buildings read clearly as what they are under the dusk sky, and the escape rocket on the pad visibly gains each component as it is fabricated, from bare pad to launch-ready."
-reference = "surface"
-proof = "surface"
 [[review.categories.items]]
 id = "buildings-placed"
 title = "The six buildings sit on the surface, spread apart"
@@ -985,5 +977,3 @@ validation = { script = "validation/presentation/buildings-placed.mjs", outputs 
 id = "vfx"
 title = "Produced particle VFX"
 description = "The produced particle systems fire at the moment and place of each event and vary shot to shot — the subtle-but-readable gas seep, drill debris, jetpack exhaust, ore sparkle, gas explosion, lava embers, impact dust, core extraction and detonation, launch exhaust, and death burst — played live rather than flat flashes or hand-coded loops."
-reference = "mine"
-proof = "core-run"
