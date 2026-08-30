@@ -1,23 +1,92 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/stock/waste-top-to-foundation.test.ts
+// stock/waste-top-to-foundation — the waste's top card can go home.
 //
-// The review item `stock.waste-top-to-foundation` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/stock.md: "Only the waste's top card may be played, onto a
+// foundation that accepts it by `specs/foundations.md`", and specs/foundations.md:
+// a foundation accepts a card from a tableau column and from the waste, on exactly
+// its own terms. So the waste is a source a foundation takes from, and a card that
+// goes there leaves the waste behind. Without this route a Klondike deal cannot be
+// finished at all, because every card the tableau never received passes through the
+// waste.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE CARD OFFERED IS AN ACE AND THE FOUNDATION IS EMPTY, which is the one
+// acceptance specs/foundations.md states with nothing built first. What is decided
+// here is the ROUTE, waste to foundation, so the terms the foundation accepts on are
+// held to their simplest case; which cards a foundation accepts and refuses is the
+// `foundations` group's fourteen points, and the same route out of a column is
+// `foundations/accepts-from-tableau`.
 //
-// What this item must decide, from the manifest:
+// A CARD IS LEFT UNDER IT, so "leaves the waste" is a card departing a pile that
+// still holds another rather than a pile being emptied, and a build that cleared the
+// waste rather than moving one card off it is caught.
 //
-//   The waste's top card goes to a foundation
-//
-//   It is accepted onto a legal foundation and leaves the waste.
+// The card is followed by id, which it keeps across the move
+// (specs/instrumentation.md), so what is read is that THIS card arrived rather than
+// that something the right shape did.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLength } from "../assert";
+import {
+  ACE,
+  captureStill,
+  card,
+  createHarness,
+  NINE,
+  openTable,
+  poseWaste,
+  topOf,
+  type Harness,
+} from "../harness";
 
-it("stock.waste-top-to-foundation — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/stock/waste-top-to-foundation.test.ts is a scaffold stub, not a validator",
+/**
+ * The waste the card is played off: a card the play leaves behind, and the Ace of
+ * spades on top of it, each on a set of its own so the Ace is the card shown.
+ */
+const POSED_WASTE = [card("diamonds", NINE), card("spades", ACE)];
+const POSED_SETS = [1, 1] as const;
+
+/** The row the Ace sits at, counted from the bottom of the waste. */
+const ACE_ROW = POSED_WASTE.length - 1;
+
+/** The foundation it goes to: empty, so an Ace is exactly what it accepts. */
+const FOUNDATION = 0;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("accepts the waste's top card onto a foundation and takes it off the waste", async () => {
+  openTable(h);
+  const ids = poseWaste(h, POSED_WASTE, POSED_SETS);
+  const ace = ids[ACE_ROW];
+
+  const accepted = h.debug.move("waste", 0, ACE_ROW, "foundation", FOUNDATION);
+  const after = h.snapshot();
+
+  await h.advance(1);
+  captureStill(h, "accepted");
+
+  assertEqual(
+    accepted,
+    true,
+    "move() to accept the waste's top card onto a foundation that takes it " +
+      "(specs/stock.md)",
+  );
+  assertEqual(
+    topOf(after.foundations[FOUNDATION] ?? [])?.id,
+    ace,
+    `the id of the card on foundation ${FOUNDATION} after the move ` +
+      "(specs/foundations.md)",
+  );
+  assertLength(
+    after.waste,
+    POSED_WASTE.length - 1,
+    "cards left on the waste once its top card went to a foundation " +
+      "(specs/stock.md)",
   );
 });
