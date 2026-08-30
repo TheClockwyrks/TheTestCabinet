@@ -15,8 +15,10 @@
 // from this file's own URL rather than from the working directory, so the command
 // above works from anywhere.
 //
-// The environment is `node`. Every measurement comes from the engine's own
-// surfaces and from the draw commands it records, so these suites need no DOM.
+// The environment is `node`. The engine takes every measurement from the
+// `SurfaceMetrics` the harness supplies, and every reading comes from the
+// engine's own object model, its events, and the draw commands it records, so
+// these suites need no DOM.
 
 import { defineConfig } from "vitest/config";
 
