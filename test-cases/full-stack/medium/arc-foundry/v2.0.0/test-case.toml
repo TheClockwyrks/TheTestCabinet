@@ -1731,6 +1731,18 @@ validation = { script = "abilities/aura-buffs-in-radius.test.ts", outputs = [
   { id = "aura", name = "The buffed structure inside the aura", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "candidate-regulator-projects-no-aura"
+title = "A candidate Regulator projects nothing until it is harvested"
+description = "A Capacitor within a candidate Regulator's radius reports its unbuffed damage while the Regulator is a candidate, and reports (1 + auraBonus) times it once that Regulator has been harvested, though the candidate reads its auraRadius and auraBonus throughout."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: stand a Capacitor, drop a candidate Regulator inside its
+# radius, read the damage, harvest it and read again. See
+# validation/<engine>/abilities/candidate-regulator-projects-no-aura.test.ts.
+validation = { script = "abilities/candidate-regulator-projects-no-aura.test.ts", outputs = [
+  { id = "candidate", name = "The unbuffed Capacitor beside a candidate Regulator", kind = "image" },
+] }
+[[review.categories.items]]
 id = "aura-not-outside"
 title = "A structure outside the radius takes no bonus"
 description = "A firing structure whose centre lies beyond the Regulator's aura radius reports its damage without the aura's bonus, so the radius is a real bound rather than a yard-wide buff."
