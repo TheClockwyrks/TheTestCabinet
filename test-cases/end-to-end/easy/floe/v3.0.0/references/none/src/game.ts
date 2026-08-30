@@ -802,22 +802,23 @@ export function stepGame(
 
 // ---- The game the runtime drives ----------------------------------------
 
-/** Resolve the tick's keyboard into the intents the rules are written against. */
+/**
+ * Resolve the tick's keyboard into the intents the rules are written against.
+ *
+ * A DIRECTION IS BEING REQUESTED WHEN IT IS DOWN NOW OR WENT DOWN SINCE THE LAST
+ * TICK. The held reading alone would drop a tap: a press and its release both
+ * land between two ticks at 120 Hz, and by the time the tick runs the key is up
+ * again, so `specs/hopping.md`'s "a press released before the cooldown reaches 0
+ * produces exactly one hop" would produce none. Taking the edge as a request
+ * costs nothing to a held key, which raises its edge once and then reads as
+ * down.
+ *
+ * Every edge is read, and so consumed, on every tick, and each is read exactly
+ * once: an edge left armed would surface later, out of order, and an edge read
+ * twice would be consumed by the first read.
+ */
 function readIntents(api: UpdateApi): Intents {
-  const held: Facing | null =
-    api.input.value("up") > 0
-      ? "up"
-      : api.input.value("down") > 0
-        ? "down"
-        : api.input.value("left") > 0
-          ? "left"
-          : api.input.value("right") > 0
-            ? "right"
-            : null;
-  return {
-    held,
-    // Every edge is read, and so consumed, on every tick: an edge left armed
-    // would surface later, out of order.
+  const edges = {
     up: api.input.pressed("up"),
     down: api.input.pressed("down"),
     left: api.input.pressed("left"),
@@ -827,6 +828,18 @@ function readIntents(api: UpdateApi): Intents {
     pause: api.input.pressed("pause"),
     mute: api.input.pressed("mute"),
   };
+  const asked = (name: Facing): boolean =>
+    api.input.value(name) > 0 || edges[name];
+  const held: Facing | null = asked("up")
+    ? "up"
+    : asked("down")
+      ? "down"
+      : asked("left")
+        ? "left"
+        : asked("right")
+          ? "right"
+          : null;
+  return { held, ...edges };
 }
 
 /**

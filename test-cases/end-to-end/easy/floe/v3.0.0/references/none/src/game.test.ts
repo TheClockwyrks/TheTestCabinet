@@ -13,6 +13,7 @@ import {
   HOP_COOLDOWN,
   ROW_MEDIAN,
   ROW_NEAR,
+  TICK_DT,
   SCORE_BAY,
   SCORE_BONUS_CATCH,
   SCORE_LEVEL,
@@ -28,6 +29,9 @@ import {
   tileCX,
   tileLeft,
 } from "./constants";
+import { createDebugApi, type FloeDebugApi } from "./debug";
+import { createFloe } from "./game";
+import { Keyboard } from "./keyboard";
 import { harness, lastId, startCrossing } from "./harness.test-support";
 
 describe("hopping", () => {
@@ -698,5 +702,171 @@ describe("a tick that is asked for nothing", () => {
     h.advance(1);
     const after = h.api.snapshot();
     expect({ ...after, simTime: before.simTime }).toEqual(before);
+  });
+});
+
+describe("the keyboard the runtime hands the game", () => {
+  /**
+   * The game over a keyboard the test drives, with no canvas and no art: what is
+   * checked is how a tick reads the keys, which is `readIntents` inside
+   * `createFloe`'s `update`.
+   */
+  function keyed(): {
+    keyboard: Keyboard;
+    target: EventTarget;
+    api: FloeDebugApi;
+    tick(): void;
+  } {
+    const target = new EventTarget();
+    const keyboard = new Keyboard(target);
+    // A mute bit of the test's own, standing in for the runtime's audio bus.
+    let muted = false;
+    const floe = createFloe({} as never);
+    const state = floe.initialize({
+      input: { register: (name, keys) => keyboard.register(name, keys) },
+      audio: { define: () => undefined },
+      diagnostics: { register: () => undefined },
+    });
+    const api = createDebugApi(state, {
+      setAutoStep: () => undefined,
+      advance: () => undefined,
+    });
+    return {
+      keyboard,
+      target,
+      api,
+      tick: () => {
+        floe.update(
+          state,
+          {
+            input: {
+              value: (name) => keyboard.value(name),
+              pressed: (name) => keyboard.pressed(name),
+            },
+            audio: {
+              play: () => undefined,
+              setMuted: (value) => {
+                muted = value;
+              },
+              muted: () => muted,
+            },
+          },
+          TICK_DT,
+        );
+        keyboard.endTick();
+      },
+    };
+  }
+
+  /** A `KeyboardEvent`-shaped event, as a browser and a driver both dispatch. */
+  class KeyEvent extends Event {
+    readonly code: string;
+    readonly repeat = false;
+
+    constructor(type: "keydown" | "keyup", code: string) {
+      super(type);
+      this.code = code;
+    }
+  }
+
+  function playing(k: ReturnType<typeof keyed>): void {
+    k.api.reset();
+    k.api.setScreen("playing");
+    k.api.clearVehicles();
+    k.api.clearFloes();
+    k.api.setTimerRunning(false);
+    k.api.setBearEmergence(false);
+    k.api.addCritter(START_COL, ROW_NEAR);
+  }
+
+  it("hops on a press and release that both land between two ticks", () => {
+    const k = keyed();
+    playing(k);
+    k.target.dispatchEvent(new KeyEvent("keydown", "ArrowLeft"));
+    k.target.dispatchEvent(new KeyEvent("keyup", "ArrowLeft"));
+    k.tick();
+    expect(k.api.snapshot().critter.col).toBe(START_COL - 1);
+    expect(k.api.snapshot().critter.facing).toBe("left");
+  });
+
+  it("hops exactly once for that press, however long the tick runs after it", () => {
+    const k = keyed();
+    playing(k);
+    k.target.dispatchEvent(new KeyEvent("keydown", "ArrowLeft"));
+    k.target.dispatchEvent(new KeyEvent("keyup", "ArrowLeft"));
+    for (let i = 0; i < 120; i += 1) k.tick();
+    expect(k.api.snapshot().critter.col).toBe(START_COL - 1);
+  });
+
+  it("repeats a held direction at the cooldown", () => {
+    const k = keyed();
+    playing(k);
+    k.target.dispatchEvent(new KeyEvent("keydown", "ArrowRight"));
+    for (let i = 0; i < 120; i += 1) k.tick();
+    k.target.dispatchEvent(new KeyEvent("keyup", "ArrowRight"));
+    const moved = k.api.snapshot().critter.col - START_COL;
+    expect(moved).toBeGreaterThanOrEqual(Math.floor(1 / HOP_COOLDOWN));
+    expect(moved).toBeLessThanOrEqual(Math.floor(1 / HOP_COOLDOWN) + 2);
+  });
+
+  it("answers to every key the specification binds, and to no other", () => {
+    for (const [code, facing] of [
+      ["ArrowUp", "up"],
+      ["KeyW", "up"],
+      ["ArrowDown", "down"],
+      ["KeyS", "down"],
+      ["ArrowLeft", "left"],
+      ["KeyA", "left"],
+      ["ArrowRight", "right"],
+      ["KeyD", "right"],
+    ] as const) {
+      const k = keyed();
+      playing(k);
+      k.api.setCritterTile(START_COL, ROW_NEAR - 4);
+      k.target.dispatchEvent(new KeyEvent("keydown", code));
+      k.tick();
+      expect(k.api.snapshot().critter.facing, code).toBe(facing);
+    }
+
+    const quiet = keyed();
+    playing(quiet);
+    const before = quiet.api.snapshot();
+    quiet.target.dispatchEvent(new KeyEvent("keydown", "KeyZ"));
+    quiet.tick();
+    const after = quiet.api.snapshot();
+    expect({ ...after, simTime: 0 }).toEqual({ ...before, simTime: 0 });
+  });
+
+  it("pauses on either of its keys and goes back on Escape", () => {
+    for (const code of ["KeyP", "Escape"] as const) {
+      const k = keyed();
+      playing(k);
+      k.target.dispatchEvent(new KeyEvent("keydown", code));
+      k.tick();
+      expect(k.api.snapshot().screen, code).toBe("paused");
+      k.target.dispatchEvent(new KeyEvent("keyup", code));
+      k.target.dispatchEvent(new KeyEvent("keydown", "Escape"));
+      k.tick();
+      expect(k.api.snapshot().screen).toBe("playing");
+    }
+  });
+
+  it("confirms on either of its keys, and mutes on M", () => {
+    for (const code of ["Enter", "Space"] as const) {
+      const k = keyed();
+      k.api.reset();
+      k.target.dispatchEvent(new KeyEvent("keydown", code));
+      k.tick();
+      expect(k.api.snapshot().screen, code).toBe("playing");
+    }
+    const k = keyed();
+    k.api.reset();
+    k.target.dispatchEvent(new KeyEvent("keydown", "KeyM"));
+    k.tick();
+    expect(k.api.snapshot().muted).toBe(true);
+    k.target.dispatchEvent(new KeyEvent("keyup", "KeyM"));
+    k.target.dispatchEvent(new KeyEvent("keydown", "KeyM"));
+    k.tick();
+    expect(k.api.snapshot().muted).toBe(false);
   });
 });
