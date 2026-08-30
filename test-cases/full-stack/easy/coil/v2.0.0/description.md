@@ -35,8 +35,8 @@ on a tick where it just ate and the tail holds. Pellets have to keep landing on
 valid cells as the board crowds, the combo has to decay on simulation time, and
 a title screen, live play, and game-over screen have to hand off to one another
 with the high score carried across. None of it is deep, but all of it has to be
-right — and on top of that correctness the model has to carry a small art-and-
-audio pass: pixel-art snake sprites that turn cleanly, a head that animates a
+right — and on top of that correctness the model has to carry a small
+art-and-audio pass: pixel-art snake sprites that turn cleanly, a head that animates a
 bite on the eat, and produced sound and music. A tidy game with a code-drawn
 snake, or crisp sprites bolted to a game that mis-handles turning, both fall
 short; Coil rewards the model that gets the code _and_ the craft right.
@@ -48,13 +48,13 @@ project to build inside: the Vite, Vitest, ESLint and Prettier toolchain, and th
 page with its canvas. How much more it receives depends on the engine the run
 selects. On an engine run the project also carries the runtime and the entry
 module that stands the engine up, and the run writes the game and its debug
-surface against them. On an engineless
-run the project carries no source at all, and the run writes the fixed-tick loop,
-the canvas fit, input, audio and the overlay as well as the game.
+surface against them. On an engineless run the project carries no source at all,
+and the run writes the fixed-tick loop, the canvas fit, input, audio and the
+overlay as well as the game.
 
 Coil ships no pre-made assets and declares no reference mockups. The run image
 puts the 2D asset-generation tools on the model's `PATH`, and the model produces
 the snake's sprite set and the game's sound and music with them before wiring the
 committed files into the build. The specification fixes the board geometry, the
-tick rate, the turning and collision rules and the combo exactly; the palette, the
-type and the drawing of the board and the HUD are the build's.
+tick rate, the turning and collision rules and the combo exactly; the palette,
+the type and the look of the board and the HUD are the build's.
