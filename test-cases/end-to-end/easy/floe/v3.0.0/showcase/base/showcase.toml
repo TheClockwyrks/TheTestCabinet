@@ -1,0 +1,25 @@
+# PLACEHOLDER — the Floe v3.0.0 showcase has not been captured yet.
+#
+# A showcase must carry at least one [[media]] entry to resolve, so the Scaffold
+# stage declared the one entry it could: `title.png`, which is a flat placeholder
+# image rather than a capture of anything.
+#
+# The Showcase stage of the rework REPLACES that file and adds the other two, so
+# this list reads, in this order:
+#
+#   1. `crossing.webm`     the leading entry: twenty to forty seconds of
+#                          sustained real play — the critter timing the gaps up
+#                          through the ice band, a bear emerging behind it and
+#                          being reset by a plow, the water crossed floe to floe
+#                          with a bear swimming after it, and a bay filled.
+#   2. `mid-crossing.png`  a still from the same take, the critter mid-water with
+#                          a submerged bear behind it.
+#   3. `title.png`         the title screen.
+#
+# Every outcome on screen arises from the game's own rules under scripted input,
+# computed against the reference's own lane arithmetic at a fixed seed. Posing an
+# outcome through the debug surface is fabrication and is not used.
+
+[[media]]
+file = "title.png"
+name = "The title screen"
