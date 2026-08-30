@@ -111,7 +111,8 @@ describe("the bindings", () => {
   it("ignores a key nothing is bound to", () => {
     const b = bench();
     b.down("KeyZ");
-    for (const action of ACTIONS) expect(b.keyboard.pressed(action)).toBe(false);
+    for (const action of ACTIONS)
+      expect(b.keyboard.pressed(action)).toBe(false);
   });
 
   it("reads an unregistered name as false rather than throwing", () => {

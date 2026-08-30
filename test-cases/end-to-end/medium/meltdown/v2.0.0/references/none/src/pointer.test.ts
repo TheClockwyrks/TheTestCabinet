@@ -40,7 +40,9 @@ describe("narrowing an event", () => {
   });
 
   it("declines a secondary touch, so the game asks for one pointer", () => {
-    expect(asPointerEvent(new PointEvent("pointerdown", 4, 5, false))).toBeNull();
+    expect(
+      asPointerEvent(new PointEvent("pointerdown", 4, 5, false)),
+    ).toBeNull();
   });
 });
 

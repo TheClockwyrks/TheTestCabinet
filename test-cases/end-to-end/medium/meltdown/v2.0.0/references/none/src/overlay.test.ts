@@ -115,7 +115,9 @@ describe("drawing", () => {
     ctx.setTransform(2, 0, 0, 2, 30, 40);
     panel.toggle();
     panel.draw(ctx, FRAME, null);
-    const after = (ctx as unknown as { getTransform(): DOMMatrix }).getTransform();
+    const after = (
+      ctx as unknown as { getTransform(): DOMMatrix }
+    ).getTransform();
     expect([after.a, after.d, after.e, after.f]).toEqual([2, 2, 30, 40]);
   });
 });
