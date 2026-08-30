@@ -47,13 +47,14 @@ The checklist grew from 99 points to 254, and every one of them carries a Vitest
 suite under `validation/<engine>/`, the domains its failure lowers, and how far it
 lowers them. A `base` run is rated on 207 points and a `warhead` run on 254.
 
-Nothing is left to a reviewer to decide from a screenshot. The four points that
-had been backed by a reference view or a proof capture rather than by a check are
-now decided by validators: the field staying fitted and centred at any window
-size, a shape straddling a seam being drawn on both sides of it, the bullet trail
-being continuous and scaling with speed, and the HUD drawing the score and one
-glyph per ship in reserve.
-The reference screenshots and the proof captures are gone with them, and
+Nothing is left to a reviewer to decide from a screenshot. The six points that had
+been backed by a reference view or a proof capture rather than by a check are now
+decided by validators: the field staying fitted and centred at any window size, a
+shape straddling a seam being drawn on both sides of it, the bullet trail being
+continuous and scaling with speed, the HUD drawing the score and one glyph per ship
+in reserve, and — on the `warhead` ruleset — a chipped rock flashing on the tick the
+hit lands and a damaged rock being drawn measurably differently from an undamaged
+one. The reference screenshots and the proof captures are gone with them, and
 `specs/proof.md` with those. Every piece of media a reviewer looks at is now
 produced by the case's own validators, from scenarios the case controls, and the
 same suites run against each reference build to produce the baseline they are
@@ -106,8 +107,8 @@ What that replaced:
 
 ## A wave is cleared by shooting it, not by emptying the field
 
-Three wave checks reached a cleared wave by calling `clearRocks()`, one of them
-with the comment "as if every rock were destroyed". It is not that.
+Three wave checks reached a cleared wave by calling `clearRocks()`, two of them
+carrying the comment "as if every rock were destroyed". It is not that.
 `clearRocks` removes rocks from the field, awarding no score and destroying
 nothing, and nothing anywhere said a wave turns over on it. The specification says
 a wave clears only by shooting every rock down, so a build that raises its next
