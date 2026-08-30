@@ -46,8 +46,8 @@ The rest of the difficulty is in the details:
 - The ceiling is solid. Height is only ever gained through tunnels already cut.
 - The two buried materials are guaranteed to exist and hidden, so the scanner
   has to be the way they are found rather than a hint about them.
-- The mine is taller than the viewport, so a camera has to follow the miner down
-  the shaft and back up it.
+- The mine is taller and wider than the viewport, so a camera has to follow the
+  miner down the shaft, back up it, and across the width of the world.
 
 The look is open. Deepcore fixes the geometry, the rates, the prices and the
 timings. The palette, the type, the miner's design and the drawing of the mine

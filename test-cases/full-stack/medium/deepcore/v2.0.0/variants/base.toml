@@ -20,7 +20,7 @@ description = "The standard expedition: start on the surface with tier-1 gear an
 # The authored correct build, one directory per supported engine, because the build a
 # reference demonstrates differs under each. This table must name EXACTLY the engines the
 # case supports (the resolver checks both directions), and the case supports three:
-# `references/none` carries its own runtime layer (the fixed-step loop, canvas fit,
+# `references/none` carries its own runtime layer (the frame loop, canvas fit,
 # keyboard input, audio, overlay, the scrolling camera transform, and the
 # `window.__deepcore` surface), `references/simple-2d` hands the loop, the fit, the input,
 # the audio and the overlay to the engine package resolved from the repository's

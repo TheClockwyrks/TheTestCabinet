@@ -7,7 +7,7 @@ canvas. How much of that project the model writes is what the engine decides,
 and the engine is chosen per run alongside the model and the harness.
 
 Under `none` the workspace is that toolchain and nothing else. There is no
-`src/`: the build writes the fixed-step loop, the canvas fit, the keyboard
+`src/`: the build writes the frame loop and its delta time, the canvas fit, the keyboard
 input, the audio, the diagnostics overlay, the transform that scrolls the mine
 past the camera, the `window.__deepcore` surface, and every figure the
 specification fixes, and then the game on top of all of it.

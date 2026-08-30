@@ -25,7 +25,7 @@ name = "Deepcore"
 type = "full-stack"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Deepcore is
-# medium: it asks for a Motherload-style dig-and-build — a fixed-step simulation of a
+# medium: it asks for a Motherload-style dig-and-build — a delta-time simulation of a
 # character drilling and falling and jetpacking through a banded tile mine wider than
 # the viewport over a both-axis scrolling camera, a fuel-and-hull budget and a
 # weight-vs-lift jetpack model that make
@@ -69,7 +69,7 @@ changelog = "changelog.md"
 prompt = "prompt.hbs"
 
 # Maximum wall-clock runtime, in hours, for the harness session before the run is
-# stopped. Deepcore is a large build — a fixed-step mining simulation with tile physics,
+# stopped. Deepcore is a large build — a real-time mining simulation with tile physics,
 # a fuel/hull/ore/Credits economy with weight-and-lift jetpack physics, a seven-track
 # upgrade shop, a scanner-driven material hunt, depth-scaling hazards, an unstable-core
 # timed climax, a five-part rocket win condition, two death
@@ -132,7 +132,7 @@ variants = [
 # Deepcore supports three, and the mine is the same under all of them. What differs is
 # how much of the build is handed over:
 #   - `none`          supplies no runtime and no `src/` at all, so the build writes the
-#                     fixed-step loop, the canvas fit, the keyboard input, the audio,
+#                     frame loop, the canvas fit, the keyboard input, the audio,
 #                     the overlay, the scrolling camera transform, and the
 #                     `window.__deepcore` surface itself.
 #   - `simple-2d`     vendors the runtime as a package and seeds the modules around it
@@ -182,7 +182,7 @@ min_version = "1.0.0"
 # path. What differs is how much of the build is supplied with them.
 #
 #   - `none`          supplies the configuration and nothing else. There is no `src/`:
-#                     the build writes its own fixed-step loop, canvas fit, keyboard
+#                     the build writes its own frame loop, canvas fit, keyboard
 #                     input, audio, diagnostics overlay, camera transform and
 #                     `window.__deepcore` surface, and every figure the specification
 #                     fixes, from the specs alone.
