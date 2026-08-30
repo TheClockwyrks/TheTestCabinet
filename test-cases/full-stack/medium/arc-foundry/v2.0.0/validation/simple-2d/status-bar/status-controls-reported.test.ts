@@ -1,28 +1,116 @@
-// Arc Foundry — `status-bar.status-controls-reported`. CASE-PROVIDED. NOT YET WRITTEN.
+// status-bar/status-controls-reported — the five controls and the values they read.
 //
-// The manifest declares this point at `status-bar/status-controls-reported.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/instrumentation.md` fixes `statusControls` as "the status bar's overlay,
+// speed, pause, and mute controls, in the order they are drawn", each carrying a
+// rectangle on the stage and a `state` that "reports the value the control is
+// currently reading". `specs/hud.md` fixes that drawn order left to right — the
+// combos toggle, the damage toggle, speed, pause, mute — which is `STATUS_CONTROLS`,
+// and `specs/overview.md` puts the whole bar in `y` `0`–`56`.
 //
-// THE REQUIREMENT. statusControls returns the combos, damage, speed, pause and
-// mute controls in the order they are drawn, each with a rectangle on the
-// stage, and each state reads the value the control is on: true while the
-// overlay is open, the live multiplier for speed, and the pause and mute bits.
-//
-// HOW IT IS DECIDED. Toggle each control in turn and hold the reported state
-// against the snapshot. The evidence it hands back is `controls` (image): the
-// status bar's five controls.
+// So the reading is held against the five things the specification fixes about
+// it: the actions it names, the order it names them in, that each rectangle is a
+// real region of the bar, that they run left to right, and that each `state`
+// answers the value the game holds after that value is posed.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  pressAction,
+  statusControl,
+  type Harness,
+} from "../harness";
+import { BAR_H, STAGE_W, STATUS_CONTROLS } from "../../src/constants";
 
-import { fail } from "../assert";
+let h: Harness;
 
-describe("status-bar.status-controls-reported", () => {
-  it("statusControls reports the five controls and their states", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `status-bar.status-controls-reported` has not been written yet",
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+/** The state `statusControls` reports for one action right now. */
+function stateOf(action: (typeof STATUS_CONTROLS)[number]) {
+  return statusControl(h, action).state;
+}
+
+it("reports the five controls, in order, each reading its own value", async () => {
+  openYard(h);
+
+  const controls = h.debug.statusControls();
+  captureStill(h, "controls");
+
+  assertDeepEqual(
+    controls.map((c) => c.action),
+    [...STATUS_CONTROLS],
+    "the actions statusControls reports, in the order they are drawn",
+  );
+
+  let previous = -Infinity;
+  for (const control of controls) {
+    const where = `the \`${control.action}\` control's rectangle`;
+    assertGreaterThan(control.w, 0, `${where} width`);
+    assertGreaterThan(control.h, 0, `${where} height`);
+    assertGreaterThanOrEqual(control.x, 0, `${where} left edge`);
+    assertGreaterThanOrEqual(control.y, 0, `${where} top edge`);
+    assertLessThanOrEqual(
+      control.x + control.w,
+      STAGE_W,
+      `${where} right edge`,
     );
-  });
+    assertLessThanOrEqual(control.y + control.h, BAR_H, `${where} bottom edge`);
+    assertGreaterThanOrEqual(
+      control.x,
+      previous,
+      `${where} left edge, against the control drawn before it`,
+    );
+    previous = control.x;
+  }
+
+  // The overlay toggles read whether their overlay is open.
+  assertEqual(stateOf("combos"), false, "the combos state, book closed");
+  assertEqual(stateOf("damage"), false, "the damage state, board closed");
+  h.debug.setOverlay("combos", true);
+  assertEqual(stateOf("combos"), true, "the combos state, book open");
+  assertEqual(
+    stateOf("damage"),
+    false,
+    "the damage state while only the book is open",
+  );
+  h.debug.setOverlay("combos", false);
+  h.debug.setOverlay("damage", true);
+  assertEqual(stateOf("damage"), true, "the damage state, board open");
+  h.debug.setOverlay("damage", false);
+
+  // Speed reads the live multiplier.
+  assertEqual(stateOf("speed"), 1, "the speed state at multiplier 1");
+  h.debug.setSpeed(4);
+  assertEqual(stateOf("speed"), 4, "the speed state at multiplier 4");
+
+  // Pause reads the in-place pause.
+  assertEqual(stateOf("pause"), false, "the pause state while running");
+  h.debug.setPaused(true);
+  assertEqual(stateOf("pause"), true, "the pause state while paused");
+  h.debug.setPaused(false);
+
+  // Mute reads the mute bit the snapshot also reports.
+  assertEqual(stateOf("mute"), false, "the mute state with audio on");
+  await pressAction(h, "mute");
+  assertEqual(
+    h.snapshot().muted,
+    true,
+    "snapshot().muted once the mute action has fired",
+  );
+  assertEqual(stateOf("mute"), true, "the mute state with audio muted");
 });

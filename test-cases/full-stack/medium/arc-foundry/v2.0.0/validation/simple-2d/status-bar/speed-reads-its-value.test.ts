@@ -1,27 +1,54 @@
-// Arc Foundry — `status-bar.speed-reads-its-value`. CASE-PROVIDED. NOT YET WRITTEN.
+// status-bar/speed-reads-its-value — the speed control draws the multiplier it is on.
 //
-// The manifest declares this point at `status-bar/speed-reads-its-value.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/hud.md`: the speed, pause, and mute controls "each read their own
+// current value rather than merely being clickable, so what the bar draws changes
+// when the value changes". `specs/instrumentation.md` adds that a control's
+// reported rectangle is its real region and that its `state` and what it draws
+// agree.
 //
-// THE REQUIREMENT. The pixels inside the speed control's reported rectangle
-// differ between multiplier 1 and multiplier 8, so the control reads its value
-// rather than merely being clickable.
-//
-// HOW IT IS DECIDED. Sample the control's rectangle at each multiplier and
-// compare. The evidence it hands back is `speed` (image): the speed control at
-// two multipliers.
+// So the multiplier is posed at each end of the cycle `specs/controls.md` fixes,
+// `1` and `8`, and the pixels inside the rectangle the control reports are held
+// against each other. The rectangle is read once and sampled at both multipliers,
+// so what is compared is the same region of the stage rather than two regions a
+// build happened to move.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  statusControl,
+  type Harness,
+} from "../harness";
+import { DISTINCT, lattice, maxDistance, sample } from "./reading";
 
-import { fail } from "../assert";
+let h: Harness;
 
-describe("status-bar.speed-reads-its-value", () => {
-  it("The speed control draws its live value", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `status-bar.speed-reads-its-value` has not been written yet",
-    );
-  });
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("draws the speed control differently at 1 and at 8", async () => {
+  openYard(h, { speed: 1 });
+
+  const control = statusControl(h, "speed");
+  const inside = lattice(control, 1);
+
+  const slow = await sample(h, inside);
+
+  h.debug.setSpeed(8);
+  const fast = await sample(h, inside);
+  captureStill(h, "speed");
+
+  assertGreaterThan(
+    maxDistance(slow, fast),
+    DISTINCT,
+    "how far the speed control's pixels move between multiplier 1 and 8, in " +
+      "RGB distance",
+  );
 });
