@@ -94,7 +94,11 @@ it("joins two carved cells that share a side and keeps two that share a corner a
   ]);
 
   // The touch: the single corner the diagonal pair shares.
-  const touchAt = stageOf(snapshot, (apartCol + 1) * TILE, (apartRow + 1) * TILE);
+  const touchAt = stageOf(
+    snapshot,
+    (apartCol + 1) * TILE,
+    (apartRow + 1) * TILE,
+  );
   const touch = meanAt(h, [
     touchAt,
     { x: touchAt.x - ACROSS, y: touchAt.y + ACROSS },

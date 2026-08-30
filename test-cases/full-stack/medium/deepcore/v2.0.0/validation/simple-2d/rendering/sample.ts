@@ -26,7 +26,12 @@
 // camera translate inside `render` and the harness's `worldToStage` is the
 // specification's own mapping rather than anything read off the build.
 
-import { type Harness, type Rgb, colorDistance, worldToStage } from "../harness";
+import {
+  type Harness,
+  type Rgb,
+  colorDistance,
+  worldToStage,
+} from "../harness";
 import type { DeepcoreSnapshot } from "../harness";
 
 /** A point on the logical stage. */
