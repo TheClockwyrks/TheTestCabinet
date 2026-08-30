@@ -4180,6 +4180,19 @@ validation = { script = "audio/cue-once-per-frame.test.ts", outputs = [
   { id = "once", name = "The frame that raised one cue three times", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "cue-plays-on-every-update"
+title = "A cue plays on every update that raises it"
+description = "Five shots landing on five separate updates play the fire cue five times, at every speed multiplier, because a cue is played on the update its event happens and the wall clock decides nothing."
+domains = ["audio"]
+failure_cap = "passable"
+# Automated validation: hold one Emitter firing at a frozen unit, pair every
+# update a shot was taken on with the cues that sounded on it, and drive the
+# same volley again at the highest speed multiplier. See
+# validation/<engine>/audio/cue-plays-on-every-update.test.ts.
+validation = { script = "audio/cue-plays-on-every-update.test.ts", outputs = [
+  { id = "cues", name = "One cue per update across five shots", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "playable-muted"
 title = "The game plays identically with sound muted"
 description = "With the mute bit engaged the same drive reaches the same state as an unmuted one — the same snapshot after the same calls and the same elapsed simulation — so nothing about the game depends on the audio being audible."
