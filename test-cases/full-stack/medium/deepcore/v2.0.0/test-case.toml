@@ -2089,6 +2089,18 @@ validation = { script = "notices/notice-dismissed-by-a-click.test.ts", outputs =
   { id = "dismiss", name = "The card dismissed by a click", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "notice-does-not-take-the-pause-key"
+title = "The card never takes the pause key"
+description = "A first-time hazard notice has no claim on pause: the key opens the pause menu while the card is still armed and while it is on screen, and it leaves the card as it was."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: raise a notice, strike pause inside NOTICE_DELAY and
+# again once the card is shown, and read the screen paused with the notice
+# untouched both times.
+validation = { script = "notices/notice-does-not-take-the-pause-key.test.ts", outputs = [
+  { id = "paused", name = "The pause menu opened over the card", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "notice-is-non-blocking"
 title = "The mine keeps running behind the card"
 description = "The card is non-blocking: the simulation carries on behind it, so the miner still falls, still drills and still burns fuel while it is on screen."
@@ -2289,13 +2301,36 @@ validation = { script = "supplies/using-with-nothing-to-change-is-a-no-op.test.t
 [[review.categories.items]]
 id = "supply-hotkeys"
 title = "The number keys use the supply of that number"
-description = "The hotkeys Digit1 through Digit6 during live play use the field supply of that number, in the order specs/items.md lists them, so 1 is Dynamite and 6 is Emergency Fuel."
+description = "The hotkeys Digit1 through Digit6 in the mine use the field supply of that number, in the order specs/items.md lists them, so 1 is Dynamite and 6 is Emergency Fuel."
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: pose one of each supply, press each hotkey in turn and
 # read the matching count fall by one.
 validation = { script = "supplies/supply-hotkeys.test.ts", outputs = [
   { id = "keys", name = "Each hotkey firing its own supply", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "supply-hotkeys-inside-a-panel"
+title = "A supply hotkey acts with a panel open"
+description = "The hotkeys act throughout the mine, so a supply used with the inventory overlay or a building panel open is consumed and applied exactly as it is with the mine clear."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: with the inventory open and then with a building panel
+# open, strike the nanobots hotkey against a spent hull and read the count
+# falling by one and the hull rising by NANOBOT_HULL.
+validation = { script = "supplies/supply-hotkeys-inside-a-panel.test.ts", outputs = [
+  { id = "hotkey", name = "A supply used from inside the bag", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "jettison-key-inside-a-panel"
+title = "The jettison key acts with a panel open"
+description = "The jettison key acts throughout the mine, so a carried Core Sample dropped with the inventory open leaves the satchel and lands on the miner's own cell as a ground item."
+domains = ["simulation"]
+failure_cap = "great"
+# Automated validation: carry a Sample with the inventory open, strike the
+# jettison key and read the satchel empty with coreGround at the miner's cell.
+validation = { script = "supplies/jettison-key-inside-a-panel.test.ts", outputs = [
+  { id = "drop", name = "The Sample dropped from inside a panel", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "supply-purchase"

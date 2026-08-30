@@ -26,7 +26,6 @@ import {
   openPauseMenu,
   toggleInventory,
 } from "./flow";
-import { dismissNotice } from "./feedback";
 import { jettisonCoreSample, useItem } from "./items";
 import { menuItems } from "./menus";
 import type { Draft } from "./state";
@@ -137,21 +136,22 @@ export function readActions(d: Draft, api: UpdateApi): void {
   if (edges.mute) api.audio.setMuted(!api.audio.muted());
 
   if (d.screen === "in-mine") {
-    if (d.notice && edges.pause) {
-      dismissNotice(d);
+    // The notice card has no claim on `pause`. specs/hazards.md makes the card
+    // non-blocking and gives it exactly two ends — a click on it, and its own
+    // fade — and specs/controls.md keeps `pause` bound to the pause menu the
+    // whole time the card is up.
+    // specs/items.md: the six hotkeys and the jettison key "act throughout the
+    // mine, with a building panel or the inventory overlay open exactly as with
+    // the mine clear", and both paths run the same logic.
+    for (let i = 0; i < edges.supplies.length; i += 1) {
+      if (!edges.supplies[i]) continue;
+      const id = itemForHotkey(i + 1);
+      if (id) useItem(d, id);
       return;
     }
-    if (!d.panel) {
-      for (let i = 0; i < edges.supplies.length; i += 1) {
-        if (!edges.supplies[i]) continue;
-        const id = itemForHotkey(i + 1);
-        if (id) useItem(d, id);
-        return;
-      }
-      if (edges.jettison) {
-        jettisonCoreSample(d);
-        return;
-      }
+    if (edges.jettison) {
+      jettisonCoreSample(d);
+      return;
     }
     if (edges.pause) openPauseMenu(d);
     else if (edges.activate) {

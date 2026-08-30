@@ -21,7 +21,6 @@ import { PlayerController } from "@test-cabinet/structured-2d";
 import type { ActionName } from "./constants";
 import { controlAt, controlsFor, inside } from "./controls";
 import type { Control } from "./controls";
-import { dismissNotice } from "./feedback";
 import {
   activate,
   activateNearbyBuilding,
@@ -138,21 +137,22 @@ export class DeepcoreController extends PlayerController {
     }
 
     if (state.screen === "in-mine") {
-      if (state.notice && edges.pause) {
-        dismissNotice(state);
+      // The notice card has no claim on `pause`. specs/hazards.md makes the card
+      // non-blocking and gives it exactly two ends — a click on it, and its own
+      // fade — and specs/controls.md keeps `pause` bound to the pause menu the
+      // whole time the card is up.
+      // specs/items.md: the six hotkeys and the jettison key "act throughout the
+      // mine, with a building panel or the inventory overlay open exactly as
+      // with the mine clear", and both paths run the same logic.
+      for (let i = 0; i < edges.supplies.length; i += 1) {
+        if (!edges.supplies[i]) continue;
+        const id = itemForHotkey(i + 1);
+        if (id) useItem(state, id);
         return;
       }
-      if (!state.panel) {
-        for (let i = 0; i < edges.supplies.length; i += 1) {
-          if (!edges.supplies[i]) continue;
-          const id = itemForHotkey(i + 1);
-          if (id) useItem(state, id);
-          return;
-        }
-        if (edges.jettison) {
-          jettisonCoreSample(state);
-          return;
-        }
+      if (edges.jettison) {
+        jettisonCoreSample(state);
+        return;
       }
       if (edges.pause) openPauseMenu(state);
       else if (edges.activate) {

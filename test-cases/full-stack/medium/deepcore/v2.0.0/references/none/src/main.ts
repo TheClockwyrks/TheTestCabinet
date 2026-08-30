@@ -220,22 +220,24 @@ async function main(): Promise<void> {
       return;
     }
     if (game.screen === "in-mine") {
-      if (game.notice && actions.includes("pause")) {
-        game.dismissNotice();
+      // The notice card has no claim on `pause`. specs/hazards.md makes the card
+      // non-blocking and gives it exactly two ends — a click on it, and its own
+      // fade — and specs/controls.md keeps `pause` bound to the pause menu the
+      // whole time the card is up.
+      //
+      // specs/items.md: the six hotkeys and the jettison key "act throughout the
+      // mine, with a building panel or the inventory overlay open exactly as with
+      // the mine clear", and both paths run the same logic.
+      for (let n = 1; n <= 6; n++) {
+        if (!actions.includes(`supply${n}` as (typeof actions)[number]))
+          continue;
+        const id = itemForHotkey(n);
+        if (id) useItem(game, id);
         return;
       }
-      if (!game.panel) {
-        for (let n = 1; n <= 6; n++) {
-          if (!actions.includes(`supply${n}` as (typeof actions)[number]))
-            continue;
-          const id = itemForHotkey(n);
-          if (id) useItem(game, id);
-          return;
-        }
-        if (actions.includes("jettison")) {
-          game.jettisonCoreSample();
-          return;
-        }
+      if (actions.includes("jettison")) {
+        game.jettisonCoreSample();
+        return;
       }
       if (actions.includes("pause")) openPauseMenu();
       else if (actions.includes("activate")) {
