@@ -256,7 +256,10 @@ src/
   audio.ts            The ten engine cues
   diagnostics.ts      The values the engine's overlay shows
   debug.ts            The debug surface: poses and readings over SpectraState
-  render.ts           All canvas drawing, in logical space
+  draw.ts             The drawing primitives the field and the HUD share
+  render.ts           The field and everything standing on it, in logical space
+  hud.ts              The two strips and the five readouts they carry
+  screens.ts          The seven screens, and what each draws over the field
   harness.ts          The build's own test harness, imported by the tests alone
   *.test.ts           The build's own tests, beside the code they cover
 ```
