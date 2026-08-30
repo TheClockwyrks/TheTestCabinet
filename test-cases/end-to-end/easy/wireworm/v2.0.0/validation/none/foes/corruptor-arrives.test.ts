@@ -1,20 +1,78 @@
-// Wireworm — foes.corruptor-arrives, under the `none` engine. CASE-PROVIDED.
+// foes/corruptor-arrives — a corruptor arrives once the level gate opens.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// `specs/foes.md`: "From that level on, a corruptor enters after an interval
+// drawn from the run's seeded generator between CORRUPTOR_MIN_INTERVAL (14.0 s)
+// and CORRUPTOR_MAX_INTERVAL (22.0 s), timed from the moment the level's play
+// becomes active."
 //
-// The point it decides, from `test-case.toml`:
+// The bound the point holds a build to is the UPPER END of that range, because
+// that is the only part of it that holds for every seed: whatever the generator
+// draws, it draws below `CORRUPTOR_MAX_INTERVAL`, so a build that honours the
+// pacing passes on any seed and a build that never spawns fails on every one.
+// The lower end is not asserted — it cannot be, without fixing what a particular
+// seed drew, which would grade the generator rather than the pacing.
 //
-// A corruptor arrives at level 5
-//
-// With setFoeSpawning(true) at level 5, a corruptor joins the roster within
-// CORRUPTOR_MAX_INTERVAL (22 s).
+// The requirement this point decides IS the level's own spawning, so this is one
+// of the few points that turns `setFoeSpawning` back on. Nothing else is posed:
+// the board `startPlaying` leaves is empty and quiet. The glitch and dropper
+// spawners run alongside it at this level — that is what `foeSpawning` gates —
+// so the sweep looks for a CORRUPTOR alone.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  CORRUPTOR_FROM_LEVEL,
+  CORRUPTOR_MAX_INTERVAL,
+  CORRUPTOR_MIN_INTERVAL,
+} from "../constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  foesOfKind,
+  startPlaying,
+  type Harness,
+} from "../harness";
+import { untilFoeOfKind } from "./watching";
 
-test("foes.corruptor-arrives", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/none/foes/corruptor-arrives.test.ts has not been written yet",
+/** The level watched: the one corruptors begin at. */
+const LEVEL = CORRUPTOR_FROM_LEVEL;
+
+/**
+ * How often the roster is read, in seconds. A corruptor crosses the board in
+ * nearly ten seconds, so a half-second sample cannot step over the one this
+ * sweep is waiting for.
+ */
+const POLL_SECONDS = 0.5;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("brings a corruptor in within the longest interval the specification allows", async () => {
+  await startPlaying(h, { level: LEVEL });
+  await h.debug.setFoeSpawning(true);
+
+  const arrival = await untilFoeOfKind(
+    h,
+    "corruptor",
+    CORRUPTOR_MAX_INTERVAL,
+    POLL_SECONDS,
+  );
+
+  await captureStill(h, "arrival");
+  assertEqual(
+    arrival.hit,
+    true,
+    `a corruptor joins the roster within CORRUPTOR_MAX_INTERVAL ` +
+      `(${CORRUPTOR_MAX_INTERVAL} s) of level-${LEVEL} play, whatever the ` +
+      `run's generator drew from ${CORRUPTOR_MIN_INTERVAL} s up; the roster ` +
+      `held ${foesOfKind(arrival.snapshot, "corruptor").length} corruptors ` +
+      `when the sweep ran out`,
   );
 });
