@@ -17,13 +17,16 @@ import {
   BUILDS_PER_LEVEL,
   COMBOS,
   COMBO_ORDER,
-  COMBO_PROJECTILE_SPEED,
+  COMBO_FIRE_CUE,
   COMPONENT_ORDER,
   DEFAULT_MAP,
   DIFFICULTY,
   LOAD,
   MAX_COMBO_LEVEL,
   MAX_TIER,
+  FIRE_CUE,
+  OVERLOAD_SPEED,
+  PROJECTILE_HIT_R,
   PROJECTILE_SPEED,
   QUALITY_ODDS_BY_R,
   STAMP_TYPE_WEIGHT,
@@ -76,11 +79,6 @@ const PRESS_SEED = 0x51a6c0de;
 // The seed for the COMBAT rng — crit rolls (specs/towers.md). Separate from the press so
 // build rolls and combat randomness are independent and each stays deterministic.
 const COMBAT_SEED = 0x2f9d3b17;
-
-// The post-final Overload Dynamo's walk speed (logical px/s). Brisk enough that the finale is a
-// short, dramatic single pass — not the slow 30 px/s campaign Dynamo — while still long enough
-// that a longer maze racks up a clearly higher Maze Rating (specs/enemies.md, specs/gameplay.md).
-const FINALE_SPEED = 90;
 
 export class Game {
   readonly campaign: Campaign;
@@ -145,6 +143,10 @@ export class Game {
   // Event queues drained by the presentation layer each frame.
   fxQueue: FxEvent[] = [];
   sndQueue: Cue[] = [];
+  // The cues already raised on the update in progress. An update that raises the same event
+  // several times plays its cue once (specs/ui.md), so a frame on which a whole pack dies
+  // plays one kill cue rather than one per unit.
+  private cuesThisStep = new Set<Cue>();
 
   // Internal, deterministic state (not part of the read surface).
   private activeWave: Wave | null = null;
@@ -257,19 +259,30 @@ export class Game {
     }
   }
 
+  // Raise one cue on the update in progress, at most once (specs/ui.md).
+  private raiseCue(cue: Cue): void {
+    if (this.cuesThisStep.has(cue)) return;
+    this.cuesThisStep.add(cue);
+    this.sndQueue.push(cue);
+  }
+
   fixedStep(dt: number): void {
+    // The simulation clock runs on the `playing` screen and nowhere else, and it stops dead
+    // under the in-place pause (specs/controls.md). Every duration and every rate in the game
+    // is measured against it.
     if (this.state !== "playing" || this.paused) return;
+    this.cuesThisStep.clear();
+    this.simTime += dt;
 
     if (this.phase === "build") {
-      // Build phases are UNTIMED (specs/gameplay.md): nothing starts the wave but SEND. Advance
-      // component firing animations cosmetically; no units are on the floor to fire at.
+      // A build phase is untimed (specs/campaign.md): nothing starts the wave but the level's
+      // harvest. The clock still runs, so a status effect posed in a build phase runs down.
       for (const s of this.structures) if (s.kind === "component") s.fireAnim += dt;
       return;
     }
 
-    // Wave phase.
+    // A live wave, or the finale.
     this.waveClock += dt * 1000;
-    this.simTime += dt;
     this.spawnDue();
     this.stepComponents(dt);
     this.stepUnits(dt);
@@ -320,10 +333,11 @@ export class Game {
       burnUntil: 0,
       burnSourceId: 0,
       invincible: false,
+      frozen: false,
       dead: false,
     };
     u.route = this.board.routeFor({ x: u.x, y: u.y }, u.wpIndex, this.occ, u.flies);
-    u.progress = this.progressOf(u);
+    u.progress = this.remainingTiles(u);
     return u;
   }
 
@@ -398,7 +412,7 @@ export class Game {
       c.fireAnim = 0;
       // A shot per target (multishot fires at up to `stats.multishot` distinct units at once).
       for (const t of targets) this.launchProjectile(c, stats, center, t);
-      this.fireCue(c, stats);
+      this.raiseCue(fireFamily(c));
     }
   }
 
@@ -416,34 +430,40 @@ export class Game {
     }
     if (inRange.length === 0) return [];
     const n = Math.max(1, stats.multishot);
-    if (n === 1) {
-      let best = inRange[0]!;
-      for (let i = 1; i < inRange.length; i++) if (this.better(c.targeting, inRange[i]!, best, center)) best = inRange[i]!;
-      return [best];
-    }
-    // Stable sort by priority (JS sort is stable → ties keep spawn order, deterministic).
-    inRange.sort((a, b) => (this.better(c.targeting, a, b, center) ? -1 : this.better(c.targeting, b, a, center) ? 1 : 0));
+    inRange.sort((a, b) => this.rank(c.targeting, a, b, center));
     return inRange.slice(0, n);
   }
 
-  // Is candidate `a` a better target than the incumbent `b` under `mode`? (specs/towers.md:
-  // FIRST = furthest along the chain, LAST = least far, NEAREST = closest, STRONGEST /
-  // WEAKEST = most / least remaining HP.) Ties keep the earlier-found unit for determinism.
-  private better(mode: TargetingMode, a: Unit, b: Unit, center: { x: number; y: number }): boolean {
+  // Order two in-range units under `mode`, best first (specs/components.md). A negative
+  // result puts `a` first. Every priority breaks its ties toward the unit further along the
+  // chain, so the choice is deterministic and does not depend on spawn order.
+  private rank(mode: TargetingMode, a: Unit, b: Unit, center: { x: number; y: number }): number {
+    let primary = 0;
     switch (mode) {
       case "first":
-        return a.progress > b.progress;
+        primary = -this.aheadOf(a, b);
+        break;
       case "last":
-        return a.progress < b.progress;
-      case "nearest":
-        return this.dist2(a, center) < this.dist2(b, center);
+        primary = this.aheadOf(a, b);
+        break;
+      case "nearest": {
+        const da = this.dist2(a, center);
+        const db = this.dist2(b, center);
+        primary = da === db ? 0 : da < db ? -1 : 1;
+        break;
+      }
       case "strongest":
-        return a.hp > b.hp;
+        primary = a.hp === b.hp ? 0 : a.hp > b.hp ? -1 : 1;
+        break;
       case "weakest":
-        return a.hp < b.hp;
-      default:
-        return false;
+        primary = a.hp === b.hp ? 0 : a.hp < b.hp ? -1 : 1;
+        break;
     }
+    if (primary !== 0) return primary;
+    // The tie-break: the unit further along the chain wins.
+    const ahead = this.aheadOf(a, b);
+    if (ahead !== 0) return -ahead;
+    return a.id - b.id;
   }
 
   private dist2(u: Unit, center: { x: number; y: number }): number {
@@ -471,7 +491,7 @@ export class Game {
       prevX: mx,
       prevY: my,
       angle: c.aimAngle,
-      speed: c.combo ? COMBO_PROJECTILE_SPEED : PROJECTILE_SPEED[c.type],
+      speed: PROJECTILE_SPEED,
       targetId: target.id,
       splash: stats.splash,
       chain: stats.chainLeaps,
@@ -488,22 +508,17 @@ export class Game {
     // Muzzle glow at the head, plus the travelling bolt/spray FX for a single-bolt shot. A
     // chain (Coil) draws its arcs at impact and a splash (Arc-Node) its ring at impact, so
     // those emit no travelling-bolt FX here (specs/assets.md).
-    this.fxQueue.push({ kind: "muzzle", x: mx, y: my, tier: c.tier });
-    if (stats.chainLeaps === 0 && stats.splash === 0) {
-      const spray = c.type === "emitter" && !c.combo;
-      const big = !spray && (c.type === "discharge" || stats.dmg >= 120);
-      this.fxQueue.push({ kind: spray ? "spray" : "arcbolt", x: mx, y: my, x2: target.x, y2: target.y, tier: c.tier, big });
+    // The travelling effect a shot carries (specs/assets.md): an Emitter throws its spark
+    // spray, and every other single-bolt shot draws the arc bolt from the head to the
+    // target. A Coil draws its chain at the impact and an Arc-Node its ring, so neither
+    // trails a bolt on the way out.
+    const family = fireFamily(c);
+    if (family === "fire-spark") {
+      this.fxQueue.push({ kind: "spray", x: mx, y: my, x2: target.x, y2: target.y, tier: c.tier });
+    } else if (stats.chainLeaps === 0 && stats.splash === 0) {
+      const big = stats.dmg >= 120;
+      this.fxQueue.push({ kind: "bolt", x: mx, y: my, x2: target.x, y2: target.y, tier: c.tier, big });
     }
-  }
-
-  // One sound cue per volley, keyed on the tower's firing signature (specs/assets.md).
-  private fireCue(c: Component, stats: CompStats): void {
-    if (stats.chainLeaps > 0) this.sndQueue.push("chain");
-    else if (stats.splash > 0) this.sndQueue.push("discharge");
-    else if (c.type === "discharge" || stats.dmg >= 120) this.sndQueue.push("discharge");
-    else if (c.type === "choke" && !c.combo) this.sndQueue.push("slow");
-    else if (c.type === "rectifier" && !c.combo) this.sndQueue.push("burn");
-    else this.sndQueue.push("zap");
   }
 
   // ---- Projectiles in flight (specs/towers.md) --------------------------------
@@ -520,7 +535,9 @@ export class Game {
       const dist = Math.hypot(dx, dy) || 1;
       const step = pr.speed * dt;
       pr.angle = Math.atan2(dy, dx);
-      if (dist <= step + target.radius) {
+      // The shot lands when it comes within PROJECTILE_HIT_R of its target's current
+      // position, or when this step would carry it past that ring (specs/components.md).
+      if (dist <= PROJECTILE_HIT_R || dist - step <= PROJECTILE_HIT_R) {
         pr.x = target.x;
         pr.y = target.y;
         pr.dead = true;
@@ -625,7 +642,8 @@ export class Game {
     const activeFactor = this.simTime < u.slowUntil ? u.slowFactor : 1;
     u.slowFactor = Math.min(activeFactor, 1 - amt);
     u.slowUntil = this.simTime + dur;
-    this.fxQueue.push({ kind: "slowhit", x: u.x, y: u.y });
+    this.fxQueue.push({ kind: "slow", x: u.x, y: u.y });
+    this.raiseCue("slow");
   }
 
   // Burn (specs/towers.md): an overcurrent DoT ticking each step. Strongest burnDps wins; each
@@ -637,6 +655,8 @@ export class Game {
       u.burnSourceId = srcId;
     }
     u.burnUntil = this.simTime + dur;
+    this.fxQueue.push({ kind: "burn", x: u.x, y: u.y });
+    this.raiseCue("burn");
   }
 
   private kill(u: Unit): void {
@@ -644,7 +664,7 @@ export class Game {
     this.charge += u.bounty; // the kill bounty (there is no score — the Maze Rating is the score)
     this.kills++;
     this.fxQueue.push({ kind: "death", x: u.x, y: u.y, big: u.type === "dynamo" });
-    this.sndQueue.push("kill");
+    this.raiseCue("kill");
   }
 
   private unitById(id: number): Unit | null {
@@ -669,7 +689,7 @@ export class Game {
       if (u.burnDps > 0 && this.simTime < u.burnUntil) {
         const bd = u.burnDps * dt;
         // An ember flare a few times a second so the DoT reads without spamming.
-        if (Math.floor(u.animT / 0.25) !== Math.floor((u.animT - dt) / 0.25)) this.fxQueue.push({ kind: "burnhit", x: u.x, y: u.y });
+        if (Math.floor(u.animT / 0.25) !== Math.floor((u.animT - dt) / 0.25)) this.fxQueue.push({ kind: "burn", x: u.x, y: u.y });
         if (u.invincible) {
           this.tallyRating(bd, u.burnSourceId); // finale boss: burn feeds the Maze Rating, never HP
         } else {
@@ -686,8 +706,8 @@ export class Game {
       } else if (u.burnDps > 0) {
         u.burnDps = 0; // burn expired
       }
-      this.moveUnit(u, dt);
-      if (!u.dead) u.progress = this.progressOf(u);
+      if (!u.frozen) this.moveUnit(u, dt);
+      if (!u.dead) u.progress = this.remainingTiles(u);
     }
   }
 
@@ -725,9 +745,10 @@ export class Game {
     }
   }
 
-  // A scalar "how far along the chain": waypoint index dominates, then the shorter the
-  // remaining route to the next waypoint, the further along (specs/board.md targeting).
-  private progressOf(u: Unit): number {
+  // The remaining length of a unit's route to the checkpoint it is heading for, in tiles
+  // (specs/instrumentation.md). Together with `wpIndex` it is the progress ordering of
+  // specs/pathing.md, which `first` and `last` select on.
+  private remainingTiles(u: Unit): number {
     let rem = 0;
     let px = u.x;
     let py = u.y;
@@ -737,7 +758,16 @@ export class Game {
       px = p.x;
       py = p.y;
     }
-    return u.wpIndex * 1e6 - rem;
+    return rem / TILE;
+  }
+
+  // Is `a` further along the chain than `b` (specs/pathing.md)? The checkpoint index
+  // dominates; among units heading for the same checkpoint the shorter remaining route is
+  // further along. Returns 0 when the two stand at the same point on the chain.
+  private aheadOf(a: Unit, b: Unit): number {
+    if (a.wpIndex !== b.wpIndex) return a.wpIndex > b.wpIndex ? 1 : -1;
+    if (a.progress !== b.progress) return a.progress < b.progress ? 1 : -1;
+    return 0;
   }
 
   private leak(u: Unit): void {
@@ -754,7 +784,7 @@ export class Game {
     this.integrity -= u.leak;
     this.leakCount += u.leak;
     this.fxQueue.push({ kind: "leak", x: p.x, y: p.y });
-    this.sndQueue.push("leak");
+    this.raiseCue("leak");
   }
 
   private cullDead(): void {
@@ -803,7 +833,7 @@ export class Game {
     u.invincible = true;
     u.maxHp = u.hp; // display only — the invincible boss's HP never falls
     u.radius = 28; // a larger, looming overload core
-    u.speed = FINALE_SPEED; // a brisk, dramatic single walk (not the slow campaign Dynamo)
+    u.speed = OVERLOAD_SPEED; // a brisk, dramatic single walk (not the slow campaign Dynamo)
     this.units = [u];
     this.recomputeAuras();
   }
@@ -845,7 +875,7 @@ export class Game {
         hardened = true;
       }
     }
-    if (hardened) this.sndQueue.push("settle");
+    if (hardened) this.raiseCue("settle");
     this.harvest = { mode: "none" };
   }
 
@@ -926,7 +956,7 @@ export class Game {
     this.rePath();
     const ctr = footprintCenter(comp.col, comp.row);
     this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: comp.tier });
-    this.sndQueue.push("combine");
+    this.raiseCue("combine");
     // A fresh-roll combine (COMBINE SPECIAL) is the phase's SOLE harvest: it discards any marked
     // KEEP (only one new tower a phase, specs/build.md) and sends the wave.
     if (consumedFreshRoll && this.phase === "build") {
@@ -982,7 +1012,7 @@ export class Game {
     this.rePath();
     const ctr = footprintCenter(comp.col, comp.row);
     this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: MAX_TIER, big: true });
-    this.sndQueue.push("combine");
+    this.raiseCue("combine");
     // A fresh-roll combine (COMBINE SPECIAL) is the phase's SOLE harvest: it discards any marked
     // KEEP (only one new tower a phase, specs/build.md) and sends the wave.
     if (consumedFreshRoll && this.phase === "build") {
@@ -1004,7 +1034,7 @@ export class Game {
   private lose(): void {
     this.integrity = 0;
     this.finale = false;
-    this.state = "defeat";
+    this.state = "overload";
     this.units = [];
     this.projectiles = [];
     this.activeWave = null;
@@ -1031,7 +1061,7 @@ export class Game {
   pullPress(): boolean {
     if (!this.canStamp()) return false;
     this.holding = true;
-    this.sndQueue.push("stamp");
+    this.raiseCue("stamp");
     return true;
   }
 
@@ -1113,8 +1143,8 @@ export class Game {
     this.holding = this.canStamp();
     this.rePath();
     const ctr = footprintCenter(col, row);
-    this.fxQueue.push({ kind: "buildspark", x: ctr.x, y: ctr.y, tier: cand.tier });
-    this.sndQueue.push("stamp");
+    this.fxQueue.push({ kind: "build", x: ctr.x, y: ctr.y, tier: cand.tier });
+    this.raiseCue("stamp");
     return cand;
   }
 
@@ -1143,7 +1173,6 @@ export class Game {
     const si = this.selectedIds.indexOf(id);
     if (si >= 0) this.selectedIds.splice(si, 1);
     this.rePath();
-    this.sndQueue.push("settle"); // a rock-settle thunk for the dismantle
     return true;
   }
   removeSelected(): void {
@@ -1395,7 +1424,6 @@ export class Game {
     if (!this.canUpgradeQuality() || cost === null) return false;
     this.charge -= cost;
     this.refinement = (this.refinement + 1) as Refinement;
-    this.sndQueue.push("combine"); // a bright confirm cue for the refinement
     return true;
   }
 
@@ -1418,7 +1446,7 @@ export class Game {
     const cand = this.candidateById(id)!;
     cand.tier = (cand.tier - 1) as Tier;
     const ctr = footprintCenter(cand.col, cand.row);
-    this.fxQueue.push({ kind: "buildspark", x: ctr.x, y: ctr.y, tier: cand.tier });
+    this.fxQueue.push({ kind: "build", x: ctr.x, y: ctr.y, tier: cand.tier });
     // DOWNGRADE is a KEEP at the lowered tier: it is the level's harvest, so it launches the wave.
     this.harvest = { mode: "keep", id };
     this.beginWave();
@@ -1450,7 +1478,7 @@ export class Game {
     this.charge -= cost;
     s.comboLevel = Math.min(MAX_COMBO_LEVEL, s.comboLevel + 1);
     if (comboStats(s.combo!, s.comboLevel).auraRadius > 0) this.recomputeAuras();
-    this.sndQueue.push("combine");
+    this.raiseCue("combine");
     const ctr = footprintCenter(s.col, s.row);
     this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: MAX_TIER, big: true });
     return true;
@@ -1638,7 +1666,9 @@ export class Game {
   // combination tower reads its fixed block; a base component derives from (type, tier).
   statsOf(c: Component): CompStats {
     const st = this.baseStatsOf(c);
-    if (c.auraBonus > 0 && st.dmg > 0) return { ...st, dmg: Math.round(st.dmg * (1 + c.auraBonus)) };
+    // An aura-buffed damage figure is NOT rounded (specs/components.md): the buff multiplies
+    // the structure's per-shot damage and the product carries its fraction into the hit.
+    if (c.auraBonus > 0 && st.dmg > 0) return { ...st, dmg: st.dmg * (1 + c.auraBonus) };
     return st;
   }
 
@@ -1882,7 +1912,7 @@ export class Game {
         u.invincible = true;
         u.maxHp = u.hp; // display only — the invincible boss's HP never falls
         u.radius = 28;
-        u.speed = FINALE_SPEED;
+        u.speed = OVERLOAD_SPEED;
         this.finale = true;
         this.units.push(u);
         ids.push(u.id);
@@ -1900,9 +1930,9 @@ export class Game {
   // snapshot() and the debug overlay (specs/instrumentation.md). A pure read — it changes
   // nothing.
   debugSnapshot() {
-    const screen = this.state === "defeat" ? ("overload" as const) : this.state;
+    const screen = this.state === "overload" ? ("overload" as const) : this.state;
     const inRun =
-      this.state === "playing" || this.state === "paused" || this.state === "victory" || this.state === "defeat";
+      this.state === "playing" || this.state === "paused" || this.state === "victory" || this.state === "overload";
     const phase: Phase | "finale" | null =
       this.state === "playing" ? (this.finale ? "finale" : this.phase) : null;
     const chain = this.board.chain;
@@ -2076,6 +2106,12 @@ export class Game {
       abilities: abilitiesOf(eff),
     };
   }
+}
+
+// The firing family a structure's shot belongs to (specs/ui.md). A combination tower plays
+// the cue of the family its dominant output belongs to; a base component plays its type's.
+function fireFamily(c: Component): Cue {
+  return c.combo ? COMBO_FIRE_CUE[c.combo] : FIRE_CUE[c.type];
 }
 
 // The ability tags a firing tower's live stats carry (specs/towers.md), for the snapshot.

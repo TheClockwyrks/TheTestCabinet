@@ -16,6 +16,7 @@
 import type {
   ComboType,
   ComponentType,
+  Cue,
   Difficulty,
   LoadType,
   MapDef,
@@ -231,17 +232,18 @@ export const AURA_BONUS_CAP = 1.0; // +100% max total external aura on any one t
 // Projectile travel speed by component (logical px/s). A shot is a real travelling
 // projectile that deals its effect on impact, not a hitscan (specs/towers.md). The
 // non-firing Regulator launches none (0 is a placeholder to satisfy the record).
-export const PROJECTILE_SPEED: Record<ComponentType, number> = {
-  capacitor: 560,
-  coil: 640,
-  emitter: 680,
-  arcnode: 460,
-  discharge: 760,
-  choke: 600,
-  rectifier: 560,
-  regulator: 0,
-};
-export const COMBO_PROJECTILE_SPEED = 620; // combination towers share one travel speed
+export const PROJECTILE_SPEED = 520;
+
+// How close a projectile must come to its target's CURRENT position before it lands its
+// damage and its abilities and is removed (specs/components.md). One figure for every
+// firing structure, base component and combination tower alike, so a shot's flight time is
+// a function of the distance alone.
+export const PROJECTILE_HIT_R = 6;
+
+// The post-final Overload Dynamo's walk speed (specs/enemies.md). It is a unit of its own,
+// distinct from the Dynamo boss, and it walks the chain at this speed while the maze rates
+// itself against it.
+export const OVERLOAD_SPEED = 55;
 
 // ---- Derived effective stats (the single source, specs/towers.md) --------------
 // The complete live behaviour of ANY firing tower — base component OR combination tower —
@@ -725,3 +727,120 @@ export const DEFAULT_MAP = SUBSTATION;
 export function mapById(id: string): MapDef {
   return MAPS.find((m) => m.id === id) ?? DEFAULT_MAP;
 }
+
+
+// ---- The twelve audio cues (specs/ui.md) --------------------------------------
+// One cue per event, under exactly these names. `music` is the looped bed; the other
+// eleven are the effect cues, each a distinct sound so the events are told apart by ear.
+export const CUES = {
+  stamp: "stamp",
+  fireBolt: "fire-bolt",
+  fireSpark: "fire-spark",
+  fireChain: "fire-chain",
+  fireDischarge: "fire-discharge",
+  combine: "combine",
+  kill: "kill",
+  leak: "leak",
+  slow: "slow",
+  burn: "burn",
+  settle: "settle",
+  music: "music",
+} as const satisfies Record<string, Cue>;
+
+// Which firing family a base component's shot belongs to (specs/ui.md). The Regulator never
+// fires, so it raises no cue; its entry names the family it would belong to and is unused.
+export const FIRE_CUE: Record<ComponentType, Cue> = {
+  capacitor: CUES.fireBolt,
+  choke: CUES.fireBolt,
+  rectifier: CUES.fireBolt,
+  emitter: CUES.fireSpark,
+  coil: CUES.fireChain,
+  arcnode: CUES.fireDischarge,
+  discharge: CUES.fireDischarge,
+  regulator: CUES.fireBolt,
+};
+
+// A combination tower's shot plays the cue of the family its DOMINANT output belongs to
+// (specs/ui.md): a chaining tower the chain, a splashing or heavy tower the discharge, a
+// rapid multi-target array the spark, and a plain single-target tower the bolt.
+export const COMBO_FIRE_CUE: Record<ComboType, Cue> = {
+  fusecluster: CUES.fireDischarge,
+  staticweb: CUES.fireChain,
+  slagdriver: CUES.fireDischarge,
+  corroder: CUES.fireBolt,
+  ionprism: CUES.fireDischarge,
+  forkarray: CUES.fireSpark,
+  nullcore: CUES.fireDischarge,
+  rupturenode: CUES.fireDischarge,
+  blightcoil: CUES.fireChain,
+  reactorpile: CUES.fireChain,
+  auroralance: CUES.fireChain,
+  singularity: CUES.fireDischarge,
+};
+
+// ---- Screen copy the specification fixes (specs/ui.md) ------------------------
+export const TITLE_TEXT = "ARC FOUNDRY";
+export const TAGLINE_TEXT = "GROUND THE LOAD";
+export const TITLE_ITEMS: readonly string[] = ["SALVAGE", "HOW TO PLAY"];
+
+// ---- Input actions and their bindings (specs/controls.md) ---------------------
+// Every action but `modify` is read as a PRESS EDGE, so holding its key fires it once.
+// `modify` is read as a LEVEL: what the game reads is whether its key is down at the moment
+// it reads it, so it modifies whatever act it is held across.
+export const ACTIONS = [
+  "stamp",
+  "keep",
+  "downgrade",
+  "combine",
+  "upgrade",
+  "targeting",
+  "dismantle",
+  "speed",
+  "pause",
+  "combos",
+  "damage",
+  "mute",
+  "modify",
+  "up",
+  "down",
+  "confirm",
+  "back",
+] as const;
+
+export type Action = (typeof ACTIONS)[number];
+
+// Each action's `KeyboardEvent.code`. `modify` binds both Shift keys; every other action
+// binds exactly one key.
+export const BINDINGS: Record<Action, readonly string[]> = {
+  stamp: ["KeyB"],
+  keep: ["KeyK"],
+  downgrade: ["KeyG"],
+  combine: ["KeyC"],
+  upgrade: ["KeyU"],
+  targeting: ["KeyT"],
+  dismantle: ["KeyX"],
+  speed: ["KeyF"],
+  pause: ["Space"],
+  combos: ["KeyV"],
+  damage: ["KeyL"],
+  mute: ["KeyM"],
+  modify: ["ShiftLeft", "ShiftRight"],
+  up: ["ArrowUp"],
+  down: ["ArrowDown"],
+  confirm: ["Enter"],
+  back: ["Escape"],
+};
+
+// The reverse index the runtime layer reads a key event through.
+export const ACTION_BY_CODE: ReadonlyMap<string, Action> = new Map(
+  ACTIONS.flatMap((a) => BINDINGS[a].map((code) => [code, a] as const)),
+);
+
+// The key that toggles the diagnostics overlay (specs/instrumentation.md). It is the
+// runtime layer's own, not one of the game's actions.
+export const OVERLAY_KEY = "Backquote";
+
+// ---- The debug and automation surface (specs/instrumentation.md) --------------
+export const FOUNDRY_DEBUG_VERSION = 3;
+// The seed `reset` falls back to when it is given none.
+export const DEFAULT_SEED = 1;

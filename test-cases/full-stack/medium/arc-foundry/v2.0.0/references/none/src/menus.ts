@@ -36,7 +36,7 @@ export function menuItems(state: GameState, game: Game): MenuItem[] {
         { label: "QUIT TO MENU", action: "menu:quit" },
       ];
     case "victory":
-    case "defeat":
+    case "overload":
       return [
         { label: state === "victory" ? "PLAY AGAIN" : "TRY AGAIN", action: "menu:again" },
         { label: "MENU", action: "menu:menu" },
@@ -55,7 +55,7 @@ const MENU_STATES: ReadonlySet<string> = new Set([
   "howto",
   "paused",
   "victory",
-  "defeat",
+  "overload",
 ]);
 
 export function isMenuState(state: GameState): boolean {

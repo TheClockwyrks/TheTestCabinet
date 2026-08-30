@@ -14,19 +14,18 @@ const FIELD = 128; // the authored field size of every fx system
 
 // On-board footprint each burst is scaled to (the field maps to this box, in logical px).
 const FOOTPRINT: Record<FxKind, number> = {
-  buildspark: 48,
+  build: 48,
   combine: 60,
-  arcbolt: 44,
+  bolt: 44,
   chain: 56,
   spray: 40,
   ring: 78,
   impact: 30,
   death: 50,
   leak: 60,
-  muzzle: 24,
-  slowhit: 34, // frost snap on a slowed unit
-  burnhit: 30, // ember flare of an overcurrent burn tick
-  aura: 96, // support pulse ring at a Regulator / aura combo
+  slow: 34, // the drag snap clinging to a slowed unit
+  burn: 30, // the ember flare of an overcurrent burn
+  aura: 96, // the slow pulse ring at an aura's source
 };
 
 // The quality tier scales a firing burst's size so the ladder reads in the VFX

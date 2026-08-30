@@ -52,7 +52,16 @@ import {
   footprintCenter,
   tileCenter,
 } from "./constants";
-import type { Assets } from "./assets";
+import {
+  CHARGE_ICON,
+  INTEGRITY_ICON,
+  YARD_COLLECTOR,
+  YARD_ENTRY,
+  YARD_HOUSING,
+  YARD_SUBSTRATE,
+  loadStill,
+  type Assets,
+} from "./assets";
 import type { Bursts } from "./particles";
 import { Game } from "./sim";
 import { menuItems, type MenuItem } from "./menus";
@@ -108,13 +117,15 @@ const TIER_COLOR: Record<Tier, string> = {
 const ROMAN: Record<Tier, string> = { 1: "I", 2: "II", 3: "III", 4: "IV", 5: "V" };
 
 // A load type's next-wave-preview icon (produced glyph) — specs/assets.md icons.
+// A Load type's glyph in the next-wave preview is frame `0` of its own produced idle
+// cycle, which specs/assets.md fixes as that unit's still sprite.
 const LOAD_ICON: Record<LoadType, string> = {
-  mote: "icons/mote",
-  spark: "icons/spark",
-  slug: "icons/slug",
-  cluster: "icons/cluster",
-  filament: "icons/filament",
-  dynamo: "icons/dynamo",
+  mote: loadStill("mote"),
+  spark: loadStill("spark"),
+  slug: loadStill("slug"),
+  cluster: loadStill("cluster"),
+  filament: loadStill("filament"),
+  dynamo: loadStill("dynamo"),
 };
 
 // A cached repeating pattern of the produced substrate tile (built once from the sprite).
@@ -379,7 +390,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
 
   if (game.state === "paused") drawPauseMenu(ctx, game, clicks);
   if (game.state === "victory") drawEnd(ctx, game, clicks, true);
-  if (game.state === "defeat") drawEnd(ctx, game, clicks, false);
+  if (game.state === "overload") drawEnd(ctx, game, clicks, false);
 
   return clicks;
 }
@@ -394,10 +405,10 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   // Substrate (tiled from the produced tile), then the faint tile grid.
   ctx.fillStyle = COL.substrate;
   ctx.fillRect(BOARD_X0, BOARD_Y0, bw, bh);
-  if (A.has("board/substrate")) {
+  if (A.has(YARD_SUBSTRATE)) {
     if (!substratePattern) {
       ctx.imageSmoothingEnabled = false;
-      substratePattern = ctx.createPattern(A.sprite("board/substrate"), "repeat");
+      substratePattern = ctx.createPattern(A.sprite(YARD_SUBSTRATE), "repeat");
     }
     if (substratePattern) {
       ctx.save();
@@ -431,10 +442,10 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
     const y = GRID_Y0 + h.row0 * TILE;
     const w = (h.col1 - h.col0 + 1) * TILE;
     const hh = (h.row1 - h.row0 + 1) * TILE;
-    if (A.has("board/housing")) {
+    if (A.has(YARD_HOUSING)) {
       ctx.save();
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(A.sprite("board/housing"), x, y, w, hh);
+      ctx.drawImage(A.sprite(YARD_HOUSING), x, y, w, hh);
       ctx.restore();
     } else {
       ctx.fillStyle = COL.housing;
@@ -596,11 +607,11 @@ function drawWaypoints(ctx: CanvasRenderingContext2D, chain: { col: number; row:
     if (i === 0) {
       // Entry — a blown feeder vent.
       glow(ctx, p.x, p.y, 26, COL.entry, 0.28 + 0.06 * Math.sin(time * 4));
-      if (A.has("board/entry")) blit(ctx, A.sprite("board/entry"), p.x, p.y, FOOTPRINT_PX, FOOTPRINT_PX);
+      if (A.has(YARD_ENTRY)) blit(ctx, A.sprite(YARD_ENTRY), p.x, p.y, FOOTPRINT_PX, FOOTPRINT_PX);
     } else if (i === chain.length - 1) {
       // Collector — a grounding sink (hazard).
       glow(ctx, p.x, p.y, 28, COL.collector, 0.26 + 0.06 * Math.sin(time * 5));
-      if (A.has("board/collector")) blit(ctx, A.sprite("board/collector"), p.x, p.y, FOOTPRINT_PX, FOOTPRINT_PX);
+      if (A.has(YARD_COLLECTOR)) blit(ctx, A.sprite(YARD_COLLECTOR), p.x, p.y, FOOTPRINT_PX, FOOTPRINT_PX);
     } else {
       // Ordered waypoint pylon (its index number is drawn later, on top of everything).
       if (A.has("board/pylon")) blit(ctx, A.sprite("board/pylon"), p.x, p.y, 22, 22);
@@ -1180,12 +1191,12 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
   ctx.lineTo(STAGE_W, STATUS_H - 0.5);
   ctx.stroke();
 
-  if (A.has("icons/charge")) blit(ctx, A.sprite("icons/charge"), 26, 28, 18, 18);
+  if (A.has(CHARGE_ICON)) blit(ctx, A.sprite(CHARGE_ICON), 26, 28, 18, 18);
   text(ctx, "CHARGE", 42, 20, 10, COL.text3, "left", "600", 1);
   text(ctx, `${Math.floor(game.charge)}`, 42, 36, 18, COL.charge, "left", "700");
 
   const low = game.integrity <= game.maxIntegrity * 0.25;
-  if (A.has("icons/integrity")) blit(ctx, A.sprite("icons/integrity"), 176, 28, 18, 18);
+  if (A.has(INTEGRITY_ICON)) blit(ctx, A.sprite(INTEGRITY_ICON), 176, 28, 18, 18);
   text(ctx, "GRID INTEGRITY", 192, 20, 10, COL.text3, "left", "600", 1);
   text(ctx, `${Math.max(0, Math.floor(game.integrity))}`, 192, 36, 18, low ? COL.alert : COL.integrity, "left", "700");
 
@@ -1350,7 +1361,7 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
     text(ctx, "MAX", px + w - 12, upY + 22, 14, COL.text3, "right", "700");
   } else {
     text(ctx, `${refCost}`, px + w - 12, upY + 22, 15, canUp ? COL.charge : COL.text3, "right", "700");
-    if (A.has("icons/charge")) blit(ctx, A.sprite("icons/charge"), px + w - 40, upY + 36, 12, 12);
+    if (A.has(CHARGE_ICON)) blit(ctx, A.sprite(CHARGE_ICON), px + w - 40, upY + 36, 12, 12);
   }
   clicks.push({ x: px, y: upY, w, h: upH, action: "upgrade", disabled: !canUp });
 
@@ -1959,10 +1970,10 @@ function drawLeaderboard(ctx: CanvasRenderingContext2D, game: Game, clicks: Clic
 
 function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
   // A dim slice of yard behind the menu for atmosphere.
-  if (A.has("board/substrate")) {
+  if (A.has(YARD_SUBSTRATE)) {
     if (!substratePattern) {
       ctx.imageSmoothingEnabled = false;
-      substratePattern = ctx.createPattern(A.sprite("board/substrate"), "repeat");
+      substratePattern = ctx.createPattern(A.sprite(YARD_SUBSTRATE), "repeat");
     }
     if (substratePattern) {
       ctx.save();
@@ -2218,7 +2229,7 @@ function drawEnd(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[],
     text(ctx, "THE GRID OVERLOADED — NO MAZE RATING", STAGE_W / 2, 392, 12, COL.text3, "center", "500", 1);
   }
 
-  const items = menuItems(won ? "victory" : "defeat", game);
+  const items = menuItems(won ? "victory" : "overload", game);
   const xs = [STAGE_W / 2 - 170, STAGE_W / 2 + 10];
   items.forEach((it, i) => {
     const on = highlighted(game, i, xs[i]!, 452, 160, 46);

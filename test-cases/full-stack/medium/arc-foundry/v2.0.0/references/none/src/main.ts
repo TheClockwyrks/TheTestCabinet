@@ -298,7 +298,7 @@ async function main(): Promise<void> {
       if (game.state === "howto" || game.state === "mapselect") activate("menu:back");
       else if (game.state === "difficultyselect") activate("menu:back");
       else if (game.state === "paused") activate("menu:resume");
-      else if (game.state === "victory" || game.state === "defeat") activate("menu:menu");
+      else if (game.state === "victory" || game.state === "overload") activate("menu:menu");
     }
   }
 

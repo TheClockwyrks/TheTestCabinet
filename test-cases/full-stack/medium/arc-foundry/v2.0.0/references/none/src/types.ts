@@ -226,6 +226,11 @@ export interface Unit {
   // damage is tallied into the run's Maze Rating instead of removing HP — and it costs no
   // integrity when it grounds out (the run is already won). `invincible` marks it.
   invincible: boolean;
+  // The debug surface's per-unit travel hold (specs/instrumentation.md). A held unit keeps
+  // every faculty but travel: it is targetable, it takes damage, its burn ticks, its slow
+  // runs down, and it is drawn where it stands, but its body and the checkpoint it heads
+  // for do not move. Never set by play.
+  frozen: boolean;
   dead: boolean;
 }
 
@@ -296,7 +301,7 @@ export type GameState =
   | "playing"
   | "paused"
   | "victory"
-  | "defeat";
+  | "overload";
 
 // A level is a BUILD phase (untimed; you place rocks, keep, combine, upgrade quality)
 // then a WAVE phase (the Load runs; building is disabled). specs/gameplay.md.
@@ -305,19 +310,18 @@ export type Phase = "build" | "wave";
 // The produced electrical particle systems, fired at each event (specs/assets.md — THE
 // HEADLINE). A firing effect's intensity escalates with the component's quality tier.
 export type FxKind =
-  | "buildspark" // a rock is placed / a candidate revealed at the press
-  | "combine" // a combine resolves (quality-climb OR a combination-tower recipe) / a KEEP flourish
-  | "arcbolt" // a Capacitor / Discharge Rig / Choke fires its single bolt
-  | "chain" // a Coil fires and chains between hit units
+  | "build" // a rock lands and rolls
+  | "combine" // a combine of either kind resolves
+  | "bolt" // a Capacitor / Choke / Rectifier / Discharge Rig projectile travels
+  | "chain" // a Coil's hit chains between the units it strikes
   | "spray" // an Emitter fires its fast spark fan
-  | "ring" // an Arc-Node's shot lands (expanding discharge ring)
-  | "impact" // any projectile / arc hits a unit (a crit hit is drawn bigger)
-  | "death" // a unit dies (much larger for the Dynamo)
-  | "leak" // a unit grounds out at the Collector
-  | "muzzle" // a small glow at a firing head
-  | "slowhit" // a slow effect lands on a unit (frost / EM-drag snap)
-  | "burnhit" // an overcurrent burn ticks on a unit (ember flare)
-  | "aura"; // a support pulse ring at a Regulator / aura combo
+  | "ring" // an Arc-Node's shot lands (an expanding discharge ring)
+  | "impact" // any shot connects with a unit (a crit is drawn larger)
+  | "death" // a unit dies (much larger for a Dynamo)
+  | "leak" // a unit grounds out at the collector
+  | "slow" // a slow is applied to a unit
+  | "burn" // a burn is applied, and flickers while it ticks
+  | "aura"; // a structure carrying an aura stands on the yard
 
 // A queued particle burst. Point effects use (x, y); a segment effect (arc bolt / a chain
 // leap) also carries the far end (x2, y2). `tier` drives the quality escalation; `big`
@@ -335,7 +339,19 @@ export interface FxEvent {
 // The produced sound cues (specs/assets.md "Audio"). Music is looped separately.
 // `settle` is the rock-settle thunk played when unkept candidates harden into blockers at
 // wave start (it replaces the old "slag" cue).
-export type Cue = "stamp" | "zap" | "chain" | "discharge" | "combine" | "kill" | "leak" | "settle" | "slow" | "burn";
+export type Cue =
+  | "stamp"
+  | "fire-bolt"
+  | "fire-spark"
+  | "fire-chain"
+  | "fire-discharge"
+  | "combine"
+  | "kill"
+  | "leak"
+  | "slow"
+  | "burn"
+  | "settle"
+  | "music";
 
 // A hit-testable UI region emitted by the renderer and routed by the input layer.
 export interface Clickable {
