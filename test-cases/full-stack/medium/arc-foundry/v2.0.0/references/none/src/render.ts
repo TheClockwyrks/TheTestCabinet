@@ -51,6 +51,7 @@ import {
   deriveStats,
   footprintCenter,
   tileCenter,
+  TAGLINE_TEXT,
 } from "./constants";
 import {
   CHARGE_ICON,
@@ -114,7 +115,13 @@ const TIER_COLOR: Record<Tier, string> = {
   4: "#c78cff", // Primed
   5: "#ffe45a", // Tesla-Prime
 };
-const ROMAN: Record<Tier, string> = { 1: "I", 2: "II", 3: "III", 4: "IV", 5: "V" };
+const ROMAN: Record<Tier, string> = {
+  1: "I",
+  2: "II",
+  3: "III",
+  4: "IV",
+  5: "V",
+};
 
 // A load type's next-wave-preview icon (produced glyph) — specs/assets.md icons.
 // A Load type's glyph in the next-wave preview is frame `0` of its own produced idle
@@ -133,11 +140,23 @@ let substratePattern: CanvasPattern | null = null;
 
 // A hover tooltip queued during panel drawing (e.g. an enemy name in the next-wave list),
 // drawn last so it floats above everything on the board (specs/enemies.md).
-let pendingTooltip: { title: string; body: string; color: string; y: number } | null = null;
+let pendingTooltip: {
+  title: string;
+  body: string;
+  color: string;
+  y: number;
+} | null = null;
 
 // ---- small drawing helpers ----------------------------------------------------
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
   const rr = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
   ctx.moveTo(x + rr, y);
@@ -166,7 +185,8 @@ function text(
     const chars = [...s];
     const adv = size * 0.6 + letter;
     const total = chars.length * adv;
-    let cx = align === "center" ? x - total / 2 : align === "right" ? x - total : x;
+    let cx =
+      align === "center" ? x - total / 2 : align === "right" ? x - total : x;
     ctx.textAlign = "left";
     for (const c of chars) {
       ctx.fillText(c, cx, y);
@@ -180,7 +200,13 @@ function text(
 
 // The width `text()` will actually render `s` at, mirroring its two paths: fixed per-glyph
 // advance when letter-spaced (what text() lays out), proportional measureText otherwise.
-function textWidth(ctx: CanvasRenderingContext2D, s: string, size: number, weight: string, letter: number): number {
+function textWidth(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  size: number,
+  weight: string,
+  letter: number,
+): number {
   if (letter > 0) return [...s].length * (size * 0.6 + letter);
   ctx.font = `${weight} ${size}px ${FONT}`;
   return ctx.measureText(s).width;
@@ -206,7 +232,15 @@ function fitText(
   text(ctx, s, x, y, fs, color, "left", weight, letter);
 }
 
-function blit(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cx: number, cy: number, w: number, h: number, ang = 0): void {
+function blit(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+  ang = 0,
+): void {
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.translate(cx, cy);
@@ -223,11 +257,26 @@ function hexA(hex: string, a: number): string {
   return `rgba(${r},${g},${b},${a})`;
 }
 
-function inRect(px: number, py: number, x: number, y: number, w: number, h: number): boolean {
+function inRect(
+  px: number,
+  py: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
   return px >= x && px <= x + w && py >= y && py <= y + h;
 }
 
-function ring(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c: string, a: number, lw = 1.5): void {
+function ring(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  c: string,
+  a: number,
+  lw = 1.5,
+): void {
   ctx.save();
   ctx.strokeStyle = hexA(c, a);
   ctx.lineWidth = lw;
@@ -237,7 +286,14 @@ function ring(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c:
   ctx.restore();
 }
 
-function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c: string, a: number): void {
+function glow(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  c: string,
+  a: number,
+): void {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   const g = ctx.createRadialGradient(x, y, 0, x, y, r);
@@ -250,7 +306,16 @@ function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c:
   ctx.restore();
 }
 
-function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, maxW: number, size: number, color: string, lineHeight = 18): number {
+function wrap(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  x: number,
+  y: number,
+  maxW: number,
+  size: number,
+  color: string,
+  lineHeight = 18,
+): number {
   ctx.font = `400 ${size}px ${FONT}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -271,7 +336,12 @@ function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, ma
 }
 
 // Break a string into lines that each fit `maxW` at `size`, for measuring before drawing.
-function wrapLines(ctx: CanvasRenderingContext2D, s: string, maxW: number, size: number): string[] {
+function wrapLines(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  maxW: number,
+  size: number,
+): string[] {
   ctx.font = `400 ${size}px ${FONT}`;
   const words = s.split(" ");
   const lines: string[] = [];
@@ -297,7 +367,10 @@ function drawTooltip(ctx: CanvasRenderingContext2D): void {
   const bodyLines = wrapLines(ctx, body, boxW - pad * 2, 11);
   const h = pad + 16 + 6 + bodyLines.length * 15 + pad - 4;
   const bx = PANEL_X - boxW - 14;
-  const by = Math.max(STATUS_H + 8, Math.min(STAGE_H - h - 8, pendingTooltip.y - h / 2));
+  const by = Math.max(
+    STATUS_H + 8,
+    Math.min(STAGE_H - h - 8, pendingTooltip.y - h / 2),
+  );
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,0.6)";
   ctx.shadowBlur = 18;
@@ -317,7 +390,14 @@ function drawTooltip(ctx: CanvasRenderingContext2D): void {
   }
 }
 
-function drawSpaced(ctx: CanvasRenderingContext2D, s: string, cx: number, y: number, size: number, letter: number): void {
+function drawSpaced(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  cx: number,
+  y: number,
+  size: number,
+  letter: number,
+): void {
   const chars = [...s];
   const adv = size * 0.62 + letter;
   const total = chars.length * adv;
@@ -330,20 +410,45 @@ function drawSpaced(ctx: CanvasRenderingContext2D, s: string, cx: number, y: num
 }
 
 // A generic panel button. Returns nothing; pushes a Clickable when enabled.
-function button(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, y: number, w: number, h: number, label: string, action: string, color: string, enabled: boolean): void {
+function button(
+  ctx: CanvasRenderingContext2D,
+  clicks: Clickable[],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  action: string,
+  color: string,
+  enabled: boolean,
+): void {
   roundRect(ctx, x, y, w, h, 6);
   ctx.fillStyle = enabled ? hexA(color, 0.14) : "rgba(255,255,255,0.03)";
   ctx.fill();
   ctx.strokeStyle = enabled ? color : "rgba(255,255,255,0.08)";
   ctx.lineWidth = 1.5;
   ctx.stroke();
-  text(ctx, label, x + w / 2, y + h / 2 + 1, 12, enabled ? color : COL.text3, "center", "700");
+  text(
+    ctx,
+    label,
+    x + w / 2,
+    y + h / 2 + 1,
+    12,
+    enabled ? color : COL.text3,
+    "center",
+    "700",
+  );
   clicks.push({ x, y, w, h, action, label, disabled: !enabled });
 }
 
 // ---- entry --------------------------------------------------------------------
 
-export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bursts: Bursts): Clickable[] {
+export function render(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  bursts: Bursts,
+): Clickable[] {
   ctx.imageSmoothingEnabled = true;
   ctx.fillStyle = COL.void;
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
@@ -371,7 +476,8 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
   pendingTooltip = null; // recomputed each frame during panel drawing
   // If the DAMAGE BOARD is open and the pointer is over one of its rows, spotlight that tower
   // by graying out every other piece (computed before the board draws — specs/controls.md).
-  boardFocusId = game.state === "playing" && showBoard ? leaderboardHoverId(game) : null;
+  boardFocusId =
+    game.state === "playing" && showBoard ? leaderboardHoverId(game) : null;
   drawBoard(ctx, game, A);
   drawUnits(ctx, game, A);
   drawProjectiles(ctx, game, A);
@@ -474,7 +580,8 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   } else if (sel && sel.kind === "candidate") {
     const ctr = footprintCenter(sel.col, sel.row);
     const st = deriveStats(sel.type, sel.tier);
-    if (st.range > 0) drawRange(ctx, ctr.x, ctr.y, st.range, COMPONENT_COLOR[sel.type]);
+    if (st.range > 0)
+      drawRange(ctx, ctr.x, ctr.y, st.range, COMPONENT_COLOR[sel.type]);
     if (st.auraRadius > 0) drawAuraRange(ctx, ctr.x, ctr.y, st.auraRadius);
   }
 
@@ -507,20 +614,44 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
 function drawCombinePulses(ctx: CanvasRenderingContext2D, game: Game): void {
   const byId = new Map<number, Structure>();
   for (const s of game.structures) byId.set(s.id, s);
-  const markOne = (id: number, accent: string, primary: boolean, ambient: boolean): void => {
+  const markOne = (
+    id: number,
+    accent: string,
+    primary: boolean,
+    ambient: boolean,
+  ): void => {
     const s = byId.get(id);
     if (!s) return;
     const ctr = footprintCenter(s.col, s.row);
     const half = FOOTPRINT_PX / 2;
     // The ambient layer breathes slower and softer than the focused one so it reads as a hint,
     // not a commitment.
-    const pulse = ambient ? 0.5 + 0.5 * Math.sin(time * 3) : 0.5 + 0.5 * Math.sin(time * 6);
+    const pulse = ambient
+      ? 0.5 + 0.5 * Math.sin(time * 3)
+      : 0.5 + 0.5 * Math.sin(time * 6);
     const grow = (primary ? 4 : 3) + 3 * pulse;
     ctx.save();
     // A soft glow, then a pulsing rounded ring hugging the 2×2 footprint.
-    glow(ctx, ctr.x, ctr.y, half + 12 + 6 * pulse, accent, (ambient ? 0.05 : 0.12) + (ambient ? 0.07 : 0.14) * pulse);
-    roundRect(ctx, ctr.x - half - grow, ctr.y - half - grow, (half + grow) * 2, (half + grow) * 2, 6);
-    ctx.strokeStyle = hexA(accent, (ambient ? 0.22 : 0.5) + (ambient ? 0.22 : 0.45) * pulse);
+    glow(
+      ctx,
+      ctr.x,
+      ctr.y,
+      half + 12 + 6 * pulse,
+      accent,
+      (ambient ? 0.05 : 0.12) + (ambient ? 0.07 : 0.14) * pulse,
+    );
+    roundRect(
+      ctx,
+      ctr.x - half - grow,
+      ctr.y - half - grow,
+      (half + grow) * 2,
+      (half + grow) * 2,
+      6,
+    );
+    ctx.strokeStyle = hexA(
+      accent,
+      (ambient ? 0.22 : 0.5) + (ambient ? 0.22 : 0.45) * pulse,
+    );
     ctx.lineWidth = ambient ? 1.5 : primary ? 2.5 : 2;
     ctx.setLineDash(ambient ? [5, 4] : []);
     ctx.stroke();
@@ -532,7 +663,8 @@ function drawCombinePulses(ctx: CanvasRenderingContext2D, game: Game): void {
   const mh = game.combineHighlight();
   const focused = new Set<number>(mh.partnerIds);
   if (mh.primaryId != null) focused.add(mh.primaryId);
-  for (const id of game.combinablePieces()) if (!focused.has(id)) markOne(id, COL.charge, false, true);
+  for (const id of game.combinablePieces())
+    if (!focused.has(id)) markOne(id, COL.charge, false, true);
 
   // Focused: the selection's exact fold, on top.
   if (mh.primaryId == null && mh.partnerIds.size === 0) return;
@@ -544,7 +676,10 @@ function drawCombinePulses(ctx: CanvasRenderingContext2D, game: Game): void {
 // The waypoint PLATFORMS — each interior waypoint is a 4-tile T of walkable-but-never-
 // buildable plating (specs/board.md). Draw the plate distinctly so a platform never reads
 // as buildable open yard (you cannot drop a rock on it).
-function drawPlatforms(ctx: CanvasRenderingContext2D, board: { waypointTiles: Set<number> }): void {
+function drawPlatforms(
+  ctx: CanvasRenderingContext2D,
+  board: { waypointTiles: Set<number> },
+): void {
   ctx.save();
   for (const key of board.waypointTiles) {
     const col = key % GRID_COLS;
@@ -562,7 +697,10 @@ function drawPlatforms(ctx: CanvasRenderingContext2D, board: { waypointTiles: Se
 
 // The ordered waypoint chain, drawn as a guide line with animated flow chevrons pointing
 // toward the Collector (specs/board.md — a clear sense of flow direction).
-function drawFlow(ctx: CanvasRenderingContext2D, chain: { col: number; row: number }[]): void {
+function drawFlow(
+  ctx: CanvasRenderingContext2D,
+  chain: { col: number; row: number }[],
+): void {
   const pts = chain.map((t) => tileCenter(t.col, t.row));
   ctx.save();
   ctx.strokeStyle = hexA(COL.flow, 0.35);
@@ -570,7 +708,9 @@ function drawFlow(ctx: CanvasRenderingContext2D, chain: { col: number; row: numb
   ctx.setLineDash([2, 10]);
   ctx.lineCap = "round";
   ctx.beginPath();
-  pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  pts.forEach((p, i) =>
+    i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y),
+  );
   ctx.stroke();
   ctx.restore();
 
@@ -601,20 +741,34 @@ function drawFlow(ctx: CanvasRenderingContext2D, chain: { col: number; row: numb
   }
 }
 
-function drawWaypoints(ctx: CanvasRenderingContext2D, chain: { col: number; row: number }[], A: Assets): void {
+function drawWaypoints(
+  ctx: CanvasRenderingContext2D,
+  chain: { col: number; row: number }[],
+  A: Assets,
+): void {
   for (let i = 0; i < chain.length; i++) {
     const p = tileCenter(chain[i]!.col, chain[i]!.row);
     if (i === 0) {
       // Entry — a blown feeder vent.
       glow(ctx, p.x, p.y, 26, COL.entry, 0.28 + 0.06 * Math.sin(time * 4));
-      if (A.has(YARD_ENTRY)) blit(ctx, A.sprite(YARD_ENTRY), p.x, p.y, FOOTPRINT_PX, FOOTPRINT_PX);
+      if (A.has(YARD_ENTRY))
+        blit(ctx, A.sprite(YARD_ENTRY), p.x, p.y, FOOTPRINT_PX, FOOTPRINT_PX);
     } else if (i === chain.length - 1) {
       // Collector — a grounding sink (hazard).
       glow(ctx, p.x, p.y, 28, COL.collector, 0.26 + 0.06 * Math.sin(time * 5));
-      if (A.has(YARD_COLLECTOR)) blit(ctx, A.sprite(YARD_COLLECTOR), p.x, p.y, FOOTPRINT_PX, FOOTPRINT_PX);
+      if (A.has(YARD_COLLECTOR))
+        blit(
+          ctx,
+          A.sprite(YARD_COLLECTOR),
+          p.x,
+          p.y,
+          FOOTPRINT_PX,
+          FOOTPRINT_PX,
+        );
     } else {
       // Ordered waypoint pylon (its index number is drawn later, on top of everything).
-      if (A.has("board/pylon")) blit(ctx, A.sprite("board/pylon"), p.x, p.y, 22, 22);
+      if (A.has("board/pylon"))
+        blit(ctx, A.sprite("board/pylon"), p.x, p.y, 22, 22);
       else ring(ctx, p.x, p.y, 8, COL.flow, 0.8);
     }
   }
@@ -623,7 +777,10 @@ function drawWaypoints(ctx: CanvasRenderingContext2D, chain: { col: number; row:
 // The waypoint index badges, drawn LAST (after the maze / units) so a placed tower or a
 // walking unit can never obscure the ordered chain (specs/board.md). Each interior waypoint
 // gets a small pill with its 1-based order number.
-function drawWaypointNumbers(ctx: CanvasRenderingContext2D, chain: { col: number; row: number }[]): void {
+function drawWaypointNumbers(
+  ctx: CanvasRenderingContext2D,
+  chain: { col: number; row: number }[],
+): void {
   for (let i = 1; i < chain.length - 1; i++) {
     const p = tileCenter(chain[i]!.col, chain[i]!.row);
     const bx = p.x;
@@ -640,7 +797,13 @@ function drawWaypointNumbers(ctx: CanvasRenderingContext2D, chain: { col: number
   }
 }
 
-function drawRange(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c: string): void {
+function drawRange(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  c: string,
+): void {
   ctx.save();
   ctx.strokeStyle = hexA(c, 0.8);
   ctx.fillStyle = hexA(c, 0.07);
@@ -659,7 +822,13 @@ function drawRange(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
 
 // A simple base plate in the type/combo accent, drawn under a code head when no base sprite
 // exists.
-function codeBasePlate(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string): void {
+function codeBasePlate(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  color: string,
+): void {
   ctx.save();
   ctx.fillStyle = hexA(color, 0.16);
   roundRect(ctx, cx - size / 2 + 3, cy - size / 2 + 3, size - 6, size - 6, 5);
@@ -672,7 +841,14 @@ function codeBasePlate(ctx: CanvasRenderingContext2D, cx: number, cy: number, si
 
 // A rotating firing head (a barrel + core) in the accent — the code stand-in for a produced
 // head sprite. Angle 0 points right, matching the produced heads.
-function codeHead(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, angle: number, color: string): void {
+function codeHead(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  angle: number,
+  color: string,
+): void {
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(angle);
@@ -690,7 +866,13 @@ function codeHead(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: n
 
 // The Regulator's read: a pulsing hex support core with NO barrel — it must never look like it
 // shoots (specs/towers.md — a non-firing buff node).
-function supportCore(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string): void {
+function supportCore(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  color: string,
+): void {
   const pulse = 0.5 + 0.5 * Math.sin(time * 4);
   ctx.save();
   ctx.translate(cx, cy);
@@ -700,7 +882,8 @@ function supportCore(ctx: CanvasRenderingContext2D, cx: number, cy: number, size
     const r = size * 0.28;
     const px = Math.cos(a) * r;
     const py = Math.sin(a) * r;
-    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
   }
   ctx.closePath();
   ctx.fillStyle = hexA(color, 0.45 + 0.2 * pulse);
@@ -717,14 +900,32 @@ function supportCore(ctx: CanvasRenderingContext2D, cx: number, cy: number, size
 
 // A faint aura pulse ring drawn ON the board around an aura source (Regulator / aura combo), so
 // its support role reads without cluttering — the full aura RADIUS shows only when selected.
-function auraPulse(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
+function auraPulse(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+): void {
   const pulse = 0.5 + 0.5 * Math.sin(time * 3);
-  ring(ctx, cx, cy, size / 2 + 4 + pulse * 2, COL.regulator, 0.3 + 0.25 * pulse, 1.5);
+  ring(
+    ctx,
+    cx,
+    cy,
+    size / 2 + 4 + pulse * 2,
+    COL.regulator,
+    0.3 + 0.25 * pulse,
+    1.5,
+  );
 }
 
 // The full aura RADIUS ring (support color, dashed) — shown when an aura tower is selected, so
 // the player sees exactly which towers a Regulator / aura combo buffs (specs/towers.md).
-function drawAuraRange(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+function drawAuraRange(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+): void {
   ctx.save();
   ctx.strokeStyle = hexA(COL.regulator, 0.7);
   ctx.fillStyle = hexA(COL.regulator, 0.05);
@@ -739,7 +940,13 @@ function drawAuraRange(ctx: CanvasRenderingContext2D, x: number, y: number, r: n
 
 // The gold combo badge — a COL.combo diamond with the combo's initial, so a combination tower
 // reads instantly as a special TERMINAL tower, never a tiered base component (no pips/Roman).
-function comboBadge(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, initial: string): void {
+function comboBadge(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  initial: string,
+): void {
   const bx = cx - size / 2 + 9;
   const by = cy - size / 2 + 9;
   ctx.save();
@@ -773,7 +980,12 @@ function abilityTags(def: ComboDef): string {
 // glanceable quality read — a tier ring and a Roman badge (specs/towers.md). A
 // combination tower (c.combo set) is drawn distinctly by drawComboTower; the Regulator draws a
 // non-firing support core instead of a gun head.
-function drawComponent(ctx: CanvasRenderingContext2D, game: Game, c: Component, A: Assets): void {
+function drawComponent(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  c: Component,
+  A: Assets,
+): void {
   const ctr = footprintCenter(c.col, c.row);
   const size = FOOTPRINT_PX;
 
@@ -808,7 +1020,10 @@ function drawComponent(ctx: CanvasRenderingContext2D, game: Game, c: Component, 
       const a0 = (k / n) * Math.PI * 2 + time * 3;
       ctx.beginPath();
       ctx.moveTo(ctr.x + Math.cos(a0) * 6, ctr.y + Math.sin(a0) * 6);
-      ctx.lineTo(ctr.x + Math.cos(a0 + 1.2) * (size / 2 - 3), ctr.y + Math.sin(a0 + 1.2) * (size / 2 - 3));
+      ctx.lineTo(
+        ctr.x + Math.cos(a0 + 1.2) * (size / 2 - 3),
+        ctr.y + Math.sin(a0 + 1.2) * (size / 2 - 3),
+      );
       ctx.stroke();
     }
     ctx.restore();
@@ -823,13 +1038,33 @@ function drawComponent(ctx: CanvasRenderingContext2D, game: Game, c: Component, 
     if (head) blit(ctx, head, ctr.x, ctr.y, size, size, c.aimAngle);
     else codeHead(ctx, ctr.x, ctr.y, size, c.aimAngle, typeC);
     // Choke reads icy (slow / EM-drag); Rectifier reads ember (overcurrent burn).
-    if (c.type === "choke") ring(ctx, ctr.x, ctr.y, size / 2 - 4, COL.choke, 0.35 + 0.2 * Math.sin(time * 3 + c.id), 1);
-    else if (c.type === "rectifier") glow(ctx, ctr.x, ctr.y, 10, COL.rectifier, 0.16 + 0.12 * (0.5 + 0.5 * Math.sin(time * 9 + c.id)));
+    if (c.type === "choke")
+      ring(
+        ctx,
+        ctr.x,
+        ctr.y,
+        size / 2 - 4,
+        COL.choke,
+        0.35 + 0.2 * Math.sin(time * 3 + c.id),
+        1,
+      );
+    else if (c.type === "rectifier")
+      glow(
+        ctx,
+        ctr.x,
+        ctr.y,
+        10,
+        COL.rectifier,
+        0.16 + 0.12 * (0.5 + 0.5 * Math.sin(time * 9 + c.id)),
+      );
 
     // Firing cycle overlay right after a shot (specs/assets.md — components visibly discharge).
     const fire = A.componentFire(c.type);
     if (fire.length && c.fireAnim < 0.22) {
-      const idx = Math.min(fire.length - 1, Math.floor((c.fireAnim / 0.22) * fire.length));
+      const idx = Math.min(
+        fire.length - 1,
+        Math.floor((c.fireAnim / 0.22) * fire.length),
+      );
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.globalAlpha = 0.9;
@@ -862,7 +1097,14 @@ function drawComponent(ctx: CanvasRenderingContext2D, game: Game, c: Component, 
 // A COMBINATION TOWER (specs/towers.md, specs/build.md): a single-grade, terminal tower with
 // its own accent + a gold combo badge and a rotating head (combos fire). No quality tier is
 // drawn (no pips / Roman). An aura combo also shows the faint on-board aura pulse.
-function drawComboTower(ctx: CanvasRenderingContext2D, game: Game, c: Component, A: Assets, ctr: { x: number; y: number }, size: number): void {
+function drawComboTower(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  c: Component,
+  A: Assets,
+  ctr: { x: number; y: number },
+  size: number,
+): void {
   const def = COMBOS[c.combo!];
   const comboC = def.color;
   const stats = game.statsOf(c);
@@ -870,7 +1112,14 @@ function drawComboTower(ctx: CanvasRenderingContext2D, game: Game, c: Component,
   // A bright accent mount + a gold shimmer, so it reads as a keystone tower.
   ring(ctx, ctr.x, ctr.y, size / 2 - 2, comboC, 0.6, 2.5);
   glow(ctx, ctr.x, ctr.y, 18, comboC, 0.2);
-  glow(ctx, ctr.x, ctr.y, 12, COL.combo, 0.12 + 0.06 * (0.5 + 0.5 * Math.sin(time * 3 + c.id)));
+  glow(
+    ctx,
+    ctr.x,
+    ctr.y,
+    12,
+    COL.combo,
+    0.12 + 0.06 * (0.5 + 0.5 * Math.sin(time * 3 + c.id)),
+  );
 
   const base = A.comboBase(c.combo!);
   if (base) blit(ctx, base, ctr.x, ctr.y, size, size, 0);
@@ -882,7 +1131,8 @@ function drawComboTower(ctx: CanvasRenderingContext2D, game: Game, c: Component,
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
       const r = size / 2 - 3;
-      i === 0 ? ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
     }
     ctx.closePath();
     ctx.fillStyle = hexA(comboC, 0.22);
@@ -902,7 +1152,10 @@ function drawComboTower(ctx: CanvasRenderingContext2D, game: Game, c: Component,
     const a0 = (k / 3) * Math.PI * 2 + time * 2.2;
     ctx.beginPath();
     ctx.moveTo(ctr.x + Math.cos(a0) * 6, ctr.y + Math.sin(a0) * 6);
-    ctx.lineTo(ctr.x + Math.cos(a0 + 1.1) * (size / 2 - 3), ctr.y + Math.sin(a0 + 1.1) * (size / 2 - 3));
+    ctx.lineTo(
+      ctr.x + Math.cos(a0 + 1.1) * (size / 2 - 3),
+      ctr.y + Math.sin(a0 + 1.1) * (size / 2 - 3),
+    );
     ctx.stroke();
   }
   ctx.restore();
@@ -915,7 +1168,10 @@ function drawComboTower(ctx: CanvasRenderingContext2D, game: Game, c: Component,
   // Firing cycle overlay right after a shot.
   const fire = A.comboFire(c.combo!);
   if (fire.length && c.fireAnim < 0.22) {
-    const idx = Math.min(fire.length - 1, Math.floor((c.fireAnim / 0.22) * fire.length));
+    const idx = Math.min(
+      fire.length - 1,
+      Math.floor((c.fireAnim / 0.22) * fire.length),
+    );
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = 0.9;
@@ -941,13 +1197,25 @@ function drawComboTower(ctx: CanvasRenderingContext2D, game: Game, c: Component,
 // An inert BLOCKER — a hardened fused-scrap rock with no head, unmistakably dead: it walls
 // the Load but never fires (specs/build.md). Every un-kept candidate hardens into one of
 // these at wave start.
-function drawBlocker(ctx: CanvasRenderingContext2D, game: Game, s: Structure, A: Assets): void {
+function drawBlocker(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  s: Structure,
+  A: Assets,
+): void {
   const ctr = footprintCenter(s.col, s.row);
   const size = FOOTPRINT_PX;
   if (A.blocker) blit(ctx, A.blocker, ctr.x, ctr.y, size, size, 0);
   else {
     ctx.fillStyle = COL.blocker;
-    roundRect(ctx, ctr.x - size / 2 + 2, ctr.y - size / 2 + 2, size - 4, size - 4, 4);
+    roundRect(
+      ctx,
+      ctr.x - size / 2 + 2,
+      ctr.y - size / 2 + 2,
+      size - 4,
+      size - 4,
+      4,
+    );
     ctx.fill();
   }
   if (game.selectedId === s.id) {
@@ -963,7 +1231,12 @@ function drawBlocker(ctx: CanvasRenderingContext2D, game: Game, s: Structure, A:
 // component sprite with an UNCOMMITTED treatment (dimmed, a pulsing dashed outline, a "NEW"
 // tag) so it never reads as a settled firing component, and a bright KEEP / COMBINE marker
 // when it is this level's harvest choice.
-function drawCandidate(ctx: CanvasRenderingContext2D, game: Game, c: Candidate, A: Assets): void {
+function drawCandidate(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  c: Candidate,
+  A: Assets,
+): void {
   const ctr = footprintCenter(c.col, c.row);
   const tierC = TIER_COLOR[c.tier];
   const typeC = COMPONENT_COLOR[c.type];
@@ -1013,7 +1286,17 @@ function drawCandidate(ctx: CanvasRenderingContext2D, game: Game, c: Candidate, 
   roundRect(ctx, ctr.x - 12, ctr.y + size / 2 - 11, 24, 11, 3);
   ctx.fillStyle = hexA(typeC, 0.85);
   ctx.fill();
-  text(ctx, "NEW", ctr.x, ctr.y + size / 2 - 5, 7, COL.void, "center", "800", 0.5);
+  text(
+    ctx,
+    "NEW",
+    ctr.x,
+    ctr.y + size / 2 - 5,
+    7,
+    COL.void,
+    "center",
+    "800",
+    0.5,
+  );
 
   // Selection outline.
   if (game.selectedId === c.id) {
@@ -1028,7 +1311,11 @@ function drawCandidate(ctx: CanvasRenderingContext2D, game: Game, c: Candidate, 
 // Every shot is a visible travelling projectile (specs/towers.md). Single-bolt types
 // (Capacitor / Emitter / Discharge) carry a produced sprite; the Coil and Arc-Node bolts
 // (whose payloads are the chain / ring particle effects) draw a code bolt in their accent.
-function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
+function drawProjectiles(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+): void {
   const alpha = game.renderAlpha;
   for (const pr of game.projectiles) {
     const prx = pr.prevX + (pr.x - pr.prevX) * alpha;
@@ -1086,13 +1373,30 @@ function drawUnit(
     ctx.restore();
   }
 
-  const seethe = boss ? 1 + (u.invincible ? 0.1 : 0.06) * Math.sin(time * 9 + u.id) : 1;
-  glow(ctx, ux, uy, u.radius + (boss ? 12 : 4), boss ? COL.boss : COL.arc, boss ? 0.3 : 0.14);
+  const seethe = boss
+    ? 1 + (u.invincible ? 0.1 : 0.06) * Math.sin(time * 9 + u.id)
+    : 1;
+  glow(
+    ctx,
+    ux,
+    uy,
+    u.radius + (boss ? 12 : 4),
+    boss ? COL.boss : COL.arc,
+    boss ? 0.3 : 0.14,
+  );
   // The post-final invincible Overload Dynamo: an outsized, roiling overload halo + arcing ring
   // so it reads instantly as the maze-rating boss, not a normal Dynamo (specs/enemies.md).
   if (u.invincible) {
     glow(ctx, ux, uy, u.radius + 22 + 6 * Math.sin(time * 5), COL.boss, 0.22);
-    ring(ctx, ux, uy, u.radius + 10 + 3 * Math.sin(time * 4), COL.spark, 0.5, 2);
+    ring(
+      ctx,
+      ux,
+      uy,
+      u.radius + 10 + 3 * Math.sin(time * 4),
+      COL.spark,
+      0.5,
+      2,
+    );
   }
 
   if (frames.length) {
@@ -1118,7 +1422,8 @@ function drawUnit(
   }
 
   // Hit flash.
-  if (u.hitFlash < 0.09) glow(ctx, ux, uy, u.radius + 6, COL.spark, 0.5 * (1 - u.hitFlash / 0.09));
+  if (u.hitFlash < 0.09)
+    glow(ctx, ux, uy, u.radius + 6, COL.spark, 0.5 * (1 - u.hitFlash / 0.09));
 }
 
 function drawHealthBar(
@@ -1150,7 +1455,11 @@ function drawHealthBar(
 // specs/controls.md, specs/build.md: a GENERIC blank rock is held on the cursor as its 2×2
 // footprint, snapped to the grid, with a legal/illegal placement cue. There is NO range
 // ring and NO head — the type + quality only ROLL when the rock lands (placeStamp).
-function drawBuildCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
+function drawBuildCursor(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+): void {
   if (game.state !== "playing" || !game.holding) return;
   const px = game.pointerX;
   const py = game.pointerY;
@@ -1175,14 +1484,29 @@ function drawBuildCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): 
   // The blank rock lump + a "?" — its roll is unknown until it lands.
   ctx.save();
   ctx.globalAlpha = legal ? 0.8 : 0.4;
-  if (A.blocker) blit(ctx, A.blocker, ctr.x, ctr.y, FOOTPRINT_PX - 4, FOOTPRINT_PX - 4, 0);
+  if (A.blocker)
+    blit(ctx, A.blocker, ctr.x, ctr.y, FOOTPRINT_PX - 4, FOOTPRINT_PX - 4, 0);
   ctx.restore();
-  text(ctx, "?", ctr.x, ctr.y, 18, legal ? COL.spark : COL.illegal, "center", "800");
+  text(
+    ctx,
+    "?",
+    ctr.x,
+    ctr.y,
+    18,
+    legal ? COL.spark : COL.illegal,
+    "center",
+    "800",
+  );
 }
 
 // ---- status bar ---------------------------------------------------------------
 
-function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+function drawStatusBar(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   ctx.fillStyle = COL.panel;
   ctx.fillRect(0, 0, STAGE_W, STATUS_H);
   ctx.strokeStyle = "rgba(255,255,255,0.05)";
@@ -1193,12 +1517,31 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
 
   if (A.has(CHARGE_ICON)) blit(ctx, A.sprite(CHARGE_ICON), 26, 28, 18, 18);
   text(ctx, "CHARGE", 42, 20, 10, COL.text3, "left", "600", 1);
-  text(ctx, `${Math.floor(game.charge)}`, 42, 36, 18, COL.charge, "left", "700");
+  text(
+    ctx,
+    `${Math.floor(game.charge)}`,
+    42,
+    36,
+    18,
+    COL.charge,
+    "left",
+    "700",
+  );
 
   const low = game.integrity <= game.maxIntegrity * 0.25;
-  if (A.has(INTEGRITY_ICON)) blit(ctx, A.sprite(INTEGRITY_ICON), 176, 28, 18, 18);
+  if (A.has(INTEGRITY_ICON))
+    blit(ctx, A.sprite(INTEGRITY_ICON), 176, 28, 18, 18);
   text(ctx, "GRID INTEGRITY", 192, 20, 10, COL.text3, "left", "600", 1);
-  text(ctx, `${Math.max(0, Math.floor(game.integrity))}`, 192, 36, 18, low ? COL.alert : COL.integrity, "left", "700");
+  text(
+    ctx,
+    `${Math.max(0, Math.floor(game.integrity))}`,
+    192,
+    36,
+    18,
+    low ? COL.alert : COL.integrity,
+    "left",
+    "700",
+  );
 
   const N = game.diff.waves;
   const wnum = game.wave === 0 ? 1 : game.wave;
@@ -1228,7 +1571,16 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
   // slot shows the live MAZE RATING accruing on the invincible boss; otherwise it is blank.
   if (game.finale) {
     text(ctx, "OVERLOAD", 560, 20, 10, COL.boss, "left", "800", 1);
-    text(ctx, `${Math.round(game.mazeRating).toLocaleString()}`, 560, 37, 16, COL.spark, "left", "800");
+    text(
+      ctx,
+      `${Math.round(game.mazeRating).toLocaleString()}`,
+      560,
+      37,
+      16,
+      COL.spark,
+      "left",
+      "800",
+    );
   }
 
   // MAZE LENGTH readout (specs/board.md, specs/controls.md) — how long the ground route the
@@ -1247,10 +1599,28 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
   ctx.lineWidth = 1;
   ctx.stroke();
   text(ctx, "MAZE", mzX + 10, mzY + 12, 9, COL.text3, "left", "700", 1);
-  text(ctx, mzHover ? "▸ PATH" : "hover ▸", mzX + mzW - 9, mzY + 12, 8, mzHover ? COL.arc : COL.text3, "right", "600");
+  text(
+    ctx,
+    mzHover ? "▸ PATH" : "hover ▸",
+    mzX + mzW - 9,
+    mzY + 12,
+    8,
+    mzHover ? COL.arc : COL.text3,
+    "right",
+    "600",
+  );
   const numStr = `${mazeLen}`;
   text(ctx, numStr, mzX + 10, mzY + 28, 16, COL.arc, "left", "700");
-  text(ctx, "tiles", mzX + 10 + numStr.length * 10 + 6, mzY + 30, 10, COL.text3, "left", "500");
+  text(
+    ctx,
+    "tiles",
+    mzX + 10 + numStr.length * 10 + 6,
+    mzY + 30,
+    10,
+    COL.text3,
+    "left",
+    "500",
+  );
   if (mzHover) drawMazePath(ctx, game);
 
   // COMBOS recipe book + live DAMAGE BOARD toggles (specs/controls.md).
@@ -1258,13 +1628,36 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
   toggle(ctx, clicks, 926, "DMG BOARD", "toggleLeaderboard", showBoard);
 
   ctrl(ctx, clicks, 1112, `${game.speed}×`, "speed", COL.text, 52);
-  ctrl(ctx, clicks, 1172, game.paused ? "▶" : "❚❚", "pause", game.paused ? COL.alert : COL.text, 40);
-  ctrl(ctx, clicks, 1220, muted ? "♪̸" : "♪", "mute", muted ? COL.text3 : COL.text, 40);
+  ctrl(
+    ctx,
+    clicks,
+    1172,
+    game.paused ? "▶" : "❚❚",
+    "pause",
+    game.paused ? COL.alert : COL.text,
+    40,
+  );
+  ctrl(
+    ctx,
+    clicks,
+    1220,
+    muted ? "♪̸" : "♪",
+    "mute",
+    muted ? COL.text3 : COL.text,
+    40,
+  );
 }
 
 // A top-bar TOGGLE button (a lit state when its overlay is open). Mirrors ctrl() but shows an
 // on/off accent so the player can see which HUD overlays are active (specs/controls.md).
-function toggle(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, label: string, action: string, on: boolean): void {
+function toggle(
+  ctx: CanvasRenderingContext2D,
+  clicks: Clickable[],
+  x: number,
+  label: string,
+  action: string,
+  on: boolean,
+): void {
   const y = 12;
   const h = 32;
   const w = 80;
@@ -1274,7 +1667,17 @@ function toggle(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, l
   ctx.strokeStyle = on ? COL.integrity : "rgba(255,255,255,0.10)";
   ctx.lineWidth = on ? 1.5 : 1;
   ctx.stroke();
-  text(ctx, label, x + w / 2, y + h / 2 + 1, 11, on ? COL.integrity : COL.text2, "center", "700", 0.3);
+  text(
+    ctx,
+    label,
+    x + w / 2,
+    y + h / 2 + 1,
+    11,
+    on ? COL.integrity : COL.text2,
+    "center",
+    "700",
+    0.3,
+  );
   clicks.push({ x, y, w, h, action });
 }
 
@@ -1290,14 +1693,18 @@ function drawMazePath(ctx: CanvasRenderingContext2D, game: Game): void {
   ctx.strokeStyle = "rgba(5,8,12,0.7)";
   ctx.lineWidth = 6;
   ctx.beginPath();
-  pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  pts.forEach((p, i) =>
+    i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y),
+  );
   ctx.stroke();
   ctx.strokeStyle = hexA(COL.arc, 0.9);
   ctx.lineWidth = 2.5;
   ctx.setLineDash([9, 6]);
   ctx.lineDashOffset = -(time * 40) % 15;
   ctx.beginPath();
-  pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  pts.forEach((p, i) =>
+    i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y),
+  );
   ctx.stroke();
   ctx.restore();
   // Endpoints: a green start dot, a red grounding-sink dot.
@@ -1307,7 +1714,15 @@ function drawMazePath(ctx: CanvasRenderingContext2D, game: Game): void {
   glow(ctx, b.x, b.y, 12, COL.collector, 0.5);
 }
 
-function ctrl(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, label: string, action: string, color: string, w: number): void {
+function ctrl(
+  ctx: CanvasRenderingContext2D,
+  clicks: Clickable[],
+  x: number,
+  label: string,
+  action: string,
+  color: string,
+  w: number,
+): void {
   const y = 12;
   const h = 32;
   roundRect(ctx, x, y, w, h, 6);
@@ -1324,7 +1739,12 @@ function ctrl(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, lab
 
 // ---- right build panel --------------------------------------------------------
 
-function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+function drawPanel(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   const pw = STAGE_W - PANEL_X;
   ctx.fillStyle = COL.panel;
   ctx.fillRect(PANEL_X, STATUS_H, pw, STAGE_H - STATUS_H);
@@ -1354,16 +1774,55 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.strokeStyle = canUp ? COL.integrity : "rgba(255,255,255,0.08)";
   ctx.lineWidth = 1.5;
   ctx.stroke();
-  text(ctx, "UPGRADE QUALITY", px + 12, upY + 16, 13, canUp ? COL.text : COL.text3, "left", "800", 0.5);
-  const rProgress = atMax ? `R${game.refinement} · MAX` : `R${game.refinement} → R${game.refinement + 1}`;
-  text(ctx, rProgress, px + 12, upY + 33, 9, canUp ? COL.integrity : COL.text3, "left", "600", 0.5);
+  text(
+    ctx,
+    "UPGRADE QUALITY",
+    px + 12,
+    upY + 16,
+    13,
+    canUp ? COL.text : COL.text3,
+    "left",
+    "800",
+    0.5,
+  );
+  const rProgress = atMax
+    ? `R${game.refinement} · MAX`
+    : `R${game.refinement} → R${game.refinement + 1}`;
+  text(
+    ctx,
+    rProgress,
+    px + 12,
+    upY + 33,
+    9,
+    canUp ? COL.integrity : COL.text3,
+    "left",
+    "600",
+    0.5,
+  );
   if (atMax) {
     text(ctx, "MAX", px + w - 12, upY + 22, 14, COL.text3, "right", "700");
   } else {
-    text(ctx, `${refCost}`, px + w - 12, upY + 22, 15, canUp ? COL.charge : COL.text3, "right", "700");
-    if (A.has(CHARGE_ICON)) blit(ctx, A.sprite(CHARGE_ICON), px + w - 40, upY + 36, 12, 12);
+    text(
+      ctx,
+      `${refCost}`,
+      px + w - 12,
+      upY + 22,
+      15,
+      canUp ? COL.charge : COL.text3,
+      "right",
+      "700",
+    );
+    if (A.has(CHARGE_ICON))
+      blit(ctx, A.sprite(CHARGE_ICON), px + w - 40, upY + 36, 12, 12);
   }
-  clicks.push({ x: px, y: upY, w, h: upH, action: "upgrade", disabled: !canUp });
+  clicks.push({
+    x: px,
+    y: upY,
+    w,
+    h: upH,
+    action: "upgrade",
+    disabled: !canUp,
+  });
 
   // --- Scrap-press (STAMP) control (specs/build.md) ---
   // Arms a BLANK rock; the roll happens on placement. Placing is FREE — it spends one of the
@@ -1377,9 +1836,36 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.strokeStyle = canStamp ? COL.charge : "rgba(255,255,255,0.08)";
   ctx.lineWidth = 1.5;
   ctx.stroke();
-  text(ctx, "STAMP", px + 12, stampY + 17, 15, canStamp ? COL.text : COL.text3, "left", "800", 1);
-  text(ctx, `${game.stampsLeft()} / ${BUILDS_PER_LEVEL} ROCKS LEFT`, px + 12, stampY + 34, 9, COL.text3, "left", "500", 0.5);
-  clicks.push({ x: px, y: stampY, w, h: stampH, action: "stamp", disabled: !canStamp });
+  text(
+    ctx,
+    "STAMP",
+    px + 12,
+    stampY + 17,
+    15,
+    canStamp ? COL.text : COL.text3,
+    "left",
+    "800",
+    1,
+  );
+  text(
+    ctx,
+    `${game.stampsLeft()} / ${BUILDS_PER_LEVEL} ROCKS LEFT`,
+    px + 12,
+    stampY + 34,
+    9,
+    COL.text3,
+    "left",
+    "500",
+    0.5,
+  );
+  clicks.push({
+    x: px,
+    y: stampY,
+    w,
+    h: stampH,
+    action: "stamp",
+    disabled: !canStamp,
+  });
 
   // --- Inspector / next-wave info area ---
   const infoY = stampY + stampH + 12;
@@ -1393,7 +1879,8 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
 
   const sel = game.selected();
   if (game.holding) drawHeldInfo(ctx, game, A, px + 14, infoY + 12, w - 28);
-  else if (sel) drawInspector(ctx, game, sel, A, px + 14, infoY + 12, w - 28, clicks);
+  else if (sel)
+    drawInspector(ctx, game, sel, A, px + 14, infoY + 12, w - 28, clicks);
   else drawNextWave(ctx, game, A, px + 14, infoY + 12, w - 28);
 }
 
@@ -1401,10 +1888,26 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
 // — UPGRADE QUALITY). A stacked bar over the five tiers (Scrap…Tesla-Prime) plus a legend, so
 // the player can always see the probability of each quality BEFORE placing. Returns the y just
 // below the block it drew.
-function drawQualityOdds(ctx: CanvasRenderingContext2D, game: Game, x: number, y: number, w: number): number {
+function drawQualityOdds(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  x: number,
+  y: number,
+  w: number,
+): number {
   const odds = QUALITY_ODDS_BY_R[game.refinement]!;
   text(ctx, "QUALITY ODDS", x, y + 5, 9, COL.text3, "left", "700", 0.5);
-  text(ctx, `R${game.refinement}`, x + w, y + 5, 9, COL.integrity, "right", "700", 0.5);
+  text(
+    ctx,
+    `R${game.refinement}`,
+    x + w,
+    y + 5,
+    9,
+    COL.integrity,
+    "right",
+    "700",
+    0.5,
+  );
   const barY = y + 14;
   const barH = 12;
   let cx = x;
@@ -1414,7 +1917,17 @@ function drawQualityOdds(ctx: CanvasRenderingContext2D, game: Game, x: number, y
     if (segW > 0.5) {
       ctx.fillStyle = hexA(TIER_COLOR[t], 0.9);
       ctx.fillRect(cx, barY, Math.max(1, segW - 1), barH);
-      if (segW >= 30) text(ctx, `${Math.round(frac * 100)}%`, cx + segW / 2, barY + barH / 2 + 1, 8, COL.void, "center", "800");
+      if (segW >= 30)
+        text(
+          ctx,
+          `${Math.round(frac * 100)}%`,
+          cx + segW / 2,
+          barY + barH / 2 + 1,
+          8,
+          COL.void,
+          "center",
+          "800",
+        );
     }
     cx += segW;
   }
@@ -1424,14 +1937,32 @@ function drawQualityOdds(ctx: CanvasRenderingContext2D, game: Game, x: number, y
   // Legend: the nonzero tiers as "roman pct".
   const parts: string[] = [];
   for (let t = 1 as Tier; t <= 5; t = (t + 1) as Tier) {
-    if (odds[t - 1]! > 0) parts.push(`${ROMAN[t]} ${Math.round(odds[t - 1]! * 100)}%`);
+    if (odds[t - 1]! > 0)
+      parts.push(`${ROMAN[t]} ${Math.round(odds[t - 1]! * 100)}%`);
   }
-  text(ctx, parts.join("  ·  "), x, barY + barH + 9, 8, COL.text2, "left", "500", 0.2);
+  text(
+    ctx,
+    parts.join("  ·  "),
+    x,
+    barY + barH + 9,
+    8,
+    COL.text2,
+    "left",
+    "500",
+    0.2,
+  );
   return barY + barH + 18;
 }
 
 // While a blank rock is on the cursor: no type/quality yet — it rolls only when it lands.
-function drawHeldInfo(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: number, y: number, w: number): void {
+function drawHeldInfo(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  x: number,
+  y: number,
+  w: number,
+): void {
   text(ctx, "PLACING ROCK", x, y + 6, 11, COL.charge, "left", "700", 1);
   if (A.blocker) {
     ctx.save();
@@ -1440,15 +1971,43 @@ function drawHeldInfo(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: n
     ctx.restore();
   }
   text(ctx, "?", x + 24, y + 44, 20, COL.spark, "center", "800");
-  wrap(ctx, "Drop it on a legal spot — it rolls a RANDOM component type and quality the instant it lands. Esc / right-click cancels for free.", x, y + 82, w, 11, COL.text2, 15);
-  text(ctx, `${game.stampsLeft()} / ${BUILDS_PER_LEVEL} ROCKS LEFT`, x, y + 148, 10, COL.text3, "left", "500", 0.5);
+  wrap(
+    ctx,
+    "Drop it on a legal spot — it rolls a RANDOM component type and quality the instant it lands. Esc / right-click cancels for free.",
+    x,
+    y + 82,
+    w,
+    11,
+    COL.text2,
+    15,
+  );
+  text(
+    ctx,
+    `${game.stampsLeft()} / ${BUILDS_PER_LEVEL} ROCKS LEFT`,
+    x,
+    y + 148,
+    10,
+    COL.text3,
+    "left",
+    "500",
+    0.5,
+  );
   drawQualityOdds(ctx, game, x, y + 162, w);
 }
 
 // The selected-piece inspector (specs/board.md, specs/build.md, specs/controls.md).
 // A CANDIDATE offers KEEP / COMBINE (build phase); a COMPONENT offers the targeting cycle;
 // a BLOCKER is inert (no stats, no actions).
-function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, A: Assets, x: number, y: number, w: number, clicks: Clickable[]): void {
+function drawInspector(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  s: Structure,
+  A: Assets,
+  x: number,
+  y: number,
+  w: number,
+  clicks: Clickable[],
+): void {
   const baseY = STAGE_H - 14; // panel bottom margin (buttons stack up from here)
   const rowGap = 6; // vertical gap between stacked action buttons
   // Hold the bottommost button off the panel's bottom border by a full inter-button gap, so it
@@ -1458,8 +2017,28 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
 
   if (s.kind === "blocker") {
     text(ctx, "INERT BLOCKER", x, y + 6, 14, COL.text2, "left", "700", 0.5);
-    wrap(ctx, "A hardened scrap rock — it walls the Load's route but never fires. Drop a fresh rock onto it to reroll a new component.", x, y + 32, w, 11, COL.text2, 15);
-    button(ctx, clicks, x, bottomAnchor - 30, w, 30, "DISMANTLE ROCK", "remove", COL.alert, inBuild);
+    wrap(
+      ctx,
+      "A hardened scrap rock — it walls the Load's route but never fires. Drop a fresh rock onto it to reroll a new component.",
+      x,
+      y + 32,
+      w,
+      11,
+      COL.text2,
+      15,
+    );
+    button(
+      ctx,
+      clicks,
+      x,
+      bottomAnchor - 30,
+      w,
+      30,
+      "DISMANTLE ROCK",
+      "remove",
+      COL.alert,
+      inBuild,
+    );
     clicks[clicks.length - 1]!.panel = true;
     return;
   }
@@ -1478,17 +2057,62 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
     else codeHead(ctx, x + 18, y + 20, 40, 0, def.color);
     comboBadge(ctx, x + 18, y + 20, 40, def.name.charAt(0));
     text(ctx, def.name, x + 44, y + 12, 13, def.color, "left", "700", 0.3);
-    text(ctx, `COMBINATION · LEVEL ${comp!.comboLevel}/${MAX_COMBO_LEVEL}`, x + 44, y + 28, 9, COL.combo, "left", "700", 0.3);
-    text(ctx, "UPGRADE ANYTIME · HITS GROUND & AIR", x + 44, y + 42, 8, COL.text3, "left", "500", 0.3);
+    text(
+      ctx,
+      `COMBINATION · LEVEL ${comp!.comboLevel}/${MAX_COMBO_LEVEL}`,
+      x + 44,
+      y + 28,
+      9,
+      COL.combo,
+      "left",
+      "700",
+      0.3,
+    );
+    text(
+      ctx,
+      "UPGRADE ANYTIME · HITS GROUND & AIR",
+      x + 44,
+      y + 42,
+      8,
+      COL.text3,
+      "left",
+      "500",
+      0.3,
+    );
   } else {
     const typeC = COMPONENT_COLOR[s.type];
     const head = A.componentHead(s.type, s.tier);
     if (head) blit(ctx, head, x + 18, y + 20, 40, 40, 0);
-    else if (s.type === "regulator") supportCore(ctx, x + 18, y + 20, 40, typeC);
+    else if (s.type === "regulator")
+      supportCore(ctx, x + 18, y + 20, 40, typeC);
     else codeHead(ctx, x + 18, y + 20, 40, 0, typeC);
-    text(ctx, COMPONENT_LABEL[s.type], x + 44, y + 12, 13, typeC, "left", "700", 0.5);
-    text(ctx, `${TIER_NAME[s.tier]} · ${ROMAN[s.tier]}`, x + 44, y + 28, 11, TIER_COLOR[s.tier], "left", "600", 0.5);
-    const sub = isCand ? "UNCOMMITTED ROLL" : !stats.fires ? "SUPPORT · DOES NOT FIRE" : "HITS GROUND & AIR";
+    text(
+      ctx,
+      COMPONENT_LABEL[s.type],
+      x + 44,
+      y + 12,
+      13,
+      typeC,
+      "left",
+      "700",
+      0.5,
+    );
+    text(
+      ctx,
+      `${TIER_NAME[s.tier]} · ${ROMAN[s.tier]}`,
+      x + 44,
+      y + 28,
+      11,
+      TIER_COLOR[s.tier],
+      "left",
+      "600",
+      0.5,
+    );
+    const sub = isCand
+      ? "UNCOMMITTED ROLL"
+      : !stats.fires
+        ? "SUPPORT · DOES NOT FIRE"
+        : "HITS GROUND & AIR";
     const subC = isCand ? COL.charge : !stats.fires ? COL.regulator : COL.text3;
     text(ctx, sub, x + 44, y + 42, 8, subC, "left", "500", 0.5);
   }
@@ -1511,20 +2135,49 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
     line("DAMAGE", `${stats.dmg}`);
     line("RANGE", `${Math.round(stats.range)}`);
     line("FIRE RATE", `${stats.fireRate.toFixed(1)}/s`);
-    if (stats.splash > 0) line("SPLASH", `${Math.round(stats.splash)}`, COL.arcnode);
-    if (stats.chainLeaps > 0) line("CHAIN", `+${stats.chainLeaps} leaps`, COL.coil);
-    if (stats.slowAmt > 0) line("SLOW", `-${Math.round(stats.slowAmt * 100)}% · ${stats.slowDur.toFixed(1)}s`, COL.choke);
-    if (stats.burnFrac > 0) line("BURN", `${Math.round(stats.burnFrac * 100)}%/s · ${stats.burnDur.toFixed(1)}s`, COL.rectifier);
-    if (stats.critChance > 0) line("CRIT", `${Math.round(stats.critChance * 100)}% · ×${stats.critMult.toFixed(1)}`, COL.combo);
-    if (stats.multishot > 1) line("MULTISHOT", `${stats.multishot} targets`, COL.emitter);
-    if (stats.auraRadius > 0) line("AURA", `+${Math.round(stats.auraBonus * 100)}% · r${Math.round(stats.auraRadius)}`, COL.regulator);
-    if (comp && comp.auraBonus > 0) line("AURA BUFF", `+${Math.round(comp.auraBonus * 100)}%`, COL.regulator);
+    if (stats.splash > 0)
+      line("SPLASH", `${Math.round(stats.splash)}`, COL.arcnode);
+    if (stats.chainLeaps > 0)
+      line("CHAIN", `+${stats.chainLeaps} leaps`, COL.coil);
+    if (stats.slowAmt > 0)
+      line(
+        "SLOW",
+        `-${Math.round(stats.slowAmt * 100)}% · ${stats.slowDur.toFixed(1)}s`,
+        COL.choke,
+      );
+    if (stats.burnFrac > 0)
+      line(
+        "BURN",
+        `${Math.round(stats.burnFrac * 100)}%/s · ${stats.burnDur.toFixed(1)}s`,
+        COL.rectifier,
+      );
+    if (stats.critChance > 0)
+      line(
+        "CRIT",
+        `${Math.round(stats.critChance * 100)}% · ×${stats.critMult.toFixed(1)}`,
+        COL.combo,
+      );
+    if (stats.multishot > 1)
+      line("MULTISHOT", `${stats.multishot} targets`, COL.emitter);
+    if (stats.auraRadius > 0)
+      line(
+        "AURA",
+        `+${Math.round(stats.auraBonus * 100)}% · r${Math.round(stats.auraRadius)}`,
+        COL.regulator,
+      );
+    if (comp && comp.auraBonus > 0)
+      line("AURA BUFF", `+${Math.round(comp.auraBonus * 100)}%`, COL.regulator);
   }
   if (comp) {
-    if (stats.fires) line("TARGET", TARGETING_LABEL[comp.targeting], COL.integrity);
+    if (stats.fires)
+      line("TARGET", TARGETING_LABEL[comp.targeting], COL.integrity);
     // Per-component performance tally (specs/towers.md) — like Meltdown's tower inspector.
     line("KILLS", `${comp.kills}`, COL.charge);
-    line("DMG DEALT", `${Math.round(comp.damageDealt).toLocaleString()}`, COL.spark);
+    line(
+      "DMG DEALT",
+      `${Math.round(comp.damageDealt).toLocaleString()}`,
+      COL.spark,
+    );
   }
 
   // ---- Action area (specs/build.md, specs/controls.md) ----
@@ -1534,11 +2187,26 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   // on what else stands on the board, so the panel never reflows underneath the pointer because
   // the game state moved (specs/controls.md). Buttons stack upward from a bottom anchor.
   let ay = bottomAnchor - 26;
-  const slot = (bx: number, by: number, bw: number, bh: number, label: string, action: string, color: string, enabled: boolean): void => {
+  const slot = (
+    bx: number,
+    by: number,
+    bw: number,
+    bh: number,
+    label: string,
+    action: string,
+    color: string,
+    enabled: boolean,
+  ): void => {
     button(ctx, clicks, bx, by, bw, bh, label, action, color, enabled);
     clicks[clicks.length - 1]!.panel = true;
   };
-  const stack = (label: string, action: string, color: string, enabled: boolean, h = 26): void => {
+  const stack = (
+    label: string,
+    action: string,
+    color: string,
+    enabled: boolean,
+    h = 26,
+  ): void => {
     slot(x, ay, w, h, label, action, color, enabled);
     ay -= h + rowGap;
   };
@@ -1547,10 +2215,25 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
     // A COMBINATION TOWER: dismantle (a build-phase correction), retarget, and UPGRADE its level
     // for Charge (any phase, including mid-wave). A combo is terminal, so it never combines.
     stack("DISMANTLE TOWER", "remove", COL.alert, inBuild, 24);
-    if (stats.fires) stack(`TARGET · ${TARGETING_LABEL[comp!.targeting]}`, "targeting", COL.integrity, true);
+    if (stats.fires)
+      stack(
+        `TARGET · ${TARGETING_LABEL[comp!.targeting]}`,
+        "targeting",
+        COL.integrity,
+        true,
+      );
     const cost = game.comboUpgradeCostFor(comp!);
-    const label = cost === null ? `UPGRADE · ${MAX_COMBO_LEVEL}/${MAX_COMBO_LEVEL} MAX` : `UPGRADE  ${cost}`;
-    stack(label, "comboupgrade", COL.combo, cost !== null && game.canUpgradeCombo(comp!.id), 26);
+    const label =
+      cost === null
+        ? `UPGRADE · ${MAX_COMBO_LEVEL}/${MAX_COMBO_LEVEL} MAX`
+        : `UPGRADE  ${cost}`;
+    stack(
+      label,
+      "comboupgrade",
+      COL.combo,
+      cost !== null && game.canUpgradeCombo(comp!.id),
+      26,
+    );
     return;
   }
 
@@ -1561,24 +2244,42 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   const nt = Math.min(MAX_TIER, s.tier + 1) as Tier;
   const dt = Math.max(1, s.tier - 1) as Tier;
   const recipes = game.reachableCombosFor(sid);
-  const explicit = game.combineSet().length >= 2 && game.combineSet()[0] === sid;
+  const explicit =
+    game.combineSet().length >= 2 && game.combineSet()[0] === sid;
 
   stack("DISMANTLE", "remove", COL.alert, inBuild);
-  if (comp && stats.fires) stack(`TARGET · ${TARGETING_LABEL[comp.targeting]}`, "targeting", COL.integrity, true);
+  if (comp && stats.fires)
+    stack(
+      `TARGET · ${TARGETING_LABEL[comp.targeting]}`,
+      "targeting",
+      COL.integrity,
+      true,
+    );
 
   // KEEP is a candidate's harvest — committing it LAUNCHES the wave (specs/build.md, no SEND).
   // DOWNGRADE harvests it one quality tier lower instead, for a recipe that still needs a
   // low-tier ingredient; it is likewise the harvest, so it too sends the wave. Scrap (T1) has no
   // rung below it, so DOWNGRADE sits disabled there rather than vanishing.
   if (isCand) {
-    stack(`DOWNGRADE ${TIER_NAME[dt]}`, "downgrade", COL.text2, inBuild && s.tier > 1);
+    stack(
+      `DOWNGRADE ${TIER_NAME[dt]}`,
+      "downgrade",
+      COL.text2,
+      inBuild && s.tier > 1,
+    );
     stack("KEEP", "keep", COL.charge, inBuild);
   }
 
   // COMBINE — fold a matching (type + quality) pair one rung higher, landing at THIS piece. A
   // fold that consumes a fresh roll is the level's harvest and SENDS the wave (specs/build.md); a
   // fold of only standing towers leaves the phase running (and is the wave-time combine).
-  stack(explicit ? "COMBINE SELECTED" : "COMBINE", "combine", TIER_COLOR[nt], canComb, 26);
+  stack(
+    explicit ? "COMBINE SELECTED" : "COMBINE",
+    "combine",
+    TIER_COLOR[nt],
+    canComb,
+    26,
+  );
 
   // COMBINATION-TOWER recipes in reach (specs/build.md, specs/towers.md) — each a one-click
   // COMBINE SPECIAL → <tower> that folds this piece + matching partners into a terminal combo
@@ -1605,21 +2306,65 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
       const prev = `${land.dmg} dmg (Lv0) · ${Math.round(land.range)} r${tags ? " · " + tags : ""}`;
       // Shrink-to-fit so a four-ability combo (Singularity) does not overrun the button border.
       fitText(ctx, prev, x + 8, ry + 22, 8, COL.text2, w - 16, "500", 0.2);
-      clicks.push({ x, y: ry, w, h: rh, action: "comborecipe", payload: rec.combo });
+      clicks.push({
+        x,
+        y: ry,
+        w,
+        h: rh,
+        action: "comborecipe",
+        payload: rec.combo,
+      });
       ry += rh + 4;
       shown++;
     }
-    if (shown < recipes.length && ry + 2 < maxRy) text(ctx, `+${recipes.length - shown} more (free space to see)`, x, ry + 2, 8, COL.text3, "left", "500");
+    if (shown < recipes.length && ry + 2 < maxRy)
+      text(
+        ctx,
+        `+${recipes.length - shown} more (free space to see)`,
+        x,
+        ry + 2,
+        8,
+        COL.text3,
+        "left",
+        "500",
+      );
   }
 }
 
 // The next-wave preview (specs/enemies.md, specs/gameplay.md) — shown when nothing is selected.
-function drawNextWave(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: number, y: number, w: number): void {
+function drawNextWave(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  x: number,
+  y: number,
+  w: number,
+): void {
   const wv = game.nextWavePreview();
   text(ctx, "NEXT WAVE", x, y + 6, 11, COL.text3, "left", "700", 1);
-  text(ctx, "HOVER A NAME FOR INTEL", x + w, y + 6, 8, COL.text3, "right", "500", 0.5);
+  text(
+    ctx,
+    "HOVER A NAME FOR INTEL",
+    x + w,
+    y + 6,
+    8,
+    COL.text3,
+    "right",
+    "500",
+    0.5,
+  );
   const label = wv.hasBoss ? `WAVE ${wv.wave} · BOSS` : `WAVE ${wv.wave}`;
-  text(ctx, label, x, y + 26, 15, wv.hasBoss ? COL.boss : COL.text, "left", "700", 0.5);
+  text(
+    ctx,
+    label,
+    x,
+    y + 26,
+    15,
+    wv.hasBoss ? COL.boss : COL.text,
+    "left",
+    "700",
+    0.5,
+  );
 
   // Count each type in the coming wave.
   const counts = new Map<LoadType, number>();
@@ -1630,18 +2375,50 @@ function drawNextWave(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: n
   for (const t of wv.types) {
     const def = LOAD[t];
     // Each row is a hover target: hovering it floats a tooltip describing the unit.
-    const hover = inRect(game.pointerX, game.pointerY, x - 4, row - 2, w + 8, rowH);
+    const hover = inRect(
+      game.pointerX,
+      game.pointerY,
+      x - 4,
+      row - 2,
+      w + 8,
+      rowH,
+    );
     if (hover) {
       roundRect(ctx, x - 4, row - 2, w + 8, rowH - 2, 4);
       ctx.fillStyle = "rgba(255,255,255,0.05)";
       ctx.fill();
     }
-    if (A.has(LOAD_ICON[t])) blit(ctx, A.sprite(LOAD_ICON[t]), x + 9, row + 7, 18, 18);
-    text(ctx, def.label, x + 24, row + 7, 11, t === "dynamo" ? COL.boss : hover ? COL.text : COL.text2, "left", "600", 0.5);
+    if (A.has(LOAD_ICON[t]))
+      blit(ctx, A.sprite(LOAD_ICON[t]), x + 9, row + 7, 18, 18);
+    text(
+      ctx,
+      def.label,
+      x + 24,
+      row + 7,
+      11,
+      t === "dynamo" ? COL.boss : hover ? COL.text : COL.text2,
+      "left",
+      "600",
+      0.5,
+    );
     const n = counts.get(t) ?? 0;
-    text(ctx, n > 1 ? `×${n}` : def.flies ? "FLYER" : "", x + w, row + 7, 10, COL.text3, "right", "500");
+    text(
+      ctx,
+      n > 1 ? `×${n}` : def.flies ? "FLYER" : "",
+      x + w,
+      row + 7,
+      10,
+      COL.text3,
+      "right",
+      "500",
+    );
     if (hover) {
-      pendingTooltip = { title: def.label, body: LOAD_DESC[t], color: t === "dynamo" ? COL.boss : COL.integrity, y: row + 7 };
+      pendingTooltip = {
+        title: def.label,
+        body: LOAD_DESC[t],
+        color: t === "dynamo" ? COL.boss : COL.integrity,
+        y: row + 7,
+      };
     }
     row += rowH;
   }
@@ -1657,11 +2434,20 @@ type IngState = "selected" | "owned" | "missing";
 // have to roll ("missing"). Ownership is matched as a MULTISET — a recipe calling for two pieces
 // at the same (type, quality) needs two on the board — so the pool is decremented as it is spent,
 // and the selection covers exactly one ingredient slot.
-function recipeStates(def: ComboDef, ing: { type: ComponentType; tier: Tier } | null, owned: Map<string, number>): IngState[] {
+function recipeStates(
+  def: ComboDef,
+  ing: { type: ComponentType; tier: Tier } | null,
+  owned: Map<string, number>,
+): IngState[] {
   const pool = new Map(owned);
   let selSpent = false;
   return def.recipe.map((r) => {
-    if (!selSpent && ing != null && r.type === ing.type && r.tier === ing.tier) {
+    if (
+      !selSpent &&
+      ing != null &&
+      r.type === ing.type &&
+      r.tier === ing.tier
+    ) {
       selSpent = true;
       return "selected";
     }
@@ -1711,7 +2497,11 @@ function drawRecipe(
       cy += size + 3;
     }
     ctx.fillStyle =
-      state === "selected" ? hexA(COL.charge, 0.55 + 0.45 * pulse) : state === "owned" ? COL.legal : COL.text2;
+      state === "selected"
+        ? hexA(COL.charge, 0.55 + 0.45 * pulse)
+        : state === "owned"
+          ? COL.legal
+          : COL.text2;
     ctx.fillText(token, cx, cy);
     cx += tokenW;
     // Trailing " + " separator (kept on the same line as the ingredient it follows).
@@ -1728,11 +2518,14 @@ function drawRecipe(
 // an uncommitted candidate — that could serve as a combo INGREDIENT, or null when nothing
 // ingredient-eligible is selected (a combination tower or a blocker is not an ingredient). Used
 // to highlight, in the COMBINATIONS book, the combos that consume the selection (specs/controls.md).
-function selectedIngredient(game: Game): { type: ComponentType; tier: Tier } | null {
+function selectedIngredient(
+  game: Game,
+): { type: ComponentType; tier: Tier } | null {
   const sel = game.selected();
   if (!sel) return null;
   if (sel.kind === "candidate") return { type: sel.type, tier: sel.tier };
-  if (sel.kind === "component" && !sel.combo) return { type: sel.type, tier: sel.tier };
+  if (sel.kind === "component" && !sel.combo)
+    return { type: sel.type, tier: sel.tier };
   return null;
 }
 
@@ -1754,14 +2547,19 @@ function ownedIngredients(game: Game): Map<string, number> {
 }
 
 // Whether combo `def`'s recipe consumes an ingredient at the given (type, quality tier).
-function comboUsesIngredient(def: ComboDef, ing: { type: ComponentType; tier: Tier }): boolean {
+function comboUsesIngredient(
+  def: ComboDef,
+  ing: { type: ComponentType; tier: Tier },
+): boolean {
   return def.recipe.some((r) => r.type === ing.type && r.tier === ing.tier);
 }
 
 // The DAMAGE BOARD's ranking: every firing tower that has dealt damage, sorted high→low, capped
 // at the top 8 shown. Shared by the board's layout and its pointer hit-test (specs/controls.md).
 function leaderboardTop(game: Game): Component[] {
-  const comps = game.structures.filter((s): s is Component => s.kind === "component" && s.damageDealt > 0);
+  const comps = game.structures.filter(
+    (s): s is Component => s.kind === "component" && s.damageDealt > 0,
+  );
   comps.sort((a, b) => b.damageDealt - a.damageDealt);
   return comps.slice(0, 8);
 }
@@ -1779,7 +2577,17 @@ const LB_ROW0 = LB_Y + LB_HEAD_H + 6;
 function leaderboardHoverId(game: Game): number | null {
   const top = leaderboardTop(game);
   for (let i = 0; i < top.length; i++) {
-    if (inRect(game.pointerX, game.pointerY, LB_X, LB_ROW0 + i * LB_ROW_H, LB_W, LB_ROW_H)) return top[i]!.id;
+    if (
+      inRect(
+        game.pointerX,
+        game.pointerY,
+        LB_X,
+        LB_ROW0 + i * LB_ROW_H,
+        LB_W,
+        LB_ROW_H,
+      )
+    )
+      return top[i]!.id;
   }
   return null;
 }
@@ -1787,7 +2595,11 @@ function leaderboardHoverId(game: Game): number | null {
 // The COMBINATIONS reference book (specs/build.md, specs/towers.md) — every combination tower
 // with its exact recipe and stats, so the player can plan combines in-game. A modal panel over
 // the board; a background swallow keeps a click behind it from reaching the yard.
-function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawCombosBook(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   // If a base piece is selected, every combo that consumes it is highlighted in the charge
   // accent — a planning aid for spotting where the selection can go (specs/controls.md).
   const selIng = selectedIngredient(game);
@@ -1802,7 +2614,13 @@ function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Click
   // Backdrop + swallow (over the whole board so a stray click cannot place a rock).
   ctx.fillStyle = "rgba(4,6,10,0.55)";
   ctx.fillRect(BOARD_X0, STATUS_H, BOARD_X1 - BOARD_X0, STAGE_H - STATUS_H);
-  clicks.push({ x: BOARD_X0, y: STATUS_H, w: BOARD_X1 - BOARD_X0, h: STAGE_H - STATUS_H, action: "noop" });
+  clicks.push({
+    x: BOARD_X0,
+    y: STATUS_H,
+    w: BOARD_X1 - BOARD_X0,
+    h: STAGE_H - STATUS_H,
+    action: "noop",
+  });
   // Panel.
   roundRect(ctx, x0, y0, w, h, 12);
   ctx.fillStyle = "rgba(12,17,24,0.98)";
@@ -1811,8 +2629,19 @@ function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Click
   ctx.lineWidth = 1.5;
   ctx.stroke();
   clicks.push({ x: x0, y: y0, w, h, action: "noop" }); // swallow clicks on the panel body
-  text(ctx, "COMBINATION TOWERS", x0 + 18, y0 + 22, 15, COL.combo, "left", "800", 1);
-  const subtitle = "Assemble a rock plus the exact ingredients on the board into a terminal tower. Hover a combo for what it does.";
+  text(
+    ctx,
+    "COMBINATION TOWERS",
+    x0 + 18,
+    y0 + 22,
+    15,
+    COL.combo,
+    "left",
+    "800",
+    1,
+  );
+  const subtitle =
+    "Assemble a rock plus the exact ingredients on the board into a terminal tower. Hover a combo for what it does.";
   text(ctx, subtitle, x0 + 18, y0 + 40, 10, COL.text2, "left", "500", 0.2);
   // Close button (also re-clickable via the top-bar COMBOS toggle).
   const cb = 26;
@@ -1850,7 +2679,8 @@ function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Click
     ctx.strokeStyle = used ? COL.charge : hexA(def.color, 0.45);
     ctx.lineWidth = used ? 1.8 : 1;
     ctx.stroke();
-    if (inRect(game.pointerX, game.pointerY, cxp, cyp, cellW, cellH)) hoverDef = def;
+    if (inRect(game.pointerX, game.pointerY, cxp, cyp, cellW, cellH))
+      hoverDef = def;
     text(ctx, def.name, cxp + 12, cyp + 15, 12, def.color, "left", "800", 0.3);
     const tags = abilityTags(def);
     const statLine = `${def.dmg} dmg · ${Math.round(def.range)} r · ${def.fireRate.toFixed(1)}/s${tags ? " · " + tags : ""}`;
@@ -1860,18 +2690,47 @@ function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Click
     const states = recipeStates(def, selIng, owned);
     const have = states.filter((st) => st !== "missing").length;
     const full = have === states.length;
-    text(ctx, `RECIPE · ${have}/${states.length} ON BOARD`, cxp + 12, cyp + 45, 7, full ? COL.legal : COL.text3, "left", "700", 0.5);
+    text(
+      ctx,
+      `RECIPE · ${have}/${states.length} ON BOARD`,
+      cxp + 12,
+      cyp + 45,
+      7,
+      full ? COL.legal : COL.text3,
+      "left",
+      "700",
+      0.5,
+    );
     drawRecipe(ctx, def, states, cxp + 12, cyp + 57, cellW - 24, 9);
   }
 
   // Hovering a combo floats a card describing what that tower DOES (specs/controls.md) — the
   // stat/keyword line in the cell is a summary; this is the plain-language description.
-  if (hoverDef) drawComboTooltip(ctx, hoverDef, game.pointerX, game.pointerY, x0, y0, x1, y1);
+  if (hoverDef)
+    drawComboTooltip(
+      ctx,
+      hoverDef,
+      game.pointerX,
+      game.pointerY,
+      x0,
+      y0,
+      x1,
+      y1,
+    );
 }
 
 // A floating description card for a combination tower, shown while its cell is hovered in the
 // COMBINATIONS book. Clamped to stay inside the book panel (x0,y0)–(x1,y1).
-function drawComboTooltip(ctx: CanvasRenderingContext2D, def: ComboDef, px: number, py: number, x0: number, y0: number, x1: number, y1: number): void {
+function drawComboTooltip(
+  ctx: CanvasRenderingContext2D,
+  def: ComboDef,
+  px: number,
+  py: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): void {
   const tw = 268;
   // Only the name + plain-language description. The stat/keyword summary and the recipe already
   // live in the combo's own cell, so repeating them here adds nothing — and the stat line, once
@@ -1901,7 +2760,11 @@ function drawComboTooltip(ctx: CanvasRenderingContext2D, def: ComboDef, px: numb
 
 // The live tower DAMAGE BOARD (specs/controls.md) — a real-time ranking of every firing tower
 // by total damage dealt, updated each frame. A compact panel in the board's top-left corner.
-function drawLeaderboard(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawLeaderboard(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   const top = leaderboardTop(game);
   const x = LB_X;
   const y = LB_Y;
@@ -1929,11 +2792,29 @@ function drawLeaderboard(ctx: CanvasRenderingContext2D, game: Game, clicks: Clic
   roundRect(ctx, cbx, cby, cb, cb, 5);
   ctx.fillStyle = "rgba(255,255,255,0.06)";
   ctx.fill();
-  text(ctx, "✕", cbx + cb / 2, cby + cb / 2 + 1, 12, COL.text2, "center", "700");
+  text(
+    ctx,
+    "✕",
+    cbx + cb / 2,
+    cby + cb / 2 + 1,
+    12,
+    COL.text2,
+    "center",
+    "700",
+  );
   clicks.push({ x: cbx, y: cby, w: cb, h: cb, action: "toggleLeaderboard" });
 
   if (top.length === 0) {
-    text(ctx, "No damage dealt yet.", x + 12, y + headH + 14, 10, COL.text3, "left", "500");
+    text(
+      ctx,
+      "No damage dealt yet.",
+      x + 12,
+      y + headH + 14,
+      10,
+      COL.text3,
+      "left",
+      "500",
+    );
     return;
   }
   const maxDmg = top[0]!.damageDealt || 1;
@@ -1941,7 +2822,9 @@ function drawLeaderboard(ctx: CanvasRenderingContext2D, game: Game, clicks: Clic
   for (let i = 0; i < top.length; i++) {
     const c = top[i]!;
     const accent = c.combo ? COMBOS[c.combo].color : COMPONENT_COLOR[c.type];
-    const name = c.combo ? COMBOS[c.combo].name : `${COMPONENT_LABEL[c.type]} ${ROMAN[c.tier]}`;
+    const name = c.combo
+      ? COMBOS[c.combo].name
+      : `${COMPONENT_LABEL[c.type]} ${ROMAN[c.tier]}`;
     // Hovering this row spotlights its tower on the yard (grays out the rest); underline the
     // hovered row so the link between the leaderboard and the highlighted tower is obvious.
     const hovered = c.id === boardFocusId;
@@ -1958,17 +2841,59 @@ function drawLeaderboard(ctx: CanvasRenderingContext2D, game: Game, clicks: Clic
     ctx.fillStyle = hexA(accent, hovered ? 0.28 : 0.16);
     roundRect(ctx, x + 12, ry, barW, rowH - 4, 4);
     ctx.fill();
-    text(ctx, `${i + 1}`, x + 12, ry + (rowH - 4) / 2, 10, COL.text3, "left", "700");
-    text(ctx, name, x + 28, ry + (rowH - 4) / 2, 10, accent, "left", "700", 0.2);
-    text(ctx, `${Math.round(c.damageDealt).toLocaleString()}`, x + w - 12, ry + (rowH - 4) / 2 - 5, 10, COL.spark, "right", "700");
-    text(ctx, `${c.kills} kills`, x + w - 12, ry + (rowH - 4) / 2 + 6, 8, COL.charge, "right", "500");
+    text(
+      ctx,
+      `${i + 1}`,
+      x + 12,
+      ry + (rowH - 4) / 2,
+      10,
+      COL.text3,
+      "left",
+      "700",
+    );
+    text(
+      ctx,
+      name,
+      x + 28,
+      ry + (rowH - 4) / 2,
+      10,
+      accent,
+      "left",
+      "700",
+      0.2,
+    );
+    text(
+      ctx,
+      `${Math.round(c.damageDealt).toLocaleString()}`,
+      x + w - 12,
+      ry + (rowH - 4) / 2 - 5,
+      10,
+      COL.spark,
+      "right",
+      "700",
+    );
+    text(
+      ctx,
+      `${c.kills} kills`,
+      x + w - 12,
+      ry + (rowH - 4) / 2 + 6,
+      8,
+      COL.charge,
+      "right",
+      "500",
+    );
     ry += rowH;
   }
 }
 
 // ---- title --------------------------------------------------------------------
 
-function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+function drawTitle(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   // A dim slice of yard behind the menu for atmosphere.
   if (A.has(YARD_SUBSTRATE)) {
     if (!substratePattern) {
@@ -1999,25 +2924,58 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.fillStyle = grad;
   drawSpaced(ctx, "ARC FOUNDRY", STAGE_W / 2, 230, 88, 12);
   ctx.restore();
-  text(ctx, game.campaign.tagline, STAGE_W / 2, 300, 15, COL.text2, "center", "500", 6);
+  text(ctx, TAGLINE_TEXT, STAGE_W / 2, 300, 15, COL.text2, "center", "500", 6);
 
-  const items = menuItems("title", game);
+  const items = menuItems("title");
   items.forEach((it, i) => {
     const y = 410 + i * 62;
     const on = highlighted(game, i, STAGE_W / 2 - 200, y - 26, 400, 52);
-    text(ctx, it.label, STAGE_W / 2, y, 28, on ? COL.charge : COL.text, "center", "700", 6);
+    text(
+      ctx,
+      it.label,
+      STAGE_W / 2,
+      y,
+      28,
+      on ? COL.charge : COL.text,
+      "center",
+      "700",
+      6,
+    );
     if (on) {
       text(ctx, "▶", STAGE_W / 2 - 190, y, 20, COL.charge, "center", "700");
       text(ctx, "◀", STAGE_W / 2 + 190, y, 20, COL.charge, "center", "700");
     }
-    clicks.push({ x: STAGE_W / 2 - 200, y: y - 26, w: 400, h: 52, action: it.action });
+    clicks.push({
+      x: STAGE_W / 2 - 200,
+      y: y - 26,
+      w: 400,
+      h: 52,
+      action: it.action,
+    });
   });
-  text(ctx, "↑↓ SELECT   ENTER CONFIRM   MOUSE OK", STAGE_W / 2, 660, 13, COL.text3, "center", "500", 4);
+  text(
+    ctx,
+    "↑↓ SELECT   ENTER CONFIRM   MOUSE OK",
+    STAGE_W / 2,
+    660,
+    13,
+    COL.text3,
+    "center",
+    "500",
+    4,
+  );
 }
 
 // ---- map select ---------------------------------------------------------------
 
-function drawMapPreview(ctx: CanvasRenderingContext2D, map: MapDef, x: number, y: number, w: number, h: number): void {
+function drawMapPreview(
+  ctx: CanvasRenderingContext2D,
+  map: MapDef,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
   ctx.save();
   roundRect(ctx, x, y, w, h, 8);
   ctx.fillStyle = COL.substrate;
@@ -2029,7 +2987,12 @@ function drawMapPreview(ctx: CanvasRenderingContext2D, map: MapDef, x: number, y
   // Fixed housings (Map C).
   for (const hh of map.housings) {
     ctx.fillStyle = hexA(COL.housing, 0.9);
-    ctx.fillRect(sx(hh.col0) - 2, sy(hh.row0) - 2, (hh.col1 - hh.col0 + 1) * (w / GRID_COLS), (hh.row1 - hh.row0 + 1) * (h / GRID_ROWS));
+    ctx.fillRect(
+      sx(hh.col0) - 2,
+      sy(hh.row0) - 2,
+      (hh.col1 - hh.col0 + 1) * (w / GRID_COLS),
+      (hh.row1 - hh.row0 + 1) * (h / GRID_ROWS),
+    );
   }
 
   const chain = [map.entry, ...map.waypoints, map.collector];
@@ -2037,7 +3000,11 @@ function drawMapPreview(ctx: CanvasRenderingContext2D, map: MapDef, x: number, y
   ctx.lineWidth = 2.5;
   ctx.lineJoin = "round";
   ctx.beginPath();
-  chain.forEach((t, i) => (i === 0 ? ctx.moveTo(sx(t.col), sy(t.row)) : ctx.lineTo(sx(t.col), sy(t.row))));
+  chain.forEach((t, i) =>
+    i === 0
+      ? ctx.moveTo(sx(t.col), sy(t.row))
+      : ctx.lineTo(sx(t.col), sy(t.row)),
+  );
   ctx.stroke();
 
   // Waypoint dots.
@@ -2046,7 +3013,13 @@ function drawMapPreview(ctx: CanvasRenderingContext2D, map: MapDef, x: number, y
     else if (i === chain.length - 1) ctx.fillStyle = COL.collector;
     else ctx.fillStyle = COL.integrity;
     ctx.beginPath();
-    ctx.arc(sx(t.col), sy(t.row), i === 0 || i === chain.length - 1 ? 4 : 3, 0, Math.PI * 2);
+    ctx.arc(
+      sx(t.col),
+      sy(t.row),
+      i === 0 || i === chain.length - 1 ? 4 : 3,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
   });
   ctx.restore();
@@ -2057,12 +3030,27 @@ function drawMapPreview(ctx: CanvasRenderingContext2D, map: MapDef, x: number, y
   ctx.stroke();
 }
 
-function drawMapSelect(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+function drawMapSelect(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   void A;
   ctx.fillStyle = COL.void;
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
   text(ctx, "SELECT MAP", STAGE_W / 2, 66, 32, COL.text, "center", "700", 6);
-  text(ctx, "EVERY MAP PLAYS THE SAME CAMPAIGN — ONLY THE TOPOLOGY DIFFERS", STAGE_W / 2, 104, 12, COL.text3, "center", "500", 2);
+  text(
+    ctx,
+    "EVERY MAP PLAYS THE SAME CAMPAIGN — ONLY THE TOPOLOGY DIFFERS",
+    STAGE_W / 2,
+    104,
+    12,
+    COL.text3,
+    "center",
+    "500",
+    2,
+  );
 
   const n = MAPS.length;
   const cardW = 356;
@@ -2083,8 +3071,28 @@ function drawMapSelect(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
     ctx.stroke();
 
     drawMapPreview(ctx, map, x + 18, cardY + 18, cardW - 36, 210);
-    text(ctx, map.name, x + 20, cardY + 254, 22, on ? COL.charge : COL.text, "left", "800", 1);
-    text(ctx, map.styleLabel, x + 20, cardY + 282, 11, COL.integrity, "left", "700", 2);
+    text(
+      ctx,
+      map.name,
+      x + 20,
+      cardY + 254,
+      22,
+      on ? COL.charge : COL.text,
+      "left",
+      "800",
+      1,
+    );
+    text(
+      ctx,
+      map.styleLabel,
+      x + 20,
+      cardY + 282,
+      11,
+      COL.integrity,
+      "left",
+      "700",
+      2,
+    );
     wrap(ctx, map.blurb, x + 20, cardY + 308, cardW - 40, 12, COL.text3, 17);
 
     clicks.push({ x, y: cardY, w: cardW, h: cardH, action: `map:${map.id}` });
@@ -2093,17 +3101,62 @@ function drawMapSelect(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
   const bx = STAGE_W / 2 - 90;
   const byy = cardY + cardH + 24;
   const onBack = highlighted(game, MAPS.length, bx, byy, 180, 42);
-  button(ctx, clicks, bx, byy, 180, 42, "BACK", "menu:back", onBack ? COL.charge : COL.text, true);
-  text(ctx, "↑↓ / ← → SELECT   ENTER CONFIRM   MOUSE OK", STAGE_W / 2, STAGE_H - 22, 12, COL.text3, "center", "500", 2);
+  button(
+    ctx,
+    clicks,
+    bx,
+    byy,
+    180,
+    42,
+    "BACK",
+    "menu:back",
+    onBack ? COL.charge : COL.text,
+    true,
+  );
+  text(
+    ctx,
+    "↑↓ / ← → SELECT   ENTER CONFIRM   MOUSE OK",
+    STAGE_W / 2,
+    STAGE_H - 22,
+    12,
+    COL.text3,
+    "center",
+    "500",
+    2,
+  );
 }
 
 // ---- difficulty select --------------------------------------------------------
 
-function drawDifficultySelect(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawDifficultySelect(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   ctx.fillStyle = COL.void;
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
-  text(ctx, "SELECT DIFFICULTY", STAGE_W / 2, 66, 32, COL.text, "center", "700", 6);
-  text(ctx, "DIFFICULTY CHANGES ONLY THE WAVE COUNT AND ENEMY TOUGHNESS", STAGE_W / 2, 104, 12, COL.text3, "center", "500", 2);
+  text(
+    ctx,
+    "SELECT DIFFICULTY",
+    STAGE_W / 2,
+    66,
+    32,
+    COL.text,
+    "center",
+    "700",
+    6,
+  );
+  text(
+    ctx,
+    "DIFFICULTY CHANGES ONLY THE WAVE COUNT AND ENEMY TOUGHNESS",
+    STAGE_W / 2,
+    104,
+    12,
+    COL.text3,
+    "center",
+    "500",
+    2,
+  );
 
   const order = DIFFICULTY_ORDER;
   const cardW = 320;
@@ -2112,7 +3165,11 @@ function drawDifficultySelect(ctx: CanvasRenderingContext2D, game: Game, clicks:
   const x0 = (STAGE_W - total) / 2;
   const cardY = 170;
   const cardH = 340;
-  const accents: Record<Difficulty, string> = { easy: COL.legal, medium: COL.charge, hard: COL.alert };
+  const accents: Record<Difficulty, string> = {
+    easy: COL.legal,
+    medium: COL.charge,
+    hard: COL.alert,
+  };
 
   order.forEach((key, i) => {
     const d = DIFFICULTY[key];
@@ -2126,12 +3183,72 @@ function drawDifficultySelect(ctx: CanvasRenderingContext2D, game: Game, clicks:
     ctx.lineWidth = on ? 2.5 : 1;
     ctx.stroke();
 
-    text(ctx, d.label, x + cardW / 2, cardY + 54, 34, on ? ac : COL.text, "center", "800", 4);
-    text(ctx, `${d.waves} WAVES`, x + cardW / 2, cardY + 110, 20, COL.text, "center", "700", 2);
-    text(ctx, "ENEMY TOUGHNESS", x + cardW / 2, cardY + 156, 10, COL.text3, "center", "600", 1);
-    text(ctx, `BASE ×${d.baseMult.toFixed(2)} · RAMP +${Math.round(d.k * 100)}%/WAVE`, x + cardW / 2, cardY + 182, 13, COL.text2, "center", "600", 1);
-    text(ctx, `LATE SURGE ×${d.surchargeR.toFixed(2)}/WAVE`, x + cardW / 2, cardY + 204, 13, COL.alert, "center", "700", 1);
-    text(ctx, `BOSS WAVES ${d.milestones.join(" · ")}`, x + cardW / 2, cardY + 236, 11, COL.boss, "center", "600", 1);
+    text(
+      ctx,
+      d.label,
+      x + cardW / 2,
+      cardY + 54,
+      34,
+      on ? ac : COL.text,
+      "center",
+      "800",
+      4,
+    );
+    text(
+      ctx,
+      `${d.waves} WAVES`,
+      x + cardW / 2,
+      cardY + 110,
+      20,
+      COL.text,
+      "center",
+      "700",
+      2,
+    );
+    text(
+      ctx,
+      "ENEMY TOUGHNESS",
+      x + cardW / 2,
+      cardY + 156,
+      10,
+      COL.text3,
+      "center",
+      "600",
+      1,
+    );
+    text(
+      ctx,
+      `BASE ×${d.baseMult.toFixed(2)} · RAMP +${Math.round(d.k * 100)}%/WAVE`,
+      x + cardW / 2,
+      cardY + 182,
+      13,
+      COL.text2,
+      "center",
+      "600",
+      1,
+    );
+    text(
+      ctx,
+      `LATE SURGE ×${d.surchargeR.toFixed(2)}/WAVE`,
+      x + cardW / 2,
+      cardY + 204,
+      13,
+      COL.alert,
+      "center",
+      "700",
+      1,
+    );
+    text(
+      ctx,
+      `BOSS WAVES ${d.milestones.join(" · ")}`,
+      x + cardW / 2,
+      cardY + 236,
+      11,
+      COL.boss,
+      "center",
+      "600",
+      1,
+    );
     wrap(ctx, d.note, x + 22, cardY + 272, cardW - 44, 12, COL.text3, 17);
 
     clicks.push({ x, y: cardY, w: cardW, h: cardH, action: `diff:${key}` });
@@ -2140,26 +3257,81 @@ function drawDifficultySelect(ctx: CanvasRenderingContext2D, game: Game, clicks:
   const bx = STAGE_W / 2 - 90;
   const byy = cardY + cardH + 26;
   const onBack = highlighted(game, order.length, bx, byy, 180, 42);
-  button(ctx, clicks, bx, byy, 180, 42, "BACK", "menu:back", onBack ? COL.charge : COL.text, true);
-  text(ctx, "↑↓ / ← → SELECT   ENTER CONFIRM   MOUSE OK", STAGE_W / 2, STAGE_H - 22, 12, COL.text3, "center", "500", 2);
+  button(
+    ctx,
+    clicks,
+    bx,
+    byy,
+    180,
+    42,
+    "BACK",
+    "menu:back",
+    onBack ? COL.charge : COL.text,
+    true,
+  );
+  text(
+    ctx,
+    "↑↓ / ← → SELECT   ENTER CONFIRM   MOUSE OK",
+    STAGE_W / 2,
+    STAGE_H - 22,
+    12,
+    COL.text3,
+    "center",
+    "500",
+    2,
+  );
 }
 
 // ---- how to play --------------------------------------------------------------
 
-function drawHowto(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawHowto(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   ctx.fillStyle = COL.void;
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
   text(ctx, "HOW TO PLAY", STAGE_W / 2, 68, 30, COL.text, "center", "700", 5);
-  text(ctx, "Press scrap into towers, maze the Load, and hold the grid.", STAGE_W / 2, 104, 14, COL.text2, "center", "400", 0.5);
+  text(
+    ctx,
+    "Press scrap into towers, maze the Load, and hold the grid.",
+    STAGE_W / 2,
+    104,
+    14,
+    COL.text2,
+    "center",
+    "400",
+    0.5,
+  );
 
   // Only what you must know to play — heading, accent, body. Everything else (per-type stats,
   // refinement odds, HUD toggles) is discoverable in-game and deliberately left off this screen.
   const cards: [string, string, string][] = [
-    ["GOAL", COL.integrity, "The Load spills from the vent and crawls to the collector. Every unit that grounds out drains Grid Integrity — at 0 the grid overloads and you lose. Clear every wave with integrity to spare and you win."],
-    ["THE SCRAP-PRESS", COL.charge, "You don't buy towers — you press them. B drops a FREE blank rock; the instant it lands it rolls a random tower type and quality. Place up to 5 rocks a round."],
-    ["BUILD THE MAZE", COL.arc, "Every rock, tower, and blocker is a 2×2 WALL. The Load takes the shortest OPEN path through the numbered waypoints, so your walls send it the long way — past your guns. You can never seal a lane shut."],
-    ["KEEP & COMBINE", COL.regulator, "Each round you take ONE new tower — and that SENDS the wave: KEEP a roll, DOWNGRADE it a tier, or COMBINE rolls into a stronger tower. Anytime — even mid-wave — a plain COMBINE of your STANDING towers climbs quality and builds elite COMBINATION TOWERS, which you UPGRADE with Charge."],
-    ["THE FINALE", COL.combo, "There is no send button — committing your one tower launches the wave. Survive it and the next build phase opens. After the final wave an unkillable OVERLOAD DYNAMO walks your maze once — the damage your towers deal it is your MAZE RATING."],
+    [
+      "GOAL",
+      COL.integrity,
+      "The Load spills from the vent and crawls to the collector. Every unit that grounds out drains Grid Integrity — at 0 the grid overloads and you lose. Clear every wave with integrity to spare and you win.",
+    ],
+    [
+      "THE SCRAP-PRESS",
+      COL.charge,
+      "You don't buy towers — you press them. B drops a FREE blank rock; the instant it lands it rolls a random tower type and quality. Place up to 5 rocks a round.",
+    ],
+    [
+      "BUILD THE MAZE",
+      COL.arc,
+      "Every rock, tower, and blocker is a 2×2 WALL. The Load takes the shortest OPEN path through the numbered waypoints, so your walls send it the long way — past your guns. You can never seal a lane shut.",
+    ],
+    [
+      "KEEP & COMBINE",
+      COL.regulator,
+      "Each round you take ONE new tower — and that SENDS the wave: KEEP a roll, DOWNGRADE it a tier, or COMBINE rolls into a stronger tower. Anytime — even mid-wave — a plain COMBINE of your STANDING towers climbs quality and builds elite COMBINATION TOWERS, which you UPGRADE with Charge.",
+    ],
+    [
+      "THE FINALE",
+      COL.combo,
+      "There is no send button — committing your one tower launches the wave. Survive it and the next build phase opens. After the final wave an unkillable OVERLOAD DYNAMO walks your maze once — the damage your towers deal it is your MAZE RATING.",
+    ],
   ];
 
   const colX = [150, 682];
@@ -2199,54 +3371,191 @@ function drawHowto(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[
 
   const bx = STAGE_W / 2 - 90;
   const onBack = highlighted(game, 0, bx, STAGE_H - 52, 180, 38);
-  button(ctx, clicks, bx, STAGE_H - 52, 180, 38, "BACK", "menu:back", onBack ? COL.charge : COL.text, true);
+  button(
+    ctx,
+    clicks,
+    bx,
+    STAGE_H - 52,
+    180,
+    38,
+    "BACK",
+    "menu:back",
+    onBack ? COL.charge : COL.text,
+    true,
+  );
 }
 
 // ---- overlays -----------------------------------------------------------------
 
-function drawPauseMenu(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawPauseMenu(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   dim(ctx);
   panelBox(ctx, 440, 200, 400, 320);
   text(ctx, "PAUSED", STAGE_W / 2, 252, 30, COL.text, "center", "700", 4);
-  menuButtons(ctx, game, menuItems("paused", game), 320, 56, 260, clicks);
+  menuButtons(ctx, game, menuItems("paused"), 320, 56, 260, clicks);
 }
 
-function drawEnd(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[], won: boolean): void {
+function drawEnd(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+  won: boolean,
+): void {
   dim(ctx);
   panelBox(ctx, 400, 170, 480, 380);
-  text(ctx, won ? "CONTAINMENT HELD" : "GRID OVERLOAD", STAGE_W / 2, 222, 14, won ? COL.integrity : COL.alert, "center", "700", 3);
-  text(ctx, won ? "VICTORY" : "OVERLOAD", STAGE_W / 2, 272, 42, won ? COL.charge : COL.alert, "center", "800", 4);
+  text(
+    ctx,
+    won ? "CONTAINMENT HELD" : "GRID OVERLOAD",
+    STAGE_W / 2,
+    222,
+    14,
+    won ? COL.integrity : COL.alert,
+    "center",
+    "700",
+    3,
+  );
+  text(
+    ctx,
+    won ? "VICTORY" : "OVERLOAD",
+    STAGE_W / 2,
+    272,
+    42,
+    won ? COL.charge : COL.alert,
+    "center",
+    "800",
+    4,
+  );
   if (won) {
     // The run's one end-of-run number is the MAZE RATING: total damage the maze dealt to the
     // post-final invincible Overload Dynamo (specs/gameplay.md). Integrity is shown but is not scored.
-    text(ctx, `ALL ${game.diff.waves} WAVES SURVIVED`, STAGE_W / 2, 322, 16, COL.text, "center", "600", 2);
-    text(ctx, "MAZE RATING", STAGE_W / 2, 352, 12, COL.text3, "center", "700", 2);
-    text(ctx, `${Math.round(game.mazeRating).toLocaleString()}`, STAGE_W / 2, 380, 30, COL.charge, "center", "800", 1);
-    text(ctx, `GRID INTEGRITY ${Math.max(0, Math.floor(game.integrity))} LEFT`, STAGE_W / 2, 410, 13, COL.integrity, "center", "500", 1);
+    text(
+      ctx,
+      `ALL ${game.diff.waves} WAVES SURVIVED`,
+      STAGE_W / 2,
+      322,
+      16,
+      COL.text,
+      "center",
+      "600",
+      2,
+    );
+    text(
+      ctx,
+      "MAZE RATING",
+      STAGE_W / 2,
+      352,
+      12,
+      COL.text3,
+      "center",
+      "700",
+      2,
+    );
+    text(
+      ctx,
+      `${Math.round(game.mazeRating).toLocaleString()}`,
+      STAGE_W / 2,
+      380,
+      30,
+      COL.charge,
+      "center",
+      "800",
+      1,
+    );
+    text(
+      ctx,
+      `GRID INTEGRITY ${Math.max(0, Math.floor(game.integrity))} LEFT`,
+      STAGE_W / 2,
+      410,
+      13,
+      COL.integrity,
+      "center",
+      "500",
+      1,
+    );
   } else {
     // Overload: no Maze Rating (the finale is never reached). Show how far the run got.
-    text(ctx, `REACHED WAVE ${game.wave} / ${game.diff.waves}`, STAGE_W / 2, 352, 20, COL.text, "center", "600", 2);
-    text(ctx, "THE GRID OVERLOADED — NO MAZE RATING", STAGE_W / 2, 392, 12, COL.text3, "center", "500", 1);
+    text(
+      ctx,
+      `REACHED WAVE ${game.wave} / ${game.diff.waves}`,
+      STAGE_W / 2,
+      352,
+      20,
+      COL.text,
+      "center",
+      "600",
+      2,
+    );
+    text(
+      ctx,
+      "THE GRID OVERLOADED — NO MAZE RATING",
+      STAGE_W / 2,
+      392,
+      12,
+      COL.text3,
+      "center",
+      "500",
+      1,
+    );
   }
 
-  const items = menuItems(won ? "victory" : "overload", game);
+  const items = menuItems(won ? "victory" : "overload");
   const xs = [STAGE_W / 2 - 170, STAGE_W / 2 + 10];
   items.forEach((it, i) => {
     const on = highlighted(game, i, xs[i]!, 452, 160, 46);
-    button(ctx, clicks, xs[i]!, 452, 160, 46, it.label, it.action, on ? COL.charge : COL.text, true);
+    button(
+      ctx,
+      clicks,
+      xs[i]!,
+      452,
+      160,
+      46,
+      it.label,
+      it.action,
+      on ? COL.charge : COL.text,
+      true,
+    );
   });
 }
 
-function menuButtons(ctx: CanvasRenderingContext2D, game: Game, items: MenuItem[], y0: number, gap: number, w: number, clicks: Clickable[]): void {
+function menuButtons(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  items: MenuItem[],
+  y0: number,
+  gap: number,
+  w: number,
+  clicks: Clickable[],
+): void {
   const x = STAGE_W / 2 - w / 2;
   items.forEach((it, i) => {
     const y = y0 + i * gap;
     const on = highlighted(game, i, x, y, w, 44);
-    button(ctx, clicks, x, y, w, 44, it.label, it.action, on ? COL.charge : COL.text, true);
+    button(
+      ctx,
+      clicks,
+      x,
+      y,
+      w,
+      44,
+      it.label,
+      it.action,
+      on ? COL.charge : COL.text,
+      true,
+    );
   });
 }
 
-function highlighted(game: Game, i: number, x: number, y: number, w: number, h: number): boolean {
+function highlighted(
+  game: Game,
+  i: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
   return menuIndex === i || inRect(game.pointerX, game.pointerY, x, y, w, h);
 }
 
@@ -2255,7 +3564,13 @@ function dim(ctx: CanvasRenderingContext2D): void {
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
 }
 
-function panelBox(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+function panelBox(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,0.5)";
   ctx.shadowBlur = 30;

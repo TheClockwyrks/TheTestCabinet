@@ -4,27 +4,32 @@
 // layer's pointer + keyboard navigation drive the same list. The Salvage start opens the
 // MAP SELECT and then the DIFFICULTY SELECT before play (specs/ui.md, specs/modes.md).
 
-import { DIFFICULTY_ORDER, DIFFICULTY, MAPS } from "./constants";
+import { DIFFICULTY_ORDER, DIFFICULTY, MAPS, TITLE_ITEMS } from "./constants";
 import type { GameState } from "./types";
-import type { Game } from "./sim";
 
 export interface MenuItem {
   label: string;
   action: string;
 }
 
-export function menuItems(state: GameState, game: Game): MenuItem[] {
+export function menuItems(state: GameState): MenuItem[] {
   switch (state) {
     case "title":
       return [
-        { label: game.campaign.menuLabel, action: "menu:play" },
-        { label: "HOW TO PLAY", action: "menu:howto" },
+        { label: TITLE_ITEMS[0]!, action: "menu:play" },
+        { label: TITLE_ITEMS[1]!, action: "menu:howto" },
       ];
     case "mapselect":
-      return [...MAPS.map((m) => ({ label: m.name, action: `map:${m.id}` })), { label: "BACK", action: "menu:back" }];
+      return [
+        ...MAPS.map((m) => ({ label: m.name, action: `map:${m.id}` })),
+        { label: "BACK", action: "menu:back" },
+      ];
     case "difficultyselect":
       return [
-        ...DIFFICULTY_ORDER.map((d) => ({ label: DIFFICULTY[d].label, action: `diff:${d}` })),
+        ...DIFFICULTY_ORDER.map((d) => ({
+          label: DIFFICULTY[d].label,
+          action: `diff:${d}`,
+        })),
         { label: "BACK", action: "menu:back" },
       ];
     case "howto":
@@ -38,7 +43,10 @@ export function menuItems(state: GameState, game: Game): MenuItem[] {
     case "victory":
     case "overload":
       return [
-        { label: state === "victory" ? "PLAY AGAIN" : "TRY AGAIN", action: "menu:again" },
+        {
+          label: state === "victory" ? "PLAY AGAIN" : "TRY AGAIN",
+          action: "menu:again",
+        },
         { label: "MENU", action: "menu:menu" },
       ];
     default:

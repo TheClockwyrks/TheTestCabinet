@@ -11,18 +11,10 @@
     {
       "name": "frost",
       "shape": "disc",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 26.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -33,11 +25,7 @@
       "lifetimeSpread": 90.0,
       "speed": 6.0,
       "speedSpread": 4.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 5,
       "forces": {
@@ -71,18 +59,10 @@
     {
       "name": "snap",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -93,11 +73,7 @@
       "lifetimeSpread": 50.0,
       "speed": 20.0,
       "speedSpread": 10.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 14,
       "forces": {
@@ -129,18 +105,10 @@
     {
       "name": "motes",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -151,11 +119,7 @@
       "lifetimeSpread": 160.0,
       "speed": 34.0,
       "speedSpread": 20.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 21,
       "forces": {

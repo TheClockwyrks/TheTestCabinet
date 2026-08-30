@@ -11,18 +11,10 @@
     {
       "name": "ring",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -33,11 +25,7 @@
       "lifetimeSpread": 40.0,
       "speed": 95.0,
       "speedSpread": 10.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 6,
       "forces": {
@@ -71,18 +59,10 @@
     {
       "name": "glow",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -93,11 +73,7 @@
       "lifetimeSpread": 120.0,
       "speed": 14.0,
       "speedSpread": 8.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 15,
       "forces": {
@@ -129,18 +105,10 @@
     {
       "name": "motes",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -151,11 +119,7 @@
       "lifetimeSpread": 200.0,
       "speed": 42.0,
       "speedSpread": 22.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 24,
       "forces": {

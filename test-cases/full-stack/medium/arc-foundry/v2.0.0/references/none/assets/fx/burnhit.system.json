@@ -11,18 +11,10 @@
     {
       "name": "flare",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -33,11 +25,7 @@
       "lifetimeSpread": 45.0,
       "speed": 22.0,
       "speedSpread": 12.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 8,
       "forces": {
@@ -69,18 +57,10 @@
     {
       "name": "embers",
       "shape": "point",
-      "position": [
-        64.0,
-        60.0,
-        0.0
-      ],
+      "position": [64.0, 60.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -91,11 +71,7 @@
       "lifetimeSpread": 180.0,
       "speed": 60.0,
       "speedSpread": 30.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 48.0,
       "seed": 16,
       "forces": {
@@ -133,18 +109,10 @@
     {
       "name": "flicker",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -155,11 +123,7 @@
       "lifetimeSpread": 150.0,
       "speed": 30.0,
       "speedSpread": 16.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 29,
       "forces": {

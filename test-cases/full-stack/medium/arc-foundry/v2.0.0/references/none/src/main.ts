@@ -1,14 +1,25 @@
-// Arc Foundry — bootstrap and the fixed-timestep loop (specs/controls.md, specs/overview.md).
+// Arc Foundry — the runtime layer the game stands on (specs/overview.md, specs/controls.md).
 //
-// Loads the produced assets, fits the fixed 1280×720 stage into the window (letterboxed,
-// centered, crisp at any pixel density and on load before any input), wires input, and
-// runs the loop: the simulation advances in fixed FIXED_STEP ticks (scaled by the 1×/2×
-// speed control, frozen while paused) decoupled from rendering, which interpolates and
-// draws every frame. This is the wiring layer; the simulation (sim.ts) and renderer
-// (render.ts) are the stubs the core / presentation implementers fill in.
+// This game stands on no engine, so everything under the game is written here: the frame
+// loop and the delta time it measures, fitting the fixed 1280 x 720 logical stage onto the
+// canvas, pointer and keyboard input, audio, loading the produced assets, the diagnostics
+// overlay, and the clock the debug surface takes off real time.
+//
+// One frame is one update followed by one render. `runFrame` is that frame, and it is the
+// SINGLE path both the animation loop and the debug surface's `advance` run, so a driven
+// scenario and a played one advance the game through exactly the same code.
 
-import { DIFFICULTY, FIXED_STEP, PANEL_X, STAGE_H, STAGE_W, STATUS_H, mapById } from "./constants";
-import { CAMPAIGN } from "./mode";
+import {
+  ACTION_BY_CODE,
+  BOARD_Y0,
+  DIFFICULTY,
+  FIXED_STEP,
+  OVERLAY_KEY,
+  PANEL_X,
+  STAGE_H,
+  STAGE_W,
+  mapById,
+} from "./constants";
 import { loadAssets } from "./assets";
 import { Audio } from "./audio";
 import { Bursts } from "./particles";
@@ -16,362 +27,481 @@ import { installDebugApi, drawDebugOverlay } from "./debug";
 import { Game } from "./sim";
 import { Input } from "./input";
 import { menuItems, isMenuState, debugMenuAction } from "./menus";
-import { render, setMenuIndex, setMuted, setOverlays, setRenderTime } from "./render";
-import type { Clickable, ComboType, Difficulty, MapDef } from "./types";
+import {
+  render,
+  setMenuIndex,
+  setMuted,
+  setOverlays,
+  setRenderTime,
+} from "./render";
+import type { Action } from "./constants";
+import type { Clickable, ComboType, Difficulty } from "./types";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
 if (!ctx) throw new Error("Arc Foundry: 2D canvas context unavailable");
 
-function resize(): void {
-  const dpr = window.devicePixelRatio || 1;
-  const scale = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
-  const cssW = Math.max(1, Math.round(STAGE_W * scale));
-  const cssH = Math.max(1, Math.round(STAGE_H * scale));
-  canvas.style.width = `${cssW}px`;
-  canvas.style.height = `${cssH}px`;
-  canvas.width = Math.round(cssW * dpr);
-  canvas.height = Math.round(cssH * dpr);
-}
-window.addEventListener("resize", resize);
-resize();
+// The most simulation steps one frame may drain, so a tab returning from the background
+// catches up without locking the page.
+const MAX_STEPS_PER_FRAME = 600;
+
+// The longest real frame the loop will believe. A longer gap is a stall, not elapsed play.
+const MAX_FRAME_SECONDS = 0.25;
 
 async function main(): Promise<void> {
   const assets = await loadAssets();
   const audio = new Audio(assets.audioUrl);
   const bursts = new Bursts(assets.fx);
-  const game = new Game(CAMPAIGN);
-  const input = new Input();
-  input.attach(canvas);
+  const game = new Game();
 
-  let menuIndex = 0;
   let clickables: Clickable[] = [];
-  let gestured = false;
   let elapsed = 0;
-  // View-only HUD overlays toggled from the top bar / keyboard (specs/controls.md): the COMBOS
-  // recipe book and the live tower DAMAGE BOARD. Kept here (not in the sim) — they never touch
-  // the deterministic game state.
-  let showCombos = false;
-  let showBoard = false;
-  // The read-only debug overlay (specs/instrumentation.md), toggled with the backtick key.
-  // Off by default; a diagnostic layer that never touches gameplay.
-  let showDebug = false;
-  // The Salvage flow picks a map, THEN a difficulty, before a run starts (specs/modes.md).
-  let pendingMap: MapDef | null = null;
+  let acc = 0;
+  // The diagnostics overlay, off until the backtick key toggles it.
+  let showDiagnostics = false;
+  // The keys currently down, so a LEVEL-read action such as `modify` can be read at the
+  // moment it matters rather than sampled once a frame (specs/controls.md).
+  const heldKeys = new Set<string>();
 
-  // The MANUAL CLOCK (specs/instrumentation.md). autoStep is on by default for normal play:
-  // the animation-frame loop advances the tick from the wall clock. The debug API turns it off
-  // (reset / step) to drive the sim by exact steps, and back on (setAutoStep) for a live clip.
-  // Held in a small object so the debug surface can read and write it by reference.
+  // The manual clock (specs/instrumentation.md). `autoStep` is on for normal play: the
+  // animation loop advances the game from the wall clock. The debug surface turns it off to
+  // drive the game by exact spans of elapsed time, and back on for a live clip.
   const clock = { autoStep: true };
 
-  // A fresh 32-bit seed for the scrap-press, so each interactive run rolls a DIFFERENT
-  // component sequence (specs/build.md). Headless / dev drivers keep the fixed default.
-  const randomSeed = (): number => Math.floor(Math.random() * 0x100000000) >>> 0;
+  // A fresh 32-bit seed per interactive run, so no two playthroughs draw the same component
+  // sequence. A run entered through the debug surface keeps the seed `reset` set, so a
+  // driven scenario stays reproducible.
+  const randomSeed = (): number =>
+    Math.floor(Math.random() * 0x100000000) >>> 0;
 
   const gesture = (): void => {
-    if (!gestured) gestured = true;
     void audio.resume();
   };
 
+  // ---- The letterbox fit (specs/overview.md) ----------------------------------
+  // The canvas fills the window; the stage is fitted inside it at a uniform scale, centered,
+  // with the letterbox bars carrying the stage's own background colour. The device pixel
+  // ratio is taken up by the backing store so the drawing stays crisp at any density.
+  function fit(): { scale: number; offX: number; offY: number } {
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = Math.max(1, canvas.clientWidth || window.innerWidth);
+    const cssH = Math.max(1, canvas.clientHeight || window.innerHeight);
+    const w = Math.round(cssW * dpr);
+    const h = Math.round(cssH * dpr);
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    const scale = Math.min(cssW / STAGE_W, cssH / STAGE_H);
+    return {
+      scale,
+      offX: (cssW - STAGE_W * scale) / 2,
+      offY: (cssH - STAGE_H * scale) / 2,
+    };
+  }
+
+  // ---- Menu and control activation --------------------------------------------
+
   function activate(action: string, payload?: string): void {
     if (action.startsWith("map:")) {
-      // A map-select choice — remember it and advance to the difficulty select.
-      pendingMap = mapById(action.slice(4));
-      game.state = "difficultyselect";
-      menuIndex = 0;
+      game.setMap(mapById(action.slice(4)));
+      game.setScreen("difficultyselect");
       return;
     }
     if (action.startsWith("diff:")) {
-      // A difficulty choice — start the campaign on the chosen map + difficulty.
-      const d = action.slice(5) as Difficulty;
-      game.startOn(pendingMap ?? game.map, DIFFICULTY[d]);
-      game.reseedPress(randomSeed()); // fresh press roll sequence for this run
-      menuIndex = 0;
+      game.setDifficulty(DIFFICULTY[action.slice(5) as Difficulty]);
+      game.startRun();
+      game.reseedPress(randomSeed());
       return;
     }
     switch (action) {
       case "menu:play":
-        game.state = "mapselect";
-        menuIndex = 0;
+        game.setScreen("mapselect");
         break;
       case "menu:restart":
       case "menu:again":
-        // Replay the same campaign on the same chosen map + difficulty (specs/gameplay.md).
-        game.startOn(game.map, game.diff);
-        game.reseedPress(randomSeed()); // a fresh roll sequence on the replay too
-        menuIndex = 0;
+        game.startRun();
+        game.reseedPress(randomSeed());
         break;
       case "menu:howto":
-        game.state = "howto";
-        menuIndex = 0;
+        game.setScreen("howto");
         break;
       case "menu:back":
-        // Back out one screen: difficulty → map, otherwise → title.
-        game.state = game.state === "difficultyselect" ? "mapselect" : "title";
-        menuIndex = 0;
+        game.setScreen(
+          game.state === "difficultyselect" ? "mapselect" : "title",
+        );
         break;
       case "menu:quit":
       case "menu:menu":
-        game.state = "title";
-        menuIndex = 0;
+        game.setScreen("title");
         break;
       case "menu:resume":
-        game.state = "playing";
-        game.paused = false; // Resume fully un-freezes (clears any interactive pause too)
+        game.setScreen("playing");
+        game.setPaused(false); // resuming from the menu clears any in-place pause too
         break;
       case "stamp":
-        // Pull the scrap-press (specs/build.md) — arms a blank rock; it rolls on placement.
         game.pullPress();
         break;
       case "keep":
-        // KEEP the selected candidate — the level's harvest, which immediately LAUNCHES the wave
-        // (there is no SEND; every level must harvest to advance — specs/build.md, specs/gameplay.md).
         game.keepSelected();
         break;
       case "combine":
-        // Combine the current selection NOW (quality pair or recipe; explicit multi-select or
-        // auto-resolved) — immediate, build phase OR live wave (specs/build.md, specs/controls.md).
         game.combineSelected();
         break;
       case "comborecipe":
-        // Assemble the selected structure into the chosen COMBINATION TOWER, now (specs/build.md).
         if (payload) game.combineRecipeSelected(payload as ComboType);
         break;
       case "upgrade":
         game.upgradeQuality();
         break;
       case "comboupgrade":
-        // Spend Charge to raise the selected combination tower's upgrade level (specs/towers.md).
         game.upgradeComboSelected();
         break;
       case "downgrade":
-        // KEEP the selected CANDIDATE one quality tier lower (build phase, free) — the harvest, so
-        // it launches the wave; fold the lowered tower into a recipe mid-wave (specs/build.md).
         game.downgradeSelected();
         break;
       case "targeting":
         game.cycleTargetingSelected();
         break;
       case "remove":
-        // Dismantle the selected structure (build phase only) — a misplacement correction.
         game.removeSelected();
         break;
       case "speed":
         game.cycleSpeed();
         break;
       case "pause":
-        // The status-bar control pauses / resumes IN PLACE (no menu) — specs/controls.md.
         game.togglePause();
         break;
       case "mute":
         audio.toggleMute();
+        game.muted = audio.muted;
         break;
-      case "toggleCombos":
-        showCombos = !showCombos;
+      case "combos":
+        game.setOverlay("combos", !game.uiCombos);
         break;
-      case "toggleLeaderboard":
-        showBoard = !showBoard;
+      case "damage":
+        game.setOverlay("damage", !game.uiBoard);
         break;
       case "noop":
-        // A click swallowed by an open overlay's backdrop — intentionally does nothing.
+        // A press swallowed by an open overlay's backdrop — deliberately does nothing.
         break;
     }
   }
 
-  // Open the Esc overlay menu, which also freezes the board (specs/ui.md).
-  function openPauseMenu(): void {
-    if (game.state !== "playing") return;
-    game.state = "paused";
-    menuIndex = 0;
+  // ---- The pointer (specs/controls.md) -----------------------------------------
+
+  function onPointerMove(x: number, y: number): void {
+    game.pointerX = x;
+    game.pointerY = y;
+    syncMenuIndexToPointer();
   }
 
-  function routeClick(x: number, y: number, shift: boolean): void {
-    // Topmost clickable first (later-pushed regions draw on top).
+  function onPointerDown(x: number, y: number): void {
+    gesture();
+    game.pointerX = x;
+    game.pointerY = y;
+    // The topmost control first: later-pushed regions draw on top, so they are pressed first.
     for (let i = clickables.length - 1; i >= 0; i--) {
       const c = clickables[i]!;
       if (c.disabled) continue;
-      // Outside play, only navigation clicks fire (menu items and map/difficulty cards).
-      if (game.state !== "playing" && !c.action.startsWith("menu:") && !c.action.startsWith("map:") && !c.action.startsWith("diff:")) continue;
+      // Off the yard only navigation presses fire: a menu screen draws no game controls.
+      if (
+        game.state !== "playing" &&
+        !c.action.startsWith("menu:") &&
+        !c.action.startsWith("map:") &&
+        !c.action.startsWith("diff:")
+      ) {
+        continue;
+      }
       if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) {
         activate(c.action, c.payload);
         return;
       }
     }
-    // Board hit-test while playing: drop the held rock at the snapped 2×2 anchor (the roll
-    // happens on the drop, and the press re-arms for continuous placement), or select /
-    // deselect the structure under the pointer — SHIFT-click adds to the multi-select combine
-    // set (specs/board.md, specs/controls.md, specs/build.md).
-    if (game.state === "playing" && x < PANEL_X && y > STATUS_H) {
+    if (game.state === "playing" && x < PANEL_X && y > BOARD_Y0) {
       if (game.holding) {
         const a = game.board.pixelToAnchor(x, y);
         game.placeStamp(a.col, a.row);
       } else {
-        game.selectAt(x, y, shift);
+        game.selectAt(x, y, isActionHeld("modify"));
       }
     }
   }
 
-  function routeKey(k: string): void {
-    const lower = k.toLowerCase();
-    if (lower === "m") {
-      audio.toggleMute();
+  function onPointerUp(): void {
+    // Every control commits on its press (specs/controls.md), so a release commits nothing.
+  }
+
+  // ---- The keyboard (specs/controls.md) ----------------------------------------
+
+  function isActionHeld(action: Action): boolean {
+    for (const code of heldKeys)
+      if (ACTION_BY_CODE.get(code) === action) return true;
+    return false;
+  }
+
+  // `back` resolves against the first of these that applies: a held rock is put away, the
+  // selection is cleared, an open overlay is closed, on `playing` the pause menu opens, on
+  // `paused` it closes, and on any other screen the game returns to the previous screen.
+  function back(): void {
+    if (game.state === "playing") {
+      if (game.holding) {
+        game.cancelHeld();
+        return;
+      }
+      if (game.selectedId !== null) {
+        game.select(null);
+        return;
+      }
+      if (game.uiCombos) {
+        game.setOverlay("combos", false);
+        return;
+      }
+      if (game.uiBoard) {
+        game.setOverlay("damage", false);
+        return;
+      }
+      game.setScreen("paused");
+      return;
+    }
+    if (game.state === "paused") {
+      activate("menu:resume");
+      return;
+    }
+    if (
+      game.state === "howto" ||
+      game.state === "mapselect" ||
+      game.state === "difficultyselect"
+    ) {
+      activate("menu:back");
+      return;
+    }
+    if (game.state === "victory" || game.state === "overload")
+      activate("menu:menu");
+  }
+
+  function onKeyDown(code: string): void {
+    gesture();
+    heldKeys.add(code);
+    // The diagnostics overlay is the runtime layer's, not a game control, so it toggles in
+    // any state and bypasses the game's routing (specs/instrumentation.md).
+    if (code === OVERLAY_KEY) {
+      showDiagnostics = !showDiagnostics;
+      return;
+    }
+    const action = ACTION_BY_CODE.get(code);
+    if (!action) return;
+    // `modify` is read as a level rather than a press edge: it stands for no control of its
+    // own and only modifies the act it is held across.
+    if (action === "modify") return;
+    // Muting is bound to the runtime layer's own mute bit, so it toggles from any screen.
+    if (action === "mute") {
+      activate("mute");
+      return;
+    }
+    if (action === "back") {
+      back();
       return;
     }
     if (game.state === "playing") {
-      if (k === " ") {
-        // There is no SEND — a wave launches when you commit the level's harvest (K / C), not on
-        // Space (specs/build.md, specs/gameplay.md). Space only toggles the interactive (in-place)
-        // pause while a wave is live; in the build phase it does nothing.
-        if (game.phase === "wave") game.togglePause();
-        return;
-      }
-      if (lower === "b") {
-        game.pullPress();
-        return;
-      }
-      if (lower === "k") {
-        // KEEP the selected candidate — the harvest, which LAUNCHES the wave (specs/build.md).
-        game.keepSelected();
-        return;
-      }
-      if (lower === "c") {
-        // Combine the current selection now — quality pair or recipe, explicit or auto-resolved
-        // (specs/controls.md). Works in the build phase AND during a live wave.
-        game.combineSelected();
-        return;
-      }
-      if (lower === "g") {
-        // KEEP the selected CANDIDATE one quality tier lower (build phase, free) — the harvest, so
-        // it sends the wave; fold the lowered tower into a recipe mid-wave (specs/build.md).
-        game.downgradeSelected();
-        return;
-      }
-      if (lower === "u") {
-        // Contextual UPGRADE: a selected combination tower upgrades ITSELF (spends Charge to
-        // raise its level); otherwise UPGRADE QUALITY refines the press (specs/build.md,
-        // specs/towers.md).
-        const sel = game.selected();
-        if (sel && sel.kind === "component" && sel.combo) game.upgradeComboSelected();
-        else game.upgradeQuality();
-        return;
-      }
-      if (lower === "t") {
-        game.cycleTargetingSelected();
-        return;
-      }
-      if (lower === "x" || k === "Delete" || k === "Backspace") {
-        // Dismantle the selected structure (build phase only), for a misplacement.
-        game.removeSelected();
-        return;
-      }
-      if (lower === "f") {
-        game.cycleSpeed();
-        return;
-      }
-      if (lower === "v") {
-        // Toggle the COMBINATIONS recipe book overlay (specs/controls.md).
-        showCombos = !showCombos;
-        return;
-      }
-      if (lower === "l") {
-        // Toggle the live tower DAMAGE BOARD overlay (specs/controls.md).
-        showBoard = !showBoard;
-        return;
-      }
-      if (k === "Escape") {
-        // Esc first cancels a held rock / selection; otherwise it opens the pause MENU.
-        if (game.holding) game.cancelHeld();
-        else if (game.selectedId != null) game.select(null);
-        else openPauseMenu();
+      switch (action) {
+        case "stamp":
+          activate("stamp");
+          break;
+        case "keep":
+          activate("keep");
+          break;
+        case "downgrade":
+          activate("downgrade");
+          break;
+        case "combine":
+          activate("combine");
+          break;
+        case "upgrade": {
+          // Contextual: a selected combination tower upgrades itself; otherwise the press
+          // is refined (specs/controls.md).
+          const sel = game.selected();
+          if (sel && sel.kind === "component" && sel.combo)
+            activate("comboupgrade");
+          else activate("upgrade");
+          break;
+        }
+        case "targeting":
+          activate("targeting");
+          break;
+        case "dismantle":
+          activate("remove");
+          break;
+        case "speed":
+          activate("speed");
+          break;
+        case "pause":
+          activate("pause");
+          break;
+        case "combos":
+          activate("combos");
+          break;
+        case "damage":
+          activate("damage");
+          break;
       }
       return;
     }
-    // Menu states. Up/Left (or W/A) and Down/Right (or S/D) move the selection — the
-    // map / difficulty cards lay out horizontally, so left/right feel natural there too.
-    const items = menuItems(game.state, game);
-    if (k === "ArrowUp" || k === "ArrowLeft" || lower === "w" || lower === "a") menuIndex = (menuIndex - 1 + items.length) % items.length;
-    else if (k === "ArrowDown" || k === "ArrowRight" || lower === "s" || lower === "d") menuIndex = (menuIndex + 1) % items.length;
-    else if (k === "Enter" || k === " ") {
-      if (items[menuIndex]) activate(items[menuIndex]!.action);
-    } else if (k === "Escape") {
-      if (game.state === "howto" || game.state === "mapselect") activate("menu:back");
-      else if (game.state === "difficultyselect") activate("menu:back");
-      else if (game.state === "paused") activate("menu:resume");
-      else if (game.state === "victory" || game.state === "overload") activate("menu:menu");
+    if (!isMenuState(game.state)) return;
+    const items = menuItems(game.state);
+    if (items.length === 0) return;
+    if (action === "up")
+      game.setMenuIndex((game.menuIndex - 1 + items.length) % items.length);
+    else if (action === "down")
+      game.setMenuIndex((game.menuIndex + 1) % items.length);
+    else if (action === "confirm") {
+      const item = items[game.menuIndex];
+      if (item) activate(item.action);
     }
   }
 
+  function onKeyUp(code: string): void {
+    heldKeys.delete(code);
+  }
+
   function syncMenuIndexToPointer(): void {
-    if (game.state === "playing") return;
-    const items = menuItems(game.state, game);
+    if (!isMenuState(game.state)) return;
+    const items = menuItems(game.state);
     for (let idx = 0; idx < items.length; idx++) {
       const c = clickables.find((cl) => cl.action === items[idx]!.action);
-      if (c && game.pointerX >= c.x && game.pointerX <= c.x + c.w && game.pointerY >= c.y && game.pointerY <= c.y + c.h) {
-        menuIndex = idx;
+      if (
+        c &&
+        game.pointerX >= c.x &&
+        game.pointerX <= c.x + c.w &&
+        game.pointerY >= c.y &&
+        game.pointerY <= c.y + c.h
+      ) {
+        game.setMenuIndex(idx);
         return;
       }
     }
   }
 
-  function handleInput(): void {
-    if (input.clicks.length || input.keys.length || input.rightClicks) gesture();
-    for (const c of input.clicks) routeClick(c.x, c.y, c.shift);
-    if (input.rightClicks > 0 && game.holding) game.cancelHeld();
-    for (const k of input.keys) {
-      // The backtick toggles the read-only debug overlay in ANY state (specs/instrumentation.md);
-      // it is a diagnostic layer, not a game control, so it bypasses the gameplay routing.
-      if (k === "`") {
-        showDebug = !showDebug;
-        continue;
+  const input = new Input({
+    pointerMove: onPointerMove,
+    pointerDown: onPointerDown,
+    pointerUp: onPointerUp,
+    keyDown: onKeyDown,
+    keyUp: onKeyUp,
+  });
+  input.attach(canvas);
+
+  // ---- One frame: an update, then a render -------------------------------------
+
+  // The update. Every rate the game states is per second and integrated against the elapsed
+  // time handed in here, and the speed multiplier scales what that span covers exactly as
+  // specs/controls.md states. The span is drained in whole fixed steps so an interval of
+  // simulation time reaches the same state however it was divided into frames.
+  function update(seconds: number): void {
+    if (game.state === "playing" && !game.paused) {
+      acc += seconds * game.speed;
+      let steps = 0;
+      while (acc >= FIXED_STEP && steps < MAX_STEPS_PER_FRAME) {
+        game.syncView();
+        game.fixedStep(FIXED_STEP);
+        acc -= FIXED_STEP;
+        steps++;
       }
-      routeKey(k);
+    } else {
+      // Frozen — by the in-place pause, the pause menu, or a screen off the yard. Drop the
+      // accumulator so no burst of steps fires on resume.
+      acc = 0;
     }
-    input.drain();
-    // Mirror the view-only flags onto the game so snapshot() / the debug overlay report them
-    // (specs/instrumentation.md). These never feed back into the simulation.
-    game.muted = audio.muted;
-    game.uiCombos = showCombos;
-    game.uiBoard = showBoard;
+    game.renderAlpha =
+      game.state === "playing" && !game.paused ? acc / FIXED_STEP : 0;
+
+    for (const cue of game.sndQueue) audio.play(cue);
+    game.sndQueue.length = 0;
+    for (const fx of game.fxQueue) bursts.spawn(fx);
+    game.fxQueue.length = 0;
+    bursts.update(seconds);
+    elapsed += seconds;
   }
 
-  // Install the debugging and automation API on window.__foundry (specs/instrumentation.md).
-  // It routes through the very systems normal play uses: the real game, the manual clock, the
-  // input handlers above, and the run/pointer helpers. Inert until something calls it.
+  // The render. It reads the game and draws it; it never changes it.
+  function draw(): void {
+    const { scale, offX, offY } = fit();
+    const dpr = window.devicePixelRatio || 1;
+    input.setViewport(scale * dpr, offX * dpr, offY * dpr);
+
+    setRenderTime(elapsed);
+    setMuted(game.muted);
+    setMenuIndex(game.menuIndex);
+    setOverlays(game.uiCombos, game.uiBoard);
+
+    // The letterbox bars carry the stage's background colour (specs/overview.md).
+    ctx!.setTransform(1, 0, 0, 1, 0, 0);
+    ctx!.fillStyle = "#05080c";
+    ctx!.fillRect(0, 0, canvas.width, canvas.height);
+    ctx!.setTransform(scale * dpr, 0, 0, scale * dpr, offX * dpr, offY * dpr);
+    clickables = render(ctx!, game, assets, bursts);
+    if (showDiagnostics) drawDebugOverlay(ctx!, game);
+  }
+
+  function runFrame(seconds: number): void {
+    update(seconds);
+    draw();
+  }
+
+  // ---- The debug and automation surface (specs/instrumentation.md) --------------
+  // It routes through the very code normal play uses: the same frame, the same input path,
+  // and the same control geometry the last rendered frame produced.
   installDebugApi({
     game,
     clock,
-    processInput: handleInput,
-    routeClickAt: (x, y, shift) => routeClick(x, y, shift),
-    cancelHeld: () => {
-      if (game.holding) game.cancelHeld();
-    },
-    startRun: (mapId, diff) => game.startOn(mapById(mapId), DIFFICULTY[diff]),
-    setPointer: (x, y) => {
-      game.pointerX = x;
-      game.pointerY = y;
-    },
-    resetUi: () => {
-      menuIndex = 0;
-      showCombos = false;
-      showBoard = false;
-      pendingMap = null;
-    },
-    // The inspector's action buttons from the last rendered frame, in slot order.
+    runFrame,
+    pointerMove: onPointerMove,
+    pointerDown: onPointerDown,
+    pointerUp: onPointerUp,
+    keyDown: onKeyDown,
+    keyUp: onKeyUp,
+    // The inspector's action controls for the selected structure, in slot order.
     panelButtons: () =>
       clickables
         .filter((c) => c.panel)
-        .map((c) => ({ action: c.action, label: c.label ?? "", x: c.x, y: c.y, w: c.w, h: c.h, disabled: Boolean(c.disabled) })),
-    // The status bar's controls from the last rendered frame, each with the value it is currently
-    // reading: `mute` and `pause` report whether they are engaged, `speed` the live multiplier.
-    // The rectangles are the ones the click router hit-tests, so clicking the middle of a reported
-    // control activates it (specs/instrumentation.md). Empty off the board, where there is no bar.
+        .map((c) => ({
+          action: c.action,
+          label: c.label ?? "",
+          x: c.x,
+          y: c.y,
+          w: c.w,
+          h: c.h,
+          disabled: Boolean(c.disabled),
+        })),
+    // The choices of the menu screen currently showing, in presentation order, each under
+    // the fixed identifier the debug contract names it by. Empty on any screen that is not
+    // a menu, which includes `playing` under an in-place pause.
+    menuButtons: () => {
+      if (!isMenuState(game.state)) return [];
+      const out = [];
+      for (const c of clickables) {
+        const action = debugMenuAction(c.action);
+        if (!action) continue;
+        out.push({
+          action,
+          label: c.label ?? "",
+          x: c.x,
+          y: c.y,
+          w: c.w,
+          h: c.h,
+          disabled: Boolean(c.disabled),
+        });
+      }
+      return out;
+    },
+    // The status bar's overlay, speed, pause, and mute controls, each carrying the value it
+    // currently reads. Empty on any screen with no status bar.
     statusControls: () => {
       if (isMenuState(game.state)) return [];
       const state: Record<string, boolean | number> = {
+        combos: game.uiCombos,
+        damage: game.uiBoard,
         speed: game.speed,
         pause: game.paused,
-        mute: audio.muted,
+        mute: game.muted,
       };
       return clickables
         .filter((c) => c.action in state)
@@ -385,92 +515,20 @@ async function main(): Promise<void> {
           state: state[c.action]!,
         }));
     },
-    // The current menu's choices from the last rendered frame, in presentation order, each under
-    // the fixed identifier the debug contract names it by. The rectangles are the ones the click
-    // router itself hit-tests, so clicking the middle of a reported entry activates that choice.
-    menuButtons: () => {
-      if (!isMenuState(game.state)) return [];
-      const out = [];
-      for (const c of clickables) {
-        const action = debugMenuAction(c.action);
-        if (!action) continue;
-        out.push({ action, label: c.label ?? "", x: c.x, y: c.y, w: c.w, h: c.h, disabled: Boolean(c.disabled) });
-      }
-      return out;
-    },
   });
 
+  // ---- The animation loop ------------------------------------------------------
+
   let last = performance.now();
-  let acc = 0;
 
   function frame(now: number): void {
-    let dt = (now - last) / 1000;
+    const dt = Math.min((now - last) / 1000, MAX_FRAME_SECONDS);
     last = now;
-    if (dt > 0.25) dt = 0.25;
-    elapsed += dt;
-
-    // Map the pointer into logical space with the live fit transform. While the driver holds
-    // the manual clock (autoStep off) the real mouse does NOT move the ghost — the debug API's
-    // pointerMove owns the pointer — so a driven scenario stays exact (specs/instrumentation.md).
-    if (clock.autoStep) {
-      const rect = canvas.getBoundingClientRect();
-      input.setViewport(rect.width / STAGE_W, rect.left, rect.top);
-      const pl = input.pointerLogical;
-      game.pointerX = pl.x;
-      game.pointerY = pl.y;
-    }
-
-    handleInput();
-    syncMenuIndexToPointer();
-
-    // Advance the simulation from the wall clock ONLY while autoStep is on (normal play). While
-    // it is off, the loop still renders every frame but the sim advances solely through the
-    // debug API's step() — so a stepped scenario is exact regardless of machine load.
-    if (clock.autoStep && game.state === "playing" && !game.paused) {
-      acc += dt * game.speed;
-      let steps = 0;
-      while (acc >= FIXED_STEP && steps < 600) {
-        game.syncView();
-        game.fixedStep(FIXED_STEP);
-        acc -= FIXED_STEP;
-        steps++;
-      }
-    } else {
-      // Frozen — by the interactive pause, the Esc menu, a non-play screen, or the manual clock.
-      // Drop the accumulator so no burst of ticks fires on resume.
-      acc = 0;
-    }
-
-    // What is left in the accumulator is simulation time the display is showing but
-    // the simulation has not stepped through yet. Hand it to the renderer as a
-    // fraction of a step so it can draw between the last two states: the tick rate
-    // and the refresh rate do not divide evenly, so the number of steps per frame
-    // varies, and drawing the raw state would move every unit and projectile by a
-    // different distance each frame. Zero while frozen or while the debug API holds
-    // the clock, so a posed scenario is drawn exactly as it was stepped.
-    game.renderAlpha =
-      clock.autoStep && game.state === "playing" && !game.paused
-        ? acc / FIXED_STEP
-        : 0;
-
-    for (const cue of game.sndQueue) audio.play(cue);
-    game.sndQueue.length = 0;
-    for (const fx of game.fxQueue) bursts.spawn(fx);
-    game.fxQueue.length = 0;
-    bursts.update(dt);
-
-    setRenderTime(elapsed);
-    setMuted(audio.muted);
-    setMenuIndex(menuIndex);
-    setOverlays(showCombos, showBoard);
-
-    const sx = canvas.width / STAGE_W;
-    const sy = canvas.height / STAGE_H;
-    ctx!.setTransform(sx, 0, 0, sy, 0, 0);
-    clickables = render(ctx!, game, assets, bursts);
-    // The debug overlay draws last, over the finished frame, in the same logical transform.
-    if (showDebug) drawDebugOverlay(ctx!, game);
-
+    // While the debug surface holds the clock the loop still draws every frame, but the
+    // game advances only through `advance`, so a driven scenario is exact whatever the
+    // machine is doing.
+    if (clock.autoStep) runFrame(dt);
+    else draw();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

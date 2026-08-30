@@ -196,7 +196,8 @@ export async function loadAssets(): Promise<Assets> {
   for (const t of LOAD_SPRITE_TYPES) loadFrames[t] = frames(`load/${t}`);
 
   const componentFire = {} as Record<ComponentType, HTMLImageElement[]>;
-  for (const c of COMPONENT_ORDER) componentFire[c] = frames(`components/${c}/fire`);
+  for (const c of COMPONENT_ORDER)
+    componentFire[c] = frames(`components/${c}/fire`);
 
   const comboFire = {} as Record<ComboType, HTMLImageElement[]>;
   for (const c of COMBO_ORDER) comboFire[c] = frames(`combos/${c}/fire`);

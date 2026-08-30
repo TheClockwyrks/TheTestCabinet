@@ -23,7 +23,14 @@ import {
   TILE,
   tileCenter,
 } from "./constants";
-import type { MapDef, Pt, Structure, TileCoord, TileState, Unit } from "./types";
+import type {
+  MapDef,
+  Pt,
+  Structure,
+  TileCoord,
+  TileState,
+  Unit,
+} from "./types";
 
 // A per-tile occupancy snapshot derived from the current structure set + the map's fixed
 // housings: 0 = open, 1 = blocked (a removable wall), 2 = fixed (a housing). Indexed
@@ -112,7 +119,8 @@ export class Board {
     this.waypointTiles = new Set();
     for (const wp of map.waypoints) {
       for (const t of this.platformTiles(wp.col, wp.row)) {
-        if (this.inBounds(t.col, t.row)) this.waypointTiles.add(t.row * GRID_COLS + t.col);
+        if (this.inBounds(t.col, t.row))
+          this.waypointTiles.add(t.row * GRID_COLS + t.col);
       }
     }
   }
@@ -154,13 +162,16 @@ export class Board {
   // Is (col, row) inside one of the map's fixed transformer housings (Map C)?
   isFixed(col: number, row: number): boolean {
     for (const h of this.map.housings) {
-      if (col >= h.col0 && col <= h.col1 && row >= h.row0 && row <= h.row1) return true;
+      if (col >= h.col0 && col <= h.col1 && row >= h.row0 && row <= h.row1)
+        return true;
     }
     return false;
   }
   // Does a 2×2 footprint anchored at (col, row) fit on the grid (col 0..48, row 0..31)?
   anchorInBounds(col: number, row: number): boolean {
-    return col >= 0 && col <= MAX_ANCHOR_COL && row >= 0 && row <= MAX_ANCHOR_ROW;
+    return (
+      col >= 0 && col <= MAX_ANCHOR_COL && row >= 0 && row <= MAX_ANCHOR_ROW
+    );
   }
   // The four tiles a 2×2 footprint anchored at (col, row) covers.
   footprintTiles(col: number, row: number): TileCoord[] {
@@ -176,13 +187,19 @@ export class Board {
   pixelToAnchor(x: number, y: number): TileCoord {
     const col = Math.round((x - GRID_X0) / TILE - 1);
     const row = Math.round((y - GRID_Y0) / TILE - 1);
-    return { col: clamp(col, 0, MAX_ANCHOR_COL), row: clamp(row, 0, MAX_ANCHOR_ROW) };
+    return {
+      col: clamp(col, 0, MAX_ANCHOR_COL),
+      row: clamp(row, 0, MAX_ANCHOR_ROW),
+    };
   }
   // The tile a logical-pixel point falls in (clamped to the grid).
   pixelToTile(x: number, y: number): TileCoord {
     const col = Math.floor((x - GRID_X0) / TILE);
     const row = Math.floor((y - GRID_Y0) / TILE);
-    return { col: clamp(col, 0, GRID_COLS - 1), row: clamp(row, 0, GRID_ROWS - 1) };
+    return {
+      col: clamp(col, 0, GRID_COLS - 1),
+      row: clamp(row, 0, GRID_ROWS - 1),
+    };
   }
 
   // ---- Occupancy --------------------------------------------------------------
@@ -235,7 +252,11 @@ export class Board {
   pathTiles(from: TileCoord, to: TileCoord, occ: Occupancy): Pt[] | null {
     const start = from.row * GRID_COLS + from.col;
     const goal = to.row * GRID_COLS + to.col;
-    if (!this.isOpenTile(from.col, from.row, occ) || !this.isOpenTile(to.col, to.row, occ)) return null;
+    if (
+      !this.isOpenTile(from.col, from.row, occ) ||
+      !this.isOpenTile(to.col, to.row, occ)
+    )
+      return null;
     if (start === goal) return [tileCenter(from.col, from.row)];
 
     const n = GRID_COLS * GRID_ROWS;
@@ -266,7 +287,11 @@ export class Board {
         const nc = col + dc;
         const nr = row + dr;
         if (!this.isOpenTile(nc, nr, occ)) continue;
-        if (!this.isOpenTile(col + dc, row, occ) || !this.isOpenTile(col, row + dr, occ)) continue;
+        if (
+          !this.isOpenTile(col + dc, row, occ) ||
+          !this.isOpenTile(col, row + dr, occ)
+        )
+          continue;
         this.relax(cur, nc, nr, gc + SQRT2, to, g, came, closed, open);
       }
     }
@@ -317,7 +342,11 @@ export class Board {
   // Is there any open route between two tiles? A BFS reachability flood (cheaper than a
   // full A*) honouring the diagonal corner-cut rule — used by the never-seal checks.
   segmentOpen(from: TileCoord, to: TileCoord, occ: Occupancy): boolean {
-    if (!this.isOpenTile(from.col, from.row, occ) || !this.isOpenTile(to.col, to.row, occ)) return false;
+    if (
+      !this.isOpenTile(from.col, from.row, occ) ||
+      !this.isOpenTile(to.col, to.row, occ)
+    )
+      return false;
     const start = from.row * GRID_COLS + from.col;
     const goal = to.row * GRID_COLS + to.col;
     if (start === goal) return true;
@@ -343,7 +372,11 @@ export class Board {
         const nc = col + dc;
         const nr = row + dr;
         if (!this.isOpenTile(nc, nr, occ)) continue;
-        if (!this.isOpenTile(col + dc, row, occ) || !this.isOpenTile(col, row + dr, occ)) continue;
+        if (
+          !this.isOpenTile(col + dc, row, occ) ||
+          !this.isOpenTile(col, row + dr, occ)
+        )
+          continue;
         const ni = nr * GRID_COLS + nc;
         if (seen[ni]) continue;
         if (ni === goal) return true;
@@ -357,14 +390,20 @@ export class Board {
   // Does EVERY consecutive segment of the waypoint chain still have an open route?
   chainOpen(occ: Occupancy): boolean {
     for (let i = 1; i < this.chain.length; i++) {
-      if (!this.segmentOpen(this.chain[i - 1]!, this.chain[i]!, occ)) return false;
+      if (!this.segmentOpen(this.chain[i - 1]!, this.chain[i]!, occ))
+        return false;
     }
     return true;
   }
 
   // The never-seal test (§3.4): would placing a 2×2 at (col, row) block any chain segment,
   // or strand a walking unit with no route to its next waypoint?
-  wouldSeal(col: number, row: number, structures: Structure[], units: Unit[]): boolean {
+  wouldSeal(
+    col: number,
+    row: number,
+    structures: Structure[],
+    units: Unit[],
+  ): boolean {
     const occ = this.occupancy(structures);
     // Overlay the hypothetical footprint.
     for (const t of this.footprintTiles(col, row)) {
@@ -385,7 +424,12 @@ export class Board {
   // A full legality check for a dropped rock: in bounds, footprint clear of walls/housings,
   // not covering a waypoint platform, clear of any live ground unit, and not sealing the maze
   // (specs/board.md placement).
-  canPlace(col: number, row: number, structures: Structure[], units: Unit[]): boolean {
+  canPlace(
+    col: number,
+    row: number,
+    structures: Structure[],
+    units: Unit[],
+  ): boolean {
     if (!this.anchorInBounds(col, row)) return false;
     if (this.footprintHitsWaypoint(col, row)) return false;
     const occ = this.occupancy(structures);
@@ -393,7 +437,13 @@ export class Board {
     for (const u of units) {
       if (u.dead || u.flies) continue;
       const ut = this.pixelToTile(u.x, u.y);
-      if (ut.col >= col && ut.col <= col + 1 && ut.row >= row && ut.row <= row + 1) return false;
+      if (
+        ut.col >= col &&
+        ut.col <= col + 1 &&
+        ut.row >= row &&
+        ut.row <= row + 1
+      )
+        return false;
     }
     return !this.wouldSeal(col, row, structures, units);
   }
@@ -408,7 +458,11 @@ export class Board {
     const nodeCenter = tileCenter(node.col, node.row);
     if (flying) return [nodeCenter];
     const fromTile = this.pixelToTile(from.x, from.y);
-    const path = this.pathTiles(fromTile, { col: node.col, row: node.row }, occ);
+    const path = this.pathTiles(
+      fromTile,
+      { col: node.col, row: node.row },
+      occ,
+    );
     if (!path || path.length <= 1) return [nodeCenter];
     return path.slice(1);
   }
@@ -416,7 +470,12 @@ export class Board {
   // The nearest legal 2×2 anchor to (col, row), searched outward on expanding rings — used
   // by the headless balance harness, whose declarative layouts name approximate anchors (the
   // browser places exactly at the snapped pointer instead).
-  nearestLegalAnchor(col: number, row: number, structures: Structure[], units: Unit[]): TileCoord | null {
+  nearestLegalAnchor(
+    col: number,
+    row: number,
+    structures: Structure[],
+    units: Unit[],
+  ): TileCoord | null {
     if (this.canPlace(col, row, structures, units)) return { col, row };
     for (let r = 1; r <= Math.max(GRID_COLS, GRID_ROWS); r++) {
       for (let dc = -r; dc <= r; dc++) {
@@ -424,7 +483,8 @@ export class Board {
           if (Math.max(Math.abs(dc), Math.abs(dr)) !== r) continue; // ring shell only
           const c = col + dc;
           const rr = row + dr;
-          if (this.canPlace(c, rr, structures, units)) return { col: c, row: rr };
+          if (this.canPlace(c, rr, structures, units))
+            return { col: c, row: rr };
         }
       }
     }

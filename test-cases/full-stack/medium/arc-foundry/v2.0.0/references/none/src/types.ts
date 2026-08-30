@@ -67,12 +67,14 @@ export type Refinement = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 // (specs/towers.md, specs/controls.md). FIRST (default) is furthest along the waypoint
 // chain, LAST the least far; NEAREST ranks by straight-line distance from the component;
 // STRONGEST / WEAKEST by most / least remaining hit points.
-export type TargetingMode = "first" | "last" | "nearest" | "strongest" | "weakest";
+export type TargetingMode =
+  "first" | "last" | "nearest" | "strongest" | "weakest";
 
 // The Load roster (specs/enemies.md): charge units seeking ground. `filament` is the
 // flyer (ignores the maze, appears every 4th wave); `dynamo` is the boss (overload core,
 // anchors milestone waves).
-export type LoadType = "mote" | "spark" | "slug" | "cluster" | "filament" | "dynamo";
+export type LoadType =
+  "mote" | "spark" | "slug" | "cluster" | "filament" | "dynamo";
 
 // The in-game difficulty (specs/modes.md): changes ONLY wave count and enemy HP scaling.
 export type Difficulty = "easy" | "medium" | "hard";

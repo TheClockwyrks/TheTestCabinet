@@ -11,18 +11,10 @@
     {
       "name": "pop",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -33,11 +25,7 @@
       "lifetimeSpread": 30.0,
       "speed": 20.0,
       "speedSpread": 10.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 7,
       "forces": {
@@ -69,18 +57,10 @@
     {
       "name": "sparks",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -91,11 +71,7 @@
       "lifetimeSpread": 75.0,
       "speed": 172.0,
       "speedSpread": 72.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 19,
       "forces": {

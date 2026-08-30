@@ -11,18 +11,10 @@
     {
       "name": "core",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -33,11 +25,7 @@
       "lifetimeSpread": 45.0,
       "speed": 14.0,
       "speedSpread": 8.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 4,
       "forces": {
@@ -69,18 +57,10 @@
     {
       "name": "forks",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -91,11 +71,7 @@
       "lifetimeSpread": 100.0,
       "speed": 160.0,
       "speedSpread": 88.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 13,
       "forces": {
@@ -132,18 +108,10 @@
     {
       "name": "crackle",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -154,11 +122,7 @@
       "lifetimeSpread": 70.0,
       "speed": 82.0,
       "speedSpread": 48.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 26,
       "forces": {

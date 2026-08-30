@@ -60,7 +60,8 @@ export function buildWave(wave: number, diff: DifficultyDef): Wave {
     if (chosen === "cluster") {
       // Clusters arrive in dense packs (specs/enemies.md) — a tight burst at one slot.
       const pack = wave >= 12 ? 4 : 3;
-      for (let j = 0; j < pack; j++) events.push({ atMs: Math.round(t + j * 140), type: "cluster" });
+      for (let j = 0; j < pack; j++)
+        events.push({ atMs: Math.round(t + j * 140), type: "cluster" });
     } else {
       events.push({ atMs: Math.round(t + rng.range(-50, 50)), type: chosen });
     }
@@ -87,7 +88,9 @@ export function buildWave(wave: number, diff: DifficultyDef): Wave {
   }
 
   events.sort((a, b) => a.atMs - b.atMs);
-  const durationMs = events.length ? events[events.length - 1]!.atMs + 1500 : 1500;
+  const durationMs = events.length
+    ? events[events.length - 1]!.atMs + 1500
+    : 1500;
 
   // Distinct types present, in the stable roster order (the next-wave preview).
   const present = new Set(events.map((e) => e.type));
