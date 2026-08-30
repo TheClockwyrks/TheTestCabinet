@@ -43,8 +43,8 @@ Destroying a rock produces the size below it:
 | `small` | Nothing |
 
 Both fragments appear at the destroyed rock's position. The velocity each takes is
-in `specs/collision.md`, which owns both fans. Splitting is the only thing that
-reduces the number of rocks on the field.
+in `specs/collision.md`. Splitting is the only thing that reduces the number of
+rocks on the field.
 
 The two fragments are appended to the rock roster in order, each taking a fresh
 id, and the destroyed rock's id is not reused while any live entity holds it.
@@ -90,8 +90,7 @@ taken from the core and immediately re-placed at the same size. It re-enters at 
 random point on one of the four edges of the field, heading inward into the field,
 at a fresh base drift speed drawn from its size's range.
 
-Recycling scores nothing and leaves the field's rock count unchanged: the star
-churns the board but never empties it.
+Recycling scores nothing and leaves the field's rock count unchanged.
 {{#if (eq variant.slug "warhead")}}
 
 A recycled rock carries exactly the health it had when the star took it, and it

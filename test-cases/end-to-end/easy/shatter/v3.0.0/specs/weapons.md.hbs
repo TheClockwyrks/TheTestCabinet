@@ -59,16 +59,15 @@ the charge at `1`, ready to fire.
 - The torpedo key does nothing while the charge is below `1`.
 - At most one torpedo is in flight at a time. While one is up, the key launches
   nothing whatever the charge reads.
-- A respawn refills the charge to `1` and cancels any recharge in progress, so a
-  fresh ship always begins with its torpedo ready.
+- A respawn refills the charge to `1` and cancels any recharge in progress.
 
 ### The launch
 
 A torpedo leaves the ship's nose, ahead of the ship's centre along its facing and
 no further from it than `SHIP_R` (`14`), with its heading set to the ship's facing
-at that moment. It is self-propelled and
-carries none of the ship's drift, so its velocity at launch is `TORPEDO_SPEED`
-(`420`) along that heading and nothing else.
+at that moment. It is self-propelled and carries none of the ship's drift, so its
+velocity at launch is `TORPEDO_SPEED` (`420`) along that heading and nothing
+else.
 
 ### The flight
 

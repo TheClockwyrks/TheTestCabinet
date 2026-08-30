@@ -18,7 +18,7 @@ the top, and the reverse. The wrap applies to every body on the field, and a bod
 carries its velocity across unchanged.
 
 A body whose shape crosses a seam is drawn on both sides at once, its wrapped
-duplicate showing at the opposite edge, so it never visibly pops.
+duplicate showing at the opposite edge.
 
 ## The shortest wrapped separation
 
