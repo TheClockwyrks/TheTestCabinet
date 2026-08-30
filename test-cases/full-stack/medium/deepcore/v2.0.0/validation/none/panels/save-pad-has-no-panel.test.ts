@@ -1,24 +1,49 @@
-// Deepcore — panels.save-pad-has-no-panel. STUB: NOT YET AUTHORED.
+// panels/save-pad-has-no-panel — the Save Pad saves and opens nothing.
 //
-// The Save Pad saves without opening a panel
+// `specs/ui.md`: the Save Pad has no panel and activating it saves directly.
+// `specs/gameplay.md`: activating the pad writes the save on the spot. So the
+// reading is both halves of the one sentence — the save exists afterwards, and
+// `panel` never left `null`.
 //
-// Activating the Save Pad saves on the spot and opens no panel, so panel stays
-// null through the save.
-//
-// Automated validation: activate at the Save Pad and read hasSave true with
-// panel still null.
-//
-// `test-case.toml` declares this suite as `panels/save-pad-has-no-panel.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (pad (image)) around the drive.
+// The slot is cleared first, so `hasSave` turning true is this activation's doing
+// rather than something a page arrived with. No Core Sample is live, because
+// `specs/gameplay.md` refuses a save while one is, and that refusal is its own
+// point elsewhere.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  ACTION_KEY,
+  captureStill,
+  createHarness,
+  layCamp,
+  openScene,
+  pinDrill,
+  standAtBuilding,
+  type Harness,
+} from "../harness";
 
-test("The Save Pad saves without opening a panel", () => {
-  throw new Error(
-    "Deepcore validator `panels/save-pad-has-no-panel` is declared in test-case.toml but has not been authored yet.",
-  );
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("saves at the pad without opening a panel", async () => {
+  await openScene(h);
+  await layCamp(h);
+  await pinDrill(h);
+  await h.debug.clearSave();
+  await standAtBuilding(h, "save-pad");
+
+  await h.tap(ACTION_KEY.activate);
+  const after = await h.snapshot();
+  await captureStill(h, "pad");
+
+  assertEqual(after.hasSave, true, "specs/gameplay.md");
+  assertEqual(after.panel, null, "specs/ui.md");
 });

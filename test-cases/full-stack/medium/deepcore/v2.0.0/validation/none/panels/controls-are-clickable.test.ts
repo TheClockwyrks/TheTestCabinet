@@ -1,24 +1,108 @@
-// Deepcore — panels.controls-are-clickable. STUB: NOT YET AUTHORED.
+// panels/controls-are-clickable — the shell is operable with the mouse.
 //
-// Every menu item and panel control is clickable
+// `specs/controls.md`: every menu item, panel control and status-bar control is
+// clickable, and `specs/ui.md` requires every panel and menu to be fully operable
+// with the mouse with the keyboard as the alternative. This drives one of each
+// and reads the effect the specification states for it.
 //
-// Every menu item, panel control and status-bar control is operable with the
-// mouse, so a player can play the shell without the keyboard.
+// FINDING A CONTROL WITHOUT A LAYOUT. `specs/overview.md` hands the layout to the
+// build, so nothing here knows where anything is drawn. The copy IS fixed, so the
+// menu item is found by `TITLE_ITEMS`' `NEW EXPEDITION` and the panel control by
+// `specs/ui.md`'s `SELL`, each located in the frame's own text runs and clicked
+// where the build drew it. The three status-bar controls carry no fixed copy, and
+// the only thing fixed about them is that they are ON the bar, so the bar is
+// swept until one answers. See `panels/mouse.ts`.
 //
-// Automated validation: click a title menu item, a panel control and a
-// status-bar control in turn and read each taking effect.
-//
-// `test-case.toml` declares this suite as `panels/controls-are-clickable.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (click (replay)) around the drive.
+// Each click's effect is the one the specification names for that control: the
+// title item goes to `mode-select`, `SELL` converts the bay to Credits and empties
+// it, and a status-bar control opens the inventory, pauses, or toggles mute.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  layCamp,
+  openScene,
+  pinDrill,
+  stageCargo,
+  standAtCamp,
+  type Harness,
+} from "../harness";
+import { clickNear, findText, sweepStatusBar } from "./mouse";
 
-test("Every menu item and panel control is clickable", () => {
-  throw new Error(
-    "Deepcore validator `panels/controls-are-clickable` is declared in test-case.toml but has not been authored yet.",
-  );
+/** The cargo the sale is driven with: one ore, a known count. */
+const SOLD = { ore: "ferron" as const, count: 4 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("operates a menu item, a panel control and a bar control by mouse", async () => {
+  const took = await captureReplay(h, "click", async () => {
+    // A menu item. The slot is cleared so the title menu is the two-item one and
+    // `NEW EXPEDITION` is what the copy below names.
+    await h.debug.setAutoStep(false);
+    await h.debug.clearSave();
+    await h.debug.reset();
+    await h.debug.setScreen("title");
+    const item = await findText(h, /new expedition/i);
+    const menu =
+      item !== null &&
+      (await clickNear(
+        h,
+        item,
+        async () => (await h.snapshot()).screen === "mode-select",
+      ));
+
+    // A panel control, at the Ore Market with a known bay to sell.
+    await openScene(h);
+    await layCamp(h);
+    await pinDrill(h);
+    await standAtCamp(h);
+    await stageCargo(h, { [SOLD.ore]: SOLD.count });
+    await h.debug.setCredits(0);
+    await h.debug.setPanel("ore-market");
+    const sell = await findText(h, /sell/i);
+    const sold =
+      sell !== null &&
+      (await clickNear(h, sell, async () => {
+        const s = await h.snapshot();
+        return s.credits > 0 && s.cargo.slotsUsed === 0;
+      }));
+
+    // A status-bar control. Whichever of the three answers first counts, and the
+    // game is put back between clicks so the sweep reads one control at a time.
+    await openScene(h);
+    await layCamp(h);
+    await standAtCamp(h);
+    const resting = await h.snapshot();
+    const bar = await sweepStatusBar(
+      h,
+      async () => {
+        const s = await h.snapshot();
+        return (
+          s.panel === "inventory" ||
+          s.screen === "paused" ||
+          s.muted !== resting.muted
+        );
+      },
+      async () => {
+        await h.debug.setPanel(null);
+        await h.debug.setScreen("in-mine");
+      },
+    );
+
+    return { menu, sold, bar };
+  });
+
+  assertEqual(took.menu, true, "specs/controls.md");
+  assertEqual(took.sold, true, "specs/ui.md");
+  assertEqual(took.bar, true, "specs/ui.md");
 });
