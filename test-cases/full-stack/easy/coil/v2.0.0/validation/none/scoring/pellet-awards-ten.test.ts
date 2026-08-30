@@ -1,31 +1,47 @@
-/*
- * Coil validator: `scoring.pellet-awards-ten`. PLACEHOLDER.
- *
- * A pellet at one awards ten points.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * An eat resolving at an M of 1 raises the score by exactly PELLET_POINTS
- * (10).
- *
- * HOW:
- * pose a known score with a closed window, eat a pellet, and read the score.
- *
- * MEDIA IT MUST CAPTURE: award (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// scoring/pellet-awards-ten — an eat at a multiplier of one is worth ten points.
+//
+// specs/scoring.md: "Eating a pellet awards `PELLET_POINTS` (`10`) multiplied by
+// the combo multiplier in force after the eat resolves", and a window that is
+// closed at the eat puts `M` back to `1`. So the tick that eats here awards
+// `PELLET_POINTS * 1`, and what this decides is that figure alone: the multiplier
+// arithmetic on top of it is the `scoring/awards-updated-multiplier` point, and
+// which multiplier an eat resolves to is the `combo` category's.
+//
+// The score is posed away from zero so a build that ASSIGNS a score rather than
+// adding to it fails here: 250 posed and 260 read back is the increment the
+// specification states, where 10 read back would be the same number reached by
+// forgetting the score it was carrying.
+//
+// The world is the chain and the pellet the tick eats, and nothing else — the
+// obstacle course cleared, respawn off, so what the tick resolves is the one eat.
 
-test("scoring.pellet-awards-ten", () => {
-  throw new Error(
-    "validator not implemented: scoring/pellet-awards-ten.test.ts",
-  );
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { PELLET_POINTS } from "../constants";
+import {
+  arrangeEat,
+  captureReplay,
+  createHarness,
+  type Harness,
+} from "../harness";
+
+/** A score the round is already carrying, so the award is read as an increment. */
+const CARRIED = 250;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("raises the score by exactly PELLET_POINTS when the window is closed", async () => {
+  await arrangeEat(h, { score: CARRIED, combo: 1, comboWindow: 0 });
+
+  const after = await captureReplay(h, "award", () => h.tick());
+
+  assertEqual(after.score, CARRIED + PELLET_POINTS, "the score after one eat");
 });
