@@ -4,6 +4,7 @@ import {
   INVERSION_TIME,
   PLAYER_BULLET_HALF,
   PLAYER_BULLET_SPEED,
+  PRISM_INVERT_Y,
   RESONANCE_ABSORB,
   RESONANCE_KILL,
   SHARD_HALF,
@@ -12,6 +13,7 @@ import {
   START_LIVES,
   fluxHold,
 } from "./constants";
+import { droneEffectiveBand } from "./bands";
 import { addEnemyBulletTo, addPlayerBulletTo } from "./bullets";
 import { resolveContacts } from "./contacts";
 import { noCues } from "./audio";
@@ -218,5 +220,74 @@ describe("a bullet in flight", () => {
     state.ship.band = "magenta";
     run(state, STEP);
     expect(bullet.band).toBe("cyan");
+  });
+});
+
+describe("an inversion at the moment of a shot", () => {
+  it("changes which band destroys a drone", () => {
+    const cyanShot = liveState();
+    cyanShot.inversion = INVERSION_TIME;
+    poseDrone(cyanShot, "shard", 400, 200, { band: "magenta" });
+    shoot(cyanShot, 400, 200, "cyan");
+    resolveContacts(cyanShot, noCues());
+    expect(cyanShot.drones).toHaveLength(0);
+
+    const magentaShot = liveState();
+    magentaShot.inversion = INVERSION_TIME;
+    poseDrone(magentaShot, "shard", 400, 200, { band: "magenta" });
+    shoot(magentaShot, 400, 200, "magenta");
+    resolveContacts(magentaShot, noCues());
+    expect(magentaShot.drones).toHaveLength(1);
+  });
+
+  it("cancels against a broken shell, so two swaps read as none", () => {
+    const state = liveState();
+    state.inversion = INVERSION_TIME;
+    const prism = poseDrone(state, "prism", 400, 200, {
+      band: "cyan",
+      shellAlive: false,
+    });
+    expect(droneEffectiveBand(prism, state)).toBe("cyan");
+    shoot(state, 400, 200, "cyan");
+    resolveContacts(state, noCues());
+    expect(state.drones).toHaveLength(0);
+  });
+
+  it("leaves a player bullet reading its own band", () => {
+    const state = liveState();
+    state.inversion = INVERSION_TIME;
+    poseDrone(state, "shard", 400, 200, { band: "cyan" });
+    shoot(state, 400, 200, "cyan");
+    resolveContacts(state, noCues());
+    // The drone inverted to magenta; the bullet did not, so nothing matched.
+    expect(state.drones).toHaveLength(1);
+  });
+
+  it("ends after its own time and reads as it did before", () => {
+    const state = liveState();
+    const drone = poseDrone(state, "shard", 400, 200, { band: "cyan" });
+    state.inversion = INVERSION_TIME;
+    run(state, INVERSION_TIME * 0.5);
+    expect(droneEffectiveBand(drone, state)).toBe("magenta");
+    run(state, INVERSION_TIME * 0.6);
+    expect(state.inversion).toBe(0);
+    expect(droneEffectiveBand(drone, state)).toBe("cyan");
+  });
+
+  it("refreshes rather than stacking when a Prism triggers one again", () => {
+    const state = liveState();
+    state.inversion = INVERSION_TIME * 0.4;
+    const prism = poseDrone(state, "prism", 640, PRISM_INVERT_Y - 40, {
+      slotX: 640,
+      slotY: 200,
+      phase: "diving",
+      travel: true,
+    });
+    for (let frame = 0; frame < 60 && prism.phase === "diving"; frame += 1) {
+      run(state, STEP);
+    }
+    expect(prism.phase).toBe("returning");
+    expect(state.inversion).toBeGreaterThan(INVERSION_TIME * 0.95);
+    expect(state.inversion).toBeLessThanOrEqual(INVERSION_TIME);
   });
 });
