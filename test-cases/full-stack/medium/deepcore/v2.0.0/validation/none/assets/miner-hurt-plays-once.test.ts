@@ -101,8 +101,17 @@ it("runs the hurt cycle forward without coming back to a frame", async () => {
   );
   const returned = runs.filter((image, index) => runs.indexOf(image) !== index);
 
+  // A second blow, recorded, for the clip the review item declares: the flinch and
+  // the state giving way to what the miner is doing, at a frame rate a reviewer can
+  // scrub. Every reading above was taken over the first one.
   const after = await captureReplay(h, "flinch", async () => {
-    await h.advanceSeconds(HURT_TIME, 12);
+    await h.debug.setTile(COL, ROW - 1, "lava");
+    await h.advanceSeconds(1 / SAMPLE_HZ, 1);
+    await h.debug.setTile(COL, ROW - 1, "tunnel");
+    await h.advanceSeconds(
+      HURT_TIME * 2,
+      Math.round(HURT_TIME * 2 * SAMPLE_HZ),
+    );
     return h.snapshot();
   });
 

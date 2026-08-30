@@ -27,6 +27,9 @@ import { clickStage } from "./mouse";
 /** The building the click is aimed at. */
 const BUILDING = "ore-market";
 
+/** Frames the clip runs on after the reading, so it shows the panel it opened. */
+const SETTLE = 60;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -50,7 +53,9 @@ it("opens a building's panel from a click on the building", async () => {
     const at = worldToStage(snapshot, box.x + box.w / 2, box.y + box.h / 2);
     await clickStage(h, at.x, at.y);
     await h.advance(2);
-    return (await h.snapshot()).panel;
+    const opened = (await h.snapshot()).panel;
+    await h.advance(SETTLE);
+    return opened;
   });
 
   assertEqual(panel, BUILDING, "specs/controls.md");

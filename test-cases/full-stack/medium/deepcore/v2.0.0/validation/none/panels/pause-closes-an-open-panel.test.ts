@@ -22,6 +22,9 @@ import {
   type Harness,
 } from "../harness";
 
+/** Frames the clip runs on after the reading, so it shows the mine it came back to. */
+const SETTLE = 60;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -43,7 +46,9 @@ it("closes the open panel back to the mine", async () => {
   const after = await captureReplay(h, "close", async () => {
     await h.tap(ACTION_KEY.pause);
     await h.advance(2);
-    return h.snapshot();
+    const closed = await h.snapshot();
+    await h.advance(SETTLE);
+    return closed;
   });
 
   assertEqual(before.panel, "ore-market", "specs/ui.md");

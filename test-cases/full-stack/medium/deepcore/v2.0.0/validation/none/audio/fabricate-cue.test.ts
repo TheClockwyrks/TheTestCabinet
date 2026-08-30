@@ -30,6 +30,9 @@ import {
 } from "../harness";
 import { armAudio, countSounds } from "./probe";
 
+/** Frames the clip runs on after the last reading. */
+const SETTLE = 90;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -71,6 +74,10 @@ it("sounds on a purchase and a fabrication, and not on a refusal", async () => {
     });
     const afterFabricating = await h.snapshot();
 
+    // Every reading is taken above, each over the two frames its control ran in;
+    // the rest of the section is the camp carrying on, so the clip is a stretch of
+    // play rather than a handful of frames.
+    await h.advance(SETTLE);
     return {
       bought,
       refused,

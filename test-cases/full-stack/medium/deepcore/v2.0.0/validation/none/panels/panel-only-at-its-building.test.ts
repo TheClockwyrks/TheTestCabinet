@@ -47,6 +47,9 @@ const PANELLED: readonly string[] = [
 /** How finely the camp is sampled when looking for its emptiest ground. */
 const PROBE_STEP = 8;
 
+/** Frames the clip runs on after the reading, so it is a clip rather than a frame. */
+const SETTLE = 60;
+
 /** The centre of the widest stretch of camp ground no footprint stands on. */
 function clearestX(boxes: readonly BuildingBox[]): number {
   const from = PLAYABLE_COL_MIN * TILE + MINER_W / 2;
@@ -88,7 +91,12 @@ it("opens no panel away from a building, and never another's", async () => {
     await h.debug.setPanel(null);
     await placeAt(h, clear - MINER_W / 2, CAMP_MINER_Y);
     await h.tap(ACTION_KEY.activate);
-    return (await h.snapshot()).panel;
+    const opened = (await h.snapshot()).panel;
+    // The reading is taken above, on the frame the press ran; the rest of the
+    // section is the camp carrying on with nothing open, which is what the review
+    // item's clip is a picture of.
+    await h.advance(SETTLE);
+    return opened;
   });
 
   const wrong: string[] = [];

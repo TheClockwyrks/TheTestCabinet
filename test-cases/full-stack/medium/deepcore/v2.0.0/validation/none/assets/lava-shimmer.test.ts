@@ -52,7 +52,7 @@ const APART = 4;
 
 /** How long the cell is watched, in seconds, and in how many frames. */
 const WATCH_SECONDS = 1;
-const WATCH_FRAMES = 12;
+const WATCH_FRAMES = 60;
 
 let h: Harness;
 
