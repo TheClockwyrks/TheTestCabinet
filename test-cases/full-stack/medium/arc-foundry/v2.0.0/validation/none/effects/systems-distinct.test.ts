@@ -9,14 +9,14 @@
 // different things cannot be satisfied by one authored system, so no two of the
 // twelve are the same authored system.
 //
-// WHAT COUNTS AS THE SAME SYSTEM, AND WHY THE COLOURS ARE DROPPED. The comparison
+// WHAT COUNTS AS THE SAME SYSTEM, AND WHY THE COLORS ARE DROPPED. The comparison
 // is over the authored shape of `./systems.ts`: the field and duration, the global
 // forces, and every emitter's shape, position, extent, emission, lifetime, speed,
 // direction, cone, force overrides and per-particle size, opacity, rotation and
-// stretch curves. The colour stops are deliberately left out, because a build that
-// authored one burst and recoloured it twelve times has committed one effect
+// stretch curves. The color stops are deliberately left out, because a build that
+// authored one burst and recolored it twelve times has committed one effect
 // twelve times, which is exactly what this point exists to catch. Whether the
-// three status effects carry colours of their own is a separate point of its own.
+// three status effects carry colors of their own is a separate point of its own.
 //
 // EXACT, AND IN ONE DIRECTION ONLY. Two systems that differ anywhere in that shape
 // are two systems; how DIFFERENT they look is the aesthetic rating's.

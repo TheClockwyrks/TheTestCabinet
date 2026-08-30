@@ -10,8 +10,8 @@
 //
 // WHAT IS READ, AND WHAT IS DELIBERATELY NOT. The emitters, the forces and the
 // per-particle curves, because those are what `specs/assets.md` asks each effect to
-// carry ("emitters, forces, and per-particle curves"), and the colour stops,
-// because it asks the slow, burn and aura systems to "each carry a colour of their
+// carry ("emitters, forces, and per-particle curves"), and the color stops,
+// because it asks the slow, burn and aura systems to "each carry a color of their
 // own". Nothing here plays a system or looks at what it renders: whether the
 // effects reach the yard is decided by the points that drive the build.
 
@@ -109,7 +109,7 @@ export function channelsOf(color: unknown): [number, number, number] | null {
   ];
 }
 
-/** Every colour stop of every emitter of a system, as channels. */
+/** Every color stop of every emitter of a system, as channels. */
 export function colorStops(system: ParticleSystem): [number, number, number][] {
   const stops: [number, number, number][] = [];
   for (const emitter of system.emitters) {
@@ -121,7 +121,7 @@ export function colorStops(system: ParticleSystem): [number, number, number][] {
   return stops;
 }
 
-/** The mean of a set of colours, channel by channel. */
+/** The mean of a set of colors, channel by channel. */
 export function meanColor(
   stops: readonly [number, number, number][],
 ): [number, number, number] {
@@ -133,7 +133,7 @@ export function meanColor(
   ];
 }
 
-/** The RGB distance between two colours, `0` to `441`. */
+/** The RGB distance between two colors, `0` to `441`. */
 export function colorDistance(
   a: readonly [number, number, number],
   b: readonly [number, number, number],
@@ -143,12 +143,12 @@ export function colorDistance(
 
 /**
  * A system's AUTHORED SHAPE: its emitters, its forces and its per-particle curves,
- * with every colour dropped.
+ * with every color dropped.
  *
  * This is what `effects/systems-distinct` compares, because the review item asks
  * that "each pair differs in its emitters, its forces or its per-particle curves
- * rather than being one file committed twelve times" — so twelve recolourings of
- * one authored system are twelve copies of it, and dropping the colours is what
+ * rather than being one file committed twelve times" — so twelve recolorings of
+ * one authored system are twelve copies of it, and dropping the colors is what
  * makes them read as such.
  */
 export function authoredShape(system: ParticleSystem): string {

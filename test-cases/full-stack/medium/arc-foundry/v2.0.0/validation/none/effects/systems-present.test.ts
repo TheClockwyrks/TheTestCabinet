@@ -11,7 +11,7 @@
 // with none emits no particle however it is played, so it is a file at the right
 // path rather than the asset the specification asked for. Nothing else about the
 // document is asserted here — how each is authored is
-// `effects/systems-distinct`'s, what colour each carries is
+// `effects/systems-distinct`'s, what color each carries is
 // `effects/status-colors-distinct`'s, and whether the build actually plays them is
 // the fourteen points that drive the yard.
 
