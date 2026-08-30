@@ -1,27 +1,89 @@
-// Arc Foundry — `quality.explicit-set-folds-exactly`. CASE-PROVIDED. NOT YET WRITTEN.
+// quality/explicit-set-folds-exactly — an explicit set folds its members and no others.
 //
-// The manifest declares this point at `quality/explicit-set-folds-exactly.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/scrap-press.md fixes the explicit set as the stronger of the two ways a
+// combine chooses its ingredients: "With an explicit combine set, the combine folds
+// exactly the pieces in that set." specs/instrumentation.md fixes how a set is
+// built without a pointer: `select` "clears the combine set back to that single
+// selection" and `addToCombineSet` adds one base structure to it, "as a press on it
+// with `modify` held would".
 //
-// THE REQUIREMENT. With an explicit combine set the combine folds exactly the
-// pieces in that set and nothing else, even where the yard holds other pieces
-// that would satisfy the same fold.
-//
-// HOW IT IS DECIDED. Stand three matching pieces, add two of them to the set,
-// combine, and read which footprints were consumed. The evidence it hands back
-// is `set` (image): the exact pair the explicit set folded.
+// The yard holds three interchangeable pieces — three Scrap Capacitors, any two of
+// which would satisfy the fold — so naming two of them is the only thing that can
+// decide which two go in. The third is the control: it satisfies the same fold, it
+// is not in the set, and it must be standing and untouched afterwards.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  standComponent,
+  type Harness,
+} from "../harness";
+import { anchored } from "./anchors";
 
-import { fail } from "../assert";
+const INITIATOR = { col: 8, row: 10 };
+const PARTNER = { col: 12, row: 10 };
+const OUTSIDER = { col: 16, row: 10 };
 
-describe("quality.explicit-set-folds-exactly", () => {
-  it("An explicit combine set folds exactly its members", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `quality.explicit-set-folds-exactly` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("folds exactly the two pieces named and leaves the third standing", async () => {
+  openYard(h);
+  const initiator = standComponent(
+    h,
+    "capacitor",
+    1,
+    INITIATOR.col,
+    INITIATOR.row,
+  );
+  const partner = standComponent(h, "capacitor", 1, PARTNER.col, PARTNER.row);
+  standComponent(h, "capacitor", 1, OUTSIDER.col, OUTSIDER.row);
+
+  // The set is exactly the initiator and one partner, built the way a player
+  // builds one: a press that selects, then a modified press that adds.
+  h.debug.select(initiator);
+  h.debug.addToCombineSet(partner);
+  const posed = h.snapshot();
+  assertDeepEqual(
+    [...posed.combineSet].sort((a, b) => a - b),
+    [initiator, partner].sort((a, b) => a - b),
+    "the explicit combine set before the fold",
+  );
+
+  h.debug.combine(initiator);
+  await h.advance(1);
+  captureStill(h, "set");
+
+  const after = h.snapshot();
+  assertLength(after.structures, 3, "three footprints, all still occupied");
+  assertEqual(
+    anchored(after, INITIATOR).quality,
+    2,
+    "the fold landed on the initiator, one tier up",
+  );
+  assertEqual(
+    anchored(after, PARTNER).kind,
+    "blocker",
+    "the named partner's footprint, consumed",
+  );
+  assertEqual(
+    anchored(after, OUTSIDER).kind,
+    "component",
+    "the piece outside the set, still standing",
+  );
+  assertEqual(
+    anchored(after, OUTSIDER).quality,
+    1,
+    "the piece outside the set, at the tier it was stood at",
+  );
 });
