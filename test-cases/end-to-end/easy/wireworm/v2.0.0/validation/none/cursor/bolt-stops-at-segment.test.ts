@@ -80,11 +80,7 @@ const SURVIVORS = CHAIN - 1;
 const REACH_CEILING = framesFor(0.6);
 
 /** Whether any worm holds a segment on that tile. */
-function segmentOn(
-  snapshot: WirewormSnapshot,
-  c: number,
-  r: number,
-): boolean {
+function segmentOn(snapshot: WirewormSnapshot, c: number, r: number): boolean {
   return segmentTiles(snapshot).some((tile) => tile.c === c && tile.r === r);
 }
 
