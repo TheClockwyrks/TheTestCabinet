@@ -1,27 +1,69 @@
-// Arc Foundry — `yard.occupied-tile-refused`. CASE-PROVIDED. NOT YET WRITTEN.
+// yard/occupied-tile-refused — a footprint a live unit is standing on takes no
+// placement.
 //
-// The manifest declares this point at `yard/occupied-tile-refused.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/yard.md` lists it beside the tile states as a condition of its own, and
+// what it protects against is a unit walled inside a structure: the never-seal
+// rule keeps a route open for a unit, and this keeps a wall from landing on top
+// of one. It is the only placement condition that depends on the Load rather than
+// on the grid, so a build can satisfy every other one and still miss it.
 //
-// THE REQUIREMENT. A placement whose footprint any live Load unit currently
-// occupies is refused and changes nothing, and the same placement is accepted
-// once that unit has been cleared.
-//
-// HOW IT IS DECIDED. Park a unit on a footprint, attempt the placement, clear
-// the unit and attempt it again. The evidence it hands back is `refused`
-// (image): the refused placement under a standing unit.
+// BOTH DIRECTIONS, ON THE SAME FOOTPRINT. The refusal is only worth anything if
+// the same anchor is accepted once the unit is gone, so the unit is cleared and
+// the placement retaken — which is what separates this condition from a build
+// that refuses the anchor for some other reason.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { tileCenter } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  parkUnit,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** The footprint under test, and the tile of it the unit is stood on. */
+const AT = { col: 20, row: 10 };
+const STANDING_ON = { col: 21, row: 11 };
 
-describe("yard.occupied-tile-refused", () => {
-  it("A placement under a standing unit is refused", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `yard.occupied-tile-refused` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("refuses a footprint a unit occupies, and accepts it once cleared", async () => {
+  await openYard(h, { wave: 1 });
+
+  // One held unit standing inside the footprint, and nothing else on the yard.
+  // Its travel is held so it is still standing there when the placement is
+  // attempted; every other faculty it has is untouched.
+  const at = tileCenter(STANDING_ON.col, STANDING_ON.row);
+  await parkUnit(h, "mote", at);
+  await h.advance(1);
+  await captureStill(h, "refused");
+
+  await h.debug.placeBlocker(AT.col, AT.row);
+  assertEqual(
+    (await h.snapshot()).structures.length,
+    0,
+    `the yard to stay empty after a placement anchored at ` +
+      `(${AT.col}, ${AT.row}), whose footprint the unit standing on tile ` +
+      `(${STANDING_ON.col}, ${STANDING_ON.row}) occupies`,
+  );
+
+  // And the same anchor once nothing is standing there.
+  await h.debug.clearUnits();
+  await h.debug.placeBlocker(AT.col, AT.row);
+  assertEqual(
+    (await h.snapshot()).structures.length,
+    1,
+    `the same placement at (${AT.col}, ${AT.row}) to be accepted once no unit ` +
+      `occupies its footprint`,
+  );
 });
