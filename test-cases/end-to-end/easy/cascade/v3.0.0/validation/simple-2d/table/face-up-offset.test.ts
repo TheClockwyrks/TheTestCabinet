@@ -8,8 +8,9 @@
 // read on a column that comes nowhere near the line.
 //
 // THE SCENARIO IS A COLUMN SHORT ENOUGH TO NEED NO COMPRESSION. Three face-up
-// cards reach `180 + 2 x 34 + 140 = 388`, well above `COLUMN_BOTTOM_LIMIT` (`676`),
-// so the fit leaves the offset alone and what is drawn is the plain `34`. Both
+// cards reach `180 + 2 x 34 + 140 = 388`, stopping `288` units short of
+// `COLUMN_BOTTOM_LIMIT` (`676`), so the fit leaves the offset alone and what is
+// drawn is the plain `34`. Both
 // gaps are read, so a build that offsets its last card differently from the rest
 // is named here rather than passing on one of the two.
 //
