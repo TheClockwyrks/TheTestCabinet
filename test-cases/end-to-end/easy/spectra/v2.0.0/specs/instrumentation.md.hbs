@@ -153,9 +153,9 @@ and changes nothing.
 rosters and the live discharge; it places the ship at the center of its lane
 (`640`) on the cyan band with `0` seconds of fire lockout and `0` seconds of fire
 cooldown; it turns the three world gates `waveEntry`, `diveLaunching`, and
-`ship.contact` back on; it sets `diveClock` to `0` and restarts the wave's own entry
-and dive schedules; it sets `extraLifeAwarded` to `false` and the challenge-stage hit
-count to `0`; and it sets `simTime` to `0`.
+`ship.contact` back on; it returns the wave's entry, sway, and dive clocks to their
+fresh-wave values, `diveClock` among them at `0`; it sets `extraLifeAwarded` to
+`false` and the challenge-stage hit count to `0`; and it sets `simTime` to `0`.
 
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's
 randomness. `muted` is left exactly as it stands, because muting is a player
@@ -422,7 +422,8 @@ their own, and the notes that go with them:
   both are restored by `reset`.
 - `bursts[].particles` is the count the burst's own particle simulation holds at the
   call.
-- `simTime` accumulates every update's delta, whatever the screen.
+- `simTime` accumulates the time the game's sub-steps cover, as
+  `specs/simulation.md` states.
 
 ## Diagnostics
 
@@ -435,7 +436,10 @@ diagnostic sources. Register at least:
 - whether a spectral inversion is active and how long is left;
 - the ship's `x`, its band, and its remaining fire lockout;
 - for each drone, its id, its kind, its stored and effective bands, its position, its
-  phase, a Flux's shimmer state, and a Prism's shell state{{#if (eq variant.slug "overload")}}, and its charge{{/if}};
+  phase, a Flux's shimmer state, and a Prism's shell state;
+{{#if (eq variant.slug "overload")}}
+- each drone's charge;
+{{/if}}
 - how many bullets are in flight, and how many bursts are playing.
 
 Keep each one short enough to read on a line, and keep every source a pure read, so

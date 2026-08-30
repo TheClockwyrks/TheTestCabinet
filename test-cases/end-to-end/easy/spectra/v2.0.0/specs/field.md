@@ -47,14 +47,15 @@ The filled grid therefore spans `x` in `[384, 896]` and `y` in `[140, 332]`.
 
 ## The sway
 
-The whole formation translates horizontally as one rigid body. At game time `t` the
-block's offset is `swayOffset(t) = SWAY_AMP * sin(2 * PI * t / SWAY_PERIOD)`, with
-`SWAY_AMP` (`20`) and `SWAY_PERIOD` (`5`) seconds. A drone resting in a slot sits at
+The whole formation translates horizontally as one rigid body. The block's offset is
+`swayOffset(t) = SWAY_AMP * sin(2 * PI * t / SWAY_PERIOD)`, with `SWAY_AMP` (`20`)
+and `SWAY_PERIOD` (`5`) seconds. A drone resting in a slot sits at
 `(slotX(col) + swayOffset(t), slotY(row))`, so every slotted drone carries the same
 offset at the same instant and the block's shape never changes. The sway changes
 nothing about which slots are filled.
 
-`t` is the accumulated simulation time `specs/simulation.md` defines.
+`t` is the wave's sway clock: the seconds the wave has been played, which returns to
+`0` when a wave is built and advances with game time while the live wave is running.
 
 ## Crossing the edges
 

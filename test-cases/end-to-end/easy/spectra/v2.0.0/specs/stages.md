@@ -32,9 +32,9 @@ A challenge stage is a non-firing flyover.
 - No drone fires. No enemy bullet appears anywhere in a challenge stage.
 - A challenge drone's body costs no life. Contact between the ship and one of them
   does nothing.
-- Each group sweeps across the play field along a path of your design and leaves it.
-  A challenge drone never settles into a formation slot, and one that leaves the
-  field is removed.
+- Each group sweeps across the play field along a path of your design and leaves it
+  within eight seconds of the group's release. A challenge drone never settles into a
+  formation slot, and one that leaves the field is removed.
 - The stage ends in the moment the last of its drones has left the field or been
   destroyed. It then opens the stage-cleared interstitial, which reports the result
   `specs/ui.md` states.

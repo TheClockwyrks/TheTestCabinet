@@ -22,8 +22,9 @@ One second of game time therefore covers the same ground whether it arrives as o
 frame, as sixty, or as a hundred and twenty: each runs a hundred and twenty
 sub-steps of `1/120` of a second.
 
-`simTime` is the accumulated simulation time in seconds. Every update adds its `dt`
-to it, whatever screen the game is on.
+`simTime` is the accumulated simulation time in seconds. Each sub-step adds its own
+`h` to it, so a second of game time adds exactly the same total to it however that
+second was divided into frames.
 
 ## The order a sub-step resolves in
 

@@ -51,13 +51,13 @@ Whatever its shape, the state carries the following.
 
 - Whether the wave's entry of drones is running, and whether the assault's dive
   launching is running. Both are on when a run begins.
-- The wave's entry clock, which its entry groups are released against, and the
-  wave's dive clock together with the gap the next dive launch waits for.
+- The wave's entry clock, which its entry groups are released against; its sway
+  clock, which the formation's sway is drawn against; and its dive clock together
+  with the gap the next dive launch waits for.
 
 ## The rest
 
-- The simulation time, in seconds, which every update adds its delta to whatever the
-  screen.
+- The simulation time, in seconds, as `specs/simulation.md` defines it.
 - Whether sound is muted, refreshed from the runtime's mute bit in every update.
 - The state of the seeded random generator, which the wave's layout, the choice of
   which drone dives next, the gap before the next dive, a Flux's starting phase, and
@@ -177,6 +177,7 @@ export interface SpectraState {
   readonly waveEntry: boolean;
   readonly diveLaunching: boolean;
   readonly entryClock: number;
+  readonly swayClock: number;
   readonly diveClock: number;
   readonly diveTarget: number;
 
@@ -311,6 +312,7 @@ export class SpectraState extends GameState {
   waveEntry = true;
   diveLaunching = true;
   entryClock = 0;
+  swayClock = 0;
   diveClock = 0;
   diveTarget = DIVE_FIRST_DELAY;
 
@@ -404,6 +406,8 @@ is appended to it.
   surface poses.
 - `entryClock` — the seconds since the wave opened, which its entry groups are
   released against. It advances only while `waveEntry` is on.
+- `swayClock` — the seconds the wave has been played, which the formation's sway is
+  drawn against, as `specs/field.md` states. It returns to `0` when a wave is built.
 - `diveClock` — the seconds since the wave's last dive launch, which the debug
   surface poses. It advances only while `diveLaunching` is on.
 - `diveTarget` — the value `diveClock` must reach for the next launch. A wave is
@@ -414,8 +418,8 @@ is appended to it.
 
 - `nextId` — the id the next drone, bullet, or burst takes, so no two entities live
   at one moment share one.
-- `simTime` — accumulated simulation time, in seconds. Every update adds its delta,
-  whatever the screen.
+- `simTime` — accumulated simulation time, in seconds, as `specs/simulation.md`
+  states.
 - `muted` — the game's readable copy of the runtime's mute bit, refreshed in every
   update. The runtime owns muting, and this field is what the debug surface reports.
 - `rngState` — the state of the game's seeded random generator. The wave's layout,

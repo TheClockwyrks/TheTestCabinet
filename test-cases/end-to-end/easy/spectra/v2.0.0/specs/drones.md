@@ -97,8 +97,9 @@ entry group.
 
 ### Its fire
 
-A diving Prism takes exactly two shots over its dive, one cyan and one magenta, so
-it threatens the ship whichever band the ship is tuned to.
+A diving Prism takes exactly two shots over its dive, fired together as it crosses
+the fire line, one carrying each band, so it threatens the ship whichever band the
+ship is tuned to.
 
 ### The spectral inversion
 

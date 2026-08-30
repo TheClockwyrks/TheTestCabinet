@@ -22,22 +22,25 @@ A drone is always in exactly one of four phases.
 ## The wave and its entrance
 
 A wave is built as the stage-intro hold gives way, which `specs/stages.md` states.
-Every drone of the wave exists from that moment, each in phase `entering`, at its
-own starting point above `FIELD_TOP`. No drone stands inside the play field when the
-wave opens.
+The drone roster holds every drone of the wave from that moment, each in phase
+`entering`, at its own starting point above `FIELD_TOP`, so no drone stands inside
+the play field when the wave opens.
 
 The wave releases them in groups. It carries a clock that starts at zero when the
 wave opens and advances with game time while the wave's entry runs. A drone's group
 is released when that clock reaches `ENTER_GROUP_GAP` (`0.6`) seconds times the
 group's index, counted from `0`, so the first group is released as the wave opens
 and each later group `ENTER_GROUP_GAP` after the one before it. A drone that has not
-been released holds its starting point.
+been released holds its starting point. A wave releases its drones in between two
+and eight groups; how many drones a group holds, and which slot each takes, are
+yours.
 
 A released drone travels a smooth path of your design down to its slot, at
 `ENTER_SPEED` (`260`) units per second along that path. The path is continuous and
-may cross the upper field and curve back. It ends with the drone at its slot, in
-phase `formation`, riding the sway with the rest of the block. How many drones a
-group holds, and which slot each takes, are yours.
+may cross the upper field and curve back. It carries the drone across `FIELD_TOP`
+into the play field within one second of its release, it ends with the drone at its
+slot within six seconds of its release, and the drone is then in phase `formation`,
+riding the sway with the rest of the block.
 
 ## The formation
 
@@ -79,8 +82,9 @@ at `DIVE_SPEED` (`300`) units per second along that path. The path:
 - ends either by turning back above `FIELD_BOTTOM` without ever entering the bottom
   HUD strip, or by wrapping through the bottom as above.
 
-Once the path is done the drone enters phase `returning` and travels back to its
-slot, where it enters phase `formation` again and may be launched into a later dive.
+A dive runs no longer than eight seconds. Once the path is done the drone enters
+phase `returning` and travels back to its slot, reaching it within four seconds,
+where it enters phase `formation` again and may be launched into a later dive.
 
 ## Enemy fire
 

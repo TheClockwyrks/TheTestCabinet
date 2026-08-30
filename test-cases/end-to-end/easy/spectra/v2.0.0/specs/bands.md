@@ -74,8 +74,7 @@ The flip action changes the ship's band to the opposite one.
   the ship cannot fire. `specs/ship.md` states the lockout's effect on the cannon.
 - A bullet already in flight keeps the band it was fired with.
 
-The flip is available on every screen the wave is live on, whatever the meter or the
-lockout stands at, and a flip made during a lockout restarts it.
+A flip made while a lockout is still standing restarts that lockout.
 
 ## The spectral inversion
 
