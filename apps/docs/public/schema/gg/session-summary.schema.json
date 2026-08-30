@@ -408,13 +408,13 @@
       "description": "The [execution ceilings](GgRunLimits) that were actually **in force** for this run — the\nconfigured set with gg's own defaults filled in (the error ceilings a run left unset, and an\nabsent `maxTurns` recorded as unbounded).\n\nRecorded rather than left to be re-derived from the [capability set](GgCapabilitySet)\nbecause a default is otherwise invisible: \"what ceiling was this run bounded by?\" must be\nanswerable for every run, including one that declared none."
     },
     "maxResponseChars": {
-      "description": "The longest reply, in characters, of any turn that **worked** (a progressed or finished\noutcome) — folded as a maximum over the\n[`TurnOutcome`](GgTelemetryKind::TurnOutcome) events' `response_chars`. Recorded so an\noutput ceiling can later be chosen from data rather than guessed: a cap below this figure\nwould have truncated a reply that was doing its job. `0` — and omitted — for a run with no\nsuccessful turn.",
+      "description": "The longest reply the run produced, in characters: the model's raw text plus, on a\nresponses-as-code turn, the `program` string of each `submit_program` call it made. Folded\nas a maximum over the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events'\n`response_chars`, over every turn but the one recorded\n[`ModelLengthCapped`](GgTurnErrorType::ModelLengthCapped), whatever the turn's outcome.\n\nRecorded so an output ceiling can later be chosen from data rather than guessed: a cap\nbelow this figure would have truncated a reply the model generated whole. The one excluded\nturn is the one whose reply the provider had already cut off at its own output cap, which\nis the reply such a ceiling exists to cut. An errored turn is folded in, since a program\nlong enough to matter here is the one most likely to fail, and dropping it would\nunder-report exactly the runs that write the most. `0` — and omitted — for a run whose\nturns reported no reply at all.",
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
     },
     "maxResponseOutputTokens": {
-      "description": "The same maximum in the provider's own unit: **completion tokens** (output plus reasoning,\nthe figure an output cap is measured in). `0` — and omitted — for a run whose successful\nturns reported no usage.",
+      "description": "The same maximum in the provider's own unit: **completion tokens** (output plus reasoning,\nthe figure an output cap is measured in). `0` — and omitted — for a run whose turns\nreported no usage.",
       "format": "uint64",
       "minimum": 0,
       "type": "integer"

@@ -136,7 +136,7 @@ pub use job_api::{
     LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, Notification, NotificationKind,
     NotificationOutcome, RunEvent, RunEventKind, StatusUpdate, StreamTopicsBody,
 };
-pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
+pub use metrics::{Cost, RunDurations, RunMetrics, TokenCounts, TokenPrices};
 pub use orchestrator::{
     BUILT_IN_SLUGS, ONE_SHOT_SLUG, Orchestrator, OrchestratorCatalog, OrchestratorManifest,
     OrchestratorSelection,
@@ -559,6 +559,30 @@ where
     pub prior_game_jam_entries: Vec<PriorGameJamEntry>,
 }
 
+/// What one call to [`RunEngine::execute`] produced: the running container, the
+/// harness's outcome, the environment probed from inside it, and the two
+/// durations only that call can measure.
+///
+/// The durations are returned rather than measured by the caller because both
+/// boundaries live inside `execute`. The caller owns [`Self::handle`] and must
+/// stop it.
+pub struct ExecutedSession {
+    /// The still-running container the session ran in.
+    pub handle: ContainerHandle,
+    /// What the harness session produced.
+    pub outcome: HarnessOutcome,
+    /// The environment probed from inside the running container.
+    pub environment: RunEnvironment,
+    /// How long the container spent queued for capacity before startup began
+    /// (see [`ContainerStart::scheduling_wait`]), so the caller can exclude it
+    /// from the run's measured duration.
+    pub scheduling_wait: Duration,
+    /// How long the harness session itself took, measured around the capped
+    /// drive. This is the model's own working time, and the only stage of a run
+    /// whose duration describes the model rather than the fleet.
+    pub session_elapsed: Duration,
+}
+
 impl<S, R, C, V> RunEngine<S, R, C, V>
 where
     S: RepoSeeder,
@@ -643,11 +667,9 @@ where
     /// Start a container and drive the agent harness to completion against the
     /// seeded repository.
     ///
-    /// The caller owns the returned [`ContainerHandle`] and must stop it. On any
-    /// failure after the container starts, it is stopped before returning. The
-    /// returned [`Duration`] is how long the container spent queued for capacity
-    /// before startup began (see [`ContainerStart::scheduling_wait`]), so the
-    /// caller can exclude it from the run's measured duration.
+    /// The caller owns the [`ContainerHandle`] in the returned
+    /// [`ExecutedSession`] and must stop it. On any failure after the container
+    /// starts, it is stopped before returning.
     #[instrument(
         name = "execute",
         skip_all,
@@ -677,7 +699,7 @@ where
         host_gateway: bool,
         run_id: &str,
         cancel: &RunCancellation,
-    ) -> Result<(ContainerHandle, HarnessOutcome, RunEnvironment, Duration)> {
+    ) -> Result<ExecutedSession> {
         // gg is The Test Cabinet's own harness and is invoked *directly* — it is its
         // own executor, not a subprocess driven through the `AgentHarness` trait or
         // looped by an orchestrator (see `crate::gg_exec`). A gg run therefore shares
@@ -692,7 +714,7 @@ where
         // request fails before any container work, and resolve how gg's binary is
         // installed: a `Local` binary is copied into the container as a file at start
         // time (added to `spec.files` below), a `Release` is downloaded inside the
-        // container by `gg_exec::run_gg`.
+        // container by `gg_exec::prepare_gg`.
         let gg_install = if request.is_gg() {
             request.gg_capability_set()?;
             Some(gg_exec::resolve_install()?)
@@ -820,8 +842,9 @@ where
         // A gg run installs its own binary rather than a third-party CLI. For a
         // `Local` install, copy the host-built binary into the container as a file at
         // start time (materialized via a host-temp-file `cp`, so a large binary is
-        // handled fine) at the path `gg_exec::run_gg` invokes. A `Release` install adds
-        // nothing here — it is downloaded inside the container by `run_gg`.
+        // handled fine) at the path `gg_exec::run_gg_session` invokes. A `Release`
+        // install adds nothing here — it is downloaded inside the container by
+        // `gg_exec::prepare_gg`.
         if let Some(gg_exec::GgInstall::Local {
             host_path,
             container_path,
@@ -1045,30 +1068,62 @@ where
         // max_runtime). The hard cap below is the backstop.
         let deadline_epoch = unix_now().saturating_add(max_runtime);
 
+        // gg's setup stage, the counterpart to the harness install and probe stages a
+        // third-party run took above: the binary is put in place (a `Release` is
+        // downloaded over the network here), the invocation file it reads is written,
+        // and the version it reports is captured. It runs before the session's clock
+        // starts because installing the harness is setup the run engine spends on the
+        // model's behalf, and it is bounded by `max_runtime` from within, one bound per
+        // container call, as every other in-container setup step is. A failure tears the
+        // container down exactly as a failed session does.
+        let prepared_gg = match &gg_install {
+            Some(install) => {
+                match gg_exec::prepare_gg(
+                    &self.runtime,
+                    &handle,
+                    install,
+                    request,
+                    &base_prompt,
+                    WORKSPACE_DIR,
+                    provided_files,
+                    max_runtime,
+                    run_id,
+                    events,
+                )
+                .await
+                {
+                    Ok(prepared) => Some(prepared),
+                    Err(err) => {
+                        self.abandon_container(
+                            &handle, run_id, test_case, variant, seeded, request, cancel,
+                        )
+                        .await;
+                        return Err(err);
+                    }
+                }
+            }
+            None => None,
+        };
+
         // Drive the session, bounded by `max_runtime` exactly as a single session was;
         // on timeout the future is dropped (cancelling the in-flight exec) and the `Err`
         // arm tears the container down, as for any harness failure.
         //
-        // A gg run takes its own executor (`gg_exec::run_gg`) rather than the
-        // orchestrator: gg is invoked directly, writes its `GgInvocation`, launches its
-        // own binary, and ingests its first-party telemetry, summing usage/cost into the
-        // outcome. A third-party run drives the resolved orchestrator's runner inside the
-        // container through the shared streaming translation (a one-shot run producing
-        // exactly what a direct `invoke` would).
-        let outcome = if let Some(install) = &gg_install {
-            let drive = gg_exec::run_gg(
-                &self.runtime,
-                &handle,
-                install,
-                request,
-                &base_prompt,
-                WORKSPACE_DIR,
-                provided_files,
-                max_runtime,
-                run_id,
-                events,
-                cancel,
-            );
+        // A gg run takes its own executor (`gg_exec::run_gg_session`) rather than the
+        // orchestrator: gg is launched directly and its first-party telemetry is
+        // ingested, summing usage/cost into the outcome. A third-party run drives the
+        // resolved orchestrator's runner inside the container through the shared
+        // streaming translation (a one-shot run producing exactly what a direct `invoke`
+        // would).
+        //
+        // The session's own clock, started here so it measures the drive and nothing
+        // else. Everything above is setup the run engine spends on the model's
+        // behalf, and everything below it is teardown; folding either into the
+        // session would make one model's recorded working time a function of how
+        // long a registry pull, an `npm install` or a harness download took.
+        let session_timer = Instant::now();
+        let outcome = if let Some(prepared) = prepared_gg {
+            let drive = gg_exec::run_gg_session(&self.runtime, &handle, prepared, events, cancel);
             with_runtime_cap(drive, max_runtime, slug).await
         } else {
             let drive = orchestrator::drive_orchestrator(
@@ -1084,7 +1139,7 @@ where
                 max_runtime,
                 events,
             );
-            // gg reports its own version from within `run_gg`; a third-party run stamps
+            // gg reports its own version from its setup stage; a third-party run stamps
             // the version captured by the probe stage above.
             with_runtime_cap(drive, max_runtime, slug)
                 .await
@@ -1093,29 +1148,56 @@ where
                     outcome
                 })
         };
+        let session_elapsed = session_timer.elapsed();
         match outcome {
-            Ok(outcome) => Ok((handle, outcome, environment, scheduling_wait)),
+            Ok(outcome) => Ok(ExecutedSession {
+                handle,
+                outcome,
+                environment,
+                scheduling_wait,
+                session_elapsed,
+            }),
             Err(err) => {
-                // The session failed, so this run never reaches artifact collection or
-                // the post-run seam — the caller returns straight out of `run_resolved`
-                // with this error. Rescue gg's capture journal first, while the container
-                // still exists, because a run that hung or ran past its cap is exactly
-                // the run whose record is worth reading (see [`crate::salvage`]). Only
-                // the journal: the produced tree is deliberately left behind.
-                self.salvage_session_record(
-                    &handle,
-                    run_id,
-                    test_case,
-                    variant,
-                    seeded,
-                    request,
-                    cancel.is_canceled(),
+                self.abandon_container(
+                    &handle, run_id, test_case, variant, seeded, request, cancel,
                 )
                 .await;
-                let _ = self.runtime.stop(&handle).await;
                 Err(err)
             }
         }
+    }
+
+    /// Give up on a run whose session produced no outcome, while the container it ran in
+    /// still exists.
+    ///
+    /// Such a run never reaches artifact collection or the post-run seam — the caller
+    /// returns straight out of [`run_resolved`](Self::run_resolved) with the error — so
+    /// gg's capture journal is rescued first, because a run that hung or ran past its cap
+    /// is exactly the run whose record is worth reading (see [`crate::salvage`]). Only
+    /// the journal: the produced tree is deliberately left behind. The container is
+    /// stopped last.
+    #[allow(clippy::too_many_arguments)]
+    async fn abandon_container(
+        &self,
+        handle: &ContainerHandle,
+        run_id: &str,
+        test_case: &TestCaseVersion,
+        variant: &Variant,
+        seeded: &SeededRepo,
+        request: &RunRequest,
+        cancel: &RunCancellation,
+    ) {
+        self.salvage_session_record(
+            handle,
+            run_id,
+            test_case,
+            variant,
+            seeded,
+            request,
+            cancel.is_canceled(),
+        )
+        .await;
+        let _ = self.runtime.stop(handle).await;
     }
 
     /// Assemble a session record for a run whose session ended in an error, from the
@@ -1240,7 +1322,8 @@ where
         }
     }
 
-    /// Collect run metrics from the harness outcome and elapsed wall-clock time.
+    /// Collect run metrics from the harness outcome and the run's measured
+    /// [durations](RunDurations).
     ///
     /// When the harness reported its own exact cost (see
     /// [`HarnessOutcome::reported_cost`]) that figure is used for both the
@@ -1251,7 +1334,7 @@ where
     pub fn collect_metrics(
         &self,
         outcome: &HarnessOutcome,
-        run_time_seconds: f64,
+        durations: RunDurations,
         prices: &TokenPrices,
     ) -> Result<RunMetrics> {
         let tokens = outcome.usage.tokens;
@@ -1273,7 +1356,11 @@ where
             }
         };
         Ok(RunMetrics {
-            run_time_seconds,
+            run_time_seconds: durations.run_time_seconds,
+            session_seconds: Some(durations.session_seconds),
+            setup_seconds: Some(durations.setup_seconds),
+            teardown_seconds: Some(durations.teardown_seconds),
+            validation_seconds: durations.validation_seconds,
             tokens,
             cost,
         })
@@ -1523,7 +1610,13 @@ where
                     .map(|reference| Path::new("reference").join(reference.file_name())),
             )
             .collect();
-        let (handle, outcome, environment, scheduling_wait) = self
+        let ExecutedSession {
+            handle,
+            outcome,
+            environment,
+            scheduling_wait,
+            session_elapsed,
+        } = self
             .execute(
                 test_case,
                 &variant,
@@ -1538,6 +1631,11 @@ where
                 cancel,
             )
             .await?;
+        // The run timer the instant the session ended. Everything the run engine did
+        // before this point is setup and everything after it is teardown, so this
+        // read plus `session_elapsed` is what separates the model's own working time
+        // from the fleet's (see [`RunDurations::partition`]).
+        let before_teardown = timer.elapsed();
 
         // Collect the working tree, then always tear the container down. The
         // teardown is bracketed by system events so the feed shows the run
@@ -1554,15 +1652,14 @@ where
         ));
         let mut artifacts = artifacts?;
 
-        // The measured run duration excludes any time the run pod spent queued
-        // for cluster capacity before it started: that is wall-clock the run was
-        // waiting its turn, not running, so counting it would unfairly inflate a
-        // run's time whenever the cluster was busy. `scheduling_wait` is zero for
-        // runtimes (a local Docker/Podman) that admit the container immediately.
-        let run_time_seconds = timer
-            .elapsed()
-            .saturating_sub(scheduling_wait)
-            .as_secs_f64();
+        // The run's wall clock, frozen here so nothing below can inflate what the
+        // run is judged on. [`RunDurations::partition`] turns it into the recorded
+        // durations, subtracting the time the run pod spent queued for cluster
+        // capacity before it started: that is wall-clock the run was waiting its
+        // turn, not running, so counting it would unfairly inflate a run's time
+        // whenever the cluster was busy. `scheduling_wait` is zero for runtimes (a
+        // local Docker/Podman) that admit the container immediately.
+        let measured = timer.elapsed();
         // A harness that reports its own exact cost needs no OpenRouter lookup;
         // its native model ID may not even appear in OpenRouter's catalog.
         let prices = if outcome.reported_cost.is_some() {
@@ -1585,7 +1682,6 @@ where
                 }
             }
         };
-        let metrics = self.collect_metrics(&outcome, run_time_seconds, &prices)?;
 
         // The post-run stage seam: the single place any host-side analysis of a
         // finished run happens (see [`crate::post_run`]). Its position is the whole
@@ -1597,10 +1693,11 @@ where
         // tree carries build output, a rewritten lockfile and toolchain caches, and
         // carries different amounts of them depending on how far validation got, so
         // this is the only placement under which "the code the model wrote" is
-        // literally true. And *outside `with_runtime_cap`* — which wraps only the
-        // harness session, inside `execute` — with the run's measured duration
-        // already frozen above, so no analysis can ever eat into the test case's
-        // `max_runtime_hours` or inflate what the run is scored on.
+        // literally true. And *outside the runtime cap*, which `execute` applies to
+        // the harness session and to each in-container setup step, each on its own
+        // — with the run's measured duration already frozen above, so no analysis
+        // can ever eat into the test case's `max_runtime_hours` or inflate what the
+        // run is scored on.
         //
         // Note this runs for a **canceled** run too, unlike the validation below.
         // Validation is skipped for a cancellation because it is fresh work that
@@ -1666,12 +1763,31 @@ where
         // half-written implementation would be neither a freeze nor a fair result. Its
         // summary is therefore empty rather than failed: nothing was checked, so nothing
         // is reported as having failed a check.
-        let validation = if outcome.canceled {
-            ValidationSummary::default()
+        let (validation, validation_elapsed) = if outcome.canceled {
+            (ValidationSummary::default(), None)
         } else {
-            self.validate(test_case, &variant, &artifacts, &references, &proofs)?
+            let validation_timer = Instant::now();
+            let validation =
+                self.validate(test_case, &variant, &artifacts, &references, &proofs)?;
+            (validation, Some(validation_timer.elapsed()))
         };
         let finished_at = OffsetDateTime::now_utc();
+
+        // Every duration the run measured, partitioned so setup, session and
+        // teardown sum to the run's frozen wall clock exactly. Built here because
+        // the validation pass is the last stage that contributes one, and recorded
+        // outside that sum because validation ran after the wall clock was frozen.
+        let metrics = self.collect_metrics(
+            &outcome,
+            RunDurations::partition(
+                measured,
+                before_teardown,
+                session_elapsed,
+                scheduling_wait,
+                validation_elapsed,
+            ),
+            &prices,
+        )?;
 
         // A clean harness exit that produced nothing evaluable is a model
         // catastrophe, not a completion (computed before `validation` is moved into

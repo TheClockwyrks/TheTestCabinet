@@ -37,7 +37,7 @@ folder.
 | `tags` | — | Free-form tags for browsing and search. |
 | `summary` | — | One- or two-sentence abstract on the jam card. Not seeded. |
 | `description` | — | Site-facing prose (a Markdown file). Not seeded. |
-| `max_runtime_hours` | — | Wall-clock cap for the session, defaulted when omitted. Also the model's stated time budget. |
+| `max_runtime_hours` | — | Wall-clock cap for the session and for each setup step, defaulted when omitted. Also the model's stated time budget. |
 | `experimental` | — | Hide the version until a deployment opts in. |
 | `workspace` | — | Starter workspace directory seeded into the run root. |
 | `init` | — | Command run once after the workspace is seeded, before the harness starts. |

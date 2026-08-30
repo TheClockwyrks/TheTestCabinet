@@ -4,17 +4,43 @@ title: Metrics
 
 ## Overview
 
-Every run records the resources it consumed: wall-clock time, normalized token
-counts, and cost. These are the numbers the [site](/components/site/overview/)
-surfaces alongside a run. They are distinct from the run's quality score and
-rating, which come from its [review](/components/core/results/#reviews). A
-per-case leaderboard ranks by score, never by cost or tokens.
+Every run records the resources it consumed: how long each stage of the run
+took, normalized token counts, and cost. These are the numbers the
+[site](/components/site/overview/) surfaces alongside a run. They are distinct
+from the run's quality score and rating, which come from its
+[review](/components/core/results/#reviews). A per-case leaderboard ranks by
+score, never by cost or tokens.
 
-## Run time
+## Durations
 
-Every run records its end-to-end wall-clock time in seconds. Run time depends
-heavily on which provider served the requests, so it is presented as a secondary
-figure.
+Every run records its end-to-end wall-clock time in seconds as the run time, and
+records the duration of each lifecycle stage beside it.
+
+- Setup covers the start of the run through to the instant the session begins:
+  rendering the case's references, seeding the workspace, starting the
+  container, probing its environment, installing the harness, and running the
+  test case's `init` step.
+- Session covers the harness session alone.
+- Teardown covers collecting the produced tree and stopping the container.
+- Validation covers the [validation](/components/core/validation/) pass.
+
+Setup, session and teardown sum exactly to the run time. The run time excludes
+the wall clock a run container spent queued for cluster capacity before it
+started; that wait is subtracted from setup, the stage that contains it.
+
+Validation sits outside the run time, which is frozen before the validation pass
+and before every post-run stage.
+
+The session duration is the figure that describes a model. Setup is shared by
+every run of a test case and dominates the run time whenever the session is
+short, so four runs that differ only in the model can record run times within a
+few percent of each other while their sessions differ by multiples. The run time
+answers what a run cost in machine time. Both depend heavily on which provider
+served the requests, so each is presented as a secondary figure.
+
+Each stage duration is optional. `null` means the run recorded no figure for
+that stage, which is distinct from `0`. A canceled run records no validation
+duration, because a cancellation skips validation.
 
 ## Tokens
 

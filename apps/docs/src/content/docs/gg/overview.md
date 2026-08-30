@@ -219,7 +219,9 @@ rest of the request in full.
 gg is installed by context. Locally it runs with no external resources, so a
 developer can exercise it fully offline from a local build. In k8s it is
 published as a GitHub release and downloaded from there at run time, the same
-shape as the third-party harnesses' install step.
+shape as the third-party harnesses' install step. The install runs in the run's
+setup stage, so it is recorded as
+[setup](/components/core/metrics/#durations) rather than as the model's session.
 
 The release asset is a bare static-musl executable named `gg-<target>`, hanging
 off the release tag `v<version>`, published for both `x86_64` and `aarch64`. The

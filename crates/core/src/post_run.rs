@@ -10,18 +10,18 @@
 //! # The one rule
 //!
 //! **All post-run analysis runs on the host, after the working tree is collected,
-//! before validation, and outside the harness session's runtime cap.** There is
-//! exactly one insertion point in [`RunEngine::run_resolved`](crate::RunEngine::run_resolved),
-//! and every stage goes through it. Three properties fall out of that single
+//! before validation, and outside the run's runtime cap.** There is exactly one
+//! insertion point in [`RunEngine::run_resolved`](crate::RunEngine::run_resolved), and
+//! every stage goes through it. Three properties fall out of that single
 //! placement, each of which was the reason for one of the three constraints:
 //!
 //! - **Analysis never costs the test case its budget.** The runtime cap
-//!   (`max_runtime_hours`, applied by `with_runtime_cap`) wraps only the harness
-//!   session, and the run's measured duration is frozen before this seam. A stage
-//!   can take as long as it needs without a run being scored as if the model had
-//!   spent that time. This is satisfied *by construction* rather than by policy:
-//!   there is no cap to compete with here, because the capped future has already
-//!   resolved.
+//!   (`max_runtime_hours`, applied by `with_runtime_cap`) bounds the harness session
+//!   and bounds each in-container setup step, each on its own, and the run's measured
+//!   duration is frozen before this seam. A stage can take as long as it needs without
+//!   a run being scored as if the model had spent that time. This is satisfied *by
+//!   construction* rather than by policy: there is no cap to compete with here,
+//!   because the capped future has already resolved.
 //! - **What is analysed is what the model wrote.** Validation runs the case's
 //!   install and build commands **in the produced tree itself**, so after it the
 //!   tree carries build output, a rewritten lockfile and toolchain caches — and

@@ -25,7 +25,7 @@ summary = "..."              # optional abstract for the site cards (inline; NOT
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 changelog = "changelog.md"   # REQUIRED per-version changelog (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
-max_runtime_hours = 0.5      # cap on the harness session before it is stopped (default 1)
+max_runtime_hours = 0.5      # cap on the session and on each setup step (default 1)
 experimental = false         # optional; true hides the case unless the deployment opts in
 workspace = "workspaces/base" # optional starter directory, seeded into the run root
 init = "npm install"         # optional command run after seeding, before the harness
@@ -214,9 +214,10 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   seeded; see
   [Prompt template](/testing/end-to-end/overview/#prompt-template).
 - `max_runtime_hours` is the maximum wall-clock duration the harness session may
-  run before the container is torn down and the run aborts. It is authored in
-  hours, fractional values allowed, must be a positive finite number, and
-  defaults to `1`. A run can override it for a single invocation, for example
+  run before the container is torn down and the run aborts. It bounds each
+  in-container setup step on its own as well. It is authored in hours,
+  fractional values allowed, must be a positive finite number, and defaults to
+  `1`. A run can override it for a single invocation, for example
   `tcab run --max-runtime <hours>`.
 - `experimental` marks a case as still being iterated on and defaults to
   `false`. A deployment offers experimental cases only when it sets

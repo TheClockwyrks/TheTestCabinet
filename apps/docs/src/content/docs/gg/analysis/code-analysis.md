@@ -191,10 +191,11 @@ must resolve against a serialized summary, so renaming a field fails the suite.
 ## Where it runs
 
 The analyzer is a post-run stage: on the host, after the tree is collected and
-before validation, outside the harness session's runtime cap.
+before validation, outside the run's runtime cap.
 
-The run's timer is already stopped and the cap wraps the harness session alone,
-so the analysis costs the test case nothing. The validator runs the case's
+The run's timer is already stopped and the cap bounds the harness session and
+each in-container setup step, each on its own, so the analysis costs the test
+case nothing. The validator runs the case's
 install and build commands in the produced tree itself, so after validation the
 tree carries build output, a rewritten lockfile and toolchain caches, in amounts
 that vary with how far validation got. Running before it is what makes

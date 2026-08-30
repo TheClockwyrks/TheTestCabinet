@@ -6724,18 +6724,25 @@ pub struct GgSessionSummary {
     #[serde(default, skip_serializing_if = "GgRejectedResponses::is_empty")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub rejected_responses: GgRejectedResponses,
-    /// The longest reply, in characters, of any turn that **worked** (a progressed or finished
-    /// outcome) — folded as a maximum over the
-    /// [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events' `response_chars`. Recorded so an
-    /// output ceiling can later be chosen from data rather than guessed: a cap below this figure
-    /// would have truncated a reply that was doing its job. `0` — and omitted — for a run with no
-    /// successful turn.
+    /// The longest reply the run produced, in characters: the model's raw text plus, on a
+    /// responses-as-code turn, the `program` string of each `submit_program` call it made. Folded
+    /// as a maximum over the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events'
+    /// `response_chars`, over every turn but the one recorded
+    /// [`ModelLengthCapped`](GgTurnErrorType::ModelLengthCapped), whatever the turn's outcome.
+    ///
+    /// Recorded so an output ceiling can later be chosen from data rather than guessed: a cap
+    /// below this figure would have truncated a reply the model generated whole. The one excluded
+    /// turn is the one whose reply the provider had already cut off at its own output cap, which
+    /// is the reply such a ceiling exists to cut. An errored turn is folded in, since a program
+    /// long enough to matter here is the one most likely to fail, and dropping it would
+    /// under-report exactly the runs that write the most. `0` — and omitted — for a run whose
+    /// turns reported no reply at all.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub max_response_chars: u64,
     /// The same maximum in the provider's own unit: **completion tokens** (output plus reasoning,
-    /// the figure an output cap is measured in). `0` — and omitted — for a run whose successful
-    /// turns reported no usage.
+    /// the figure an output cap is measured in). `0` — and omitted — for a run whose turns
+    /// reported no usage.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub max_response_output_tokens: u64,
@@ -8136,11 +8143,10 @@ pub enum GgTelemetryKind {
         loop_abort_chars: u64,
         /// The reply's length in characters — the model's raw text plus, on a
         /// responses-as-code turn, the `program` string of each `submit_program` call it made.
-        /// Carried on
-        /// every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum
-        /// over the turns that **worked** (a progressed or finished outcome): the figure a later
-        /// output ceiling would have to accommodate. `0` — and omitted — for a turn whose reply
-        /// carried no text at all.
+        /// Carried on every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a
+        /// maximum over every turn but the length-capped one: the figure a later output ceiling
+        /// would have to accommodate. `0` — and omitted — for a turn whose reply carried no text
+        /// at all.
         #[serde(default, skip_serializing_if = "is_zero_u64")]
         #[cfg_attr(feature = "contract", ts(optional = nullable))]
         response_chars: u64,

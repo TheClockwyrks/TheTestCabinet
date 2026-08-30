@@ -33,7 +33,7 @@ model output.
 | `status`, `mode`, `limit` | how it ended |
 | `summary.<path>` | the whole session summary, flattened |
 | `model.<id>.tokens`, `model.<id>.cost` | the per-(profile, model) spend rollup |
-| `metric.*` | run time, tokens and cost |
+| `metric.*` | run time, the stage durations, tokens and cost |
 | `code.<path>`, `code.language` | the [code analysis](/gg/analysis/code-analysis/) summary |
 | `has.<block>` | presence markers |
 
@@ -65,9 +65,9 @@ These semantics are identical in both implementations of the evaluator.
    neither. Every aggregate also reports the `contributing` count behind its
    figure.
 3. Metrics are absent, never zero, on a run that produced nothing. A record
-   built for a failed run carries default metrics, so the builder emits token
-   and cost fields only when they are present, and run time only when the run
-   genuinely probed a container.
+   built for a failed run carries default metrics, so the builder emits token,
+   cost and stage-duration fields only when they are present, and run time only
+   when the run genuinely probed a container.
 4. Arrays are never flattened positionally. An array contributes only its
    length, under `<path>.count`. A field added to the session summary must
    therefore be a scalar or a map.
@@ -124,7 +124,7 @@ Worked examples, which are also the editor's example menu:
 
 | Question | Query |
 | --- | --- |
-| Long recent sessions on one provider | `started >= now-30d and model:"anthropic/*" and metric.runTimeSeconds >= 1800` |
+| Long recent sessions on one provider | `started >= now-30d and model:"anthropic/*" and metric.sessionSeconds >= 1800` |
 | Runs never offered the edit tool | `has.summary:true and not tool.edit_file:*` |
 | Everything that terminated abnormally | `state:(hung or timed_out or catastrophic)` |
 | Abnormal-termination share per configuration | `not state:completed \| stats count() by preset` |

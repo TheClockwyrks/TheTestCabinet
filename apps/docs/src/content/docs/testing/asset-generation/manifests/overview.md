@@ -23,7 +23,7 @@ summary = "..."              # optional abstract for the site cards (inline; NOT
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 changelog = "changelog.md"   # REQUIRED per-version changelog entry (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
-max_runtime_hours = 0.5      # cap on the harness session before it's stopped (default 1)
+max_runtime_hours = 0.5      # cap on the session and on each setup step (default 1)
 type = "asset-generation"    # the test type (required for this type; defaults to "end-to-end")
 asset_kind = "sprite"        # the shape of asset the model produces (default "sprite")
 

@@ -372,9 +372,54 @@ export type CostMetrics = {
  */
 export type RunMetrics = {
   /**
-   * End-to-end wall-clock time of the run, in seconds.
+   * End-to-end wall-clock time of the whole run, in seconds, excluding any
+   * time the run's container spent queued for cluster capacity before it
+   * started.
+   *
+   * This is what the run cost in machine time. It is the sum of
+   * [`Self::setup_seconds`], [`Self::session_seconds`] and
+   * [`Self::teardown_seconds`], and a question about the model is answered by
+   * the session alone: setup is shared by every run of a test case and
+   * dominates this figure whenever the session is short.
    */
   runTimeSeconds: number;
+  /**
+   * Wall-clock time of the harness session alone, in seconds — the model's own
+   * working time, and the figure that describes a model.
+   *
+   * `None` on a record written before the stage durations were measured, which
+   * is distinct from `Some(0.0)`.
+   */
+  sessionSeconds?: number;
+  /**
+   * Wall-clock time from the start of the run until the harness session began,
+   * in seconds: rendering the case's references, seeding the workspace,
+   * starting the container, probing its environment, installing the harness,
+   * and running the test case's `init` step.
+   *
+   * The queueing wait excluded from [`Self::run_time_seconds`] is subtracted
+   * here, the stage that contains it. `None` on a record written before the
+   * stage durations were measured.
+   */
+  setupSeconds?: number;
+  /**
+   * Wall-clock time spent collecting the produced tree and stopping the
+   * container, in seconds.
+   *
+   * Taken as the remainder of [`Self::run_time_seconds`], so the three stages
+   * sum to it exactly. `None` on a record written before the stage durations
+   * were measured.
+   */
+  teardownSeconds?: number;
+  /**
+   * Wall-clock time of the [validation](crate::validation) pass, in seconds.
+   *
+   * Recorded outside [`Self::run_time_seconds`], which is frozen before
+   * validation and before every [post-run stage](crate::post_run) runs. `None`
+   * on a canceled run, which skips validation, and on a record written before
+   * the stage durations were measured.
+   */
+  validationSeconds?: number;
   /**
    * Normalized token usage.
    */

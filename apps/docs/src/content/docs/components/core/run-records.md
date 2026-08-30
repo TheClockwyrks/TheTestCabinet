@@ -89,7 +89,8 @@ The harness version lives in the subject rather than here.
 
 ### Metrics
 
-- Run time, as defined in [Metrics](/components/core/metrics/#run-time).
+- Run time and the setup, session, teardown and validation durations, as defined
+  in [Metrics](/components/core/metrics/#durations).
 - The four token classes, as defined in
   [Metrics](/components/core/metrics/#tokens).
 - Comparable cost and actual cost, as defined in

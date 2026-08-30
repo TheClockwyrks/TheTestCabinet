@@ -601,7 +601,7 @@ fn build_invocation_carries_the_resolved_model_modalities() {
     assert!(invocation.model_modalities.is_empty());
 }
 
-/// The cancellation path, driven through [`run_gg`] against a container double: raising the
+/// The cancellation path, driven through a prepared session against a container double: raising the
 /// sentinel, draining the wind-down, and the partial outcome that comes back.
 ///
 /// Separate from the tests above because those are deliberately container-free (pure ingest

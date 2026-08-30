@@ -263,8 +263,9 @@ async fn a_length_capped_reply_is_rejected_recorded_and_retried_on_the_same_turn
         summary.errors.turns, 2,
         "the error rollup's denominator counts model calls, the rejected one included"
     );
-    // (item 6b) the maxima fold over the turns that worked: the finishing program's characters,
-    // and its completion tokens as output plus reasoning — never the rejected reply's 65k.
+    // (item 6b) the maxima skip the length-capped turn, which the emitter records with no size at
+    // all: what is left is the finishing program's characters, and its completion tokens as output
+    // plus reasoning, never the rejected reply's 65k.
     assert_eq!(
         summary.max_response_chars,
         FINISHING_PROGRAM.chars().count() as u64
