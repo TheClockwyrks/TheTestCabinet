@@ -786,12 +786,14 @@ validation = { script = "growth/first-pellet-off-start-chain.test.ts", outputs =
 [[review.categories.items]]
 id = "respawn-last-valid-cell"
 title = "The last valid cell is still found"
-description = "With the chain posed so that exactly one interior cell is neither snake nor pellet, the next eat places the pellet on that one cell rather than failing or ending the round."
+description = "With the chain posed so that exactly one cell of the valid set specs/board.md defines is left, the next eat places the pellet on that one cell rather than failing or ending the round."
 domains = ["gameplay"]
 failure_cap = "passable"
-# Automated validation: pose a chain filling the interior but for one cell, eat
-# the live pellet, and read where the next one landed. See
-# validation/<engine>/growth/respawn-last-valid-cell.test.ts.
+# Automated validation: pose a chain covering every valid cell but one, eat the
+# live pellet, and read where the next one landed. The valid set excludes any
+# obstacle the mode lays, so the chain the scenario poses is the mode's, and the
+# suite reads the obstacle list back rather than assuming the interior is open.
+# See validation/<engine>/growth/respawn-last-valid-cell.test.ts.
 validation = { script = "growth/respawn-last-valid-cell.test.ts", outputs = [
   { id = "last", name = "The pellet placed on the last valid cell", kind = "image" },
 ] }
