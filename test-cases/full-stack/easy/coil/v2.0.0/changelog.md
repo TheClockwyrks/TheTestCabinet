@@ -46,6 +46,27 @@ scoring domain it rolls up to and the failure cap it applies when it fails. The
 validators decide the functional rating; a reviewer rates the run's aesthetics and
 may override a verdict.
 
+Nothing is left to a reviewer to decide, so the points `v1.0.0` handed over
+whole, the crisp board, the window fit, the produced sprite set and the produced
+head bite, are re-cut as claims a validator can settle: a head sheet of four
+frames that differ from one another, a body, corner and tail sprite that are three
+different images at the size `specs/assets.md` fixes, a head cell and a body cell
+painted by an image draw rather than by a shape, a bend painted with an image the
+straight run is not, a bite that changes the head's painted frame on an eat and
+returns it after `BITE_SECONDS`, four produced sounds that carry signal rather
+than silence, an eat shorter than a tick, and a death longer than either of the
+other two cues. The look of any of it is the presentation domain's aesthetic
+rating, which now covers everything a player sees and hears rather than the
+produced files alone.
+
+The taxonomy is much finer than `v1.0.0`'s. Each wall is its own point, each
+steering direction is its own point, each key bound to an action is its own point,
+each screen transition is its own point in one direction, and each edge case the
+rules imply, an update shorter than a tick, a third turn at a full buffer, the
+last valid cell on a crowded board, a tail entered on a growth tick, a window read
+at 27 ticks and again at 28, is a point of its own rather than a caveat in the
+specification.
+
 `validation/` holds one project per engine. The `none` suites drive the built site
 in headless Chromium through `window.__coil`; the two engine projects run in
 process against the vendored engine and reach the surface through `engine.debug`.
@@ -98,11 +119,15 @@ operation may pose, and the snapshot reports every field an operation can set.
 ## The points the two modes disagree on
 
 A variant may only add to a common review point, never replace the validator behind
-one. Maze laces the board with a fixed course of fatal interior obstacles, so the
-points about what the head may enter, where a pellet may land, and what the board
-carries mean different things in the two modes. Those points move out of the case
-manifest into both variant files, each stating its own version, and Maze keeps its
-own `maze` domain and the four points that go with it.
+one. Three points mean different things in the two modes: what the board's interior
+carries, the mode readout the HUD draws, and the entry the title menu opens with.
+Those move out of the case manifest into both variant files, each stating its own
+version against its own validator.
+
+Maze keeps its own `maze` domain and the points that roll up to it: the fixed
+course and its clear starting row, an obstacle fatal to the head, a pellet that
+never lands on one, the two operations that clear and lay a course, and the course
+told apart by colour from the board and from the snake.
 
 ## A showcase for the catalog
 
