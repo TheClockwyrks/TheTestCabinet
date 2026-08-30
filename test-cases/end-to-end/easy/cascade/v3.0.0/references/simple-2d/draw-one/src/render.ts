@@ -89,42 +89,61 @@ function drawSquaredPile(
   cards: readonly CardState[],
   x: number,
   y: number,
+  slots: boolean,
 ): void {
   if (cards.length === 0) {
-    drawEmptySlot(ctx, x, y);
+    if (slots) drawEmptySlot(ctx, x, y);
     return;
   }
   for (const card of cards) drawCard(ctx, card, x, y);
 }
 
 /** The waste: the cards it shows, squared at its anchor (specs/table.md). */
-function drawWaste(ctx: Ctx, state: CascadeState): void {
+function drawWaste(ctx: Ctx, state: CascadeState, slots: boolean): void {
   if (shownWasteCount(state) <= 0) {
-    drawEmptySlot(ctx, WASTE_X, TOP_ROW_Y);
+    if (slots) drawEmptySlot(ctx, WASTE_X, TOP_ROW_Y);
     return;
   }
   for (const card of state.waste) drawCard(ctx, card, WASTE_X, TOP_ROW_Y);
 }
 
 /** One column, fanned downward at the offsets its length allows. */
-function drawColumn(ctx: Ctx, cards: readonly CardState[], x: number): void {
+function drawColumn(
+  ctx: Ctx,
+  cards: readonly CardState[],
+  x: number,
+  slots: boolean,
+): void {
   if (cards.length === 0) {
-    drawEmptySlot(ctx, x, TABLEAU_Y);
+    if (slots) drawEmptySlot(ctx, x, TABLEAU_Y);
     return;
   }
   const tops = columnCardTops(cards);
   for (let i = 0; i < cards.length; i++) drawCard(ctx, cards[i], x, tops[i]);
 }
 
-/** All thirteen piles, in the order they sit on the table. */
-function drawPiles(ctx: Ctx, state: CascadeState): void {
-  drawSquaredPile(ctx, state.stock, STOCK_X, TOP_ROW_Y);
-  drawWaste(ctx, state);
+/**
+ * All thirteen piles, in the order they sit on the table.
+ *
+ * `slots` draws the empty-slot mark of a pile holding no cards, which the live
+ * table carries (specs/table.md). The won screen leaves it off: what the cascade
+ * runs over is the painted table and the cards still on the foundations
+ * (specs/victory.md), so a slot mark there would only cover the paint.
+ */
+function drawPiles(ctx: Ctx, state: CascadeState, slots: boolean): void {
+  drawSquaredPile(ctx, state.stock, STOCK_X, TOP_ROW_Y, slots);
+  drawWaste(ctx, state, slots);
   for (let i = 0; i < state.foundations.length; i++) {
-    drawSquaredPile(ctx, state.foundations[i], FOUNDATION_X[i], TOP_ROW_Y);
+    drawSquaredPile(
+      ctx,
+      state.foundations[i],
+      FOUNDATION_X[i],
+      TOP_ROW_Y,
+      slots,
+    );
   }
   for (let i = 0; i < state.tableau.length; i++) {
-    drawColumn(ctx, state.tableau[i], COLUMN_X[i]);
+    drawColumn(ctx, state.tableau[i], COLUMN_X[i], slots);
   }
 }
 
@@ -234,7 +253,7 @@ function drawWinMessage(ctx: Ctx): void {
 export function renderGame(state: CascadeState, ctx: Ctx): void {
   if (state.screen === "playing" || state.screen === "won") {
     state.trail?.blit(ctx);
-    drawPiles(ctx, state);
+    drawPiles(ctx, state, state.screen === "playing");
     drawDropTarget(ctx, state);
     drawDrag(ctx, state);
     drawFlyers(ctx, state);
