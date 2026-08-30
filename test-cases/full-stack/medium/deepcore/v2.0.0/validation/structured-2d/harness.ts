@@ -68,11 +68,24 @@ import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import {
+  Image,
   createCanvas,
   loadImage,
   type Canvas,
   type SKRSContext2D,
 } from "@napi-rs/canvas";
+// The engine's recorder decides whether a draw source is a bitmap by matching the
+// host's own constructor names, and a name the host does not define never matches.
+// Node defines no `ImageBitmap`, so the images this harness draws from -- which are
+// `@napi-rs/canvas`'s `Image` -- were recorded as an opaque marker with no pixels
+// behind it. Every replay that drew a produced sprite therefore reached a reviewer
+// with the sprite missing from it.
+//
+// Naming that class `ImageBitmap` on the host is the whole fix, and it belongs here
+// rather than in the engine: matching by name is the engine's deliberate design, and
+// it is correct in the browser it is written for. This harness is the Node-side
+// adapter, so supplying the name the host lacks is its job.
+(globalThis as Record<string, unknown>).ImageBitmap ??= Image;
 import { expect } from "vitest";
 import {
   ConstantClock,
