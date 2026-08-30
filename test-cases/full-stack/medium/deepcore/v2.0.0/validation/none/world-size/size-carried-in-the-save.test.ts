@@ -1,24 +1,69 @@
-// Deepcore — world-size.size-carried-in-the-save. STUB: NOT YET AUTHORED.
+// world-size/size-carried-in-the-save — the chosen size is written into the save
+// and comes back with it.
 //
-// The chosen size is carried in the save
+// specs/world.md: "The chosen size is part of the expedition, so it is carried in
+// the save and reused when an expedition is replayed", and specs/gameplay.md
+// lists "the generated mine and its world size" among what a save holds. So a
+// Marathon expedition saved and continued resumes at Marathon, with `coreRow`
+// back at 1000, rather than reverting to the Standard size a fresh session opens
+// at.
 //
-// The world size is part of the expedition, so it is written into the save and
-// restored with it rather than reverting to Standard.
+// WHY MARATHON. `standard` is what `reset` restores and what a build that dropped
+// the size from the save would fall back to, so a save taken at any other size
+// tells the two apart; Marathon is the furthest from it.
 //
-// Automated validation: start a Marathon expedition, save, return to the
-// title, continue and read worldSize and coreRow back at Marathon.
-//
-// `test-case.toml` declares this suite as `world-size/size-carried-in-the-save.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (size (image)) around the drive.
+// ISOLATION. A Marathon expedition on an empty mine with the slot cleared first,
+// the miner standing at the camp where saving is allowed, and nothing else. The
+// save is written through the control that stands for the Save Pad and restored
+// through the title's `CONTINUE`, which specs/ui.md fixes as that menu's first
+// item while a save exists.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { CORE_COL, coreRowFor } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { bankSave, continueFromTitle, openAtCamp } from "../save/expedition";
 
-test("The chosen size is carried in the save", () => {
-  throw new Error(
-    "Deepcore validator `world-size/size-carried-in-the-save` is declared in test-case.toml but has not been authored yet.",
+/** The size the save is taken at: the one furthest from the session default. */
+const SIZE = "marathon" as const;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("restores a Marathon expedition at Marathon rather than at Standard", async () => {
+  await openAtCamp(h, { size: SIZE });
+  await bankSave(h);
+
+  await continueFromTitle(h);
+  await h.advance(1);
+
+  const resumed = await h.snapshot();
+  await captureStill(h, "size");
+  assertEqual(
+    resumed.screen,
+    "in-mine",
+    "specs/ui.md: CONTINUE resumes the save into in-mine",
+  );
+  assertEqual(
+    resumed.worldSize,
+    SIZE,
+    "specs/world.md: the world size is carried in the save",
+  );
+  assertEqual(
+    resumed.coreRow,
+    coreRowFor(SIZE),
+    "specs/world.md: coreRow comes back with the restored size",
+  );
+  assertEqual(
+    (await h.tileAt(CORE_COL, coreRowFor(SIZE))).kind,
+    "core",
+    "specs/world.md: the restored mine is as deep as its size says",
   );
 });
