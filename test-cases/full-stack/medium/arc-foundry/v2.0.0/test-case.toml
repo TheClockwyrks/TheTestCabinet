@@ -3023,6 +3023,18 @@ validation = { script = "status-bar/status-controls-reported.test.ts", outputs =
   { id = "controls", name = "The status bar's five controls", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "status-controls-on-paused"
+title = "The status bar still reports its controls behind the pause menu"
+description = "On the paused screen, over the frozen yard, statusControls returns the same five controls with the same rectangles and each state reading its live value, and it returns an empty array on victory and overload, where no yard is shown."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: read statusControls on playing, on paused, and on the
+# two result screens. See validation/<engine>/status-bar/status-controls-on-
+# paused.test.ts.
+validation = { script = "status-bar/status-controls-on-paused.test.ts", outputs = [
+  { id = "paused", name = "The bar reporting behind the pause menu", kind = "image" },
+] }
+[[review.categories.items]]
 id = "speed-reads-its-value"
 title = "The speed control draws its live value"
 description = "The pixels inside the speed control's reported rectangle differ between multiplier 1 and multiplier 8, so the control reads its value rather than merely being clickable."

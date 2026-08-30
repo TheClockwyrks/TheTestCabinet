@@ -423,14 +423,15 @@ function byAction(
 // what the pointer resolves a press against, so a control is drawn exactly where it is
 // activated.
 
-/** Whether this screen shows the yard behind whatever the upper layer draws. */
+/**
+ * Whether this screen shows the yard behind whatever the upper layer draws.
+ *
+ * The two the yard is shown on, and no other (specs/ui.md, specs/hud.md): a result
+ * screen does not show the yard, so it does not show the status bar or the build
+ * panel that stand around it either.
+ */
 function onTheYard(g: FoundryState): boolean {
-  return (
-    g.screen === "playing" ||
-    g.screen === "paused" ||
-    g.screen === "victory" ||
-    g.screen === "overload"
-  );
+  return g.screen === "playing" || g.screen === "paused";
 }
 
 /**
@@ -487,9 +488,11 @@ export function renderUiLayer(
   }
 
   const frame: Frame = { tooltip: null, focusId: leaderboardHoverId(g) };
-  drawStatusBar(g, ctx, list);
-  drawPanel(g, ctx, list, frame);
-  drawTooltip(ctx, frame);
+  if (onTheYard(g)) {
+    drawStatusBar(g, ctx, list);
+    drawPanel(g, ctx, list, frame);
+    drawTooltip(ctx, frame);
+  }
 
   if (g.screen === "playing" && g.showCombos) drawRecipeBook(g, ctx, list);
   if (g.screen === "playing" && g.showDamage)

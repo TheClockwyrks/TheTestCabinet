@@ -527,7 +527,6 @@ async function main(): Promise<void> {
     // The status bar's overlay, speed, pause, and mute controls, each carrying the value it
     // currently reads. Empty on any screen with no status bar.
     statusControls: () => {
-      if (isMenuState(game.state)) return [];
       const state: Record<string, boolean | number> = {
         combos: game.uiCombos,
         damage: game.uiBoard,

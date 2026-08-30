@@ -441,17 +441,21 @@ export function renderGame(
       break;
   }
 
-  drawYard(g, ctx, frame);
-  drawUnits(g, ctx);
-  drawProjectiles(g, ctx);
-  drawBursts(ctx, g.bursts);
-  drawBuildCursor(g, ctx);
-  // The waypoint numbers are drawn last of the yard layer, so a structure or a unit can
-  // never cover the ordered chain.
-  drawWaypointNumbers(g, ctx);
-  drawStatusBar(g, ctx, list);
-  drawPanel(g, ctx, list, frame);
-  drawTooltip(ctx, frame);
+  // The yard is shown on `playing` and `paused` alone, and the status bar and the build
+  // panel with it (specs/hud.md, specs/ui.md). A result screen shows none of them.
+  if (g.screen === "playing" || g.screen === "paused") {
+    drawYard(g, ctx, frame);
+    drawUnits(g, ctx);
+    drawProjectiles(g, ctx);
+    drawBursts(ctx, g.bursts);
+    drawBuildCursor(g, ctx);
+    // The waypoint numbers are drawn last of the yard layer, so a structure or a unit
+    // can never cover the ordered chain.
+    drawWaypointNumbers(g, ctx);
+    drawStatusBar(g, ctx, list);
+    drawPanel(g, ctx, list, frame);
+    drawTooltip(ctx, frame);
+  }
 
   if (g.screen === "playing" && g.showCombos) drawRecipeBook(g, ctx, list);
   if (g.screen === "playing" && g.showDamage)

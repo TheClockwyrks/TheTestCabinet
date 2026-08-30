@@ -312,7 +312,13 @@ function difficultySelectControls(w: FoundryState): Control[] {
  * the topmost control first.
  */
 function yardControls(w: FoundryState): Control[] {
-  const out: Control[] = [...barControls(w), ...panelControls(w)];
+  // The status bar and the build panel are drawn on `playing` and `paused` alone,
+  // because those are the two screens the yard is shown on (specs/hud.md,
+  // specs/ui.md). A result screen shows neither, so neither is hit-testable there.
+  const yardShown = w.screen === "playing" || w.screen === "paused";
+  const out: Control[] = yardShown
+    ? [...barControls(w), ...panelControls(w)]
+    : [];
   if (w.screen === "playing" && w.showCombos) out.push(...bookControls());
   if (w.screen === "playing" && w.showDamage) out.push(...damageControls(w));
   if (w.screen === "paused") {
@@ -428,7 +434,11 @@ function panelControls(w: FoundryState): Control[] {
 export function inspectorControls(w: FoundryState): Control[] {
   const sel = selected(w);
   if (!sel) return [];
-  const inBuild = w.runPhase === "build";
+  // On `paused` the pause menu takes the input and every control on the panel is
+  // inert (specs/controls.md), so every slot is drawn disabled there whatever the
+  // phase underneath it says.
+  const live = w.screen === "playing";
+  const inBuild = live && w.runPhase === "build";
   const out: Control[] = [];
   let y = ACTION_BOTTOM - 26;
 
@@ -473,7 +483,7 @@ export function inspectorControls(w: FoundryState): Control[] {
   if (comp?.combo) {
     slot("dismantle", "DISMANTLE TOWER", inBuild, 24);
     if (stats.fires) {
-      slot("targeting", `TARGET · ${TARGETING_LABEL[comp.targeting]}`, true);
+      slot("targeting", `TARGET · ${TARGETING_LABEL[comp.targeting]}`, live);
     }
     const cost = comboUpgradeCostFor(comp);
     slot(
@@ -491,7 +501,7 @@ export function inspectorControls(w: FoundryState): Control[] {
   const explicit = set.length >= 2 && set[0] === sel.id;
   slot("dismantle", PANEL_ACTION_LABELS.dismantle, inBuild);
   if (comp && stats.fires) {
-    slot("targeting", `TARGET · ${TARGETING_LABEL[comp.targeting]}`, true);
+    slot("targeting", `TARGET · ${TARGETING_LABEL[comp.targeting]}`, live);
   }
   if (sel.kind === "candidate") {
     const lower = QUALITY_LABEL[qualityIndex(Math.max(1, sel.quality - 1))]!;
@@ -501,7 +511,7 @@ export function inspectorControls(w: FoundryState): Control[] {
   slot(
     "combine",
     explicit ? "COMBINE SELECTED" : PANEL_ACTION_LABELS.combine,
-    canCombine(w, sel),
+    live && canCombine(w, sel),
     26,
   );
   // One row per reachable recipe, each naming the tower it would build. They stack above
@@ -510,7 +520,7 @@ export function inspectorControls(w: FoundryState): Control[] {
     slot(
       "combine-special",
       COMBO_BY_ID[recipe.combo].name,
-      true,
+      live,
       30,
       recipe.combo,
     );
@@ -602,7 +612,6 @@ export function pressPanelControls(w: FoundryState): Control[] {
 
 /** The status bar's controls, and none at all on a screen with no bar. */
 export function statusBarControls(w: FoundryState): Control[] {
-  if (isMenuScreen(w.screen)) return [];
   return controls(w).filter((c) => c.kind === "bar");
 }
 

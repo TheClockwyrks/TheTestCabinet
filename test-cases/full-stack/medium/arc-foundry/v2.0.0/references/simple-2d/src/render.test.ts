@@ -10,7 +10,7 @@ import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { noAssets } from "./assets";
-import { STAGE_H, STAGE_W } from "./constants";
+import { STAGE_H, STAGE_W, STATUS_CONTROLS } from "./constants";
 import { snapshot } from "./debug";
 import {
   BOARD_PANEL,
@@ -119,9 +119,15 @@ describe("every screen draws", () => {
     for (const screen of ["paused", "victory", "overload"] as const) {
       setScreen(w, screen);
       expect(draw(w)).toBeGreaterThan(1000);
-      // A modal screen reports its own menu and no status bar at all.
+      // Each of the three reports its own menu.
       expect(menuControls(w).length).toBeGreaterThan(0);
-      expect(statusBarControls(w)).toHaveLength(0);
+      // The status bar is drawn on the two screens the yard is shown on, and the
+      // pause menu is one of them: it sits over a yard that is visible and frozen
+      // behind it, so the bar behind it is drawn and reported. A result screen shows
+      // no yard, so it shows no bar (specs/hud.md, specs/ui.md).
+      expect(statusBarControls(w)).toHaveLength(
+        screen === "paused" ? STATUS_CONTROLS.length : 0,
+      );
     }
   });
 });

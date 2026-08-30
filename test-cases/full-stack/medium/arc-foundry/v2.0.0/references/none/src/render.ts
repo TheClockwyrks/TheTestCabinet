@@ -475,7 +475,19 @@ export function render(
     return clicks;
   }
 
-  // The live board (also seen frozen behind the pause menu / end screens).
+  // The yard is shown on `playing` and `paused` alone, and the status bar and the build
+  // panel stand around it, so a result screen draws none of the three (specs/ui.md,
+  // specs/hud.md). What it draws is its own card, over the void.
+  if (game.state === "victory") {
+    drawEnd(ctx, game, clicks, true);
+    return clicks;
+  }
+  if (game.state === "overload") {
+    drawEnd(ctx, game, clicks, false);
+    return clicks;
+  }
+
+  // The live board (also seen frozen behind the pause menu).
   pendingTooltip = null; // recomputed each frame during panel drawing
   // If the DAMAGE BOARD is open and the pointer is over one of its rows, spotlight that tower
   // by graying out every other piece (computed before the board draws — specs/controls.md).
@@ -498,8 +510,6 @@ export function render(
   if (game.state === "playing" && showBoard) drawLeaderboard(ctx, game, clicks);
 
   if (game.state === "paused") drawPauseMenu(ctx, game, clicks);
-  if (game.state === "victory") drawEnd(ctx, game, clicks, true);
-  if (game.state === "overload") drawEnd(ctx, game, clicks, false);
 
   return clicks;
 }
@@ -2053,7 +2063,11 @@ function drawInspector(
   // Hold the bottommost button off the panel's bottom border by a full inter-button gap, so it
   // never reads as touching the inspector's frame.
   const bottomAnchor = baseY - rowGap;
-  const inBuild = game.phase === "build"; // dismantling is a build-phase-only correction
+  // On `paused` the pause menu takes the input and every control on the panel is inert
+  // (specs/controls.md), so every slot is drawn disabled there whatever the phase
+  // underneath it says.
+  const live = game.state === "playing";
+  const inBuild = live && game.phase === "build"; // and a build-phase-only correction
 
   if (s.kind === "blocker") {
     text(ctx, "INERT BLOCKER", x, y + 6, 14, COL.text2, "left", "700", 0.5);
@@ -2260,7 +2274,7 @@ function drawInspector(
         `TARGET · ${TARGETING_LABEL[comp!.targeting]}`,
         "targeting",
         COL.integrity,
-        true,
+        live,
       );
     const cost = game.comboUpgradeCostFor(comp!);
     const label =
@@ -2280,7 +2294,7 @@ function drawInspector(
   // A base structure (candidate OR base component). It can be KEPT or DOWNGRADED (candidate),
   // COMBINED with a match, or folded into a COMBINATION TOWER — all from here.
   const sid = s.id;
-  const canComb = game.canCombine(s);
+  const canComb = live && game.canCombine(s);
   const nt = Math.min(MAX_TIER, s.tier + 1) as Tier;
   const dt = Math.max(1, s.tier - 1) as Tier;
   const recipes = game.reachableCombosFor(sid);
@@ -2293,7 +2307,7 @@ function drawInspector(
       `TARGET · ${TARGETING_LABEL[comp.targeting]}`,
       "targeting",
       COL.integrity,
-      true,
+      live,
     );
 
   // KEEP is a candidate's harvest — committing it LAUNCHES the wave (specs/build.md, no SEND).
@@ -2359,6 +2373,7 @@ function drawInspector(
         payload: rec.combo,
         label: def.name,
         panel: true,
+        disabled: !live,
       });
       ay -= rh + rowGap;
     }
