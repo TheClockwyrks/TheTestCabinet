@@ -1,24 +1,71 @@
-// Wireworm — screens.howto-copy, under the `structured-2d` engine. CASE-PROVIDED.
+// Wireworm — screens/howto-copy: the how-to screen names the fire key and the
+// movement keys, each as a standalone word.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// `specs/ui.md`: the controls the how-to screen names "include the fire key,
+// written as the standalone word `SPACE`, and the movement keys, written as the
+// standalone words `ARROWS` and `WASD`". Those three tokens are the whole of
+// what is asserted, and each is matched at word boundaries — so prose that
+// merely carries the letters inside a longer word (SPACEBAR, CROSSWORDS) cannot
+// satisfy it, while any phrasing that names the key ("SPACE to fire", "[SPACE]",
+// "MOVE  ARROWS or WASD") does. Case is ignored: which case a build sets its
+// copy in is the build's own typography.
 //
-// The point it decides, from `test-case.toml`:
+// The rest of the screen's copy — the goal, the charged field, the dive, the
+// three foes — is NOT asserted. Whether wording "names the chain-arc discharge"
+// is not a question a script can decide, so the frame is captured as an image
+// and that reading is left to the reviewer.
 //
-// The how-to screen names the keys
-//
-// Among the how-to screen's draws, a standalone token — matched at word
-// boundaries — names the fire key (SPACE) and the movement keys. The rules
-// prose the screen also carries is reviewed from the captured frame, not
-// asserted: whether wording "names the chain-arc discharge" is not a question
-// a script can decide, and Refract's counterpart says so in as many words. The
-// output is an image of the screen.
+// The screen is posed with the surface's own `setScreen`, so a build that draws
+// the right copy behind a broken title menu fails `screens/title-howto` alone.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drawnText,
+  resetTo,
+  type Harness,
+} from "../harness";
 
-test("screens.howto-copy", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/structured-2d/screens/howto-copy.test.ts has not been written yet",
+/**
+ * The tokens `specs/ui.md` requires the screen to name, each as a standalone
+ * word: the fire key, and the two ways the movement keys are named.
+ */
+const KEY_WORDS = ["SPACE", "ARROWS", "WASD"] as const;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("names SPACE, ARROWS and WASD as standalone words", async () => {
+  resetTo(h);
+  h.debug.setScreen("howto");
+  assertEqual(
+    h.snapshot().screen,
+    "howto",
+    "setScreen poses the how-to screen (specs/instrumentation.md)",
   );
+
+  h.calls.length = 0;
+  await h.advance(1);
+  captureStill(h, "howto");
+
+  const texts = drawnText(h.calls);
+  assertGreaterThan(texts.length, 0, "the how-to screen draws text");
+  for (const word of KEY_WORDS) {
+    const standalone = new RegExp(`\\b${word}\\b`, "i");
+    assertEqual(
+      texts.some((text) => standalone.test(text)),
+      true,
+      `a run of the how-to screen's text names ${word} as a standalone ` +
+        "word (specs/ui.md)",
+    );
+  }
 });
