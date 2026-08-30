@@ -75,24 +75,33 @@ every run.
 | `README.md`            | No             | This overview.                                                          |
 
 The specification is split across `specs/` by concern, and every file is seeded
-for every run:
+for every run. A file is a Handlebars template only where it branches on the
+selected engine; the rest seed verbatim.
 
-| Spec                 | Covers                                                                                          |
-| -------------------- | ----------------------------------------------------------------------------------------------- |
-| `overview.md`        | What is built, what stays as it is, the code quality, and the commands run over the repository. |
-| `world.md`           | The mine: the tile grid, the depth bands, what each band holds, and the surface camp.           |
-| `character.md`       | The miner: its box, its motion, its fuel and hull, and the cargo it carries.                    |
-| `mining.md`          | Drilling: what a cut costs, how long it takes, and what it leaves behind.                       |
-| `hazards.md`         | Gas pockets, lava, falling damage, and how depth scales each.                                   |
-| `upgrades.md`        | The seven upgrade tracks, their tiers, and what each tier costs and buys.                       |
-| `rocket.md`          | The five rocket components, what each needs, and the launch that ends the run.                  |
-| `gameplay.md`        | The expedition: the surface loop, the Credits economy, saving, and scoring.                     |
-| `ui.md`              | The game states, the required menus, the HUD, and what is out of scope.                         |
-| `modes.md`           | Standard and Hardcore, and the Quick/Standard/Marathon world sizes.                             |
-| `controls.md`        | The actions the player drives the miner with, and the timestep the simulation runs on.          |
-| `items.md`           | The single-use field supplies, and the core sample's jettison and detonation.                   |
-| `assets.md`          | The asset-production contract: every asset, which binary makes it, and the bar it is held to.   |
-| `instrumentation.md` | The debug and automation surface and the diagnostics overlay.                                   |
+| Spec                     | Covers                                                                                          |
+| ------------------------ | ----------------------------------------------------------------------------------------------- |
+| `overview.md.hbs`        | What is built, what stays as it is, the code quality, and the commands run over the repository. |
+| `world.md.hbs`           | The mine: the grid, the camera over it, the world sizes, the depth bands, the tiles, the camp.  |
+| `character.md`           | The miner: its box, its motion, its drilling, its fuel and hull, and its animation states.      |
+| `mining.md`              | The ore and gemstones, the cargo bay, the inventory, the exotic materials, and the scanner.     |
+| `hazards.md`             | Gas pockets, lava, fall impact, and the unstable Core Sample's timer.                           |
+| `upgrades.md`            | The seven upgrade tracks, their tiers, and what each tier costs and gives.                      |
+| `rocket.md`              | The five rocket components, what each needs, and the launch that wins.                          |
+| `gameplay.md`            | The expedition, the Credits economy, the surface loop, saving, and the summary.                 |
+| `ui.md`                  | The screens, the menus, the building panels, the status bar, and what is out of scope.          |
+| `modes.md`               | Standard and Hardcore, and what a death costs in each.                                          |
+| `controls.md.hbs`        | The actions the player drives the miner with and the keys bound to them.                        |
+| `items.md`               | The six single-use field supplies, and the Core Sample's jettison.                              |
+| `assets.md.hbs`          | The asset-production contract: every asset, which binary makes it, and the bar it is held to.   |
+| `instrumentation.md.hbs` | The debug and automation surface, the snapshot shape, and the diagnostics overlay.              |
+| `showcase.md.hbs`        | The `showcase/` directory the finished build ships beside its source.                           |
+
+The six templates branch on the engine because the deliverable does. `overview`
+and `controls` differ in what the runtime hands the build and what the build
+writes; `world` in whether the camera is the engine's or the game's own;
+`assets` in who loads a file and who owns the audio cues; `instrumentation` in
+how the same operations are reached; and `showcase` in whether motion ships as a
+clip or as an engine replay.
 
 ## Assets and media
 
