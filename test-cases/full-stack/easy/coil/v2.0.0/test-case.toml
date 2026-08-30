@@ -65,14 +65,6 @@ prompt = "prompt.hbs"
 # hours — comfortably more than a healthy build needs while still bounding a session
 # that never terminates.
 max_runtime_hours = 3
-# Starter workspace seeded into the root of every run before the specs. It gives
-# the model a baseline project to build on: a `package.json` that pins
-# `playwright` as a dev dependency, so the in-container browser tooling is a
-# visible, project-local dependency rather than a global the model has to know is
-# preinstalled. A variant may override this with its own `workspace` directory;
-# none of Coil's variants need to. The seeded files land at the run root
-# (`workspaces/base/package.json` seeds to `package.json`).
-workspace = "workspaces/base"
 
 # Init command, run in the run container once the workspace and specs are seeded
 # and before the harness starts. It installs the workspace's dependencies and
@@ -91,11 +83,96 @@ init = "npm install && npx playwright install chromium"
 #   - base — Classic mode: the grid-serpent run on the open board.
 #   - maze — Maze mode: the run on a board laced with fixed fatal interior obstacles to
 #            thread (declares its own `maze` domain).
-# This list is a root key, so it must precede the first table header (`[build]`).
+# This list is a root key, so it must precede the first table header.
 variants = [
   "variants/base.toml",
   "variants/maze.toml",
 ]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the input
+# actions a player drives it with, the audio bus, asset loading, and the on-screen
+# diagnostics; one of them also owns rendering and the gameplay framework the game
+# is written inside. It is a *run dimension*, chosen per run alongside the model,
+# the harness, and the variant, and recorded on the run; it is not a property of
+# the game.
+#
+# Coil supports three, and the game is the same grid serpent under all of them.
+# What differs is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build writes
+#                     the fixed-tick loop, the canvas fit, the keyboard input, the
+#                     audio, the overlay and the `window.__coil` surface itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules around
+#                     it (`src/constants.ts`, `src/main.ts`, and the `src/game.ts`
+#                     the build writes, debug surface included).
+#   - `structured-2d` vendors its framework engine the same way and seeds the same
+#                     two modules; the build writes its game module — the game
+#                     definition, its mode, its state and its actors — and the debug
+#                     surface its instance's `initialize` returns.
+# What does NOT differ is the asset-production pass. Every engine run still produces
+# the snake's sprite set and the game's sound and music with the on-`PATH` binaries,
+# because no engine supplies art or audio; `specs/assets.md` is the same contract
+# under all three.
+#
+# `none` supplies no package and therefore carries no version, so it is named in the
+# bare `engines` list; `simple-2d` and `structured-2d` each carry a range and are
+# named in `[[engine]]` tables. `min_version` is the 1.0.0 contract the specs and the
+# validators are written against, and there is deliberately no `max_version`, so a
+# later 1.x or 2.x from the host package store is accepted as it lands. Widening or
+# moving a range means a new case version, so the pin is the statement that THIS spec
+# set matches THIS contract.
+#
+# This declaration deliberately does not describe an engine. An engine ships its own
+# documentation from its own package and seeding puts it in the run for the model to
+# read, so the specs seeded from this folder never restate an engine's API. Where a
+# spec speaks of the runtime it states only what is specific to *this game* under it —
+# which surfaces the build still supplies, Coil's action list, and Coil's cue names.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same TypeScript, lint, format and test configuration
+# the `[toolchain]` commands below run against, an `index.html` holding the canvas,
+# and the project-local `playwright` dependency the model drives the built game
+# through. What differs is how much of the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own fixed-tick loop, canvas fit,
+#                     keyboard input, audio, diagnostics overlay and `window.__coil`
+#                     surface, and every figure this specification fixes, from the
+#                     specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored in
+#                     at seed time so the build imports it by its bare package name,
+#                     and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them) and
+#                     `src/main.ts` (the browser entry). The build writes
+#                     `src/game.ts`: the state, the debug surface its `initialize`
+#                     returns beside that state, and the game's update and render.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds the same two case-owned modules. The build writes
+#                     `src/game.ts`: the game definition the engine drives — its mode,
+#                     its live state, and its actors — and the debug surface its
+#                     instance's `initialize` returns.
+#
+# This table must name EXACTLY the engines the case supports; the resolver checks
+# both directions. The seeded files land at the run root
+# (`workspaces/none/package.json` seeds to `package.json`). Neither variant overrides
+# it: the difference between Classic and Maze is a rule of the game, not a difference
+# in the project it is built in.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/simple-2d"
+"structured-2d" = "workspaces/structured-2d"
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
@@ -108,38 +185,72 @@ variants = [
 install = "npm ci"
 build = "npm run build"
 
-# Instrumentation: the debug-and-automation surface every build installs, named
-# once here so a review item's `validation` driver (and the validator that runs it)
-# knows which `window` global to drive. The seeded specification documents the same
-# handle independently as an ordinary game debug feature (see
-# specs/instrumentation.md); this entry is reporter-side and never seeded. It is
-# required because the review items below declare `validation` scripts.
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. A full-stack build is written in TypeScript, and the seeded
+# workspace ships the configuration each of these commands reads (`tsconfig.json`,
+# `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so what is checked here
+# is the code the model wrote against configuration the case fixed. The commands run
+# host-side over the collected tree after the run's container is gone, so a slow suite
+# costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does not
+# compile is not reviewable. The other three are recorded and gate nothing — `test`
+# additionally records the count and coverage the build's own suite reports, which is
+# how a build that ships tests is told apart from one that ships none. Each is spelled
+# `npx` rather than `npm run <script>` so the check is the case's own statement of what
+# is run and does not depend on the model leaving the seeded scripts intact. These four
+# are exactly the commands `specs/overview.md` tells the build will be run over the
+# finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once here.
+# It is reporter-side and never seeded; the seeded specification documents the surface
+# independently, as an ordinary debugging feature the game needs (see
+# specs/instrumentation.md). It is required because the review items below declare
+# `validation` scripts, and the surface is what every one of them poses its scenario
+# through.
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface
+# itself and installs it on `window.__coil` once the game has initialized, so the
+# handle is what a person opening the console of such a build finds. An engine run has
+# NO global at all: the build writes the surface, its `initialize` returns it — beside
+# the state as `[state, debug]` under `simple-2d`, alone under `structured-2d` — and a
+# caller reads it back off `engine.debug`. Because `simple-2d` holds the state by value
+# and hands every reader a read-only view, its surface is written in the shape of
+# `update` — a pose takes the current state and returns the next, applied through
+# `engine.apply`, and a reading takes the state and returns what it read, called with
+# `engine.state`. `structured-2d` holds the world live, so its poses take only their own
+# arguments and act on it at the call, and its readings return plain data. One handle,
+# three ways to reach the same operations.
+#
+# There is deliberately no `tick_hz`. Coil is clocked at a fixed 8 Hz and its debug
+# surface still moves time in whole simulation ticks, but a validator now builds its own
+# clock and drives it directly rather than asking the runtime to convert ticks back into
+# real seconds, so the case has nothing left to state here.
 [instrumentation]
 handle = "__coil"
-# The fixed simulation rate, in Hz. Coil's debug API advances time in whole
-# simulation ticks (`step(ticks)`) rather than in seconds, so there is no rounding
-# and no ambiguity about what a step means. This is the rate the validation runtime
-# uses to relate that exact stepping back to real time — one tick is the game's
-# 125 ms tick interval, so a second of game time is 8 ticks. It must match the
-# timestep the seeded `specs/movement.md` mandates.
-tick_hz = 8
 
 # Common specs: seeded for EVERY variant of this case, at the `dest` path within the
-# run workspace. The specification is decomposed by concern: the overview, the board
-# geometry, the movement simulation, the combo scoring, the gameplay (the mode and its
-# menu entry), the UI (game states, controls, audio, and the HUD), the produced-asset
-# contract, and the debugging/automation surface. The mode-varying material — the
-# mode's menu entry and, for maze, the interior obstacle course — is branched by
-# variant slug inside `specs/gameplay.md.hbs` rather than seeded from a separate
-# per-variant file, so each variant's rendered set describes exactly one mode and
-# reads as fully self-contained. Most common specs are plain Markdown, seeded
-# verbatim. Two are `.hbs` templates, rendered with the selected variant before
-# landing at their `dest`: `specs/gameplay.md.hbs`, which branches on the variant slug
-# for the mode, and `specs/instrumentation.md.hbs`, a little of whose wording (the
-# snapshot's `mode` value and whether the board carries interior obstacles) depends on
-# the variant. A spec's `dest` defaults to its `source` (with a trailing `.hbs`
-# stripped), so an `.md.hbs` source seeds to the same `.md` path and the plain-Markdown
-# ones need only name the source.
+# run workspace. Every one of these is common: neither variant declares a spec of its
+# own, because the difference between Classic and Maze is a rule of the same game
+# rather than a different game, and a rule belongs beside the rules it sits with.
+#
+# The specification is decomposed by concern: the overview, the board geometry, the
+# movement simulation, the combo scoring, the gameplay (the mode and its menu entry),
+# the UI (game states, controls, audio, and the HUD), the produced-asset contract, and
+# the debugging/automation surface.
+#
+# A source is an `.hbs` template only where it actually branches, and there are two
+# axes to branch on. `variant.slug` selects the mode — its menu entry and, for Maze,
+# the fixed course of fatal interior obstacles — so a variant's rendered set describes
+# exactly one mode and reads as fully self-contained. `engine.slug` selects what the
+# build is handed and what it must write. A spec's `dest` defaults to its `source`
+# (with a trailing `.hbs` stripped), so an `.md.hbs` source seeds to the same `.md`
+# path and a plain `.md` source is seeded verbatim.
 [[spec]]
 source = "specs/overview.md"
 
@@ -166,76 +277,14 @@ source = "specs/ui.md"
 [[spec]]
 source = "specs/assets.md"
 
-# The debugging and automation surface every variant must expose: a deterministic,
-# steppable core; a `window.__coil` API to drive and inspect the game from code; and
-# a read-only debug overlay. Seeded for every variant and framed as an ordinary
-# developer affordance of the game. Rendered from a `.hbs` template so its `mode`
-# value and obstacle wording match the selected variant; it seeds to
-# `specs/instrumentation.md`.
+# The debugging and automation surface every build must expose: a deterministic,
+# steppable core, an API to drive and inspect the game from code, and a read-only debug
+# overlay. Seeded for every run and framed as an ordinary developer affordance of the
+# game. It branches on both axes — the variant, for the snapshot's `mode` value and
+# whether the board carries interior obstacles, and the engine, for how the surface is
+# reached and what shape its operations take.
 [[spec]]
 source = "specs/instrumentation.md.hbs"
-
-# Proof of implementation: instructs the build to capture evidence (screenshots
-# and a short clip) at the exact paths the `[[proof]]` entries below declare, so a
-# reviewer can see what the build actually produced. The paths in this spec and in
-# the `[[proof]]` entries must match.
-[[spec]]
-source = "specs/proof.md"
-
-# Reference views. Each is a 1280x720 screenshot captured (with Playwright) from a
-# playable Coil build — the real game, not a hand-authored mockup — and served as-is:
-# seeded into the run as a visual target, never rendered at seed time. See
-# `reference/README.md` for how they are regenerated. References are not validated
-# unless a `[[check]]` below names them.
-#
-# There are NO common reference views: every view is declared per variant, in the
-# files under `variants/`. Each variant is exactly one mode, and the mode shows in
-# all three views — the menu lists that variant's single mode; the in-play board
-# differs, since Maze laces it with the fatal obstacle course a Classic board does
-# not have; and the game-over frame shows both the dimmed board (obstacles included)
-# behind the end panel and the HUD's mode tag. So each variant supplies its own
-# `title`, `gameplay`, and `game-over`.
-
-# Proof of implementation, requested for every variant. Each declares a `dest`
-# path (relative to the run workspace root) the build must write a screenshot
-# or `.webm` clip to as evidence the feature works; `specs/proof.md` instructs
-# the build to produce them at exactly these paths. Validation records whether
-# each turned up (informational — a missing proof does not fail the run), and a
-# reviewer pairs each with its expected reference (see the `review_item` links
-# below). The media kind is inferred from the extension: `.png` is an image,
-# `.webm` a video (the format Playwright records natively; the public gallery
-# transcodes it to mp4).
-[[proof]]
-id = "title"
-name = "Title menu"
-dest = "proof/title.png"
-
-[[proof]]
-id = "gameplay"
-name = "Gameplay"
-dest = "proof/gameplay.png"
-
-[[proof]]
-id = "game-over"
-name = "Game over"
-dest = "proof/game-over.png"
-
-[[proof]]
-id = "combo"
-name = "Combo clip"
-dest = "proof/combo.webm"
-
-# Validation checks (opt-in). Only the checks declared here run. Each drives the
-# built implementation through `actions`, screenshots it, and compares against the
-# rendered screenshot of `reference`. Only the title screen is deterministic
-# enough to validate for Coil: it is whatever the game shows on load, so it needs
-# no actions. Gameplay and game-over depend on live state and input, so they are
-# seeded as references but not validated.
-[[check]]
-view = "title"
-name = "Title Screen"
-reference = "title"
-actions = []
 
 # Scoring domains. A reviewer rates each declared domain independently while playing
 # the build, and the run's overall rating is the WORST across them — a flawless snake
@@ -676,8 +725,8 @@ validation = { script = "validation/controls/advances-in-real-time.mjs", outputs
 
 # --- Presentation -------------------------------------------------------------
 # Matters of craft and produced art that reading pixels cannot settle: they roll up
-# to the presentation domain and each pairs a reference view and the submitted proof
-# for the reviewer to judge. They carry no validation script.
+# to the presentation domain. They carry no validation script yet, so they do not yet
+# resolve under the validator-rated grammar this version adopts.
 [[review.categories]]
 id = "presentation"
 title = "Presentation"
@@ -685,25 +734,18 @@ title = "Presentation"
 id = "crisp-grid"
 title = "Crisp board and snake"
 description = "The board renders as a crisp, un-blurred grid of cells, and the snake's produced sprites are sampled crisply (nearest-neighbor, not smoothed) and stay pixel-aligned to the grid, so the look is sharp and blocky rather than soft."
-reference = "gameplay"
-proof = "gameplay"
 [[review.categories.items]]
 id = "window-fit"
 title = "Window fit"
 description = "The entire 1280x720 stage — the whole board, every wall, the full HUD, and every menu item — stays visible, fitted, and centered at any window size and pixel density, including on load before any input, letterboxed with the background color and never clipped."
-reference = "title"
-proof = "title"
 [[review.categories.items]]
 id = "produced-snake-sprites"
 title = "Produced snake sprites"
 description = "The snake is rendered from a sprite set the build produced with draw/draw-sheet — genuine pixel art: a head sprite, a straight-body sprite, and corner/turn sprites — not code-drawn rounded rectangles. The corner sprites are used where the snake bends, so the body reads as a continuous turning coil, and the head is always distinguishable from the body."
-reference = "gameplay"
-proof = "gameplay"
 [[review.categories.items]]
 id = "produced-head-bite"
 title = "Produced head-bite animation"
 description = "The head is an animated sprite sheet the build produced with draw-sheet — genuine per-frame pixel art — that plays a bite/chomp when the snake eats a pellet (the mouth opens and closes on the eat) and otherwise shows the resting head, advanced on a timer; not a single static head sprite and not an ad-hoc code-drawn mouth."
-proof = "combo"
 
 # --- Audio --------------------------------------------------------------------
 # The genuinely produced sound and music (specs/assets.md), each mandated cue its own
