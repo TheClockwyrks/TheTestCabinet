@@ -1,19 +1,64 @@
-// Wireworm — board.scatter-inert, under the `structured-2d` engine. CASE-PROVIDED.
+// Wireworm — board/scatter-inert: every node of the starting scatter is inert.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/nodes.md, The starting field: "Every node of the scatter is laid at
+// charge `0`." That is the state the whole of the case's charge economy is
+// written against — charge only ever rises where specs/nodes.md and
+// specs/foes.md say it rises — so a run that opened on a pre-charged field would
+// hand the player a board that had already been fought over.
 //
-// The point it decides, from `test-case.toml`:
+// The run is opened the way a player opens one, through `DESCEND` on the title
+// (specs/ui.md), because that is the path that lays the field. The board is read
+// on the frame the run opens, while the level's banner is still up: nothing has
+// entered, nothing has spawned, and no bolt has flown, so nothing that raises or
+// lowers a charge has had a chance to run.
 //
-// Every scattered node starts inert
-//
-// Every node of the starting scatter has charge 0.
+// Several seeds, because the tiles are drawn from the generator. The count is
+// read only far enough to know a scatter happened at all, since a run that laid
+// nothing would satisfy a rule about every node it laid; how many are laid is
+// board/scatter-density's requirement.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 
-test("board.scatter-inert", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/structured-2d/board/scatter-inert.test.ts has not been written yet",
+/** The charge specs/nodes.md lays every scattered node at: inert. */
+const INERT = 0;
+
+/** The seeds the scatter is read over. Each is one draw of the same rule. */
+const SEEDS = [1, 2, 3, 7, 11];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it.each(SEEDS)("lays every scattered node inert from seed %i", async (seed) => {
+  await startRun(h, seed);
+  await h.advance(1);
+  captureStill(h, "scatter");
+
+  const { nodes } = h.snapshot();
+  assertGreaterThan(
+    nodes.length,
+    0,
+    `a starting scatter to read, from seed ${seed} (specs/nodes.md)`,
+  );
+
+  const charged = nodes.filter((node) => node.charge !== INERT);
+  assertEqual(
+    charged.length,
+    0,
+    `scattered nodes carrying a charge other than ${INERT}, from seed ` +
+      `${seed} — the first is ${JSON.stringify(charged[0] ?? null)}`,
   );
 });
