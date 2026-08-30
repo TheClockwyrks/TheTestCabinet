@@ -1,27 +1,95 @@
-// Arc Foundry — `difficulty.difficulty-carried-into-run`. CASE-PROVIDED. NOT YET WRITTEN.
+// difficulty/difficulty-carried-into-run — the difficulty chosen at the menu is
+// the one the run plays at.
 //
-// The manifest declares this point at `difficulty/difficulty-carried-into-run.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/ui.md` has the difficulty select's choice "begin the
+// run on the chosen map at that difficulty", and `specs/difficulty.md` says what
+// a difficulty is: a wave count and four health-scaling constants. So a build
+// that draws three choices and opens the same run whichever is taken has drawn a
+// menu rather than implemented a difficulty, and the way to tell them apart is to
+// take each choice and read the run that opened.
 //
-// THE REQUIREMENT. Choosing a difficulty at the menu begins the run at that
-// difficulty: the snapshot reports it, totalWaves matches it, and the Load
-// scales by its constants.
+// HOW IT IS DECIDED. Each of the three choices is taken from the difficulty
+// select, at its own reported rectangle, and the run that opens is read three
+// ways: the difficulty it reports, the wave count it carries, and the maximum
+// health a released unit is given, which is the one place the four constants
+// actually bite. All three are read against the chosen difficulty rather than
+// against whatever was chosen last.
 //
-// HOW IT IS DECIDED. Choose each difficulty from the menu in turn and read the
-// run that opened. The evidence it hands back is `chosen` (image): the run
-// opened at the chosen difficulty.
+// WHY THE MENU IS PRESSED HERE. Every other check in this project reaches its
+// scenario through the surface and never through a menu, because a broken menu
+// should fail the menu's own points. This point IS the crossing from the menu
+// into the run, so the menu is the surface it has to be decided on. What is
+// pressed is the rectangle the build itself reports for that choice
+// (`specs/instrumentation.md`), so no layout is assumed.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  DIFFICULTIES,
+  DIFFICULTY_MENU_ACTION,
+  loadDef,
+  scaledHp,
+  type DifficultyDef,
+} from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openMenu,
+  pressMenu,
+  releaseUnit,
+  unitById,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** The wave the released unit is scaled to, well past the opening ramp. */
+const WAVE = 15;
 
-describe("difficulty.difficulty-carried-into-run", () => {
-  it("The chosen difficulty is the one the run plays at", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `difficulty.difficulty-carried-into-run` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
 });
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it.each(DIFFICULTIES.map((d) => ({ difficulty: d })))(
+  "opens a run at $difficulty.id when $difficulty.id is taken from the menu",
+  async ({ difficulty }: { difficulty: DifficultyDef }) => {
+    await h.debug.reset();
+    await openMenu(h, "difficultyselect");
+    await pressMenu(h, DIFFICULTY_MENU_ACTION[difficulty.id]);
+    await captureStill(h, "chosen");
+
+    const run = await h.snapshot();
+    assertEqual(
+      run.screen,
+      "playing",
+      `taking ${difficulty.id} from the difficulty select to begin the run ` +
+        "(specs/ui.md)",
+    );
+    assertEqual(
+      run.difficulty,
+      difficulty.id,
+      "the difficulty the run reports after that choice (specs/ui.md)",
+    );
+    assertEqual(
+      run.totalWaves,
+      difficulty.waves,
+      `the wave count of a run begun at ${difficulty.id} (specs/difficulty.md)`,
+    );
+
+    // And the constants are really in force: a unit released at a fixed wave
+    // carries the maximum health this difficulty's four constants give it.
+    await h.debug.clearStructures();
+    await h.debug.setWave(WAVE);
+    const id = await releaseUnit(h, "mote", { frozen: true });
+    assertEqual(
+      unitById(await h.snapshot(), id).maxHp,
+      scaledHp(loadDef("mote").baseHp, WAVE, difficulty),
+      `a Mote's maximum health on wave ${WAVE} in a run begun at ` +
+        `${difficulty.id} (specs/enemies.md, specs/difficulty.md)`,
+    );
+  },
+);
