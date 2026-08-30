@@ -99,7 +99,6 @@ export function makeBear(state: FloeState, col: number, row: number): Bear {
     routing: true,
     travel: true,
     carry: 0,
-    lunge: 0,
   };
 }
 

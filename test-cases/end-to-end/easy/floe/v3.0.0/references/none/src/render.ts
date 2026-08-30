@@ -113,7 +113,7 @@ function drawStrait(
     drawVehicle(state, vehicle, art, ctx, alpha);
   drawCritter(state, art, ctx, alpha);
   for (const bear of state.bears) drawBear(state, bear, art, ctx, alpha);
-  drawEffects(state, ctx);
+  drawEffects(state, art, ctx);
 
   ctx.restore();
 }
@@ -265,11 +265,14 @@ function drawCritter(
 }
 
 /**
- * One bear: the run pair for its facing on ice, the submerged swim pair over open
- * water, and the lunge on the tick it catches (specs/assets.md).
+ * One bear: the run pair for its facing on ice, and the submerged swim pair over
+ * open water (specs/assets.md).
  *
  * The swim frames already carry the silhouette and its wake, and a bear is drawn
- * after the floes, so one passing beneath a raft stays trackable.
+ * after the floes, so one passing beneath a raft stays trackable. The LUNGE is
+ * not here: every bear leaves the strait on the tick it catches the critter
+ * (specs/hunter.md), so the lunge is drawn from the effect that catch left
+ * behind, below.
  */
 function drawBear(
   state: FloeState,
@@ -278,23 +281,40 @@ function drawBear(
   ctx: CanvasRenderingContext2D,
   alpha: number,
 ): void {
-  const index =
-    bear.lunge > 0
-      ? BEAR_LUNGE_BASE + beat(state.simTime, BEAR_LUNGE_FPS)
-      : bearSwimming(state, bear)
-        ? BEAR_SWIM_BASE +
-          facingPair(bear.facing) +
-          beat(state.simTime, BEAR_SWIM_FPS)
-        : facingPair(bear.facing) + beat(state.simTime, BEAR_RUN_FPS);
+  const index = bearSwimming(state, bear)
+    ? BEAR_SWIM_BASE +
+      facingPair(bear.facing) +
+      beat(state.simTime, BEAR_SWIM_FPS)
+    : facingPair(bear.facing) + beat(state.simTime, BEAR_RUN_FPS);
   const x = lerp(bear.prevX, bear.x, alpha);
   const y = lerp(bear.prevY, bear.y, alpha);
   ctx.drawImage(art.bear[index], x - TILE / 2, y - TILE / 2, TILE, TILE);
 }
 
-/** The splash of a fall and the spray of a crush, both drawn in code. */
-function drawEffects(state: FloeState, ctx: CanvasRenderingContext2D): void {
+/**
+ * What a lost life leaves behind: the splash of a fall and the spray of a crush,
+ * both drawn in code, and the lunge of the bear that caught the critter, drawn
+ * from the bear's own lunge pair where the two met (specs/assets.md).
+ */
+function drawEffects(
+  state: FloeState,
+  art: Art,
+  ctx: CanvasRenderingContext2D,
+): void {
   for (const effect of state.effects) {
     const life = Math.max(0, Math.min(1, effect.life / effect.span));
+    if (effect.kind === "lunge") {
+      const frame =
+        art.bear[BEAR_LUNGE_BASE + beat(state.simTime, BEAR_LUNGE_FPS)];
+      ctx.drawImage(
+        frame,
+        effect.x - TILE / 2,
+        effect.y - TILE / 2,
+        TILE,
+        TILE,
+      );
+      continue;
+    }
     ctx.globalAlpha = life;
     ctx.strokeStyle = effect.kind === "splash" ? COLOR.splash : COLOR.spray;
     ctx.lineWidth = 3;

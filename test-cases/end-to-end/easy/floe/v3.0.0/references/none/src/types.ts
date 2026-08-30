@@ -86,8 +86,6 @@ export interface Bear {
    * units, added to the next tick's travel so no distance is lost at a center.
    */
   carry: number;
-  /** Seconds left of the lunge the catch is drawn with; purely presentational. */
-  lunge: number;
 }
 
 /** One vehicle or one floe. */
@@ -132,10 +130,18 @@ export interface HuntSlot {
   emptyFor: number;
 }
 
-/** A splash or a spray, drawn in code for a moment after a death. */
+/**
+ * What is drawn for a moment where a life was lost: the splash of a fall, the
+ * spray of a crush, and the lunge of the bear that caught the critter.
+ *
+ * The lunge is here rather than on the bear because EVERY BEAR LEAVES THE STRAIT
+ * on the tick a life is lost (specs/hunter.md), so by the time the frame is drawn
+ * there is no bear left to draw it from. The picture keeps the lunge; the roster
+ * does not (specs/assets.md).
+ */
 export interface Effect {
   /** What it is drawn as. */
-  kind: "splash" | "spray";
+  kind: "splash" | "spray" | "lunge";
   /** Its center, in stage units. */
   x: number;
   y: number;
