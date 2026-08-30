@@ -7,7 +7,7 @@ run and is shown in the HUD and on both end screens.
 
 | Award | Figure | Paid when |
 | --- | --- | --- |
-| A newly reached row | `SCORE_ROW` (`10`) | An accepted hop takes the critter to a row above every row it has reached this crossing, which is any hop that lowers `bestRow`. The bay row counts like any other. |
+| A newly reached row | `SCORE_ROW` (`10`) | An accepted hop takes the critter to a row above every row it has reached this crossing, which is any hop that moves `bestRow` closer to the far shore. The bay row counts like any other. |
 | A filled bay | `SCORE_BAY` (`50`) | A crossing ends in an open bay. |
 | The time bonus | `SCORE_TIME_BONUS` (`2`) per whole second | A crossing ends in an open bay, paid `floor(timer)` times over. |
 | The bonus catch | `SCORE_BONUS_CATCH` (`200`) | A crossing ends in the bay the bonus catch is in. |
