@@ -82,6 +82,11 @@ const PRESS_SEED = 0x51a6c0de;
 // build rolls and combat randomness are independent and each stays deterministic.
 const COMBAT_SEED = 0x2f9d3b17;
 
+// How long an aura source waits between pulses, in seconds. Shorter than the produced
+// system's own run, so a structure that keeps standing is marked continuously rather than
+// blinking between pulses.
+const AURA_PULSE_PERIOD = 0.6;
+
 export class Game {
   map: MapDef; // the chosen yard (specs/yard.md); set by startOn() before a run
   board: Board; // the grid, waypoint chain, and pathing of the current map
@@ -287,6 +292,10 @@ export class Game {
       return;
     }
 
+    // A standing source is marked whatever the phase, so this runs above the build-phase
+    // return.
+    this.stepAuras(dt);
+
     if (this.phase === "build") {
       // A build phase is untimed (specs/campaign.md): nothing starts the wave but the level's
       // harvest. The clock still runs, so a status effect posed in a build phase runs down.
@@ -444,6 +453,28 @@ export class Game {
     return c.combo
       ? comboStats(c.combo, c.comboLevel)
       : deriveStats(c.type, c.tier);
+  }
+
+  // ---- The aura pulse (specs/assets.md) ---------------------------------------
+  // The one of the twelve produced systems that is not tied to an event: it is played while
+  // "a structure carrying an aura stands on the yard", "at its source". So nothing else in
+  // the step raises it — each source runs a timer of its own and raises `fx/aura.json` at
+  // its footprint whenever that timer comes round. A candidate carries no aura until it is
+  // harvested, so only a component is a source, and a source is marked in a build phase
+  // exactly as it is in a wave.
+  private stepAuras(dt: number): void {
+    for (const s of this.structures) {
+      if (s.kind !== "component") continue;
+      if (this.statsOf(s).auraRadius <= 0) {
+        s.auraAnim = 0;
+        continue;
+      }
+      s.auraAnim -= dt;
+      if (s.auraAnim > 0) continue;
+      s.auraAnim = AURA_PULSE_PERIOD;
+      const ctr = footprintCenter(s.col, s.row);
+      this.fxQueue.push({ kind: "aura", x: ctr.x, y: ctr.y });
+    }
   }
 
   // ---- Component fire (specs/components.md) -----------------------------------
@@ -1038,6 +1069,7 @@ export class Game {
       targeting: "first",
       cooldown: 0,
       fireAnim: 999,
+      auraAnim: 0,
       aimAngle: 0,
       kills: 0,
       damageDealt: 0,
@@ -1101,6 +1133,7 @@ export class Game {
       targeting: anchor.kind === "component" ? anchor.targeting : "first",
       cooldown: 0,
       fireAnim: 999,
+      auraAnim: 0,
       aimAngle: 0,
       kills: 0,
       damageDealt: 0,
@@ -1171,6 +1204,7 @@ export class Game {
       targeting: "first",
       cooldown: 0,
       fireAnim: 999,
+      auraAnim: 0,
       aimAngle: 0,
       kills: 0,
       damageDealt: 0,
@@ -2098,6 +2132,7 @@ export class Game {
       targeting: "first",
       cooldown: 0,
       fireAnim: 999,
+      auraAnim: 0,
       aimAngle: 0,
       kills: 0,
       damageDealt: 0,
@@ -2125,6 +2160,7 @@ export class Game {
       targeting: "first",
       cooldown: 0,
       fireAnim: 999,
+      auraAnim: 0,
       aimAngle: 0,
       kills: 0,
       damageDealt: 0,

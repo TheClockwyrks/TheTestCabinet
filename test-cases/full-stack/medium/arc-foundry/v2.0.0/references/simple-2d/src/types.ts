@@ -91,6 +91,8 @@ export interface Component extends StructureBase {
   cooldown: number;
   /** Seconds since its last shot, which drives the firing cycle. */
   fireAnim: number;
+  /** Seconds until its aura pulses again. `0` on a structure that carries none. */
+  auraAnim: number;
   /** The head's heading, in radians. */
   aimAngle: number;
   kills: number;

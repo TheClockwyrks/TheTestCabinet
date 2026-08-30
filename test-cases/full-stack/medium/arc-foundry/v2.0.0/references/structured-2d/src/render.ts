@@ -939,26 +939,6 @@ function supportCore(
   ctx.restore();
 }
 
-/** A faint pulse around an aura source, so its support role reads on the yard. */
-function auraPulse(
-  g: FoundryState,
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  size: number,
-): void {
-  const pulse = 0.5 + 0.5 * Math.sin(g.clockTime * 3);
-  ring(
-    ctx,
-    cx,
-    cy,
-    size / 2 + 4 + pulse * 2,
-    TYPE_COLOR.regulator,
-    0.3 + 0.25 * pulse,
-    1.5,
-  );
-}
-
 /** The badge that marks a combination tower, so it never reads as a tiered component. */
 function comboBadge(
   ctx: CanvasRenderingContext2D,
@@ -1071,8 +1051,9 @@ function drawComponent(
   }
 
   if (nonFiring) {
+    // No mark for the aura here: `specs/assets.md` has the aura pulse played from
+    // the produced `fx/aura.json` at the source, which the simulation raises.
     supportCore(g, ctx, at.x, at.y, size, typeC);
-    auraPulse(g, ctx, at.x, at.y, size);
   } else {
     const head = A.componentHead(c.type, c.quality);
     if (head) blit(ctx, head, at.x, at.y, size, size, c.aimAngle);
@@ -1201,7 +1182,6 @@ function drawComboTower(
   else codeHead(ctx, cx, cy, size, c.aimAngle, accent);
   drawFireCycle(ctx, A.comboFire(combo), c.fireAnim, cx, cy, size, c.aimAngle);
 
-  if (statsOf(c).auraRadius > 0) auraPulse(g, ctx, cx, cy, size);
   if (g.selectedId === c.id) selectionOutline(ctx, cx, cy, size, COL.text);
   comboBadge(ctx, cx, cy, size, def.name.charAt(0));
 }

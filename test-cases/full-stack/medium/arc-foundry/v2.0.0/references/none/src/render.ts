@@ -921,26 +921,6 @@ function supportCore(
   ctx.restore();
 }
 
-// A faint aura pulse ring drawn ON the board around an aura source (Regulator / aura combo), so
-// its support role reads without cluttering — the full aura RADIUS shows only when selected.
-function auraPulse(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  size: number,
-): void {
-  const pulse = 0.5 + 0.5 * Math.sin(time * 3);
-  ring(
-    ctx,
-    cx,
-    cy,
-    size / 2 + 4 + pulse * 2,
-    COL.regulator,
-    0.3 + 0.25 * pulse,
-    1.5,
-  );
-}
-
 // The full aura RADIUS ring (support color, dashed) — shown when an aura tower is selected, so
 // the player sees exactly which towers a Regulator / aura combo buffs
 // (specs/hud.md, specs/components.md).
@@ -1054,9 +1034,10 @@ function drawComponent(
   }
 
   if (nonFiring) {
-    // Regulator: a support core (NO gun head) + a faint aura pulse — it never shoots, it buffs.
+    // Regulator: a support core and NO gun head — it never shoots, it buffs. The mark for the
+    // aura itself is the produced `fx/aura.json` played at the source (specs/assets.md), which
+    // the simulation raises; nothing is drawn for it here.
     supportCore(ctx, ctr.x, ctr.y, size, typeC);
-    auraPulse(ctx, ctr.x, ctr.y, size);
   } else {
     const head = A.componentHead(c.type, c.tier);
     if (head) blit(ctx, head, ctr.x, ctr.y, size, size, c.aimAngle);
@@ -1131,7 +1112,6 @@ function drawComboTower(
 ): void {
   const def = COMBOS[c.combo!];
   const comboC = def.color;
-  const stats = game.statsOf(c);
 
   // A bright accent mount + a gold shimmer, so it reads as a keystone tower.
   ring(ctx, ctr.x, ctr.y, size / 2 - 2, comboC, 0.6, 2.5);
@@ -1202,9 +1182,6 @@ function drawComboTower(
     blit(ctx, fire[idx]!, ctr.x, ctr.y, size, size, c.aimAngle);
     ctx.restore();
   }
-
-  // An aura combo shows the same on-board support pulse a Regulator does.
-  if (stats.auraRadius > 0) auraPulse(ctx, ctr.x, ctr.y, size);
 
   // Selection outline.
   if (game.selectedId === c.id) {

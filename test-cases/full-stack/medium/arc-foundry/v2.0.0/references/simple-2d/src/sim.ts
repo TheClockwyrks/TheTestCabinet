@@ -388,6 +388,39 @@ function syncView(w: FoundryWorld): void {
   }
 }
 
+/**
+ * How long a source waits between aura pulses, in seconds.
+ *
+ * Shorter than the produced system's own run, so a structure that keeps standing
+ * is marked continuously rather than blinking between pulses.
+ */
+const AURA_PULSE_PERIOD = 0.6;
+
+/**
+ * Spawn the aura pulse at every source standing on the yard.
+ *
+ * This is the one of the twelve produced systems `specs/assets.md` does not tie to
+ * an event: it is played while "a structure carrying an aura stands on the yard",
+ * "at its source". So nothing else in the step raises it — each source runs a timer
+ * of its own and raises `fx/aura.json` at its footprint whenever that timer comes
+ * round. A candidate carries no aura until it is harvested, so only a component is
+ * a source, and a source is marked in a build phase exactly as it is in a wave.
+ */
+function stepAuras(w: FoundryWorld, dt: number): void {
+  for (const s of w.structures) {
+    if (s.kind !== "component") continue;
+    if (statsOf(s).auraRadius <= 0) {
+      s.auraAnim = 0;
+      continue;
+    }
+    s.auraAnim -= dt;
+    if (s.auraAnim > 0) continue;
+    s.auraAnim = AURA_PULSE_PERIOD;
+    const at = footprintCenter(s.col, s.row);
+    w.fxQueue.push({ kind: "aura", x: at.x, y: at.y });
+  }
+}
+
 /** One tick of the simulation. */
 export function fixedStep(w: FoundryWorld, dt: number): void {
   if (w.screen !== "playing" || w.paused) return;
@@ -400,6 +433,10 @@ export function fixedStep(w: FoundryWorld, dt: number): void {
     lose(w);
     return;
   }
+
+  // A standing source is marked whatever the phase, so this runs above the
+  // build-phase return.
+  stepAuras(w, dt);
 
   if (w.phase === "build") {
     // A build phase is untimed: nothing starts the wave but the level's harvest. The
@@ -1206,6 +1243,9 @@ function newComponent(
     cooldown: 0,
     // High enough that a new structure is not drawn mid-shot on its first frame.
     fireAnim: 999,
+    // Zero, so an aura source pulses on the first tick it stands rather than
+    // standing unmarked for a period first.
+    auraAnim: 0,
     aimAngle: 0,
     kills: 0,
     damageDealt: 0,

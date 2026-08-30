@@ -36,8 +36,14 @@ const pngUrls = import.meta.glob<string>("../assets/**/*.png", {
   query: "?url",
   import: "default",
 });
-const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.json", {
+// Asked for BY URL, the way the sprites above and the sounds below are, so all three kinds
+// of produced file reach the game down one path: the bundler carries the file, the loader
+// requests it at load, and a file that does not arrive costs its own effect and nothing
+// else. Imported as a module instead, a system could not fail, and the roster's failure
+// bookkeeping would be dead for a third of what it covers.
+const fxUrls = import.meta.glob<string>("../assets/fx/*.json", {
   eager: true,
+  query: "?url",
   import: "default",
 });
 const wavUrls = import.meta.glob<string>("../assets/audio/*.wav", {
@@ -173,9 +179,20 @@ export async function loadAssets(): Promise<Assets> {
   };
 
   const rawFx: Record<string, ParticleSystem> = {};
-  for (const [globPath, sys] of Object.entries(fxJson)) {
-    rawFx[keyOf(globPath, ".json").replace("fx/", "")] = sys;
-  }
+  await Promise.all(
+    Object.entries(fxUrls).map(async ([globPath, url]) => {
+      const key = keyOf(globPath, ".json").replace("fx/", "");
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(String(response.status));
+        rawFx[key] = (await response.json()) as ParticleSystem;
+      } catch {
+        // Left out of `rawFx`, so the roster below records it as a failure and the
+        // effect it belongs to simply does not play. One system that did not arrive
+        // costs that effect and nothing else.
+      }
+    }),
+  );
   const fx = {} as Record<FxKind, ParticleSystem | undefined>;
   for (const k of FX_NAMES) {
     fx[k] = rawFx[k];

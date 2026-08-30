@@ -151,6 +151,7 @@ export interface Component extends StructureBase {
   targeting: TargetingMode; // "first" by default (unused by the non-firing Regulator)
   cooldown: number; // seconds until it may fire again
   fireAnim: number; // seconds since last shot (drives the firing sheet / muzzle)
+  auraAnim: number; // seconds until its aura pulses again — 0 so a new source is marked at once
   aimAngle: number; // the head's heading — tracks the current target
   kills: number; // units this component has destroyed (inspector tally, specs/components.md)
   damageDealt: number; // total damage this component has applied (inspector tally)
