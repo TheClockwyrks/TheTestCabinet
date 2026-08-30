@@ -164,6 +164,45 @@ describe("a victory", () => {
   });
 });
 
+describe("with storage that refuses", () => {
+  /** A slot that throws on every call, as a browser blocking site data does. */
+  function refusingStorage(): void {
+    const refuse = (): never => {
+      throw new Error("site data is blocked");
+    };
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        get length(): number {
+          return refuse();
+        },
+        clear: refuse,
+        getItem: refuse,
+        key: refuse,
+        removeItem: refuse,
+        setItem: refuse,
+      },
+      configurable: true,
+      writable: true,
+    });
+  }
+
+  it("runs correctly, reporting no save and saving nothing", () => {
+    refusingStorage();
+    expect(hasSave()).toBe(false);
+    expect(() => clearSave()).not.toThrow();
+    const posed = inDraft(bareState(), (d) => {
+      posedAt(d, 4 * TILE, SURFACE_Y - MINER_H);
+    });
+    inDraft(posed, (d) => {
+      expect(trySave(d)).toBe(false);
+      expect(loadExpedition(d)).toBe(false);
+    });
+    const run = runFrames(holding(posed, {}), 1, 30);
+    expect(run.state.screen).toBe("in-mine");
+    expect(run.state.hasSave).toBe(false);
+  });
+});
+
 describe("with no storage at all", () => {
   it("runs correctly, simply without saving", () => {
     removeStorage();
