@@ -1,6 +1,6 @@
-# Wireworm — `v1.1.0`
+# Wireworm — `v2.0.0`
 
-This is version `v1.1.0` of the **Wireworm** test case. The implemented game is an
+This is version `v2.0.0` of the **Wireworm** test case. The implemented game is an
 original fixed-shooter arcade game titled **Wireworm**: a segmented data-worm winds
 down a circuit board through a field of capacitor nodes, and you cut it apart from a
 band at the bottom, where every node the worm bumps gains charge, and shooting a
