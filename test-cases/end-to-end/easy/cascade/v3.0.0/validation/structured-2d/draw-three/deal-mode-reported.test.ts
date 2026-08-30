@@ -1,23 +1,59 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/draw-three/deal-mode-reported.test.ts
+// Cascade — draw-three/deal-mode-reported: the build reports the deal mode it plays.
 //
-// The review item `draw-three.deal-mode-reported` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/stock.md fixes three figures for this variant — `DEAL_MODE`
+// (`draw-three`), `TURN_COUNT` (`3`) and `DEAL_MODE_LABEL` (`DRAW THREE`) — and
+// specs/instrumentation.md states that `dealMode`, `turnCount` and
+// `dealModeLabel` are built at the call from exactly those figures.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THIS IS THE ITEM EVERY COMMON CHECK LEANS ON. A common scenario that has to
+// size itself to the deal mode reads `snapshot().turnCount` rather than
+// hard-coding a figure, which keeps one suite honest across both variants but
+// leaves the figure itself undecided. This point is where the reported figure is
+// held against the specification, so a build that reports `draw-one` and turns
+// one card fails here rather than passing the whole common suite.
 //
-// What this item must decide, from the manifest:
+// It decides the REPORT and nothing else. What a turn actually moves is
+// `draw-three/turn-count`'s, and the literal the two screens draw is
+// `draw-three/mode-label-title`'s and `draw-three/mode-label-hud`'s; the label is
+// therefore not read here, so a build with a correct report and a mistyped label
+// misses one requirement rather than two.
 //
-//   The build reports its deal mode
-//
-//   dealMode is "draw-three" and turnCount is 3.
+// The reading is taken on an empty table in play, because it is a report of the
+// build's own configuration and depends on nothing the table holds. Nothing is
+// dealt: a deal that threw would fail this point for another point's fault.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openTable,
+  type Harness,
+} from "../harness";
 
-it("draw-three.deal-mode-reported — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/draw-three/deal-mode-reported.test.ts is a scaffold stub, not a validator",
-  );
+/** specs/stock.md: this variant's `DEAL_MODE`, the identifier the build reports. */
+const DEAL_MODE = "draw-three";
+
+/** specs/stock.md: this variant's `TURN_COUNT`, the cards one turn moves. */
+const TURN_COUNT = 3;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reports draw-three and a turn count of three", async () => {
+  openTable(h);
+
+  await h.drawFrame();
+  captureStill(h, "mode");
+
+  const snapshot = h.snapshot();
+  assertEqual(snapshot.dealMode, DEAL_MODE, "the reported dealMode");
+  assertEqual(snapshot.turnCount, TURN_COUNT, "the reported turnCount");
 });
