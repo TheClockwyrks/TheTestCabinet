@@ -24,13 +24,6 @@ x-podman:
 
 services:
   dev:
-    build:
-      args:
-        # Apple silicon. On an Intel Mac set this to amd64 — every install script
-        # in this image maps BUILDARCH to an upstream's arch naming, and so do
-        # gg's eleven toolchain installers (each has an aarch64 Linux build).
-        BUILDARCH: arm64
-
     # NOTE WHAT IS NOT HERE: `userns_mode: keep-id`, which the Linux Podman row
     # uses to map the host user onto the image's. keep-id is rootless-only —
     # podman refuses it outright on a rootful machine — and a rootful machine is

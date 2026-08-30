@@ -255,6 +255,11 @@ rustup target add x86_64-unknown-linux-musl
 # TLS backend and the bundled SQLite compile. On Debian/Ubuntu: `musl-tools`.
 ```
 
+The aliases are pinned to `x86_64-unknown-linux-musl`, so an aarch64 host
+cross-compiles and needs an x86_64 musl cross toolchain on top of that. The dev
+container installs the musl target for its own architecture, which is what
+`scripts/build-gg-static.sh` builds against.
+
 Then build with the aliases defined in `.cargo/config.toml`, each of which
 writes to `target/x86_64-unknown-linux-musl/release/`:
 

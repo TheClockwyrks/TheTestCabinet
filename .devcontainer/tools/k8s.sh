@@ -27,12 +27,16 @@ readonly K3D_VERSION="5.9.0"
 readonly KUBECTL_VERSION="1.35.6"
 readonly KUBELOGIN_VERSION="0.2.19"
 
-# Map the devcontainer's BUILDARCH to the release artifacts' arch naming.
-if [ "$BUILDARCH" = "amd64" ]; then
-	readonly ARCH="amd64"
-else
-	readonly ARCH="arm64"
-fi
+# The arch naming all three sets of release artifacts use, resolved from the machine
+# this runs on rather than passed in.
+case "$(uname -m)" in
+x86_64) readonly ARCH="amd64" ;;
+aarch64 | arm64) readonly ARCH="arm64" ;;
+*)
+	echo "error: no k3d/kubectl/kubelogin build for $(uname -m)." >&2
+	exit 1
+	;;
+esac
 
 readonly BIN_DIR="$HOME/.local/bin"
 mkdir -p "$BIN_DIR" "/tmp/$USERNAME"

@@ -5,9 +5,6 @@ x-podman:
 
 services:
   dev:
-    build:
-      args:
-        BUILDARCH: amd64
     environment:
       SSH_AUTH_SOCK: /tmp/ssh-agent.sock
     userns_mode: keep-id:uid=1000,gid=100

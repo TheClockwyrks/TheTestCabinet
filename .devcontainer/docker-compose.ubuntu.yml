@@ -2,9 +2,6 @@
 # docker-compose.local.yml (see README.md).
 services:
   dev:
-    build:
-      args:
-        BUILDARCH: amd64
     volumes:
       # Docker-outside-of-Docker: bind the host's container-runtime socket in so
       # the local service stack (`make -C deployments/local local-up`) drives the

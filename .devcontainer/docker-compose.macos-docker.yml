@@ -13,9 +13,6 @@
 # rootless Podman does none of those three things.
 services:
   dev:
-    build:
-      args:
-        BUILDARCH: arm64
     environment:
       - SSH_AUTH_SOCK=/tmp/devcontainer-ssh-agent.sock
     volumes:

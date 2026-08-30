@@ -2,12 +2,16 @@
 # Installs lazygit, a terminal UI for git (aliased to `gg`).
 set -euo pipefail
 
-# Determine the architecture name that lazygit uses for the current platform.
-if [ "$BUILDARCH" = "amd64" ]; then
-	readonly LAZYGIT_ARCH="x86_64"
-else
-	readonly LAZYGIT_ARCH="arm64"
-fi
+# The architecture name lazygit uses in its release asset file names, resolved from
+# the machine this runs on rather than passed in.
+case "$(uname -m)" in
+x86_64) readonly LAZYGIT_ARCH="x86_64" ;;
+aarch64 | arm64) readonly LAZYGIT_ARCH="arm64" ;;
+*)
+	echo "error: no lazygit build for $(uname -m)." >&2
+	exit 1
+	;;
+esac
 
 # See https://github.com/jesseduffield/lazygit/releases for the download URLs.
 readonly ARCHIVE_NAME="lazygit_${LAZYGIT_VERSION}_Linux_${LAZYGIT_ARCH}.tar.gz"

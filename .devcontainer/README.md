@@ -1,11 +1,11 @@
 # Devcontainer
 
 A VS Code devcontainer for developing The Test Cabinet. It provides the Rust
-toolchain (with `rustfmt`, `clippy`, and the `x86_64-unknown-linux-musl` target
-for the portable `tcab` build), Node.js, Ruby, `uv`, the Tauri v2 system
-libraries for the desktop shell, `markdownlint-cli2` for the docs, the
-Cloudflare `wrangler` CLI that `tcab publish` uses to deploy run builds to
-Cloudflare Pages, and the `k3d`, `kubectl`, and `docker` (client-only) tooling
+toolchain (with `rustfmt`, `clippy`, and the host architecture's
+`*-unknown-linux-musl` target for portable static builds), Node.js, Ruby, `uv`,
+the Tauri v2 system libraries for the desktop shell, `markdownlint-cli2` for the
+docs, the Cloudflare `wrangler` CLI that `tcab publish` uses to deploy run builds
+to Cloudflare Pages, and the `k3d`, `kubectl`, and `docker` (client-only) tooling
 the [local service stack](#host-docker-access-the-local-service-stack) runs on.
 
 On top of that, the image **bakes in the toolchains of gg's eleven
@@ -117,6 +117,12 @@ older than that loses the local service stack without saying anything.
 `setup-host.sh --force` replaces both.
 
 Then run **Dev Containers: Reopen in Container** in VS Code.
+
+None of the four rows names an architecture. Each install script that fetches a
+per-platform download resolves it from the machine the build runs on, so the image
+builds for whatever architecture the container runtime gives it. x86_64 and
+aarch64 are both supported; on anything else the first script with no build for it
+ends the build and names the architecture.
 
 > **Podman may read a different ignore file, and both are now correct.** Since the gg
 > toolchains were baked in, this image builds from the **repository root** and narrows
@@ -321,6 +327,11 @@ cargo build-portable-driver    # static musl tcab-driver     (the per-run execut
 cargo build-portable-artifacts # static musl tcab-artifacts  (serves produced run trees)
 npm install && npm run build    # the TypeScript workspaces
 ```
+
+The `build-portable-*` aliases are pinned to `x86_64-unknown-linux-musl`, so they
+are a cross build on an aarch64 container and need an x86_64 musl cross toolchain
+that `apt.sh` does not install. For a static binary that runs here, use
+`scripts/build-gg-static.sh`, which targets the host architecture.
 
 ## Running benchmarks
 
