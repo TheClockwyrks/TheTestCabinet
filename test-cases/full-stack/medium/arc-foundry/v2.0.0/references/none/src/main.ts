@@ -71,8 +71,6 @@ async function main(): Promise<void> {
   // A fresh 32-bit seed per interactive run, so no two playthroughs draw the same component
   // sequence. A run entered through the debug surface keeps the seed `reset` set, so a
   // driven scenario stays reproducible.
-  const randomSeed = (): number =>
-    Math.floor(Math.random() * 0x100000000) >>> 0;
 
   const gesture = (): void => {
     void audio.resume();
@@ -108,8 +106,9 @@ async function main(): Promise<void> {
     }
     if (action.startsWith("diff:")) {
       game.setDifficulty(DIFFICULTY[action.slice(5) as Difficulty]);
+      // The generator `reset` seeded is the only one the game draws off
+      // (specs/instrumentation.md), so entering a run seeds nothing of its own.
       game.startRun();
-      game.reseedPress(randomSeed());
       return;
     }
     switch (action) {
@@ -119,7 +118,6 @@ async function main(): Promise<void> {
       case "menu:restart":
       case "menu:again":
         game.startRun();
-        game.reseedPress(randomSeed());
         break;
       case "menu:howto":
         game.setScreen("howto");

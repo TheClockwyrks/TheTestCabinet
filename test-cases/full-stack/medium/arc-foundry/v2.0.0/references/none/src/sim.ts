@@ -106,9 +106,8 @@ export class Game {
   projectiles: Projectile[] = []; // shots / arcs in flight (specs/towers.md)
   structures: Structure[] = []; // components, candidates, and blockers — the maze (specs/board.md)
 
-  // The scrap-press seed. Fixed by default so the headless balance harness and any dev
-  // driver reproduce exactly; the interactive build (main.ts) reseeds it to a fresh random
-  // value each run so real playthroughs draw a different roll sequence.
+  // The scrap-press seed. `reset` is what sets it and the only thing that does, so the
+  // same seed and the same calls reach the same run every time (specs/instrumentation.md).
   pressSeed = PRESS_SEED;
 
   // Build / selection UI state.
@@ -235,15 +234,6 @@ export class Game {
     this.nextWave = buildWave(1, this.diff);
     this.occ = this.board.occupancy(this.structures);
     this.mazeCache = null;
-  }
-
-  // Reseed the scrap-press so the roll sequence differs (specs/build.md). The interactive
-  // build calls this once per run with a fresh random seed so no two playthroughs draw the
-  // same components; the harness and proof leave the fixed default for reproducibility.
-  reseedPress(seed: number): void {
-    this.pressSeed = seed >>> 0;
-    this.press = new Rng(this.pressSeed);
-    this.combat = new Rng((seed ^ 0x9e3779b9) >>> 0); // vary crit rolls per interactive run too
   }
 
   // ---- Fixed simulation step (specs/controls.md) ------------------------------
@@ -1983,7 +1973,8 @@ export class Game {
 
   // Enter a run on the current map at the current difficulty, opening it on its first build
   // phase with the allocation specs/campaign.md states. This is the path confirming the
-  // difficulty select takes; it never reseeds, so a seeded scenario stays reproducible.
+  // difficulty select takes. It never reseeds: every random draw runs off the generator
+  // reset seeded, and nothing else seeds it (specs/instrumentation.md).
   startRun(): void {
     this.startOn(this.map, this.diff);
   }

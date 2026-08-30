@@ -44,7 +44,6 @@ import {
   placeStamp,
   pullPress,
   removeSelected,
-  reseedPress,
   select,
   selectAt,
   selected,
@@ -62,11 +61,6 @@ import {
 
 /** The right edge of the yard, past which a press belongs to the panel. */
 const YARD_RIGHT = PANEL_X;
-
-/** A fresh seed for an interactive run, so no two playthroughs draw the same rolls. */
-function freshSeed(): number {
-  return Math.floor(Math.random() * 0x100000000) >>> 0;
-}
 
 /** The actions the yard's own controls answer to, in the order they are checked. */
 const YARD_ACTIONS: readonly ActionName[] = [
@@ -102,8 +96,9 @@ export function activate(
   }
   if (action.startsWith("difficulty-")) {
     setDifficulty(w, action.slice(11) as DifficultyId);
+    // The generator `reset` seeded is the only one the game draws off
+    // (specs/instrumentation.md), so entering a run seeds nothing of its own.
     startRun(w);
-    reseedPress(w, freshSeed());
     return;
   }
   switch (action) {
@@ -119,7 +114,6 @@ export function activate(
     case "restart":
     case "again":
       startRun(w);
-      reseedPress(w, freshSeed());
       break;
     case "quit":
     case "menu":

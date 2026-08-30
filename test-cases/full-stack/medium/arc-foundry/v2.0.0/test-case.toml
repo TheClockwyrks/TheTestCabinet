@@ -561,6 +561,18 @@ failure_cap = "passable"
 validation = { script = "instrumentation/start-run-keeps-the-arming.test.ts", outputs = [
   { id = "armed", name = "The arming carried into the run", kind = "image" },
 ] }
+[[review.categories.items]]
+id = "menu-run-uses-the-seed"
+title = "A run begun from the menus draws off the seed reset was given"
+description = "reset({seed: 42}) followed by choosing a map and a difficulty from the menus and placing the same rocks rolls the same types and qualities in the same order both times, so confirming a difficulty seeds nothing of its own."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: walk the menus into a seeded run twice, placing the
+# same three rocks each time, and compare the rolls. See
+# validation/<engine>/instrumentation/menu-run-uses-the-seed.test.ts.
+validation = { script = "instrumentation/menu-run-uses-the-seed.test.ts", outputs = [
+  { id = "rolls", name = "The same rolls from two menu-driven runs", kind = "image" },
+] }
 
 # --- The yard and placement ---------------------------------------------------
 # The grid, the footprint, and where a structure may stand. Every position in the

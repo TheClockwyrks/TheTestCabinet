@@ -219,8 +219,8 @@ export function resetWorld(w: FoundryState, seed: number = DEFAULT_SEED): void {
  * Enter a run on the current map at the current difficulty, opening it on its first
  * build phase with the allocation `specs/campaign.md` states.
  *
- * It never reseeds, so a seeded scenario stays reproducible; the browser reseeds the
- * press itself, once, when a player starts a run from the menu.
+ * It never reseeds. Every random draw runs off the generator `reset` seeded, and nothing
+ * else seeds it, so the same seed and the same calls reach the same run every time.
  */
 export function startRun(w: FoundryState): void {
   w.screen = "playing";
@@ -261,19 +261,6 @@ export function startRun(w: FoundryState): void {
   w.combatRng = (w.pressSeed ^ COMBAT_SALT) >>> 0;
   w.nextWave = buildWave(1, difficulty(w));
   refreshMaze(w);
-}
-
-/**
- * Reseed the scrap-press, so the roll sequence differs run to run.
- *
- * The browser calls this once as a run begins, with a fresh value, so no two
- * playthroughs draw the same components. A run entered through the debug surface keeps
- * the seed `reset` set, so a driven scenario stays reproducible.
- */
-export function reseedPress(w: FoundryState, seed: number): void {
-  w.pressSeed = seed >>> 0;
-  w.pressRng = w.pressSeed;
-  w.combatRng = (w.pressSeed ^ COMBAT_SALT) >>> 0;
 }
 
 // ---- Cues and effects ----------------------------------------------------
