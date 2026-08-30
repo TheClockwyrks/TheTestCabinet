@@ -21,6 +21,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import { LIFE_SUPPORT_BURN } from "../constants";
 import {
+  ACTION_KEY,
   captureReplay,
   createHarness,
   minerXOn,
@@ -78,7 +79,7 @@ it("holds the miner's position, speed and fuel while the menu is open", async ()
     "the miner is below the ground line",
   );
 
-  await h.tap("Escape");
+  await h.tap(ACTION_KEY.pause);
   const paused = await h.snapshot();
   assertEqual(
     paused.screen,

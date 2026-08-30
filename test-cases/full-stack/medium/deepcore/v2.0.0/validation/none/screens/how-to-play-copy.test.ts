@@ -33,10 +33,9 @@ import { drawnCopy } from "./frames";
 const SUBJECTS: readonly (readonly [string, RegExp])[] = [
   ["the rocket that is built", /\bROCKET\b/],
   ["launching it", /\bLAUNCH/],
-  [
-    "the movement controls",
-    /\bWASD\b|\bARROW\b|\bARROWS\b|\bW\b|\bA\b|\bS\b|\bD\b/,
-  ],
+  // The collective names a build gives the movement keys, or `W` and `D` as words
+  // of their own, which ordinary prose does not produce the way `A` and `S` do.
+  ["the movement controls", /\bWASD\b|\bARROW|\bW\b|\bD\b/],
   ["digging", /\bDIG\b|\bDIGS\b|\bDIGGING\b|\bDRILL/],
   ["selling", /\bSELL/],
   ["upgrading", /\bUPGRADE/],
@@ -45,7 +44,7 @@ const SUBJECTS: readonly (readonly [string, RegExp])[] = [
   ["fuel", /\bFUEL\b/],
   ["the climb home", /\bCLIMB|\bJETPACK\b|\bTHRUST/],
   ["the cargo's slots", /\bSLOT/],
-  ["the cargo's weight", /\bWEIGHT\b|\bWEIGHS\b|\bKG\b|\bHEAV/],
+  ["the cargo's weight", /\bWEIGHT\b|\bWEIGHS\b|\bKG\b|\bHEAVY\b|\bHEAVIER\b/],
   ["gas", /\bGAS\b/],
   ["lava", /\bLAVA\b/],
   ["the exotic materials", /\bRESONITE\b|\bCRYENITE\b|\bMATERIAL/],

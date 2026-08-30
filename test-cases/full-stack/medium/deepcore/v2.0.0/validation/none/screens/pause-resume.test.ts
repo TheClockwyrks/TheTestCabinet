@@ -69,7 +69,7 @@ it("returns to the mine and carries the fall on from where it stopped", async ()
   await h.debug.setMinerVelocity(0, START_VY);
   await h.advance(FALL_FRAMES);
 
-  await h.tap("Escape");
+  await h.tap(ACTION_KEY.pause);
   const paused = await h.snapshot();
   assertEqual(
     paused.screen,
