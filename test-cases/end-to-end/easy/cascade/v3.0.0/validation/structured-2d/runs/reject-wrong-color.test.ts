@@ -1,23 +1,96 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/runs/reject-wrong-color.test.ts
+// runs/reject-wrong-color — a run led by a card of the target's own color is
+// refused.
 //
-// The review item `runs.reject-wrong-color` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/tableau.md has a column whose lowest card is face-up, of rank `r` and
+// color `c`, accept "a run led by a card of rank `r - 1` and the color other than
+// `c`", and "refuses every other run offered to it".
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// This point decides the color half of that condition, in the refusing direction.
+// The accepting direction is `runs/onto-legal-card` and the rank half is
+// `runs/reject-wrong-rank`, so a build that has one of the two conditions right
+// grades differently from a build that has neither.
 //
-// What this item must decide, from the manifest:
+// THE POSE ISOLATES THE COLOR. The target's lowest card is a red `9` and the run
+// is led by a red `8`: the rank is exactly the `r - 1` the rule asks for, so the
+// only thing that can refuse this run is its color. A build that never compares
+// colors accepts it, and a build that compares them the wrong way round accepts
+// it too. The run is in run order throughout, so nothing about run order can be
+// what refuses it either.
 //
-//   A run of the wrong color is refused
-//
-//   A run whose leading card matches the target's color is refused.
+// specs/tableau.md has a refused move change nothing, so the board is read after
+// the refusal as well as the verdict.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openTable,
+  poseColumn,
+  type Harness,
+} from "../harness";
+import { cardsOf, pileText } from "./board";
 
-it("runs.reject-wrong-color — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/runs/reject-wrong-color.test.ts is a scaffold stub, not a validator",
+/** The column the run is lifted out of. */
+const SOURCE = 0;
+
+/** The column offered the run. */
+const TARGET = 1;
+
+/**
+ * The source column, bottom card first. `2C` is not in run order with the `8H`
+ * beneath it, so a grab at {@link GRAB_ROW} takes `8H`, `7S`, `6H`, which descend
+ * by one and alternate red, black, red.
+ */
+const SOURCE_CARDS = ["2C", "8H", "7S", "6H"];
+
+/** The run's leading card, counted from the column's bottom card at `0`. */
+const GRAB_ROW = 1;
+
+/**
+ * The target column: a lone red `9`.
+ *
+ * The run is led by the red `8H`. Its rank is `9 - 1`, so the rank condition
+ * holds; its color is the column's own, so the color condition fails and the
+ * column refuses it.
+ */
+const TARGET_CARDS = ["9D"];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("refuses a run whose leading card matches the column's color", async () => {
+  openTable(h);
+  poseColumn(h, SOURCE, cardsOf(SOURCE_CARDS));
+  poseColumn(h, TARGET, cardsOf(TARGET_CARDS));
+
+  const accepted = h.debug.move("tableau", SOURCE, GRAB_ROW, "tableau", TARGET);
+  await h.advance(1);
+  captureStill(h, "refused");
+
+  assertEqual(
+    accepted,
+    false,
+    "a column whose lowest card is a red 9 to refuse a run led by a red 8, " +
+      "whose rank fits and whose color does not (specs/tableau.md)",
+  );
+
+  const after = h.snapshot();
+  assertDeepEqual(
+    pileText(after.tableau[SOURCE]),
+    SOURCE_CARDS,
+    "the source column, unchanged by the refusal (specs/tableau.md)",
+  );
+  assertDeepEqual(
+    pileText(after.tableau[TARGET]),
+    TARGET_CARDS,
+    "the target column, unchanged by the refusal (specs/tableau.md)",
   );
 });
