@@ -1183,7 +1183,7 @@ describe("overload", () => {
     driven.debug.setDroneCharge(id, 1);
     driven.debug.addPlayerBullet(640, 320, "magenta");
     driven.advance(0.05, 3);
-    let drone = only(driven);
+    const drone = only(driven);
     expect(drone.charge).toBe(1);
 
     driven.debug.setDroneBandClock(id, 0);

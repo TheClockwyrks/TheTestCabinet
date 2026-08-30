@@ -26,10 +26,12 @@ import {
   FORM_ROWS,
   MAGENTA,
   PRISM_ESCORTS,
+  fluxWindow,
   slotX,
   slotY,
 } from "./constants";
 import { addDrone } from "./entities";
+import { nextRange } from "./rng";
 import { challengePath, entrancePath, entranceStart } from "./swarm";
 import type { Band, DroneKind, SpectraState } from "./types";
 
@@ -215,6 +217,12 @@ export function buildWave(state: SpectraState, stage: number): void {
         ofWave: true,
       });
       drone.path = entrancePath(centreX, centreY, fromLeft);
+      // A Flux's starting phase is drawn from the game's own generator, so a wave
+      // does not arrive with every Flux shimmering in lockstep
+      // (specs/simulation.md).
+      if (slot.kind === "flux") {
+        drone.bandClock = nextRange(state, 0, fluxWindow(stage));
+      }
     }
   });
 }

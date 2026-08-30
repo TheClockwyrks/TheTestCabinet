@@ -85,12 +85,15 @@ export function render(
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
 
+  // The title and the how-to sit outside a run, so neither the field's entities
+  // nor the run's HUD belongs on them.
+  const inRun = state.screen !== "title" && state.screen !== "howto";
   drawField(state, ctx);
-  if (state.screen !== "title" && state.screen !== "howto") {
+  if (inRun) {
     drawEntities(state, ctx, sprites);
+    if (state.inversion > 0) drawInversionMark(ctx);
+    drawHudStrips(state, ctx, sprites);
   }
-  if (state.inversion > 0) drawInversionMark(ctx);
-  drawHudStrips(state, ctx, sprites);
   drawScreen(state, ctx, sprites);
 
   ctx.restore();
@@ -227,15 +230,28 @@ function drawDrone(
   ctx.drawImage(source, drone.x - half, drone.y - half, size, size);
 
   if (drone.kind === "flux") {
-    ctx.fillStyle = shimmering(drone, state.stage) ? "#ffffff" : "#eafcff";
+    const shimmer = shimmering(drone, state.stage);
+    // A Flux settled on NEITHER band glows white over its whole footprint, so a
+    // shimmering Flux and one holding a band are told apart at a glance.
+    if (shimmer) {
+      ctx.fillStyle = "#ffffff";
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.arc(drone.x, drone.y, half, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    // The tuning core is white on both states; the ring is the band the Flux is
+    // holding, and white only while it holds neither.
+    ctx.fillStyle = "#ffffff";
     ctx.beginPath();
-    ctx.arc(drone.x, drone.y, size * 0.2, 0, Math.PI * 2);
+    ctx.arc(drone.x, drone.y, size * (shimmer ? 0.34 : 0.2), 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "#ffffff";
-    ctx.globalAlpha = 0.8;
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = shimmer ? "#ffffff" : BAND_COLOR[band];
+    ctx.globalAlpha = shimmer ? 0.95 : 1;
+    ctx.lineWidth = shimmer ? size * 0.18 : size * 0.11;
     ctx.beginPath();
-    ctx.arc(drone.x, drone.y, half * 0.84, 0, Math.PI * 2);
+    ctx.arc(drone.x, drone.y, half * (shimmer ? 0.95 : 0.86), 0, Math.PI * 2);
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
