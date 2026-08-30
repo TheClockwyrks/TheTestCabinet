@@ -1,24 +1,70 @@
-// Deepcore — drilling.material-banks. STUB: NOT YET AUTHORED.
+// drilling/material-banks — breaking a material node banks its material.
 //
-// Breaking a material node banks its material
+// specs/character.md: a material node banks its material into the satchel when
+// it breaks, and every broken cell becomes an open tunnel. specs/mining.md adds
+// that drilling a material node removes the node, and that the exotic materials
+// are not cargo: they take no slot, carry no weight, and ride in a satchel of
+// their own.
 //
-// Breaking a material node banks its material into the satchel and removes the
-// node, leaving the cell an open tunnel.
-//
-// Automated validation: pose a resonite node under the miner, cut it through,
-// and read the satchel and the cell back.
-//
-// `test-case.toml` declares this suite as `drilling/material-banks.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (node (replay)) around the drive.
+// The node posed is Resonite, in the rockbed band its single generated node
+// belongs to, so the cell's `BAND_HEALTH` is the one that band's nodes really
+// carry. The miner's body is held still, so the cut is the drill's alone.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { BAND_HEALTH, MATERIAL_BAND } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  driveCut,
+  layMaterial,
+  openScene,
+  pinMiner,
+  rowInBand,
+  standOn,
+  type Harness,
+} from "../harness";
 
-test("Breaking a material node banks its material", () => {
-  throw new Error(
-    "Deepcore validator `drilling/material-banks` is declared in test-case.toml but has not been authored yet.",
+/** A column well clear of the camp, the cave mouth, and the Core. */
+const COL = 8;
+
+/** The material posed, and the band its node belongs to. */
+const MATERIAL = "resonite";
+const BAND = MATERIAL_BAND[MATERIAL];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("banks the node's material into the satchel and clears the cell", async () => {
+  openScene(h);
+  const { coreRow } = h.snapshot();
+  const row = rowInBand(BAND, coreRow);
+  layMaterial(h, COL, row, MATERIAL);
+  standOn(h, COL, row);
+  pinMiner(h);
+
+  const opening = h.tileAt(COL, row);
+  assertEqual(opening.kind, "material", "specs/instrumentation.md");
+  assertEqual(opening.material, MATERIAL, "specs/instrumentation.md");
+  assertEqual(opening.health, BAND_HEALTH[BAND], "specs/world.md");
+  assertEqual(h.snapshot().satchel[MATERIAL], 0, "specs/gameplay.md");
+
+  const cut = await captureReplay(h, "node", () =>
+    driveCut(h, "down", { col: COL, row }),
   );
+
+  assertEqual(cut.broke, true, "specs/character.md");
+  assertEqual(cut.tile.kind, "tunnel", "specs/mining.md");
+  assertEqual(cut.tile.material, null, "specs/mining.md");
+  assertEqual(cut.snapshot.satchel[MATERIAL], 1, "specs/character.md");
+  // Not cargo: no slot taken and no weight carried.
+  assertEqual(cut.snapshot.cargo.slotsUsed, 0, "specs/mining.md");
+  assertEqual(cut.snapshot.cargo.loadKg, 0, "specs/mining.md");
 });

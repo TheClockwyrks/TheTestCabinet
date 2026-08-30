@@ -1,26 +1,96 @@
-// Deepcore — drilling.grounded-only. STUB: NOT YET AUTHORED.
+// drilling/grounded-only — a miner off the ground starts no cut.
 //
-// A miner off the ground starts no cut
+// specs/character.md: a cut starts only while the miner rests on a solid cell. A
+// falling, thrusting, or hovering miner starts no cut whichever direction is
+// held. So a plunge down a shaft never side-drills the walls it passes, however
+// hard the player is steering into them.
 //
-// A cut starts only while the miner rests on a solid cell: a falling,
-// thrusting or hovering miner cuts nothing whichever direction is held, so a
-// plunge down a shaft never side-drills the walls it passes.
+// The scene is a one-tile shaft twenty rows deep with rock walls either side.
+// The miner is posed in the air at the top with the side-drill direction held,
+// which both keeps it flush against a wall — `specs/character.md` has lateral
+// input drift the miner in the air as well as on the ground — and aims the drill
+// at that wall. Thrust is then added on top, so both airborne states the
+// specification names are exercised against the same wall.
 //
-// Automated validation: drop the miner down a cleared shaft with a drill
-// direction held and read every cell it passes unchanged, then repeat while
-// holding thrust.
-//
-// `test-case.toml` declares this suite as `drilling/grounded-only.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (airborne (replay)) around the drive.
+// The spans are chosen so the miner never reaches the floor: a second of falling
+// covers about eight tiles against the twenty the shaft holds, and the half
+// second of thrust that follows only slows the descent. So every reading below
+// is taken off a miner that has been airborne throughout.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { BAND_HEALTH, MINER_W, TILE } from "../../src/constants";
+import { assertBetween, assertEqual } from "../assert";
+import {
+  ACTION_KEY,
+  captureReplay,
+  createHarness,
+  digShaft,
+  minerXOn,
+  minerYOn,
+  openScene,
+  placeAt,
+  TICK_HZ,
+  type Harness,
+} from "../harness";
 
-test("A miner off the ground starts no cut", () => {
-  throw new Error(
-    "Deepcore validator `drilling/grounded-only` is declared in test-case.toml but has not been authored yet.",
+/** The shaft: a column, and the rows it is open through. */
+const COL = 8;
+const TOP_ROW = 6;
+const BOTTOM_ROW = 25;
+
+/** The wall the drill is aimed at. */
+const WALL_COL = COL + 1;
+
+/** How long the miner falls, and then thrusts, with the direction held. */
+const FALL_FRAMES = TICK_HZ;
+const THRUST_FRAMES = TICK_HZ / 2;
+
+/** How far the box may sit from the wall's face, in world units. */
+const FLUSH = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("cuts no wall while falling or thrusting past it", async () => {
+  openScene(h);
+  digShaft(h, COL, TOP_ROW, BOTTOM_ROW);
+  placeAt(h, minerXOn(COL), minerYOn(TOP_ROW + 1));
+
+  const airborne = await captureReplay(h, "airborne", async () => {
+    h.hold(ACTION_KEY.right);
+    try {
+      await h.advance(FALL_FRAMES);
+      const falling = h.snapshot();
+      h.hold(ACTION_KEY.up);
+      await h.advance(THRUST_FRAMES);
+      return { falling, thrusting: h.snapshot() };
+    } finally {
+      h.releaseAll();
+    }
+  });
+
+  // Airborne the whole way, and pressed against the wall the drill is aimed at.
+  assertEqual(airborne.falling.miner.grounded, false, "specs/character.md");
+  assertEqual(airborne.thrusting.miner.grounded, false, "specs/character.md");
+  assertBetween(
+    airborne.thrusting.miner.x + MINER_W,
+    WALL_COL * TILE - FLUSH,
+    WALL_COL * TILE,
+    "specs/character.md",
   );
+  assertEqual(airborne.thrusting.miner.drilling, null, "specs/character.md");
+
+  // And every cell it passed is whole.
+  for (let row = TOP_ROW; row <= BOTTOM_ROW; row += 1) {
+    const tile = h.tileAt(WALL_COL, row);
+    assertEqual(tile.kind, "rock", "specs/character.md");
+    assertEqual(tile.health, BAND_HEALTH.topsoil, "specs/character.md");
+  }
 });

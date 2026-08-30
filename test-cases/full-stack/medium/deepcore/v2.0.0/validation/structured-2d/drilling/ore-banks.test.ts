@@ -1,24 +1,70 @@
-// Deepcore — drilling.ore-banks. STUB: NOT YET AUTHORED.
+// drilling/ore-banks — breaking an ore cell banks a unit into cargo.
 //
-// Breaking an ore cell banks a unit into cargo
+// specs/mining.md: drilling an ore cell removes it and banks one unit of that
+// ore into the cargo bay when a slot is free. One unit fills one slot whatever
+// its weight, and the weight it carries is the ore's own, from the table that
+// file prints. specs/character.md adds that the broken cell becomes open tunnel
+// like any other.
 //
-// Breaking an ore cell with a free slot banks one unit of that ore into the
-// cargo bay, filling one slot and adding its weight to the load.
-//
-// Automated validation: pose an ore cell of a known id under the miner, cut it
-// through, and read the cargo count, the slots used and the load back.
-//
-// `test-case.toml` declares this suite as `drilling/ore-banks.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (collect (replay)) around the drive.
+// The bay opens empty and the cargo tier opens at `1`, whose capacity is `15`, so
+// there is a free slot and the full-bay path is the sibling check's. The ore is
+// Cuprite, whose weight (`18`) is shared by no other mineral, so the load read
+// back names which ore was banked rather than merely that something was.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { CARGO_TIERS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  driveCut,
+  layOre,
+  mineralOf,
+  openScene,
+  pinMiner,
+  standOn,
+  type Harness,
+} from "../harness";
 
-test("Breaking an ore cell banks a unit into cargo", () => {
-  throw new Error(
-    "Deepcore validator `drilling/ore-banks` is declared in test-case.toml but has not been authored yet.",
+/** A column and a row well clear of the camp, the cave mouth, and the Core. */
+const COL = 8;
+const ROW = 12;
+
+/** The ore posed: its weight is shared by no other mineral or gemstone. */
+const ORE = "cuprite";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("banks one unit of the ore the broken cell held", async () => {
+  openScene(h);
+  layOre(h, COL, ROW, ORE);
+  standOn(h, COL, ROW);
+  pinMiner(h);
+
+  const opening = h.snapshot();
+  assertEqual(opening.cargo.slotsUsed, 0, "specs/gameplay.md");
+  assertEqual(opening.cargo.slotCap, CARGO_TIERS[0], "specs/upgrades.md");
+  assertEqual(h.tileAt(COL, ROW).ore, ORE, "specs/instrumentation.md");
+
+  const cut = await captureReplay(h, "collect", () =>
+    driveCut(h, "down", { col: COL, row: ROW }),
+  );
+
+  assertEqual(cut.broke, true, "specs/character.md");
+  assertEqual(cut.tile.kind, "tunnel", "specs/character.md");
+  assertEqual(cut.snapshot.cargo.ore[ORE], 1, "specs/mining.md");
+  assertEqual(cut.snapshot.cargo.slotsUsed, 1, "specs/mining.md");
+  assertEqual(
+    cut.snapshot.cargo.loadKg,
+    mineralOf(ORE).weightKg,
+    "specs/mining.md",
   );
 });
