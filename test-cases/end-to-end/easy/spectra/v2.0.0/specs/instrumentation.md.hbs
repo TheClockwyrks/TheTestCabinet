@@ -316,7 +316,8 @@ so every operation is verifiable by setting a value and reading it back.
 ```js
 {
   version: 1,
-  screen: "title" | "howto" | "stageIntro" | "inWave" | "paused" | "stageCleared" | "gameOver",
+  screen:
+    "title" | "howto" | "stageIntro" | "inWave" | "paused" | "stageCleared" | "gameOver",
   phase: "live" | "ready",           // the sub-phase of "inWave"
   phaseTimer: <number>,              // seconds left in the current hold
   menuIndex: <number>,               // highlighted item, from 0
@@ -360,7 +361,7 @@ so every operation is verifiable by setting a value and reading it back.
       effectiveBand: "cyan" | "magenta",
       phase: "entering" | "formation" | "diving" | "returning",
       slotX: <number>, slotY: <number>,
-      bandClock: <number>,           // seconds into the CURRENT band window; 0 on other kinds
+      bandClock: <number>,           // seconds into the CURRENT window; 0 on other kinds
       shimmer: <boolean>,            // a Flux settled on neither band; false otherwise
       shellAlive: <boolean>,         // a Prism's outer shell stands; true on other kinds
       travel: <boolean>,
@@ -414,6 +415,11 @@ their own, and the notes that go with them:
   at the call from `stage`, `resonance`, `inversion`, and `phase` by the formulas in
   `specs/stages.md`, `specs/resonance.md`, and `specs/bands.md`. Each follows the
   operation that sets what it is derived from.
+- The four stage-scaled figures are the formulas read at the stage the snapshot was
+  taken at, and nothing else. A challenge stage runs at the stage-1 figures whatever
+  stage it falls on, as `specs/stages.md` states, so on a challenge stage what these
+  four report is the stage's formula rather than the figure the flyover is running
+  at.
 - `mode` names the mode this build ships, which `specs/mode.md` defines.
 - `muted` is the game's copy of the runtime's mute bit, refreshed in every update. No
   operation sets it; the `mute` action does.
