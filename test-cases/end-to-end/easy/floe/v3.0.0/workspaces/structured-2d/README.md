@@ -32,10 +32,10 @@ the rules: its `gameStateClass` is `FloeState`, so the engine builds the state
 `specs/state.md` declares when the world opens; its `beginPlay` adds a single
 player possessing nothing, whose controller is where the actions are read, and
 registers the diagnostic sources through `world.diagnostics`. Leave the camera at
-rest, so world units and the stage's logical units coincide. The state is the
-whole of the authoritative game — the actors, components, and controllers you
-write draw it and drive it, holding nothing authoritative of their own.
-Implement the game.
+rest, so world units and the stage's logical units coincide. The run's own
+figures live in that game state and the strait's bodies are actors in the world,
+as `specs/state.md` declares, and nothing the game carries from one tick to the
+next lives anywhere else. Implement the game.
 
 **Floe runs on a fixed step, and the step is yours.** The engine ticks the world
 against the frame's real elapsed seconds; the simulation advances in whole ticks
@@ -62,10 +62,12 @@ same systems play uses, and returns nothing, as `engine.debug.setLives(2)`; a
 reading returns plain data and changes nothing, as `engine.debug.snapshot()`.
 Nothing is published to the page.
 
-`FloeState` **is a contract**. Keep every field, under the name, type, and
-meaning `specs/state.md` gives it. You may add fields, but only for data you can
-rebuild from the declared ones: the declared fields are the whole of the
-authoritative state, and the surface's `reset()` restores exactly those.
+`FloeState` and `TAGS` **are contracts**. Keep every field of the game state
+under the name, type, and meaning `specs/state.md` gives it, and tag every body
+on the strait with its name from `TAGS`, so the strait is findable exactly as the
+specification says it is. Fields you add hold data you can rebuild from what
+`specs/state.md` declares, and the surface's `reset()` leaves the game
+indistinguishable from one freshly started.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
 runs them in process, with coverage over `src/`. A test stands the engine up

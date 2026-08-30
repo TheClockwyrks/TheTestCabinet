@@ -298,8 +298,9 @@ them.
 {{else if (eq engine.slug "simple-2d")}}
 - Hold the game's whole state in `FloeState`, as `specs/state.md` declares it.
 {{else}}
-- Hold the game's whole authoritative state in `FloeState`, the world's game
-  state, as `specs/state.md` declares it.
+- Hold the whole game in the world the engine owns, as `specs/state.md`
+  declares it: the run's figures in `FloeState`, the world's game state, and the
+  strait's bodies as tagged actors.
 {{/if}}
 - Ship the debugging and automation surface `specs/instrumentation.md` specifies,
   complete and exactly as specified.

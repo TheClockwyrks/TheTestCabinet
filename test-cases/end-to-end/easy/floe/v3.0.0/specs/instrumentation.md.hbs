@@ -319,7 +319,9 @@ initialized. Four facts among them are derived rather than stored:
 | A bear's `swimming` | The tile it is travelling into: a water-band tile no floe covers. |
 
 While the critter is out of play, `present` is `false` and its tile, center, and
-facing report the last values it held.
+facing report the last values it held. Where it has held none, as on a fresh
+start, they report the pose a fresh crossing begins from: the near shore at
+`START_COL`, facing `up`, with `hopCooldown` `0` and `bestRow` `ROW_NEAR`.
 
 A bear settled on a tile reports `stepCol` and `stepRow` equal to `col` and
 `row`. A bear between tiles reports the tile it settled on as `col` and `row` and
