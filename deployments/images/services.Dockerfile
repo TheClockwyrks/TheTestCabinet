@@ -191,6 +191,15 @@ ENV PATH=/root/.local/bin:$PATH
 # one prefix, which is what makes a single mount enough; ~/.cache carries uv's own
 # downloads (a CPython and the pinned griffe) and /root/.npm the npm cache, for the same
 # reason.
+#
+# THE ~/.cache MOUNT EARNS ITS KEEP A SECOND WAY, and it is the reason it is worth
+# knowing it is here: `gg_fetch` (scripts/ci/fetch.sh) stages every large toolchain
+# archive under ~/.cache/tcab/downloads and leaves the PARTIAL file there when a transfer
+# is cut short. So a build that dies eight hundred megabytes into the 1.05 GB Swift
+# toolchain — which is what a flaky link does to a twelve-minute download — resumes on the
+# next `make images` instead of starting that download again. The installers delete their
+# own archives once the tree they feed has verified itself, so a build that succeeds
+# leaves the mount holding nothing but the caches named above.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/usr/local/rustup,id=rustup-gg,sharing=locked \

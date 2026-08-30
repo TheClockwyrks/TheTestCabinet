@@ -34,6 +34,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=packages/gg-sandbox-kotlin/kotlin-version.sh
 source "$ROOT/packages/gg-sandbox-kotlin/kotlin-version.sh"
+# shellcheck source=scripts/ci/fetch.sh
+source "$ROOT/scripts/ci/fetch.sh"
 
 # The JDK and TeaVM, which this arm compiles through. JAVA_INSTALL_DIR is honoured by that
 # script, so an image installing both under /opt/gg/toolchains gets one JDK there too.
@@ -54,9 +56,9 @@ fetch() {
 	REST="${COORDINATE#*:}"
 	ARTIFACT="${REST%%:*}"
 	VERSION="${REST#*:}"
-	curl -sSfL \
+	gg_fetch \
 		"https://repo1.maven.org/maven2/${GROUP//./\/}/${ARTIFACT}/${VERSION}/${ARTIFACT}-${VERSION}.jar" \
-		-o "$INTO"
+		"$INTO"
 }
 
 echo "Installing the Kotlin compiler $KOTLIN_VERSION -> $LIB_DIR"

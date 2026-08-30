@@ -48,6 +48,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=packages/gg-sandbox-cpp/cpp-version.sh
 source "$ROOT/packages/gg-sandbox-cpp/cpp-version.sh"
+# shellcheck source=scripts/ci/fetch.sh
+source "$ROOT/scripts/ci/fetch.sh"
 
 INSTALL_DIR="${WASI_SDK_INSTALL_DIR:-$GG_WASI_SDK_DEFAULT_HOME}"
 STAMP="$INSTALL_DIR/wasi-sdk-version"
@@ -87,9 +89,13 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 echo "Installing wasi-sdk $GG_WASI_SDK_VERSION ($(gg_wasi_sdk_platform)) -> $INSTALL_DIR"
-curl -sSfL "$(gg_wasi_sdk_url)" -o "$WORK/wasi-sdk.tar.gz"
+# ~650 MB, through `gg_fetch` — which resumes, retries, and stages the archive where a partial one
+# outlives the run that failed, so a dropped connection costs the remainder of the transfer rather
+# than the whole of it. It is deleted at the bottom, once the pruned tree has compiled something.
+SDK_ARCHIVE="$(gg_fetch_dir)/wasi-sdk-$GG_WASI_SDK_VERSION-$(gg_wasi_sdk_platform).tar.gz"
+gg_fetch "$(gg_wasi_sdk_url)" "$SDK_ARCHIVE"
 mkdir -p "$WORK/sdk"
-tar -xzf "$WORK/wasi-sdk.tar.gz" -C "$WORK/sdk" --strip-components=1
+tar -xzf "$SDK_ARCHIVE" -C "$WORK/sdk" --strip-components=1
 
 SRC="$WORK/sdk"
 
@@ -265,5 +271,10 @@ EOF
 test -s "$WORK/smoke.wasm"
 
 echo "$GG_WASI_SDK_VERSION" >"$STAMP"
+
+# The staged archive, and only now: every line above this one is a way for the install to fail with
+# it still worth having, and an install that got this far has a tree the stamp vouches for.
+rm -f "$SDK_ARCHIVE"
+
 "$INSTALL_DIR/bin/clang++" --version | head -1
 du -sh "$INSTALL_DIR"

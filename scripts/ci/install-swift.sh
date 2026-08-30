@@ -30,6 +30,12 @@
 # Idempotent: a matching version already installed (a developer's machine, a cache restore) is
 # left alone.
 #
+# Interruptible, which for the largest download in this repository is a separate promise. Every
+# fetch goes through `gg_fetch` (scripts/ci/fetch.sh), which resumes and retries, and the two
+# archives are staged where a partial one survives the run that failed — so a dropped connection
+# eight hundred megabytes into the compiler costs the remainder of that transfer and not the whole
+# of it. Nothing under $INSTALL_DIR is touched until every byte is on disk.
+#
 # Usage:
 #   scripts/ci/install-swift.sh                                  # -> ~/.local/share/tcab/gg-swift
 #   SWIFT_INSTALL_DIR=/opt/gg/toolchains/swift scripts/ci/install-swift.sh
@@ -38,6 +44,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=packages/gg-sandbox-swift/swift-version.sh
 source "$ROOT/packages/gg-sandbox-swift/swift-version.sh"
+# shellcheck source=scripts/ci/fetch.sh
+source "$ROOT/scripts/ci/fetch.sh"
 
 INSTALL_DIR="${SWIFT_INSTALL_DIR:-$GG_SWIFT_DEFAULT_HOME}"
 STAMP="$INSTALL_DIR/swift-version"
@@ -52,16 +60,90 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 PLATFORM="$(gg_swift_platform)"
+
+# The two things this script cannot do without, asked about BEFORE a gigabyte is fetched rather
+# than in the middle of the tree walk and the vendoring that need them. Either one missing used to
+# be discovered ten minutes into an install, after the whole download had been paid for.
+if ! command -v readelf >/dev/null 2>&1; then
+	echo "error: readelf (binutils) is needed to work out which Swift libraries to keep." >&2
+	exit 1
+fi
+case "$(uname -m)" in
+x86_64) DEB_ARCH="amd64" ;;
+aarch64 | arm64) DEB_ARCH="arm64" ;;
+*)
+	echo "error: no Debian bookworm architecture for $(uname -m)." >&2
+	exit 1
+	;;
+esac
+
 echo "Installing Swift $GG_SWIFT_VERSION ($PLATFORM) -> $INSTALL_DIR"
+
+# --- everything that touches the network ------------------------------------
+# ALL of it, and all of it before the first line that touches $INSTALL_DIR, so a fetch that fails
+# leaves the working toolchain a machine already had rather than no toolchain at all. That is
+# `install-dotnet.sh`'s order rather than the one this script used to have, and `install-wasi-sdk.sh`
+# argues at the point it adopted it that it is the better of the two.
+#
+# It is also the order that makes a failure cheap to retry. The two archives are 1.05 GB and 72 MB,
+# `gg_fetch` stages them under `gg_fetch_dir` and leaves a partial file there when it gives up, and
+# the image builds mount a cache over that directory — so the run after a failed one resumes a
+# twelve-minute download instead of starting it again. They are deleted at the bottom, once the
+# install they fed has verified itself.
+DOWNLOADS="$(gg_fetch_dir)"
+TOOLCHAIN_ARCHIVE="$DOWNLOADS/swift-$GG_SWIFT_VERSION-RELEASE-$PLATFORM.tar.gz"
+WASM_SDK_ARCHIVE="$DOWNLOADS/swift-$GG_SWIFT_WASM_SDK_VERSION-RELEASE_wasm.artifactbundle.tar.gz"
+gg_fetch "$(gg_swift_toolchain_url)" "$TOOLCHAIN_ARCHIVE"
+gg_fetch "$(gg_swift_wasm_sdk_url)" "$WASM_SDK_ARCHIVE"
+
+# The vendored ELF dependencies, fetched here and staged in $WORK/vendor; the paragraph explaining
+# WHICH libraries and why is at the copy site below, where they land in the tree.
+#
+# Resolved from the distribution's own index rather than hard-coded, so a security update to any
+# of them is picked up without a version bump here.
+echo "Fetching the shared libraries the toolchain expects at Debian sonames"
+gg_fetch "https://deb.debian.org/debian/dists/bookworm/main/binary-$DEB_ARCH/Packages.gz" \
+	"$WORK/Packages.gz"
+gzip -dc "$WORK/Packages.gz" >"$WORK/Packages"
+mkdir -p "$WORK/vendor"
+for package in libxml2 libicu72 liblzma5 zlib1g libncurses6 libtinfo6 libsqlite3-0 libuuid1; do
+	filename="$(awk -v P="$package" '$0=="Package: "P{found=1} found&&/^Filename:/{print $2; exit}' "$WORK/Packages")"
+	if [ -z "$filename" ]; then
+		echo "error: Debian bookworm has no $package for $DEB_ARCH." >&2
+		exit 1
+	fi
+	gg_fetch "https://deb.debian.org/debian/$filename" "$WORK/$package.deb"
+	rm -rf "$WORK/deb" && mkdir -p "$WORK/deb"
+	(cd "$WORK/deb" && ar x "$WORK/$package.deb" && tar -xf data.tar.*)
+	# Only what the closure actually needs. ICU ships six libraries and libxml2 links one of them
+	# (`libicuuc`), which in turn loads the data blob; everything else in these packages stays out.
+	find "$WORK/deb" \( -name 'libxml2.so.*' -o -name 'libicuuc.so.*' -o -name 'libicudata.so.*' \
+		-o -name 'liblzma.so.*' -o -name 'libz.so.*' -o -name 'libncurses.so.*' \
+		-o -name 'libncursesw.so.*' -o -name 'libtinfo.so.*' -o -name 'libsqlite3.so.*' \
+		-o -name 'libuuid.so.*' \) -exec cp -a {} "$WORK/vendor/" \;
+done
+
+# --- unpack ------------------------------------------------------------------
+# Also before $INSTALL_DIR is touched, for the same reason and one more: the bundle probe below is
+# the one check that can reject an archive that downloaded perfectly, and rejecting it after the
+# old tree had been deleted would leave a machine with neither.
+mkdir -p "$WORK/toolchain"
+tar -xzf "$TOOLCHAIN_ARCHIVE" -C "$WORK/toolchain" --strip-components=1
+mkdir -p "$WORK/wasm-sdk"
+tar -xzf "$WASM_SDK_ARCHIVE" -C "$WORK/wasm-sdk"
+BUNDLE="$(find "$WORK/wasm-sdk" -maxdepth 3 -type d -name "$GG_SWIFT_TARGET" | head -1)"
+if [ -z "$BUNDLE" ]; then
+	echo "error: the Swift wasm SDK bundle has no $GG_SWIFT_TARGET variant." >&2
+	exit 1
+fi
+
+# --- the compiler ------------------------------------------------------------
+# THE OLD TREE GOES FIRST, and it goes here: everything above this line can fail without costing a
+# machine the toolchain it already had, and nothing below it reaches the network.
 rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/toolchain/usr/bin" "$INSTALL_DIR/toolchain/usr/lib/swift/linux" \
 	"$INSTALL_DIR/toolchain/usr/lib/swift/host" "$INSTALL_DIR/toolchain/usr/lib/clang" \
 	"$INSTALL_DIR/sdk/swift.xctoolchain/usr/lib" "$INSTALL_DIR/lib"
-
-# --- the compiler ------------------------------------------------------------
-curl -sSfL "$(gg_swift_toolchain_url)" -o "$WORK/toolchain.tar.gz"
-mkdir -p "$WORK/toolchain"
-tar -xzf "$WORK/toolchain.tar.gz" -C "$WORK/toolchain" --strip-components=1
 SRC="$WORK/toolchain/usr"
 DST="$INSTALL_DIR/toolchain/usr"
 
@@ -91,10 +173,8 @@ ln -sf lld "$DST/bin/ld.lld"
 # The `.swiftmodule` directories beside them are not copied either: they are for compiling HOST
 # Swift, which this arm never does — every compile resolves its standard library out of the wasm
 # SDK's `swift_static`.
-if ! command -v readelf >/dev/null 2>&1; then
-	echo "error: readelf (binutils) is needed to work out which Swift libraries to keep." >&2
-	exit 1
-fi
+#
+# `readelf`, which the walk is done with, is checked for at the top of the script rather than here.
 gg_needed() { readelf -d "$1" | sed -n 's/.*NEEDED.*\[\(.*\)\]/\1/p'; }
 GG_SWIFT_LIB_DIRS="$SRC/lib/swift/linux $SRC/lib/swift/host $SRC/lib/swift/host/compiler"
 GG_SEEN=""
@@ -147,14 +227,6 @@ done
 
 # --- the Swift SDK for WebAssembly ------------------------------------------
 echo "Installing the Swift SDK for WebAssembly $GG_SWIFT_WASM_SDK_VERSION"
-curl -sSfL "$(gg_swift_wasm_sdk_url)" -o "$WORK/wasm-sdk.tar.gz"
-mkdir -p "$WORK/wasm-sdk"
-tar -xzf "$WORK/wasm-sdk.tar.gz" -C "$WORK/wasm-sdk"
-BUNDLE="$(find "$WORK/wasm-sdk" -maxdepth 3 -type d -name "$GG_SWIFT_TARGET" | head -1)"
-if [ -z "$BUNDLE" ]; then
-	echo "error: the Swift wasm SDK bundle has no $GG_SWIFT_TARGET variant." >&2
-	exit 1
-fi
 cp -a "$BUNDLE/WASI.sdk" "$INSTALL_DIR/sdk/"
 # `swift_static` and not `swift`: every compile passes `-static-stdlib`, because a component is
 # one self-contained module and there is nothing to dynamically link against inside it. The
@@ -175,36 +247,11 @@ cp -a "$BUNDLE/swift.xctoolchain/usr/lib/clang" "$INSTALL_DIR/sdk/swift.xctoolch
 # What is NOT vendored is `libc`, `libm`, `libgcc_s` and `libstdc++`: every image gg runs in has a
 # C and C++ runtime, both are backward compatible, and a vendored `libstdc++` older than the image's
 # would be the one way to make this tree *less* portable rather than more.
+#
+# They were fetched and pruned into `$WORK/vendor` at the top of the script, with everything else
+# that reaches the network; all that is left here is the move into the tree.
 echo "Vendoring the shared libraries the toolchain expects at Debian sonames"
-# Resolved from the distribution's own index rather than hard-coded, so a security update to any
-# of them is picked up without a version bump here.
-case "$(uname -m)" in
-x86_64) DEB_ARCH="amd64" ;;
-aarch64 | arm64) DEB_ARCH="arm64" ;;
-*)
-	echo "error: no Debian bookworm architecture for $(uname -m)." >&2
-	exit 1
-	;;
-esac
-curl -sSfL "https://deb.debian.org/debian/dists/bookworm/main/binary-$DEB_ARCH/Packages.gz" \
-	-o "$WORK/Packages.gz"
-gzip -dc "$WORK/Packages.gz" >"$WORK/Packages"
-for package in libxml2 libicu72 liblzma5 zlib1g libncurses6 libtinfo6 libsqlite3-0 libuuid1; do
-	filename="$(awk -v P="$package" '$0=="Package: "P{found=1} found&&/^Filename:/{print $2; exit}' "$WORK/Packages")"
-	if [ -z "$filename" ]; then
-		echo "error: Debian bookworm has no $package for $DEB_ARCH." >&2
-		exit 1
-	fi
-	curl -sSfL "https://deb.debian.org/debian/$filename" -o "$WORK/$package.deb"
-	rm -rf "$WORK/deb" && mkdir -p "$WORK/deb"
-	(cd "$WORK/deb" && ar x "$WORK/$package.deb" && tar -xf data.tar.*)
-	# Only what the closure actually needs. ICU ships six libraries and libxml2 links one of them
-	# (`libicuuc`), which in turn loads the data blob; everything else in these packages stays out.
-	find "$WORK/deb" \( -name 'libxml2.so.*' -o -name 'libicuuc.so.*' -o -name 'libicudata.so.*' \
-		-o -name 'liblzma.so.*' -o -name 'libz.so.*' -o -name 'libncurses.so.*' \
-		-o -name 'libncursesw.so.*' -o -name 'libtinfo.so.*' -o -name 'libsqlite3.so.*' \
-		-o -name 'libuuid.so.*' \) -exec cp -a {} "$INSTALL_DIR/lib/" \;
-done
+cp -a "$WORK/vendor/." "$INSTALL_DIR/lib/"
 
 # --- prove the pruned tree is the one that works ----------------------------
 # Not "assume": every deletion above is a thing that could have broken this, and the last time
@@ -251,5 +298,11 @@ LD_LIBRARY_PATH="$INSTALL_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
 test -s "$WORK/smoke.wasm"
 
 echo "$GG_SWIFT_VERSION" >"$STAMP"
+
+# The staged archives, and only now: they are 1.1 GB between them, and every line above this one is
+# a way for the install to fail with them still worth having. An install that got this far has a
+# tree the stamp vouches for, so the next run answers out of the stamp and never wants them again.
+rm -f "$TOOLCHAIN_ARCHIVE" "$WASM_SDK_ARCHIVE"
+
 du -sh "$INSTALL_DIR"
 echo "Swift $GG_SWIFT_VERSION installed at $INSTALL_DIR"

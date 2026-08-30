@@ -192,6 +192,11 @@ RUN mkdir -p /opt/gg/toolchains/bin
 # exactly as the Java, Kotlin, Swift, C++ and C# blocks below run theirs, and for the same
 # reason: one list of versions, read by the image and by the machine, rather than copied
 # into both. Its `.dockerignore` re-inclusions are what let the two COPYs find anything.
+#
+# `scripts/ci/fetch.sh` rides beside every installer this file copies, here and in the five blocks
+# below, because every one of them sources it: it is the one `curl` those scripts fetch a large
+# file with, and it resumes and retries rather than throwing away eight hundred megabytes when a
+# connection drops. An installer copied without it fails on its first line with "No such file".
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 	apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
@@ -200,6 +205,7 @@ COPY packages/gg-sandbox-purescript/purescript-version.sh \
 COPY packages/gg-sandbox-purescript/spago.yaml \
 	/tmp/gg-purescript/packages/gg-sandbox-purescript/spago.yaml
 COPY scripts/ci/install-purescript.sh /tmp/gg-purescript/scripts/ci/install-purescript.sh
+COPY scripts/ci/fetch.sh /tmp/gg-purescript/scripts/ci/fetch.sh
 RUN set -eux; \
 	PURS_INSTALL_DIR=/opt/gg/toolchains/bin \
 	bash /tmp/gg-purescript/scripts/ci/install-purescript.sh; \
@@ -236,6 +242,7 @@ RUN set -eux; \
 # there is one list of jars rather than two.
 COPY packages/gg-sandbox-java/java-version.sh /tmp/gg-java/packages/gg-sandbox-java/java-version.sh
 COPY scripts/ci/install-java.sh /tmp/gg-java/scripts/ci/install-java.sh
+COPY scripts/ci/fetch.sh /tmp/gg-java/scripts/ci/fetch.sh
 RUN set -eux; \
 	JAVA_INSTALL_DIR=/opt/gg/toolchains/java bash /tmp/gg-java/scripts/ci/install-java.sh; \
 	rm -rf /tmp/gg-java; \
@@ -271,6 +278,7 @@ COPY packages/gg-sandbox-java/java-version.sh \
 	/tmp/gg-kotlin/packages/gg-sandbox-java/java-version.sh
 COPY scripts/ci/install-kotlin.sh /tmp/gg-kotlin/scripts/ci/install-kotlin.sh
 COPY scripts/ci/install-java.sh /tmp/gg-kotlin/scripts/ci/install-java.sh
+COPY scripts/ci/fetch.sh /tmp/gg-kotlin/scripts/ci/fetch.sh
 RUN set -eux; \
 	JAVA_INSTALL_DIR=/opt/gg/toolchains/java \
 	KOTLIN_INSTALL_DIR=/opt/gg/toolchains/kotlin \
@@ -393,6 +401,7 @@ RUN set -eux; \
 COPY packages/gg-sandbox-swift/swift-version.sh \
 	/tmp/gg-swift/packages/gg-sandbox-swift/swift-version.sh
 COPY scripts/ci/install-swift.sh /tmp/gg-swift/scripts/ci/install-swift.sh
+COPY scripts/ci/fetch.sh /tmp/gg-swift/scripts/ci/fetch.sh
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 	apt-get update && apt-get install -y --no-install-recommends binutils
@@ -453,6 +462,7 @@ RUN set -eux; \
 COPY packages/gg-sandbox-cpp/cpp-version.sh \
 	/tmp/gg-cpp/packages/gg-sandbox-cpp/cpp-version.sh
 COPY scripts/ci/install-wasi-sdk.sh /tmp/gg-cpp/scripts/ci/install-wasi-sdk.sh
+COPY scripts/ci/fetch.sh /tmp/gg-cpp/scripts/ci/fetch.sh
 # The three sonames the installer vendors are copied from THIS stage, so they have to be here to
 # be copied — which is the opposite of the C# block's `apt` line and not a contradiction: what is
 # forbidden there is a library the run image would have to supply, and what is required here is a
@@ -527,6 +537,7 @@ COPY packages/gg-sandbox-cpp/cpp-version.sh \
 COPY packages/gg-sandbox-csharp/csharp-version.sh \
 	/tmp/gg-csharp/packages/gg-sandbox-csharp/csharp-version.sh
 COPY scripts/ci/install-dotnet.sh /tmp/gg-csharp/scripts/ci/install-dotnet.sh
+COPY scripts/ci/fetch.sh /tmp/gg-csharp/scripts/ci/fetch.sh
 # `binutils` for the `ar` that unpacks the ICU package the installer vendors, and — deliberately,
 # and this is the most load-bearing line in this block — NO `libicu72`. It used to be here, and it
 # was here for one reason: to make the installer's own verification compile pass in THIS stage. It

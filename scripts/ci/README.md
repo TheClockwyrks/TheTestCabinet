@@ -185,6 +185,18 @@ binary path rather than resolving the repo root, so it does not use `lib.sh`.
 `lib.sh` is a sourced helper (not a standalone script): it resolves the repo root
 and provides the `log` helper.
 
+`fetch.sh` is the other sourced helper, and it has no side effect at all — not
+even a `cd` — because the six toolchain installers that source it are also run
+from inside `containers/gg-toolchains/Dockerfile`, which copies each of them into
+a `/tmp/gg-<arm>` tree that is not a checkout. Its `gg_fetch` is the one `curl` a
+large archive is fetched with: it resumes (`-C -`), retries, verifies the finished
+file against the length the server advertised, and keeps the partial file when it
+gives up, staged under `gg_fetch_dir` — `~/.cache/tcab/downloads`, which the
+service-image build already mounts a BuildKit cache over. That last part is what a
+1.05 GB Swift toolchain on a 1.5 MB/s link needs: a dropped connection costs the
+remainder of the transfer rather than all of it, and it costs the *next* run
+nothing at all.
+
 ## Scope
 
 These cover **every component the project ships**. On the Rust side that is the
