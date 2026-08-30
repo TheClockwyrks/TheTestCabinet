@@ -586,7 +586,10 @@ export interface Harness {
    * Reflect the surface without invoking it: `typeof` for each name, and the
    * version it reports.
    */
-  probe(names: readonly string[]): { version: unknown; ops: Record<string, string> };
+  probe(names: readonly string[]): {
+    version: unknown;
+    ops: Record<string, string>;
+  };
 
   /** How the stage is mapped onto this harness's canvas. */
   viewport(): Viewport;
@@ -595,9 +598,7 @@ export interface Harness {
   /** The device pixel under a logical point, as `[r, g, b, a]`. */
   pixel(x: number, y: number): [number, number, number, number];
   /** Many logical points at once. */
-  pixels(
-    points: readonly Point[],
-  ): [number, number, number, number][];
+  pixels(points: readonly Point[]): [number, number, number, number][];
 
   /** Halt the engine and drop every listener. */
   dispose(): void;
@@ -678,7 +679,10 @@ export function callsTo(
 }
 
 /** Every value `property` was set to, in order. */
-export function setsOf(calls: readonly DrawCall[], property: string): unknown[] {
+export function setsOf(
+  calls: readonly DrawCall[],
+  property: string,
+): unknown[] {
   return calls.flatMap((call) =>
     call.kind === "set" && call.property === property ? [call.value] : [],
   );
@@ -686,9 +690,10 @@ export function setsOf(calls: readonly DrawCall[], property: string): unknown[] 
 
 /** Every string the frame drew, through `fillText` or `strokeText`. */
 export function drawnText(calls: readonly DrawCall[]): string[] {
-  return [...callsTo(calls, "fillText"), ...callsTo(calls, "strokeText")].flatMap(
-    (args) => (typeof args[0] === "string" ? [args[0]] : []),
-  );
+  return [
+    ...callsTo(calls, "fillText"),
+    ...callsTo(calls, "strokeText"),
+  ].flatMap((args) => (typeof args[0] === "string" ? [args[0]] : []));
 }
 
 /**
@@ -1151,7 +1156,8 @@ export function retable(
     if (Array.isArray(entry)) return entry.map(value);
     if (entry === null || typeof entry !== "object") return entry;
     const record = entry as Record<string, DrawValue>;
-    if (typeof record.$img === "number") return { $img: takeImage(record.$img) };
+    if (typeof record.$img === "number")
+      return { $img: takeImage(record.$img) };
     if (typeof record.$res === "number") {
       return { $res: takeResource(record.$res) };
     }
@@ -1215,7 +1221,9 @@ export function retable(
       ...frame,
       state: stateOf(frame.state),
       stack: frame.stack.map(stateOf),
-      ops: frame.ops.map((op) => intern(ops, opAt, operation(recording.ops[op]))),
+      ops: frame.ops.map((op) =>
+        intern(ops, opAt, operation(recording.ops[op])),
+      ),
     })),
   };
 }
@@ -1302,7 +1310,9 @@ function writeReplay(destination: string, recording: Recording): void {
     mkdirSync(dirname(destination), { recursive: true });
     writeFileSync(destination, gzipSync(JSON.stringify(thinReplay(recording))));
   } catch (error) {
-    console.warn(`arc foundry: could not write ${destination}: ${String(error)}`);
+    console.warn(
+      `arc foundry: could not write ${destination}: ${String(error)}`,
+    );
   }
 }
 
@@ -1356,7 +1366,9 @@ export function captureStill(h: Harness, outputId: string): void {
     mkdirSync(dirname(destination), { recursive: true });
     writeFileSync(destination, h.canvas.toBuffer("image/png"));
   } catch (error) {
-    console.warn(`arc foundry: could not write ${destination}: ${String(error)}`);
+    console.warn(
+      `arc foundry: could not write ${destination}: ${String(error)}`,
+    );
   }
 }
 
@@ -1540,9 +1552,12 @@ export interface YardOptions {
  * because `startRun` takes the path confirming the difficulty select takes.
  */
 export function openRun(h: Harness, options: YardOptions = {}): void {
-  h.debug.reset(options.seed === undefined ? undefined : { seed: options.seed });
+  h.debug.reset(
+    options.seed === undefined ? undefined : { seed: options.seed },
+  );
   if (options.map !== undefined) h.debug.setMap(options.map);
-  if (options.difficulty !== undefined) h.debug.setDifficulty(options.difficulty);
+  if (options.difficulty !== undefined)
+    h.debug.setDifficulty(options.difficulty);
   h.debug.startRun();
 }
 
@@ -1655,7 +1670,11 @@ export function standCombo(
 ): number {
   const before = h.snapshot().structures.length;
   h.debug.placeCombo(combo, col, row);
-  const id = placed(h.snapshot(), before, `placeCombo(${combo}, ${col}, ${row})`);
+  const id = placed(
+    h.snapshot(),
+    before,
+    `placeCombo(${combo}, ${col}, ${row})`,
+  );
   if (level !== 0) h.debug.setComboLevel(id, level);
   return id;
 }
@@ -2058,12 +2077,7 @@ export interface Rgb {
  * inside an edge: an edge is anti-aliased and blends toward whatever is behind it,
  * and only an interior pixel is the fill.
  */
-export function sampleColor(
-  h: Harness,
-  x: number,
-  y: number,
-  spread = 2,
-): Rgb {
+export function sampleColor(h: Harness, x: number, y: number, spread = 2): Rgb {
   const points: Point[] = [
     { x, y },
     { x: x + spread, y },

@@ -221,7 +221,10 @@ it("drops a candidate through the real press and leaves the hand empty", () => {
 it("releases one unit, posed one faculty at a time", () => {
   openYard(h, { wave: 3 });
   const at = tileCenter(20, 15);
-  const id = parkUnit(h, "slug", at, { hp: 12, slow: { amount: 0.5, seconds: 4 } });
+  const id = parkUnit(h, "slug", at, {
+    hp: 12,
+    slow: { amount: 0.5, seconds: 4 },
+  });
 
   const unit = unitById(h.snapshot(), id);
   expect(unit.type).toBe("slug");
@@ -505,7 +508,9 @@ it("spends the budget on the section, never one frame past it", async () => {
     // The first frame of a section is always kept — the stride opens on it — so the
     // span between the first count and the last is the whole section exactly when the
     // frame it ended on is the frame written last.
-    expect(frames[frames.length - 1].count - frames[0].count, at).toBe(length - 1);
+    expect(frames[frames.length - 1].count - frames[0].count, at).toBe(
+      length - 1,
+    );
     // Displacing a frame leaves the deltas summing to the elapsed time, the same as
     // dropping one does: the frame that replaces it is measured from where the frame
     // before it was kept.
@@ -563,7 +568,9 @@ it("rewrites a field named __proto__ as a field", () => {
   expect(Object.prototype.hasOwnProperty.call(value, "__proto__")).toBe(true);
   expect(Object.getPrototypeOf(value)).toBe(Object.prototype);
   const properties = rewritten.states[0].properties;
-  expect(Object.prototype.hasOwnProperty.call(properties, "__proto__")).toBe(true);
+  expect(Object.prototype.hasOwnProperty.call(properties, "__proto__")).toBe(
+    true,
+  );
   expect(Object.getPrototypeOf(properties)).toBe(Object.prototype);
 });
 

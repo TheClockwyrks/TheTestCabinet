@@ -334,11 +334,7 @@ export interface FoundryDebugApi<S = unknown> {
 
   /* Structures. */
   clearStructures(state: DeepReadonly<S>): S;
-  setNextRoll(
-    state: DeepReadonly<S>,
-    type: ComponentType,
-    quality: number,
-  ): S;
+  setNextRoll(state: DeepReadonly<S>, type: ComponentType, quality: number): S;
   clearNextRoll(state: DeepReadonly<S>): S;
   placeRock(state: DeepReadonly<S>, col: number, row: number): S;
   placeComponent(
@@ -372,12 +368,7 @@ export interface FoundryDebugApi<S = unknown> {
   clearUnits(state: DeepReadonly<S>): S;
   clearProjectiles(state: DeepReadonly<S>): S;
   spawnUnit(state: DeepReadonly<S>, type: SpawnType): S;
-  setUnitPosition(
-    state: DeepReadonly<S>,
-    id: number,
-    x: number,
-    y: number,
-  ): S;
+  setUnitPosition(state: DeepReadonly<S>, id: number, x: number, y: number): S;
   setUnitWaypoint(state: DeepReadonly<S>, id: number, index: number): S;
   setUnitHp(state: DeepReadonly<S>, id: number, hp: number): S;
   setUnitSlow(
