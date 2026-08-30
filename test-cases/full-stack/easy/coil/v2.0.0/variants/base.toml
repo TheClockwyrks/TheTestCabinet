@@ -30,7 +30,83 @@ none = "references/none/base"
 # seeded under each engine carries `MODE_ITEM` and `MODE_LABEL` (`CLASSIC`) and an
 # empty `OBSTACLE_CELLS`. The engineless project is shared with every variant.
 
-# No `[[domain]]` and no `[[review.categories]]` yet. Maze declares its own `maze`
-# domain and the four points that go with it; the points whose behavior differs
-# between the two modes move out of the case manifest into BOTH variant files, each
-# stating its own version, and that split lands with the checklist.
+# No `[[domain]]` of its own. Classic is the common game, so it is rated on the
+# case's own `gameplay` and `presentation` domains alone; Maze declares an
+# additional `maze` domain for the course it laces the board with.
+
+# This variant's own review points, in the categories grammar inherited from the
+# case manifest (`[review] format = 2` is declared there, and a variant only adds
+# `[[review.categories]]` and must not repeat the format). The `hud` and `screens`
+# points reuse a category id the case manifest already declares, so they are merged
+# into that category rather than opening a second group with the same name; `board`
+# is a category the two variants open between them, because what the interior
+# carries is the one thing about the board only a mode can state.
+#
+# A variant may only ADD to a common review point, never replace the validator
+# behind one, so a point whose CLAIM differs between the two modes cannot be stated
+# commonly at all: it moves out of the case manifest into both variant files, each
+# stating its own version against its own validator. Three points do. What the
+# board's interior carries is one of them, because Classic lays no obstacle cell and
+# Maze lays a fixed course of them. The mode readout in the HUD and the entry the
+# title menu opens with are the other two, because `MODE_LABEL` and `MODE_ITEM`
+# carry this mode's copy. Maze states its own versions in `variants/maze.toml`.
+#
+# `domains` and `failure_cap` are on the same scale the case manifest sets out above
+# its `[review]` table, and every point names a COMMON domain, since this variant
+# declares none of its own.
+
+# --- Board --------------------------------------------------------------------
+# What this mode lays across the interior. Classic lays nothing, and Maze lays a
+# fixed course, so the two modes disagree about what the board carries and each
+# states its own version of this point rather than sharing one.
+[[review.categories]]
+id = "board"
+title = "Board"
+[[review.categories.items]]
+id = "obstacles-absent"
+title = "The interior carries no obstacle"
+description = "After a reset, obstacles is empty, and the head advances safely across every interior cell it is posed on, because this mode places no obstacle cell."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: reset, read the obstacle list back, then walk the head
+# across a long interior run and confirm the round is still playing. See
+# validation/<engine>/board/obstacles-absent.test.ts.
+validation = { script = "board/obstacles-absent.test.ts", outputs = [
+  { id = "open", name = "The open interior of the Classic board", kind = "image" },
+] }
+
+# --- HUD ----------------------------------------------------------------------
+# The mode readout names this mode, so it is stated per variant rather than
+# commonly.
+[[review.categories]]
+id = "hud"
+title = "HUD"
+[[review.categories.items]]
+id = "mode-label-classic"
+title = "The HUD names the mode"
+description = "A frame of the live round draws MODE_LABEL (CLASSIC) as the mode readout in the HUD band."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: render a live frame and find the mode readout's text
+# draw. See validation/<engine>/hud/mode-label-classic.test.ts.
+validation = { script = "hud/mode-label-classic.test.ts", outputs = [
+  { id = "mode", name = "The HUD naming the mode", kind = "image" },
+] }
+
+# --- Screens ------------------------------------------------------------------
+# The title's first menu entry is this mode's, so it too is stated per variant.
+[[review.categories]]
+id = "screens"
+title = "Screens"
+[[review.categories.items]]
+id = "title-mode-entry-classic"
+title = "The title menu opens with the mode entry"
+description = "The title frame draws MODE_ITEM (CLASSIC) as the first item of TITLE_ITEMS, above HOW TO PLAY."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: reset to the title, read the frame's text draws, and
+# confirm the mode entry heads the menu. See
+# validation/<engine>/screens/title-mode-entry-classic.test.ts.
+validation = { script = "screens/title-mode-entry-classic.test.ts", outputs = [
+  { id = "title", name = "The title menu of this mode", kind = "image" },
+] }
