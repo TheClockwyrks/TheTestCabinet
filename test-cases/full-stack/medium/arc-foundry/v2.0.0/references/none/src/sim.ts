@@ -116,10 +116,11 @@ export class Game {
   menuIndex = 0;
   holding = false; // a blank rock is on the cursor (rolls on placement, specs/build.md)
   selectedId: number | null = null; // the PRIMARY selection (drives the inspector + range ring)
-  // Additional multi-selected structure ids (excluding the primary), for EXPLICIT combining:
-  // the player shift-clicks the exact copies to fold, and the combine set is [selectedId,
-  // ...selectedIds] (specs/controls.md, specs/build.md). Empty for a plain single selection.
-  selectedIds: number[] = [];
+  // The EXPLICIT combine set, the primary first: the player shift-clicks the exact copies
+  // to fold (specs/controls.md, specs/scrap-press.md). It is state of its own rather than a
+  // projection of the selection, so `clearCombineSet` empties it while the selection stands,
+  // and the game then resolves a combine's ingredients itself.
+  combineIds: number[] = [];
   stampsUsed = 0; // rocks placed of the level's BUILDS_PER_LEVEL allowance (decrements on PLACEMENT)
   refinement: Refinement = 0; // UPGRADE QUALITY level (biases the quality roll, specs/build.md)
   harvest: Harvest = { mode: "none" }; // transient: the level's keep/combine, resolved as it launches the wave
@@ -208,7 +209,7 @@ export class Game {
     this.structures = [];
     this.holding = false;
     this.selectedId = null;
-    this.selectedIds = [];
+    this.combineIds = [];
     this.stampsUsed = 0;
     this.refinement = 0;
     this.harvest = { mode: "none" };
@@ -960,7 +961,7 @@ export class Game {
     this.finale = true;
     this.phase = "wave";
     this.selectedId = null;
-    this.selectedIds = [];
+    this.combineIds = [];
     const u = this.makeUnit("dynamo");
     u.invincible = true;
     u.maxHp = u.hp; // display only — the invincible boss's HP never falls
@@ -1105,7 +1106,7 @@ export class Game {
     if (i >= 0) this.structures[i] = comp;
     else this.structures.push(comp);
     this.selectedId = comp.id;
-    this.selectedIds = [];
+    this.combineIds = [comp.id];
     this.rePath();
     const ctr = footprintCenter(comp.col, comp.row);
     this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: comp.tier });
@@ -1172,7 +1173,7 @@ export class Game {
     if (i >= 0) this.structures[i] = comp;
     else this.structures.push(comp);
     this.selectedId = comp.id;
-    this.selectedIds = [];
+    this.combineIds = [comp.id];
     this.rePath();
     const ctr = footprintCenter(comp.col, comp.row);
     this.fxQueue.push({
@@ -1309,6 +1310,7 @@ export class Game {
     };
     this.structures.push(cand);
     this.selectedId = cand.id;
+    this.combineIds = [cand.id];
     // Continuous placement (specs/build.md): release the placed rock, then immediately re-arm
     // another if the allowance still permits. canStamp() requires !holding, so holding MUST be
     // cleared first — otherwise it always reads false and the hand empties after one drop.
@@ -1344,8 +1346,8 @@ export class Game {
       this.harvest = { mode: "none" };
     this.structures.splice(i, 1);
     if (this.selectedId === id) this.selectedId = null;
-    const si = this.selectedIds.indexOf(id);
-    if (si >= 0) this.selectedIds.splice(si, 1);
+    const si = this.combineIds.indexOf(id);
+    if (si >= 0) this.combineIds.splice(si, 1);
     this.rePath();
     return true;
   }
@@ -1420,8 +1422,7 @@ export class Game {
       if (ids.includes(id)) return;
       if (this.baseStructById(id)) ids.push(id);
     };
-    push(this.selectedId);
-    for (const id of this.selectedIds) push(id);
+    for (const id of this.combineIds) push(id);
     return ids;
   }
 
@@ -1433,8 +1434,10 @@ export class Game {
   // combined.
   combineSelection(): boolean {
     const set = this.combineSet();
-    if (set.length === 0) return false;
-    const anchor = set[0]!;
+    // An emptied set is no explicit set, so the ingredients are the game's to resolve
+    // from whatever is selected (specs/scrap-press.md).
+    const anchor = set.length > 0 ? set[0]! : this.selectedId;
+    if (anchor === null) return false;
     if (set.length >= 2) {
       // Explicit set: try a quality pair, then a recipe multiset that this exact set satisfies.
       if (set.length === 2) {
@@ -1705,7 +1708,9 @@ export class Game {
 
   select(id: number | null): void {
     this.selectedId = id;
-    this.selectedIds = []; // a plain select clears any explicit multi-select set
+    // A plain select clears the combine set back to that single selection
+    // (specs/instrumentation.md), and clearing the selection empties it.
+    this.combineIds = id === null ? [] : [id];
   }
   // Plain select (clears the multi-select) or, with `additive` (shift-click), TOGGLE a structure
   // in the explicit combine set (specs/controls.md). The primary stays the inspector target; the
@@ -1714,19 +1719,19 @@ export class Game {
     const s = this.structureAt(x, y);
     if (!additive) {
       this.selectedId = s ? s.id : null;
-      this.selectedIds = [];
+      this.combineIds = s ? [s.id] : [];
       return;
     }
     if (!s) return;
     if (this.selectedId == null) {
       this.selectedId = s.id;
-      this.selectedIds = [];
+      this.combineIds = [s.id];
       return;
     }
     if (s.id === this.selectedId) return; // shift-clicking the primary is a no-op
-    const i = this.selectedIds.indexOf(s.id);
-    if (i >= 0) this.selectedIds.splice(i, 1);
-    else if (this.baseStructById(s.id)) this.selectedIds.push(s.id);
+    const i = this.combineIds.indexOf(s.id);
+    if (i >= 0) this.combineIds.splice(i, 1);
+    else if (this.baseStructById(s.id)) this.combineIds.push(s.id);
   }
   structureAt(x: number, y: number): Structure | null {
     const t = this.board.pixelToTile(x, y);
@@ -1749,7 +1754,8 @@ export class Game {
   // The extra multi-selected structures (excluding the primary) that still exist, for rendering.
   extraSelected(): Structure[] {
     const out: Structure[] = [];
-    for (const id of this.selectedIds) {
+    for (const id of this.combineIds) {
+      if (id === this.selectedId) continue;
       const s = this.structures.find((x) => x.id === id);
       if (s) out.push(s);
     }
@@ -1930,7 +1936,7 @@ export class Game {
     this.structures = [];
     this.holding = false;
     this.selectedId = null;
-    this.selectedIds = [];
+    this.combineIds = [];
     this.stampsUsed = 0;
     this.refinement = 0;
     this.harvest = { mode: "none" };
@@ -2041,7 +2047,7 @@ export class Game {
   clearStructures(): void {
     this.structures = [];
     this.selectedId = null;
-    this.selectedIds = [];
+    this.combineIds = [];
     this.harvest = { mode: "none" };
     this.rePath();
   }
@@ -2131,17 +2137,18 @@ export class Game {
   addToCombineSet(id: number): void {
     if (this.selectedId === null) {
       this.selectedId = id;
-      this.selectedIds = [];
+      this.combineIds = [id];
       return;
     }
     if (this.selectedId === id) return;
-    const at = this.selectedIds.indexOf(id);
-    if (at >= 0) this.selectedIds.splice(at, 1);
-    else this.selectedIds.push(id);
+    const at = this.combineIds.indexOf(id);
+    if (at >= 0) this.combineIds.splice(at, 1);
+    else this.combineIds.push(id);
   }
 
+  // Empty the explicit combine set, leaving the selection as it is (specs/instrumentation.md).
   clearCombineSet(): void {
-    this.selectedIds = [];
+    this.combineIds = [];
   }
 
   // Set a combination tower's upgrade level, and with it the damage and range that level

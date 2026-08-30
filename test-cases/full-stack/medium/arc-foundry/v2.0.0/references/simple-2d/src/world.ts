@@ -49,7 +49,7 @@ export function thaw(state: FoundryView): FoundryWorld {
     structures: state.structures.map(thawStructure),
     holding: state.holding,
     selectedId: state.selectedId,
-    selectedIds: [...state.selectedIds],
+    combineIds: [...state.combineIds],
     stampsUsed: state.stampsUsed,
     refinement: state.refinement,
     harvest: state.harvest,

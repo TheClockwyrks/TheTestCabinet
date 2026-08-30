@@ -292,8 +292,8 @@ export interface FoundryWorld {
   holding: boolean;
   /** The primary selection, which drives the inspector and the range ring. */
   selectedId: number | null;
-  /** The explicitly added structures of the combine set, excluding the primary. */
-  selectedIds: number[];
+  /** The explicit combine set, the primary first. Empty when there is none. */
+  combineIds: number[];
   /** Rocks placed of the level's `STAMPS_PER_LEVEL` allowance. */
   stampsUsed: number;
   refinement: number;

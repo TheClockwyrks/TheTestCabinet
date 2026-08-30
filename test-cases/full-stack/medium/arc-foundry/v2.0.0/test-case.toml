@@ -573,6 +573,18 @@ failure_cap = "scuffed"
 validation = { script = "instrumentation/menu-run-uses-the-seed.test.ts", outputs = [
   { id = "rolls", name = "The same rolls from two menu-driven runs", kind = "image" },
 ] }
+[[review.categories.items]]
+id = "clear-combine-set-empties-it"
+title = "clearCombineSet empties the set and keeps the selection"
+description = "After select(id) reports combineSet [id], clearCombineSet reports combineSet empty while selected still reads id, and clearSelection empties both."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: select one structure and read combineSet after each of
+# select, clearCombineSet and clearSelection. See
+# validation/<engine>/instrumentation/clear-combine-set-empties-it.test.ts.
+validation = { script = "instrumentation/clear-combine-set-empties-it.test.ts", outputs = [
+  { id = "cleared", name = "The emptied set with the selection standing", kind = "image" },
+] }
 
 # --- The yard and placement ---------------------------------------------------
 # The grid, the footprint, and where a structure may stand. Every position in the

@@ -190,7 +190,7 @@ export function resetWorld(w: FoundryState, seed: number = DEFAULT_SEED): void {
   w.structures = [];
   w.holding = false;
   w.selectedId = null;
-  w.selectedIds = [];
+  w.combineIds = [];
   w.stampsUsed = 0;
   w.refinement = 0;
   w.harvest = { mode: "none" };
@@ -238,7 +238,7 @@ export function startRun(w: FoundryState): void {
   w.structures = [];
   w.holding = false;
   w.selectedId = null;
-  w.selectedIds = [];
+  w.combineIds = [];
   w.stampsUsed = 0;
   w.refinement = 0;
   w.harvest = { mode: "none" };
@@ -1048,7 +1048,7 @@ function startFinale(w: FoundryState): void {
   w.finale = true;
   w.runPhase = "wave";
   w.selectedId = null;
-  w.selectedIds = [];
+  w.combineIds = [];
   const u = makeUnit(w, "dynamo", occupancyOf(w));
   u.invincible = true;
   // Its bar is drawn full for the whole walk, because its health never falls.
@@ -1267,7 +1267,7 @@ export function placeStamp(
   };
   w.structures.push(cand);
   w.selectedId = cand.id;
-  w.selectedIds = [];
+  w.combineIds = [cand.id];
   // Continuous placement: the rock is released, then another is armed if the allowance
   // still permits. `canStamp` requires an empty hand, so the release must come first.
   w.holding = false;
@@ -1306,8 +1306,8 @@ export function removeStructure(w: FoundryState, id: number): boolean {
     w.harvest = { mode: "none" };
   w.structures.splice(i, 1);
   if (w.selectedId === id) w.selectedId = null;
-  const at = w.selectedIds.indexOf(id);
-  if (at >= 0) w.selectedIds.splice(at, 1);
+  const at = w.combineIds.indexOf(id);
+  if (at >= 0) w.combineIds.splice(at, 1);
   rePath(w);
   return true;
 }
@@ -1422,8 +1422,7 @@ export function combineSet(w: FoundryState): number[] {
     if (ids.includes(id)) return;
     if (baseStructureById(w, id)) ids.push(id);
   };
-  push(w.selectedId);
-  for (const id of w.selectedIds) push(id);
+  for (const id of w.combineIds) push(id);
   return ids;
 }
 
@@ -1469,7 +1468,7 @@ function combineQualityNow(
   if (i >= 0) w.structures[i] = comp;
   else w.structures.push(comp);
   w.selectedId = comp.id;
-  w.selectedIds = [];
+  w.combineIds = [comp.id];
   rePath(w);
   const at = footprintCenter(comp.col, comp.row);
   w.fxQueue.push({ kind: "combine", x: at.x, y: at.y, quality: comp.quality });
@@ -1526,7 +1525,7 @@ function combineRecipeNow(
   if (i >= 0) w.structures[i] = comp;
   else w.structures.push(comp);
   w.selectedId = comp.id;
-  w.selectedIds = [];
+  w.combineIds = [comp.id];
   rePath(w);
   const at = footprintCenter(comp.col, comp.row);
   w.fxQueue.push({
@@ -1554,8 +1553,10 @@ function combineRecipeNow(
  */
 export function combineSelection(w: FoundryState): boolean {
   const set = combineSet(w);
-  if (set.length === 0) return false;
-  const anchor = set[0]!;
+  // An emptied set is no explicit set, so the ingredients are the game's to resolve
+  // from whatever is selected (specs/scrap-press.md).
+  const anchor = set.length > 0 ? set[0]! : w.selectedId;
+  if (anchor === null) return false;
   if (set.length >= 2) {
     if (set.length === 2) {
       const a = baseStructureById(w, set[0]!)!;
@@ -1829,7 +1830,9 @@ export function setTargetingById(
 
 export function select(w: FoundryState, id: number | null): void {
   w.selectedId = id;
-  w.selectedIds = [];
+  // A plain select clears the combine set back to that single selection
+  // (specs/instrumentation.md), and clearing the selection empties it.
+  w.combineIds = id === null ? [] : [id];
 }
 
 /**
@@ -1845,36 +1848,43 @@ export function selectAt(
   const s = structureAt(w, x, y);
   if (!additive) {
     w.selectedId = s ? s.id : null;
-    w.selectedIds = [];
+    w.combineIds = s ? [s.id] : [];
     return;
   }
   if (!s) return;
   if (w.selectedId === null) {
     w.selectedId = s.id;
-    w.selectedIds = [];
+    w.combineIds = [s.id];
     return;
   }
   if (s.id === w.selectedId) return;
-  const i = w.selectedIds.indexOf(s.id);
-  if (i >= 0) w.selectedIds.splice(i, 1);
-  else if (baseStructureById(w, s.id)) w.selectedIds.push(s.id);
+  const i = w.combineIds.indexOf(s.id);
+  if (i >= 0) w.combineIds.splice(i, 1);
+  else if (baseStructureById(w, s.id)) w.combineIds.push(s.id);
 }
 
 /** Add a structure to the explicit combine set, or remove it when it is already in. */
 export function addToCombineSet(w: FoundryState, id: number): void {
   if (w.selectedId === null) {
     w.selectedId = id;
-    w.selectedIds = [];
+    w.combineIds = [id];
     return;
   }
   if (w.selectedId === id) return;
-  const at = w.selectedIds.indexOf(id);
-  if (at >= 0) w.selectedIds.splice(at, 1);
-  else w.selectedIds.push(id);
+  const at = w.combineIds.indexOf(id);
+  if (at >= 0) w.combineIds.splice(at, 1);
+  else w.combineIds.push(id);
 }
 
+/**
+ * Empty the explicit combine set, leaving the selection as it is.
+ *
+ * The set is state of its own rather than a projection of the selection, so an emptied
+ * set reads empty while a structure is still selected, and the game then resolves a
+ * combine's ingredients itself (specs/scrap-press.md).
+ */
 export function clearCombineSet(w: FoundryState): void {
-  w.selectedIds = [];
+  w.combineIds = [];
 }
 
 export function structureAt(
@@ -1904,7 +1914,8 @@ export function selected(w: FoundryState): Structure | null {
 /** The explicitly added structures that still exist, for the renderer. */
 export function extraSelected(w: FoundryState): Structure[] {
   const out: Structure[] = [];
-  for (const id of w.selectedIds) {
+  for (const id of w.combineIds) {
+    if (id === w.selectedId) continue;
     const s = w.structures.find((x) => x.id === id);
     if (s) out.push(s);
   }
@@ -2073,7 +2084,7 @@ export function setStamps(w: FoundryState, n: number): void {
 export function clearStructures(w: FoundryState): void {
   w.structures = [];
   w.selectedId = null;
-  w.selectedIds = [];
+  w.combineIds = [];
   w.harvest = { mode: "none" };
   rePath(w);
 }
