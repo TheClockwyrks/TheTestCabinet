@@ -1,23 +1,60 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/screens/howto-back-returns.test.ts
+// screens/howto-back-returns — the how-to screen's BACK returns to the title.
 //
-// The review item `screens.howto-back-returns` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/screens.md: the how-to screen "carries one control, labelled
+// `HOWTO_BACK_LABEL` (`BACK`) and drawn inside the `HOWTO_BACK` rectangle. It
+// returns to `title`." specs/controls.md fixes that rectangle at `{ x: 480,
+// y: 600, w: 320, h: 52 }` and states that a click activates the control whose
+// hit rectangle contains its press point. Without it a player who opened the
+// instructions can never start a game.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE SCREEN IS POSED WITH `setScreen`, not reached through the title's menu, so
+// what this decides is the return alone: whether HOW TO PLAY opens the screen is
+// `screens/title-how-to-opens`'s requirement, and a build that cannot open the
+// how-to screen and one that cannot leave it grade differently.
 //
-// What this item must decide, from the manifest:
-//
-//   The how-to screen's BACK returns to the title
-//
-//   A press inside HOWTO_BACK reaches title.
+// The gesture is a real click at the rectangle's centre — a press and a release
+// at the same point, inside `DRAG_THRESHOLD` (specs/controls.md) — through the
+// surface's pointer operations, which feed the same input path a player's pointer
+// feeds (specs/instrumentation.md).
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { HOWTO_BACK } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  clickControl,
+  createHarness,
+  resetTo,
+  type Harness,
+} from "../harness";
 
-it("screens.howto-back-returns — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/screens/howto-back-returns.test.ts is a scaffold stub, not a validator",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("returns to the title when BACK is clicked on the how-to screen", async () => {
+  resetTo(h);
+  h.debug.setScreen("howto");
+  assertEqual(
+    h.snapshot().screen,
+    "howto",
+    "posing: setScreen puts the how-to screen up, which is the screen this " +
+      "control belongs to (specs/instrumentation.md)",
+  );
+
+  clickControl(h, HOWTO_BACK);
+  await h.advance(1);
+  captureStill(h, "title");
+
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "the screen a click inside HOWTO_BACK reaches (specs/screens.md)",
   );
 });

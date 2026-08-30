@@ -1,23 +1,83 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/screens/title-new-game-enters-play.test.ts
+// screens/title-new-game-enters-play — the title's NEW GAME deals and enters play.
 //
-// The review item `screens.title-new-game-enters-play` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/screens.md gives the title's first item its job: "`NEW GAME` — Deals a
+// fresh game, as `specs/deal.md` states, and moves to `playing`." specs/controls.md
+// fixes how it is reached: a click "activates the control whose hit rectangle
+// contains the press point", and `TITLE_NEW_GAME` is `{ x: 480, y: 448, w: 320,
+// h: 52 }`. This is the way into the game from a cold start, so a build that
+// cannot do it cannot be played at all.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE GESTURE IS A REAL CLICK AT THE RECTANGLE'S CENTRE — a press and a release
+// at the same point, which lies zero units from the press and is therefore inside
+// `DRAG_THRESHOLD` (specs/controls.md) — driven through the surface's pointer
+// operations, which feed the same input path a player's pointer feeds
+// (specs/instrumentation.md). Nothing here poses the screen it is asking for.
 //
-// What this item must decide, from the manifest:
+// BOTH HALVES OF THE ITEM ARE READ, and they are one requirement: this control
+// starts a game. The screen alone would pass a build that shows an empty table,
+// and the deal alone would pass one that deals behind the title screen.
 //
-//   The title's NEW GAME deals and enters play
-//
-//   A press and release inside TITLE_NEW_GAME reaches playing with a fresh fifty-two-card deal.
+// THE TABLE IS EMPTY BEFORE THE CLICK, because `reset` restores every pile to its
+// title-screen value (specs/instrumentation.md), so the fifty-two cards read
+// afterwards are the ones this click dealt and not ones that were already there.
+// WHAT the deal puts where is the `deal` group's requirement; this point asks only
+// that a full deck reached the table.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { DECK_SIZE, TITLE_NEW_GAME } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  clickControl,
+  createHarness,
+  everyCard,
+  resetTo,
+  type Harness,
+} from "../harness";
 
-it("screens.title-new-game-enters-play — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/screens/title-new-game-enters-play.test.ts is a scaffold stub, not a validator",
+/** The seed the deal runs off; nothing this point reads turns on it. */
+const SEED = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("deals a full deck and enters play when NEW GAME is clicked on the title", async () => {
+  resetTo(h, SEED);
+  const opened = h.snapshot();
+  assertEqual(
+    opened.screen,
+    "title",
+    "posing: reset restores the title screen, which is the screen this " +
+      "control belongs to (specs/controls.md)",
+  );
+  assertEqual(
+    everyCard(opened).length,
+    0,
+    "posing: cards on the table before the click, so the deck read after it " +
+      "is this control's own deal (specs/instrumentation.md)",
+  );
+
+  clickControl(h, TITLE_NEW_GAME);
+  await h.advance(1);
+  captureStill(h, "playing");
+
+  const started = h.snapshot();
+  assertEqual(
+    started.screen,
+    "playing",
+    "the screen a click inside TITLE_NEW_GAME reaches (specs/screens.md)",
+  );
+  assertEqual(
+    everyCard(started).length,
+    DECK_SIZE,
+    "the cards on the table after that click, which deals a fresh game " +
+      "(specs/screens.md, specs/deal.md)",
   );
 });
