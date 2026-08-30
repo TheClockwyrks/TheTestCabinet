@@ -1,26 +1,99 @@
-// Arc Foundry — `quality.harvest-combine-starts-wave`. CASE-PROVIDED. NOT YET WRITTEN.
+// quality/harvest-combine-starts-wave — a fold that eats a candidate is the harvest.
 //
-// The manifest declares this point at `quality/harvest-combine-starts-wave.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/scrap-press.md fixes both halves. A combine whose ingredients include "At
+// least one candidate" is "The level's harvest", which "Resolves, then starts the
+// wave"; and committing a harvest resolves in a fixed order: "The harvest resolves
+// into one permanent structure. Every remaining candidate hardens into a blocker
+// for the rest of the run. The wave begins." specs/campaign.md adds that the build
+// phase "ends when the player commits the level's harvest" and "That harvest
+// launches the wave", and that the first harvest launches wave `1`.
 //
-// THE REQUIREMENT. A combine consuming at least one candidate is the level's
-// harvest: it resolves, the remaining candidates harden, and the wave begins.
-//
-// HOW IT IS DECIDED. Roll a matching candidate beside a standing component,
-// fold them, and read the phase and the other candidates back. The evidence it
-// hands back is `harvest` (replay): the wave a harvest combine launched.
+// The yard is posed with exactly what the rule needs to be visible: the standing
+// component the fold is initiated from, the matching candidate the fold consumes,
+// and one unrelated candidate that is not part of the fold and must therefore
+// harden. The ingredients are named explicitly, so which two pieces fold is not
+// what this check is deciding.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  standCandidate,
+  standComponent,
+  type Harness,
+} from "../harness";
+import { anchored } from "./anchors";
 
-import { fail } from "../assert";
+const INITIATOR = { col: 8, row: 10 };
+const INGREDIENT = { col: 12, row: 10 };
+const BYSTANDER = { col: 16, row: 10 };
 
-describe("quality.harvest-combine-starts-wave", () => {
-  it("A combine that consumes a candidate is the harvest", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `quality.harvest-combine-starts-wave` has not been written yet",
-    );
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("resolves the fold, hardens the other candidate and begins wave 1", async () => {
+  openYard(h);
+  const initiator = standComponent(
+    h,
+    "capacitor",
+    1,
+    INITIATOR.col,
+    INITIATOR.row,
+  );
+  const ingredient = standCandidate(
+    h,
+    "capacitor",
+    1,
+    INGREDIENT.col,
+    INGREDIENT.row,
+  );
+  standCandidate(h, "coil", 3, BYSTANDER.col, BYSTANDER.row);
+
+  const before = h.snapshot();
+  assertEqual(before.phase, "build", "the phase the harvest is committed from");
+  assertEqual(before.wave, 0, "the wave counter before the first harvest");
+
+  h.debug.select(initiator);
+  h.debug.addToCombineSet(ingredient);
+
+  const after = await captureReplay(h, "harvest", async () => {
+    h.debug.combine(initiator);
+    await h.advanceSeconds(1);
+    return h.snapshot();
   });
+
+  // 1. The harvest resolved into one permanent structure, at the initiator.
+  assertEqual(
+    anchored(after, INITIATOR).kind,
+    "component",
+    "the harvest's result is permanent",
+  );
+  assertEqual(
+    anchored(after, INITIATOR).quality,
+    2,
+    "the fold's result, one tier up",
+  );
+  assertEqual(
+    anchored(after, INGREDIENT).kind,
+    "blocker",
+    "the consumed candidate's footprint",
+  );
+  // 2. Every remaining candidate hardened.
+  assertEqual(
+    anchored(after, BYSTANDER).kind,
+    "blocker",
+    "the candidate that was not an ingredient, hardened by the harvest",
+  );
+  // 3. The wave began.
+  assertEqual(after.phase, "wave", "the phase after a harvest combine");
+  assertEqual(after.wave, 1, "the wave the first harvest launches");
 });
