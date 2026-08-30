@@ -1,22 +1,64 @@
-// Deepcore — screens.pause-quit. STUB: NOT YET AUTHORED.
+// screens/pause-quit — QUIT TO MENU leaves the expedition for the title.
 //
-// QUIT TO MENU returns to the title
+// specs/ui.md: on `paused`, "`QUIT TO MENU` returns to `title`". It is the third
+// and last of `PAUSE_ITEMS`, and it is the one pause entry that leaves the
+// expedition rather than continuing or restarting it.
 //
-// QUIT TO MENU from the pause menu returns to the title screen.
+// THE TITLE IS READ AS A MENU, not just as a name. After the quit the game is on
+// the title screen and its menu is the one specs/ui.md lists for the slot as it
+// stands — two entries with nothing banked — so a build that set the screen field
+// without leaving the mine behind is caught on the menu it draws there.
 //
-// Automated validation: pause, quit and read the screen at title.
-//
-// `test-case.toml` declares this suite as `screens/pause-quit.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (quit (image)) around the drive.
+// ISOLATION. An empty mine with the slot cleared first, and the pause menu
+// reached directly through the surface, because a build with a broken pause key
+// and a working QUIT must pass this and fail that one.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { PAUSE_ITEMS, TITLE_ITEMS_NO_SAVE, TITLE_TEXT } from "../constants";
+import {
+  ACTION_KEY,
+  captureStill,
+  createHarness,
+  drewText,
+  openScene,
+  type Harness,
+} from "../harness";
+import { menuLength } from "../save/expedition";
 
-test("QUIT TO MENU returns to the title", () => {
-  throw new Error(
-    "Deepcore validator `screens/pause-quit` is declared in test-case.toml but has not been authored yet.",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("returns to the title screen and its menu", async () => {
+  await openScene(h);
+  await h.debug.clearSave();
+
+  await h.debug.setScreen("paused");
+  await h.debug.setMenuIndex(PAUSE_ITEMS.indexOf("QUIT TO MENU"));
+  await h.tap(ACTION_KEY.activate);
+
+  const calls = await h.frameCalls();
+  await captureStill(h, "quit");
+  assertEqual(
+    (await h.snapshot()).screen,
+    "title",
+    "specs/ui.md: QUIT TO MENU returns to the title",
+  );
+  assertEqual(
+    drewText(calls, TITLE_TEXT),
+    true,
+    `specs/ui.md: the title screen shows TITLE_TEXT (${TITLE_TEXT})`,
+  );
+  assertEqual(
+    await menuLength(h),
+    TITLE_ITEMS_NO_SAVE.length,
+    "specs/ui.md: the title menu is the one the empty slot leaves",
   );
 });

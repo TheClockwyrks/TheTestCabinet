@@ -1,23 +1,62 @@
-// Deepcore — screens.mode-select-back. STUB: NOT YET AUTHORED.
+// screens/mode-select-back — BACK on the mode choice returns to the title with
+// nothing started.
 //
-// BACK on the mode choice returns to the title
+// specs/ui.md: on `mode-select`, "`BACK` returns to `title`". `BACK` is the third
+// entry of `MODE_ITEMS`, and taking it must leave the session exactly where it
+// was: no expedition has begun, so nothing has been generated, spent or reset.
 //
-// BACK on mode-select returns to the title screen with nothing started.
+// "NOTHING STARTED" IS READ, not assumed. A distinctive Credits balance is posed
+// before the mode choice is opened, and read back after the return: beginning an
+// expedition puts the Credits back to `0` (specs/gameplay.md), so a build that
+// started one on the way out is caught on the balance rather than on the screen
+// it landed on.
 //
-// Automated validation: choose BACK on mode-select and read the screen back at
-// title with no expedition in progress.
-//
-// `test-case.toml` declares this suite as `screens/mode-select-back.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (back (image)) around the drive.
+// ISOLATION. The mode choice reached directly through the surface rather than
+// through the title, because a build with a broken title menu and a working BACK
+// must pass this and fail that one.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { MODE_ITEMS } from "../constants";
+import {
+  ACTION_KEY,
+  captureStill,
+  createHarness,
+  type Harness,
+} from "../harness";
 
-test("BACK on the mode choice returns to the title", () => {
-  throw new Error(
-    "Deepcore validator `screens/mode-select-back` is declared in test-case.toml but has not been authored yet.",
+/** A balance no fresh expedition opens at, so a restart would be visible. */
+const CREDITS = 815;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("returns to the title from the mode choice without starting anything", async () => {
+  await h.debug.setAutoStep(false);
+  await h.debug.reset();
+  await h.debug.setCredits(CREDITS);
+  await h.debug.setScreen("mode-select");
+
+  await h.debug.setMenuIndex(MODE_ITEMS.indexOf("BACK"));
+  await h.tap(ACTION_KEY.activate);
+
+  const back = await h.snapshot();
+  await captureStill(h, "back");
+  assertEqual(
+    back.screen,
+    "title",
+    "specs/ui.md: BACK on mode-select returns to the title",
+  );
+  assertEqual(
+    back.credits,
+    CREDITS,
+    "specs/ui.md: BACK starts nothing, so no expedition has reset the Credits",
   );
 });
