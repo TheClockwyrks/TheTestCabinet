@@ -3664,6 +3664,29 @@ validation = { script = "audio/alarm-fuel-cue.test.ts", outputs = [
   { id = "alarm", name = "The fuel alarm at the threshold", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "alarm-fuel-at-the-surface"
+title = "The fuel alarm follows the fuel, not the depth"
+description = "The low-fuel alarm plays below LOW_FUEL_FRACTION wherever the miner is standing, so it comes on at the camp exactly as it does underground."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: stand the miner on the camp ground and measure two
+# windows either side of the threshold, reading the alarm silent above it and
+# sounding below it.
+validation = { script = "audio/alarm-fuel-at-the-surface.test.ts", outputs = [
+  { id = "alarm", name = "The fuel alarm at the camp", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "alarm-fuel-at-zero"
+title = "The fuel alarm plays on a dry tank"
+description = "Zero is below LOW_FUEL_FRACTION, so a tank emptied at the camp sounds the low-fuel alarm rather than falling silent, in a state the expedition survives."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: stand the miner on the camp ground, pose the tank at 0
+# and read the alarm sounding with the expedition still in the mine.
+validation = { script = "audio/alarm-fuel-at-zero.test.ts", outputs = [
+  { id = "dry", name = "The alarm on a dry tank at the camp", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "alarm-core-cue"
 title = "The Core Sample alarm escalates as the timer runs out"
 description = "The alarm-core cue plays repeatedly while a Core Sample timer runs, and its plays come closer together as the timer nears zero, so the last seconds sound different from the first."

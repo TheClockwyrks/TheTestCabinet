@@ -644,7 +644,7 @@ export class Game {
     this.updateCamera(dt);
     this.scan = computeScan(this);
     this.updateAnimation(move, braced, underground);
-    this.updateLoops(move, braced, underground);
+    this.updateLoops(move, braced);
 
     if (this.miner.fuel <= 0 && underground) triggerDeath(this, "fuel-out");
     else if (this.miner.hull <= 0) triggerDeath(this, "hull-destroyed");
@@ -853,19 +853,15 @@ export class Game {
     return !!tile && isMinableKind(tile.kind);
   }
 
-  private updateLoops(
-    move: MoveResult,
-    braced: boolean,
-    underground: boolean,
-  ): void {
+  private updateLoops(move: MoveResult, braced: boolean): void {
     this.activeLoops.clear();
     if (braced) this.activeLoops.add("drill");
     if (move.thrusting) this.activeLoops.add("thrust");
-    if (
-      underground &&
-      this.miner.fuel > 0 &&
-      this.miner.fuel < this.maxFuel() * LOW_FUEL_FRACTION
-    ) {
+    // specs/character.md and specs/assets.md both fix the alarm on the fuel
+    // alone: "Below LOW_FUEL_FRACTION (0.2) of the maximum ... the low-fuel
+    // alarm cue plays". Depth is not a condition of it, and zero is below the
+    // threshold.
+    if (this.miner.fuel < this.maxFuel() * LOW_FUEL_FRACTION) {
       this.activeLoops.add("alarm-fuel");
     }
     if (this.coreTimer !== null) this.activeLoops.add("alarm-core");

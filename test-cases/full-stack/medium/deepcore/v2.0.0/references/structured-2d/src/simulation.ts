@@ -173,7 +173,7 @@ function updateLive(d: DeepcoreState, dt: number): void {
   updateCamera(d, dt);
   d.scan = { ...computeScan(d.miner, d.nodes, d.satchel, d.tiers) };
   updateAnimation(d, move, braced, underground);
-  updateLoops(d, move, braced, underground);
+  updateLoops(d, move, braced);
 
   if (d.miner.fuel <= 0 && underground) triggerDeath(d, "fuel-out");
   else if (d.miner.hull <= 0) triggerDeath(d, "hull-destroyed");
@@ -321,15 +321,13 @@ function updateLoops(
   d: DeepcoreState,
   move: MoveResult,
   braced: boolean,
-  underground: boolean,
 ): void {
   if (braced) d.loops.add(CUES.drill);
   if (move.thrusting) d.loops.add(CUES.thrust);
-  if (
-    underground &&
-    d.miner.fuel > 0 &&
-    d.miner.fuel < maxFuel(d.tiers) * LOW_FUEL_FRACTION
-  ) {
+  // specs/character.md and specs/assets.md both fix the alarm on the fuel alone:
+  // "Below LOW_FUEL_FRACTION (0.2) of the maximum ... the low-fuel alarm cue
+  // plays". Depth is not a condition of it, and zero is below the threshold.
+  if (d.miner.fuel < maxFuel(d.tiers) * LOW_FUEL_FRACTION) {
     d.loops.add(CUES.alarmFuel);
   }
   if (d.coreTimer !== null) d.loops.add(CUES.alarmCore);
