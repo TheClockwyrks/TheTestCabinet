@@ -1,27 +1,71 @@
-// Arc Foundry — `firing.head-holds-heading`. CASE-PROVIDED. NOT YET WRITTEN.
+// firing/head-holds-heading — the head keeps its last bearing when the shooting stops.
 //
-// The manifest declares this point at `firing/head-holds-heading.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/components.md fixes both halves of the sentence, and this is the second:
+// a head "rotates to face the unit it is firing at and holds its last heading
+// while it holds fire". A build that snaps a head back to a resting angle the
+// moment its target dies makes a yard of turrets twitch on every kill, which is
+// why this is a point of its own rather than part of the rotation point.
 //
-// THE REQUIREMENT. Once the target is gone the structure reports firing false
-// and holds the heading it last fired on rather than snapping back to a
-// resting angle.
-//
-// HOW IT IS DECIDED. Fire at a unit, clear the units, advance, and compare the
-// heading against the one before the clear. The evidence it hands back is
-// `held` (image): the head holding its last heading.
+// The head is settled on a bearing well off both axes — so a resting angle of `0`,
+// or of any other round number, is not the bearing it is holding — and the Load is
+// then cleared. Two seconds later the structure must report that it is no longer
+// firing and must report the same heading it last fired on.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  parkUnit,
+  standComponent,
+  structureById,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+const ANCHOR = { col: 10, row: 10 };
 
-describe("firing.head-holds-heading", () => {
-  it("A head holds its last heading while it holds fire", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `firing.head-holds-heading` has not been written yet",
-    );
+/** Off both axes, and inside the Scrap Capacitor's `100`. */
+const OFFSET = { x: 60, y: 40 };
+
+/** How long the head is given to settle, and how long it is then watched. */
+const SETTLE = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("holds the heading it last fired on once its target is gone", async () => {
+  openYard(h, { wave: 1 });
+  const id = standComponent(h, "capacitor", 1, ANCHOR.col, ANCHOR.row);
+  const structure = structureById(h.snapshot(), id);
+  parkUnit(h, "dynamo", {
+    x: structure.cx + OFFSET.x,
+    y: structure.cy + OFFSET.y,
   });
+
+  await h.advanceSeconds(SETTLE);
+  const firing = structureById(h.snapshot(), id);
+  assertEqual(firing.firing, true, "the structure firing before the clear");
+
+  h.debug.clearUnits();
+  h.debug.clearProjectiles();
+  await h.advanceSeconds(SETTLE);
+  captureStill(h, "held");
+
+  const held = structureById(h.snapshot(), id);
+  assertEqual(held.firing, false, "the structure's firing flag with no target");
+  assertCloseTo(
+    held.heading,
+    firing.heading,
+    6,
+    `the heading held ${SETTLE}s after the target went, against the one it ` +
+      `last fired on (specs/components.md)`,
+  );
 });
