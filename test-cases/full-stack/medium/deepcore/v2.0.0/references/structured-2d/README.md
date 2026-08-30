@@ -59,26 +59,26 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
 
 ## The engine
 
-Deepcore is built on **Structured 2D** (`@test-cabinet/structured-2d`), which owns the frame
-loop and the delta time each tick is handed, the letterboxed device-pixel-ratio-aware fit of
-the fixed `1280x720` stage onto the canvas, the **camera**, the **rendering pipeline**, the
-named input actions the game registers, the audio cue bus and its first-gesture unlock, the
-asset loader, and the read-only diagnostics overlay on the backtick key. None of that is
-written here.
+Deepcore is built on **Structured 2D** (`@test-cabinet/structured-2d`), which owns the
+frame loop and the delta time each tick is handed, the letterboxed
+device-pixel-ratio-aware fit of the fixed `1280x720` stage onto the canvas, the
+**camera**, the **rendering pipeline**, the named input actions the game registers, the
+audio cue bus and its first-gesture unlock, the asset loader, and the read-only
+diagnostics overlay on the backtick key. None of that is written here.
 
 The game is written **inside the engine's framework**. `src/game.ts` is one
 `GameDefinition` with one level: the engine opens it at start-up and the game never opens
-another, because every screen is a value of the state's `screen` field, so the world and its
-game state live for the whole session. Its instance's `initialize` registers the actions,
-declares the thirteen cues over the produced clips, loads the produced assets, and returns
-the debug surface; its game mode runs the frame; `src/controller.ts` is the one seat input is
-read from; `src/prospector.ts` is the pawn that player possesses; and `src/mine.ts` is the
-actor whose draw components render everything else.
+another, because every screen is a value of the state's `screen` field, so the world and
+its game state live for the whole session. Its instance's `initialize` registers the
+actions, declares the thirteen cues over the produced clips, loads the produced assets,
+and returns the debug surface; its game mode runs the frame; `src/controller.ts` is the
+one seat input is read from; `src/prospector.ts` is the pawn that player possesses; and
+`src/mine.ts` is the actor whose draw components render everything else.
 
-**The camera over the mine is the engine's**, positioned by the game.
-`src/camera.ts` computes the world point the mine viewport's top-left should show — where it
-sits and the vertical lead it builds — and hands the engine's camera the projection that
-puts it there, at a zoom of `1` and no rotation. The mine's own layers therefore draw at
+**The camera over the mine is the engine's**, positioned by the game. `src/camera.ts`
+computes the world point the mine viewport's top-left should show — where it sits and the
+vertical lead it builds — and hands the engine's camera the projection that puts it there,
+at a zoom of `1` and no rotation. The mine's own layers therefore draw at
 plain **world** coordinates and scroll because the camera moved; the status bar, the panels,
 and the menus take that camera back out and draw in **logical stage** units.
 
