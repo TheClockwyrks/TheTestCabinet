@@ -1,23 +1,159 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/instrumentation/clear-pile.test.ts
+// instrumentation/clear-pile — one pile is emptied and the other twelve stand.
 //
-// The review item `instrumentation.clear-pile` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/instrumentation.md, under The cards: "`clearPile(pile, index)`
+// — Removes every card from the named pile", and "`clearPile` leaves the other
+// twelve piles standing." It is how a scenario clears the ground it needs
+// without disturbing the rest of the board it has already posed, so a build
+// that empties the neighbours with it, or that empties the wrong pile, breaks
+// every scenario built that way.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE BOARD CARRIES SOMETHING IN ALL THIRTEEN PILES, so there is a reading to
+// spoil everywhere: the stock, the waste with its set memory, four started
+// foundations and seven columns. A build that swept the whole tableau reads
+// seven empty columns; one that emptied the wrong column reads the named one
+// still full; one that emptied everything reads thirteen empty piles. Each is a
+// different failure and each names itself.
 //
-// What this item must decide, from the manifest:
+// THE SURVIVORS ARE COMPARED BY IDENTITY, not by count: every card is held to
+// the id, suit, rank and face it carried before the call, so a build that
+// rebuilt an untouched pile out of fresh cards fails as well
+// (specs/instrumentation.md, Identity).
 //
-//   clearPile empties exactly one pile
+// A COLUMN IS THE PILE CLEARED. The waste is deliberately not the subject: on
+// the waste `clearPile` also empties the set memory, which is a second effect
+// and belongs to a reading of its own.
 //
-//   The named pile is empty and the other twelve still hold what they held.
+// WHAT IT DOES NOT DECIDE. That `clearTable` empties all thirteen is
+// `instrumentation/clear-table`.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertLength } from "../assert";
+import {
+  ACE,
+  COLUMNS,
+  EIGHT,
+  FIVE,
+  FOUNDATIONS,
+  FOUR,
+  JACK,
+  NINE,
+  QUEEN,
+  SEVEN,
+  SIX,
+  TEN,
+  THREE,
+  TWO,
+  captureStill,
+  card,
+  createHarness,
+  openTable,
+  pileOf,
+  poseColumn,
+  poseFoundation,
+  poseStock,
+  poseWaste,
+  type CascadeSnapshot,
+  type Harness,
+  type PileKind,
+} from "../harness";
 
-it("instrumentation.clear-pile — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/instrumentation/clear-pile.test.ts is a scaffold stub, not a validator",
+/** The column emptied. */
+const CLEARED_COLUMN = 2;
+
+/** The three cards the waste holds, under two sets. */
+const WASTE_CARDS = [
+  card("hearts", TWO),
+  card("clubs", FOUR),
+  card("spades", SIX),
+];
+const WASTE_SETS = [1, 2];
+
+/** The two cards the stock holds. */
+const STOCK_CARDS = [card("diamonds", THREE), card("clubs", FIVE)];
+
+/** A card for each of the seven columns, so every column has something to lose. */
+const COLUMN_CARDS = [
+  card("spades", SEVEN),
+  card("hearts", EIGHT),
+  card("clubs", NINE),
+  card("diamonds", TEN),
+  card("spades", JACK),
+  card("hearts", QUEEN),
+  card("clubs", THREE),
+];
+
+/** Every pile and index the board carries, so the reading walks all thirteen. */
+const PILES: readonly { pile: PileKind; index: number }[] = [
+  { pile: "stock", index: 0 },
+  { pile: "waste", index: 0 },
+  ...FOUNDATIONS.map((index) => ({ pile: "foundation" as PileKind, index })),
+  ...COLUMNS.map((index) => ({ pile: "tableau" as PileKind, index })),
+];
+
+/** One pile as identity, face and order — everything an untouched pile keeps. */
+function pileIdentity(
+  snapshot: CascadeSnapshot,
+  pile: PileKind,
+  index: number,
+): unknown[] {
+  return pileOf(snapshot, pile, index).map((entry) => ({
+    id: entry.id,
+    suit: entry.suit,
+    rank: entry.rank,
+    faceUp: entry.faceUp,
+  }));
+}
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("empties the named pile and leaves the other twelve holding what they held", async () => {
+  openTable(h);
+  poseStock(h, STOCK_CARDS);
+  poseWaste(h, WASTE_CARDS, WASTE_SETS);
+  poseFoundation(h, 0, "spades", ACE);
+  poseFoundation(h, 1, "hearts", ACE);
+  poseFoundation(h, 2, "diamonds", ACE);
+  poseFoundation(h, 3, "clubs", ACE);
+  for (const column of COLUMNS) poseColumn(h, column, [COLUMN_CARDS[column]]);
+
+  const before = h.snapshot();
+
+  h.debug.clearPile("tableau", CLEARED_COLUMN);
+  const after = h.snapshot();
+
+  await h.advance(1);
+  captureStill(h, "board");
+
+  assertLength(
+    pileOf(after, "tableau", CLEARED_COLUMN),
+    0,
+    `cards left on column ${CLEARED_COLUMN}, the pile clearPile named: it ` +
+      "removes every card from it (specs/instrumentation.md)",
+  );
+
+  for (const { pile, index } of PILES) {
+    if (pile === "tableau" && index === CLEARED_COLUMN) continue;
+    assertDeepEqual(
+      pileIdentity(after, pile, index),
+      pileIdentity(before, pile, index),
+      `the ${pile} pile ${index} after clearPile emptied column ` +
+        `${CLEARED_COLUMN}: clearPile leaves the other twelve piles standing ` +
+        "(specs/instrumentation.md)",
+    );
+  }
+
+  assertDeepEqual(
+    after.wasteSets,
+    before.wasteSets,
+    "the waste's set memory after a COLUMN was cleared: the waste is one of " +
+      "the twelve piles left standing (specs/instrumentation.md)",
   );
 });
