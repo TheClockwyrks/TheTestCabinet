@@ -141,12 +141,14 @@ describe("a player's bullet against a drone", () => {
     const drone = poseDrone(state, "shard", 640, 300, "magenta");
     posePlayerBullet(state, 640, 305, "cyan");
 
-    advance(state, 1 / 60);
+    const events = advance(state, 1 / 60);
     expect(state.drones).toHaveLength(1);
     expect(state.bullets).toHaveLength(0);
     expect(state.score).toBe(0);
     expect(state.resonance).toBe(0);
     expect(state.bursts).toHaveLength(0);
+    // It plays no cue of its own, and the kill cue least of all.
+    expect(events.cues.size).toBe(0);
     // The drone is left exactly as it was.
     expect(drone.band).toBe("magenta");
     expect(drone.phase).toBe("formation");

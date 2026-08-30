@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CHALLENGE_GROUPS,
+  ENTER_GROUP_GAP,
   CHALLENGE_PER_GROUP,
   CHALLENGE_TOTAL,
   DIVE_FIRST_DELAY,
@@ -15,6 +16,8 @@ import {
   slotY,
 } from "./constants";
 import { droneBand } from "./bands";
+import { newFrameEvents } from "./events";
+import { stepSwarm } from "./swarm";
 import { buildWave, waveCols, waveFluxes, wavePrisms, waveRows } from "./waves";
 import { liveWave } from "./fixtures";
 
@@ -160,6 +163,40 @@ describe("a standard wave", () => {
     buildWave(a);
     buildWave(b);
     expect(a.drones).toEqual(b.drones);
+  });
+});
+
+describe("the entrance a wave flies", () => {
+  it("carries every drone into the field within a second of its release, and to its slot within six", () => {
+    for (const stage of [1, 2, 4, 5]) {
+      const state = liveWave();
+      state.stage = stage;
+      state.waveEntry = true;
+      buildWave(state);
+
+      const groups = Math.max(...state.drones.map((drone) => drone.entryGroup));
+      const events = newFrameEvents();
+      const h = 1 / 120;
+      const step = (seconds: number): void => {
+        for (let i = 0; i < Math.round(seconds / h); i++) {
+          state.entryClock += h;
+          state.swayClock += h;
+          stepSwarm(state, h, events);
+        }
+      };
+
+      // A second after the last group is released, every drone is inside the
+      // field; six seconds after it, every one of them is in its slot.
+      step(ENTER_GROUP_GAP * groups + 1);
+      for (const drone of state.drones) {
+        expect(drone.y).toBeGreaterThan(FIELD_TOP);
+      }
+
+      step(5);
+      for (const drone of state.drones) {
+        expect(drone.phase).toBe("formation");
+      }
+    }
   });
 });
 
