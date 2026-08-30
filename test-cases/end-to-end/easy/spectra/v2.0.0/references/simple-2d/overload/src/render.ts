@@ -57,7 +57,15 @@ import {
   shipAlive,
 } from "./bands";
 import { nextRandom } from "./rng";
-import { BAND_COLOR, BAND_DIM, BAND_TINT, COLOR, TINT, font } from "./theme";
+import {
+  BAND_COLOR,
+  BAND_DIM,
+  BAND_LIGHT,
+  BAND_TINT,
+  COLOR,
+  TINT,
+  font,
+} from "./theme";
 import type { Band, BurstState, DroneState, SpectraState } from "./game";
 import type { SpriteName } from "./assets";
 import type { DeepReadonly } from "ts-essentials";
@@ -270,12 +278,13 @@ function drawShip(
     TINT.ship,
   );
   if (!drawn) fallbackBody(ctx, band, x, SHIP_Y, SHIP_W * 0.7);
-  // The ship's own band core, which always agrees with the polarity indicator.
-  ctx.fillStyle = BAND_COLOR[band];
+  // The ship's own band core, which always agrees with the polarity indicator. It
+  // burns lighter than a drone of the same band, so the hull reads as the hull.
+  ctx.fillStyle = BAND_LIGHT[band];
   ctx.beginPath();
-  ctx.arc(x, SHIP_Y + 2, 4.5, 0, Math.PI * 2);
+  ctx.arc(x, SHIP_Y + 1, 6, 0, Math.PI * 2);
   ctx.fill();
-  accent(ctx, band, x, SHIP_Y + 2, 9, 2);
+  accent(ctx, band, x, SHIP_Y + 1, 10, 2);
 }
 
 function drawCharge(

@@ -91,7 +91,9 @@ describe("a stage's sequence", () => {
     await h.advance(0.2);
     expect(h.snapshot().drones).toHaveLength(0);
     expect(h.snapshot().screen).toBe("stageCleared");
-    expect(h.snapshot().score).toBeGreaterThanOrEqual(before + SCORE_STAGE_CLEAR);
+    expect(h.snapshot().score).toBeGreaterThanOrEqual(
+      before + SCORE_STAGE_CLEAR,
+    );
   });
 
   it("opens the next stage's intro one number higher", async () => {
@@ -142,7 +144,10 @@ describe("a challenge stage", () => {
       if (
         drones.some(
           (drone) =>
-            drone.x > 0 && drone.x < 1280 && drone.y > FIELD_TOP && drone.y < FIELD_BOTTOM,
+            drone.x > 0 &&
+            drone.x < 1280 &&
+            drone.y > FIELD_TOP &&
+            drone.y < FIELD_BOTTOM,
         )
       ) {
         insideEver = true;

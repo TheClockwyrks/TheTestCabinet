@@ -21,6 +21,18 @@ export const BAND_COLOR: Readonly<Record<Band, string>> = {
   magenta: "#ff4ec7",
 };
 
+/**
+ * A lightened draw of each band, which is what the ship's own core burns at.
+ *
+ * The hull reads as a hull rather than as one more drone of its band, and the two
+ * bands still read apart on it, because the pair is as far apart from each other
+ * as it is from the band the drones are drawn in.
+ */
+export const BAND_LIGHT: Readonly<Record<Band, string>> = {
+  cyan: "#9cf1ff",
+  magenta: "#ffa7e3",
+};
+
 /** A dimmer draw of each band, for a meter's track and a spent glow. */
 export const BAND_DIM: Readonly<Record<Band, string>> = {
   cyan: "#12414f",

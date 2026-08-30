@@ -92,6 +92,13 @@ export interface Harness {
   release(code: string): void;
   tap(code: string): void;
   pixel(x: number, y: number): [number, number, number, number];
+  average(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ): [number, number, number, number];
+  region(x: number, y: number, w: number, h: number): Uint8ClampedArray;
   advance(seconds: number): Promise<void>;
   frames(count: number): Promise<void>;
   setStep(seconds: number): void;
@@ -179,6 +186,36 @@ export async function createHarness(): Promise<Harness> {
         data[3] as number,
       ];
     },
+    average: (x, y, w, h) => {
+      const view: Viewport = engine.viewport();
+      const { data } = ctx.getImageData(
+        Math.round(view.offsetX + x * view.scale),
+        Math.round(view.offsetY + y * view.scale),
+        Math.max(1, Math.round(w * view.scale)),
+        Math.max(1, Math.round(h * view.scale)),
+      );
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      const pixels = data.length / 4;
+      for (let i = 0; i < data.length; i += 4) {
+        r += data[i] as number;
+        g += data[i + 1] as number;
+        b += data[i + 2] as number;
+        a += data[i + 3] as number;
+      }
+      return [r / pixels, g / pixels, b / pixels, a / pixels];
+    },
+    region: (x, y, w, h) => {
+      const view: Viewport = engine.viewport();
+      return ctx.getImageData(
+        Math.round(view.offsetX + x * view.scale),
+        Math.round(view.offsetY + y * view.scale),
+        Math.max(1, Math.round(w * view.scale)),
+        Math.max(1, Math.round(h * view.scale)),
+      ).data as unknown as Uint8ClampedArray;
+    },
     advance: (seconds) => engine.advance(Math.round(seconds * FPS)),
     frames: (count) => engine.advance(count),
     setStep: (seconds) => {
@@ -192,14 +229,14 @@ type Fetcher = typeof globalThis.fetch;
 type Bitmapper = typeof globalThis.createImageBitmap;
 
 /**
- * Serve the project's own `assets/` directory to the engine's loader for the life
- * of the callback, and put the two globals back afterwards.
+ * Serve the project's own `assets/` directory to the engine's loader, and report
+ * the call that puts the two globals back.
  *
  * The loader reaches for `fetch` and `createImageBitmap`, and a vitest process has
  * no page for a relative URL to resolve against, so both are stood up over the file
  * system here.
  */
-export async function withSeededArt<T>(run: () => Promise<T>): Promise<T> {
+export function installSeededArt(): () => void {
   const host = globalThis as unknown as {
     fetch: Fetcher;
     createImageBitmap: Bitmapper;
@@ -212,12 +249,10 @@ export async function withSeededArt<T>(run: () => Promise<T>): Promise<T> {
   host.createImageBitmap = (async (blob: Blob): Promise<unknown> =>
     loadImage(await blob.arrayBuffer())) as unknown as Bitmapper;
 
-  try {
-    return await run();
-  } finally {
+  return () => {
     host.fetch = realFetch;
     host.createImageBitmap = realBitmap;
-  }
+  };
 }
 
 /** The last entry of a list, which is where the surface appends what it adds. */
