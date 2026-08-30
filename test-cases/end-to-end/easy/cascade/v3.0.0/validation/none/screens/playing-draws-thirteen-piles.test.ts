@@ -8,15 +8,26 @@
 // `(COLUMN_X[i], 180)`. A card's footprint is `CARD_W x CARD_H` (`100 x 140`)
 // "wherever it sits".
 //
-// THE POSE PUTS ONE CARD ON EVERY PILE, which is what makes thirteen readings
-// thirteen answers. A build that drew twelve piles and skipped one — the waste,
+// THE POSE PUTS ONE CARD ON EVERY PILE, so all thirteen readings are of a pile
+// holding a card. A build that drew twelve piles and skipped one — the waste,
 // say, or the last column — is missing exactly one card-sized shape, and the
-// failure names which pile's anchor had nothing near it. Posing rather than
-// dealing is deliberate: a deal's layout is `deal`'s to grade, and a dealt table
-// leaves four foundations and the waste empty, so five of the thirteen readings
-// would be of the empty-slot mark rather than of a pile the build was asked to
-// draw. Every card posed here is face-up, so nothing rests on how a back is
-// drawn, and the foundations take Aces so the board is one the rules allow.
+// failure names which pile's anchor had nothing near it.
+//
+// It matters that the pose is deliberate rather than a deal. A deal's layout is
+// the `deal` group's to grade, and a dealt table leaves the waste and all four
+// foundations empty; `specs/table.md` has an empty pile draw "a card-sized mark
+// at its anchor, `CARD_W x CARD_H`", so from outside, a slot mark and a card are
+// the same shape and five of the thirteen readings would rest on
+// `presentation/empty-slot-drawn`'s requirement instead of this one. With a card
+// on each, the reading is of the pile itself, and the captured frame shows a
+// reviewer thirteen piles rather than eight and five marks.
+//
+// The faces are chosen so the world is one the specification describes: the
+// stock's card is face-down (`specs/stock.md`), the waste's is face-up on a set
+// of one (`specs/stock.md`), and each foundation holds its Ace, which is the one
+// card a foundation may hold alone (`specs/foundations.md`). None of that is read
+// here — `cardFootprints` measures a shape and not what is printed on it — so
+// nothing in this item rests on how a face or a back is drawn.
 //
 // WHAT IT DOES NOT DECIDE. That each anchor is EXACTLY where the specification
 // puts it — that is `table/stock-anchor`, `table/waste-anchor`,
@@ -34,6 +45,7 @@ import {
   cardFootprints,
   captureStill,
   createHarness,
+  faceDown,
   openTable,
   pileTopLeft,
   poseColumn,
@@ -108,7 +120,7 @@ afterEach(async () => {
 
 it("draws a pile at each of the thirteen anchors", async () => {
   await openTable(h);
-  await poseStock(h, [card("9C")]);
+  await poseStock(h, faceDown("9C"));
   await poseWaste(h, [card("7D")], [1]);
   for (let i = 0; i < FOUNDATION_COUNT; i += 1) {
     await poseFoundation(h, i, FOUNDATION_SUITS[i], ACE);
