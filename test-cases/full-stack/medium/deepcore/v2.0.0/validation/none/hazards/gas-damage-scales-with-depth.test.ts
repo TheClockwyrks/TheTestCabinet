@@ -1,26 +1,124 @@
-// Deepcore — hazards.gas-damage-scales-with-depth. STUB: NOT YET AUTHORED.
+// hazards/gas-damage-scales-with-depth — the blast grows with the depth.
 //
-// A deeper gas pocket hits harder
+// `specs/hazards.md` fixes the curve exactly: a detonation at depth fraction `f`
+// deals
+// `GAS_DAMAGE_MIN + (GAS_DAMAGE_MAX - GAS_DAMAGE_MIN) * max(0, f - 0.25) / 0.75`
+// hull, `60` where gas first appears and `400` at the deepest minable row. Four
+// pockets are posed down the mine — at the fraction gas begins at and at the
+// middle of each band below it — and each hull loss is held against the curve at
+// the fraction of the row it was posed in.
 //
-// A detonation at depth fraction f deals GAS_DAMAGE_MIN + (GAS_DAMAGE_MAX -
-// GAS_DAMAGE_MIN) * max(0, f - 0.25) / 0.75 hull, so it is 60 where gas first
-// appears and 400 at the deepest minable row.
+// The fraction is computed from `coreRow` as the snapshot reports it rather than
+// from a row count assumed here, because `specs/world.md` sets `coreRow` from the
+// world size and states every depth-varying rule as a fraction of it.
 //
-// Automated validation: pose a gas pocket at several depth fractions with a
-// hull large enough to survive each, detonate and hold each hull loss against
-// the formula.
-//
-// `test-case.toml` declares this suite as `hazards/gas-damage-scales-with-depth.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (deep (replay)) around the drive.
+// The tolerance is two hull points either way. The curve is arithmetic on posed
+// values, so nothing should move it much: two points covers a build that rounds
+// the figure it deals, and it covers the one place the specification leaves
+// slack — `specs/world.md` says the depth fraction "runs `0` at `row 1` to `1` at
+// the deepest minable row" while the expression it gives, `(row - 1) /
+// (coreRow - 1)`, reaches `1` a row below that. The two readings differ by under
+// a point across the mine, and both are inside the band. Two points is still far
+// inside the fifty-odd that separate two neighbouring stations.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertEqual } from "../assert";
+import {
+  gasDamageAt,
+  GAS_DAMAGE_MAX,
+  GAS_DAMAGE_MIN,
+  HULL_MAX,
+  ROCKBED_TOP_FRACTION,
+} from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  openScene,
+  pinMiner,
+  type Harness,
+} from "../harness";
+import {
+  armHull,
+  bandRow,
+  cutUnderfoot,
+  fractionOf,
+  FAST_DRILL_TIER,
+  HAZARD_COL,
+  rowAt,
+} from "./scene";
 
-test("A deeper gas pocket hits harder", () => {
-  throw new Error(
-    "Deepcore validator `hazards/gas-damage-scales-with-depth` is declared in test-case.toml but has not been authored yet.",
+/** The tier whose 450 hull survives the deepest detonation the curve reaches. */
+const HULL_TIER = 5;
+
+/** How far a reading may sit from the curve, in hull points. */
+const TOLERANCE = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("deals the curve's hull at every depth it is posed at", async () => {
+  await openScene(h);
+  await pinMiner(h);
+  await h.debug.setTier("drill", FAST_DRILL_TIER);
+  const opened = await armHullAndRead(HULL_TIER);
+
+  // Where gas first appears, the middle of each band below it, and the deepest
+  // minable row, which is the row the curve tops out on.
+  const rows = [
+    rowAt(opened, ROCKBED_TOP_FRACTION),
+    bandRow(opened, "rockbed"),
+    bandRow(opened, "deepstone"),
+    bandRow(opened, "coreshell"),
+    opened.coreRow - 1,
+  ];
+
+  const readings = await captureReplay(h, "deep", async () => {
+    const seen: { row: number; loss: number }[] = [];
+    for (const row of rows) {
+      await armHull(h, HULL_TIER);
+      const blast = await cutUnderfoot(h, HAZARD_COL, row, "gas");
+      assertEqual(blast.cut.broke, true, `specs/hazards.md, row ${row}`);
+      seen.push({ row, loss: blast.loss });
+    }
+    return seen;
+  });
+
+  for (const { row, loss } of readings) {
+    const expected = gasDamageAt(fractionOf(opened, row));
+    assertBetween(
+      loss,
+      expected - TOLERANCE,
+      expected + TOLERANCE,
+      `specs/hazards.md, a detonation at row ${row}`,
+    );
+  }
+
+  // And the two ends of the curve are the figures the specification names.
+  assertBetween(
+    readings[0].loss,
+    GAS_DAMAGE_MIN - TOLERANCE,
+    GAS_DAMAGE_MIN + TOLERANCE,
+    "specs/hazards.md, where gas first appears",
+  );
+  assertBetween(
+    readings[readings.length - 1].loss,
+    GAS_DAMAGE_MAX - TOLERANCE,
+    GAS_DAMAGE_MAX + TOLERANCE,
+    "specs/hazards.md, at the deepest minable row",
   );
 });
+
+/** Raise the hull and read the mine back, so `coreRow` comes from the build. */
+async function armHullAndRead(tier: number) {
+  await armHull(h, tier);
+  const snapshot = await h.snapshot();
+  assertEqual(snapshot.miner.maxHull, HULL_MAX[tier - 1], "specs/upgrades.md");
+  return snapshot;
+}

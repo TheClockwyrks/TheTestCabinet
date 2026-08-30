@@ -1,25 +1,77 @@
-// Deepcore — hazards.lava-contact-drain. STUB: NOT YET AUTHORED.
+// hazards/lava-contact-drain — touching lava bleeds hull for as long as it lasts.
 //
-// Touching lava drains hull continuously
+// `specs/hazards.md` fixes the drain: "Contact drains hull at `LAVA_CONTACT_DPS`
+// for as long as the miner's box overlaps a lava cell", 32 hull a second before
+// the radiator. So the miner's box is posed inside a single lava cell at
+// radiator tier 1, a fixed span of game time is run, and the hull lost is held
+// against `LAVA_CONTACT_DPS` times that span.
 //
-// While the miner box overlaps a lava cell the hull drains at LAVA_CONTACT_DPS
-// (32) per second at radiator tier 1, for as long as the overlap lasts.
+// Both faculties are gated. Travel is what would otherwise carry the miner out
+// of the cell the moment the game's own collision resolved the overlap, and the
+// drill is what would otherwise let the cell be cut, which
+// `specs/hazards.md` charges differently. What is left running is the drain.
 //
-// Automated validation: pose the miner overlapping a lava cell with travel
-// off, advance a fixed span and hold the hull lost against LAVA_CONTACT_DPS
-// times the span.
-//
-// `test-case.toml` declares this suite as `hazards/lava-contact-drain.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (contact (replay)) around the drive.
+// The span is read as game time rather than as frames: every rate in this game
+// is integrated against the frame's delta, so four seconds in a hundred and
+// twenty frames drains what four seconds in ten thousand would.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertEqual } from "../assert";
+import { LAVA_CONTACT_DPS } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  openScene,
+  pinDrill,
+  pinMiner,
+  type Harness,
+} from "../harness";
+import { armHull, bandRow, HAZARD_COL, soakIn } from "./scene";
 
-test("Touching lava drains hull continuously", () => {
-  throw new Error(
-    "Deepcore validator `hazards/lava-contact-drain` is declared in test-case.toml but has not been authored yet.",
+/** The tier whose hull outlasts the whole span with room to read the loss. */
+const HULL_TIER = 5;
+
+/** The contact span, and the frames it is run in. */
+const SECONDS = 4;
+const FRAMES = 120;
+
+/** How far the reading may sit from the rate: a couple of frames of drain. */
+const TOLERANCE = 3;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("drains LAVA_CONTACT_DPS a second for the whole of the overlap", async () => {
+  await openScene(h);
+  await pinMiner(h);
+  await pinDrill(h);
+  await h.debug.setTier("radiator", 1);
+  await armHull(h, HULL_TIER);
+  const row = bandRow(await h.snapshot(), "deepstone");
+  await h.debug.setTile(HAZARD_COL, row, "lava");
+  await soakIn(h, HAZARD_COL, row);
+
+  const before = await h.snapshot();
+  const after = await captureReplay(h, "contact", async () => {
+    await h.advanceSeconds(SECONDS, FRAMES);
+    return h.snapshot();
+  });
+
+  const expected = LAVA_CONTACT_DPS * SECONDS;
+  assertBetween(
+    before.miner.hull - after.miner.hull,
+    expected - TOLERANCE,
+    expected + TOLERANCE,
+    `specs/hazards.md, ${SECONDS} seconds of contact`,
   );
+  // The cell is still lava, so the drain above is contact rather than a cell
+  // that quietly broke under an idle miner.
+  assertEqual((await h.tileAt(HAZARD_COL, row)).kind, "lava", "specs/world.md");
 });
