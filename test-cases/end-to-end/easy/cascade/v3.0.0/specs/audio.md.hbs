@@ -42,12 +42,12 @@ foundation raises both `drop` and `home`.
 
 {{#if (eq engine.slug "none")}}
 Muting is yours as well, and the HUD's `SOUND` control toggles it. While sound is
-muted every cue is silent and the game stays fully playable, and unmuting makes
-the same cues audible again. Audio does not start until the player has interacted
+muted every cue is silent and the game stays fully playable, and turning mute
+off makes the same cues audible again. Audio does not start until the player has interacted
 with the page, and a build whose audio cannot start still runs and still plays.
 {{else}}
 Muting belongs to the engine, along with the unlock that waits on the player's
 first interaction with the page. The HUD's `SOUND` control toggles the engine's
 mute bit. While sound is muted every cue is silent and the game stays fully
-playable, and unmuting makes the same cues audible again.
+playable, and turning mute off makes the same cues audible again.
 {{/if}}

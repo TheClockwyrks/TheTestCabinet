@@ -30,7 +30,7 @@ The cascade keeps a launch clock, in seconds, which holds `LAUNCH_INTERVAL`
 first frame.
 
 Each frame the clock adds the frame's delta. While it holds at least
-`LAUNCH_INTERVAL` and cards remain unlaunched, `LAUNCH_INTERVAL` is subtracted
+`LAUNCH_INTERVAL` and cards remain to be launched, `LAUNCH_INTERVAL` is subtracted
 from it and the next card launches. The remainder is carried, so after `t`
 seconds of a running cascade exactly `floor(t / LAUNCH_INTERVAL) + 1` cards have
 launched, capped at fifty-two, and the mean gap between successive launches is
