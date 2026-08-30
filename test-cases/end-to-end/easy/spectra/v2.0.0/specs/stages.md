@@ -29,6 +29,9 @@ A challenge stage is a non-firing flyover.
   groups run on.
 - Every drone in a group carries the same band, and consecutive groups carry
   opposite bands, so the bands alternate from the first group to the last.
+- A challenge drone holds one band for its whole flyover. A flyover carries no drone
+  that oscillates between the bands and none that wears two layers at once, so the
+  band a group reads as never changes while it crosses.
 - No drone fires. No enemy bullet appears anywhere in a challenge stage.
 - A challenge drone's body costs no life. Contact between the ship and one of them
   does nothing.
