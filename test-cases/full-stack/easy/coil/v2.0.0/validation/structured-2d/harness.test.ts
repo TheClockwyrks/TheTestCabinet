@@ -43,6 +43,7 @@ import {
   arrangeFullBoard,
   arrangeStep,
   captureReplay,
+  captureStill,
   chainFrom,
   createHarness,
   emptyInteriorCell,
@@ -475,6 +476,23 @@ it("writes a captured section as gzip, under the declared name", async () => {
   const recording = readBack("step.json.gz");
   expect(recording.format).toBeGreaterThan(0);
   expect(recording.frames.length).toBe(FRAMES_PER_TICK);
+});
+
+it("keeps the frame on the canvas as a still", async () => {
+  // The other output kind: one PICTURE rather than a stretch of motion, for a
+  // point whose evidence is which screen the game opened on or what it drew a
+  // pellet as. What is written is whatever the last frame that RAN left behind,
+  // so the frame goes before the call.
+  poseScene(h, { screen: "title" });
+  await h.advance(1);
+  captureStill(h, "opening");
+
+  expect(written()).toEqual(["opening.png"]);
+  const bytes = readFileSync(join(mediaDir, SUITE_DIR, "opening.png"));
+  // The framing read off the bytes rather than off the name: a PNG opens with
+  // the eight-byte signature (RFC 2083), so this is the canvas actually being
+  // encoded rather than named as though it were.
+  expect([...bytes.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
 });
 
 it("writes nothing at all for a section that drew no frames", async () => {
