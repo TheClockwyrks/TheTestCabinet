@@ -8,17 +8,24 @@ that project the model writes is what the engine decides.
 `v2.0.0` supports the engineless run, the [Simple 2D](/engines/simple-2d/) engine
 and the [Structured 2D](/engines/structured-2d/) engine, and the game is the same
 grid serpent under all three. Under `none` the workspace is the toolchain and the
-page: the build writes the fixed-tick loop, the canvas fit, keyboard input, audio,
-the diagnostics overlay, every figure the specification fixes, and the debugging
-surface it installs on `window.__coil`. Under either engine the workspace vendors
-the runtime as a package and carries the one case-owned module around the game,
-`src/main.ts`, and the build writes `src/game.ts` and the debug surface its
-`initialize` returns. Every figure the specification fixes is named in the specs
-and declared by the build, on every engine.
+page and holds no source at all: the build writes the fixed-tick loop, the canvas
+fit, keyboard input, audio, the diagnostics overlay, every figure the
+specification fixes, and the debugging surface it installs on `window.__coil`.
+Under either engine the workspace vendors the runtime as a package and carries two
+case-owned modules around the game: `src/constants.ts`, which names every figure
+the specification fixes, and `src/main.ts`, the browser entry. The build writes
+`src/game.ts` — the state, the game itself, and the debug surface its `initialize`
+returns. That module is seeded as a stub written against types the build has yet
+to declare, so a freshly seeded workspace does not type-check, which is the
+starting point rather than a broken seed.
 
 Saying that takes a new way to name the starter project. A `[workspaces]` table
 names one directory per engine, and a reference implementation is named the same
-way, per engine, in each variant's own file.
+way, per engine, in each variant's own file. Because `src/constants.ts` carries
+the mode — its menu entry, its HUD label, and the obstacle cells it lays — the two
+modes need a starter project of their own under each engine, so the Maze variant
+replaces that table with one of its own. The engineless project holds no game code
+for a mode to differ in, so both share it.
 
 The asset-production pass is the same under every engine. No engine supplies art
 or sound, so every run still produces the snake's sprite set and the game's audio
