@@ -19,17 +19,17 @@
 // reviewer's, by ear.
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { FIRE_CUE, type ComponentType } from "../constants";
+import { COMPONENT_TYPES, FIRE_CUE, type ComponentType } from "../constants";
 import {
   captureReplay,
   createHarness,
   openYard,
   type Harness,
 } from "../harness";
-import { SETTLE, beforeFrame, fireOnce, onFrame } from "./cues";
+import { beforeFrame, fireOnce, onFrame, settle } from "./cues";
 
-/** The one type `specs/ui.md` binds to the spark cue, per `FIRE_CUE`. */
-const TYPES: ComponentType[] = (["emitter"] as ComponentType[]).filter(
+/** Every type `specs/ui.md` binds to the spark cue: the Emitter. */
+const TYPES: readonly ComponentType[] = COMPONENT_TYPES.filter(
   (type) => FIRE_CUE[type] === "fire-spark",
 );
 
@@ -46,7 +46,7 @@ afterEach(async () => {
 it("sounds on the frame an Emitter fires, and not before", async () => {
   await h.armAudio();
   await openYard(h, { wave: 1 });
-  await h.advance(SETTLE);
+  await settle(h);
 
   for (const type of TYPES) {
     const shot = await captureReplay(h, "spark", () => fireOnce(h, type, 1));

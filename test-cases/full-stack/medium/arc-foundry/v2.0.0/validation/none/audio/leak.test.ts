@@ -31,7 +31,7 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { SETTLE, beforeFrame, onFrame } from "./cues";
+import { beforeFrame, onFrame, settle } from "./cues";
 
 const SINK = (() => {
   const map = mapById("substation");
@@ -51,7 +51,7 @@ afterEach(async () => {
 it("sounds on the frame the unit grounds out, and not on the walk in", async () => {
   await h.armAudio();
   await openYard(h, { map: "substation", wave: 1 });
-  await h.advance(SETTLE);
+  await settle(h);
   await holdWaveOpen(h);
   await releaseUnit(h, "mote", {
     waypoint: 7,

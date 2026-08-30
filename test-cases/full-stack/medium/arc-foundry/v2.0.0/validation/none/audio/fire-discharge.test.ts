@@ -19,19 +19,19 @@
 // are one cue on one event; each runs on its own emptied yard.
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { FIRE_CUE, type ComponentType } from "../constants";
+import { COMPONENT_TYPES, FIRE_CUE, type ComponentType } from "../constants";
 import {
   captureReplay,
   createHarness,
   openYard,
   type Harness,
 } from "../harness";
-import { SETTLE, beforeFrame, fireOnce, onFrame } from "./cues";
+import { beforeFrame, fireOnce, onFrame, settle } from "./cues";
 
-/** The two types `specs/ui.md` binds to the discharge cue, per `FIRE_CUE`. */
-const TYPES: ComponentType[] = (
-  ["arcnode", "discharge"] as ComponentType[]
-).filter((type) => FIRE_CUE[type] === "fire-discharge");
+/** Every type `specs/ui.md` binds to the discharge cue: the Arc-Node and the Discharge Rig. */
+const TYPES: readonly ComponentType[] = COMPONENT_TYPES.filter(
+  (type) => FIRE_CUE[type] === "fire-discharge",
+);
 
 let h: Harness;
 
@@ -46,7 +46,7 @@ afterEach(async () => {
 it("sounds on the frame each of the two fires, and not before", async () => {
   await h.armAudio();
   await openYard(h, { wave: 1 });
-  await h.advance(SETTLE);
+  await settle(h);
 
   for (const type of TYPES) {
     const shot = await captureReplay(h, "discharge", () =>

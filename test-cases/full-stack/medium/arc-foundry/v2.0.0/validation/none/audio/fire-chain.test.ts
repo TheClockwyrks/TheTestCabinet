@@ -18,17 +18,17 @@
 // the name of a sound is not observable; that half is the reviewer's, by ear.
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { FIRE_CUE, type ComponentType } from "../constants";
+import { COMPONENT_TYPES, FIRE_CUE, type ComponentType } from "../constants";
 import {
   captureReplay,
   createHarness,
   openYard,
   type Harness,
 } from "../harness";
-import { SETTLE, beforeFrame, fireOnce, onFrame } from "./cues";
+import { beforeFrame, fireOnce, onFrame, settle } from "./cues";
 
-/** The one type `specs/ui.md` binds to the chain cue, per `FIRE_CUE`. */
-const TYPES: ComponentType[] = (["coil"] as ComponentType[]).filter(
+/** Every type `specs/ui.md` binds to the chain cue: the Coil. */
+const TYPES: readonly ComponentType[] = COMPONENT_TYPES.filter(
   (type) => FIRE_CUE[type] === "fire-chain",
 );
 
@@ -45,7 +45,7 @@ afterEach(async () => {
 it("sounds on the frame a Coil fires, and not before", async () => {
   await h.armAudio();
   await openYard(h, { wave: 1 });
-  await h.advance(SETTLE);
+  await settle(h);
 
   for (const type of TYPES) {
     const shot = await captureReplay(h, "chain", () => fireOnce(h, type, 1));

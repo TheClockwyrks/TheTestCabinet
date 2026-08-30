@@ -54,17 +54,42 @@ export const TARGET = { x: HEAD.x + 80, y: HEAD.y };
 export const RUN_UP = ticks(0.1);
 
 /**
- * Frames of run driven before anything is listened for.
+ * Drive the opening build phase until the build's audio has actually opened.
  *
  * `specs/ui.md` leaves the first-interaction unlock to the runtime layer an
  * engineless build writes, and a browser opens an audio context asynchronously
  * after the gesture that unlocked it — so the music bed `specs/ui.md` loops "under
- * the yard from the first build phase onward" may begin a fraction of a second
- * into the run rather than on its first frame. Both are the same requirement met;
- * driving half a second of run first puts that start behind every reading rather
- * than inside one.
+ * the yard from the first build phase onward" begins some way into the run rather
+ * than on its first frame, and how far in depends on the machine rather than on
+ * the build. A run-up held silent has to start after that, or the bed's own start
+ * lands inside it and is read as the build blipping.
+ *
+ * So this drives the run, in short steps with real time between them, until the
+ * build has emitted its first sound — and gives up after a bounded number of
+ * tries, because a build that plays nothing at all has nothing to wait for and
+ * fails the points that listen for a cue rather than this helper.
  */
-export const SETTLE = ticks(0.5);
+export async function settle(h: Harness): Promise<void> {
+  for (let attempt = 0; attempt < SETTLE_TRIES; attempt += 1) {
+    await h.page.waitForTimeout(SETTLE_WAIT_MS);
+    await h.advance(ticks(0.02));
+    if ((await sounds(h)) > 0) return;
+  }
+}
+
+/**
+ * How many chances the build is given to open its audio, and how much real time
+ * each waits.
+ *
+ * Generous, because opening a browser's audio means fetching and decoding every
+ * produced cue file — a couple of megabytes for a build that also produced a music
+ * bed — and this project drives four pages at once, so how long that takes is a
+ * fact about the machine rather than about the build. The loop returns the instant
+ * the build has emitted anything, so the budget is paid only by a build that has
+ * not opened its audio at all, whose cue points then fail on their own terms.
+ */
+const SETTLE_TRIES = 60;
+const SETTLE_WAIT_MS = 50;
 
 /** How many sounds the build has emitted since the page loaded. */
 export async function sounds(h: Harness): Promise<number> {

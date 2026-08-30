@@ -41,7 +41,7 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { ANCHOR, SETTLE, TARGET, onFrame } from "./cues";
+import { ANCHOR, TARGET, onFrame, settle } from "./cues";
 
 /** Either side of the primary, inside the Scrap Arc-Node's splash radius of `42`. */
 const SPREAD = 25;
@@ -62,8 +62,8 @@ async function discharge(
 ): Promise<{ fired: boolean; died: boolean; sounds: number }> {
   await emptyYard(h);
   await holdWaveOpen(h);
-  const coil = await standComponent(h, "arcnode", 1, ANCHOR.col, ANCHOR.row);
-  await h.debug.setTargeting(coil, "nearest");
+  const node = await standComponent(h, "arcnode", 1, ANCHOR.col, ANCHOR.row);
+  await h.debug.setTargeting(node, "nearest");
 
   const victims: number[] = [await parkUnit(h, "mote", TARGET, { hp: 1 })];
   for (const offset of [-SPREAD, SPREAD].slice(0, count - 1)) {
@@ -95,7 +95,7 @@ async function discharge(
 it("plays the same on a frame three units die on as on one", async () => {
   await h.armAudio();
   await openYard(h, { wave: 1 });
-  await h.advance(SETTLE);
+  await settle(h);
 
   const one = await discharge(1);
   const three = await captureReplay(h, "once", () => discharge(3));

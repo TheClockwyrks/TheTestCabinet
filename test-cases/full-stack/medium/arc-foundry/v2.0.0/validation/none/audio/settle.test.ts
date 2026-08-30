@@ -32,7 +32,7 @@ import {
   standCandidate,
   type Harness,
 } from "../harness";
-import { RUN_UP, SETTLE, sounds } from "./cues";
+import { RUN_UP, settle, sounds } from "./cues";
 
 /** Five clear anchors, well away from the map's waypoint platforms and its chain. */
 const ANCHORS = [12, 16, 20, 24, 28].map((col) => ({ col, row: 24 }));
@@ -50,7 +50,7 @@ afterEach(async () => {
 it("sounds when the unharvested candidates harden, and not before", async () => {
   await h.armAudio();
   await openYard(h, { wave: 1 });
-  await h.advance(SETTLE);
+  await settle(h);
 
   const candidates: number[] = [];
   for (const anchor of ANCHORS) {

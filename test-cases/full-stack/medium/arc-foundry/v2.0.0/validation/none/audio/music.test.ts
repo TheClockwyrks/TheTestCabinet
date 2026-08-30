@@ -37,11 +37,18 @@ import {
   type Harness,
 } from "../harness";
 
-/** How many times the first build phase is given a chance to start the bed. */
-const ATTEMPTS = 10;
-
-/** Real time waited between those chances, for the audio context to open. */
-const WAIT_MS = 100;
+/**
+ * How many chances the first build phase is given to start the bed, and how much
+ * real time each waits.
+ *
+ * Generous, because opening a browser's audio means fetching and decoding every
+ * produced cue file, and this project drives four pages at once — how long that
+ * takes is a fact about the machine rather than about the build. The loop returns
+ * the instant the build has started anything, so the budget is paid only by a
+ * build that starts nothing, which is the miss this point is about.
+ */
+const ATTEMPTS = 60;
+const WAIT_MS = 50;
 
 /** One sound the build started, and whether it was started as a loop. */
 interface Started {
@@ -125,7 +132,7 @@ it("starts a looping sound when the run opens on its first build phase", async (
     // has started anything.
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       await h.page.waitForTimeout(WAIT_MS);
-      await h.advance(ticks(0.1));
+      await h.advance(ticks(0.02));
       const started = await startedSounds(h);
       if (started.length > 0) return started;
     }
