@@ -1,28 +1,56 @@
-/*
- * Coil validator: `states.gameover-menu`. PLACEHOLDER.
- *
- * Leaving game over returns to the title.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * confirm on MENU from the game-over screen sets screen to title.
- *
- * HOW:
- * reach the game-over screen, highlight MENU, confirm, and read the screen.
- *
- * MEDIA IT MUST CAPTURE: title (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// states/gameover-menu — MENU from the game-over screen leaves for the title.
+//
+// specs/ui.md, on `gameover` and `cleared`: "`MENU` returns to `title`." `MENU`
+// is the second item of `OVER_ITEMS`, and the highlight is posed onto it rather
+// than pressed for, so a build whose highlight will not move fails
+// `controls/menu-highlight-moves` alone. What is pressed here is `confirm`.
 
-test("states.gameover-menu", () => {
-  throw new Error("validator not implemented: states/gameover-menu.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import { BINDINGS, OVER_ITEMS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  HOME_HEAD,
+  captureStill,
+  chainFrom,
+  createHarness,
+  poseScene,
+  type Harness,
+} from "../harness";
+
+/** The first key `specs/controls.md` binds to `confirm`. */
+const CONFIRM = BINDINGS.confirm[0];
+
+/** `MENU` is the second item of `OVER_ITEMS` (specs/ui.md). */
+const MENU_INDEX = OVER_ITEMS.indexOf("MENU");
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("sets the screen to title on confirm at MENU", async () => {
+  const over = poseScene(h, {
+    screen: "gameover",
+    menuIndex: MENU_INDEX,
+    snake: chainFrom(HOME_HEAD, "right", 6),
+    dir: "right",
+    pellet: null,
+    score: 180,
+    best: 180,
+  });
+  assertEqual(over.menuIndex, MENU_INDEX, "the highlighted item");
+
+  await h.tap(CONFIRM);
+  captureStill(h, "title");
+
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "the screen MENU returned to from game over",
+  );
 });

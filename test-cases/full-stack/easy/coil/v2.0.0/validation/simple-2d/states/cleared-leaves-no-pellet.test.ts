@@ -1,31 +1,44 @@
-/*
- * Coil validator: `states.cleared-leaves-no-pellet`. PLACEHOLDER.
- *
- * A cleared board carries no pellet.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * The round that ends on the cleared screen leaves pellet at null, because no
- * valid cell was found for the next one.
- *
- * HOW:
- * drive the board-cleared ending and read the snapshot's pellet.
- *
- * MEDIA IT MUST CAPTURE: empty (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// states/cleared-leaves-no-pellet — the cleared board carries no pellet.
+//
+// specs/board.md: "The board-cleared round leaves the board without a live
+// pellet", because step 5 found no valid cell for the next one, and
+// specs/instrumentation.md says `pellet` "is `null` only when no pellet is on the
+// board, which is the case on the `cleared` screen."
+//
+// The reading is the pellet alone. That the round ENDS on `cleared` is
+// `states/cleared-reachable`; what this separates is a build that reaches the
+// ending but leaves the eaten pellet on the board, or drops one onto a cell the
+// chain occupies, from one that leaves the board genuinely empty.
+//
+// The ending is driven, not posed: a chain along every interior cell but one, the
+// pellet on that cell, and one tick.
 
-test("states.cleared-leaves-no-pellet", () => {
-  throw new Error(
-    "validator not implemented: states/cleared-leaves-no-pellet.test.ts",
-  );
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNull } from "../assert";
+import {
+  arrangeFullBoard,
+  captureStill,
+  createHarness,
+  type Harness,
+} from "../harness";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("leaves the pellet at null on the board-cleared ending", async () => {
+  arrangeFullBoard(h);
+
+  await h.tick();
+  captureStill(h, "empty");
+
+  const ended = h.snapshot();
+  assertEqual(ended.screen, "cleared", "the screen the filled board ended on");
+  assertNull(ended.pellet, "the pellet on the cleared board");
 });
