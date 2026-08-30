@@ -1,23 +1,95 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/audio/cue-deal.test.ts
+// audio/cue-deal — dealing a fresh game plays the deal cue.
 //
-// The review item `audio.cue-deal` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/audio.md fixes `CUES.deal` (`"deal"`) as the cue played when "a fresh game
+// is dealt", and governs all ten with one sentence: "Each is played on the frame
+// its event happens and at most once on that frame."
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// So the measurement is: hold an empty table in live play, run a quiet lead of
+// frames during which nothing at all happens, then click the HUD's `NEW GAME`
+// control and read what sounded on the one frame that carried the deal against what
+// sounded on every frame before it. The frames before are the half a build cannot
+// fake: a build that blips `deal` on a timer sounds on the deal's frame too, and is
+// told apart from a conforming one only by the silence that should have preceded it.
 //
-// What this item must decide, from the manifest:
+// THE GAME IS DEALT, NOT POSED. The debug surface's `deal()` is a pose, and a pose
+// runs between frames with no route to the engine's audio bus (`harness.ts`), so it
+// would never raise this cue whatever the build does. The deal read here is the one
+// the HUD's `NEW GAME` control performs (specs/screens.md), inside a frame's own
+// update, which is the path a player takes.
 //
-//   Dealing plays the deal cue
+// THE TABLE IS EMPTY AND QUIET. `openTable` leaves all thirteen piles empty on the
+// `playing` screen, so nothing on the board can raise a cue of any name during the
+// lead, and the only event in the whole scenario is the deal.
 //
-//   A deal plays deal on the frame it happens.
+// WHAT THIS DOES NOT DECIDE. That the `NEW GAME` control is drawn, labelled, and
+// placed in its rectangle, and that the deal it performs lays out the twenty-eight
+// tableau cards correctly, belong to the `screens` and `deal` groups. This point
+// reads the cue alone, and asks of the deal only that it happened.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { CUES, DOUBLE_CLICK_WINDOW, HUD_NEW_GAME } from "../../src/constants";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  framesFor,
+  openTable,
+  tapPointer,
+  watchCues,
+  type Harness,
+} from "../harness";
+import { centerOf, playedBefore, playedOn } from "./cues";
 
-it("audio.cue-deal — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/audio/cue-deal.test.ts is a scaffold stub, not a validator",
+/**
+ * Frames of silence driven on the empty table before the control is clicked.
+ *
+ * A whole `DOUBLE_CLICK_WINDOW` (`0.30` s, specs/controls.md), which is the longest
+ * span this case fixes anywhere — the launch interval, the only other duration in
+ * the case, is `0.18` s (specs/victory.md). So a build that sounds a cue on any
+ * period the case names has to cross a window longer than its own period without
+ * sounding anything.
+ */
+const QUIET_LEAD = framesFor(DOUBLE_CLICK_WINDOW);
+
+/** A point inside the HUD's `NEW GAME` rectangle (specs/controls.md). */
+const NEW_GAME = centerOf(HUD_NEW_GAME);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("plays CUES.deal on the frame a fresh game is dealt, and not before", async () => {
+  const cues = watchCues(h);
+  openTable(h);
+  await h.advance(QUIET_LEAD);
+
+  await tapPointer(h, NEW_GAME.x, NEW_GAME.y);
+  const at = h.engine.frame().count;
+  captureStill(h, "deal");
+
+  assertGreaterThan(
+    h.snapshot().tableau.flat().length,
+    0,
+    "cards on the tableau after the NEW GAME click, which is the deal whose " +
+      "cue this point reads (specs/screens.md, specs/deal.md)",
+  );
+  assertEqual(
+    playedBefore(cues, at, CUES.deal),
+    0,
+    `times CUES.deal played over the ${String(QUIET_LEAD)} frames before the ` +
+      "click, on an empty table where nothing happened at all " +
+      "(specs/audio.md: a cue is played on the frame its event happens)",
+  );
+  assertEqual(
+    playedOn(cues, at, CUES.deal),
+    1,
+    "times CUES.deal played on the frame the fresh game was dealt, which is " +
+      "its own frame and at most once on it (specs/audio.md)",
   );
 });
