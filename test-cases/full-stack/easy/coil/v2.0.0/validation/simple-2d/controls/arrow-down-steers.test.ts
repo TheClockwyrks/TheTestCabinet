@@ -1,31 +1,43 @@
-/*
- * Coil validator: `controls.arrow-down-steers`. PLACEHOLDER.
- *
- * ArrowDown steers down.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * ArrowDown on the playing screen requests a turn to down, which the next tick
- * applies from a horizontal heading.
- *
- * HOW:
- * pose the chain facing right, dispatch ArrowDown, run one tick, and read dir.
- *
- * MEDIA IT MUST CAPTURE: down (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// controls/arrow-down-steers — ArrowDown requests a turn to down.
+//
+// specs/controls.md binds `ArrowDown` to the `down` action and, on the `playing`
+// screen, makes `down` "Request a turn to `down`".
+// specs/movement.md then has step 1 of the next tick take that request and apply
+// it, "only when it is perpendicular to the direction the snake is travelling in
+// on this tick" — so the chain is posed on a horizontal heading, where `down`
+// is perpendicular and the turn is one the rules accept.
+//
+// `ArrowDown` is one of the two keys `specs/controls.md` binds to `down`; the
+// other set is its own point, because a build that bound only one of them is
+// still playable on that one.
+//
+// `steering.ts` states what is posed and why the snake's travel is held still.
 
-test("controls.arrow-down-steers", () => {
-  throw new Error(
-    "validator not implemented: controls/arrow-down-steers.test.ts",
-  );
+import { afterEach, beforeEach, it } from "vitest";
+import { BINDINGS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import { createHarness, type Harness } from "../harness";
+import { steerOnce } from "./steering";
+
+/** The key this point is about, as `specs/controls.md` binds it. */
+const KEY = BINDINGS.down[0];
+
+/** The heading the chain is posed on, which `down` is perpendicular to. */
+const FROM = "right";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("turns the snake down on the tick after ArrowDown is pressed", async () => {
+  const drive = await steerOnce(h, KEY, FROM, "down");
+
+  assertEqual(drive.posed.dir, FROM, "the heading the request is made on");
+  assertEqual(drive.after.dir, "down", "the direction the tick applied");
 });
