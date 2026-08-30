@@ -1,32 +1,74 @@
-/*
- * Coil validator: `combo.window-open-at-27-ticks`. PLACEHOLDER.
- *
- * The window is still open after 27 ticks.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * 27 ticks after an eat the window is still open, so a pellet eaten on that
- * tick raises M rather than resetting it.
- *
- * HOW:
- * pose a full window at a known multiplier, run 27 ticks with the snake held
- * still, then eat and read the multiplier.
- *
- * MEDIA IT MUST CAPTURE: open (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// combo/window-open-at-27-ticks — the window is still open one tick short of its
+// budget.
+//
+// specs/scoring.md: the window is `COMBO_WINDOW` (3.5 s) of simulation time, step
+// 6 draws `TICK_SECONDS` off it each tick, "so the window is a budget of 28 ticks,
+// which is 28 cells of travel", and it "is open while time remains on it".
+// Twenty-seven ticks leave `0.125` of a second on it, so it is open, and an eat on
+// that tick raises `M` instead of resetting it.
+//
+// THE NEAR EDGE OF THE BUDGET, and the far edge is `window-lapses-at-28-ticks`.
+// The two are separate points because they catch opposite off-by-ones: a build
+// that lapses a tick early takes a combo away from a player who made the deadline,
+// and one that lapses a tick late hands out a combo that was not earned.
+//
+// The snake is held still while the window drains, so the reading is about the
+// budget rather than about how far a chain can run before it meets a wall; travel
+// is turned back on for the eat itself, which is the tick under test.
 
-test("combo.window-open-at-27-ticks", () => {
-  throw new Error(
-    "validator not implemented: combo/window-open-at-27-ticks.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
+import { COMBO_WINDOW, TICK_SECONDS } from "../constants";
+import {
+  arrangeEat,
+  captureReplay,
+  createHarness,
+  type Harness,
+} from "../harness";
+
+/** The multiplier in force, clear of both the opening 1 and the cap. */
+const COMBO = 2;
+
+/** Ticks spent off a full window before the eat: one short of its budget. */
+const SPENT = 27;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("raises the multiplier on an eat 27 ticks after the window opened", async () => {
+  await arrangeEat(h, {
+    combo: COMBO,
+    comboWindow: COMBO_WINDOW,
+    travel: false,
+  });
+
+  const run = await captureReplay(h, "open", async () => {
+    const waited = await h.tick(SPENT);
+    await h.debug.setSnakeTravel(true);
+    return { waited, eaten: await h.tick() };
+  });
+
+  // Still open, and the multiplier has not lapsed, one tick short of the budget.
+  assertCloseTo(
+    run.waited.comboWindow,
+    COMBO_WINDOW - SPENT * TICK_SECONDS,
+    9,
+    `the window after ${SPENT} ticks`,
   );
+  assertGreaterThan(
+    run.waited.comboWindow,
+    0,
+    `the window after ${SPENT} ticks`,
+  );
+  assertEqual(run.waited.combo, COMBO, `the multiplier after ${SPENT} ticks`);
+
+  // So the eat on the next tick meets an open window and raises M.
+  assertEqual(run.eaten.combo, COMBO + 1, "the multiplier the eat resolved at");
 });
