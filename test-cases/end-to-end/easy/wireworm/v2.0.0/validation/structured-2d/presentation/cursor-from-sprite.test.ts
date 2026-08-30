@@ -56,12 +56,12 @@ const CURSOR_FRAME = 0;
  * specs/assets.md says the cursor is "drawn upright, never rotated", which fixes
  * no tolerance because it admits of none: the figure here is only room for the
  * arithmetic, since a build composes its own placement with the fit the engine
- * already put on the context. `0.0175` is the sine of one degree — far below
- * anything a player would call a tilt, and orders of magnitude above the
- * rounding of a matrix multiply. The `none` and `simple-2d` suites read the same
- * figure.
+ * already put on the context. `1e-3` is a shear of about a twentieth of a
+ * degree: three orders of magnitude above the rounding of a matrix multiply, and
+ * far below any tilt a player could see. The `none` and `simple-2d` suites read
+ * the same figure.
  */
-const UPRIGHT_MAX = 0.0175;
+const UPRIGHT_MAX = 1e-3;
 
 let h: Harness;
 
