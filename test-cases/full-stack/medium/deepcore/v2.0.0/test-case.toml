@@ -4014,9 +4014,10 @@ title = "An L-bend keeps a convex nub of dirt"
 description = "At an L-bend or a T-junction, where solid rock pokes diagonally into the bend, the dirt keeps a convex nub bulging into the tunnel rather than a scooped-out concave notch."
 domains = ["presentation"]
 failure_cap = "great"
-# Automated validation: pose an L-bend of open cells and sample the drawn
-# corner against the diagonal rock, holding the dirt bulging into the tunnel
-# rather than away from it.
+# Automated validation: pose an L-bend of open cells, follow the dirt from the
+# shared corner along both edges and along the diagonal between them, and hold
+# the diagonal reach past the reach a corner cut off flat would have, so the
+# dirt bulges into the tunnel rather than away from it.
 validation = { script = "rendering/tunnel-corner-nub.test.ts", outputs = [
   { id = "bend", name = "The nub at an L-bend", kind = "image" },
 ] }

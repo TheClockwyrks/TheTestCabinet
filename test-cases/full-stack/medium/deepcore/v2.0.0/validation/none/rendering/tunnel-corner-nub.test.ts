@@ -20,20 +20,36 @@
 //
 //   1. From the shared corner, the dirt is followed along each of the two edges
 //      that run into the open passage, until it gives way to the tunnel fill.
-//      That gives the two points where the dirt's boundary meets those edges.
-//   2. The midpoint of the chord between those two points is sampled.
+//      That gives how far the dirt reaches along each edge, `A` and `B`.
+//   2. The dirt is followed again along the diagonal that leaves the corner
+//      between those two edges, giving how far it reaches there.
+//   3. The straight chord between the two edge points crosses that diagonal at
+//      `sqrt(2) * A * B / (A + B)`. That is the reach a corner cut off FLAT
+//      would have.
 //
-// A nub is a boundary that bows AWAY from the corner, so the chord's midpoint is
-// inside the dirt. A scooped notch is a boundary that bows TOWARD the corner, so
-// the chord's midpoint is out in the fill. The reading holds at any radius,
-// because both ends of the chord are measured from the build's own drawing.
+// A nub bows AWAY from the corner, so it reaches PAST the flat chord; a scooped
+// notch bows toward the corner and falls short of it. The comparison holds at any
+// radius, because every one of the three reaches is measured off the build's own
+// drawing, and it is a ratio of two of them.
+//
+// A chord read at its midpoint instead is not enough here. The scans cannot sit
+// exactly on the tile edges without reading the cells beyond them, and a shallow
+// scoop of a wide radius under-reads on an inset scan line by enough to drag the
+// midpoint back into the dirt. Rounding the bend the way an exterior corner is
+// rounded, which is the wrong curvature this point exists to catch, reads 0.86 of
+// the flat chord where the nub reads 1.35, so the ratio separates them and the
+// midpoint alone does not.
 //
 // The two colours the samples are read against — the dirt and the fill — come
 // from the same frame: the solid cell that pokes into the bend, and the centre of
 // the bend cell itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertBetween } from "../assert";
+import {
+  assertBetween,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+} from "../assert";
 import { TILE } from "../constants";
 import {
   DISTINCT_MIN,
@@ -45,7 +61,7 @@ import {
   type Rgb,
 } from "../harness";
 import { layRockField } from "./field";
-import { type StagePoint, meanAt, readsAs, stageOf } from "./sample";
+import { type StagePoint, readsAs, stageOf } from "./sample";
 
 /** How far from the corner a scan starts, so it never reads the corner itself. */
 const SCAN_FROM = 1;
@@ -53,14 +69,30 @@ const SCAN_FROM = 1;
 /** How far a scan runs before it gives up, in units: most of a tile. */
 const SCAN_TO = 40;
 
-/** How far into the open cell a scan line sits, off the edge it follows. */
-const SCAN_OFF = 2;
+/**
+ * How far into the open cell an edge scan line sits, off the edge it follows.
+ *
+ * One unit: the closest a scan can sit to the edge without reading the cell on
+ * the other side of it, and therefore the closest estimate of where the dirt's
+ * boundary actually meets the edge.
+ */
+const SCAN_OFF = 1;
 
 /** The least dirt an L-bend must keep along each edge for a nub to be there. */
 const NUB_MIN = 3;
 
 /** The most dirt a corner feature may run to before it is a wall, not a nub. */
 const NUB_MAX = 30;
+
+/**
+ * How far past the flat chord the dirt must reach along the diagonal for the
+ * corner to be a bulge rather than a flat cut or a hollow.
+ *
+ * A tenth: a quarter-disc nub reaches `sqrt(2)` times the chord and a corner cut
+ * off straight reaches exactly it, so a tenth asks for a boundary that is
+ * plainly bowed outward while leaving room for the units a scan is quantised to.
+ */
+const BULGE_MIN = 1.1;
 
 let h: Harness;
 
@@ -127,19 +159,19 @@ it("keeps a convex nub of dirt at the inside of an L-bend", async () => {
     fill,
   );
 
-  // The midpoint of the chord between the two boundary points the scans found.
-  const chordMid = {
-    x: corner.x - alongTop / 2,
-    y: corner.y + alongRight / 2,
-  };
-  const middle = await meanAt(h, [
-    chordMid,
-    { x: chordMid.x - 1, y: chordMid.y },
-    { x: chordMid.x + 1, y: chordMid.y },
-    { x: chordMid.x, y: chordMid.y - 1 },
-    { x: chordMid.x, y: chordMid.y + 1 },
-  ]);
+  // And along the diagonal that leaves the corner between those two edges.
+  const alongDiagonal = await dirtReach(
+    h,
+    { x: corner.x, y: corner.y },
+    { x: -Math.SQRT1_2, y: Math.SQRT1_2 },
+    dirt,
+    fill,
+  );
   await captureStill(h, "bend");
+
+  // Where the straight chord between the two edge points crosses that diagonal.
+  const flatChord =
+    (Math.SQRT2 * alongTop * alongRight) / (alongTop + alongRight);
 
   // The reading only says something where the two ends of it are apart.
   assertGreaterThan(
@@ -163,10 +195,11 @@ it("keeps a convex nub of dirt at the inside of an L-bend", async () => {
     "dirt kept along the bend's right edge, out from the corner the rock pokes into",
   );
 
-  // And it bulges: the chord between the two boundary points falls inside it.
-  assertEqual(
-    readsAs(middle, dirt, fill),
-    "dirt",
-    "the midpoint of the chord across the bend's dirt carrying dirt, so the nub bulges into the tunnel rather than being scooped out of it",
+  // And it bulges: along the diagonal the dirt reaches past the flat chord
+  // rather than falling short of it.
+  assertGreaterThanOrEqual(
+    alongDiagonal / flatChord,
+    BULGE_MIN,
+    "the dirt's reach along the bend's diagonal over the reach a corner cut off flat would have, so the nub bulges into the tunnel rather than being scooped out of it",
   );
 });
