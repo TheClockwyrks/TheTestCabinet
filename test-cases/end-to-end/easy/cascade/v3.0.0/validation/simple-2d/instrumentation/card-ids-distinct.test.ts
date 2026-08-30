@@ -1,23 +1,67 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/instrumentation/card-ids-distinct.test.ts
+// instrumentation/card-ids-distinct — every card on a dealt board carries an id of
+// its own.
 //
-// The review item `instrumentation.card-ids-distinct` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/instrumentation.md "Identity": every card carries an `id`, "a number,
+// distinct among the entities live at any moment, reported by `snapshot` and taken
+// by every per-entity operation". Two cards sharing a number make
+// `setCardFaceUp(id, ...)` and `removeCard(id)` ambiguous, so every per-card
+// operation in this suite rests on this one holding.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// A DEALT BOARD IS THE HARDEST CASE THE GAME PRODUCES ON ITS OWN. A deal creates
+// all fifty-two cards in one call (specs/deal.md), which is where a build that
+// numbers cards from a counter it forgot to advance, or that derives an id from a
+// rank and a suit it later reuses, is caught. The board is dealt through the
+// surface's own `deal()` rather than posed a card at a time, because a table posed
+// by fifty-two `addCard` calls would decide the point about `addCard` instead.
 //
-// What this item must decide, from the manifest:
-//
-//   Every card carries a distinct id
-//
-//   On a full dealt board, the fifty-two ids are all different.
+// THE COUNT IS A PRECONDITION, NOT THE REQUIREMENT. The scenario needs a full board
+// to read fifty-two ids off; whether a deal lays out fifty-two cards is
+// `deal.full-deck`'s point.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { DECK_SIZE } from "../../src/constants";
+import { assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  tableCards,
+  type Harness,
+} from "../harness";
 
-it("instrumentation.card-ids-distinct — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/instrumentation/card-ids-distinct.test.ts is a scaffold stub, not a validator",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("gives every one of the fifty-two dealt cards a distinct id", async () => {
+  h.debug.reset();
+  h.debug.setScreen("playing");
+  h.debug.deal();
+
+  const dealt = h.snapshot();
+
+  // The dealt board the ids were read from.
+  await h.advance(1);
+  captureStill(h, "dealt");
+
+  const cards = tableCards(dealt);
+  assertLength(
+    cards,
+    DECK_SIZE,
+    "the cards a deal puts on the table, which is the whole deck " +
+      "(specs/deal.md)",
+  );
+
+  const ids = cards.map((card) => card.id);
+  assertLength(
+    [...new Set(ids)],
+    ids.length,
+    "the distinct ids among the cards on the table: every card's id is " +
+      "distinct from every other's (specs/instrumentation.md)",
   );
 });
