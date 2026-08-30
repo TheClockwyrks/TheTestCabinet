@@ -1,20 +1,65 @@
-// Wireworm — foes.glitch-arrives, under the `structured-2d` engine. CASE-PROVIDED.
+// foes/glitch-arrives — a glitch arrives once the level gate opens.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/foes.md: "From that level on, a glitch enters after an interval drawn
+// from the run's seeded generator between GLITCH_MIN_INTERVAL (7.0 s) and
+// GLITCH_MAX_INTERVAL (12.0 s), timed from the moment the level's play becomes
+// active." The upper end of that interval is the bound this check holds the
+// build to, and it holds for every seed: whatever the generator draws, it draws
+// below GLITCH_MAX_INTERVAL.
 //
-// The point it decides, from `test-case.toml`:
-//
-// A glitch arrives at level 2
-//
-// With setFoeSpawning(true) at level 2, a glitch joins the roster within
-// GLITCH_MAX_INTERVAL (12 s).
+// The requirement IS the level's own spawning, so this is one of the few checks
+// that turns `setFoeSpawning` back on. Nothing else is posed: the board
+// `startPlaying` leaves is empty and quiet, so a glitch on it is one the level
+// brought in.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { GLITCH_FROM_LEVEL, GLITCH_MAX_INTERVAL } from "../../src/constants";
+import {
+  captureStill,
+  createHarness,
+  resetTo,
+  startPlaying,
+  ticksFor,
+  type Harness,
+} from "../harness";
+import { foesOfKind, untilFoeOfKind } from "./harness";
 
-test("foes.glitch-arrives", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/structured-2d/foes/glitch-arrives.test.ts has not been written yet",
+/** The level watched: the one the glitches begin at. */
+const LEVEL = GLITCH_FROM_LEVEL;
+
+/** How often the roster is read: a twentieth of a second. */
+const POLL_FRAMES = ticksFor(0.05);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("brings a glitch in within the longest interval the spec allows", async () => {
+  resetTo(h);
+  startPlaying(h);
+  h.debug.setLevel(LEVEL);
+  h.debug.setFoeSpawning(true);
+
+  const arrival = await untilFoeOfKind(
+    h,
+    "glitch",
+    ticksFor(GLITCH_MAX_INTERVAL),
+    POLL_FRAMES,
+  );
+  captureStill(h, "arrival");
+
+  assertEqual(
+    arrival.hit,
+    true,
+    `a glitch joins the roster within GLITCH_MAX_INTERVAL ` +
+      `(${GLITCH_MAX_INTERVAL} s) of level-${LEVEL} play; the roster held ` +
+      `${foesOfKind(arrival.snapshot, "glitch").length} when the sweep ran out`,
   );
 });
