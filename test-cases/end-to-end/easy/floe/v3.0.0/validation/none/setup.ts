@@ -1,13 +1,17 @@
-// Floe — the engineless validator project's per-worker setup. SCAFFOLD STUB.
+// Floe — per-suite scaffolding for the browser the checks drive. CASE-PROVIDED.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real per-worker setup: the teardown that returns this worker's page to the
-// shared browser when its suite file is done. Carom v3.0.0's
-// `validation/none/setup.ts` is the worked example.
+// `globalSetup.ts` owns the one server and the one Chromium; each suite file runs
+// in a worker of its own and connects to that browser to open a page. This gives
+// every suite the matching teardown without asking a suite author to remember it:
+// when the file's last test has run, the page and the connection go back.
 //
-// Until then it THROWS, for the same reason `globalSetup.ts` does.
+// It is a `setupFiles` entry rather than something the harness does on its own
+// because there is no other moment to do it in — a worker has no lifecycle hook
+// of its own, and a harness cannot know it built the last one.
 
-throw new Error(
-  "Floe: validation/none/setup.ts is a scaffold stub and has not been " +
-    "implemented. The Validators stage replaces it.",
-);
+import { afterAll } from "vitest";
+import { closeWorkerBrowser } from "./harness";
+
+afterAll(async () => {
+  await closeWorkerBrowser();
+});
