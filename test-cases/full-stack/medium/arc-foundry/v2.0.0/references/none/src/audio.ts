@@ -16,7 +16,6 @@ export class Audio {
   private buffers = new Map<Name, AudioBuffer>();
   private musicSource: AudioBufferSourceNode | null = null;
   private started = false;
-  private lastPlay = new Map<Name, number>(); // debounce identical cues in a frame
   muted = false;
 
   constructor(private readonly urls: Record<Name, string>) {}
@@ -81,15 +80,14 @@ export class Audio {
     if (!this.muted && this.started && !this.musicSource) this.startMusic();
   }
 
+  // Sound one cue on the update that raised it (specs/ui.md). How often that happens is
+  // the simulation's to decide, and it raises each cue at most once an update, so nothing
+  // here gates a play on how recently the same cue last sounded. A wall-clock gate drops
+  // a cue the game did raise, and every update that raises one plays it.
   play(cue: Cue): void {
     if (!this.ctx || !this.master || this.muted) return;
     const buf = this.buffers.get(cue);
     if (!buf) return;
-    const now = this.ctx.currentTime;
-    // Debounce a flood of identical cues in the same instant (e.g. many shots a tick).
-    const last = this.lastPlay.get(cue) ?? -1;
-    if (now - last < 0.03) return;
-    this.lastPlay.set(cue, now);
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     const g = this.ctx.createGain();
