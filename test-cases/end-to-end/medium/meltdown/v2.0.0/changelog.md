@@ -72,12 +72,22 @@ direction: a build whose pause menu opens over a floor that keeps running, the
 defect the item exists to catch, passed outright whenever the step happened to be
 gated.
 
-That fix is now a rule the whole case is built to. Any item about whether time
-passes settles over a real window on the build's own clock, in two legs of equal
-length, and never calls the stepping operation. A running leg the floor must
-really travel in comes first, then a paused leg whose positional drift and
-simulated-clock gain must both stay under a ceiling, with both readings taken
-from the one snapshot on the press so the pair spans the paused window and
+That fix is now a rule the whole case is built to: an item about whether time
+passes is measured on the clock the player's game actually runs on, never through
+the stepping operation, because the stepping operation is instrumentation and the
+question is about the game. Which clock that is differs by engine, and the rule
+is the same either way. Under `none` the clock operations belong to the surface
+the build wrote and can be gated apart from its own frame loop, so such an item
+hands the clock back with `setAutoStep(true)`, spends the window in real time,
+and never calls `advance`. Under either engine `engine.advance` is the engine's
+own frame loop with a clock of the suite's own, running the identical frame a
+player's frame runs, so it is the player's clock and the item advances through
+it.
+
+The window is two legs of equal length on whichever clock that is. A running leg
+the floor must really travel in comes first, then a paused leg whose positional
+drift and simulated-clock gain must both stay under a ceiling, with both readings
+taken from the one snapshot on the press so the pair spans the paused window and
 nothing else. The running leg is what stops a dead floor passing vacuously, and
 the tolerances are non-zero on purpose because the pause and the position are
 read a round trip apart. Five items carry it: the two pause items, the resume,

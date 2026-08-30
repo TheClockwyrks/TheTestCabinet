@@ -147,12 +147,17 @@ thermal and pathing expectation is derived from the specs rather than from a
 number the reference produced.
 
 One rule governs every item about whether time passes, and it is the lesson
-`v1.0.0` bought. Such an item settles over a real window on the build's own
-clock, in two legs of equal length, and never calls the stepping operation:
-stepping is instrumentation, and the question is about the game. The pair is a
-running leg the floor must really travel in and a paused leg whose drift and
-simulated-clock gain must both stay under a ceiling, with both readings taken
-from the one snapshot on the press.
+`v1.0.0` bought: the reading is taken on the clock the player's game actually
+runs on, never through the stepping operation, because stepping is
+instrumentation and the question is about the game. Under `none` the clock
+operations are the build's own and can be gated apart from its frame loop, so
+such an item hands the clock back with `setAutoStep(true)`, spends the window in
+real time, and never calls `advance`. Under either engine `engine.advance` is the
+engine's own frame loop running the identical frame a player's frame runs, so it
+is the player's clock and the item advances through it. Either way the window is
+two legs of equal length: a running leg the floor must really travel in, and a
+paused leg whose positional drift and simulated-clock gain must both stay under a
+ceiling, with both readings taken from the one snapshot on the press.
 
 `validation-baseline/<engine>/<variant>/` holds the media the same suites
 captured from that engine's reference build, so a reviewer sees the build's
