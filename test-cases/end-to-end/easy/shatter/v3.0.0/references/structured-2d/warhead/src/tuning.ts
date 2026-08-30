@@ -8,8 +8,14 @@
 // recycled rock is aimed back into the field, and how long an awarded ship is
 // announced for.
 
-/** How far ahead of the ship's centre a round leaves, inside `SHIP_R`. */
-export const NOSE_OFFSET = 12.6;
+/**
+ * How far ahead of the ship's centre a round leaves.
+ *
+ * `specs/weapons.md` bounds it at `SHIP_R` (`14`) and leaves the rest to the
+ * build. This sits well inside that bound, so a round is still inside the ship's
+ * own radius on the tick AFTER the one it left on, whenever it is read.
+ */
+export const NOSE_OFFSET = 9;
 
 /**
  * The standoff the saucer's steering keeps from the star's centre.
