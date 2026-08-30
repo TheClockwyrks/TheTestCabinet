@@ -1,0 +1,217 @@
+# Deepcore — The mine, its bands, its tiles, and the surface
+
+This file defines the world the game plays in: the tile grid and its coordinate
+space, the camera over it, the world sizes, the four depth bands and the Core
+chamber, every tile kind, what generation places where, and the surface camp.
+Every figure below carries the name this specification gives it.
+
+## The tile grid
+
+The world is a grid of square tiles `TILE` (`80`) logical units on a side. A cell
+is addressed by `col` and `row`, and the cell `(col, row)` occupies the world-space
+rectangle `x` in `[col * TILE, col * TILE + TILE]`, `y` in
+`[row * TILE, row * TILE + TILE]`.
+
+| Figure | Name | Value |
+| --- | --- | --- |
+| Grid width in columns | `WORLD_COLS` | `32` |
+| World width in units | `WORLD_W` (`WORLD_COLS * TILE`) | `2560` |
+| Playable columns | — | `1` through `30` |
+| Border columns | — | `0` and `31` |
+| Deepest row, at the Standard size | `STANDARD_ROWS` | `500` |
+| Metres of depth per row | `METERS_PER_ROW` | `5` |
+| World `y` of the surface ground line | `SURFACE_Y` (`TILE`) | `80` |
+
+`Row 0` is the surface: open sky and camp ground, where the buildings stand and
+the miner spawns. `Row 1` is the first row of ground. The deepest row is
+`coreRow`, the Core chamber, set by the world size below; rows `1` through
+`coreRow - 1` are minable. Depth is reported to the player in metres, and a miner
+whose feet rest at world `y` is at `max(0, (y - SURFACE_Y) / TILE * METERS_PER_ROW)`
+metres, so the top of `row r` is at `METERS_PER_ROW * (r - 1)` metres.
+
+The grid is `WORLD_W` (`2560`) units wide and the viewport is `VIEW_W` (`1280`)
+wide, so about half the mine's width is on screen at once and the world scrolls
+horizontally as well as vertically.
+
+## The camera
+
+{{#if (eq engine.slug "structured-2d")}}
+The view over the world is the engine's camera, positioned by the game each
+frame. It is left at `zoom` `1` and no rotation, so a world unit and a logical
+unit are the same length and the camera's position is the world point at the
+centre of the viewport.
+{{else}}
+The view over the world is the game's own. A world position `(wx, wy)` is drawn
+at the viewport position `(wx - camX, wy - camY + HUD_H)`, so the camera is the
+world-space point drawn at the top-left corner of the viewport.
+{{/if}}
+
+The camera follows the miner in both axes. Let `mx` and `my` be the miner's
+centre in world space and `vy` its vertical velocity.
+
+- Horizontally the miner is centred:
+  `camX = clamp(mx - VIEW_W / 2, 0, WORLD_W - VIEW_W)`.
+- Vertically the camera leads the miner's travel:
+  `camY = clamp(my - VIEW_H / 2 + lead, -Infinity, (coreRow + 1) * TILE - VIEW_H)`.
+
+`lead` is a signed distance in units, positive downward, carried across frames and
+starting at `0`. Each update it moves toward `leadTarget` at a rate that depends
+on which way it is moving:
+
+| Quantity | Name | Value |
+| --- | --- | --- |
+| Full lead | `CAM_LEAD_MAX` | `212` |
+| Seconds of sustained travel to reach full lead | `CAM_LEAD_RAMP` | `2` |
+| Rate multiplier while `lead` moves toward `0` | `CAM_UNWIND_MULT` | `4` |
+| Speed below which the miner counts as still | `CAM_STILL_SPEED` | `40` |
+
+- `leadTarget` is `0` while `abs(vy) <= CAM_STILL_SPEED`, and otherwise
+  `sign(vy) * CAM_LEAD_MAX`.
+- `lead` moves toward `leadTarget` at `CAM_LEAD_MAX / CAM_LEAD_RAMP` units per
+  second while the move takes it away from `0`, and at
+  `CAM_UNWIND_MULT` times that rate while the move takes it toward `0`. It never
+  overshoots `leadTarget` within an update.
+
+A sustained descent therefore rides the miner up the view until its leading edge
+sits about one tile from the top of the viewport, so the floor of a shaft or a
+lava seam comes into view early; a sustained climb rides it symmetrically down. A
+brief hop barely leads, and boring straight down at near-zero velocity holds the
+miner at the centre. The build in one direction is driven by time, not by speed,
+so a slow drift and a fast plunge reach full lead over the same two seconds.
+
+There is no ceiling above the surface, so the camera has no upper clamp and
+follows the miner up into the open sky.
+
+## World size
+
+The player chooses a world size before the expedition starts. The size scales
+only how deep the mine goes. The bands, the hazards, the ore mix, the economy,
+the upgrades, and the rocket are identical at every size.
+
+| Size | `WORLD_SIZE_SCALE` | `coreRow` | Core depth |
+| --- | --- | --- | --- |
+| `quick` | `0.5` | `250` | `1250` m |
+| `standard` | `1` | `500` | `2500` m |
+| `marathon` | `2` | `1000` | `5000` m |
+
+`coreRow` is `round(STANDARD_ROWS * WORLD_SIZE_SCALE)`. Everything else in this
+specification that varies with depth is expressed as a depth fraction rather than
+a row, so it is identical in shape at every size:
+
+`depthFraction(row) = (row - 1) / (coreRow - 1)`, which runs `0` at `row 1` to `1`
+at the deepest minable row.
+
+The chosen size is part of the expedition, so it is carried in the save and reused
+when an expedition is replayed.
+
+## The four depth bands and the Core chamber
+
+The minable rows are divided into four equal bands. The band index of a minable
+row is `min(3, floor(4 * depthFraction(row)))`, so at the Standard size:
+
+| Band | Index | Rows (Standard) | `BAND_HEALTH` | Hazards | Material | Gemstone |
+| --- | --- | --- | --- | --- | --- | --- |
+| Topsoil | `0` | `1`–`125` | `4` | none | — | none |
+| Rockbed | `1` | `126`–`250` | `8` | gas | Resonite | Verdite |
+| Deepstone | `2` | `251`–`375` | `12` | gas, lava | Cryenite | Roselite |
+| Coreshell | `3` | `376`–`499` | `16` | gas, lava | — | Aurite |
+
+`BAND_HEALTH` is the health of every minable tile in the band, which the drill
+removes in damage-per-hit chunks, so a deeper band takes more hits, and so more
+time and more fuel, to break.
+
+The Core chamber is `row coreRow`. Every cell of it is bedrock border except the
+Core tile, which sits at `CORE_COL` (`16`).
+
+## Tile kinds
+
+A cell's kind is fixed when the world is generated, except that a minable cell
+becomes an empty tunnel once it is drilled out.
+
+| Kind | Minable | Passable | Holds |
+| --- | --- | --- | --- |
+| `bedrock` | no | no | Columns `0` and `31`, and the Core chamber row apart from the Core tile. |
+| `rock` | yes | no | The plain rock of the row's band. Yields nothing. |
+| `ore` | yes | no | One unit of a named ore or gemstone, banked in cargo when the tile breaks. |
+| `material` | yes | no | One exotic material, Resonite or Cryenite, banked in the satchel when the tile breaks. |
+| `gas` | yes | no | A gas pocket. Breaking it detonates instead of clearing cleanly. |
+| `lava` | yes | no | Molten rock. Contact and drilling through both cost hull. |
+| `stone` | no | no | An unbreakable boulder inside the playable field. |
+| `core` | no | no | The Core, at `(CORE_COL, coreRow)`. Drilling downward onto it extracts a Core Sample and leaves the tile in place. |
+| `tunnel` | — | yes | Open space, either carved or original. |
+
+Every minable kind carries a health, starting at its band's `BAND_HEALTH` and
+falling as the drill hits it. Health persists on the cell: a partly drilled tile
+keeps its remaining health when the miner leaves and resumes from there.
+
+Unbreakable stone sits inside the playable field rather than at its border, so a
+vertical shaft that meets one has to jog sideways past it. No drill breaks it, but
+the explosives field supplies clear it.
+
+A cell may also carry a ground item resting on it. A jettisoned Core Sample is the
+only one. A ground item is not a tile kind and rides on top of an open tunnel.
+
+## What generation places
+
+The mine is generated fresh for each expedition from the current seed, within the
+rules below. There is no fixed map.
+
+- Every cell of columns `1`–`30`, rows `1` through `coreRow - 1`, is minable
+  unless a rule below makes it something else.
+- `(CAVE_MOUTH_COL, 1)` (`26`, `1`) is an open tunnel: the way down out of the
+  camp.
+- Ore veins occupy `ORE_DENSITY` (`0.14`) of the minable cells, the same share at
+  every depth, so the share of rock that is ore never spikes in one stratum. No
+  ore appears above `ORE_MIN_ROW` (`4`), so the first three rows of ground are
+  plain rock.
+- Unbreakable stone occupies a share of the minable cells that rises linearly with
+  `depthFraction` from `STONE_DENSITY_MIN` (`0.02`) at the top of the rockbed to
+  `STONE_DENSITY_MAX` (`0.08`) at the bottom of the coreshell, and none appears in
+  the topsoil.
+- Gas pockets occupy a share rising linearly from `GAS_DENSITY_MIN` (`0.004`) at
+  the top of the rockbed to `GAS_DENSITY_MAX` (`0.012`) at the bottom of the
+  coreshell, and none appears in the topsoil.
+- Lava occupies a share rising linearly from `LAVA_DENSITY_MIN` (`0.03`) at the
+  top of the deepstone to `LAVA_DENSITY_MAX` (`0.10`) at the bottom of the
+  coreshell, and none appears above the deepstone. Lava cells cluster into pools
+  rather than scattering as single cells.
+- Exactly one Resonite node exists, at a random minable cell of the rockbed band,
+  and exactly one Cryenite node exists, at a random minable cell of the deepstone
+  band. Neither sits at a fixed cell, and both are always present.
+
+Two properties hold in every generated mine, at every size and every seed:
+
+- From the cave mouth there is a path to each material node and to the Core that
+  crosses only minable cells that are neither lava nor unbreakable stone, so a
+  route down is always diggable without drilling lava or blasting a boulder.
+- No band is sealed across its full width by lava or unbreakable stone.
+
+Every measurable share above holds within `DENSITY_TOLERANCE` (`0.25`) of the
+stated value, measured relative to that value over a whole band.
+
+## The surface
+
+`Row 0` is the camp: scrapped ground under a dim sky, open space the miner walks
+and hovers across. Nothing is drilled up here, and there is no ceiling above it.
+
+Six buildings stand in the camp. The miner activates one by standing at it, and
+each opens an overlay panel except the Save Pad, which saves on the spot.
+
+| Building | Id | Does |
+| --- | --- | --- |
+| Fuel Depot | `fuel-depot` | Buys jetpack fuel and hull repair for Credits. |
+| Ore Market | `ore-market` | Sells the whole cargo for Credits. |
+| Save Pad | `save-pad` | Saves the expedition to its single slot. No panel. |
+| Upgrade Shop | `upgrade-shop` | Buys the next tier on any of the seven upgrade tracks. |
+| Supply Depot | `supply-depot` | Buys the six single-use field supplies. |
+| Launch Pad | `launch-pad` | Fabricates the next rocket component, and launches. |
+
+Each building's footprint is a rectangle in world space. Where the six sit along
+the camp is yours, subject to all of the following:
+
+- Every footprint's base sits on the ground line: `y + h` equals `SURFACE_Y`
+  (`80`), and the building rises from there into the open sky.
+- Every footprint lies within columns `1`–`30` and covers no part of
+  `(CAVE_MOUTH_COL, 1)`.
+- No two footprints overlap, and any two footprints are separated horizontally by
+  at least `BUILDING_GAP` (`40`) units of clear ground.
