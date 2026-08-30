@@ -1,23 +1,77 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/handling/release-without-press.test.ts
+// handling/release-without-press — a release with nothing held changes nothing.
 //
-// The review item `handling.release-without-press` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/controls.md: "A release with nothing in hand and no control or stock under
+// its press changes nothing." A gesture runs from a press to the release that
+// follows it, so a release that follows no press has no gesture to end and no run to
+// resolve.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// WHERE THE RELEASE LANDS. Over a column that WOULD accept the run standing beside
+// it: the black six is the lowest card of the target column and the red five waits
+// in another, which is exactly the pairing specs/tableau.md has a column accept and
+// exactly the drop `handling/release-on-legal-completes` completes. So a build that
+// resolves a release against the piles whether or not anything is in hand — taking
+// the card nearest the release, say, or the last card it touched — moves the five
+// and fails here. Releasing over bare table would have let such a build pass.
 //
-// What this item must decide, from the manifest:
+// NOTHING IS PRESSED FIRST, which is the item: the release is the only pointer
+// operation this check drives, and `reset` leaves the last press cleared
+// (specs/instrumentation.md), so the release arrives with no press behind it.
 //
-//   A release with nothing held changes nothing
-//
-//   The board and drag are unchanged.
+// WHAT IS READ. The thirteen piles, the waste's set memory, the hand and the
+// reported drop target, before the release and after it.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertNull } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openTable,
+  poseColumn,
+  releasePoint,
+  type Harness,
+} from "../harness";
+import { boardAndHand } from "./board";
 
-it("handling.release-without-press — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/handling/release-without-press.test.ts is a scaffold stub, not a validator",
+/** The column holding the card a stray release might have moved. */
+const CARD_COLUMN = 0;
+const CARD = "5H";
+
+/** The column the release lands over, and the card that would accept the five. */
+const OVER_COLUMN = 3;
+const TARGET = "6S";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("leaves the board and the hand as they were on a release that follows no press", async () => {
+  openTable(h);
+  poseColumn(h, CARD_COLUMN, [CARD]);
+  poseColumn(h, OVER_COLUMN, [TARGET]);
+  const before = boardAndHand(h.snapshot());
+
+  const at = releasePoint(h.snapshot(), "tableau", OVER_COLUMN);
+  h.debug.pointerUp(at.x, at.y);
+  const after = h.snapshot();
+  await h.advance(1);
+  captureStill(h, "unchanged");
+
+  assertNull(
+    after.drag,
+    "the hand after a release that followed no press: nothing was held, and a " +
+      "release lifts nothing (specs/controls.md)",
+  );
+  assertDeepEqual(
+    boardAndHand(after),
+    before,
+    `the board and the hand after a release over column ${OVER_COLUMN}, which ` +
+      `would have accepted the ${CARD} had it been in hand: a release with ` +
+      "nothing in hand changes nothing (specs/controls.md)",
   );
 });
