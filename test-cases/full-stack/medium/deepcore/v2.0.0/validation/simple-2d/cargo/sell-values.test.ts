@@ -1,25 +1,75 @@
-// Deepcore — cargo.sell-values. STUB: NOT YET AUTHORED.
+// cargo/sell-values — a sale pays each unit its stated value.
 //
-// A sale pays each unit its stated value
+// specs/mining.md prints a value in Credits for each of the ten ores and each of
+// the three gemstones, and has `SELL` at the Ore Market convert the whole cargo
+// "to Credits at the values above". A gemstone "behaves exactly like an ore once
+// collected: it fills one cargo slot, carries its weight, and sells at the Ore
+// Market", so it is priced from the same reading.
 //
-// The Credits a sale pays are the sum of the held units at the values in
-// specs/mining.md, so a bay of three Ferron and one Aurite pays 28 times 3
-// plus 2460.
-//
-// Automated validation: pose a known mixed bay, sell and hold the Credits
-// gained against the sum of the stated values.
-//
-// `test-case.toml` declares this suite as `cargo/sell-values.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (credits (image)) around the drive.
+// The bay is posed as a known mix spanning the range of those tables — the
+// cheapest mineral, two from the middle, and the dearest gemstone — and the
+// Credits the sale pays are read against the sum of the printed values. The
+// balance opens at `0`, so what the sale pays is the whole of what is read.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  layCamp,
+  mineralOf,
+  openScene,
+  pinDrill,
+  pinMiner,
+  stageCargo,
+  standAtBuilding,
+  type Harness,
+  type Ore,
+} from "../harness";
 
-test("A sale pays each unit its stated value", () => {
-  throw new Error(
-    "Deepcore validator `cargo/sell-values` is declared in test-case.toml but has not been authored yet.",
-  );
+/** The bay posed: the cheapest mineral, two mid ones, and the dearest gemstone. */
+const HAUL: Partial<Record<Ore, number>> = {
+  ferron: 3,
+  cuprite: 2,
+  cobaltine: 1,
+  aurite: 1,
+};
+
+/** What those units are worth, as specs/mining.md prices them. */
+const VALUE = Object.entries(HAUL).reduce(
+  (sum, [ore, count]) => sum + mineralOf(ore as Ore).value * (count as number),
+  0,
+);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("pays the sum of the stated values of the units held", async () => {
+  openScene(h);
+  layCamp(h);
+  standAtBuilding(h, "ore-market");
+  pinMiner(h);
+  pinDrill(h);
+  stageCargo(h, HAUL);
+  h.debug.setPanel("ore-market");
+  await h.advance(1);
+
+  const before = h.snapshot();
+  assertEqual(before.credits, 0, "specs/gameplay.md");
+  assertEqual(before.creditsEarned, 0, "specs/gameplay.md");
+
+  h.debug.sell();
+  await h.advance(1);
+  captureStill(h, "credits");
+
+  const after = h.snapshot();
+  assertEqual(after.credits, VALUE, "specs/mining.md");
+  assertEqual(after.creditsEarned, VALUE, "specs/gameplay.md");
 });

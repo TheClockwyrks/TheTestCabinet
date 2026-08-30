@@ -1,25 +1,77 @@
-// Deepcore — cargo.full-bay-leaves-ore-behind. STUB: NOT YET AUTHORED.
+// cargo/full-bay-leaves-ore-behind — a full bay never hard-locks the mine.
 //
-// A full bay leaves ore behind and never hard-locks
+// specs/mining.md: drilling an ore cell banks one unit "when a slot is free", and
+// "when the bay is full by slot count the cell still clears to tunnel and the ore
+// is left behind, with a `cargo full` note shown". So a full bay costs the player
+// the ore rather than trapping the miner behind a cell that will not break.
 //
-// Drilling an ore cell with the bay full by slots still clears the cell to
-// open tunnel and simply leaves the ore behind, so a full bay never traps the
-// miner behind an undrillable cell.
-//
-// Automated validation: fill the bay to its cap, cut a posed ore cell through
-// and read the cell as tunnel with the cargo count unchanged.
-//
-// `test-case.toml` declares this suite as `cargo/full-bay-leaves-ore-behind.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (full (replay)) around the drive.
+// The bay is filled to exactly the cargo tier's capacity with one ore, and an ore
+// cell of a different ore is posed under the miner and cut through. The reading
+// is the cell — open tunnel, as any broken cell is — with the bay untouched: the
+// same slots used, the same load, and no unit of the ore that was left behind.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { CARGO_TIERS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  driveCut,
+  layOre,
+  mineralOf,
+  openScene,
+  pinMiner,
+  stageCargo,
+  standOn,
+  type Harness,
+} from "../harness";
 
-test("A full bay leaves ore behind and never hard-locks", () => {
-  throw new Error(
-    "Deepcore validator `cargo/full-bay-leaves-ore-behind` is declared in test-case.toml but has not been authored yet.",
+/** A column and a row well clear of the camp, the cave mouth, and the Core. */
+const COL = 8;
+const ROW = 12;
+
+/** The ore the bay is filled with, and the one the cut would have banked. */
+const HELD = "ferron";
+const CUT = "cuprite";
+
+/** The capacity at the tier a fresh expedition opens at. */
+const CAP = CARGO_TIERS[0];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("clears the cell and leaves the ore behind when the bay is full", async () => {
+  openScene(h);
+  stageCargo(h, { [HELD]: CAP });
+  layOre(h, COL, ROW, CUT);
+  standOn(h, COL, ROW);
+  pinMiner(h);
+
+  const before = h.snapshot();
+  assertEqual(before.cargo.slotCap, CAP, "specs/upgrades.md");
+  assertEqual(before.cargo.slotsUsed, CAP, "specs/mining.md");
+  assertEqual(h.tileAt(COL, ROW).ore, CUT, "specs/instrumentation.md");
+
+  const cut = await captureReplay(h, "full", () =>
+    driveCut(h, "down", { col: COL, row: ROW }),
+  );
+
+  // The cell broke like any other, so a full bay is not a wall.
+  assertEqual(cut.broke, true, "specs/mining.md");
+  assertEqual(cut.tile.kind, "tunnel", "specs/mining.md");
+  // And the ore went nowhere.
+  assertEqual(cut.snapshot.cargo.ore[CUT] ?? 0, 0, "specs/mining.md");
+  assertEqual(cut.snapshot.cargo.slotsUsed, CAP, "specs/mining.md");
+  assertEqual(
+    cut.snapshot.cargo.loadKg,
+    CAP * mineralOf(HELD).weightKg,
+    "specs/mining.md",
   );
 });

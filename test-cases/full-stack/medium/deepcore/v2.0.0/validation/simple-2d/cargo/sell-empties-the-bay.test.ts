@@ -1,24 +1,74 @@
-// Deepcore — cargo.sell-empties-the-bay. STUB: NOT YET AUTHORED.
+// cargo/sell-empties-the-bay — a sale takes the whole cargo.
 //
-// Selling converts the whole cargo and empties the bay
+// specs/mining.md: "`SELL` at the Ore Market converts the whole cargo to Credits
+// at the values above and empties the bay", and the bay is emptied by selling.
+// specs/gameplay.md names the Ore Market as the one Credits source and says the
+// sale empties the bay there too.
 //
-// The Ore Market sale takes the whole cargo, leaving no ore held, no slots
-// used and a load of 0.
-//
-// Automated validation: pose a mixed bay, sell, and read the ore map,
-// slotsUsed and loadKg back.
-//
-// `test-case.toml` declares this suite as `cargo/sell-empties-the-bay.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (sale (image)) around the drive.
+// The bay is posed as a mix of four minerals and a gemstone, so a build that
+// emptied only the ore it happened to look at would still be holding something
+// afterwards. The miner is stood on the Ore Market's own footprint — the surface
+// answers where that is, so no layout is assumed — and its panel is opened
+// through the surface rather than by pressing the activate control, since a build
+// with a broken activate key and a working sale must fail the panel points and
+// pass this one.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  layCamp,
+  openScene,
+  pinDrill,
+  pinMiner,
+  stageCargo,
+  standAtBuilding,
+  type Harness,
+  type Ore,
+} from "../harness";
 
-test("Selling converts the whole cargo and empties the bay", () => {
-  throw new Error(
-    "Deepcore validator `cargo/sell-empties-the-bay` is declared in test-case.toml but has not been authored yet.",
-  );
+/** The bay posed: four minerals from across the depth range, and a gemstone. */
+const HAUL: Partial<Record<Ore, number>> = {
+  ferron: 4,
+  cuprite: 3,
+  cobaltine: 2,
+  pyronium: 1,
+  verdite: 1,
+};
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("empties the bay of every ore it held", async () => {
+  openScene(h);
+  layCamp(h);
+  standAtBuilding(h, "ore-market");
+  pinMiner(h);
+  pinDrill(h);
+  stageCargo(h, HAUL);
+  h.debug.setPanel("ore-market");
+  await h.advance(1);
+
+  const before = h.snapshot();
+  assertEqual(before.panel, "ore-market", "specs/instrumentation.md");
+  assertLength(Object.keys(before.cargo.ore), 5, "specs/instrumentation.md");
+  assertEqual(before.cargo.slotsUsed, 11, "specs/mining.md");
+
+  h.debug.sell();
+  await h.advance(1);
+  captureStill(h, "sale");
+
+  const after = h.snapshot();
+  assertLength(Object.keys(after.cargo.ore), 0, "specs/mining.md");
+  assertEqual(after.cargo.slotsUsed, 0, "specs/mining.md");
+  assertEqual(after.cargo.loadKg, 0, "specs/mining.md");
+  assertEqual(after.miner.overloaded, false, "specs/character.md");
 });
