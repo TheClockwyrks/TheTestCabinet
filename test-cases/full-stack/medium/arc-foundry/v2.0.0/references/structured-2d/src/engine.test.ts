@@ -130,6 +130,44 @@ describe("the pointer", () => {
     expect(h.debug.snapshot().screen).toBe("mapselect");
   });
 
+  it("adds a structure to the combine set while the modifier is held", async () => {
+    h.debug.startRun();
+    h.debug.placeComponent("coil", 1, 10, 10);
+    h.debug.placeComponent("coil", 1, 14, 10);
+    const [first, second] = h.debug.snapshot().structures;
+    // The first press selects; the second, with the modifier held across it, adds.
+    await h.press(first!.cx, first!.cy);
+    await h.step();
+    h.hold("ShiftLeft");
+    await h.press(second!.cx, second!.cy);
+    await h.step();
+    h.release("ShiftLeft");
+    expect(h.debug.snapshot().selected).toBe(first!.id);
+    expect(h.debug.snapshot().combineSet).toEqual([first!.id, second!.id]);
+  });
+
+  it("reads the modifier as a level, so a held key still modifies later presses", async () => {
+    h.debug.startRun();
+    h.debug.placeComponent("coil", 1, 10, 10);
+    h.debug.placeComponent("coil", 1, 14, 10);
+    h.debug.placeComponent("coil", 1, 18, 10);
+    const [first, second, third] = h.debug.snapshot().structures;
+    await h.press(first!.cx, first!.cy);
+    await h.step();
+    h.hold("ShiftLeft");
+    // Two presses across one hold: an edge would have been spent by the first.
+    await h.press(second!.cx, second!.cy);
+    await h.step();
+    await h.press(third!.cx, third!.cy);
+    await h.step();
+    h.release("ShiftLeft");
+    expect(h.debug.snapshot().combineSet).toEqual([
+      first!.id,
+      second!.id,
+      third!.id,
+    ]);
+  });
+
   it("drops a held rock where the press lands", async () => {
     h.debug.startRun();
     h.tap("KeyB");
@@ -139,6 +177,30 @@ describe("the pointer", () => {
     const snap = h.debug.snapshot();
     expect(snap.structures).toHaveLength(1);
     expect(snap.structures[0]!.kind).toBe("candidate");
+  });
+});
+
+describe("the screens", () => {
+  it("opens the pause menu with the back action and resumes from its choice", async () => {
+    h.debug.startRun();
+    h.tap("Escape");
+    await h.step();
+    expect(h.debug.snapshot().screen).toBe("paused");
+    const resume = h.debug.menuButtons().find((c) => c.action === "resume")!;
+    await h.press(...center(resume));
+    await h.step();
+    const snap = h.debug.snapshot();
+    expect(snap.screen).toBe("playing");
+    expect(snap.paused).toBe(false);
+  });
+
+  it("holds the simulation clock still while a menu screen is showing", async () => {
+    h.debug.startRun();
+    await h.step(30);
+    const held = h.debug.snapshot().simTime;
+    h.tap("Escape");
+    await h.step(30);
+    expect(h.debug.snapshot().simTime).toBeCloseTo(held, 5);
   });
 });
 
