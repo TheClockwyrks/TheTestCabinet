@@ -472,7 +472,7 @@ function drawTitle(
   });
 }
 
-/** A dimmed hooked coil behind the title, so the board furniture is present. */
+/** A dimmed hooked coil beside the title menu, so board furniture is present. */
 function drawTitleCoil(ctx: CanvasRenderingContext2D, assets: Assets): void {
   const sprites = assets.snake;
   ctx.save();
@@ -485,7 +485,7 @@ function drawTitleCoil(ctx: CanvasRenderingContext2D, assets: Assets): void {
   ): void => {
     if (!image) return;
     ctx.save();
-    ctx.translate(630 + dx + CELL / 2, 320 + dy + CELL / 2);
+    ctx.translate(268 + dx + CELL / 2, 486 + dy + CELL / 2);
     ctx.rotate(angle);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(image, -CELL / 2, -CELL / 2, CELL, CELL);

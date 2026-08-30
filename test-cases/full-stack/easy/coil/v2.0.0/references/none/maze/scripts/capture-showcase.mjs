@@ -96,7 +96,7 @@ const BOT = String(function bot(durationMs, comboWanted) {
     return set;
   };
 
-  /** Breadth-first search from `from` to `to`, returning the first step taken. */
+  /** Breadth-first search from `from` to `to`, returning the first cell stepped to. */
   const routeTo = (from, to, walls) => {
     const previous = new Map();
     const start = key(from.col, from.row);
@@ -105,13 +105,14 @@ const BOT = String(function bot(durationMs, comboWanted) {
     while (queue.length > 0) {
       const at = queue.shift();
       if (at.col === to.col && at.row === to.row) {
-        let node = key(at.col, at.row);
-        let step = at;
-        while (previous.get(node) !== null) {
-          step = previous.get(node);
-          node = key(step.col, step.row);
+        // Walk the parents back until the one before this cell is the head.
+        let cell = at;
+        for (;;) {
+          const parent = previous.get(key(cell.col, cell.row));
+          if (!parent) return null;
+          if (key(parent.col, parent.row) === start) return cell;
+          cell = parent;
         }
-        return step;
       }
       for (const [col, row] of Object.values(DELTA)) {
         const next = { col: at.col + col, row: at.row + row };
@@ -175,20 +176,31 @@ const BOT = String(function bot(durationMs, comboWanted) {
     const started = performance.now();
     let lastTick = -1;
     let bestCombo = 1;
-    let comboSeen = false;
+    let deaths = 0;
+    let lastScreen = "title";
     const frame = () => {
       const state = api.snapshot();
       if (state.screen !== "playing") {
+        if (state.screen === "gameover" && lastScreen === "playing")
+          deaths += 1;
         press("Enter");
       } else if (state.ticks !== lastTick) {
         lastTick = state.ticks;
         bestCombo = Math.max(bestCombo, state.combo);
-        if (state.combo >= comboWanted) comboSeen = true;
         const dir = plan(state);
         if (dir && dir !== state.dir) press(KEY[dir]);
       }
-      if (performance.now() - started >= durationMs) {
-        resolve({ bestCombo, comboSeen });
+      lastScreen = state.screen;
+      const elapsed = performance.now() - started;
+      // A still wants a moment worth showing: stop as soon as the round has both
+      // a live combo and a coil long enough to read as one.
+      const posed =
+        comboWanted > 0 &&
+        state.screen === "playing" &&
+        state.combo >= comboWanted &&
+        state.snake.length >= 14;
+      if (elapsed >= durationMs || (posed && elapsed >= durationMs / 4)) {
+        resolve({ bestCombo, deaths, score: state.score });
         return;
       }
       requestAnimationFrame(frame);
@@ -224,7 +236,9 @@ async function main() {
   await context.close();
   const recorded = await video.path();
   await fs.copyFile(recorded, path.join(OUT, "combo-run.webm"));
-  console.log(`clip captured, best combo x${played.bestCombo}`);
+  console.log(
+    `clip captured: best combo x${played.bestCombo}, score ${played.score}, ${played.deaths} death(s)`,
+  );
 
   // The stills, taken from the same game played the same way.
   const stills = await browser.newContext({
@@ -234,11 +248,12 @@ async function main() {
   await still.goto(`http://127.0.0.1:${port}/`);
   await still.waitForFunction(() => window.__coil !== undefined);
   await still.screenshot({ path: path.join(OUT, "title.png") });
-  await still.evaluate(
+  const posed = await still.evaluate(
     ([source, ms, combo]) => new Function(`return (${source})`)()(ms, combo),
-    [BOT, 22_000, 4],
+    [BOT, 40_000, 3],
   );
   await still.screenshot({ path: path.join(OUT, "mid-run.png") });
+  console.log(`still captured at a score of ${posed.score}`);
   await stills.close();
 
   await browser.close();
