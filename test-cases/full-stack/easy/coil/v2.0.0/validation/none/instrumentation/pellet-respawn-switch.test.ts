@@ -1,32 +1,45 @@
-/*
- * Coil validator: `instrumentation.pellet-respawn-switch`. PLACEHOLDER.
- *
- * The respawn switch leaves an eaten pellet unreplaced.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * With setPelletRespawn(false) a pellet eaten by the head leaves pellet at
- * null rather than placing the next one, and the round carries on.
- *
- * HOW:
- * turn respawn off, place a pellet ahead of the head, eat it, and confirm the
- * score rose while pellet is null.
- *
- * MEDIA IT MUST CAPTURE: unreplaced (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// instrumentation/pellet-respawn-switch — `setPelletRespawn(false)` leaves an
+// eaten pellet unreplaced.
+//
+// WHAT THE SWITCH IS FOR. specs/instrumentation.md: with `pelletRespawn` off
+// "step 5 places none, so an eaten pellet leaves the board without one", and "no
+// cell is looked for, so the board-cleared ending is not reached this way". The
+// eat itself still resolves, which is the half that makes the switch usable: a
+// point watching one eat is not then met by a pellet landing on a cell it did not
+// choose, and nearly every growth, collision and combo scene in this project is
+// posed that way.
+//
+// The eat is read through the score RISING rather than through a figure: what the
+// award is worth is specs/scoring.md's, and the `scoring` points decide it. Here
+// the score is only the witness that step 5 ran at all.
 
-test("instrumentation.pellet-respawn-switch", () => {
-  throw new Error(
-    "validator not implemented: instrumentation/pellet-respawn-switch.test.ts",
-  );
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import { arrangeEat, captureReplay, createHarness, type Harness } from "../harness";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("leaves the board without a pellet when one is eaten", async () => {
+  const scene = await arrangeEat(h, { pelletRespawn: false });
+  assertEqual(scene.snapshot.pelletRespawn, false, "the switch the scene posed");
+  assertDeepEqual(scene.snapshot.pellet, scene.pellet, "the pellet to be eaten");
+  const before = scene.snapshot;
+
+  const after = await captureReplay(h, "unreplaced", () => h.tick());
+
+  // The pellet was eaten: the head is on its cell and the eat resolved.
+  assertDeepEqual(after.snake[0], scene.pellet, "the head on the eaten cell");
+  assertGreaterThan(after.score, before.score, "the score after the eat");
+
+  // And nothing was placed in its stead, while the round carries on.
+  assertEqual(after.pellet, null, "pellet with respawn off");
+  assertEqual(after.screen, "playing", "the screen after the eat");
 });
