@@ -1,25 +1,163 @@
-// Deepcore — save.save-holds-the-holdings. STUB: NOT YET AUTHORED.
+// save/save-holds-the-holdings — the save carries every holding the expedition
+// has accumulated.
 //
-// The save holds the Credits, tiers, components, supplies, cargo, materials, fuel and hull
+// specs/gameplay.md: "A save holds the generated mine and its world size, the
+// mode, banked Credits, every upgrade tier, the installed rocket components, the
+// held field-supply counts, the cargo, the satchel's materials, and the miner's
+// fuel and hull." The mine and the size are `save/save-holds-the-mine` and
+// `world-size/size-carried-in-the-save`; this check decides the eight holdings.
 //
-// A save carries banked Credits, every upgrade tier, the installed rocket
-// components, the held field-supply counts, the cargo, the satchel materials
-// and the miner fuel and hull.
+// EVERY VALUE IS DISTINCTIVE. Each is posed away from both the value a fresh
+// expedition opens at and the value a `reset` restores, so a build that dropped a
+// field from the save and rebuilt it from the defaults reads back wrong rather
+// than reading back right by coincidence. The tiers are posed first, because
+// specs/instrumentation.md has `setTier` clamp the fuel and hull held to the new
+// maxima.
 //
-// Automated validation: pose a distinctive value in each of the eight, save,
-// continue and hold each restored value against what was saved.
-//
-// `test-case.toml` declares this suite as `save/save-holds-the-holdings.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (holdings (image)) around the drive.
+// ISOLATION. One expedition on an empty mine with the slot cleared first, the
+// miner standing at the camp where saving is allowed, no Core Sample live, and
+// nothing driven: the holdings are posed, the save is written through the control
+// that stands for the Save Pad, and the restore is the title's `CONTINUE`.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  ITEM_IDS,
+  ROCKET_COMPONENT_IDS,
+  TRACKS,
+  type ItemId,
+} from "../../src/constants";
+import { assertDeepEqual, assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  stageCargo,
+  stageItems,
+  stageTiers,
+  type Harness,
+  type Ore,
+  type UpgradeTrack,
+} from "../harness";
+import { bankSave, continueFromTitle, openAtCamp } from "./expedition";
 
-test("The save holds the Credits, tiers, components, supplies, cargo, materials, fuel and hull", () => {
-  throw new Error(
-    "Deepcore validator `save/save-holds-the-holdings` is declared in test-case.toml but has not been authored yet.",
+/** The eight holdings, each posed away from the value a fresh expedition opens at. */
+const CREDITS = 7654;
+const TIERS: Record<UpgradeTrack, number> = {
+  fuel: 3,
+  drill: 4,
+  cargo: 2,
+  hull: 5,
+  jetpack: 2,
+  radiator: 4,
+  scanner: 3,
+};
+const COMPONENTS = 2;
+const ITEMS: Record<ItemId, number> = {
+  dynamite: 3,
+  "plastic-explosives": 1,
+  "quantum-teleporter": 4,
+  "matter-transmitter": 2,
+  nanobots: 5,
+  "emergency-fuel": 6,
+};
+const CARGO: Partial<Record<Ore, number>> = {
+  ferron: 4,
+  cobaltine: 2,
+  roselite: 1,
+};
+const MATERIALS = { resonite: 1, cryenite: 2 };
+const FUEL = 137;
+const HULL = 211;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness({ storage: true });
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("restores the Credits, tiers, components, supplies, cargo, materials, fuel and hull", async () => {
+  await openAtCamp(h);
+
+  h.debug.setCredits(CREDITS);
+  stageTiers(h, TIERS);
+  h.debug.setRocketInstalled(COMPONENTS);
+  stageItems(h, ITEMS);
+  stageCargo(h, CARGO);
+  h.debug.setMaterial("resonite", MATERIALS.resonite);
+  h.debug.setMaterial("cryenite", MATERIALS.cryenite);
+  h.debug.setFuel(FUEL);
+  h.debug.setHull(HULL);
+
+  const posed = h.snapshot();
+  bankSave(h);
+  await continueFromTitle(h);
+  await h.advance(1);
+
+  const restored = h.snapshot();
+  captureStill(h, "holdings");
+
+  assertEqual(
+    restored.credits,
+    CREDITS,
+    "specs/gameplay.md: the save holds the banked Credits",
+  );
+  for (const track of TRACKS) {
+    assertEqual(
+      restored.tiers[track],
+      TIERS[track],
+      `specs/gameplay.md: the save holds the ${track} tier`,
+    );
+  }
+  assertDeepEqual(
+    restored.rocket.installed,
+    ROCKET_COMPONENT_IDS.slice(0, COMPONENTS),
+    "specs/gameplay.md: the save holds the installed rocket components",
+  );
+  for (const item of ITEM_IDS) {
+    assertEqual(
+      restored.items[item],
+      ITEMS[item],
+      `specs/gameplay.md: the save holds the ${item} count`,
+    );
+  }
+  assertDeepEqual(
+    restored.cargo.ore,
+    CARGO,
+    "specs/gameplay.md: the save holds the cargo",
+  );
+  assertEqual(
+    restored.satchel.resonite,
+    MATERIALS.resonite,
+    "specs/gameplay.md: the save holds the satchel's Resonite",
+  );
+  assertEqual(
+    restored.satchel.cryenite,
+    MATERIALS.cryenite,
+    "specs/gameplay.md: the save holds the satchel's Cryenite",
+  );
+  assertEqual(
+    restored.miner.fuel,
+    FUEL,
+    "specs/gameplay.md: the save holds the fuel the miner climbed out with",
+  );
+  assertEqual(
+    restored.miner.hull,
+    HULL,
+    "specs/gameplay.md: the save holds the hull the miner climbed out with",
+  );
+  // The maxima the posed tiers set, so a build that restored the tiers but not
+  // the fuel and hull is caught reading back a full tank instead.
+  assertEqual(
+    restored.miner.maxFuel,
+    posed.miner.maxFuel,
+    "specs/upgrades.md: the restored fuel tier sets the same maximum",
+  );
+  assertEqual(
+    restored.miner.maxHull,
+    posed.miner.maxHull,
+    "specs/upgrades.md: the restored hull tier sets the same maximum",
   );
 });
