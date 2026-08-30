@@ -1,27 +1,84 @@
-// Arc Foundry — `status-bar.mute-reads-its-value`. CASE-PROVIDED. NOT YET WRITTEN.
+// status-bar/mute-reads-its-value — the mute control draws the mute bit, by either route.
 //
-// The manifest declares this point at `status-bar/mute-reads-its-value.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/hud.md`: the mute control reads its own current value, and "muting from
+// the bar or from the keyboard changes what the bar draws".
+// `specs/instrumentation.md` adds that "toggling mute changes both the reported
+// value and the pixels inside the reported rectangle".
 //
-// THE REQUIREMENT. Muting changes the pixels inside the mute control's
-// reported rectangle, whether the mute was toggled from the bar or from the
-// keyboard.
-//
-// HOW IT IS DECIDED. Sample the control's rectangle muted and unmuted,
-// toggling by each route. The evidence it hands back is `mute` (image): the
-// mute control in both states.
+// So the control's own rectangle is sampled unmuted, then muted by pressing the
+// control, then unmuted again, then muted by the `mute` action's key — and each
+// muted reading has to be told apart from the unmuted one it started from. The
+// snapshot's `muted` is held alongside, so a route that never reached the mute
+// bit fails here rather than passing as "the pixels did not move".
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  pressAction,
+  pressStatus,
+  statusControl,
+  type Harness,
+} from "../harness";
+import { DISTINCT, lattice, maxDistance, sample } from "./reading";
 
-import { fail } from "../assert";
+let h: Harness;
 
-describe("status-bar.mute-reads-its-value", () => {
-  it("The mute control draws its live value", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `status-bar.mute-reads-its-value` has not been written yet",
-    );
-  });
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("draws the mute control differently muted, from the bar and from the key", async () => {
+  await openYard(h);
+
+  const control = await statusControl(h, "mute");
+  const inside = lattice(control, 1);
+  const open = await sample(h, inside);
+  assertEqual(
+    (await h.snapshot()).muted,
+    false,
+    "snapshot().muted on a page that has muted nothing",
+  );
+
+  await pressStatus(h, "mute");
+  const byBar = await sample(h, inside);
+  await captureStill(h, "mute");
+  assertEqual(
+    (await h.snapshot()).muted,
+    true,
+    "snapshot().muted after pressing the bar's mute control",
+  );
+  assertGreaterThan(
+    maxDistance(open, byBar),
+    DISTINCT,
+    "how far the mute control's pixels move when it is muted from the bar, in " +
+      "RGB distance",
+  );
+
+  await pressStatus(h, "mute");
+  assertEqual(
+    (await h.snapshot()).muted,
+    false,
+    "snapshot().muted after pressing the bar's mute control a second time",
+  );
+
+  await pressAction(h, "mute");
+  const byKey = await sample(h, inside);
+  assertEqual(
+    (await h.snapshot()).muted,
+    true,
+    "snapshot().muted after firing the mute action from the keyboard",
+  );
+  assertGreaterThan(
+    maxDistance(open, byKey),
+    DISTINCT,
+    "how far the mute control's pixels move when it is muted from the " +
+      "keyboard, in RGB distance",
+  );
 });

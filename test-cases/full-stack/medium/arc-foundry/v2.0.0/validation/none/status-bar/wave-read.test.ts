@@ -1,26 +1,69 @@
-// Arc Foundry — `status-bar.wave-read`. CASE-PROVIDED. NOT YET WRITTEN.
+// status-bar/wave-read — WAVE n / N during a wave, BUILD during a build phase.
 //
-// The manifest declares this point at `status-bar/wave-read.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/hud.md` fixes the bar's wave element as "`WAVE n / N`, with the current
+// wave's progress during a wave and a `BUILD` read during a build phase". So the
+// build phase has to carry the word BUILD, and the live wave has to carry the
+// wave number and the run's total and no longer carry BUILD.
 //
-// THE REQUIREMENT. During a wave the bar draws the wave number and the run's
-// total, and during a build phase it draws a BUILD read instead.
-//
-// HOW IT IS DECIDED. Read the bar's text draws in a build phase and again
-// during the wave it launches. The evidence it hands back is `bar` (image):
-// the bar's wave read.
+// The wave is reached through the surface's own driver rather than by committing
+// a harvest: `spawnUnit` "puts the run into a live wave"
+// (`specs/instrumentation.md`), which is the direct route to the phase this point
+// is about and leaves the harvest, the press, and the panel out of it. The unit
+// released is held, so the wave cannot clear while the bar is being read.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertContains, assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  holdWaveOpen,
+  openYard,
+  type Harness,
+} from "../harness";
+import { BAR, drew, figures } from "./reading";
 
-import { fail } from "../assert";
+const WAVE = 6;
 
-describe("status-bar.wave-read", () => {
-  it("The bar reads WAVE n / N during a wave and BUILD in a build phase", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `status-bar.wave-read` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("reads BUILD in a build phase and the wave number during a wave", async () => {
+  await openYard(h, { wave: WAVE });
+
+  const building = await h.frameCalls();
+  assertEqual(
+    drew(building, BAR, "BUILD"),
+    true,
+    "whether the bar reads BUILD during a build phase",
+  );
+
+  await holdWaveOpen(h);
+  const live = await h.snapshot();
+  assertEqual(
+    live.phase,
+    "wave",
+    "the phase a released unit puts the run into (specs/instrumentation.md)",
+  );
+
+  const running = await h.frameCalls();
+  await captureStill(h, "bar");
+  const drawn = figures(running, BAR);
+  assertContains(drawn, live.wave, "the status bar's figures during a wave");
+  assertContains(
+    drawn,
+    live.totalWaves,
+    "the status bar's figures during a wave",
+  );
+  assertEqual(
+    drew(running, BAR, "BUILD"),
+    false,
+    "whether the bar still reads BUILD during a live wave",
+  );
 });
