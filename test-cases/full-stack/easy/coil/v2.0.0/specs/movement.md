@@ -21,6 +21,11 @@ delivered it in one update or in sixty. Drawing never advances the simulation.
 Ticks run only on the `playing` screen. A round that has ended, a paused game,
 and every menu screen leave the simulation where it stands.
 
+A tick that ends the round is the last tick of that round. Whatever elapsed time
+the update was carrying beyond it is spent rather than held back, so a round that
+has ended banks nothing: the next time the simulation is asked to advance, it
+advances from an empty accumulator.
+
 ## The order a tick resolves in
 
 Each tick resolves these six steps, in this order.

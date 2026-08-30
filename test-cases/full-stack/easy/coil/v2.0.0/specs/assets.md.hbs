@@ -94,6 +94,8 @@ Frame `0` is what the head shows at all times except during a bite. The tick tha
 eats a pellet starts a bite, which plays frames `1`, `2`, and `3` in order over
 `BITE_SECONDS` (`0.25`) and then returns the head to frame `0`. The bite is drawn
 only; it changes no rule of the simulation and no timing in `specs/movement.md`.
+It runs on the round's own time, so it holds the frame it is on while the game is
+paused and carries on from there when the round resumes.
 
 ### How a cell picks its sprite
 

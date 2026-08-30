@@ -254,7 +254,9 @@ field. The highlight stays where it stood, the board keeps whatever the other
 operations posed on it, and the game carries on under its own rules from there,
 so ticks resolve on `"playing"` and nothing advances on the rest. Moving to
 `"playing"` this way runs the tick over the board as it stands rather than laying
-out a fresh round.
+out a fresh round. The screen is the whole record of a round having ended, so a
+game moved back to `"playing"` plays on from the board as it stands and never
+returns itself to the screen the round ended on.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `setMenuIndex(state, index)`

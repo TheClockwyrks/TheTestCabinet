@@ -80,7 +80,10 @@ valid when all of the following hold.
 - It is not the cell the current pellet occupies.
 
 The first pellet of a round is placed after the snake is laid at its starting
-cells, so it never lands under the starting chain. Selection stays immediate even
+cells, so it never lands under the starting chain. The board carries no pellet at
+that moment, so every interior cell clear of the starting chain and of the
+obstacles is in the set that first draw is made from, wherever the round before
+it left its pellet. Selection stays immediate even
 when very few valid cells remain, so a nearly full board picks its pellet without
 a visible stall.
 

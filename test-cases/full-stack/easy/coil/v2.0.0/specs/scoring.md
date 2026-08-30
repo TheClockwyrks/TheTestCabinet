@@ -19,8 +19,10 @@ capped at `COMBO_MAX` (`5`).
 
 A combo window of `COMBO_WINDOW` (`3.5`) seconds of simulation time governs it.
 The window is open while time remains on it and closed once that time is spent.
-Step 6 of each tick draws `TICK_SECONDS` off the window, so the window is a
-budget of 28 ticks, which is 28 cells of travel.
+Step 6 of each tick draws `TICK_SECONDS` off the window, and the tick that opens
+a window is the first to draw on it. A full window therefore spans 28 ticks: the
+27 ticks after the eat that opened it still meet it open, and the 28th finds it
+spent.
 
 An eaten pellet resolves the multiplier before it awards the points.
 
