@@ -1,10 +1,10 @@
 slug = "coil"
 # The Test Cabinet test case manifest.
 #
-# Declares, for this exact version, which files are seeded into a run, which
-# reference views are rendered and seeded as visual targets, and which validation
-# checks run. The testing harness reads this file to resolve a `TestCaseVersion`;
-# see `docs/test-cases.md`.
+# Declares, for this exact version, which files are seeded into a run, which engines
+# a run may select, how the produced implementation is built and checked, and what a
+# reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
 
 # Human-readable display name for this test case.
 name = "Coil"
@@ -78,8 +78,7 @@ init = "npm install && npx playwright install chromium"
 # first is the default. Neither variant seeds a mode spec of its own: what differs
 # between them — the mode's menu entry and, for maze, the interior obstacle course —
 # is branched by variant slug inside the common `specs/gameplay.md.hbs` template.
-# Each variant supplies its own `title` menu mockup; `gameplay` and `game-over`
-# references are common. Each variant is exactly one mode:
+# Each variant is exactly one mode:
 #   - base — Classic mode: the grid-serpent run on the open board.
 #   - maze — Maze mode: the run on a board laced with fixed fatal interior obstacles to
 #            thread (declares its own `maze` domain).
@@ -316,9 +315,8 @@ description = "The genuinely tool-produced assets and how the build presents the
 # Maze mode adds live in that variant's own file (`variants/maze.toml`). The
 # checklist is reporter-side material — never seeded into a run, so the model never
 # sees it; each item restates a requirement the seeded specification already states.
-# An item with a `validation` script is decided automatically (the reviewer can
-# override); one without — the presentation and audio points, which are matters of
-# craft, art, and sound — is reviewed by a person against the paired reference/proof.
+# Every point is decided by its validator, through the domains it rolls up to and the
+# failure cap it applies while it fails, and a reviewer may override a verdict.
 [review]
 format = 2
 
@@ -757,7 +755,7 @@ description = "The head is an animated sprite sheet the build produced with draw
 # uncreated, since it may unlock only from a real DOM event), and a cue is confirmed by
 # the Web Audio source log growing across the driven event. Only that a cue plays is
 # scored automatically; its DISTINCTNESS, timbre, and overall craft against the other
-# cues stays for the reviewer, from the proof clip.
+# cues stays for the reviewer, from the media the validator captured.
 [[review.categories]]
 id = "audio"
 title = "Audio"
