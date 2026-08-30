@@ -1,20 +1,102 @@
-// Wireworm — instrumentation.clear-worms, under the `simple-2d` engine. CASE-PROVIDED.
+// Wireworm — instrumentation/clear-worms: `clearWorms()` empties the worm roster, and nothing else.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/instrumentation.md: "clearWorms() removes every worm, leaving the nodes, foes, and bolts standing."
 //
-// The point it decides, from `test-case.toml`:
+// WHY EACH OF THE FOUR IS ITS OWN POINT. The four rosters are what a check poses
+// a world out of, and `startPlaying` in `harness.ts` opens every scenario in this
+// project by emptying all four. A clear that took a neighbour's roster with it, or
+// that left its own standing, would quietly rewrite every scenario built on it —
+// so each is decided on its own, and a failing grade names the roster the build
+// got wrong rather than "the clears".
 //
-// clearWorms empties the worms alone
-//
-// clearWorms() removes every worm and leaves the nodes, foes and bolts
-// standing.
+// THE BOARD IS POSED WITH ALL FOUR ROSTERS CARRYING SOMETHING, and every entity on
+// it is posed quiet: the worm's step is gated off and the foe's two faculties are
+// gated off, so nothing moves between the pose and the reading and the survivors
+// are the entities that were posed rather than whatever the board drifted into.
+// No frame runs before the clear either, so the only thing that happened to the
+// board is the one operation this point is about.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  poseBolt,
+  poseField,
+  poseFoe,
+  poseWorm,
+  startPlaying,
+  type Harness,
+} from "../harness";
 
-test("instrumentation.clear-worms", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/simple-2d/instrumentation/clear-worms.test.ts has not been written yet",
+/** The field posed: eight nodes over two rows, at every charge specs/nodes.md names. */
+const FIELD_ROWS = ["0123", "3210"];
+const FIELD_C = 4;
+const FIELD_R = 8;
+
+/** The one worm posed, three segments long on a clear row of its own. */
+const WORM_C = 14;
+const WORM_R = 4;
+const WORM_LENGTH = 3;
+
+/** The one foe posed. */
+const FOE_C = 24;
+const FOE_R = 6;
+
+/** The one bolt posed, in a column nothing else stands in. */
+const BOLT_C = 34;
+const BOLT_R = 19;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("removes every worm and leaves the nodes, foes and bolts standing", async () => {
+  startPlaying(h);
+
+  poseField(h, FIELD_ROWS, FIELD_C, FIELD_R);
+  const wormId = poseWorm(h, WORM_C, WORM_R, WORM_LENGTH);
+  h.debug.setWormStepping(wormId, false);
+  const foeId = poseFoe(h, "glitch", FOE_C, FOE_R);
+  h.debug.setFoeMind(foeId, false);
+  h.debug.setFoeTravel(foeId, false);
+  const boltId = poseBolt(h, BOLT_C, BOLT_R);
+
+  const before = h.snapshot();
+  assertLength(
+    before.nodes,
+    FIELD_ROWS.length * FIELD_ROWS[0].length,
+    "the field the scenario posed",
+  );
+
+  h.debug.clearWorms();
+  const after = h.snapshot();
+
+  // The board with the worm roster alone removed.
+  await h.advance(1);
+  captureStill(h, "cleared");
+
+  assertLength(after.worms, 0, "clearWorms removes every worm");
+
+  assertDeepEqual(
+    after.nodes,
+    before.nodes,
+    "every node stands, at the charge it held",
+  );
+
+  assertLength(after.foes, 1, "the foe stands");
+  assertEqual(after.foes[0]?.id, foeId, "the foe that stands is the one posed");
+
+  assertLength(after.bolts, 1, "the bolt is still in flight");
+  assertEqual(
+    after.bolts[0]?.id,
+    boltId,
+    "the bolt in flight is the one posed",
   );
 });
