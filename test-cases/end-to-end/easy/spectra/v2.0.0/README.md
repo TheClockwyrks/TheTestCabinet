@@ -85,7 +85,110 @@ is asked to build, and those are what one build already contains.
 | `showcase/`            | No             | Each variant's demo media and description for the catalog.                |
 | `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.   |
 | `variants/`            | No             | One TOML file per variant (listed in `variants`).                         |
+| `description.md`       | No             | The site-facing introduction on the case's detail page.                   |
+| `changelog.md`         | No             | This version's entry in the case's changelog.                             |
 | `README.md`            | No             | This overview.                                                            |
+
+## The specification
+
+The specification is split across `specs/` by concern, and every file is seeded
+for every run. Each rule lives in exactly one file.
+
+| Spec                 | Covers                                                                                                                                                                                        |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `overview.md`        | What is built, what stays as it is, the `1280 x 720` stage and the center convention, the code quality, the commands run over the finished repository, and the legibility table.              |
+| `field.md`           | The two HUD strips and the play field between them, the ship's lane and its clamp, the formation slot grid and the sway, where a drone enters and a bullet leaves, and the starfield.         |
+| `simulation.md`      | How a frame advances: per-second rates integrated against the frame's delta time, the sub-step ceiling and the order a sub-step resolves in, the one seeded generator, and the contact model. |
+| `bands.md`           | The two bands and what a band decides: the effective band and the two swaps that produce it, match-to-destroy, the dual-use shield, the flip and its lockout, and the spectral inversion.     |
+| `ship.md`            | The ship's footprint and half-extent, how it moves and stops, where a shot spawns and how fast it climbs, the fire interval and the bullet cap, and what blocks firing.                       |
+| `resonance.md`       | What fills the meter and by how much, that it caps, does not decay and survives a death, when a discharge is available, and what the burst takes and what it spares.                          |
+| `swarm.md`           | How any drone behaves: the four phases, the staggered entrance, the formation hold and the sway, the wave's dive clock, where a diver fires, and what a standard wave holds.                  |
+| `drones.md`          | The fixed-band Shard, the Flux's held window and shimmer, and the Prism's two layers, its escort, its two-band burst and the inversion it triggers at the bottom.                             |
+| `stages.md`          | The stage sequence, the level-clear rule stated as a moment, the challenge flyover, and the four scaling formulas with their caps and floors.                                                 |
+| `progression.md`     | The starting lives, what costs one, the ready hold and the respawn, the extra life and the latch that pays it once, and the game over.                                                        |
+| `scoring.md`         | Every score figure the game pays, including what a drone destroyed out of formation is worth.                                                                                                 |
+| `mode.md`            | The playable mode: what a mismatched shot does to the drone it hits, and, under Overload, the telegraph, the three overload reactions and the tenth cue.                                      |
+| `controls.md`        | Every action the game answers to and the keys bound to it, menu navigation and confirm, back, pause, mute, and the overlay toggle.                                                            |
+| `ui.md`              | The seven screens and what each shows, the five HUD readouts, the mute indicator and the inversion overlay, and the audio cues with the mute requirement.                                     |
+| `assets.md`          | The four PNGs, which band-state each depicts, the ring and diamond glyph convention, how the other band-state is derived, and the drone-burst and how it is played.                           |
+| `state.md`           | What the game's state carries, in the shape the selected engine holds it in.                                                                                                                  |
+| `instrumentation.md` | The deterministic core, every operation of the debug and automation surface, the world gates and the faculty switches, the snapshot shape, and the debug overlay.                             |
+| `showcase.md`        | The player-facing description and captured carousel the finished game ships beside its source.                                                                                                |
+
+`field.md`, `simulation.md`, `bands.md`, `ship.md`, `resonance.md`, `swarm.md`,
+`drones.md`, `stages.md`, `progression.md` and `scoring.md` are plain Markdown,
+identical under every engine and every variant. `overview.md.hbs`,
+`controls.md.hbs`, `ui.md.hbs`, `assets.md.hbs`, `showcase.md.hbs`,
+`state.md.hbs`, `instrumentation.md.hbs` and `mode.md.hbs` are Handlebars
+templates rendered before they land. Because the branching resolves at seed time,
+each seeded set reads as one self-contained game with no alternative in view.
+
+Under `simple-2d` and `structured-2d`, every figure the specification fixes is
+exported from the seeded `src/constants.ts` under the name the specs cite, and
+`specs/overview.md` tells the build that the constant is the authoritative one.
+Under `none` there is no seeded constants module, and each figure is stated in the
+specs alone.
+
+## Assets and media
+
+This version seeds four `PNG` sprites — the ship, the Shard, the Flux and the
+Prism — and one particle system, `drone-burst.json`, played when a drone pops
+through the `@test-cabinet/particle-runtime` package the workspace already depends
+on. The sprites are the finished art produced by The Test Cabinet's own
+asset-generation cases, and each carries one band-state, from which
+`specs/assets.md` states how the other is derived. Every build renders the game
+from the same art and differs only in the code around it, which is what makes two
+runs of this case comparable to look at. Everything with no sprite — the bullets,
+the discharge wave, the inversion, the starfield, the HUD and every screen — is
+drawn in code.
+
+The case declares no reference mockups and no proof captures. The media a
+reviewer looks at is produced by the validators under `validation/`, from
+scenarios the case controls, and the same suites run against each engine's
+reference build to produce the baseline it is shown beside.
+
+## Validation
+
+This case is validator-rated: every point on the checklist carries a Vitest
+suite, and the validators decide the functional rating through each point's
+failure cap. A reviewer rates the run's aesthetics through the four domains and
+may override a verdict.
+
+`validation/` holds one project per engine, `validation/none/`,
+`validation/simple-2d/` and `validation/structured-2d/`, each with a suite per
+review point at `<category>/<id>.test.ts`. The `none` suites drive the built site
+in headless Chromium through `window.__spectra`, with a page-injected 2D-context
+recorder for the draws and an injected audio shim for the cues; the two engine
+projects run in process against the vendored engine, standing it up over an
+`@napi-rs/canvas` canvas and a clock of their own and reaching the surface
+through `engine.debug`. The three run the same scenarios and differ only in how
+they reach the build.
+
+Every scenario poses a world holding only what its point is about. The shared
+harness's `startPosed` empties the drones, the bullets and the bursts, turns off
+the three world gates — the wave's own entry, the dive launcher, and the ship's
+contact test — and opens a live wave, and the point then adds back exactly the
+entities its requirement concerns, holding each drone's own faculties (its
+travel, its oscillation, its fire) so nothing else in the scenario can move. An
+empty wave is safe because a stage clears on the moment its last drone is
+destroyed rather than on a predicate over an empty field, which
+`stages.empty-wave-does-not-clear` is what holds a build to. Every expected value
+a suite asserts comes from a figure the specs fix, never from a reference build.
+
+`validation-baseline/<engine>/<variant>/` holds the media the same suites captured
+from that engine's reference build of that variant, so a reviewer sees the run's
+evidence and the reference's side by side.
+
+## Scoring
+
+A run is rated on four domains — `polarity` (the two bands, the shield, the
+discharge and the inversion), `swarm` (the entrances, the formation, the dives
+and the three drones), `arcade` (the ship, the stages, the lives, the scoring and
+the screens) and `presentation` (the screens, the HUD, the art and the audio) —
+and its overall functional rating is the worst of the four. The checklist is
+`264` points on a base run and `282` on an overload run: fifteen categories common
+to both, plus one category the variant declares. Each point names the domains its
+failure lowers and how far it lowers them.
 
 ## Versioning
 
