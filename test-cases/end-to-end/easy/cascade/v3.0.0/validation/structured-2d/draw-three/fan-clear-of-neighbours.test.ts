@@ -1,23 +1,141 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/draw-three/fan-clear-of-neighbours.test.ts
+// Cascade — draw-three/fan-clear-of-neighbours: the fan stays between the waste anchor and the first foundation.
 //
-// The review item `draw-three.fan-clear-of-neighbours` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/table.md, The waste: "At most three cards fan, so the fan begins at `346`
+// and its right edge never passes `498`." The third column position, `468`, "is
+// the space that separates the two draw piles on the left from the foundations on
+// the right, and the only thing drawn over any of it is the right end of the
+// waste's fan."
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// So the fan has room to its right and none to its left: the stock sits at `224`
+// and ends at `324`, the waste's own anchor is `346`, and the first foundation
+// begins at `590`. This point decides that the fan lives inside that gap — that
+// no card of it is drawn left of the waste anchor, over the stock, and that none
+// of it reaches the foundations. A build that fanned to the LEFT, that fanned at
+// a pitch wide enough to run into the foundations, or that fanned every card the
+// waste holds rather than the three of the shown set, all show up here as an edge
+// on the wrong side of one of those two lines.
 //
-// What this item must decide, from the manifest:
+// The bounds are the ones the manifest states, and they are the neighbours' own
+// anchors rather than the `498` the specification derives for three cards at a
+// pitch of `26`: this point is about CLEARANCE, and holding the fan to `498` would
+// be re-deciding the pitch that `draw-three/waste-fans-shown-set` already decides.
+// A build whose fan sits between `346` and `590` clears its neighbours whatever
+// pitch it chose, and is graded on the pitch elsewhere.
 //
-//   The fan clears the stock and the foundations
-//
-//   The fan's leftmost edge is at or right of 346 and its rightmost edge is left of 590.
+// The waste is posed at its widest — five cards under an older set of two and a
+// newest set of three — because the fan is at its longest with three cards shown,
+// and a build that fans everything it holds is at its longest with cards buried
+// too. The rest of the table is empty, so the only card-sized marks in the top
+// row are the fan's and the empty-slot marks the stock and the four foundations
+// draw at their own anchors, which are excluded by name.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual, assertLessThan } from "../assert";
+import {
+  CARD_H,
+  CARD_W,
+  FOUNDATION_X,
+  STOCK_X,
+  TOP_ROW_Y,
+  WASTE_X,
+} from "../../src/constants";
+import {
+  ACE,
+  FIVE,
+  NINE,
+  QUEEN,
+  captureStill,
+  card,
+  createHarness,
+  drawnShapes,
+  openTable,
+  poseWaste,
+  type DrawnShape,
+  type Harness,
+} from "../harness";
 
-it("draw-three.fan-clear-of-neighbours — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/draw-three/fan-clear-of-neighbours.test.ts is a scaffold stub, not a validator",
+/**
+ * The left line: the waste's own anchor, `346` (specs/table.md).
+ *
+ * The fan begins there and runs right, so nothing it draws may sit left of it —
+ * which is also what keeps it off the stock, whose card ends at `324`.
+ */
+const FAN_LEFT_LIMIT = WASTE_X;
+
+/**
+ * The right line: the first foundation's left edge, `590` (specs/table.md).
+ *
+ * The fan's right edge must stay strictly left of it, so no card of the fan is
+ * drawn over a foundation.
+ */
+const FAN_RIGHT_LIMIT = FOUNDATION_X[0];
+
+/** How far a drawn card's top-left may sit from an anchor, in logical units. */
+const ANCHOR_TOLERANCE = 2;
+
+/** How far a drawn footprint may differ from `CARD_W x CARD_H` (specs/table.md). */
+const SIZE_TOLERANCE = 2;
+
+/** The anchors of the piles that are NOT the waste, whose own marks are not the fan's. */
+const NEIGHBOUR_X = [STOCK_X, ...FOUNDATION_X];
+
+/** The waste at its widest fan: two buried under an older set, three shown. */
+const WASTE = [
+  card("clubs", FIVE),
+  card("spades", NINE),
+  card("spades", ACE),
+  card("hearts", QUEEN),
+  card("diamonds", ACE),
+];
+const SETS = [2, 3];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws the fan between the waste anchor and the first foundation", async () => {
+  openTable(h);
+  poseWaste(h, WASTE, SETS);
+
+  const calls = await h.drawFrame();
+  captureStill(h, "fan");
+
+  const fan = drawnShapes(h, calls).filter(
+    (shape: DrawnShape) =>
+      Math.abs(shape.w - CARD_W) <= SIZE_TOLERANCE &&
+      Math.abs(shape.h - CARD_H) <= SIZE_TOLERANCE &&
+      Math.abs(shape.y - TOP_ROW_Y) <= ANCHOR_TOLERANCE &&
+      !NEIGHBOUR_X.some((x) => Math.abs(shape.x - x) <= ANCHOR_TOLERANCE),
+  );
+
+  assertGreaterThanOrEqual(
+    fan.length,
+    1,
+    "a card drawn for the waste, which holds five (specs/table.md)",
+  );
+
+  const left = Math.min(...fan.map((shape) => shape.x));
+  const right = Math.max(...fan.map((shape) => shape.x + shape.w));
+
+  // The tolerance is folded into the bound rather than into the reading, so a
+  // failure prints the edge the build actually drew.
+  assertGreaterThanOrEqual(
+    left,
+    FAN_LEFT_LIMIT - ANCHOR_TOLERANCE,
+    `the fan's leftmost edge, at or right of the waste anchor ` +
+      `(${FAN_LEFT_LIMIT}), which keeps it clear of the stock ` +
+      `(ending at ${STOCK_X + CARD_W})`,
+  );
+  assertLessThan(
+    right,
+    FAN_RIGHT_LIMIT + ANCHOR_TOLERANCE,
+    `the fan's rightmost edge, left of the first foundation ` +
+      `(${FAN_RIGHT_LIMIT})`,
   );
 });
