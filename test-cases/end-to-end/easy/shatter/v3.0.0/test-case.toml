@@ -25,9 +25,10 @@ tags = ["arcade", "2d", "space", "shooter", "physics"]
 # deliberately brief; the longer `description` below is shown on the detail page.
 # Like `description`, this is NOT seeded into a run.
 summary = """
-A neon rock shooter built around a central gravity well: the star at the middle \
-of the field pulls every bullet and every rock, so shots bend around it and \
-rocks churn on curved paths, while your ship flies free of the pull."""
+A rock shooter built around a central gravity well: the star at the middle of \
+the field pulls every rock and every shot, so bullets bend as they cross the \
+centre and rocks churn on curved, wrapping paths, while your ship flies free of \
+the pull."""
 
 # Site-facing prose describing the case, relative to this version folder. This is
 # NOT seeded into a run; it exists only to introduce the case on the site.

@@ -1,249 +1,264 @@
-## A new item: a restart does not carry the saucer into the new game
+## Shatter is a TypeScript project, on one of three engines
 
-`specs/ui.md` puts `RESTART` on the pause menu, and `specs/hazards.md` fixes when a saucer
-may be up — "the first appears about 18 seconds into a game" — so however the last game
-ended, the next one begins clear of saucers. Nothing was grading that. Every saucer item
-starts from a game the script itself began, so a build that rebuilds its world on a restart
-but leaves the saucer flying passed all five of them while handing a fresh wave 1 an enemy
-it never spawned, already firing at a ship that has just launched.
+This version stops asking a model for a self-contained page built on top of a
+bare `package.json` and asks it for a real project instead. A run is seeded with a
+complete TypeScript workspace: Vite, `tsc`, ESLint, Prettier and Vitest already
+configured, and an `index.html` holding the canvas. How much of that project the
+model writes is what the engine decides.
 
-`saucer/restart-despawns` grades it, in the shape a player would: a game already down to two
-ships with a saucer crossing the field is paused, the pause menu's `RESTART` entry is
-confirmed, and the new game is read back. The saucer must be gone the moment it starts, and
-still gone two seconds in.
+Under [Simple 2D](/engines/simple-2d/) and
+[Structured 2D](/engines/structured-2d/) the workspace also carries the
+case-owned modules around the game, `src/constants.ts` and `src/main.ts`, and the
+model writes `src/game.ts` against them. Everything the specification fixes as a
+number, a key binding, a cue name or a piece of screen copy has a name in
+`src/constants.ts`, and the specs cite those names rather than restating the
+figures. The engine owns the frame loop, which hands the game the real elapsed
+time of each frame and mandates no timestep of its own, the canvas fit, keyboard
+input as named actions, audio as named cues, and the debug overlay; Structured 2D
+also owns rendering and the framework the game is written inside. What stays the
+build's is Shatter itself: the wrapping field, the well, every body flying over
+it, and everything drawn.
 
-Two readings keep it from passing for the wrong reason. The saucer is read at the PAUSE as
-well as after the restart, because a visit only lasts about twelve seconds and a saucer that
-left of its own accord would leave a field indistinguishable from one a restart cleared —
-so the item requires it still up the instant before, which is what makes its absence
-afterwards the restart's doing. And the scenario spends a life first: `specs/gameplay.md`
-fixes a new game at three ships, but a game that merely RESUMED has three as well unless one
-has already been spent, so the count reading three afterwards is what separates a restart
-from a resume. Both matter — a build wired to quit to the title instead of restarting clears
-the saucer too, and it is the screen and the life count that catch it.
+Under `none` the workspace is that toolchain and nothing else: configuration,
+`index.html`, and no `src/` at all. The model writes every line of what runs, from
+the frame loop and its fixed-step accumulator up to the game.
 
-The pause selection is read from `menuIndex` and driven to the restart entry with the real
-Up/Down bindings rather than pressed a fixed number of times. `specs/ui.md` fixes the ORDER
-of the pause entries, so `RESTART` is entry 1, but nothing fixes which entry the menu opens
-on — and on a build that opens on `RESTART`, one Down press lands on `QUIT TO MENU`.
+## Three engines, one game
 
-The clip is the whole event at the speed it runs: 1.5 s of the saucer crossing, the pause
-menu held long enough to read which entry is taken, then two seconds of the new game playing
-on without it. A Large rock is parked out of every lane the item drives, because the cleared
-field the scenario poses is also a cleared WAVE, and without it the build is entitled to
-raise a banner and spawn five rocks partway through the beat being filmed.
+Because all three projects deliver the same game, the review items, the domains
+and the checks that decide them are the same across engines, and a score recorded
+under one engine is comparable with a score recorded under another. The specs
+branch only where the deliverable differs, and the three validator suites differ
+only in how they stand a build up. Each variant ships a reference implementation
+per engine, under `references/<engine>/<variant>/`, and the case's Reference tab
+offers a switch between them.
 
-## `saucer/avoids-star` flies the saucer across the star, not into it
+## Four domains instead of one
 
-`specs/hazards.md` states the saucer's relationship with the star in one sentence — it
-"steers to avoid the star's core, never overlapping it" — and `v2.0.1` gave the item a
-second scenario to hold it to the second half of that. It was posed too close in. It
-lined the saucer up on the star's row 60 px out — outside the 48 px contact distance,
-but deep INSIDE the radius at which any build begins to steer — and sent it at the core
-at cruise. Nothing that steers can recover from that: 60 px at 140 px/s is under half a
-second of warning, and a craft that answers by adding vertical speed while keeping its
-crossing speed still clips the core, since a full-cruise right-angle turn from 60 px out
-passes 42 px from the centre. Only clamping the saucer's POSITION out of the core
-survives it, which is one way to implement the sentence and not the one it describes, so
-the scenario failed conformant builds for the way they steer rather than for overlapping.
-It also posed a state a conformant build's own flight cannot reach, the steering being
-what keeps it out of there.
+Earlier versions rated a run on a single `arcade` domain, so any failure anywhere
+was the whole score. A run is now rated on `gravity`, `flight`, `arcade` and
+`presentation` independently, and its overall rating is the worst of the four, so
+a build whose well bends shots correctly and whose flight model does not is told
+apart from one where it is the other way round.
 
-That scenario is now a set of crossings. `specs/hazards.md` has the saucer "enter at a
-random `y` from the left or right edge and cross the field horizontally at about 140 px/s",
-so the item flies exactly that: nine rows, from 80 px below the star's to 80 px above it in
-20 px steps, each from the left edge and from the right, and the whole set three times from
-different seeds — fifty-four crossings, with the closest approach of all of them deciding
-the item. Every one is a course the build's own spawner produces, and the whole approach is
-left for the build to steer through.
+## Every review point is decided by a validator
 
-Fifty-four rather than one or two because both common faults here are invisible in a single
-sample. Avoidance is often one-sided, clearing an approach from above and driving one from
-below straight through, which is what the rows either side of the star are for. And a build
-that rerolls its weave on a timer can have the reroll DISCARD the avoidance it has
-accumulated, so whether it clears depends on where the reroll lands in the approach rather
-than on which row it came in on. That one is intermittent by construction and does not
-respect a tidy sample: one graded build flew dead through the core on two of eighteen
-crossings under one set of seeds and cleared all eighteen under another. Repeating the set
-is what turns it from a fault the item might notice into one it does. Both graded builds now
-fail, closing to 19 px and 10 px of the star's centre; the reference clears the core on all
-fifty-four, its worst at 81.9 px against a contact distance of 48.
+The checklist grew from 99 points to 254, and every one of them carries a Vitest
+suite under `validation/<engine>/`, the domains its failure lowers, and how far it
+lowers them. A `base` run is rated on 207 points and a `warhead` run on 254.
 
-Fifty-four crossings are affordable because the closest approach is no longer read off
-tick-by-tick samples. The sweep strides eight ticks at a time and works out how close the
-star came to the straight line BETWEEN two samples, which over 0.067 s of flight is the
-saucer's path to within about a pixel. Reading the samples alone at that stride would report
-the saucer further out than it got — the wrong direction for a check hunting a build that
-came too close — which is why the previous revision had to sample every tick near the star.
+Nothing is left to a reviewer to decide from a screenshot. The four points that
+had been backed by a reference view or a proof capture rather than by a check are
+now decided by validators: the field staying fitted and centred at any window
+size, a shape straddling a seam being drawn on both sides of it, the bullet trail
+being continuous and scaling with speed, and the HUD drawing the score and one
+glyph per ship in reserve.
+The reference screenshots and the proof captures are gone with them, and
+`specs/proof.md` with those. Every piece of media a reviewer looks at is now
+produced by the case's own validators, from scenarios the case controls, and the
+same suites run against each reference build to produce the baseline they are
+shown beside.
 
-The clip is one crossing at the speed it actually runs, and nothing else. That took some
-care. The record pass runs `arrange` as well as `act`, with the recording already going,
-so measurement posed in `arrange` lands on the clip: fifty-four crossings is thousands of
-driver round trips, the browser paints throughout, and a first cut of this item produced
-ten seconds of the field jumping about in front of five seconds of saucer.
+## The checklist asks one question at a time
 
-So `arrange` now poses one crossing and does nothing else, `act` flies it, and every
-measurement sits behind an `advance` that deliberately overruns the item's `clipMs`.
-Overrunning it unwinds the record pass out of `act` — the runtime's normal end to
-filming — so the measurements never run in that pass, while the validate pass has no budget
-and reads the same line as one more instant step. The clip is down from 10.2 s to 6.4 s, of
-which 5.5 is the crossing itself and the rest is the same posing every other item in this
-case opens with.
+Each point now asserts one observable behavior, which is most of the growth from
+99 points to 254. Where a single point had asked that a wave clears, that the
+banner appears, that the number advances and that play continues underneath, four
+points ask those four things, so a build that raises the banner and forgets to
+increment the wave loses one point rather than all four, and a reviewer reading
+the checklist can see which half of a sentence a build got wrong.
 
-What the clip shows is the crossing that came CLOSEST — the one the verdict was decided on,
-so a reviewer watches the approach being complained about rather than a representative one.
-Which crossing that is cannot be known until the sweep has run, and the sweep has to follow
-the filming, so the validate pass leaves its answer in a module-level `worstCrossing` for
-the record pass's `arrange` to read. The two passes reach the same crossing because each is
-posed from its own seed, so `arrange` reproduces it exactly rather than staging a lookalike.
-A first cut of this revision filmed the dead-on approach instead, which on a failing build
-is frequently one it handles cleanly — the item read as a false positive to anyone watching
-the playback.
+## The debug surface was redesigned
 
-## The three `waves` items clear a wave by shooting it, not with `clearRocks`
+No operation of the debugging and automation surface survives with its old
+signature. The rule the whole surface is now built to is that each operation sets
+one field, reads the state, or moves the clock, and takes scalars, and that
+`snapshot()` reports every field an operation can set, so every operation is
+verifiable by setting a value and reading it back. The checklist owns that
+property as a point of its own.
 
-`waves/count-increases`, `waves/banner` and `waves/plays-through-banner` all reached a
-cleared wave by calling `clearRocks()` — one of them with the comment "as if every rock
-were destroyed". It is not that. `specs/instrumentation.md` gives `clearRocks` as "removes
-every rock from the field, so a scenario can start from a known-empty field or isolate a
-single rock it adds": a way to make room, awarding no score and destroying nothing, and
-nothing anywhere says a wave turns over on it.
+What that replaced:
 
-`specs/gameplay.md` says how a wave IS cleared: "no rocks remain on the field, which
-happens only by shooting every rock down to nothing". A build may therefore raise its next
-wave from the destruction that empties the field rather than from polling the field's
-emptiness — the spec's own gloss says the two coincide, and they come apart only under a
-debug op that removes rocks without destroying them. A graded build does it the first way.
-It clears wave after wave correctly when played, and failed all three items: no banner, no
-turnover, and `plays-through-banner` reporting its precondition unsatisfiable because there
-was "no banner to play through". Three items, one wrong assumption, no defect.
+- The patch operations. `setShip(state)`, `setSaucer(state)`, `addRock(size,
+  state)` and `addBullet(state)` each took a partial object and applied every
+  field it carried, which made the case's own state layout a requirement on the
+  build. Each is now a set of scalar operations that name what they set.
+- `startGame()`, which entered a screen, opened a run and began a wave at once.
+  Arranging several things at once is now the caller's to sequence.
+- The missing removals. There was no `clearBullets`, no `clearEnemyBullets`, no
+  `clearTorpedoes`, and no way to address one rock among several, so a scenario
+  could not take enemy fire already in flight off the field. Each roster now has
+  its own clear, and each empties one roster and leaves the others standing.
+- `removeSaucer()` as the only way to isolate the saucer. A check on what the
+  saucer senses needs its senses live and its body still; a check on how it
+  travels needs both. The saucer now carries three faculties that are held
+  independently, and `snapshot()` reports each.
+- The absent world gates. A posed empty field was a cleared wave, so a scenario
+  was invaded by rocks it never asked for, and the answer had been to park
+  bystander rocks in a quiet corner. `setWaveSpawning` and `setSaucerSpawning` now
+  hold the game's own loops off while a scenario runs, and the parked bystanders
+  are gone.
+- The keyboard operations. `keyDown`, `keyUp` and `press` are gone: the keyboard
+  belongs to the runtime beneath the game, which is the engine's under an engine
+  and the build's under `none`, so a check drives real key events at it instead.
+- `setMuted`. Mute is reached the way a player reaches it, through the `mute`
+  binding, and `muted` is read back from the snapshot.
 
-All three now shoot the wave down. `skipShootRocksDown` in `validation/_helpers.mjs` places
-real rounds through `addBullet` on each rock's doorstep and runs the build's own collision
-and split code, instantly in both passes, so the forty-odd rounds of armor and fragments
-are measured and not filmed. It stops on Smalls as well as on a count, because only
-destroying a Small takes a rock off the field: `leave = 1` therefore lands on exactly one
-Small, and the filmed `act` is the single shot that empties the field, the banner it
-raises, and the denser wave arriving. `count-increases` went from a 30-second clip of an
-empty field to three and a half seconds of the transition it grades.
+## A wave is cleared by shooting it, not by emptying the field
 
-`waves/banner` also drops the ship's invulnerability once the last rock is gone. The grace
-is there so the grind's fragments cannot kill the ship, and by the time the banner goes up
-the field is empty and nothing can reach it — but a build is free to blink an invulnerable
-ship, and the reference blinks five times a second, so the still this item declares caught
-a field with no ship on it about half the time. A reviewer holding that up beside a run's
-own capture was comparing two coin flips.
+Three wave checks reached a cleared wave by calling `clearRocks()`, one of them
+with the comment "as if every rock were destroyed". It is not that.
+`clearRocks` removes rocks from the field, awarding no score and destroying
+nothing, and nothing anywhere said a wave turns over on it. The specification says
+a wave clears only by shooting every rock down, so a build that raises its next
+wave from the destruction that empties the field, rather than from polling the
+field's emptiness, is conformant and failed all three checks. That is what the
+checks were measuring: which of two equivalent readings of the clear rule a build
+had taken, rather than whether it turned a wave over.
 
-Both readings of the clear rule now pass all three items, and mutants still fail them: a
-build whose wave number never advances, one that spawns the next wave under the banner
-instead of after it, and one that stops simulating while the banner is up.
+No check in this case now reaches a cleared wave through `clearRocks`. The wave
+points shoot the field down for real: every round goes in through `addBullet` and
+through the build's own collision and split code, each round is placed on its
+target's doorstep on the side facing away from the star so it can never be
+absorbed by the core on the way, each round carries the target's velocity as well
+as its own so a drifting Small is not missed, and the run stops on Smalls as well
+as on a count, because only destroying a Small takes a rock off the field.
 
-## `rocks/fragment-fan` splits a rock the star is not pulling on
+The other reading is now a point of its own:
+`waves/an-empty-field-does-not-clear-by-itself` asserts that a field emptied with
+`clearRocks`, from which nothing was destroyed, raises no banner and advances no
+wave, so the operation's own contract is graded rather than assumed.
 
-The parent Large was posed at `(520, 250)`, 163 px from the star, where the pull is about
-170 px/s². Three shots take half a second, and over that the well moved the parent's velocity
-by 70 px/s — from the `(-80, 0)` the item posed to roughly `(-25, +44)` by the time it died.
-The fragments then inherited *that*, so the item was reading a drift the star had built, not
-the one it had arranged, and two of the graded builds failed assertions about a leftward
-drift that had genuinely stopped being leftward.
+## The saucer is graded on crossings it could survive
 
-The parent now sits at `(320, 620)`, 412 px out towards the bottom-left corner, where the
-pull is about 26 px/s² and moves it by some 13 px/s over the same three shots. Gravity is
-inverse-square with no cutoff (`specs/simulation.md`), so there is no distance at which it
-switches off; what this buys is a confound an order of magnitude smaller than the drift being
-read.
+The check on the saucer avoiding the star's core lined the saucer up on the
+star's row, 60 units out, and sent it at the core at cruise. That is under half a
+second of warning, and a craft that answers by adding vertical speed while keeping
+its crossing speed still clips the core. Only a build that clamps the saucer's
+position out of the core survived it, which is one way to implement the
+requirement and not the one it describes. The check was measuring the manner of a
+build's steering, while claiming to measure whether the saucer overlaps the core,
+and it posed a state a conformant build's own flight cannot reach, the steering
+being what keeps it out of there.
 
-That alone would have made the item weaker, which is worth spelling out. Two of the
-graded builds kick their fragments perpendicular to **the rock's own course** rather
-than perpendicular to **the bullet's travel**, which is what `specs/simulation.md`
-specifies. The old placement caught them by accident: gravity had swung the parent's
-course 60 degrees away from the shot, so the two conventions pointed in visibly
-different directions. With the parent drifting straight along the shot's line — which is
-what `(-80, 0)` against a horizontal shot is — they point the same way and the item
-cannot tell them apart. Moving the rock out of the well and changing nothing else would
-have quietly turned a real catch into a pass.
+`saucer/avoids-the-core` now flies 54 real crossings: nine rows from 80 units
+below the star's row to 80 above it in 20-unit steps, each from the left edge and
+from the right, the whole set repeated from three seeds. Every crossing is a
+course the specification's own entry rule produces, the whole approach is left for
+the build to steer through, and the closest approach of all 54 decides the point.
 
-So the parent now drifts on a **diagonal**, `(-60, -60)` — 85 px/s, a legal Large drift speed
-(`specs/hazards.md` gives 60 to 110) — while the shot stays horizontal. The two conventions
-now differ by 60 degrees by construction rather than by luck.
+Fifty-four rather than one, because both common faults here are invisible in a
+single sample. Avoidance is often one-sided, clearing an approach from above and
+driving one from below straight through, which is what the rows either side of the
+star are for. And a build that rerolls its weave on a timer can have the reroll
+discard the avoidance it has accumulated, so whether it clears depends on where
+the reroll lands in the approach rather than on which row it came in on. That one
+is intermittent by construction and does not respect a tidy sample.
 
-The assertions are read off the PAIR rather than off each fragment, which is what makes a
-diagonal drift workable. The average of the two velocities is the parent's velocity whatever
-the kick did, and the difference between them is twice the kick with the parent's motion
-cancelled out. So the average is checked for the posed drift and the difference for the fan:
-about 2 x 90 px/s, and lying across the shot rather than along it. Against the two
-off-spec builds, 144 of their 180 px/s fan lies along the shot, against a threshold of 30.
+The 54 are affordable because the closest approach is read as the star's distance
+to the straight line between two samples rather than to the samples themselves.
+Reading the samples alone at that stride reports the saucer further out than it
+got, which is the wrong direction for a check hunting a build that came too close.
+The saucer's gun is held off for the sweep, so 54 crossings produce no saucer
+bullets at all, and the recording shows the crossing that came closest, which is
+the one the verdict was decided on.
 
-Mutants confirm neither half is vacuous: fragments that carry no parent velocity fail all
-three drift assertions, and a kick rotated to lie along the shot fails the perpendicularity
-one at 180 against the same threshold.
+## The fragment fan is read out of the well's reach, and off the pair
 
-The clip also opens with half a second of the parent drifting before the first round is
-placed, so the motion the fragments are then read for is established on screen rather than
-inferred from the split.
+The check on how a rock's fragments scatter posed the parent 163 units from the
+star, where the pull moved its velocity by 70 units per second over the three
+shots that killed it. The fragments then inherited that, so the check was reading
+a drift gravity had built while claiming to read the drift it had arranged.
 
-## Six torpedo items hold on the thing they are grading
+Moving the parent out was not enough on its own. Two graded builds kick their
+fragments perpendicular to the rock's own course rather than perpendicular to the
+bullet's travel, which is what the specification fixes, and the old placement
+caught them only by accident: gravity had swung the parent's course away from the
+shot, so the two conventions pointed in visibly different directions. With the
+parent drifting along the shot's line they point the same way, and moving the rock
+out of the well and changing nothing else would have turned a real catch into a
+pass.
 
-Every item in the Homing-torpedo category ended its `act` on the instant its measurement was
-taken, which is the instant of impact. The verdicts were right and the clips were unwatchable:
-one to two seconds that cut on the frame the torpedo touched the rock, before a viewer could
-see what the hit produced.
+Both points now pose the parent 412 units out, where the pull is about 26 units
+per second squared, and give it a diagonal drift against a horizontal shot, so the
+two conventions differ by 60 degrees by construction rather than by luck. The
+assertions are read off the pair rather than off each fragment: the average of the
+two velocities is the parent's velocity whatever the kick did, and the difference
+between them is twice the kick with the parent's motion cancelled. The parent's
+velocity the average is compared against is read from the snapshot on the tick
+before the fatal round lands, not from the posed figure, so what gravity did over
+the shots cannot enter the comparison at all. The two directions are two points,
+`rocks/fragment-velocity-carries-the-parent` and
+`rocks/fragment-kick-is-perpendicular-to-the-shot`, because both are load-bearing.
 
-Each now runs the sim on for a second after the reading is taken, so the clip shows the
-effect rather than the moment before it. `one-hit-large` and `one-hit-medium` hold on the
-fragments coming apart, `destroyed-by-star` on the core that took the torpedo, and
-`harder-scatter` on each of its two kills in turn — the whole point of that item being the
-comparison between them. The readings are unchanged: each is taken from the snapshot at the
-instant the weapon landed, before the hold.
+## A recording ends on the outcome, not on the measurement
 
-`harder-scatter` also now reads the bullet spread at the instant of that kill, from the
-snapshot `actFireUntilGone` already returns, instead of 0.75 s later. It was comparing a
-torpedo spread measured at impact against a gun spread measured most of a second after,
-which let gravity into one side of the comparison and not the other. Against the reference
-the gun spread is now exactly 180 — twice the 90 px/s split kick `specs/simulation.md`
-specifies — where before it read 176.4.
+Every point in the torpedo category used to stop the moment its reading was taken,
+which is the instant of impact, so a reviewer got one or two seconds that cut on
+the frame the torpedo touched the rock, before anything the hit produced was on
+screen. Every recording in this case now runs on after the reading and ends on the
+effect: the fragments coming apart, the core that took the torpedo, the wave
+arriving. The readings are unchanged.
 
-`flies-true` was following the torpedo for 96 ticks, which at 420 px/s stops it at x = 554:
-short of the star's column at 640, so the reading was taken *before* the closest approach
-to the well the item exists to prove it flies through. It now follows for 240 ticks, out to
-x = 1058 and well past the star, which both lengthens the clip to 2.9 s and moves the reading
-to after the well has had its whole chance to bend the flight. Two of its assertions
-dereferenced a torpedo they had only soft-checked the existence of, so a build that launched
-nothing crashed the script and was reported as failing to expose the debug API; they are hard
-assertions now, and such a build fails on "pressing F launches a torpedo", which is what
-actually happened.
+Two of those points were wrong underneath, and both are fixed:
 
-`refills-on-respawn` skipped the whole recharge instantly, so the charge indicator went from
-full to 36 % between two frames and the clip never showed it empty — leaving nothing for the
-refill to be read against. The first 0.8 s of the recharge is now filmed, with the indicator
-sitting empty and the fired torpedo crossing the field, and the hold after the respawn is
-extended to a second so the refilled bar is on screen long enough to compare. The recharge
-the verdict reads is unchanged: the split wait sums to the same 432 ticks.
+- `detonation/harder-scatter` compared a torpedo spread measured at impact against
+  a gun spread measured most of a second later, which let gravity into one side of
+  the comparison and not the other. Each spread is now read at the instant of its
+  own kill.
+- `torpedo/flies-true-through-the-well` followed the torpedo only as far as
+  `x = 554`, short of the star's column at `640`, so the reading was taken before
+  the closest approach to the well the point exists to prove it flies through. It
+  now follows past the star.
 
-`flies-true` and `destroyed-by-star` also park a bystander rock. Both empty the field in
-`arrange`, and an empty field is a cleared wave, so the longer flights now outlast the wave
-banner and a fresh wave arrives mid-measurement — for `flies-true` that meant the torpedo
-homing onto a wave rock and the item failing every build. The parking spot is outside the
-torpedo's forward acquisition cone from every point on its lane, so it is scenery rather
-than a target.
+A third fault becomes a rule for every check in this case: an entity a check then
+reads is hard-asserted first. Two assertions used to dereference a torpedo whose
+existence they had only soft-checked, so a build that launched nothing crashed the
+script and was reported as failing to expose the debug surface rather than as
+failing to launch a torpedo.
 
-## Nothing seeded changed
+## A restart begins a game clear of saucers
 
-No specification, prompt, or reference moved: the seeded inputs of `v2.0.2` are
-byte-for-byte those of `v2.0.1`. A build is asked for exactly what `v2.0.1` asked for.
+Nothing graded that RESTART from the pause menu begins a game clear of saucers, so
+a build that rebuilds its world but leaves the saucer flying passed all five
+saucer points while handing a fresh wave 1 an enemy it never spawned, already
+firing at a ship that has just launched.
 
-The manifest moves only to add `saucer/restart-despawns`. Every review item `v2.0.1`
-declared is untouched — each `id`, `title`, `description`, `weight`, `domain` and validation
-script path is the one it declared — so every verdict carries across unchanged. What changes
-is the denominator: the checklist is one point longer, so a raw point total is not a
-`v2.0.1` total, while the earned-over-available rate the case is scored on compares
-directly.
+`saucer/a-restart-clears-the-saucer` grades it in the shape a player would: a game
+already down to two ships with a saucer crossing the field is paused, the pause
+menu's `RESTART` entry is confirmed, and the new game is read back. Three devices
+keep it from passing for the wrong reason. The saucer is read at the pause as well
+as after the restart, because a visit is finite and a saucer that left of its own
+accord would leave an indistinguishable field. A life is spent first, because a
+game that merely resumed has three ships as well unless one has already been
+spent, so the count reading three afterwards is what separates a restart from a
+resume, and the screen reading `playing` is what separates it from a quit to the
+title. And the pause selection is addressed rather than counted: the specification
+fixes the order of the pause entries but not which one the menu opens on, so on a
+build that opens on `RESTART` a fixed number of presses lands on `QUIT TO MENU`.
 
-On the validation side these scripts changed — `_helpers.mjs`, `saucer/avoids-star.mjs`,
-`rocks/fragment-fan.mjs`, the three `waves/` items, and six `torpedo/` items
-(`refills-on-respawn`, `flies-true`, `destroyed-by-star`, `one-hit-large`,
-`one-hit-medium`, `harder-scatter`); `saucer/restart-despawns.mjs` is the one new script.
-The only baseline media recaptured are the outputs of those scripts: the saucer clip, the
-fan clip and the three wave outputs in both variants, plus the six torpedo clips in
-`warhead`, and the new restart clip in both. Every other baseline is the capture `v2.0.1`
-shipped, untouched.
+## The specifications were rewritten
+
+Every spec was rewritten against the current authoring guidelines and re-split
+from nine files into seventeen, one per concern, so each rule lives in exactly one
+place. The prose states what the finished build must be and do and nothing about
+how to build it: no algorithms, no data structures, no decomposition, no coaching.
+Behavior a check reads is stated exactly or between explicit bounds, values are in
+the game's own logical units throughout, and emphasis is reserved for the words
+that would change the build if they were missed. The specification gained
+`specs/state.md`, which states the shape of the observable state the debug surface
+poses and reports, and `specs/showcase.md`, which defines the store-page
+presentation the finished game ships beside its source. `specs/proof.md` is gone.
+
+The prompt was rewritten with them. It states the task, the workspace, and how the
+build is invoked, and points at the specs for everything else.
+
+## The look is the build's
+
+The seeded palette and the monospace type requirement are removed, along with the
+three reference mockups. The specification states that the field is dark, and
+gives a table of what a player must read at a glance: the ship and its facing, the
+star reading as a well, the rocks apart from the ship and the saucer, a bullet's
+tail, the thrust flame, a ship inside its respawn grace, and every readout at the
+logical field size. The palette, the type, the glow, and every other aspect of the
+look are the build's, and they are what the `presentation` domain rates.
