@@ -1,23 +1,65 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/draw-three/deal-mode-reported.test.ts
+// draw-three/deal-mode-reported — the build reports the deal mode it plays.
 //
-// The review item `draw-three.deal-mode-reported` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/stock.md fixes this build's deal mode in a table: `TURN_COUNT` is
+// `3` and `DEAL_MODE` is `draw-three`. specs/instrumentation.md has `snapshot()`
+// report both, `dealMode` and `turnCount`, built from those figures.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THIS IS THE POINT THAT PINS THE FIGURE. The two literals are written out here
+// rather than read from the build's own `src/constants.ts`, because this is the one
+// check that holds the reported deal mode against the specification. Every common
+// validator that has to size itself to the deal mode reads `snapshot().turnCount`
+// instead of a literal, so one common suite stays honest across both variants; that
+// decomposition rests on this point deciding that the reported figure is `3`.
 //
-// What this item must decide, from the manifest:
+// THE POSE IS AN EMPTY TABLE IN PLAY. The deal mode is a property of the build, not
+// of an arrangement, so nothing is posed beyond the screen the picture is taken on.
 //
-//   The build reports its deal mode
-//
-//   dealMode is "draw-three" and turnCount is 3.
+// The label drawn for the mode is decided by `draw-three/mode-label-title` and
+// `draw-three/mode-label-hud`; what a turn does with the count is
+// `draw-three/turn-count`.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openTable,
+  type Harness,
+} from "../harness";
 
-it("draw-three.deal-mode-reported — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/draw-three/deal-mode-reported.test.ts is a scaffold stub, not a validator",
+/** The deal-mode id specs/stock.md fixes for this variant, as `DEAL_MODE`. */
+const DEAL_MODE = "draw-three";
+
+/** The turn count specs/stock.md fixes for this variant, as `TURN_COUNT`. */
+const TURN_COUNT = 3;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reports draw-three and a turn count of three", async () => {
+  openTable(h);
+
+  const snapshot = h.snapshot();
+  await h.advance(1);
+  captureStill(h, "mode");
+
+  assertEqual(
+    snapshot.dealMode,
+    DEAL_MODE,
+    "the deal-mode id the snapshot reports, this build's DEAL_MODE " +
+      "(specs/stock.md)",
+  );
+  assertEqual(
+    snapshot.turnCount,
+    TURN_COUNT,
+    "the turn count the snapshot reports, this build's TURN_COUNT " +
+      "(specs/stock.md)",
   );
 });
