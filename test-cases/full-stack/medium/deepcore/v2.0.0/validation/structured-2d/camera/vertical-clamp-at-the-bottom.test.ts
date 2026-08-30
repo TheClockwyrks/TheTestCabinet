@@ -1,25 +1,73 @@
-// Deepcore — camera.vertical-clamp-at-the-bottom. STUB: NOT YET AUTHORED.
+// camera/vertical-clamp-at-the-bottom — the view stops with the Core chamber at
+// the foot of the screen.
 //
-// The camera stops above the Core chamber
+// specs/world.md: `camY` is clamped above by `(coreRow + 1) * TILE - VIEW_H`, so
+// the deepest the view ever reaches is the one that puts the bottom of the Core
+// chamber row on the bottom edge of the mine viewport. Below that row is the
+// bedrock the world ends in, and the camera never scrolls into it.
 //
-// camY is clamped to (coreRow + 1) * TILE - VIEW_H, so the view stops with the
-// Core chamber at the foot of the screen rather than scrolling into the
-// bedrock below it.
-//
-// Automated validation: pose the miner in the Core chamber and hold camera.y
-// at the clamp.
-//
-// `test-case.toml` declares this suite as `camera/vertical-clamp-at-the-bottom.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (bottom (image)) around the drive.
+// ISOLATION. An empty mine with the miner posed at the bottom of it, its body and
+// its drill both gated so it holds that position and cuts nothing. The pose is
+// deep enough that the unclamped answer is past the stop, which the check states
+// as its own arithmetic before reading the build.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { CORE_COL, TILE, VIEW_H } from "../../src/constants";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  minerCenter,
+  openScene,
+  pinDrill,
+  pinMiner,
+  standOn,
+  type Harness,
+} from "../harness";
 
-test("The camera stops above the Core chamber", () => {
-  throw new Error(
-    "Deepcore validator `camera/vertical-clamp-at-the-bottom` is declared in test-case.toml but has not been authored yet.",
+/** Half a unit: the specification fixes the stop exactly. */
+const TOLERANCE_DIGITS = 0;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("clamps camY to (coreRow + 1) * TILE - VIEW_H at the bottom of the mine", async () => {
+  openScene(h);
+  pinMiner(h);
+  pinDrill(h);
+
+  const { coreRow } = h.snapshot();
+  assertEqual(
+    h.tileAt(CORE_COL, coreRow).kind,
+    "core",
+    "specs/world.md: the Core sits at (CORE_COL, coreRow)",
   );
+
+  standOn(h, CORE_COL, coreRow);
+  await h.advance(1);
+
+  const snapshot = h.snapshot();
+  const stop = (coreRow + 1) * TILE - VIEW_H;
+  // The arrangement's own arithmetic: standing on the Core chamber puts the
+  // unclamped answer below the stop, so an unclamped build scrolls past it.
+  assertGreaterThan(
+    minerCenter(snapshot.miner).y - VIEW_H / 2,
+    stop,
+    "the pose is past the vertical stop",
+  );
+  assertCloseTo(
+    snapshot.camera.y,
+    stop,
+    TOLERANCE_DIGITS,
+    "specs/world.md: camY is clamped to (coreRow + 1) * TILE - VIEW_H",
+  );
+
+  captureStill(h, "bottom");
 });
