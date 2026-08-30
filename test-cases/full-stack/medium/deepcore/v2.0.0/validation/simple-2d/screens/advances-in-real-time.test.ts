@@ -45,13 +45,17 @@ const START_ROW = 8;
 const RUN_MS = 1000;
 
 /**
- * The floor the game clock must clear, in seconds. Half the window, deliberately
- * generous: the claim is that the game advances with the time it is handed, not
- * that the host keeps perfect time, and a host whose frame callback is a timer
- * legally loses some of it. A build integrating its deltas lands near 1.0; one
- * that ignores them reports 0.
+ * The floor the game clock must clear, in seconds.
+ *
+ * A quarter of the window, deliberately generous. The claim is that the game
+ * advances with the time it is handed, not that the host keeps perfect time: a
+ * Node process has no frame callback, so the engine pumps off a timer, and the
+ * wall clock caps a single frame at a tenth of a second — so a loaded machine
+ * running few, long frames legitimately loses some of the window. What separates
+ * a build that integrates its deltas from one that ignores them is not close to
+ * this line: the first lands near the whole second and the second reports 0.
  */
-const MIN_ADVANCE = RUN_MS / 1000 / 2;
+const MIN_ADVANCE = RUN_MS / 1000 / 4;
 
 /**
  * The floor the miner must fall, in world units. It leaves at the terminal speed
