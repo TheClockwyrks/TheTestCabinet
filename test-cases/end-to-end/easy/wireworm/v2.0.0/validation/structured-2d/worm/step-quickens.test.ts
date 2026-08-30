@@ -31,7 +31,12 @@ import {
   WORM_STEP_L1,
 } from "../../src/constants";
 import { assertLessThanOrEqual } from "../assert";
-import { captureStill, createHarness, startPlaying, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startPlaying,
+  type Harness,
+} from "../harness";
 
 /**
  * How far a reported interval may fall from the closed form, in seconds.

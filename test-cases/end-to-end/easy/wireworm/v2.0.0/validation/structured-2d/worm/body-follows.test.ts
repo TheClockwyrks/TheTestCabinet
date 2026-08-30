@@ -79,7 +79,9 @@ it("moves each segment into the tile the segment ahead of it held", async () => 
         },
         { maxFrames: STEP_TIMEOUT, poll: 1 },
       );
-      chain.push(swept.hit ? wormById(swept.snapshot, id)?.segments : undefined);
+      chain.push(
+        swept.hit ? wormById(swept.snapshot, id)?.segments : undefined,
+      );
       if (!swept.hit) break;
     }
   });

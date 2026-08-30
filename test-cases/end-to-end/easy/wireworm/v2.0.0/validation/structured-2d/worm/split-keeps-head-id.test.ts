@@ -94,7 +94,10 @@ it("keeps the worm's id on the head-side piece and freshens the other", async ()
     "the piece carrying the old head reports the id the worm had",
   );
   const trailing = wormOn(swept.snapshot, TAIL_C, ROW);
-  assertDefined(trailing, `a worm standing on the old tail tile (${TAIL_C}, ${ROW})`);
+  assertDefined(
+    trailing,
+    `a worm standing on the old tail tile (${TAIL_C}, ${ROW})`,
+  );
   assertNotEqual(
     trailing?.id,
     id,

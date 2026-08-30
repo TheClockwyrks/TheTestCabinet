@@ -60,10 +60,10 @@ it("drops and reverses a worm whose next tile holds a segment", async () => {
 
   const id = poseWorm(h, START_C, START_R, 1, 1, 1);
 
-  const swept = await h.until(
-    (s) => wormOn(s, START_C, START_R)?.id !== id,
-    { maxFrames: STEP_TIMEOUT, poll: 1 },
-  );
+  const swept = await h.until((s) => wormOn(s, START_C, START_R)?.id !== id, {
+    maxFrames: STEP_TIMEOUT,
+    poll: 1,
+  });
 
   captureStill(h, "segment");
 
