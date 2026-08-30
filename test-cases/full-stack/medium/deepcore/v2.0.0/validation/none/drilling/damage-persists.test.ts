@@ -48,8 +48,15 @@ const FIRST_FRAMES = Math.round(5 * DRILL_HIT_INTERVAL * TICK_HZ);
 /** How long the miner spends away from the cell. */
 const AWAY_FRAMES = TICK_HZ;
 
-/** The second cut: one and a half intervals, so one or two hits land. */
-const RESUME_FRAMES = Math.round(1.5 * DRILL_HIT_INTERVAL * TICK_HZ);
+/**
+ * Frames the resumed cut may spend waiting for its next hit.
+ *
+ * The resumed cut is swept to the NEXT fall in health rather than held for a
+ * fixed span, because what this point is about is the health that fall starts
+ * from. A fixed span would be a span measured in the specification's hit
+ * interval, and would fail a build whose drill was merely slow.
+ */
+const RESUME_FRAMES = Math.round(8 * DRILL_HIT_INTERVAL * TICK_HZ);
 
 let h: Harness;
 
@@ -84,15 +91,21 @@ it("resumes a partly cut cell from the health it kept", async () => {
     await h.advance(AWAY_FRAMES);
     const kept = await h.tileAt(COL, row);
 
-    // And back, for one more interval of cutting.
+    // And back, cutting until the next hit lands.
     await h.debug.setMinerPosition(minerXOn(COL), minerYOn(row));
+    const from = kept.health ?? 0;
+    let back = kept;
     await h.hold(ACTION_KEY.down);
     try {
-      await h.advance(RESUME_FRAMES);
+      for (let frame = 0; frame < RESUME_FRAMES; frame += 1) {
+        await h.advance(1);
+        back = await h.tileAt(COL, row);
+        if (back.kind === "tunnel" || (back.health ?? 0) < from) break;
+      }
     } finally {
       await h.release(ACTION_KEY.down);
     }
-    return { cut, kept, back: await h.tileAt(COL, row) };
+    return { cut, kept, back };
   });
 
   const partial = resumed.cut.health ?? 0;
@@ -103,12 +116,8 @@ it("resumes a partly cut cell from the health it kept", async () => {
   assertEqual(resumed.kept.kind, "rock", "specs/character.md");
   assertEqual(resumed.kept.health, partial, "specs/character.md");
 
-  // And resumed from there: one or two hits below it, rather than one or two
-  // below a cell that had gone back to full.
-  assertBetween(
-    resumed.back.health ?? 0,
-    partial - 2 * DAMAGE,
-    partial - DAMAGE,
-    "specs/character.md",
-  );
+  // And resumed from there: the next hit took it one damage below the health it
+  // kept, rather than one below a cell that had gone back to full.
+  assertEqual(resumed.back.kind, "rock", "specs/character.md");
+  assertEqual(resumed.back.health, partial - DAMAGE, "specs/character.md");
 });

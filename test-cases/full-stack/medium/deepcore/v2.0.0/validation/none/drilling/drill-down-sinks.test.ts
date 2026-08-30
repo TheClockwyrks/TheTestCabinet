@@ -21,7 +21,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
-import { BAND_HEALTH, DRILL_DAMAGE, TILE, drillHitsFor } from "../constants";
+import {
+  BAND_HEALTH,
+  DRILL_DAMAGE,
+  DRILL_HIT_INTERVAL,
+  TILE,
+  drillHitsFor,
+} from "../constants";
 import {
   ACTION_KEY,
   captureReplay,
@@ -30,6 +36,7 @@ import {
   openScene,
   rowInBand,
   standOn,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 import { SAMPLE_FRAMES } from "./hits";
@@ -46,8 +53,15 @@ const HITS = drillHitsFor(BAND_HEALTH[BAND], DRILL_DAMAGE[0]);
 /** One hit's worth of the descent, which is the slack the reading allows. */
 const STEP = TILE / HITS;
 
-/** Frames the sweep may spend: the whole cut, and a hit interval of margin. */
-const MAX_FRAMES = (HITS + 2) * SAMPLE_FRAMES * 3;
+/**
+ * Frames the sweep may spend: four times the cut this point is about.
+ *
+ * Generous on purpose. What a hit interval is worth is the sibling check's
+ * subject, and a budget cut to the length the specification's own interval gives
+ * would fail a build whose drill was slow for the sink's reading rather than for
+ * the sink.
+ */
+const MAX_FRAMES = 4 * HITS * DRILL_HIT_INTERVAL * TICK_HZ;
 
 interface Sample {
   health: number;
