@@ -411,9 +411,9 @@ export interface FoundryDebugApi {
  * reads it).
  */
 export type Driven<T> = {
-  [K in keyof T as T[K] extends (...args: never[]) => unknown
-    ? K
-    : never]: T[K] extends (...args: infer A) => infer R
+  [
+    K in keyof T as T[K] extends (...args: never[]) => unknown ? K : never
+  ]: T[K] extends (...args: infer A) => infer R
     ? (...args: A) => Promise<R>
     : never;
 };
