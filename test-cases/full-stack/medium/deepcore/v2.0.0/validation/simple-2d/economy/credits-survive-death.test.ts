@@ -1,24 +1,83 @@
-// Deepcore — economy.credits-survive-death. STUB: NOT YET AUTHORED.
+// economy/credits-survive-death — the balance is banked, not staked.
 //
-// Banked Credits survive a death
+// `specs/gameplay.md` says it plainly: "Credits are banked: once earned they
+// survive a death in either mode." `specs/modes.md` adds that the mode changes
+// only what a death costs, so both modes are driven from the same posed balance.
 //
-// Credits already earned survive a death in either mode, so a run is never set
-// back to 0 Credits by dying.
-//
-// Automated validation: pose a balance, drive a death in each mode and read
-// the balance carried into the game-over state.
-//
-// `test-case.toml` declares this suite as `economy/credits-survive-death.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (banked (image)) around the drive.
+// The death itself is hull reaching `0`, which `specs/modes.md` lists as a death
+// cause and `specs/instrumentation.md` makes drivable: "A hull posed to `0` is
+// not itself a death: the game's own continuous check is what ends the
+// expedition, on the next update." So the hull is posed and the game's own rule
+// ends the expedition on the frames that follow.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNotNull } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  layCamp,
+  openScene,
+  pinDrill,
+  standAtCamp,
+  type Harness,
+  type Mode,
+} from "../harness";
 
-test("Banked Credits survive a death", () => {
-  throw new Error(
-    "Deepcore validator `economy/credits-survive-death` is declared in test-case.toml but has not been authored yet.",
-  );
+/** The banked balance the death must not touch. */
+const CREDITS = 1234;
+
+/**
+ * Game time the death is given to reach the Game Over screen, and the frames it
+ * is run in.
+ *
+ * `specs/modes.md` fixes that a death ends the expedition at the Game Over
+ * screen and fixes nothing about how long whatever a build plays on the way
+ * takes, so the check gives it a generous bounded span rather than reading the
+ * next frame. Ten seconds of game time in a hundred frames: every rate is
+ * integrated against the frame's delta, so the coarser division reaches the same
+ * state as ten thousand frames would.
+ */
+const DEATH_SECONDS = 10;
+const DEATH_FRAMES = 100;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+/** Pose an expedition in `mode` with a banked balance, then empty the hull. */
+async function dieWith(mode: Mode): Promise<void> {
+  openScene(h, { mode });
+  layCamp(h);
+  standAtCamp(h);
+  pinDrill(h);
+  h.debug.setCredits(CREDITS);
+  h.debug.setHull(0);
+  await h.advanceSeconds(DEATH_SECONDS, DEATH_FRAMES);
+}
+
+it("carries the banked Credits into a Standard death", async () => {
+  await dieWith("standard");
+  captureStill(h, "banked");
+
+  const after = h.snapshot();
+  assertEqual(after.screen, "game-over", "specs/modes.md");
+  assertEqual(after.credits, CREDITS, "specs/gameplay.md");
+  assertNotNull(after.summary, "specs/gameplay.md");
+  assertEqual(after.summary?.mode, "standard", "specs/gameplay.md");
+});
+
+it("carries the banked Credits into a Hardcore death", async () => {
+  await dieWith("hardcore");
+
+  const after = h.snapshot();
+  assertEqual(after.screen, "game-over", "specs/modes.md");
+  assertEqual(after.credits, CREDITS, "specs/gameplay.md");
+  assertNotNull(after.summary, "specs/gameplay.md");
+  assertEqual(after.summary?.mode, "hardcore", "specs/gameplay.md");
 });
