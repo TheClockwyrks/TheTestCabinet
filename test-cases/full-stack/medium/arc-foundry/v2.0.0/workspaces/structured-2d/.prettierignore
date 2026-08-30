@@ -1,5 +1,5 @@
 # Everything that is not authored source: installed packages, build output,
-# coverage reports, and the vendored Test Cabinet packages.
+# coverage reports, and the vendored packages.
 node_modules/
 /dist/
 /build/

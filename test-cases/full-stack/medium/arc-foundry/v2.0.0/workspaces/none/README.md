@@ -52,7 +52,7 @@ browser.
 ## What you must not edit
 
 - **`index.html`** — the page and the canvas.
-- **`.tcab/`** — the vendored Test Cabinet packages `package.json` resolves the
+- **`.tcab/`** — the vendored packages `package.json` resolves the
   produced-effect runtime from.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
