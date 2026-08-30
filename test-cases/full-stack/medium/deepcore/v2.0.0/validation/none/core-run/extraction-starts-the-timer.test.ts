@@ -1,24 +1,57 @@
-// Deepcore — core-run.extraction-starts-the-timer. STUB: NOT YET AUTHORED.
+// Deepcore — core-run/extraction-starts-the-timer: drilling the Core banks a
+// Sample and starts its clock.
 //
-// Drilling the Core extracts a Sample and starts its timer
+// `specs/hazards.md`: "Drilling downward onto the Core in the Core chamber
+// extracts a Core Sample into the satchel and starts its destabilization timer at
+// `CORE_TIMER` (`90`) seconds."
 //
-// Drilling downward onto the Core in the Core chamber banks a Core Sample into
-// the satchel and starts its destabilization timer at CORE_TIMER (90) seconds.
-//
-// Automated validation: pose the miner above the Core, hold down until the
-// extraction fires and read the satchel and coreTimer back.
-//
-// `test-case.toml` declares this suite as `core-run/extraction-starts-the-timer.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (extract (replay)) around the drive.
+// The miner is stood on the Core — the cell a held `down` cuts into — and `down`
+// is held until the satchel reports a Sample. The extraction is the game's own
+// drill landing its own hits from the game's own input; nothing here poses a
+// Sample. The timer is then read, and it is read against the top of its range
+// rather than exactly at it: the sweep samples every fifth of a second, so at
+// most that much of the ninety seconds can have run before the reading, which is
+// the whole of the slack allowed.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertEqual } from "../assert";
+import { CORE_COL, CORE_TIMER } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  openScene,
+  type Harness,
+} from "../harness";
+import { EXTRACT_SAMPLE_GAP, extractSample, standOnCore } from "./core-scene";
 
-test("Drilling the Core extracts a Sample and starts its timer", () => {
-  throw new Error(
-    "Deepcore validator `core-run/extraction-starts-the-timer` is declared in test-case.toml but has not been authored yet.",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("banks a Core Sample and starts its timer at CORE_TIMER", async () => {
+  await openScene(h);
+  const posed = await standOnCore(h);
+
+  assertEqual(
+    (await h.tileAt(CORE_COL, posed.coreRow)).kind,
+    "core",
+    "the cell the miner is stood on",
+  );
+  assertEqual(posed.satchel.coreSample, false, "a Sample held before the cut");
+
+  const run = await captureReplay(h, "extract", () => extractSample(h));
+
+  assertEqual(run.taken, true, "a Core Sample in the satchel after the cut");
+  assertBetween(
+    run.snapshot.coreTimer ?? Number.NaN,
+    CORE_TIMER - EXTRACT_SAMPLE_GAP,
+    CORE_TIMER,
+    "seconds left on a freshly extracted Sample",
   );
 });

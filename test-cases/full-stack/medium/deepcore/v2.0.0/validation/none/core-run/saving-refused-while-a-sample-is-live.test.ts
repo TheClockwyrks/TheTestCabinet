@@ -1,24 +1,84 @@
-// Deepcore — core-run.saving-refused-while-a-sample-is-live. STUB: NOT YET AUTHORED.
+// Deepcore — core-run/saving-refused-while-a-sample-is-live: the pad will not
+// bank a run with a Sample ticking.
 //
-// Saving is refused while a Sample is live
+// `specs/items.md`: "Saving is refused while a Core Sample's timer runs, whether
+// the Sample is carried or lying jettisoned, so the timer is never frozen out by
+// saving and quitting." `specs/gameplay.md` repeats it among the save rules.
 //
-// The Save Pad refuses to save while a Core Sample timer runs, carried or
-// jettisoned, so the timer can never be frozen out by saving and quitting.
+// The miner is stood at the Save Pad — whose footprint is asked of the build,
+// since where the six buildings sit along the camp is the build's to choose — and
+// the pad's own action is called through the control `specs/instrumentation.md`
+// names for it, "as activating the Save Pad does". `hasSave` must stay `false`
+// through both readings: once with the Sample in the satchel, and once with it
+// dropped on the ground and still counting.
 //
-// Automated validation: pose a carried Sample at the Save Pad, save, and read
-// hasSave still false, then repeat with one jettisoned.
-//
-// `test-case.toml` declares this suite as `core-run/saving-refused-while-a-sample-is-live.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (refused (replay)) around the drive.
+// The slot is cleared first, so `hasSave` starts from the state the refusal is
+// measured against.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNotNull } from "../assert";
+import { CORE_TIMER } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  standAtBuilding,
+  type Harness,
+} from "../harness";
+import { openCampScene } from "./core-scene";
 
-test("Saving is refused while a Sample is live", () => {
-  throw new Error(
-    "Deepcore validator `core-run/saving-refused-while-a-sample-is-live` is declared in test-case.toml but has not been authored yet.",
+/** Far more than the drive takes, so neither reading is taken after a detonation. */
+const POSED_TIMER = CORE_TIMER;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("refuses to save while a Sample is carried or lying jettisoned", async () => {
+  await openCampScene(h);
+  await h.debug.clearSave();
+  await standAtBuilding(h, "save-pad");
+
+  const start = await h.snapshot();
+  assertEqual(start.hasSave, false, "a save banked before the check");
+
+  const run = await captureReplay(h, "refused", async () => {
+    await h.debug.setCoreCarried(true);
+    await h.debug.setCoreTimer(POSED_TIMER);
+    await h.debug.save();
+    await h.advance(2);
+    const carried = await h.snapshot();
+
+    await h.debug.jettison();
+    await h.debug.save();
+    await h.advance(2);
+    const jettisoned = await h.snapshot();
+
+    return { carried, jettisoned };
+  });
+
+  assertNotNull(
+    run.carried.coreTimer,
+    "a timer running for the carried reading",
+  );
+  assertEqual(
+    run.carried.hasSave,
+    false,
+    "a save banked while a Sample is carried",
+  );
+
+  assertNotNull(
+    run.jettisoned.coreGround,
+    "a Sample on the ground for the jettisoned reading",
+  );
+  assertEqual(
+    run.jettisoned.hasSave,
+    false,
+    "a save banked while a Sample lies jettisoned",
   );
 });
