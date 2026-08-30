@@ -27,7 +27,7 @@ import {
   STAGE_W,
   TOP_ROW_Y,
 } from "./constants";
-import { drawCardFace } from "./cardart";
+import { drawCardFace } from "./card-art";
 import { nextRange, nextSign } from "./rng";
 import { raise, type MutCard, type MutFlyer, type Sim } from "./sim";
 

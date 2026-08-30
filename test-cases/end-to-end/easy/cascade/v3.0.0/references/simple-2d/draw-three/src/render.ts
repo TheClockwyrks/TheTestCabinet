@@ -6,7 +6,7 @@
 //
 // Where each card goes is `src/layout.ts`'s answer, and it is the same answer the
 // pointer's hit test reads, so what a player presses is what a player sees. What
-// a card looks like is `src/cardart.ts`'s. What is left here is the order things
+// a card looks like is `src/card-art.ts`'s. What is left here is the order things
 // are drawn in and the four screens.
 
 import {
@@ -34,7 +34,7 @@ import {
   WIN_TEXT,
   type Rect,
 } from "./constants";
-import { drawCard, drawCardFace, drawEmptySlot } from "./cardart";
+import { drawCard, drawCardFace, drawEmptySlot } from "./card-art";
 import { dropRect, drawnCards, pileAnchor, wasteShownCount } from "./layout";
 import { COLOR, font } from "./theme";
 import type { CascadeState } from "./game";

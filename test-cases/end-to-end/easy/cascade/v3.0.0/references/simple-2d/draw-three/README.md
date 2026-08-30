@@ -32,7 +32,7 @@ The felt-and-paper look — a bright billiard green, cream card faces with drawn
 pips, a blue lattice back, gold for the run in hand and for the pile it would
 land on — is this build's own: the specification fixes the rules and the geometry
 and deliberately leaves the palette, the type, and the artwork to the build, so
-the look lives in `src/theme.ts` and `src/cardart.ts` rather than beside the
+the look lives in `src/theme.ts` and `src/card-art.ts` rather than beside the
 case-fixed figures in `src/constants.ts`.
 
 This is a self-contained static web app — plain **TypeScript** over the engine,
@@ -250,7 +250,7 @@ src/
   audio.ts            The ten engine cues, played once per event per frame
   debug.ts            The debug surface: poses and readings over CascadeState
   diagnostics.ts      The values the engine's overlay shows
-  cardart.ts          How a card, a back and an empty slot are drawn
+  card-art.ts         How a card, a back and an empty slot are drawn
   render.ts           All canvas drawing, in logical space
   *.test.ts           The build's own tests, beside the code they cover
 ```
