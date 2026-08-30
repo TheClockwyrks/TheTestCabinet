@@ -52,7 +52,7 @@ sed -i 's/^const MAX_REPLAY_FRAMES = 300;$/const MAX_REPLAY_FRAMES = Number(\
 
 cd "$WORK"
 TCAB_VALIDATION_MEDIA_DIR=/tmp/deepcore-showcase-out \
-  TCAB_SHOWCASE_MAX_REPLAY_FRAMES=1100 \
+  TCAB_SHOWCASE_MAX_REPLAY_FRAMES=1200 \
   npx vitest run --config validation/vitest.config.ts \
   validation/showcase-capture.test.ts
 ```
@@ -119,9 +119,22 @@ that the take is then judged down for.
 
 At 60 Hz this game's recording runs about 3 KB a frame compressed, because the
 mine scrolls continuously and so almost nothing between two frames is the same
-draw. A cap of `1100` on a take of this length halves the frames, giving a clip
-that plays at its real speed at 30 fps in a file of about three megabytes. The
-take itself is always PLAYED at 60 Hz: the drill lands a hit every `0.125`
-seconds, which 60 divides exactly and 30 does not, and the same expedition played
-at 30 Hz spends enough extra fuel on the way down to strand the miner on the way
-up.
+draw. A whole take of this length recorded at 60 fps is therefore over six
+megabytes, which is a slow first entry for a catalog preview. The harness thins
+by an integral stride, so a cap of `1200` on a 2,324-frame take keeps every
+second frame: 1,162 frames, playing at their real speed at 30 fps, in about three
+and a half megabytes. The next stride down, at a cap of `1100`, gives 20 fps and
+2.1 MB, which is too coarse for the climb.
+
+The take itself is always PLAYED at 60 Hz whatever the cap. The drill lands a hit
+every `0.125` seconds, which 60 divides exactly and 30 does not, and the same
+expedition played at 30 Hz spends enough extra fuel on the way down to strand the
+miner on the way up.
+
+## What is committed
+
+Seed `6` of the twenty-four auditioned, at a cap of `1200`: a shaft sunk from the
+camp to row 32 (160 m), the bay filled to 15 of 15 slots at 244 kg, four ores
+worth 1,024 Credits on the counter, the hull untouched, and the climb landing on
+12 of 100 fuel — 38.7 seconds end to end. It scored 191 against a field whose
+next best was 180.

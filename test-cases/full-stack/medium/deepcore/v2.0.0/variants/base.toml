@@ -17,6 +17,15 @@ description = "The standard expedition: start on the surface with tier-1 gear an
 # selected engine. So there is no spec of any kind to put here. If you came to this file
 # to add one, it almost certainly belongs in `test-case.toml` as a common spec.
 
+# The curated presentation this variant shows on the catalog and its case page:
+# a description written for a player and a short carousel captured from the
+# reference implementation below. The directory holds `showcase.md`,
+# `showcase.toml` and the media flat beside them, with no subdirectories, and
+# every problem with it HARD-FAILS resolution rather than degrading. The driver
+# that recorded the media, and the procedure for recording it again, are under
+# `showcase/capture/`.
+showcase = "showcase/base"
+
 # The authored correct build, one directory per supported engine, because the build a
 # reference demonstrates differs under each. This table must name EXACTLY the engines the
 # case supports (the resolver checks both directions), and the case supports three:
