@@ -1,28 +1,74 @@
-// Arc Foundry — `yard.map-coordinates`. CASE-PROVIDED. NOT YET WRITTEN.
+// yard/map-coordinates — the three maps are chosen rather than generated, so each
+// reports the entry, the six ordered waypoints, and the collector at exactly the
+// tiles `specs/yard.md` pins for it.
 //
-// The manifest declares this point at `yard/map-coordinates.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// EVERY MAP-FACING FIGURE IN THE GAME IS DOWNSTREAM OF THIS. The maze length is
+// the route through this chain, a unit's `waypointIndex` counts along it, and
+// `first` and `last` order the Load by progress toward its end. A map whose
+// waypoints are anywhere else is a map whose every route figure is a different
+// number, and no other point in this project could say why.
 //
-// THE REQUIREMENT. The Substation, The Switchyard and The Transformer Yard
-// each report the entry, the six ordered waypoints WP1 through WP6, and the
-// collector at exactly the tiles specs/yard.md pins for them, so the maps are
-// chosen rather than generated.
-//
-// HOW IT IS DECIDED. Set each map in turn and hold the reported entry,
-// waypoints and collector against the three tables. The evidence it hands back
-// is `substation` (image): the Substation's waypoint layout.
+// THE ORDER IS PART OF THE COORDINATE. `WP1` through `WP6` are the numbers drawn
+// on the yard and the sequence a unit walks, so a build that lays the right six
+// tiles down in the wrong order fails here as squarely as one that puts them
+// somewhere else.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { MAPS } from "../../src/constants";
+import { assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
 
-describe("yard.map-coordinates", () => {
-  it("Each map's chain sits at its pinned tiles", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `yard.map-coordinates` has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reports each map's entry, ordered waypoints and collector", async () => {
+  for (const map of MAPS) {
+    openYard(h, { map: map.id });
+    const s = h.snapshot();
+    assertEqual(s.map, map.id, "the map the run opened on");
+
+    if (map.id === MAPS[0]!.id) {
+      await h.advance(1);
+      captureStill(h, "substation");
+    }
+
+    assertEqual(s.entry.col, map.entry.col, `${map.name}: the entry's col`);
+    assertEqual(s.entry.row, map.entry.row, `${map.name}: the entry's row`);
+    assertEqual(
+      s.collector.col,
+      map.collector.col,
+      `${map.name}: the collector's col`,
     );
-  });
+    assertEqual(
+      s.collector.row,
+      map.collector.row,
+      `${map.name}: the collector's row`,
+    );
+
+    assertLength(
+      s.waypoints,
+      map.waypoints.length,
+      `${map.name}: the waypoints of its chain`,
+    );
+    for (const [at, waypoint] of map.waypoints.entries()) {
+      const reported = s.waypoints[at]!;
+      const where = `${map.name}: WP${at + 1}`;
+      assertEqual(reported.index, at + 1, `${where}: its order number`);
+      assertEqual(reported.col, waypoint.col, `${where}: its col`);
+      assertEqual(reported.row, waypoint.row, `${where}: its row`);
+    }
+  }
 });
