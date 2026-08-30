@@ -608,7 +608,9 @@ function drawMeter(state: State, ctx: Ctx, width: number): void {
   const w = 300;
   const h = 16;
   const x = width / 2 - w / 2;
-  const y = HUD_BOTTOM_TOP + 24;
+  // High enough in the strip that the caption below the trough still sits
+  // inside it, rather than running off the bottom of the stage.
+  const y = HUD_BOTTOM_TOP + 16;
   const ready = dischargeReady(state.resonance);
   ctx.save();
   ctx.fillStyle = COLOR.meter;
@@ -629,21 +631,33 @@ function drawMeter(state: State, ctx: Ctx, width: number): void {
   ctx.restore();
 }
 
-/** The polarity indicator: the ship's band, its accent, and its label. */
+/**
+ * The polarity indicator: the ship's band, its accent, and its label.
+ *
+ * The label is set flush to the strip's right margin and the mark is placed from
+ * the label's own measured width, so the longer of the two band names stays
+ * inside the stage rather than running off its edge.
+ */
 function drawPolarity(state: State, ctx: Ctx, width: number): void {
   const band = state.ship.band;
-  const cx = width - 150;
-  const cy = HUD_BOTTOM_TOP + 32;
+  const label = BAND_LABELS[band];
+  const right = width - 28;
+  const cy = HUD_BOTTOM_TOP + 26;
+
+  ctx.save();
+  ctx.font = FONT.body;
+  ctx.textAlign = "right";
+  ctx.fillStyle = bandColor(band);
+  ctx.fillText(label, right, cy);
+  const cx = right - ctx.measureText(label).width - 30;
+  ctx.restore();
+
   drawGlow(ctx, cx, cy, 20, 20, band);
   ctx.save();
   ctx.fillStyle = bandColor(band);
   ctx.beginPath();
   ctx.arc(cx, cy, 9, 0, TAU);
   ctx.fill();
-  ctx.fillStyle = bandColor(band);
-  ctx.font = FONT.body;
-  ctx.textAlign = "left";
-  ctx.fillText(BAND_LABELS[band], cx + 24, cy);
   ctx.restore();
   drawAccent(ctx, cx, cy, 16, band);
 }
@@ -655,7 +669,7 @@ function drawMuteMark(state: State, ctx: Ctx, width: number): void {
   ctx.fillStyle = COLOR.textDim;
   ctx.font = FONT.small;
   ctx.textAlign = "right";
-  ctx.fillText("MUTED", width - 28, HUD_BOTTOM_TOP + 52);
+  ctx.fillText("MUTED", width - 28, HUD_BOTTOM_TOP + 50);
   ctx.restore();
 }
 
