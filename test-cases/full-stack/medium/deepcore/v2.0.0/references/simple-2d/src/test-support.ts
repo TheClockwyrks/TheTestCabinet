@@ -311,7 +311,7 @@ export function runFrames(
   const fx: FxEvent[] = [];
   const cues: CueName[] = [];
   const loops = new Set<string>();
-  let current: DeepcoreState = state as DeepcoreState;
+  let current: DeepcoreState = commit(draft(state));
   for (let i = 0; i < frames; i += 1) {
     const d = draft(current);
     stepGame(d, step);

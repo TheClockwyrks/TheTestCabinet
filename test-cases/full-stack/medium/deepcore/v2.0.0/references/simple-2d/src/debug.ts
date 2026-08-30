@@ -572,7 +572,7 @@ export function createDebugApi(): DeepcoreDebugApi {
           : requireInteger("reset", "seed", options.seed, 0, 0xffffffff);
       // `muted` is a player preference the engine owns, and the save slot
       // outlives the session, so neither is touched (specs/instrumentation.md).
-      return createInitialState(state.assets as DeepcoreState["assets"], {
+      return createInitialState(state.assets, {
         seed,
         muted: state.muted,
         hasSave: hasSave(),

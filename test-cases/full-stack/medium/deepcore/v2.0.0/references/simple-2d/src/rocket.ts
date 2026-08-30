@@ -6,7 +6,7 @@
 // survive a death.
 
 import { CUES, ROCKET_COMPONENTS } from "./constants";
-import type { MaterialId, RocketComponent } from "./constants";
+import type { RocketComponent } from "./constants";
 import { cue } from "./audio";
 import { note } from "./feedback";
 import type { Draft } from "./state";
@@ -36,7 +36,7 @@ export function hasMaterial(
 ): boolean {
   if (material === null) return true;
   if (material === "core-sample") return satchel.coreSample;
-  return satchel[material as MaterialId] > 0;
+  return satchel[material] > 0;
 }
 
 /** Whether the next component can be fabricated as things stand. */

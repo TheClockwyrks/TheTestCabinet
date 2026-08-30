@@ -70,8 +70,8 @@ export class Draws {
     let r = this.float() * total;
     for (let i = 0; i < items.length; i += 1) {
       r -= weights[i] ?? 0;
-      if (r <= 0) return items[i] as T;
+      if (r <= 0) return items[i];
     }
-    return items[items.length - 1] as T;
+    return items[items.length - 1];
   }
 }

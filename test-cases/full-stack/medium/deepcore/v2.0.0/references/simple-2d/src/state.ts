@@ -27,7 +27,6 @@
 // the debug surface raises them outside a frame and the next update is what
 // hands them over; the loops are recomputed from scratch every frame.
 
-import { WORLD_COLS } from "./constants";
 import type { CueName, ItemId, OreId, TrackName } from "./constants";
 import type {
   DeepcoreState,
@@ -274,15 +273,17 @@ export function writeTiles(
 ): Grid {
   if (edits.length === 0) return grid;
   const rows: (readonly Tile[])[] = grid.slice();
-  const copied = new Set<number>();
+  const copied = new Map<number, Tile[]>();
   for (const edit of edits) {
     const line = rows[edit.row];
     if (!line || edit.col < 0 || edit.col >= line.length) continue;
-    if (!copied.has(edit.row)) {
-      rows[edit.row] = line.slice();
-      copied.add(edit.row);
+    let next = copied.get(edit.row);
+    if (!next) {
+      next = line.slice();
+      copied.set(edit.row, next);
+      rows[edit.row] = next;
     }
-    (rows[edit.row] as Tile[])[edit.col] = edit.tile;
+    next[edit.col] = edit.tile;
   }
   return rows;
 }
@@ -295,9 +296,4 @@ export function setDraftTile(
   tile: Tile,
 ): void {
   d.grid = writeTile(d.grid, col, row, tile);
-}
-
-/** Whether a column is inside the grid's width. */
-export function inGridCol(col: number): boolean {
-  return col >= 0 && col < WORLD_COLS;
 }

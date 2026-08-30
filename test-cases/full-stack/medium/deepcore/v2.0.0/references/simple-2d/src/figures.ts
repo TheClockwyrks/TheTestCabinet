@@ -31,7 +31,7 @@ import { SURFACE_ROW } from "./tuning";
 
 /** One rung of a ladder, clamped so a tier outside the ladder never reads `undefined`. */
 function rung<T>(ladder: readonly T[], tier: number): T {
-  return ladder[Math.min(ladder.length - 1, Math.max(0, tier - 1))] as T;
+  return ladder[Math.min(ladder.length - 1, Math.max(0, tier - 1))];
 }
 
 // ---- What a tier buys ----------------------------------------------------
