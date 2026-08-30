@@ -24,12 +24,10 @@
 // hands both to the workers through `provide`. The environment stays `node` —
 // the suites drive a browser, they do not run in one.
 //
-// A `setupFiles` entry belongs beside `globalSetup` and is deliberately absent
-// until the suites are written. Its only job is the per-worker teardown that
-// hands a page back when a suite file is done, which is a call into the shared
-// harness; the harness lands with the suites, and the entry lands with it. A
-// `setupFiles` naming a file that does not exist is not a deferral, it is a
-// project that cannot be collected at all.
+// `setupFiles` runs beside it, once per worker rather than once per project. Its
+// only job is the per-worker teardown that hands a page back when a suite file is
+// done, which is a call into the shared harness — the one moment a worker has no
+// lifecycle hook of its own for.
 
 import { defineConfig } from "vitest/config";
 
@@ -40,6 +38,7 @@ export default defineConfig({
     include: ["validation/**/*.test.ts"],
     environment: "node",
     globalSetup: ["validation/globalSetup.ts"],
+    setupFiles: ["validation/setup.ts"],
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
