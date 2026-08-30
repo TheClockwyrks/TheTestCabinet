@@ -1,99 +1,268 @@
-# Coil — starter project
+# Coil — `simple-2d` reference implementation (Maze)
 
-This repository is the starting point for building **Coil**, the game the
-specification under `specs/` describes. Read `specs/overview.md` first; it says
-how the rest of the specification is organized.
+The authored, **correct** reference build of the Coil full-stack test case's
+Maze variant, on the [Simple 2D](../../../../../../../../packages/simple-2d)
+engine. It is the answer a run on `simple-2d` is compared against. It is **never
+seeded into a run** — handing a model the finished game would defeat the test —
+and takes no part in the case's seed set. The case specs under `../../../specs/`
+remain authoritative for the design.
 
-The project is already wired up. It builds on the **Simple 2D** engine, which is
-installed as an ordinary dependency and documents itself under `engine/` — read
-that alongside the specs. What is missing is the game, and the art and sound it
-plays.
+The project is the case's seeded workspace with `src/game.ts` implemented, the
+game split across new modules beside it, its own tests written alongside, and
+the art and sound it plays produced and committed, so what is here is exactly
+what a run on this engine is asked to produce.
 
-## What you own
+---
 
-**`src/game.ts`, and any new files you add beside it.**
+**Coil** is a neon grid serpent, played in the browser. One snake threads a
+single continuous path across a bordered grid, eating pellets that make it a
+cell longer each time, until a wrong turn runs it into a wall or into its own
+body.
 
-Start by declaring and exporting `CoilState`, the game's whole state, and
-`CoilDebugApi`, the debug and automation surface `specs/instrumentation.md`
-specifies. The stub in `src/game.ts` is written against both names, so the
-project does not compile until they exist — a fresh workspace failing
-`npm run typecheck` is the starting point, not a broken seed.
+Coil's own idea is the **combo**. Pellets eaten in quick succession build a
+multiplier that lapses the moment you dawdle, so the strong player is the one
+who plans an efficient route from one pellet to the next rather than the one who
+merely survives.
 
-`src/game.ts` then exports `game`, a `Game<CoilState, CoilDebugApi>`: three
-functions over that state. `initialize` builds the state and the debug surface
-once and returns them together as `[state, debug]`; `update` takes the current
-state as a read-only view (`DeepReadonly<CoilState>`, from `ts-essentials`) and
-returns the next state, advanced against the frame's delta time in seconds; and
-`render` is handed that next state, read-only again, and draws it. The engine
-holds the state by value and replaces it with whatever `update` returns, so a
-frame builds the next state from the current one rather than writing into it,
-and the type is what guarantees that rendering changes nothing. All three
-currently throw `"not implemented"`. Implement them.
+Maze lays a fixed course of four bars across the interior. They are as fatal as
+the wall border, no pellet ever spawns on one, and the row the snake starts on
+carries none of them, so the opening chain has a clear runway ahead of it and
+the route to every pellet after that has to work around the course.
 
-**The fixed tick is yours.** The engine hands `update` the real elapsed seconds
-of each frame and imposes no timestep of its own. Coil advances in whole ticks
-of `TICK_SECONDS`, so `update` accumulates those seconds and resolves each whole
-tick in the order `specs/movement.md` fixes, carrying the remainder. Drawing
-advances nothing.
+The dark field with its bright, saturated pieces — the green coil, the warm
+pellet, the amber bars — is this build's own: the specification fixes the rules
+and the geometry and deliberately leaves the palette, the type, and the artwork
+to the build, so the look lives in `src/theme.ts` rather than beside the
+case-fixed figures in `src/constants.ts`.
 
-**The assets under `assets/`.** That directory does not exist yet. Coil ships no
-art and no sound: the snake's sprite set and the game's cues and music are
-produced during this build with the generation binaries on the `PATH`, committed
-here, and bundled. `specs/assets.md` states what to produce, which binary makes
-each file, and the bar each is held to; `src/constants.ts` names the path each
-lands at. Load them through the engine's asset loader and bind the cues to its
-cue bus.
+This is a self-contained static web app — plain **TypeScript** over the engine,
+drawing to an **HTML5 canvas**, bundled with **Vite**. No backend, accounts,
+network calls, or API keys; everything needed to play is in the built bundle.
 
-The debug surface is a required deliverable. The engine returns it from
-`engine.debug` exactly as `initialize` handed it over, and that is how the game
-is driven from code, so it is present and exactly as `specs/instrumentation.md`
-specifies. Because nothing holds a writable state, its operations are written in
-the shape of `update`: a pose takes the current state and returns the next, and a
-caller applies it through `engine.apply((s) => debug.setScore(s, 120))`; a
-reading takes the state and returns what it read, as `debug.snapshot(engine.state)`.
-Nothing is published to the page.
+## Controls
 
-Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test` runs
-them in process, with coverage over `src/`. The engine's documentation carries a
-complete worked example of testing a game this way.
+The game is played from the keyboard alone. Every control is a **registered
+engine action** on the `dpad-4` touch layout, and keys are named by their
+physical `KeyboardEvent.code`, so the bindings hold whatever layout you type on.
 
-## What you must not edit
+| Action    | Keys                  | On the board             | On a menu                      |
+| --------- | --------------------- | ------------------------ | ------------------------------ |
+| `up`      | `ArrowUp`, `KeyW`     | Turns the snake up       | Moves the highlight up         |
+| `down`    | `ArrowDown`, `KeyS`   | Turns the snake down     | Moves the highlight down       |
+| `left`    | `ArrowLeft`, `KeyA`   | Turns the snake left     | Nothing                        |
+| `right`   | `ArrowRight`, `KeyD`  | Turns the snake right    | Nothing                        |
+| `confirm` | `Enter`, `Space`      | Nothing                  | Accepts the highlighted item   |
+| `back`    | `Escape`              | Pauses the round         | Leaves the screen              |
+| `pause`   | `KeyP`                | Pauses the round         | Resumes, on the pause menu     |
+| `mute`    | `KeyM`                | Toggles sound            | Toggles sound                  |
 
-- **`src/main.ts`** — the fixed entry point. It creates the engine over the
-  page's canvas, binds `game` to it, and runs.
-- **`src/constants.ts`** — every figure the specification fixes: the stage and
-  board geometry, the starting chain, the tick and the turn buffer, the combo and
-  its window, the mode's copy, the screen copy, the action names and their
-  bindings, the cue names, and the paths the produced files land at. Read from
-  it.
-- **`index.html`** — the page and the canvas the engine fits the stage into.
-- **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
-  and `.gitignore`.
-- **`.tcab/`** — the vendored engine.
+A turn is buffered and takes effect on the next step, and the snake can only
+turn across the way it is travelling, so it never doubles back on itself.
 
-Add dependencies to `package.json` if you genuinely need them, and commit the
-`package-lock.json` — the build is installed with `npm ci`. Leave the existing
-entries alone.
+The **backtick** key (`` ` ``) toggles the engine's debug overlay, which shows
+the screen, the score and the best score, the multiplier and the seconds left on
+its window, the snake's direction, its length, its head cell, and the pellet
+cell. That key belongs to the engine, not to this game.
 
-## Commands
+## What the engine owns
 
-- `npm run dev` — serves the game with hot reload.
-- `npm run build` — type-checks, then emits the static site into `dist/`.
-- `npm run preview` — serves `dist/` for a final check.
-- `npm run typecheck` — `tsc --noEmit`.
-- `npm run lint` — ESLint.
-- `npm run format` — Prettier, in check mode.
-- `npm test` — Vitest over `src/**/*.test.ts`, with coverage.
+`@test-cabinet/simple-2d` supplies everything that is the same in every browser
+game, and none of it is written here: the frame loop and its delta time in
+seconds, the state held by value and handed out `DeepReadonly`, the canvas fit
+(uniform scale, centered letterbox, device pixel ratio), named keyboard actions
+with edge detection, the audio cue bus with looping, mute, and the first-gesture
+unlock, the asset loader the produced files are read through, and the debug
+overlay. What is left is the game: the round, the screens, the drawing, the
+produced art and sound, and the state the debug surface poses.
 
-## Before you finish
+The engine owns no rendering, so every pixel below the overlay is this build's,
+drawn through `RenderApi.ctx` in the fixed `1280 x 720` logical coordinates the
+engine then fits to the window.
 
-- `npm run build` produces `dist/` with `index.html` at its root, and that
-  directory runs as-is on any static host, at its root and under a sub-path.
-- The produced files under `assets/` are committed, and the build bundles them
-  rather than regenerating them.
-- `npm run typecheck`, `npm run lint`, `npm run format`, and `npm test` all pass.
-  The same four commands are run over the repository you leave behind.
-- **Replace this file** with the `README.md` `specs/overview.md` asks the
-  finished build to ship: what the game is, how to install it, how to run it in
-  development, how to produce the production build, and the controls.
+## The fixed tick
+
+The engine hands `update` the real elapsed seconds of each frame and imposes no
+timestep of its own. Coil advances in whole ticks of `TICK_SECONDS` (`0.125`, so
+eight a second), so `update` accumulates those seconds and resolves each whole
+tick in the six-step order `specs/movement.md` fixes, carrying the remainder. A
+second of game time is eight ticks whether it arrived in one update or in sixty,
+and drawing advances nothing.
+
+## The state is a value
+
+Nothing in this build writes to a state it was handed. Every field of
+`CoilState` is `readonly` and every array a `readonly` array, so the declared
+type and the `DeepReadonly` view the engine hands out are the same shape, and
+every function over the state is a **transition**: current state in, next state
+out, built by spreading what it keeps around what it changes. The tick in
+`src/sim.ts`, the screen routing in `src/game.ts`, and the debug surface's poses
+are the transitions `update` is composed from. There is no module-level game
+state and no closure over mutable data; `render` and every diagnostic source are
+reads of the state they are given, and the compiler — not a convention — is what
+says they cannot change it.
+
+The pellet generator is part of that: its whole state is one 32-bit word held in
+`CoilState.rngState`, and each draw returns the next word beside its result, so
+reseeding is assigning a number and replaying the same calls reproduces the same
+pellet sequence exactly.
+
+## Debugging and automation
+
+The game exposes the debugging and automation surface
+`specs/instrumentation.md` fixes, **through the engine**: `src/debug.ts` builds
+it, `initialize` returns it beside the state as `[state, createDebugApi()]`, and
+a caller reads that same object back off **`engine.debug`**. Nothing is
+published on the page.
+
+Every operation is a pose or a reading over `CoilState`, written in the shape of
+`update`:
+
+```ts
+engine.apply((s) => engine.debug.setScreen(s, "playing"));
+engine.apply((s) =>
+  engine.debug.setSnake(s, [
+    { col: 10, row: 8 },
+    { col: 9, row: 8 },
+  ]),
+);
+engine.apply((s) => engine.debug.setPellet(s, 11, 8));
+await engine.advance(8);
+const { score, snake } = engine.debug.snapshot(engine.state);
+```
+
+The operations are `reset` (seedable), `snapshot`, `setScreen`, `setMenuIndex`,
+`setScore`, `setBest`, `setCombo`, `setComboWindow`, `setSnake`, `setDirection`,
+`clearTurns`, `setPellet`, `clearPellet`, and the three driver switches
+`setSnakeSteering`, `setSnakeTravel`, and `setPelletRespawn`. A pose sets one
+thing and the game's own tick, turning, collision, pellet placement and scoring
+run from there exactly as they do in play. Everything about _driving a browser
+game_ — the clock, exact frames, key events — is the engine's, which is why the
+surface carries no `advance` and no `keyDown`. It is inert during normal play.
+
+Maze lays an obstacle course, so it carries two more operations for it:
+`clearObstacles`, which takes every obstacle cell off the board at once, and
+`addObstacle`, which puts one back on a named interior cell. The Classic variant
+beside this one carries neither, because it lays no obstacle cell.
+
+## The art and the sound
+
+Coil ships no third-party art or audio. The snake's sprite set and the four
+sounds are produced with the asset-generation tools and committed under
+`assets/`, and the build bundles those committed files. It never runs the tools,
+so the project builds wherever they are absent.
+
+| File                        | Made with    | Is                                     |
+| --------------------------- | ------------ | -------------------------------------- |
+| `assets/snake/head/0-3.png` | `draw-sheet` | The head at rest, and its three-frame bite |
+| `assets/snake/body.png`     | `draw`       | A straight horizontal run               |
+| `assets/snake/corner.png`   | `draw`       | A bend, open east and south             |
+| `assets/snake/tail.png`     | `draw`       | The last cell, connecting west          |
+| `assets/audio/eat.wav`      | `sfx-synth`  | The pellet                              |
+| `assets/audio/combo-up.wav` | `sfx-synth`  | The multiplier rising                   |
+| `assets/audio/death.wav`    | `sfx-synth`  | The end of a round                      |
+| `assets/audio/music.wav`    | `music`      | The loop under a round                  |
+
+Each is loaded through the **engine's** asset loader, under its one root, so the
+build constructs no URL of its own. `public/assets` links that committed tree
+into the static bundle, so `dist/assets/snake/body.png` is exactly where the
+loader's root looks for it from the served page. A load that fails leaves the
+game running: the sprite is simply missing and each cue falls back to the synth
+shape `src/audio.ts` declared it with, so the game keeps its board, its rules,
+and its input.
+
+Regenerating them, when the tools are on the `PATH`:
+
+```sh
+bash scripts/gen-sprites.sh
+bash scripts/gen-audio.sh
+```
+
+## Requirements
+
+- Node.js 20+ and npm. No other toolchain is needed.
+
+## Install
+
+From the repository root, install the npm workspace and build its packages:
+
+```sh
+npm ci && npm run build:packages
+```
+
+Then, in this directory:
+
+```sh
+npm ci
+```
+
+The engine, `@test-cabinet/simple-2d`, is a relative `file:` dependency on the
+repository's `packages/simple-2d`, which npm installs as a symlink, so this
+project builds and tests against the engine's current source. A run receives the
+same package at `.tcab/engine/@test-cabinet/simple-2d/` instead, so the import
+in the sources is the same either way.
+
+## Run in development
+
+```sh
+npm run dev
+```
+
+Vite serves the game with hot reload at the URL it prints (default
+`http://localhost:5173`).
+
+## Production build
+
+```sh
+npm run build
+```
+
+This type-checks the sources and emits a complete static site into **`dist/`**,
+with `index.html` at its root. Every URL the build emits is page-relative, so
+`dist/` runs as-is at the root of a static host and under a sub-path alike.
+
+```sh
+npm run preview        # serves dist/ locally for a final check
+```
+
+## Checks
+
+```sh
+npm run typecheck      # tsc --noEmit
+npm run lint           # eslint
+npm run format         # prettier --check
+npm test               # vitest, with coverage over src/
+```
+
+`npm test` runs the build's own suite **in process**, with no browser. Most of
+it is arithmetic over the state — the tick, the turn buffer, the collision
+rules, the combo, the pellet generator, and the debug surface's poses — and
+`src/render.test.ts` draws real frames through an `@napi-rs/canvas` context to
+read back what a player sees. `src/engine.test.ts` stands a **real engine** up
+over that canvas and a `SurfaceMetrics` of its own, steps it with
+`engine.advance` against a `ConstantClock`, drives the keyboard by dispatching
+events at the surface's event target, poses scenarios through `engine.apply`,
+and reads results back from the state, the debug surface, the engine's cue
+events, and the pixels the render produced.
+
+## Layout
+
+| Path                 | Holds                                                            |
+| -------------------- | ---------------------------------------------------------------- |
+| `src/constants.ts`   | Every figure the specification fixes. Supplied with the project.  |
+| `src/main.ts`        | The entry point. Supplied with the project.                      |
+| `src/game.ts`        | `CoilState`, the screens, the tick accumulator, and the `Game`.  |
+| `src/sim.ts`         | The round: one whole tick, in the six steps the spec fixes.      |
+| `src/board.ts`       | The grid's geometry and the valid pellet set.                    |
+| `src/mode.ts`        | What the mode this build ships means for the rest of it.          |
+| `src/menus.ts`       | The items each menu-bearing screen holds.                        |
+| `src/rng.ts`         | The seeded generator the pellet is drawn from.                   |
+| `src/input.ts`       | The engine actions, registered and read one edge per frame.      |
+| `src/audio.ts`       | The four cues, declared and played by name.                      |
+| `src/assets.ts`      | The produced sprite set, loaded through the engine's loader.     |
+| `src/render.ts`      | Every frame the game draws, in logical units.                    |
+| `src/draw.ts`        | The small text and rounded-rectangle helpers drawing shares.     |
+| `src/theme.ts`       | The palette and the type — this build's own look.                |
+| `src/debug.ts`       | The debugging and automation surface.                            |
+| `src/diagnostics.ts` | The values the engine's overlay shows.                           |
+| `assets/`            | The produced sprites and sounds, committed and bundled.          |
+| `scripts/`           | The generation scripts that produced them.                       |
