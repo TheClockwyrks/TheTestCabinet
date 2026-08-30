@@ -245,6 +245,40 @@ describe("travel", () => {
   });
 });
 
+describe("a challenge stage's flyover", () => {
+  it("sweeps a group across the field and off it, settling into no slot", () => {
+    const state = liveWave();
+    state.stage = 3;
+    state.waveEntry = true;
+    const drone = poseDrone(state, "shard", -48, 200);
+    drone.phase = "entering";
+    drone.slotX = -48;
+    drone.slotY = 200;
+
+    run(state, 1);
+    expect(drone.phase).toBe("entering");
+    expect(drone.x).toBeGreaterThan(-48);
+
+    // It leaves the field within eight seconds of its release, and one that has
+    // left is removed.
+    run(state, 8);
+    expect(state.drones).toHaveLength(0);
+  });
+
+  it("sweeps a group entering from the right leftwards", () => {
+    const state = liveWave();
+    state.stage = 3;
+    state.waveEntry = true;
+    const drone = poseDrone(state, "shard", 1328, 200);
+    drone.phase = "entering";
+    drone.slotX = 1328;
+    drone.slotY = 200;
+
+    run(state, 1);
+    expect(drone.x).toBeLessThan(1328);
+  });
+});
+
 describe("enemy fire", () => {
   it("takes one shot for a Shard, at the line it first crosses", () => {
     const state = liveWave();
