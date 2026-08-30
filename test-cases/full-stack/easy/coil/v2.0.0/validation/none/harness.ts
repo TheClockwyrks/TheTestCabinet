@@ -1139,7 +1139,7 @@ const STAGED_PROJECT_DIR = "validation";
  * the section ran. This is the same cap the engine-backed harness writes under, so
  * a replay recorded under either engine is the same size of thing.
  */
-const MAX_REPLAY_FRAMES = 300;
+export const MAX_REPLAY_FRAMES = 300;
 
 /**
  * The ground the console's player paints behind a recorded frame.

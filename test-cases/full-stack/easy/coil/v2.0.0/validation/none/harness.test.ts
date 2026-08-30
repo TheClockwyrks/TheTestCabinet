@@ -73,6 +73,7 @@ import {
   FRAMES_PER_TICK,
   FRAME_HZ,
   laysObstacles,
+  MAX_REPLAY_FRAMES,
   openTitle,
   poseScene,
   sampleCell,
@@ -132,11 +133,17 @@ function written(): string[] {
   }
 }
 
+/** One frame of a written recording, as far as this suite reads it. */
+interface WrittenFrame {
+  count: number;
+  deltaMs: number;
+}
+
 /** The recording written for `outputId`, inflated. */
-function recordingOf(outputId: string): { frames: unknown[] } {
+function recordingOf(outputId: string): { frames: WrittenFrame[] } {
   const file = join(mediaDir, SUITE_DIR, `${outputId}.json.gz`);
   return JSON.parse(gunzipSync(readFileSync(file)).toString("utf8")) as {
-    frames: unknown[];
+    frames: WrittenFrame[];
   };
 }
 
@@ -539,6 +546,23 @@ it("writes no recording for a section that drove no frame", async () => {
   await poseScene(h);
   await captureReplay(h, "empty", async () => undefined);
   expect(written()).toEqual([]);
+});
+
+it("keeps a long section whole, at fewer frames and the same length", async () => {
+  collect();
+  await poseScene(h, { travel: false });
+  // Past twice the cap, so the page's own decimation runs before the write's.
+  const frames = MAX_REPLAY_FRAMES * 2 + 100;
+  await captureReplay(h, "long", () => h.advance(frames));
+
+  const written = recordingOf("long").frames;
+  expect(written.length).toBeLessThanOrEqual(MAX_REPLAY_FRAMES);
+  expect(written.length).toBeGreaterThan(MAX_REPLAY_FRAMES / 2);
+  // The last frame driven is always the one a reviewer lands on, and the kept
+  // deltas still sum to the section's own elapsed time.
+  expect(written[written.length - 1].count).toBe(frames);
+  const elapsed = written.reduce((sum, frame) => sum + frame.deltaMs, 0);
+  expect(elapsed).toBeCloseTo((frames * 1000) / FRAME_HZ, 3);
 });
 
 it("writes a still of the picture the last frame left", async () => {
