@@ -1,23 +1,79 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/foundations/ace-starts-empty.test.ts
+// foundations/ace-starts-empty — an empty foundation accepts an Ace, and holds it.
 //
-// The review item `foundations.ace-starts-empty` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/foundations.md: a foundation holding nothing accepts "an Ace, of any suit",
+// and any suit may be started on any empty foundation.
+// specs/instrumentation.md: `move(fromPile, fromIndex, fromRow, toPile, toIndex)`
+// attempts a move and returns `true` when the game's own rules accepted it; an
+// accepted move applies through the same path a released drop uses.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE POSE. One Ace alone in a column, four empty foundations, and nothing else on
+// the table, so the only rule the verdict can turn on is what an empty foundation
+// takes. The move names foundation 0 explicitly rather than letting the build
+// choose, because this item is about the acceptance and not about which slot an Ace
+// is routed to; `any-suit-any-slot` is the item that asks whether a slot other than
+// the first will take one.
 //
-// What this item must decide, from the manifest:
-//
-//   An Ace starts an empty foundation
-//
-//   An Ace moved onto an empty foundation is accepted and sits on it.
+// The Ace is a DIAMOND, so a build that accepts only the first suit of its own deck
+// order onto an empty foundation reads as a refusal here rather than passing on the
+// spade it happened to be written against.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import {
+  ACE,
+  captureStill,
+  card,
+  createHarness,
+  openTable,
+  poseColumn,
+  type Harness,
+} from "../harness";
+import { pileText } from "./board";
 
-it("foundations.ace-starts-empty — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/foundations/ace-starts-empty.test.ts is a scaffold stub, not a validator",
+/** The empty foundation the Ace is offered to. */
+const FOUNDATION = 0;
+/** The column the Ace waits in. */
+const COLUMN = 3;
+/** The Ace offered. Its suit is arbitrary: an empty foundation takes any Ace. */
+const OFFERED = card("diamonds", ACE);
+const OFFERED_TEXT = "AD";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("accepts an Ace onto an empty foundation", async () => {
+  openTable(h);
+  poseColumn(h, COLUMN, [OFFERED]);
+
+  const accepted = h.debug.move("tableau", COLUMN, 0, "foundation", FOUNDATION);
+  const after = h.snapshot();
+  await h.advance(1);
+  captureStill(h, "accepted");
+
+  assertEqual(
+    accepted,
+    true,
+    `move of ${OFFERED_TEXT} from column ${COLUMN} onto empty foundation ` +
+      `${FOUNDATION}, which accepts an Ace of any suit ` +
+      "(specs/foundations.md)",
+  );
+  assertDeepEqual(
+    pileText(after.foundations[FOUNDATION]),
+    [OFFERED_TEXT],
+    `foundation ${FOUNDATION} after the move: the Ace, and it alone ` +
+      "(specs/foundations.md)",
+  );
+  assertLength(
+    after.tableau[COLUMN],
+    0,
+    `the cards left in column ${COLUMN}: the Ace has left it ` +
+      "(specs/tableau.md)",
   );
 });
