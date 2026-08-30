@@ -1,26 +1,73 @@
-// Arc Foundry — `audio.fire-bolt`. CASE-PROVIDED. NOT YET WRITTEN.
-//
-// The manifest declares this point at `audio/fire-bolt.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
-//
-// THE REQUIREMENT. The fire-bolt cue is played on the frame a Capacitor, a
+// Arc Foundry — audio/fire-bolt: the bolt cue sounds on the frame a Capacitor, a
 // Choke or a Rectifier fires, and on no frame before it.
 //
-// HOW IT IS DECIDED. Fire each of the three types once and read the cues
-// played on the frame of each shot. The evidence it hands back is `bolt`
-// (replay): the bolt whose cue is checked.
+// THE REQUIREMENT, from the cue table of `specs/ui.md`: `CUES.fireBolt` is played
+// when "a Capacitor, a Choke, or a Rectifier fires", and each cue is played "on the
+// frame its event happens, by the code that raised it, and at most once on that
+// frame".
+//
+// WHAT MARKS THE EVENT. `specs/components.md` puts every shot on a travelling
+// projectile — "On firing, the structure launches a projectile from its center" —
+// so the frame a projectile appears is the frame the structure fired.
+//
+// WHAT IS ASSERTED. That `fire-bolt` is among the cues the engine announced on the
+// frame of the shot, and that NOTHING was announced on any frame before it. The
+// structure is stood up alone first and held with nothing in range, where
+// `specs/components.md` says it "holds fire" — so a build that plays nothing fails,
+// one that plays a frame early or a frame late fails, one that blips every frame
+// fails on the run-up, and one that plays the WRONG cue on the right event fails
+// too, because the engine's event carries the cue's name.
+//
+// ALL THREE TYPES, BECAUSE THE REQUIREMENT NAMES ALL THREE. They are one point
+// because they are one cue on one event; each runs on its own emptied yard.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { CUES } from "../../src/constants";
+import { assertContains, assertDeepEqual, assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
+import { beforeFrame, fireOnce, names, onFrame, typesPlaying } from "./cues";
 
-describe("audio.fire-bolt", () => {
-  it("The fire-bolt cue plays for a Capacitor, a Choke or a Rectifier", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `audio.fire-bolt` has not been written yet",
+/** Every type `specs/ui.md` binds to the bolt cue: the Capacitor, the Choke and the Rectifier. */
+const TYPES = typesPlaying(CUES.fireBolt);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("sounds on the frame each of the three fires, and not before", async () => {
+  openYard(h, { wave: 1 });
+
+  for (const type of TYPES) {
+    const shot = await captureReplay(h, "bolt", () => fireOnce(h, type, 1));
+
+    assertEqual(
+      shot.fired,
+      true,
+      `a Scrap ${type} with a unit inside its range to fire within four ` +
+        "seconds (specs/components.md)",
     );
-  });
+    assertDeepEqual(
+      names(beforeFrame(shot.cues, shot.frame)),
+      [],
+      `no cue to sound while a ${type} holds fire with nothing in range ` +
+        "(specs/ui.md)",
+    );
+    assertContains(
+      names(onFrame(shot.cues, shot.frame)),
+      CUES.fireBolt,
+      `the ${CUES.fireBolt} cue on the frame a ${type} fires (specs/ui.md)`,
+    );
+  }
 });
