@@ -1,7 +1,7 @@
 # Deepcore — The expedition, the economy, and saving
 
 This file defines the expedition the game plays, the Credits economy, the surface
-loop, saving and continuing, and the run summary. Every figure below carries the
+loop, saving and continuing, and the expedition summary. Every figure below carries the
 name this specification gives it.
 
 ## The expedition
@@ -69,9 +69,9 @@ The save is held in the browser. The game runs correctly when that storage is
 unavailable, simply without saving. It is the only persisted state; everything
 else is per-session.
 
-## The run summary
+## The expedition summary
 
-There is no running score. The Victory and Game Over screens show a summary of the
-expedition: the deepest depth reached in metres, the total Credits earned, the
+The game keeps no running total. The Victory and Game Over screens summarize the
+expedition: the deepest depth reached in meters, the total Credits earned, the
 elapsed time, the mode, the number of rocket components installed, and, on a Game
 Over, how the miner died. The summary is not persisted.

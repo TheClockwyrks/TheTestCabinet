@@ -17,8 +17,8 @@ The game is a small state machine, and the state it is in has one of these names
 | `how-to-play` | How the game is played. |
 | `in-mine` | The live game: the world through the camera, the miner, and the status bar. |
 | `paused` | The pause menu over the frozen, dimmed world. |
-| `victory` | The run summary, after the rocket launches. |
-| `game-over` | The run summary, after a death. |
+| `victory` | The expedition summary, after the rocket launches. |
+| `game-over` | The expedition summary, after a death. |
 
 `in-mine` covers the surface and the whole descent; what changes between them is
 the camera and whichever panel is open.
@@ -38,7 +38,7 @@ The highlighted item is drawn distinctly from the others.
 | `game-over` | `GAME_OVER_SAVE_ITEMS`: `CONTINUE FROM SAVE`, `MENU` in Standard while a save exists; otherwise `GAME_OVER_ITEMS`: `PLAY AGAIN`, `MENU` | `CONTINUE FROM SAVE` restores the save into `in-mine`. |
 
 `mode-select` shows each mode's death rule before it is chosen, and `size-select`
-shows each size's Core depth in metres before it is chosen.
+shows each size's Core depth in meters before it is chosen.
 
 `how-to-play` covers the goal of building and launching the rocket, the controls,
 the dig-sell-upgrade loop, that the drill cuts down, left, and right but never up,
@@ -74,7 +74,7 @@ The status bar occupies `y` in `[0, HUD_H]` and is always fully visible while
   taking the alert treatment while the bay is full and reading `OVERLOAD` while
   the load fraction is `1` or more;
 - the Credits;
-- the depth in metres;
+- the depth in meters;
 - the materials satchel, showing which of Resonite and Cryenite is held;
 - the inventory, pause, and mute controls.
 

@@ -25,9 +25,9 @@ rectangle `x` in `[col * TILE, col * TILE + TILE]`, `y` in
 `Row 0` is the surface: open sky and camp ground, where the buildings stand and
 the miner spawns. `Row 1` is the first row of ground. The deepest row is
 `coreRow`, the Core chamber, set by the world size below; rows `1` through
-`coreRow - 1` are minable. Depth is reported to the player in metres, and a miner
+`coreRow - 1` are minable. Depth is reported to the player in meters, and a miner
 whose feet rest at world `y` is at `max(0, (y - SURFACE_Y) / TILE * METERS_PER_ROW)`
-metres, so the top of `row r` is at `METERS_PER_ROW * (r - 1)` metres.
+meters, so the top of `row r` is at `METERS_PER_ROW * (r - 1)` meters.
 
 The grid is `WORLD_W` (`2560`) units wide and the viewport is `VIEW_W` (`1280`)
 wide, so about half the mine's width is on screen at once and the world scrolls
@@ -35,21 +35,23 @@ horizontally as well as vertically.
 
 ## The camera
 
+The camera is named by `camX` and `camY`, the world-space point drawn at the
+top-left corner of the mine viewport.
+
 {{#if (eq engine.slug "structured-2d")}}
-The view over the world is the engine's camera, positioned by the game each
-frame. It is left at `zoom` `1` and no rotation, so a world unit and a logical
-unit are the same length and the camera's position is the world point at the
-centre of the viewport.
+The view is the engine's camera, positioned by the game each frame. It is left at
+a zoom of `1` and no rotation, so a world unit and a logical unit are the same
+length, and it is placed so that `(camX, camY)` falls on the viewport's top-left
+corner.
 {{else}}
-The view over the world is the game's own. A world position `(wx, wy)` is drawn
-at the viewport position `(wx - camX, wy - camY + HUD_H)`, so the camera is the
-world-space point drawn at the top-left corner of the viewport.
+The view is the game's own. A world position `(wx, wy)` is drawn at the viewport
+position `(wx - camX, wy - camY + HUD_H)`.
 {{/if}}
 
 The camera follows the miner in both axes. Let `mx` and `my` be the miner's
-centre in world space and `vy` its vertical velocity.
+center in world space and `vy` its vertical velocity.
 
-- Horizontally the miner is centred:
+- Horizontally the miner is centered:
   `camX = clamp(mx - VIEW_W / 2, 0, WORLD_W - VIEW_W)`.
 - Vertically the camera leads the miner's travel:
   `camY = clamp(my - VIEW_H / 2 + lead, -Infinity, (coreRow + 1) * TILE - VIEW_H)`.
@@ -76,7 +78,7 @@ A sustained descent therefore rides the miner up the view until its leading edge
 sits about one tile from the top of the viewport, so the floor of a shaft or a
 lava seam comes into view early; a sustained climb rides it symmetrically down. A
 brief hop barely leads, and boring straight down at near-zero velocity holds the
-miner at the centre. The build in one direction is driven by time, not by speed,
+miner at the center. The build in one direction is driven by time, not by speed,
 so a slow drift and a fast plunge reach full lead over the same two seconds.
 
 There is no ceiling above the surface, so the camera has no upper clamp and

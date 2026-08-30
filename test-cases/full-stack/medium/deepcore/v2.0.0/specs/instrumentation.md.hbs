@@ -215,7 +215,7 @@ control the player operates with the mouse.
 | `jettison()` | Drops a carried Core Sample onto the miner's cell as a ground item. |
 | `fabricate()` | Fabricates the next uninstalled rocket component at the Launch Pad. |
 | `launch()` | Launches, once all five components are installed. |
-| `save()` | Saves the expedition, as activating the Save Pad does, and honours the refusal while a Core Sample's timer runs. |
+| `save()` | Saves the expedition, as activating the Save Pad does, and honors the refusal while a Core Sample's timer runs. |
 
 An action that the game's own rules refuse changes nothing, exactly as the control
 it stands for would.
@@ -303,7 +303,7 @@ it stands for would.
 
 The shape is fixed and every field is present on every screen. A field the current
 screen does not use reports its resting value rather than going missing:
-`summary` is `null` until a run ends, `coreTimer` and `coreGround` are `null`
+`summary` is `null` until the expedition ends, `coreTimer` and `coreGround` are `null`
 while no Sample is live, `panel` is `null` while no panel is open, and
 `menuIndex` rests at `0` on `in-mine`.
 
@@ -342,7 +342,7 @@ The debug overlay shows the values the game registers with it as diagnostic
 sources. Register at least the current screen and panel, the mode and world size,
 the miner's position, velocity, state, facing, and grounded flag, its fuel and
 hull against their maxima, any active drill target and its progress, the Credits,
-the depth in metres, the cargo's slots and load with the overload flag, the
+the depth in meters, the cargo's slots and load with the overload flag, the
 satchel's contents, the seven upgrade tiers, the Core Sample's timer, and the
 scanner's lock and target: the same facts the snapshot reports. Keep each short
 enough to read on a line, and keep every source a pure read, so watching the

@@ -15,7 +15,7 @@ A death is any of:
 | Hull standing at `0` | `hull-destroyed` |
 | The Core Sample's timer expiring while it is carried, or while it lies jettisoned within its blast radius | `core-detonation` |
 
-In both modes a death ends the run at the Game Over screen, destroys a Core Sample
+In both modes a death ends the expedition at the Game Over screen, destroys a Core Sample
 held or ticking on the ground, and leaves every installed rocket component
 installed. There is no respawn and no dropped cache.
 
@@ -36,7 +36,7 @@ A death ends the expedition.
 - The save is deleted, so a save banked at the pad does not survive the death.
 - The Game Over screen offers `PLAY AGAIN`, which starts a completely fresh
   Hardcore expedition at the same world size, and `MENU`.
-- A Hardcore save still resumes a run in progress through `CONTINUE`; it just
+- A Hardcore save still resumes an expedition in progress through `CONTINUE`; it
   cannot rescue a death.
 
 The mode-select screen states each rule before the choice is made: Standard, a

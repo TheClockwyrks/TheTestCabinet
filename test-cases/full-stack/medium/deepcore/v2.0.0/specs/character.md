@@ -69,7 +69,7 @@ upward, so the only way to ascend is the jetpack through tunnels already carved.
 - Grounded only. A cut starts only while the miner rests on a solid cell. A
   falling, thrusting, or hovering miner starts no cut whichever direction is held.
 - Side cuts start at the tile edge. Holding left or right first walks the miner
-  across the cell it stands in, and the cut into the neighbouring cell begins only
+  across the cell it stands in, and the cut into the neighboring cell begins only
   once the miner's box is flush against it.
 - A down cut sinks smoothly. While down is held and the cell below is minable, the
   miner's feet travel from the top of that cell to its bottom in proportion to the

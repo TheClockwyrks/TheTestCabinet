@@ -260,18 +260,20 @@ test = "npx vitest run --coverage"
 handle = "__deepcore"
 
 # Common specs: seeded for EVERY run, at the `dest` path within the run workspace. The
-# specification is decomposed by concern: the overview, the mine, the miner, mining, the
-# hazards, the upgrades, the rocket, the gameplay (the single expedition, the Credits
-# economy, the surface loop, saving, and scoring), the UI (the game states, the required
-# menus, the HUD, and what is out of scope), the modes (Standard vs Hardcore, chosen
-# in-game), the controls, the field supplies, the asset-production contract, and the
-# debugging surface. A spec's `dest` defaults to its `source` (with a trailing `.hbs`
-# stripped), so these need only name the source they seed.
+# specification is decomposed by concern, one file per concern, and a spec is a
+# Handlebars template ONLY where it branches on the selected engine: the overview (what
+# the runtime hands the build and what the build writes), the mine's camera (the engine's
+# own under `structured-2d`, the game's transform otherwise), the controls (raw key codes
+# under `none`, registered actions under an engine), the asset contract (who loads a file
+# and who owns the audio cues), the debug surface (three ways of reaching the same
+# operations), and the showcase (a `.webm` clip under `none`, an engine replay otherwise).
+# The rest are engine-invariant and seed verbatim. A spec's `dest` defaults to its
+# `source` with a trailing `.hbs` stripped, so these need only name the source they seed.
 [[spec]]
-source = "specs/overview.md"
+source = "specs/overview.md.hbs"
 
 [[spec]]
-source = "specs/world.md"
+source = "specs/world.md.hbs"
 
 [[spec]]
 source = "specs/character.md"
@@ -298,7 +300,7 @@ source = "specs/ui.md"
 source = "specs/modes.md"
 
 [[spec]]
-source = "specs/controls.md"
+source = "specs/controls.md.hbs"
 
 # The six single-use FIELD SUPPLY items (explosives, teleporters, nanobots, emergency fuel)
 # bought at the SUPPLY DEPOT building and used in the mine, plus the Core Sample JETTISON
@@ -311,7 +313,7 @@ source = "specs/items.md"
 # build. This is the defining spec of a full-stack case, and its animated-miner section
 # is the headline of what this build is judged on.
 [[spec]]
-source = "specs/assets.md"
+source = "specs/assets.md.hbs"
 
 # The debugging and automation surface every build exposes: a deterministic, render-free
 # core; an API to drive and inspect the game from code through its own real input path;
@@ -319,7 +321,13 @@ source = "specs/assets.md"
 # The `[instrumentation]` table above names the same handle for the reporter, and the
 # review items below drive it.
 [[spec]]
-source = "specs/instrumentation.md"
+source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished game ships beside its source: a player-facing description
+# and a short ordered carousel of captured media under `showcase/`, which the variant's
+# `showcase` key mirrors for the case itself.
+[[spec]]
+source = "specs/showcase.md.hbs"
 
 # No `[[reference]]`, no `[[check]]`, and no `[[proof]]`. Nothing pictorial is seeded as
 # a target to match, no build is asked to screenshot itself, and no screen is scored

@@ -11,8 +11,8 @@ consumes one.
 
 | Hotkey | Item | Id | Price | Effect |
 | --- | --- | --- | --- | --- |
-| `1` | Dynamite | `dynamite` | `300` | Clears the `3x3` block of cells centred on the miner's cell. |
-| `2` | Plastic Explosives | `plastic-explosives` | `1000` | Clears the `5x5` block of cells centred on the miner's cell. |
+| `1` | Dynamite | `dynamite` | `300` | Clears the `3x3` block of cells centered on the miner's cell. |
+| `2` | Plastic Explosives | `plastic-explosives` | `1000` | Clears the `5x5` block of cells centered on the miner's cell. |
 | `3` | Quantum Teleporter | `quantum-teleporter` | `1500` | Places the miner above the camp at a random height and downward speed. |
 | `4` | Matter Transmitter | `matter-transmitter` | `8000` | Places the miner standing on the camp ground at zero velocity. |
 | `5` | Regenerative Nanobots | `nanobots` | `4000` | Repairs `NANOBOT_HULL` (`20`) hull, capped at the maximum. |
@@ -23,14 +23,14 @@ is shown and nothing is consumed.
 
 ## Explosives
 
-Both explosives clear a square block of cells centred on the miner's cell:
+Both explosives clear a square block of cells centered on the miner's cell:
 Dynamite a radius of `1` cell, Plastic Explosives a radius of `2`.
 
 - Rock, ore, gemstone, lava, and unbreakable stone in the block all clear to
   tunnel. This is the only way through unbreakable stone.
 - Ore and gemstones in the block are destroyed rather than collected.
 - A gas pocket in the block detonates exactly as a drilled one does. The miner is
-  at the centre of the block, so a hidden pocket can hurt or kill it. Detonations
+  at the center of the block, so a hidden pocket can hurt or kill it. Detonations
   chain within the block.
 - Bedrock, material nodes, and the Core are immune and are never cleared.
 - The clear is instant and costs no fuel.

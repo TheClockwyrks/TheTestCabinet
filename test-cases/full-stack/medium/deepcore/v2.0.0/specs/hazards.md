@@ -20,8 +20,8 @@ open tunnel either way.
 
 A detonation at depth fraction `f` deals
 `GAS_DAMAGE_MIN + (GAS_DAMAGE_MAX - GAS_DAMAGE_MIN) * max(0, f - 0.25) / 0.75`
-hull to the miner when the miner's centre is within `GAS_BLAST_TILES` of the
-pocket's centre, and nothing beyond that radius. The miner is shoved directly away
+hull to the miner when the miner's center is within `GAS_BLAST_TILES` of the
+pocket's center, and nothing beyond that radius. The miner is shoved directly away
 from the pocket at `GAS_KNOCKBACK`, the hurt state plays, the screen shakes, and
 the produced gas-explosion effect and its cue fire.
 
@@ -91,7 +91,7 @@ the satchel and starts its destabilization timer at `CORE_TIMER` (`90`) seconds.
   fires with a long screen shake.
 - A detonation while the Sample is carried kills the miner outright.
 - A detonation while the Sample lies jettisoned on the ground kills a miner whose
-  centre is within `CORE_BLAST_TILES` (`3`) tiles of the ground cell's centre, and
+  center is within `CORE_BLAST_TILES` (`3`) tiles of the ground cell's center, and
   leaves a miner beyond that radius unharmed.
 - The Sample is destroyed either way, and by any death while it is held. Every
   component already installed on the rocket stays installed.
