@@ -1185,6 +1185,16 @@ export const COMBO_FIRE_CUE: Record<ComboType, Cue> = {
 
 // ---- Screen copy the specification fixes (specs/ui.md) ------------------------
 export const TITLE_TEXT = "ARC FOUNDRY";
+/**
+ * The build panel's harvest prompt (specs/hud.md).
+ *
+ * A non-clickable line reading that committing a harvest is what starts the wave.
+ * It reads TO START in the build phase before wave 1 and TO SEND in every build
+ * phase after it, because there is no send control to point at instead.
+ */
+export const HARVEST_PROMPT_FIRST = "KEEP OR COMBINE A ROLL TO START";
+export const HARVEST_PROMPT_LATER = "KEEP OR COMBINE A ROLL TO SEND";
+
 export const TAGLINE_TEXT = "GROUND THE LOAD";
 export const TITLE_ITEMS: readonly string[] = ["SALVAGE", "HOW TO PLAY"];
 

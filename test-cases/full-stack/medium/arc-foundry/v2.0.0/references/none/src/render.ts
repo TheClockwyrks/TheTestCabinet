@@ -52,6 +52,8 @@ import {
   footprintCenter,
   tileCenter,
   TAGLINE_TEXT,
+  HARVEST_PROMPT_FIRST,
+  HARVEST_PROMPT_LATER,
 } from "./constants";
 import {
   CHARGE_ICON,
@@ -1879,7 +1881,7 @@ function drawPanel(
 
   // --- Inspector / next-wave info area ---
   const infoY = stampY + stampH + 12;
-  const infoH = STAGE_H - 14 - infoY;
+  const infoH = PANEL_PROMPT_Y - 4 - infoY;
   roundRect(ctx, px, infoY, w, infoH, 8);
   ctx.fillStyle = "rgba(255,255,255,0.02)";
   ctx.fill();
@@ -1892,6 +1894,22 @@ function drawPanel(
   else if (sel)
     drawInspector(ctx, game, sel, A, px + 14, infoY + 12, w - 28, clicks);
   else drawNextWave(ctx, game, A, px + 14, infoY + 12, w - 28);
+
+  // --- The harvest prompt (specs/hud.md) ---
+  // The panel's last line, and not a control: there is no send button, so this is
+  // where the player is told that committing the level's harvest is what starts
+  // the wave. It reads TO START until wave 1 has been launched and TO SEND after.
+  text(
+    ctx,
+    game.wave >= 1 ? HARVEST_PROMPT_LATER : HARVEST_PROMPT_FIRST,
+    px + w / 2,
+    PANEL_PROMPT_Y + 12,
+    9,
+    COL.text3,
+    "center",
+    "700",
+    0.5,
+  );
 }
 
 // The current QUALITY ROLL odds for a placed rock at the live Refinement level (specs/build.md
@@ -2005,6 +2023,12 @@ function drawHeldInfo(
   drawQualityOdds(ctx, game, x, y + 162, w);
 }
 
+/**
+ * Where the build panel's harvest prompt sits, and so where everything above it
+ * stops (specs/hud.md, which puts the prompt last).
+ */
+const PANEL_PROMPT_Y = STAGE_H - 34;
+
 // The selected-piece inspector (specs/board.md, specs/build.md, specs/controls.md).
 // A CANDIDATE offers KEEP / COMBINE (build phase); a COMPONENT offers the targeting cycle;
 // a BLOCKER is inert (no stats, no actions).
@@ -2018,7 +2042,7 @@ function drawInspector(
   w: number,
   clicks: Clickable[],
 ): void {
-  const baseY = STAGE_H - 14; // panel bottom margin (buttons stack up from here)
+  const baseY = PANEL_PROMPT_Y - 4; // panel bottom margin (buttons stack up from here)
   const rowGap = 6; // vertical gap between stacked action buttons
   // Hold the bottommost button off the panel's bottom border by a full inter-button gap, so it
   // never reads as touching the inspector's frame.
