@@ -17,9 +17,11 @@ import {
   type Engine,
 } from "@test-cabinet/structured-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { NO_SPRITES } from "./assets";
 import {
   BITE_SECONDS,
   CUES,
+  HEAD_FRAMES,
   LAYOUT,
   STAGE_H,
   STAGE_W,
@@ -61,6 +63,16 @@ describe("initialization", () => {
     expect(h.state.screen).toBe("title");
     expect(h.debug).toBeTruthy();
     expect(h.debug.snapshot().screen).toBe("title");
+  });
+
+  it("hands the loaded sprite set to the state that draws it", () => {
+    // The instance loads the art and seeds the world with it as the world
+    // opens, so the set on the state is the one the loader produced rather than
+    // the empty one the field initializer holds. Nothing in this process can
+    // decode an image, so every frame of that set is null and the identity is
+    // what the check rests on.
+    expect(h.state.sprites).not.toBe(NO_SPRITES);
+    expect(h.state.sprites.head.length).toBe(HEAD_FRAMES);
   });
 
   it("initializes and draws even though no produced file could load", async () => {
