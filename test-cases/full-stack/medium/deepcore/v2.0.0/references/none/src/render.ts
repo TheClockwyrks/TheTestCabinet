@@ -232,6 +232,14 @@ export function render(
 // The live mine
 // ---------------------------------------------------------------------------
 
+/** An exotic material's name, as the specification writes it. */
+function materialLabel(material: Material | null): string {
+  if (material === "resonite") return "Resonite";
+  if (material === "cryenite") return "Cryenite";
+  if (material === "core-sample") return "Core Sample";
+  return "";
+}
+
 function bandFill(band: Tile["band"]): string {
   return BAND_FILL[band];
 }
@@ -2085,8 +2093,7 @@ function drawLaunchPad(
       { size: 16, color: col, bold: isNext },
     );
     let req = `${c.credits} Cr`;
-    if (c.material)
-      req += ` + 1 ${c.material === "core-sample" ? "Core Sample" : c.material}`;
+    if (c.material) req += ` + 1 ${materialLabel(c.material)}`;
     text(ctx, installed ? "INSTALLED" : req, f.x + f.w - 40, y + 5, {
       size: 13,
       color: installed ? P.credits : P.textSecondary,
@@ -2111,7 +2118,7 @@ function drawLaunchPad(
     let hint = `Next: ${next.label}`;
     if (!affOk) hint += "  — not enough Credits";
     else if (!matOk)
-      hint += `  — need ${next.material === "core-sample" ? "the Core Sample" : next.material}`;
+      hint += `  — need ${next.material === "core-sample" ? "the Core Sample" : materialLabel(next.material)}`;
     text(ctx, hint, f.x + 28, y, {
       size: 14,
       color: ok ? P.textPrimary : P.alert,
