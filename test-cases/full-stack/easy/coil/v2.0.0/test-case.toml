@@ -787,6 +787,20 @@ validation = { script = "growth/first-pellet-off-start-chain.test.ts", outputs =
   { id = "first", name = "A valid first pellet", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "first-pellet-ignores-the-previous-round"
+title = "A fresh round draws its first pellet from the whole board"
+description = "The board carries no pellet when a round is laid out, so the cell the round before left its pellet on is in the set the first draw is made from like any other."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: open a round under a seed and read its first pellet, then
+# reset under the same seed, place a pellet on that cell, and open a round again.
+# Placing draws nothing from the generator, so the two openings differ in one
+# thing only. See
+# validation/<engine>/growth/first-pellet-ignores-the-previous-round.test.ts.
+validation = { script = "growth/first-pellet-ignores-the-previous-round.test.ts", outputs = [
+  { id = "reopened", name = "A round reopened on the cell the last one left a pellet on", kind = "image" },
+] }
+[[review.categories.items]]
 id = "respawn-last-valid-cell"
 title = "The last valid cell is still found"
 description = "With the chain posed so that exactly one cell of the valid set specs/board.md defines is left, the next eat places the pellet on that one cell rather than failing or ending the round."
