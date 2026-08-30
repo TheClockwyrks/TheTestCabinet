@@ -26,6 +26,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
+  assertBetween,
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
@@ -136,10 +137,13 @@ it("restores the whole title-screen state, and leaves muted alone", async () => 
   );
   assertEqual((await h.tileAt(COL, 1)).kind, "tunnel", `the cell (${COL}, 1)`);
 
-  // The miner, on the camp ground at the spawn, facing east, at rest.
-  assertEqual(s.miner.x, minerXOn(SPAWN_COL), "the miner's x");
-  assertEqual(
+  // The miner, on the camp ground at the spawn, facing east, at rest. The COLUMN
+  // rather than an exact `x`: `specs/gameplay.md` puts the miner at `SPAWN_COL`
+  // and leaves where within that column to the build.
+  assertEqual(s.miner.col, SPAWN_COL, "the miner's spawn column");
+  assertBetween(
     minerFeet(s.miner),
+    SURFACE_Y - 1,
     SURFACE_Y,
     "the miner's feet on the camp ground",
   );

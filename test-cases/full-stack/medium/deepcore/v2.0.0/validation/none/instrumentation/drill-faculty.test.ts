@@ -107,7 +107,7 @@ it("cuts nothing, banks nothing and spends no drill fuel, while the miner still 
   );
   // Nothing was banked: no cell broke, so no unit reached the bay.
   assertEqual(inert.snapshot.cargo.slotsUsed, 0, "the slots used");
-  assertEqual(inert.snapshot.cargo.ore.ferron, undefined, "the ferron banked");
+  assertEqual(inert.snapshot.cargo.ore.ferron ?? 0, 0, "the ferron banked");
   // And no hit was paid for: only life support ran.
   assertCloseTo(
     before - inert.snapshot.miner.fuel,
