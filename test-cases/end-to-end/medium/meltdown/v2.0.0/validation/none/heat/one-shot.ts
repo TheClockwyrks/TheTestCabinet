@@ -25,7 +25,6 @@ import type { TowerType } from "../constants";
 import { FREE_SITE } from "../fixtures";
 import {
   framesFor,
-  framesForShots,
   poseTarget,
   poseTower,
   posePinnedTower,
@@ -61,13 +60,22 @@ const TARGET_HP = 1000;
  */
 const SHOT_WAIT_INTERVALS = 3;
 
+/** Frames of the default clock covering that many of `type`'s fire intervals. */
+function shotWindow(type: TowerType): number {
+  return framesFor(SHOT_WAIT_INTERVALS / figuresOf(type).fireRate);
+}
+
 /**
- * The hp one shot from a level-I `type` pinned at `heat` removes from a
+ * The hp the FIRST shot from a level-I `type` pinned at `heat` removes from a
  * stationary target.
  *
- * The drive lands half an interval past the first shot, which is the furthest
- * point from both boundaries of the fire clock, so exactly one shot resolves
- * whichever side of an exact multiple a build's own accumulation falls.
+ * The drive stops on the frame the target's hp first falls, so the reading is
+ * one shot's worth however fast the emitter fires: what the fire clock does is
+ * `combat/*`'s business, and a check about a multiplier should not be reading an
+ * arithmetic over however many shots a build's own rate happened to fit into a
+ * fixed window. A frame of the default clock is shorter than the shortest
+ * interval on the roster by an order of magnitude, so no conformant build
+ * resolves two shots inside the frame this stops on.
  */
 export async function oneShotDamage(
   h: Harness,
@@ -84,13 +92,19 @@ export async function oneShotDamage(
     TARGET_HP,
   );
   const opened = requireUnit(await h.snapshot(), target, "the posed target").hp;
-  await h.advance(framesForShots(1, figuresOf(type).fireRate));
-  const closed = requireUnit(
-    await h.snapshot(),
-    target,
-    "the target after one shot",
-  ).hp;
-  return opened - closed;
+  const swept = await h.until(
+    (snapshot) => requireUnit(snapshot, target, "the target").hp < opened,
+    { poll: 1, maxFrames: shotWindow(type) },
+  );
+  if (!swept.hit) {
+    fail(
+      "one shot to remove baseDamage(level) * heatMultiplier(heat, redline) " +
+        "from the target's hp (specs/combat.md)",
+      `no hp removed in ${swept.frames} frames with a target in range at ` +
+        `heat ${heat}`,
+    );
+  }
+  return opened - requireUnit(swept.snapshot, target, "the target").hp;
 }
 
 /**
@@ -113,10 +127,9 @@ export async function firstShotHeat(
     FREE_SITE.row,
     TARGET_HP,
   );
-  const maxFrames = framesFor(SHOT_WAIT_INTERVALS / figuresOf(type).fireRate);
   const swept = await h.until(
     (snapshot) => requireTower(snapshot, id, "the firing emitter").heat > 0,
-    { poll: 1, maxFrames },
+    { poll: 1, maxFrames: shotWindow(type) },
   );
   if (!swept.hit) {
     fail(

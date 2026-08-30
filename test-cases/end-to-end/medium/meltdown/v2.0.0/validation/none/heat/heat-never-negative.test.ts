@@ -11,10 +11,19 @@
 // never overshoot it: the clamp would never be exercised at all, and a build with
 // no clamp would pass. The only arrangement that decides the requirement is one
 // where the specification's own arithmetic goes past zero, which takes a frame
-// long enough that the drain over it exceeds the heat left. `specs/instrumentation.md`
-// fixes no timestep and states that `advance(seconds, frames)` runs whole frames
-// of `seconds / frames` each, so a half-second frame is a legal frame and the
-// arithmetic over it is not in doubt.
+// long enough that the drain over it exceeds the heat left. Since every drain
+// here is proportional to the heat, that threshold does not move with the heat
+// posed: it is a property of the arrangement, and for two level-III Sinks on a
+// Stutter it is a third of a second.
+//
+// A HALF-SECOND FRAME IS A LEGAL FRAME. `specs/instrumentation.md` mandates no
+// fixed timestep and defines `advance(seconds, frames)` as "`frames` whole
+// frames covering `seconds` of game time, each worth `seconds / frames`", so the
+// game time this frame carries is half a second and the arithmetic over it is
+// not in doubt. A build that clamped its own delta would reach a different place
+// over one frame than over a hundred and twenty, which the same page forbids —
+// `advance(1, 1)` and `advance(1, 120)` "cover the same second and reach the
+// same outcome" — and which `instrumentation/deterministic-core` decides.
 //
 // THE ARRANGEMENT. A Stutter posed at heat `2` between two level-III Sinks, whose
 // `SINK_OUTPUT` of `36` per shared edge-tile drains `36 * 2 * (H / 100)` from each
