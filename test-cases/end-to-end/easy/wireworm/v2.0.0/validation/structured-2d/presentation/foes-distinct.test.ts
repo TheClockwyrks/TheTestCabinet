@@ -1,20 +1,121 @@
-// Wireworm — presentation.foes-distinct, under the `structured-2d` engine. CASE-PROVIDED.
+// Wireworm — presentation/foes-distinct: the three foes read apart.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/overview.md's legibility table: "The glitch, the dropper, and the
+// corruptor read apart from one another and from the board." The three do
+// different things to the field (specs/foes.md — one eats it, one reseeds it,
+// one slams it to critical), so a player who cannot tell which one is crossing
+// the board cannot decide which to shoot first. The specification fixes no
+// palette, so what is checked is DISTANCE: pairwise between the three, and
+// between each of them and a bare tile of the board.
 //
-// The point it decides, from `test-case.toml`:
+// EACH FOE IS POSED WITH BOTH FACULTIES OFF. This point is about what a foe
+// looks like, not about what it does or where it goes, so `travel` is off — the
+// foe holds the tile it was placed on — and `mind` is off — it eats nothing,
+// lays nothing and slams nothing. That is the isolation the reading needs: the
+// three are read as three pictures side by side, and no faculty of one can
+// disturb the tile another is read on.
 //
-// The three foes read apart
-//
-// The three foes' sampled colours differ pairwise, and each from the board
-// background, by more than 40 of 441.
+// They are posed ten tiles apart along one mid-board row, which is `320` logical
+// units — far past any glow a build could lay around a `32`-unit sprite — and
+// the board's own colour is read from a bare tile on the same row.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  colorDistance,
+  createHarness,
+  foeById,
+  poseFoe,
+  resetTo,
+  sampleTile,
+  startPlaying,
+  type FoeKind,
+  type Harness,
+} from "../harness";
 
-test("presentation.foes-distinct", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/structured-2d/presentation/foes-distinct.test.ts has not been written yet",
-  );
+/**
+ * How far apart two foes, and a foe and the board, must read, as a Euclidean
+ * RGB distance out of the `441` an RGB cube is across. The case's figure, since
+ * the specification states the rule and leaves the palette to the build.
+ */
+const DISTINCT_MIN = 40;
+
+/** The row the three foes are posed on: mid-board, clear of the band. */
+const FOE_ROW = 10;
+
+/** Each foe's kind and the column it is posed in, ten tiles apart. */
+const POSED: readonly { kind: FoeKind; column: number }[] = [
+  { kind: "glitch", column: 6 },
+  { kind: "dropper", column: 16 },
+  { kind: "corruptor", column: 26 },
+];
+
+/** A bare tile on the same row: the board the three are read against. */
+const BARE_COLUMN = 36;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws the three foes apart from one another and from the board", async () => {
+  resetTo(h);
+  startPlaying(h);
+  const posed = POSED.map(({ kind, column }) => {
+    const id = poseFoe(h, kind, column, FOE_ROW);
+    h.debug.setFoeTravel(id, false);
+    h.debug.setFoeMind(id, false);
+    return { kind, column, id };
+  });
+  await h.advance(1);
+  // The three foes side by side, as the build drew them.
+  captureStill(h, "foes");
+
+  const snapshot = h.snapshot();
+  const sampled = posed.map(({ kind, column, id }) => {
+    assertEqual(
+      foeById(snapshot, id)?.kind,
+      kind,
+      `the ${kind} posed at (${column}, ${FOE_ROW}) is on the board`,
+    );
+    return { kind, colour: sampleTile(h, column, FOE_ROW) };
+  });
+
+  const board = sampleTile(h, BARE_COLUMN, FOE_ROW);
+  for (const { kind, colour } of sampled) {
+    assertGreaterThan(
+      colorDistance(colour, board),
+      DISTINCT_MIN,
+      `the ${kind} to differ from the board behind it by more than ` +
+        `${DISTINCT_MIN} of 441 (specs/overview.md: the three foes read apart ` +
+        `from the board); the ${kind} sampled rgb(${colour.r.toFixed(0)}, ` +
+        `${colour.g.toFixed(0)}, ${colour.b.toFixed(0)}) and the bare tile at ` +
+        `(${BARE_COLUMN}, ${FOE_ROW}) sampled rgb(${board.r.toFixed(0)}, ` +
+        `${board.g.toFixed(0)}, ${board.b.toFixed(0)})`,
+    );
+  }
+
+  for (let first = 0; first < sampled.length; first += 1) {
+    for (let second = first + 1; second < sampled.length; second += 1) {
+      const a = sampled[first];
+      const b = sampled[second];
+      assertGreaterThan(
+        colorDistance(a.colour, b.colour),
+        DISTINCT_MIN,
+        `the ${a.kind} and the ${b.kind} to differ by more than ` +
+          `${DISTINCT_MIN} of 441 (specs/overview.md: the glitch, the dropper ` +
+          `and the corruptor read apart from one another); the ${a.kind} ` +
+          `sampled rgb(${a.colour.r.toFixed(0)}, ${a.colour.g.toFixed(0)}, ` +
+          `${a.colour.b.toFixed(0)}) and the ${b.kind} sampled rgb(` +
+          `${b.colour.r.toFixed(0)}, ${b.colour.g.toFixed(0)}, ` +
+          `${b.colour.b.toFixed(0)})`,
+      );
+    }
+  }
 });
