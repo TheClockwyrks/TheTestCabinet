@@ -44,6 +44,18 @@ pub enum StoreError {
     NotFound(String),
 }
 
+/// One stored run tree, as [`ArtifactStore::list_runs`] reports it.
+#[derive(Debug, Clone)]
+pub struct StoredTree {
+    /// The run id the tree is keyed by (`<root>/<id>/`).
+    pub id: String,
+    /// When the tree was last written, which is the moment the driver's upload
+    /// finished unpacking. The backend's reclamation sweep measures its grace window
+    /// against this, so a store impl must report the tree's own write time rather
+    /// than the time of the listing.
+    pub modified: std::time::SystemTime,
+}
+
 /// The backing store for run artifacts, keyed per run id. Small by design (see the
 /// module docs) so an R2 impl can be slotted in later behind the same interface.
 pub trait ArtifactStore: Send + Sync {
@@ -80,6 +92,19 @@ pub trait ArtifactStore: Send + Sync {
     /// when the control plane deletes a run, so the data plane drops its build and
     /// media too rather than leaving an orphaned tree behind.
     fn delete_run(&self, id: &str) -> Result<(), StoreError>;
+
+    /// Every run tree the store currently holds, with each tree's last-write time.
+    ///
+    /// The backend's reclamation sweep is the caller: it intersects these ids against
+    /// its own run rows and deletes what nothing references. That makes the listing
+    /// the control plane's only view of what the data plane is holding, so it must
+    /// report exactly the trees a [`delete_run`](ArtifactStore::delete_run) would
+    /// remove — an id the store cannot key by is skipped rather than reported.
+    ///
+    /// An upload in flight carries no entry here: it is spooled into
+    /// [`scratch_dir`](ArtifactStore::scratch_dir) as an unnamed file and becomes a
+    /// run directory only once it has been unpacked.
+    fn list_runs(&self) -> Result<Vec<StoredTree>, StoreError>;
 
     /// Tar run `id`'s tree — the whole `implementation/` directory plus
     /// `run-record.json` and (when present) `events.jsonl` — into an in-memory
@@ -211,6 +236,33 @@ impl ArtifactStore for LocalFsStore {
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(err) => Err(err.into()),
         }
+    }
+
+    fn list_runs(&self) -> Result<Vec<StoredTree>, StoreError> {
+        let mut trees = Vec::new();
+        for entry in std::fs::read_dir(&self.root)? {
+            let entry = entry?;
+            // Only directories are run trees. A spooled upload is an unnamed temp
+            // file in this same root, and it must never be reported as a tree the
+            // sweep could delete.
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            // A name that is not a usable store key could not be deleted through
+            // `delete_run` anyway, so reporting it would only hand the sweep an id it
+            // cannot act on.
+            let Some(id) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if !is_safe_id(&id) {
+                continue;
+            }
+            trees.push(StoredTree {
+                id,
+                modified: entry.metadata()?.modified()?,
+            });
+        }
+        Ok(trees)
     }
 
     fn read_run_tree(&self, id: &str) -> Result<Vec<u8>, StoreError> {

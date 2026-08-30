@@ -359,3 +359,65 @@ fn read_run_archive_refuses_an_unsafe_id() {
         );
     }
 }
+
+#[test]
+fn list_runs_reports_one_entry_per_stored_tree() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    let before = std::time::SystemTime::now();
+    for id in ["abc", "def"] {
+        store
+            .store_run(id, &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])))
+            .unwrap();
+    }
+
+    let mut listed: Vec<String> = store
+        .list_runs()
+        .unwrap()
+        .into_iter()
+        .map(|tree| tree.id)
+        .collect();
+    listed.sort();
+    assert_eq!(listed, vec!["abc".to_string(), "def".to_string()]);
+
+    // The reported time is the tree's own write time, which is what the backend's
+    // sweep measures its grace window against.
+    for tree in store.list_runs().unwrap() {
+        assert!(
+            tree.modified >= before,
+            "tree `{}` reports a modified time from before it was stored",
+            tree.id
+        );
+    }
+}
+
+#[test]
+fn list_runs_ignores_a_file_at_the_store_root() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    store
+        .store_run(
+            "abc",
+            &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])),
+        )
+        .unwrap();
+    // An upload in flight is spooled into this same root; only a run directory is a
+    // tree, and reporting a spool file would hand the sweep an id it cannot delete.
+    std::fs::write(root.path().join("spooled-upload"), b"tar bytes").unwrap();
+
+    let listed: Vec<String> = store
+        .list_runs()
+        .unwrap()
+        .into_iter()
+        .map(|tree| tree.id)
+        .collect();
+    assert_eq!(listed, vec!["abc".to_string()]);
+}
+
+#[test]
+fn list_runs_is_empty_for_an_empty_store() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    assert!(store.list_runs().unwrap().is_empty());
+}

@@ -113,6 +113,58 @@ describe("createBackendExec media resolvers", () => {
   });
 });
 
+describe("createBackendExec unreadable listing", () => {
+  it("reads /runs/unreadable and passes the page through unchanged", async () => {
+    const page = {
+      runs: [
+        {
+          id: "r1",
+          startedAt: "2026-01-01T00:00:00Z",
+          finishedAt: "2026-01-01T01:00:00Z",
+          testCaseSlug: "voxel-rig",
+          testCaseVersion: "v1.0.0",
+          variant: "base",
+          engineSlug: "none",
+          harnessSlug: "claude",
+          modelId: "anthropic/claude",
+          ggPreset: null,
+          testType: "asset-generation",
+          state: "completed",
+          published: false,
+          reviewCount: 0,
+          error: "missing field `interp`",
+        },
+      ],
+      total: 3,
+    };
+    const fetchMock = vi.fn(async (_url: string) => Response.json(page));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const result = await client.listUnreadableRuns!();
+
+    // An open read like the other run reads: no bearer travels with it.
+    expect(fetchMock.mock.calls[0]![0]).toBe(`${BACKEND}/runs/unreadable`);
+    // `total` counts every unreadable run rather than the rows of this page, and is
+    // what sizes the pager, so it must not be recomputed from them.
+    expect(result).toEqual(page);
+  });
+
+  it("carries the numbered pager into the query", async () => {
+    const fetchMock = vi.fn(async (_url: string) =>
+      Response.json({ runs: [], total: 0 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    await client.listUnreadableRuns!({ limit: 20, offset: 40 });
+
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      `${BACKEND}/runs/unreadable?limit=20&offset=40`,
+    );
+  });
+});
+
 describe("createBackendExec catalog listing", () => {
   // The listing is what a catalog page renders from, and it must be ONE request:
   // the fan-out this endpoint's metadata replaced (resolve every version of every

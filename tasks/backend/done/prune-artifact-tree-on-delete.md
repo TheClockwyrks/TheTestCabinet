@@ -41,8 +41,8 @@ kept forever.
 
 ## Done when
 
-- [ ] The backend calls the artifact service through an in-cluster URL.
-- [ ] Every deployment overlay supplies that URL.
-- [ ] Deleting a run removes its artifact tree.
-- [ ] A sweep reclaims trees whose run rows are gone.
-- [ ] Gates green.
+- [x] The backend calls the artifact service through an in-cluster URL.
+- [x] Every deployment overlay supplies that URL.
+- [x] Deleting a run removes its artifact tree.
+- [x] A sweep reclaims trees whose run rows are gone.
+- [x] Gates green.

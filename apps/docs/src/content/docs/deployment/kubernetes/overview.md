@@ -153,6 +153,8 @@ The allowed flows are:
   and reporting status;
 - the backend to the auth service, for verifying every bearer token;
 - driver pods to the artifact service, for uploading the produced run tree;
+- the backend to the artifact service, for pruning a deleted run's tree and
+  sweeping the trees no run row references;
 - sandbox pods to their driver pod, for streaming live preview frames;
 - the artifact service to the backend, for verifying a driver's upload token;
 - the arena to the backend, for fetching controller inputs and persisting

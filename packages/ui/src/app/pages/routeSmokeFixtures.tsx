@@ -489,6 +489,9 @@ function workerClient(): WorkerClient {
     listRuns: () => Promise.resolve([]),
     listActiveRuns: () => Promise.resolve([]),
     listFailures: () => Promise.resolve([]),
+    // The Unreadable tab's count query, issued by the runs tab strip on every runs
+    // surface. A stub that omits it leaves those pages rejecting on mount.
+    listUnreadableRuns: () => Promise.resolve({ runs: [], total: 0 }),
     getRun: () => Promise.resolve(null),
     readRun: () => Promise.resolve(null),
     readRunEvents: () => Promise.resolve(null),

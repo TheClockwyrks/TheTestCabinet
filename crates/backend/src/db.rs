@@ -122,6 +122,76 @@ const ACTIVE_PUBLISH_STATES: [&str; 2] = ["queued", "dispatched"];
 /// gone.
 const PUBLISH_JOB_STALE_AFTER: time::Duration = time::Duration::hours(1);
 
+/// The generation of the run-record contract this build reads.
+///
+/// The run-side counterpart of [`crate::store::STORE_FORMAT`]. Every `run` row
+/// carries the generation its [readability marker](test_cabinet_entities::run::Model::record_readable)
+/// was decided under, and a build whose constant differs from a row's stamp
+/// re-decides that row once at startup ([`Db::revalidate_run_records`]).
+///
+/// Bump it in the same change as anything that can stop an existing stored record
+/// deserializing: a new required field on `RunRecord` or anything in its tree, a
+/// removed or retyped variant, a renamed wire key. A change that only adds
+/// optional or defaulted fields leaves every stored record readable and needs no
+/// bump.
+pub const RUN_RECORD_FORMAT: u32 = 1;
+
+/// The `run` query narrowed to the rows this build can read — the single seam
+/// every run listing starts from, so a listing's `COUNT(*)` and the page it serves
+/// run one predicate and the total equals the number of rows returned.
+///
+/// A row falls out of this set when its stored record stops deserializing against
+/// the current [`RunRecord`]. Such a run is served by
+/// [`Db::list_unreadable_runs`], which reports the error its record produces now,
+/// and is deleted through [`Db::delete_run`], which reads the row rather than the
+/// record.
+fn readable_runs() -> Select<run::Entity> {
+    run::Entity::find().filter(run::Column::RecordReadable.eq(true))
+}
+
+/// One row of [`Db::list_unreadable_runs`]: a stored run this build cannot decode,
+/// reduced to the identity its lifted columns already hold plus the error its
+/// stored record produces now.
+///
+/// Carries no `RunRecord`, because there is no readable one — that is the whole
+/// reason the row is here. Everything a console needs to recognise the run and
+/// decide to delete it comes off the row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnreadableRun {
+    /// The run id (`RunRecord.id`).
+    pub id: String,
+    /// RFC 3339 of when the run started.
+    pub started_at: String,
+    /// RFC 3339 of when the run finished.
+    pub finished_at: String,
+    /// The run's test case slug.
+    pub test_case_slug: String,
+    /// The run's test case version.
+    pub test_case_version: String,
+    /// The run's variant slug.
+    pub variant: String,
+    /// The run's engine slug, or `None` for a row whose slug was never lifted.
+    pub engine_slug: Option<String>,
+    /// The run's harness slug.
+    pub harness_slug: String,
+    /// The run's model id.
+    pub model_id: String,
+    /// The gg configuration the run was launched from, for a gg run launched from
+    /// a named one.
+    pub gg_preset: Option<String>,
+    /// The run's test type as its kebab-case wire token.
+    pub test_type: String,
+    /// The run's terminal state.
+    pub run_state: String,
+    /// Whether the run is published.
+    pub published: bool,
+    /// How many reviews the run carries.
+    pub review_count: i64,
+    /// The error decoding the stored record produces against the current
+    /// [`RunRecord`], which is what tells an operator why the run is here.
+    pub error: String,
+}
+
 /// A stored run: the full record, its reviews, and its links. This is the shape
 /// `GET /runs/{id}` and the snapshot's per-run file are built from. A run may be
 /// pushed (private, [`published`](Self::published) false) or published; it may
@@ -486,6 +556,11 @@ impl Db {
             run::Column::Loaded,
             run::Column::RecordJson,
             run::Column::EventsJson,
+            // The pushed record is one this build just serialized, so it is readable
+            // by definition; a re-push of a run previously marked unreadable
+            // therefore returns it to the listings.
+            run::Column::RecordReadable,
+            run::Column::RecordFormat,
         ];
         if validator_rated {
             refreshed_columns.extend([run::Column::Rating, run::Column::ValidatorRated]);
@@ -517,6 +592,8 @@ impl Db {
             loaded: Set(record.validation.loaded),
             published: Set(was_published),
             record_json: Set(record_json),
+            record_readable: Set(true),
+            record_format: Set(RUN_RECORD_FORMAT as i32),
             events_json: Set(events_json.map(|s| s.to_string())),
             // `NotSet` on both paths: the mutation timestamp is stamped by
             // `touch_run` below, inside this same transaction, so that exactly one
@@ -811,12 +888,19 @@ impl Db {
     /// Delete a stored run and its dependent rows (its reviews and links cascade
     /// via their `ON DELETE CASCADE` foreign keys; its run- and publish-queue rows
     /// are deleted explicitly, as they reference the run by a plain column with no
-    /// foreign key). Refused with
-    /// [`crate::error::BackendError::Unprocessable`] when the run is **published**:
-    /// a public run is in the snapshot and the gallery, so it can never be deleted
-    /// out from under them. [`crate::error::BackendError::NotFound`] when no run
-    /// with `run_id` is stored. Because only an unpublished run can be deleted, the
-    /// run is not in the public snapshot and no refresh is needed.
+    /// foreign key). [`crate::error::BackendError::NotFound`] when no run with
+    /// `run_id` is stored.
+    ///
+    /// Refused with [`crate::error::BackendError::Unprocessable`] for a published
+    /// run this build can read: a public run is in the snapshot and the gallery, so
+    /// it can never be deleted out from under them. A published run this build
+    /// cannot read is deleted, because it is already absent from both — every
+    /// listing the snapshot is baked from serves the readable runs — and this is the
+    /// only way to get rid of one short of a re-push.
+    ///
+    /// Reads the row rather than the record, so it deletes a run whose stored record
+    /// no longer deserializes. Every run it deletes is outside the public snapshot,
+    /// so no refresh is queued.
     pub async fn delete_run(&self, run_id: &str) -> Result<()> {
         let txn = self.conn().begin().await?;
 
@@ -827,7 +911,7 @@ impl Db {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
 
-        if run.published {
+        if run.published && run.record_readable {
             return Err(crate::error::BackendError::Unprocessable(format!(
                 "run `{run_id}` is published and cannot be deleted; only an unpublished run can be deleted"
             )));
@@ -885,7 +969,7 @@ impl Db {
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
         let fetch = limit.saturating_add(1);
-        let mut query = run::Entity::find().filter(run::Column::Published.eq(true));
+        let mut query = readable_runs().filter(run::Column::Published.eq(true));
         if let Some(before) = before {
             query = query.filter(run::Column::PublishedAt.lt(before));
         }
@@ -954,7 +1038,7 @@ impl Db {
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
         let fetch = limit.saturating_add(1);
-        let mut query = run::Entity::find().filter(run::Column::Published.eq(false));
+        let mut query = readable_runs().filter(run::Column::Published.eq(false));
         if let Some(before) = before {
             query = query.filter(run::Column::FinishedAt.lt(before));
         }
@@ -991,7 +1075,7 @@ impl Db {
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
         let fetch = limit.saturating_add(1);
-        let mut query = run::Entity::find()
+        let mut query = readable_runs()
             .filter(run::Column::RunState.eq("completed"))
             .filter(run::Column::ReviewCount.eq(0))
             .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES));
@@ -1032,9 +1116,13 @@ impl Db {
     /// its **tier** (`flawless > great > passable > scuffed > broken`), not
     /// lexically — see `rating_rank_expr`.
     ///
-    /// `assemble` preserves the input row order (it maps rows
-    /// one-for-one, only skipping any that no longer deserialize), so the returned
-    /// page stays in the sorted order.
+    /// Both halves run over the readable-runs seam, so the total equals the number of
+    /// rows the page can serve and a pager sized from it offers no empty pages. A run
+    /// whose stored record this build cannot read is listed by
+    /// [`list_unreadable_runs`](Self::list_unreadable_runs) instead.
+    ///
+    /// `assemble` preserves the input row order (it maps rows one-for-one), so the
+    /// returned page stays in the sorted order.
     ///
     /// `case_names` is consulted only by [`SummarySort::TestCase`], which orders by
     /// the case's display name rather than its slug (see `case_name_expr`); every
@@ -1123,31 +1211,40 @@ impl Db {
     /// account's review by id). Ordering is driven by the `review` rows — the run's
     /// own `finished_at` is unrelated to when a given account reviewed it — so this
     /// is a distinct path from the run-centric listings above.
+    ///
+    /// The total is counted through the same join the page walks, so a review of a
+    /// run whose record this build cannot read leaves the total and the page in
+    /// agreement.
     pub async fn list_reviews_by_user(
         &self,
         user_id: &str,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<StoredRun>, usize)> {
-        let total = review::Entity::find()
-            .filter(review::Column::ReviewerUserId.eq(user_id))
-            .count(&self.conn())
-            .await? as usize;
+        // Both halves join to the run and filter on readability, so the count and the
+        // page answer the same question: a review of a run whose record this build
+        // cannot read is neither counted nor returned.
+        let reviewed = || {
+            review::Entity::find()
+                .filter(review::Column::ReviewerUserId.eq(user_id))
+                .join(JoinType::InnerJoin, review::Relation::Run.def())
+                .filter(run::Column::RecordReadable.eq(true))
+        };
+        let total = reviewed().count(&self.conn()).await? as usize;
 
         // The account's reviews, newest-first, windowed to this page. Each names its
         // run; the run ids (in this order) drive the returned run order.
-        let review_rows = review::Entity::find()
-            .filter(review::Column::ReviewerUserId.eq(user_id))
+        let review_rows: Vec<String> = reviewed()
+            .select_only()
+            .column(review::Column::RunId)
             .order_by_desc(review::Column::ReviewedAt)
             .order_by_desc(review::Column::Id)
             .limit(limit as u64)
             .offset(offset as u64)
+            .into_tuple()
             .all(&self.conn())
             .await?;
-        let ordered_run_ids: Vec<String> = review_rows
-            .into_iter()
-            .map(|review| review.run_id)
-            .collect();
+        let ordered_run_ids: Vec<String> = review_rows;
         if ordered_run_ids.is_empty() {
             return Ok((Vec::new(), total));
         }
@@ -1156,7 +1253,7 @@ impl Db {
         // query does not preserve the id list's order). A run id with no matching row
         // (a run deleted after the review, which the FK cascade normally prevents) is
         // simply dropped.
-        let mut by_id: std::collections::HashMap<String, run::Model> = run::Entity::find()
+        let mut by_id: std::collections::HashMap<String, run::Model> = readable_runs()
             .filter(run::Column::Id.is_in(ordered_run_ids.clone()))
             .all(&self.conn())
             .await?
@@ -1241,8 +1338,7 @@ impl Db {
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
         let fetch = limit.saturating_add(1);
-        let mut query =
-            run::Entity::find().filter(run::Column::RunState.is_in(states.iter().copied()));
+        let mut query = readable_runs().filter(run::Column::RunState.is_in(states.iter().copied()));
         if let Some(before) = before {
             query = query.filter(run::Column::FinishedAt.lt(before));
         }
@@ -1269,7 +1365,7 @@ impl Db {
     /// that uploaded a controller). Unpaginated: an adversarial case's field is
     /// small.
     pub async fn list_for_case(&self, slug: &str) -> Result<Vec<StoredRun>> {
-        let rows = run::Entity::find()
+        let rows = readable_runs()
             .filter(run::Column::TestCaseSlug.eq(slug.to_string()))
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
@@ -1400,13 +1496,29 @@ impl Db {
     /// regeneration. Pending (unpublished) runs are excluded — the public
     /// snapshot only ever contains published runs.
     pub async fn all_published(&self) -> Result<Vec<StoredRun>> {
-        let rows = run::Entity::find()
+        let rows = readable_runs()
             .filter(run::Column::Published.eq(true))
             .order_by_desc(run::Column::PublishedAt)
             .order_by_desc(run::Column::Id)
             .all(&self.conn())
             .await?;
         self.assemble(rows).await
+    }
+
+    /// Every stored run's id, published and pending alike.
+    ///
+    /// The live set the [artifact reclamation sweep](crate::artifacts) protects a
+    /// tree with: a tree whose id is absent from this set is referenced by nothing in
+    /// the system of record. Only the id column is selected, so the query stays a
+    /// single index-sized read regardless of how much a run row holds.
+    pub async fn all_run_ids(&self) -> Result<std::collections::HashSet<String>> {
+        let ids: Vec<String> = run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(ids.into_iter().collect())
     }
 
     /// The distinct `(test_case_slug, test_case_version)` pairs referenced by **any**
@@ -1448,8 +1560,10 @@ impl Db {
     }
 
     /// The total number of published runs (the count that lands in the snapshot).
+    /// Counts the readable rows only, which is exactly what
+    /// [`all_published`](Self::all_published) puts in the snapshot.
     pub async fn run_count(&self) -> Result<i64> {
-        Ok(run::Entity::find()
+        Ok(readable_runs()
             .filter(run::Column::Published.eq(true))
             .count(&self.conn())
             .await? as i64)
@@ -1458,6 +1572,11 @@ impl Db {
     /// Assemble [`StoredRun`]s from `run` rows: batch-load their links and reviews
     /// and stitch them in. Keeps the per-run review fan-out to two queries total
     /// regardless of page size.
+    ///
+    /// A row whose stored record no longer deserializes is dropped from the result
+    /// and marked unreadable, which is the lazy repair path for a build that changed
+    /// the record contract without bumping [`RUN_RECORD_FORMAT`]. Callers select
+    /// through [`readable_runs`], so in the steady state nothing is dropped here.
     async fn assemble(&self, runs: Vec<run::Model>) -> Result<Vec<StoredRun>> {
         if runs.is_empty() {
             return Ok(Vec::new());
@@ -1510,14 +1629,16 @@ impl Db {
         }
 
         let mut out = Vec::with_capacity(runs.len());
+        let mut unreadable: Vec<String> = Vec::new();
         for run in runs {
             // Tolerate a single record that no longer matches the current
             // `RunRecord` schema: skip it (with a warning) rather than failing the
             // whole page. A stored record can predate a contract change — e.g. an
             // animated-voxel run recorded before F-curve keyframes gained their
             // required `interp` field — and without this guard one such legacy row
-            // would 500 an entire worklist, blanking the console. The record stays in
-            // the DB for inspection; it simply does not appear in a listing.
+            // would 500 an entire worklist, blanking the console. The row is marked
+            // unreadable below, which is what keeps it out of the count as well as
+            // out of the page and puts it on the unreadable listing.
             let record: RunRecord = match serde_json::from_str(&run.record_json) {
                 Ok(record) => record,
                 Err(err) => {
@@ -1527,6 +1648,7 @@ impl Db {
                         "skipping run whose stored record no longer deserializes against the \
                          current RunRecord schema (likely predates a contract change)",
                     );
+                    unreadable.push(run.id.clone());
                     continue;
                 }
             };
@@ -1546,7 +1668,143 @@ impl Db {
                 events_json: run.events_json,
             });
         }
+        if !unreadable.is_empty() {
+            self.mark_unreadable(unreadable).await;
+        }
         Ok(out)
+    }
+
+    /// Mark the named rows unreadable at the current [`RUN_RECORD_FORMAT`].
+    ///
+    /// Best-effort on a read path: the caller has already produced its answer, so a
+    /// failed marker write is logged and swallowed rather than turned into a `500`.
+    /// It runs on its own connection, outside any caller transaction, and it does
+    /// **not** stamp `updated_at` — see that column's documentation.
+    async fn mark_unreadable(&self, ids: Vec<String>) {
+        let count = ids.len();
+        let update = run::Entity::update_many()
+            .col_expr(run::Column::RecordReadable, Expr::value(false))
+            .col_expr(
+                run::Column::RecordFormat,
+                Expr::value(RUN_RECORD_FORMAT as i32),
+            )
+            .filter(run::Column::Id.is_in(ids))
+            .exec(&self.conn())
+            .await;
+        match update {
+            Ok(_) => tracing::info!(count, "marked runs whose stored record no longer reads"),
+            Err(err) => tracing::warn!(
+                error = %err,
+                count,
+                "failed to mark runs whose stored record no longer reads",
+            ),
+        }
+    }
+
+    /// Re-decide the readability of every `run` row whose marker was decided under a
+    /// record-format generation other than [`RUN_RECORD_FORMAT`], and return how
+    /// many rows it re-decided.
+    ///
+    /// The cost contract: no rows at all in the steady state, because a push stamps
+    /// the current generation; one bounded pass over the whole corpus at the boot of
+    /// a build that bumped the constant. The pass selects `id` and `record_json`
+    /// only, in `id`-ordered batches, so memory stays flat regardless of corpus size.
+    ///
+    /// An `id` cursor rather than offset paging: a re-decided row leaves the stale
+    /// predicate mid-pass, which would shift offset pages.
+    pub async fn revalidate_run_records(&self) -> Result<usize> {
+        const BATCH: u64 = 256;
+        let stamp = RUN_RECORD_FORMAT as i32;
+        let mut decided = 0usize;
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut query = run::Entity::find().filter(run::Column::RecordFormat.ne(stamp));
+            if let Some(after) = cursor.as_deref() {
+                query = query.filter(run::Column::Id.gt(after));
+            }
+            let rows: Vec<(String, String)> = query
+                .select_only()
+                .column(run::Column::Id)
+                .column(run::Column::RecordJson)
+                .order_by_asc(run::Column::Id)
+                .limit(BATCH)
+                .into_tuple()
+                .all(&self.conn())
+                .await?;
+            let Some((last, _)) = rows.last() else {
+                break;
+            };
+            cursor = Some(last.clone());
+
+            for (id, record_json) in rows {
+                let readable = serde_json::from_str::<RunRecord>(&record_json).is_ok();
+                run::Entity::update_many()
+                    .col_expr(run::Column::RecordReadable, Expr::value(readable))
+                    .col_expr(run::Column::RecordFormat, Expr::value(stamp))
+                    .filter(run::Column::Id.eq(id))
+                    .exec(&self.conn())
+                    .await?;
+                decided += 1;
+            }
+        }
+        Ok(decided)
+    }
+
+    /// One page of the stored runs this build cannot read, newest-first by
+    /// `finished_at`, plus the total number of such runs.
+    ///
+    /// Paged like every other listing, from one predicate shared by the count and
+    /// the page, so `total` counts exactly the rows the listing can serve across its
+    /// pages and a pager sized from it offers only pages that hold rows.
+    ///
+    /// Each row carries the identity its lifted columns hold and the error decoding
+    /// its record produces now, which is the only way an operator learns why the run
+    /// is here. This is what keeps a run that appears in no other listing reachable:
+    /// it is read here and deleted through [`delete_run`](Self::delete_run), which
+    /// acts on the row rather than the record.
+    pub async fn list_unreadable_runs(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<UnreadableRun>, usize)> {
+        let unreadable = || run::Entity::find().filter(run::Column::RecordReadable.eq(false));
+        let total = unreadable().count(&self.conn()).await? as usize;
+        let rows = unreadable()
+            .order_by_desc(run::Column::FinishedAt)
+            .order_by_desc(run::Column::Id)
+            .limit(limit as u64)
+            .offset(offset as u64)
+            .all(&self.conn())
+            .await?;
+        let runs = rows
+            .into_iter()
+            .map(|row| UnreadableRun {
+                error: match serde_json::from_str::<RunRecord>(&row.record_json) {
+                    // The row is marked unreadable but decodes now, which happens
+                    // between a contract change and the sweep that re-decides it.
+                    // Say so rather than reporting an error that does not exist.
+                    Ok(_) => "the stored record decodes against the current contract; \
+                              this row is awaiting revalidation"
+                        .to_string(),
+                    Err(err) => err.to_string(),
+                },
+                id: row.id,
+                started_at: row.started_at,
+                finished_at: row.finished_at,
+                test_case_slug: row.test_case_slug,
+                test_case_version: row.test_case_version,
+                variant: row.variant,
+                engine_slug: row.engine_slug,
+                harness_slug: row.harness_slug,
+                model_id: row.model_id,
+                gg_preset: row.gg_preset,
+                test_type: row.test_type,
+                run_state: row.run_state,
+                published: row.published,
+                review_count: row.review_count,
+            })
+            .collect();
+        Ok((runs, total))
     }
 
     /// Publish a tournament: upsert its verbatim `TournamentRecord` JSON plus the
@@ -4497,12 +4755,15 @@ pub enum SortDir {
     Asc,
 }
 
-/// The `run` query narrowed to one lifecycle slice and nothing else — the base
-/// both [`summary_query`] and the current-version resolution start from, so the
-/// versions a `latest_versions` query is measured against come from exactly the
+/// The readable `run` query narrowed to one lifecycle slice and nothing else — the
+/// base both [`summary_query`] and the current-version resolution start from, so
+/// the versions a `latest_versions` query is measured against come from exactly the
 /// slice that query lists.
+///
+/// It starts from [`readable_runs`], so the COUNT and the page a listing runs over
+/// it agree on how many rows exist.
 fn state_slice(state: SummaryState) -> Select<run::Entity> {
-    let query = run::Entity::find();
+    let query = readable_runs();
     match state {
         SummaryState::Published => query.filter(run::Column::Published.eq(true)),
         SummaryState::Review => query.filter(run::Column::RunState.is_in(["completed"])),
@@ -6617,9 +6878,16 @@ fn parse_harness_slug(slug: &str) -> HarnessSlug {
     HarnessSlug::from_wire(slug).unwrap_or(HarnessSlug::Claude)
 }
 
+// `pub(crate)` under `cfg(test)`: the router tests in `api.test.rs` build their
+// fixtures from the same `record`/`links` helpers, so the run a route test drives is
+// the run every database test drives.
 #[cfg(test)]
 #[path = "db.test.rs"]
-mod tests;
+pub(crate) mod tests;
+
+#[cfg(test)]
+#[path = "db.readability.test.rs"]
+mod readability_tests;
 
 /// The model-probe store: responses-as-code readiness probes of catalog models
 /// (see [`crate::probe`]).

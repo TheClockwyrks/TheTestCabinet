@@ -247,10 +247,13 @@ It runs under its own `ServiceAccount` with no Kubernetes API access. An upload
 presents the driver's per-job token, which the service forwards to the backend
 (`TCAB_BACKEND_URL`) as the token authority. Reads are ungated, since
 browser-loaded media cannot present a token; the private-network boundary is what
-gates them. A run-tree delete presents the shared `TCAB_BACKEND_SERVICE_TOKEN`,
-and leaving that unset disables the delete route. The backend reports the
-console-facing base URL as `TCAB_ARTIFACTS_PUBLIC_URL`, and artifact bytes flow
-driver to artifacts to console without passing through the backend.
+gates them. A run-tree delete and the `GET /runs` tree listing present the shared
+`TCAB_BACKEND_SERVICE_TOKEN`, and leaving that unset disables both routes.
+
+The backend calls those two routes on the service's `ClusterIP` `Service` through
+`TCAB_ARTIFACTS_URL`, and reports the console-facing base URL separately as
+`TCAB_ARTIFACTS_PUBLIC_URL`. Artifact bytes flow driver to artifacts to console
+without passing through the backend.
 
 ## Arena service
 

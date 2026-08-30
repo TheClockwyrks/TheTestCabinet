@@ -286,9 +286,14 @@ pub async fn publish(
 }
 
 /// `DELETE /runs/{id}` — permanently delete a run. Refused with `422` when the
-/// run is **published** (a public run is in the snapshot and gallery and can
-/// never be deleted). Requires a bearer token. `404` for an unknown run. Removes
-/// the run record, its reviews, its links, and its stored media.
+/// run is **published** and this build can read its record (a public run is in the
+/// snapshot and gallery). Requires a bearer token. `404` for an unknown run.
+/// Removes the run record, its reviews, its links, and its stored media.
+///
+/// Operates on the stored row rather than on the record, so it deletes a run whose
+/// stored record this build can no longer read as well, published or not. The
+/// consoles offer that from the runs section's Unreadable tab, which reads
+/// [`unreadable`].
 #[tracing::instrument(
     name = "runs.delete",
     skip(state, _user),
@@ -307,19 +312,22 @@ pub async fn delete(
 
     // Then clear the run's stored media tree so deletion leaves nothing behind.
     // The authoritative record is already gone, so a media-cleanup fault must not
-    // fail the request — log it and leave the (now-unreferenced) bytes for a later
-    // sweep rather than resurrecting a half-deleted run.
+    // fail the request: it is logged, and the now-unreferenced bytes stay on the
+    // backend's own volume until an operator clears them, rather than the request
+    // resurrecting a half-deleted run. This is the backend's store, not the artifact
+    // service, so the reclamation sweep below has no part in it.
     if let Err(err) = state.store.delete_run_media(&id) {
         tracing::warn!("deleted run {id} but failed to remove its media: {err}");
     }
 
     // A run's playable build and recorded logs live in the separate artifact
-    // service; ask it to prune the tree too. Best-effort (see
-    // [`crate::artifacts`]): a failure is logged, never surfaced — the record is
-    // already gone, so the run has vanished from every listing regardless.
+    // service; ask it over the in-cluster artifact URL to prune the tree too.
+    // Best-effort (see [`crate::artifacts`]): a failure is logged, never surfaced —
+    // the record is already gone, so the run has vanished from every listing
+    // regardless, and the reclamation sweep collects the tree a failure leaves.
     crate::artifacts::delete_run_tree(
         &state.http,
-        state.config.artifacts_url.as_deref(),
+        state.config.artifacts_internal_url.as_deref(),
         state.config.service_token.as_deref(),
         &id,
     )
@@ -359,6 +367,11 @@ pub async fn delete(
 /// [`StoredRunOut`] records; the cursor (`before`/`limit`) and `state` selector
 /// behave identically for both projections. Any other `fields` value (or none)
 /// keeps the default full records.
+///
+/// Every projection and mode serves only the runs whose stored record this build
+/// can read, and the offset mode's `total` counts exactly those rows, so a pager
+/// sized from it offers only pages that hold rows. A run this build cannot read is
+/// listed by [`unreadable`] instead.
 pub async fn list(
     State(state): State<AppState>,
     Query(params): Query<ListParams>,
@@ -545,6 +558,9 @@ pub async fn adversarial_controllers(
 }
 
 /// `GET /runs/{id}` — one stored run (published or pending) with its reviews.
+///
+/// Answers with the record, so a run whose stored record this build cannot read
+/// answers `404` here and is reached through [`unreadable`].
 pub async fn get(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -563,6 +579,57 @@ pub async fn get(
         .read_manifest(&subject.test_case_slug, &subject.test_case_version)
         .ok();
     Ok(Json(stored_run_out(&run, manifest.as_ref())))
+}
+
+/// `GET /runs/unreadable?limit=&offset=` — the stored runs whose records this build
+/// cannot read, as `{ runs, total }`, newest first by finish time.
+///
+/// Paged exactly as the numbered mode of [`list`] is: `limit` defaults to
+/// [`DEFAULT_LIMIT`] and is clamped to [`MAX_LIMIT`], and `total` counts every
+/// unreadable run the cabinet holds, so a pager sized from it offers only pages that
+/// hold rows.
+///
+/// Every ordinary listing filters these out, so without this endpoint such a run is
+/// reachable from nowhere while still occupying the store. Each row carries the
+/// identity the run's lifted columns hold plus the error decoding its record
+/// produces now; deleting one goes through [`delete`], which acts on the row. A
+/// read; no auth on the private network, like the other run reads.
+#[tracing::instrument(name = "runs.unreadable", skip(state), err(Debug))]
+pub async fn unreadable(
+    State(state): State<AppState>,
+    Query(params): Query<UnreadableParams>,
+) -> Result<Json<UnreadableRunsResponse>, ApiError> {
+    let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
+    let (runs, total) = state
+        .db
+        .list_unreadable_runs(limit, params.offset.unwrap_or(0))
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(UnreadableRunsResponse {
+        runs: runs.iter().map(unreadable_run_out).collect(),
+        total,
+    }))
+}
+
+/// Shape one unreadable run for the wire.
+fn unreadable_run_out(run: &crate::db::UnreadableRun) -> UnreadableRunOut {
+    UnreadableRunOut {
+        id: run.id.clone(),
+        started_at: run.started_at.clone(),
+        finished_at: run.finished_at.clone(),
+        test_case_slug: run.test_case_slug.clone(),
+        test_case_version: run.test_case_version.clone(),
+        variant: run.variant.clone(),
+        engine_slug: run.engine_slug.clone(),
+        harness_slug: run.harness_slug.clone(),
+        model_id: run.model_id.clone(),
+        gg_preset: run.gg_preset.clone(),
+        test_type: run.test_type.clone(),
+        state: run.run_state.clone(),
+        published: run.published,
+        review_count: run.review_count,
+        error: run.error.clone(),
+    }
 }
 
 /// `GET /runs/{id}/events` — the published run's recorded normalized event
@@ -939,6 +1006,51 @@ pub struct SummaryListResponse {
     /// is unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     total: Option<usize>,
+}
+
+/// One row of [`UnreadableRunsResponse`]: a stored run this build cannot decode,
+/// as its lifted identity plus the error its record produces now. Not a
+/// contract-codegen type — a plain axum response, like [`SummaryListResponse`].
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnreadableRunOut {
+    id: String,
+    started_at: String,
+    finished_at: String,
+    test_case_slug: String,
+    test_case_version: String,
+    variant: String,
+    engine_slug: Option<String>,
+    harness_slug: String,
+    model_id: String,
+    gg_preset: Option<String>,
+    test_type: String,
+    state: String,
+    published: bool,
+    review_count: i64,
+    /// The error decoding the stored record produces against the current
+    /// `RunRecord`.
+    error: String,
+}
+
+/// The [`unreadable`] listing: one page of unreadable runs plus how many the cabinet
+/// holds in total.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnreadableRunsResponse {
+    runs: Vec<UnreadableRunOut>,
+    total: usize,
+}
+
+/// The query parameters [`unreadable`] pages with, the numbered pair the summary
+/// mode of [`list`] carries.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnreadableParams {
+    /// Rows per page, defaulting to [`DEFAULT_LIMIT`] and clamped to [`MAX_LIMIT`].
+    limit: Option<usize>,
+    /// Rows to skip, so a pager can jump to a page.
+    offset: Option<usize>,
 }
 
 /// Split a comma-separated list query param (`versions`, `testCases`) into the

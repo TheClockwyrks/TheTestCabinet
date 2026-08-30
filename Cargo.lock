@@ -6902,6 +6902,7 @@ dependencies = [
  "test-cabinet-core",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tower",
  "tower-http",

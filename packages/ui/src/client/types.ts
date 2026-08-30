@@ -918,6 +918,43 @@ export interface StoredReview extends ReviewDocument {
   reviewerPictureUrl?: string | null;
 }
 
+// One stored run the backend cannot decode: its lifted identity plus the error its
+// stored record produces against the running build's run-record contract. Carries no
+// `RunRecord` — there is no readable one, which is the whole reason the row is here.
+// Read from `GET /runs/unreadable`, the one surface such a run is reachable from,
+// since every other listing filters it out.
+export interface UnreadableRun {
+  id: string;
+  startedAt: string;
+  finishedAt: string;
+  testCaseSlug: string;
+  testCaseVersion: string;
+  variant: string;
+  // The engine the run was launched under, or null for a row whose slug was never
+  // lifted out of its record.
+  engineSlug: string | null;
+  harnessSlug: string;
+  modelId: string;
+  // The gg configuration the run was launched from, for a gg run launched from a
+  // named one; null everywhere else.
+  ggPreset: string | null;
+  testType: string;
+  // The run's terminal state as its wire token.
+  state: string;
+  published: boolean;
+  reviewCount: number;
+  // Why the stored record no longer decodes. This is what an operator reads before
+  // deciding to delete the run.
+  error: string;
+}
+
+// A page of unreadable runs with the total the cabinet holds. `total` counts every
+// unreadable run across the pages, which is what sizes the pager.
+export interface UnreadableRunPage {
+  runs: UnreadableRun[];
+  total: number;
+}
+
 // A finished run held by a runner (a worker, or the local core in Tauri),
 // awaiting review and/or publishing. Also the shape the backend serves for a
 // *published* run (`GET /runs/{id}`): its record (links populated), every review

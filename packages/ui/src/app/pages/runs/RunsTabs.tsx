@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router";
 import { useGalleryData } from "../../data/galleryContext";
+import { useOptionalWorkers } from "../../../client/context";
+import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { useRecordSectionIndex } from "../../components/backReturn";
 import { useLiveRunUpdates } from "../../runtime/useLiveRunUpdates";
 import { routes } from "../../routes";
@@ -11,16 +14,23 @@ export type RunsTab =
   | "comparisons"
   | "failures"
   | "unreviewed"
-  | "unpublished";
+  | "unpublished"
+  | "unreadable";
 
 // The tab strip across the runs section's index surfaces. Each tab is its own route
 // (so a surface is linkable), mirroring the Settings section's tab bar. The default
 // Tests tab (the run log) and Comparisons are both rendered on every host — a
 // published comparison is public, read-only off the snapshot on the static site.
-// Failures, Unreviewed, and Unpublished are console-only reviewer tooling — their
-// routes aren't mounted on the static site, and the public gallery holds nothing
-// unreviewed or unpublished by definition — so it sees just Tests and Comparisons.
+// Failures, Unreviewed, Unpublished, and Unreadable are console-only reviewer
+// tooling — their routes aren't mounted on the static site, and the public gallery
+// holds nothing unreviewed, unpublished, or unreadable by definition — so it sees
+// just Tests and Comparisons.
 // (The coverage dashboard moved to the account section's Coverage tab.)
+//
+// Unreadable is further gated on the cabinet actually holding such a run, so the
+// strip carries a sixth tab only while there is something behind it. Its count is
+// read here rather than on the page, because the strip renders on every runs
+// surface and the tab has to appear (and retire) wherever the reviewer is.
 //
 // The bar is the strip and nothing else. It used to carry the global stop controls on
 // its trailing edge, which worked while there were four tabs and stopped working at
@@ -43,6 +53,7 @@ export function RunsTabs({ active }: { active: RunsTab }) {
   // always the default Tests tab. Recorded unconditionally, even where the bar itself is
   // dropped below.
   useRecordSectionIndex("runs");
+  const unreadable = useUnreadableCount();
   const tabs: { key: RunsTab; label: string; to: string }[] = [
     { key: "runs", label: "Tests", to: routes.runs() },
     {
@@ -66,6 +77,15 @@ export function RunsTabs({ active }: { active: RunsTab }) {
             key: "unpublished" as const,
             label: "Unpublished",
             to: routes.runUnpublished(),
+          },
+        ]
+      : []),
+    ...(canExecute && unreadable > 0
+      ? [
+          {
+            key: "unreadable" as const,
+            label: `Unreadable (${unreadable})`,
+            to: routes.runUnreadable(),
           },
         ]
       : []),
@@ -93,4 +113,33 @@ export function RunsTabs({ active }: { active: RunsTab }) {
       ))}
     </nav>
   );
+}
+
+// How many stored runs the backend cannot decode, or 0 where the host cannot ask.
+// Re-read on the runs runtime's refresh token, so deleting the last one retires the
+// tab without a reload.
+function useUnreadableCount(): number {
+  const client = useOptionalWorkers()?.active?.client ?? null;
+  const { refreshToken } = useRunsRuntime();
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!client?.listUnreadableRuns) {
+      setCount(0);
+      return;
+    }
+    let active = true;
+    client
+      // Only the total is read here, so ask for the smallest page that carries one.
+      .listUnreadableRuns({ limit: 1 })
+      .then((page) => {
+        if (active) setCount(page.total);
+      })
+      .catch(() => {
+        if (active) setCount(0);
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, refreshToken]);
+  return count;
 }

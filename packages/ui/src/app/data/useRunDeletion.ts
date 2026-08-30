@@ -9,8 +9,8 @@ import type { ConfirmOptions } from "../components/ConfirmDialog";
 export const CONFIRM_DELETE_RUN: ConfirmOptions = {
   title: "Delete run",
   message:
-    "Delete this run permanently? Its record, reviews, and stored media are " +
-    "removed. This cannot be undone.",
+    "Delete this run permanently? Its record, reviews, stored media, and its " +
+    "playable build and logs are removed. This cannot be undone.",
   confirmLabel: "Delete run",
 };
 
@@ -24,9 +24,9 @@ export const CONFIRM_DELETE_RUN: ConfirmOptions = {
  * from it — is never deletable), on a host that can execute runs (the consoles /
  * Tauri; the static public site cannot), with a worker whose transport supports
  * deletion and a signed-in account whose token authorizes it. The backend is the
- * real gate — it refuses a published run regardless — so this is the matching UI
- * restriction. Because `canExecute` is false on the static site, the affordance
- * is inherently limited to the internal console and the Tauri app.
+ * real gate — it refuses a published run it can still read — so this is the
+ * matching UI restriction. Because `canExecute` is false on the static site, the
+ * affordance is inherently limited to the internal console and the Tauri app.
  *
  * `deleteRun` removes the run record, its reviews, and its stored media, then
  * nudges the data source to drop the run from the worklist. It rejects (rather
@@ -36,6 +36,16 @@ export const CONFIRM_DELETE_RUN: ConfirmOptions = {
 export function useRunDeletion(): {
   /** Whether the given run may be deleted from this host. */
   canDelete: (runId: string) => boolean;
+  /**
+   * Whether a run this build cannot read may be deleted from this host.
+   *
+   * The Unreadable worklist lists runs that appear in no other listing, so
+   * `localIds` never holds one and {@link canDelete} would refuse every row on that
+   * page. Publication does not gate these: an unreadable run is already absent from
+   * the snapshot and the gallery, so the backend deletes it published or not, and
+   * this page is the only place it can be got rid of.
+   */
+  canDeleteUnreadable: () => boolean;
   /** Permanently delete the run, then refresh the worklist. Rejects on failure. */
   deleteRun: (runId: string) => Promise<void>;
 } {
@@ -56,6 +66,11 @@ export function useRunDeletion(): {
     [canExecute, localIds, client, token],
   );
 
+  const canDeleteUnreadable = useCallback(
+    (): boolean => canExecute && Boolean(client?.deleteRun) && Boolean(token),
+    [canExecute, client, token],
+  );
+
   const deleteRun = useCallback(
     async (runId: string): Promise<void> => {
       if (!client?.deleteRun || !token) {
@@ -68,5 +83,5 @@ export function useRunDeletion(): {
     [client, token, runtime],
   );
 
-  return { canDelete, deleteRun };
+  return { canDelete, canDeleteUnreadable, deleteRun };
 }

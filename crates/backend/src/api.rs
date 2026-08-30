@@ -23,6 +23,10 @@ use crate::readiness::Readiness;
 use crate::relay::Relay;
 use crate::store::DefinitionStore;
 
+#[cfg(test)]
+#[path = "api.test.rs"]
+mod tests;
+
 mod comparisons;
 mod coverage;
 mod game_jams;
@@ -280,6 +284,12 @@ pub fn router(state: AppState) -> Router {
         // The adversarial controllers for a case (id + model label), so the arena
         // can pit a produced implementation from any host. A read.
         .route("/adversarial/controllers", get(runs::adversarial_controllers))
+        // The runs whose stored records this build cannot read, each with the error
+        // its record produces now — the one surface such a run is reachable from,
+        // since every other listing filters it out. Registered before `/runs/{id}`:
+        // the static segment outranks the dynamic one under the router's matcher, so
+        // this never resolves as a run-id lookup. A read.
+        .route("/runs/unreadable", get(runs::unreadable))
         // Read one run, or delete it (auth-gated; refused for a published run).
         .route("/runs/{id}", get(runs::get).delete(runs::delete))
         // Submit a review for a run (requires auth; attributed to the token's
@@ -772,9 +782,12 @@ async fn ready(
 /// and proof/asset media live behind the separate **artifact service** (the data
 /// plane — see `crates/artifacts`). Its base URL is reported here so the console
 /// can prefix the root-relative `links.playable_build` (and the `/runs/{id}/proof|asset/…`
-/// paths) a driver sets. `artifactsUrl` is `null` when no artifact service is
-/// configured (`TCAB_ARTIFACTS_PUBLIC_URL` unset) — e.g. a single-box dev setup —
-/// in which case the console leaves those links unresolved. `arenaUrl` likewise
+/// paths) a driver sets. `artifactsUrl` carries the **advertised**
+/// `TCAB_ARTIFACTS_PUBLIC_URL`, which is console-facing only; the backend's own
+/// artifact calls go through `TCAB_ARTIFACTS_URL` instead (see
+/// [`crate::artifacts`]). It is `null` when no artifact service is configured — e.g.
+/// a single-box dev setup — in which case the console leaves those links
+/// unresolved. `arenaUrl` likewise
 /// reports the **arena service** (`TCAB_ARENA_PUBLIC_URL`) the console POSTs
 /// adversarial matches/tournaments to and streams live tournament progress from;
 /// `null` degrades the adversarial run UI.
@@ -788,7 +801,7 @@ async fn client_config(
     axum::extract::State(state): axum::extract::State<AppState>,
 ) -> axum::Json<ClientConfig> {
     axum::Json(ClientConfig {
-        artifacts_url: state.config.artifacts_url.clone(),
+        artifacts_url: state.config.artifacts_public_url.clone(),
         arena_url: state.config.arena_url.clone(),
         grafana_url: state.config.grafana_url.clone(),
         snapshot_url: state.config.snapshot_url.clone(),

@@ -62,9 +62,10 @@ pipeline is inert. See [Observability](/development/observability/).
 The run and model list pages are server-paged. Each page issues a
 [`GET /runs?fields=summary`](/components/backend/api/#get-runs) query in
 numbered-offset mode (`offset` plus `limit`) and sizes its pager from the
-returned `total`. The debounced search field, the filters, and column-header
-sort travel as query parameters, so filtering and sorting happen in the backend;
-changing any of them re-queries and returns to page 0.
+returned `total`, which counts exactly the rows the query can serve. The
+debounced search field, the filters, and column-header sort travel as query
+parameters, so filtering and sorting happen in the backend; changing any of them
+re-queries and returns to page 0.
 
 The cross-case run listings carry the same filter bar: the free-text field, the
 equality facets its route does not already pin (test case, version, harness, and
@@ -149,8 +150,8 @@ once, on the About section's Ratings tab, and the Reviewing intro links there.
 index above and Comparisons lists the signed-in account's
 [comparisons](/comparisons/overview/), published or not; both render on every
 host, and the read-only static site lists the published set off its snapshot. The
-other three are console-only worklists whose routes the public gallery leaves
-unmounted, since it holds nothing unreviewed or unpublished.
+remaining tabs are console-only worklists whose routes the public gallery leaves
+unmounted, since it holds nothing unreviewed, unpublished, or unreadable.
 
 - Failures: the produced
   [publishable failures](/components/core/results/#publish) awaiting publish, each
@@ -164,6 +165,12 @@ unmounted, since it holds nothing unreviewed or unpublished.
 - Unpublished: runs that have cleared the publish gate but have not been released
   ([`state=publishable`](/components/backend/api/#get-runs)), which is the publish
   backlog.
+- Unreadable: runs whose stored record this build can no longer read
+  ([`GET /runs/unreadable`](/components/backend/api/#get-runsunreadable)), each
+  showing the error its record produces and a delete control, with the same
+  numbered pager the other worklists carry. The tab is present only while the
+  cabinet holds at least one such run, and it is the one surface these runs are
+  reachable from.
 
 A run with a playable build opens its detail page on the Play tab, which leads
 the tab strip: the run's [showcase](/components/core/showcase/), when its

@@ -59,9 +59,11 @@ struct PublisherInner {
     /// can be embedded in the public snapshot.
     auth: Arc<test_cabinet_core::AccountsClient>,
     http: reqwest::Client,
-    /// The artifact service's public base URL, passed to the snapshot builder so it
-    /// can fall back for run media missing from the (ephemeral) store. `None` in a
-    /// dev/single-box setup with no separate artifact service.
+    /// The artifact service's **in-cluster** base URL
+    /// ([`Config::artifacts_internal_url`](crate::config::Config::artifacts_internal_url)),
+    /// passed to the snapshot builder so it can fall back for run media missing from
+    /// the (ephemeral) store. `None` in a dev/single-box setup with no separate
+    /// artifact service, and in any deployment that supplies no in-cluster URL.
     artifacts_url: Option<String>,
     coalesce: Duration,
     /// How long a superseded snapshot generation is kept before the post-upload
@@ -89,6 +91,9 @@ impl Publisher {
     /// Build a publisher. `r2` is `None` in the dev mode where the R2 credentials
     /// were not configured: the snapshot is still regenerated into SQLite-derived
     /// form and the dirty flag cleared, but no upload or hook fire happens.
+    ///
+    /// `artifacts_url` is the artifact service's **in-cluster** base URL, the one the
+    /// backend itself can reach — not the address advertised to consoles.
     pub fn new(
         db: Arc<Db>,
         store: DefinitionStore,

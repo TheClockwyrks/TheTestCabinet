@@ -27,7 +27,7 @@ can be deleted through the console rather than through the database.
 
 ## Done when
 
-- [ ] A listing's total equals the number of rows it serves.
-- [ ] The console's pager offers only pages that hold rows.
-- [ ] A run whose record no longer deserializes can be deleted through the console.
-- [ ] Gates green.
+- [x] A listing's total equals the number of rows it serves.
+- [x] The console's pager offers only pages that hold rows.
+- [x] A run whose record no longer deserializes can be deleted through the console.
+- [x] Gates green.

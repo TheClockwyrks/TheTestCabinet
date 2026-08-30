@@ -58,6 +58,30 @@ default, or PostgreSQL). A run's proof, asset and validation media is written
 beside the definitions in the on-disk store rather than into that database. This
 is the system of record for every run, published or not.
 
+A stored record can predate a change to the run record contract, leaving it
+unreadable by the running build. The backend therefore records, per run, whether
+the build can read that run's record and the record-format generation the
+decision was made under. Every run listing counts and serves exactly the readable
+runs, so a listing's reported total equals the number of rows it can return and a
+numbered pager offers only pages that hold rows. A build whose record format
+differs from the stamp on a row re-decides that row's readability once at
+startup, before it serves.
+
+The generation is pinned to the shape of the run record contract. The build
+records the contract shape each generation was decided against, and a change to
+that shape fails the build's tests until it is either recorded under the current
+generation, which asserts that stored records survive it, or given a new
+generation. The generation is therefore a fact about the contract rather than a
+constant somebody remembers to raise.
+
+A run the build cannot read is still reachable on its own terms. `GET
+/runs/unreadable` lists each such run's lifted identity together with the error
+its stored record now produces, paged like every other listing, and `DELETE
+/runs/{id}` deletes it, because both act on the stored row rather than on the
+record. A published run is deletable here: it is already absent from the snapshot
+and the gallery, which is what the publication guard exists to protect. The
+consoles surface this as the runs section's Unreadable tab.
+
 ## Authentication
 
 The backend stays on a private network. In a [cluster
@@ -99,6 +123,33 @@ documents and media to the public bucket, and writes its row to the public
 projection.
 
 The backend serializes publishes so two operators cannot race on shared state.
+
+## Artifact reclamation
+
+The backend owns the lifetime of a run's tree on the
+[artifact service](/components/artifacts/overview/). It reaches the service over
+`TCAB_ARTIFACTS_URL`, the in-cluster address, presenting the shared service
+token.
+
+Deleting a run prunes its tree. The prune is best-effort, because the run row is
+already gone and the delete must succeed regardless of the data plane's health.
+
+A periodic sweep reclaims what a failed prune left, and anything else the volume
+holds with no run behind it. Each pass lists the service's stored trees, keeps
+every tree whose id still has a run row, and deletes the rest once they are
+older than a grace window. The grace window exists because a driver uploads a
+run's tree before it reports the run terminal, so a freshly uploaded tree
+legitimately has no row yet.
+
+`TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` sets the pass interval and `0` disables the
+sweep; `TCAB_ARTIFACT_SWEEP_GRACE_HOURS` sets the grace window.
+
+A pass acts only on a run-id set the backend read and found at least one run in.
+A query that fails and one that comes back empty both abandon the pass, which is
+retried at the next interval: an empty set makes every stored tree an orphan, so
+a database fault, or a backend brought up against a fresh database beside a
+populated volume, leaves the volume intact. A failing tree listing abandons the
+pass the same way.
 
 ## Review scheduling
 
@@ -169,6 +220,9 @@ skipping the public write.
 | `TCAB_REFERENCE_BROWSER` | Headless browser used to render references at ingest. | image Chromium |
 | `TCAB_GG_REFERENCE` | Directory holding gg's projected reference documents. | `<checkout>/target/gg-reference` |
 | `TCAB_ARTIFACTS_PUBLIC_URL` | Artifact service base URL, advertised to consoles. | — |
+| `TCAB_ARTIFACTS_URL` | Artifact service base URL the backend itself calls to prune and sweep run trees. Unset disables the prune, the sweep, and the snapshot's artifact media fallback. | — |
+| `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` | Interval between reclamation sweeps; `0` disables the sweep. | `6` |
+| `TCAB_ARTIFACT_SWEEP_GRACE_HOURS` | How old a run-less tree must be before a sweep deletes it. | `24` |
 | `TCAB_ARENA_PUBLIC_URL` | Arena service base URL, advertised to consoles. | — |
 | `TCAB_GRAFANA_PUBLIC_URL` | Grafana base URL, advertised to consoles. | — |
 | `TCAB_SNAPSHOT_PUBLIC_URL` | Public read base URL of the document bucket, advertised to consoles. | — |
