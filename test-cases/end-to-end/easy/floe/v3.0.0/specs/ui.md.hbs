@@ -1,16 +1,110 @@
-# Floe — screens, HUD and audio
+# Floe — Screens, the HUD, and audio
 
-<!--
-  PLACEHOLDER — NOT THE SPECIFICATION.
+This file fixes the six screens, how a player moves between them, the readouts
+the HUD carries, and the game's audio. The keys behind each action are in
+`specs/controls.md`, and the run those screens frame is in
+`specs/progression.md`.
 
-  This file is a scaffold stub. The Specs stage of the Floe v3.0.0 rework
-  replaces it in full with the specification section 3 of the design plan
-  assigns to it. If this notice is still here, this file has not been written
-  and no run seeded from it is valid.
--->
+## The screens
 
-**This file has not been written yet.**
+`screen` names the screen the game is showing, and `menuIndex` is the highlighted
+item of whatever menu it carries, counted from `0`. The highlighted item is drawn
+distinctly from the others.
 
-Section 3 of the Floe v3.0.0 design plan gives this file the following scope:
+| `screen` | What it shows |
+| --- | --- |
+| `title` | `TITLE_TEXT` (`FLOE`), `TAGLINE_TEXT` (`DON'T LOOK BACK`), and a vertical menu of `TITLE_ITEMS` (`CROSS`, `HOW TO PLAY`) in that order. A dim slice of the strait may show behind it. |
+| `howto` | How to play, covered below. |
+| `playing` | The live strait, the critter, the bears, and the HUD. |
+| `paused` | The strait, visible and frozen, behind a menu of `PAUSE_ITEMS` (`RESUME`, `RESTART`, `QUIT TO MENU`) in that order. |
+| `victory` | The final score, the levels cleared (`8`), the lives remaining, and a menu of `ENDING_ITEMS` (`PLAY AGAIN`, `MENU`) in that order. |
+| `gameover` | The final score, the level reached (`reachedLevel`), and a menu of `ENDING_ITEMS` in that order. |
 
-The six screens and what each shows, the five HUD readouts, and the ten audio cues. Branches on `engine.slug`.
+A freshly loaded build opens on `title` with `menuIndex` at `0`.
+
+The `howto` screen names each of these: the goal of filling the five far-shore
+bays, the keys the critter hops with, the bear that hunts the critter across the
+whole strait, the vehicles sliding along the ice band, the floes drifting along
+the water band, and the crossing timer.
+
+## Moving between them
+
+| Screen | Action | Effect |
+| --- | --- | --- |
+| `title` | Up, down | Moves `menuIndex` over `TITLE_ITEMS`, wrapping both ways. |
+| `title` | Confirm | `CROSS` starts a run and opens `playing`; `HOW TO PLAY` opens `howto` with `menuIndex` at `0`. |
+| `howto` | Confirm, back | Returns to `title` with `menuIndex` at `0`. |
+| `playing` | Pause | Opens `paused` with `menuIndex` at `0`. |
+| `paused` | Up, down | Moves `menuIndex` over `PAUSE_ITEMS`, wrapping both ways. |
+| `paused` | Back | Returns to `playing`, resuming the crossing as it stood. |
+| `paused` | Confirm | `RESUME` returns to `playing`; `RESTART` starts a fresh run and opens `playing`; `QUIT TO MENU` returns to `title`. |
+| `victory`, `gameover` | Up, down | Moves `menuIndex` over `ENDING_ITEMS`, wrapping both ways. |
+| `victory`, `gameover` | Confirm | `PLAY AGAIN` starts a fresh run and opens `playing`; `MENU` returns to `title`. |
+| `victory`, `gameover` | Back | Returns to `title`. |
+| Every screen | Mute | Toggles the runtime's mute bit. |
+
+Starting a run is what `specs/progression.md` fixes: level `1`, three lives, a
+score of `0`, five open bays, and a fresh crossing. Resuming from `paused`
+returns the crossing exactly as pausing left it, with the score, lives, level,
+timer, bays, critter, and bears untouched.
+
+Where several of a menu's edges arrive on one tick, up is applied before down and
+movement before confirm, so a tick carrying both an up edge and a down edge moves
+up only, and a tick carrying a movement edge and a confirm edge moves only.
+
+## The HUD
+
+The HUD bar is the full-width strip above the strait that `specs/strait.md`
+fixes, and it carries five readouts. Their arrangement and styling are yours;
+each is inside the bar and legible against it.
+
+| Readout | Shows |
+| --- | --- |
+| Score | The running score. |
+| Lives | `lives`, the lives the run has left counting the critter currently crossing, so a run that has lost none reads `3`. |
+| Level | `HUD_LEVEL_LABEL` (`LEVEL`), the current `level`, and `TOTAL_LEVELS` (`8`). |
+| Timer | The seconds left on the crossing timer, following `timer`. |
+| Bays | One mark per bay, in the bays' own left-to-right order, each showing whether that bay is filled. |
+
+Nothing drawn on the strait is drawn inside the HUD bar.
+
+## Audio
+
+{{#if (eq engine.slug "none")}}
+This game stands on no engine, so the audio is yours to write. Synthesize the
+cues with the Web Audio API rather than shipping audio files, hold a mute bit
+that the mute action toggles, and start no sound until the player has interacted
+with the page.
+{{else}}
+Audio plays through the {{engine.name}} engine's cue bus, which it documents in
+the `engine/` directory at the root of this repository. Define each cue under the
+name `CUES` gives it and play it through the bus. Muting and the first-interaction
+unlock are the engine's: the mute action toggles the engine's own mute bit.
+{{/if}}
+
+Ten cues, one per event, each a distinct short sound so the events are told apart
+by ear.
+
+| Cue | Played when |
+| --- | --- |
+| `hop` | An accepted hop is taken. A refused hop plays nothing. |
+| `splash` | The critter falls into open water or is carried off a side edge. |
+| `crush` | A vehicle crushes the critter. |
+| `caught` | A bear catches the critter. |
+| `bay` | A crossing ends in a bay. |
+| `level-clear` | A level below `TOTAL_LEVELS` is cleared. |
+| `bonus-life` | The score earns a bonus life. |
+| `victory` | The run is won. |
+| `game-over` | The death that empties the lives. |
+| `menu` | A menu's highlight moves, once per move. |
+
+Each is played on the tick its event happens, once per tick however many times
+the event was raised within it. The game stays fully playable with sound muted,
+and it never fails to run or load when audio cannot start.
+
+## Out of scope
+
+- Network play, and any progress saved between sessions.
+- Touch and gamepad input. The game is played on the keyboard.
+- Power-ups, weapons, alternate straits, and difficulty menus. The game is the
+  one strait and the one eight-level run.
