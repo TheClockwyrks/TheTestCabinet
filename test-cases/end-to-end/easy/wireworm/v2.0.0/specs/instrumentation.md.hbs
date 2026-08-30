@@ -340,13 +340,13 @@ present, so every operation is verifiable by setting a value and reading it back
 ```
 
 Every field is read straight off the game's state, so what the snapshot reports
-is what the game holds. Four are derived rather than stored:
+is what the game holds. Three entries are built at the call rather than read off
+a field of their own:
 
-| Field | Derived from |
+| Field | Built from |
 | --- | --- |
 | `wormStepInterval` | `wormStepInterval(level)` in `specs/worm.md` |
 | `wormLength` | `wormLength(level)` in `specs/worm.md` |
-| `cursor.contact` | The cursor's contact gate |
 | `arcs` | The live arcs, with each one's remaining life left out |
 
 Four more need a note:
