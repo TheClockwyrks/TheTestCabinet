@@ -17,9 +17,11 @@
 // above works from anywhere.
 //
 // The environment is `node`. The runtime takes every measurement from the
-// `SurfaceMetrics` the harness supplies, so these suites need no DOM; a suite that
-// draws a node stands `fetch` and `createImageBitmap` up over that `assets/` tree
-// itself.
+// `SurfaceMetrics` the harness supplies, so these suites need no DOM. There is no
+// page either, so nothing would resolve the relative URL the engine's asset loader
+// fetches: `harness.ts` stands `fetch` and `createImageBitmap` up over that
+// `assets/` tree for the life of each harness, so every scenario draws the board
+// from the art the case seeded.
 
 import { defineConfig } from "vitest/config";
 
