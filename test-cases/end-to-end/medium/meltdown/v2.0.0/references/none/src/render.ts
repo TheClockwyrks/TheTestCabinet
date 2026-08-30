@@ -59,7 +59,7 @@ import {
 import { COLOR, FONT, alpha, heatColor } from "./theme";
 import { fliesOf } from "./units";
 import { wavePreview } from "./waves";
-import type { Rect, Side, TowerType } from "./types";
+import type { Rect, Side, SurgeType, TowerType } from "./types";
 
 /** One line of text, with the build's own type stack. */
 function text(
@@ -853,16 +853,32 @@ function drawInspector(
   }
 }
 
-/** The coming wave's type and count. */
+/** How the coming wave's type reads: one type named, or The Hundred's mix. */
+export function previewTypeLabel(
+  state: MeltdownState,
+  type: SurgeType,
+): string {
+  return state.mode === "hundred" ? "MIXED" : SURGE_DEFS[type].name;
+}
+
+/**
+ * The coming wave's type and count, in the phases that draw one.
+ *
+ * The `wave` phase draws no preview: the wave is already on the floor
+ * (specs/hud.md). The Hundred fields more than one type, so its preview reads as
+ * mixed rather than naming one, and it lists no per-type figures because there is
+ * no one type to list.
+ */
 function drawNextWave(
   state: MeltdownState,
   ctx: CanvasRenderingContext2D,
 ): void {
+  if (state.phase === "wave") {
+    drawInfoHint(ctx);
+    return;
+  }
   const figures = modeFigures(state.mode, state.difficulty);
-  const coming =
-    state.phase === "wave"
-      ? wavePreview(state.mode, state.wave + 1, figures.waveCount)
-      : wavePreview(state.mode, state.wave, figures.waveCount);
+  const coming = wavePreview(state.mode, state.wave, figures.waveCount);
   let y = INFO_RECT.y + 20;
   text(ctx, "NEXT WAVE", INFO_RECT.x + 10, y, {
     size: 12,
@@ -871,24 +887,29 @@ function drawNextWave(
   y += 26;
   if (coming === null) {
     text(ctx, "NONE", INFO_RECT.x + 10, y, { size: 16, weight: "700" });
+    drawInfoHint(ctx);
     return;
   }
   text(
     ctx,
-    `${coming.count} x ${SURGE_DEFS[coming.type].name}`,
+    `${coming.count} x ${previewTypeLabel(state, coming.type)}`,
     INFO_RECT.x + 10,
     y,
     { size: 18, weight: "700", color: COLOR.highlight },
   );
   y += 24;
   const def = SURGE_DEFS[coming.type];
-  for (const [label, value] of [
-    ["HP", def.hp.toFixed(0)],
-    ["SPEED", def.speed.toFixed(0)],
-    ["FLIES", def.flies ? "YES" : "NO"],
-    ["BOUNTY", String(def.bounty)],
-    ["LEAK", `${def.leak} lives`],
-  ] as Array<[string, string]>) {
+  const fields: Array<[string, string]> =
+    state.mode === "hundred"
+      ? [["TYPES", "EVERY ONE, IN TURN"]]
+      : [
+          ["HP", def.hp.toFixed(0)],
+          ["SPEED", def.speed.toFixed(0)],
+          ["FLIES", def.flies ? "YES" : "NO"],
+          ["BOUNTY", String(def.bounty)],
+          ["LEAK", `${def.leak} lives`],
+        ];
+  for (const [label, value] of fields) {
     y += 17;
     text(ctx, label, INFO_RECT.x + 10, y, { size: 11, color: COLOR.textDim });
     text(ctx, value, INFO_RECT.x + INFO_RECT.w - 10, y, {
@@ -896,7 +917,12 @@ function drawNextWave(
       align: "right",
     });
   }
-  y += 26;
+  drawInfoHint(ctx);
+}
+
+/** The standing note under the information area: how to fill it with a tower. */
+function drawInfoHint(ctx: CanvasRenderingContext2D): void {
+  const y = INFO_RECT.y + INFO_RECT.h - 30;
   text(ctx, "HOVER A SHOP ENTRY OR", INFO_RECT.x + 10, y, {
     size: 10,
     color: COLOR.textFaint,
