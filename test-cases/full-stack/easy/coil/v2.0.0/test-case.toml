@@ -152,29 +152,36 @@ min_version = "1.0.0"
 #                     specs alone.
 #   - `simple-2d`     declares the engine in its `package.json`, which is vendored in
 #                     at seed time so the build imports it by its bare package name,
-#                     and seeds the one case-owned module around the game,
-#                     `src/main.ts` (the browser entry). Every figure the
-#                     specification fixes is named in the specs and declared by the
-#                     build, because two of them — the mode's menu entry and its
-#                     obstacle course — differ between the variants that share this
-#                     one workspace. The build writes
+#                     and seeds the two case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes —
+#                     the stage and board geometry, the starting chain, the tick and
+#                     the turn buffer, the combo and its window, the mode's copy, the
+#                     screen copy, the action bindings, the cue names, and the paths
+#                     the produced files land at; the look is NOT among them) and
+#                     `src/main.ts` (the browser entry). The build writes
 #                     `src/game.ts`: the state, the debug surface its `initialize`
 #                     returns beside that state, and the game's update and render.
 #   - `structured-2d` declares that engine in its `package.json` the same way and
-#                     seeds the same one case-owned module. The build writes
+#                     seeds the same two case-owned modules. The build writes
 #                     `src/game.ts`: the game definition the engine drives — its mode,
 #                     its live state, and its actors — and the debug surface its
 #                     instance's `initialize` returns.
 #
 # This table must name EXACTLY the engines the case supports; the resolver checks
 # both directions. The seeded files land at the run root
-# (`workspaces/none/package.json` seeds to `package.json`). Neither variant overrides
-# it: the difference between Classic and Maze is a rule of the game, not a difference
-# in the project it is built in.
+# (`workspaces/none/package.json` seeds to `package.json`).
+#
+# A variant may replace this whole table with one of its own, which Maze does,
+# because `src/constants.ts` carries the mode: its menu entry, its HUD label, and
+# the interior cells it lays as obstacles, none of which is the same under the two
+# modes. The engineless project holds no game code for a variant to differ in — only
+# the configuration the build is written against — so every variant shares it, and
+# what a variant changes about the game reaches an engineless run through the specs,
+# which are rendered per variant before they land.
 [workspaces]
 none = "workspaces/none"
-"simple-2d" = "workspaces/simple-2d"
-"structured-2d" = "workspaces/structured-2d"
+"simple-2d" = "workspaces/base/simple-2d"
+"structured-2d" = "workspaces/base/structured-2d"
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
