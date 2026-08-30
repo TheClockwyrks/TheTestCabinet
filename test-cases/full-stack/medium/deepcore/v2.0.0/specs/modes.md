@@ -19,6 +19,11 @@ In both modes a death ends the expedition at the Game Over screen, destroys a Co
 held or ticking on the ground, and leaves every installed rocket component
 installed. There is no respawn and no dropped cache.
 
+A death takes effect the moment its cause holds and cannot be undone. Play does
+not resume from it, and the mode's consequence below is applied then rather than
+when the Game Over screen arrives, so nothing done after the death changes what it
+costs.
+
 ## Standard
 
 A death costs the progress made since the last save.

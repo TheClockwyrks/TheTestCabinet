@@ -144,7 +144,9 @@ the Fuel Depot. The maximum is set by the hull tier.
   alert treatment.
 - Hull standing at `0` destroys the miner, whatever emptied it, and is checked
   continuously rather than only at the blow that emptied it. That is a death. An
-  empty hull is never a state the expedition continues from.
+  empty hull is never a state the expedition continues from, and no open panel or
+  overlay suspends the check: a hull emptied by a field supply used from the
+  inventory ends the expedition exactly as one emptied in the mine does.
 - Hull never mends on its own.
 
 ## Animation states

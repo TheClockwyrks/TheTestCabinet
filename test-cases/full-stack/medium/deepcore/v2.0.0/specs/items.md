@@ -57,7 +57,8 @@ price and increments its count.
 
 Two paths run the same logic:
 
-- The hotkeys `1` through `6` during live play in the mine.
+- The hotkeys `1` through `6`, which act throughout the mine, with a building
+  panel or the inventory overlay open exactly as with the mine clear.
 - A `USE` control per held item in the inventory overlay's field supplies section.
 
 ## Jettisoning the Core Sample
@@ -65,8 +66,9 @@ Two paths run the same logic:
 While carrying the Core Sample the miner may jettison it, dropping it onto its
 current cell as a ground item so the player can move clear of the detonation.
 
-- The jettison control is the jettison key during live play, or the `JETTISON`
-  control in the inventory.
+- The jettison control is the jettison key, which acts throughout the mine with a
+  panel open exactly as with the mine clear, or the `JETTISON` control in the
+  inventory.
 - The destabilization timer keeps running on the dropped Sample. Jettisoning
   neither pauses nor resets it.
 - The ground item sits on its cell, drawn with its countdown still visible.
