@@ -128,6 +128,18 @@ Task-oriented walkthroughs:
   [`asset_kind`](apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md)
   you are working on. The [`testing/`](apps/docs/src/content/docs/testing/) pages
   remain authoritative for what each manifest field means.
+- **Writing gg SDK function or type documentation:** read the
+  [`gg-sdk-documentation`](.claude/skills/gg-sdk-documentation/SKILL.md) skill —
+  it defines the policies that documentation is held to.
+- **Filing or editing an issue in [`tasks/`](tasks/):** read the
+  [`repo-tasks`](.claude/skills/repo-tasks/SKILL.md) skill first.
+
+## Issue board
+
+[`tasks/`](tasks/) is the issue board — one file per issue, sorted into a
+subfolder by area, with completed ones moved into a `done/` folder beside them.
+Nothing here is authoritative; when an issue lands, its durable conclusions
+belong in `apps/docs/`.
 
 ## Definitions & assets
 
