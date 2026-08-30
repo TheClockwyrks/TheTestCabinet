@@ -57,6 +57,14 @@ the memory, so the waste falls back to what is left of the set turned before it.
 A waste whose set memory is empty shows no card and offers none to play, whatever
 cards it still holds, and a move naming a waste card is refused.
 
+## What the two piles accept
+
+Neither the stock nor the waste accepts a card offered to it. Both answer a
+release inside the drop rectangle `specs/table.md` fixes for them, and both refuse
+every run resolved to them, so a run released over either one returns to the pile
+it was lifted from. Cards reach the stock only by a recycle and the waste only by
+a turn, both below.
+
 ## Playing off the waste
 
 Only the waste's top card may be played, onto a foundation that accepts it by
