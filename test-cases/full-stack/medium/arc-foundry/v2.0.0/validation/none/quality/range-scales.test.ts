@@ -1,27 +1,65 @@
-// Arc Foundry — `quality.range-scales`. CASE-PROVIDED. NOT YET WRITTEN.
+// quality/range-scales — range is the base range plus RANGE_PER_TIER per rung.
 //
-// The manifest declares this point at `quality/range-scales.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/components.md fixes the rule and writes out the table it produces:
+// "Range: `baseRange + RANGE_PER_TIER * (tier - 1)`, where `RANGE_PER_TIER` is
+// `8`", so a Capacitor reads `100` through `132` and a Discharge Rig `160` through
+// `192`. Every figure here is computed from those two constants rather than
+// copied, so a build is held to the rule and to the base stats together.
 //
-// THE REQUIREMENT. Every firing base type reports baseRange + RANGE_PER_TIER *
-// (tier - 1), with RANGE_PER_TIER 8, so a Capacitor reads 100, 108, 116, 124,
-// 132 and a Discharge Rig 160 through 192.
-//
-// HOW IT IS DECIDED. Stand each of the seven firing types at each of the five
-// tiers and hold the reported range against the table. The evidence it hands
-// back is `ladder` (image): the ranges across the quality ladder.
+// The seven firing types are stood one type at a time, five tiers of it at once
+// and nothing else on the yard. An aura changes damage alone and never range
+// (specs/components.md), and no Regulator is ever standing here in any case. The
+// Regulator has no range row of its own — "its reach is its aura radius" — so it
+// is not among the types read.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo } from "../assert";
+import { componentRange, FIRING_TYPES, TIERS } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  emptyYard,
+  openYard,
+  standComponent,
+  structureById,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** One anchor per tier, each footprint two tiles clear of the next. */
+const ANCHORS = [8, 12, 16, 20, 24].map((col) => ({ col, row: 10 }));
 
-describe("quality.range-scales", () => {
-  it("Range is the base range plus 8 per tier", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `quality.range-scales` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("reports baseRange + 8 per tier at every tier of every firing type", async () => {
+  await openYard(h);
+
+  for (const type of FIRING_TYPES) {
+    await emptyYard(h);
+    const ids: number[] = [];
+    for (const [index, tier] of TIERS.entries()) {
+      const anchor = ANCHORS[index]!;
+      ids.push(await standComponent(h, type, tier, anchor.col, anchor.row));
+    }
+
+    const yard = await h.snapshot();
+    for (const [index, tier] of TIERS.entries()) {
+      assertCloseTo(
+        structureById(yard, ids[index]!).range,
+        componentRange(type, tier),
+        6,
+        `the ${type}'s range at tier ${tier} (specs/components.md)`,
+      );
+    }
+  }
+
+  await h.advance(1);
+  await captureStill(h, "ladder");
 });

@@ -1,27 +1,84 @@
-// Arc Foundry — `quality.plain-combine-midwave`. CASE-PROVIDED. NOT YET WRITTEN.
+// quality/plain-combine-midwave — a fold of standing structures resolves mid-wave.
 //
-// The manifest declares this point at `quality/plain-combine-midwave.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/scrap-press.md fixes the two kinds of combine by what they consume:
+// standing structures only is "a plain combine", which "Resolves and leaves the
+// phase running", and "A plain combine is the only combine available during a live
+// wave, since candidates exist only in a build phase". specs/campaign.md says the
+// same from the wave's side: during a wave "a plain combine, refining the press,
+// upgrading a combination tower, and changing a targeting priority stay
+// available", and specs/controls.md lists `combine` as available "during a wave
+// when it folds standing structures only".
 //
-// THE REQUIREMENT. A combine that consumes standing structures only resolves
-// during a live wave and leaves the phase running: the phase still reads wave
-// and the wave number is unchanged.
-//
-// HOW IT IS DECIDED. Start a wave, fold a pair of standing components, and
-// read the phase and wave back. The evidence it hands back is `plain`
-// (replay): the plain combine folded mid-wave.
+// The wave is opened through `spawnUnit`, which "puts the run into a live wave
+// whose spawn schedule is empty" (specs/instrumentation.md), so the yard holds one
+// held unit and the pair being folded and nothing else — no composed wave walking
+// through the reading, and no clear landing in the middle of it. The pair is stood
+// before the wave opens, because placement is a build-phase act and the
+// requirement is about the FOLD rather than about building under a wave.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  holdWaveOpen,
+  openYard,
+  standComponent,
+  type Harness,
+} from "../harness";
+import { anchored } from "./anchors";
 
-import { fail } from "../assert";
+const INITIATOR = { col: 8, row: 10 };
+const PARTNER = { col: 12, row: 10 };
 
-describe("quality.plain-combine-midwave", () => {
-  it("A plain combine resolves during a live wave", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `quality.plain-combine-midwave` has not been written yet",
-    );
+/** The wave the run is posed at, so an unchanged counter is a visible figure. */
+const WAVE = 6;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("folds a standing pair during a live wave and leaves the phase running", async () => {
+  await openYard(h, { wave: WAVE });
+  const initiator = await standComponent(
+    h,
+    "capacitor",
+    2,
+    INITIATOR.col,
+    INITIATOR.row,
+  );
+  await standComponent(h, "capacitor", 2, PARTNER.col, PARTNER.row);
+  await holdWaveOpen(h);
+
+  const before = await h.snapshot();
+  assertEqual(before.phase, "wave", "the phase the fold is committed in");
+  assertEqual(before.wave, WAVE, "the wave the fold is committed in");
+
+  const after = await captureReplay(h, "plain", async () => {
+    await h.debug.combine(initiator);
+    await h.advanceSeconds(1);
+    return h.snapshot();
   });
+
+  // The fold resolved.
+  assertEqual(
+    anchored(after, INITIATOR).quality,
+    3,
+    "two Tuned folded into one Charged, mid-wave",
+  );
+  assertEqual(
+    anchored(after, PARTNER).kind,
+    "blocker",
+    "the consumed footprint, hardened rather than freed",
+  );
+  // And it left the phase exactly where it found it.
+  assertEqual(after.phase, "wave", "the phase after a plain combine");
+  assertEqual(after.wave, WAVE, "the wave number after a plain combine");
+  assertEqual(after.waveActive, true, "the wave still running after the fold");
 });
