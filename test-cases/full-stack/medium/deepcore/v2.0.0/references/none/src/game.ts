@@ -208,8 +208,6 @@ export interface DeepcoreSnapshot {
 
 /** How long a note stays on screen. */
 const NOTE_LIFE = 2.4;
-/** Vertical speed above which the miner reads as falling rather than idling. */
-const FALL_READ_SPEED = 30;
 /** Lateral speed above which the miner reads as walking. */
 const WALK_READ_SPEED = 12;
 /** Seconds between drill-debris bursts. */
@@ -841,7 +839,7 @@ export class Game {
       return;
     }
     if (move.thrusting) m.state = "jetpack";
-    else if (!move.grounded && m.vy > FALL_READ_SPEED) m.state = "fall";
+    else if (!move.grounded) m.state = "fall";
     else if (move.grounded && Math.abs(m.vx) > WALK_READ_SPEED)
       m.state = "walk";
     else m.state = "idle";

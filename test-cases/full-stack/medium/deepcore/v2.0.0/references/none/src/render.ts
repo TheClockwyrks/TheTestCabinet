@@ -1375,7 +1375,7 @@ function drawStatusBar(
 
   // Depth
   text(ctx, "DEPTH", 596, y - 4, { size: 10, color: P.textSecondary });
-  text(ctx, `${game.depthMeters()} m`, 596, y + 12, {
+  text(ctx, `${Math.round(game.depthMeters())} m`, 596, y + 12, {
     size: 16,
     color: P.textPrimary,
     bold: true,
@@ -2557,7 +2557,7 @@ function drawEndScreen(
 
   if (s) {
     const rows: [string, string][] = [
-      ["Deepest depth", `${s.deepestDepthMeters} m`],
+      ["Deepest depth", `${Math.round(s.deepestDepthMeters)} m`],
       ["Credits earned", `${s.creditsEarned}`],
       ["Elapsed time", formatTime(s.elapsedSeconds)],
       ["Mode", s.mode === "hardcore" ? "Hardcore" : "Standard"],

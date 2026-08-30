@@ -5,7 +5,7 @@
 // bar. The backtick key shows and hides it and it starts hidden. Every source is a
 // pure read, so watching the overlay leaves the game exactly as it is.
 
-import { FONT_STACK, PALETTE } from "./constants";
+import { FONT_STACK, HUD_H, PALETTE } from "./constants";
 
 /** One watched value: a short label and a function that reads it. */
 interface Source {
@@ -35,7 +35,8 @@ export class Diagnostics {
     const pad = 12;
     const lineH = 18;
     const x = 16;
-    const y = 16;
+    // Below the status bar, so the panel reads clearly apart from it.
+    const y = HUD_H + 16;
     const w = 640;
     const h = pad * 2 + 20 + lines.length * lineH;
 
