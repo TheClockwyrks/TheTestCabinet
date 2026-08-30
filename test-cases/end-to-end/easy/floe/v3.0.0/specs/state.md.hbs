@@ -1,16 +1,263 @@
-# Floe — the declared state
+# Floe — Game state
 
-<!--
-  PLACEHOLDER — NOT THE SPECIFICATION.
+This file fixes the state the game holds. The debugging surface's readings
+project exactly this state, so it is what a scenario poses and reads back;
+`specs/instrumentation.md` fixes that surface and the snapshot it returns.
 
-  This file is a scaffold stub. The Specs stage of the Floe v3.0.0 rework
-  replaces it in full with the specification section 3 of the design plan
-  assigns to it. If this notice is still here, this file has not been written
-  and no run seeded from it is valid.
--->
+{{#if (eq engine.slug "none")}}
+The build owns the shape of the state entirely. How it is organized, how the two
+bands' rosters are held, and which values are stored rather than derived are
+yours to decide.
 
-**This file has not been written yet.**
+Whatever its shape, the state carries the following, because the rest of this
+specification is written against them, and it returns to its title-screen values
+when the debugging surface's `reset` is called.
 
-Section 3 of the Floe v3.0.0 design plan gives this file the following scope:
+| It carries | |
+| --- | --- |
+| `screen` | The screen being shown, one of the six in `specs/ui.md`. |
+| `phase`, `phaseTimer` | The crossing's phase and the seconds left in the hold it is on, as `specs/progression.md` fixes. |
+| `menuIndex` | The highlighted item of the current screen's menu, from `0`. |
+| `level`, `reachedLevel` | The level being played, and the highest the run has reached. |
+| `lives`, `score` | The lives left counting the critter crossing, and the run's score. |
+| `timer` | The seconds left on the crossing timer. |
+| The bays | Which of the five are filled, left to right, and which bay the bonus catch is in. |
+| The critter | Whether it is on the strait, its center in stage units, its facing, its hop cooldown, and its `bestRow`. |
+| The bears | For each: an id, the tile it last settled on, the tile it is travelling into, its center, its facing, the tile it is hunting, and its three faculties. |
+| The lanes | For each of the sixteen: its row, its direction, and its speed in tiles per second. |
+| The vehicles and the floes | For each: an id, its row, its kind, its left edge, and its length in tiles. |
+| The four world gates | `bearEmergence`, `catchTest`, `fishCadence`, and `timerRunning`, each `true` at a fresh start. |
+| `simTime` | Accumulated simulation time in seconds. Every tick adds `TICK_DT`, whatever the screen. |
+| `muted` | The runtime's mute bit, refreshed from the runtime in every update. |
+| The generator | The state of the seeded random generator the lanes' phases and the bonus catch are drawn from. |
 
-What the game's state carries, in three shapes: a list under `none`, the exact `FloeState` interface under `simple-2d`, and the live class under `structured-2d`. Branches on `engine.slug`.
+Every entity id is a number, unique among the entities live at any moment. An
+entity keeps its id for as long as it is on the strait, its lanes wrapping at an
+edge included.
+{{else if (eq engine.slug "simple-2d")}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` with every field below,
+under these names and types. The state is a value the engine holds and every
+frame replaces, so every field and every array is declared `readonly`: a frame
+builds the next state from the current one rather than writing into it, and every
+reader is handed the state as `DeepReadonly<FloeState>` in any case.
+
+Anything else the game must keep from one tick to the next is a field you add to
+`FloeState`, rather than a module-level variable or a closure.
+
+```ts
+export type Screen =
+  "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
+
+export type Phase = "crossing" | "dying" | "clearing";
+
+export type Facing = "up" | "down" | "left" | "right";
+
+export type LaneDir = 1 | -1;
+
+export type VehicleKind = "plow" | "dogsled" | "car";
+
+export type FloeKind = "pan" | "raft3" | "raft4";
+
+export interface CritterState {
+  readonly present: boolean;
+  readonly x: number;
+  readonly y: number;
+  readonly facing: Facing;
+  readonly hopCooldown: number;
+  readonly bestRow: number;
+}
+
+export interface BearState {
+  readonly id: number;
+  readonly col: number;
+  readonly row: number;
+  readonly stepCol: number;
+  readonly stepRow: number;
+  readonly x: number;
+  readonly y: number;
+  readonly facing: Facing;
+  readonly target: { readonly col: number; readonly row: number };
+  readonly sense: boolean;
+  readonly routing: boolean;
+  readonly travel: boolean;
+}
+
+export interface LaneState {
+  readonly row: number;
+  readonly dir: LaneDir;
+  readonly speed: number;
+}
+
+export interface VehicleState {
+  readonly id: number;
+  readonly row: number;
+  readonly kind: VehicleKind;
+  readonly x: number;
+  readonly len: number;
+}
+
+export interface FloeItemState {
+  readonly id: number;
+  readonly row: number;
+  readonly kind: FloeKind;
+  readonly x: number;
+  readonly len: number;
+}
+
+export interface GateState {
+  readonly bearEmergence: boolean;
+  readonly catchTest: boolean;
+  readonly fishCadence: boolean;
+  readonly timerRunning: boolean;
+}
+
+export interface FloeState {
+  readonly screen: Screen;
+  readonly phase: Phase;
+  readonly phaseTimer: number;
+  readonly menuIndex: number;
+
+  readonly level: number;
+  readonly reachedLevel: number;
+  readonly lives: number;
+  readonly score: number;
+  readonly timer: number;
+
+  readonly bays: readonly boolean[];
+  readonly fishBay: number | null;
+
+  readonly critter: CritterState;
+  readonly bears: readonly BearState[];
+
+  readonly iceLanes: readonly LaneState[];
+  readonly waterLanes: readonly LaneState[];
+  readonly vehicles: readonly VehicleState[];
+  readonly floes: readonly FloeItemState[];
+
+  readonly gates: GateState;
+
+  readonly simTime: number;
+  readonly muted: boolean;
+  readonly rngState: number;
+}
+```
+{{else}}
+The game's state lives in the framework objects the engine owns: the game
+instance you write, the world that is open, that world's game mode and game
+state, and the actors in it. Floe runs in one world for the whole session, so the
+game definition registers the single level `LEVELS` names, the game never opens
+another, and every screen is a value of `screen`. Nothing lives in a
+module-level variable or a closure outside those objects.
+
+`src/game.ts` declares and exports `FloeState`, the world's game state, as a
+subclass of the engine's `GameState`. It is live and written in place, and it
+carries the run's own figures:
+
+```ts
+export type Screen =
+  "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
+
+export type Phase = "crossing" | "dying" | "clearing";
+
+export type LaneDir = 1 | -1;
+
+export interface LaneState {
+  row: number;
+  dir: LaneDir;
+  speed: number;
+}
+
+export class FloeState extends GameState {
+  screen: Screen = "title";
+  phase: Phase = "crossing";
+  phaseTimer = 0;
+  menuIndex = 0;
+
+  level = 1;
+  reachedLevel = 1;
+  lives = START_LIVES;
+  score = 0;
+  timer = crossingTimer(1);
+
+  bays: boolean[] = [false, false, false, false, false];
+  fishBay: number | null = null;
+
+  iceLanes: LaneState[] = [];
+  waterLanes: LaneState[] = [];
+
+  bearEmergence = true;
+  catchTest = true;
+  fishCadence = true;
+  timerRunning = true;
+
+  simTime = 0;
+  rngState = DEFAULT_SEED;
+}
+```
+
+Anything else the run must keep between ticks is a field you add to it.
+
+The bodies on the strait are actors in the world, each carrying its tag from
+`TAGS`, so the critter, the bears, the vehicles, the floes, and the bonus catch
+are found with `world.byTag` under the names this specification uses. An actor's
+transform is its position, in the conventions `specs/overview.md` fixes: the
+critter's, a bear's, and the bonus catch's is a center, and a vehicle's or a
+floe's is its left edge.
+
+Every entity id is a number, unique among the entities live at any moment. An
+entity keeps its id for as long as it is on the strait, its lanes wrapping at an
+edge included.
+
+The mute bit is the engine's own, read live from the world's audio rather than
+copied onto the state.
+{{/if}}
+
+## The screens
+
+`screen` is the top-level state machine. `specs/ui.md` fixes what each screen
+shows and how the game moves between them.
+
+| `screen` | The game is |
+| --- | --- |
+| `title` | On the title screen and its menu. |
+| `howto` | On the how-to-play screen. |
+| `playing` | In live play. |
+| `paused` | Paused over a frozen strait. |
+| `victory` | On the victory screen, the run won. |
+| `gameover` | On the game-over screen, the run lost. |
+
+## The derived facts
+
+Four facts the game reports are derived rather than stored, so they follow
+whatever the state holds:
+
+| Fact | Derived from |
+| --- | --- |
+| The critter's and a bear's tile | Its center, through `colAt` and `rowAt`. |
+| The critter's footing | Its row and the floes on it, as `specs/strait.md` fixes. |
+| A bear's `swimming` flag | The tile it is travelling into, as `specs/hunter.md` fixes. |
+| `timerMax` | `crossingTimer(level)`, as `specs/progression.md` fixes. |
+
+## The contract
+
+- Every field above is present from the moment the game has initialized, and none
+  of them is optional.
+- Anything the build keeps beyond the facts above is refreshed by every operation
+  that could invalidate it, so posing one field leaves the game consistent.
+- A `reset` restores the facts above to their title-screen values and reseeds the
+  game's random generator, leaving the game indistinguishable from one freshly
+  started, so anything else the build keeps across ticks follows from what a
+  reset restores.
+{{#if (eq engine.slug "simple-2d")}}
+- The state is handed over read-only, as `DeepReadonly<FloeState>`, to `update`,
+  to `render`, to every diagnostic source, and to every operation of the
+  debugging surface. `update` and the surface's poses return a new `FloeState`
+  built from the one they received; `render`, the sources, and the surface's
+  readings return no state.
+{{else if (eq engine.slug "structured-2d")}}
+- The state is written only through the paths play runs on: the player
+  controller resolves the tick's input into it, the game mode's tick advances it,
+  and the debugging surface's poses arrange it at the call. Rendering reads it
+  and writes nothing.
+{{/if}}

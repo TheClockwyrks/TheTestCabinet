@@ -1,16 +1,90 @@
-# Floe — the showcase
+# Floe — Showcase
 
-<!--
-  PLACEHOLDER — NOT THE SPECIFICATION.
+The finished game ships a showcase: the store-page presentation a player reads
+before deciding to play. It is a `showcase/` directory at the root of this
+repository, committed with the rest of the project, holding a description of the
+game and a short carousel of captured media. This file defines its contents.
 
-  This file is a scaffold stub. The Specs stage of the Floe v3.0.0 rework
-  replaces it in full with the specification section 3 of the design plan
-  assigns to it. If this notice is still here, this file has not been written
-  and no run seeded from it is valid.
--->
+## Layout
 
-**This file has not been written yet.**
+Every file of the showcase sits directly in `showcase/`, with no subdirectories:
 
-Section 3 of the Floe v3.0.0 design plan gives this file the following scope:
+- `showcase/showcase.md`, the description.
+- `showcase/showcase.toml`, the carousel.
+- The media files the carousel and the description name.
 
-The showcase the build ships: the `showcase/` layout, `showcase.md`, `showcase.toml`, the media kinds and bounds. Branches on `engine.slug`.
+## The description
+
+`showcase/showcase.md` is Markdown written for a player: what Floe is, how a
+crossing goes from the near shore to a bay, and what it feels like to be hunted
+across the strait. Three to five short paragraphs. It is strictly about playing
+the game; implementation, architecture, and tooling stay out of it. It may embed
+images that sit beside it, referenced by bare relative path (for example
+`![The strait](strait.png)`); every image it embeds is a `.png` in `showcase/`.
+
+## The carousel
+
+`showcase/showcase.toml` lists the media in the order they are presented, one
+`[[media]]` table per entry:
+
+{{#if (eq engine.slug "none")}}
+```toml
+[[media]]
+file = "crossing.webm"
+name = "A crossing with the bear closing"
+
+[[media]]
+file = "title.png"
+name = "The title screen"
+```
+{{else}}
+```toml
+[[media]]
+file = "crossing.json.gz"
+name = "A crossing with the bear closing"
+
+[[media]]
+file = "title.png"
+name = "The title screen"
+```
+{{/if}}
+
+- `file` names a file directly in `showcase/`, with no path separators. Every
+  file the carousel names exists there, and each stays under 25 MiB.
+- `name` is a caption of a few words.
+- The carousel holds two to four entries. The first entry leads, so it carries
+  the strongest view of live play.
+
+## Media
+
+{{#if (eq engine.slug "none")}}
+The file extension states what an entry is:
+
+| Extension | Media |
+| --- | --- |
+| `.png` | A screenshot of the running game. |
+| `.webm` | A video clip of the running game, a few seconds long. |
+
+Screenshots carry most of the carousel. Where motion is worth showing, such as a
+crossing through the water band with a bear swimming after it, a short `.webm`
+clip carries it; how screenshots and clips are captured is the build's own
+business.
+{{else}}
+The file extension states what an entry is:
+
+| Extension | Media |
+| --- | --- |
+| `.png` | A screenshot of the running game. |
+| `.json.gz` | A replay: a gzipped recording of the game's own drawing, made with the engine's recorder. |
+| `.webm` | A video clip. |
+
+Anything in motion ships as a replay rather than a video.
+
+## Capturing a replay
+
+A replay is a gzipped JSON recording made with the engine's recorder, which the
+engine documents in `engine/recording.md` at the root of this repository. Each
+replay holds a few seconds of live play, such as a crossing through the water
+band with a bear swimming after it, rather than a menu. How screenshots and
+replays are captured is the build's own business.
+{{/if}}
