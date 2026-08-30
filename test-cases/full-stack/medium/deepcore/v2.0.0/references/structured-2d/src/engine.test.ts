@@ -2,6 +2,8 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  ACTIONS,
+  ACTION_NAMES,
   CAM_LEAD_MAX,
   DEEPCORE_DEBUG_VERSION,
   HUD_H,
@@ -16,6 +18,7 @@ import {
   VIEW_W,
   WORLD_COLS,
 } from "./constants";
+import { registerActions } from "./input";
 import { deepcoreState, DeepcoreState } from "./game";
 import { Mine } from "./mine";
 import { Prospector } from "./prospector";
@@ -133,6 +136,35 @@ describe("the camera", () => {
 
   it("refuses a lead outside its range", () => {
     expect(() => h.debug.setCameraLead(CAM_LEAD_MAX + 1)).toThrow(RangeError);
+  });
+});
+
+describe("the actions the build binds", () => {
+  it("registers every action in ACTIONS against the keys it names", () => {
+    const bound = new Map<string, readonly string[]>();
+    registerActions({
+      input: {
+        register: (name, binding) => bound.set(name, binding.keys),
+        layout: () => null,
+      },
+    });
+    expect([...bound.keys()]).toEqual([...ACTION_NAMES]);
+    for (const action of ACTION_NAMES) {
+      expect(bound.get(action)).toEqual([...ACTIONS[action]]);
+    }
+  });
+
+  it("refuses an engine stood up with a touch layout", () => {
+    // Deepcore is played with the keyboard and the mouse alone, so a layout
+    // would be tagging actions this game does not own (specs/controls.md).
+    expect(() =>
+      registerActions({
+        input: {
+          register: () => undefined,
+          layout: () => ({ name: "dpad-4", actions: ["up", "down"] }),
+        },
+      }),
+    ).toThrow(/dpad-4/);
   });
 });
 
