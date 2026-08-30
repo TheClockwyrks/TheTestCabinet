@@ -120,5 +120,6 @@ slot fills again once its delay has passed.
 ## Catching the critter
 
 A bear catches the critter, while the critter is in play, when the distance
-between their centers is at most `BEAR_CATCH_DIST` (`18`) units. The critter loses a life, wherever on the strait
-the two met, and `specs/progression.md` fixes what that costs.
+between their centers is at most `BEAR_CATCH_DIST` (`18`) units. The critter
+loses a life, wherever on the strait the two met, and `specs/progression.md`
+fixes what that costs.
