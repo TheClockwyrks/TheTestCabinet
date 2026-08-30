@@ -363,7 +363,10 @@ description = "Everything a player sees and hears. The produced assets first: th
 # case controls. A `replay` output is a draw-command recording, armed around the
 # section the point is about (the eat, the fatal tick, the window draining) and
 # never around the arrangement that got there. An `image` output is a single
-# captured frame. Both are evidence beside the verdict rather than any part of it: a
+# captured frame, and it is what a point takes whose check reads a produced file
+# off the workspace rather than driving the game, because a recorder armed around
+# no drive records nothing and an output that never turns up is read as a contract
+# failure. Both are evidence beside the verdict rather than any part of it: a
 # point passes or fails on its assertions alone.
 #
 # NOTHING here asks a reviewer to judge how the game looks or sounds. Appearance is
@@ -1941,10 +1944,12 @@ description = "assets/audio/eat.wav exists, decodes as a WAV of non-zero length,
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: read the WAV off the built workspace, parse its header,
-# and measure its peak amplitude. See
+# and measure its peak amplitude. The check reads a file and drives nothing, so
+# its evidence is a still of the round the cue belongs to rather than a
+# recording of a drive it never makes. See
 # validation/<engine>/audio/eat-file-produced.test.ts.
 validation = { script = "audio/eat-file-produced.test.ts", outputs = [
-  { id = "eat", name = "The eat whose sound is checked", kind = "replay" },
+  { id = "eat", name = "The round the produced eat cue plays in", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "combo-up-file-produced"
@@ -1953,10 +1958,11 @@ description = "assets/audio/combo-up.wav exists, decodes as a WAV of non-zero le
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: read the WAV off the built workspace, parse its header,
-# and measure its peak amplitude. See
+# and measure its peak amplitude. The check reads a file and drives nothing, so
+# its evidence is a still. See
 # validation/<engine>/audio/combo-up-file-produced.test.ts.
 validation = { script = "audio/combo-up-file-produced.test.ts", outputs = [
-  { id = "combo", name = "The combo rise whose sound is checked", kind = "replay" },
+  { id = "combo", name = "The round the produced combo cue plays in", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "death-file-produced"
@@ -1965,10 +1971,11 @@ description = "assets/audio/death.wav exists, decodes as a WAV of non-zero lengt
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: read the WAV off the built workspace, parse its header,
-# and measure its peak amplitude. See
+# and measure its peak amplitude. The check reads a file and drives nothing, so
+# its evidence is a still. See
 # validation/<engine>/audio/death-file-produced.test.ts.
 validation = { script = "audio/death-file-produced.test.ts", outputs = [
-  { id = "death", name = "The death whose sound is checked", kind = "replay" },
+  { id = "death", name = "The round the produced death cue plays in", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "music-file-produced"
@@ -1977,10 +1984,11 @@ description = "assets/audio/music.wav exists, decodes as a WAV of non-zero lengt
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: read the WAV off the built workspace, parse its header,
-# and measure its peak amplitude. See
+# and measure its peak amplitude. The check reads a file and drives nothing, so
+# its evidence is a still. See
 # validation/<engine>/audio/music-file-produced.test.ts.
 validation = { script = "audio/music-file-produced.test.ts", outputs = [
-  { id = "music", name = "The music bed under a round", kind = "replay" },
+  { id = "music", name = "The round the produced music bed plays under", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "eat-shorter-than-a-tick"
@@ -1989,10 +1997,11 @@ description = "assets/audio/eat.wav is shorter than TICK_SECONDS (0.125 s), so e
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: read the WAV's header and compute its duration from its
-# sample count and rate. See
+# sample count and rate. The check reads a file and drives nothing, so its
+# evidence is a still. See
 # validation/<engine>/audio/eat-shorter-than-a-tick.test.ts.
 validation = { script = "audio/eat-shorter-than-a-tick.test.ts", outputs = [
-  { id = "eat", name = "The eat whose sound is checked", kind = "replay" },
+  { id = "eat", name = "The round the produced eat cue plays in", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "death-is-the-longest-cue"
@@ -2001,9 +2010,10 @@ description = "assets/audio/death.wav is longer than both eat.wav and combo-up.w
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: read the three WAV headers and compare their durations.
-# See validation/<engine>/audio/death-is-the-longest-cue.test.ts.
+# The check reads files and drives nothing, so its evidence is a still. See
+# validation/<engine>/audio/death-is-the-longest-cue.test.ts.
 validation = { script = "audio/death-is-the-longest-cue.test.ts", outputs = [
-  { id = "death", name = "The death whose sound is checked", kind = "replay" },
+  { id = "death", name = "The round the produced death cue plays in", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "eat-cue-plays"
