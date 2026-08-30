@@ -241,17 +241,32 @@ function rampedDensity(f: number, from: number, min: number, max: number) {
 
 /** Unbreakable stone's share at depth fraction `f`; `0` in the topsoil. */
 export function stoneDensityAt(f: number): number {
-  return rampedDensity(f, ROCKBED_TOP_FRACTION, STONE_DENSITY_MIN, STONE_DENSITY_MAX);
+  return rampedDensity(
+    f,
+    ROCKBED_TOP_FRACTION,
+    STONE_DENSITY_MIN,
+    STONE_DENSITY_MAX,
+  );
 }
 
 /** Gas's share at depth fraction `f`; `0` in the topsoil. */
 export function gasDensityAt(f: number): number {
-  return rampedDensity(f, ROCKBED_TOP_FRACTION, GAS_DENSITY_MIN, GAS_DENSITY_MAX);
+  return rampedDensity(
+    f,
+    ROCKBED_TOP_FRACTION,
+    GAS_DENSITY_MIN,
+    GAS_DENSITY_MAX,
+  );
 }
 
 /** Lava's share at depth fraction `f`; `0` above the deepstone. */
 export function lavaDensityAt(f: number): number {
-  return rampedDensity(f, DEEPSTONE_TOP_FRACTION, LAVA_DENSITY_MIN, LAVA_DENSITY_MAX);
+  return rampedDensity(
+    f,
+    DEEPSTONE_TOP_FRACTION,
+    LAVA_DENSITY_MIN,
+    LAVA_DENSITY_MAX,
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -511,19 +526,110 @@ export interface OreDef {
 
 /** The ten ores and the three gemstones, in the order the specification lists them. */
 export const ORES: Readonly<Record<Ore, OreDef>> = {
-  ferron: { value: 28, weight: 10, peak: 0.01, spread: 0.34, pick: 1, gemstone: false },
-  marlite: { value: 46, weight: 14, peak: 0.08, spread: 0.34, pick: 1, gemstone: false },
-  cuprite: { value: 65, weight: 18, peak: 0.19, spread: 0.34, pick: 1, gemstone: false },
-  argenite: { value: 150, weight: 24, peak: 0.36, spread: 0.34, pick: 1, gemstone: false },
-  cobaltine: { value: 240, weight: 31, peak: 0.49, spread: 0.34, pick: 1, gemstone: false },
-  voltite: { value: 380, weight: 39, peak: 0.61, spread: 0.34, pick: 1, gemstone: false },
-  halcite: { value: 560, weight: 48, peak: 0.72, spread: 0.34, pick: 1, gemstone: false },
-  pyronium: { value: 820, weight: 58, peak: 0.87, spread: 0.34, pick: 1, gemstone: false },
-  cindrite: { value: 1250, weight: 70, peak: 0.94, spread: 0.34, pick: 1, gemstone: false },
-  adamite: { value: 1900, weight: 84, peak: 0.97, spread: 0.45, pick: 0.06, gemstone: false },
-  verdite: { value: 450, weight: 48, peak: 0.375, spread: 0.125, pick: 0.03, gemstone: true },
-  roselite: { value: 1140, weight: 78, peak: 0.625, spread: 0.125, pick: 0.03, gemstone: true },
-  aurite: { value: 2460, weight: 116, peak: 0.875, spread: 0.125, pick: 0.03, gemstone: true },
+  ferron: {
+    value: 28,
+    weight: 10,
+    peak: 0.01,
+    spread: 0.34,
+    pick: 1,
+    gemstone: false,
+  },
+  marlite: {
+    value: 46,
+    weight: 14,
+    peak: 0.08,
+    spread: 0.34,
+    pick: 1,
+    gemstone: false,
+  },
+  cuprite: {
+    value: 65,
+    weight: 18,
+    peak: 0.19,
+    spread: 0.34,
+    pick: 1,
+    gemstone: false,
+  },
+  argenite: {
+    value: 150,
+    weight: 24,
+    peak: 0.36,
+    spread: 0.34,
+    pick: 1,
+    gemstone: false,
+  },
+  cobaltine: {
+    value: 240,
+    weight: 31,
+    peak: 0.49,
+    spread: 0.34,
+    pick: 1,
+    gemstone: false,
+  },
+  voltite: {
+    value: 380,
+    weight: 39,
+    peak: 0.61,
+    spread: 0.34,
+    pick: 1,
+    gemstone: false,
+  },
+  halcite: {
+    value: 560,
+    weight: 48,
+    peak: 0.72,
+    spread: 0.34,
+    pick: 1,
+    gemstone: false,
+  },
+  pyronium: {
+    value: 820,
+    weight: 58,
+    peak: 0.87,
+    spread: 0.34,
+    pick: 1,
+    gemstone: false,
+  },
+  cindrite: {
+    value: 1250,
+    weight: 70,
+    peak: 0.94,
+    spread: 0.34,
+    pick: 1,
+    gemstone: false,
+  },
+  adamite: {
+    value: 1900,
+    weight: 84,
+    peak: 0.97,
+    spread: 0.45,
+    pick: 0.06,
+    gemstone: false,
+  },
+  verdite: {
+    value: 450,
+    weight: 48,
+    peak: 0.375,
+    spread: 0.125,
+    pick: 0.03,
+    gemstone: true,
+  },
+  roselite: {
+    value: 1140,
+    weight: 78,
+    peak: 0.625,
+    spread: 0.125,
+    pick: 0.03,
+    gemstone: true,
+  },
+  aurite: {
+    value: 2460,
+    weight: 116,
+    peak: 0.875,
+    spread: 0.125,
+    pick: 0.03,
+    gemstone: true,
+  },
 };
 
 /** Every ore and gemstone id, in the specification's order. */
@@ -571,13 +677,7 @@ export const REPAIR_BUY_INCREMENT = 25;
 /* -------------------------------------------------------------------------- */
 
 export type UpgradeTrack =
-  | "fuel"
-  | "drill"
-  | "cargo"
-  | "hull"
-  | "jetpack"
-  | "radiator"
-  | "scanner";
+  "fuel" | "drill" | "cargo" | "hull" | "jetpack" | "radiator" | "scanner";
 
 export const UPGRADE_TRACKS: readonly UpgradeTrack[] = [
   "fuel",
@@ -601,10 +701,18 @@ export const FUEL_TANK_MAX: readonly number[] = [100, 175, 275, 400, 550];
 export const DRILL_DAMAGE: readonly number[] = [1, 1.5, 2.5, 3.5, 5];
 export const CARGO_CAPACITY: readonly number[] = [15, 25, 40, 70, 120];
 export const HULL_MAX: readonly number[] = [100, 150, 220, 320, 450];
-export const JETPACK_LIFT_LIMIT: readonly number[] = [350, 1100, 2850, 7400, 12700];
-export const JETPACK_EMPTY_CLIMB: readonly number[] = [950, 1010, 1080, 1150, 1230];
-export const JETPACK_EMPTY_ACCEL: readonly number[] = [1200, 1270, 1350, 1440, 1540];
-export const RADIATOR_EFFECTIVENESS: readonly number[] = [0, 0.25, 0.45, 0.65, 0.8];
+export const JETPACK_LIFT_LIMIT: readonly number[] = [
+  350, 1100, 2850, 7400, 12700,
+];
+export const JETPACK_EMPTY_CLIMB: readonly number[] = [
+  950, 1010, 1080, 1150, 1230,
+];
+export const JETPACK_EMPTY_ACCEL: readonly number[] = [
+  1200, 1270, 1350, 1440, 1540,
+];
+export const RADIATOR_EFFECTIVENESS: readonly number[] = [
+  0, 0.25, 0.45, 0.65, 0.8,
+];
 
 /** The highest tier each track reaches: five, except the scanner's three. */
 export const MAX_TIER: Readonly<Record<UpgradeTrack, number>> = {
@@ -674,11 +782,7 @@ export const QUANTUM_VEL_MAX = 700;
 /* -------------------------------------------------------------------------- */
 
 export type RocketComponentId =
-  | "hull-frame"
-  | "fuel-cells"
-  | "guidance"
-  | "thruster"
-  | "ignition";
+  "hull-frame" | "fuel-cells" | "guidance" | "thruster" | "ignition";
 
 export interface RocketComponentDef {
   id: RocketComponentId;
