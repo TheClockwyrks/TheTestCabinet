@@ -149,15 +149,15 @@ welcome there.
 
 {{#if (eq engine.slug "none")}}
 The audio layer is part of the runtime you write, synthesizing its sounds with the
-Web Audio API rather than loading audio files. Define and play exactly the nine cues
-below, under exactly these names, one per event.
+Web Audio API rather than loading audio files. Define and play the nine cues below,
+under exactly these names, one per event.
 {{else if (eq engine.slug "simple-2d")}}
-Audio plays through the engine's cue bus. Define and play exactly the nine cues in
-`CUES`, under exactly these names, one per event.
+Audio plays through the engine's cue bus. Define and play the nine cues below, under
+the names `CUES` gives them, one per event.
 {{else}}
-Audio plays through the engine's cue bus: define exactly the nine cues in `CUES`
-from the game instance's `initialize` and play them from the world's audio inside a
-tick, under exactly these names, one per event.
+Audio plays through the engine's cue bus: define the nine cues below from the game
+instance's `initialize`, under the names `CUES` gives them, and play them from the
+world's audio inside a tick, one per event.
 {{/if}}
 
 | Cue | Played when |
