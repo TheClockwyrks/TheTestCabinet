@@ -35,7 +35,7 @@ One area of the panel shows tower information. It has three contents:
 
 - With a shop entry hovered, that type's information at level I.
 - With a placed tower selected, that tower's live information.
-- With neither, the next-wave preview below.
+- With neither, the next-wave preview below, where the phase draws one.
 
 Both the hover panel and the inspector draw the tower's size, its range, its
 damage or its effect, its fire rate, its targeting, its mass, and its radiator
@@ -64,8 +64,12 @@ and the Forge and the Sink read as never firing.
 
 ## The next-wave preview
 
-In a build phase with nothing selected and no shop entry hovered, the information
-area draws the coming wave's type and its count.
+In the `opening` phase or a build phase, with nothing selected and no shop entry
+hovered, the information area draws the coming wave's type and its count. The
+`wave` phase draws no preview: the wave is already on the floor.
+
+The Hundred's onslaught fields more than one type, so its preview reads as mixed
+rather than naming one, alongside the count.
 
 ## The placement controls
 

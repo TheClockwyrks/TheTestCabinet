@@ -446,9 +446,15 @@ Notes on the shape:
 - `waveCount`, `startMoney`, `startLives`, `interest`, and `buildZone` are
   derived from `mode` and `difficulty` by the table in `specs/modes.md`.
 - `waveRemaining` is `wavePending` plus the number of live units while the phase
-  is `wave`, and `wavePending` alone otherwise. `nextWave` reports the type and
-  count the progression gives the coming wave, and is `null` where there is no
-  coming wave.
+  is `wave`, and `wavePending` alone otherwise.
+- `nextWave` reports the coming wave, which is the wave a build or opening phase
+  is preparing for, `wave`, and during the `wave` phase the wave after the one
+  being fought, `wave + 1`. It is `null` when that number falls outside `1`
+  through `waveCount`, so a run has no coming wave while its last one is being
+  fought. Its `type` and `count` are the type and the size `specs/waves.md` gives
+  that wave. In The Hundred, whose one onslaught fields more than one type,
+  `count` is `HUNDRED_UNITS` (`100`) and `type` is the type of the onslaught's
+  first unit, which is the Mote.
 - `paths` is never `null`, because the floor can never be sealed, so a wall that
   lengthens a route shows up in its length.
 - `remaining` is measured under the surge's own step rules, an orthogonal step
