@@ -109,9 +109,15 @@ screen.
 | `stamp`, `keep`, `downgrade`, `dismantle` | During a build phase only. |
 | `combine` | During a build phase, and during a wave when it folds standing structures only. |
 | `upgrade`, `targeting` | In every phase, including during a wave and the finale. |
-| `speed`, `pause`, `combos`, `damage`, `mute`, `modify` | On `playing`, in every phase. |
+| `speed`, `pause`, `combos`, `damage`, `modify` | On `playing`, in every phase. |
+| `mute` | On every screen. |
 | `up`, `down`, `confirm` | On the menu screens. |
 | `back` | Everywhere. |
+
+An action not listed as available on a screen does nothing there. On `paused` the pause
+menu's own choices and the mute action are the whole of what the player operates: every
+other action, every status bar control, and every build panel control is inert, whether
+it is pressed with the pointer or fired from the keyboard.
 
 A control that is unavailable is drawn disabled in its slot rather than removed, as
 `specs/hud.md` states.
@@ -134,7 +140,9 @@ A control that is unavailable is drawn disabled in its slot rather than removed,
   It does not annotate whether a given fold starts the wave.
 - Upgrading raises the selected combination tower one level, or, when the selection is
   not a combination tower, refines the press one level. Both are refused at their top
-  rung and when unaffordable.
+  rung and when unaffordable. The panel's refinement control of `specs/hud.md` is a
+  control of its own rather than this action: it refines the press whatever is selected,
+  and activating it never upgrades a combination tower.
 - Cycling targeting steps the selected firing structure's priority through `first`,
   `last`, `nearest`, `strongest`, `weakest`, and back to `first`, one step per activation.
 - Dismantling removes the selected structure and reopens its tiles.

@@ -48,6 +48,9 @@ and a burn do to the unit that carries them; this section fixes what applies the
   are untouched by it.
 - An aura-buffed damage figure is not rounded.
 - Aura coverage is recomputed whenever the set of structures on the yard changes.
+- An aura projects from a harvested Regulator. A candidate reads the aura it would carry
+  once harvested and projects none while it stands as a candidate, so no structure's
+  damage is raised by a candidate Regulator.
 
 ## The quality ladder
 

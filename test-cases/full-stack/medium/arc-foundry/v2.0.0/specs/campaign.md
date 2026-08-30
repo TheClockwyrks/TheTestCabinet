@@ -41,7 +41,8 @@ plain combine, refining the press, upgrading a combination tower, and changing a
 targeting priority stay available.
 
 A wave is cleared when every unit it released has died or leaked. Clearing it pays the
-wave-clear bonus and opens the next build phase.
+wave-clear bonus. Clearing a wave before wave `N` then opens the next build phase, and
+clearing wave `N` runs the finale below instead. The bonus is paid either way.
 
 ### Milestone waves
 

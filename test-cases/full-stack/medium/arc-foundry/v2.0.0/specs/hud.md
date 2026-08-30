@@ -5,6 +5,11 @@ The heads-up display is the top status bar and the right build panel, in the reg
 neither ever covers the yard. This file fixes what each carries, the two overlays the
 status bar toggles, and what is drawn over the yard itself.
 
+The bar and the panel are drawn on the two screens the yard is shown on, `playing` and
+`paused`, and on no other screen. On `paused` both are drawn and both read their live
+values, and every control on them is inert except the mute control, as
+`specs/controls.md` states.
+
 ## The status bar
 
 The status bar carries the run's state and the global controls, left to right in the
@@ -44,7 +49,10 @@ The build panel holds, top to bottom:
 1. The quality-roll odds at the live refinement level, so the player reads the
    probability of each of the five tiers before placing a rock.
 2. The refinement control: the current level `R`, and the Charge cost of the next level.
-   It is disabled at `R8` and when the next level is unaffordable.
+   It is disabled at `R8` and when the next level is unaffordable, and by nothing else.
+   Activating it refines the press whatever is selected. It is the press's own control
+   and never the inspector's `UPGRADE`, so the two are activated separately and one is
+   never reached by activating the other.
 3. The press control: `STAMP`, showing that placement is free and how many of the level's
    `5` stamps remain. It is disabled when the allowance is spent and during a wave.
 4. The inspector, when a structure is selected.

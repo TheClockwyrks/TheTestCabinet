@@ -206,24 +206,38 @@ already doing, so a scenario that must be reproducible calls `setAutoStep(false)
 | --- | --- |
 | `snapshot` | The plain object under Snapshot shape below. |
 | `panelButtons` | The build panel inspector's action controls for the selected structure, in slot order. |
+| `pressControls` | The build panel's own two controls, the refinement control and the press control, in the order they are drawn. |
 | `menuButtons` | The choices of the menu screen currently showing, in the order they are presented. |
 | `statusControls` | The status bar's overlay, speed, pause, and mute controls, in the order they are drawn. |
 
-`panelButtons` and `menuButtons` each return an array of
+`panelButtons`, `pressControls`, and `menuButtons` each return an array of
 `{ action, label, x, y, w, h, disabled }`. `label` is the text as drawn, `x`, `y`, `w`,
 and `h` are the control's rectangle on the `1280 x 720` stage, and `disabled` reports
 whether it currently ignores activation. `panelButtons` returns an empty array when the
 inspector is showing no structure's actions, and `menuButtons` returns an empty array on
 any screen that is not a menu, which includes `playing` under an in-place pause.
 
+`pressControls` reports both controls whenever the build panel is drawn, because
+`specs/hud.md` gives each a fixed slot the panel always carries. The refinement control's
+`disabled` follows the refinement track alone, and the press control's follows the stamp
+allowance and the phase. The two are separate controls: activating the refinement
+control's rectangle refines the press whatever is selected, and it never upgrades a
+combination tower.
+
 `statusControls` returns an array of `{ action, label, x, y, w, h, state }`, with the
 same geometry and a `state` reporting the value the control is currently reading rather
-than whether it can be activated. It returns an empty array on any screen with no status
-bar.
+than whether it can be activated.
+
+The status bar and the build panel are drawn on `playing` and on `paused` alone, as
+`specs/hud.md` states, so `panelButtons`, `pressControls`, and `statusControls` each
+return an empty array on every other screen. On `paused` all three report what is drawn:
+each `state` reads its live value, and each `disabled` reports the inertness
+`specs/controls.md` gives that screen.
 
 | Reading | `action` values |
 | --- | --- |
 | `panelButtons` | `keep`, `downgrade`, `combine`, `combine-special`, `upgrade`, `targeting`, `dismantle` |
+| `pressControls` | `refine`, `stamp` |
 | `menuButtons` | `salvage`, `howto`, `map-substation`, `map-switchyard`, `map-transformer`, `difficulty-easy`, `difficulty-medium`, `difficulty-hard`, `back`, `resume`, `restart`, `quit`, `again`, `menu` |
 | `statusControls` | `combos`, `damage`, `speed`, `pause`, `mute` |
 
@@ -245,7 +259,7 @@ how a caller finds a choice without knowing where it was drawn. A `statusControl
 `state` and what the control draws agree, so toggling mute changes both the reported
 value and the pixels inside the reported rectangle.
 
-All four readings are pure. Reading a menu never moves the highlight and never activates
+All five readings are pure. Reading a menu never moves the highlight and never activates
 a choice.
 
 ### The run

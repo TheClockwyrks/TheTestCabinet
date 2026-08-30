@@ -94,13 +94,15 @@ pause, `RESTART` begins a fresh run on the same map at the same difficulty, and
 Shown after wave `N` is cleared and the finale of `specs/campaign.md` has run. It shows
 the Maze Rating, the number of waves survived, which is `N`, and the Grid Integrity
 remaining. It offers `PLAY AGAIN`, which replays the run on the same map at the same
-difficulty, and `MENU`, which returns to `title`.
+difficulty, and `MENU`, which returns to `title`. The yard is not shown behind it, so
+the status bar and the build panel of `specs/hud.md` are not drawn.
 
 ### `overload`
 
 Shown the moment Grid Integrity reaches `0`. It shows the wave reached, and no Maze
 Rating, because the finale is never reached from a defeat. It offers `TRY AGAIN` and
-`MENU`, leading to the same places.
+`MENU`, leading to the same places. The yard is not shown behind it, so the status bar
+and the build panel of `specs/hud.md` are not drawn.
 
 ## Menu navigation
 

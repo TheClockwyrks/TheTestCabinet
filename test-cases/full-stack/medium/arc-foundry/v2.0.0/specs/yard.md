@@ -85,7 +85,7 @@ A footprint anchored at `(col, row)` may take a placement when all of the follow
 | --- | --- |
 | In bounds | `col` is `0`–`48` and `row` is `0`–`31`. |
 | Tiles free | All four tiles are Open, or all four are covered by a single blocker and none other. |
-| No unit standing on it | No Load unit currently occupies any of the four tiles. |
+| No unit standing on it | No ground unit of the Load currently occupies any of the four tiles. A flying unit passes over the yard, so it never blocks a placement. |
 | Route preserved | The never-seal rule of `specs/pathing.md` holds after the placement. |
 
 Dropping a rock onto the footprint of an existing blocker is the one placement that lands
