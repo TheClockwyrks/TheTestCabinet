@@ -110,6 +110,94 @@ function apart(
   return furthest;
 }
 
+/**
+ * Every field `specs/instrumentation.md` lists under Snapshot shape, sorted.
+ * The snapshot carries these and nothing else.
+ */
+const SNAPSHOT_FIELDS = [
+  "bays",
+  "bearEmergence",
+  "bears",
+  "catchTest",
+  "critter",
+  "fishBay",
+  "fishCadence",
+  "floes",
+  "iceLanes",
+  "level",
+  "lives",
+  "menuIndex",
+  "muted",
+  "phase",
+  "phaseTimer",
+  "reachedLevel",
+  "score",
+  "screen",
+  "simTime",
+  "timer",
+  "timerMax",
+  "timerRunning",
+  "vehicles",
+  "version",
+  "waterLanes",
+].sort();
+
+/**
+ * Every operation `specs/instrumentation.md` names, sorted, beside `version`.
+ * There is no clock operation, no keyboard operation and no `setMuted`: the
+ * engine owns the clock, the keyboard and the overlay, and mute is reached
+ * through the mute action.
+ */
+const SURFACE_MEMBERS = [
+  "version",
+  "reset",
+  "snapshot",
+  "setScreen",
+  "setPhase",
+  "setPhaseTimer",
+  "setMenuIndex",
+  "setScore",
+  "setLives",
+  "setLevel",
+  "setReachedLevel",
+  "setTimer",
+  "setBearEmergence",
+  "setCatchTest",
+  "setFishCadence",
+  "setTimerRunning",
+  "addCritter",
+  "removeCritter",
+  "setCritterTile",
+  "setCritterX",
+  "setCritterFacing",
+  "setHopCooldown",
+  "setBestRow",
+  "addBear",
+  "removeBear",
+  "clearBears",
+  "setBearTile",
+  "setBearPosition",
+  "setBearStep",
+  "setBearTarget",
+  "setBearSense",
+  "setBearRouting",
+  "setBearTravel",
+  "addVehicle",
+  "removeVehicle",
+  "clearVehicles",
+  "setVehicleX",
+  "addFloe",
+  "removeFloe",
+  "clearFloes",
+  "setFloeX",
+  "setLaneSpeed",
+  "setLaneDirection",
+  "setBay",
+  "clearBays",
+  "setFishBay",
+  "clearFish",
+].sort();
+
 /** The names of the cues played, in order. */
 function played(h: Harness): string[] {
   return h.cues.map((play) => play.cue);
@@ -185,6 +273,47 @@ describe("initialization", () => {
   });
 });
 
+describe("the surface itself", () => {
+  it("carries exactly the operations the specification names", () => {
+    const surface = harness.debug as unknown as Record<string, unknown>;
+    expect(Object.keys(surface).sort()).toEqual(SURFACE_MEMBERS);
+    expect(surface.version).toBe(FLOE_DEBUG_VERSION);
+    for (const name of SURFACE_MEMBERS) {
+      if (name === "version") continue;
+      expect(typeof surface[name]).toBe("function");
+    }
+  });
+
+  it("is live: a posed critter and a stepped bear are where they were put", async () => {
+    empty(harness);
+    harness.debug.addCritter(7, 13);
+    expect(harness.snapshot().critter).toMatchObject({ col: 7, row: 13 });
+
+    harness.debug.addBear(7, ROW_MEDIAN);
+    const id = harness.snapshot().bears[0].id;
+    harness.debug.setBearRouting(id, false);
+    harness.debug.setBearStep(id, "left");
+    expect(harness.snapshot().bears[0]).toMatchObject({
+      col: 7,
+      stepCol: 6,
+      facing: "left",
+    });
+    const arrived = await harness.until(
+      () => harness.snapshot().bears[0].col === 6,
+      TICK_HZ,
+    );
+    expect(arrived).toBe(true);
+    expect(harness.snapshot().bears[0]).toMatchObject({
+      col: 6,
+      row: ROW_MEDIAN,
+      stepCol: 6,
+      stepRow: ROW_MEDIAN,
+      x: tileCX(6),
+      y: tileCY(ROW_MEDIAN),
+    });
+  });
+});
+
 describe("the snapshot's shape", () => {
   it("reports every documented field on a fully posed strait", async () => {
     empty(harness);
@@ -212,38 +341,7 @@ describe("the snapshot's shape", () => {
     await harness.step(1);
 
     const snapshot: FloeSnapshotShape = harness.snapshot();
-    expect(Object.keys(snapshot).sort()).toEqual(
-      [
-        "bayEmergencePlaceholder",
-        "bays",
-        "bearEmergence",
-        "bears",
-        "catchTest",
-        "critter",
-        "fishBay",
-        "fishCadence",
-        "floes",
-        "iceLanes",
-        "level",
-        "lives",
-        "menuIndex",
-        "muted",
-        "phase",
-        "phaseTimer",
-        "reachedLevel",
-        "score",
-        "screen",
-        "simTime",
-        "timer",
-        "timerMax",
-        "timerRunning",
-        "vehicles",
-        "version",
-        "waterLanes",
-      ]
-        .filter((key) => key !== "bayEmergencePlaceholder")
-        .sort(),
-    );
+    expect(Object.keys(snapshot).sort()).toEqual(SNAPSHOT_FIELDS);
     expect(snapshot.iceLanes).toHaveLength(ICE_LANES.length);
     expect(snapshot.waterLanes).toHaveLength(WATER_LANES.length);
     expect(snapshot.bears).toHaveLength(2);
