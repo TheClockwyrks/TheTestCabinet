@@ -274,9 +274,8 @@ export class WirewormState extends GameState {
 }
 ```
 {{/if}}
+{{#if (ne engine.slug "none")}}
 
-{{#if (eq engine.slug "none")}}
-{{else}}
 ## The screen and the run
 
 - `screen` — the screen currently shown, one of the six `specs/ui.md` defines.

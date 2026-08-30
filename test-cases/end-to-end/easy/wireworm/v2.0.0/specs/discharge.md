@@ -60,5 +60,5 @@ any other time.
 An arc is drawn as bright lightning joining the centers of the two tiles it
 links, so a player reads which node set off which. Its shape is fixed when the
 arc is created and holds unchanged for the arc's life, and any randomness in that
-shape is drawn from the run's seeded random generator. The colour and the form of
+shape is drawn from the run's seeded random generator. The color and the form of
 the lightning are yours.
