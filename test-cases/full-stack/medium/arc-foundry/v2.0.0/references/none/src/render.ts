@@ -2045,7 +2045,7 @@ function drawInspector(
       w,
       30,
       "DISMANTLE ROCK",
-      "remove",
+      "dismantle",
       COL.alert,
       inBuild,
     );
@@ -2224,7 +2224,7 @@ function drawInspector(
   if (isCombo) {
     // A COMBINATION TOWER: dismantle (a build-phase correction), retarget, and UPGRADE its level
     // for Charge (any phase, including mid-wave). A combo is terminal, so it never combines.
-    stack("DISMANTLE TOWER", "remove", COL.alert, inBuild, 24);
+    stack("DISMANTLE TOWER", "dismantle", COL.alert, inBuild, 24);
     if (stats.fires)
       stack(
         `TARGET · ${TARGETING_LABEL[comp!.targeting]}`,
@@ -2239,7 +2239,7 @@ function drawInspector(
         : `UPGRADE  ${cost}`;
     stack(
       label,
-      "comboupgrade",
+      "upgrade",
       COL.combo,
       cost !== null && game.canUpgradeCombo(comp!.id),
       26,
@@ -2257,7 +2257,7 @@ function drawInspector(
   const explicit =
     game.combineSet().length >= 2 && game.combineSet()[0] === sid;
 
-  stack("DISMANTLE", "remove", COL.alert, inBuild);
+  stack("DISMANTLE", "dismantle", COL.alert, inBuild);
   if (comp && stats.fires)
     stack(
       `TARGET · ${TARGETING_LABEL[comp.targeting]}`,
@@ -2321,8 +2321,10 @@ function drawInspector(
         y: ry,
         w,
         h: rh,
-        action: "comborecipe",
+        action: "combine-special",
         payload: rec.combo,
+        label: def.name,
+        panel: true,
       });
       ry += rh + 4;
       shown++;

@@ -146,14 +146,18 @@ async function main(): Promise<void> {
       case "combine":
         game.combineSelected();
         break;
-      case "comborecipe":
+      case "combine-special":
         if (payload) game.combineRecipeSelected(payload as ComboType);
         break;
       case "upgrade":
-        game.upgradeQuality();
-        break;
-      case "comboupgrade":
-        game.upgradeComboSelected();
+        // UPGRADE raises a selected combination tower's level, and refines the press when
+        // the selection is not a combination tower (specs/controls.md).
+        {
+          const sel = game.selected();
+          if (sel && sel.kind === "component" && sel.combo)
+            game.upgradeComboSelected();
+          else game.upgradeQuality();
+        }
         break;
       case "downgrade":
         game.downgradeSelected();
@@ -161,7 +165,7 @@ async function main(): Promise<void> {
       case "targeting":
         game.cycleTargetingSelected();
         break;
-      case "remove":
+      case "dismantle":
         game.removeSelected();
         break;
       case "speed":
@@ -315,20 +319,14 @@ async function main(): Promise<void> {
         case "combine":
           activate("combine");
           break;
-        case "upgrade": {
-          // Contextual: a selected combination tower upgrades itself; otherwise the press
-          // is refined (specs/controls.md).
-          const sel = game.selected();
-          if (sel && sel.kind === "component" && sel.combo)
-            activate("comboupgrade");
-          else activate("upgrade");
+        case "upgrade":
+          activate("upgrade");
           break;
-        }
         case "targeting":
           activate("targeting");
           break;
         case "dismantle":
-          activate("remove");
+          activate("dismantle");
           break;
         case "speed":
           activate("speed");
