@@ -36,7 +36,8 @@ import {
   type Direction,
   type Screen,
 } from "./constants";
-import { HAS_OBSTACLES, resetSession, type CoilState } from "./game";
+import { resetSession, type CoilState } from "./game";
+import { HAS_OBSTACLES } from "./mode";
 import { menuItems } from "./menus";
 import type { DeepReadonly } from "ts-essentials";
 

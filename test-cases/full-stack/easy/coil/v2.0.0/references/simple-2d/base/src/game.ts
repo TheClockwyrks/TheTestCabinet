@@ -65,9 +65,6 @@ export type { CoilDebugApi };
  */
 export const BACKGROUND: string = COLORS.stage;
 
-/** Whether this build's mode lays a course of obstacle cells across the board. */
-export const HAS_OBSTACLES = OBSTACLE_CELLS.length > 0;
-
 // ---- The state contract --------------------------------------------------
 
 export interface CoilState {

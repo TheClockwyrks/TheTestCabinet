@@ -38,7 +38,8 @@ import {
   type Direction,
 } from "./constants";
 import { roundRect, text } from "./draw";
-import { biteFrame, HAS_OBSTACLES, type CoilState } from "./game";
+import { biteFrame, type CoilState } from "./game";
+import { HAS_OBSTACLES } from "./mode";
 import { menuItems } from "./menus";
 import { axisOf, comboFraction } from "./sim";
 import { COLORS, FONT } from "./theme";

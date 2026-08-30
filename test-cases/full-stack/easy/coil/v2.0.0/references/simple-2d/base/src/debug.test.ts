@@ -1,0 +1,346 @@
+// The debug surface, driven exactly as a caller drives it: every pose takes the
+// state and returns the next, and every reading takes the state and returns what
+// it read. Nothing here holds a writable state, which is the property the surface
+// is written around.
+
+import { describe, expect, it } from "vitest";
+import { NO_SPRITES } from "./assets";
+import { createDebugApi, type CoilDebugApi } from "./debug";
+import {
+  COIL_DEBUG_VERSION,
+  COMBO_MAX,
+  COMBO_WINDOW,
+  DEFAULT_SEED,
+  MODE,
+  OBSTACLE_CELLS,
+  SCREENS,
+  START_CELLS,
+  TICK_SECONDS,
+  type Cell,
+} from "./constants";
+import { createInitialState, startRound, type CoilState } from "./game";
+import { HAS_OBSTACLES } from "./mode";
+import { spawnPellet, tick } from "./sim";
+
+const debug: CoilDebugApi = createDebugApi();
+
+function opening(seed = DEFAULT_SEED): CoilState {
+  return createInitialState(NO_SPRITES, false, seed);
+}
+
+/** A chain of `length` cells laid to the left from `(col, row)`. */
+function chain(col: number, row: number, length: number): Cell[] {
+  return Array.from({ length }, (_, i) => ({ col: col - i, row }));
+}
+
+describe("the snapshot", () => {
+  it("reports every field specs/instrumentation.md fixes", () => {
+    const shot = debug.snapshot(opening());
+    expect(Object.keys(shot).sort()).toEqual(
+      [
+        "best",
+        "combo",
+        "comboWindow",
+        "dir",
+        "menuIndex",
+        "mode",
+        "muted",
+        "obstacles",
+        "pellet",
+        "pelletRespawn",
+        "score",
+        "screen",
+        "simTime",
+        "snake",
+        "steering",
+        "ticks",
+        "travel",
+        "turns",
+        "version",
+      ].sort(),
+    );
+  });
+
+  it("carries the surface's version and the build's mode", () => {
+    expect(debug.version).toBe(COIL_DEBUG_VERSION);
+    expect(debug.snapshot(opening()).version).toBe(COIL_DEBUG_VERSION);
+    expect(debug.snapshot(opening()).mode).toBe(MODE);
+  });
+
+  it("reads the live values off the state", () => {
+    let state = startRound(opening());
+    state = debug.setScore(state, 120);
+    state = debug.setBest(state, 300);
+    state = debug.setCombo(state, 3);
+    state = debug.setComboWindow(state, 2);
+    state = debug.setDirection(state, "down");
+    const shot = debug.snapshot(state);
+    expect(shot.screen).toBe("playing");
+    expect(shot.score).toBe(120);
+    expect(shot.best).toBe(300);
+    expect(shot.combo).toBe(3);
+    expect(shot.comboWindow).toBe(2);
+    expect(shot.dir).toBe("down");
+    expect(shot.snake.length).toBe(START_CELLS.length);
+  });
+
+  it("copies the board rather than handing the state's own arrays out", () => {
+    const state = startRound(opening());
+    const shot = debug.snapshot(state);
+    shot.snake.push({ col: -1, row: -1 });
+    shot.turns.push("up");
+    shot.obstacles.length = 0;
+    expect(state.snake.length).toBe(START_CELLS.length);
+    expect(state.turns).toEqual([]);
+    expect(state.obstacles.length).toBe(OBSTACLE_CELLS.length);
+    // Each cell is a copy, so nothing a caller does to one reaches the state.
+    expect(debug.snapshot(state).snake[0]).not.toBe(state.snake[0]);
+  });
+
+  it("leaves the state it read exactly as it was", () => {
+    const state = startRound(opening());
+    const before = JSON.stringify(debug.snapshot(state));
+    debug.snapshot(state);
+    expect(JSON.stringify(debug.snapshot(state))).toBe(before);
+  });
+});
+
+describe("reset", () => {
+  it("restores every field the snapshot reports", () => {
+    let state = startRound(opening());
+    state = debug.setScore(state, 500);
+    state = debug.setBest(state, 900);
+    state = debug.setCombo(state, 4);
+    state = debug.setComboWindow(state, 3);
+    state = debug.setSnakeTravel(state, false);
+    state = debug.setPelletRespawn(state, false);
+    state = tick(state).state;
+
+    const shot = debug.snapshot(debug.reset(state));
+    expect(shot.screen).toBe("title");
+    expect(shot.menuIndex).toBe(0);
+    expect(shot.score).toBe(0);
+    expect(shot.best).toBe(0);
+    expect(shot.combo).toBe(1);
+    expect(shot.comboWindow).toBe(0);
+    expect(shot.ticks).toBe(0);
+    expect(shot.simTime).toBe(0);
+    expect(shot.snake).toEqual(START_CELLS.map((cell) => ({ ...cell })));
+    expect(shot.dir).toBe("right");
+    expect(shot.turns).toEqual([]);
+    expect(shot.pellet).toBeNull();
+    expect(shot.steering && shot.travel && shot.pelletRespawn).toBe(true);
+  });
+
+  it("lays the mode's own obstacle course again", () => {
+    const state = debug.reset(opening());
+    expect(debug.snapshot(state).obstacles).toEqual(
+      OBSTACLE_CELLS.map((cell) => ({ ...cell })),
+    );
+  });
+
+  it("leaves the mute bit as it stands", () => {
+    const muted = { ...opening(), muted: true };
+    expect(debug.snapshot(debug.reset(muted)).muted).toBe(true);
+  });
+
+  it("draws the same pellet sequence from the same seed", () => {
+    const sequence = (seed: number): string[] => {
+      let state = startRound(debug.reset(opening(), { seed }));
+      const cells: string[] = [];
+      for (let i = 0; i < 6; i++) {
+        cells.push(`${state.pellet!.col},${state.pellet!.row}`);
+        state = spawnPellet(state).state;
+      }
+      return cells;
+    };
+    expect(sequence(11)).toEqual(sequence(11));
+    expect(sequence(11)).not.toEqual(sequence(12));
+  });
+});
+
+describe("the poses", () => {
+  it("sets the chain alone", () => {
+    let state = startRound(opening());
+    state = debug.setDirection(state, "up");
+    const before = debug.snapshot(state);
+    state = debug.setSnake(state, chain(10, 8, 4));
+    const after = debug.snapshot(state);
+    expect(after.snake).toEqual(chain(10, 8, 4));
+    expect(after.dir).toBe(before.dir);
+    expect(after.pellet).toEqual(before.pellet);
+    expect(after.score).toBe(before.score);
+  });
+
+  it("places and removes the pellet outright", () => {
+    let state = startRound(opening());
+    state = debug.setSnake(state, chain(10, 8, 3));
+    state = debug.setPellet(state, 20, 4);
+    expect(debug.snapshot(state).pellet).toEqual({ col: 20, row: 4 });
+    state = debug.clearPellet(state);
+    expect(debug.snapshot(state).pellet).toBeNull();
+  });
+
+  it("places a pellet without drawing from the generator", () => {
+    const state = startRound(opening());
+    const posed = debug.setPellet(state, 20, 4);
+    expect(posed.rngState).toBe(state.rngState);
+  });
+
+  it("empties the turn buffer, turning nothing", () => {
+    let state = startRound(opening());
+    state = { ...state, turns: ["up", "down"] };
+    state = debug.clearTurns(state);
+    expect(debug.snapshot(state).turns).toEqual([]);
+    expect(debug.snapshot(state).dir).toBe("right");
+  });
+
+  it("holds one faculty still while the other runs", () => {
+    let state = startRound(opening());
+    state = debug.setSnake(state, chain(10, 8, 3));
+    state = debug.setSnakeTravel(state, false);
+    state = debug.clearPellet(state);
+    const before = debug.snapshot(state);
+    state = tick(state).state;
+    const after = debug.snapshot(state);
+    expect(after.snake).toEqual(before.snake);
+    expect(after.ticks).toBe(before.ticks + 1);
+    expect(after.steering).toBe(true);
+  });
+
+  it("drains the combo window while the snake is held still", () => {
+    let state = startRound(opening());
+    state = debug.setSnakeTravel(state, false);
+    state = debug.setCombo(state, 4);
+    state = debug.setComboWindow(state, COMBO_WINDOW);
+    state = tick(state).state;
+    expect(debug.snapshot(state).comboWindow).toBeCloseTo(
+      COMBO_WINDOW - TICK_SECONDS,
+      9,
+    );
+  });
+
+  it("moves the highlight without accepting anything", () => {
+    const state = debug.setMenuIndex(opening(), 1);
+    expect(debug.snapshot(state).menuIndex).toBe(1);
+    expect(debug.snapshot(state).screen).toBe("title");
+  });
+
+  it("sets the screen without laying out a round", () => {
+    let state = debug.setSnake(opening(), chain(10, 8, 3));
+    state = debug.setMenuIndex(state, 1);
+    state = debug.setScreen(state, "playing");
+    const shot = debug.snapshot(state);
+    expect(shot.screen).toBe("playing");
+    expect(shot.snake).toEqual(chain(10, 8, 3));
+    expect(shot.pellet).toBeNull();
+  });
+});
+
+describe("an argument outside its domain", () => {
+  it("rejects a screen no build has", () => {
+    expect(() =>
+      debug.setScreen(opening(), "nowhere" as (typeof SCREENS)[number]),
+    ).toThrow(/setScreen/);
+  });
+
+  it("rejects a menu index the current screen does not hold", () => {
+    expect(() => debug.setMenuIndex(opening(), 9)).toThrow(/menu item/);
+    expect(() =>
+      debug.setMenuIndex(debug.setScreen(opening(), "playing"), 1),
+    ).toThrow(/menu item/);
+  });
+
+  it("rejects a score or a best below zero", () => {
+    expect(() => debug.setScore(opening(), -1)).toThrow(/setScore/);
+    expect(() => debug.setBest(opening(), -1)).toThrow(/setBest/);
+    expect(() => debug.setScore(opening(), 1.5)).toThrow(/setScore/);
+  });
+
+  it("rejects a multiplier outside [1, COMBO_MAX]", () => {
+    expect(() => debug.setCombo(opening(), 0)).toThrow(/setCombo/);
+    expect(() => debug.setCombo(opening(), COMBO_MAX + 1)).toThrow(/setCombo/);
+  });
+
+  it("rejects a window outside [0, COMBO_WINDOW]", () => {
+    expect(() => debug.setComboWindow(opening(), -0.1)).toThrow(
+      /setComboWindow/,
+    );
+    expect(() => debug.setComboWindow(opening(), COMBO_WINDOW + 0.1)).toThrow(
+      /setComboWindow/,
+    );
+  });
+
+  it("rejects a direction that is not one of the four", () => {
+    expect(() => debug.setDirection(opening(), "sideways" as "up")).toThrow(
+      /setDirection/,
+    );
+  });
+
+  it("rejects a chain that is empty, broken, repeated, or off the interior", () => {
+    expect(() => debug.setSnake(opening(), [])).toThrow(/at least one cell/);
+    expect(() =>
+      debug.setSnake(opening(), [
+        { col: 10, row: 8 },
+        { col: 12, row: 8 },
+      ]),
+    ).toThrow(/adjacent/);
+    expect(() =>
+      debug.setSnake(opening(), [
+        { col: 10, row: 8 },
+        { col: 11, row: 8 },
+        { col: 10, row: 8 },
+      ]),
+    ).toThrow(/repeated/);
+    expect(() => debug.setSnake(opening(), [{ col: 0, row: 8 }])).toThrow(
+      /interior/,
+    );
+  });
+
+  it("rejects a pellet on a wall cell or under the chain", () => {
+    const state = debug.setSnake(opening(), chain(10, 8, 3));
+    expect(() => debug.setPellet(state, 0, 8)).toThrow(/interior/);
+    expect(() => debug.setPellet(state, 10, 8)).toThrow(/snake segment/);
+  });
+
+  it("rejects a switch that is not a boolean", () => {
+    expect(() =>
+      debug.setSnakeSteering(opening(), 1 as unknown as boolean),
+    ).toThrow(/true or false/);
+    expect(() =>
+      debug.setSnakeTravel(opening(), null as unknown as boolean),
+    ).toThrow(/true or false/);
+    expect(() =>
+      debug.setPelletRespawn(opening(), "yes" as unknown as boolean),
+    ).toThrow(/true or false/);
+  });
+});
+
+describe("the obstacle operations", () => {
+  it("are laid only by a mode that places obstacle cells", () => {
+    expect(typeof debug.clearObstacles).toBe(
+      HAS_OBSTACLES ? "function" : "undefined",
+    );
+    expect(typeof debug.addObstacle).toBe(
+      HAS_OBSTACLES ? "function" : "undefined",
+    );
+  });
+
+  it.runIf(HAS_OBSTACLES)("clear the course and add a cell back", () => {
+    let state = debug.setSnake(opening(), chain(10, 8, 3));
+    state = debug.clearObstacles!(state);
+    expect(debug.snapshot(state).obstacles).toEqual([]);
+    state = debug.addObstacle!(state, 20, 4);
+    state = debug.addObstacle!(state, 20, 4);
+    expect(debug.snapshot(state).obstacles).toEqual([{ col: 20, row: 4 }]);
+  });
+
+  it.runIf(HAS_OBSTACLES)(
+    "reject a cell under the chain or off the interior",
+    () => {
+      const state = debug.setSnake(opening(), chain(10, 8, 3));
+      expect(() => debug.addObstacle!(state, 10, 8)).toThrow(/snake segment/);
+      expect(() => debug.addObstacle!(state, 0, 8)).toThrow(/interior/);
+    },
+  );
+});

@@ -277,7 +277,10 @@ describe("scoring and the combo", () => {
     );
     expect(result.state.combo).toBe(1);
     expect(result.state.score).toBe(PELLET_POINTS);
-    expect(result.state.comboWindow).toBeCloseTo(COMBO_WINDOW - TICK_SECONDS, 9);
+    expect(result.state.comboWindow).toBeCloseTo(
+      COMBO_WINDOW - TICK_SECONDS,
+      9,
+    );
     expect(result.events.comboRose).toBe(false);
   });
 
@@ -336,7 +339,10 @@ describe("scoring and the combo", () => {
   it("reports the window as a fraction of a full one", () => {
     expect(comboFraction({ comboWindow: COMBO_WINDOW })).toBe(1);
     expect(comboFraction({ comboWindow: 0 })).toBe(0);
-    expect(comboFraction({ comboWindow: COMBO_WINDOW / 2 })).toBeCloseTo(0.5, 9);
+    expect(comboFraction({ comboWindow: COMBO_WINDOW / 2 })).toBeCloseTo(
+      0.5,
+      9,
+    );
   });
 });
 
