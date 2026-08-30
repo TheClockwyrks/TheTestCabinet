@@ -93,11 +93,11 @@
 //! lookup: a key or a name that does not exist is a diagnostic on the turn that wrote it, where an
 //! interpreted arm finds out when the call is reached.
 //!
-//! A module is compiled **twice**, and that is deliberate rather than an oversight — once alone at
-//! the read, and once inside every preparation that links it, because a workspace belongs to one
-//! preparation and the `.rlib` goes with it. The first compile is what puts a module author's
-//! diagnostic at the read instead of against somebody else's program two turns later. See
-//! [`compile::compile_module`] and [`compile`] for what the rebuild costs.
+//! A module is compiled **once**, at the read that binds it, under the crate name a program writes.
+//! Its `.rlib` is kept in the agent's compile workspace and named on every later program's
+//! `--extern`, so a turn's `rustc` count is one however much the agent has loaded. Compiling it at
+//! the read is also what puts a module author's diagnostic there instead of against somebody else's
+//! program two turns later. See [`compile::compile_module`].
 
 use std::sync::OnceLock;
 
@@ -194,18 +194,19 @@ impl ProgramLanguage for Rust {
         compile::warm();
     }
 
-    /// The module's own `rustc`, asked for metadata rather than an artifact — and the names its
-    /// namespace offers, read from the author's own source.
+    /// The module's own `rustc`, building the `.rlib` a program links — and the names its namespace
+    /// offers, read from the author's own source.
     ///
     /// What comes back is **source**, which is what a linked language's module has to be: it is an
     /// input to the [program compile](compile::compile_program) that binds it, not something a guest
     /// could load on its own.
     fn prepare_module(
         &self,
+        key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        compile::compile_module(source, context)
+        compile::compile_module(key, source, context)
     }
 
     /// `.rs`, and nothing else. Nothing else in the registry compiles Rust.

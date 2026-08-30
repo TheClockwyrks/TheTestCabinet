@@ -11,7 +11,7 @@ use crate::sandbox::PrepareContext;
 
 /// Compile `source` as a program, or panic with what the toolchain said.
 fn program(source: &str) -> String {
-    match compile_program(source, &[], &PrepareContext::new()) {
+    match compile_program(source, &[], &PrepareContext::detached()) {
         Ok(prepared) => prepared.source,
         Err(failure) => panic!("purs did not compile this PureScript: {failure}"),
     }
@@ -19,7 +19,7 @@ fn program(source: &str) -> String {
 
 /// The same, for a turn carrying code modules — which are compiled into the program's own project.
 fn program_with(source: &str, modules: &[CodeModule]) -> String {
-    match compile_program(source, modules, &PrepareContext::new()) {
+    match compile_program(source, modules, &PrepareContext::detached()) {
         Ok(prepared) => prepared.source,
         Err(failure) => panic!("purs did not compile this PureScript: {failure}"),
     }
@@ -32,7 +32,7 @@ fn refusal(source: &str) -> PrepareFailure {
 
 /// The same, for a turn carrying code modules.
 fn refusal_with(source: &str, modules: &[CodeModule]) -> PrepareFailure {
-    match compile_program(source, modules, &PrepareContext::new()) {
+    match compile_program(source, modules, &PrepareContext::detached()) {
         Ok(_) => panic!("expected this PureScript to be refused, and it compiled"),
         Err(failure) => failure,
     }
@@ -372,9 +372,9 @@ fn a_code_module_is_checked_on_its_own_and_compiled_with_the_program_that_import
                            greet :: String -> String\n\
                            greet who = \"hello, \" <> who\n";
 
-    // The use that loads it compiles it alone, under gg's own name for it, and keeps nothing: the
-    // whole product is the verdict.
-    check_module(HELPERS, &PrepareContext::new()).expect("purs checks a code module");
+    // The use that loads it compiles it alone, under the name a program will import it by.
+    compile_module("helpers", HELPERS, &PrepareContext::detached())
+        .expect("purs compiles a code module");
 
     // The program then reaches it the way it reaches any other module — an `import` line the model
     // wrote, checked by `purs` against the author's own signature.
@@ -452,25 +452,26 @@ fn a_modules_header_is_rewritten_in_place_and_a_diagnostic_stays_on_the_authors_
     assert_eq!(headed("greet = 1\n", "Lib.CsvTools"), "greet = 1\n");
 
     // Which is what the check really reports — at line 1, in the author's own file.
-    let failure =
-        check_module("greet = ((\n", &PrepareContext::new()).expect_err("a broken module");
+    let failure = compile_module("helpers", "greet = ((\n", &PrepareContext::detached())
+        .expect_err("a broken module");
     assert!(
-        failure.to_string().contains("module.purs:1:"),
+        failure.to_string().contains("Lib.Helpers.purs:1:"),
         "located in the author's own file: {failure}"
     );
 
     // And a mistake four lines down is at line four, because the rewrite added no line.
-    let failure = check_module(
+    let failure = compile_module(
+        "helpers",
         "module Helpers where\n\
          import Prelude\n\
          \n\
          greet :: String -> String\n\
          greet who = who + 1\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a broken module");
     assert!(
-        failure.to_string().contains("module.purs:5:"),
+        failure.to_string().contains("Lib.Helpers.purs:5:"),
         "at the line the author wrote it on: {failure}"
     );
 }
@@ -610,7 +611,8 @@ fn a_purs_that_did_not_compile_the_tree_is_refused_by_name() {
 
     // And the compiler this suite is actually running against is the pinned one — which is the same
     // check the first compile of a run makes, made here against the developer's or CI's toolchain.
-    check_purs_version(&PrepareContext::new()).expect("the `purs` on PATH is the pinned release");
+    check_purs_version(&PrepareContext::detached())
+        .expect("the `purs` on PATH is the pinned release");
 }
 
 // WHAT USED TO BE HERE: `the_shipped_sdk_is_the_sdk_in_the_working_tree`, and the `sdk_sources`
@@ -661,8 +663,8 @@ fn the_shared_tree_is_sealed_and_each_preparation_gets_its_own() {
 
     // And two preparations compiling the same source get two trees, which is the property the
     // isolation gate drives at sixteen.
-    let first = PrepareContext::new();
-    let second = PrepareContext::new();
+    let first = PrepareContext::detached();
+    let second = PrepareContext::detached();
     assert!(compile_program(HELLO, &[], &first).is_ok());
     assert!(compile_program(HELLO, &[], &second).is_ok());
     assert_ne!(

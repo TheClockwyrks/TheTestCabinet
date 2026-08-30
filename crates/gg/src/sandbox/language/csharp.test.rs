@@ -211,7 +211,7 @@ fn the_isolation_subject_for_a_module_is_a_public_member() {
         module,
         "public static string Marker() => \"gg-isolation-000-marker\";\n"
     );
-    let wrapped = source::wrap_module(&module, source::CHECK_KEY)
+    let wrapped = source::wrap_module(&module, &csharp().binding_name("gg-isolation"))
         .expect("the isolation subject is a module this arm can wrap");
     assert_eq!(export_names(&wrapped.exports), vec!["Marker".to_string()]);
 }

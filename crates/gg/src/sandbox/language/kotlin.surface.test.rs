@@ -1017,7 +1017,7 @@ fn what_this_arm_does_not_carry_is_recorded_rather_than_discovered() {
             "Thread",
         ),
     ] {
-        let failure = compile_program(source, &[], &PrepareContext::new())
+        let failure = compile_program(source, &[], &PrepareContext::detached())
             .err()
             .unwrap_or_else(|| panic!("this arm compiled `{source}`, which it must not"));
         let rendered = failure.to_string();
@@ -1076,7 +1076,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let failure = compile_program(
         &whole("", "    gg.log(readFile(\"a.md\").toString())\n"),
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a name nothing brought into scope is refused");
     let rendered = failure.to_string();
@@ -1092,7 +1092,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
             "    val code: ApiErrorCode? = null\n    gg.log(code.toString())\n",
         ),
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a type nothing brought into scope is refused");
     assert!(
@@ -1115,6 +1115,7 @@ fn a_code_module_is_reached_by_a_path_the_compiler_checks() {
     // function, a value handed back through a real crossing, state the module really holds between
     // two calls, and a name that does not exist refused by the COMPILER rather than at run time.
     let prepared = compile_module(
+        "helpers",
         r#"private val seen: MutableList<String> = mutableListOf()
 
 fun greet(who: String): String = "hello, " + who.uppercase()
@@ -1131,7 +1132,7 @@ fun remember(word: String) {
 
 fun recalled(): String = seen.joinToString("+")
 "#,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("the Kotlin toolchain compiles a code module");
     assert_eq!(
@@ -1182,7 +1183,7 @@ fun recalled(): String = seen.joinToString("+")
     let failure = compile_program(
         &whole("", "    lib.helpers.absent()\n"),
         &modules,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a name the module does not export is refused");
     let rendered = failure.to_string();

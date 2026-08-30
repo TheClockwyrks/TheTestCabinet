@@ -5,6 +5,12 @@
 use super::*;
 use crate::sandbox::export_names;
 
+/// The package these cases wrap a module into.
+///
+/// One package, because the wrap is the same shape for every key and what these cases read is the
+/// shape.
+const MODULE_CHECK_PACKAGE: &str = "lib.module";
+
 /// The names [`Lexer::top_level_functions`] finds, with whether each is hidden.
 fn scanned(source: &str) -> Vec<(String, bool)> {
     Lexer::new(source)

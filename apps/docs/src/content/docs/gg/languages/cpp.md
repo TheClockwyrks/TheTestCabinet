@@ -116,7 +116,7 @@ writing `import lib.<key>;`, and then writes one of its names `lib::<key>::<name
 That line is the model's to write, on the same terms as the `#include` that
 reaches gg's own surface.
 
-Each module in scope is written into the preparation's workspace as a named C++
+Each module in scope is written into the compile workspace as a named C++
 module — `export module lib.<key>;` over an `export namespace lib::<key>` opened
 around the author's declarations where they stand — precompiled into a module
 interface of its own, and named to the program's compile as
@@ -152,10 +152,13 @@ own name, its default argument, and the `const`, reference and pointer decoratio
 around a type are left out, and a template argument is a type name of its own, so
 `std::vector<row>` writes `std::vector` and `row`.
 
-A module is also compiled alone with `-fsyntax-only` when it is read, so a
-module that does not build is reported to its author rather than to every
-program the agent writes afterwards. Its own file is the only authored source
-there, so a diagnostic located elsewhere is a toolchain failure.
+That precompile happens once, at the read that binds the module, so a module that
+does not build is reported to its author rather than to every program the agent
+writes afterwards. Its own file is the only authored source there, so a
+diagnostic located elsewhere is a toolchain failure. The interface and the file
+it was built from are kept in the loaded-module band of the agent's compile
+workspace, and every later program is handed the interface rather than the
+source.
 
 ## Failures
 

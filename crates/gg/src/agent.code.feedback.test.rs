@@ -695,7 +695,7 @@ fn only_a_rejected_program_leaves_the_session_running() {
 
 /// The failure a load of `source` produced, in a language that compiles.
 fn knowledge_failure(source: &str) -> KnowledgeError {
-    KnowledgeModules::new()
+    KnowledgeModules::new(crate::sandbox::AgentWorkspace::new())
         .load(
             crate::sandbox::fixture_languages()
                 .next()

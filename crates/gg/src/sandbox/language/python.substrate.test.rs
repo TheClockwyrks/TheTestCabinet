@@ -276,6 +276,7 @@ print(summary.line)
 gg.views.open_text("notes", textwrap.dedent(notes))
 "#,
         scope,
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         api,
@@ -375,6 +376,7 @@ gg.views.open_text("notes", notes.contents)
             modules: &[],
             ending: RunEnding::None,
         },
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         FakeOperationApi::with(&log, canned_outcome),

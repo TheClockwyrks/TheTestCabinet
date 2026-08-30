@@ -143,6 +143,7 @@ impl ProgramLanguage for TypeScript {
     /// function.
     fn prepare_module(
         &self,
+        _key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {

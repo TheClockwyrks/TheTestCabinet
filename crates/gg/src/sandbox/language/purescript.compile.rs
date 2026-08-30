@@ -118,7 +118,9 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::sandbox::language::compile::{CompilerReport, place_tree, shared_toolchain_dir};
+use crate::sandbox::language::compile::{
+    CompilerReport, Workspace, place_tree, shared_toolchain_dir,
+};
 use crate::sandbox::language::{
     CodeModule, PrepareContext, PrepareError, PrepareFailure, PreparedProgram,
 };
@@ -170,20 +172,6 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 /// The file a program is compiled under, and the one its diagnostics are located in.
 pub(super) const PROGRAM_FILE: &str = "program.purs";
 
-/// The file a code module is compiled under **on its own**, when the skill or memory carrying it is
-/// used, and the one its author's diagnostics are located in.
-pub(super) const MODULE_FILE: &str = "module.purs";
-
-/// The name that check files the module under.
-///
-/// A name of gg's rather than the author's, because the author's own could be one the shipped
-/// library set already publishes and the check would answer `DuplicateModule` about a module that
-/// compiles perfectly well under the name a program will really reach it by. The key is not known
-/// at that step — [`prepare_module`](crate::sandbox::ProgramLanguage::prepare_module) is handed a source and
-/// nothing else — so the check uses one fixed name and the program compile uses
-/// [the real one](super::module_path).
-const MODULE_CHECK_NAME: &str = "Lib.Module";
-
 /// The entry module `esbuild` is pointed at.
 ///
 /// It is the one source in the bundle that is gg's rather than the model's or a library's, so
@@ -209,6 +197,16 @@ const OUTPUT_DIR: &str = "output";
 
 /// The tree's two top-level directories: the library sources, and what `purs` compiled them to.
 const TREE_DIRS: [&str; 2] = ["libs", OUTPUT_DIR];
+
+/// **The `purs` project's own directories**, which the agent's compile workspace keeps across its
+/// preparations rather than emptying with the rest of the working directory.
+///
+/// The same two, declared to the seam through
+/// [`persistent_work`](crate::sandbox::ProgramLanguage::persistent_work). `purs` is given a project
+/// directory and keys its own incremental work on what is in it, so re-staging it per preparation
+/// would both cost 1,430 links a turn and throw away the compiler's record of what it had already
+/// built — including the code modules this agent loaded.
+pub(super) const PROJECT_DIRS: &[&str] = &TREE_DIRS;
 
 /// What the embedded library tree was built from, and what is in it.
 #[derive(Debug, Deserialize)]
@@ -320,19 +318,27 @@ pub(super) fn compile_program(
         .write(PROGRAM_FILE, source)
         .map_err(PrepareFailure::Toolchain)?;
     let mut files = vec![PROGRAM_FILE.to_string()];
+    // Each module was compiled into this project at the read that loaded it, so `purs` finds its
+    // file unchanged and its output up to date and compiles the response alone. One this agent's
+    // workspace holds no build of is written now and compiled with the program, and recorded so the
+    // program after it does not.
+    let mut fresh: Vec<&CodeModule> = Vec::new();
     for module in modules {
-        let file = module_file(&module.name);
-        workspace
-            .write(
-                &file,
-                &headed(&module.source, &super::module_path(&module.name)),
-            )
-            .map_err(PrepareFailure::Toolchain)?;
-        files.push(file);
+        files.push(module_path(workspace, &module.name));
+        if workspace
+            .module_build(&module.name, &module.source)
+            .is_none()
+        {
+            write_module(workspace, &module.name, &module.source)?;
+            fresh.push(module);
+        }
     }
 
     let report = invoke_purs(&files, context).map_err(PrepareFailure::Toolchain)?;
     classify(&report, PROGRAM_FILE, modules)?;
+    for module in fresh {
+        record_module(workspace, &module.name, &module.source);
+    }
 
     // Read AFTER `purs` accepted the source, so a reply gg cannot find a header in is answered by
     // the compiler's own `ErrorParsingModule` at line 1 rather than by anything written here.
@@ -363,36 +369,78 @@ pub(super) fn compile_program(
     })
 }
 
-/// Check a **code module** — the code half of a [skill](crate::skills) or a
-/// [memory](crate::memories) — by compiling it on its own, so an author's mistake is read at the use
-/// that loaded it rather than by the next program that has it in scope.
+/// Compile a **code module** — the code half of a [skill](crate::skills) or a
+/// [memory](crate::memories) — into the agent's `purs` project, under the name a program imports it
+/// by.
 ///
-/// Nothing is kept: what a program is compiled against is the author's source, written into that
-/// program's own project under the key the module was bound at. This is the one step that ever reads
-/// a module alone, and its whole product is the verdict.
-pub(super) fn check_module(source: &str, context: &PrepareContext) -> Result<(), PrepareFailure> {
+/// This is where a module is compiled and the only place. `key` is the binding key, so the file is
+/// headed `Lib.<Key>` and written into that key's directory in the
+/// [band](crate::sandbox::Workspace::open_module), and `purs` compiles it into the project's own
+/// `output/Lib.<Key>`. Both survive the preparation, so every program the agent writes afterwards
+/// lists the same file and `purs` finds it up to date.
+///
+/// Compiling it here is what puts an author's mistake at the use that loaded it rather than in front
+/// of the next program that has it in scope.
+pub(super) fn compile_module(
+    key: &str,
+    source: &str,
+    context: &PrepareContext,
+) -> Result<(), PrepareFailure> {
     let workspace = staged(context)?;
-    workspace
-        .write(MODULE_FILE, &headed(source, MODULE_CHECK_NAME))
-        .map_err(PrepareFailure::Toolchain)?;
-    let report =
-        invoke_purs(&[MODULE_FILE.to_string()], context).map_err(PrepareFailure::Toolchain)?;
-    classify(&report, MODULE_FILE, &[])
+    let file = write_module(workspace, key, source)?;
+    let report = invoke_purs(&[file], context).map_err(PrepareFailure::Toolchain)?;
+    classify(&report, &module_file(key), &[])?;
+    record_module(workspace, key, source);
+    Ok(())
 }
 
-/// This preparation's own tree, with the library set hard-linked into it and the compiler agreed
-/// with — everything both compiles need before they write a source file.
-fn staged(
-    context: &PrepareContext,
-) -> Result<&crate::sandbox::language::compile::Workspace, PrepareFailure> {
+/// Write one code module's headed source into its own directory in the band, and hand back the path
+/// `purs` is given.
+fn write_module(workspace: &Workspace, key: &str, source: &str) -> Result<String, PrepareFailure> {
+    workspace
+        .open_module(key)
+        .map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .write_module(
+            key,
+            &module_file(key),
+            &headed(source, &super::module_path(key)),
+        )
+        .map_err(PrepareFailure::Toolchain)?;
+    Ok(module_path(workspace, key))
+}
+
+/// Record that the module bound at `key` is compiled into this project — its file, and what `purs`
+/// emitted for it.
+fn record_module(workspace: &Workspace, key: &str, source: &str) {
+    let emitted = workspace
+        .work()
+        .join(OUTPUT_DIR)
+        .join(super::module_path(key));
+    workspace.record_module(
+        key,
+        source,
+        vec![workspace.work().join(module_path(workspace, key)), emitted],
+    );
+}
+
+/// The agent's `purs` project, with the library set hard-linked into it and the compiler agreed
+/// with — everything every compile here needs before it writes a source file.
+///
+/// The staging happens **once for the agent** rather than once per preparation, which is what
+/// [`PROJECT_DIRS`] is declared for: `purs` keys its own incremental work on the project directory,
+/// so a tree re-linked every turn is a compiler told nothing it built is still there.
+fn staged(context: &PrepareContext) -> Result<&Workspace, PrepareFailure> {
     let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
     agree_on_the_compiler(context)?;
-    stage(workspace.work(), libraries).map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .stage_once(PROJECT_DIRS, || stage(workspace.work(), libraries))
+        .map_err(PrepareFailure::Toolchain)?;
     Ok(workspace)
 }
 
-/// The file one code module is compiled under, beside the program that imports it.
+/// The file one code module is compiled under.
 ///
 /// Named for the module it declares, so a run-time frame the composed source map resolves into an
 /// author's own code reads `Lib.CsvTools.purs`. It is also what tells a diagnostic in a module from
@@ -400,6 +448,12 @@ fn staged(
 /// one no library file has, and `Lib.<Key>.purs` is.
 fn module_file(key: &str) -> String {
     format!("{}.purs", super::module_path(key))
+}
+
+/// Where that file is, as `purs` is given it: inside the key's own directory in the band, relative to
+/// the working directory the compiler runs in.
+fn module_path(workspace: &Workspace, key: &str) -> String {
+    workspace.module_path(key, &module_file(key))
 }
 
 /// `source` with the name in its module header replaced by `name`.

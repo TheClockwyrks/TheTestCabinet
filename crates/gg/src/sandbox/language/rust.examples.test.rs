@@ -381,7 +381,7 @@ fn every_rust_example_a_model_is_shown_compiles() {
     }
     program.push_str("    Ok(())\n}\n");
 
-    if let Err(failure) = compile_program(&program, &[], &PrepareContext::new()) {
+    if let Err(failure) = compile_program(&program, &[], &PrepareContext::detached()) {
         panic!(
             "gg shows a model Rust that does not compile. rustc said:\n\n{failure:?}\n\nThe \
              program every example was gathered into, with a comment naming where each came \

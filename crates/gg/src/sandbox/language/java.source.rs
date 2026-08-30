@@ -67,10 +67,6 @@ pub(super) const PROGRAM_CLASS: &str = "Program";
 /// a program has to know and the key it was given is the name it types.
 pub(super) const MODULE_PACKAGE: &str = "lib";
 
-/// The class a code module is **checked** under at the read that binds it, before any program has
-/// named a key for it.
-pub(super) const MODULE_CHECK_CLASS: &str = "Module";
-
 /// A code module's body, wrapped into a compilation unit javac will read, and the names its
 /// namespace offers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,14 +121,12 @@ pub(super) fn wrap_module(source: &str, class: &str) -> Result<Wrapped, PrepareF
 ///
 /// # Why this is a refusal and not a curiosity
 ///
-/// A module body is compiled **twice under two different class names**: under
-/// [`MODULE_CHECK_CLASS`] at the read that binds it, before any key exists, and under its **binding
-/// key** in every program that uses it. Every declaration Java has means the same thing
-/// under both names except one — a *constructor*, which is a method with no return type whose name
-/// is the class's. So `Module() { }` is a constructor at the read and
-/// `invalid method declaration; return type required` in a program, and it was the read that said
-/// yes. Measured: the module then took down every program the agent wrote from then on, which is
-/// exactly the state [`compile_module`](super::compile::compile_module) exists to prevent.
+/// A module body is compiled inside a class named by its **binding key**, which its author cannot
+/// know. Every declaration Java has means the same thing whatever that name is except one — a
+/// *constructor*, which is a method with no return type whose name is the class's. So a body
+/// declaring `Helpers() { }` is a constructor when the key is `Helpers` and
+/// `invalid method declaration; return type required` when it is anything else, and the same file
+/// would compile for one agent and not for the next.
 ///
 /// The check is the class's simple name **anywhere in code**, not the constructor shape alone,
 /// because an expression naming the class (`Module.helper()`) diverges the same way and for the

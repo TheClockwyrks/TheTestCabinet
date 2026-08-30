@@ -245,7 +245,8 @@ pub(super) const PROGRAM_FILE: &str = "main.cpp";
 /// What `clang++` is told to write, in this preparation's own output directory.
 const ARTIFACT_FILE: &str = "program.wasm";
 
-/// What one code module's precompiled interface is called, given its binding key.
+/// What one code module's precompiled interface is called, given its binding key, inside that key's
+/// own directory in the band.
 fn interface_file(key: &str) -> String {
     format!("module_{key}.pcm")
 }
@@ -253,9 +254,9 @@ fn interface_file(key: &str) -> String {
 /// Everything a `clang++` invocation on the turn path needs that is not the preparation's own: the
 /// wasi-sdk tree and the unpacked guest.
 ///
-/// Bundled because all three compiles this arm runs — the module's own check, a bound module's
-/// precompile and the program's build — open with the same arguments, and a difference between them
-/// would be a module accepted at its read and rejected at a program's compile.
+/// Bundled because both compiles this arm runs — a module's precompile and the program's build —
+/// open with the same arguments, and a difference between them would be a module accepted at its
+/// read and rejected at a program's compile.
 struct Toolchain<'a> {
     /// The wasi-sdk tree the compiler comes out of.
     home: &'a Path,
@@ -365,8 +366,8 @@ const EXCEPTION_FLAGS: &[&str] = &["-fwasm-exceptions", "-mllvm", "-wasm-use-leg
 /// `libc++ Hardening: assertion vector[] index out of bounds failed` at the model's own line.
 const HARDENING_FLAG: &str = "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE";
 
-/// **Everything every `clang++` this arm spawns passes**, in one place because the three of them —
-/// a module's own check, a bound module's precompile and the program's build — must be one list.
+/// **Everything every `clang++` this arm spawns passes**, in one place because the two of them —
+/// a module's precompile and the program's build — must be one list.
 ///
 /// A difference between them is a module accepted at its read and rejected at a program's compile,
 /// and a `-D` that differs is worse because it is silent: this arm's hardening flag was once passed
@@ -376,7 +377,7 @@ fn shared_flags(home: &Path) -> Vec<String> {
     let mut flags = vec![
         format!("--target={}", target()),
         format!("-std={}", language_standard()),
-        // The toolchain's own tree, shortened, beside the per-preparation rewrite the command adds:
+        // The toolchain's own tree, shortened, beside the workspace rewrite the command adds:
         // libc++ builds a hardening failure's message out of `__FILE__`, so without this a model
         // reads ninety characters of somebody's home directory on every frame of every backtrace
         // rather than `/wasi-sdk/…/vector.h:412`. A rewrite of what the compiler RECORDS, which can
@@ -512,24 +513,25 @@ pub(super) fn compile_program(
     })
 }
 
-/// Prepare a **code module** — the code half of a skill or a memory — by compiling it the way a
-/// program will, and read the names its namespace offers.
+/// Prepare a **code module** — the code half of a skill or a memory — by precompiling it into the
+/// module interface every program that imports it is handed, and read the names its namespace
+/// offers.
 ///
-/// What comes back is **source**, which is what a linked language's module has to be: it is an input
-/// to the [program compile](compile_program) that binds it, not something a guest could load on its
-/// own. It is the author's own bytes rather than the namespaced form, because the namespace is
-/// written under the key the *program* knows and a module's own preparation is handed none.
+/// This is where a module is compiled and the only place. `key` is the binding key, so the module is
+/// namespaced and declared under the name a program writes an `import` for, and the interface and
+/// the file it was built from land in that key's directory in the
+/// [band](crate::sandbox::Workspace::open_module). Every program the agent writes afterwards is
+/// given the interface on `-fmodule-file=` and as a link input.
 ///
-/// The check is `-fsyntax-only` over the namespaced module **as its own module interface unit**,
-/// which is the whole of what this step can decide and a fraction of what a full build costs: there
-/// is nothing to instantiate templates for, nothing to optimise and no interface to write for a file
-/// that is going to be compiled again as part of a program. A module needs no entry point to be
-/// checked this way, which is why this arm's one refusal —
-/// [a program with no `main`](self::NO_MAIN) — has no counterpart here.
+/// A `--precompile` rather than a `-fsyntax-only`: what a program links is the interface, so
+/// producing it here is what makes the read and the link one invocation. A module needs no entry
+/// point, which is why this arm's one refusal — [a program with no `main`](self::NO_MAIN) — has no
+/// counterpart here.
 ///
 /// Compiling it now is what buys the author a diagnostic **at the read**, in their own coordinates,
 /// rather than a program that stops compiling a turn later for reasons in somebody else's file.
 pub(super) fn compile_module(
+    key: &str,
     source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedModule, PrepareFailure> {
@@ -537,20 +539,7 @@ pub(super) fn compile_module(
     let toolchain = Toolchain { home: &home, guest };
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
-    let file = super::source::module_file(super::source::CHECK_KEY);
-    workspace
-        .write(
-            &file,
-            &super::source::namespaced(source, super::source::CHECK_KEY),
-        )
-        .map_err(PrepareFailure::Toolchain)?;
-
-    let mut command = toolchain
-        .command(workspace, context)
-        .map_err(PrepareFailure::Toolchain)?;
-    command.arg("-fsyntax-only").args(MODULE_INPUT).arg(&file);
-    let report = toolchain.run(command).map_err(PrepareFailure::Toolchain)?;
-    classify_module(&report, &file)?;
+    precompile_module(key, source, &toolchain, workspace, context)?;
 
     Ok(PreparedModule {
         source: source.to_string(),
@@ -563,32 +552,37 @@ pub(super) fn compile_module(
 /// all.
 const MODULE_INPUT: [&str; 2] = ["-x", "c++-module"];
 
-/// Compile one code module in a program's scope into its **precompiled module interface**, and hand
-/// back where it was written.
+/// Compile one code module into its **precompiled module interface**, inside that key's directory in
+/// the band, and hand back where it was written.
 ///
 /// This is the step that keeps gg's surface out of the program's translation unit. A module's own
 /// `#include <gg.hpp>` is in its global module fragment, so the names it declares are attached to
 /// the global module and are unreachable from whoever imports it: the program gets `lib::<key>` and
 /// nothing else.
 ///
-/// A diagnostic here is the author's, in the author's own coordinates, and reaches the model as a
-/// compile failure the same way one in the model's own file does. It is rare rather than routine —
-/// the module was already checked at its [read](compile_module) — and it is what happens when a
-/// module and the toolchain it was read under have drifted apart.
+/// The namespaced source is written into the band beside the interface and stays there, because a
+/// `.pcm` records the file it was built from and clang validates it against that file every time it
+/// loads one.
+///
+/// A diagnostic here is the author's, in the author's own coordinates, and reaches whoever asked for
+/// it as a compile failure: the read that loaded the module, or — on the one occasion a program is
+/// handed a module this workspace holds no build of — the program's own preparation.
 fn precompile_module(
-    module: &CodeModule,
+    key: &str,
+    source: &str,
     toolchain: &Toolchain<'_>,
     workspace: &Workspace,
     context: &PrepareContext,
 ) -> Result<PathBuf, PrepareFailure> {
-    let file = super::source::module_file(&module.name);
-    workspace
-        .write(
-            &file,
-            &super::source::namespaced(&module.source, &module.name),
-        )
+    let name = super::source::module_file(key);
+    let into = workspace
+        .open_module(key)
         .map_err(PrepareFailure::Toolchain)?;
-    let interface = workspace.output().join(interface_file(&module.name));
+    workspace
+        .write_module(key, &name, &super::source::namespaced(source, key))
+        .map_err(PrepareFailure::Toolchain)?;
+    let file = workspace.module_path(key, &name);
+    let interface = into.join(interface_file(key));
 
     let mut command = toolchain
         .command(workspace, context)
@@ -600,8 +594,23 @@ fn precompile_module(
         .arg("-o")
         .arg(&interface);
     let report = toolchain.run(command).map_err(PrepareFailure::Toolchain)?;
-    classify_module(&report, &file)?;
+    classify_module(&report, &super::source::module_file(key))?;
+    workspace.record_module(key, source, vec![interface.clone()]);
     Ok(interface)
+}
+
+/// The interface of the module bound at `module.name`, precompiling it first when this agent's
+/// workspace holds no build made from these bytes.
+fn bind_module(
+    module: &CodeModule,
+    toolchain: &Toolchain<'_>,
+    workspace: &Workspace,
+    context: &PrepareContext,
+) -> Result<PathBuf, PrepareFailure> {
+    match workspace.module_build(&module.name, &module.source) {
+        Some(artifacts) if !artifacts.is_empty() => Ok(artifacts[0].clone()),
+        _ => precompile_module(&module.name, &module.source, toolchain, workspace, context),
+    }
 }
 
 /// The refusal a reply with no entry point gets, at prepare time.
@@ -637,14 +646,14 @@ fn compile(
         .write(PROGRAM_FILE, program)
         .map_err(PrepareFailure::Toolchain)?;
 
-    // Each code module is compiled into a module interface of its own before the program is, and
-    // the program is handed the interfaces rather than the sources. That is what puts gg's surface
-    // out of the program's reach: a global module fragment's includes are attached to the global
-    // module and reach nobody who imports it. Nothing here writes an `import` for the program — the
-    // model's own reply carries it, or the module's names are undeclared.
+    // Each code module was compiled into a module interface of its own at the read that loaded it,
+    // and the program is handed the interfaces rather than the sources. That is what puts gg's
+    // surface out of the program's reach: a global module fragment's includes are attached to the
+    // global module and reach nobody who imports it. Nothing here writes an `import` for the
+    // program — the model's own reply carries it, or the module's names are undeclared.
     let mut interfaces = Vec::with_capacity(modules.len());
     for module in modules {
-        interfaces.push(precompile_module(module, &toolchain, workspace, context)?);
+        interfaces.push(bind_module(module, &toolchain, workspace, context)?);
     }
 
     let artifact = workspace.output().join(ARTIFACT_FILE);

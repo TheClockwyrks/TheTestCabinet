@@ -136,18 +136,18 @@
 //! # A code module is a referenced library
 //!
 //! A code [skill](crate::skills)'s or [memory](crate::memories)'s class is bound at `lib.<key>`, and
-//! that binding is an **assembly the program references**. Each module in scope is written into the
-//! preparation's workspace as `module_<key>.cs` — [wrapped](super::source::wrap_module) as
-//! `public static class <key>` inside `namespace lib` — compiled on its own with `-target:library`
-//! into `lib.<key>.dll`, and named to the program's compile with `-r:`. The modules are built in
-//! binding order and each references the ones before it, so one module may reach another's class.
+//! that binding is an **assembly the program references**. At the read that binds it, a module is
+//! written into that key's directory in the
+//! [band](crate::sandbox::Workspace::open_module) as `module_<key>.cs` —
+//! [wrapped](super::source::wrap_module) as `public static class <key>` inside `namespace lib` —
+//! and compiled on its own with `-target:library` and `-r:Gg.dll` into `lib.<key>.dll`. Every
+//! program the agent writes afterwards names that file with `-r:` and reads its IL out of it.
 //!
 //! It is the same supply gg's own surface gets, which is the point: `-r:Gg.dll` and
 //! `-r:lib.CsvTools.dll` are one mechanism, and neither declares a name.
 //!
-//! A module is also compiled **alone** when it is read — [`compile_module`] — which is what buys its
-//! author a diagnostic in their own coordinates rather than a program that stops compiling a turn
-//! later for reasons in somebody else's file.
+//! Compiling it at the read is what buys its author a diagnostic in their own coordinates rather
+//! than a program that stops compiling a turn later for reasons in somebody else's file.
 //!
 //! # What is deliberately absent from this arm's class library
 //!
@@ -215,8 +215,8 @@ const VENDORED_LIBRARIES: &[&str] = &["libicuuc", "libicui18n", "libicudata"];
 
 /// The file a model's program is compiled from, and the one its diagnostics are located in.
 ///
-/// A fixed name inside a per-preparation directory, which is the seam's rule: what differs between
-/// two concurrent compiles is the directory, never the file name, so a diagnostic always reads
+/// A fixed name inside a directory the preparation was handed empty, which is the seam's rule: what
+/// differs between two compiles is the directory, never the file name, so a diagnostic always reads
 /// `program.cs(7,9)` and never a path that leaks a workspace id to the model.
 pub(super) const PROGRAM_FILE: &str = "program.cs";
 
@@ -244,21 +244,14 @@ pub(super) fn module_assembly(key: &str) -> String {
     format!("lib.{key}.dll")
 }
 
-/// The assembly a **code module's own check** is told to produce, and then thrown away.
-///
-/// The check compiles a module under a fixed key before any program has asked for it, so this
-/// assembly is not the one a program will reference — that one is built per key, by
-/// [`module_assembly`], when the program that binds it is compiled. Nothing reads this one.
-const MODULE_ASSEMBLY: &str = "GgModule.dll";
-
 /// The response file one compiler invocation's arguments are written into, named for the assembly
 /// it produces.
 ///
 /// A file rather than an argument list because the reference set alone is ~160 paths: passing them
 /// as `argv` works today and is one platform limit away from not, and a response file is what a
-/// .NET build itself uses for exactly this. Named per assembly because a preparation runs `csc`
-/// once per module and once for the program, in one workspace, and a fixed name would leave an
-/// operator reading the workspace of a failed turn only the last of them.
+/// .NET build itself uses for exactly this. Named per assembly because one workspace holds the
+/// program's invocation and each module's, and a fixed name would leave an operator reading the
+/// workspace of a failed turn only the last of them.
 fn response_name(assembly: &str) -> String {
     format!("{}.rsp", assembly.trim_end_matches(".dll"))
 }
@@ -394,36 +387,33 @@ fn manifest(assemblies: &[(String, Vec<u8>)]) -> String {
     out
 }
 
-/// Prepare a **code module** — the code half of a skill or a memory — by compiling it the way a
-/// program will, and read the names its class offers.
+/// Prepare a **code module** — the code half of a skill or a memory — by compiling it into the
+/// library a program references, and read the names its class offers.
 ///
-/// What comes back is the author's **source**, because the library a program references is built for
-/// a key this preparation is not handed: the seam binds `lib.<key>` when the module is loaded, and
-/// the class inside the library is named for it. So the assembly built here is the check and nothing
-/// more, and [`compile`] builds the one a program references, under the key that program knows.
+/// This is where a module is compiled and the only place. `key` is the binding key, so the class is
+/// named for it and the assembly is `lib.<key>.dll`, inside that key's directory in the
+/// [band](crate::sandbox::Workspace::open_module). Every program the agent writes afterwards is
+/// handed `-r:` of that file and reads its IL out of it.
 ///
 /// It is compiled here, at the read, for what that buys its author: a diagnostic in **their own
 /// coordinates**, on the call that loaded the skill, rather than a program that stops compiling a
-/// turn later for reasons in somebody else's file. It is the same `-target:library` over the same
-/// `-r:Gg.dll` a bound module's own library is built with, so what compiles here compiles there.
+/// turn later for reasons in somebody else's file. `-r:Gg.dll` and nothing else, so a module sees
+/// gg's surface and its own declarations.
 pub(super) fn compile_module(
+    key: &str,
     module_source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedModule, PrepareFailure> {
-    let module = source::wrap_module(module_source, source::CHECK_KEY)?;
+    let module = source::wrap_module(module_source, key)?;
     let root = dotnet_home().ok_or_else(|| PrepareFailure::Toolchain(missing_toolchain()))?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
-    let sdk = sdk_assembly(&root, context).map_err(PrepareFailure::Toolchain)?;
-    let file = workspace
-        .write(&source::module_file(source::CHECK_KEY), &module.source)
-        .map_err(PrepareFailure::Toolchain)?;
-    library(
+    build_module(
         &root,
         workspace,
-        std::slice::from_ref(&sdk),
-        &file,
-        MODULE_ASSEMBLY,
+        key,
+        &module.source,
+        module_source,
         context,
     )?;
 
@@ -433,44 +423,98 @@ pub(super) fn compile_module(
     })
 }
 
-/// Compile one `.cs` file into `assembly`, a library inside this preparation's own output directory
-/// — a code module's own check, and the library a program references — and hand back where it landed.
+/// Compile one code module's wrapped source into `lib.<key>.dll`, inside that key's directory in the
+/// band, and record what it produced.
+fn build_module(
+    root: &Path,
+    workspace: &Workspace,
+    key: &str,
+    wrapped: &str,
+    source: &str,
+    context: &PrepareContext,
+) -> Result<PathBuf, PrepareFailure> {
+    let sdk = sdk_assembly(root, context).map_err(PrepareFailure::Toolchain)?;
+    let name = source::module_file(key);
+    let into = workspace
+        .open_module(key)
+        .map_err(PrepareFailure::Toolchain)?;
+    let file = workspace
+        .write_module(key, &name, wrapped)
+        .map_err(PrepareFailure::Toolchain)?;
+    let assembly = into.join(module_assembly(key));
+    library(
+        root,
+        workspace,
+        std::slice::from_ref(&sdk),
+        &file,
+        &assembly,
+        &response_name(&module_assembly(key)),
+        context,
+    )?;
+    workspace.record_module(key, source, vec![assembly.clone()]);
+    Ok(assembly)
+}
+
+/// The library the module bound at `module.name` is referenced through, compiling it first when this
+/// agent's workspace holds no build made from these bytes.
+fn bind_module(
+    root: &Path,
+    workspace: &Workspace,
+    module: &CodeModule,
+    context: &PrepareContext,
+) -> Result<PathBuf, PrepareFailure> {
+    match workspace.module_build(&module.name, &module.source) {
+        Some(artifacts) if !artifacts.is_empty() => Ok(artifacts[0].clone()),
+        _ => {
+            let wrapped = source::wrap_module(&module.source, &module.name)?;
+            build_module(
+                root,
+                workspace,
+                &module.name,
+                &wrapped.source,
+                &module.source,
+                context,
+            )
+        }
+    }
+}
+
+/// Compile one `.cs` file into `output` — a code module's library, or the program's own assembly —
+/// and hand back where it landed.
 ///
 /// `-target:library` because a class body has no entry point and needs none, and `libraries` is what
-/// this one may reach: gg's SDK, and for a bound module the modules bound before it.
+/// this one may reach: gg's SDK, and nothing else for a module.
 fn library(
     root: &Path,
     workspace: &Workspace,
     libraries: &[PathBuf],
     file: &Path,
-    assembly: &str,
+    output: &Path,
+    response_name: &str,
     context: &PrepareContext,
-) -> Result<PathBuf, PrepareFailure> {
-    let output = workspace.output().join(assembly);
+) -> Result<(), PrepareFailure> {
     let response = workspace
         .write(
-            &response_name(assembly),
+            response_name,
             &response_file(
                 root,
                 Target::Library,
                 workspace.work(),
                 libraries,
                 std::slice::from_ref(&file.to_path_buf()),
-                &output,
+                output,
             )?,
         )
         .map_err(PrepareFailure::Toolchain)?;
     let report = invoke(root, &response, context).map_err(PrepareFailure::Toolchain)?;
-    classify(&report, root, file, context)?;
-    Ok(output)
+    classify(&report, root, file, context)
 }
 
 /// Compile one model program, and the code modules in its scope, into the assemblies the guest runs.
 ///
 /// The model's program is compiled **alone**: its own file is the only source in its invocation, and
-/// everything it may reach is a `-r:` reference. Each module in scope is compiled first, into its
-/// own library, in binding order and each referencing the ones before it, so one module may reach
-/// another's class and none of them can move a line of the model's own file.
+/// everything it may reach is a `-r:` reference. Each module in scope was compiled into its own
+/// library at the read that bound it, so none of them can move a line of the model's own file.
 ///
 /// What comes back is every assembly the turn needs, named as the guest registers it: gg's surface,
 /// the module libraries in binding order, and the program last.
@@ -490,18 +534,12 @@ fn compile(
         .map_err(PrepareFailure::Toolchain)?;
 
     let mut assemblies = vec![(SDK_ASSEMBLY.to_string(), read_assembly(&sdk)?)];
-    // What the next compile may reference, which grows as the modules are built: gg's surface first,
-    // then every module bound before this one.
+    // What the program's compile may reference: gg's surface, then every module in scope.
     let mut libraries = vec![sdk];
     for module in modules {
-        let wrapped = source::wrap_module(&module.source, &module.name)?;
-        let file = workspace
-            .write(&source::module_file(&module.name), &wrapped.source)
-            .map_err(PrepareFailure::Toolchain)?;
-        let name = module_assembly(&module.name);
-        let output = library(&root, workspace, &libraries, &file, &name, context)?;
-        assemblies.push((name, read_assembly(&output)?));
-        libraries.push(output);
+        let assembly = bind_module(&root, workspace, module, context)?;
+        assemblies.push((module_assembly(&module.name), read_assembly(&assembly)?));
+        libraries.push(assembly);
     }
 
     let output = workspace.output().join(PROGRAM_ASSEMBLY);
@@ -616,7 +654,7 @@ fn fingerprint_sdk() -> u64 {
 }
 
 /// What a compilation is for: a model's program, which the guest calls an entry point on, or a code
-/// module's own check, which has none and needs none.
+/// module's library, which has no entry point and needs none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     /// A program. `-target:exe`.

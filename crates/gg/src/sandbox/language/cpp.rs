@@ -244,18 +244,19 @@ impl ProgramLanguage for Cpp {
         compile::warm();
     }
 
-    /// The module's own `clang++`, asked to check the syntax rather than to build — and the names
-    /// its namespace offers, read from the author's own source.
+    /// The module's own `clang++`, asked to precompile the interface a program imports — and the
+    /// names its namespace offers, read from the author's own source.
     ///
     /// What comes back is **source**, which is what a linked language's module has to be: it is an
     /// input to the [program compile](compile::compile_program) that binds it, not something a guest
     /// could load on its own.
     fn prepare_module(
         &self,
+        key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        compile::compile_module(source, context)
+        compile::compile_module(key, source, context)
     }
 
     /// **`import lib.<key>;`** — the line a program writes to reach a code module's namespace, and

@@ -129,11 +129,12 @@ generic parameters, `where` clauses, `throws` and overloads, because the
 author's own text is what the compiler reads. A module that calls gg's surface
 writes `import gg` exactly as a program does.
 
-A module is compiled twice: type-checked alone when it is read, so a module that
-does not build fails on the turn that loaded it, and built into its own Swift
-module beside each program that uses it. Both compiles read the file
-`-parse-as-library`, so a code module is declarations where a program is the
-file that also carries statements.
+A module is compiled once, when it is read, so a module that does not build fails
+on the turn that loaded it. What that compile writes — the `.swiftmodule` the
+`-I` resolves and the object the program links — is kept in the loaded-module
+band of the agent's compile workspace for every later program. The file is read
+`-parse-as-library`, so a code module is declarations where a program is the file
+that also carries statements.
 
 Binding keys are camelCase and ASCII only, since a key names both the Swift
 module a program imports and the file it is compiled under. A key that names a

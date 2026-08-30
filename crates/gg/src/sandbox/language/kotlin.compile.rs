@@ -153,30 +153,25 @@ const HEAP: &str = "1g";
 /// own name is what decides the facade class gg's entry class calls.
 pub(super) const PROGRAM_FILE: &str = "Program.kt";
 
-/// The file a code module is **checked** in at the read that binds it, named for the package that
-/// read compiles it into.
-pub(super) const MODULE_FILE: &str = "Module.kt";
-
 /// The file gg's generated entry class is written into.
 const ENTRY_FILE: &str = "GgEntry.java";
 
-/// The directory the Kotlin compiler writes a program's own classes into, under the preparation's
-/// workspace.
+/// The directory the Kotlin compiler writes a program's own classes into, under the compile
+/// workspace's working directory.
 const PROGRAM_CLASSES: &str = "classes";
 
-/// The directory an agent's code modules are built under, inside the preparation's own workspace.
-const MODULE_ROOT: &str = "modules";
-
-/// Where one code module's file is written: a directory of the module's own, so no two modules and
-/// no program share a compile's inputs.
-fn module_source(key: &str) -> String {
-    format!("{MODULE_ROOT}/{key}/{}", source::module_file(key))
+/// Where one code module's file is written: this key's own directory in the
+/// [loaded-module band](crate::sandbox::Workspace::open_module) of the agent's compile workspace,
+/// which is where a build survives the preparation that made it — named by the seam rather than
+/// spelled here, so no two modules and no program share a compile's inputs.
+fn module_source(workspace: &Workspace, key: &str) -> String {
+    workspace.module_path(key, &source::module_file(key))
 }
 
 /// Where its classes are written, and the path that goes on the **classpath** of every program
 /// compiled against it.
-fn module_classes(key: &str) -> String {
-    format!("{MODULE_ROOT}/{key}/{PROGRAM_CLASSES}")
+fn module_classes(workspace: &Workspace, key: &str) -> String {
+    workspace.module_path(key, PROGRAM_CLASSES)
 }
 
 /// What TeaVM is asked to write: a `wasm32` core module.
@@ -257,10 +252,10 @@ pub(super) fn compile_program(
 /// Compile one model program into a component, or say why it could not be.
 ///
 /// `modules` are this agent's loaded code [skills](crate::skills) and [memories](crate::memories),
-/// each already through [`compile_module`]. Every one of them is compiled **first, and on its own**
-/// ([`build_module`]), and what this compile is given is the directory of class files that compile
-/// wrote — a classpath entry, exactly as this arm's SDK jar is. The program's own compile therefore
-/// reads two files, both of which name only what the model declared.
+/// each already compiled by [`compile_module`] at the read that bound it. What this compile is
+/// given is the directory of class files that compile wrote — a classpath entry, exactly as this
+/// arm's SDK jar is. The program's own compile therefore reads two files, both of which name only
+/// what the model declared.
 fn compile(
     program: &str,
     modules: &[CodeModule],
@@ -278,7 +273,7 @@ fn compile(
 
     let mut classpath: Vec<String> = Vec::new();
     for module in modules {
-        classpath.push(build_module(workspace, module)?);
+        classpath.push(bind_module(workspace, module)?);
     }
 
     let report = request(
@@ -302,67 +297,75 @@ fn compile(
     jvm::component::componentize(&module).map_err(PrepareFailure::Toolchain)
 }
 
-/// Check a code [skill](crate::skills)'s or [memory](crate::memories)'s Kotlin, and report the names
-/// its namespace offers.
+/// Compile a code [skill](crate::skills)'s or [memory](crate::memories)'s Kotlin into the classes a
+/// program is compiled against, and report the names its namespace offers.
 ///
-/// What comes back is **the author's own source**, not an artifact, because the key the module will
-/// be bound at does not exist yet and the key is the package it is compiled into. So this hands on
-/// the file, and [`build_module`] compiles it under that key for each program that uses it.
+/// This is where a module is compiled and the only place. `key` is the binding key, which on this
+/// arm is the package it is compiled into, so the class files land in that key's directory in the
+/// [band](crate::sandbox::Workspace::open_module) and every program the agent writes afterwards
+/// takes that directory as a classpath entry.
 ///
-/// The compiler still runs, and what it buys is the *location*. Without it a module that does not
-/// compile would take the turn of whoever loaded it, in a file its author never wrote, for as long
-/// as it stayed loaded. Running the Kotlin compiler here instead tells the author at the read, at
-/// the module's own line and column.
+/// A compile of its own, with the standard library and gg's SDK on its classpath and **nothing
+/// else**: a module sees gg's surface, the library set and its own declarations, and no other
+/// module.
 ///
-/// **The Kotlin compiler alone, and not TeaVM**: this output is thrown away, so asking for a wasm
-/// module would be paying TeaVM for an artifact nothing reads — and everything an author can get
-/// wrong that TeaVM would catch (a classlib method that is not there) is caught again, at the same
-/// line, on the first program compiled against it.
+/// Running the Kotlin compiler here is also what buys the *location*. Without it a module that does
+/// not compile would take the turn of whoever loaded it, in a file its author never wrote, for as
+/// long as it stayed loaded.
+///
+/// **The Kotlin compiler alone, and not TeaVM**: what a program links is class files, so asking for
+/// a wasm module here would be paying TeaVM for an artifact nothing reads.
 pub(super) fn compile_module(
+    key: &str,
     source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedModule, PrepareFailure> {
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
-    let wrapped = source::wrap_module(source, source::MODULE_CHECK_PACKAGE)?;
-    workspace
-        .write(MODULE_FILE, &wrapped.source)
-        .map_err(PrepareFailure::Toolchain)?;
-
-    let report = request(
-        workspace,
-        PROGRAM_CLASSES,
-        &[],
-        CHECK_ONLY,
-        CHECK_ONLY,
-        CHECK_ONLY,
-        &[MODULE_FILE.to_string()],
-    )?;
-    verdict(&report, MODULE_FILE)?;
+    let wrapped = source::wrap_module(source, &source::module_package(key))?;
+    build_module(workspace, key, &wrapped.source, source)?;
     Ok(PreparedModule {
         source: source.to_string(),
         exports: wrapped.exports,
     })
 }
 
-/// Compile one loaded code module under its binding key, and hand back the classpath entry a program
-/// reaches it through.
+/// The classpath entry the module bound at `module.name` is reached through, compiling it first when
+/// this agent's workspace holds no build made from these bytes.
 ///
-/// A compile of its own, with the standard library and gg's SDK on its classpath and **nothing
-/// else**: a module sees gg's surface, the library set and its own declarations, and no other module
-/// — the same scope it was checked in at the read.
-///
-/// A failure here is the model's to act on rather than the operator's, and it names the key: the
-/// module is the thing to fix or to stop loading, and a session told nothing would meet it again on
-/// every turn.
-fn build_module(workspace: &Workspace, module: &CodeModule) -> Result<String, PrepareFailure> {
+/// The build is the miss rather than the rule — a module reaching a program compile was compiled at
+/// the read that loaded it — and it is what keeps a program handed a module this workspace never saw
+/// compiling.
+fn bind_module(workspace: &Workspace, module: &CodeModule) -> Result<String, PrepareFailure> {
     let key = module.name.as_str();
+    if workspace.module_build(key, &module.source).is_some() {
+        return Ok(module_classes(workspace, key));
+    }
     let wrapped = source::wrap_module(&module.source, &source::module_package(key))
         .map_err(|failure| about(key, failure))?;
+    build_module(workspace, key, &wrapped.source, &module.source)
+        .map_err(|failure| about(key, failure))?;
+    Ok(module_classes(workspace, key))
+}
+
+/// Compile one code module's wrapped source into its own directory in the band, and record what that
+/// produced.
+///
+/// A failure names the key: the module is the thing to fix or to stop loading, and a session told
+/// nothing would meet it again on every turn.
+fn build_module(
+    workspace: &Workspace,
+    key: &str,
+    wrapped: &str,
+    source: &str,
+) -> Result<(), PrepareFailure> {
     workspace
-        .write(&module_source(key), &wrapped.source)
+        .open_module(key)
+        .map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .write_module(key, &source::module_file(key), wrapped)
         .map_err(PrepareFailure::Toolchain)?;
 
-    let classes = module_classes(key);
+    let classes = module_classes(workspace, key);
     let report = request(
         workspace,
         &classes,
@@ -370,10 +373,11 @@ fn build_module(workspace: &Workspace, module: &CodeModule) -> Result<String, Pr
         CHECK_ONLY,
         CHECK_ONLY,
         CHECK_ONLY,
-        &[module_source(key)],
+        &[module_source(workspace, key)],
     )?;
-    verdict(&report, &source::module_file(key)).map_err(|failure| about(key, failure))?;
-    Ok(classes)
+    verdict(&report, &source::module_file(key))?;
+    workspace.record_module(key, source, vec![workspace.work().join(&classes)]);
+    Ok(())
 }
 
 /// One of [`build_module`]'s failures, said as something about the code this session loaded.

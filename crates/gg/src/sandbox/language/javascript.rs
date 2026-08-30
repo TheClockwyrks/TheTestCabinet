@@ -122,6 +122,7 @@ impl ProgramLanguage for JavaScript {
     /// [TypeScript's](super::typescript).
     fn prepare_module(
         &self,
+        _key: &str,
         source: &str,
         _context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {

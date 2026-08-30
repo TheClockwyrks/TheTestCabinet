@@ -100,7 +100,7 @@ use std::path::Path;
 
 use test_cabinet_core::gg::{DEFAULT_OPENING_FUNCTIONS, GgProgramLanguage};
 
-use super::compile::PrepareContext;
+use super::compile::{AgentWorkspace, PrepareContext};
 use super::{CodeModule, ProgramLanguage, all_languages};
 
 /// The name the [module](ProgramLanguage::gate_module) the gate drives an arm's module step with
@@ -290,6 +290,9 @@ struct Unconverted {
     ///
     /// It is what makes a row a pin rather than a label: the day an arm's wrapper changes shape, the
     /// row is wrong and the gate says so, instead of going on describing a wrapper that has moved.
+    ///
+    /// A module half's wrapper is named for the key the module is bound at, so a row for one spells
+    /// [`MODULE_NAME`] as that arm spells a [binding name](ProgramLanguage::binding_name).
     adds: &'static str,
     /// What the arm does, in one clause, for whoever reads the failure rather than the table.
     instead: &'static str,
@@ -334,7 +337,7 @@ const UNCONVERTED: &[Unconverted] = &[
         // nowhere else in a PureScript file to say it. The line the author wrote is the line the
         // rewrite happens on, so no diagnostic moves.
         did: Did::Rewritten,
-        adds: "module Lib.Module where",
+        adds: "module Lib.GgAuthorshipMarker where",
         instead: "replaces the name in the author's own module header with the one a program \
                   imports, inside the line the author wrote so that no diagnostic moves",
     },
@@ -343,7 +346,7 @@ const UNCONVERTED: &[Unconverted] = &[
         arm: GgProgramLanguage::Java,
         half: Half::Module,
         did: Did::Wrapped,
-        adds: "package lib; public final class Module { ",
+        adds: "package lib; public final class ggAuthorshipMarker { ",
         instead: "puts the class body in a `public final` class of package `lib`, named by the key \
                   a program reaches it under, on the author's own first line so that no diagnostic \
                   moves",
@@ -353,7 +356,7 @@ const UNCONVERTED: &[Unconverted] = &[
         arm: GgProgramLanguage::Kotlin,
         half: Half::Module,
         did: Did::Wrapped,
-        adds: "package lib.module; ",
+        adds: "package lib.ggAuthorshipMarker; ",
         instead: "compiles the file into a package of gg's naming so that a program reaches it at \
                   `lib.<key>`, on the author's own first line so that no diagnostic moves",
     },
@@ -369,7 +372,7 @@ const UNCONVERTED: &[Unconverted] = &[
         // that namespace — and every moved line carries a `#line` stating where its author wrote it,
         // so no diagnostic moves with it.
         did: Did::Rewritten,
-        adds: "export module lib.Module;\nexport namespace lib::module {",
+        adds: "export module lib.gg_authorship_marker;\nexport namespace lib::gg_authorship_marker {",
         instead: "compiles the module as a named C++ module exporting a namespace it declares, \
                   under an include of gg's surface and the author's own includes hoisted beside it \
                   in the module's own global fragment, anchored by `#line` directives",
@@ -393,7 +396,7 @@ const UNCONVERTED: &[Unconverted] = &[
         arm: GgProgramLanguage::CSharp,
         half: Half::Module,
         did: Did::Wrapped,
-        adds: "public static class Module",
+        adds: "public static class GgAuthorshipMarker",
         instead: "puts the module in a class it declares, anchored by a `#line` directive",
     },
 ];
@@ -573,8 +576,12 @@ fn measure(language: &'static dyn ProgramLanguage, half: Half) -> Vec<Failure> {
             half.label(),
             scope.label()
         );
-        let context = PrepareContext::new();
-        let produced = match produced(language, half, *scope, &handed, &context) {
+        // One agent's compile workspace, and both preparations a `Loaded` drive makes stand on it:
+        // the module's own, and the program's. That is what a session does, and it is what puts the
+        // module's build where the program's compile finds it.
+        let agent = AgentWorkspace::new();
+        let context = PrepareContext::for_agent(&agent, language.persistent_work());
+        let produced = match produced(language, half, *scope, &handed, &agent, &context) {
             Ok(produced) => produced,
             Err(error) => {
                 failures.push(Failure::Baseline { subject, error });
@@ -682,11 +689,12 @@ fn produced(
     half: Half,
     scope: Scope,
     handed: &str,
+    agent: &AgentWorkspace,
     context: &PrepareContext,
 ) -> Result<Vec<String>, String> {
     let loaded = match scope {
         Scope::Alone => None,
-        Scope::Loaded => Some(loaded_module(language)?),
+        Scope::Loaded => Some(loaded_module(language, agent)?),
     };
     let bound: &[CodeModule] = match &loaded {
         Some(loaded) => &loaded.bound,
@@ -697,7 +705,7 @@ fn produced(
             .prepare_program(handed, bound, context)
             .map(|prepared| prepared.source),
         Half::Module => language
-            .prepare_module(handed, context)
+            .prepare_module(&language.binding_name(MODULE_NAME), handed, context)
             .map(|prepared| prepared.source),
     }
     .map_err(|failure| failure.to_string())?;
@@ -715,25 +723,33 @@ fn produced(
     Ok(produced)
 }
 
-/// **One code module of this arm's own, prepared and ready to hand its program step** — with the
-/// context it was prepared in, so the caller can keep that preparation's tree alive for as long as
-/// the program's preparation is reading its source.
+/// **One code module of this arm's own, prepared and ready to hand its program step.**
 ///
 /// The same source the [module half](Half::Module) is driven with, under the key this arm would
 /// really [bind it at](ProgramLanguage::binding_name), through this arm's own module step: a module
 /// gg invented the prepared form of would be a module no arm ever produces, and the program step is
 /// about to be measured on what it does with one.
-fn loaded_module(language: &'static dyn ProgramLanguage) -> Result<Loaded, String> {
-    let preparation = PrepareContext::new();
+///
+/// It is prepared on the **agent's** workspace, which is where the program's preparation is about to
+/// stand, so what the module's compile produced is where that preparation finds it. That is the
+/// arrangement a session really has.
+fn loaded_module(
+    language: &'static dyn ProgramLanguage,
+    agent: &AgentWorkspace,
+) -> Result<Loaded, String> {
+    let key = language.binding_name(MODULE_NAME);
     let source = language.gate_module(MODULE_NAME);
     let prepared = language
-        .prepare_module(&source, &preparation)
+        .prepare_module(
+            &key,
+            &source,
+            &PrepareContext::for_agent(agent, language.persistent_work()),
+        )
         .map_err(|failure| format!("the module to put in scope did not prepare: {failure}"))?;
     Ok(Loaded {
-        preparation,
         texts: vec![source, prepared.source.clone()],
         bound: vec![CodeModule {
-            name: language.binding_name(MODULE_NAME),
+            name: key,
             source: prepared.source,
         }],
     })
@@ -741,11 +757,6 @@ fn loaded_module(language: &'static dyn ProgramLanguage) -> Result<Loaded, Strin
 
 /// The module a [`Loaded`](Scope::Loaded) drive puts in scope.
 struct Loaded {
-    /// The preparation that produced it, held for as long as the program's preparation is reading
-    /// its source and never otherwise read: a context's tree is removed when it drops, and a module
-    /// prepared in a tree that is already gone is not the module a turn hands over.
-    #[allow(dead_code)]
-    preparation: PrepareContext,
     /// What the arm was handed and what it handed back — the module's own bytes, in both the forms
     /// a workspace file could be a version of.
     texts: Vec<String>,

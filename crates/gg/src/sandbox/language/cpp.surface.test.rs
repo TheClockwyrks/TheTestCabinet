@@ -844,7 +844,7 @@ fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
     let refused = super::compile::compile_program(
         "#include <boost/asio.hpp>\nint main() { return 0; }\n",
         &[],
-        &crate::sandbox::PrepareContext::new(),
+        &crate::sandbox::PrepareContext::detached(),
     );
     match refused {
         Err(crate::sandbox::PrepareFailure::Program(crate::sandbox::PrepareError::Compile(
@@ -1177,7 +1177,7 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
 #[test]
 fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let compile = |source: &str| {
-        super::compile::compile_program(source, &[], &crate::sandbox::PrepareContext::new())
+        super::compile::compile_program(source, &[], &crate::sandbox::PrepareContext::detached())
     };
     const CALL: &str = "int main() {\n  gg::views::open_text(\"t\", \"b\");\n  return 0;\n}\n";
 
@@ -1259,7 +1259,11 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
             .to_string(),
     }];
     let with_module = |source: &str| {
-        super::compile::compile_program(source, &modules, &crate::sandbox::PrepareContext::new())
+        super::compile::compile_program(
+            source,
+            &modules,
+            &crate::sandbox::PrepareContext::detached(),
+        )
     };
     // The module's own line, written by the program: nothing declares `lib` for it either.
     let import = crate::sandbox::language(GgProgramLanguage::Cpp)
@@ -1304,7 +1308,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
 fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
     let source = "#include <gg/views.hpp>\n\n// a comment gg has no business touching\nint main() \
                   {\n     gg::views::open_text(\"t\", \"b\");\n  return 0;\n}";
-    let context = crate::sandbox::PrepareContext::new();
+    let context = crate::sandbox::PrepareContext::detached();
     super::compile::compile_program(source, &[], &context).expect("the subject compiles");
     let workspace = context
         .opened_workspace()
@@ -1337,7 +1341,7 @@ fn the_file_view_program_gg_synthesizes_is_a_program_that_compiles() {
         super::source::defines_main(&program),
         "the synthesized file-view program defines no entry point:\n{program}"
     );
-    super::compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::new())
+    super::compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::detached())
         .unwrap_or_else(|failure| {
             panic!("gg pushes a C++ program that does not compile into the transcript: {failure}\n\n{program}")
         });

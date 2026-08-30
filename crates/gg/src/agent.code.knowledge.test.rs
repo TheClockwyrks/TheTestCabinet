@@ -51,7 +51,7 @@ fn docs(loaded: LoadedDocs) -> DocsRuntime {
 /// One agent that has used the `csv-tools` skill: its loaded code, and the runtime that answers
 /// lookups about it.
 fn used_csv_tools() -> (KnowledgeModules, DocsRuntime) {
-    let mut knowledge = KnowledgeModules::new();
+    let mut knowledge = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     knowledge
         .load(
             language(GgProgramLanguage::TypeScript),

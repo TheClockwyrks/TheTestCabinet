@@ -145,6 +145,7 @@ const view = views.openFile(
 console.log(view);
 "#,
         scope,
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         api,

@@ -129,8 +129,8 @@ use super::signatures::SignatureCatalogue;
 pub mod compile;
 
 pub use compile::{
-    CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, Workspace,
-    daemon, place, place_tree, shared_toolchain_dir,
+    AgentWorkspace, CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext,
+    Workspace, daemon, place, place_tree, shared_toolchain_dir,
 };
 
 #[path = "language/diagnostics.rs"]
@@ -552,13 +552,55 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// step does not is the [export list](PreparedModule::exports), and it reads that off the
     /// module the author wrote rather than off a namespace gg wrapped around it.
     ///
-    /// It is not a lesser path: a turn that reads three code skills compiles three modules beside
-    /// its own program, and every one of those compilations is concurrent with every other agent's.
+    /// It is not a lesser path: a turn that reads three code skills compiles three modules, and
+    /// every one of those compilations is concurrent with every other agent's.
+    ///
+    /// # This is where a module is compiled, and the only place
+    ///
+    /// `key` is the binding key the module is loaded under — the `<key>` of this arm's
+    /// [access spelling](Self::lib_access) — so a compiled arm builds the crate, class, package,
+    /// module or assembly under the name a program will really reach it by, once. What that build
+    /// produced goes into [`Workspace::open_module`](compile::Workspace::open_module) and is
+    /// [recorded](compile::Workspace::record_module) against the source it read, and the
+    /// [program step](Self::prepare_program) names it rather than building it again. A turn's
+    /// compile therefore covers the response however much the agent has loaded.
+    ///
+    /// The key is minted before this is called and is claimed only if this succeeds, so a module
+    /// that fails to prepare burns no key and the next read of the same thing gets the same one. A
+    /// read of bytes the key already holds is answered from the preparation that produced them, so
+    /// this is reached once per key per agent and a skill an agent uses on every turn costs one
+    /// compile for the session.
+    ///
+    /// A module is compiled against gg's surface and this arm's library set, so what it sees is
+    /// those and its own declarations. One loaded module reaches another the way any other caller
+    /// does, by being written to take what it needs as an argument.
+    ///
+    /// A build is recorded against the source this hands **back** — what
+    /// [`PreparedModule::source`] carries — because that is what a program's preparation is given
+    /// for the key. Every compiled arm hands back the author's own bytes, so for them the two are
+    /// one string.
     fn prepare_module(
         &self,
+        key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure>;
+
+    /// **The entries under the compile workspace's working directory this language's toolchain lays
+    /// out once for the agent**, which a preparation's reset leaves standing.
+    ///
+    /// Empty for every arm whose compiler is handed a set of files, which is all but one. It exists
+    /// for a toolchain that owns a *build tree* and keys its own incremental work on what is in it:
+    /// [PureScript](purescript)'s `purs` is given a project directory and a `--output` inside it,
+    /// and staging that project on every preparation would both cost 1,430 links a turn and throw
+    /// away the compiler's own record of what it had already built.
+    ///
+    /// What a language names here it lays out through
+    /// [`Workspace::stage_once`](compile::Workspace::stage_once), so the two facts — that it
+    /// is kept, and that it is made once — are declared in one place each and cannot come apart.
+    fn persistent_work(&self) -> &'static [&'static str] {
+        &[]
+    }
 
     /// The file extensions a code [skill](crate::skills) directory spells this language's module and
     /// on-use script with — `skill.<ext>`, `on-use.<ext>` — **most preferred first**, and never
@@ -1374,3 +1416,7 @@ pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::Launc
 #[cfg(test)]
 #[path = "language.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "language.reuse.test.rs"]
+mod reuse_tests;

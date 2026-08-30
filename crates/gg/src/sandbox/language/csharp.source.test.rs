@@ -38,7 +38,7 @@ fn a_skills_name_becomes_the_class_it_is_reached_through() {
 
     // The two shapes an identifier must not have.
     assert_eq!(binding_name("9lives"), "_9lives");
-    assert_eq!(binding_name("---"), CHECK_KEY);
+    assert_eq!(binding_name("---"), FALLBACK_KEY);
 }
 
 #[test]
@@ -343,7 +343,7 @@ fn a_brace_that_is_only_text_does_not_hide_a_declaration() {
 #[test]
 fn a_modules_file_is_named_so_a_diagnostic_in_one_is_never_the_models() {
     assert_eq!(module_file("CsvTools"), "module_CsvTools.cs");
-    assert!(module_file(CHECK_KEY).starts_with(MODULE_FILE_PREFIX));
+    assert!(module_file(FALLBACK_KEY).starts_with(MODULE_FILE_PREFIX));
 }
 
 /// **An export carries what a documentation view is rendered from**, cut at whichever of the three

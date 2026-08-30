@@ -108,10 +108,11 @@
 //!
 //! Several agents run programs at once — up to `limits.maxParallel` of them, each able to chain
 //! programs within a turn — and every one of them may be in this module simultaneously. So each
-//! compile runs in **this preparation's own [workspace](crate::sandbox::Workspace)**, holding its
-//! own `tsconfig.json`, its own `program.ts` and the `program.js` `tsc` wrote beside it, removed
-//! when the preparation ends. No compile can see, or be seen by, another one's input or output — and
-//! it is the seam that guarantees that rather than this module.
+//! compile runs in **the agent's own [compile workspace](crate::sandbox::Workspace)**, holding its
+//! own `tsconfig.json`, its own `program.ts` and the `program.js` `tsc` wrote beside it, cleared of
+//! the previous preparation's files before this one writes. No compile can see, or be seen by,
+//! another one's input or output — and it is the seam that guarantees that rather than this
+//! module.
 //!
 //! Two things are shared, and both are shared under the
 //! [one sanctioned discipline](crate::sandbox::shared_toolchain_dir). The **compiler inputs** — the

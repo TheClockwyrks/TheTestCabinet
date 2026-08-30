@@ -13,7 +13,7 @@ use crate::sandbox::membrane::CodeModule;
 /// Compile a program and hand back the compiler's diagnostics, failing the test on a toolchain
 /// failure — a missing `node` is a broken machine, not a result.
 fn diagnostics(source: &str) -> Option<String> {
-    match compile_program(source, &PrepareContext::new()) {
+    match compile_program(source, &PrepareContext::detached()) {
         Ok(_) => None,
         Err(PrepareFailure::Program(PrepareError::Compile(text))) => Some(text),
         Err(other) => panic!("expected a compile verdict, got {other}"),
@@ -22,7 +22,7 @@ fn diagnostics(source: &str) -> Option<String> {
 
 /// The JavaScript a program compiles to, failing the test on any refusal.
 fn emitted(source: &str) -> String {
-    match compile_program(source, &PrepareContext::new()) {
+    match compile_program(source, &PrepareContext::detached()) {
         Ok(prepared) => prepared.source,
         Err(other) => panic!("the program should have compiled: {other}"),
     }
@@ -198,7 +198,8 @@ fn a_module_is_compiled_in_its_own_coordinates() {
                  export interface Row { cells: string[] }\n\
                  function helper(): void {}\n\
                  export { helper as run };\n";
-    let prepared = compile_module(clean, &PrepareContext::new()).expect("the module type-checks");
+    let prepared =
+        compile_module(clean, &PrepareContext::detached()).expect("the module type-checks");
     assert_eq!(
         export_names(&prepared.exports),
         vec![
@@ -238,7 +239,7 @@ fn a_module_is_compiled_in_its_own_coordinates() {
     let broken =
         "import { files } from \"gg\";\nexport const total: number = files.listDir(\"src\");\n";
     let Err(PrepareFailure::Program(PrepareError::Compile(text))) =
-        compile_module(broken, &PrepareContext::new())
+        compile_module(broken, &PrepareContext::detached())
     else {
         panic!("a DirEntry[] is not a number");
     };
@@ -287,7 +288,7 @@ fn a_module_in_scope_is_reached_only_through_the_import_the_program_writes() {
         source: "export function parse(text) {\n  return text.length;\n}\n".to_string(),
     }];
 
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let unwritten = "console.log(csvTools.parse(\"a,b\"));\n";
     let Err(PrepareFailure::Program(PrepareError::Compile(text))) =
         super::super::TYPESCRIPT.prepare_program(unwritten, &modules, &context)
@@ -299,7 +300,7 @@ fn a_module_in_scope_is_reached_only_through_the_import_the_program_writes() {
         "the compiler's own sentence names the identifier: {text}"
     );
 
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let written =
         "import * as csvTools from \"lib:csvTools\";\n\nconsole.log(csvTools.parse(\"a,b\"));\n";
     super::super::TYPESCRIPT
@@ -366,7 +367,7 @@ fn a_compiler_that_cannot_run_is_not_the_models_failure() {
     let restore = std::env::var(NODE_ENV).ok();
     // SAFETY: single-threaded test, and the variable is restored before it returns.
     unsafe { std::env::set_var(NODE_ENV, "gg-no-such-interpreter") };
-    let failure = compile_program("export {};\n", &PrepareContext::new());
+    let failure = compile_program("export {};\n", &PrepareContext::detached());
     match restore {
         // SAFETY: as above.
         Some(value) => unsafe { std::env::set_var(NODE_ENV, value) },

@@ -1104,7 +1104,7 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
 #[test]
 fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let compile = |source: &str| {
-        compile::compile_program(source, &[], &crate::sandbox::PrepareContext::new())
+        compile::compile_program(source, &[], &crate::sandbox::PrepareContext::detached())
     };
     let refusal = |source: &str, wanted: &str| {
         let failure =
@@ -1173,7 +1173,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
 fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
     let source = "import gg\n\n// a comment gg has no business touching\n   \
                   gg.log(\"kept\")";
-    let context = crate::sandbox::PrepareContext::new();
+    let context = crate::sandbox::PrepareContext::detached();
     compile::compile_program(source, &[], &context).expect("the subject compiles");
     let workspace = context
         .opened_workspace()
@@ -1205,12 +1205,11 @@ fn the_file_view_program_gg_synthesizes_is_a_program_that_compiles() {
     };
     let program =
         arm.open_file_program(&[("src/main.swift", None), ("docs/spec.md", Some(window))]);
-    compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::new()).unwrap_or_else(
-        |failure| {
+    compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::detached())
+        .unwrap_or_else(|failure| {
             panic!(
                 "gg pushes a Swift program that does not compile into the transcript: \
                  {failure}\n\n{program}"
             )
-        },
-    );
+        });
 }

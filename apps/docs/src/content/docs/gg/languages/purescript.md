@@ -22,7 +22,7 @@ composition with a standard source-map library. A frame in the model's own
 PureScript names the model's own file and line, and a frame in a library names
 that library's own module.
 
-The preparation workspace, compiler isolation, the two failure bands and the
+The compile workspace, compiler isolation, the two failure bands and the
 diagnostic bound are shared with the other program languages and are described
 on [compilation](/gg/languages/compilation/).
 
@@ -53,7 +53,10 @@ would open with something other than an upper-case letter is prefixed `Module`,
 because a PureScript module name is a proper name.
 
 The module is compiled into the same `purs` project as the program that uses it,
-so the program reaches it the way it reaches any other module. The line is the
+so the program reaches it the way it reaches any other module. The project is the
+agent's: the staged library set and `purs`'s own output directory are laid out
+once for the agent and kept across its preparations, so a module compiled at the
+read that bound it stays compiled. The line is the
 key's own:
 
 ```
@@ -64,11 +67,13 @@ and an export is `CsvTools.parse`, type-checked by `purs` against the module's
 own signature. `ProgramLanguage::lib_import` states that line and
 `ProgramLanguage::lib_access` states `CsvTools.<name>`.
 
-Using a skill or a memory compiles its module on its own first, under
-`module.purs` and the name `Lib.Module`, so an author's mistake is a located
-diagnostic naming the skill rather than a failure of the next program that has it
-in scope. gg reports the lower-case value names among its exports, with the type
-names each signature writes in return and in parameter position.
+Using a skill or a memory compiles its module on its own first, under the name
+`Lib.<Key>` it will be reached by, so an author's mistake is a located diagnostic
+naming the skill rather than a failure of the next program that has it in scope.
+Its file is written into the loaded-module band of the agent's compile workspace,
+where `purs` finds it up to date on every later program. gg reports the lower-case
+value names among its exports, with the type names each signature writes in return
+and in parameter position.
 
 `.purs` is the arm's only module file extension.
 
@@ -116,9 +121,11 @@ and the compiled externs of everything a program imports, so the tree ships
 compiled and inside the binary. It is compiled with the codegen set a turn's
 compile uses, because `purs` treats a module built for a different set as stale.
 `warm_prepare` unpacks it once per machine into a content-keyed shared toolchain
-directory, sealed read-only, and each preparation hard-links its own tree out of
-that one. The two files at the root
-of `output/` that `purs` rewrites are staged as real copies.
+directory, sealed read-only, and each agent hard-links one tree out of that one
+at its first preparation. The project directory and the compiler's output
+directory are declared as persistent work, so the reset the next preparation
+pays leaves both standing. The two files at the root of `output/` that `purs`
+rewrites are staged as real copies.
 
 ## SDK and signature catalogue
 

@@ -68,21 +68,8 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # stays because a minimum-of-five reading of two interleaved measurements is still better taken with
 # the machine than beside it, and because it costs ~4 s of exclusive runner against a ~700 s run.
 [[profile.default.overrides]]
-filter = 'package(test-cabinet-gg) and test(=sandbox::language::ruby::substrate::the_baked_runtime_and_sdk_are_what_make_a_turn_affordable)'
+filter = 'package(test-cabinet-gg) and test(=sandbox::language::ruby::substrate::the_baked_runtime_makes_a_turn_affordable_and_requiring_gg_is_what_it_costs)'
 threads-required = "num-test-threads"
-
-# The PureScript arm's isolation gate spawns 32 real `purs` compiles and 32 real `esbuild`
-# bundles — sixteen serial baselines and sixteen concurrent, for the program half and the
-# module half — because the property it proves is that a compile's result belongs to its own
-# input at the concurrency a run really produces, and `purs` is one of the two toolchains
-# that was measured silently corrupting itself at eight. Measured on this repository's dev
-# container: 8.9 s alone, 41.9 s beside this module's other tests, against a default hard
-# kill at 120 s that would present as a mysterious hang rather than as a gate doing exactly
-# what it says. Bounded from the work rather than from the default, with room for a CI runner
-# with a quarter of the cores.
-[[profile.default.overrides]]
-filter = 'package(test-cabinet-gg) and test(=sandbox::language::purescript::substrate::sixteen_concurrent_preparations_each_get_their_own_program)'
-slow-timeout = { period = "120s", terminate-after = 3 }
 
 # The seam's OWN isolation gate, for the same reason and by the same arithmetic. It drives every
 # registered language's program and module steps sixteen ways, so each compiled arm added to the
@@ -220,8 +207,28 @@ slow-timeout = { period = "600s", terminate-after = 3 }
 # busier one — where the attempt before it was terminated against the 60 s x 2 default it had no
 # override for, and the run recorded a flaky result, which this repo counts as a failure. That is the
 # coin flip every sweep in this list is bounded away from, so it joins them.
+#
+# The REUSE gate is the sixth, and it is the heaviest of them for the same arithmetic that made the
+# authorship gate the fifth: it loads a code module into one agent and then prepares three programs
+# in that agent's workspace, so it is four preparations per arm against the authorship gate's three
+# and the four sweeps' one. Three programs rather than one is what the property needs — a single
+# program after the load reads the same whether the module was rebuilt or the read was skipped — so
+# the cost is inherent rather than wasteful, and there is nothing to trim that does not also weaken
+# what the gate asserts. Measured on this dev container:
+#
+#   run on its own                                            12.6 s
+#   beside six arms' substrate and surface tests              39.5 s
+#   under `cargo nextest run --workspace`                     62.0 s
+#   under `cargo nextest run --workspace` (again)             24.4 s
+#
+# The first workspace reading is over the default's 60 s warning line and inside a factor of two of
+# the 120 s kill it would otherwise have had no override for. The second is the argument rather than
+# a reprieve: two runs of the same code on the same machine, a factor of two and a half apart, so
+# what this gate costs on any one run is a reading of what else the scheduler is holding. Bounded
+# from the worst of them with room over, rather than left as the one sweep in this list without a
+# ceiling.
 [[profile.default.overrides]]
-filter = 'package(test-cabinet-gg) and (test(=sandbox::language::isolation::tests::no_two_preparations_of_a_language_are_handed_the_same_workspace) or test(=sandbox::tests::compile_tests::every_language_reports_what_compiling_its_program_cost) or test(=sandbox::language::tests::every_language_writes_the_program_that_opens_a_documentation_view) or test(=sandbox::language::tests::every_language_writes_the_program_that_opens_the_session) or test(=sandbox::language::authorship::tests::every_registered_arm_compiles_the_bytes_it_was_handed_or_records_what_it_does_instead))'
+filter = 'package(test-cabinet-gg) and (test(=sandbox::language::isolation::tests::a_workspace_belongs_to_one_agent_and_to_all_of_its_preparations) or test(=sandbox::language::reuse_tests::every_registered_language_compiles_a_loaded_module_once_for_the_agent) or test(=sandbox::tests::compile_tests::every_language_reports_what_compiling_its_program_cost) or test(=sandbox::language::tests::every_language_writes_the_program_that_opens_a_documentation_view) or test(=sandbox::language::tests::every_language_writes_the_program_that_opens_the_session) or test(=sandbox::language::authorship::tests::every_registered_arm_compiles_the_bytes_it_was_handed_or_records_what_it_does_instead))'
 slow-timeout = { period = "180s", terminate-after = 3 }
 
 # The Java arm's warm-JVM measurement, for the same reason as the Ruby arm's per-turn reading above

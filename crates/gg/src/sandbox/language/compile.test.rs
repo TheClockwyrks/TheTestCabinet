@@ -1,6 +1,6 @@
-//! Tests for the seam's [compiler isolation](super) mechanism — the private per-preparation
-//! workspace, the isolated compiler invocation, the shared-toolchain discipline and the
-//! exclusive-checkout pool.
+//! Tests for the seam's [compiler isolation](super) mechanism — the agent's private workspace and
+//! the reset each of its preparations gets, the isolated compiler invocation, the shared-toolchain
+//! discipline and the exclusive-checkout pool.
 //!
 //! These test the *affordances*. What tests the property they exist to guarantee — that a
 //! preparation's result belongs to its own input under real concurrency — is the
@@ -33,13 +33,13 @@ fn shell(context: &PrepareContext, script: &str) -> CompilerReport {
 // The private workspace
 // ---------------------------------------------------------------------------------------------
 
-/// The whole point of the mechanism, in one assertion: two preparations are never handed the same
-/// ground. This is the `purs` bug's precondition — eight compiles into one `output/` tree — made
-/// impossible at the source.
+/// The whole point of the mechanism, in one assertion: two agents are never handed the same ground.
+/// This is the `purs` bug's precondition — eight compiles into one `output/` tree — made impossible
+/// at the source.
 #[test]
-fn two_preparations_never_share_a_workspace() {
-    let first = PrepareContext::new();
-    let second = PrepareContext::new();
+fn two_agents_never_share_a_workspace() {
+    let first = PrepareContext::detached();
+    let second = PrepareContext::detached();
 
     let one = first.workspace().expect("a workspace opens");
     let two = second.workspace().expect("a workspace opens");
@@ -50,12 +50,12 @@ fn two_preparations_never_share_a_workspace() {
 }
 
 /// A language names its files whatever it likes and relies on the directory being its own. So the
-/// *same* file name written by two preparations must be two files, which is what lets a language use
-/// a constant name — `program.ts`, `Main.purs` — without inventing a unique one per call.
+/// *same* file name written by two agents must be two files, which is what lets a language use a
+/// constant name — `program.ts`, `Main.purs` — without inventing a unique one per call.
 #[test]
-fn the_same_file_name_in_two_preparations_is_two_files() {
-    let first = PrepareContext::new();
-    let second = PrepareContext::new();
+fn the_same_file_name_in_two_agents_is_two_files() {
+    let first = PrepareContext::detached();
+    let second = PrepareContext::detached();
 
     let one = first
         .workspace()
@@ -73,33 +73,403 @@ fn the_same_file_name_in_two_preparations_is_two_files() {
     assert_eq!(std::fs::read_to_string(&two).unwrap(), "second");
 }
 
-/// The tree is removed with the preparation that opened it. A run's container is thrown away
-/// eventually, but a long run compiling every turn would otherwise fill its disk with build trees.
+/// The tree is removed when the last hold on it is dropped. A run's container is thrown away
+/// eventually, but a machine running sixteen agents a run would otherwise fill its disk with build
+/// trees.
 #[test]
-fn a_workspace_is_removed_when_its_preparation_ends() {
+fn a_workspace_is_removed_when_its_agent_ends() {
     let path = {
-        let context = PrepareContext::new();
+        let agent = AgentWorkspace::new();
+        let context = PrepareContext::for_agent(&agent, &[]);
         let workspace = context.workspace().expect("a workspace opens");
         workspace
             .write("program.src", "x")
             .expect("the file is written");
-        workspace.work().to_path_buf()
+        let path = workspace.root().to_path_buf();
+        drop(context);
+        assert!(
+            path.exists(),
+            "{} was removed with a preparation rather than with its agent",
+            path.display()
+        );
+        path
     };
-    assert!(
-        !path.exists(),
-        "{} outlived its preparation",
-        path.display()
-    );
+    assert!(!path.exists(), "{} outlived its agent", path.display());
 }
 
 /// A language that compiles nothing asks for nothing. The context is the seam's offer, not its
 /// tax — JavaScript's arm is a type-strip and must not pay a directory for it.
 #[test]
 fn a_preparation_that_never_asks_opens_no_workspace() {
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     assert!(context.opened_workspace().is_none());
     let _ = context.workspace().expect("a workspace opens");
     assert!(context.opened_workspace().is_some());
+}
+
+/// **One agent's preparations stand on one tree**, which is what makes a session cost one staging of
+/// a language's library set rather than one per turn.
+#[test]
+fn every_preparation_of_one_agent_is_handed_that_agents_workspace() {
+    let agent = AgentWorkspace::new();
+    let opened: Vec<_> = (0..3)
+        .map(|_| {
+            let context = PrepareContext::for_agent(&agent, &[]);
+            context
+                .workspace()
+                .expect("a workspace opens")
+                .root()
+                .to_path_buf()
+        })
+        .collect();
+    assert!(
+        opened.windows(2).all(|pair| pair[0] == pair[1]),
+        "an agent's preparations were handed different trees: {opened:?}"
+    );
+}
+
+/// **A preparation is handed the previous one's directories empty.** The sources a language wrote
+/// and the artifacts a compiler produced are both gone before the next preparation writes its first
+/// file, so a language reading a fixed name back reads this response's file and never the last one's.
+#[test]
+fn a_preparation_removes_the_previous_ones_sources_and_build_output() {
+    let agent = AgentWorkspace::new();
+
+    let (work, output) = {
+        let context = PrepareContext::for_agent(&agent, &[]);
+        let workspace = context.workspace().expect("a workspace opens");
+        workspace
+            .write("program.src", "first")
+            .expect("the source is written");
+        std::fs::write(workspace.output().join("program.wasm"), "first")
+            .expect("the artifact is written");
+        (
+            workspace.work().to_path_buf(),
+            workspace.output().to_path_buf(),
+        )
+    };
+    assert!(work.join("program.src").exists());
+    assert!(output.join("program.wasm").exists());
+
+    let context = PrepareContext::for_agent(&agent, &[]);
+    let workspace = context.workspace().expect("a workspace opens");
+    assert_eq!(workspace.work(), work, "the tree is the same tree");
+    assert!(
+        !work.join("program.src").exists(),
+        "the previous preparation's source survived into this one"
+    );
+    assert!(
+        !output.join("program.wasm").exists(),
+        "the previous preparation's build output survived into this one"
+    );
+    assert_eq!(
+        entries(&work),
+        vec!["modules".to_string()],
+        "everything under the working directory but the loaded-module band is gone"
+    );
+    assert_eq!(
+        std::fs::read_dir(&output)
+            .expect("the output directory reads")
+            .count(),
+        0
+    );
+}
+
+/// The names directly under `directory`, sorted, for an assertion about what a reset left standing.
+fn entries(directory: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(directory)
+        .expect("the directory reads")
+        .map(|entry| {
+            entry
+                .expect("the entry reads")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// The reset is by directory rather than by name, so a file **the compiler** made — one no language
+/// registered and no language would think to remove — goes with the ones a language wrote.
+#[test]
+fn what_a_compiler_left_behind_is_gone_at_the_next_preparation() {
+    let agent = AgentWorkspace::new();
+
+    let first = PrepareContext::for_agent(&agent, &[]);
+    assert!(
+        shell(
+            &first,
+            "mkdir -p out && echo built > out/index.js && echo cached > .tsbuildinfo"
+        )
+        .ok
+    );
+    drop(first);
+
+    let second = PrepareContext::for_agent(&agent, &[]);
+    let workspace = second.workspace().expect("a workspace opens");
+    assert_eq!(
+        entries(workspace.work()),
+        vec!["modules".to_string()],
+        "a compiler's own leftovers reached the next preparation"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The loaded-module band
+// ---------------------------------------------------------------------------------------------
+
+/// **What a loaded module compiled to outlives the preparation that made it**, which is the whole of
+/// what lets a turn's compile cover the response.
+#[test]
+fn a_modules_build_survives_the_next_preparations_reset() {
+    let agent = AgentWorkspace::new();
+
+    let artifact = {
+        let context = PrepareContext::for_agent(&agent, &[]);
+        let workspace = context.workspace().expect("a workspace opens");
+        workspace.open_module("csvTools").expect("the key opens");
+        workspace
+            .write_module("csvTools", "module.src", "the module")
+            .expect("the module's source is written");
+        let artifact = workspace.module_dir("csvTools").join("module.built");
+        std::fs::write(&artifact, "built").expect("the build is written");
+        workspace.record_module("csvTools", "the module", vec![artifact.clone()]);
+        artifact
+    };
+
+    let context = PrepareContext::for_agent(&agent, &[]);
+    let workspace = context.workspace().expect("a workspace opens");
+    assert!(artifact.exists(), "the build was removed by the reset");
+    assert_eq!(
+        workspace.module_build("csvTools", "the module"),
+        Some(vec![artifact]),
+        "the next preparation could not name the build"
+    );
+}
+
+/// **A build is named only for the bytes it was made from.** A memory the model rewrote and re-loaded
+/// under the same key must not link the version it replaced.
+#[test]
+fn a_build_is_not_named_for_a_source_it_was_not_made_from() {
+    let context = PrepareContext::detached();
+    let workspace = context.workspace().expect("a workspace opens");
+    workspace.open_module("notes").expect("the key opens");
+    let artifact = workspace.module_dir("notes").join("module.built");
+    std::fs::write(&artifact, "built").expect("the build is written");
+    workspace.record_module("notes", "first", vec![artifact.clone()]);
+
+    assert!(workspace.module_build("notes", "first").is_some());
+    assert_eq!(workspace.module_build("notes", "second"), None);
+    assert_eq!(workspace.module_build("other", "first"), None);
+
+    // A file the machine removed under gg is a rebuild rather than a compiler naming a path nobody
+    // wrote.
+    std::fs::remove_file(&artifact).expect("the build is removed");
+    assert_eq!(workspace.module_build("notes", "first"), None);
+}
+
+/// **Loading a key again empties it**, so a directory can never hold two versions of one module for
+/// a compiler to resolve either way.
+#[test]
+fn opening_a_key_clears_what_the_last_load_left_there() {
+    let context = PrepareContext::detached();
+    let workspace = context.workspace().expect("a workspace opens");
+    workspace.open_module("notes").expect("the key opens");
+    let stale = workspace.module_dir("notes").join("stale.built");
+    std::fs::write(&stale, "built").expect("the build is written");
+    workspace.record_module("notes", "first", vec![stale.clone()]);
+
+    workspace.open_module("notes").expect("the key opens again");
+    assert!(!stale.exists(), "the previous load's build survived");
+    assert_eq!(
+        workspace.module_build("notes", "first"),
+        None,
+        "the previous load's build was still named"
+    );
+}
+
+/// **What a language declares persistent survives the reset, and nothing else does.**
+///
+/// The one arm that declares anything is PureScript, whose `purs` project is laid out once for the
+/// agent. What the declaration must not become is a reset a language can opt out of wholesale, so
+/// this asserts the undeclared neighbour goes.
+#[test]
+fn a_declared_entry_survives_the_reset_and_its_neighbour_does_not() {
+    let agent = AgentWorkspace::new();
+    const KEPT: &[&str] = &["output"];
+
+    let work = {
+        let context = PrepareContext::for_agent(&agent, KEPT);
+        let workspace = context.workspace().expect("a workspace opens");
+        workspace
+            .write("output/cache-db.json", "{}")
+            .expect("the project's own file is written");
+        workspace
+            .write("bundle.js", "the last response")
+            .expect("the response's file is written");
+        workspace.work().to_path_buf()
+    };
+
+    let context = PrepareContext::for_agent(&agent, KEPT);
+    let _ = context.workspace().expect("a workspace opens");
+    assert!(
+        work.join("output/cache-db.json").exists(),
+        "the declared entry was removed under the language that laid it out"
+    );
+    assert!(
+        !work.join("bundle.js").exists(),
+        "the previous response's file survived beside the declared entry"
+    );
+}
+
+/// **What a language lays out once for the agent is laid out once**, however many preparations ask
+/// for it.
+#[test]
+fn a_staged_tree_is_laid_out_once_for_the_agent() {
+    const KEPT: &[&str] = &["project"];
+    let agent = AgentWorkspace::new();
+    let staged = AtomicUsize::new(0);
+    for _ in 0..3 {
+        let context = PrepareContext::for_agent(&agent, KEPT);
+        context
+            .workspace()
+            .expect("a workspace opens")
+            .stage_once(KEPT, || {
+                staged.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            })
+            .expect("the staging succeeds");
+    }
+    assert_eq!(staged.load(Ordering::SeqCst), 1);
+}
+
+/// **What is staged once for the agent is kept by every reset after it**, whatever the preparation
+/// asking for that reset was built with.
+///
+/// The hazard this closes is the one pairing that would make staging once worse than staging per
+/// preparation: a tree laid out for the agent and swept by the next preparation, leaving a compiler
+/// pointed at a project directory that is no longer there. What a staging lays out is named in the
+/// call that lays it out, so the tree keeps it rather than each preparation having to ask for it.
+#[test]
+fn what_is_staged_once_for_the_agent_survives_a_preparation_that_names_none_of_it() {
+    let agent = AgentWorkspace::new();
+
+    let staging = PrepareContext::for_agent(&agent, &[]);
+    let workspace = staging.workspace().expect("a workspace opens");
+    let work = workspace.work().to_path_buf();
+    workspace
+        .stage_once(&["project"], || {
+            std::fs::create_dir_all(work.join("project"))
+                .and_then(|()| std::fs::write(work.join("project").join("index"), "staged"))
+                .map_err(|error| error.to_string())
+        })
+        .expect("the staging succeeds");
+    workspace
+        .write("bundle.js", "the last response")
+        .expect("the response's file is written");
+    drop(staging);
+
+    let next = PrepareContext::for_agent(&agent, &[]);
+    let _ = next.workspace().expect("a workspace opens");
+    assert!(
+        work.join("project").join("index").exists(),
+        "a preparation naming none of the staged tree removed it"
+    );
+    assert!(
+        !work.join("bundle.js").exists(),
+        "the previous response's file survived beside the staged tree"
+    );
+}
+
+/// **One agent's tree serves one preparation at a time.** Two preparations of one agent taken on two
+/// threads are serialised rather than clearing under each other, so the second finds the tree the
+/// reset left it rather than half of the first's files.
+#[test]
+fn two_preparations_of_one_agent_do_not_clear_under_each_other() {
+    let agent = AgentWorkspace::new();
+    let holder = PrepareContext::for_agent(&agent, &[]);
+    let workspace = holder.workspace().expect("a workspace opens");
+    workspace
+        .write("program.src", "the first response")
+        .expect("the source is written");
+    let work = workspace.work().to_path_buf();
+
+    let waiting = std::thread::spawn({
+        let agent = agent.clone();
+        move || {
+            let context = PrepareContext::for_agent(&agent, &[]);
+            context
+                .workspace()
+                .expect("a workspace opens")
+                .write("program.src", "the second response")
+                .expect("the source is written");
+        }
+    });
+
+    // The tree is still the first preparation's while it holds the context, whatever the second
+    // thread is doing: a reset that ran here would take this file with it.
+    for _ in 0..20 {
+        assert_eq!(
+            std::fs::read_to_string(work.join("program.src")).unwrap_or_default(),
+            "the first response",
+            "a second preparation cleared the tree while the first was writing in it"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    drop(holder);
+
+    waiting.join().expect("the waiting preparation finished");
+    assert_eq!(
+        std::fs::read_to_string(work.join("program.src")).unwrap_or_default(),
+        "the second response"
+    );
+}
+
+/// **The agent's toolchain cache survives its preparations.** `HOME` and the `XDG_*` roots are the
+/// agent's rather than one preparation's, which is what lets a toolchain that caches under them warm
+/// once per session instead of once per turn.
+#[test]
+fn the_agents_toolchain_cache_survives_a_preparation() {
+    let agent = AgentWorkspace::new();
+
+    let first = PrepareContext::for_agent(&agent, &[]);
+    assert!(shell(&first, "mkdir -p \"$XDG_CACHE_HOME/toolchain\" && echo warm > \"$XDG_CACHE_HOME/toolchain/index\"").ok);
+    drop(first);
+
+    let second = PrepareContext::for_agent(&agent, &[]);
+    let report = shell(&second, "cat \"$XDG_CACHE_HOME/toolchain/index\"");
+    assert!(report.ok, "{}: {}", report.status, report.stderr);
+    assert_eq!(report.stdout.trim(), "warm");
+}
+
+/// The reset is as lazy as the tree is. A preparation that asks for no workspace removes nothing, so
+/// an agent whose turn compiles nothing cannot cost a later preparation its files — and an arm that
+/// compiles nothing still pays no syscall.
+#[test]
+fn a_preparation_that_never_asks_removes_nothing() {
+    let agent = AgentWorkspace::new();
+
+    let first = PrepareContext::for_agent(&agent, &[]);
+    let written = first
+        .workspace()
+        .expect("a workspace opens")
+        .write("program.src", "first")
+        .expect("the source is written");
+    drop(first);
+
+    let quiet = PrepareContext::for_agent(&agent, &[]);
+    assert!(quiet.opened_workspace().is_none());
+    drop(quiet);
+    assert!(
+        written.exists(),
+        "a preparation that asked for nothing removed somebody's files"
+    );
+
+    let third = PrepareContext::for_agent(&agent, &[]);
+    let _ = third.workspace().expect("a workspace opens");
+    assert!(!written.exists(), "the reset did not fire on the next ask");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -115,7 +485,7 @@ fn a_preparation_that_never_asks_opens_no_workspace() {
 /// interleaved two agents' `purs` output.
 #[test]
 fn a_compiler_runs_inside_its_own_preparations_tree() {
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let report = shell(
         &context,
         "pwd; echo \"$HOME\"; echo \"$TMPDIR\"; echo \"$XDG_CACHE_HOME\"",
@@ -144,8 +514,8 @@ fn a_compiler_runs_inside_its_own_preparations_tree() {
 /// measured `purs` corruption was — cannot reach another preparation.
 #[test]
 fn what_a_compiler_writes_beside_its_input_stays_private() {
-    let first = PrepareContext::new();
-    let second = PrepareContext::new();
+    let first = PrepareContext::detached();
+    let second = PrepareContext::detached();
 
     assert!(shell(&first, "mkdir -p output && echo first > output/index.js").ok);
     assert!(shell(&second, "mkdir -p output && echo second > output/index.js").ok);
@@ -162,17 +532,21 @@ fn what_a_compiler_writes_beside_its_input_stays_private() {
 /// a toolchain that globs its own working directory never finds them and never compiles them.
 #[test]
 fn a_compilers_captured_output_is_not_in_its_working_directory() {
-    let context = PrepareContext::new();
-    let report = shell(&context, "echo hello; ls");
+    let context = PrepareContext::detached();
+    let report = shell(&context, "echo hello; ls -A");
     assert!(report.ok, "{}: {}", report.status, report.stderr);
-    assert_eq!(report.stdout.trim(), "hello");
+    assert_eq!(
+        report.stdout.trim(),
+        "hello\nmodules",
+        "the loaded-module band is the whole of what a fresh working directory holds"
+    );
 }
 
 /// A compiler that hangs is killed at its bound and reported as a toolchain failure rather than
 /// holding a blocking thread for the rest of the run.
 #[test]
 fn a_compiler_that_hangs_is_killed_at_its_bound() {
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let report = context
         .compiler(SH)
         .expect("a workspace opens")
@@ -188,7 +562,7 @@ fn a_compiler_that_hangs_is_killed_at_its_bound() {
 /// the same exit code and only the language can tell them apart.
 #[test]
 fn a_compiler_that_exits_non_zero_reports_rather_than_errors() {
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let report = shell(&context, "echo out; echo err >&2; exit 2");
     assert!(!report.ok);
     assert_eq!(report.status, "exited with status 2");
@@ -200,7 +574,7 @@ fn a_compiler_that_exits_non_zero_reports_rather_than_errors() {
 /// error record knows which toolchain is missing.
 #[test]
 fn a_compiler_that_is_not_installed_names_itself() {
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let error = context
         .compiler("gg-no-such-compiler")
         .expect("a workspace opens")
@@ -214,7 +588,7 @@ fn a_compiler_that_is_not_installed_names_itself() {
 /// says that it was, so nobody reads the middle of a stack as the whole of one.
 #[test]
 fn a_noisy_compilers_stderr_is_bounded() {
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let report = shell(
         &context,
         "i=0; while [ $i -lt 200 ]; do echo line$i >&2; i=$((i+1)); done",
@@ -237,7 +611,7 @@ fn a_noisy_compilers_stderr_is_bounded() {
 /// of its content cut off the top.
 #[test]
 fn a_runtime_that_aborted_before_main_keeps_the_line_that_says_why() {
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let report = shell(
         &context,
         "echo 'Process terminated.' >&2; \

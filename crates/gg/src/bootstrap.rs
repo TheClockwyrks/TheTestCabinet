@@ -563,12 +563,17 @@ fn prepared_program(
     {
         return Ok(prepared.clone());
     }
-    let prepared = crate::sandbox::prepare_program(language, source, &[]).map_err(|failure| {
-        format!(
-            "gg's {} bootstrap program did not prepare: {failure}",
-            language.display_name()
-        )
-    })?;
+    // A compile workspace of its own, dropped with this call. gg's own bootstrap component belongs
+    // to no agent — it is compiled once per process and cached here for every agent that needs it —
+    // so compiling it in some agent's tree would put one agent's ground under another's program.
+    let workspace = crate::sandbox::AgentWorkspace::new();
+    let prepared =
+        crate::sandbox::prepare_program(language, source, &[], &workspace).map_err(|failure| {
+            format!(
+                "gg's {} bootstrap program did not prepare: {failure}",
+                language.display_name()
+            )
+        })?;
     PREPARED
         .lock()
         .expect("the bootstrap program cache holds no lock across a panic")
