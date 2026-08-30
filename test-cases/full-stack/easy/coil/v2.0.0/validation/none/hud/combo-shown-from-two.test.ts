@@ -1,31 +1,63 @@
-/*
- * Coil validator: `hud.combo-shown-from-two`. PLACEHOLDER.
- *
- * The multiplier is drawn from two upward.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * At an M of 3 with an open window the HUD draws the multiplier as x3.
- *
- * HOW:
- * pose M at 3 with an open window, render a live frame, and find the
- * multiplier text draw.
- *
- * MEDIA IT MUST CAPTURE: shown (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// hud/combo-shown-from-two — from a multiplier of two upward the HUD names it.
+//
+// specs/ui.md gives the HUD a `Combo` readout: "The multiplier as `x2` through
+// `x5`, with a bar beneath it", shown "only while `M` is at least `2`". Posed at
+// `3`, the frame must therefore say `x3`: a player who cannot see the multiplier
+// cannot see the point of chasing the next pellet quickly, which is the game's
+// defining idea.
+//
+// `×` is accepted beside `x` because a build is free to set the multiplier with
+// the multiplication sign, and the space between them is optional for the same
+// reason. What is not optional is the figure, which is why `3` is read rather
+// than any digit.
+//
+// The window is posed full, so the readout is being asked for in the state
+// specs/scoring.md puts it in after a combo has just risen.
 
-test("hud.combo-shown-from-two", () => {
-  throw new Error(
-    "validator not implemented: hud/combo-shown-from-two.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import { COMBO_WINDOW } from "../constants";
+import {
+  HOME_HEAD,
+  captureStill,
+  chainFrom,
+  createHarness,
+  drawnText,
+  poseScene,
+  type Harness,
+} from "../harness";
+
+/** The multiplier the HUD is posed at, and the readout that names it. */
+const COMBO = 3;
+const READOUT = new RegExp(`[x×]\\s*${COMBO}`, "i");
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("draws the multiplier as x3 at a multiplier of three", async () => {
+  const live = await poseScene(h, {
+    snake: chainFrom(HOME_HEAD, "right", 4),
+    dir: "right",
+    pellet: null,
+    travel: false,
+    combo: COMBO,
+    comboWindow: COMBO_WINDOW,
+  });
+  assertEqual(live.combo, COMBO, "the multiplier the HUD is read at");
+
+  const calls = await h.frameCalls();
+  await captureStill(h, "shown");
+
+  assertGreaterThan(
+    drawnText(calls).filter((run) => READOUT.test(run)).length,
+    0,
+    `the HUD drawing the multiplier as x${COMBO}`,
   );
 });
