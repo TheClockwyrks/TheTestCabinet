@@ -1,24 +1,50 @@
-// Deepcore — assets.audio-files-present. STUB: NOT YET AUTHORED.
+// assets/audio-files-present — every named cue has a real sound behind it.
 //
-// Every named cue has a produced sound file
+// `specs/assets.md` names thirteen sounds and the file each lands at, under
+// `assets/audio/<name>.wav`, and closes on the bar: "A build that ships ... silence
+// has not done this work, however good the simulation is." So each of the thirteen
+// is read off disk and DECODED — by the page's own Web Audio decoder, the same one
+// a build's playback goes through — and held to being real audio with something in
+// it.
 //
-// All thirteen files specs/assets.md names under assets/audio/ exist, decode
-// as audio and are not silent, so no cue is wired to a missing or empty file.
-//
-// Automated validation: read each of the thirteen audio files, decode it and
-// hold it non-empty with a non-zero peak.
-//
-// `test-case.toml` declares this suite as `assets/audio-files-present.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (audio (image)) around the drive.
+// Three ways a cue can be wired to nothing, and all three fail here: the file is
+// missing, the file is not audio a browser will decode, or the file decodes to
+// silence. The last is what a placeholder looks like: a well-formed `.wav` of the
+// right length whose every sample is zero. A peak above zero is the whole of what
+// "not silent" can mean without assuming a loudness `specs/assets.md` never fixed.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { readSound } from "./produced";
+import { AUDIO_FILES } from "./spec";
 
-test("Every named cue has a produced sound file", () => {
-  throw new Error(
-    "Deepcore validator `assets/audio-files-present` is declared in test-case.toml but has not been authored yet.",
-  );
+/** The shortest a produced cue can be and still be a sound, in seconds. */
+const SHORTEST = 0.01;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("decodes all thirteen produced sounds, none of them silent", async () => {
+  const faults: string[] = [];
+  for (const name of AUDIO_FILES) {
+    const file = `assets/audio/${name}.wav`;
+    const sound = await readSound(h, "audio", `${name}.wav`).catch(
+      () => "undecodable" as const,
+    );
+    if (sound === "undecodable") faults.push(`${file}: does not decode`);
+    else if (sound === null) faults.push(`${file}: missing`);
+    else if (sound.seconds < SHORTEST) faults.push(`${file}: empty`);
+    else if (sound.peak <= 0) faults.push(`${file}: silent`);
+  }
+  await captureStill(h, "audio");
+
+  assertEqual(faults.join(", "), "", "specs/assets.md");
 });

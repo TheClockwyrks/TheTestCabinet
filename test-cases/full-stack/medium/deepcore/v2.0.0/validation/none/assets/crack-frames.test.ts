@@ -1,25 +1,60 @@
-// Deepcore — assets.crack-frames. STUB: NOT YET AUTHORED.
+// assets/crack-frames — the drill-damage overlay is a produced progression.
 //
-// The drill-damage overlay has its frames
+// `specs/assets.md`: "at least `CRACK_FRAMES` (`4`) transparent frames running
+// front to back from faint hairlines to a shattered, about-to-break face", under
+// `assets/tiles/crack/`, numbered from `frame00.png`. Three parts, and each is a
+// sentence of that:
 //
-// At least CRACK_FRAMES (4) distinct transparent frames exist under
-// assets/tiles/crack/, numbered from frame00.png, running front to back from
-// faint hairlines to a shattered face.
+//   * the frames are there, at that path and under that numbering;
+//   * there are at least four of them;
+//   * every one is a different drawing from every other, because they run FRONT TO
+//     BACK — a progression that repeated a picture would show a cell's damage
+//     standing still while its health fell;
+//   * and each carries transparency, because the overlay is drawn OVER the rock
+//     it cracks and an opaque frame would hide the band underneath it.
 //
-// Automated validation: read the crack frames, hold the count at four or more,
-// hold every pair different and hold each carrying transparency.
-//
-// `test-case.toml` declares this suite as `assets/crack-frames.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (cracks (image)) around the drive.
+// Which frame is drawn at which damage is a different requirement and its own
+// point; this one is about the frames existing and being a progression.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  allDistinct,
+  cycleFrames,
+  readPicture,
+  type Picture,
+} from "./produced";
+import { CRACK_FRAMES } from "./spec";
 
-test("The drill-damage overlay has its frames", () => {
-  throw new Error(
-    "Deepcore validator `assets/crack-frames` is declared in test-case.toml but has not been authored yet.",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("produces at least four distinct transparent crack frames", async () => {
+  const frames = cycleFrames("tiles", "crack");
+  const pictures: Picture[] = [];
+  for (const frame of frames) {
+    const picture = await readPicture(h, frame);
+    if (picture !== null) pictures.push(picture);
+  }
+  await captureStill(h, "cracks");
+
+  assertGreaterThanOrEqual(
+    pictures.length,
+    CRACK_FRAMES,
+    "assets/tiles/crack/frameNN.png (specs/assets.md)",
+  );
+  assertEqual(allDistinct(pictures), true, "specs/assets.md");
+  assertEqual(
+    pictures.every((picture) => picture.transparent && picture.drawn),
+    true,
+    "every crack frame is transparent and drawn (specs/assets.md)",
   );
 });

@@ -1,23 +1,76 @@
-// Deepcore — assets.particle-on-death. STUB: NOT YET AUTHORED.
+// assets/particle-on-death — the burst plays where the miner dies.
 //
-// A death plays its burst
+// `specs/assets.md`: `death-burst.json` fires when "The miner dies" and carries "A
+// burst of venting suit and debris". `specs/modes.md` enumerates the deaths and
+// `specs/character.md` states how the simplest of them is reached: hull standing at
+// `0` destroys the miner, and the check is continuous rather than only at the blow
+// — so an emptied hull becomes a death on the next update rather than at the pose.
 //
-// The death-burst system is played at the miner when it dies.
-//
-// Automated validation: drive a death and observe an instance of death-burst
-// played at the miner.
-//
-// `test-case.toml` declares this suite as `assets/particle-on-death.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (burst (replay)) around the drive.
+// So the drawing around the miner is counted over the standing scene and again
+// once the hull has been emptied and the game's own check has run. The mine is
+// cleared and the drill is held, so nothing else near the miner can be playing,
+// and the death is the only thing that changes between the two readings.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import { MINER_H, MINER_W, PLAYABLE_COL_MIN, TILE } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  layFloor,
+  openScene,
+  pinDrill,
+  standOn,
+  worldToStage,
+  type Harness,
+} from "../harness";
+import { peakNear } from "./effects";
 
-test("A death plays its burst", () => {
-  throw new Error(
-    "Deepcore validator `assets/particle-on-death` is declared in test-case.toml but has not been authored yet.",
+const ROW = 200;
+const COL = PLAYABLE_COL_MIN + 8;
+
+/** Frames each reading is taken over. */
+const BEFORE_FRAMES = 12;
+const AFTER_FRAMES = 40;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("draws more at the miner once it dies", async () => {
+  await openScene(h);
+  await pinDrill(h);
+  await layFloor(h, ROW);
+  await standOn(h, COL, ROW);
+  await h.advance(2);
+
+  const snapshot = await h.snapshot();
+  const at = worldToStage(
+    snapshot,
+    snapshot.miner.x + MINER_W / 2,
+    snapshot.miner.y + MINER_H / 2,
   );
+  const where = async (): Promise<{ x: number; y: number }> => at;
+
+  const alive = await peakNear(h, BEFORE_FRAMES, TILE * 3, where);
+
+  const dead = await captureReplay(h, "burst", async () => {
+    await h.debug.setHull(0);
+    const peak = await peakNear(h, AFTER_FRAMES, TILE * 3, where);
+    await h.advanceSeconds(8, 80);
+    return { peak, snapshot: await h.snapshot() };
+  });
+
+  assertEqual(
+    dead.snapshot.summary?.deathCause ?? null,
+    "hull-destroyed",
+    "specs/modes.md",
+  );
+  assertGreaterThan(dead.peak, alive, "specs/assets.md");
 });

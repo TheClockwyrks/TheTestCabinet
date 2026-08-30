@@ -1,28 +1,69 @@
-// Deepcore — assets.miner-drill-down-cycle. STUB: NOT YET AUTHORED.
+// assets/miner-drill-down-cycle — the drill-down cycle is a produced sheet.
 //
-// The drill-down cycle is produced with its frames
+// `specs/assets.md`: one `draw-sheet` cycle per animation state, one PNG per
+// frame, under `assets/miner/<state>/`, numbered from `frame00.png`. The `drill-down`
+// state is asked for at least `3` frames, carrying braced downward, the drill biting the floor.
 //
-// The drill-down animation state has a produced cycle at
-// assets/miner/drill-down/, numbered from frame00.png, carrying at least 3
-// frames, and no two frames of it are identical, so the cycle animates rather
-// than repeating one drawing. Its content is braced downward, the drill biting
-// the floor.
+// Two things are read, and both are what the contract says rather than what any
+// build happens to have done. The frames are THERE, at the path and under the
+// numbering `specs/assets.md` states, and there are at least `3` of them. And the cycle
+// carries more than one DRAWING — a cycle whose files are copies of one picture is
+// the "single static frame in place of a miner cycle" the contract's closing
+// paragraph refuses, and it animates nothing however many files it ships. A frame
+// that equals an earlier one is not that: an `A, B, A` bob and an `A, B, A, B`
+// brace are ordinary cycles, and a build is graded on the drawings it made rather
+// than on the order it plays them in.
 //
-// Automated validation: read the frames of assets/miner/drill-down/, hold the
-// count at 3 or more and hold every pair of frames different by a pixel
-// comparison.
-//
-// `test-case.toml` declares this suite as `assets/miner-drill-down-cycle.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (cycle (image)) around the drive.
+// Each frame is decoded in the page the project already holds and reduced to a
+// coarse signature, so two frames count as the same drawing only when they really
+// are one, and a stray antialiased pixel cannot make two copies look different.
+// Whether the frames carry what the table describes is a reviewer's reading; the
+// still the item captures is what they read it from.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  distinctCount,
+  cycleFrames,
+  readPicture,
+  type Picture,
+} from "./produced";
+import { MINER_CYCLES } from "./spec";
 
-test("The drill-down cycle is produced with its frames", () => {
-  throw new Error(
-    "Deepcore validator `assets/miner-drill-down-cycle` is declared in test-case.toml but has not been authored yet.",
+/** How many different drawings a cycle carries at least, to be a cycle at all. */
+const DRAWINGS_MIN = 2;
+
+/** The state this point is about, and where `specs/assets.md` puts its cycle. */
+const STATE = "drill-down";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("produces the drill-down cycle with distinct frames", async () => {
+  const frames = cycleFrames("miner", STATE);
+  const pictures: Picture[] = [];
+  for (const frame of frames) {
+    const picture = await readPicture(h, frame);
+    if (picture !== null) pictures.push(picture);
+  }
+  await captureStill(h, "cycle");
+
+  assertGreaterThanOrEqual(
+    pictures.length,
+    MINER_CYCLES[STATE],
+    `assets/miner/${STATE}/frameNN.png (specs/assets.md)`,
+  );
+  assertGreaterThanOrEqual(
+    distinctCount(pictures),
+    DRAWINGS_MIN,
+    `different drawings among assets/miner/${STATE}/ (specs/assets.md)`,
   );
 });

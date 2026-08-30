@@ -1,24 +1,80 @@
-// Deepcore — assets.particle-on-drill. STUB: NOT YET AUTHORED.
+// assets/particle-on-drill — the debris plays at the bit while the miner cuts.
 //
-// Cutting plays the drill debris system
+// `specs/assets.md`: `drill-debris.json` fires while "The miner is cutting a cell"
+// and carries "A spray of chips and dust off the bit, tinted to the band". So the
+// drawing near the cell being cut is counted twice over one posed world: with the
+// drill held, and with it cutting. Everything else is identical — the same cell at
+// the same part-cut health, the same miner in the same place, the same tiles
+// behind it — so the difference is the effect.
 //
-// The drill-debris system is played at the bit while the miner is cutting a
-// cell.
+// The cell is posed part cut for BOTH readings, so the crack overlay
+// `specs/assets.md` draws over a damaged cell is in the control as much as in the
+// measurement and cannot be mistaken for the debris.
 //
-// Automated validation: hold a cut on a posed cell and observe an instance of
-// drill-debris played at the cut.
-//
-// `test-case.toml` declares this suite as `assets/particle-on-drill.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (debris (replay)) around the drive.
+// The miner's travel is held so it neither sinks into the cut nor walks out of the
+// frame the readings are taken over, and the mine is cleared so no other effect
+// can be playing anywhere near it.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import { BAND_HEALTH, PLAYABLE_COL_MIN, TILE } from "../constants";
+import {
+  ACTION_KEY,
+  captureReplay,
+  cellCenter,
+  createHarness,
+  layFloor,
+  openScene,
+  pinDrill,
+  pinMiner,
+  standOn,
+  worldToStage,
+  type Harness,
+} from "../harness";
+import { peakNear } from "./effects";
 
-test("Cutting plays the drill debris system", () => {
-  throw new Error(
-    "Deepcore validator `assets/particle-on-drill` is declared in test-case.toml but has not been authored yet.",
-  );
+/** A coreshell row, whose sixteen points of health leave room to cut for a while. */
+const ROW = 450;
+const COL = PLAYABLE_COL_MIN + 8;
+
+/** Frames each reading is taken over. */
+const CONTROL_FRAMES = 8;
+const CUTTING_FRAMES = 24;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("draws more at the bit while cutting than while held", async () => {
+  await openScene(h);
+  await layFloor(h, ROW);
+  await standOn(h, COL, ROW);
+  await pinMiner(h);
+  await pinDrill(h);
+  await h.debug.setTileHealth(COL, ROW, BAND_HEALTH.coreshell / 2);
+  await h.advanceSeconds(0, 1);
+
+  const snapshot = await h.snapshot();
+  const centre = cellCenter(COL, ROW);
+  const bit = worldToStage(snapshot, centre.x, centre.y);
+  const where = async (): Promise<{ x: number; y: number }> => bit;
+
+  const control = await peakNear(h, CONTROL_FRAMES, TILE, where);
+
+  const cutting = await captureReplay(h, "debris", async () => {
+    await h.debug.setMinerDrill(true);
+    await h.hold(ACTION_KEY.down);
+    const peak = await peakNear(h, CUTTING_FRAMES, TILE, where);
+    await h.release(ACTION_KEY.down);
+    return { peak, snapshot: await h.snapshot() };
+  });
+
+  assertEqual(cutting.snapshot.miner.state, "drill-down", "specs/character.md");
+  assertGreaterThan(cutting.peak, control, "specs/assets.md");
 });
