@@ -1,32 +1,69 @@
-/*
- * Coil validator: `presentation.head-frames-distinct`. PLACEHOLDER.
- *
- * The four head frames differ from one another.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * No two of the four head frames are the same image: each pair differs on a
- * measurable share of its pixels, so the sheet is four poses rather than one
- * frame repeated.
- *
- * HOW:
- * decode the four head PNGs and compare every pair pixel for pixel.
- *
- * MEDIA IT MUST CAPTURE: sheet (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// presentation/head-frames-distinct — the head sheet is four poses rather than
+// one frame shipped four times.
+//
+// WHAT THE SPECIFICATION FIXES. `specs/assets.md` names each frame of the head
+// sheet: `0` is "at rest, mouth closed", `1` "mouth opening", `2` "mouth wide",
+// and `3` "mouth closing". It states the bar for them too — "the bite is legible
+// at eight ticks a second. Frame `2` is a visibly open mouth rather than a
+// shifted pixel, and the three frames read as one motion." Four named poses are
+// four different images, and a sheet that repeats one of them cannot show the
+// bite `presentation/bite-starts-on-eat` looks for.
+//
+// WHAT IS READ, AND THE FIGURE. Each of the six pairs the four frames make,
+// compared pixel for pixel, against `DIFFER_MIN_PIXELS`: four pixels, the
+// smallest square mark a player sees at one cell, and the specification's own
+// wording of that floor — frame `2` is to be "a visibly open mouth rather than a
+// shifted pixel". One frame shipped twice differs by exactly nothing, since a
+// PNG carries its pixels losslessly, so what the floor really separates is two
+// poses from one file copied. How MUCH two poses differ, and whether the motion
+// reads as one bite, is the presentation domain's aesthetic rating rather than a
+// figure a check can hold a build to.
+//
+// This decides only that the four differ. That each exists, is cell-sized, and
+// carries paint is `presentation/head-frames-produced`.
 
-test("presentation.head-frames-distinct", () => {
-  throw new Error(
-    "validator not implemented: presentation/head-frames-distinct.test.ts",
-  );
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual, fail } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  DIFFER_MIN_PIXELS,
+  decodeSprites,
+  differingPixels,
+  HEAD_FILES,
+  showSpriteFiles,
+  type Sprite,
+} from "./sprites";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws each of the four head frames differently from the rest", async () => {
+  const read = await decodeSprites(HEAD_FILES);
+  await showSpriteFiles(h, HEAD_FILES);
+  captureStill(h, "sheet");
+
+  const frames: Sprite[] = [];
+  for (let frame = 0; frame < HEAD_FILES.length; frame += 1) {
+    const { sprite, reason } = read[frame];
+    if (sprite === null)
+      fail(`a decodable image at ${HEAD_FILES[frame]}`, reason);
+    frames.push(sprite);
+  }
+
+  for (let a = 0; a < frames.length; a += 1) {
+    for (let b = a + 1; b < frames.length; b += 1) {
+      assertGreaterThanOrEqual(
+        differingPixels(frames[a], frames[b]),
+        DIFFER_MIN_PIXELS,
+        `the pixels differing between ${frames[a].file} and ${frames[b].file}`,
+      );
+    }
+  }
 });
