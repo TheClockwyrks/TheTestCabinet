@@ -52,6 +52,8 @@ export interface DebugContext {
   clock: { autoStep: boolean };
   /** Run one whole frame of `seconds` elapsed time: the same update the loop runs, then a render. */
   runFrame(seconds: number): void;
+  /** Lay the frame out again, so a reading reports the controls the game as it stands draws. */
+  refreshControls(): void;
   pointerMove(x: number, y: number): void;
   pointerDown(x: number, y: number): void;
   pointerUp(): void;
@@ -284,12 +286,15 @@ export function installDebugApi(ctx: DebugContext): void {
       return game.debugSnapshot();
     },
     panelButtons() {
+      ctx.refreshControls();
       return ctx.panelButtons();
     },
     menuButtons() {
+      ctx.refreshControls();
       return ctx.menuButtons();
     },
     statusControls() {
+      ctx.refreshControls();
       return ctx.statusControls();
     },
 

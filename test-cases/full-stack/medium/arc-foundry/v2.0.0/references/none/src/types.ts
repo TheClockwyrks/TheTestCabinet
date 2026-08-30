@@ -368,5 +368,9 @@ export interface Clickable {
   // and are only ever enabled/disabled, so the panel never reflows on a game-state change; the
   // flag lets the debug API report that fixed set for inspection (specs/instrumentation.md).
   panel?: boolean;
+  // Set on the STATUS BAR's own controls, so `statusControls()` reports the bar's five and
+  // not, say, an overlay's close button that commits the same act
+  // (specs/instrumentation.md).
+  bar?: boolean;
   label?: string;
 }

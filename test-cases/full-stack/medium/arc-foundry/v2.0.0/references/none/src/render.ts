@@ -1634,8 +1634,8 @@ function drawStatusBar(
   if (mzHover) drawMazePath(ctx, game);
 
   // COMBOS recipe book + live DAMAGE BOARD toggles (specs/controls.md).
-  toggle(ctx, clicks, 838, "COMBOS", "toggleCombos", showCombos);
-  toggle(ctx, clicks, 926, "DMG BOARD", "toggleLeaderboard", showBoard);
+  toggle(ctx, clicks, 838, "COMBOS", "combos", showCombos);
+  toggle(ctx, clicks, 926, "DMG BOARD", "damage", showBoard);
 
   ctrl(ctx, clicks, 1112, `${game.speed}×`, "speed", COL.text, 52);
   ctrl(
@@ -1688,7 +1688,7 @@ function toggle(
     "700",
     0.3,
   );
-  clicks.push({ x, y, w, h, action });
+  clicks.push({ x, y, w, h, action, label, bar: true });
 }
 
 // Draw the ground maze route as a bright line with a start/end marker, over the board — the
@@ -1744,7 +1744,7 @@ function ctrl(
   text(ctx, label, x + w / 2, y + h / 2 + 1, 14, color, "center", "600");
   // `label` travels with the rectangle so `statusControls()` can report the control as drawn
   // (specs/instrumentation.md).
-  clicks.push({ x, y, w, h, action, label });
+  clicks.push({ x, y, w, h, action, label, bar: true });
 }
 
 // ---- right build panel --------------------------------------------------------
@@ -2664,7 +2664,7 @@ function drawCombosBook(
   ctx.lineWidth = 1;
   ctx.stroke();
   text(ctx, "✕", cx + cb / 2, cy + cb / 2 + 1, 14, COL.text2, "center", "700");
-  clicks.push({ x: cx, y: cy, w: cb, h: cb, action: "toggleCombos" });
+  clicks.push({ x: cx, y: cy, w: cb, h: cb, action: "combos" });
 
   // 12 combos in a 2×6 grid.
   const gridY = y0 + 56;
@@ -2812,7 +2812,7 @@ function drawLeaderboard(
     "center",
     "700",
   );
-  clicks.push({ x: cbx, y: cby, w: cb, h: cb, action: "toggleLeaderboard" });
+  clicks.push({ x: cbx, y: cby, w: cb, h: cb, action: "damage" });
 
   if (top.length === 0) {
     text(

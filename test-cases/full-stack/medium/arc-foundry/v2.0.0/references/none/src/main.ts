@@ -398,13 +398,20 @@ async function main(): Promise<void> {
   function update(seconds: number): void {
     if (game.state === "playing" && !game.paused) {
       acc += seconds * game.speed;
-      let steps = 0;
-      while (acc >= FIXED_STEP && steps < MAX_STEPS_PER_FRAME) {
+      // The number of whole steps this span carries is computed from the span, not counted
+      // out by repeated subtraction, so the same interval of simulation time drains the
+      // same number of steps however it was divided into frames. Repeated subtraction
+      // accumulates a rounding error that costs a whole step over a second, which would
+      // leave `advance(1, 1)` and `advance(1, 60)` in different places.
+      const steps = Math.min(
+        Math.floor(acc / FIXED_STEP + 1e-9),
+        MAX_STEPS_PER_FRAME,
+      );
+      for (let i = 0; i < steps; i++) {
         game.syncView();
         game.fixedStep(FIXED_STEP);
-        acc -= FIXED_STEP;
-        steps++;
       }
+      acc -= steps * FIXED_STEP;
     } else {
       // Frozen — by the in-place pause, the pause menu, or a screen off the yard. Drop the
       // accumulator so no burst of steps fires on resume.
@@ -453,6 +460,10 @@ async function main(): Promise<void> {
     game,
     clock,
     runFrame,
+    // Lay the frame out again before a reading, so the controls reported are the ones the
+    // game as it now stands would draw. A render reads the game and changes nothing, so the
+    // readings stay pure.
+    refreshControls: draw,
     pointerMove: onPointerMove,
     pointerDown: onPointerDown,
     pointerUp: onPointerUp,
@@ -504,7 +515,7 @@ async function main(): Promise<void> {
         mute: game.muted,
       };
       return clickables
-        .filter((c) => c.action in state)
+        .filter((c) => c.bar && c.action in state)
         .map((c) => ({
           action: c.action,
           label: c.label ?? "",
