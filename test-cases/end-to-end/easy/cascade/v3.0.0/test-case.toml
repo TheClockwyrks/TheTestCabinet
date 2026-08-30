@@ -41,7 +41,7 @@ tags = ["cards", "solitaire", "klondike", "2d"]
 # deliberately brief; the longer `description` below is shown on the detail page.
 # Like `description`, this is NOT seeded into a run.
 summary = """
-A green-felt Klondike solitaire drawn entirely in code, capped by a \
+Klondike solitaire on a felt table, every card drawn in code, capped by a \
 physics-driven victory cascade that buries the table in bouncing cards."""
 
 # Site-facing prose describing the case, relative to this version folder. This is
