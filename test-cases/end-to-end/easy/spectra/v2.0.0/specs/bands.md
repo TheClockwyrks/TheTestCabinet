@@ -42,8 +42,8 @@ the outcome, and nothing else does.
 | The bullet's effective band is the opposite | The drone is not destroyed, and the bullet is consumed |
 
 A mismatched shot destroys nothing and is consumed on contact rather than passing
-through, under every mode. What else a mismatched shot does to the drone is the
-mode's, and `specs/mode.md` states it.
+through. What else it does to the drone belongs to the mode this build ships, and
+`specs/mode.md` states it.
 
 `specs/drones.md` states which layer of a Prism is exposed, and the two windows in
 which a Flux can and cannot be destroyed.
