@@ -51,12 +51,12 @@ spot with the Web Audio API. No backend, accounts, network calls or API keys.
 
 The **look is this build's own**. The specs fix no palette and no typeface; they
 fix what a player must be able to read at a glance and leave the rest to the
-build. Two colours are not free, though: the specs require **one palette for both
+build. Two colors are not free, though: the specs require **one palette for both
 bands**, so the cyan and magenta this build draws in code are read straight off
 the seeded art (`#34e2ff` and `#ff4ec7`) and a code-drawn bullet lands on exactly
-the colour a drone of that band carries. Every band-carrying thing also gets its
+the color a drone of that band carries. Every band-carrying thing also gets its
 band's **shape accent** — a ring for cyan, a diamond for magenta — so the two stay
-legible to a colourblind player. Those choices live in `src/theme.ts`, apart from
+legible to a color-blind player. Those choices live in `src/theme.ts`, apart from
 the figures the specs fix in `src/constants.ts`.
 
 ## Controls
@@ -119,7 +119,7 @@ The build stands on no engine, so the layer every browser game needs is part of
 it. It is kept apart from the game, in its own five modules, and the game reaches
 it only through the `Game<S>` contract in `src/runtime.ts`.
 
-**The runtime layer**
+### The runtime layer
 
 | File           | What it owns                                                                                                                   |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -130,7 +130,7 @@ it only through the `Game<S>` contract in `src/runtime.ts`.
 | `overlay.ts`   | The read-only diagnostics panel and the backtick that toggles it.                                                              |
 | `images.ts`    | Loading the seeded files, always **page-relative**, so the site runs at any base path.                                         |
 
-**The game**
+### The game
 
 | File             | What it owns                                                                                                                                                                                                                     |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -139,7 +139,7 @@ it only through the `Game<S>` contract in `src/runtime.ts`.
 | `types.ts`       | The one state object the loop advances, the renderer reads and the debug surface poses.                                                                                                                                          |
 | `game.ts`        | The frame: the sub-step loop, the order everything advances in, and `reset`.                                                                                                                                                     |
 | `simulation`     | `bands.ts` (effective band), `ship.ts`, `swarm.ts`, `drones.ts`, `waves.ts`, `paths.ts`, `field.ts`, `resonance.ts`, `combat.ts`, `scoring.ts`, `progression.ts`, `stages.ts`, `screens.ts`, `mode.ts`, `entities.ts`, `rng.ts`. |
-| `assets.ts`      | The seeded art, and the second band derived from it by an exact recolour.                                                                                                                                                        |
+| `assets.ts`      | The seeded art, and the second band derived from it by an exact recolor.                                                                                                                                                         |
 | `bursts.ts`      | The seeded particle system, played through the runtime's pure `ParticleSimulator`.                                                                                                                                               |
 | `render.ts`      | Everything drawn. A pure read of the state.                                                                                                                                                                                      |
 | `debug.ts`       | `window.__spectra`: the debug and automation surface.                                                                                                                                                                            |
@@ -164,11 +164,11 @@ dive never enters the bottom HUD strip. A diving Prism still crosses
 `PRISM_INVERT_Y` on the way down, which is what inverts the field.
 
 **The second band is baked once, not composited per draw.** Each seeded PNG is
-hard-edged pixel art of at most four colours, so the other band-state is an exact
-colour swap over the same pixels — which keeps the alpha silhouette of the seeded
+hard-edged pixel art of at most four colors, so the other band-state is an exact
+color swap over the same pixels — which keeps the alpha silhouette of the seeded
 file identical, and costs one `drawImage` per drone rather than an offscreen
 composite. A Prism's core is lifted out of the same file by flooding from its
-centre across everything that is neither the shell's colour nor the opaque gap
+centre across everything that is neither the shell's color nor the opaque gap
 between the layers.
 
 ## The tests

@@ -39,10 +39,10 @@ bundle.
 
 The look is this build's own. The specs fix what a player must read at a glance —
 the two bands apart from each other and from the field, a band by more than
-colour, the three drones apart, a Flux's shimmer, a Prism's two layers, the
+color, the three drones apart, a Flux's shimmer, a Prism's two layers, the
 inversion's field-wide mark — and leave the palette, the type and the layout to
 the build. This build chose a near-black field under a dim starfield, the two
-band colours the seeded art already carries (`#34e2ff` and `#ff4ec7`), a ring
+band colors the seeded art already carries (`#34e2ff` and `#ff4ec7`), a ring
 accent for cyan and a diamond for magenta, an amber resonance meter and a violet
 inversion. Those choices live in `src/theme.ts`, apart from the figures the specs
 fix in `src/constants.ts`.
@@ -126,7 +126,7 @@ draws every ship and drone from them rather than from art of its own.
 
 Each sprite is seeded in **one** band-state, and `src/art.ts` derives the other:
 the same silhouette, pixel for pixel, with every band-carrying pixel repainted in
-the other band's colour and the ring or diamond accent drawn **in code** on top,
+the other band's color and the ring or diamond accent drawn **in code** on top,
 so the shape on screen is always the seeded one and a band never reads as a cyan
 diamond or a magenta ring. A Prism's core is the same derivation with the shell's
 pixels dropped.

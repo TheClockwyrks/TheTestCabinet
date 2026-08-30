@@ -42,7 +42,7 @@ Prism bursts both bands at once and — with its shell still standing — pulls 
 another Shard.
 
 The look — a near-black field under a dim starfield, each drone lit in the band it
-counts as, and the ring-and-diamond accent that carries a band without colour — is
+counts as, and the ring-and-diamond accent that carries a band without color — is
 this build's own. The specification fixes the rules, the geometry and the figures
 and deliberately leaves the palette, the type and the layout to the build, so the
 look lives in `src/theme.ts` rather than beside the case-fixed figures in
@@ -140,10 +140,10 @@ framework:
 
 `specs/assets.md` seeds four `64 x 64` PNGs and one particle system, each sprite
 in one band-state only, and asks that the other band-state be the same silhouette
-carrying the other band's colour. This build composites the tint over the seeded
+carrying the other band's color. This build composites the tint over the seeded
 PNG at draw time, through a `grayscale → brightness → sepia → hue-rotate →
 saturate` chain on `CanvasRenderingContext2D.filter`: it maps every drawn pixel
-onto one band's colour while leaving the alpha, and so the silhouette, untouched.
+onto one band's color while leaving the alpha, and so the silhouette, untouched.
 The source handed to `drawImage` is therefore always the seeded bitmap, in either
 band, and the route needs no second canvas — which is what makes it draw the same
 picture in a browser and in a host that has no `document` to make one with. The

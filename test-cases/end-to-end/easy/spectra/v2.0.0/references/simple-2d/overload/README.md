@@ -51,20 +51,20 @@ wash a spectral inversion lays over the field are this build's own. The
 specification fixes the rules and the geometry and deliberately leaves the palette,
 the type and the layout to the build, stating only what a player has to read at a
 glance. So the look lives in `src/theme.ts` rather than beside the case-fixed
-figures in `src/constants.ts`, which carries no colour and no typeface at all.
+figures in `src/constants.ts`, which carries no color and no typeface at all.
 
-The **two band colours are read off the seeded art** rather than invented:
+The **two band colors are read off the seeded art** rather than invented:
 `assets/shard.png` is drawn in `#ff4ec7` and the cyan half of `assets/flux.png` in
 `#34e2ff`, so a code-drawn bullet, the resonance meter and the polarity indicator
 all carry the same pair the sprites do. Cyan takes the **ring** accent and magenta
 the **diamond**, everywhere either band appears, so the two stay apart for a
-colourblind player.
+color-blind player.
 
 The ship and the three drones are drawn from the seeded art under `assets/`, each
 centred on its entity and scaled to its own footprint. One silhouette serves both
 bands: the seeded bitmap is drawn as it is, and then drawn again over its own alpha
-through a canvas filter that flattens it to the band's colour, so the shape on
-screen is always the seeded shape and only the colour and the accent change. Each
+through a canvas filter that flattens it to the band's color, so the shape on
+screen is always the seeded shape and only the color and the accent change. Each
 kind takes a different tint strength and a different core, so a Shard, a Flux, a
 Prism and the ship of one band are four readings rather than one. A destroyed drone
 pops with the seeded particle system, simulated with `ParticleSimulator` and

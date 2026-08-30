@@ -49,20 +49,20 @@ network calls, or API keys; everything needed to play is in the built bundle.
 
 ## The look
 
-The near-black field, the drifting starfield, the two band colours carried three
+The near-black field, the drifting starfield, the two band colors carried three
 ways at once and the hatched frame an inversion throws around the field are this
 build's own. The specification fixes the rules and the geometry and deliberately
 leaves the palette, the type and the layout to the build, stating only what a
 player has to read at a glance: the two bands apart from each other and from the
 field, a Flux's shimmer, a Prism's two layers, a bullet's band. So the look lives
 in `src/theme.ts` rather than beside the case-fixed figures in
-`src/constants.ts`, which carries no colour and no typeface at all.
+`src/constants.ts`, which carries no color and no typeface at all.
 
-The two band colours are the one exception, and they are not this build's
+The two band colors are the one exception, and they are not this build's
 invention: `CYAN` and `MAGENTA` are the exact pixels the seeded art is painted
 in, so a code-drawn bullet and a sprite-drawn drone read as the same band. Each
 band also carries a **shape accent** — the ring for cyan, the diamond for magenta
-— used everywhere a band appears, so the two stay apart for a colourblind player.
+— used everywhere a band appears, so the two stay apart for a color-blind player.
 
 The ship and the three drones are drawn from the **seeded art** under `assets/`,
 loaded through the engine's asset loader under the fixed `assets/` root, with the

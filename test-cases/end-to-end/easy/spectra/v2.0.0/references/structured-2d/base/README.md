@@ -37,7 +37,7 @@ and killing drones fill a **resonance** meter; full, it pays for a band-blind
 discharge that sweeps every diving drone and every enemy shot off the field. Every
 third stage is a non-firing **challenge** flyover worth a perfect bonus.
 
-The look — a near-black field under a drifting starfield, the two band colours
+The look — a near-black field under a drifting starfield, the two band colors
 carried in light and in a shape accent (the ring for cyan, the diamond for
 magenta), and a field-wide mark while the bands are swapped — is this build's own.
 The specification fixes the rules, the geometry and the figures and deliberately
