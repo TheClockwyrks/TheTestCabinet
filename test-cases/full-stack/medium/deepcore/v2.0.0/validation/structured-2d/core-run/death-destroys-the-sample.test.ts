@@ -1,24 +1,60 @@
-// Deepcore — core-run.death-destroys-the-sample. STUB: NOT YET AUTHORED.
+// Deepcore — core-run/death-destroys-the-sample: a death takes the Sample with
+// the miner.
 //
-// Any death destroys the Sample
+// `specs/hazards.md`: the Sample "is destroyed either way, and by any death while
+// it is held." `specs/modes.md` says the same of every death: it "destroys a Core
+// Sample held or ticking on the ground."
 //
-// A death destroys a Core Sample held or ticking on the ground, so the
-// expedition never resumes with one live.
+// A Sample is posed carried with plenty of time left on it, and the miner is then
+// killed by something else entirely: the hull is posed at `0`, which
+// `specs/instrumentation.md` says "is not itself a death: the game's own
+// continuous check is what ends the expedition, on the next update". So the game
+// kills the miner by its own rule, and the summary's cause is read as
+// `hull-destroyed` to say the Sample's own timer had nothing to do with it.
 //
-// Automated validation: pose a carried Sample, drive a hull death and read the
-// satchel and coreTimer cleared at the game-over screen.
-//
-// `test-case.toml` declares this suite as `core-run/death-destroys-the-sample.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (gone (replay)) around the drive.
+// Afterwards the satchel must be empty and the timer gone.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { CORE_TIMER } from "../../src/constants";
+import { assertEqual, assertNull } from "../assert";
+import { captureReplay, createHarness, type Harness } from "../harness";
+import { openCampScene, runUntilOver } from "./core-scene";
 
-test("Any death destroys the Sample", () => {
-  throw new Error(
-    "Deepcore validator `core-run/death-destroys-the-sample` is declared in test-case.toml but has not been authored yet.",
+/** Far more time than the drive takes, so the timer cannot be what killed it. */
+const POSED_TIMER = CORE_TIMER;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("destroys a carried Sample when the miner dies of something else", async () => {
+  openCampScene(h);
+  h.debug.setCoreCarried(true);
+  h.debug.setCoreTimer(POSED_TIMER);
+  h.debug.setHull(0);
+
+  const over = await captureReplay(h, "gone", () => runUntilOver(h));
+
+  assertEqual(
+    over.screen,
+    "game-over",
+    "the screen the death left the game on",
   );
+  assertEqual(
+    over.summary?.deathCause,
+    "hull-destroyed",
+    "the cause the summary reports",
+  );
+  assertEqual(
+    over.satchel.coreSample,
+    false,
+    "a Sample still held after the death",
+  );
+  assertNull(over.coreTimer, "a timer still running after the death");
 });

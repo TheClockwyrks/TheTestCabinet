@@ -1,25 +1,65 @@
-// Deepcore — core-run.components-survive-a-detonation. STUB: NOT YET AUTHORED.
+// Deepcore — core-run/components-survive-a-detonation: the rocket keeps what is
+// already bolted to it.
 //
-// Installed components survive the blast
+// `specs/hazards.md`: "The Sample is destroyed either way, and by any death while
+// it is held. Every component already installed on the rocket stays installed."
+// `specs/rocket.md` states the rule in general: "Installed components are
+// permanent. They survive a death in either mode."
 //
-// Every rocket component already installed stays installed through a Core
-// Sample detonation and the death it causes, so progress on the pad is never
-// undone.
-//
-// Automated validation: install components, run a carried Sample out and read
-// the installed list unchanged at the game-over screen.
-//
-// `test-case.toml` declares this suite as `core-run/components-survive-a-detonation.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (rocket (image)) around the drive.
+// Three components are posed installed, a carried Sample is run out, and the
+// checklist is read at the Game Over screen: the same three, in the same order,
+// and the summary agreeing on the count. The death cause is read too, so what is
+// being survived is really the detonation.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { ROCKET_COMPONENT_IDS } from "../../src/constants";
+import { assertDeepEqual, assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { openCampScene, runUntilOver } from "./core-scene";
 
-test("Installed components survive the blast", () => {
-  throw new Error(
-    "Deepcore validator `core-run/components-survive-a-detonation` is declared in test-case.toml but has not been authored yet.",
+/** How many components stand on the pad when the Sample goes off. */
+const INSTALLED = 3;
+
+/** Short enough to run out inside the drive. */
+const SHORT_TIMER = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("leaves every installed component installed through a detonation", async () => {
+  openCampScene(h);
+  h.debug.setRocketInstalled(INSTALLED);
+  h.debug.setCoreCarried(true);
+  h.debug.setCoreTimer(SHORT_TIMER);
+
+  const over = await runUntilOver(h);
+  captureStill(h, "rocket");
+
+  assertEqual(
+    over.screen,
+    "game-over",
+    "the screen the detonation left the game on",
+  );
+  assertEqual(
+    over.summary?.deathCause,
+    "core-detonation",
+    "the cause the summary reports",
+  );
+  assertDeepEqual(
+    over.rocket.installed,
+    ROCKET_COMPONENT_IDS.slice(0, INSTALLED),
+    "the checklist after the detonation",
+  );
+  assertEqual(
+    over.summary?.componentsInstalled,
+    INSTALLED,
+    "components the summary counts",
   );
 });
