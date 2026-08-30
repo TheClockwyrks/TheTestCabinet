@@ -53,10 +53,14 @@ export function detonateGas(game: Game, col: number, row: number): void {
 
   m.hull -= gasDamageAt(depthFraction(row, game.coreRow));
   game.hurt();
-  const nx = dist > 0.01 ? dx / dist : 0;
-  const ny = dist > 0.01 ? dy / dist : -1;
-  m.vx = nx * GAS_KNOCKBACK;
-  m.vy = ny * GAS_KNOCKBACK;
+  // The shove is travel: a miner whose travel faculty is held keeps the velocity
+  // it was posed with, exactly as gravity and collision leave it alone.
+  if (m.travel) {
+    const nx = dist > 0.01 ? dx / dist : 0;
+    const ny = dist > 0.01 ? dy / dist : -1;
+    m.vx = nx * GAS_KNOCKBACK;
+    m.vy = ny * GAS_KNOCKBACK;
+  }
   game.raiseNotice("gas");
 }
 
