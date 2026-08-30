@@ -1,32 +1,70 @@
-/*
- * Coil validator: `visibility.pellet-apart-from-board`. PLACEHOLDER.
- *
- * The pellet stands apart from the board.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * The pixel at the pellet cell's center is more than 50/441 in RGB distance
- * from an empty interior cell.
- *
- * HOW:
- * place the pellet on a known cell, render, and sample it against an empty
- * interior cell.
- *
- * MEDIA IT MUST CAPTURE: scene (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// visibility/pellet-apart-from-board — the pellet is not the colour of the board
+// under it.
+//
+// WHAT THE SPECIFICATION FIXES. `specs/overview.md` requires that "the pellet
+// stands apart from the field, the border, and the snake", over a board whose
+// palette is the build's own. So what is read is separation alone, against the
+// review item's figure for clearly apart: more than 50 of the 441 the RGB cube
+// spans. This suite decides the field half of that requirement.
+//
+// THE WORLD THIS POSES. The pellet on a cell of the check's choosing, the snake
+// laid far from it (it cannot be taken off the board, `specs/instrumentation.md`),
+// the obstacle course cleared, and travel switched off — so nothing walks into
+// the pellet's cell between the pose and the sample, and no eat replaces it
+// somewhere the check did not choose.
+//
+// WHERE IT SAMPLES. The pellet cell's centre, against the centre of an interior
+// cell the posed world leaves empty. `specs/board.md` draws the pellet one cell
+// in size, so its cell's centre is inside it.
 
-test("visibility.pellet-apart-from-board", () => {
-  throw new Error(
-    "validator not implemented: visibility/pellet-apart-from-board.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  chainFrom,
+  colorDistance,
+  createHarness,
+  HOME_HEAD,
+  poseScene,
+  sampleCells,
+  type Cell,
+  type Harness,
+} from "../harness";
+
+/** The review item's distance: clearly apart on the 0–441 RGB scale. */
+const DISTINCT_MIN = 50;
+
+/** Where the pellet is placed: an interior cell clear of the posed chain. */
+const PELLET_CELL: Cell = { col: 20, row: 5 };
+
+/** The interior cell the posed world leaves empty, far from both and from the wall. */
+const BOARD_CELL: Cell = { col: 20, row: 12 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws the pellet apart from an empty interior cell", async () => {
+  poseScene(h, {
+    snake: chainFrom(HOME_HEAD, "right", 3),
+    dir: "right",
+    pellet: PELLET_CELL,
+    travel: false,
+  });
+  await h.advance(1);
+  captureStill(h, "scene");
+
+  const [pellet, board] = sampleCells(h, [PELLET_CELL, BOARD_CELL]);
+
+  assertGreaterThan(
+    colorDistance(pellet, board),
+    DISTINCT_MIN,
+    "the RGB distance between the pellet cell's centre and an empty interior cell's",
   );
 });
