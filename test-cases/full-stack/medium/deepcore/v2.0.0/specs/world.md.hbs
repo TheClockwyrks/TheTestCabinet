@@ -122,6 +122,13 @@ row is `min(3, floor(4 * depthFraction(row)))`, so at the Standard size:
 removes in damage-per-hit chunks, so a deeper band takes more hits, and so more
 time and more fuel, to break.
 
+A cell carries the band it was made with rather than reading it off its row each
+time. Generation gives every cell the band its row falls in, so the two agree
+throughout a generated mine. Where the mine's depth changes under cells that are
+already in the ground, which `specs/instrumentation.md` describes, the cells that
+come through keep the band they were made with, and their health and full health
+follow that band rather than the row they now sit at.
+
 The Core chamber is `row coreRow`. Every cell of it is bedrock border except the
 Core tile, which sits at `CORE_COL` (`16`).
 

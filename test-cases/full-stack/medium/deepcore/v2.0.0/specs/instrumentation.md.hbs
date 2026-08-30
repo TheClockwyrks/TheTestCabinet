@@ -343,7 +343,7 @@ with the drill running, and the animation state follows what it is actually doin
 | `setPanel(panel)` | The open panel, to one of the six panel ids, or `null` to close whatever is open. A panel opens wherever the miner stands. |
 | `setMenuIndex(index)` | The highlighted item on the current screen, counted from `0`, within the range that screen's menu holds. |
 | `setMode(mode)` | The expedition's mode, `"standard"` or `"hardcore"`. |
-| `setWorldSize(size)` | The expedition's world size, `"quick"`, `"standard"`, or `"marathon"`, and with it `coreRow`. The mine that stood at the old depth cannot describe one at the new depth, so it is emptied to the new depth exactly as `clearMine` leaves it: the bedrock border, the camp row and the Core chamber stand, and every playable cell between them is open tunnel. It generates nothing, so a caller that wants terrain at the new depth follows it with `generateMine`. |
+| `setWorldSize(size)` | The expedition's world size, `"quick"`, `"standard"`, or `"marathon"`, and with it `coreRow` and the depth the mine reaches. The mine is resized onto the new depth rather than emptied or regenerated, as Resizing the mine below states cell by cell. |
 | `setCredits(value)` | The Credits balance, at least `0`. |
 | `setTier(track, tier)` | One upgrade track's tier, from `1` to the track's highest. `track` is one of the seven track names. Everything the tier defines follows from it, and the fuel and hull held are clamped to the new maxima and otherwise untouched. It costs no Credits. |
 | `setCargo(ore, count)` | The number of units of one ore or gemstone in the cargo bay, at least `0`, ignoring the slot cap so a scenario can pose any load. |
@@ -358,6 +358,31 @@ with the drill running, and the animation state follows what it is actually doin
 {{#if (eq engine.slug "none")}}
 | `setMuted(muted)` | The audio mute toggle, the same one the mute control flips. |
 {{/if}}
+
+#### Resizing the mine
+
+`setWorldSize` moves the floor of the mine and leaves what stands above it where
+it is. The grid is resized the way an array is resized, and every cell the two
+depths share comes through untouched.
+
+| Cell | What the resize leaves |
+| --- | --- |
+| One above both the old and the new Core chamber | Exactly what it held: the same kind, band, ore, material, and remaining health. |
+| One in a row past the new Core chamber, where the size gets shallower | Gone with its row. The mine no longer reaches that row, so `tileAt` there reads as a cell outside the grid. |
+| One in a row the old depth did not reach, where the size gets deeper | What an empty mine holds at that depth: the bedrock border across columns `0` and `31`, open tunnel across the playable columns, carrying the band the new depth gives that row. |
+| One in the row at the new `coreRow` | The Core chamber, whatever the row held before: bedrock across the row, with the Core at `CORE_COL`. |
+| One in the row that was the old Core chamber, where the size gets deeper | An ordinary row of the mine, opened the way an empty mine's rows are. Exactly one row is the Core chamber at any moment, and it is `row coreRow`. |
+| A buried material node | Kept with its cell where it is above the new Core chamber, and gone with its row where it is not. |
+
+It generates nothing, so a caller that wants terrain at the new depth follows it
+with `generateMine`. Nothing here is drilled, so no ore is banked and no gas
+detonates, and the miner, the camp, and the ground items stand as they were.
+
+A cell carries the band it was made with, so a cell that comes through a resize
+keeps its own band while the row it sits at may now fall in another one. Its
+health, its full health, and the band `tileAt` reports all follow the cell's own
+band. Generation is what makes every cell's band the band its row falls in, so a
+`generateMine` at the new depth restores the correspondence.
 
 ### The controls
 
