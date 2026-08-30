@@ -73,6 +73,21 @@ The best score is now the best of the session rather than a figure kept in brows
 storage between sessions, and nothing persists between sessions. It still rises
 live as the score passes it and still carries from one round to the next.
 
+## The debug surface poses one thing at a time
+
+The surface is rebuilt around the two rules a validator needs from it. Every
+operation now sets a single field, reads the state, or moves the clock, so the
+compound `startRound` is gone and a scenario is assembled from the calls it wants.
+The keyboard operations are gone with it, because the keyboard belongs to the
+runtime and a scenario about the controls dispatches a real key event.
+
+The surface also owes a validator an isolated world. The pellet and, on the Maze
+board, the obstacle cells are placed and removed outright, and the snake's
+steering, its travel and the pellet's respawn are three switches a scenario holds
+one at a time, so a check on the combo window can hold the snake still while the
+ticks run. The highlight, the best score and the buffered turns join the state an
+operation may pose, and the snapshot reports every field an operation can set.
+
 ## The points the two modes disagree on
 
 A variant may only add to a common review point, never replace the validator behind
