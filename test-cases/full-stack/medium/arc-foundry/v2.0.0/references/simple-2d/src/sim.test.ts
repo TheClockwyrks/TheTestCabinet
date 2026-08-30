@@ -26,6 +26,7 @@ import {
   placeComponent,
   placeStamp,
   pullPress,
+  candidates,
   removeStructure,
   resetWorld,
   select,
@@ -598,4 +599,57 @@ describe("the maps and difficulties", () => {
     expect(s.totalWaves).toBe(40);
     expect(s.waypoints).toHaveLength(6);
   });
+});
+
+describe("a whole run", () => {
+  /** The first anchor on the grid a structure may stand at, or `null` when the yard is full. */
+  function freeAnchor(w: FoundryWorld): { col: number; row: number } | null {
+    const b = board(w);
+    for (let row = 0; row <= 31; row += 2) {
+      for (let col = 0; col <= 48; col += 2) {
+        if (b.canPlace(col, row, w.structures, w.units)) return { col, row };
+      }
+    }
+    return null;
+  }
+
+  it("plays every wave of a campaign, then the finale, to the victory screen", () => {
+    // A run played to the end, wave by wave, through the game's own rules alone: no
+    // pose decides an outcome, and every wave is composed, released, walked, fired at,
+    // and cleared for real. The yard is stood up with apex structures and its integrity
+    // held at full, because what is checked is that the campaign RESOLVES rather than
+    // whether this particular maze is good enough to survive forty waves.
+    const w = createWorld(noAssets());
+    resetWorld(w, 5);
+    setDifficulty(w, "easy");
+    startRun(w);
+    let level = 0;
+    while (snapshot(w).screen === "playing" && level < 60) {
+      setIntegrity(w, 20);
+      if (level < 14) {
+        for (let i = 0; i < 3; i++) {
+          const at = freeAnchor(w);
+          if (at) placeComponent(w, "discharge", 5, at.col, at.row);
+        }
+      }
+      for (let i = 0; i < 5; i++) {
+        const at = freeAnchor(w);
+        if (at) placeStamp(w, at.col, at.row);
+      }
+      const rolls = candidates(w);
+      if (rolls.length === 0) break;
+      // Committing the harvest is what sends the wave; there is no send control.
+      keep(w, rolls[0]!.id);
+      for (let t = 0; t < 600 && snapshot(w).phase !== "build"; t++) {
+        advance(w, 1);
+        if (snapshot(w).screen !== "playing") break;
+      }
+      level++;
+    }
+    const s = snapshot(w);
+    expect(s.wave).toBe(40);
+    expect(s.screen).toBe("victory");
+    // The finale ran, so the run carries a Maze Rating.
+    expect(s.mazeRating).toBeGreaterThan(0);
+  }, 120_000);
 });
