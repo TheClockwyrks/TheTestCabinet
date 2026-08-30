@@ -229,10 +229,11 @@ test = "npx vitest run --coverage"
 # arguments and act on it at the call, and its readings return plain data. One handle,
 # three ways to reach the same operations.
 #
-# There is deliberately no `tick_hz`. Coil is clocked at a fixed 8 Hz and its debug
-# surface still moves time in whole simulation ticks, but a validator now builds its own
-# clock and drives it directly rather than asking the runtime to convert ticks back into
-# real seconds, so the case has nothing left to state here.
+# There is deliberately no `tick_hz`. Coil is clocked at a fixed 8 Hz and its engineless
+# surface moves time in seconds and frames, leaving the simulation to consume them into
+# whole ticks, but a validator now builds its own clock and drives it directly rather
+# than asking the runtime to convert ticks back into real seconds, so the case has
+# nothing left to state here.
 [instrumentation]
 handle = "__coil"
 
@@ -286,9 +287,9 @@ source = "specs/assets.md.hbs"
 # The debugging and automation surface every build must expose: a deterministic,
 # steppable core, an API to drive and inspect the game from code, and a read-only debug
 # overlay. Seeded for every run and framed as an ordinary developer affordance of the
-# game. It branches on both axes — the variant, for the snapshot's `mode` value and
-# whether the board carries interior obstacles, and the engine, for how the surface is
-# reached and what shape its operations take.
+# game. It branches on both axes — the variant, for the snapshot's `mode` value and for
+# the pair of operations that clear and place the obstacle cells only Maze lays, and the
+# engine, for how the surface is reached and what shape its operations take.
 [[spec]]
 source = "specs/instrumentation.md.hbs"
 
@@ -681,10 +682,11 @@ validation = { script = "validation/color/pellet.mjs", outputs = [
   { id = "scene", name = "The posed scene showing the snake and pellet colors", kind = "image" },
 ] }
 
-# --- Controls (input injection) -----------------------------------------------
-# Each control is driven with injected keyboard input through the debug API (see
-# specs/instrumentation.md) and its effect read back, so the actual key bindings are
-# exercised rather than a parallel path.
+# --- Controls (real key events) -----------------------------------------------
+# The debug surface carries no input operation: the keyboard belongs to the runtime
+# beneath the game (see specs/instrumentation.md). Each control is therefore driven by
+# dispatching a real key event and reading the effect back through the surface, so the
+# actual key bindings are exercised rather than a parallel path.
 [[review.categories]]
 id = "controls"
 title = "Controls"
