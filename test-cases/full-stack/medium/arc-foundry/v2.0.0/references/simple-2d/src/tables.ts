@@ -1,4 +1,4 @@
-// Arc Foundry — the live behaviour every figure in `src/constants.ts` adds up to.
+// Arc Foundry — the live behavior every figure in `src/constants.ts` adds up to.
 //
 // `src/constants.ts` states the figures the specification fixes, each exactly once, in
 // the shape the specification states them: a base type's Scrap stats and the multipliers
@@ -115,7 +115,7 @@ export function loadRadius(type: string): number {
 // ---- One firing block ----------------------------------------------------
 
 /**
- * The complete live behaviour of any firing structure, base component or combination
+ * The complete live behavior of any firing structure, base component or combination
  * tower alike, as one flat block. Everything the simulation needs to fire a shot and
  * resolve its impact is here, so firing reads one shape rather than branching on what
  * kind of structure it came from.
@@ -165,7 +165,7 @@ const NO_ABILITIES = {
 } as const;
 
 /**
- * A base component's live behaviour, which follows entirely from its type and its
+ * A base component's live behavior, which follows entirely from its type and its
  * quality.
  *
  * Damage is `BASE_STATS[type].damage * QUALITY_MULT[quality - 1]`, rounded, and range is
@@ -195,7 +195,7 @@ export function baseStats(type: ComponentType, quality: number): Stats {
 }
 
 /**
- * A combination tower's live behaviour at an upgrade level.
+ * A combination tower's live behavior at an upgrade level.
  *
  * The reference block is what a level-`3` tower scales toward: damage takes
  * `COMBO_DAMAGE_MULT[level]` and range gains `COMBO_RANGE_BONUS[level]`. Fire rate and

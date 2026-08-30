@@ -92,7 +92,7 @@ specification fixes. Everything else is this build's.
 | --- | --- |
 | `types.ts` | The state, field by field, as the simulation works in it. |
 | `world.ts` | The one seam between the read-only state the engine hands out and the world a frame advances. |
-| `tables.ts` | The live behaviour the figures in `constants.ts` add up to. |
+| `tables.ts` | The live behavior the figures in `constants.ts` add up to. |
 | `theme.ts` | The palette, the type face, and the words drawn on screen. |
 | `board.ts` | The tile grid, the pathing, and the never-seal rule. |
 | `waves.ts` | What each wave releases, and when. |

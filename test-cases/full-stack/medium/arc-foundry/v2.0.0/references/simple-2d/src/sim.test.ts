@@ -284,9 +284,9 @@ describe("firing", () => {
 
   it("removes health and credits the structure that fired", () => {
     const tower = placeComponent(w, "capacitor", 1, 20, 10)!;
-    const centre = footprintCenter(20, 10);
+    const center = footprintCenter(20, 10);
     const unit = spawnUnit(w, "slug")!;
-    setUnitPosition(w, unit, centre.x + 40, centre.y);
+    setUnitPosition(w, unit, center.x + 40, center.y);
     setUnitFrozen(unit, true);
     advance(w, 2);
     const s = snapshot(w);
@@ -299,9 +299,9 @@ describe("firing", () => {
 
   it("holds fire with nothing in range", () => {
     const tower = placeComponent(w, "capacitor", 1, 20, 10)!;
-    const centre = footprintCenter(20, 10);
+    const center = footprintCenter(20, 10);
     const unit = spawnUnit(w, "slug")!;
-    setUnitPosition(w, unit, centre.x + 400, centre.y);
+    setUnitPosition(w, unit, center.x + 400, center.y);
     setUnitFrozen(unit, true);
     advance(w, 2);
     expect(
@@ -392,14 +392,14 @@ describe("the economy", () => {
     setWave(w, 1);
     setCharge(w, 0);
     const tower = placeComponent(w, "discharge", 5, 20, 10)!;
-    const centre = footprintCenter(20, 10);
+    const center = footprintCenter(20, 10);
     const unit = spawnUnit(w, "mote")!;
-    setUnitPosition(w, unit, centre.x + 30, centre.y);
+    setUnitPosition(w, unit, center.x + 30, center.y);
     setUnitFrozen(unit, true);
     // A second unit well out of range keeps the wave live, so the reading is the bounty
     // alone rather than the bounty plus the wave-clear bonus.
     const bystander = spawnUnit(w, "slug")!;
-    setUnitPosition(w, bystander, centre.x + 600, centre.y);
+    setUnitPosition(w, bystander, center.x + 600, center.y);
     setUnitFrozen(bystander, true);
     advance(w, 3);
     expect(snapshot(w).units.map((u) => u.id)).toEqual([bystander.id]);
@@ -515,9 +515,9 @@ describe("the finale", () => {
     const w = openRun();
     setWave(w, 1);
     const tower = placeComponent(w, "discharge", 5, 20, 10)!;
-    const centre = footprintCenter(20, 10);
+    const center = footprintCenter(20, 10);
     const boss = spawnUnit(w, "overload")!;
-    setUnitPosition(w, boss, centre.x + 30, centre.y);
+    setUnitPosition(w, boss, center.x + 30, center.y);
     setUnitFrozen(boss, true);
     const hp = snapshot(w).units[0]!.hp;
     advance(w, 4);

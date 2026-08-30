@@ -1,13 +1,13 @@
 // Arc Foundry — the look: the palette, the type face, and the words drawn on screen.
 //
-// `src/constants.ts` deliberately fixes no colour, no font, and no artwork, because
+// `src/constants.ts` deliberately fixes no color, no font, and no artwork, because
 // `specs/overview.md` states what a player must read at a glance and leaves how it
 // looks to the build. This module is that choice, gathered in one place so the yard,
 // the HUD, the panel, and the menus are lit by one palette rather than by scattered
 // literals.
 //
 // The scheme is electro-industrial: a cold, oil-dark yard lit by blue-white discharge,
-// with one accent per base component type so a type reads by colour as well as by its
+// with one accent per base component type so a type reads by color as well as by its
 // produced head sprite, and one accent per quality rung so the ladder reads as a ring
 // and a Roman badge beside the escalating finish of the sprite itself.
 
@@ -23,7 +23,7 @@ import {
   type TargetingPriority,
 } from "./constants";
 
-/** The palette. Every colour the game draws comes from here. */
+/** The palette. Every color the game draws comes from here. */
 export const COL = {
   /** The letterbox and the ground behind everything. */
   void: "#05080c",
@@ -58,7 +58,7 @@ export const COL = {
   blocker: "#3a4351",
 } as const;
 
-/** One accent per base component type, so a type reads by colour as well as by shape. */
+/** One accent per base component type, so a type reads by color as well as by shape. */
 export const TYPE_COLOR: Readonly<Record<ComponentType, string>> = {
   capacitor: "#5ac8ff",
   coil: "#9b7bff",
@@ -76,7 +76,7 @@ export const TYPE_COLOR: Readonly<Record<ComponentType, string>> = {
 /**
  * One accent per quality rung, indexed by `quality - 1`.
  *
- * The second, non-colour read of quality is the Roman badge below and the escalating
+ * The second, non-color read of quality is the Roman badge below and the escalating
  * finish of the produced head sprite itself, so a player who cannot separate these
  * five hues still reads the ladder.
  */

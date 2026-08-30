@@ -6,7 +6,7 @@
 // it back, so a seed plus a sequence of calls reproduces a run exactly
 // (`specs/instrumentation.md`).
 //
-// A stream is a plain record rather than an object with behaviour, so a caller either
+// A stream is a plain record rather than an object with behavior, so a caller either
 // keeps one for the length of a computation — a wave's composition — or lifts one out
 // of the world, draws, and writes the advanced state back.
 

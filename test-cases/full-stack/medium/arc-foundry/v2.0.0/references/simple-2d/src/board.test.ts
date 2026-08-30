@@ -9,20 +9,20 @@ import { footprintCenter, tileCenter } from "./tables";
 import type { Structure } from "./types";
 
 describe("the tile grid", () => {
-  it("centres a tile where the grid says", () => {
+  it("centers a tile where the grid says", () => {
     expect(tileCenter(0, 0)).toEqual({ x: 10, y: 66 });
     expect(tileCenter(49, 32)).toEqual({ x: 990, y: 706 });
     expect(TILE).toBe(20);
   });
 
-  it("centres a footprint on the meeting point of its four tiles", () => {
+  it("centers a footprint on the meeting point of its four tiles", () => {
     expect(footprintCenter(0, 0)).toEqual({ x: 20, y: 76 });
     expect(footprintCenter(10, 10)).toEqual({ x: 220, y: 276 });
   });
 });
 
 describe("waypoint platforms", () => {
-  it("covers four tiles, with the stem pointing at the grid's centre", () => {
+  it("covers four tiles, with the stem pointing at the grid's center", () => {
     const high = platformTiles(20, 4);
     expect(high).toHaveLength(4);
     expect(high).toContainEqual({ col: 19, row: 4 });

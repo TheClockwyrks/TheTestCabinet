@@ -220,9 +220,9 @@ describe("the overlays draw", () => {
     const w = opened();
     setWave(w, 1);
     const tower = placeComponent(w, "discharge", 5, 20, 10)!;
-    const centre = footprintCenter(20, 10);
+    const center = footprintCenter(20, 10);
     const unit = spawnUnit(w, "slug")!;
-    setUnitPosition(w, unit, centre.x + 30, centre.y);
+    setUnitPosition(w, unit, center.x + 30, center.y);
     setUnitFrozen(unit, true);
     advance(w, 2);
     setOverlay(w, "damage", true);
@@ -298,10 +298,10 @@ describe("the yard draws what it is asked to", () => {
     const w = opened();
     setWave(w, 3);
     placeComponent(w, "arcnode", 3, 20, 10);
-    const centre = footprintCenter(20, 10);
+    const center = footprintCenter(20, 10);
     for (const type of ["mote", "filament", "dynamo"] as const) {
       const u = spawnUnit(w, type)!;
-      setUnitPosition(w, u, centre.x + 30, centre.y);
+      setUnitPosition(w, u, center.x + 30, center.y);
       setUnitFrozen(u, true);
     }
     advance(w, 1.5);

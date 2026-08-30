@@ -59,7 +59,7 @@ describe("a burst", () => {
     }
   });
 
-  it("centres a segment effect on the midpoint of its two ends", () => {
+  it("centers a segment effect on the midpoint of its two ends", () => {
     const burst = spawnBurst(assets, {
       kind: "chain",
       x: 100,

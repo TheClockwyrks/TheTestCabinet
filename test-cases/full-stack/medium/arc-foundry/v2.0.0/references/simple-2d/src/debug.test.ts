@@ -284,7 +284,7 @@ describe("the surface", () => {
     expect(panel).not.toContain("targeting");
   });
 
-  it("reports a rectangle a press at its centre would activate", () => {
+  it("reports a rectangle a press at its center would activate", () => {
     d.apply((s) => api.startRun(s));
     for (const c of d.read((s) => api.statusControls(s))) {
       expect(c.w).toBeGreaterThan(0);
