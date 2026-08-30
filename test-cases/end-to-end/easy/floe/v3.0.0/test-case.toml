@@ -31,8 +31,8 @@ tags = ["arcade", "2d", "crossing"]
 # Like `description`, this is NOT seeded into a run.
 summary = """
 A single-screen crossing game where a small critter hops across lanes of sliding \
-ice and drifting floes to reach the far-shore bays — hunted the whole way by a \
-polar bear that dodges the same traffic and swims out after it."""
+ice and drifting floes to reach the far-shore bays, hunted the whole way by a polar \
+bear that dodges the same traffic and swims out after it."""
 
 # Site-facing prose describing the case, relative to this version folder. This is
 # NOT seeded into a run; it exists only to introduce the case on the site.
