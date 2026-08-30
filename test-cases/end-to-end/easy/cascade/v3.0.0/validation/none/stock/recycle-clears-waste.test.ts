@@ -1,23 +1,65 @@
-// SCAFFOLD PLACEHOLDER — validation/none/stock/recycle-clears-waste.test.ts
+// stock/recycle-clears-waste — a recycle leaves the waste holding nothing.
 //
-// The review item `stock.recycle-clears-waste` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// `specs/stock.md`: "The waste is left empty and its set memory is emptied with
+// it." This point reads the pile; `stock.recycle-clears-sets` reads the memory,
+// and `stock.empty-stock-recycles` reads the stock the cards went back to. Split
+// that way, a build that copied the waste onto the stock instead of moving it —
+// leaving the same cards in both places — loses exactly this point and keeps the
+// other two.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE PILE IS READ, NOT THE MEMORY. A build whose waste still holds its cards
+// while its set memory is empty draws an empty slot (`specs/table.md`: "A waste
+// whose set memory is empty shows no card ... whatever cards it still holds"),
+// so nothing about the picture would catch it and the pile's own length is the
+// only honest reading.
 //
-// What this item must decide, from the manifest:
-//
-//   A recycle empties the waste
-//
-//   The waste holds nothing after a recycle.
+// THE MEMORY THE WASTE CARRIES BEFOREHAND IS SIZED TO THE BUILD'S OWN TURN
+// COUNT, counted back from its top card, so the board is one its own turns could
+// have left.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertLength } from "../assert";
+import {
+  captureStill,
+  cards,
+  createHarness,
+  openTable,
+  poseWaste,
+  type Harness,
+} from "../harness";
+import { turnCount, turnSets } from "./turns";
 
-it("stock.recycle-clears-waste — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/stock/recycle-clears-waste.test.ts is a scaffold stub, not a validator",
+/** The waste, bottom card first. */
+const WASTE = ["2C", "3D", "4S", "5H", "6C", "7D"];
+
+/** One frame, so the still carries the empty waste the recycle leaves. */
+const DRAW_FRAMES = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("leaves the waste holding nothing", async () => {
+  await openTable(h);
+  const count = turnCount(await h.snapshot());
+  await poseWaste(h, cards(...WASTE), turnSets(WASTE.length, count));
+
+  await h.debug.turnStock();
+  await h.advance(DRAW_FRAMES);
+  await captureStill(h, "recycled");
+
+  const after = await h.snapshot();
+  assertLength(
+    after.waste,
+    0,
+    `the cards left on the waste after a recycle of ${WASTE.length} — ` +
+      "specs/stock.md: the waste is left empty, the cards having gone back " +
+      "to the stock rather than been copied there",
   );
 });
