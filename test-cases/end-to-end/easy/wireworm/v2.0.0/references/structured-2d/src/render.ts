@@ -574,13 +574,13 @@ function renderHowto(ctx: Ctx): void {
       ctx,
       line,
       STAGE_W / 2,
-      168 + index * 28,
+      158 + index * 26,
       font(20, "normal"),
       COLOR.text,
     );
   });
   HOWTO_CONTROLS.forEach((row, index) => {
-    const y = 566 + index * 30;
+    const y = 546 + index * 28;
     text(ctx, row.label, STAGE_W / 2 - 40, y, font(19), COLOR.textDim, "right");
     let x = STAGE_W / 2 - 10;
     row.keys.forEach((key, at) => {
@@ -594,7 +594,7 @@ function renderHowto(ctx: Ctx): void {
       x += ctx.measureText(key).width + 12;
     });
   });
-  text(ctx, "ESC to go back", STAGE_W / 2, 692, font(16), COLOR.textDim);
+  text(ctx, "ESC to go back", STAGE_W / 2, 688, font(16), COLOR.textDim);
 }
 
 /** The level's banner, over the board, while the banner phase runs. */
