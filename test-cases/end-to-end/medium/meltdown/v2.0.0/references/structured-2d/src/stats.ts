@@ -15,7 +15,6 @@ import {
   BLOOM_SPLASH,
   FORGE_SETPOINT,
   HUNDRED_HP_SCALE,
-  MAX_LEVEL,
   REFUND_RATE,
   RIME_SLOW_CEIL,
   SINK_OUTPUT,
@@ -30,7 +29,6 @@ import {
   type EmitterDef,
   type Face,
   type ModeName,
-  type MoverDef,
   type SurgeType,
   type TowerType,
 } from "./constants";
@@ -41,17 +39,6 @@ import type { TowerState, UnitState } from "./game";
 export function emitterDef(type: TowerType): EmitterDef | null {
   const def = TOWER_DEFS[type];
   return def.kind === "emitter" ? def : null;
-}
-
-/** A mover's definition, or `null` for an emitter. */
-export function moverDef(type: TowerType): MoverDef | null {
-  const def = TOWER_DEFS[type];
-  return def.kind === "mover" ? def : null;
-}
-
-/** Whether this type fires at all. */
-export function isEmitter(type: TowerType): boolean {
-  return TOWER_DEFS[type].kind === "emitter";
 }
 
 /** An emitter's four level-scaled figures, all `0` for a mover. */
@@ -118,11 +105,6 @@ export function outputOf(tower: TowerState): number {
 /** What the next upgrade costs this tower, and `0` at `MAX_LEVEL`. */
 export function upgradeCostOf(tower: TowerState): number {
   return upgradeCost(TOWER_DEFS[tower.type], tower.level);
-}
-
-/** Whether this tower can still be upgraded at all. */
-export function upgradable(tower: TowerState): boolean {
-  return tower.level < MAX_LEVEL;
 }
 
 /**
