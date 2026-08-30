@@ -28,11 +28,30 @@ Easy/Medium/Hard menu changes only the wave count and how tough the Load grows.
 After the final wave, an invincible Overload Dynamo walks the maze once, and the
 total damage you deal it is your Maze Rating, the run's only score.
 
-As a full-stack case, the model under test produces the game's own assets during
-the run: the component sprites across all five quality tiers, the Load and boss
-animations, and above all the electrical particle VFX (arcs, spark showers,
-chain lightning leaping between coils, expanding discharge rings) that carry the
-presentation. The six asset-generation tools sit on the run image's `PATH`, and
-the model builds the game around what it makes. Arc Foundry is a reskin of the
-classic random-build maze defense, given an original name, an electro-industrial
-look, and its own component roster, Load, and VFX.
+Arc Foundry is a reskin of the classic random-build maze defense, given an
+original name, an electro-industrial look, and its own component roster, Load,
+and VFX.
+
+## What a model is given
+
+A run receives the self-contained specification and a configured TypeScript
+project to build inside: the Vite, Vitest, ESLint and Prettier toolchain, and the
+page with its canvas. How much more it receives depends on the engine the run
+selects. On an engine run the project also carries the runtime and the case-owned
+modules that name every figure the specification fixes and stand the engine up,
+and the run writes the game and its debug surface against them. On an engineless
+run the project carries no source at all, and the run writes the runtime as well
+as the game. Under all three the maze router, the never-seal test, the projectile
+flight and the scrap-press roll are the run's own work: no engine supplies
+pathfinding, collision response, or a seeded random source.
+
+What the run is not given is any art. This is a full-stack case, so it produces
+the game's own assets during the run with the six asset-generation tools on the
+image's `PATH`: the component sprites across all five quality tiers, the Load and
+boss animations, the yard, the audio, and above all the electrical particle VFX —
+arcs, spark showers, chain lightning leaping between coils, expanding discharge
+rings — that carry the presentation. There are no seeded assets and no reference
+mockups, so nothing shows the run a picture of the finished game. The
+specification fixes the maze rules, the roll, the roster and the economy exactly,
+and every review point is decided by a validator derived from those rules; the
+reviewer's judgement goes into the domain ratings.
