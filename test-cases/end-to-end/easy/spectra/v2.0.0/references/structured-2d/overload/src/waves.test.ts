@@ -4,13 +4,16 @@ import {
   CHALLENGE_PER_GROUP,
   CHALLENGE_TOTAL,
   DIVE_FIRST_DELAY,
+  ENTER_GROUP_GAP,
   FIELD_BOTTOM,
+  FIELD_LEFT,
+  FIELD_RIGHT,
   FIELD_TOP,
   FORM_CENTER_X,
   isChallengeStage,
 } from "./constants";
 import { buildWave, composition, fluxCount, prismCount } from "./waves";
-import { liveState } from "./fixtures";
+import { liveState, run, STEP } from "./fixtures";
 import { seedRandom } from "./rng";
 
 function stageWave(stage: number, seed = 1) {
@@ -189,5 +192,82 @@ describe("a challenge stage", () => {
     state.challengeHits = 12;
     buildWave(state);
     expect(state.challengeHits).toBe(0);
+  });
+});
+
+describe("a challenge flyover in play", () => {
+  it("arrives as five single-band groups that alternate, and leaves", () => {
+    const state = liveState();
+    state.stage = 3;
+    state.waveEntry = true;
+    buildWave(state);
+
+    const inside = (drone: (typeof state.drones)[number]): boolean =>
+      drone.x > FIELD_LEFT &&
+      drone.x < FIELD_RIGHT &&
+      drone.y > FIELD_TOP &&
+      drone.y < FIELD_BOTTOM;
+
+    const arrivals: { at: number; band: string }[] = [];
+    const seen = new Set<number>();
+    for (let frame = 0; frame < 60 * 16; frame += 1) {
+      run(state, STEP);
+      for (const drone of state.drones) {
+        if (inside(drone) && !seen.has(drone.id)) {
+          seen.add(drone.id);
+          arrivals.push({ at: state.simTime, band: drone.band });
+        }
+      }
+      if (state.drones.length === 0 && arrivals.length > 0) break;
+    }
+
+    expect(arrivals.length).toBe(CHALLENGE_TOTAL);
+    // Merge arrivals into runs of one band, as a player sees them.
+    const merged: { band: string; count: number }[] = [];
+    for (const arrival of arrivals) {
+      const last = merged[merged.length - 1];
+      if (last !== undefined && last.band === arrival.band) last.count += 1;
+      else merged.push({ band: arrival.band, count: 1 });
+    }
+    expect(merged.length).toBe(CHALLENGE_GROUPS);
+    expect(merged.every((group) => group.count === CHALLENGE_PER_GROUP)).toBe(
+      true,
+    );
+    for (let index = 1; index < merged.length; index += 1) {
+      expect(merged[index].band).not.toBe(merged[index - 1].band);
+    }
+    // Every one of them sweeps across and leaves rather than settling.
+    expect(state.drones).toHaveLength(0);
+    expect(state.simTime).toBeLessThan(
+      ENTER_GROUP_GAP * (CHALLENGE_GROUPS - 1) + 8,
+    );
+  });
+
+  it("fires nothing anywhere across a whole challenge stage", () => {
+    const state = liveState();
+    state.stage = 3;
+    state.waveEntry = true;
+    state.diveLaunching = true;
+    buildWave(state);
+    for (let frame = 0; frame < 60 * 16; frame += 1) {
+      run(state, STEP);
+      expect(state.bullets).toHaveLength(0);
+      if (state.drones.length === 0) break;
+    }
+  });
+
+  it("runs at the same speeds whatever stage it falls on", () => {
+    const covered = (stage: number): number => {
+      const state = liveState();
+      state.stage = stage;
+      state.waveEntry = true;
+      buildWave(state);
+      const drone = state.drones[0];
+      run(state, 0.2);
+      const from = drone.x;
+      run(state, 1);
+      return Math.abs(drone.x - from);
+    };
+    expect(covered(9)).toBeCloseTo(covered(3), 6);
   });
 });
