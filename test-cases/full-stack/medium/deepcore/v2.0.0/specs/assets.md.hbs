@@ -55,17 +55,17 @@ Every produced file lands under `assets/` at these exact paths.
 
 | Path | Holds |
 | --- | --- |
-| `assets/miner/<state>/<n>.png` | One frame of a miner cycle, `<n>` counted from `0`. |
+| `assets/miner/<state>/frameNN.png` | One frame of a miner cycle, numbered from `frame00.png`. |
 | `assets/tiles/<band>-<n>.png` | A rock variant for `topsoil`, `rockbed`, `deepstone`, or `coreshell`. |
 | `assets/tiles/bedrock.png` | The bedrock border. |
 | `assets/tiles/stone-<n>.png` | An unbreakable boulder variant. |
 | `assets/tiles/tunnel.png` | The carved-tunnel interior fill. |
-| `assets/tiles/crack/<n>.png` | One frame of the drill-damage overlay. |
-| `assets/lava/<n>.png` | One frame of the lava shimmer. |
+| `assets/tiles/crack/frameNN.png` | One frame of the drill-damage overlay. |
+| `assets/hazards/lava/frameNN.png` | One frame of the lava shimmer. |
 | `assets/ore/<name>.png` | The overlay for one ore or gemstone, named in lower case. |
 | `assets/materials/<name>.png` | `resonite`, `cryenite`, `core`, and `core-sample`. |
-| `assets/surface/<id>.png` | One of the six buildings, by its id, and `cave-mouth`. |
-| `assets/rocket/<n>.png` | The rocket with `<n>` components installed, `0` through `5`. |
+| `assets/surface/<id>.png` | One of the six buildings, by its id, plus `cave-mouth`, `ground`, and `sky`. |
+| `assets/rocket/stageN.png` | The rocket with `N` components installed, `stage0` through `stage5`. |
 | `assets/icons/<name>.png` | A status-bar icon. |
 | `assets/fx/<name>.json` | One produced particle system. |
 | `assets/audio/<name>.wav` | One produced sound or the music bed. |
@@ -123,8 +123,8 @@ Produce each of the following with `draw`.
   angled facets, and a bright glint, unmistakably unlike the ore smear.
 - Resonite and Cryenite nodes, as raw crystal embedded in rock, distinct from both
   ore and gemstones; the glowing Core in its chamber; and the Core Sample.
-- The six surface buildings, each reading clearly as what it is, and the cave
-  mouth.
+- The six surface buildings, each reading clearly as what it is, the cave mouth,
+  the camp ground, and the sky backdrop above it.
 - The rocket at each of its six assembly states, from the bare pad to the
   launch-ready rocket, so the player reads the win progress from the pad.
 - The status-bar icons for fuel, hull, cargo, Credits, depth, and each material.
@@ -197,15 +197,15 @@ Produce every sound with `sfx-synth` or `sfx-sample`, and the music bed with
 | `drill` | `assets/audio/drill.wav` | Looping while the miner is cutting. |
 | `thrust` | `assets/audio/thrust.wav` | Looping while the jetpack fires. |
 | `ore-pickup` | `assets/audio/ore-pickup.wav` | An ore or gemstone is banked. |
-| `material` | `assets/audio/material.wav` | A material is banked. Richer than the ore pickup. |
+| `material-chime` | `assets/audio/material-chime.wav` | A material is banked. Richer than the ore pickup. |
 | `gas-explosion` | `assets/audio/gas-explosion.wav` | A gas pocket detonates. |
 | `lava-sizzle` | `assets/audio/lava-sizzle.wav` | The miner touches lava. |
 | `impact` | `assets/audio/impact.wav` | The miner lands above the safe speed. |
-| `confirm` | `assets/audio/confirm.wav` | A purchase or a fabrication succeeds. |
+| `fabricate` | `assets/audio/fabricate.wav` | A purchase or a fabrication succeeds. |
 | `launch` | `assets/audio/launch.wav` | The rocket launches. |
 | `death` | `assets/audio/death.wav` | The miner dies. |
-| `low-fuel` | `assets/audio/low-fuel.wav` | Fuel is below `LOW_FUEL_FRACTION`. |
-| `core-alarm` | `assets/audio/core-alarm.wav` | A Core Sample's timer runs, escalating as it nears zero. |
+| `alarm-fuel` | `assets/audio/alarm-fuel.wav` | Fuel is below `LOW_FUEL_FRACTION`. |
+| `alarm-core` | `assets/audio/alarm-core.wav` | A Core Sample's timer runs, escalating as it nears zero. |
 | `music` | `assets/audio/music.wav` | Looping under the whole game. A lonely, industrial descent bed. |
 
 {{#if (eq engine.slug "none")}}
