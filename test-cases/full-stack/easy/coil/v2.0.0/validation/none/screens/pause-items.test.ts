@@ -1,28 +1,54 @@
-/*
- * Coil validator: `screens.pause-items`. PLACEHOLDER.
- *
- * The pause screen draws its menu.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * The paused frame draws every item of PAUSE_ITEMS: RESUME, RESTART and MENU.
- *
- * HOW:
- * pause a live round, read the frame's text draws, and capture the pause menu.
- *
- * MEDIA IT MUST CAPTURE: pause (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// screens/pause-items — the pause screen draws its whole menu.
+//
+// specs/ui.md gives `paused` one element, `PAUSE_ITEMS`: `RESUME`, `RESTART` and
+// `MENU`. All three are read, because a pause menu missing an entry leaves the
+// player unable to reach whatever it named — and each of those three is a point
+// of its own under `states`, which this one does not repeat: what is decided here
+// is that the screen SHOWS them.
+//
+// Matching is by substring and ignores case, because a highlighted entry is
+// commonly drawn with a marker beside it and that is the build's presentation.
+//
+// The pause screen is reached through the surface rather than by pressing
+// `Escape` over a live round, so a build that cannot pause fails
+// `states/pause-reachable` alone.
 
-test("screens.pause-items", () => {
-  throw new Error("validator not implemented: screens/pause-items.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { PAUSE_ITEMS } from "../constants";
+import {
+  HOME_HEAD,
+  captureStill,
+  chainFrom,
+  createHarness,
+  drewText,
+  poseScene,
+  type Harness,
+} from "../harness";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("draws RESUME, RESTART and MENU on the pause screen", async () => {
+  const paused = await poseScene(h, {
+    screen: "paused",
+    snake: chainFrom(HOME_HEAD, "right", 5),
+    dir: "right",
+    pellet: null,
+  });
+  assertEqual(paused.screen, "paused", "the screen the frame is read from");
+
+  const calls = await h.frameCalls();
+  await captureStill(h, "pause");
+
+  for (const item of PAUSE_ITEMS) {
+    assertEqual(drewText(calls, item), true, `the pause menu drawing ${item}`);
+  }
 });
