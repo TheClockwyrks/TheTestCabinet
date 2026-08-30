@@ -110,6 +110,8 @@ export interface Harness {
   /** Tap a key at the engine's own listeners. */
   tap(code: string): void;
   advance(frames: number): Promise<void>;
+  /** Replace the scripted clock, for a scenario that wants a finer frame. */
+  setStep(ms: number): void;
   pixel(x: number, y: number): [number, number, number];
   dispose(): void;
 }
@@ -165,6 +167,7 @@ export async function createHarness(): Promise<Harness> {
       events.dispatchEvent(new KeyEvt("keyup", code));
     },
     advance: (frames) => engine.advance(frames),
+    setStep: (ms) => engine.setClock(new ConstantClock(ms)),
     pixel: (x, y) => {
       const { data } = ctx.getImageData(Math.round(x), Math.round(y), 1, 1);
       return [data[0], data[1], data[2]];
@@ -326,6 +329,39 @@ export function clickAt(h: Harness, x: number, y: number): void {
 export function doubleClickAt(h: Harness, x: number, y: number): void {
   clickAt(h, x, y);
   clickAt(h, x, y);
+}
+
+/** One `fillText` the last recorded frame issued: its string and where it went. */
+export interface DrawnText {
+  text: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * Every string the build drew over `frames` frames, read off the engine's own
+ * draw-command recorder, so a check reads what the game DREW rather than what a
+ * font happened to rasterize.
+ */
+export async function recordText(h: Harness, frames = 1): Promise<DrawnText[]> {
+  h.engine.startRecording();
+  await h.advance(frames);
+  const recording = h.engine.stopRecording();
+  const drawn: DrawnText[] = [];
+  for (const frame of recording.frames) {
+    for (const index of frame.ops) {
+      const op = recording.ops[index];
+      if (op.op !== "call" || op.method !== "fillText") continue;
+      const [text, x, y] = op.args;
+      if (typeof text !== "string") continue;
+      drawn.push({
+        text,
+        x: typeof x === "number" ? x : Number.NaN,
+        y: typeof y === "number" ? y : Number.NaN,
+      });
+    }
+  }
+  return drawn;
 }
 
 /** How far apart two colours read, as a Euclidean RGB distance out of 441. */
