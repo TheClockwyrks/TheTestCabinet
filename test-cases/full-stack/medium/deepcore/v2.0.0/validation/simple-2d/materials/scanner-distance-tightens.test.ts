@@ -1,25 +1,85 @@
-// Deepcore — materials.scanner-distance-tightens. STUB: NOT YET AUTHORED.
+// materials/scanner-distance-tightens — the reading closes as the miner closes.
 //
-// The reported distance tightens as the miner closes in
+// `specs/mining.md` fixes the distance the game shows as the straight-line
+// distance in tiles between the miner's cell and the node's cell, and says it
+// "tightens as the miner closes in". So the miner is posed at several cells down
+// one column toward a single node and then back away from it, and each reading
+// is held against the separation of the two cells the snapshot itself reports.
 //
-// The reported distance is the straight-line distance in tiles between the
-// miner cell and the node cell, so it falls as the miner approaches and rises
-// as it moves away.
-//
-// Automated validation: pose a node in range and read the distance at several
-// miner cells, holding each against the cell separation.
-//
-// `test-case.toml` declares this suite as `materials/scanner-distance-tightens.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (closing (replay)) around the drive.
+// Holding each reading against the cell separation rather than only against the
+// one before it is what decides the rule instead of the trend: a build that
+// reported a distance falling on some scale of its own would pass a check that
+// only watched the numbers get smaller.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertLessThan } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  standOn,
+  type Harness,
+} from "../harness";
+import {
+  cellDistance,
+  minerCell,
+  MINER_COL,
+  openScanner,
+  poseNode,
+  settled,
+} from "./scanner-scene";
 
-test("The reported distance tightens as the miner closes in", () => {
-  throw new Error(
-    "Deepcore validator `materials/scanner-distance-tightens` is declared in test-case.toml but has not been authored yet.",
+/** The node's row, deep enough that every station below is inside tier 3. */
+const NODE_ROW = 40;
+
+/** The rows the miner is read from: closing in, then falling back. */
+const STATIONS = [12, 20, 30, 36, 22];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reports the cell separation, falling on approach and rising on retreat", async () => {
+  openScanner(h, 3);
+  const node = { col: MINER_COL, row: NODE_ROW };
+  poseNode(h, node, "resonite");
+
+  const readings = await captureReplay(h, "closing", async () => {
+    const seen: number[] = [];
+    for (const row of STATIONS) {
+      standOn(h, MINER_COL, row);
+      const at = await settled(h);
+      assertEqual(at.scanner.locked, true, `specs/mining.md, from row ${row}`);
+      assertEqual(at.scanner.target, "resonite", "specs/mining.md");
+      const expected = cellDistance(minerCell(at), node);
+      assertCloseTo(
+        at.scanner.distanceTiles ?? Number.NaN,
+        expected,
+        2,
+        `specs/mining.md, from row ${row}`,
+      );
+      seen.push(at.scanner.distanceTiles ?? Number.NaN);
+    }
+    return seen;
+  });
+
+  // The four stations that close in read shorter each time, and the last one,
+  // which steps back up the column, reads longer than the one before it.
+  for (let i = 1; i < STATIONS.length - 1; i += 1) {
+    assertLessThan(
+      readings[i],
+      readings[i - 1],
+      `specs/mining.md, closing from row ${STATIONS[i - 1]} to ${STATIONS[i]}`,
+    );
+  }
+  assertLessThan(
+    readings[readings.length - 2],
+    readings[readings.length - 1],
+    "specs/mining.md, the reading rises as the miner moves away",
   );
 });

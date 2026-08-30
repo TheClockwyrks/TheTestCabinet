@@ -1,24 +1,64 @@
-// Deepcore — materials.scanner-drops-a-held-material. STUB: NOT YET AUTHORED.
+// materials/scanner-drops-a-held-material — a banked node stops being a target.
 //
-// The scanner stops targeting a material once it is held
+// `specs/mining.md` states the targeting rule as a condition on the satchel:
+// the scanner targets the Resonite node "while the miner lacks Resonite". So the
+// moment the miner banks one, that node stops being a target and the scanner
+// falls to the other missing material or to nothing.
 //
-// Once a material is in the satchel the scanner no longer targets its node, so
-// a held Resonite leaves the scanner pointing at Cryenite or at nothing.
-//
-// Automated validation: pose both nodes in range, bank the resonite and read
-// the target moving off it.
-//
-// `test-case.toml` declares this suite as `materials/scanner-drops-a-held-material.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (switch (replay)) around the drive.
+// The change is driven by the game rather than posed: the Resonite node is put
+// under the miner's drill and cut through, so what banks it is
+// `specs/character.md`'s own rule that a broken material node banks its material
+// into the satchel. The miner's travel is gated so the cut is all that happens;
+// the drill is not, because the cut is the point.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  driveCut,
+  layMaterial,
+  openScene,
+  pinMiner,
+  standOn,
+  type Harness,
+} from "../harness";
+import { MINER_COL, MINER_ROW, settled } from "./scanner-scene";
 
-test("The scanner stops targeting a material once it is held", () => {
-  throw new Error(
-    "Deepcore validator `materials/scanner-drops-a-held-material` is declared in test-case.toml but has not been authored yet.",
+/** The Cryenite node's row: the target the scanner falls to once Resonite is in. */
+const CRYENITE_ROW = 25;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("moves the target off the Resonite node once its material is banked", async () => {
+  openScene(h);
+  pinMiner(h);
+  h.debug.setTier("scanner", 3);
+  const resonite = { col: MINER_COL, row: MINER_ROW };
+  const cryenite = { col: MINER_COL, row: CRYENITE_ROW };
+  layMaterial(h, resonite.col, resonite.row, "resonite");
+  layMaterial(h, cryenite.col, cryenite.row, "cryenite");
+  standOn(h, resonite.col, resonite.row);
+
+  const before = await settled(h);
+  assertEqual(before.satchel.resonite, 0, "specs/mining.md");
+  assertEqual(before.scanner.target, "resonite", "specs/mining.md");
+
+  const cut = await captureReplay(h, "switch", () =>
+    driveCut(h, "down", resonite),
   );
+  assertEqual(cut.broke, true, "specs/character.md");
+
+  const after = await settled(h);
+  assertEqual(after.satchel.resonite, 1, "specs/mining.md");
+  assertEqual(after.scanner.target, "cryenite", "specs/mining.md");
+  assertEqual(after.scanner.locked, true, "specs/mining.md");
 });
