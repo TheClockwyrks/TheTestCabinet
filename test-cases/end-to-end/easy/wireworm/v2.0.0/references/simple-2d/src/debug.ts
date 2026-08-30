@@ -28,8 +28,6 @@
 import {
   CHARGE_MAX,
   DEFAULT_SEED,
-  DROPPER_SPEED,
-  DROPPER_SPEED_HIT,
   TOTAL_LEVELS,
   WIREWORM_DEBUG_VERSION,
   inBounds,
@@ -515,12 +513,6 @@ export function createDebugApi(): WirewormDebugApi {
         const foe = foeById(sim, id);
         if (foe === undefined) return;
         foe.hit = hit;
-        // A dropper falls at its hit speed from the moment the flag is set, so
-        // posing the flag poses the fall that goes with it and the snapshot
-        // reports a dropper a caller can read as one whole thing.
-        if (foe.kind === "dropper") {
-          foe.vy = hit ? DROPPER_SPEED_HIT : DROPPER_SPEED;
-        }
       })(state),
 
     setFoeMind: (state, id, enabled) =>

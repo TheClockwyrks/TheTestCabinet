@@ -3,12 +3,7 @@
 // touches the state it was handed.
 
 import { describe, expect, it } from "vitest";
-import {
-  CHARGE_MAX,
-  DROPPER_SPEED,
-  DROPPER_SPEED_HIT,
-  TOTAL_LEVELS,
-} from "./constants";
+import { CHARGE_MAX, TOTAL_LEVELS } from "./constants";
 import { createDebugApi } from "./debug";
 import { blankState } from "./flow";
 import type { WirewormState } from "./game";
@@ -117,20 +112,28 @@ describe("a pose", () => {
   it("sets each foe field on its own", () => {
     const { state, foeId } = posed();
     let next = debug.setFoeVelocity(state, foeId, -40, 90);
+    next = debug.setFoeHit(next, foeId, true);
     next = debug.setFoeMind(next, foeId, false);
     next = debug.setFoeTravel(next, foeId, false);
+
+    // Each pose set its own field and left the others as the pose before it
+    // wrote them: the posed velocity survives `setFoeHit`, which carries the
+    // dropper's flag and nothing else. The fall speed a first bolt brings on is
+    // the bolt path's, in `src/bolts.ts`.
     expect(debug.snapshot(next).foes[0]).toMatchObject({
       vx: -40,
       vy: 90,
+      hit: true,
       mind: false,
       travel: false,
     });
 
-    const hit = debug.setFoeHit(state, foeId, true);
-    expect(debug.snapshot(hit).foes[0]?.hit).toBe(true);
-    expect(debug.snapshot(hit).foes[0]?.vy).toBeCloseTo(DROPPER_SPEED_HIT, 6);
-    const healed = debug.setFoeHit(hit, foeId, false);
-    expect(debug.snapshot(healed).foes[0]?.vy).toBeCloseTo(DROPPER_SPEED, 6);
+    const healed = debug.setFoeHit(next, foeId, false);
+    expect(debug.snapshot(healed).foes[0]).toMatchObject({
+      vx: -40,
+      vy: 90,
+      hit: false,
+    });
   });
 
   it("leaves the rosters alone for an id nothing carries", () => {

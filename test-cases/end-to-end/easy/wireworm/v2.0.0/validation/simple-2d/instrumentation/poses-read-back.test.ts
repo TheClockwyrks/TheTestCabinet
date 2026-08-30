@@ -86,15 +86,15 @@ const WORM_R = 9;
 const WORM_DH = -1;
 const WORM_DV = -1;
 
-/** The glitch posed, and a velocity no foe rests at. */
-const GLITCH_C = 5;
-const GLITCH_R = 4;
+/**
+ * The dropper posed, and a velocity no foe rests at. One foe carries all four of
+ * the foe poses: each sets its own field, so the velocity, the hit flag and the
+ * two faculties are read off the same foe.
+ */
+const FOE_C = 30;
+const FOE_R = 4;
 const FOE_VX = -123;
 const FOE_VY = 45;
-
-/** The dropper posed, whose hit flag is the one specs/foes.md gives a dropper. */
-const DROPPER_C = 30;
-const DROPPER_R = 4;
 
 /** The bolt posed, at a center in logical units rather than on a tile. */
 const BOLT_X = 400;
@@ -159,22 +159,17 @@ it("reports every posed value through snapshot", async () => {
   h.debug.setWormStepping(wormId, false);
   h.debug.setWormBody(wormId, false);
 
-  // ---- The foes ----------------------------------------------------------
+  // ---- The foe -----------------------------------------------------------
   //
-  // Two of them, because the two faculties they carry are read off different
-  // kinds: the velocity and the two gates off a glitch, and the hit flag off the
-  // dropper specs/foes.md gives it to. A dropper that has taken its first bolt
-  // falls faster from that moment, so reading a posed velocity off the same foe
-  // would be reading the fall the flag poses rather than the velocity.
-  h.debug.addFoe("glitch", tileCX(GLITCH_C), tileCY(GLITCH_R));
-  const glitchId = lastFoe(h.snapshot()).id;
-  h.debug.setFoeVelocity(glitchId, FOE_VX, FOE_VY);
-  h.debug.setFoeMind(glitchId, false);
-  h.debug.setFoeTravel(glitchId, false);
-
-  h.debug.addFoe("dropper", tileCX(DROPPER_C), tileCY(DROPPER_R));
-  const dropperId = lastFoe(h.snapshot()).id;
-  h.debug.setFoeHit(dropperId, true);
+  // One of them, a dropper, because the hit flag is the one specs/foes.md gives a
+  // dropper and every foe pose sets one field: applying all four to the same foe
+  // and reading all four back is what says so.
+  h.debug.addFoe("dropper", tileCX(FOE_C), tileCY(FOE_R));
+  const foeId = lastFoe(h.snapshot()).id;
+  h.debug.setFoeVelocity(foeId, FOE_VX, FOE_VY);
+  h.debug.setFoeHit(foeId, true);
+  h.debug.setFoeMind(foeId, false);
+  h.debug.setFoeTravel(foeId, false);
 
   // The one reading, taken before any frame runs.
   const posed = h.snapshot();
@@ -231,13 +226,12 @@ it("reports every posed value through snapshot", async () => {
   assertEqual(worm.stepping, false, "setWormStepping");
   assertEqual(worm.body, false, "setWormBody");
 
-  const glitch = foeOf(posed, glitchId);
-  assertCloseTo(glitch.vx, FOE_VX, EXACT, "setFoeVelocity's vx");
-  assertCloseTo(glitch.vy, FOE_VY, EXACT, "setFoeVelocity's vy");
-  assertEqual(glitch.mind, false, "setFoeMind");
-  assertEqual(glitch.travel, false, "setFoeTravel");
-
-  assertEqual(foeOf(posed, dropperId).hit, true, "setFoeHit");
+  const foe = foeOf(posed, foeId);
+  assertCloseTo(foe.vx, FOE_VX, EXACT, "setFoeVelocity's vx");
+  assertCloseTo(foe.vy, FOE_VY, EXACT, "setFoeVelocity's vy");
+  assertEqual(foe.hit, true, "setFoeHit");
+  assertEqual(foe.mind, false, "setFoeMind");
+  assertEqual(foe.travel, false, "setFoeTravel");
 
   const bolt = boltOf(posed, boltId);
   assertEqual(bolt === null, false, "addBolt appends the bolt to the roster");
