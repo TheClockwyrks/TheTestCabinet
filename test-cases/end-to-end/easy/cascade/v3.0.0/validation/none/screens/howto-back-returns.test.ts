@@ -1,23 +1,63 @@
-// SCAFFOLD PLACEHOLDER — validation/none/screens/howto-back-returns.test.ts
+// screens/howto-back-returns — the how-to screen's `BACK` returns to `title`.
 //
-// The review item `screens.howto-back-returns` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// `specs/screens.md`, the `howto` screen: "The screen carries one control,
+// labelled `HOWTO_BACK_LABEL` (`BACK`) and drawn inside the `HOWTO_BACK`
+// rectangle. It returns to `title`." `specs/controls.md` fixes that rectangle at
+// `{ x: 480, y: 600, w: 320, h: 52 }`, and fixes that a control answers a CLICK
+// whose press point lies inside it.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE ROUTE IS DIRECT. The how-to screen is posed rather than reached by pressing
+// the title's `HOW TO PLAY`, because a build whose way IN is broken must fail
+// `screens/title-how-to-opens` and this item separately: routing through that
+// control would fail both for one defect and say less about which.
 //
-// What this item must decide, from the manifest:
-//
-//   The how-to screen's BACK returns to the title
-//
-//   A press inside HOWTO_BACK reaches title.
+// `specs/controls.md` also fixes that "A control answers only on the screen it
+// belongs to", so this press lands on the how-to screen, where `HOWTO_BACK` is
+// the only control there is.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { HOWTO_BACK } from "../constants";
+import {
+  captureStill,
+  clickAt,
+  createHarness,
+  rectCenter,
+  type Harness,
+} from "../harness";
+import { openHowto } from "./screens";
 
-it("screens.howto-back-returns — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/screens/howto-back-returns.test.ts is a scaffold stub, not a validator",
+/** The point pressed and released: the centre of the control's own rectangle. */
+const PRESS = rectCenter(HOWTO_BACK);
+
+/** One frame, so the canvas carries the screen the assertion read. */
+const SETTLE_FRAMES = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("returns to the title screen", async () => {
+  await openHowto(h);
+  assertEqual(
+    (await h.snapshot()).screen,
+    "howto",
+    "the screen the check was posed on",
+  );
+
+  await clickAt(h, PRESS.x, PRESS.y);
+  await h.advance(SETTLE_FRAMES);
+  await captureStill(h, "title");
+
+  assertEqual(
+    (await h.snapshot()).screen,
+    "title",
+    "the screen BACK returned to (specs/screens.md)",
   );
 });
