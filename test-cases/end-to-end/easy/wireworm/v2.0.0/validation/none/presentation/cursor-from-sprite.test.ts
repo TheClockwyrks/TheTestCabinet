@@ -17,19 +17,19 @@
 // and a quarter or half turn reverses one or both — so an upright blit is the
 // one whose box runs the same way round as the frame it came from.
 //
-// WHAT THAT READING DOES NOT SEE is a turn of some angle between the quarters,
-// which reverses neither axis. It squeezes the mapped box instead, so the box a
-// square frame lands in stops being square, and that is the second half of the
-// reading: the seeded frames are `SPRITE_SIZE` (`32`) square (specs/assets.md),
-// so an upright draw of one lands in a box the build's own choice of size made,
-// and {@link SQUARE_MIN} leaves that choice wide open while excluding the
-// squeeze a turn produces.
+// A TURN OF SOME ANGLE BETWEEN THE QUARTERS reverses neither axis, so the box
+// alone does not see it. The angle is in the transform the context held at the
+// call, and that is where it is read: an axis-aligned draw carries zero in the
+// matrix's shear terms whatever scale it was drawn at, and a rotation puts the
+// sine of its angle there. `simple-2d` and `structured-2d` read the same terms
+// against the same {@link UPRIGHT_MAX}, so the one requirement is decided the
+// same way on all three engines.
 //
 // NOTHING ELSE IS ON THE BOARD. `startPlaying` leaves no node, worm, foe or
 // bolt, so the cursor resting at its band's centre is the only body drawn.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual, fail } from "../assert";
+import { assertLessThanOrEqual, fail } from "../assert";
 import { SPRITE_SIZE, TILE } from "../constants";
 import {
   blitsOfFrame,
@@ -51,19 +51,18 @@ import { blitsNear, describeBlits } from "./reading";
 const PLACED_MAX = TILE / 2;
 
 /**
- * The least the mapped box's shorter side may be as a fraction of its longer,
- * for the box to be one an upright draw of a square frame lands in.
+ * How far off upright a draw may be and still be called upright, as the sine of
+ * the angle its transform turns through.
  *
- * The specification fixes no size for the cursor's mark, so a build is free to
- * draw the square frame into a box of its own proportions, and this leaves that
- * open all the way from three units by five to five by three. It is not a bound
- * on an angle. What it excludes is the SQUEEZE a turn between the quarter turns
- * produces, which no choice of size explains: a frame turned by a sixth of a
- * right angle lands in a box whose shorter side is well under this, one turned
- * by a third of one lands in a box a quarter as wide as it is tall, and one
- * turned by half a right angle lands in a box with no width at all.
+ * specs/assets.md says the cursor is "drawn upright, never rotated", which fixes
+ * no tolerance because it admits of none: the figure here is only room for the
+ * arithmetic, since a build composes its own placement with whatever fit the
+ * runtime already put on the context. `0.0175` is the sine of one degree — far
+ * below anything a player would call a tilt, and orders of magnitude above the
+ * rounding of a matrix multiply. The `simple-2d` and `structured-2d` suites read
+ * the same figure.
  */
-const SQUARE_MIN = 0.6;
+const UPRIGHT_MAX = 0.0175;
 
 let h: Harness;
 
@@ -110,14 +109,15 @@ it("blits the seeded cursor frame on the cursor, unflipped and unturned", async 
     );
   }
 
-  const box = upright[0];
-  const longer = Math.max(box.width, box.height);
-  assertGreaterThanOrEqual(
-    longer === 0 ? 0 : Math.min(box.width, box.height) / longer,
-    SQUARE_MIN,
-    `the ${SPRITE_SIZE}-square cursor frame blitted into a box of the build's ` +
-      `own proportions rather than one a turn squeezed (specs/assets.md: it ` +
-      `points up and is drawn upright, never rotated); it was blitted into a ` +
-      `box ${box.width.toFixed(1)} wide by ${box.height.toFixed(1)} tall`,
+  // The turn, read off the transform the cursor's own blit was made under.
+  const [a, b, c, d] = upright[0].transform;
+  const shearX = Math.abs(b) / (Math.hypot(a, b) || 1);
+  const shearY = Math.abs(c) / (Math.hypot(c, d) || 1);
+  assertLessThanOrEqual(
+    Math.max(shearX, shearY),
+    UPRIGHT_MAX,
+    `the ${SPRITE_SIZE}-square cursor frame blitted under an axis-aligned ` +
+      `transform (specs/assets.md: it points up and is drawn upright, never ` +
+      `rotated); it was blitted under a=${a}, b=${b}, c=${c}, d=${d}`,
   );
 });

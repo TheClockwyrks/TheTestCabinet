@@ -1999,6 +1999,12 @@ export interface DrawnImage {
    * (specs/assets.md).
    */
   mirrored: boolean;
+  /**
+   * The transform the context held at the call, which is where a rotation is.
+   * A blit drawn upright carries no shear terms whatever scale the engine's fit
+   * applied; a turn puts them there.
+   */
+  transform: Matrix;
 }
 
 /**
@@ -2066,6 +2072,7 @@ export function drawnImages(h: Harness): DrawnImage[] {
       // A negative determinant is a reflection, which is the only way an axis
       // is flipped: a rotation alone leaves it positive.
       mirrored: m.a * m.d - m.b * m.c < 0,
+      transform: m,
     });
   }
   return images;

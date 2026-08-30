@@ -2232,6 +2232,16 @@ export interface Blit {
   flipY: boolean;
   /** The source bitmap's own size, before any destination scaling. */
   source: { width: number; height: number };
+  /**
+   * The transform in force at the call, as `[a, b, c, d, e, f]`.
+   *
+   * {@link flipX} and {@link flipY} read the mapped box's corners, which a
+   * reflection reverses and a turn between the quarters does not. The angle is
+   * in the matrix itself: an axis-aligned draw carries zero in `b` and `c`
+   * whatever scale it was drawn at, and a rotation puts the sine of its angle
+   * there.
+   */
+  transform: Matrix;
   /** The seeded frames this draw's source is identical to; empty when it is none. */
   matches: SeededFrame[];
 }
@@ -2340,6 +2350,7 @@ export async function blitsOfFrame(h: Harness): Promise<Blit[]> {
           flipX: p1.x < p0.x,
           flipY: p1.y < p0.y,
           source: { width: image.width, height: image.height },
+          transform: m,
         },
       });
     },

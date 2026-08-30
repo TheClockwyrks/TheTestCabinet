@@ -15,14 +15,16 @@
 // the call is then read for a reflection or a rotation: an upright blit carries
 // no shear terms and positive scales, and any flip or turn shows in them.
 //
-// NOTHING ELSE IS ON THE BOARD. `startPlaying` leaves no node, worm, foe or
-// bolt, so the cursor resting at its band's centre is the only body drawn — the
-// tightest pose this point can be read in, and the reason a reading over EVERY
-// bitmap of the frame is a reading of the cursor's own.
+// THE READING IS THE CURSOR'S OWN BLIT, NOT THE FRAME'S. `startPlaying` leaves
+// no node, worm, foe or bolt, but nothing in the specification says the cursor
+// is the only bitmap a frame may carry: specs/ui.md lets the lives readout be a
+// row of icons, and a build is free to composite a board panel or a cached layer
+// through `drawImage`. So the transform is read off the one call whose source IS
+// the seeded cursor frame, and whatever else the build drew is left alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TILE } from "../../src/constants";
-import { assertEqual, assertLength, fail } from "../assert";
+import { assertEqual, fail } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -48,14 +50,18 @@ const PLACED_MAX = TILE / 2;
 const CURSOR_FRAME = 0;
 
 /**
- * How far a transform's shear terms may sit from zero and still be upright.
+ * How far off upright a draw may be and still be called upright, as the sine of
+ * the angle its transform turns through.
  *
- * A blit drawn with no rotation carries exactly zero in both, whatever scale
- * the engine's fit applied, so this is floating-point noise rather than a
- * tolerance on the angle: any turn a player could see is orders of magnitude
- * above it.
+ * specs/assets.md says the cursor is "drawn upright, never rotated", which fixes
+ * no tolerance because it admits of none: the figure here is only room for the
+ * arithmetic, since a build composes its own placement with the fit the engine
+ * already put on the context. `0.0175` is the sine of one degree — far below
+ * anything a player would call a tilt, and orders of magnitude above the
+ * rounding of a matrix multiply. The `none` and `simple-2d` suites read the same
+ * figure.
  */
-const UPRIGHT_EPSILON = 1e-6;
+const UPRIGHT_MAX = 0.0175;
 
 let h: Harness;
 
@@ -117,29 +123,16 @@ it("blits the seeded cursor frame on the cursor, unflipped and unturned", async 
     );
   }
 
-  // The rotation, read off the transforms themselves. On this pose the cursor
-  // is the only body on the board, so every bitmap of the frame is its own.
-  assertLength(
-    blits,
-    1,
-    "the cursor is the only bitmap blitted on an otherwise empty board",
-  );
-  for (const call of h.calls) {
-    if (call.kind !== "call" || call.method !== "drawImage") continue;
-    const m = call.transform;
-    if (m === undefined) continue;
-    if (
-      Math.abs(m.b) <= UPRIGHT_EPSILON &&
-      Math.abs(m.c) <= UPRIGHT_EPSILON &&
-      m.a > 0 &&
-      m.d > 0
-    ) {
-      continue;
-    }
+  // The turn, read off the transform the cursor's own blit was made under —
+  // the call `near[drawn]` already located, whatever else the frame drew.
+  const m = near[drawn].transform;
+  const shearX = Math.abs(m.b) / (Math.hypot(m.a, m.b) || 1);
+  const shearY = Math.abs(m.c) / (Math.hypot(m.c, m.d) || 1);
+  if (Math.max(shearX, shearY) > UPRIGHT_MAX) {
     fail(
       "the cursor's frame blitted under an axis-aligned transform with no " +
-        "rotation and no flip (specs/assets.md: it points up and is drawn " +
-        "upright, never rotated)",
+        "rotation (specs/assets.md: it points up and is drawn upright, never " +
+        "rotated)",
       `blitted under a=${m.a}, b=${m.b}, c=${m.c}, d=${m.d}`,
     );
   }

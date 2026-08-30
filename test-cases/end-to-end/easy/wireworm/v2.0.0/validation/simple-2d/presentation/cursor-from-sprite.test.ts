@@ -50,7 +50,8 @@ const CURSOR_FRAME = 0;
  * arithmetic, since a build composes its own translate with the transform the
  * engine already put on the context. `0.0175` is the sine of one degree — far
  * below anything a player would call a tilt, and orders of magnitude above the
- * rounding of a matrix multiply.
+ * rounding of a matrix multiply. The `none` and `structured-2d` suites read the
+ * same figure.
  */
 const UPRIGHT_MAX = 0.0175;
 
