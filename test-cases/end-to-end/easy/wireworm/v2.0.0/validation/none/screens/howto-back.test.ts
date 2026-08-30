@@ -1,19 +1,37 @@
-// Wireworm — screens.howto-back, under the `none` engine. CASE-PROVIDED.
+// Wireworm — screens/howto-back: the back binding leaves the how-to screen for
+// the title.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
-//
-// The point it decides, from `test-case.toml`:
-//
-// The how-to screen returns to the menu
-//
-// The back binding from howto returns to title.
+// specs/ui.md's `howto` screen: "`back` returns to `title`". The screen is posed
+// with `setScreen` rather than confirmed into from the title, because
+// `screens/title-howto` is the item that decides that route and a build that
+// cannot reach the how-to screen must not fail this one twice over. The back
+// press itself is a real `Escape`, so what is graded is the build's own handling
+// of the `back` action on the screen it is pressed on.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { BACK_KEY, poseHowto } from "./screens";
 
-test("screens.howto-back", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/none/screens/howto-back.test.ts has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("returns to the title from the how-to screen", async () => {
+  await poseHowto(h);
+
+  await h.tap(BACK_KEY);
+  await captureStill(h, "title");
+
+  assertEqual(
+    (await h.snapshot()).screen,
+    "title",
+    "the screen the back binding returned to",
   );
 });
