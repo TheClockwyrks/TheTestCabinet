@@ -27,6 +27,8 @@ Losing a life with lives to spare puts the live wave into its `ready` phase.
 - The wave carries on where it was: every drone keeps its phase, its position, and
   its band, and any dive in progress runs on.
 - Nothing costs a further life during the hold.
+- The ship is off the field for the hold: it is not drawn, it answers to no input,
+  and it fires nothing. `specs/instrumentation.md` reports it as not alive.
 - When the hold ends, the ship reappears at the center of its lane,
   `(SHIP_X_MIN + SHIP_X_MAX) / 2`, holding the band it held.
 
