@@ -1,20 +1,51 @@
-// Wireworm — discharge.critical-detonates, under the `none` engine. CASE-PROVIDED.
+// discharge/critical-detonates — a bolt into a critical node detonates it.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// `specs/nodes.md`'s bolt table gives charge `3` its own row: the node
+// "detonates, as `specs/discharge.md` states", and every other charge is knocked
+// down a level or cleared instead. `specs/discharge.md`'s chain then opens with
+// what a detonation is: "The struck node detonates. A detonated node is removed
+// from the board, and its tile is left empty."
 //
-// The point it decides, from `test-case.toml`:
+// So the reading is the tile itself, and it separates every wrong model by the
+// number it answers with. A build that treated charge `3` like charge `2` — the
+// row above it — leaves a node standing and reports `2`; one that ran the knock-
+// down twice reports `1`; one that detonated correctly reports no node at all.
 //
-// A bolt into a critical node detonates it
-//
-// A bolt into a charge-3 node removes it from the board rather than knocking
-// its charge down one level.
+// Nothing else is on the board: one node, one bolt. What the detonation goes on
+// to do to a cluster around it is the chain points next door.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertNull } from "../assert";
+import {
+  captureStill,
+  chargeAt,
+  createHarness,
+  startPlaying,
+  type Harness,
+} from "../harness";
+import { detonate } from "./detonation";
 
-test("discharge.critical-detonates", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/none/discharge/critical-detonates.test.ts has not been written yet",
+/** The tile the critical node is posed on, clear of the entry row and the band. */
+const STRUCK = { c: 12, r: 8 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("removes the struck critical node from the board", async () => {
+  await startPlaying(h);
+
+  await detonate(h, STRUCK.c, STRUCK.r);
+
+  await captureStill(h, "detonated");
+  assertNull(
+    chargeAt(await h.snapshot(), STRUCK.c, STRUCK.r),
+    "the charge on the tile the critical node stood on",
   );
 });
