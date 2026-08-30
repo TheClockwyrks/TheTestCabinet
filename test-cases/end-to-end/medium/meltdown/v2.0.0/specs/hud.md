@@ -67,6 +67,18 @@ and the Forge and the Sink read as never firing.
 In a build phase with nothing selected and no shop entry hovered, the information
 area draws the coming wave's type and its count.
 
+## The placement controls
+
+While a placement is armed the panel carries two more controls:
+
+| Control | What it does |
+| --- | --- |
+| Rotate | Turns the held preview one step, as `specs/building.md` states. |
+| Cancel | Disarms the placement, clearing the held preview. |
+
+Both are drawn only while a preview is held, and neither is drawn with nothing
+armed.
+
 ## The wave controls
 
 The panel carries a Send control, which reads Start while the phase is `opening`,
