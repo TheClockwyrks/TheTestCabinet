@@ -87,7 +87,7 @@ import { render } from "./render";
 import type { Art } from "./assets";
 import type { Game, InitApi, RenderApi, UpdateApi } from "./runtime";
 import { pick } from "./rng";
-import type { Bear, Death, Facing, FloeState } from "./types";
+import type { Bear, Death, Effect, Facing, FloeState } from "./types";
 
 /**
  * What one tick may reach outside the state: the cue bus and the runtime's mute
@@ -281,6 +281,14 @@ export function addScore(state: FloeState, points: number, bus: Bus): void {
 
 // ---- Losing a life -------------------------------------------------------
 
+/** What each death leaves on the strait; two of the four leave nothing. */
+const DEATH_MARK: Record<Death, Effect["kind"] | null> = {
+  crush: "spray",
+  splash: "splash",
+  caught: null,
+  timeout: null,
+};
+
 /** The cue each death sounds; the timer running out sounds none. */
 const DEATH_CUE: Record<Death, CueName | null> = {
   crush: CUES.crush,
@@ -303,13 +311,19 @@ export function loseLife(state: FloeState, cause: Death, bus: Bus): void {
   dropAllBears(state);
   const cue = DEATH_CUE[cause];
   if (cue !== null) bus.cue(cue);
-  state.effects.push({
-    kind: cause === "crush" ? "spray" : "splash",
-    x: state.critter.x,
-    y: state.critter.y,
-    life: DEATH_PAUSE,
-    span: DEATH_PAUSE,
-  });
+  // The splash and the spray belong to a fall and to a crush (specs/assets.md).
+  // A catch is drawn by the lunge the bear left behind, and a timer running out
+  // is drawn by nothing.
+  const mark = DEATH_MARK[cause];
+  if (mark !== null) {
+    state.effects.push({
+      kind: mark,
+      x: state.critter.x,
+      y: state.critter.y,
+      life: DEATH_PAUSE,
+      span: DEATH_PAUSE,
+    });
+  }
 }
 
 // ---- The hop -------------------------------------------------------------
@@ -564,21 +578,35 @@ function stepEmergence(state: FloeState, dt: number): void {
   });
 }
 
+/**
+ * Let a settled bear commit its next step (specs/hunter.md).
+ *
+ * Called on both sides of the bear's travel, and that is what keeps its speed
+ * exact. A bear standing on a tile with no step — one that has just arrived on
+ * the strait, one whose routing found nowhere to go last tick — is given its step
+ * BEFORE it travels, so the tick it is standing on is not a tick it loses; and a
+ * bear that settles DURING its travel is given its next step after it, so the
+ * leftover travel it carries is spent on the tick that follows rather than
+ * waiting for one on which nothing moves.
+ */
+function routeBear(state: FloeState, bear: Bear): void {
+  if (!isSettled(bear) || !bear.routing) return;
+  const facing = chooseStep(state, bear);
+  if (facing !== null) commitStep(state, bear, facing);
+}
+
 /** Sense, travel, and route every bear for one tick (specs/hunter.md). */
 function stepBears(state: FloeState, dt: number): void {
   for (const bear of [...state.bears]) {
-    if (bear.lunge > 0) bear.lunge = Math.max(0, bear.lunge - dt);
     if (bear.sense && state.critter.present) {
       bear.target = {
         col: critterCol(state.critter),
         row: critterRow(state.critter),
       };
     }
+    routeBear(state, bear);
     travelBear(state, bear, dt);
-    if (isSettled(bear) && bear.routing) {
-      const facing = chooseStep(state, bear);
-      if (facing !== null) commitStep(state, bear, facing);
-    }
+    routeBear(state, bear);
   }
   // Traffic arriving on either tile a bear occupies takes it off the strait.
   for (const bear of [...state.bears]) {
@@ -699,7 +727,15 @@ function stepCatch(state: FloeState, bus: Bus): void {
       bear.y - state.critter.y,
     );
     if (distance > BEAR_CATCH_DIST) continue;
-    bear.lunge = DEATH_PAUSE;
+    // The lunge is drawn where the bear met the critter. It is recorded before
+    // the life is taken, because taking it removes every bear from the strait.
+    state.effects.push({
+      kind: "lunge",
+      x: bear.x,
+      y: bear.y,
+      life: DEATH_PAUSE,
+      span: DEATH_PAUSE,
+    });
     loseLife(state, "caught", bus);
     return;
   }
