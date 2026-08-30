@@ -94,7 +94,7 @@ accumulated time rather than the wall clock, and mirrored to face west.
 | `surface/cave-mouth.png` | 1 | `120 x 48` | `assets.surface["cave-mouth"]` | The way down at the spawn column. |
 | `rocket/stage{0..5}.png` | 6 | `96 x 160` | `assets.rocket[stage]` | The escape rocket; frame chosen by installed-component count, so it visibly gains each part. |
 | `icons/{fuel,hull,cargo,credits,depth,resonite,cryenite}.png` | 7 | `20 x 20` | `assets.icons[name]` | Small HUD glyphs. |
-| `surface/sky.png`, `surface/ground.png` | 2 | — | (unused) | Left in the script; the renderer fills sky/ground in code. |
+| `surface/sky.png`, `surface/ground.png` | 2 | tileable | `assets.surface.sky`, `assets.surface.ground` | The dusk sky band behind the camp and the scrapped ground strip in front of it, each repeated across the world's width with its bottom edge on `SURFACE_Y`. Either one missing falls back to a flat fill. |
 
 ## Particle VFX — `scripts/gen-fx.sh` (`particle-2d` → `system.json`)
 
