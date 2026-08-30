@@ -80,13 +80,6 @@ prompt = "prompt.hbs"
 # runaway session.
 max_runtime_hours = 8
 
-# Starter workspace seeded into the root of every run before the specs. It gives the
-# model a baseline project to build on: a `package.json` that pins `playwright` as a
-# dev dependency and declares the produced-effect runtime (`packages`, below) as a
-# baked-in `file:` dependency. The seeded files land at the run root
-# (`workspaces/base/package.json` seeds to `package.json`).
-workspace = "workspaces/base"
-
 # Init command, run in the run container once the workspace and specs are seeded and
 # before the harness starts. `npm install` — NOT `npm ci` — because `packages`
 # injects the `@test-cabinet/particle-runtime` `file:` dependency this build plays
@@ -126,6 +119,91 @@ variants = [
   "variants/base.toml",
 ]
 
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the input
+# actions a player drives it with, the audio bus, asset loading, and the on-screen
+# diagnostics; one of them also owns rendering and the gameplay framework the game
+# is written inside. It is a *run dimension*, chosen per run alongside the model,
+# the harness, and the variant, and recorded on the run; it is not a property of
+# the game.
+#
+# Arc Foundry supports three, and the game is the same foundry under all of them.
+# What differs is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build writes
+#                     the fixed-step loop, the canvas fit, the keyboard and pointer
+#                     input, the audio, the overlay and the `window.__foundry`
+#                     surface itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules around
+#                     it (`src/constants.ts`, `src/main.ts`, and the `src/game.ts`
+#                     the build writes, debug surface included).
+#   - `structured-2d` vendors its framework engine the same way and seeds the same
+#                     two case-owned modules; the build writes its game module — the
+#                     game definition, its mode, its state and its actors — and the
+#                     debug surface its instance's `initialize` returns.
+# Neither engine supplies pathfinding, collision response, or a seeded random
+# source, so the maze router, the never-seal test, the projectile flight and the
+# scrap-press roll are the build's own work under every one of the three. The game
+# they describe is the same one, so the review items are the same for every engine
+# and a score recorded under one is comparable with a score recorded under another;
+# the specs and the validators branch where the deliverable differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in the
+# bare `engines` list; `simple-2d` and `structured-2d` each carry a range and are
+# named in `[[engine]]` tables. A range is pinned because a specification is written
+# against a runtime contract: `min_version` is the 1.0.0 API the specs and the
+# validators are written against, and there is deliberately no `max_version`, so a
+# later 1.x or 2.x from the host package store is accepted as it lands. Widening or
+# moving a range means a new case version, so the pin is the statement that THIS
+# spec set matches THIS contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
+# engine's API and never fall out of date when it changes.
+#
+# `engines` is a root key, so it must sit above the first `[table]` header below.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, an `index.html`
+# holding the canvas, and a `package.json` declaring the produced-effect runtime
+# (`packages`, above) as a baked-in `file:` dependency. What differs is how much of
+# the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own fixed-step loop, canvas fit,
+#                     keyboard and pointer input, audio, diagnostics overlay and
+#                     `window.__foundry` surface, and every figure the specification
+#                     fixes, from the specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored
+#                     in at seed time so the build imports it by its bare package
+#                     name, and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them) and
+#                     `src/main.ts` (the browser entry). The build writes
+#                     `src/game.ts`.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds the same two case-owned modules. The build writes
+#                     `src/game.ts`: the game definition the engine drives — its
+#                     mode, its live state, and its actors — and the debug surface
+#                     its instance's `initialize` returns.
+#
+# The seeded files land at the run root (`workspaces/none/package.json` seeds to
+# `package.json`).
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/simple-2d"
+"structured-2d" = "workspaces/structured-2d"
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root. `npm ci` is deliberate — it requires the build to commit a
@@ -136,21 +214,54 @@ variants = [
 install = "npm ci"
 build = "npm run build"
 
-# Instrumentation: the debug-and-automation surface every build installs, named once
-# here so a review item's `validation` driver (and the validator that runs it) knows
-# which `window` global to drive. The seeded specification documents the same handle
-# independently as an ordinary game debug feature (see specs/instrumentation.md); this
-# entry is reporter-side and never seeded.
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. A full-stack build is written in TypeScript, and the seeded
+# workspace ships the configuration each of these commands reads (`tsconfig.json`,
+# `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so what is checked
+# here is the code the model wrote against configuration the case fixed. The
+# commands run host-side over the collected tree after the run's container is gone,
+# so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does
+# not compile is not reviewable. The other three are recorded and gate nothing —
+# `test` additionally records the count and coverage the build's own suite reports,
+# which is how a build that ships tests is told apart from one that ships none. Each
+# is spelled `npx` rather than `npm run <script>` so the check is the case's own
+# statement of what is run and does not depend on the model leaving the seeded
+# scripts intact. These four are exactly the commands `specs/overview.md` tells the
+# build will be run over the finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. It is reporter-side and never seeded; the seeded specification documents the
+# surface independently, as an ordinary debugging feature the game needs (see
+# specs/instrumentation.md). It is required because the review items below declare
+# `validation` scripts, and the surface is what every one of them poses its scenario
+# through.
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface
+# itself and installs it on `window.__foundry` once the game has initialized, so the
+# handle is what a person opening the console of such a build finds. An engine run
+# has NO global at all: the build writes the surface, its `initialize` returns it —
+# beside the state as `[state, debug]` under `simple-2d`, alone under
+# `structured-2d` — and a caller reads it back off `engine.debug`. Because
+# `simple-2d` holds the state by value and hands every reader a read-only view, its
+# surface is written in the shape of `update`: a pose takes the current state and
+# returns the next, applied through `engine.apply`, and a reading takes the state
+# and returns what it read. `structured-2d` holds the world live, so its poses take
+# only their own arguments and act on it at the call, and its readings return plain
+# data. One handle, three ways to reach the same operations.
+#
+# There is deliberately no `tick_hz`. A validator now builds its own clock and steps
+# the simulation itself, so the case states no harness-wide step size; the fixed
+# timestep the simulation runs at is a requirement on the build, stated in
+# `specs/controls.md`, not a figure the reporter needs.
 [instrumentation]
 handle = "__foundry"
-
-# The fixed simulation rate, in Hz. Arc Foundry's debug API advances time in whole
-# simulation ticks (`step(ticks)`) rather than in seconds, so there is no rounding
-# and no ambiguity about what a step means. This is the rate the validation runtime
-# uses to relate that exact stepping back to real time — one tick is 1/60 of a
-# second, so a second of game time is 60 ticks. It must match the timestep
-# `specs/controls.md` mandates.
-tick_hz = 60
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
 # workspace. The specification is decomposed by concern: the overview, the board and

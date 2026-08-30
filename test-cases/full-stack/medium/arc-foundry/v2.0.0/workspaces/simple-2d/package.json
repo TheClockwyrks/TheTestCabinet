@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Arc Foundry — an electro-industrial tower-defense game running entirely in the browser, on no engine, whose art, effects, and audio the build produces itself.",
+  "description": "Arc Foundry — an electro-industrial tower-defense game built on the Simple 2D engine, whose art, effects, and audio the build produces itself.",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
@@ -14,7 +14,9 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"
+    "@test-cabinet/simple-2d": "file:./.tcab/engine/@test-cabinet/simple-2d",
+    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime",
+    "ts-essentials": "^10.2.1"
   },
   "devDependencies": {
     "@eslint/js": "^9",
