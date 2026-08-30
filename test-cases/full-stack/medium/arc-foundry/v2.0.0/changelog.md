@@ -76,8 +76,10 @@ In exchange, every behavior a validator reads is stated exactly in the specs, an
 what the specs fix about the look is what must be visible rather than how it is
 drawn.
 
-Each variant instead ships a **showcase**: a short clip of real play and the stills
-beside it, shown on the catalog before anyone runs the case.
+The finished build ships a **showcase** of its own instead: `specs/showcase.md` is a
+new spec asking for a store-page presentation beside the source, a player-facing
+description and a short ordered carousel of captured media, and the prompt points the
+model at it.
 
 ## A unit's maximum HP is a whole number
 
