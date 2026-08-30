@@ -11,6 +11,7 @@ import {
   BAYFILL_PAUSE,
   BAYS,
   BAY_COUNT,
+  COLS,
   BONUS_LIFE_EVERY,
   CLEAR_PAUSE,
   DEATH_PAUSE,
@@ -34,9 +35,11 @@ import {
   TIMER_BASE,
   TIMER_PER_LEVEL,
   TOTAL_LEVELS,
+  colAt,
   crossingTimer,
   tileCX,
   tileCY,
+  tileLeft,
 } from "./constants";
 import { createHarness, type Harness } from "./harness.test-support";
 
@@ -201,7 +204,53 @@ describe("the hop", () => {
   });
 });
 
+describe("the far shore", () => {
+  it("accepts a hop up from row 2 at exactly the ten bay columns", async () => {
+    const wanted = BAYS.flatMap(([left, right]) => [left, right]).sort(
+      (a, b) => a - b,
+    );
+    const accepted: number[] = [];
+    for (let col = 0; col < COLS; col += 1) {
+      empty(harness);
+      harness.debug.setScore(0);
+      harness.debug.setLives(START_LIVES);
+      raft(harness, 2, col);
+      harness.debug.addCritter(col, 2);
+      await hop(harness, "ArrowUp");
+      const after = harness.snapshot();
+      if (after.bays.some((filled) => filled)) {
+        accepted.push(col);
+        continue;
+      }
+      // Every other column of row 1 is solid: the hop is refused and costs
+      // nothing.
+      expect(after.critter.row).toBe(2);
+      expect(after.lives).toBe(START_LIVES);
+      expect(after.score).toBe(0);
+    }
+    expect(accepted).toEqual(wanted);
+  });
+});
+
 describe("the ice band", () => {
+  it("closes every tile a plow spans, its middle one included", async () => {
+    for (const col of [10, 11, 12]) {
+      empty(harness);
+      harness.debug.setLaneSpeed(11, 0);
+      harness.debug.addVehicle(11, "plow", tileLeft(10));
+      harness.debug.addCritter(col, 12);
+      await hop(harness, "ArrowUp");
+      expect(harness.snapshot().critter.row).toBe(12);
+    }
+    // The tile past its right edge is open.
+    empty(harness);
+    harness.debug.setLaneSpeed(11, 0);
+    harness.debug.addVehicle(11, "plow", tileLeft(10));
+    harness.debug.addCritter(13, 12);
+    await hop(harness, "ArrowUp");
+    expect(harness.snapshot().critter.row).toBe(11);
+  });
+
   it("crushes the critter when a moving vehicle covers its centre", async () => {
     empty(harness);
     harness.debug.addCritter(20, 15);
@@ -250,6 +299,41 @@ describe("the water band", () => {
     const carried = harness.snapshot().critter.x - from;
     expect(carried).toBeCloseTo(2 * TILE, 1);
     expect(harness.snapshot().critter.row).toBe(5);
+  });
+
+  it("takes a hop while riding as one absolute tile of the strait", async () => {
+    empty(harness);
+    harness.debug.setLaneSpeed(5, 3);
+    harness.debug.setLaneDirection(5, 1);
+    harness.debug.addFloe(5, "raft4", tileCX(20) - 2 * TILE);
+    raft(harness, 4, 20);
+    harness.debug.addCritter(20, 5);
+    await harness.step(20);
+    const drifted = harness.snapshot().critter;
+    expect(drifted.x).not.toBe(tileCX(20));
+
+    harness.debug.setHopCooldown(0);
+    await hop(harness, "ArrowUp");
+    expect(harness.snapshot().critter.x).toBe(tileCX(drifted.col));
+    expect(harness.snapshot().critter.y).toBe(tileCY(4));
+  });
+
+  it("moves the critter's column as the drift crosses tile boundaries", async () => {
+    empty(harness);
+    harness.debug.setLaneSpeed(5, 4);
+    harness.debug.setLaneDirection(5, 1);
+    for (let col = 0; col < 40; col += 4) {
+      harness.debug.addFloe(5, "raft4", tileLeft(col));
+    }
+    harness.debug.addCritter(10, 5);
+    const columns = new Set<number>();
+    for (let tick = 0; tick < TICK_HZ; tick += 1) {
+      await harness.step(1);
+      const critter = harness.snapshot().critter;
+      expect(critter.col).toBe(colAt(critter.x));
+      columns.add(critter.col);
+    }
+    expect(columns.size).toBeGreaterThan(3);
   });
 
   it("loses a critter carried past a side edge", async () => {
@@ -582,6 +666,32 @@ describe("scoring", () => {
     await hop(harness, "ArrowUp");
     expect(harness.snapshot().score).toBe(BONUS_LIFE_EVERY);
     expect(harness.snapshot().lives).toBe(START_LIVES + 1);
+  });
+
+  it("earns two lives from one award crossing two boundaries", async () => {
+    empty(harness);
+    // The time bonus is paid `floor(timer)` times over, so a posed timer is the
+    // one award big enough to cross two boundaries at once.
+    harness.debug.setTimer(BONUS_LIFE_EVERY);
+    const [left] = BAYS[0];
+    raft(harness, 2, left);
+    harness.debug.addCritter(left, 2);
+    await hop(harness, "ArrowUp");
+    expect(harness.snapshot().score).toBe(
+      SCORE_ROW + SCORE_BAY + SCORE_TIME_BONUS * BONUS_LIFE_EVERY,
+    );
+    expect(harness.snapshot().lives).toBe(START_LIVES + 2);
+  });
+
+  it("pays the completing hop all three awards", async () => {
+    empty(harness);
+    harness.debug.setTimer(12);
+    const [left] = BAYS[2];
+    raft(harness, 2, left);
+    harness.debug.addCritter(left, 2);
+    harness.debug.setBestRow(2);
+    await hop(harness, "ArrowUp");
+    expect(harness.snapshot().score).toBe(10 + 50 + 2 * 12);
   });
 
   it("grants no life for a posed score", async () => {

@@ -458,6 +458,15 @@ describe("the deterministic core", () => {
     expect(harness.engine.world.byTag(TAGS.fish)).toHaveLength(0);
   });
 
+  it("keeps every entity's id across a lane wrap", async () => {
+    harness.debug.setScreen("playing");
+    const before = harness.snapshot().vehicles.map((item) => item.id);
+    harness.pace(10);
+    await harness.step(TICK_HZ);
+    harness.pace(1);
+    expect(harness.snapshot().vehicles.map((item) => item.id)).toEqual(before);
+  });
+
   it("leaves the mute bit as it stands", async () => {
     await harness.tap("KeyM");
     expect(harness.snapshot().muted).toBe(true);

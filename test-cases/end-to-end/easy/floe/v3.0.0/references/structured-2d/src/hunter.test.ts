@@ -20,6 +20,7 @@ import {
   bearSwimSpeed,
   tileCX,
   tileCY,
+  tileLeft,
 } from "./constants";
 import { createHarness, type Harness } from "./harness.test-support";
 import type { BearSnapshot } from "./game";
@@ -45,6 +46,7 @@ function emptyStrait(h: Harness): void {
   h.debug.setCatchTest(false);
   h.debug.clearVehicles();
   h.debug.clearFloes();
+  h.debug.clearBears();
   h.debug.removeCritter();
 }
 
@@ -303,6 +305,64 @@ describe("hunting and routing", () => {
     );
     await harness.step(1);
     expect(bear(harness).stepCol).not.toBe(21);
+  });
+
+  it("commits no step into a tile a running lane is about to sweep", async () => {
+    // Twelve fresh attempts, each sending a bear off the median into a running
+    // ice lane, so the lead is read over a dozen committed steps rather than
+    // over one bear's luck.
+    let steps = 0;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      emptyStrait(harness);
+      harness.debug.setLaneSpeed(11, 3);
+      harness.debug.setLaneDirection(11, 1);
+      for (let col = attempt % 9; col < 40; col += 9) {
+        harness.debug.addVehicle(11, "car", tileLeft(col));
+      }
+      const col = 6 + attempt * 2;
+      const id = hunter(harness, col, ROW_MEDIAN);
+      harness.debug.setBearTarget(id, col, 12);
+
+      for (let tick = 0; tick < TICK_HZ * 2; tick += 1) {
+        await harness.step(1);
+        const bears = harness.snapshot().bears;
+        if (bears.length === 0) break;
+        const now = bears[0];
+        if (now.stepRow !== 11) continue;
+        // The tile it committed to is not covered now, and no vehicle of that
+        // lane reaches it within the lead.
+        const lane = harness.snapshot().iceLanes.find((l) => l.row === 11);
+        const centre = tileCX(now.stepCol);
+        const travel =
+          (lane?.dir ?? 1) * (lane?.speed ?? 0) * TILE * BEAR_AVOID_LEAD;
+        for (const vehicle of harness.snapshot().vehicles) {
+          if (vehicle.row !== 11) continue;
+          const from = Math.min(vehicle.x, vehicle.x + travel);
+          const to =
+            Math.max(vehicle.x, vehicle.x + travel) + TILE * vehicle.len;
+          expect(centre >= from && centre < to).toBe(false);
+        }
+        steps += 1;
+        break;
+      }
+    }
+    expect(steps).toBeGreaterThan(3);
+  });
+
+  it("routes through the one gap in a wall of parked traffic", async () => {
+    emptyStrait(harness);
+    harness.debug.addCritter(20, 12);
+    harness.debug.addBear(20, ROW_MEDIAN);
+    harness.debug.setLaneSpeed(11, 0);
+    for (let col = 0; col < 40; col += 3) {
+      if (col >= 29 && col <= 32) continue;
+      harness.debug.addVehicle(11, "plow", tileLeft(col));
+    }
+    const reached = await harness.until(
+      () => harness.snapshot().bears[0]?.row === 12,
+      TICK_HZ * 12,
+    );
+    expect(reached).toBe(true);
   });
 
   it("steps to the open neighbour closest to the target when no route exists", async () => {
