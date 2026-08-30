@@ -972,6 +972,18 @@ export const STATUS_CONTROLS = [
 
 export type StatusControl = (typeof STATUS_CONTROLS)[number];
 
+/**
+ * The build panel's own two controls, in the order the panel draws them.
+ *
+ * They belong to the panel rather than to the inspector: the refinement control is
+ * the press's own and refines it whatever is selected, and the press control pulls
+ * the press. Neither is an inspector action, so neither appears in `PANEL_ACTIONS`
+ * and neither is reached by activating one.
+ */
+export const PRESS_CONTROLS = ["refine", "stamp"] as const;
+
+export type PressControl = (typeof PRESS_CONTROLS)[number];
+
 /** Every choice a menu screen offers, by the identifier it is reported under. */
 export const MENU_ACTIONS = [
   "salvage",

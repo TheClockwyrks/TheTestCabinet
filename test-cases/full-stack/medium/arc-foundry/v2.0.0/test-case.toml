@@ -3103,6 +3103,19 @@ validation = { script = "build-panel/refinement-control.test.ts", outputs = [
   { id = "control", name = "The refinement control", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "refinement-control-refines"
+title = "Pressing the refinement control refines the press"
+description = "A press at the centre of the rectangle pressControls reports for refine buys the next refinement level and spends its cost, whatever is selected, and never changes a selected combination tower's level."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: press the reported refine rectangle from three poses —
+# nothing selected, a base component selected, a combination tower selected —
+# and read the level, the Charge and the tower. See validation/<engine>/build-
+# panel/refinement-control-refines.test.ts.
+validation = { script = "build-panel/refinement-control-refines.test.ts", outputs = [
+  { id = "refine", name = "The refinement bought at the control's rectangle", kind = "image" },
+] }
+[[review.categories.items]]
 id = "stamp-control"
 title = "The stamp control shows the allowance"
 description = "The panel draws STAMP with the stamps remaining, and the control reports disabled when the allowance is spent and during a wave."

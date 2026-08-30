@@ -149,9 +149,15 @@ async function main(): Promise<void> {
       case "combine-special":
         if (payload) game.combineRecipeSelected(payload as ComboType);
         break;
+      case "refine":
+        // The panel's refinement control is the press's own: it refines whatever is
+        // selected and never touches a combination tower's level (specs/hud.md).
+        game.upgradeQuality();
+        break;
       case "upgrade":
-        // UPGRADE raises a selected combination tower's level, and refines the press when
-        // the selection is not a combination tower (specs/controls.md).
+        // The `upgrade` ACTION raises a selected combination tower's level, and refines
+        // the press when the selection is not a combination tower (specs/controls.md).
+        // It is the keyboard's one binding for both; the panel's control is `refine`.
         {
           const sel = game.selected();
           if (sel && sel.kind === "component" && sel.combo)
@@ -474,6 +480,20 @@ async function main(): Promise<void> {
     panelButtons: () =>
       clickables
         .filter((c) => c.panel)
+        .map((c) => ({
+          action: c.action,
+          label: c.label ?? "",
+          x: c.x,
+          y: c.y,
+          w: c.w,
+          h: c.h,
+          disabled: Boolean(c.disabled),
+        })),
+    // The build panel's own two controls, the refinement control and the press control,
+    // in the order the panel draws them.
+    pressControls: () =>
+      clickables
+        .filter((c) => c.press)
         .map((c) => ({
           action: c.action,
           label: c.label ?? "",

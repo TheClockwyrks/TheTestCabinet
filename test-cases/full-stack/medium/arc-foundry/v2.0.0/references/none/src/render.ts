@@ -1827,13 +1827,17 @@ function drawPanel(
     if (A.has(CHARGE_ICON))
       blit(ctx, A.sprite(CHARGE_ICON), px + w - 40, upY + 36, 12, 12);
   }
+  // The panel's refinement control is the press's own act and not the inspector's
+  // UPGRADE: activating it refines the press whatever is selected (specs/hud.md).
   clicks.push({
     x: px,
     y: upY,
     w,
     h: upH,
-    action: "upgrade",
+    action: "refine",
+    label: "UPGRADE QUALITY",
     disabled: !canUp,
+    press: true,
   });
 
   // --- Scrap-press (STAMP) control (specs/build.md) ---
@@ -1876,7 +1880,9 @@ function drawPanel(
     w,
     h: stampH,
     action: "stamp",
+    label: "STAMP",
     disabled: !canStamp,
+    press: true,
   });
 
   // --- Inspector / next-wave info area ---

@@ -170,9 +170,15 @@ function activate(
     case "combine-special":
       if (payload) combineRecipeSelected(w, payload as ComboId);
       break;
+    case "refine":
+      // The panel's refinement control is the press's own: it refines whatever is
+      // selected and never touches a combination tower's level (specs/hud.md).
+      upgradeQuality(w);
+      break;
     case "upgrade": {
-      // Upgrading raises the selected combination tower's level, and refines the press
-      // when the selection is not a combination tower (specs/controls.md).
+      // The `upgrade` ACTION raises the selected combination tower's level, and refines
+      // the press when the selection is not a combination tower (specs/controls.md). It
+      // is the keyboard's one binding for both; the panel's control is `refine`.
       const sel = selected(w);
       if (sel && sel.kind === "component" && sel.combo) upgradeComboSelected(w);
       else upgradeQuality(w);

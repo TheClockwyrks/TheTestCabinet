@@ -1671,7 +1671,7 @@ function drawPanel(
   drawQualityOdds(g, ctx, x, ODDS_Y, w);
 
   // The refinement control.
-  const refine = byAction(list, "upgrade");
+  const refine = byAction(list, "refine");
   const cost = refineCost(g);
   const atMax = cost === null;
   if (refine && refine.kind === "press") {

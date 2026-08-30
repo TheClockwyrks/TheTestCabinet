@@ -11,7 +11,7 @@
 // than its layout, that agreement is the only way a caller — or a reviewer's
 // automation — finds a choice without knowing where it was drawn.
 //
-// HOW IT IS DECIDED. One control is taken from each of the three readings and
+// HOW IT IS DECIDED. One control is taken from each of the four readings and
 // pressed at the centre of the rectangle the BUILD itself reported for it, and
 // the effect that control commits is read back:
 //
@@ -22,6 +22,8 @@
 //                     flips.
 //   `panelButtons`  — the inspector's targeting control on a selected firing
 //                     component: the priority steps one place.
+//   `pressControls` — the build panel's own press control: a rock is armed on the
+//                     cursor.
 //
 // Nothing here assumes a coordinate. Every press lands where the build said its
 // own control is, so a build that draws its controls somewhere else and reports
@@ -29,8 +31,9 @@
 // fails.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNotNull } from "../assert";
+
 import { SPEEDS } from "../constants";
+import { assertEqual, assertNotNull } from "../assert";
 import {
   captureStill,
   clickControl,
@@ -39,6 +42,7 @@ import {
   openMenu,
   openYard,
   panelControl,
+  pressControl,
   standComponent,
   statusControl,
   structureById,
@@ -102,7 +106,10 @@ it("activates each status-bar control pressed at its reported rectangle", async 
   await clickControl(h, await statusControl(h, "speed"));
   assertEqual(
     (await h.snapshot()).speed,
-    SPEEDS[(SPEEDS.indexOf(before.speed) + 1) % SPEEDS.length],
+    SPEEDS[
+      (SPEEDS.indexOf(before.speed as (typeof SPEEDS)[number]) + 1) %
+        SPEEDS.length
+    ],
     "pressing the centre of the reported `speed` rectangle to step the " +
       "multiplier one place (specs/controls.md)",
   );
@@ -142,5 +149,26 @@ it("activates an inspector control pressed at its reported rectangle", async () 
     targetingAfter(start!, 1),
     "pressing the centre of the reported `targeting` rectangle to step the " +
       "priority one place (specs/instrumentation.md, specs/controls.md)",
+  );
+});
+
+it("activates the panel's own press control pressed at its reported rectangle", async () => {
+  await openYard(h);
+
+  const control = await pressControl(h, "stamp");
+  assertEqual(
+    control.disabled,
+    false,
+    "the press control to be offered in a build phase with the allowance " +
+      "untouched (specs/hud.md)",
+  );
+  await clickControl(h, control);
+
+  assertEqual(
+    (await h.snapshot()).held.active,
+    true,
+    "pressing the centre of the reported `stamp` rectangle to pull the press " +
+      "and arm a rock on the cursor (specs/instrumentation.md, " +
+      "specs/scrap-press.md)",
   );
 });

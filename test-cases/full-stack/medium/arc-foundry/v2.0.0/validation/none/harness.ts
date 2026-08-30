@@ -75,6 +75,7 @@ import {
   type MenuAction,
   type PanelAction,
   type Point,
+  type PressAction,
   type Screen,
   type SpawnType,
   type StatusAction,
@@ -88,6 +89,7 @@ import {
   type FoundrySnapshot,
   type MenuButton,
   type PanelButton,
+  type PressButton,
   type StatusControl,
   type StructureView,
   type UnitView,
@@ -100,6 +102,7 @@ export {
   type FoundrySnapshot,
   type MenuButton,
   type PanelButton,
+  type PressButton,
   type StatusControl,
   type StructureView,
   type UnitView,
@@ -2024,6 +2027,21 @@ export async function panelControl(
   return found as PanelButton;
 }
 
+/** The panel's own control carrying that action, or a failure naming what was drawn. */
+export async function pressControl(
+  h: Harness,
+  action: PressAction,
+): Promise<PressButton> {
+  const drawn = await h.debug.pressControls();
+  const found = drawn.find((c) => c.action === action);
+  assertTruthy(
+    found,
+    `pressControls() to carry a \`${action}\` control ` +
+      `(specs/instrumentation.md); it carries ${describeControls(drawn)}`,
+  );
+  return found as PressButton;
+}
+
 /** The menu choice carrying that action, or a failure naming what was drawn. */
 export async function menuControl(
   h: Harness,
@@ -2067,6 +2085,14 @@ export async function pressPanel(
   label?: string,
 ): Promise<void> {
   await clickControl(h, await panelControl(h, action, label));
+}
+
+/** Find the panel's own control by action and press its center. */
+export async function pressPressControl(
+  h: Harness,
+  action: PressAction,
+): Promise<void> {
+  await clickControl(h, await pressControl(h, action));
 }
 
 /** Find the menu choice by action and press its center. */

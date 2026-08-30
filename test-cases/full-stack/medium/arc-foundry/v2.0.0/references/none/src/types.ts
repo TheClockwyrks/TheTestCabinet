@@ -372,5 +372,9 @@ export interface Clickable {
   // not, say, an overlay's close button that commits the same act
   // (specs/instrumentation.md).
   bar?: boolean;
+  // Set on the BUILD PANEL's own two controls, the refinement control and the press
+  // control, so `pressControls()` reports those two and not the inspector's actions
+  // drawn under them (specs/instrumentation.md).
+  press?: boolean;
   label?: string;
 }

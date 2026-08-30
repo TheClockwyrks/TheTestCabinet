@@ -116,6 +116,7 @@ import {
   barState,
   menuControls,
   panelButtonControls,
+  pressPanelControls,
   statusBarControls,
 } from "./layout";
 import { abilityTags } from "./tables";
@@ -264,6 +265,7 @@ export interface FoundryDebugApi {
   // Readings.
   snapshot(): FoundrySnapshot;
   panelButtons(): ButtonSnapshot[];
+  pressControls(): ButtonSnapshot[];
   menuButtons(): ButtonSnapshot[];
   statusControls(): StatusSnapshot[];
 
@@ -579,6 +581,17 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
 
     panelButtons: () =>
       panelButtonControls(live()).map((c) => ({
+        action: c.action,
+        label: c.label,
+        x: c.x,
+        y: c.y,
+        w: c.w,
+        h: c.h,
+        disabled: c.disabled,
+      })),
+
+    pressControls: () =>
+      pressPanelControls(live()).map((c) => ({
         action: c.action,
         label: c.label,
         x: c.x,

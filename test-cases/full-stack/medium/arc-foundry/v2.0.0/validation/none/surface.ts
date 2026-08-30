@@ -21,6 +21,7 @@ import type {
   MapId,
   MenuAction,
   PanelAction,
+  PressAction,
   Phase,
   Screen,
   SpawnType,
@@ -51,6 +52,7 @@ export const REQUIRED_OPS = [
   // Readings.
   "snapshot",
   "panelButtons",
+  "pressControls",
   "menuButtons",
   "statusControls",
   // The run.
@@ -133,6 +135,17 @@ export interface ControlButton {
 /** An inspector action control. Its `action` is one of `PANEL_ACTIONS`. */
 export interface PanelButton extends ControlButton {
   action: PanelAction;
+}
+
+/**
+ * One of the build panel's own two controls, drawn above the inspector.
+ *
+ * Its `action` is one of `PRESS_ACTIONS`. The refinement control's `disabled`
+ * follows the refinement track alone and the press control's follows the stamp
+ * allowance and the phase, so neither reads the selection.
+ */
+export interface PressButton extends ControlButton {
+  action: PressAction;
 }
 
 /** A menu choice. Its `action` is one of `MENU_ACTIONS`. */
@@ -324,6 +337,7 @@ export interface FoundryDebugApi {
   /* Readings. */
   snapshot(): FoundrySnapshot;
   panelButtons(): PanelButton[];
+  pressControls(): PressButton[];
   menuButtons(): MenuButton[];
   statusControls(): StatusControl[];
 
@@ -397,9 +411,9 @@ export interface FoundryDebugApi {
  * reads it).
  */
 export type Driven<T> = {
-  [
-    K in keyof T as T[K] extends (...args: never[]) => unknown ? K : never
-  ]: T[K] extends (...args: infer A) => infer R
+  [K in keyof T as T[K] extends (...args: never[]) => unknown
+    ? K
+    : never]: T[K] extends (...args: infer A) => infer R
     ? (...args: A) => Promise<R>
     : never;
 };

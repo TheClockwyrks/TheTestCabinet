@@ -30,6 +30,7 @@ function install(): { api: FoundryDebugApi; game: Game; frames: number[] } {
     keyDown: () => {},
     keyUp: () => {},
     panelButtons: () => [],
+    pressControls: () => [],
     menuButtons: () => [],
     statusControls: () => [],
   });

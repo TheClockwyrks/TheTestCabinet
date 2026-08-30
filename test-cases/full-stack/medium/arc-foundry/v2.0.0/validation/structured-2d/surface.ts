@@ -56,6 +56,7 @@ import type {
   PanelAction,
   PhaseName,
   ScreenName,
+  PressControl as PressAction,
   StatusControl as StatusAction,
   StructureKind,
   TargetingPriority,
@@ -121,6 +122,17 @@ export interface ControlButton {
 /** An inspector action control. Its `action` is one of `PANEL_ACTIONS`. */
 export interface PanelButton extends ControlButton {
   action: PanelAction;
+}
+
+/**
+ * One of the build panel's own two controls, drawn above the inspector.
+ *
+ * Its `action` is one of `PRESS_CONTROLS`. The refinement control's `disabled`
+ * follows the refinement track alone and the press control's follows the stamp
+ * allowance and the phase, so neither reads the selection.
+ */
+export interface PressButton extends ControlButton {
+  action: PressAction;
 }
 
 /** A menu choice. Its `action` is one of `MENU_ACTIONS`. */
@@ -313,6 +325,7 @@ export interface FoundryDebugApi {
   /* Readings. */
   snapshot(): FoundrySnapshot;
   panelButtons(): PanelButton[];
+  pressControls(): PressButton[];
   menuButtons(): MenuButton[];
   statusControls(): StatusControl[];
 
@@ -383,6 +396,7 @@ export interface FoundryDebugApi {
 export const READINGS = [
   "snapshot",
   "panelButtons",
+  "pressControls",
   "menuButtons",
   "statusControls",
 ] as const;
@@ -401,6 +415,7 @@ export const REQUIRED_OPS = [
   // Readings.
   "snapshot",
   "panelButtons",
+  "pressControls",
   "menuButtons",
   "statusControls",
   // The run.

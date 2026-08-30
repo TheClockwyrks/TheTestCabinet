@@ -60,6 +60,7 @@ export interface DebugContext {
   keyDown(code: string): void;
   keyUp(code: string): void;
   panelButtons(): PanelButton[];
+  pressControls(): PanelButton[];
   menuButtons(): PanelButton[];
   statusControls(): StatusControl[];
 }
@@ -96,6 +97,7 @@ export interface FoundryDebugApi {
   // Readings.
   snapshot(): FoundrySnapshot;
   panelButtons(): PanelButton[];
+  pressControls(): PanelButton[];
   menuButtons(): PanelButton[];
   statusControls(): StatusControl[];
 
@@ -288,6 +290,10 @@ export function installDebugApi(ctx: DebugContext): void {
     panelButtons() {
       ctx.refreshControls();
       return ctx.panelButtons();
+    },
+    pressControls() {
+      ctx.refreshControls();
+      return ctx.pressControls();
     },
     menuButtons() {
       ctx.refreshControls();

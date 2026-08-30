@@ -2,22 +2,17 @@
 //
 // `specs/hud.md` gives the panel's refinement control as "the current level `R`,
 // and the Charge cost of the next level", "disabled at `R8` and when the next
-// level is unaffordable". `specs/scrap-press.md` holds those costs in
-// `REFINEMENT_COSTS`, caps the track at `REFINEMENT_MAX`, and refuses a refine
-// "at `R8` and when the player cannot afford the next level".
+// level is unaffordable, and by nothing else". `specs/scrap-press.md` holds those
+// costs in `REFINEMENT_COSTS`, caps the track at `REFINEMENT_MAX`, and refuses a
+// refine "at `R8` and when the player cannot afford the next level".
 //
-// HOW THE REFUSAL IS READ. No reading reports this control. `panelButtons` covers
-// "the build panel inspector's action controls for the selected structure", and
-// the refinement control is the panel's own, above the inspector, so it is in
-// neither that reading nor `statusControls`. What a disabled control means is
-// decided instead from what it does: `upgradeQuality` "buys the next refinement
-// level for Charge, as the panel's refinement control does", and
-// `specs/instrumentation.md` makes it one of the operations that "commits through
-// that same control, so it is refused wherever the control is refused and does
-// nothing when it is" — with the refusal readable in the snapshot, where "no
-// Charge leaves the bank". Each refusal is read against a commit that DOES go
-// through, so a build whose refinement never works fails here rather than passing
-// two refusals over.
+// HOW THE REFUSAL IS READ. `specs/instrumentation.md` reports this control as the
+// `refine` row of `pressControls`, and `disabled` there "reports whether it
+// currently ignores activation", following "the refinement track alone". So the
+// refusal is read off the control itself, at the three points the rule names: one
+// rung with its exact price in the bank, the same rung one Charge short, and the
+// top rung with Charge to spare. What the panel DRAWS is read alongside it, so a
+// build reporting an honest control it never draws fails here too.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual } from "../assert";
@@ -25,6 +20,7 @@ import {
   captureStill,
   createHarness,
   openYard,
+  pressControl,
   type Harness,
 } from "../harness";
 import { REFINEMENT_MAX, refinementCost } from "../constants";
@@ -58,49 +54,28 @@ it("shows the level and the next cost, and refuses at R8 and unaffordable", asyn
     `the panel's figures at refinement R${LEVEL}`,
   );
 
-  // Exactly the price: the control commits, and takes exactly that much.
-  await h.debug.upgradeQuality();
-  const bought = await h.snapshot();
+  // Exactly the price: the control is offered.
   assertEqual(
-    bought.refinement,
-    LEVEL + 1,
-    `the refinement level after buying R${LEVEL + 1} with exactly its cost`,
-  );
-  assertEqual(
-    bought.charge,
-    0,
-    `the Charge left after buying R${LEVEL + 1} for ${NEXT_COST}`,
+    (await pressControl(h, "refine")).disabled,
+    false,
+    `the refinement control at R${LEVEL} with exactly the ${NEXT_COST} the ` +
+      "next level costs",
   );
 
-  // One Charge short: refused, and nothing leaves the bank.
-  await h.debug.setRefinement(LEVEL);
+  // One Charge short: refused.
   await h.debug.setCharge(NEXT_COST - 1);
-  await h.debug.upgradeQuality();
-  const short = await h.snapshot();
   assertEqual(
-    short.refinement,
-    LEVEL,
-    `the refinement level after a refine one Charge short of ${NEXT_COST}`,
-  );
-  assertEqual(
-    short.charge,
-    NEXT_COST - 1,
-    "the Charge left after a refine that could not be afforded",
+    (await pressControl(h, "refine")).disabled,
+    true,
+    `the refinement control at R${LEVEL} one Charge short of ${NEXT_COST}`,
   );
 
   // The top rung: refused with Charge to spare.
   await h.debug.setRefinement(REFINEMENT_MAX);
   await h.debug.setCharge(PLENTY);
-  await h.debug.upgradeQuality();
-  const capped = await h.snapshot();
   assertEqual(
-    capped.refinement,
-    REFINEMENT_MAX,
-    `the refinement level after a refine at R${REFINEMENT_MAX}`,
-  );
-  assertEqual(
-    capped.charge,
-    PLENTY,
-    `the Charge left after a refine at R${REFINEMENT_MAX}`,
+    (await pressControl(h, "refine")).disabled,
+    true,
+    `the refinement control at R${REFINEMENT_MAX} with ${PLENTY} Charge`,
   );
 });

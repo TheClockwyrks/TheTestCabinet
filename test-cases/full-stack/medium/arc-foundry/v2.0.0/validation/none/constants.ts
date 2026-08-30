@@ -277,7 +277,12 @@ export function scaledHp(
 /* -------------------------------------------------------------------------- */
 
 export type LoadType =
-  "mote" | "spark" | "slug" | "cluster" | "filament" | "dynamo";
+  | "mote"
+  | "spark"
+  | "slug"
+  | "cluster"
+  | "filament"
+  | "dynamo";
 
 /** Every type `spawnUnit` takes: the roster, plus the finale's Overload Dynamo. */
 export type SpawnType = LoadType | "overload";
@@ -757,6 +762,16 @@ export const PANEL_ACTIONS = [
   "dismantle",
 ] as const;
 export type PanelAction = (typeof PANEL_ACTIONS)[number];
+
+/**
+ * Every `action` a `pressControls` row may carry, in the order the panel draws them.
+ *
+ * They are the build panel's own two controls rather than inspector actions: the
+ * refinement control refines the press whatever is selected, and the press control
+ * pulls the press.
+ */
+export const PRESS_ACTIONS = ["refine", "stamp"] as const;
+export type PressAction = (typeof PRESS_ACTIONS)[number];
 
 /** Every `action` a `menuButtons` row may carry. */
 export const MENU_ACTIONS = [

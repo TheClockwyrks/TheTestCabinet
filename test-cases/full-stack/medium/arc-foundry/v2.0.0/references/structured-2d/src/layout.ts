@@ -380,7 +380,13 @@ export function barState(
   }
 }
 
-/** The panel's two standing controls, then the inspector's actions. */
+/**
+ * The panel's two standing controls, then the inspector's actions.
+ *
+ * The refinement control carries `refine`, which is the press's own act and not the
+ * inspector's `upgrade`: activating it refines the press whatever is selected, and it
+ * is disabled by the refinement track alone (specs/hud.md).
+ */
 function panelControls(w: FoundryState): Control[] {
   const out: Control[] = [
     {
@@ -389,7 +395,7 @@ function panelControls(w: FoundryState): Control[] {
       w: PANEL_CONTENT_W,
       h: REFINE_H,
       kind: "press",
-      action: "upgrade",
+      action: "refine",
       label: "UPGRADE QUALITY",
       disabled: !canUpgradeQuality(w),
     },
@@ -587,6 +593,11 @@ export function menuControls(w: FoundryState): Control[] {
 /** The inspector's action controls, in slot order. */
 export function panelButtonControls(w: FoundryState): Control[] {
   return controls(w).filter((c) => c.kind === "panel");
+}
+
+/** The panel's own two controls, in the order the panel draws them. */
+export function pressPanelControls(w: FoundryState): Control[] {
+  return controls(w).filter((c) => c.kind === "press");
 }
 
 /** The status bar's controls, and none at all on a screen with no bar. */
