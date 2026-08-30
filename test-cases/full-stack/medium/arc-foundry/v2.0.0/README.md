@@ -42,7 +42,7 @@ Arc Foundry is designed for three engines, and seeds a different project for eac
 
 | Engine | What the seeded project supplies |
 | --- | --- |
-| `none` | The toolchain configuration and `index.html`, and nothing else. There is no `src/`. The build writes the runtime — the fixed-step loop and its delta time, the canvas fit, keyboard and pointer input, audio, the diagnostics overlay and the `window.__foundry` surface — and then the game on top of it. The surface additionally carries the clock, because nothing outside the build owns it. |
+| `none` | The toolchain configuration and `index.html`, and nothing else. There is no `src/`. The build writes the runtime, the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, asset loading, the diagnostics overlay and the `window.__foundry` surface, and then the game on top of it. The surface additionally carries the clock, because nothing outside the build owns it. |
 | `simple-2d` | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts`: the state, the debug surface, and the game's update and render. The engine holds the state by value, so a pose takes the current state and returns the next, applied through `engine.apply`, and a reading takes the state and returns what it read. |
 | `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored at seed time, plus the same two case-owned modules. The build writes `src/game.ts`: the game definition the engine drives, its mode, its live state class, its actors, and the debug surface its instance's `initialize` returns. The world is live, so a pose acts on it at the call and a reading returns plain data. |
 
@@ -83,17 +83,22 @@ for every run:
 
 | Spec | Covers |
 | --- | --- |
-| `overview.md` | What is built, the stage geometry, the code quality, and the commands run over the finished repository. |
-| `board.md` | The tile grid, the three maps, the ordered waypoint chain, and the never-seal rule. |
-| `enemies.md` | The Load roster, the Filament flyer, the Overload Dynamo, and how HP scales by wave. |
-| `towers.md` | The eight base component types, their targeting, and the combination towers and their abilities. |
-| `build.md` | The scrap press: the roll, the stamp allowance, the keep-one harvest, and the combines. |
-| `gameplay.md` | The Charge and Grid Integrity economy, the wave campaign, victory and overload, and the Maze Rating. |
-| `ui.md` | The game states, the required menus, the HUD, and the build panel. |
-| `modes.md` | The Easy/Medium/Hard menu and what each difficulty changes. |
-| `controls.md` | The pointer and keyboard controls, the accelerators, and the fixed timestep. |
-| `assets.md` | The asset-production contract: every asset, which binary produces it, and where it lands. |
-| `instrumentation.md` | The debug and automation surface and the diagnostics overlay. |
+| `overview.md` | What is built, the runtime layer the build is handed, the stage geometry, the code quality, and the commands run over the finished repository. |
+| `yard.md` | The tile grid, the four tile states, the structure footprint, the three maps, and placement legality. |
+| `pathing.md` | The ordered waypoint chain, the open route of least length, the maze length, the never-seal rule, and flight. |
+| `enemies.md` | The Load roster, the status effects a unit carries, how health scales by wave, and what a wave may hold. |
+| `components.md` | The eight base component types, the ability vocabulary, the quality ladder, and the full stat tables. |
+| `combinations.md` | The twelve combination towers, their recipes, and the upgrade track they climb. |
+| `scrap-press.md` | The roll, the stamp allowance, the one-harvest rule, the two combines, and the refinement track. |
+| `economy.md` | Charge, its two sources and its two sinks, and Grid Integrity. |
+| `campaign.md` | The run, the build phase, the wave, the milestone waves, and the finale that produces the Maze Rating. |
+| `difficulty.md` | The three difficulties and the four scaling constants each one sets. |
+| `hud.md` | The status bar, the build panel and its inspector, the fixed-slot rule, and the two overlays. |
+| `ui.md` | The eight screens, what each menu contains and where each choice leads, and the twelve audio cues. |
+| `controls.md` | How simulation time advances, the pointer, the registered actions and their keys, and what each control commits. |
+| `assets.md` | The asset-production contract: every asset, which binary produces it, the path it lands at, and how it is loaded. |
+| `instrumentation.md` | The debug and automation surface, the snapshot shape, and the diagnostics overlay. |
+| `showcase.md` | The `showcase/` directory the finished game ships: its description and its media carousel. |
 
 ## Assets and media
 

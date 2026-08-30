@@ -1,10 +1,10 @@
 # The default (and only) Arc Foundry variant: the standard SALVAGE campaign. Listed
 # as the single entry in the case manifest's `variants`, so it is the default and
 # every run is a run of it. Difficulty (Easy / Medium / Hard) is chosen on the
-# in-game DIFFICULTY SELECT menu and changes only the wave count and enemy toughness
-# (`specs/modes.md`), so it is NOT a variant: there is one campaign, defined entirely
-# by the common specs. This variant seeds no spec of its own; the SALVAGE start lives
-# in `specs/gameplay.md`. Every path here resolves against the version folder,
+# in-game difficulty select menu and changes only the wave count and enemy toughness
+# (`specs/difficulty.md`), so it is NOT a variant: there is one campaign, defined
+# entirely by the common specs. This variant seeds no spec of its own; the run's shape
+# lives in `specs/campaign.md`. Every path here resolves against the version folder,
 # exactly like the main manifest.
 slug = "base"
 name = "Base"
@@ -13,8 +13,8 @@ description = "The standard SALVAGE campaign: 10 starting Charge, 20 Grid Integr
 # The authored correct build, one directory per supported engine, because the build a
 # reference demonstrates differs under each. This table must name EXACTLY the engines
 # the case supports (the resolver checks both directions), and the case supports
-# three: `references/none` carries its own runtime layer (the fixed-step loop, canvas
-# fit, keyboard and pointer input, audio, overlay, and the `window.__foundry`
+# three: `references/none` carries its own runtime layer (the frame loop, the canvas
+# fit, keyboard and pointer input, audio, asset loading, the overlay, and the `window.__foundry`
 # surface), `references/simple-2d` hands all of that to the engine package resolved
 # from the repository's `packages/simple-2d` and ships the game as `src/game.ts`
 # beside the seeded entry point, and `references/structured-2d` writes the game inside

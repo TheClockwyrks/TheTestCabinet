@@ -9,8 +9,8 @@ engine rather than one for the case: `engines` names the engineless run,
 
 The foundry they build is the same foundry. What differs is how much of it the
 model writes. Under `none` the project is the toolchain and an `index.html` and
-nothing else: the build writes the fixed-step loop and its delta time, the canvas
-fit, keyboard and pointer input, audio, the diagnostics overlay, the
+nothing else: the build writes the frame loop and its delta time, the canvas fit,
+keyboard and pointer input, audio, asset loading, the diagnostics overlay, the
 `window.__foundry` surface, and the game. Under either engine the runtime is
 vendored in as a package and the project seeds the modules around the game,
 `src/constants.ts` and `src/main.ts`, leaving the build `src/game.ts` — the state,
@@ -51,10 +51,11 @@ and `validation/structured-2d/` run in process against the vendored engine and
 reach the surface through `engine.debug`. All three run the same scenarios and
 differ only in how they stand a build up.
 
-The `tick_hz` key is gone. Each validator constructs its own clock and steps the
-simulation itself, so a single case-wide rate could only ever be wrong for some of
-them. The fixed timestep the simulation runs at stays a requirement on the build,
-stated in `specs/controls.md`.
+The `tick_hz` key is gone, and with it the fixed 60 Hz tick the simulation used to
+run on. Every rate the specification states is now per second and integrated against
+the delta time the frame loop hands each update, so an interval of simulation time
+reaches the same state however it was divided into frames, and each validator builds
+whatever clock its scenario wants.
 
 ## Appearance is the build's; behavior is exact
 
@@ -83,8 +84,7 @@ nearest whole number with an exact half rounding up, and the spec states that a
 unit's maximum HP is an integer. One derivation is spelled out in both rounding
 directions — a Medium Mote's `9.68` is `10` HP, a Filament's `16.28` is `16`.
 The rule is scoped to maximum HP; damage in flight, including a burn's per-tick
-loss, is unchanged. `specs/modes.md` and `specs/gameplay.md`, which both restate
-the formula, round with it.
+loss, is unchanged. Every place the formula appears rounds with it.
 
 The underlying balance is untouched: no roster value, difficulty constant, or wave
 count moved, and the figures a build now reports are the ones the reference
@@ -92,10 +92,10 @@ implementation already produced.
 
 ## Medium's HP-scaling constants agree across the specs
 
-`specs/gameplay.md` restated Medium's surcharge constants as `c = 0.18` and
-`r = 1.13`, against the `c = 0.28` and `r = 1.145` given in both `specs/modes.md`
-and `specs/enemies.md`. A build reading all three could not satisfy them at once.
-The two outlying values are corrected to match the difficulty table.
+One spec restated Medium's surcharge constants as `c = 0.18` and `r = 1.13`,
+against the `c = 0.28` and `r = 1.145` the difficulty table gave. A build reading
+both could not satisfy them at once. The difficulty table is right, the two
+outlying values are gone, and the constants are now stated in exactly one place.
 
 ## Tags
 

@@ -23,7 +23,7 @@ name = "Arc Foundry"
 type = "full-stack"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Arc Foundry is
-# medium: it asks for a GemTD-style tower defense — a fixed-step simulation of the Load
+# medium: it asks for a GemTD-style tower defense — a real-time simulation of the Load
 # pathfinding an ORDERED-WAYPOINT maze (with 4-tile waypoint platforms) across three
 # chosen maps with a never-seal rule, a random scrap-press build with
 # the place-and-reveal stamp, the keep-one-per-level rule, inert blockers, a quality-combine
@@ -71,7 +71,7 @@ changelog = "changelog.md"
 prompt = "prompt.hbs"
 
 # Maximum wall-clock runtime, in hours, for the harness session before the run is
-# stopped. Arc Foundry is a large build — a fixed-step GemTD simulation with waypoint
+# stopped. Arc Foundry is a large build — a real-time GemTD simulation with waypoint
 # mazing, a random scrap-press build loop over a five-rung quality
 # ladder, eight base component types plus a dozen recipe-assembled combination towers,
 # three maps, an in-game difficulty menu, a dozens-of-waves
@@ -113,7 +113,7 @@ packages = ["@test-cabinet/particle-runtime"]
 # declared in its own file under `variants/`. Difficulty (Easy / Medium / Hard) is an
 # IN-GAME menu — it changes only the wave count and enemy toughness — not a variant, so
 # there is no per-variant mode file; the campaign is one and the same at every
-# difficulty (`specs/modes.md`). This list is a root key, so it must sit above the
+# difficulty (`specs/difficulty.md`). This list is a root key, so it must sit above the
 # first `[table]` header below.
 variants = [
   "variants/base.toml",
@@ -130,9 +130,9 @@ variants = [
 # Arc Foundry supports three, and the game is the same foundry under all of them.
 # What differs is how much of the build is handed over:
 #   - `none`          supplies no runtime and no `src/` at all, so the build writes
-#                     the fixed-step loop, the canvas fit, the keyboard and pointer
-#                     input, the audio, the overlay and the `window.__foundry`
-#                     surface itself.
+#                     the frame loop, the canvas fit, the keyboard and pointer
+#                     input, the audio, asset loading, the overlay and the
+#                     `window.__foundry` surface itself.
 #   - `simple-2d`     vendors the runtime as a package and seeds the modules around
 #                     it (`src/constants.ts`, `src/main.ts`, and the `src/game.ts`
 #                     the build writes, debug surface included).
@@ -180,10 +180,10 @@ min_version = "1.0.0"
 # the build is supplied with them.
 #
 #   - `none`          supplies the configuration and nothing else. There is no
-#                     `src/`: the build writes its own fixed-step loop, canvas fit,
-#                     keyboard and pointer input, audio, diagnostics overlay and
-#                     `window.__foundry` surface, and every figure the specification
-#                     fixes, from the specs alone.
+#                     `src/`: the build writes its own frame loop, canvas fit,
+#                     keyboard and pointer input, audio, asset loading, the
+#                     diagnostics overlay and the `window.__foundry` surface, and
+#                     every figure the specification fixes, from the specs alone.
 #   - `simple-2d`     declares the engine in its `package.json`, which is vendored
 #                     in at seed time so the build imports it by its bare package
 #                     name, and seeds the case-owned modules around the game:
@@ -256,10 +256,11 @@ test = "npx vitest run --coverage"
 # only their own arguments and act on it at the call, and its readings return plain
 # data. One handle, three ways to reach the same operations.
 #
-# There is deliberately no `tick_hz`. A validator now builds its own clock and steps
-# the simulation itself, so the case states no harness-wide step size; the fixed
-# timestep the simulation runs at is a requirement on the build, stated in
-# `specs/controls.md`, not a figure the reporter needs.
+# There is deliberately no `tick_hz`, and the case fixes no step size at all. Every
+# rate the specification states is per second and integrated against the delta time
+# the frame loop hands each update (`specs/controls.md`), so an interval of simulation
+# time reaches the same state however it was divided into frames, and a validator
+# builds whatever clock its scenario wants.
 [instrumentation]
 handle = "__foundry"
 
@@ -872,7 +873,7 @@ validation = { script = "validation/controls/panel-layout-stable.mjs", outputs =
 [[review.categories.items]]
 id = "advances-in-real-time"
 title = "The game advances itself in real time"
-description = "During normal play the game runs on its own: the animation-frame loop drives the fixed 60 Hz tick from the wall clock, so a live wave progresses — simulation time accumulates and the Load walks its route — without anything stepping it from outside."
+description = "During normal play the game runs on its own: the frame loop advances the simulation from the wall clock, so a live wave progresses — simulation time accumulates and the Load walks its route — without anything stepping it from outside."
 validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "released", name = "The instant a unit is released", kind = "image" }, { id = "advanced", name = "One second later, on the build's own clock", kind = "image" }] }
 
 # --- Produced Art -------------------------------------------------------------
