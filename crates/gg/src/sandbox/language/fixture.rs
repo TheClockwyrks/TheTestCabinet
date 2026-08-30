@@ -112,6 +112,13 @@ const COMPONENT: &[u8] = b"gg fixture language: not a component, never compiled"
 /// TypeScript's.
 pub(crate) const FIXTURE_CHECKER: &str = "fxc";
 
+/// What one loaded module's build is written as, inside that key's own directory in the
+/// [band](crate::sandbox::Workspace::open_module).
+///
+/// A fixed name inside a directory of the key's own, which is the shape every compiled arm's module
+/// build takes.
+const MODULE_ARTIFACT: &str = "module.fx";
+
 /// The word that makes this language's "checker" reject a program it parsed cleanly — the fixture's
 /// stand-in for a type error, which is the failure a checked language has and TypeScript does not.
 pub(crate) const MISTYPED: &str = "mistyped";
@@ -192,15 +199,15 @@ impl ProgramLanguage for FixtureLanguage {
     ///
     /// The checked instance also does what a compiled language really does with its
     /// [context](PrepareContext): it writes the source into its own private
-    /// [workspace](super::Workspace) and reads the artifact back out of it, so the seam's
-    /// per-preparation ground has a user under test that is not TypeScript's `tsc`, and so the
+    /// [workspace](super::Workspace) and reads the artifact back out of it, so the ground the seam
+    /// hands a preparation has a user under test that is not TypeScript's `tsc`, and so the
     /// [isolation gate](super::isolation) is driving a preparation that really touches a filesystem.
     /// The unchecked instance touches nothing, because a language that compiles nothing should pay
     /// nothing.
     fn prepare_program(
         &self,
         source: &str,
-        _modules: &[CodeModule],
+        modules: &[CodeModule],
         context: &PrepareContext,
     ) -> Result<PreparedProgram, PrepareFailure> {
         if source.contains("??") {
@@ -231,6 +238,13 @@ impl ProgramLanguage for FixtureLanguage {
             ))
             .into());
         }
+        // What a compiled arm does with the modules in scope, in the smallest shape that has the
+        // property worth testing: each is named out of the loaded-module band rather than built
+        // again, and one that is not there — because this program's preparation belongs to an agent
+        // that never loaded it — is built here and recorded, so the next program names it too.
+        for module in modules {
+            self.bind(&module.name, &module.source, context)?;
+        }
         Ok(PreparedProgram {
             source: self.build(&strip_comments(source), context)?,
             component: None,
@@ -254,8 +268,15 @@ impl ProgramLanguage for FixtureLanguage {
     ///
     /// Every export is a function, quoted as the line that declared it: the fixture's dialect has
     /// one kind of declaration, so it says so rather than pretending to a range it does not have.
+    ///
+    /// The build is registered against the source this hands **back**, not the source it was handed,
+    /// because what a program's preparation is given for this key is
+    /// [`PreparedModule::source`](super::PreparedModule::source). On every registered arm the two
+    /// are the same bytes; this one transforms them, which is why the fixture is where the
+    /// distinction is exercised.
     fn prepare_module(
         &self,
+        key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
@@ -276,14 +297,13 @@ impl ProgramLanguage for FixtureLanguage {
                 })
             })
             .collect();
-        Ok(PreparedModule {
-            source: format!(
-                "{}\n# exports: {}",
-                prepared.source,
-                super::export_names(&exports).join(", ")
-            ),
-            exports,
-        })
+        let source = format!(
+            "{}\n# exports: {}",
+            prepared.source,
+            super::export_names(&exports).join(", ")
+        );
+        self.build_module(key, &source, context)?;
+        Ok(PreparedModule { source, exports })
     }
 
     /// One extension, and one nothing else claims: a language whose modules only its own runtime
@@ -416,6 +436,49 @@ impl FixtureLanguage {
                 path.display()
             ))
         })
+    }
+
+    /// Compile the module bound at `key` into the band, and record what that produced.
+    ///
+    /// The compiled shape of a module step, in the fixture's own terms: a file written into the
+    /// key's own directory, which is what a program's compile would name. Only the checked instance
+    /// does it, for the reason [`build`](Self::build) gives.
+    fn build_module(
+        &self,
+        key: &str,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<(), PrepareFailure> {
+        if self.checker.is_none() {
+            return Ok(());
+        }
+        let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+        workspace
+            .open_module(key)
+            .map_err(PrepareFailure::Toolchain)?;
+        let artifact = workspace
+            .write_module(key, MODULE_ARTIFACT, &strip_comments(source))
+            .map_err(PrepareFailure::Toolchain)?;
+        workspace.record_module(key, source, vec![artifact]);
+        Ok(())
+    }
+
+    /// Name the build of the module bound at `key`, building it first when this agent's workspace
+    /// does not hold one made from these bytes.
+    fn bind(
+        &self,
+        key: &str,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<(), PrepareFailure> {
+        if self.checker.is_none() {
+            return Ok(());
+        }
+        let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+        match workspace.module_build(key, source) {
+            Some(_) => Ok(()),
+            None => self.build_module(key, source, context),
+        }
     }
 }
 

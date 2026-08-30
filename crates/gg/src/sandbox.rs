@@ -156,8 +156,8 @@ pub use operations::{
 // which of its five shapes a diagnostic is has to be able to see them.
 #[allow(unused_imports)]
 pub use language::{
-    CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, PrepareError,
-    Workspace, daemon, place, place_tree, shared_toolchain_dir,
+    AgentWorkspace, CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext,
+    PrepareError, Workspace, daemon, place, place_tree, shared_toolchain_dir,
 };
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer
@@ -348,9 +348,10 @@ impl ProgramScope<'_> {
 ///
 /// `language` is the [program language](ProgramLanguage) this agent writes in — which decides how
 /// `program` is prepared and which embedded component evaluates it — `program` is the source the
-/// model emitted, `scope` is everything the evaluated function's parameters are built from, and
-/// `deadline` is the run's wall-clock budget, consulted before every bridged call so a program
-/// cannot outlive the run it belongs to. Synchronous and CPU-bound, so the [loop](crate::agent) runs
+/// model emitted, `scope` is everything the evaluated function's parameters are built from,
+/// `workspace` is the agent's own [compile workspace](AgentWorkspace), and `deadline` is the run's
+/// wall-clock budget, consulted before every bridged call so a program cannot outlive the run it
+/// belongs to. Synchronous and CPU-bound, so the [loop](crate::agent) runs
 /// it on `spawn_blocking`; every effect a *program* has goes through `invoker`, and the only work
 /// this function does outside the engine is the language's own
 /// [prepare step](ProgramLanguage::prepare_program) — which for a language that
@@ -360,6 +361,7 @@ pub fn run_program<A: OperationApi>(
     language: &'static dyn ProgramLanguage,
     program: &str,
     scope: ProgramScope<'_>,
+    workspace: &AgentWorkspace,
     limits: SandboxLimits,
     deadline: Option<Instant>,
     api: A,
@@ -377,7 +379,7 @@ pub fn run_program<A: OperationApi>(
     // reading is taken around both outcomes because a rejected program is the one whose cost would
     // otherwise be reported as nothing.
     let started = Instant::now();
-    let prepared = prepare_program(language, program, scope.modules);
+    let prepared = prepare_program(language, program, scope.modules, workspace);
     let compile = language.prepare_compiles().then(|| started.elapsed());
     let prepared = match prepared {
         Ok(prepared) => prepared,
@@ -694,10 +696,13 @@ pub fn precompile(
 /// with.
 ///
 /// It is also where a preparation's [context](PrepareContext) is minted — one per call, here and
-/// nowhere else, because the context *is* the private ground a compiler runs on and one shared
-/// between two preparations would be the corruption it exists to prevent. The context is dropped
-/// when this returns, which is what removes the workspace; a language that wants an artifact must
-/// read it before it hands one back.
+/// nowhere else, because the context is what clears `workspace` of the previous preparation's files
+/// and hands the language ground it is alone on. A language that wants an artifact must read it
+/// before it hands one back: the next preparation on this agent's workspace removes it.
+///
+/// `workspace` is the [compile workspace](AgentWorkspace) of the agent this program belongs to.
+/// Passing another agent's is the corruption the whole of `sandbox::language::compile` exists to
+/// prevent, which is why it is a parameter rather than something this function could allocate.
 ///
 /// `modules` is what the agent has loaded from code skills and memories, already prepared. Every
 /// language is handed it; only one whose programs are **compiled** reads it, because only there is a
@@ -707,8 +712,13 @@ pub fn prepare_program(
     language: &'static dyn ProgramLanguage,
     source: &str,
     modules: &[CodeModule],
+    workspace: &AgentWorkspace,
 ) -> Result<PreparedProgram, PrepareFailure> {
-    language.prepare_program(source, modules, &PrepareContext::new())
+    language.prepare_program(
+        source,
+        modules,
+        &PrepareContext::for_agent(workspace, language.persistent_work()),
+    )
 }
 
 /// Prepare a code [skill](crate::skills)'s or [memory](crate::memories)'s source for `language`'s
@@ -716,13 +726,24 @@ pub fn prepare_program(
 /// that namespace offers.
 ///
 /// Its own [context](PrepareContext), for the reason a program's is its own: a turn that loads three
-/// code skills compiles three modules, and two of them sharing a working directory is the same bug
-/// as two agents sharing one.
+/// code skills compiles three modules, and the second reading files the first left behind is the same
+/// bug as two agents sharing a tree.
+///
+/// `key` is the binding key the module is loaded under. It is minted before the preparation rather
+/// than after it, so a compiled arm builds the module under the name a program will reach it by and
+/// keeps that build in the agent's workspace for every later program. See
+/// [`ProgramLanguage::prepare_module`].
 pub fn prepare_module(
     language: &'static dyn ProgramLanguage,
+    key: &str,
     source: &str,
+    workspace: &AgentWorkspace,
 ) -> Result<PreparedModule, PrepareFailure> {
-    language.prepare_module(source, &PrepareContext::new())
+    language.prepare_module(
+        key,
+        source,
+        &PrepareContext::for_agent(workspace, language.persistent_work()),
+    )
 }
 
 /// The name of the one model-facing sandbox function that is **not** a gg tool: the call that ends

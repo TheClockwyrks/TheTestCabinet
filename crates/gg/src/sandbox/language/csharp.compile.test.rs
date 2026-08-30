@@ -569,7 +569,7 @@ fn toolchain_whose_runtime_cannot_start() -> tempfile::TempDir {
 #[test]
 fn the_sdk_build_reports_a_runtime_that_could_not_start() {
     let toolchain = toolchain_whose_runtime_cannot_start();
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let failure = sdk_assembly(toolchain.path(), &context)
         .expect_err("a launcher that aborts cannot have built gg's SDK");
     assert!(
@@ -592,7 +592,7 @@ fn the_sdk_build_reports_a_runtime_that_could_not_start() {
 #[test]
 fn the_parse_classifiers_build_reports_a_runtime_that_could_not_start() {
     let toolchain = toolchain_whose_runtime_cannot_start();
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let failure = parser(toolchain.path(), &context)
         .expect_err("a launcher that aborts cannot have built the parse classifier");
     assert!(
@@ -620,7 +620,7 @@ fn the_parse_classifiers_build_reports_a_runtime_that_could_not_start() {
 #[test]
 fn every_dotnet_this_arm_runs_is_pointed_at_the_libraries_the_toolchain_carries() {
     let root = std::path::Path::new("/opt/gg/toolchains/dotnet");
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let command = dotnet(root, &context).expect("a dotnet command is built");
     let environment = command.environment();
 

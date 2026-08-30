@@ -186,11 +186,12 @@ fn a_diagnostic_is_the_compiler_s_own_uncorrected_coordinate() {
         "Program.kt:9: something was wrong"
     );
 
-    // A module's diagnostics say `Module.kt`, so an author of a code skill is not told the line is
-    // in a program.
+    // A module's diagnostics say the file its own key names, so an author of a code skill is not
+    // told the line is in a program.
+    let module = source::module_file("csvTools");
     assert_eq!(
-        diagnostic("kotlinc", None, Some(MODULE_FILE), 2).render(MODULE_FILE),
-        "Module.kt:2:5: something was wrong",
+        diagnostic("kotlinc", None, Some(&module), 2).render(&module),
+        "csvTools.kt:2:5: something was wrong",
     );
 }
 

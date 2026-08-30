@@ -70,9 +70,10 @@ content-keyed shared directory, by rename, read-only from then on. It is
 idempotent and best effort: a failure there is dropped, because the first compile
 makes the same attempt and reports a toolchain failure properly.
 
-Each compile runs in its own preparation workspace, holding that compile's own
-`tsconfig.json`, `program.ts` and the `program.js` written beside it, and
-exceeding 60 seconds is a toolchain failure. Concurrent compiles share one
+Each compile runs in the agent's compile workspace, holding that compile's own
+`tsconfig.json`, `program.ts` and the `program.js` written beside it, cleared of
+the previous preparation's files before it writes. Exceeding 60 seconds is a
+toolchain failure. Concurrent compiles share one
 `NODE_COMPILE_CACHE` directory, which holds Node's bytecode for the compiler and
 can change no verdict.
 

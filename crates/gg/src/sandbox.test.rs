@@ -69,6 +69,7 @@ fn run_with(
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
+        &crate::sandbox::AgentWorkspace::new(),
         limits,
         None,
         FakeOperationApi::with(&log, responder),
@@ -93,6 +94,7 @@ fn run_with_library(program: &str, held: &[(&str, u64, &str)]) -> SandboxOutcome
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         api,
@@ -113,6 +115,7 @@ fn run_as(program: &str, role: EndingRole) -> SandboxOutcome {
             modules: &[],
             ending: RunEnding::Role(role),
         },
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
@@ -1254,9 +1257,14 @@ fn run_with_modules_logged(program: &str, modules: &[(&str, &str)]) -> (SandboxO
         .iter()
         .map(|(name, source)| CodeModule {
             name: (*name).to_string(),
-            source: crate::sandbox::prepare_module(typescript(), source)
-                .expect("the test's module is prepared")
-                .source,
+            source: crate::sandbox::prepare_module(
+                typescript(),
+                name,
+                source,
+                &crate::sandbox::AgentWorkspace::new(),
+            )
+            .expect("the test's module is prepared")
+            .source,
         })
         .collect();
     let log = CallLog::default();
@@ -1269,6 +1277,7 @@ fn run_with_modules_logged(program: &str, modules: &[(&str, &str)]) -> (SandboxO
             modules: &bound,
             ending: RunEnding::Role(EndingRole::Standard),
         },
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
@@ -1382,6 +1391,7 @@ fn an_on_use_script_has_no_ending_calls_in_scope() {
             modules: &[],
             ending: RunEnding::None,
         },
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),

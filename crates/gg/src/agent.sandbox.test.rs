@@ -1459,6 +1459,88 @@ async fn a_code_skill_binds_its_module_and_runs_its_on_use_script() {
     );
 }
 
+/// **A session compiles a loaded code module once, however many turns and however many reads
+/// follow** — the count taken through the real loop rather than through the seam.
+///
+/// The seam's own gates drive `prepare_module` and `prepare_program` directly, so a registry that
+/// was rebuilt per turn would leave every one of them green while giving each turn a tree of its
+/// own and losing every module build. What this drives is the loop: the registry is moved into the
+/// program's api by value on every code turn and handed back on the far side of it, and the tree it
+/// carries is the one the session allocated.
+///
+/// The currency is **preparations of that tree**, which every arm has. This arm keeps a module's
+/// compiled form as source rather than as a file, so its build count would read zero whatever
+/// happened; the reset the tree pays for each preparation reads the same on every arm. A session of
+/// three programs that read one module once is four, and a read that recompiled what it already
+/// held, or a turn that rebuilt the module beside its program, is five or more.
+#[tokio::test]
+async fn a_session_compiles_a_loaded_module_once_across_its_turns() {
+    let dir = TempDir::new().unwrap();
+    let skill = dir.path().join(".gg").join("skills").join("csv-tools");
+    std::fs::create_dir_all(&skill).unwrap();
+    std::fs::write(
+        skill.join("skill.md"),
+        "---\nname: csv-tools\ndescription: Parsing comma-separated text.\n---\n",
+    )
+    .unwrap();
+    std::fs::write(
+        skill.join("skill.ts"),
+        "export function parse(text: string): string[] { return text.split(\",\"); }\n",
+    )
+    .unwrap();
+
+    let (outcome, _events, requests) = drive_recorded_code_run(
+        &dir,
+        code_set("mock/primary", json!({})),
+        program_script(&[
+            "import * as gg from \"gg\";\ngg.skills.readSkill(\"csv-tools\");",
+            // The same skill read a second time, on a later turn, and then called. A read is a use
+            // and a use is answered every time; what it must not cost a second time is the
+            // compiler.
+            "import * as gg from \"gg\";\nimport * as csvTools from \"lib:csvTools\";\n\
+             gg.skills.readSkill(\"csv-tools\");\n\
+             gg.views.openText(\"parsed\", JSON.stringify(csvTools.parse(\"x,y,z\")));",
+        ]),
+    )
+    .await;
+
+    assert_eq!(outcome, SessionOutcome::Ran);
+    assert_valid_conversations(&requests);
+
+    // The module really was bound on the far side of both turn boundaries, which is what makes the
+    // count below a count of a session that had something to reuse.
+    let last = requests
+        .last()
+        .expect("a recorded request")
+        .iter()
+        .filter_map(|message| message.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        last.contains("[\"x\",\"y\",\"z\"]"),
+        "the module a repeat read re-loaded is callable: {last}"
+    );
+
+    let workspaces = crate::agent::driven_workspaces();
+    assert_eq!(
+        workspaces.len(),
+        1,
+        "one session is one compile workspace, and this one allocated {}",
+        workspaces.len()
+    );
+    let workspace = &workspaces[0];
+    assert!(
+        workspace.created(),
+        "the session compiled somewhere other than the tree it allocated"
+    );
+    assert_eq!(
+        workspace.preparations(),
+        4,
+        "three programs and one module load are four preparations of the session's tree; a repeat \
+         read that recompiled, or a turn that rebuilt the module beside its program, is more"
+    );
+}
+
 /// **A skill whose code is spelled in no language any agent in the run writes refuses the launch.**
 ///
 /// It used to read as prose with a `warn` on the operator's stream, and that is the shape this

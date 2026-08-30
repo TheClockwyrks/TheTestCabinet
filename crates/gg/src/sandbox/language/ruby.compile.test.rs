@@ -33,7 +33,7 @@ use super::*;
 
 /// A context, as the sandbox mints one per preparation.
 fn context() -> PrepareContext {
-    PrepareContext::new()
+    PrepareContext::detached()
 }
 
 /// Compile `source` as a program, or panic with what went wrong.

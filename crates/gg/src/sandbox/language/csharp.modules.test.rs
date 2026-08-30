@@ -31,7 +31,7 @@ fn module(name: &str, source: &str) -> CodeModule {
 
 /// Compile `program` with `modules` in scope and run it, or panic with what the toolchain said.
 fn run_with(program: &str, modules: &[CodeModule]) -> Vec<String> {
-    let prepared = match compile_program(program, modules, &PrepareContext::new()) {
+    let prepared = match compile_program(program, modules, &PrepareContext::detached()) {
         Ok(prepared) => prepared.source,
         Err(failure) => panic!("the C# toolchain did not compile this program: {failure}"),
     };
@@ -45,6 +45,7 @@ fn a_code_skill_is_read_as_c_sharp_and_says_what_it_offers() {
     // coordinates on the call that loaded it rather than a program that stops compiling a turn
     // later for reasons somewhere else.
     let prepared = compile_module(
+        "Helpers",
         concat!(
             "using System.Text;\n",
             "\n",
@@ -56,12 +57,13 @@ fn a_code_skill_is_read_as_c_sharp_and_says_what_it_offers() {
             "\n",
             "private static int Unused() => 0;\n",
         ),
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("a code skill written as a class body compiles");
 
-    // What comes back is the AUTHOR's own bytes: the library a program references is built for the
-    // key the seam binds when the module is loaded, and this preparation was never handed one.
+    // What comes back is the AUTHOR's own bytes: what a program references is the assembly this
+    // compile wrote, which is an input to that program's compile rather than something the guest
+    // could evaluate.
     assert!(
         prepared.source.starts_with("using System.Text;"),
         "a module's prepared source is not the author's own: {}",
@@ -76,13 +78,14 @@ fn a_code_skill_is_read_as_c_sharp_and_says_what_it_offers() {
     // A module that does not compile is the AUTHOR's failure, located where they wrote it — line 3,
     // not the line gg's wrapper put it on.
     let rejected = compile_module(
+        "Helpers",
         "public static int One() => 1;\n\npublic static int Two() => \"two\";\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a module with a type error does not compile");
     match rejected {
         PrepareFailure::Program(PrepareError::Compile(diagnostic)) => assert!(
-            diagnostic.contains("module_Module.cs(3,") && diagnostic.contains("CS0029"),
+            diagnostic.contains("module_Helpers.cs(3,") && diagnostic.contains("CS0029"),
             "a module's diagnostic is not in the author's own coordinates: {diagnostic}"
         ),
         other => {
@@ -91,13 +94,17 @@ fn a_code_skill_is_read_as_c_sharp_and_says_what_it_offers() {
     }
 
     // And its syntax errors reach their own band too, for the same reason a program's do.
-    let malformed = compile_module("public static int One() => ;\n", &PrepareContext::new())
-        .expect_err("a module that does not parse does not compile");
+    let malformed = compile_module(
+        "Helpers",
+        "public static int One() => ;\n",
+        &PrepareContext::detached(),
+    )
+    .expect_err("a module that does not parse does not compile");
     assert!(
         matches!(
             &malformed,
             PrepareFailure::Program(PrepareError::Syntax(diagnostic))
-                if diagnostic.contains("module_Module.cs(1,")
+                if diagnostic.contains("module_Helpers.cs(1,")
         ),
         "a module's syntax error is not the parser's own band: {malformed:?}"
     );
@@ -119,11 +126,11 @@ fn a_program_reaches_a_code_skill_at_the_class_the_binding_names() {
                 "public sealed record Entry(string Slug, int Length);\n",
             ),
         ),
-        // A second module, which reaches the first: they are compiled in binding order and each is
-        // given a reference to the ones before it, so one module's class is in scope for the next.
+        // A second module, compiled against gg's SDK and its own declarations and no other module's,
+        // which is the scope every arm gives one.
         module(
             "ledger",
-            "public static string Line(string title) => $\"* {lib.CsvTools.Slugify(title)}\";\n",
+            "public static string Line(string slug) => $\"* {slug}\";\n",
         ),
     ];
 
@@ -132,7 +139,7 @@ fn a_program_reaches_a_code_skill_at_the_class_the_binding_names() {
             "using System;\n",
             "var entry = new lib.CsvTools.Entry(lib.CsvTools.Slugify(\"Release Notes\"), 13);\n",
             "Console.WriteLine(entry.Slug);\n",
-            "Console.WriteLine(lib.Ledger.Line(\"Release Notes\"));\n",
+            "Console.WriteLine(lib.Ledger.Line(entry.Slug));\n",
         ),
         &modules,
     );
@@ -175,7 +182,7 @@ fn a_code_skill_reaches_ggs_own_surface_and_the_models_lines_do_not_move() {
     let rejected = compile_program(
         "var a = lib.One.A();\nvar b = lib.Two.B();\nint c = \"three\";\n",
         &noisy,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a program with a type error does not compile");
     match rejected {
@@ -210,7 +217,7 @@ fn nothing_a_code_skill_offers_resolves_without_a_line_the_program_wrote() {
         "csv-tools",
         "public static string Slugify(string text) => text.ToLowerInvariant();\n",
     )];
-    let compile = |program: &str| compile_program(program, &modules, &PrepareContext::new());
+    let compile = |program: &str| compile_program(program, &modules, &PrepareContext::detached());
     let arm = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::CSharp);
 
     let bare = compile("var slug = CsvTools.Slugify(\"Release Notes\");\n")
@@ -260,7 +267,7 @@ fn the_program_is_the_models_own_bytes_with_a_module_in_scope() {
     ];
     let source = "using Gg;\n\n// a comment gg has no business touching\n   \
                   Views.OpenText(\"t\", lib.CsvTools.Slug(\"b\"));";
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     compile_program(source, &modules, &context).expect("the subject compiles");
     let workspace = context
         .opened_workspace()

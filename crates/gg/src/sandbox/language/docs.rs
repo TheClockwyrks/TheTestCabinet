@@ -201,7 +201,7 @@ pub(super) fn gathered() -> Vec<Example> {
 /// Compile one example through its arm's real preparation, answering the diagnostic if it failed.
 fn refused(example: &Example) -> Option<String> {
     let arm: &'static dyn ProgramLanguage = language(example.arm);
-    match arm.prepare_program(&example.source, &[], &PrepareContext::new()) {
+    match arm.prepare_program(&example.source, &[], &PrepareContext::detached()) {
         Ok(_) => None,
         Err(failure) => Some(failure.to_string()),
     }

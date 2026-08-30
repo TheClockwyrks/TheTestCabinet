@@ -229,6 +229,7 @@ impl ProgramLanguage for Ruby {
     /// because it is what the model is *told*: see [`modules`].
     fn prepare_module(
         &self,
+        _key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {

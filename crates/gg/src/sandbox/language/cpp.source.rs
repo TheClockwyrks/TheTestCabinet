@@ -162,15 +162,6 @@ pub(super) fn module_import(key: &str) -> String {
 /// told from a diagnostic located in the model's own program.
 pub(super) const MODULE_FILE_PREFIX: &str = "module_";
 
-/// The key a module is namespaced under while it is being **checked on its own**, before any program
-/// has asked for it.
-///
-/// A module's own preparation is handed no key — the seam binds one when the module is loaded, not
-/// when it is read — so the check compiles it under a fixed one. Which key it is changes nothing it
-/// could catch: the wrap is the same shape for every key, and a name that resolves under one
-/// resolves under all of them.
-pub(super) const CHECK_KEY: &str = "module";
-
 /// A code module's own file: a global module fragment carrying gg's surface and the author's own
 /// `#include` lines, the module declaration, and `export namespace lib::<key> {` around the rest of
 /// the author's source verbatim — with `#line` directives so that every line of it is reported where

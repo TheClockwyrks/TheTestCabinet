@@ -16,9 +16,9 @@ that writes none of those lines has Opal's corelib and its own text.
 ## Preparation
 
 The whole reply is compiled as `program.rb`, at its top level, with no wrapper
-and no prologue. The compile runs in the preparation's own workspace, writes the
-JavaScript the guest evaluates, and appends a v3 source map with
-`sourcesContent` stripped. The guest decodes that map only when something
+and no prologue. The compile runs in the compile workspace, writes the JavaScript
+the guest evaluates, and appends a v3 source map with `sourcesContent`
+stripped. The guest decodes that map only when something
 raised, so a located run-time error names the line of Ruby the model wrote.
 
 ## Code modules

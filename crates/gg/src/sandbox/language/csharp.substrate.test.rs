@@ -70,7 +70,7 @@ use crate::tools::ToolOutcome;
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
 pub(super) fn prepare(source: &str) -> String {
-    match compile_program(source, &[], &PrepareContext::new()) {
+    match compile_program(source, &[], &PrepareContext::detached()) {
         Ok(prepared) => {
             assert!(
                 prepared.component.is_none(),
@@ -578,7 +578,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     let rejected = compile_program(
         "public static class Program {\n  public static void Main() {\n    int total = \"seven\";\n  }\n}\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a program with a type error does not compile");
     match rejected {
@@ -597,7 +597,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     let malformed = compile_program(
         "public static class Program {\n  public static void Main() {\n    var x = ;\n  }\n}\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a program with a syntax error does not compile");
     assert!(
@@ -616,7 +616,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
         compile_program(
             "public static class Program { public static void Main() { } }\n",
             &[],
-            &PrepareContext::new(),
+            &PrepareContext::detached(),
         )
     })
     .expect_err("a missing toolchain cannot compile anything");
@@ -808,6 +808,7 @@ public static class Program
 }
 "#,
         scope,
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         api,

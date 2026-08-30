@@ -812,7 +812,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
 #[test]
 fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let refused = |source: &str| -> String {
-        compile_program(source, &[], &PrepareContext::new())
+        compile_program(source, &[], &PrepareContext::detached())
             .expect_err("a name nothing brought into scope is refused")
             .to_string()
     };
@@ -1197,7 +1197,7 @@ fn java_reaches_every_library_this_arm_says_it_may() {
     // a study has to say what each arm was NOT given. Two are packages and two are methods inside
     // packages this arm declares — the shape a "large subset" claim hides.
     for absent in ABSENT {
-        let failure = compile_program(&whole(absent), &[], &PrepareContext::new())
+        let failure = compile_program(&whole(absent), &[], &PrepareContext::detached())
             .err()
             .unwrap_or_else(|| panic!("a classlib gap is refused at compile time: {absent}"));
         assert!(
@@ -1218,10 +1218,11 @@ fn a_code_module_is_reached_from_java_as_a_name_javac_checks() {
     // a key or an export a session does not have is a diagnostic on the turn that wrote it rather
     // than a failure at run time.
     let prepared = super::compile::compile_module(
+        "helpers",
         "public static String greet(String who) { return \"hello, \" + who.toUpperCase(); }\n\
          \n\
          public static int add(int left, int right) { return left + right; }\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("the Java toolchain compiles a code module");
     assert_eq!(export_names(&prepared.exports), ["greet", "add"]);
@@ -1246,7 +1247,7 @@ fn a_code_module_is_reached_from_java_as_a_name_javac_checks() {
     let failure = compile_program(
         &whole("lib.helpers.absent();\n"),
         &modules,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a name a module does not offer does not compile");
     assert!(failure.to_string().contains("Program.java:"), "{failure}");

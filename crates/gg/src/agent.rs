@@ -6481,7 +6481,14 @@ impl Agent {
         // Built **before** the documentation runtime because it owns the other half of that runtime's
         // answer: a used module and its declarations join this agent's documentation surface, and the
         // runtime reads them through a handle to this registry rather than through a copy of it.
-        let mut knowledge = crate::knowledge::KnowledgeModules::new();
+        // The ground every program this agent compiles stands on: one private tree, created when
+        // this agent starts and removed when it ends. `drive` holds a handle of its own for the
+        // whole session so the tree's life is exactly the agent's, whatever happens to the registry
+        // the turn path moves in and out of the loop's api.
+        let compile_workspace = crate::sandbox::AgentWorkspace::new();
+        #[cfg(test)]
+        record_compile_workspace(&compile_workspace);
+        let mut knowledge = crate::knowledge::KnowledgeModules::new(compile_workspace.clone());
         let mut docs = crate::docs::DocsRuntime::new(
             granted_capabilities.clone(),
             ending_role,
@@ -12545,6 +12552,32 @@ use transitions::{
 mod teardown;
 
 use teardown::{AgentTeardown, SpawnerLink};
+
+/// **Every compile workspace a session has allocated in this process**, oldest first.
+///
+/// An agent's tree is allocated inside [`Agent::drive`] and reachable from nowhere the loop hands
+/// back, so the gate that drives a real session and counts what that session compiled reads it from
+/// here. nextest runs one process per test, so what this holds is one test's own sessions.
+#[cfg(test)]
+static DRIVEN_WORKSPACES: Mutex<Vec<crate::sandbox::AgentWorkspace>> = Mutex::new(Vec::new());
+
+/// File the tree a session is about to compile in.
+#[cfg(test)]
+fn record_compile_workspace(workspace: &crate::sandbox::AgentWorkspace) {
+    DRIVEN_WORKSPACES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .push(workspace.clone());
+}
+
+/// The compile workspaces the sessions driven in this process were given, oldest first.
+#[cfg(test)]
+fn driven_workspaces() -> Vec<crate::sandbox::AgentWorkspace> {
+    DRIVEN_WORKSPACES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
 
 #[cfg(test)]
 #[path = "agent.test.rs"]

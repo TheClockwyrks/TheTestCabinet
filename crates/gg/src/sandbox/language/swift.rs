@@ -126,11 +126,11 @@
 //! See [`source`] for the `public` gg writes into a module's own file, which is the whole of what it
 //! writes there.
 //!
-//! A module is compiled **twice**, and that is deliberate rather than an oversight — once alone when
-//! it is read, only to be checked, and once as its own module beside every program that uses it.
-//! Without the first compile, a module that does not build would take down every program the agent
-//! wrote from then on, with the diagnostic landing against the turn's own program in a file the model
-//! never saw. See [`compile::compile_module`].
+//! A module is compiled **once**, at the read that binds it, into a Swift module named for the key.
+//! Its `.swiftmodule` and its object are kept in the agent's compile workspace, and every later
+//! program is given the `-I` that resolves them and the object to link. Compiling it at the read is
+//! what puts a module author's diagnostic there rather than against the turn's own program in a file
+//! the model never saw. See [`compile::compile_module`].
 
 use std::sync::OnceLock;
 
@@ -231,10 +231,11 @@ impl ProgramLanguage for Swift {
     /// guest could load on its own.
     fn prepare_module(
         &self,
+        key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        compile::compile_module(source, context)
+        compile::compile_module(key, source, context)
     }
 
     /// `.swift`, and nothing else. Nothing else in the registry compiles Swift.

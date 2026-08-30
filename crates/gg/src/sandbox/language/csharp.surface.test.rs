@@ -1340,7 +1340,7 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
 #[test]
 fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let compile = |source: &str| {
-        super::compile::compile_program(source, &[], &crate::sandbox::PrepareContext::new())
+        super::compile::compile_program(source, &[], &crate::sandbox::PrepareContext::detached())
     };
 
     let bare = compile("Views.OpenText(\"t\", \"b\");\n")
@@ -1392,7 +1392,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
 fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
     let source = "using Gg;\n\n// a comment gg has no business touching\n   \
                   Views.OpenText(\"t\", \"b\");";
-    let context = crate::sandbox::PrepareContext::new();
+    let context = crate::sandbox::PrepareContext::detached();
     super::compile::compile_program(source, &[], &context).expect("the subject compiles");
     let workspace = context
         .opened_workspace()
@@ -1428,7 +1428,7 @@ fn the_file_view_statements_gg_synthesizes_join_into_a_program_that_compiles() {
         arm.open_file_statement("a\"b\\c.cs", None),
     ]
     .join("\n");
-    super::compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::new())
+    super::compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::detached())
         .unwrap_or_else(|failure| {
             panic!("the statements gg writes into a transcript are not a program: {failure:?}")
         });

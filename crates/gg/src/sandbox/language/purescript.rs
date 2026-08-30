@@ -225,14 +225,23 @@ impl ProgramLanguage for PureScript {
     /// *told*: see [`modules`].
     fn prepare_module(
         &self,
+        key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        compile::check_module(source, context)?;
+        compile::compile_module(key, source, context)?;
         Ok(PreparedModule {
             source: source.to_string(),
             exports: modules::exports(source),
         })
+    }
+
+    /// **The `purs` project is the agent's.** The staged library set and the compiler's own output
+    /// directory are laid out once for the agent and kept across its preparations, which is what
+    /// lets a module compiled at the read that bound it stay compiled and what keeps a turn from
+    /// re-linking 1,430 library files.
+    fn persistent_work(&self) -> &'static [&'static str] {
+        compile::PROJECT_DIRS
     }
 
     /// `.purs`, and nothing else.

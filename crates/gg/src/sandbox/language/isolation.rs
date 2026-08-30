@@ -22,18 +22,26 @@
 //!
 //! # What it asserts
 //!
-//! One property, in three observable parts. Sixteen preparations, each with its own distinguishable
-//! input, are driven simultaneously; every result must belong to **its own** input:
+//! One property — a result belongs to **its own** input — in the two arrangements a run really
+//! produces.
 //!
-//! 1. **It succeeded.** The same input prepared cleanly on its own a moment earlier, so a failure
-//!    that appears only under concurrency is contention, not a bad program.
-//! 2. **It is not empty**, and it **carries its own marker** — the TeaVM shape, where a build
-//!    silently produced nothing.
-//! 3. **It carries no other preparation's marker** — the `purs` shape, where one artifact held two
-//!    agents' programs.
+//! **Sixteen preparations, one after another, in one agent's [workspace](super::Workspace).** That
+//! is a session: an agent's turns, the modules its reads load and the on-use scripts they queue all
+//! compile in the tree the agent was given when it started. Each of the sixteen must succeed, must
+//! carry its own marker, and must carry **no earlier preparation's** marker — which is what says the
+//! previous response's sources and build output were gone before this one wrote. All sixteen must
+//! also have been handed the *same* tree, since an agent that got a fresh one per preparation would
+//! satisfy every other check here while quietly costing a session what it was given a tree to avoid.
 //!
-//! Plus one thing observed rather than derived: no two of the sixteen were handed the same
-//! [workspace](super::Workspace).
+//! A failure to prepare in this phase is failing on its own account rather than under contention — a
+//! harness fault, or a language that cannot prepare its own SDK's call — so it is reported as a
+//! [`Breach::Baseline`] and the second phase is abandoned.
+//!
+//! **Sixteen agents at once, one preparation each.** That is a run at `limits.maxParallel`. Each
+//! result must succeed, must carry its own marker, and must carry **no other agent's** marker — the
+//! `purs` shape, where one artifact held two agents' programs, and the TeaVM shape, where a build
+//! silently produced nothing. Plus one thing observed rather than derived: no two of the sixteen
+//! agents were handed the same tree.
 //!
 //! # Why there is no byte-for-byte comparison
 //!
@@ -42,17 +50,19 @@
 //! marker — a fragment of somebody else's program, a truncated tail, a stale artifact left by a
 //! previous compile. Three things decide against it:
 //!
-//! * **The seam already isolates structurally, per preparation.** A [workspace](super::Workspace) is
-//!   a private tree keyed on the process id and a monotonic counter, created with `create_dir` and
-//!   not `create_dir_all` — so a collision is a loud error rather than a quiet share — with `HOME`,
-//!   `TMPDIR`, the `XDG_*` roots and the working directory redirected into it and the whole tree
-//!   removed on drop. What is genuinely shared between preparations is content-keyed, installed by
-//!   rename and sealed read-only (0444/0555). The paths a partial corruption would have to arrive
+//! * **The seam already isolates structurally, per agent.** A [workspace](super::Workspace) is a
+//!   private tree keyed on the process id, the moment it was made and a monotonic counter, created
+//!   with `create_dir` and not `create_dir_all` — so a collision is a loud error rather than a quiet
+//!   share — with `HOME`, `TMPDIR`, the `XDG_*` roots and the working directory redirected into it,
+//!   the working and artifact directories emptied before each preparation writes, and the whole tree
+//!   removed when the agent ends. What is genuinely shared between agents is content-keyed, installed
+//!   by rename and sealed read-only (0444/0555). The paths a partial corruption would have to arrive
 //!   through are closed by construction, which is a stronger statement than one run of a comparison.
 //! * **It catches nothing on its own.** Every deliberately broken preparation in
 //!   [`tests`] — the shared output tree, the shared build strategy, the memoised compile, the
-//!   miskeyed cache — is caught by the marker checks above, and two of the four *are* the bugs that
-//!   were measured on real toolchains. Not one of them needs the comparison to be reported.
+//!   miskeyed cache, the output kept where a preparation's reset does not reach — is caught by the
+//!   marker checks above, and two of the five *are* the bugs that were measured on real toolchains.
+//!   Not one of them needs the comparison to be reported.
 //! * **It cannot be paid for once.** Byte equality only means anything over the part of an
 //!   artifact that is a function of the program, and a compiler is entitled to write things into an
 //!   artifact that are a function of the environment or of nothing at all. Holding
@@ -83,22 +93,25 @@
 //! # What a language author needs from this
 //!
 //! Nothing, if the language compiles through the [seam's own affordances](super::compile): the
-//! private workspace, the isolated invocation, the exclusive-checkout pool. A language that reaches
-//! around them — a fixed output path, a `static` compiler daemon, a shared build cache — fails here,
-//! at 16-way, with a message naming which preparation got whose program.
+//! agent's workspace, the isolated invocation, the exclusive-checkout pool. A language that reaches
+//! around them — a fixed output path, a `static` compiler daemon, a shared build cache, an artifact
+//! kept somewhere the reset does not reach — fails here with a message naming which preparation got
+//! whose program.
 
 use std::path::{Path, PathBuf};
 use std::sync::Barrier;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::compile::PrepareContext;
+use super::compile::{AgentWorkspace, PrepareContext};
 use super::{ProgramLanguage, all_languages};
 
-/// How many preparations the gate drives at once.
+/// How many agents the gate drives at once, and how many preparations it drives in one of them.
 ///
 /// `limits.maxParallel`'s ceiling, because that is how many agents a run may have in flight, and a
 /// gate that proved isolation at four would prove nothing about the sixteenth. The measured `purs`
-/// corruption needed eight to show itself.
+/// corruption needed eight to show itself. The same number is reused for the length of one agent's
+/// sequence, so both phases of [`breaches`] do the same amount of work and a broken preparation can
+/// tell the two apart by counting its calls.
 pub(super) const WIDTH: usize = 16;
 
 /// One thing the gate can drive: something that turns a source carrying a marker into a prepared
@@ -122,6 +135,15 @@ pub(super) trait Preparation: Sync {
 
     /// Prepare it, in `context`, and hand back the artifact as text.
     fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String>;
+
+    /// What this preparation's language keeps under the working directory across a reset — see
+    /// [`persistent_work`](ProgramLanguage::persistent_work).
+    ///
+    /// Empty for a stand-in, which is what makes the deliberately broken ones in [`tests`] subject
+    /// to the whole reset rather than to a version of it they chose.
+    fn persistent_work(&self) -> &'static [&'static str] {
+        &[]
+    }
 
     /// Every way `marker` may be **spelled inside** this preparation's artifact — the forms
     /// [`breaches`] accepts as the marker being present, and rejects as another input's marker being
@@ -165,21 +187,44 @@ pub(super) enum Breach {
         /// What came back instead, capped.
         prepared: String,
     },
-    /// The artifact contains **another** preparation's marker. The `purs` shape: one artifact
-    /// holding two agents' programs.
+    /// The artifact contains **another agent's** marker. The `purs` shape: one artifact holding two
+    /// agents' programs.
     Foreign {
         /// Which of the sixteen inputs this artifact was for.
         marker: String,
         /// Whose marker turned up in it.
         foreign: String,
     },
-    /// Two preparations were handed the same workspace — the precondition of the `purs` corruption,
-    /// caught directly rather than through its consequences.
+    /// The artifact contains a marker from an **earlier preparation of the same agent**. Not another
+    /// agent's program: the agent's own previous response, still reachable because the workspace it
+    /// was written into was not cleared before this preparation wrote.
+    ///
+    /// It is a variant of its own rather than a [`Foreign`](Self::Foreign) because the two have
+    /// different causes and different fixes. A foreign marker means an arm reached outside the tree
+    /// it was given; a stale one means the tree it was given still held the last turn's files.
+    Stale {
+        /// Which of the sixteen sequential inputs this artifact was for.
+        marker: String,
+        /// Which earlier one of them turned up in it.
+        earlier: String,
+    },
+    /// Two agents were handed the same workspace — the precondition of the `purs` corruption, caught
+    /// directly rather than through its consequences.
     SharedWorkspace {
         /// The path both were given.
         path: PathBuf,
-        /// Which inputs shared it.
+        /// Which agents' inputs shared it.
         markers: Vec<String>,
+    },
+    /// One agent's sequential preparations were handed **more than one** workspace.
+    ///
+    /// The inverse of [`SharedWorkspace`](Self::SharedWorkspace), and the check that keeps the
+    /// workspace an agent's rather than a preparation's. Every other assertion here passes if the
+    /// seam quietly went back to a tree per preparation, so nothing else would notice a session
+    /// paying to re-stage its language's library set on every turn.
+    UnstableWorkspace {
+        /// The paths one agent's preparations were handed, in order.
+        paths: Vec<PathBuf>,
     },
 }
 
@@ -202,38 +247,53 @@ impl std::fmt::Display for Breach {
                 formatter,
                 "{marker}'s artifact carries {foreign}'s program: one agent would evaluate another's"
             ),
+            Self::Stale { marker, earlier } => write!(
+                formatter,
+                "{marker}'s artifact carries {earlier}'s program: one agent's turn would evaluate an \
+                 earlier turn's leftovers"
+            ),
             Self::SharedWorkspace { path, markers } => write!(
                 formatter,
                 "{} were handed the same workspace {}",
                 markers.join(" and "),
                 path.display()
             ),
+            Self::UnstableWorkspace { paths } => write!(
+                formatter,
+                "one agent's preparations were handed {} different workspaces: {}",
+                paths.len(),
+                paths
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 }
 
-/// Drive `preparation` `WIDTH` ways with distinguishable inputs and report every way a result failed
+/// Drive `preparation` through both arrangements a run produces and report every way a result failed
 /// to belong to its own input.
 ///
-/// Each input is prepared **alone first**: the same sixteen, one at a time, each in its own context.
-/// Serial preparation cannot be corrupted by concurrency, so an input that fails there is failing on
-/// its own account — a harness fault, or a language that cannot prepare its own SDK's call — and it
-/// is reported as a [`Breach::Baseline`] and the concurrent run is abandoned, rather than being
-/// allowed to come back a moment later looking like an isolation failure.
+/// **One agent first**, sixteen inputs one after another in the tree that agent was given. Nothing
+/// here can be corrupted by concurrency, so an input that fails to prepare is failing on its own
+/// account and is reported as a [`Breach::Baseline`], and the concurrent phase is abandoned rather
+/// than allowed to report the same failure a moment later as an isolation breach. What this phase
+/// asserts beyond that is the whole of the sequential-reuse guarantee: each artifact carries its own
+/// marker and no earlier one's, and every one of the sixteen was handed the same tree.
 ///
-/// That is the *whole* of what the alone run is for. What it produced is deliberately not kept:
-/// nothing compares against it any more, and the reasoning behind that is in this module's header.
+/// **Sixteen agents next**, one preparation each, released together. Every artifact must carry its
+/// own marker and no other agent's, and no two agents may have been handed the same tree.
+///
+/// A preparation that cannot keep one agent's own turns apart is not asked whether it can keep two
+/// agents apart, so anything the first phase reports is returned as it stands.
 pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
     let markers: Vec<String> = (0..WIDTH).map(marker).collect();
     let sources: Vec<String> = markers.iter().map(|m| preparation.source(m)).collect();
 
-    for (marker, source) in markers.iter().zip(&sources) {
-        if let Err(error) = preparation.prepare(source, &PrepareContext::new()) {
-            return vec![Breach::Baseline {
-                marker: marker.clone(),
-                error,
-            }];
-        }
+    let sequential = one_agents_session(preparation, &markers, &sources);
+    if !sequential.is_empty() {
+        return sequential;
     }
 
     let barrier = Barrier::new(WIDTH);
@@ -243,7 +303,10 @@ pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
             .map(|source| {
                 let barrier = &barrier;
                 scope.spawn(move || {
-                    let context = PrepareContext::new();
+                    // One agent per thread, each starting its session here, which is what the
+                    // sixteen concurrent agents of a run at `limits.maxParallel` are.
+                    let agent = AgentWorkspace::new();
+                    let context = PrepareContext::for_agent(&agent, preparation.persistent_work());
                     // Every preparation is inside the step before any of them leaves it, which is
                     // what makes a shared anything collide rather than merely be able to.
                     barrier.wait();
@@ -272,28 +335,13 @@ pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
                 continue;
             }
         };
-        // Asked of the preparation rather than of the marker string, because one arm's artifact does
-        // not spell a string the way the model wrote it: see `Preparation::marker_forms`.
-        let carries = |marker: &str| {
-            preparation
-                .marker_forms(marker)
-                .iter()
-                .any(|form| prepared.contains(form))
-        };
-        if !carries(marker) {
-            breaches.push(Breach::Missing {
-                marker: marker.clone(),
-                prepared: excerpt(prepared),
-            });
-        }
-        for foreign in markers.iter().filter(|other| *other != marker) {
-            if carries(foreign) {
-                breaches.push(Breach::Foreign {
-                    marker: marker.clone(),
-                    foreign: foreign.clone(),
-                });
-            }
-        }
+        breaches.extend(marker_breaches(
+            preparation,
+            prepared,
+            marker,
+            &markers,
+            false,
+        ));
     }
 
     breaches.extend(shared_workspaces(markers.iter().zip(&together).map(
@@ -302,7 +350,95 @@ pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
     breaches
 }
 
-/// Every workspace path that more than one preparation was handed, as one breach apiece.
+/// One agent's whole session: `WIDTH` preparations, in order, in the one workspace that agent holds.
+///
+/// This is where the reuse is asserted. A preparation that read a file the previous one wrote is
+/// carrying an earlier marker, and an arm that was quietly handed a fresh tree each time is handed a
+/// [`Breach::UnstableWorkspace`] — the two failures a session has that a single preparation does not.
+fn one_agents_session(
+    preparation: &dyn Preparation,
+    markers: &[String],
+    sources: &[String],
+) -> Vec<Breach> {
+    let agent = AgentWorkspace::new();
+    let mut breaches = Vec::new();
+    let mut opened: Vec<PathBuf> = Vec::new();
+    for (index, (marker, source)) in markers.iter().zip(sources).enumerate() {
+        let context = PrepareContext::for_agent(&agent, preparation.persistent_work());
+        let prepared = match preparation.prepare(source, &context) {
+            Ok(prepared) => prepared,
+            // Abandoned at the first one, and alone in what comes back: an input that cannot be
+            // prepared with nothing else running says nothing about isolation, and reporting the
+            // fifteen after it would bury the one fact worth reading.
+            Err(error) => {
+                return vec![Breach::Baseline {
+                    marker: marker.clone(),
+                    error,
+                }];
+            }
+        };
+        if let Some(path) = context.opened_workspace() {
+            opened.push(path.to_path_buf());
+        }
+        // Only the markers already prepared can have been left behind; the rest of the sixteen have
+        // not been written yet, so finding one would mean the marker itself is not distinguishing.
+        breaches.extend(marker_breaches(
+            preparation,
+            &prepared,
+            marker,
+            &markers[..index],
+            true,
+        ));
+    }
+    breaches.extend(unstable_workspace(&opened));
+    breaches
+}
+
+/// Whether an artifact carries its own marker and nothing else's — the check both phases make, over
+/// whichever set of other markers that phase can meaningfully look for.
+///
+/// `sequential` decides which breach a foreign marker earns: an earlier turn of the same agent is a
+/// [`Breach::Stale`], another agent is a [`Breach::Foreign`].
+fn marker_breaches(
+    preparation: &dyn Preparation,
+    prepared: &str,
+    marker: &str,
+    others: &[String],
+    sequential: bool,
+) -> Vec<Breach> {
+    let mut breaches = Vec::new();
+    // Asked of the preparation rather than of the marker string, because one arm's artifact does
+    // not spell a string the way the model wrote it: see `Preparation::marker_forms`.
+    let carries = |marker: &str| {
+        preparation
+            .marker_forms(marker)
+            .iter()
+            .any(|form| prepared.contains(form))
+    };
+    if !carries(marker) {
+        breaches.push(Breach::Missing {
+            marker: marker.to_string(),
+            prepared: excerpt(prepared),
+        });
+    }
+    for other in others.iter().filter(|other| *other != marker) {
+        if carries(other) {
+            breaches.push(match sequential {
+                true => Breach::Stale {
+                    marker: marker.to_string(),
+                    earlier: other.clone(),
+                },
+                false => Breach::Foreign {
+                    marker: marker.to_string(),
+                    foreign: other.clone(),
+                },
+            });
+        }
+    }
+    breaches
+}
+
+/// Every workspace path that more than one agent was handed, as one breach apiece.
 ///
 /// A preparation that never asked for a workspace has no path to collide and is skipped rather than
 /// counted as sharing one — which is why the argument is an `Option` and not a path.
@@ -310,17 +446,16 @@ pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
 /// # Why this is a function rather than four lines inside [`breaches`]
 ///
 /// Because it is the one check here that a broken [`Preparation`] **cannot** drive, and that is a
-/// fact about the seam rather than a gap in the fixtures. A [`Workspace`](super::Workspace)'s path is
-/// `{process id}-{n}` where `n` comes from a monotonic counter the seam owns, and a
-/// [`PrepareContext`] can only be minted by the two functions that dispatch through the trait — so no
-/// fixture, however badly behaved, can arrange for two contexts to hand back the same path. The
-/// condition is unreachable by construction.
+/// fact about the seam rather than a gap in the fixtures. A [`Workspace`](super::Workspace)'s path
+/// carries a monotonic counter the seam owns, and a [`PrepareContext`] can only be minted by the two
+/// functions that dispatch through the trait — so no fixture, however badly behaved, can arrange for
+/// two agents to be handed the same path. The condition is unreachable by construction.
 ///
 /// That is exactly what makes the check worth keeping and exactly what makes it untestable through
 /// the front door: it is the canary on that construction, and it would earn its keep on the day
 /// somebody made those paths reusable. So the detector is proved directly, by
-/// [its own test](tests::two_preparations_handed_one_workspace_are_reported), rather than by a
-/// sixteen-way run that can never produce the input.
+/// [its own test](tests::two_agents_handed_one_workspace_are_reported), rather than by a sixteen-way
+/// run that can never produce the input.
 pub(super) fn shared_workspaces<'a>(
     handed: impl IntoIterator<Item = (&'a str, Option<&'a Path>)>,
 ) -> Vec<Breach> {
@@ -336,6 +471,24 @@ pub(super) fn shared_workspaces<'a>(
         .filter(|(_, markers)| markers.len() > 1)
         .map(|(path, markers)| Breach::SharedWorkspace { path, markers })
         .collect()
+}
+
+/// The one breach earned by one agent's preparations standing on more than one tree.
+///
+/// The list holds only the preparations that actually opened a workspace, so an arm that compiles
+/// nothing contributes an empty list and no breach — the same reason
+/// [`shared_workspaces`] takes an `Option`.
+pub(super) fn unstable_workspace(opened: &[PathBuf]) -> Vec<Breach> {
+    let mut distinct: Vec<PathBuf> = Vec::new();
+    for path in opened {
+        if !distinct.contains(path) {
+            distinct.push(path.clone());
+        }
+    }
+    match distinct.len() > 1 {
+        true => vec![Breach::UnstableWorkspace { paths: distinct }],
+        false => Vec::new(),
+    }
 }
 
 /// The `n`th input's marker.
@@ -390,6 +543,14 @@ pub(super) fn preparations() -> Vec<Box<dyn Preparation>> {
     }
     preparations
 }
+
+/// The name the gate's module half is loaded under, spelled as each language spells a binding key.
+///
+/// One key for all sixteen of a phase's preparations, which is what a session really does when a
+/// model rewrites the memory behind a key it already has: each preparation opens that key's
+/// directory in the band empty and builds into it. An artifact carrying an earlier preparation's
+/// marker under this key is therefore a band that was not cleared.
+const GATE_KEY: &str = "ggIsolationModule";
 
 /// Which of a language's two preparation steps is being driven.
 #[derive(Clone, Copy)]
@@ -453,10 +614,14 @@ impl Preparation for LanguagePreparation {
                 .map(|prepared| artifact(self.language, prepared)),
             Half::Module => self
                 .language
-                .prepare_module(source, context)
+                .prepare_module(&self.language.binding_name(GATE_KEY), source, context)
                 .map(|prepared| prepared.source),
         }
         .map_err(|failure| failure.to_string())
+    }
+
+    fn persistent_work(&self) -> &'static [&'static str] {
+        self.language.persistent_work()
     }
 
     /// The language's own answer, and only for the **program** half.

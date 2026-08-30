@@ -400,7 +400,7 @@ fn a_fault_the_runtime_raises_names_itself_and_where_it_happened() {
 /// The production pool, the production driver text, the production classpath — the only thing this
 /// says that a turn does not is which file to write, and that is what selects the target.
 fn compile(program: &str) -> Vec<u8> {
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let workspace = context.workspace().expect("a preparation workspace");
     workspace
         .write(PROGRAM_FILE, program)

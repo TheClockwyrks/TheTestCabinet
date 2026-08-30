@@ -1552,6 +1552,10 @@ async fn run_code_program(
     // into the api and before a single line of the program runs, because a view the program itself
     // opens has been read by nobody.
     let documented = documented_operations(&context, &docs);
+    // The agent's compile workspace, taken off the registry before it moves into the api. Every
+    // program in the chain below prepares on it, which is the same tree the modules those programs
+    // link were prepared on.
+    let compile_workspace = knowledge.workspace().clone();
     // The production `OperationApi`: the loop's own per-turn state, servicing each typed call inline. The
     // mutable, reclaimed-after-the-turn state moves in; the rest is cloned from the turn (all
     // Arc-backed, so cheap) or captured fresh (`Handle::current()` bridges the delegation family
@@ -1614,6 +1618,7 @@ async fn run_code_program(
                     modules: &modules,
                     ending: RunEnding::Role(role),
                 },
+                &compile_workspace,
                 limits,
                 deadline,
                 api,
@@ -1963,11 +1968,13 @@ fn run_program_charged(
     language: &'static dyn ProgramLanguage,
     program: &str,
     scope: ProgramScope<'_>,
+    workspace: &crate::sandbox::AgentWorkspace,
     limits: SandboxLimits,
     deadline: Option<Instant>,
     api: LoopOperationApi,
 ) -> (SandboxOutcome, LoopOperationApi) {
-    let (mut outcome, mut api) = run_program(language, program, scope, limits, deadline, api);
+    let (mut outcome, mut api) =
+        run_program(language, program, scope, workspace, limits, deadline, api);
     outcome.compile = SandboxOutcome::summed_compile(outcome.compile, api.knowledge.take_compile());
     (outcome, api)
 }

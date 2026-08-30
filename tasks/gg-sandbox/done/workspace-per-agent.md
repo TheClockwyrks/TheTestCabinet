@@ -36,9 +36,18 @@ Allocate the workspace when an agent starts and hold it for the agent's
 lifetime. Each preparation removes the previous response's source and output
 files, writes its own, and compiles.
 
+A preparation takes the workspace when it first asks for one and holds it until
+it ends, so a second preparation of the same agent waits for the tree rather
+than clearing the files the first is compiling in.
+
+The entries a preparation's reset leaves standing are fixed at the tree's first
+preparation, and what a language lays out once for the agent is checked against
+them, so a staged build tree and the reset that would sweep it cannot come
+apart.
+
 ## Done when
 
-- [ ] A workspace is created once per agent and reused across that agent's turns.
-- [ ] A preparation removes the previous response's sources and build output before writing its own.
-- [ ] The isolation gate asserts per-agent separation and covers sequential reuse within one agent.
-- [ ] Gates green.
+- [x] A workspace is created once per agent and reused across that agent's turns.
+- [x] A preparation removes the previous response's sources and build output before writing its own.
+- [x] The isolation gate asserts per-agent separation and covers sequential reuse within one agent.
+- [x] Gates green.

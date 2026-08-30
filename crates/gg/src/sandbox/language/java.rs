@@ -182,10 +182,11 @@ impl ProgramLanguage for Java {
     /// is what keeps one reading from being a second chance to differ.
     fn prepare_module(
         &self,
+        key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        compile::compile_module(source, context)
+        compile::compile_module(key, source, context)
     }
 
     /// `.java`, and nothing else.

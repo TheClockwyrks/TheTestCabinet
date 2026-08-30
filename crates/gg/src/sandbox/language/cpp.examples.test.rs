@@ -220,7 +220,8 @@ fn every_cpp_example_a_model_is_shown_compiles() {
         .iter()
         .partition(|(_, snippet)| super::source::defines_main(snippet.trim_end()));
     for (label, snippet) in &programs {
-        if let Err(failure) = compile_program(snippet.trim_end(), &[], &PrepareContext::new()) {
+        if let Err(failure) = compile_program(snippet.trim_end(), &[], &PrepareContext::detached())
+        {
             panic!(
                 "gg shows a model a whole C++ program that does not compile on its own terms — \
                  which is what an example of a reply has to be, now that nothing is put in front of \
@@ -256,7 +257,7 @@ fn every_cpp_example_a_model_is_shown_compiles() {
     // rather than an example's, so no fragment has to be the one that provides it.
     let program = format!("{hoisted}\n{program}int main() {{ return 0; }}\n");
 
-    if let Err(failure) = compile_program(&program, &[], &PrepareContext::new()) {
+    if let Err(failure) = compile_program(&program, &[], &PrepareContext::detached()) {
         panic!(
             "gg shows a model C++ that does not compile. clang++ said:\n\n{failure:?}\n\nThe \
              program every example was gathered into, with a comment naming where each came \

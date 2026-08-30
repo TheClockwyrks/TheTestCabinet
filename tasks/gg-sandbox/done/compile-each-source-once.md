@@ -22,12 +22,23 @@ programs.
 Compile a module when it is loaded and keep its build output in the agent's
 workspace. A later preparation compiles the response against that output.
 
+A read of bytes a key already holds is answered from the preparation that
+produced them, so a skill an agent uses on every turn costs one compile for the
+session.
+
+A module is compiled against gg's surface and the arm's library set, so it sees
+those and its own declarations. One loaded module reaches another by being
+written to take what it needs as an argument. This is what every arm but C# did
+already, and the C# arm joins them: its modules were built in binding order
+inside a program's own compile, and building each at its read is what moves that
+cost off the turn.
+
 This depends on `workspace-per-agent.md`, which gives the build output somewhere
 to live across turns.
 
 ## Done when
 
-- [ ] A loaded code module is compiled once per session.
-- [ ] A turn's compile covers the response and reuses existing module build output.
-- [ ] A gate asserts module compile count stays flat as turns accumulate.
-- [ ] Gates green.
+- [x] A loaded code module is compiled once per session.
+- [x] A turn's compile covers the response and reuses existing module build output.
+- [x] A gate asserts module compile count stays flat as turns accumulate.
+- [x] Gates green.

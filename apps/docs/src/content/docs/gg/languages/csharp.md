@@ -6,9 +6,9 @@ title: "C#"
 
 The arm is selected per agent by the responses-as-code capability's `language`
 parameter, with the value `"csharp"`. A model's reply is compiled verbatim as
-`program.cs` in the preparation's own workspace. Nothing is prepended, appended
-or re-indented, so a diagnostic at line 7 is line 7 of what the model wrote and
-this arm subtracts no offset anywhere. Every way a C# program may begin is
+`program.cs` in the compile workspace. Nothing is prepended, appended or
+re-indented, so a diagnostic at line 7 is line 7 of what the model wrote and this
+arm subtracts no offset anywhere. Every way a C# program may begin is
 accepted, and the prompt directs a model to top-level statements.
 
 Roslyn compiles the reply to a .NET assembly on the host. The string a prepared
@@ -29,7 +29,7 @@ output path, `-r:` for every `.dll` under the toolchain's `ref/` directory,
 sorted, and then `-r:` for gg's SDK assembly and for each module library in
 scope. `-debug:embedded`
 puts a portable PDB inside the assembly, which is the only place one can travel
-to the guest, and `-pathmap:` maps the preparation's own workspace onto `./` so
+to the guest, and `-pathmap:` maps the compile workspace onto `./` so
 that what a stack trace names is `./program.cs` rather than a path that differs
 between two preparations of the same program. `-noconfig` goes on
 the command line, which is the only place `csc` honours it. The compiler is run
@@ -164,10 +164,10 @@ they name nothing a documentation view could open.
 
 A module is compiled with `-target:library` into `lib.<key>.dll`, and the program
 that binds it is handed `-r:` of that file. That is the supply gg's own SDK gets,
-so the two are one mechanism and neither declares a name. The modules in scope
-are built in binding order and each is given `-r:` of the ones before it, so one
-module may reach another's class. Each library is registered with the guest
-under its own name and the runtime resolves the program's reference to it.
+so the two are one mechanism and neither declares a name. A module is built
+against `-r:Gg.dll` and nothing else, so it sees gg's surface and its own
+declarations. Each library is registered with the guest under its own name and
+the runtime resolves the program's reference to it.
 
 A program reaches one export by writing `lib.<Key>.<Name>`, which resolves with
 no line above it exactly as `Gg.Views.OpenText` does, and reaches it as
@@ -175,11 +175,10 @@ no line above it exactly as `Gg.Views.OpenText` does, and reaches it as
 documentation view of a loaded declaration states, and they are the pair this
 arm's catalogue states for gg's own modules.
 
-A module is also compiled alone when it is read, under a fixed key and against
-the same `-r:Gg.dll`, so its author gets a diagnostic in their own coordinates on
-the call that read it. What that read hands back is the author's own source,
-because the library a program references is built for the key the seam binds when
-the module is loaded.
+A module is compiled when it is read, under the key the seam binds it at, so its
+author gets a diagnostic in their own coordinates on the call that read it. The
+assembly is kept in the loaded-module band of the agent's compile workspace, and
+every later program references it and compiles the response alone.
 
 ## Failures
 

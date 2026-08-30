@@ -868,9 +868,12 @@ fn main() {
 #[test]
 fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let refused = |source: &str| -> String {
-        let failure =
-            super::compile::compile_program(source, &[], &crate::sandbox::PrepareContext::new())
-                .expect_err("a name nothing brought into scope is refused");
+        let failure = super::compile::compile_program(
+            source,
+            &[],
+            &crate::sandbox::PrepareContext::detached(),
+        )
+        .expect_err("a name nothing brought into scope is refused");
         failure.to_string()
     };
 
@@ -934,7 +937,11 @@ fn a_code_module_puts_no_name_in_a_programs_scope() {
         source: "pub fn shout(word: &str) -> String {\n    word.to_uppercase()\n}\n".to_string(),
     }];
     let with_module = |source: &str| {
-        super::compile::compile_program(source, &modules, &crate::sandbox::PrepareContext::new())
+        super::compile::compile_program(
+            source,
+            &modules,
+            &crate::sandbox::PrepareContext::detached(),
+        )
     };
 
     // The path the module's own documentation view quotes, with no line above it.

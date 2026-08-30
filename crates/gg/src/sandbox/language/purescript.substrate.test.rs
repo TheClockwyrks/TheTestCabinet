@@ -39,7 +39,7 @@ use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;
 
-use super::compile::{self, check_module, compile_program};
+use super::compile::{self, compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, all_operations_without,
@@ -65,7 +65,7 @@ fn prepare(source: &str) -> String {
 
 /// The same, for a turn carrying code modules — which the entry module gg generates imports.
 fn prepare_with(source: &str, modules: &[CodeModule]) -> String {
-    match compile_program(source, modules, &PrepareContext::new()) {
+    match compile_program(source, modules, &PrepareContext::detached()) {
         Ok(prepared) => prepared.source,
         Err(failure) => panic!("purs did not compile this PureScript: {failure}"),
     }
@@ -457,9 +457,10 @@ fn a_code_module_is_a_purescript_module_the_program_imports() {
                            add :: Int -> Int -> Int\n\
                            add left right = left + right\n";
 
-    // The use that loaded it checked it on its own; what travels to the program is the author's
-    // source, under the key it was bound at.
-    check_module(HELPERS, &PrepareContext::new()).expect("purs checks a code module");
+    // The use that loaded it compiled it on its own, under the key it was bound at; what travels to
+    // the program is the author's source.
+    compile_module("Helpers", HELPERS, &PrepareContext::detached())
+        .expect("purs compiles a code module");
     let modules = [CodeModule {
         name: "Helpers".to_string(),
         source: HELPERS.to_string(),
@@ -493,7 +494,7 @@ fn a_code_module_is_a_purescript_module_the_program_imports() {
             "import Effect (Effect)\nimport Effect.Class.Console as Console\n",
         ),
         &modules,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a program that never imported the module");
     assert!(
@@ -507,10 +508,14 @@ fn a_code_module_is_a_purescript_module_the_program_imports() {
 
     // A module whose PureScript does not compile is refused by the prepare step, with the author's
     // own coordinates — it never reaches a program at all.
-    let failure = check_module("module Helpers where\ngreet = ((\n", &PrepareContext::new())
-        .expect_err("a broken module is refused");
+    let failure = compile_module(
+        "Helpers",
+        "module Helpers where\ngreet = ((\n",
+        &PrepareContext::detached(),
+    )
+    .expect_err("a broken module is refused");
     assert!(
-        failure.to_string().contains("module.purs:"),
+        failure.to_string().contains("Lib.Helpers.purs:"),
         "located in the author's own file: {failure}"
     );
 }
@@ -544,7 +549,7 @@ fn a_module_in_scope_changes_nothing_about_the_program_gg_compiles() {
 
     // What the seam handed the arm is what the arm wrote into the file `purs` read: the source is
     // never edited, prefixed or appended to.
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     compile_program(source, &modules, &context).expect("it compiles");
     let compiled = std::fs::read_to_string(
         context

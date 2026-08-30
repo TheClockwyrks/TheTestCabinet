@@ -31,12 +31,14 @@
 //!
 //! | Need | The one sanctioned answer |
 //! | --- | --- |
-//! | Somewhere to put files while compiling | [`PrepareContext::workspace`] — created fresh per preparation, removed when it ends |
-//! | Somewhere to put a compiler's output | [`Workspace::output`], inside that same private tree |
+//! | Somewhere to put files while compiling | [`PrepareContext::workspace`] — the agent's tree, cleared of the previous preparation's files before this one writes |
+//! | Somewhere to put a compiler's output | [`Workspace::output`], inside that same private tree and cleared on the same terms |
+//! | Somewhere to put a loaded module's build output | [`Workspace::open_module`] — the band, cleared when that key is loaded and kept while it stays loaded |
 //! | Running a compiler | [`PrepareContext::compiler`] — cwd, `HOME`, `TMPDIR` and the `XDG_*` roots all inside that tree |
 //! | A long-lived compiler instance (a daemon, a warm builder) | [`CompilerPool`] — exclusive checkout, so no two preparations can ever hold one instance |
 //! | A long-lived compiler **process** to put in that pool | [`daemon`] — started on a private tree of its own, spoken to a request at a time, killed and reaped when it is dropped |
 //! | Toolchain inputs too big to unpack per preparation | [`shared_toolchain_dir`] + [`place`] (one file) or [`place_tree`] (a whole directory) — content-keyed, written by rename, **read-only afterwards** |
+//! | A tree a toolchain lays out once for the agent | [`Workspace::stage_once`], which checks what it lays out against what the reset keeps |
 //!
 //! The environment redirection is the part that earns the most. A toolchain that writes to `output/`
 //! relative to its working directory, or to `~/.cache/<toolchain>`, or to `$TMPDIR` — which is most
@@ -63,8 +65,8 @@ use std::ffi::OsStr;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Condvar, Mutex, OnceLock};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 /// How often a running compiler is looked at while waiting for it. Small enough that a
@@ -80,51 +82,210 @@ const POLL_INTERVAL: Duration = Duration::from_millis(2);
 /// discover one variable per arm. Every registered language that spawns Node reads this one.
 pub const NODE_ENV: &str = "TCAB_GG_NODE";
 
-/// The counter that makes every [`Workspace`] path in this process unique.
+/// The counter that separates one agent's [`Workspace`] from the next in **this** process.
+static NEXT_WORKSPACE: AtomicU64 = AtomicU64::new(0);
+
+/// The directory under a [`Workspace`]'s working directory that holds the loaded modules' build
+/// output, one directory per binding key.
+///
+/// Inside the working directory rather than beside it so that a compiler run in that directory
+/// reaches a module by a relative path, which is what keeps a diagnostic located in a module's own
+/// file readable and keeps a build driver that resolves against the working directory unchanged. It
+/// is the seam's, so no language may name it in
+/// [`persistent_work`](super::ProgramLanguage::persistent_work) and none needs to: the reset keeps
+/// it unconditionally.
+const MODULE_BAND: &str = "modules";
+
+/// The counter that makes every [`PrepareContext`]'s number unique in this process.
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
-/// **One preparation's private ground** — handed to a language's
+/// How long a preparation waits for the tree another preparation of the same agent is holding.
+///
+/// See [`Workspace::claim`]. It is a bound on a design that is already sequential rather than a
+/// budget anything is expected to spend.
+const PREPARATION_WAIT: Duration = Duration::from_secs(300);
+
+/// **One agent's compile workspace**, as a handle its holders share.
+///
+/// An agent allocates one when its session starts and holds it until the session ends; every
+/// preparation that agent drives — the program of each of its turns, each module a read loads, each
+/// on-use script — compiles in that one tree. An agent's preparations are sequential, so the tree
+/// serves one preparation at a time, and two agents never name the same tree because a handle is
+/// only ever made by an agent starting. A preparation holds the tree for as long as it is writing
+/// in it, so a second one of the same agent waits rather than clearing under the first.
+///
+/// The tree itself is created on first use and removed when the last handle to it is dropped. A
+/// tool-calling agent, and an agent writing in a language that compiles nothing, therefore pay no
+/// syscall for one at all.
+///
+/// Cloning is cloning the handle. The [knowledge registry](crate::knowledge::KnowledgeModules) holds
+/// one and the turn path holds one, and both name the agent's single tree.
+#[derive(Clone, Debug, Default)]
+pub struct AgentWorkspace {
+    /// The tree, created on first use. `Err` is remembered too: an agent that could not get a tree
+    /// must fail the same way every time it asks, rather than retrying a broken filesystem once per
+    /// file.
+    tree: Arc<OnceLock<Result<Workspace, String>>>,
+}
+
+impl AgentWorkspace {
+    /// A handle to a tree that has not been created yet.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The tree, creating it on first use.
+    fn tree(&self) -> Result<&Workspace, String> {
+        self.tree
+            .get_or_init(Workspace::create)
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    /// **How many module builds this agent's tree has recorded** — the figure the gate that asserts
+    /// a loaded module is compiled once per session reads.
+    ///
+    /// Counted here rather than by instrumenting a compiler because it is the seam's own event: a
+    /// build is recorded when an arm registers what it produced for a key, and an arm that rebuilt
+    /// a module it could have named registers a second one. An agent that has never opened a tree
+    /// has recorded nothing.
+    #[cfg(test)]
+    pub fn module_builds(&self) -> usize {
+        match self.tree.get() {
+            Some(Ok(workspace)) => workspace.builds_recorded.load(Ordering::Relaxed),
+            _ => 0,
+        }
+    }
+
+    /// **How many preparations this agent's tree has been handed to** — one per program compiled in
+    /// it and one per module built in it, counted as the tree is reset for each.
+    ///
+    /// The figure the gate that drives the real loop reads. A session's compile workspace is
+    /// reachable from nowhere the loop returns, and this is the currency every arm has: an arm that
+    /// keeps no build on disk still resets the tree once per preparation, so a read that compiled a
+    /// module it already held shows up here even where no build was ever recorded.
+    #[cfg(test)]
+    pub fn preparations(&self) -> usize {
+        match self.tree.get() {
+            Some(Ok(workspace)) => workspace.preparations.load(Ordering::Relaxed),
+            _ => 0,
+        }
+    }
+
+    /// **Every file this agent's tree has recorded as a loaded module's build output.**
+    ///
+    /// For the gate that reads what a read left behind and requires a turn to leave it alone. The
+    /// band is not enough on its own: one arm's compiler keeps a module's compiled form in the
+    /// project directory it owns rather than in the band, and a gate that walked the band would
+    /// read the same list whether that module was rebuilt on every turn or not. What each arm
+    /// registered is the one list that names both.
+    #[cfg(test)]
+    pub fn recorded_artifacts(&self) -> Vec<PathBuf> {
+        let Some(Ok(workspace)) = self.tree.get() else {
+            return Vec::new();
+        };
+        let Ok(builds) = workspace.builds.lock() else {
+            return Vec::new();
+        };
+        builds
+            .values()
+            .flat_map(|build| build.artifacts.iter().cloned())
+            .collect()
+    }
+
+    /// Whether this agent's tree was ever created — which is to say whether anything actually
+    /// compiled in it.
+    ///
+    /// For the gate that asserts a session's preparations all stand on the tree the session
+    /// allocated: a registry rebuilt per turn would compile on a tree of its own and leave this one
+    /// untouched, which every other reading would report as a quiet zero.
+    #[cfg(test)]
+    pub fn created(&self) -> bool {
+        self.tree.get().is_some()
+    }
+}
+
+/// **One preparation's ground** — handed to a language's
 /// [prepare step](super::ProgramLanguage::prepare_program) and to its
 /// [module step](super::ProgramLanguage::prepare_module), and alive for exactly that one call.
 ///
 /// It is created by [`prepare_program`](crate::sandbox::prepare_program) and
-/// [`prepare_module`](crate::sandbox::prepare_module) and by nothing else — its constructor is
+/// [`prepare_module`](crate::sandbox::prepare_module) and by nothing else — its constructors are
 /// visible only inside the sandbox — so "one context per preparation" is a property of the seam
 /// rather than a convention a caller keeps. A language cannot manufacture one, cannot hold one past
 /// its call (it is borrowed), and cannot hand one preparation's context to another.
 ///
-/// Its workspace is **lazy**: a language that compiles nothing — a type-strip, a parse — asks for no
-/// directory and pays no syscall, which is why this is a context rather than a directory.
+/// The [workspace](AgentWorkspace) it stands on belongs to the agent whose preparation this is. The
+/// first thing this context does with it is **take it**, so the tree is this preparation's until the
+/// context is dropped, and the second is **clear the previous preparation's sources and build
+/// output**. So what a compiler reads, and what a language reads back out of the tree afterwards, is
+/// this preparation's own files even though the tree is older than the preparation.
+///
+/// That clearing is **lazy**, exactly as the tree's creation is: a language that compiles nothing — a
+/// type-strip, a parse — asks for no directory, pays no syscall, and removes nothing.
 pub struct PrepareContext {
-    /// This preparation's number in the process. Unique, and the thing that makes its workspace path
-    /// unique, so two preparations cannot collide even if the clock stands still.
+    /// This preparation's number in the process. Unique, and what a language names something by when
+    /// it must be unique outside a directory.
     id: u64,
-    /// The private tree, created on first use. `Err` is remembered too: a preparation that could not
-    /// get a workspace must fail the same way every time it asks, rather than retrying a broken
-    /// filesystem once per file.
-    workspace: OnceLock<Result<Workspace, String>>,
+    /// The agent's tree. A clone of the agent's handle rather than a borrow, so a context can be
+    /// held by value where a preparation is driven from a blocking thread.
+    ground: AgentWorkspace,
+    /// The entries under the working directory this language's toolchain lays out for the whole
+    /// agent, which the reset leaves standing. See
+    /// [`persistent_work`](super::ProgramLanguage::persistent_work).
+    ///
+    /// The reset also keeps what a [staging](Workspace::stage_once) laid out for the agent, which
+    /// the tree remembers on its own, so a context built without a language's entries cannot remove
+    /// the project directory that language staged.
+    keep: &'static [&'static str],
+    /// Whether this preparation has already claimed the tree and cleared the previous one's files,
+    /// and what happened when it tried. Remembered so the claim and the clearing happen once per
+    /// preparation however many files a language writes, and so a failure to clear is reported the
+    /// same way every time it is asked.
+    opened: OnceLock<Result<(), String>>,
 }
 
 impl PrepareContext {
-    /// A fresh context for one preparation.
+    /// A context for one preparation of the agent holding `ground`, keeping the working-directory
+    /// entries `keep` names across the reset.
     ///
     /// `pub(in crate::sandbox)` on purpose. The two free functions that dispatch through the trait
     /// are the only callers, so every preparation gets exactly one, nothing outside the sandbox can
     /// mint one, and a language implementation — which lives in a child module of the seam — can
     /// only ever *receive* one.
-    pub(in crate::sandbox) fn new() -> Self {
+    pub(in crate::sandbox) fn for_agent(
+        ground: &AgentWorkspace,
+        keep: &'static [&'static str],
+    ) -> Self {
+        Self::on(ground.clone(), keep)
+    }
+
+    /// A context on a compile workspace of its own, removed when the context is dropped.
+    ///
+    /// For the preparations that belong to no agent: the gates in this directory, and the tests that
+    /// drive one arm's step directly. Nothing on a turn path uses it, because every preparation a run
+    /// drives belongs to the agent that asked for it — gg's own [bootstrap](crate::bootstrap)
+    /// programs included, which allocate an [`AgentWorkspace`] and drop it with the compile.
+    #[cfg(test)]
+    pub(in crate::sandbox) fn detached() -> Self {
+        Self::on(AgentWorkspace::new(), &[])
+    }
+
+    /// The two constructors' common half.
+    fn on(ground: AgentWorkspace, keep: &'static [&'static str]) -> Self {
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
-            workspace: OnceLock::new(),
+            ground,
+            keep,
+            opened: OnceLock::new(),
         }
     }
 
-    /// This preparation's number in the process — unique, monotonic, and the same number its
-    /// workspace path is built from.
+    /// This preparation's number in the process — unique and monotonic.
     ///
     /// Useful to a language that must name something uniquely *outside* a directory: a module name a
     /// compiler keys its cache on, a class name, a temporary symbol. Whatever it is, it has to differ
-    /// per preparation for the same reason the directory does.
+    /// per preparation, because the directory no longer does.
     // Read by the isolation gate and by the first language that needs a unique symbol; no registered
     // language needs one yet, and this is the seam's contract rather than a caller's convenience.
     #[allow(dead_code)]
@@ -132,41 +293,42 @@ impl PrepareContext {
         self.id
     }
 
-    /// This preparation's private tree, creating it on first use.
+    /// The agent's compile workspace, created on first use and **cleared of the previous
+    /// preparation's sources and build output** before this preparation is handed it.
     ///
-    /// Every preparation gets its own, nothing else in the process is handed the same path, and the
-    /// whole tree is removed when the preparation ends. The leaf is created with
-    /// [`create_dir`](std::fs::create_dir) rather than `create_dir_all` deliberately: if the path
-    /// somehow already existed, that is a uniqueness failure and must be an error rather than a
-    /// silent share.
+    /// The clearing happens exactly once, here, on the first ask of each preparation, so a language
+    /// writing five files does not remove the first four. Both the creation and the clearing are
+    /// remembered, including their failures: a preparation that could not get a usable tree must fail
+    /// the same way every time it asks rather than retrying a broken filesystem once per file.
     pub fn workspace(&self) -> Result<&Workspace, String> {
-        self.workspace
-            .get_or_init(|| Workspace::create(self.id))
+        let tree = self.ground.tree()?;
+        self.opened
+            .get_or_init(|| tree.claim().and_then(|()| tree.begin(self.keep)))
             .as_ref()
-            .map_err(Clone::clone)
+            .map_err(Clone::clone)?;
+        Ok(tree)
     }
 
     /// The workspace path, **only if this preparation actually asked for one**.
     ///
-    /// For the isolation harness (`language/isolation.rs`), which collects the path each of its sixteen
-    /// preparations was handed and fails if two of them are the same — the precondition of the
-    /// measured `purs` corruption, caught directly rather than through its consequences. The
-    /// `Option` is the whole point: a preparation that never asked for a workspace has no path to
-    /// collide, and is skipped rather than counted as sharing one. Nothing on the turn path reads
-    /// it.
+    /// For the isolation harness (`language/isolation.rs`), which collects the path each of its
+    /// preparations was handed: sixteen concurrent agents must be handed sixteen different trees, and
+    /// one agent's sixteen sequential preparations must all be handed the same one. The `Option` is
+    /// the whole point: a preparation that never asked for a workspace has no path to compare, and is
+    /// skipped rather than counted. Nothing on the turn path reads it.
     #[cfg(test)]
     pub fn opened_workspace(&self) -> Option<&Path> {
-        match self.workspace.get() {
-            Some(Ok(workspace)) => Some(&workspace.root),
+        match (self.opened.get(), self.ground.tree.get()) {
+            (Some(Ok(())), Some(Ok(workspace))) => Some(&workspace.root),
             _ => None,
         }
     }
 
-    /// A compiler invocation rooted in this preparation's private tree.
+    /// A compiler invocation rooted in this preparation's tree.
     ///
     /// The returned command already has its working directory, its `HOME`, its `TMPDIR` and its
     /// `XDG_*` roots pointing inside that tree, so a toolchain that writes beside its input, or into
-    /// the user's cache, writes somewhere only this preparation can see. That is the whole of the
+    /// the user's cache, writes somewhere only this agent can see. That is the whole of the
     /// isolation a language gets for free, and it is the reason this exists rather than a language
     /// building a [`Command`] itself.
     pub fn compiler(&self, program: impl AsRef<OsStr>) -> Result<CompilerCommand<'_>, String> {
@@ -174,7 +336,23 @@ impl PrepareContext {
     }
 }
 
-/// One preparation's private tree.
+/// Hand the tree back to the next preparation.
+///
+/// The claim is taken when this preparation first asks for the tree and released here, so the tree
+/// is held for exactly as long as the preparation that is writing in it is alive. A preparation that
+/// never asked for one claimed nothing and releases nothing.
+impl Drop for PrepareContext {
+    fn drop(&mut self) {
+        if self.opened.get().is_none() {
+            return;
+        }
+        if let Ok(tree) = self.ground.tree() {
+            tree.release();
+        }
+    }
+}
+
+/// One agent's private tree.
 ///
 /// Four directories, and the split between them is not decoration:
 ///
@@ -182,12 +360,22 @@ impl PrepareContext {
 /// * `output` is where a compiler is told to put its artifacts, for the toolchains that want an
 ///   output directory named explicitly.
 /// * `home` is `HOME` and the root of every `XDG_*` variable, so a toolchain's "global" cache is
-///   this preparation's cache.
+///   this agent's cache.
 /// * `tmp` is `TMPDIR`, for the toolchains that put intermediates there instead.
+///
+/// `output` and `tmp` are a preparation's whole: [`begin`](Self::begin) removes and recreates both
+/// before a preparation writes its first file. `work` is a preparation's but for the two **bands**
+/// inside it that outlive one — the [loaded-module band](Self::open_module) the seam owns, and
+/// whatever a language declared in
+/// [`persistent_work`](super::ProgramLanguage::persistent_work) — and everything else under it is
+/// removed by name. `home` is the agent's and is left alone, which is what lets a toolchain's own
+/// cache warm once for the agent rather than once per turn.
 ///
 /// Removed whole on drop. Best effort on the removal — a run container is thrown away, and a
 /// directory a machine could not unlink is not worth failing a turn over — but the *path* is never
-/// reused whatever happens, because the counter it is built from only goes up.
+/// reused whatever happens, because the counter it is built from only goes up and the moment it was
+/// created is in its name.
+#[derive(Debug)]
 pub struct Workspace {
     /// The private tree's root; the parent of the four below.
     root: PathBuf,
@@ -199,18 +387,84 @@ pub struct Workspace {
     home: PathBuf,
     /// `TMPDIR`.
     tmp: PathBuf,
+    /// The loaded-module band — `work/modules`, one directory per binding key.
+    modules: PathBuf,
+    /// **What each loaded key was built from and what that build produced**, so a program's
+    /// preparation can tell a build it may name from one it must redo.
+    ///
+    /// Keyed by the binding key, because that is what a program names a module by and what the
+    /// band's directories are called. The source is recorded beside the artifacts, so a memory the
+    /// model rewrote and re-loaded under the same key cannot link the version it replaced, and the
+    /// artifacts are recorded so a file the machine removed under gg is a rebuild rather than a
+    /// linker error naming a path nobody wrote.
+    builds: Mutex<std::collections::BTreeMap<String, ModuleBuild>>,
+    /// How many builds have been [recorded](Self::record_module) in this tree, for the gate that
+    /// asserts a loaded module is compiled once per session.
+    builds_recorded: AtomicUsize,
+    /// How many preparations this tree has been [handed to](Self::begin), for the gate that drives
+    /// the real loop and counts what a session compiled.
+    preparations: AtomicUsize,
+    /// **What a [staging](Self::stage_once) laid out for the agent**, which the reset leaves
+    /// standing however the preparation asking for the reset was built.
+    ///
+    /// This is what ties the two halves of a staged tree together. A language declares the same
+    /// entries in [`persistent_work`](super::ProgramLanguage::persistent_work) and lays them out
+    /// through `stage_once`, and it is the staging that the tree remembers, so a tree that has
+    /// staged a build tree cannot be reset by a preparation that names none of it.
+    staged_keep: OnceLock<&'static [&'static str]>,
+    /// Whether a preparation is writing in this tree, and the wait for one that is.
+    ///
+    /// An agent's preparations are sequential by design, so this is normally free. It is here
+    /// because [`begin`](Self::begin) removes the previous preparation's files, and two preparations
+    /// clearing under each other is the one way one agent's own tree could corrupt a compile.
+    occupied: Mutex<bool>,
+    /// The wait for [`occupied`](Self::occupied) to fall.
+    free: Condvar,
+    /// Whatever the language laid out for the whole agent, and what happened when it tried. See
+    /// [`stage_once`](Self::stage_once).
+    staged: OnceLock<Result<(), String>>,
+}
+
+/// What one loaded key's directory in the band holds, and what it was built from.
+#[derive(Debug)]
+struct ModuleBuild {
+    /// A digest of the module source this build read. A program's preparation compares it against
+    /// the source it was handed for that key.
+    source: u64,
+    /// Every file the build produced that a program's compile will name. All of them must still
+    /// exist for the build to be named.
+    artifacts: Vec<PathBuf>,
 }
 
 impl Workspace {
-    /// Create the tree for preparation `id`.
-    fn create(id: u64) -> Result<Self, String> {
+    /// Create one agent's tree.
+    ///
+    /// # Why the tree's name has three parts
+    ///
+    /// It has to be unique against three different collisions, and each part answers one of them: the
+    /// counter separates two agents in this process, the pid separates two processes running at once,
+    /// and the **clock** separates this process from a dead one whose pid the OS has since handed
+    /// back. That last one is not theoretical for a tree that lives as long as an agent does: the
+    /// removal is a drop, and plenty of endings never run it. A `SIGKILL`ed process leaves `<pid>-0`
+    /// standing under a temp root shared by every process on the machine, and the next process the OS
+    /// hands that pid to then fails to create its first workspace at all, on a `create_dir` that
+    /// finds the directory already there.
+    ///
+    /// `work`, `output` and `tmp` are deliberately **not** made here. They are a preparation's, and
+    /// [`begin`](Self::begin) is what makes them.
+    fn create() -> Result<Self, String> {
         let parent = std::env::temp_dir().join("gg-prepare");
         std::fs::create_dir_all(&parent)
             .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
 
-        let root = parent.join(format!("{}-{id}", std::process::id()));
-        // Not `create_dir_all`: an existing path here would mean two preparations sharing a tree,
-        // which is the thing this module exists to prevent. Better an error than a quiet share.
+        let root = parent.join(format!(
+            "{}-{}-{}",
+            std::process::id(),
+            started_at_ms(),
+            NEXT_WORKSPACE.fetch_add(1, Ordering::Relaxed)
+        ));
+        // Not `create_dir_all`: an existing path here would mean two agents sharing a tree, which is
+        // the thing this module exists to prevent. Better an error than a quiet share.
         std::fs::create_dir(&root).map_err(|error| {
             format!(
                 "could not create the private compile workspace {}: {error}",
@@ -218,18 +472,24 @@ impl Workspace {
             )
         })?;
 
+        let work = root.join("work");
         let workspace = Self {
-            work: root.join("work"),
+            modules: work.join(MODULE_BAND),
+            work,
             output: root.join("out"),
             home: root.join("home"),
             tmp: root.join("tmp"),
             root,
+            builds: Mutex::new(std::collections::BTreeMap::new()),
+            builds_recorded: AtomicUsize::new(0),
+            preparations: AtomicUsize::new(0),
+            staged_keep: OnceLock::new(),
+            occupied: Mutex::new(false),
+            free: Condvar::new(),
+            staged: OnceLock::new(),
         };
         for path in [
-            &workspace.work,
-            &workspace.output,
             &workspace.home,
-            &workspace.tmp,
             &workspace.home.join(".cache"),
             &workspace.home.join(".config"),
             &workspace.home.join(".local").join("share"),
@@ -240,20 +500,92 @@ impl Workspace {
         Ok(workspace)
     }
 
+    /// Hand this tree to a new preparation: remove the previous one's sources, build output and
+    /// intermediates, and leave standing only what outlives a preparation.
+    ///
+    /// The artifact and temporary directories go whole. The working directory is emptied
+    /// **entry by entry**, keeping the [loaded-module band](Self::open_module) and the entries
+    /// `keep` names, and nothing else — so a file a **compiler** created — an object file, a
+    /// `tsconfig.json` a toolchain wrote for itself, a bundle nothing registered — goes with the
+    /// ones a language wrote. Reading a stale one back is exactly the mis-attribution the isolation
+    /// gate exists to catch, and a reset that only removed what gg knew about would leave it
+    /// reachable.
+    ///
+    /// `home` is the one directory outside `work` that is kept, which is the point of splitting it
+    /// out: a toolchain's cache is the agent's, warmed once instead of once per turn, and still
+    /// reachable by nothing outside this tree.
+    ///
+    /// What is kept is `keep`, the [loaded-module band](Self::open_module), and whatever a
+    /// [staging](Self::stage_once) laid out for this agent. The last of those is the tree's own
+    /// memory rather than this preparation's opinion, so a context built without a language's
+    /// entries cannot remove the project directory that language staged.
+    fn begin(&self, keep: &'static [&'static str]) -> Result<(), String> {
+        self.preparations.fetch_add(1, Ordering::Relaxed);
+        let staged = self.staged_keep.get().copied().unwrap_or_default();
+        for path in [&self.output, &self.tmp] {
+            match std::fs::remove_dir_all(path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(format!(
+                        "could not clear the previous preparation's {}: {error}",
+                        path.display()
+                    ));
+                }
+            }
+            std::fs::create_dir_all(path)
+                .map_err(|error| format!("could not create {}: {error}", path.display()))?;
+        }
+        std::fs::create_dir_all(&self.modules)
+            .map_err(|error| format!("could not create {}: {error}", self.modules.display()))?;
+        let entries = std::fs::read_dir(&self.work)
+            .map_err(|error| format!("could not read {}: {error}", self.work.display()))?;
+        for entry in entries {
+            let entry = entry
+                .map_err(|error| format!("could not read {}: {error}", self.work.display()))?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name == MODULE_BAND
+                || keep.contains(&name.as_ref())
+                || staged.contains(&name.as_ref())
+            {
+                continue;
+            }
+            let path = entry.path();
+            let removed = match entry.file_type() {
+                Ok(kind) if kind.is_dir() => std::fs::remove_dir_all(&path),
+                _ => std::fs::remove_file(&path),
+            };
+            match removed {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(format!(
+                        "could not clear the previous preparation's {}: {error}",
+                        path.display()
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// The private tree's root — the parent of the working directory, the output directory and the
-    /// three redirected roots.
+    /// two redirected roots.
     ///
     /// Named by a language whose toolchain **records paths in its output** and offers to rewrite
     /// them: Swift's `-file-prefix-map` takes this and a fixed replacement, which is what stops a
     /// preparation's own temporary directory from reaching a model in a located trap, and stops one
     /// program compiling to different bytes on every attempt for a reason that is not the program.
     /// Nothing writes here directly — [`work`](Self::work) and [`output`](Self::output) are the
-    /// directories for that, and keeping them separate is the point of having both.
+    /// directories for that, they are the two a preparation is given clean, and keeping them separate
+    /// from the root is what makes clearing them possible.
     pub fn root(&self) -> &Path {
         &self.root
     }
 
-    /// The directory a compiler runs in, and the one a language writes its inputs into.
+    /// The directory a compiler runs in, and the one a language writes its inputs into. Empty when a
+    /// preparation is handed it.
     // Named by a language that hands its compiler an explicit path; TypeScript's `tsc` is given
     // relative names and inherits the directory instead.
     #[allow(dead_code)]
@@ -261,7 +593,8 @@ impl Workspace {
         &self.work
     }
 
-    /// The directory a compiler is told to write its artifacts into.
+    /// The directory a compiler is told to write its artifacts into. Empty when a preparation is
+    /// handed it.
     ///
     /// Separate from [`work`](Self::work) so that "what I gave the compiler" and "what the compiler
     /// produced" are distinguishable — a language reading its own artifact back out of a directory it
@@ -292,6 +625,195 @@ impl Workspace {
             .map_err(|error| format!("could not write {}: {error}", path.display()))?;
         Ok(path)
     }
+
+    // ---------------------------------------------------------------------------------------
+    // The loaded-module band
+    // ---------------------------------------------------------------------------------------
+
+    /// **Open the directory holding what the module bound at `key` compiles to**, empty.
+    ///
+    /// Called by a language's [module step](super::ProgramLanguage::prepare_module), which is the
+    /// one moment a key's build output is produced. It is emptied rather than reused because a
+    /// re-load is a *replacement*: the model rewrote the memory, or the same skill was read again
+    /// after its file changed, and a directory holding both builds is a directory a compiler may
+    /// resolve either way. The ledger entry goes with the files.
+    ///
+    /// The path is inside the working directory, so a compiler running there names it as
+    /// `modules/<key>/…`.
+    pub fn open_module(&self, key: &str) -> Result<PathBuf, String> {
+        let path = self.modules.join(key);
+        self.forget_module(key);
+        match std::fs::remove_dir_all(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!("could not clear {}: {error}", path.display()));
+            }
+        }
+        std::fs::create_dir_all(&path)
+            .map_err(|error| format!("could not create {}: {error}", path.display()))?;
+        Ok(path)
+    }
+
+    /// Write `contents` to `name` inside `key`'s directory in the band, and hand back the path.
+    ///
+    /// For the module's **source**, which several toolchains need on disk for as long as the build
+    /// they made from it is being named — a `.pcm` clang validates against the file it was
+    /// precompiled from, a `.purs` file `purs` finds up to date in its own cache.
+    pub fn write_module(&self, key: &str, name: &str, contents: &str) -> Result<PathBuf, String> {
+        let path = self.modules.join(key).join(name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
+        }
+        std::fs::write(&path, contents)
+            .map_err(|error| format!("could not write {}: {error}", path.display()))?;
+        Ok(path)
+    }
+
+    /// `key`'s directory in the band, absolute — what a compiler is told to write into and what a
+    /// search path names.
+    pub fn module_dir(&self, key: &str) -> PathBuf {
+        self.modules.join(key)
+    }
+
+    /// `key`'s directory in the band, named the way a compiler run in the working directory names
+    /// it.
+    ///
+    /// Relative, because that is what a diagnostic located in a module's own file should read and
+    /// what a build driver resolving against the working directory is given. A language that needs
+    /// the absolute path joins it onto [`work`](Self::work).
+    pub fn module_path(&self, key: &str, name: &str) -> String {
+        format!("{MODULE_BAND}/{key}/{name}")
+    }
+
+    /// **Record what compiling the module bound at `key` produced**, so a later program's
+    /// preparation names it instead of building it again.
+    ///
+    /// `source` is the module source this build read and `artifacts` is every file a program's
+    /// compile will name. Both are what [`module_build`](Self::module_build) checks before it hands
+    /// the build back.
+    pub fn record_module(&self, key: &str, source: &str, artifacts: Vec<PathBuf>) {
+        self.builds_recorded.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut builds) = self.builds.lock() {
+            builds.insert(
+                key.to_string(),
+                ModuleBuild {
+                    source: digest(source),
+                    artifacts,
+                },
+            );
+        }
+    }
+
+    /// **What the module bound at `key` was compiled to**, or `None` when this preparation must
+    /// compile it itself.
+    ///
+    /// `None` on three occasions, and each is a case where naming the recorded build would be
+    /// wrong rather than merely stale: nothing was ever recorded for the key, the source recorded
+    /// is not the source this preparation was handed, or a file that build produced is no longer on
+    /// disk. A language answers all three the same way — build it, and record what that produced —
+    /// so the miss costs a compile and never a wrong artifact.
+    pub fn module_build(&self, key: &str, source: &str) -> Option<Vec<PathBuf>> {
+        let builds = self.builds.lock().ok()?;
+        let build = builds.get(key)?;
+        if build.source != digest(source) {
+            return None;
+        }
+        build
+            .artifacts
+            .iter()
+            .all(|artifact| artifact.exists())
+            .then(|| build.artifacts.clone())
+    }
+
+    /// Forget what was recorded for `key`, so the next ask builds.
+    fn forget_module(&self, key: &str) {
+        if let Ok(mut builds) = self.builds.lock() {
+            builds.remove(key);
+        }
+    }
+
+    /// **Take the tree for one preparation**, waiting for the preparation using it to finish.
+    ///
+    /// An agent's preparations are sequential by design — a turn's chained programs, the modules its
+    /// reads load and the on-use scripts they queue all run in order on one blocking task — so this
+    /// is taken uncontended every time. It exists because the cost of that design being departed
+    /// from is silent: [`begin`](Self::begin) removes the previous preparation's files, so two
+    /// preparations in one tree would clear under each other and each would compile against what the
+    /// other left.
+    ///
+    /// The wait is bounded, so a path that took two of one agent's preparations at once on a single
+    /// thread reports what it did instead of stopping. The bound is the longest a preparation may
+    /// legitimately hold the tree: the 180 seconds a JVM build is given plus the 120 seconds it may
+    /// spend starting one.
+    fn claim(&self) -> Result<(), String> {
+        let occupied = self
+            .occupied
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (mut occupied, timeout) = self
+            .free
+            .wait_timeout_while(occupied, PREPARATION_WAIT, |occupied| *occupied)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if timeout.timed_out() {
+            return Err(format!(
+                "the compile workspace {} was still held by another preparation after                  {PREPARATION_WAIT:?}: an agent's preparations run one at a time",
+                self.root.display()
+            ));
+        }
+        *occupied = true;
+        Ok(())
+    }
+
+    /// Hand the tree to whichever preparation is waiting for it.
+    fn release(&self) {
+        let mut occupied = self
+            .occupied
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *occupied = false;
+        drop(occupied);
+        self.free.notify_one();
+    }
+
+    /// **Lay out whatever this language's toolchain needs once for the agent**, and hand back the
+    /// same answer to every preparation after the first.
+    ///
+    /// For a toolchain that owns a build tree rather than a set of files: `purs` is given a project
+    /// directory, keys its own incremental work on what is in it, and would be re-staged 1,430
+    /// links deep on every turn without this. The entries such a language lays out are the ones it
+    /// names in [`persistent_work`](super::ProgramLanguage::persistent_work), which is what keeps
+    /// the reset from removing them under it.
+    ///
+    /// `entries` is what the staging lays out, and naming it here is what makes the tree keep it:
+    /// every later preparation's reset leaves those entries standing whatever that preparation was
+    /// built with. Laying something out once for the agent and having the next preparation remove
+    /// it is the one way this could be worse than staging per preparation, and stating both facts
+    /// in one call is what stops it.
+    ///
+    /// The failure is remembered too, for the reason the tree's creation is: a preparation that
+    /// could not lay it out must fail the same way every time it asks.
+    pub fn stage_once(
+        &self,
+        entries: &'static [&'static str],
+        stage: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
+        let _ = self.staged_keep.set(entries);
+        self.staged.get_or_init(stage).clone()
+    }
+}
+
+/// A build discriminator over one module's source.
+///
+/// Not a fingerprint anything trusts: it decides whether a recorded build was made from the bytes in
+/// front of it, and a miss costs a compile. The same hasher every other discriminator in this
+/// directory is built from.
+fn digest(source: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    source.hash(&mut hasher);
+    hasher.finish()
 }
 
 impl Drop for Workspace {

@@ -179,8 +179,8 @@ impl ProgramLanguage for Python {
     /// for why a second Python grammar on the host would be a liability rather than a feature.
     ///
     /// It takes no [context](PrepareContext) because it opens nothing: this arm creates no
-    /// workspace and spawns no process, so the seam's per-preparation ground costs it not one
-    /// syscall and the isolation gate (`language/isolation.rs`) has nothing to catch it doing.
+    /// workspace and spawns no process, so the ground the seam offers a preparation costs it not
+    /// one syscall and the isolation gate (`language/isolation.rs`) has nothing to catch it doing.
     fn prepare_program(
         &self,
         source: &str,
@@ -210,6 +210,7 @@ impl ProgramLanguage for Python {
     /// deliberately does not report.
     fn prepare_module(
         &self,
+        _key: &str,
         source: &str,
         _context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {

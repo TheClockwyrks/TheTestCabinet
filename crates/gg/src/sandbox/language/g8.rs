@@ -393,6 +393,7 @@ fn drive(arm: GgProgramLanguage, program: &str) -> Read {
         crate::sandbox::language(arm),
         program,
         scope,
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         api,
