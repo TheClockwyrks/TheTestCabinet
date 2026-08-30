@@ -18,7 +18,7 @@
 // would be fabrication.
 //
 // AUDITIONING. Confirming a difficulty starts a run and reseeds the press, which is
-// the game keeping two playthroughs from the menu off the same rolls, so a take
+// the game keeping two runs started from the menu off the same rolls, so a take
 // cannot be played silently and then replayed identically under the recorder. Every
 // take is therefore recorded as it is played and the best one is kept: the take that
 // was judged is the take that was committed. The judge scores what makes a watchable
@@ -441,7 +441,7 @@ it("records session clips", async () => {
   // EVERY TAKE IS RECORDED, AND THE BEST ONE IS KEPT.
   //
   // Confirming a difficulty is what starts a run, and the game reseeds its press
-  // there on purpose, so that no two playthroughs from the menu draw the same
+  // there on purpose, so that two runs started from the menu never draw the same
   // rolls. A take driven the way a player drives one therefore cannot be
   // auditioned with the recorder off and then replayed identically under it: the
   // second playing is a different session. So each take is recorded as it is

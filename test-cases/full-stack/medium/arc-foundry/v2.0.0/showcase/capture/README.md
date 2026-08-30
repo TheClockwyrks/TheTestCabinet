@@ -44,7 +44,8 @@ files is committed as:
 ## Why every take is recorded
 
 Confirming a difficulty is what starts a run, and the game reseeds its press
-there on purpose so that no two playthroughs from the menu draw the same rolls.
+there on purpose, so that two runs started from the menu never draw the same
+rolls.
 A take driven the way a player drives one therefore cannot be played silently,
 judged, and then replayed identically under the recorder — the second playing is
 a different session. So the driver records every take as it plays it and judges
@@ -61,7 +62,7 @@ and whatever input edges the last take left armed.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's replay cap, patched above to read it. At `1700` a take of this length is kept whole, unthinned, at 60 fps. |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's replay cap, patched above to read it. At `1700` a take of this length is kept whole, at 60 fps, with no thinning. |
 | `TCAB_SHOWCASE_TAKES` | `8` | How many takes to play and judge. |
 | `TCAB_SHOWCASE_MIN_SECONDS` | `20` | The clip ends at the first wave clear past this. |
 | `TCAB_SHOWCASE_MAX_SECONDS` | `27` | The take is abandoned here; no level is opened with less than six seconds left of it. |
