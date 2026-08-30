@@ -1,30 +1,49 @@
-/*
- * Coil validator: `growth.respawn-on-eat`. PLACEHOLDER.
- *
- * An eaten pellet is replaced at once.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * The tick that eats a pellet places the next one on the same tick, so exactly
- * one live pellet is on the board when the tick has resolved.
- *
- * HOW:
- * place a pellet ahead of the head, run the tick that eats it, and read the
- * snapshot's pellet back.
- *
- * MEDIA IT MUST CAPTURE: respawn (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// growth/respawn-on-eat — an eaten pellet is replaced on the same tick.
+//
+// specs/board.md: "Exactly one pellet is on the board at any moment during a
+// round", and "When the head enters the pellet's cell the pellet is eaten: the
+// snake grows, the score resolves, and a new pellet spawns at once."
+// specs/movement.md puts the spawn inside the tick that ate, at step 5.
+//
+// So the reading is taken on the tick the eat resolved rather than a tick later:
+// a build that places the next pellet on the following tick leaves the board
+// without one for an eighth of a second every time a player scores, and a build
+// that places none at all leaves a round that cannot go on.
+//
+// The respawn switch is deliberately ON here, which is the only point in this
+// directory that is about it being on. Where the replacement may land is the
+// business of the three points that follow; what is decided here is only that one
+// arrived.
 
-test("growth.respawn-on-eat", () => {
-  throw new Error("validator not implemented: growth/respawn-on-eat.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNotNull } from "../assert";
+import {
+  arrangeEat,
+  captureReplay,
+  createHarness,
+  sameCell,
+  type Harness,
+} from "../harness";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("puts the next pellet on the board on the tick the last was eaten", async () => {
+  const scene = await arrangeEat(h, { pelletRespawn: true });
+  assertEqual(scene.snapshot.pelletRespawn, true, "the switch the scene posed");
+
+  const after = await captureReplay(h, "respawn", () => h.tick());
+
+  assertEqual(after.ticks, 1, "ticks resolved");
+  assertEqual(sameCell(after.snake[0], scene.pellet), true, "the pellet was eaten");
+  // WHERE it landed is decided by the three points that follow; what is decided
+  // here is that the tick which ate one left another behind.
+  assertNotNull(after.pellet, "the pellet on the board when the tick resolved");
 });
