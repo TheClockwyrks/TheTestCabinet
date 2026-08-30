@@ -14,6 +14,8 @@
 import { SpectraState } from "./game";
 import type { Band, DroneKind, DroneState } from "./game";
 import { addDroneTo } from "./drones";
+import { noCues, type FrameCues } from "./audio";
+import { advanceGame } from "./sim";
 
 /** A fresh state, exactly as the engine builds one when the world opens. */
 export function titleState(): SpectraState {
@@ -69,4 +71,41 @@ export function poseDrone(
   if (pose.shellAlive !== undefined) drone.shellAlive = pose.shellAlive;
   if (pose.charge !== undefined) drone.charge = pose.charge;
   return drone;
+}
+
+/** One sixtieth of a second, the frame a test advances by unless it says otherwise. */
+export const STEP = 1 / 60;
+
+/**
+ * Advance `state` by whole frames covering `seconds`, collecting every cue the
+ * run raised. The frame size is the test's, and the sub-step rule makes the
+ * outcome the same however it is chosen.
+ */
+export function run(
+  state: SpectraState,
+  seconds: number,
+  step = STEP,
+): FrameCues {
+  const cues = noCues();
+  const frames = Math.max(1, Math.round(seconds / step));
+  for (let frame = 0; frame < frames; frame += 1) {
+    advanceGame(state, step, cues);
+  }
+  return cues;
+}
+
+/** Advance `state` frame by frame until `ready` holds, or give up. */
+export function runUntil(
+  state: SpectraState,
+  ready: () => boolean,
+  seconds: number,
+  step = STEP,
+): { held: boolean; elapsed: number; cues: FrameCues } {
+  const cues = noCues();
+  const frames = Math.max(1, Math.round(seconds / step));
+  for (let frame = 0; frame < frames; frame += 1) {
+    if (ready()) return { held: true, elapsed: frame * step, cues };
+    advanceGame(state, step, cues);
+  }
+  return { held: ready(), elapsed: frames * step, cues };
 }

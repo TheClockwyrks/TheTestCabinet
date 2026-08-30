@@ -109,8 +109,12 @@ export async function loadArt(assets: InitApi["assets"]): Promise<void> {
   burst = system;
 }
 
-/** Drop everything the load produced. The build's own tests use this. */
+/** Drop everything the load produced, as a host that decoded nothing leaves it. */
 export function resetArt(): void {
   held = empty();
-  burst = null;
+}
+
+/** Put back a set of sprites the caller took a copy of. */
+export function setArt(sprites: Art): void {
+  held = sprites;
 }

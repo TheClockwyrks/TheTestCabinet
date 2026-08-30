@@ -112,7 +112,10 @@ function disc(
   ctx.fill();
 }
 
-/** A soft round glow, drawn additively so overlapping light reads as light. */
+/**
+ * A soft round glow, drawn additively so overlapping light reads as light. It
+ * falls off from the centre, so a body's own light has no edge of its own.
+ */
 function glow(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -122,7 +125,14 @@ function glow(
 ): void {
   layer(ctx, (target) => {
     target.globalCompositeOperation = "lighter";
-    disc(target, x, y, radius, color);
+    const fade = target.createRadialGradient(x, y, 0, x, y, radius);
+    fade.addColorStop(0, color);
+    fade.addColorStop(0.55, color);
+    fade.addColorStop(1, "rgba(0, 0, 0, 0)");
+    target.fillStyle = fade;
+    target.beginPath();
+    target.arc(x, y, radius, 0, Math.PI * 2);
+    target.fill();
   });
 }
 
@@ -241,6 +251,7 @@ export function renderInversion(
   ctx: CanvasRenderingContext2D,
 ): void {
   if (state.inversion <= 0) return;
+  if (!fieldShown(state)) return;
   const height = FIELD_BOTTOM - FIELD_TOP;
   layer(ctx, (target) => {
     target.globalCompositeOperation = "lighter";
@@ -261,6 +272,17 @@ export function renderInversion(
   ctx.strokeStyle = bandAlpha("magenta", 0.55);
   ctx.lineWidth = 3;
   ctx.strokeRect(3, FIELD_TOP + 3, FIELD_RIGHT - 6, height - 6);
+}
+
+/**
+ * Whether the screen showing is one the play field stands on.
+ *
+ * The title and the how-to are pages rather than the field, so the ship, the
+ * drones, the bullets, the bursts and the inversion's mark are not drawn behind
+ * them; a dim slice of the starfield is (`specs/ui.md`).
+ */
+export function fieldShown(state: SpectraState): boolean {
+  return state.screen !== "title" && state.screen !== "howto";
 }
 
 // ---- The entities -------------------------------------------------------
@@ -356,6 +378,7 @@ export function drawDrone(
   ctx: CanvasRenderingContext2D,
   drone: DroneState,
 ): void {
+  if (!fieldShown(state)) return;
   const size = droneFootprint(drone);
   const { x, y } = drone;
   const band = droneEffectiveBand(drone, state);
@@ -464,15 +487,15 @@ export function drawShip(
   state: SpectraState,
   ctx: CanvasRenderingContext2D,
 ): void {
-  if (state.phase === "ready") return;
+  if (state.phase === "ready" || !fieldShown(state)) return;
   const { x } = state.ship;
   const band = state.ship.band;
   const y = SHIP_Y;
 
   // The hull's own light is neutral and the band's is a wash over it, so the ship
   // reads apart from a drone of the band it is tuned to.
-  glow(ctx, x, y, SHIP_W * 0.52, "rgba(234, 240, 251, 0.24)");
-  glow(ctx, x, y, SHIP_W * 0.66, bandAlpha(band, 0.17));
+  glow(ctx, x, y, SHIP_W * 0.46, "rgba(234, 240, 251, 0.3)");
+  glow(ctx, x, y, SHIP_W * 0.62, bandAlpha(band, 0.26));
 
   const image = art().fighter;
   if (image === null) {
@@ -492,11 +515,11 @@ export function drawShip(
 
   // The hull is the same in both bands; its core is the band, so the ship reads
   // its own tuning at a glance and agrees with the polarity indicator.
-  const core = SHIP_H * 0.34;
+  const core = SHIP_H * 0.24;
   disc(ctx, x, y, core, BAND[band]);
   layer(ctx, (target) => {
     target.globalCompositeOperation = "lighter";
-    disc(target, x, y, core * 0.55, "rgba(234, 240, 251, 0.65)");
+    disc(target, x, y, core * 0.5, "rgba(234, 240, 251, 0.7)");
   });
   layer(ctx, (target) => {
     bandAccent(target, x, y, SHIP_H * 0.56, band, 2.5);
@@ -509,7 +532,7 @@ export function drawBullet(
   ctx: CanvasRenderingContext2D,
   bullet: BulletState,
 ): void {
-  void state;
+  if (!fieldShown(state)) return;
   const band = bullet.band;
   const width = bullet.friendly ? PLAYER_BULLET_W : ENEMY_BULLET_W;
   const height = bullet.friendly ? PLAYER_BULLET_H : ENEMY_BULLET_H;
@@ -530,7 +553,7 @@ export function drawBurst(
   ctx: CanvasRenderingContext2D,
   burst: BurstState,
 ): void {
-  void state;
+  if (!fieldShown(state)) return;
   const scale = burst.size / BURST_FIELD;
   const particles = burst.sim.capture();
   layer(ctx, (target) => {
@@ -556,7 +579,7 @@ export function drawDischarge(
   state: SpectraState,
   ctx: CanvasRenderingContext2D,
 ): void {
-  if (!state.discharge.active) return;
+  if (!state.discharge.active || !fieldShown(state)) return;
   const radius = state.discharge.radius;
   layer(ctx, (target) => {
     target.globalCompositeOperation = "lighter";

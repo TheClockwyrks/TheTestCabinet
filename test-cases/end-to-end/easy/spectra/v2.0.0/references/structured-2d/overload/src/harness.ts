@@ -54,6 +54,15 @@ export interface CuePlay {
   gain: number;
 }
 
+/** One `drawImage`: the source handed over, and the box it landed in. */
+export interface Blit {
+  source: unknown;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface Harness {
   readonly engine: Engine<SpectraDebugApi>;
   /** The world's live game state. */
@@ -63,6 +72,20 @@ export interface Harness {
   readonly ctx: SKRSContext2D;
   /** Every `cue:played` the engine emitted, in order. */
   readonly cues: CuePlay[];
+  /**
+   * Every string the game has drawn through `fillText`, in order.
+   *
+   * The spy is installed before the engine is built, because the engine's
+   * draw-command recorder wraps the context once and caches a wrapper per method
+   * name — so a spy installed later would be seen for one frame and then dropped.
+   * A test empties the list rather than replacing it.
+   */
+  readonly texts: string[];
+  /**
+   * Every image the game has blitted: the source it was handed and the box it
+   * was drawn into, in the stage's own logical units.
+   */
+  readonly blits: Blit[];
   /** Hold a key down, let one up, and press one for a single frame. */
   down(code: string): void;
   up(code: string): void;
@@ -114,6 +137,35 @@ export async function createHarness(): Promise<Harness> {
     getContext: () => ctx,
   }) as unknown as HTMLCanvasElement;
 
+  // Installed before `createEngine`, so the recorder's own wrapper is built over
+  // it and every frame's text reaches the list.
+  const texts: string[] = [];
+  const spied = ctx as unknown as {
+    fillText: (value: string, x: number, y: number) => void;
+  };
+  const drawText = spied.fillText.bind(spied);
+  spied.fillText = (value, x, y) => {
+    texts.push(String(value));
+    drawText(value, x, y);
+  };
+
+  const blits: Blit[] = [];
+  const blitter = ctx as unknown as {
+    drawImage: (...args: unknown[]) => void;
+  };
+  const drawImage = blitter.drawImage.bind(blitter);
+  blitter.drawImage = (...args: unknown[]) => {
+    const box = args.length >= 9 ? args.slice(5) : args.slice(1);
+    blits.push({
+      source: args[0],
+      x: Number(box[0]),
+      y: Number(box[1]),
+      width: Number(box[2] ?? 0),
+      height: Number(box[3] ?? 0),
+    });
+    drawImage(...args);
+  };
+
   const events = new EventTarget();
   const surface: SurfaceMetrics = {
     cssWidth: () => STAGE_W,
@@ -152,6 +204,8 @@ export async function createHarness(): Promise<Harness> {
     debug: engine.debug,
     ctx,
     cues,
+    texts,
+    blits,
     down: (code) => events.dispatchEvent(new KeyEvent("keydown", code)),
     up: (code) => events.dispatchEvent(new KeyEvent("keyup", code)),
     tap: async (code) => {

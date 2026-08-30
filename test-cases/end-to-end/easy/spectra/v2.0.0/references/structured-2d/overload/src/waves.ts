@@ -39,9 +39,9 @@ import { CHALLENGE_MARGIN, CHALLENGE_ROW0, CHALLENGE_ROW_GAP } from "./swarm";
 import type { Band, DroneKind, SpectraState } from "./game";
 
 /** How far above `FIELD_TOP` the leader of an entry group starts. */
-const ENTRY_LEAD = 90;
+const ENTRY_LEAD = 60;
 /** How far behind the leader each later drone of the same group starts. */
-const ENTRY_STACK = 22;
+const ENTRY_STACK = 17;
 /** How far outside the formation's centre a group comes down. */
 const ENTRY_SIDE_X = 320;
 

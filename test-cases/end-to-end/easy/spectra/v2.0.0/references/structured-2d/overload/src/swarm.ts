@@ -242,24 +242,27 @@ function advanceDive(
   drone.x += Math.sin(heading) * speed * h;
   drone.y += Math.cos(heading) * speed * h;
 
-  if (drone.kind === "prism" && drone.y >= PRISM_INVERT_Y) {
-    // A Prism that survives its dive to the bottom swaps the whole field's bands
-    // rather than being destroyed there, and heads back toward its slot.
-    beginInversion(state, cues);
+  if (drone.kind === "prism") {
+    // A Prism dives to the line it inverts the field from, which is below every
+    // other dive's turn and above the bottom HUD strip: it swaps the whole field's
+    // bands rather than being destroyed there, and heads back toward its slot.
+    if (drone.y >= PRISM_INVERT_Y) {
+      beginInversion(state, cues);
+      setDronePhase(drone, "returning");
+      return;
+    }
+  } else if (diveWraps(drone)) {
+    if (drone.y > FIELD_BOTTOM) {
+      drone.y = WRAP_REENTRY_Y;
+      setDronePhase(drone, "returning");
+      return;
+    }
+  } else if (drone.y >= DIVE_TURN_Y) {
     setDronePhase(drone, "returning");
     return;
   }
 
-  if (diveWraps(drone)) {
-    if (drone.y > FIELD_BOTTOM) {
-      drone.y = WRAP_REENTRY_Y;
-      setDronePhase(drone, "returning");
-    }
-  } else if (drone.y >= DIVE_TURN_Y) {
-    setDronePhase(drone, "returning");
-  } else if (drone.phaseClock >= DIVE_MAX_TIME) {
-    setDronePhase(drone, "returning");
-  }
+  if (drone.phaseClock >= DIVE_MAX_TIME) setDronePhase(drone, "returning");
 }
 
 /** Advance one returning drone toward its slot, and settle it when it arrives. */
