@@ -1,27 +1,75 @@
-// Arc Foundry — `build-panel.odds`. CASE-PROVIDED. NOT YET WRITTEN.
+// build-panel/odds — the panel draws the roll odds the press is actually on.
 //
-// The manifest declares this point at `build-panel/odds.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/hud.md` puts "the quality-roll odds at the live refinement level" at the
+// top of the build panel, "so the player reads the probability of each of the
+// five tiers before placing a rock", and `specs/scrap-press.md` fixes those odds
+// as `REFINEMENT_ODDS[R]`. `specs/instrumentation.md` reports the same five
+// numbers as `qualityOdds`.
 //
-// THE REQUIREMENT. The panel draws the five-tier roll odds at the live
-// refinement level, and the drawn figures change when the refinement level
-// changes.
+// A build is free to draw a probability as a percentage or as a fraction, so a
+// figure counts as drawn when it reads as either. Only the tiers the press can
+// actually roll are required: a tier at `0.00` is not a probability the player
+// has to read, and how a build shows an impossible tier is its own business.
 //
-// HOW IT IS DECIDED. Read the panel's text draws at two refinement levels. The
-// evidence it hands back is `odds` (image): the panel's odds at a refined
-// press.
+// The change is decided on `0.60`, which `R2` rolls Scrap at and `R5` does not.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
+import { REFINEMENT_ODDS } from "../../src/constants";
+import { PANEL, figures } from "./reading";
 
-import { fail } from "../assert";
+const COARSE = 2;
+const REFINED = 5;
 
-describe("build-panel.odds", () => {
-  it("The panel draws the live quality odds", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `build-panel.odds` has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+/** A probability reads as drawn as a percentage or as a fraction. */
+function drawsOdd(drawn: readonly number[], odd: number): boolean {
+  return drawn.some(
+    (f) => Math.abs(f - odd * 100) <= 0.5 || Math.abs(f - odd) <= 0.005,
+  );
+}
+
+it("draws the live quality odds, and redraws them when the press is refined", async () => {
+  openYard(h, { refinement: COARSE });
+
+  const coarse = figures(await h.frameCalls(), PANEL);
+  for (const odd of REFINEMENT_ODDS[COARSE]!.filter((o) => o > 0)) {
+    assertEqual(
+      drawsOdd(coarse, odd),
+      true,
+      `whether the panel draws the R${COARSE} odds ${odd}; it drew ${coarse.join(", ")}`,
     );
-  });
+  }
+
+  h.debug.setRefinement(REFINED);
+  const refined = figures(await h.frameCalls(), PANEL);
+  captureStill(h, "odds");
+  for (const odd of REFINEMENT_ODDS[REFINED]!.filter((o) => o > 0)) {
+    assertEqual(
+      drawsOdd(refined, odd),
+      true,
+      `whether the panel draws the R${REFINED} odds ${odd}; it drew ${refined.join(", ")}`,
+    );
+  }
+  assertEqual(
+    drawsOdd(refined, REFINEMENT_ODDS[COARSE]![0]!),
+    false,
+    `whether the panel still draws the R${COARSE} Scrap odds once the press is ` +
+      `at R${REFINED}; it drew ${refined.join(", ")}`,
+  );
 });

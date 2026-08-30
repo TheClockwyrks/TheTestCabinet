@@ -1,26 +1,71 @@
-// Arc Foundry — `build-panel.regulator-no-targeting`. CASE-PROVIDED. NOT YET WRITTEN.
+// build-panel/regulator-no-targeting — a Regulator has no targeting slot either.
 //
-// The manifest declares this point at `build-panel/regulator-no-targeting.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/hud.md` names it as the second action that is absent rather than
+// disabled: "a Regulator has no targeting control, at any tier, whether a
+// candidate or a component." `specs/components.md` gives the reason — the
+// Regulator "never fires: it has no range, no damage, no firing head, no
+// projectile, and no targeting priority" — and `specs/instrumentation.md` has its
+// snapshot report `targeting: null`.
 //
-// THE REQUIREMENT. A Regulator offers no targeting action at any tier, as a
-// candidate or as a component, because it never fires and carries no priority.
-//
-// HOW IT IS DECIDED. Select a Regulator candidate and a Regulator component
-// and read panelButtons back. The evidence it hands back is `panel` (image):
-// the Regulator's inspector without a targeting slot.
+// Both halves are read, at every tier of the ladder, each on an otherwise empty
+// yard: a Regulator that rolled from the press, and one that was placed as a
+// permanent component.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNull } from "../assert";
+import {
+  NON_FIRING_TYPE,
+  TIERS,
+  captureStill,
+  createHarness,
+  openYard,
+  refillStamps,
+  standCandidate,
+  standComponent,
+  structureById,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+let h: Harness;
 
-describe("build-panel.regulator-no-targeting", () => {
-  it("A Regulator has no targeting control", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `build-panel.regulator-no-targeting` has not been written yet",
-    );
-  });
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("offers no targeting control on a Regulator, candidate or component", async () => {
+  openYard(h);
+
+  for (const tier of TIERS) {
+    for (const kind of ["candidate", "component"] as const) {
+      refillStamps(h);
+      const id =
+        kind === "candidate"
+          ? standCandidate(h, NON_FIRING_TYPE, tier, 10, 10)
+          : standComponent(h, NON_FIRING_TYPE, tier, 10, 10);
+      h.debug.select(id);
+
+      const actions = h.debug.panelButtons().map((b) => b.action);
+      if (tier === 1 && kind === "candidate") {
+        // Nothing above runs a frame, so the still is of the one drawn here.
+        await h.advance(1);
+        captureStill(h, "panel");
+      }
+      assertEqual(
+        actions.includes("targeting"),
+        false,
+        `whether a Regulator ${kind} at tier ${tier} offers a targeting slot; ` +
+          `it offers ${actions.join(", ")}`,
+      );
+      assertNull(
+        structureById(h.snapshot(), id).targeting,
+        `the targeting priority a Regulator ${kind} at tier ${tier} reports`,
+      );
+
+      h.debug.dismantle(id);
+    }
+  }
 });
