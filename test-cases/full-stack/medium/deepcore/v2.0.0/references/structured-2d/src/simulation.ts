@@ -107,6 +107,9 @@ export function stepGame(d: DeepcoreState, dt: number): void {
     // The world holds still behind an overlay; the Core timer above still ran.
     if (d.coreTimer !== null) d.loops.add(CUES.alarmCore);
     updateCamera(d, dt);
+    // specs/character.md: an empty hull is never a state the expedition
+    // continues from, and no open panel or overlay suspends the check.
+    if (d.miner.hull <= 0) triggerDeath(d, "hull-destroyed");
     return;
   }
 

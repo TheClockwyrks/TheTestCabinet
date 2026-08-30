@@ -570,6 +570,9 @@ export class Game {
       this.activeLoops.clear();
       if (this.coreTimer !== null) this.activeLoops.add("alarm-core");
       this.updateCamera(dt);
+      // specs/character.md: an empty hull is never a state the expedition
+      // continues from, and no open panel or overlay suspends the check.
+      if (this.miner.hull <= 0) triggerDeath(this, "hull-destroyed");
       return;
     }
 

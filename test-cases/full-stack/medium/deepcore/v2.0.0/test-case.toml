@@ -1965,6 +1965,18 @@ validation = { script = "hazards/hull-death.test.ts", outputs = [
   { id = "death", name = "The hull emptied by lava", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "hull-death-inside-a-panel"
+title = "A hull emptied with a panel open ends the expedition at once"
+description = "No open panel or overlay suspends the empty-hull check: a field supply used from the inventory that empties the hull ends the expedition with the cause hull-destroyed, and nothing done after that death puts the miner back in the mine."
+domains = ["simulation"]
+failure_cap = "broken"
+# Automated validation: with the inventory overlay open, set off a charge on a
+# gas pocket that empties a thin hull, then use nanobots and read the
+# expedition still ending at the Game Over screen with hull-destroyed.
+validation = { script = "hazards/hull-death-inside-a-panel.test.ts", outputs = [
+  { id = "death", name = "The death taken with the bag open", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "hull-never-mends"
 title = "Hull never mends on its own"
 description = "Hull is repaired only by paying for it at the Fuel Depot or by using Regenerative Nanobots, so a damaged miner standing anywhere for any length of time stays damaged."
