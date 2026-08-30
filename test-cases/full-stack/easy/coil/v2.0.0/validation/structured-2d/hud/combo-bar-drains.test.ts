@@ -4,13 +4,13 @@
  * The combo bar drains with the window.
  *
  * THE CLAIM THIS SUITE DECIDES:
- * The combo bar drawn at a full COMBO_WINDOW reaches measurably further than
- * the bar drawn at the same multiplier with the window nearly spent.
+ * More of the HUD band is painted at the same multiplier with a full
+ * COMBO_WINDOW than with the window nearly spent, so the bar drains as the
+ * window does.
  *
  * HOW:
  * render one frame at a raised multiplier with a full window and one with a
- * nearly spent window, and compare the extent of what was drawn in the combo
- * area.
+ * nearly spent window, and compare how much of the HUD band each painted.
  *
  * MEDIA IT MUST CAPTURE: full (image), spent (image).
  *

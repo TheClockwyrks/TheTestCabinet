@@ -4,12 +4,12 @@
  * Arriving at a menu screen highlights its first item.
  *
  * THE CLAIM THIS SUITE DECIDES:
- * menuIndex is 0 on arrival at each of the title, howto, paused, gameover and
- * cleared screens, whatever was highlighted on the screen left behind.
+ * Leaving a menu-bearing screen with the highlight moved off its first item
+ * and arriving at another sets menuIndex to 0.
  *
  * HOW:
- * move the highlight off the first item, leave for another menu-bearing
- * screen, and read the highlight on arrival.
+ * open the title, move the highlight off the first item, confirm into another
+ * menu-bearing screen, and read the highlight on arrival.
  *
  * MEDIA IT MUST CAPTURE: reset (image).
  *

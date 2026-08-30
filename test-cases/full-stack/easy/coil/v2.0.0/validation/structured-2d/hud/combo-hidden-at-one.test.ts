@@ -4,12 +4,12 @@
  * The combo readout is empty at one.
  *
  * THE CLAIM THIS SUITE DECIDES:
- * At an M of 1 the HUD draws no multiplier readout and no combo bar, so the
- * combo area is empty.
+ * At an M of 1 the HUD draws no multiplier readout: no text of the form x2
+ * through x5 appears anywhere in the frame.
  *
  * HOW:
  * pose M at 1 with a closed window, render a live frame, and confirm no
- * multiplier text and no bar were drawn in the combo area.
+ * multiplier text was drawn.
  *
  * MEDIA IT MUST CAPTURE: empty (image).
  *

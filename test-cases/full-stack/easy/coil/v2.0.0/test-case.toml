@@ -1303,12 +1303,12 @@ validation = { script = "states/no-tick-after-round-ends.test.ts", outputs = [
 [[review.categories.items]]
 id = "menu-index-resets"
 title = "Arriving at a menu screen highlights its first item"
-description = "menuIndex is 0 on arrival at each of the title, howto, paused, gameover and cleared screens, whatever was highlighted on the screen left behind."
+description = "Leaving a menu-bearing screen with the highlight moved off its first item and arriving at another sets menuIndex to 0."
 domains = ["gameplay"]
 failure_cap = "passable"
-# Automated validation: move the highlight off the first item, leave for another
-# menu-bearing screen, and read the highlight on arrival. See
-# validation/<engine>/states/menu-index-resets.test.ts.
+# Automated validation: open the title, move the highlight off the first item,
+# confirm into another menu-bearing screen, and read the highlight on arrival.
+# See validation/<engine>/states/menu-index-resets.test.ts.
 validation = { script = "states/menu-index-resets.test.ts", outputs = [
   { id = "reset", name = "A menu screen arrived at on its first item", kind = "image" },
 ] }
@@ -1413,11 +1413,11 @@ validation = { script = "hud/best-drawn.test.ts", outputs = [
 [[review.categories.items]]
 id = "combo-hidden-at-one"
 title = "The combo readout is empty at one"
-description = "At an M of 1 the HUD draws no multiplier readout and no combo bar, so the combo area is empty."
+description = "At an M of 1 the HUD draws no multiplier readout: no text of the form x2 through x5 appears anywhere in the frame."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: pose M at 1 with a closed window, render a live frame,
-# and confirm no multiplier text and no bar were drawn in the combo area. See
+# and confirm no multiplier text was drawn. See
 # validation/<engine>/hud/combo-hidden-at-one.test.ts.
 validation = { script = "hud/combo-hidden-at-one.test.ts", outputs = [
   { id = "empty", name = "The combo area at a multiplier of one", kind = "image" },
@@ -1437,12 +1437,12 @@ validation = { script = "hud/combo-shown-from-two.test.ts", outputs = [
 [[review.categories.items]]
 id = "combo-bar-drains"
 title = "The combo bar drains with the window"
-description = "The combo bar drawn at a full COMBO_WINDOW reaches measurably further than the bar drawn at the same multiplier with the window nearly spent."
+description = "More of the HUD band is painted at the same multiplier with a full COMBO_WINDOW than with the window nearly spent, so the bar drains as the window does."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: render one frame at a raised multiplier with a full
-# window and one with a nearly spent window, and compare the extent of what was
-# drawn in the combo area. See validation/<engine>/hud/combo-bar-drains.test.ts.
+# window and one with a nearly spent window, and compare how much of the HUD
+# band each painted. See validation/<engine>/hud/combo-bar-drains.test.ts.
 validation = { script = "hud/combo-bar-drains.test.ts", outputs = [
   { id = "full", name = "The combo bar at a full window", kind = "image" },
   { id = "spent", name = "The combo bar at a nearly spent window", kind = "image" },
@@ -1679,9 +1679,9 @@ validation = { script = "controls/menu-horizontal-inert.test.ts", outputs = [
 ] }
 
 # --- Visibility ---------------------------------------------------------------
-# The pieces on the board are told apart by color, read from the rendered
-# pixels against a stated RGB distance. The distance is the requirement; the
-# palette is the build's and is rated through the domains.
+# The pieces on the board are told apart by color, read from the rendered pixels
+# against a stated RGB distance. The distance is the requirement; the palette is
+# the build's and is rated through the domains.
 [[review.categories]]
 id = "visibility"
 title = "Visibility"
