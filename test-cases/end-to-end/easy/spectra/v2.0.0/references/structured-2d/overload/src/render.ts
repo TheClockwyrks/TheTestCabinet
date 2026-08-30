@@ -58,6 +58,7 @@ import { droneEffectiveBand, opposite, shimmering } from "./bands";
 import { droneFootprint } from "./drones";
 import {
   BAND,
+  BAND_LIGHT,
   BAND_LUMA,
   CENTER_X,
   COLOR,
@@ -466,9 +467,18 @@ export function drawDrone(
   }
 
   if (shimmer) {
-    // A shimmering Flux carries both accents at once, so it reads as settled on
-    // neither band.
+    // A shimmering Flux is settled on neither band, so it carries both at once:
+    // a core split between them, and both accents around it.
     layer(ctx, (target) => {
+      const split = size * 0.26;
+      target.beginPath();
+      target.arc(x, y, split, Math.PI / 2, (3 * Math.PI) / 2);
+      target.fillStyle = BAND.cyan;
+      target.fill();
+      target.beginPath();
+      target.arc(x, y, split, (3 * Math.PI) / 2, Math.PI / 2);
+      target.fillStyle = BAND.magenta;
+      target.fill();
       target.globalAlpha = 0.9;
       bandAccent(target, x, y, size * 0.62, "cyan");
       bandAccent(target, x, y, size * 0.5, "magenta");
@@ -515,12 +525,11 @@ export function drawShip(
 
   // The hull is the same in both bands; its core is the band, so the ship reads
   // its own tuning at a glance and agrees with the polarity indicator.
+  // The core is the band at its brightest rather than a neutral white, so the
+  // ship's own centre still says which band it is tuned to.
   const core = SHIP_H * 0.24;
   disc(ctx, x, y, core, BAND[band]);
-  layer(ctx, (target) => {
-    target.globalCompositeOperation = "lighter";
-    disc(target, x, y, core * 0.5, "rgba(234, 240, 251, 0.7)");
-  });
+  disc(ctx, x, y, core * 0.52, BAND_LIGHT[band]);
   layer(ctx, (target) => {
     bandAccent(target, x, y, SHIP_H * 0.56, band, 2.5);
   });

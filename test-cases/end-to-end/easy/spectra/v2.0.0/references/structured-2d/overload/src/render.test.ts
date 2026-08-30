@@ -502,3 +502,98 @@ describe("what the build hands the canvas", () => {
     }
   });
 });
+
+describe("what a player reads at one pixel", () => {
+  /**
+   * The same relationships as above, read at each entity's own centre rather than
+   * averaged over its footprint — the two ways a reader can sample a drawing, and
+   * both have to say the same thing.
+   */
+  interface Centres {
+    h: Harness;
+    field: Rgb;
+    shardCyan: Rgb;
+    shardMagenta: Rgb;
+    fluxHeld: Rgb;
+    fluxShimmer: Rgb;
+    prism: Rgb;
+    bulletCyan: Rgb;
+    bulletMagenta: Rgb;
+  }
+
+  async function centres(): Promise<Centres> {
+    const h = await createHarness();
+    startPosed(h.debug);
+    const put = (
+      kind: "shard" | "flux" | "prism",
+      x: number,
+      band: "cyan" | "magenta",
+      pose: (id: number) => void = () => {},
+    ): void => {
+      h.debug.addDrone(kind, x, 300);
+      const id = lastDroneId(h.debug);
+      h.debug.setDroneBand(id, band);
+      h.debug.setDroneTravel(id, false);
+      h.debug.setDroneOscillation(id, false);
+      pose(id);
+    };
+    put("shard", 200, "cyan");
+    put("shard", 300, "magenta");
+    put("flux", 400, "cyan");
+    put("flux", 500, "cyan", (id) =>
+      h.debug.setDroneBandClock(id, fluxHold(1) + 0.1),
+    );
+    put("prism", 640, "cyan");
+    h.debug.addPlayerBullet(900, 400, "cyan");
+    h.debug.addEnemyBullet(1000, 400, "magenta");
+    await h.advance(1);
+    const snap = h.debug.snapshot();
+    const mine = snap.bullets.find((bullet) => bullet.friendly);
+    const theirs = snap.bullets.find((bullet) => !bullet.friendly);
+    const at = (x: number, y: number): Rgb =>
+      h.pixel(Math.round(x), Math.round(y)) as Rgb;
+    return {
+      h,
+      field: at(200, 560),
+      shardCyan: at(200, 300),
+      shardMagenta: at(300, 300),
+      fluxHeld: at(400, 300),
+      fluxShimmer: at(500, 300),
+      prism: at(640, 300),
+      bulletCyan: at(mine?.x ?? 0, mine?.y ?? 0),
+      bulletMagenta: at(theirs?.x ?? 0, theirs?.y ?? 0),
+    };
+  }
+
+  it("says the same thing at a centre as over a footprint", async () => {
+    const p = await centres();
+    expect(apart(p.shardCyan, p.shardMagenta)).toBeGreaterThan(60);
+    expect(apart(p.shardCyan, p.field)).toBeGreaterThan(40);
+    expect(apart(p.shardMagenta, p.field)).toBeGreaterThan(40);
+    expect(apart(p.fluxHeld, p.fluxShimmer)).toBeGreaterThan(25);
+    expect(apart(p.shardCyan, p.fluxHeld)).toBeGreaterThan(40);
+    expect(apart(p.shardCyan, p.prism)).toBeGreaterThan(40);
+    expect(apart(p.fluxHeld, p.prism)).toBeGreaterThan(40);
+    expect(apart(p.bulletCyan, p.bulletMagenta)).toBeGreaterThan(60);
+    expect(apart(p.bulletCyan, p.shardCyan)).toBeLessThan(
+      apart(p.bulletCyan, p.shardMagenta),
+    );
+    p.h.dispose();
+  });
+
+  it("reads the ship's band at the ship's own centre", async () => {
+    const h = await createHarness();
+    startPosed(h.debug);
+    h.debug.addDrone("shard", 300, 300);
+    h.debug.setDroneTravel(lastDroneId(h.debug), false);
+    await h.advance(1);
+    const cyan = h.pixel(640, SHIP_Y) as Rgb;
+    const shard = h.pixel(300, 300) as Rgb;
+    h.debug.setShipBand("magenta");
+    await h.advance(1);
+    const magenta = h.pixel(640, SHIP_Y) as Rgb;
+    expect(apart(cyan, magenta)).toBeGreaterThan(40);
+    expect(apart(cyan, shard)).toBeGreaterThan(40);
+    h.dispose();
+  });
+});

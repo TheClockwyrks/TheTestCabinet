@@ -48,6 +48,16 @@ export const BAND_RGB: Readonly<
   magenta: [255, 78, 199],
 };
 
+/**
+ * Each band, lightened toward white. It is the same hue, so it belongs to the
+ * same palette: it is what a band's own light looks like at its brightest, in a
+ * core or a highlight, where a neutral white would lose the band.
+ */
+export const BAND_LIGHT: Readonly<Record<Band, string>> = {
+  cyan: "#a6f2ff",
+  magenta: "#ffa8dc",
+};
+
 /** The neutrals: the fighter's hull, its thruster gold, and the field. */
 export const COLOR = {
   /** The stage background, which the letterbox bars carry too. */
