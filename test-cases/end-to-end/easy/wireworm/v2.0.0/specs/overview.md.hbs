@@ -332,6 +332,14 @@ Every rate in this specification is per second and every duration is in seconds,
 integrated against the delta time the runtime hands each update. The one clocked
 quantity is the worm's tile step, which `specs/worm.md` states.
 
+## The screens the build has
+
+The build carries six screens, and the game is on exactly one of them at a time:
+`title`, `howto`, `playing`, `paused`, `victory`, and `gameover`. The `playing`
+screen runs in three sub-phases, `banner`, `active`, and `respawn`.
+`specs/ui.md` defines what each screen shows and where each one leads, and
+`specs/progression.md` defines the phases.
+
 ## What the board shows
 
 While the game is being played, the board carries every node standing on it at
