@@ -38,6 +38,9 @@ import { routesOf } from "./routes";
 import { newUnit } from "./surge";
 import type { MeltdownState } from "./game";
 
+/** The slack every countdown comparison carries; see `src/combat.ts`. */
+const EPS = 1e-9;
+
 /** The cues a frame's run transitions raised. */
 export interface RunEvents {
   waveClear: boolean;
@@ -185,7 +188,7 @@ export function stepRelease(state: MeltdownState, dt: number): MeltdownState {
   const scale = hpScaleOf(next.mode, next.wave);
   const routes = routesOf(next.towers);
   let guard = 0;
-  while (clock <= 0 && pending > 0 && guard < 512) {
+  while (clock <= EPS && pending > 0 && guard < 512) {
     guard += 1;
     const index = Math.max(0, size - pending);
     const type = unitTypeOf(next.mode, next.wave, waveCountFor(next), index);
@@ -214,16 +217,17 @@ export function stepRelease(state: MeltdownState, dt: number): MeltdownState {
 export function resolveWaveClear(
   state: MeltdownState,
   unitWent: boolean,
+  lostLives: boolean,
   events: RunEvents,
 ): MeltdownState {
-  if (state.screen !== "playing") return endIfDead(state, events);
+  if (state.screen !== "playing") return endIfDead(state, lostLives, events);
   if (
     state.phase !== "wave" ||
     !unitWent ||
     state.wavePending > 0 ||
     state.surge.length > 0
   ) {
-    return endIfDead(state, events);
+    return endIfDead(state, lostLives, events);
   }
   const wave = state.wave;
   const cleared: MeltdownState = {
@@ -243,9 +247,17 @@ export function resolveWaveClear(
   return enterBuildPhase({ ...cleared, wave: wave + 1 });
 }
 
-/** Lives reaching `0` ends the run at once, whatever the phase. */
-function endIfDead(state: MeltdownState, events: RunEvents): MeltdownState {
-  if (state.screen !== "playing" || state.lives > 0) return state;
+/**
+ * Lives reaching `0` ends the run at once, ON THE FRAME IT HAPPENS and whatever
+ * the phase. A run posed at `0` lives has not lost them on this frame, so a
+ * precondition never ends a run by itself: only a leak does.
+ */
+function endIfDead(
+  state: MeltdownState,
+  lostLives: boolean,
+  events: RunEvents,
+): MeltdownState {
+  if (!lostLives || state.screen !== "playing" || state.lives > 0) return state;
   events.gameOver = true;
   return toGameOver(state);
 }

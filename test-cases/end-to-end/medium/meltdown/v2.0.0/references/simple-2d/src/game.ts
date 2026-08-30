@@ -307,7 +307,7 @@ export const game: Game<MeltdownState, MeltdownDebugApi> = {
 
     const gameDt = pointed.screen === "playing" ? dt * pointed.speed : 0;
     const stepped =
-      gameDt > 0 || pointed.screen === "playing"
+      pointed.screen === "playing"
         ? stepSimulation(pointed, gameDt, events)
         : pointed;
 

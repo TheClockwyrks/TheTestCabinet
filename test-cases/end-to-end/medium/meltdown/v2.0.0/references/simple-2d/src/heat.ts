@@ -30,6 +30,9 @@ import { edgeTiles, occupancy, tileIndex, worldRadiators } from "./geometry";
 import { massOf, outputOf } from "./stats";
 import type { TowerState } from "./game";
 
+/** The slack every countdown comparison carries; see `src/combat.ts`. */
+const EPS = 1e-9;
+
 /** What the frame's edge classification found around one tower. */
 export interface Faces {
   /** Edge-tiles on a radiator face whose outside is air. */
@@ -163,7 +166,7 @@ export function resolveHeat(
 function bleed(tower: TowerState, dt: number): TowerState {
   if (!tower.thermalEnabled) return tower;
   const timer = tower.tripTimer - dt;
-  if (timer <= 0) {
+  if (timer <= EPS) {
     return { ...tower, tripped: false, tripTimer: 0, heat: 0 };
   }
   const heat = Math.max(0, tower.heat - (TRIP_HEAT / TRIP_TIME) * dt);

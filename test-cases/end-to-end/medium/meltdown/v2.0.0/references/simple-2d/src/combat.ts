@@ -25,6 +25,16 @@ import { remainingOf } from "./surge";
 import type { Routes } from "./routes";
 import type { TowerState, UnitState } from "./game";
 
+/**
+ * The slack every accumulator comparison carries. Every rate in this game is
+ * integrated by repeated addition of a frame's delta, so a run of frames that
+ * covers exactly one interval can land a hair under it in binary floating
+ * point. The slack is far smaller than any figure the specification fixes and
+ * far larger than the error a frame's addition introduces, so an interval that
+ * was meant to be covered is.
+ */
+const EPS = 1e-9;
+
 /** A unit being resolved during the frame. */
 interface Live {
   unit: UnitState;
@@ -105,7 +115,7 @@ export function resolveCombat(
     gun.targeting = target.unit.id;
     gun.fireClock += dt;
     const interval = 1 / stats.fireRate;
-    while (gun.fireClock >= interval) {
+    while (gun.fireClock >= interval - EPS) {
       if (target.dead) break;
       gun.fireClock -= interval;
       gun.shots += 1;

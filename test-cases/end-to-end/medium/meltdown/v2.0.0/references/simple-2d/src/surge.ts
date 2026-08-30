@@ -24,6 +24,9 @@ import { tileIndex } from "./geometry";
 import type { SurgeType, VentName } from "./constants";
 import type { UnitState } from "./game";
 
+/** The slack every countdown comparison carries; see `src/combat.ts`. */
+const EPS = 1e-9;
+
 /** The route length a unit still has to travel, in tiles. */
 export function remainingOf(
   unit: Pick<UnitState, "type" | "x" | "y" | "vent">,
@@ -103,7 +106,7 @@ export function stepSurge(
   let leaked = false;
   for (const unit of surge) {
     const slowTimer = unit.slowTimer > 0 ? unit.slowTimer - dt : 0;
-    const expired = slowTimer <= 0;
+    const expired = slowTimer <= EPS;
     const moved: UnitState = {
       ...unit,
       slowTimer: expired ? 0 : slowTimer,

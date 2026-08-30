@@ -837,6 +837,310 @@ describe("rendering", () => {
   });
 });
 
+// ---- Rates, composition, and the modes -----------------------------------
+
+describe("rates", () => {
+  it("fires each emitter at its own rate", async () => {
+    startRun();
+    const stutter = poseTower("stutter", 10, 10);
+    h.pose((d, s) => d.setTowerThermal(s, stutter, false));
+    poseTarget(12, 11);
+    await h.engine.advance(120);
+    const perShot = tower(stutter).damage;
+    expect(tower(stutter).damageDealt / perShot).toBeCloseTo(7, 6);
+
+    startRun();
+    const lance = poseTower("lance", 10, 10);
+    h.pose((d, s) => d.setTowerThermal(s, lance, false));
+    poseTarget(15, 12);
+    await h.engine.advance(600);
+    expect(tower(lance).damageDealt / tower(lance).damage).toBeCloseTo(4, 6);
+  });
+
+  it("holds the accumulator while a tower has no target", async () => {
+    startRun();
+    const id = poseTower("arc", 10, 10);
+    h.pose((d, s) => d.setTowerThermal(s, id, false));
+    await h.engine.advance(1200);
+    expect(tower(id).firing).toBe(false);
+    const target = poseTarget(12, 11);
+    await h.engine.advance(58);
+    expect(unit(target)?.hp).toBe(1e6);
+    await h.engine.advance(4);
+    expect(unit(target)?.hp).toBeLessThan(1e6);
+  });
+});
+
+describe("what a shot reaches", () => {
+  it("splashes a Bloom's damage and stops at its radius", async () => {
+    startRun();
+    // The Bloom sits below the row its three targets stand on, so nothing it
+    // fires at is inside its own footprint. The rightmost unit is furthest
+    // along its route, so it is the one the Bloom targets and the one the
+    // splash is centred on.
+    const bloom = poseTower("bloom", 14, 14);
+    h.pose((d, s) => d.setTowerThermal(s, bloom, false));
+    const target = poseTarget(18, 11);
+    const inside = poseTarget(16, 11);
+    h.pose((d, s) =>
+      d.setUnitPosition(s, inside, tileCX(18) - 2 * TILE, tileCY(11)),
+    );
+    const outside = poseTarget(16, 11);
+    h.pose((d, s) =>
+      d.setUnitPosition(s, outside, tileCX(18) - 2.4 * TILE - 1, tileCY(11)),
+    );
+    await h.engine.advance(120);
+    expect(tower(bloom).targeting).toBe(target);
+    expect(1e6 - (unit(target)?.hp ?? 0)).toBeGreaterThan(0);
+    expect(unit(inside)?.hp).toBe(unit(target)?.hp);
+    expect(unit(outside)?.hp).toBe(1e6);
+  });
+
+  it("targets the unit furthest along its route", async () => {
+    startRun();
+    const gun = poseTower("arc", 20, 16);
+    h.pose((d, s) => d.setTowerThermal(s, gun, false));
+    const behind = poseTarget(18, 17);
+    const ahead = poseTarget(24, 17);
+    await h.engine.advance(2);
+    expect(tower(gun).targeting).toBe(ahead);
+    await h.engine.advance(120);
+    expect(unit(behind)?.hp).toBe(1e6);
+    expect(unit(ahead)?.hp).toBeLessThan(1e6);
+  });
+});
+
+describe("the modes", () => {
+  it("runs The Hundred as one onslaught of six-times units", async () => {
+    h.pose((d, s) => d.reset(s));
+    h.pose((d, s) => d.setMode(s, "hundred"));
+    h.pose((d, s) => d.setScreen(s, "playing"));
+    h.pose((d, s) => d.setPhase(s, "opening"));
+    expect(h.snap().waveCount).toBe(1);
+    expect(h.snap().startMoney).toBe(600);
+    expect(h.snap().interest).toBe(false);
+    h.tap("Space");
+    await h.engine.advance(1);
+    expect(h.snap().phase).toBe("wave");
+    expect(h.snap().wavePending).toBe(99);
+    await h.engine.advance(4 * 72);
+    const types = h.snap().surge.map((u) => u.type);
+    expect(types.slice(0, 5)).toEqual([
+      "mote",
+      "sprint",
+      "swarm",
+      "drift",
+      "hulk",
+    ]);
+    expect(h.snap().surge[0].maxHp).toBe(40 * 6);
+  });
+
+  it("restricts building to Bottleneck's zone", () => {
+    startRun();
+    h.pose((d, s) => d.setMode(s, "bottleneck"));
+    h.pose((d, s) => d.setArmed(s, "arc"));
+    h.pose((d, s) => d.setPreview(s, 20, 20));
+    expect(h.snap().build?.valid).toBe(true);
+    h.pose((d, s) => d.setPreview(s, 36, 20));
+    // A 2x2 at column 36 puts column 37 outside the zone.
+    expect(h.snap().build?.valid).toBe(false);
+    h.pose((d, s) => d.setPreview(s, 2, 2));
+    expect(h.snap().build?.valid).toBe(false);
+  });
+
+  it("ends Sudden Death on a single leak", async () => {
+    h.pose((d, s) => d.reset(s));
+    h.pose((d, s) => d.setMode(s, "suddendeath"));
+    h.pose((d, s) => d.setScreen(s, "playing"));
+    h.pose((d, s) => d.setPhase(s, "wave"));
+    h.pose((d, s) => d.setWaveSpawning(s, false));
+    h.pose((d, s) => d.setLives(s, 1));
+    h.pose((d, s) => d.addUnit(s, "mote", "left"));
+    const id = h.snap().surge[0].id;
+    h.pose((d, s) => d.setUnitPosition(s, id, tileCX(47), tileCY(17)));
+    await h.engine.advance(240);
+    expect(h.snap().lives).toBe(0);
+    expect(h.snap().screen).toBe("gameover");
+    expect(h.cues.some((c) => c.cue === CUES.gameOver)).toBe(true);
+  });
+
+  it("wins on clearing the final wave and pays for the lives left", async () => {
+    startRun();
+    h.pose((d, s) => d.setWave(s, 20));
+    h.pose((d, s) => d.setPhase(s, "wave"));
+    h.pose((d, s) => d.setWavePending(s, 0));
+    h.pose((d, s) => d.setLives(s, 4));
+    h.pose((d, s) => d.setScore(s, 0));
+    const gun = poseTower("lance", 10, 10);
+    h.pose((d, s) => d.setTowerThermal(s, gun, false));
+    poseTarget(13, 11, 1);
+    await h.engine.advance(240);
+    const snap = h.snap();
+    expect(snap.screen).toBe("victory");
+    expect(snap.menuIndex).toBe(0);
+    // The Mote's bounty, the wave-clear score, and 250 for each life left.
+    expect(snap.score).toBe(3 + 100 * 20 + 250 * 4);
+    expect(h.cues.some((c) => c.cue === CUES.victory)).toBe(true);
+  });
+});
+
+describe("the release", () => {
+  it("fields one type per Containment wave", async () => {
+    startRun();
+    h.pose((d, s) => d.setWave(s, 3));
+    h.pose((d, s) => d.setWaveSpawning(s, true));
+    h.pose((d, s) => d.setPhase(s, "building"));
+    h.pose((d, s) => d.setBuildTimer(s, 0));
+    await h.engine.advance(5 * 72);
+    const types = new Set(h.snap().surge.map((u) => u.type));
+    expect([...types]).toEqual(["sprint"]);
+  });
+
+  it("draws each unit's vent from the seed", async () => {
+    const vents = async (seed: number): Promise<string[]> => {
+      h.pose((d, s) => d.reset(s, { seed }));
+      h.pose((d, s) => d.setScreen(s, "playing"));
+      h.pose((d, s) => d.setPhase(s, "wave"));
+      h.pose((d, s) => d.setWavePending(s, 12));
+      await h.engine.advance(12 * 72);
+      return h.snap().surge.map((u) => u.vent);
+    };
+    const first = await vents(7);
+    const again = await vents(7);
+    const other = await vents(8);
+    expect(first).toHaveLength(12);
+    expect(first).toEqual(again);
+    expect(first).not.toEqual(other);
+    expect(new Set(first).size).toBe(2);
+  });
+});
+
+// ---- The clock -----------------------------------------------------------
+
+describe("the clock", () => {
+  it("reaches the same state however a second is divided into frames", async () => {
+    const walk = async (frames: number, stepMs: number): Promise<number[]> => {
+      h.pose((d, s) => d.reset(s));
+      h.pose((d, s) => d.setScreen(s, "playing"));
+      h.pose((d, s) => d.setPhase(s, "wave"));
+      h.pose((d, s) => d.setWaveSpawning(s, false));
+      h.pose((d, s) => d.addUnit(s, "mote", "left"));
+      const id = h.snap().surge[0].id;
+      h.pose((d, s) => d.setUnitPosition(s, id, tileCX(10), tileCY(17)));
+      h.engine.setClock(new ConstantClock(stepMs));
+      await h.engine.advance(frames);
+      const snap = h.snap();
+      return [snap.surge[0].x, snap.simTime];
+    };
+    const coarse = await walk(1, 1000);
+    const fine = await walk(120, 1000 / 120);
+    expect(coarse[0]).toBeCloseTo(fine[0], 6);
+    expect(coarse[1]).toBeCloseTo(1, 6);
+    expect(fine[1]).toBeCloseTo(1, 6);
+  });
+
+  it("advances twice the game time at speed 2", async () => {
+    startRun();
+    h.pose((d, s) => d.setSpeed(s, 2));
+    h.pose((d, s) => d.addUnit(s, "mote", "left"));
+    const id = h.snap().surge[0].id;
+    h.pose((d, s) => d.setUnitPosition(s, id, tileCX(10), tileCY(17)));
+    const before = h.snap();
+    await h.engine.advance(120);
+    const after = h.snap();
+    expect(after.simTime - before.simTime).toBeCloseTo(2, 6);
+    expect(after.surge[0].x - before.surge[0].x).toBeCloseTo(120, 4);
+  });
+});
+
+// ---- Isolation -----------------------------------------------------------
+
+describe("the faculty gates", () => {
+  it("holds a unit still while its route still follows the floor", async () => {
+    startRun();
+    h.pose((d, s) => d.addUnit(s, "mote", "left"));
+    const id = h.snap().surge[0].id;
+    h.pose((d, s) => d.setUnitPosition(s, id, tileCX(10), tileCY(17)));
+    h.pose((d, s) => d.setUnitMotion(s, id, false));
+    await h.engine.advance(120);
+    expect(h.snap().surge[0].x).toBeCloseTo(tileCX(10), 9);
+    const before = h.snap().surge[0].remaining;
+    // A wall across the corridor lengthens the route from where it stands.
+    for (let row = 8; row < 28; row += 2) {
+      h.pose((d, s) => d.addTower(s, "arc", 20, row, 0));
+    }
+    const after = h.snap().surge[0];
+    expect(after.remaining).toBeGreaterThan(before);
+    expect(after.x).toBeCloseTo(tileCX(10), 9);
+  });
+
+  it("holds a tower's guns while its thermal model runs", async () => {
+    startRun();
+    const id = poseTower("arc", 10, 10);
+    h.pose((d, s) => d.setTowerFiring(s, id, false));
+    h.pose((d, s) => d.setTowerHeat(s, id, 60));
+    const target = poseTarget(12, 11);
+    await h.engine.advance(120);
+    expect(tower(id).firing).toBe(false);
+    expect(tower(id).targeting).toBeNull();
+    expect(tower(id).damageDealt).toBe(0);
+    expect(unit(target)?.hp).toBe(1e6);
+    expect(tower(id).heat).toBeLessThan(60);
+  });
+
+  it("holds the run's own release of surge", async () => {
+    startRun();
+    h.pose((d, s) => d.setPhase(s, "wave"));
+    h.pose((d, s) => d.setWavePending(s, 30));
+    await h.engine.advance(120 * 60);
+    expect(h.snap().surge).toEqual([]);
+    expect(h.snap().wavePending).toBe(30);
+  });
+});
+
+// ---- Freshness and the precedence rule -----------------------------------
+
+describe("freshness", () => {
+  it("ends with the build phase it was placed in", async () => {
+    startRun();
+    h.pose((d, s) => d.setWaveSpawning(s, true));
+    h.pose((d, s) => d.setBuildTimer(s, 0.5));
+    h.pose((d, s) => d.setArmed(s, "arc"));
+    h.pose((d, s) => d.setPreview(s, 10, 10));
+    h.pose((d, s) => d.place(s));
+    const id = h.snap().towers[0].id;
+    expect(tower(id).fresh).toBe(true);
+    await h.engine.advance(120);
+    expect(h.snap().phase).toBe("wave");
+    expect(tower(id).fresh).toBe(false);
+    // An upgrade does not restore it.
+    h.pose((d, s) => d.upgradeTower(s, id));
+    expect(tower(id).fresh).toBe(false);
+    expect(tower(id).refund).toBe(Math.floor(0.7 * 30));
+  });
+});
+
+describe("back", () => {
+  it("cancels, then deselects, then pauses", async () => {
+    startRun();
+    const id = poseTower("arc", 10, 10);
+    h.pose((d, s) => d.setSelected(s, id));
+    h.pose((d, s) => d.setArmed(s, "arc"));
+    h.tap("Escape");
+    await h.engine.advance(1);
+    expect(h.snap().build).toBeNull();
+    expect(h.snap().selected).toBe(id);
+    expect(h.snap().screen).toBe("playing");
+    h.tap("Escape");
+    await h.engine.advance(1);
+    expect(h.snap().selected).toBeNull();
+    expect(h.snap().screen).toBe("playing");
+    h.tap("Escape");
+    await h.engine.advance(1);
+    expect(h.snap().screen).toBe("paused");
+  });
+});
+
 function distance(
   a: readonly [number, number, number],
   b: readonly [number, number, number],

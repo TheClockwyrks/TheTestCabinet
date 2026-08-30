@@ -87,5 +87,10 @@ export function stepSimulation(
     score: combat.score,
   };
 
-  return resolveWaveClear(settled, moved.leaked || combat.died, events);
+  return resolveWaveClear(
+    settled,
+    moved.leaked || combat.died,
+    moved.livesLost > 0,
+    events,
+  );
 }

@@ -569,7 +569,7 @@ function drawShop(state: MeltdownState, ctx: Ctx): void {
 /** What the tower panel reads for a type's targeting (specs/hud.md). */
 function targetingRead(type: TowerType): string {
   if (TOWER_DEFS[type].kind === "mover") return "NEVER FIRES";
-  return type === "flak" ? "AIR ONLY" : "GROUND + AIR";
+  return type === "flak" ? "TARGETS AIR ONLY" : "TARGETS GROUND + AIR";
 }
 
 /** The damage-or-effect line, which is a slow read on a Rime. */
@@ -603,7 +603,7 @@ function infoLines(tower: {
     stats ? `RANGE ${stats.range.toFixed(1)}` : "RANGE —",
     effectRead(tower),
     stats ? `RATE ${stats.fireRate.toFixed(2)}/s` : "RATE —",
-    `TARGETS ${targetingRead(tower.type)}`,
+    targetingRead(tower.type),
     `MASS ${def.kind === "emitter" ? def.mass.toFixed(1) : "—"}`,
     `RADIATORS ${faces.length > 0 ? faces.join(" ") : "NONE"}`,
   ];
