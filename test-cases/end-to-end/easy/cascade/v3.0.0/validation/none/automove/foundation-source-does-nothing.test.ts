@@ -1,23 +1,69 @@
-// SCAFFOLD PLACEHOLDER — validation/none/automove/foundation-source-does-nothing.test.ts
+// automove/foundation-source-does-nothing — an auto-move named on a foundation
+// sends nothing, because the card is already home.
 //
-// The review item `automove.foundation-source-does-nothing` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// `specs/instrumentation.md`: "The playable card is the waste's top card, or a
+// column's lowest face-up card. A pile that holds no playable card sends
+// nothing, which covers ... a foundation ... It returns ... `false` when nothing
+// moved." `specs/controls.md` fixes the same list for the gesture: "A playable
+// card is the waste's top card or a column's lowest face-up card."
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
-//
-// What this item must decide, from the manifest:
-//
-//   An auto-move from a foundation does nothing
-//
-//   The card is already home, so the call returns false.
+// THE POSE IS THE ONE THAT SEPARATES THE TWO MODELS. The foundation named holds
+// the Ace of spades and nothing else, and the other three foundations are empty.
+// A build that treats a foundation's top card as playable finds a legal
+// destination for that Ace — `specs/foundations.md` lets an Ace start any empty
+// foundation — and shuffles it to another slot. A build that reads the list
+// above leaves all four foundations exactly as they were.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openTable,
+  pileOf,
+  poseFoundation,
+  whereIs,
+  type Harness,
+} from "../harness";
+import { FOUNDATION_COUNT } from "../constants";
 
-it("automove.foundation-source-does-nothing — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/automove/foundation-source-does-nothing.test.ts is a scaffold stub, not a validator",
+/** The foundation the call names, holding the Ace of spades alone. */
+const FOUNDATION = 0;
+
+/** One frame, so the canvas carries the board the assertions read. */
+const SETTLE_FRAMES = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("sends nothing from a foundation, whose card is already home", async () => {
+  await openTable(h);
+  const [aceId] = await poseFoundation(h, FOUNDATION, "spades", 1);
+
+  const went = await h.debug.autoMove("foundation", FOUNDATION);
+  await h.advance(SETTLE_FRAMES);
+  await captureStill(h, "unchanged");
+
+  assertEqual(went, false, "the verdict autoMove returned");
+
+  const after = await h.snapshot();
+  assertDeepEqual(
+    whereIs(after, aceId),
+    { pile: "foundation", index: FOUNDATION, row: 0 },
+    "where the Ace still sits",
   );
+  for (let i = 0; i < FOUNDATION_COUNT; i += 1) {
+    assertLength(
+      pileOf(after, "foundation", i),
+      i === FOUNDATION ? 1 : 0,
+      `the cards on foundation ${i} after the call`,
+    );
+  }
 });
