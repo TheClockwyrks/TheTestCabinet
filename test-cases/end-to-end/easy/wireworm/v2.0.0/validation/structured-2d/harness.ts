@@ -1314,6 +1314,26 @@ export function resetTo(h: Harness, seed?: number): void {
 }
 
 /**
+ * A NEW RUN, opened the way a player opens one.
+ *
+ * `reset(seed)` for the title screen and a seeded generator, then `confirm` on
+ * the title's highlighted first item, `DESCEND`, which is what opens a run
+ * (specs/ui.md) — and a run opens with the fresh scatter specs/nodes.md lays
+ * (specs/progression.md, Starting a run). No pose on the surface starts a run,
+ * and there is not meant to be one: the field is laid by the path the menu
+ * takes, and that path is what a check about the starting field is about.
+ *
+ * One frame runs, the frame that delivers the key's edge. A run opens on its
+ * `banner` phase, so the level's worm has not entered and level 1 spawns no
+ * foe, and what stands on the board when this returns is the starting field
+ * alone.
+ */
+export async function startRun(h: Harness, seed?: number): Promise<void> {
+  resetTo(h, seed);
+  await tapAction(h, "confirm");
+}
+
+/**
  * Live play on an EMPTY, QUIET board at level 1, with the cursor centred in its
  * band and able to fire.
  *
