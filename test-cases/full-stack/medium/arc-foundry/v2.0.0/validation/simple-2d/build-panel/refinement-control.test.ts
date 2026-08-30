@@ -1,27 +1,107 @@
-// Arc Foundry — `build-panel.refinement-control`. CASE-PROVIDED. NOT YET WRITTEN.
+// build-panel/refinement-control — the level, the next cost, and when it is refused.
 //
-// The manifest declares this point at `build-panel/refinement-control.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/hud.md` gives the panel's refinement control as "the current level `R`,
+// and the Charge cost of the next level", "disabled at `R8` and when the next
+// level is unaffordable". `specs/scrap-press.md` holds those costs in
+// `REFINEMENT_COSTS`, caps the track at `REFINEMENT_MAX`, and refuses a refine
+// "at `R8` and when the player cannot afford the next level".
 //
-// THE REQUIREMENT. The panel draws the current refinement level and the Charge
-// cost of the next level, and the control reports disabled at R8 and when the
-// next level is unaffordable.
-//
-// HOW IT IS DECIDED. Read the control and its disabled flag at an affordable
-// level, an unaffordable one and at R8. The evidence it hands back is
-// `control` (image): the refinement control.
+// HOW THE REFUSAL IS READ. No reading reports this control. `panelButtons` covers
+// "the build panel inspector's action controls for the selected structure", and
+// the refinement control is the panel's own, above the inspector, so it is in
+// neither that reading nor `statusControls`. What a disabled control means is
+// decided instead from what it does: `upgradeQuality` "buys the next refinement
+// level for Charge, as the panel's refinement control does", and
+// `specs/instrumentation.md` makes it one of the operations that "commits through
+// that same control, so it is refused wherever the control is refused and does
+// nothing when it is" — with the refusal readable in the snapshot, where "no
+// Charge leaves the bank". Each refusal is read against a commit that DOES go
+// through, so a build whose refinement never works fails here rather than passing
+// two refusals over.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertContains, assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  refinementCost,
+  type Harness,
+} from "../harness";
+import { REFINEMENT_MAX } from "../../src/constants";
+import { PANEL, figures } from "./reading";
 
-import { fail } from "../assert";
+/** A level whose own figure collides with none of the odds it puts on the panel. */
+const LEVEL = 3;
+const NEXT_COST = refinementCost(LEVEL + 1);
+/** More Charge than the whole track costs, so only the top rung can refuse. */
+const PLENTY = 9_000;
 
-describe("build-panel.refinement-control", () => {
-  it("The refinement control shows the level and the next cost", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `build-panel.refinement-control` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("shows the level and the next cost, and refuses at R8 and unaffordable", async () => {
+  openYard(h, { refinement: LEVEL, charge: NEXT_COST });
+
+  const drawn = figures(await h.frameCalls(), PANEL);
+  captureStill(h, "control");
+  assertContains(drawn, LEVEL, `the panel's figures at refinement R${LEVEL}`);
+  assertContains(
+    drawn,
+    NEXT_COST,
+    `the panel's figures at refinement R${LEVEL}`,
+  );
+
+  // Exactly the price: the control commits, and takes exactly that much.
+  h.debug.upgradeQuality();
+  const bought = h.snapshot();
+  assertEqual(
+    bought.refinement,
+    LEVEL + 1,
+    `the refinement level after buying R${LEVEL + 1} with exactly its cost`,
+  );
+  assertEqual(
+    bought.charge,
+    0,
+    `the Charge left after buying R${LEVEL + 1} for ${NEXT_COST}`,
+  );
+
+  // One Charge short: refused, and nothing leaves the bank.
+  h.debug.setRefinement(LEVEL);
+  h.debug.setCharge(NEXT_COST - 1);
+  h.debug.upgradeQuality();
+  const short = h.snapshot();
+  assertEqual(
+    short.refinement,
+    LEVEL,
+    `the refinement level after a refine one Charge short of ${NEXT_COST}`,
+  );
+  assertEqual(
+    short.charge,
+    NEXT_COST - 1,
+    "the Charge left after a refine that could not be afforded",
+  );
+
+  // The top rung: refused with Charge to spare.
+  h.debug.setRefinement(REFINEMENT_MAX);
+  h.debug.setCharge(PLENTY);
+  h.debug.upgradeQuality();
+  const capped = h.snapshot();
+  assertEqual(
+    capped.refinement,
+    REFINEMENT_MAX,
+    `the refinement level after a refine at R${REFINEMENT_MAX}`,
+  );
+  assertEqual(
+    capped.charge,
+    PLENTY,
+    `the Charge left after a refine at R${REFINEMENT_MAX}`,
+  );
 });
