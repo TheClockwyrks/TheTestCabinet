@@ -1,27 +1,83 @@
-// Arc Foundry — `abilities.burn-strongest-wins`. CASE-PROVIDED. NOT YET WRITTEN.
+// abilities/burn-strongest-wins — a weaker burn cannot slow the burn down.
 //
-// The manifest declares this point at `abilities/burn-strongest-wins.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/enemies.md fixes the arithmetic: "Applying a burn of `dps` at time `now`
+// for `dur` seconds sets `burnDps = max(burnDps, dps)`", and says what it means:
+// "Burns do not stack: the target keeps the strongest `burnDps` and a fresh hit
+// refreshes the duration."
 //
-// THE REQUIREMENT. Applying a burn of a lower damage-per-second while a
-// stronger one is running leaves burnDps at the stronger value, because an
-// applied burn sets burnDps to max(burnDps, dps).
-//
-// HOW IT IS DECIDED. Apply a strong burn, then a weak one, and read burnDps
-// and the health lost. The evidence it hands back is `stack` (replay): the
-// unit keeping the stronger burn.
+// This is the edge case the rule already implies, and it is its own point because
+// a build that simply assigns the newest rate lets a cheap Rectifier smother a
+// Rupture Node's burn. The burns are applied through the surface's own
+// `setUnitBurn`, which specs/instrumentation.md defines as applying "through the
+// rule specs/enemies.md fixes", so the unit is the only thing on the yard and no
+// structure, shot or cadence stands between the check and the rule. Both the
+// reported rate and the health that actually leaves the unit are read, so a build
+// that reports the strong figure and burns at the weak one fails.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertCloseTo } from "../assert";
+import { tileCenter } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  parkUnit,
+  unitById,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** The stronger burn, applied first, and the weaker one applied over it. */
+const STRONG = { dps: 20, seconds: 4 };
+const WEAK = { dps: 5, seconds: 4 };
 
-describe("abilities.burn-strongest-wins", () => {
-  it("A weaker burn does not lower the burn rate", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `abilities.burn-strongest-wins` has not been written yet",
-    );
+/** The window the health is watched over, inside both durations. */
+const WINDOW = 1;
+
+/** What one update of integration can leave either side of the figure. */
+const SLACK = STRONG.dps * 0.05;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("keeps the stronger rate when a weaker burn lands on top of it", async () => {
+  await openYard(h, { wave: 1 });
+  const unit = await parkUnit(h, "dynamo", tileCenter(20, 20), {
+    burn: STRONG,
   });
+
+  const held = await captureReplay(h, "stack", async () => {
+    const strong = unitById(await h.snapshot(), unit);
+    await h.debug.setUnitBurn(unit, WEAK.dps, WEAK.seconds);
+    const opened = unitById(await h.snapshot(), unit);
+    await h.advanceSeconds(WINDOW);
+    return { strong, opened, closed: unitById(await h.snapshot(), unit) };
+  });
+
+  assertCloseTo(
+    held.strong.burnDps,
+    STRONG.dps,
+    6,
+    `burnDps after a burn of ${STRONG.dps} a second (specs/enemies.md)`,
+  );
+  assertCloseTo(
+    held.opened.burnDps,
+    STRONG.dps,
+    6,
+    `burnDps after a burn of ${WEAK.dps} landed on a burn of ${STRONG.dps}: ` +
+      `max(burnDps, dps) keeps the stronger (specs/enemies.md)`,
+  );
+  assertBetween(
+    held.opened.hp - held.closed.hp,
+    STRONG.dps * WINDOW - SLACK,
+    STRONG.dps * WINDOW + SLACK,
+    `the health that left the unit over ${WINDOW}s: the stronger rate rather ` +
+      `than the ${WEAK.dps} of the burn applied last`,
+  );
 });
