@@ -87,7 +87,10 @@ export interface Harness {
   readonly debug: DeepcoreDebugApi;
   readonly ctx: SKRSContext2D;
   readonly cues: CuePlay[];
+  /** Every `cue:looped` the engine emitted, in order. */
   readonly loops: string[];
+  /** Every `cue:stopped` the engine emitted, in order. */
+  readonly stops: string[];
   /** Advance a counted number of frames. */
   advance(frames: number): Promise<void>;
   /** Advance far enough to cover `seconds` of game time. */
@@ -169,8 +172,10 @@ export async function createHarness(): Promise<Harness> {
 
   const cues: CuePlay[] = [];
   const loops: string[] = [];
+  const stops: string[] = [];
   engine.events.on("cue:played", ({ cue, gain }) => cues.push({ cue, gain }));
   engine.events.on("cue:looped", ({ cue }) => loops.push(cue));
+  engine.events.on("cue:stopped", ({ cue }) => stops.push(cue));
 
   await engine.initialize();
 
@@ -185,6 +190,7 @@ export async function createHarness(): Promise<Harness> {
     ctx,
     cues,
     loops,
+    stops,
     advance: (frames) => engine.advance(frames),
     seconds: (span) => engine.advance(Math.round((span * 1000) / FRAME_MS)),
     hold: (action) => {

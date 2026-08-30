@@ -223,6 +223,39 @@ describe("rendering", () => {
     expect(bar).not.toEqual(mine);
   });
 
+  it("draws the status bar as chrome the camera does not move", async () => {
+    h.debug.clearMine();
+    h.debug.setScreen("in-mine");
+    h.debug.setMinerTravel(false);
+    // The three buttons at the bar's right end: a region with a frame, a
+    // stroke, and a label on it, and nothing in it that reads off the miner.
+    const strip = (): Buffer => {
+      const { data } = h.ctx.getImageData(1040, 0, 240, HUD_H);
+      return Buffer.from(data);
+    };
+    const colors = (bytes: Buffer): number => {
+      const seen = new Set<number>();
+      for (let i = 0; i < bytes.length; i += 4) {
+        seen.add((bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2]);
+      }
+      return seen.size;
+    };
+
+    // Two points at the same depth, so every readout on the bar reads the same
+    // and only the camera has moved.
+    h.debug.setMinerPosition(6 * TILE, 300 * TILE);
+    await h.advance(1);
+    const near = strip();
+    // The bar is drawn there rather than the mine showing through: a carved
+    // tunnel is one flat fill, and the buttons are not.
+    expect(colors(near)).toBeGreaterThan(6);
+
+    h.debug.setMinerPosition(24 * TILE, 300 * TILE);
+    await h.advance(1);
+    expect(h.debug.snapshot().camera.x).toBeGreaterThan(0);
+    expect(strip()).toEqual(near);
+  });
+
   it("draws the miner over the rock it is standing in", async () => {
     h.debug.clearMine();
     h.debug.setScreen("in-mine");

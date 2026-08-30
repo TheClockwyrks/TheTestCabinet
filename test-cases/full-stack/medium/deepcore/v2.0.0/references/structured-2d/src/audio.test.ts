@@ -57,18 +57,36 @@ describe("what a frame sounds", () => {
     h.hold("down");
     await h.advance(6);
     expect(h.loops).toContain(CUES.drill);
+    expect(h.engine.world.audio.looping(CUES.drill)).toBe(true);
     h.release("down");
     await h.advance(4);
+    // Started once, and off the bus again the frame the cut ended.
     expect(h.loops.filter((cue) => cue === CUES.drill)).toHaveLength(1);
+    expect(h.stops).toContain(CUES.drill);
+    expect(h.engine.world.audio.looping(CUES.drill)).toBe(false);
   });
 
-  it("loops the jetpack while thrust is held", async () => {
+  it("loops the jetpack while thrust is held and stops it on release", async () => {
     placeAt(h, 5 * TILE, 200 * TILE);
     h.debug.setFuel(50);
     h.hold("up");
     await h.advance(4);
-    h.release("up");
     expect(h.loops).toContain(CUES.thrust);
+    expect(h.engine.world.audio.looping(CUES.thrust)).toBe(true);
+    h.release("up");
+    await h.advance(4);
+    expect(h.engine.world.audio.looping(CUES.thrust)).toBe(false);
+  });
+
+  it("stops the low-fuel alarm once the tank is filled again", async () => {
+    placeAt(h, 5 * TILE, 200 * TILE);
+    h.debug.setMinerTravel(false);
+    h.debug.setFuel(5);
+    await h.advance(4);
+    expect(h.engine.world.audio.looping(CUES.alarmFuel)).toBe(true);
+    h.debug.setFuel(100);
+    await h.advance(4);
+    expect(h.engine.world.audio.looping(CUES.alarmFuel)).toBe(false);
   });
 
   it("plays the pickup once as an ore cell breaks", async () => {

@@ -10,7 +10,7 @@ import { createCanvas } from "@napi-rs/canvas";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import { STAGE_H, STAGE_W } from "./constants";
+import { MINER_H, MINER_W, STAGE_H, STAGE_W, TILE } from "./constants";
 import {
   advanceEffects,
   clearEffects,
@@ -21,6 +21,7 @@ import {
   spawnEffects,
 } from "./effects";
 import type { FxKind } from "./effects";
+import { createHarness, installStorage } from "./test-support";
 
 /** The produced systems, read from the committed files. */
 function produced(): Partial<Record<FxKind, ParticleSystem>> {
@@ -85,5 +86,40 @@ describe("the pool", () => {
     expect(liveEffectCount()).toBe(1);
     for (let i = 0; i < 60 * 20; i += 1) advanceEffects(1 / 60);
     expect(liveEffectCount()).toBe(0);
+  });
+});
+
+describe("through the engine", () => {
+  it("spawns and steps a burst as the game raises one", async () => {
+    installStorage();
+    const h = await createHarness();
+    try {
+      h.debug.reset();
+      h.debug.clearMine();
+      h.debug.setScreen("in-mine");
+      // The loader has no page to fetch from in Node, so the produced systems
+      // are installed here; everything else is the game's own wiring.
+      installSystems(produced());
+      h.debug.setTile(5, 200, "rock");
+      h.debug.setTile(5, 201, "rock");
+      h.debug.setMinerPosition(
+        5 * TILE + (TILE - MINER_W) / 2,
+        200 * TILE - MINER_H,
+      );
+      h.debug.setMinerVelocity(0, 0);
+      h.debug.setFuel(100);
+      expect(liveEffectCount()).toBe(0);
+      h.hold("down");
+      await h.seconds(1);
+      h.release("down");
+      // The drill's debris burst is live, and the frames that followed stepped
+      // it rather than leaving it at zero age.
+      expect(liveEffectCount()).toBeGreaterThan(0);
+      const before = liveEffectCount();
+      await h.seconds(8);
+      expect(liveEffectCount()).toBeLessThan(before);
+    } finally {
+      h.dispose();
+    }
   });
 });
