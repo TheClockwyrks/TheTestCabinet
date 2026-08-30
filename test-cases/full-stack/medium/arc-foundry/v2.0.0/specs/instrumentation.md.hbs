@@ -8,6 +8,17 @@ You implement it. Every operation this file specifies is a deliverable, and the 
 installs the finished surface on `window.__foundry` as soon as the game has initialized.
 Every scenario driven from code reaches the game through it, so it is present and exactly
 as specified here.
+
+Each operation is a reading or a pose. A pose sets one thing and leaves the rest of the
+game as it stands, so a caller that wants several things arranged makes several calls, in
+the order it wants them, and nothing it does not ask for happens. A pose arranges the
+yard through the same systems play uses: a placed rock rolls through the real press, a
+harvested candidate becomes a component through the real harvest, a combine resolves
+through the real combine, and a released unit walks the real pathfinder. A pose
+establishes a precondition and never an outcome; what happens next comes from advancing
+the real simulation.
+
+The surface is inert during normal play, doing nothing until something calls it.
 {{else if (eq engine.slug "simple-2d")}}
 Arc Foundry carries a debugging and automation surface so the yard can be posed and read
 from code without moving a real pointer or waiting on real time.
@@ -18,6 +29,20 @@ You implement it. Every operation this file specifies is a deliverable, and the 
 reached that way alone: nothing is installed on the page. Every scenario driven from code
 reaches the game through it, so it is present and exactly as specified here.
 `src/game.ts` declares and exports its type, `FoundryDebugApi`.
+
+Each operation is a reading or a pose of `FoundryState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a writable one. A
+pose takes the current state, as `DeepReadonly<FoundryState>`, and returns the next
+`FoundryState`; a reading takes the state the same way and returns what it read. A pose
+sets one thing and leaves the rest of the game as it stands, so a caller that wants
+several things arranged makes several calls, in the order it wants them, and nothing it
+does not ask for happens. A pose arranges the yard through the same systems play uses: a
+placed rock rolls through the real press, a harvested candidate becomes a component
+through the real harvest, a combine resolves through the real combine, and a released
+unit walks the real pathfinder. A pose establishes a precondition and never an outcome;
+what happens next comes from advancing the real simulation.
+
+The surface is inert during normal play, doing nothing until something calls it.
 {{else}}
 Arc Foundry carries a debugging and automation surface so the yard can be posed and read
 from code without moving a real pointer or waiting on real time.
@@ -27,30 +52,36 @@ instance's `initialize` returns the finished surface. The engine holds it and re
 from `engine.debug`, and it is reached that way alone: nothing is installed on the page.
 Every scenario driven from code reaches the game through it, so it is present and exactly
 as specified here. `src/game.ts` declares and exports its type, `FoundryDebugApi`.
-{{/if}}
 
-Each operation is a reading or a pose. A pose arranges the yard through the same systems
+Each operation is a reading or a pose acting on the live world at the moment of the call.
+A pose sets one thing and leaves the rest of the game as it stands, so a caller that
+wants several things arranged makes several calls, in the order it wants them, and
+nothing it does not ask for happens. A pose arranges the yard through the same systems
 play uses: a placed rock rolls through the real press, a harvested candidate becomes a
 component through the real harvest, a combine resolves through the real combine, and a
 released unit walks the real pathfinder. A pose establishes a precondition and never an
-outcome; what happens next comes from advancing the real simulation.
+outcome; what happens next comes from advancing the real simulation. Arc Foundry runs in
+one world for the whole session and every screen is a value of the screen field, so a
+pose that changes the screen takes effect at the call rather than riding a level
+transition.
 
 The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
 
 ## A deterministic core
 
-The surface rests on the simulation being deterministic: every rate integrated against
-the delta time the game is given, so an interval of simulation time reaches the same
-state however it was divided into frames. Two further properties make it driveable from
-code:
+The surface rests on the simulation being deterministic. Three properties make it so.
 
-- Render-free core. The game advances from the elapsed time it is handed, independent of
-  a canvas, of the frame loop that measured it, and of wall-clock time. Movement,
-  pathfinding, firing, projectile travel, the status effects, and the economy all advance
-  in that update. The dependency runs one way: the simulation reads nothing from the
-  renderer.
-- Seeded randomness. Every random draw runs off a generator seeded by `reset`, and the
-  game keeps its whole generator state where `reset` can restore it. The press's type and
+- Decoupled from rendering. The simulation advances from the elapsed time it is handed
+  and from nothing else, so an interval of simulation time reaches the same state however
+  it was divided into frames and whatever frame rate produced it. Every rate this
+  specification states is per second and is integrated against that elapsed time.
+- Render-free core. Movement, pathfinding, firing, projectile travel, the status effects,
+  and the economy all advance without a canvas, without the frame loop that measured the
+  elapsed time, and without the wall clock. The dependency runs one way: the simulation
+  reads nothing from the renderer.
+- Seeded randomness. Every random draw runs off a generator `reset` seeds, and the game
+  keeps that generator's whole state where `reset` can restore it. The press's type and
   quality rolls, each wave's composition and spawn order, and every crit roll all come
   off it.
 
@@ -83,12 +114,42 @@ player's.
 
 What the overlay shows is Arc Foundry's, under Diagnostics below.
 
+## The driver
+
+The hold the surface takes on the game is deliberately narrow: it is a hold on the
+spawner, and on nothing else. Structures keep firing, projectiles keep travelling, status
+effects keep running down, the economy keeps paying its bounties and its bonuses, and the
+run keeps resolving its own victory and defeat, whatever the surface has posed.
+
+- The hold is off while the game plays normally. A wave launched by the level's harvest
+  releases the composition `specs/enemies.md` fixes, on the game's own schedule.
+- `spawnUnit` engages the hold. The run enters a live wave whose spawn schedule is empty,
+  so the units on the yard are exactly the ones `spawnUnit` released and nothing else
+  arrives. That wave clears the ordinary way, when every one of those units has died or
+  leaked, and clearing it pays the ordinary wave-clear bonus and opens the next build
+  phase.
+- `startRun` and `reset` release the hold, so a run entered through either launches its
+  own waves again.
+{{#if (eq engine.slug "none")}}
+- The readings never engage it, and neither do the clock operations: moving the clock is
+  not posing the world.
+{{else}}
+- The readings never engage it.
+{{/if}}
+
+A unit's travel is held separately, one unit at a time, by `setUnitFrozen`. A held unit
+keeps every faculty but travel: it is targetable, it takes damage, its burn ticks, its
+slow runs down and expires, its health bar reads the fraction it is on, and it is drawn
+where it stands. Its body holds the position it was posed at, however long the scenario
+runs, and the checkpoint it is heading for does not advance. Every other unit, and
+everything else in the game, carries on untouched.
+
 ## The operations
 
 The surface carries `version` (`FOUNDRY_DEBUG_VERSION`, `3`), a plain number, and the
 operations below. Values are plain numbers, strings, and booleans. `x` and `y` are in the
-stage's logical units, `col` and `row` are tile coordinates, and an `id` is a structure's
-or a unit's identifier as `snapshot` reports it.
+stage's logical units, `col` and `row` are tile coordinates, durations are in seconds,
+and an `id` is a structure's or a unit's identifier as `snapshot` reports it.
 
 {{#if (eq engine.slug "none")}}
 Each operation takes only the parameters its table names, and an operation whose name
@@ -97,21 +158,26 @@ read and changes nothing.
 {{else if (eq engine.slug "simple-2d")}}
 Each operation's first parameter is the current state, `DeepReadonly<FoundryState>`,
 before the parameters its table names, so an operation whose name carries no parameter
-list takes the state alone. A pose returns the next `FoundryState`, built from
-the one it was handed, which it leaves as it was; a reading returns what it read. A
-caller drives a pose through the engine's `apply`, as
-`engine.apply((s) => debug.setCharge(s, 500))`, and a reading against the engine's
-current state, as `debug.snapshot(engine.state)`.
+list takes the state alone. A pose returns the next `FoundryState`, built from the one it
+was handed, which it leaves as it was; a reading returns what it read. A caller drives a
+pose through the engine's `apply`, as `engine.apply((s) => debug.setCharge(s, 500))`, and
+a reading against the engine's current state, as `debug.snapshot(engine.state)`.
 {{else}}
 Each operation takes only the parameters its table names, and an operation whose name
 carries no parameter list takes none. Each acts on the live world the moment it is
-called. A pose returns nothing; a reading returns what it read and changes
-nothing.
+called. A pose returns nothing; a reading returns what it read and changes nothing.
 {{/if}}
 
-An operation naming an id that no live structure or unit carries does nothing. An
-operation whose arguments are outside the ranges this specification states fails loudly
-rather than guessing what was meant.
+Two rules cover every operation below.
+
+- An argument outside the domain its operation states is invalid, and the call fails
+  loudly rather than guessing what was meant. So is a call whose subject is not in the
+  condition the operation states, such as an `id` no live structure or unit carries.
+- An operation that stands for a control a player operates commits through that same
+  control, so it is refused wherever the control is refused and does nothing when it is.
+  The refusal is readable in the snapshot: no structure appears, no stamp is spent, no
+  Charge leaves the bank, and no wave starts. `keep`, `downgrade`, `combine`,
+  `dismantle`, `placeRock`, `upgradeQuality`, and `upgradeCombo` are those operations.
 
 {{#if (eq engine.slug "none")}}
 ### The clock
@@ -119,12 +185,19 @@ rather than guessing what was meant.
 | Operation | Effect |
 | --- | --- |
 | `setAutoStep(enabled)` | Takes the game off real time and gives it back. `setAutoStep(false)` stops the frame loop advancing the simulation from the wall clock, so the game changes only when `advance` says so. `setAutoStep(true)` returns it to running itself, which is how a build starts and how it is played. Drawing is unaffected either way. |
-| `advance(seconds, frames)` | Runs `frames` whole frames covering `seconds` of simulation time, each worth `seconds / frames`, immediately and in order. `frames` defaults to `1`. Each is a real frame, the same update the loop runs followed by a render, so the game's own systems produce the result and the canvas reflects it. |
+| `advance(seconds, frames)` | Runs `frames` whole frames covering `seconds` of elapsed time, each worth `seconds / frames`, immediately and in order. `frames` defaults to `1`. Each is a real frame, the same update the loop runs followed by a render, so the game's own systems produce the result and the canvas reflects it. |
 
-Every rate is per second and integrated against the frame's delta time, so
-`advance(1, 1)` and `advance(1, 60)` cover the same second of simulation time and reach
-the same outcome, beyond the drift a change in step size explains. The speed multiplier
-scales what `advance` covers exactly as it scales a real frame.
+Every rate is per second and integrated against the frame's elapsed time, so
+`advance(1, 1)` and `advance(1, 60)` cover the same second and reach the same outcome,
+beyond the drift a change in step size explains.
+
+What `advance` moves is the simulation clock of `specs/controls.md`, so the speed
+multiplier scales what it covers exactly as it scales a real frame, and an `advance` on a
+menu screen, or while the game is paused, draws frames and moves the simulation not at
+all.
+
+Advancing while the game is still stepping automatically adds to what the wall clock is
+already doing, so a scenario that must be reproducible calls `setAutoStep(false)` first.
 
 {{/if}}
 ### Readings
@@ -134,7 +207,7 @@ scales what `advance` covers exactly as it scales a real frame.
 | `snapshot` | The plain object under Snapshot shape below. |
 | `panelButtons` | The build panel inspector's action controls for the selected structure, in slot order. |
 | `menuButtons` | The choices of the menu screen currently showing, in the order they are presented. |
-| `statusControls` | The status bar's speed, pause, and mute controls, in the order they are drawn. |
+| `statusControls` | The status bar's overlay, speed, pause, and mute controls, in the order they are drawn. |
 
 `panelButtons` and `menuButtons` each return an array of
 `{ action, label, x, y, w, h, disabled }`. `label` is the text as drawn, `x`, `y`, `w`,
@@ -143,18 +216,24 @@ whether it currently ignores activation. `panelButtons` returns an empty array w
 inspector is showing no structure's actions, and `menuButtons` returns an empty array on
 any screen that is not a menu, which includes `playing` under an in-place pause.
 
-`statusControls` returns an array of `{ action, label, x, y, w, h, state }`, with the same
-geometry and a `state` reporting the value the control is currently reading rather than
-whether it can be activated. It returns an empty array on any screen with no status bar.
+`statusControls` returns an array of `{ action, label, x, y, w, h, state }`, with the
+same geometry and a `state` reporting the value the control is currently reading rather
+than whether it can be activated. It returns an empty array on any screen with no status
+bar.
 
 | Reading | `action` values |
 | --- | --- |
-| `panelButtons` | `keep`, `downgrade`, `combine`, `comborecipe`, `comboupgrade`, `targeting`, `remove` |
+| `panelButtons` | `keep`, `downgrade`, `combine`, `combine-special`, `upgrade`, `targeting`, `dismantle` |
 | `menuButtons` | `salvage`, `howto`, `map-substation`, `map-switchyard`, `map-transformer`, `difficulty-easy`, `difficulty-medium`, `difficulty-hard`, `back`, `resume`, `restart`, `quit`, `again`, `menu` |
-| `statusControls` | `speed`, `pause`, `mute` |
+| `statusControls` | `combos`, `damage`, `speed`, `pause`, `mute` |
+
+A `combine-special` row is one reachable recipe, and its `label` names the combination
+tower that recipe would build, so several such rows are told apart by their labels.
 
 | `statusControls` action | `state` |
 | --- | --- |
+| `combos` | `true` while the recipe book is open |
+| `damage` | `true` while the damage leaderboard is open |
 | `speed` | The live multiplier, one of `1`, `2`, `4`, `8` |
 | `pause` | `true` while the in-place pause is engaged |
 | `mute` | `true` while audio is muted |
@@ -173,25 +252,42 @@ a choice.
 
 | Operation | Effect |
 | --- | --- |
-| `reset(options)` | Returns the game to its title state. `options` is optional, and `options.seed` seeds every random draw, defaulting to `DEFAULT_SEED` (`1`). It clears the map and difficulty back to their defaults, empties the yard, and returns Charge, Grid Integrity, refinement, the wave counter, the Maze Rating, and the simulation clock to their opening values. The mute bit is untouched. |
-| `setMap(map)` | Sets the map the next run opens on: `"substation"`, `"switchyard"`, or `"transformer"`. It defaults to `"substation"`. |
-| `setDifficulty(difficulty)` | Sets the difficulty the next run opens at: `"easy"`, `"medium"`, or `"hard"`. It defaults to `"medium"`. |
-| `startRun` | Begins a run on the current map at the current difficulty, exactly as confirming the difficulty select does, and opens it on its first build phase. |
-| `setScreen(screen)` | Moves to a named screen, exactly as reaching it in play does. `screen` is one of the eight identifiers in `specs/ui.md`. |
+| `reset(options)` | Returns the game to its title state, as below. `options` is optional, and `options.seed` seeds every random draw, defaulting to `DEFAULT_SEED` (`1`). |
+| `setMap(map)` | Sets the map the next run opens on: `"substation"`, `"switchyard"`, or `"transformer"`. |
+| `setDifficulty(difficulty)` | Sets the difficulty the next run opens at: `"easy"`, `"medium"`, or `"hard"`. |
+| `startRun` | Enters a run on the current map at the current difficulty, through the same path confirming the difficulty select takes, and opens it on its first build phase. |
+| `setScreen(screen)` | Moves to a named screen, exactly as reaching it in play does. `screen` is one of the eight identifiers of `specs/ui.md`. |
 | `setMenuIndex(index)` | Sets the highlighted entry on the menu screen showing, counted from `0`. |
 | `setPaused(paused)` | Engages or releases the in-place pause. |
 | `setSpeed(multiplier)` | Sets the speed multiplier to `1`, `2`, `4`, or `8`. |
 | `setOverlay(overlay, open)` | Opens or closes a read-only overlay. `overlay` is `"combos"` or `"damage"`. |
 
+`reset` restores every field the snapshot reports to its title-screen value: the `title`
+screen with the menu index at `0` and no phase, the map back to `"substation"` and the
+difficulty to `"medium"`, the yard emptied of every structure, unit, and projectile, the
+selection and the combine set cleared, nothing held on the cursor, the press unarmed,
+Charge at `START_CHARGE`, Grid Integrity at `START_INTEGRITY`, refinement at `0`, the
+wave counter at `0`, the stamp allowance at `STAMPS_PER_LEVEL`, the Maze Rating at `0`,
+the speed multiplier at `1`, both overlays closed, the pause released, and the simulation
+clock at `0`. Two fields are deliberately untouched, because both belong to the runtime
+rather than to the game: the mute bit, which is a player preference, and the pointer
+position. Because `reset` restores exactly those fields, anything else the build keeps
+across frames is derived from them.
+
+`startRun` gives the run the opening allocation `specs/campaign.md` states and nothing
+more, so what it arranges is what choosing a difficulty from the menu arranges. A caller
+that wants only part of that opening poses the parts it wants with the operations below
+instead.
+
 ### Resources and progress
 
 | Operation | Effect |
 | --- | --- |
-| `setCharge(amount)` | Sets the current Charge. |
-| `setIntegrity(amount)` | Sets the current Grid Integrity, without resolving a defeat by itself; the game's own rules resolve on the next advance. |
-| `setRefinement(level)` | Sets the refinement level, `0` through `8`, and with it the roll odds. |
-| `setWave(n)` | Sets the current wave number, so units released from now on scale to wave `n`. |
-| `setStamps(n)` | Sets the stamps remaining in the level's allowance, `0` through `5`. |
+| `setCharge(amount)` | Sets the current Charge, at least `0`. |
+| `setIntegrity(amount)` | Sets the current Grid Integrity. It resolves no defeat by itself; the game's own rules resolve on the next advance. |
+| `setRefinement(level)` | Sets the refinement level, `0` through `REFINEMENT_MAX`, and with it the roll odds. It spends no Charge. |
+| `setWave(n)` | Sets the current wave number, at least `0`, so units released from now on scale to wave `n`. |
+| `setStamps(n)` | Sets the stamps remaining in the level's allowance, `0` through `STAMPS_PER_LEVEL`. |
 
 ### Structures
 
@@ -200,48 +296,65 @@ a choice.
 | `clearStructures` | Removes every candidate, component, combination tower, and blocker from the yard, reopens their tiles, clears the selection and the combine set, and recomputes the route. |
 | `setNextRoll(type, quality)` | Arms the exact component the next placed rock rolls. `type` is a base component identifier and `quality` is `1` through `5`. The rock still enters through the real placement path; this fixes only what it rolls. |
 | `clearNextRoll` | Clears the arming and returns the press to its seeded random roll. |
-| `placeRock(col, row)` | Drops a rock at the anchor tile through the real placement path: it rolls, becomes a candidate, spends one stamp, and the route is recomputed. It is refused exactly as a pointer press would be when the footprint is illegal, and the refusal is readable in the snapshot. |
-| `placeComponent(type, quality, col, row)` | Places a permanent firing component of that type at that quality, at the anchor tile, as though it had been harvested there. It spends no stamp, consumes no harvest, and starts no wave. |
-| `placeCombo(combo, col, row)` | Places a combination tower at upgrade level `0` at the anchor tile. `combo` is a tower identifier. |
+| `placeRock(col, row)` | Drops a rock at the anchor tile through the real placement path: it rolls, becomes a candidate, spends one stamp, and the route is recomputed. |
+| `placeComponent(type, quality, col, row)` | Places a permanent firing component of that type at that quality, at the anchor tile. |
+| `placeCombo(combo, col, row)` | Places a combination tower at upgrade level `0` at the anchor tile. `combo` is a combination tower identifier. |
 | `placeBlocker(col, row)` | Places an inert blocker at the anchor tile. |
-| `select(id)` | Selects a structure, as a pointer press on it would. |
+| `select(id)` | Selects a structure, as a pointer press on it would, and clears the combine set back to that single selection. |
 | `clearSelection` | Clears the selection and the combine set. |
-| `addToCombineSet(id)` | Adds one base structure to the explicit combine set, or removes it when it is already in the set. |
+| `addToCombineSet(id)` | Adds one base structure to the explicit combine set, or removes it when it is already in the set, as a shift-press on it would. |
 | `clearCombineSet` | Empties the explicit combine set and leaves the selection as it is. |
 | `keep(id)` | Harvests a candidate as a permanent component. It is the level's harvest, so it starts the wave. |
 | `downgrade(id)` | Harvests a candidate as a permanent component one quality tier lower. It is the harvest, so it starts the wave. |
-| `combine(id)` | Commits a combine from the initiating structure: a quality fold of a matching pair, or a reachable recipe. With a combine set it folds exactly that set; otherwise it resolves the ingredients itself, preferring a candidate over a standing structure. It starts the wave when it consumes a candidate and leaves the phase running when it folds standing structures only. |
+| `combine(id)` | Commits a combine from the initiating structure, as `specs/scrap-press.md` states: a quality fold of a matching pair, or a reachable recipe. It starts the wave when it consumes a candidate and leaves the phase running when it folds standing structures only. |
 | `dismantle(id)` | Removes a structure, reopens its tiles, and recomputes the route. |
-| `setTargeting(id, priority)` | Sets a firing structure's targeting priority to one of the five. |
-| `upgradeQuality` | Buys the next refinement level for Charge. |
-| `upgradeCombo(id)` | Raises a combination tower's upgrade level by one, for Charge. |
+| `setTargeting(id, priority)` | Sets a firing structure's targeting priority to one of the five of `specs/components.md`. |
+| `setComboLevel(id, level)` | Sets a combination tower's upgrade level to `level`, `0` through `COMBO_MAX_LEVEL`, and with it the damage and range that level gives. It spends no Charge. |
+| `upgradeQuality` | Buys the next refinement level for Charge, as the panel's refinement control does. |
+| `upgradeCombo(id)` | Raises a combination tower's upgrade level by one, for Charge, as the panel's upgrade control does. |
 
-The three `place` operations pose a yard directly, so a scenario stands up exactly the
-structures its requirement is about. Each is refused on an illegal footprint exactly as
-`placeRock` is.
+The three `place` operations stand a structure up directly, so a scenario holds exactly
+the structures its requirement is about. Each takes the anchor tile of a `2` by `2`
+footprint and is subject to the placement conditions of `specs/yard.md` and to the
+never-seal rule of `specs/pathing.md`, and is refused when either fails. Each is
+available in every phase. None of them spends a stamp, consumes the level's harvest,
+costs Charge, or starts a wave, and each recomputes the route. A structure they stand up
+is appended to the snapshot's `structures`, so the new structure is its last entry.
+
+`placeRock` is refused exactly as a pointer press would be when the footprint is illegal
+or the allowance is spent. Dropping it onto the footprint of an existing blocker rerolls
+that blocker in place, as `specs/scrap-press.md` states.
+
+`setNextRoll` fixes the roll and nothing else, so the type-and-quality distribution of
+`specs/scrap-press.md` is what an unarmed press draws from. The arming survives until a
+rock consumes it or `clearNextRoll` clears it.
 
 ### The Load
 
 | Operation | Effect |
 | --- | --- |
-| `clearUnits` | Removes every live unit from the yard without paying a bounty or costing Grid Integrity. |
-| `clearProjectiles` | Removes every projectile in flight without applying its damage. |
+| `clearUnits` | Removes every live unit from the yard. None of them is killed and none of them leaks, so no bounty is paid and no Grid Integrity is lost. A wave with nothing left to release and nothing left on the yard clears on the next advance. |
+| `clearProjectiles` | Removes every projectile in flight without applying its damage and without crediting a tally. |
 | `spawnUnit(type)` | Releases one unit at the map's entry through the real spawner, scaled to the current wave. `type` is `"mote"`, `"spark"`, `"slug"`, `"cluster"`, `"filament"`, `"dynamo"`, or `"overload"`. |
-| `setUnitPosition(id, x, y)` | Moves a live unit to a logical position. |
-| `setUnitWaypoint(id, index)` | Sets the chain node a live unit is heading for, `1` through `k + 1`. |
-| `setUnitHp(id, hp)` | Sets a live unit's current health, clamped to at least `1` and at most its maximum. It never changes the maximum, so the unit stays the same type at the same wave scaling and its health bar reads the fraction it is on. The Overload Dynamo takes no health change. |
-| `setUnitFrozen(id, frozen)` | Holds a live unit still, or releases it. A frozen unit does not move and does not advance along the chain, and everything else about it continues: it is targetable, it takes damage, its burn ticks, and its slow expires. |
+| `setUnitPosition(id, x, y)` | Moves a live unit to a logical position and leaves it there. Its health, its statuses, and the checkpoint it is heading for are untouched. |
+| `setUnitWaypoint(id, index)` | Sets the checkpoint a live unit is heading for, `1` through `7`: `1` through `6` are the numbered waypoints and `7` is the collector. It moves the unit nowhere. |
+| `setUnitHp(id, hp)` | Sets a live unit's current health, at least `1` and at most its maximum. It never changes the maximum, so the unit stays the same type at the same wave scaling and its health bar reads the fraction it is on. |
+| `setUnitSlow(id, amount, seconds)` | Applies a slow of `amount` for `seconds` to a live unit, through the rule `specs/enemies.md` fixes for an applied slow, so `slowFactor` becomes `min(slowFactor, 1 - amount)` and `slowUntil` becomes the simulation clock plus `seconds`. `amount` is `0` to `1`. |
+| `setUnitBurn(id, dps, seconds)` | Applies a burn of `dps` per second for `seconds` to a live unit, through the rule `specs/enemies.md` fixes for an applied burn, so `burnDps` becomes `max(burnDps, dps)` and `burnUntil` becomes the simulation clock plus `seconds`. Its damage is credited to no structure. |
+| `setUnitFrozen(id, frozen)` | Holds a live unit's travel, or releases it, as the driver above states. |
 
-A released unit is live from that moment. The next advance moves it, fires at it, and
-resolves its leak at the collector, exactly as a unit of a composed wave. Releasing one
-from a build phase therefore puts the run into a live wave, so the phase reads `"wave"`,
-or `"finale"` for the Overload Dynamo, and the floor runs. Nothing else is scheduled to
-spawn, so the released units are alone on the yard. The build phase's own harvest is not
-consumed and no wave number is spent. This is the one control operation that starts the
-floor running.
+`spawnUnit` releases a live unit from that moment, appended to the snapshot's `units`, so
+the released unit is its last entry. It arrives at the entry heading for `WP1`, at full
+health for the current wave, travelling, carrying no slow and no burn. The next advance
+moves it, fires at it, and resolves its leak at the collector exactly as it would a unit
+of a composed wave. Releasing one from a build phase therefore puts the run into a live
+wave, so the phase reads `"wave"`, or `"finale"` for the Overload Dynamo, and the
+driver's hold on the spawner applies. The build phase's own harvest is not consumed and
+no wave number is spent. This is the one operation that starts the floor running; a wave
+otherwise begins the way normal play begins one, by committing the level's harvest.
 
-A wave otherwise begins the way normal play begins one, by committing the level's
-harvest.
+The Overload Dynamo takes `setUnitSlow` and `setUnitBurn` like any other unit and takes
+no `setUnitHp`, because it carries no depleting health.
 
 {{#if (eq engine.slug "none")}}
 ### Input
@@ -249,11 +362,13 @@ harvest.
 These feed the same input path the runtime layer feeds, so a posed press and a player's
 press are the same event to the game. Nothing is bypassed: the hit regions, the placement
 rules, and the phase restrictions all run exactly as they do for a player. Each takes
-effect immediately, when it is called, rather than being sampled once per update.
+effect immediately, when it is called, rather than being sampled once per update. Beyond
+the pointer position `pointerMove` moves, they set no state of their own: what each
+changes is whatever the act it delivers changes.
 
 | Operation | Effect |
 | --- | --- |
-| `pointerMove(x, y)` | Moves the pointer to a logical position, updating the held footprint and the hover state. |
+| `pointerMove(x, y)` | Moves the pointer to a logical position. The held footprint and every hover read of `specs/controls.md` follow it. |
 | `click(x, y)` | A press and release at a logical position. |
 | `rightClick(x, y)` | A right press and release at a logical position. |
 | `shiftClick(x, y)` | A press and release with shift held. |
@@ -296,10 +411,11 @@ effect immediately, when it is called, rather than being sampled once per update
   mazeRating: <number>,          // damage tallied on the Overload Dynamo
   selected: <id> | null,
   combineSet: [<id>, ...],
+  pointer: { x: <number>, y: <number> },   // the pointer the game last read
   held: { active: <boolean>, col: <number>, row: <number>, legal: <boolean> },
   entry: { col: <number>, row: <number> },
   collector: { col: <number>, row: <number> },
-  waypoints: [{ index: <number>, col: <number>, row: <number> }],  // ordered, 1..k
+  waypoints: [{ index: <number>, col: <number>, row: <number> }],  // ordered, 1..6
   units: [
     {
       id: <id>,
@@ -310,8 +426,8 @@ effect immediately, when it is called, rather than being sampled once per update
       baseSpeed: <number>,       // the roster speed
       flying: <boolean>,
       frozen: <boolean>,
-      waypointIndex: <number>,   // the chain node it is heading for, 1..k+1
-      progress: <number>,        // remaining route length to that node, in tiles
+      waypointIndex: <number>,   // the checkpoint it is heading for, 1..7
+      progress: <number>,        // remaining route length to that checkpoint, in tiles
       slowFactor: <number>, slowUntil: <number>,
       burnDps: <number>, burnUntil: <number>,
       invincible: <boolean>,     // the Overload Dynamo
@@ -362,21 +478,23 @@ does not use reports its resting value rather than going missing.
 - `damage` is the structure's effective per-shot damage, including any aura buff on it,
   unrounded.
 - `kills` and `damageDealt` are the running tallies of `specs/components.md`.
-- `progress` is the remaining length of the unit's route to the node it is heading for,
-  in tiles, so `waypointIndex` and `progress` together are the ordering `first` and
+- `progress` is the remaining length of the unit's route to the checkpoint it is heading
+  for, in tiles, so `waypointIndex` and `progress` together are the ordering `first` and
   `last` select on.
-- The chain is numbered from `1`. `waypoints` runs `1` through `k`, the order numbers
-  drawn on the yard, and a unit's `waypointIndex` is the node it is heading for in that
-  same numbering: `1` while it walks from the entry to `WP1`, and `k + 1` once it is past
-  the last waypoint and heading for the collector. It never decreases.
+- The chain is numbered from `1`. `waypoints` runs `1` through `6`, the order numbers
+  drawn on the yard, and a unit's `waypointIndex` is the checkpoint it is heading for in
+  that same numbering: `1` while it walks from the entry to `WP1`, and `7` once it is
+  past the last waypoint and heading for the collector. It never decreases.
 - `qualityOdds` is the five-tier distribution at the current refinement level, the same
   odds the build panel shows.
 - `muted` mirrors the mute bit the runtime holds, refreshed on every update.
+- `pointer` is the pointer position the game last read, in the stage's logical units.
 - `simTime` is the simulation clock of `specs/controls.md`, so it does not advance while
   paused or off the `playing` screen.
 
 Every field is read straight off the game's own state or derived from it at the call, so
-what the snapshot reports is what the game holds.
+what the snapshot reports is what the game holds. Every field an operation above sets is
+reported here, so a call can be checked by setting a value and reading it back.
 
 ## Diagnostics
 
@@ -395,11 +513,12 @@ clearly separate from the game's own display.
 {{else if (eq engine.slug "simple-2d")}}
 Registering those values is the whole of Arc Foundry's part. Each source is called with
 the state current at the read, as `DeepReadonly<FoundryState>`, and reads off that
-argument. Drawing the panel, toggling it, and keeping it read-only are the engine's.
+argument. Drawing the panel, showing and hiding it with the backtick key
+(`KeyboardEvent.code` `Backquote`), and keeping it read-only are the engine's.
 {{else}}
 Registering those values is the whole of Arc Foundry's part, through the world's
 diagnostics in the game mode's `beginPlay`. Each source is a function of no arguments,
 called at each read; read the live state at the call, through the world the mode holds,
-so the panel reports the frame being drawn. Drawing the panel and toggling it are the
-engine's.
+so the panel reports the frame being drawn. Drawing the panel and showing and hiding it
+with the backtick key (`KeyboardEvent.code` `Backquote`) are the engine's.
 {{/if}}
