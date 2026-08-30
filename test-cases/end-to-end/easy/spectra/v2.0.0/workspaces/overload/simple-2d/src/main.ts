@@ -30,7 +30,7 @@ const engine = createEngine({
   height: STAGE_H,
   game,
   // The stage background, which the engine clears the canvas to each frame so
-  // the letterbox bars match the field. The game owns the colour.
+  // the letterbox bars match the field. The game owns the color.
   background: BACKGROUND,
   // The ship moves left and right, and fire and flip sit on the layout's two
   // buttons. specs/controls.md states which key drives which.

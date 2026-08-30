@@ -92,7 +92,7 @@ Only a drone in phase `diving` fires. A drone entering, resting in formation, or
 returning fires nothing.
 
 A diver takes its first shot in the frame its center first crosses `DIVE_FIRE_Y`
-(`360`) travelling downward. How many shots it takes over the dive is the kind's,
+(`360`) traveling downward. How many shots it takes over the dive is the kind's,
 and `specs/drones.md` states it for each.
 
 An enemy bullet travels straight down at `ENEMY_BULLET_SPEED` (`320`) units per

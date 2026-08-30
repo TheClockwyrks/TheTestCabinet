@@ -16,13 +16,13 @@
 // `specs/simulation.md` states how a frame is divided by it.
 //
 // THE LOOK IS NOT HERE, AND THAT IS DELIBERATE. Spectra fixes no palette, no font,
-// no HUD layout and no background. There is not a single colour or type face in
+// no HUD layout and no background. There is not a single color or type face in
 // this file, and there is not meant to be one. The seeded art under `assets/`
-// already carries the two band colours, and `specs/overview.md`'s legibility table
+// already carries the two band colors, and `specs/overview.md`'s legibility table
 // states what a player must be able to read at a glance — the two bands apart from
 // each other and from the field, a Flux's shimmer, a Prism's layers, a bullet's
 // band — while leaving every value behind those readings to the build. The one
-// colour the project carries is `BACKGROUND`, which the build exports from
+// color the project carries is `BACKGROUND`, which the build exports from
 // `src/game.ts` because the build chooses it.
 
 // ---- Stage (specs/overview.md) -------------------------------------------
@@ -62,7 +62,7 @@ export const SUBSTEP_MAX = 1 / 120;
 
 // ---- The ship (specs/field.md, specs/ship.md) ----------------------------
 
-/** The ship's lane: a fixed centre `y`, and the bounds its centre clamps to. */
+/** The ship's lane: a fixed center `y`, and the bounds its center clamps to. */
 export const SHIP_Y = 600;
 export const SHIP_X_MIN = 40;
 export const SHIP_X_MAX = 1240;
@@ -106,7 +106,7 @@ export const SLOT_DY = 48;
 export const FORM_COLS = 9;
 export const FORM_ROWS = 5;
 
-/** The grid is centred on `FORM_CENTER_X`, with its top row at `FORM_ROW0_Y`. */
+/** The grid is centered on `FORM_CENTER_X`, with its top row at `FORM_ROW0_Y`. */
 export const FORM_CENTER_X = 640;
 export const FORM_ROW0_Y = 140;
 
@@ -114,12 +114,12 @@ export const FORM_ROW0_Y = 140;
 export const SWAY_AMP = 20;
 export const SWAY_PERIOD = 5;
 
-/** The centre of the slot in column `col` (0..FORM_COLS-1), before the sway. */
+/** The center of the slot in column `col` (0..FORM_COLS-1), before the sway. */
 export function slotX(col: number): number {
   return FORM_CENTER_X + SLOT_DX * (col - (FORM_COLS - 1) / 2);
 }
 
-/** The centre of the slot in row `row` (0..FORM_ROWS-1). */
+/** The center of the slot in row `row` (0..FORM_ROWS-1). */
 export function slotY(row: number): number {
   return FORM_ROW0_Y + SLOT_DY * row;
 }
@@ -149,7 +149,7 @@ export const ENTER_GROUP_GAP = 0.6;
  * The dive: its stage-1 speed, the wave's dive clock reaching `DIVE_FIRST_DELAY`
  * for the first launch and a value in `[DIVE_GAP_MIN, DIVE_GAP_MAX]` scaled by
  * `diveGapScale(stage)` for each later one, and the line a diver first fires as
- * its centre crosses.
+ * its center crosses.
  */
 export const DIVE_SPEED = 300;
 export const DIVE_FIRST_DELAY = 2.0;

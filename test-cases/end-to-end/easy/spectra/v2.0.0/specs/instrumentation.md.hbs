@@ -215,7 +215,7 @@ to on by `reset`, and each is reported by `snapshot`.
 
 | Operation | Gates |
 | --- | --- |
-| `setWaveEntry(enabled)` | The wave's own release of drones: the staggered groups a stage sends in on the `ENTER_GROUP_GAP` schedule. Off, no drone arrives unless one is added. A drone already travelling its entrance flies it as usual. |
+| `setWaveEntry(enabled)` | The wave's own release of drones: the staggered groups a stage sends in on the `ENTER_GROUP_GAP` schedule. Off, no drone arrives unless one is added. A drone already traveling its entrance flies it as usual. |
 | `setDiveLaunching(enabled)` | The assault's own choice of which formation drone dives next, and when. Off, no dive is launched. A drone already diving flies its dive as usual. |
 | `setShipContact(enabled)` | The ship's contact test, which is whether an enemy bullet or a drone body reaching the ship costs a life. Off, the ship still draws, still moves under input, and still fires, and no contact costs anything. It is reported as `ship.contact`. |
 
@@ -287,8 +287,8 @@ whole roster.
 
 | Operation | Effect |
 | --- | --- |
-| `addPlayerBullet(x, y, band)` | Adds one of the player's bullets in flight, its center at a logical stage position, travelling straight up at `PLAYER_BULLET_SPEED`, carrying `band`. It is appended to the roster with a fresh id and `friendly` true. |
-| `addEnemyBullet(x, y, band)` | Adds one enemy bullet in flight, its center at a logical stage position, travelling straight down at `ENEMY_BULLET_SPEED` scaled for the current stage, carrying `band`. It is appended with a fresh id and `friendly` false. |
+| `addPlayerBullet(x, y, band)` | Adds one of the player's bullets in flight, its center at a logical stage position, traveling straight up at `PLAYER_BULLET_SPEED`, carrying `band`. It is appended to the roster with a fresh id and `friendly` true. |
+| `addEnemyBullet(x, y, band)` | Adds one enemy bullet in flight, its center at a logical stage position, traveling straight down at `ENEMY_BULLET_SPEED` scaled for the current stage, carrying `band`. It is appended with a fresh id and `friendly` false. |
 | `setBulletVelocity(id, vx, vy)` | Sets the bullet's velocity, in logical units per second. |
 | `removeBullet(id)` | Removes the bullet with that id. |
 | `clearPlayerBullets()` | Removes every one of the player's bullets, leaving the enemy bullets, the drones, and the bursts standing. |
@@ -379,7 +379,7 @@ so every operation is verifiable by setting a value and reading it back.
       vx: <number>, vy: <number>,    // logical units per second
       band: "cyan" | "magenta",
       effectiveBand: "cyan" | "magenta",
-      friendly: <boolean>,           // true = the player's, travelling up
+      friendly: <boolean>,           // true = the player's, traveling up
     },
   ],
   // Every drone-burst playing, in roster order.

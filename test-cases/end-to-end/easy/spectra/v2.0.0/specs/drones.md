@@ -107,7 +107,7 @@ A Prism that survives its dive to the bottom of the field swaps the whole field'
 bands rather than being destroyed there.
 
 - When a diving Prism with a layer still intact has its center cross
-  `PRISM_INVERT_Y` (`640`) travelling downward, it triggers a spectral inversion as
+  `PRISM_INVERT_Y` (`640`) traveling downward, it triggers a spectral inversion as
   `specs/bands.md` states, and it enters phase `returning` and heads back toward its
   slot.
 - The Prism itself is unharmed by that crossing, and it may dive again later.
