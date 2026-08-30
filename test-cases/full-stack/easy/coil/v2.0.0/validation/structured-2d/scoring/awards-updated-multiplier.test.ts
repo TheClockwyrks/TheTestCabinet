@@ -1,32 +1,53 @@
-/*
- * Coil validator: `scoring.awards-updated-multiplier`. PLACEHOLDER.
- *
- * A pellet scores at the multiplier after the eat.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * An eat resolved at an M of 3 with an open window raises M to 4 and awards 40
- * points, PELLET_POINTS multiplied by the multiplier in force after the eat.
- *
- * HOW:
- * pose M at 3 with an open window and a known score, eat a pellet, and read
- * the multiplier and the points awarded.
- *
- * MEDIA IT MUST CAPTURE: award (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// scoring/awards-updated-multiplier — an eat scores at the multiplier it leaves,
+// not the one it met.
+//
+// specs/scoring.md: "An eaten pellet resolves the multiplier before it awards the
+// points." With the window open at the eat, `M` becomes one higher, and "the eat
+// then awards `PELLET_POINTS * M` at that new `M`". Posed at an `M` of 3 with an
+// open window, the tick therefore leaves `M` at 4 and adds 40, and a build that
+// awarded at the multiplier in force BEFORE the eat would add 30 — which is what
+// this point separates from `scoring/pellet-awards-ten`, where both readings give
+// the same answer.
+//
+// The window is posed at a full `COMBO_WINDOW` rather than at some remainder,
+// because what "open" means at a boundary is the `combo` category's to decide;
+// this point needs it open beyond argument.
 
-test("scoring.awards-updated-multiplier", () => {
-  throw new Error(
-    "validator not implemented: scoring/awards-updated-multiplier.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { COMBO_WINDOW, PELLET_POINTS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  arrangeEat,
+  captureReplay,
+  createHarness,
+  type Harness,
+} from "../harness";
+
+/** The multiplier the eat meets, one short of the one it awards at. */
+const MET = 3;
+
+/** A score the round is already carrying, so the award is read as an increment. */
+const CARRIED = 500;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("raises M to four and awards forty from an M of three", async () => {
+  arrangeEat(h, { score: CARRIED, combo: MET, comboWindow: COMBO_WINDOW });
+
+  const after = await captureReplay(h, "award", () => h.tick());
+
+  assertEqual(after.combo, MET + 1, "the multiplier after the eat");
+  assertEqual(
+    after.score,
+    CARRIED + PELLET_POINTS * (MET + 1),
+    "the score after one eat at the raised multiplier",
   );
 });
