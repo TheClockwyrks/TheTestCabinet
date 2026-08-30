@@ -1,23 +1,88 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/draw-one/turn-count.test.ts
+// draw-one/turn-count — a turn of the stock moves exactly one card.
 //
-// The review item `draw-one.turn-count` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/stock.md fixes this build's `TURN_COUNT` at `1`, and states
+// that a turn of a stock holding cards moves `TURN_COUNT` cards onto the waste,
+// taken one at a time from the top of the stock. One turn therefore leaves the
+// stock one card smaller and the waste one card larger: the two readings are the
+// two ends of the same movement, and a build that dropped a card on the way
+// between them has not turned the stock either.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE POSE SIZES ITSELF SO EVERY WRONG COUNT READS DIFFERENTLY. The stock is
+// posed with five cards, comfortably more than any turn count a build could
+// plausibly have implemented, so a build that moves two or three reads a
+// different pair of numbers rather than emptying the stock and recycling
+// (specs/stock.md), which would fail this point on the recycle rather than on
+// the count. A build that moves none reads the pose back unchanged.
 //
-// What this item must decide, from the manifest:
-//
-//   A turn moves exactly one card
-//
-//   The stock loses one card and the waste gains one.
+// THE CARDS ARE POSED FACE-DOWN, which is what a card in the stock is
+// (specs/deal.md) and what `poseStock` deals. Whether the turn then turns them
+// face-up is `stock/turned-cards-face-up`, which card of the stock is taken
+// first is `stock/turn-order`, and the set the turn appends to the waste's
+// memory is `stock/turn-starts-a-set`. None of the three is decided here.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TURN_COUNT } from "../../src/constants";
+import { assertLength } from "../assert";
+import {
+  FIVE,
+  JACK,
+  NINE,
+  SEVEN,
+  TWO,
+  captureStill,
+  card,
+  createHarness,
+  openTable,
+  poseStock,
+  type Harness,
+} from "../harness";
 
-it("draw-one.turn-count — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/draw-one/turn-count.test.ts is a scaffold stub, not a validator",
+/**
+ * The stock the turn is taken from, bottom card first.
+ *
+ * Five cards, so one turn of any count a build could have written leaves cards
+ * behind and the reading is the count itself rather than a recycle. Their suits
+ * and ranks decide nothing here; no card is played, and the two readings are
+ * lengths.
+ */
+const STOCK = [
+  card("clubs", TWO),
+  card("diamonds", FIVE),
+  card("hearts", NINE),
+  card("spades", JACK),
+  card("diamonds", SEVEN),
+];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("moves one card off the stock and onto the waste", async () => {
+  openTable(h);
+  poseStock(h, STOCK);
+
+  h.debug.turnStock();
+  const after = h.snapshot();
+
+  await h.advance(1);
+  captureStill(h, "turn");
+
+  assertLength(
+    after.stock,
+    STOCK.length - TURN_COUNT,
+    "cards left in the stock after one turn of a stock holding " +
+      `${STOCK.length}, which loses TURN_COUNT of them (specs/stock.md)`,
+  );
+  assertLength(
+    after.waste,
+    TURN_COUNT,
+    "cards the same turn put on the waste, which gains exactly what the " +
+      "stock lost (specs/stock.md)",
   );
 });
