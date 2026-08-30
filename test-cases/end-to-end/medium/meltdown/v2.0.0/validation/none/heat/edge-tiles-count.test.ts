@@ -31,7 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertGreaterThan } from "../assert";
-import { type Side, type TowerType } from "../constants";
+import { SIDES, type Side, type TowerType } from "../constants";
 import { BOXED_SITE } from "../fixtures";
 import {
   captureStill,
@@ -94,9 +94,7 @@ async function airTermOf(type: TowerType): Promise<number> {
   await startRun(h);
   const site = BOXED_SITE;
   const id = await poseIdleTower(h, type, site.col, site.row, { heat: HEAT });
-  const walled = (["N", "E", "S", "W"] as const).filter(
-    (side) => side !== OPEN_SIDE,
-  );
+  const walled = SIDES.filter((side) => side !== OPEN_SIDE);
   await wallFaces(h, { type, col: site.col, row: site.row }, walled, {
     wall: type,
     heat: HEAT,

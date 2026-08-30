@@ -74,7 +74,11 @@ it("The reported multiplier and damage follow the heat", async () => {
   for (const heat of HEATS) {
     await h.debug.setTowerHeat(id, heat);
     await h.advance(1);
-    const read = requireTower(await h.snapshot(), id, `the ${TOWER} at ${heat}`);
+    const read = requireTower(
+      await h.snapshot(),
+      id,
+      `the ${TOWER} at ${heat}`,
+    );
     await captureStill(h, "readouts");
 
     const expectedMult = heatMultiplier(heat, REDLINE);

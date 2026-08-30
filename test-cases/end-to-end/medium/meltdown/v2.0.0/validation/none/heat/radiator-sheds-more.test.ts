@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertGreaterThan } from "../assert";
-import { BASE_K, RAD_K, type Side } from "../constants";
+import { BASE_K, RAD_K, SIDES, type Side } from "../constants";
 import { BOXED_SITE } from "../fixtures";
 import {
   captureStill,
@@ -81,9 +81,7 @@ async function lossWithOpenFace(open: Side): Promise<number> {
   await startRun(h);
   const site = BOXED_SITE;
   const id = await poseIdleTower(h, TOWER, site.col, site.row, { heat: HEAT });
-  const walled = (["N", "E", "S", "W"] as const).filter(
-    (side) => side !== open,
-  );
+  const walled = SIDES.filter((side) => side !== open);
   await wallFaces(h, { type: TOWER, col: site.col, row: site.row }, walled, {
     wall: TOWER,
     heat: HEAT,

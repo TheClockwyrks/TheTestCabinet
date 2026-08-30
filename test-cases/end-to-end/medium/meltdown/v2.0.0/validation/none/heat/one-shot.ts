@@ -83,11 +83,7 @@ export async function oneShotDamage(
     FREE_SITE.row,
     TARGET_HP,
   );
-  const opened = requireUnit(
-    await h.snapshot(),
-    target,
-    "the posed target",
-  ).hp;
+  const opened = requireUnit(await h.snapshot(), target, "the posed target").hp;
   await h.advance(framesForShots(1, figuresOf(type).fireRate));
   const closed = requireUnit(
     await h.snapshot(),
@@ -129,9 +125,6 @@ export async function firstShotHeat(
       `heat still 0 after ${swept.frames} frames with a target in range`,
     );
   }
-  return requireTower(
-    swept.snapshot,
-    id,
-    "the frame the first shot landed on",
-  ).heat;
+  return requireTower(swept.snapshot, id, "the frame the first shot landed on")
+    .heat;
 }

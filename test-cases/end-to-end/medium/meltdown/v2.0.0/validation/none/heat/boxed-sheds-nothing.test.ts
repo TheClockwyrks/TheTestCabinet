@@ -78,12 +78,10 @@ it("A boxed-in tower bakes", async () => {
   await startRun(h);
   const site = BOXED_SITE;
   const id = await poseIdleTower(h, TOWER, site.col, site.row, { heat: HEAT });
-  await wallFaces(
-    h,
-    { type: TOWER, col: site.col, row: site.row },
-    SIDES,
-    { wall: TOWER, heat: HEAT },
-  );
+  await wallFaces(h, { type: TOWER, col: site.col, row: site.row }, SIDES, {
+    wall: TOWER,
+    heat: HEAT,
+  });
 
   const opened = requireTower(await h.snapshot(), id, "the boxed Arc").heat;
   await h.advance(1);

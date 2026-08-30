@@ -63,8 +63,11 @@ async function lossAt(id: number, heat: number): Promise<number> {
   await h.debug.setTowerHeat(id, heat);
   const opened = requireTower(await h.snapshot(), id, `posed at ${heat}`).heat;
   await h.advance(1);
-  const closed = requireTower(await h.snapshot(), id, `one frame at ${heat}`)
-    .heat;
+  const closed = requireTower(
+    await h.snapshot(),
+    id,
+    `one frame at ${heat}`,
+  ).heat;
   return opened - closed;
 }
 
