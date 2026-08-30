@@ -1,3 +1,9 @@
+<!--
+SCAFFOLD PLACEHOLDER. This text is carried forward from v2.1.0 under its old name specs/states.md, which the v3.0.0 decomposition splits into this file and specs/controls.md.hbs.
+The specification stage of the v3.0.0 rework rewrites it. Nothing below is
+v3.0.0 text yet.
+-->
+
 # States
 
 ## Overview

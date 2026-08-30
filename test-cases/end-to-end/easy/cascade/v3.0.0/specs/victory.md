@@ -1,3 +1,9 @@
+<!--
+SCAFFOLD PLACEHOLDER. This text is carried forward from v2.1.0.
+The specification stage of the v3.0.0 rework rewrites it. Nothing below is
+v3.0.0 text yet.
+-->
+
 # Victory cascade
 
 ## Overview
