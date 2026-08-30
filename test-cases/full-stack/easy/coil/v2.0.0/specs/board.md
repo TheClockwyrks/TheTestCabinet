@@ -1,87 +1,93 @@
-# Coil — Board, cells, walls, and pellets
+# Coil — The board
 
-This file defines the geometry of the board and the objects on it. All positions
-and sizes are in the logical-pixel coordinate system defined in
-`specs/overview.md` (a fixed 1280 x 720 stage, origin top-left), and the grid
-indexing defined here.
+This file fixes the board's geometry, the kinds of cell on it, the chain the
+snake starts as, and where a pellet may spawn. Positions are in the logical units
+of `specs/overview.md`. Every figure below carries the name this specification
+gives it.
 
-## The grid
+## The cell grid
 
-The board is a rectangular grid of square cells. The grid includes its wall
-border:
+The board is a rectangular grid of square cells, and the grid includes the wall
+border around it.
 
-- The full grid is 30 columns x 18 rows.
-- Each cell is 32 x 32 logical pixels.
-- The grid's top-left corner sits at logical pixel `(160, 120)`, so the full
-  board spans `x` in `[160, 1120]` and `y` in `[120, 696]` (960 x 576).
-- The band above the board, `y` in `[0, 120)`, is reserved for the HUD (see
-  `specs/ui.md`).
+| Figure | Name | Value |
+| --- | --- | --- |
+| Columns | `GRID_COLS` | `30` |
+| Rows | `GRID_ROWS` | `18` |
+| Cell side | `CELL` | `32` |
+| Board origin, x | `BOARD_X` | `160` |
+| Board origin, y | `BOARD_Y` | `120` |
 
-Cells are indexed `(col, row)` with `col` in `[0, 29]` and `row` in `[0, 17]`,
-counting from the top-left. The logical-pixel top-left of cell `(col, row)` is:
+The board therefore spans `x` in `[160, 1120]` and `y` in `[120, 696]`, which is
+`960 x 576`. The band above it, `y` in `[0, BOARD_Y)`, is the HUD band that
+`specs/ui.md` lays out.
 
-```text
-x = 160 + col * 32
-y = 120 + row * 32
-```
+Cells are indexed `(col, row)` from the top-left, with `col` in `[0, 29]` and
+`row` in `[0, 17]`. The logical top-left corner of cell `(col, row)` is
+`(BOARD_X + col * CELL, BOARD_Y + row * CELL)`, and its center is that point plus
+half a cell on each axis.
 
-The simulation operates entirely in these integer cell coordinates. Rendering
-maps each occupied cell to its logical-pixel square and then to the screen.
+The simulation runs entirely in these integer cell coordinates. A position
+between two cells never occurs: every piece on the board occupies whole cells.
 
-## Cell types
+## Cell kinds
 
-Every cell is exactly one of:
+Every cell is exactly one of the following.
 
-- Wall — a perimeter cell. Walls are impassable and fatal on contact.
-- Empty — an unoccupied interior cell the snake may move through.
-- Snake — a cell occupied by a segment of the snake (head or body).
-- Pellet — the cell holding the current pellet.
+| Kind | What it is |
+| --- | --- |
+| Wall | A perimeter cell. Solid, and fatal to the head on contact. |
+| Obstacle | An interior cell the mode has placed. Solid, and fatal to the head on contact. `specs/mode.md` fixes which cells, and there may be none. |
+| Snake | A cell holding a segment of the snake, head or body. |
+| Pellet | The cell holding the live pellet. |
+| Empty | An unoccupied interior cell the snake may move through. |
 
-## Walls
+## The wall border
 
-The wall border is one cell thick on all four sides:
-
-- The top row (`row = 0`) and bottom row (`row = 17`).
-- The left column (`col = 0`) and right column (`col = 29`).
-
-This leaves an interior playable area of 28 x 16 cells: `col` in `[1, 28]` and
-`row` in `[1, 16]`. Walls are drawn in the wall-border color, are always visible,
-and never change during a round. The snake dies the moment its head enters any
-wall cell (see Collision in `specs/movement.md`).
+The border is one cell thick on all four sides: row `0`, row `GRID_ROWS - 1`,
+column `0`, and column `GRID_COLS - 1`. It leaves an interior of `28 x 16` cells,
+`col` in `[1, 28]` and `row` in `[1, 16]`. An interior cell is any cell in that
+range. The border is drawn for the whole round and never changes.
 
 ## The snake
 
-- The snake is a contiguous, non-branching chain of cells. The first cell is the
-  head; the rest are body segments in order to the tail.
-- At the start of a round the snake has a length of 3 cells and is placed
-  horizontally near the center of the board, facing right (`+col`):
-  - head at `(15, 8)`,
-  - body at `(14, 8)`,
-  - tail at `(13, 8)`.
-- The snake never occupies a position between cells; it is always grid-aligned.
-  How it advances, grows, and collides is defined in `specs/movement.md`.
+The snake is a contiguous, non-branching chain of cells. Its first cell is the
+head and the rest are body cells in order to the tail. The body always traces the
+exact path the head has taken, with no gap and no branch.
 
-## Pellets
+A round starts the snake at `START_LENGTH` (`3`) cells, laid horizontally near
+the center of the board and facing `right`.
 
-- Exactly one pellet exists on the board at any time during play.
-- A pellet occupies a single interior cell and is drawn the same size as one
-  snake segment, in the pellet color with a soft glow.
-- When the snake's head enters the pellet's cell, the pellet is eaten: the snake
-  grows (see `specs/movement.md`) and a new pellet spawns immediately.
+| Cell | `(col, row)` |
+| --- | --- |
+| Head | `(15, 8)` |
+| Body | `(14, 8)` |
+| Tail | `(13, 8)` |
 
-### Placement
+`specs/movement.md` fixes how the chain advances, grows, and collides.
 
-A pellet spawns at a uniformly random cell chosen from the set of valid cells. A
-valid cell is an interior cell (`col` in `[1, 28]`, `row` in `[1, 16]`) that is
-not currently occupied by any snake segment or by the current pellet. A pellet
-never spawns on a wall or on the snake. The placement selects a uniformly random
-valid cell without noticeable delay even when very few valid cells remain, for
-example when the snake has grown to fill most of the board.
+## The pellet
 
-The first pellet of a round spawns at a valid cell after the snake has been placed
-at its starting position, so it never overlaps the initial body.
+Exactly one pellet is on the board at any moment during a round. It occupies a
+single interior cell and is drawn one cell in size.
 
-If the snake grows until no valid cell remains for a new pellet, the round ends on
-the board-cleared win condition (see Game states in `specs/ui.md`): the
-round ends cleanly, and the game does not crash or attempt an impossible
-placement.
+A pellet spawns at a uniformly random cell drawn from the valid set. A cell is
+valid when all of the following hold.
+
+- It is an interior cell.
+- It holds no snake segment.
+- It is not an obstacle cell.
+- It is not the cell the current pellet occupies.
+
+The first pellet of a round is placed after the snake is laid at its starting
+cells, so it never lands under the starting chain. Selection stays immediate even
+when very few valid cells remain, so a nearly full board picks its pellet without
+a visible stall.
+
+When the head enters the pellet's cell the pellet is eaten: the snake grows, the
+score resolves, and a new pellet spawns at once. `specs/movement.md` and
+`specs/scoring.md` fix those two.
+
+When the snake has grown until the valid set is empty, no pellet can spawn and
+the round ends on the board-cleared win. `specs/ui.md` states that screen. The
+board-cleared round leaves the board without a live pellet.

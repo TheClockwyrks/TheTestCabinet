@@ -1,115 +1,96 @@
-# Coil — Game loop, movement, turning, growth, and collision
+# Coil — Movement
 
-This file defines how the game advances and how the snake moves and interacts
-with the board. It builds on the geometry in `specs/board.md` and the coordinate
-system in `specs/overview.md`. The scoring and combo the eat drives are in
-`specs/combo.md`.
+This file fixes the tick the simulation runs on, the order a tick resolves in,
+how the snake turns, how it grows, and what ends a round. The board it moves over
+is in `specs/board.md`, and the points an eat awards are in `specs/scoring.md`.
+Every figure below carries the name this specification gives it.
 
-## The game loop
+## The tick
 
-The simulation runs on a fixed timestep: the game advances in discrete ticks, and
-the snake moves exactly one cell per tick in its current direction. The tick rate
-is constant for the whole round; there is no speed-up as the snake grows or the
-score rises.
+The simulation advances in whole ticks of `TICK_SECONDS` (`0.125`), which is
+eight ticks per second. The snake moves exactly one cell per tick, and the rate
+is the same for the whole round whatever the score is and however long the snake
+has grown.
 
-- The tick interval is 125 ms (8 ticks per second), constant for the whole round.
-- Decouple rendering from the tick (for example, draw with `requestAnimationFrame`)
-  so the display stays smooth while the simulation steps at the fixed rate.
-  Rendering never advances the simulation; only a tick does.
-- The tick rate does not depend on the rendering frame rate or the machine's
-  speed. Two machines running the same inputs produce the same sequence of board
-  states.
+The game accumulates the delta time the runtime hands each update and runs one
+tick for each whole `TICK_SECONDS` the accumulator holds, leaving the remainder
+to carry into the next update. Ticks are therefore driven by elapsed time rather
+than by frames, and a second of game time is eight ticks whether the runtime
+delivered it in one update or in sixty. Drawing never advances the simulation.
 
-### Order of operations within a tick
+Ticks run only on the `playing` screen. A round that has ended, a paused game,
+and every menu screen leave the simulation where it stands.
 
-Each tick, in this exact order:
+## The order a tick resolves in
 
-1. Apply input. Take the next buffered turn, if any, and update the snake's
-   direction (see Turning).
-2. Advance the head. Compute the new head cell as the current head cell plus the
-   current direction.
-3. Resolve collision. Test the new head cell for a fatal collision (see
-   Collision). If it is fatal, the round ends immediately and steps 4 to 6 do not
-   run.
-4. Eat or move. If the new head cell holds a pellet, the snake grows: prepend the
-   new head and do not remove the tail. Otherwise the snake moves: prepend the new
-   head and remove the current tail cell.
-5. Resolve food. If a pellet was eaten, apply scoring and the combo (see
-   `specs/combo.md`), then spawn a new pellet (see `specs/board.md`).
-6. Advance timers. Decrement the combo window by the tick's elapsed time; expire
-   it if it reaches zero (see `specs/combo.md`).
+Each tick resolves these six steps, in this order.
 
-Follow this order exactly.
-
-## Movement
-
-The snake advances one cell per tick in its current direction (one of up, down,
-left, right). It moves continuously from the moment the round starts until the
-round ends; it can never stop or stand still.
+| Step | What happens |
+| --- | --- |
+| 1 | Take the oldest buffered turn, if any, and apply it to the snake's direction. |
+| 2 | Compute the new head cell as the current head cell plus the current direction. |
+| 3 | Test the new head cell for a fatal collision. If it is fatal, the round ends and steps 4 to 6 do not run. |
+| 4 | If the new head cell holds the pellet, prepend the new head and keep the tail. Otherwise prepend the new head and drop the tail cell. |
+| 5 | If the pellet was eaten, resolve the score and the combo, then spawn the next pellet. |
+| 6 | Draw `TICK_SECONDS` off the combo window, and lapse the window if it reaches zero. |
 
 ## Turning
 
-The player steers with the arrow keys or `WASD` (see Controls in
-`specs/ui.md`). Turning obeys these rules:
+The snake always travels in one of `up`, `down`, `left`, and `right`, and it
+never stops. `specs/controls.md` fixes the actions a player steers with.
 
-- A turn takes effect on a tick boundary, not instantly: a requested direction is
-  applied at step 1 of the next tick.
-- The snake may only turn perpendicular to its current direction. While moving
-  horizontally, only up/down are valid; while moving vertically, only left/right
-  are valid. A request to continue straight is a no-op, and a request to reverse
-  directly into the neck is ignored. The snake can never reverse onto itself in a
-  single tick.
-- One turn per tick. Buffer requested turns in a short queue, holding at most two.
-  At step 1 of each tick, take the oldest queued request and apply it only if it
-  is a valid perpendicular turn relative to the direction the snake is actually
-  moving this tick; discard it otherwise. A fast double-press while moving right,
-  pressing down then left within one tick, applies the down this tick and the
-  left, now a valid perpendicular turn, on the following tick, never both at once.
+A steering request is buffered rather than applied where it is made, and step 1
+of the next tick applies it. The buffer holds at most `TURN_QUEUE_MAX` (`2`)
+requests, and a request arriving at a full buffer is discarded.
 
-Presentation. A body cell whose head-ward and tail-ward neighbors are
-perpendicular is a bend: render it with the produced corner sprite, and render
-straight runs with the straight-body sprite, so a turning snake reads as a
-continuous coil rather than a staircase of squares. The exact sprite set and how
-it is oriented per cell is defined in `specs/assets.md`; this is rendering only and
-does not affect the simulation.
+Step 1 takes the oldest buffered request and applies it only when it is
+perpendicular to the direction the snake is travelling in on this tick. While
+travelling horizontally only `up` and `down` are perpendicular; while travelling
+vertically only `left` and `right` are. A request that repeats the current
+direction and a request that reverses it are both discarded at step 1, and the
+snake keeps its direction. The snake therefore never reverses into its own neck,
+and at most one turn takes effect per tick.
 
-## Collision
-
-Collision is tested against the new head cell computed in step 2, before the tail
-is resolved. The head moving into any of the following ends the round immediately:
-
-- A wall cell — any perimeter cell (see `specs/board.md`).
-- An obstacle cell, where the mode places them (see `specs/gameplay.md`).
-- The snake's own body — any cell occupied by a body segment, subject to the tail
-  rule below.
-
-There are no grace frames, forgiveness windows, or second chances: a single fatal
-collision ends the round.
-
-### The tail rule (self-collision)
-
-The tail vacates its cell as the head advances, so the cell the tail is leaving is
-free for the head on a normal move, but not on a growth tick, when the tail does
-not move:
-
-- On a normal tick (no pellet eaten), the tail vacates its current cell this tick,
-  so the new head cell is not a collision if it equals the current tail cell. The
-  snake may safely follow its own tail.
-- On a growth tick (a pellet is in the new head cell), the tail does not retract,
-  so the full body, including the current tail cell, is solid, and moving the head
-  into any of it, including that tail cell, is fatal.
-
-Evaluating collision against the post-move body (head advanced, tail retracted
-only on a normal tick) produces both behaviors correctly.
+A pair of requests made inside one tick resolves across two ticks. Travelling
+`right`, a player who requests `down` and then `left` gets the `down` on the next
+tick, and the `left` on the tick after that, where it is now a valid
+perpendicular turn.
 
 ## Growth
 
-Eating a pellet grows the snake by exactly one cell, by not removing the tail on
-that tick (step 4). On every non-eating tick the length is constant: one cell
-added at the head, one removed at the tail. The body therefore always traces the
-exact path the head has taken, with no gaps or branches.
+Eating a pellet lengthens the snake by exactly one cell, because step 4 keeps the
+tail on that tick. On every tick that eats nothing the length is unchanged: one
+cell joins at the head and one leaves at the tail.
 
-Presentation. On the eat tick, play the produced head-bite animation, where the
-head's mouth opens and chomps shut, then return the head to its resting frame (see
-`specs/assets.md`). It is a visual flourish tied to the eat and does not affect the
-simulation or its timing.
+## Collision
+
+Step 3 tests the new head cell alone, before the tail is resolved. The head
+entering any of these ends the round at once, with no grace tick and no second
+chance.
+
+| Fatal cell | Fixed by |
+| --- | --- |
+| A wall cell | `specs/board.md` |
+| An obstacle cell | `specs/mode.md` |
+| A cell holding a body segment, subject to the tail rule below | This file |
+
+### The tail rule
+
+Whether the tail's cell is fatal depends on whether the tail vacates it on this
+tick.
+
+| The tick | The current tail cell |
+| --- | --- |
+| Eats nothing, so the tail moves | Free. The head may enter it, and a snake may safely chase its own tail. |
+| Eats the pellet, so the tail stays | Solid. The head entering it ends the round. |
+
+Every other body cell is solid on every tick.
+
+## Ending a round
+
+A round ends in one of two ways, and each has its own screen in `specs/ui.md`.
+
+| Ending | Cause |
+| --- | --- |
+| Dead | The head entered a fatal cell at step 3. |
+| Board cleared | Step 5 found no valid cell for the next pellet, as `specs/board.md` defines the valid set. |
