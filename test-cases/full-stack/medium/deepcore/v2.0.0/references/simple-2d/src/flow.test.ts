@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BUILDING_GAP,
   CAM_LEAD_MAX,
+  CUES,
   CAM_LEAD_RAMP,
   CAM_STILL_SPEED,
   CAM_UNWIND_MULT,
@@ -527,5 +528,26 @@ describe("what a reset restores", () => {
     expect(fresh.grid[200][5].kind).toBe("tunnel");
     expect(fresh.grid[200][0].kind).toBe("bedrock");
     expect(fresh.grid[fresh.coreRow][16].kind).toBe("core");
+  });
+});
+
+describe("running frames over a draft", () => {
+  // The engine's own `update` drains the cue and effect queues once it has
+  // played the frame, so a cue raised on one frame reaches the bus once. The
+  // test helper has to drain them too: a helper that left them in the state it
+  // committed would hand every later frame the same cue again, and a check that
+  // counted events would read a defect that was the helper's.
+  it("collects a cue once however many frames follow it", () => {
+    const dying = inDraft(bareState(), (d) => {
+      d.screen = "in-mine";
+      posedAt(d, colCenterX(8, MINER_W), 200 * TILE - MINER_H);
+      d.miner.hull = 0;
+    });
+
+    const one = runFrames(holding(dying, {}), 1 / 60, 1);
+    const many = runFrames(holding(dying, {}), 1, 60);
+
+    expect(one.cues.filter((cue) => cue === CUES.death)).toHaveLength(1);
+    expect(many.cues.filter((cue) => cue === CUES.death)).toHaveLength(1);
   });
 });

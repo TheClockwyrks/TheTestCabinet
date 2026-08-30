@@ -318,6 +318,12 @@ export function runFrames(
     fx.push(...d.fx);
     cues.push(...d.cues);
     for (const loop of d.loops) loops.add(loop);
+    // Both queues are drained before the draft closes, exactly as the engine's
+    // own `update` drains them once it has played the frame. A helper that left
+    // them in place would carry every cue into the state the next frame opens
+    // on and hand a check the same cue once per frame that followed it.
+    d.fx.length = 0;
+    d.cues.length = 0;
     current = commit(d);
   }
   return { state: current, fx, cues, loops: [...loops] };
