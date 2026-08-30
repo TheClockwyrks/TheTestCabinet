@@ -1,20 +1,123 @@
-// Wireworm — board.tile-centres, under the `structured-2d` engine. CASE-PROVIDED.
+// Wireworm — board/tile-centres: a node is drawn on the tile centre the
+// tile-to-stage map gives.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/board.md fixes that map and nothing else states it: tile `(c, r)` spans
+// `x` in `[32c, 32c + 32]` and `y` in `[80 + 32r, 80 + 32r + 32]`, its centre is
+// `(32c + 16, 80 + 32r + 16)`, and "a node fills its tile and is drawn centered
+// on that point". So what is read here is the PICTURE against that formula
+// rather than any state the surface reports: a node posed on a tile has to
+// change what is painted at that tile's centre, and a node posed on one tile has
+// to leave the tile beside it alone.
 //
-// The point it decides, from `test-case.toml`:
+// The two readings are one scenario read twice rather than two requirements. A
+// build that dropped the `+ TILE / 2` and drew each node on its tile's corner
+// paints nothing at the centre; a build that dropped `BOARD_Y` paints the wrong
+// row entirely; and a build that filled every tile of the board paints the
+// neighbour too. Each of the three reads back as a different failure, which is
+// what the control sample is for.
 //
-// Nodes sit on the tile centres the formula gives
-//
-// A node posed at each of eight spread tiles is drawn centred on (32c + 16, 80
-// + 32r + 16), within half a tile, and the tile beside each is background.
+// EIGHT SPREAD TILES, because one tile decides nothing: a map that is right at
+// the origin and wrong in its scale is right on one tile and wrong across the
+// board. They span the columns and the scatter rows, and none is the neighbour
+// of another. Every reading is a CHANGE against the same tile on the empty
+// board, so the build's own palette is never assumed.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
+import {
+  captureStill,
+  colorDistance,
+  createHarness,
+  sampleTile,
+  startPlaying,
+  type Harness,
+} from "../harness";
 
-test("board.tile-centres", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/structured-2d/board/tile-centres.test.ts has not been written yet",
-  );
+/**
+ * How far a tile's colour must move when a node is posed on it, in RGB distance
+ * on the 0–441 scale, for the node to count as drawn there.
+ *
+ * A change rather than a colour, so no palette is assumed. 25 is about a
+ * twentieth of the scale: far under anything a node legible at a glance
+ * (specs/overview.md) could measure, and far over the rounding a canvas round
+ * trip leaves.
+ */
+const PAINTED_MIN = 25;
+
+/**
+ * How far the tile BESIDE a posed node may move, on the same scale, and still
+ * count as the background it was.
+ *
+ * The neighbour is read against its own colour on the empty board, so a build
+ * that shades or textures its board is compared against its own shading. 8 is
+ * rounding and rasterization room around a tile nothing was drawn on — a third
+ * of {@link PAINTED_MIN}, so a tile a node reached and a tile it did not can
+ * never both pass.
+ */
+const BACKGROUND_MAX = 8;
+
+/**
+ * The charge the posed nodes carry.
+ *
+ * Charge 2 is a plainly drawn node — the state above the ramp's floor, so it is
+ * not the dimmest thing on the board — and it is inert as far as this scenario
+ * goes: nothing here fires a bolt, so no detonation and no chain can move it
+ * (specs/nodes.md, specs/discharge.md).
+ */
+const POSED_CHARGE = 2;
+
+/**
+ * Eight tiles spread across the columns and down the scatter rows, each with the
+ * tile to its right free and no two adjacent, so every node's control sample is
+ * a tile no other node could have reached.
+ */
+const TILES = [
+  { c: 2, r: 1 },
+  { c: 9, r: 3 },
+  { c: 16, r: 5 },
+  { c: 23, r: 8 },
+  { c: 30, r: 11 },
+  { c: 37, r: 14 },
+  { c: 6, r: 16 },
+  { c: 20, r: 17 },
+] as const;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws each node on its own tile centre and not on the tile beside it", async () => {
+  startPlaying(h);
+  await h.advance(1);
+
+  // What each tile centre and each neighbour's centre holds with nothing on the
+  // board, so every reading below is a change the build made.
+  const bare = TILES.map((tile) => ({
+    node: sampleTile(h, tile.c, tile.r),
+    beside: sampleTile(h, tile.c + 1, tile.r),
+  }));
+
+  for (const tile of TILES) h.debug.setNode(tile.c, tile.r, POSED_CHARGE);
+  await h.advance(1);
+  captureStill(h, "tiles");
+
+  TILES.forEach((tile, index) => {
+    const at = `tile (${tile.c}, ${tile.r})`;
+    assertGreaterThan(
+      colorDistance(bare[index].node, sampleTile(h, tile.c, tile.r)),
+      PAINTED_MIN,
+      `${at}: the node's own tile centre`,
+    );
+    assertLessThanOrEqual(
+      colorDistance(bare[index].beside, sampleTile(h, tile.c + 1, tile.r)),
+      BACKGROUND_MAX,
+      `${at}: the tile beside it`,
+    );
+  });
 });
