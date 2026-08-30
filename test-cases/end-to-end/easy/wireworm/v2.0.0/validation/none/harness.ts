@@ -449,7 +449,21 @@ export function speedOverFrames(delta: number, frames: number): number {
 
 /** One recorded operation on the 2D context, in the order the render made it. */
 export type DrawCall =
-  | { kind: "call"; method: string; args: unknown[] }
+  | {
+      kind: "call";
+      method: string;
+      args: unknown[];
+      /**
+       * For `fillText` and `strokeText`, the run's measured width in the
+       * context's own units and the alignment in force, both read off the
+       * context at the call. Only that context can say how wide a run is: the
+       * width follows from the font, the letter spacing and the direction, none
+       * of which the call itself carries. {@link textDraws} turns the pair into
+       * the run's span.
+       */
+      width?: number;
+      textAlign?: string;
+    }
   | { kind: "set"; property: string; value: unknown };
 
 /** A sound the build emitted, and the frame of the drive it emitted it on. */
@@ -1282,12 +1296,24 @@ function toDevice(
 
 /** One operation as the injected recorder writes it. */
 export type RecordedOp =
-  | { op: "call"; method: string; args: unknown[] }
+  | {
+      op: "call";
+      method: string;
+      args: unknown[];
+      width?: number;
+      textAlign?: string;
+    }
   | { op: "set"; property: string; value: unknown };
 
 function toDrawCall(op: RecordedOp): DrawCall {
   return op.op === "call"
-    ? { kind: "call", method: op.method, args: op.args }
+    ? {
+        kind: "call",
+        method: op.method,
+        args: op.args,
+        width: op.width,
+        textAlign: op.textAlign,
+      }
     : { kind: "set", property: op.property, value: op.value };
 }
 
@@ -1867,6 +1893,16 @@ export interface TextDraw {
   /** The anchor the run was drawn at, mapped through the transform in force. */
   x: number;
   y: number;
+  /**
+   * The horizontal extent of the run's glyphs, in logical stage units.
+   *
+   * The width the context measured at the call, scaled by the transform in force
+   * and laid out about the anchor as the alignment then in force places it. A
+   * run whose width the recorder could not read spans its anchor alone, so
+   * `left` and `right` are both `x`.
+   */
+  left: number;
+  right: number;
 }
 
 /** A 2D affine transform, in the canvas's `[a, b, c, d, e, f]` order. */
@@ -1979,7 +2015,25 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
     const [text] = call.args;
     const at = numbers(call.args.slice(1), 2);
     if (typeof text !== "string" || at === null) return;
-    draws.push({ text, ...applyMatrix(m, at[0], at[1]) });
+    const anchor = applyMatrix(m, at[0], at[1]);
+    // The run's width under the same horizontal scale the anchor took, laid out
+    // about the anchor the way the alignment in force places it.
+    const width =
+      typeof call.width === "number" && Number.isFinite(call.width)
+        ? call.width * Math.hypot(m[0], m[1])
+        : 0;
+    const before =
+      call.textAlign === "center"
+        ? width / 2
+        : call.textAlign === "right" || call.textAlign === "end"
+          ? width
+          : 0;
+    draws.push({
+      text,
+      ...anchor,
+      left: anchor.x - before,
+      right: anchor.x - before + width,
+    });
   });
   return draws;
 }

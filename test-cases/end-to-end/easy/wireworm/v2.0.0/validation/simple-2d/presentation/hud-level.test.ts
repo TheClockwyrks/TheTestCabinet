@@ -54,7 +54,9 @@ const LEVEL = 7;
  * above them. `160` units is five tiles — comfortably more than a label and its
  * digits at any size that fits an `80`-unit bar, and a small fraction of the
  * `1280`-unit bar the three readouts are spread across, so a `7` belonging to
- * some other readout could not be mistaken for this one at that distance.
+ * some other readout could not be mistaken for this one at that distance. The
+ * `none` and `structured-2d` suites take the same measure against the same
+ * figure.
  */
 const ADJACENT_MAX = 160;
 

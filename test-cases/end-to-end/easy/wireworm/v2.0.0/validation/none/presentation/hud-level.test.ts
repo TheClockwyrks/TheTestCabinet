@@ -13,11 +13,14 @@
 // bar, that the current level's digits sit BESIDE it, and that the total is on
 // the bar too.
 //
-// "BESIDE" IS READ FROM WHERE THE TWO RUNS WERE ANCHORED. A build that writes
-// the label and the digits in one run satisfies it outright, since that run
-// carries both. A build that writes them as two runs anchors the second within
-// {@link ADJACENT_MAX} of the first — the space one readout puts between its own
-// parts, rather than the space the bar puts between two different readouts.
+// "BESIDE" IS READ AS THE GAP BETWEEN THE TWO RUNS. A build that writes the
+// label and the digits in one run satisfies it outright, since that run carries
+// both. A build that writes them as two runs is read on the EDGE-TO-EDGE gap
+// between their glyphs — `0` where the runs overlap — carried with the vertical
+// offset between their baselines, so a build that stacks the label above the
+// digits reads the same as one that writes them on a line. {@link ADJACENT_MAX}
+// is the space one readout puts between its own parts, rather than the space the
+// bar puts between two different readouts.
 //
 // THE POSED FIGURES ARE THE DISTINGUISHING VALUES. The level is posed at `7`,
 // which is a digit no other readout on the bar carries: the score is posed at
@@ -45,17 +48,33 @@ const POSED_LEVEL = 7;
 const POSED_SCORE = 0;
 
 /**
- * How far the level's digits may be anchored from the label and still read as
+ * How far the level's digits may sit from the `LEVEL` label and still be read as
  * beside it, in logical units.
  *
- * `200` is under a sixth of the `1280`-unit bar, and it has to cover the label's
- * own width as well as the gap after it, since what this engine reads of a run
- * is the point it was anchored at rather than the box it filled. `LEVEL` set
- * large enough to read across a room is some `160` units wide, so a readout that
- * writes the label and then the digits anchors them about that far apart — and
- * the three readouts of a bar this wide sit much further apart than that.
+ * specs/ui.md asks for the digits "beside it" and fixes no distance, because the
+ * composition is the build's: the label may sit to the left of the digits, or
+ * above them. So the reading is the EDGE-TO-EDGE gap between the two runs —
+ * `0` where they overlap or share a run — carried with the vertical offset
+ * between their baselines, and `160` units is five tiles: comfortably more than
+ * a label and its digits at any size that fits an `80`-unit bar, and a small
+ * fraction of the `1280`-unit bar the three readouts are spread across, so a `7`
+ * belonging to some other readout could not be mistaken for this one at that
+ * distance. The `none`, `simple-2d` and `structured-2d` suites take the same
+ * measure against the same figure.
  */
-const ADJACENT_MAX = 200;
+const ADJACENT_MAX = 160;
+
+/**
+ * How far apart two runs sit: the edge-to-edge horizontal gap, `0` where their
+ * spans overlap, carried with the vertical offset between their baselines.
+ */
+function gapBetween(a: TextDraw, b: TextDraw): number {
+  const across = Math.max(
+    0,
+    Math.max(a.left, b.left) - Math.min(a.right, b.right),
+  );
+  return Math.hypot(across, a.y - b.y);
+}
 
 /** A standalone occurrence of `figure` in a run: not part of a longer number. */
 function names(draw: TextDraw, figure: number): boolean {
@@ -107,13 +126,13 @@ it("draws the level label with the level beside it and the total on the bar", as
     (draw) =>
       names(draw, POSED_LEVEL) &&
       (labels(draw) ||
-        labelled.some((label) => Math.abs(draw.x - label.x) <= ADJACENT_MAX)),
+        labelled.some((label) => gapBetween(draw, label) <= ADJACENT_MAX)),
   );
   if (beside.length === 0) {
     fail(
       `the level's digit ${POSED_LEVEL} drawn inside the HUD bar, in the ` +
-        `${JSON.stringify(HUD_LEVEL_LABEL)} run itself or anchored within ` +
-        `${ADJACENT_MAX} of the ${STAGE_W}-unit bar from it — beside it, ` +
+        `${JSON.stringify(HUD_LEVEL_LABEL)} run itself or within ` +
+        `${ADJACENT_MAX} of the ${STAGE_W}-unit bar of it — beside it, ` +
         `however the readout is composed (specs/ui.md)`,
       drawn,
     );

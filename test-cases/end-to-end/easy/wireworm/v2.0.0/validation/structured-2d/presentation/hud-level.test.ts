@@ -13,15 +13,14 @@
 // bar, that the current level's digits sit BESIDE it, and that the total is on
 // the bar too.
 //
-// "BESIDE" IS READ AS OVERLAPPING COLUMNS. The label and the digits are two runs
-// of text a player reads as one readout, and a build that stacks them puts them
-// in the same columns of the bar while a build that writes them in one run puts
-// them in the same run. So the digits' run must overlap the label's horizontal
-// span, or come within `ADJACENT_MAX` of it — a gap no wider than a couple of
-// characters, which is the space a composition puts between two parts of one
-// readout rather than between two different readouts. Both runs are inside the
-// bar, which is `HUD_H` (`80`) tall, so no vertical bound need be stated beyond
-// that.
+// "BESIDE" IS READ AS THE GAP BETWEEN THE TWO RUNS. The label and the digits are
+// two runs of text a player reads as one readout, and a build that stacks them
+// puts them in the same columns of the bar while a build that writes them in one
+// run puts them in the same run. So the reading is the EDGE-TO-EDGE gap between
+// their glyphs — `0` where the runs overlap — carried with the vertical offset
+// between their baselines, and it must come within {@link ADJACENT_MAX}: the
+// space a composition puts between two parts of one readout rather than between
+// two different readouts.
 //
 // THE POSED FIGURES ARE THE DISTINGUISHING VALUES. The level is posed at `7`,
 // which is a digit no other readout on the bar carries: the score is posed at
@@ -50,24 +49,37 @@ const POSED_LEVEL = 7;
 const POSED_SCORE = 0;
 
 /**
- * How far the level's digits may sit from the label and still read as beside
- * it, in logical units.
+ * How far the level's digits may sit from the `LEVEL` label and still be read as
+ * beside it, in logical units.
  *
- * `64` is two tiles, which at the sizes a HUD is set in is a couple of
- * characters: the space one readout puts between its own parts. The three
- * readouts themselves are spread across a `1280`-unit bar, so a gap this small
- * cannot reach from one readout to another.
+ * specs/ui.md asks for the digits "beside it" and fixes no distance, because the
+ * composition is the build's: the label may sit to the left of the digits, or
+ * above them. So the reading is the EDGE-TO-EDGE gap between the two runs —
+ * `0` where they overlap or share a run — carried with the vertical offset
+ * between their baselines, and `160` units is five tiles: comfortably more than
+ * a label and its digits at any size that fits an `80`-unit bar, and a small
+ * fraction of the `1280`-unit bar the three readouts are spread across, so a `7`
+ * belonging to some other readout could not be mistaken for this one at that
+ * distance. The `none`, `simple-2d` and `structured-2d` suites take the same
+ * measure against the same figure.
  */
-const ADJACENT_MAX = 64;
+const ADJACENT_MAX = 160;
 
 /** A standalone occurrence of `figure` in a run: not part of a longer number. */
 function names(span: TextSpan, figure: number): boolean {
   return new RegExp(`(?<![0-9])${figure}(?![0-9])`).test(span.text);
 }
 
-/** How far apart two runs sit horizontally: `0` where their spans overlap. */
-function gap(a: TextSpan, b: TextSpan): number {
-  return Math.max(0, a.left - b.right, b.left - a.right);
+/**
+ * How far apart two runs sit: the edge-to-edge horizontal gap, `0` where their
+ * spans overlap, carried with the vertical offset between their baselines.
+ */
+function gapBetween(a: TextSpan, b: TextSpan): number {
+  const across = Math.max(
+    0,
+    Math.max(a.left, b.left) - Math.min(a.right, b.right),
+  );
+  return Math.hypot(across, a.y - b.y);
 }
 
 let h: Harness;
@@ -114,7 +126,7 @@ it("draws the level label with the level beside it and the total on the bar", as
   const beside = onBar.filter(
     (span) =>
       names(span, POSED_LEVEL) &&
-      labels.some((label) => gap(span, label) <= ADJACENT_MAX),
+      labels.some((label) => gapBetween(span, label) <= ADJACENT_MAX),
   );
   if (beside.length === 0) {
     fail(

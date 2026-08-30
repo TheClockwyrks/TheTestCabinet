@@ -2229,6 +2229,21 @@
             let resolved = null;
             try {
               resolved = self.resolveCall(resource, name, real);
+              // A run of text is worth its ANCHOR and the span its glyphs fill,
+              // and only the context that is about to draw it can say how wide
+              // that is: the width follows from the font, the letter spacing and
+              // the direction in force, none of which the call itself carries.
+              // Measured here, before the paint, and noted on the described form
+              // alone, so the replay recording is untouched.
+              if (
+                resolved !== null &&
+                resolved.described !== null &&
+                (name === "fillText" || name === "strokeText") &&
+                typeof real[0] === "string"
+              ) {
+                resolved.described.width = subject.measureText(real[0]).width;
+                resolved.described.textAlign = subject.textAlign;
+              }
             } catch {
               /* the recorder never changes what a build draws */
             }
