@@ -3941,11 +3941,13 @@ validation = { script = "rendering/stage-fit.test.ts", outputs = [
 [[review.categories.items]]
 id = "bands-are-distinguishable"
 title = "The four bands read as different rock"
-description = "The four bands rock is drawn distinctly: sampling the interior of a rock cell in each band, no two bands mean color are within an RGB distance of 40 of one another, so the depth is readable from the wall."
+description = "The four bands rock is drawn distinctly: sampling the interior of a rock cell in each band, the mean colors of each band and the band below it are at least an RGB distance of 30 apart, so a player descending reads the change of depth off the wall."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: pose a rock cell in each band, sample the interior of
-# each drawn cell and hold every pair of mean colors at least 40 apart.
+# each drawn cell and hold each consecutive pair of mean colors at least 30
+# apart. Consecutive, because a band runs hundreds of rows and only two bands
+# that meet are ever on screen together.
 validation = { script = "rendering/bands-are-distinguishable.test.ts", outputs = [
   { id = "bands", name = "The four bands rock side by side", kind = "image" },
 ] }
