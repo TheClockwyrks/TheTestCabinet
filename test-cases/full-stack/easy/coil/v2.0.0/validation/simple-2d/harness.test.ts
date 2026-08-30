@@ -32,8 +32,11 @@ import {
 import {
   FRAMES_PER_TICK,
   FRAME_MS,
+  WALL_CELL,
   ahead,
+  arrangeApproach,
   arrangeEat,
+  arrangeFullBoard,
   arrangeStep,
   captureReplay,
   chainFrom,
@@ -43,6 +46,7 @@ import {
   retable,
   serpentine,
   spriteOnCell,
+  startRoundWithKeys,
   tickFrames,
   watchCues,
   type Harness,
@@ -195,6 +199,34 @@ it("walks every interior cell in one adjacent chain", () => {
       Math.abs(path[i].row - path[i - 1].row);
     expect(step, `cells ${i - 1} and ${i}`).toBe(1);
   }
+});
+
+it("approaches a target cell so the next tick enters it", async () => {
+  // The arrangement every collision point is built on: the head one cell short
+  // of the fatal cell, facing it, with nothing else on the board.
+  const step = arrangeApproach(h, WALL_CELL, { dir: "left" });
+  expect(step.next).toEqual(WALL_CELL);
+
+  expect((await h.tick()).screen).toBe("gameover");
+});
+
+it("fills the board one eat short of the cleared ending", () => {
+  // A chain through every interior cell but one, which `setSnake` accepts only
+  // because the path it is laid along is contiguous, with the pellet on the cell
+  // it left free and directly ahead of the head.
+  const scene = arrangeFullBoard(h);
+
+  expect(scene.chain.length).toBe(28 * 16 - 1);
+  expect(scene.snapshot.snake).toEqual(scene.chain);
+  expect(scene.snapshot.pellet).toEqual(scene.pellet);
+  expect(ahead(scene.chain[0], scene.snapshot.dir)).toEqual(scene.pellet);
+});
+
+it("starts a round from the title the way a player does", async () => {
+  // The one compound sequence that presses keys rather than posing: it is what
+  // the navigation points drive, and a point about anything else reaches its
+  // screen through `setScreen` instead.
+  expect((await startRoundWithKeys(h)).screen).toBe("playing");
 });
 
 /* -------------------------------------------------------------------------- */
