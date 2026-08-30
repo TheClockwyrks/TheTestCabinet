@@ -231,21 +231,18 @@ function drawDrone(
 
   if (drone.kind === "flux") {
     const shimmer = shimmering(drone, state.stage);
-    // A Flux settled on NEITHER band glows white over its whole footprint, so a
-    // shimmering Flux and one holding a band are told apart at a glance.
-    if (shimmer) {
-      ctx.fillStyle = "#ffffff";
-      ctx.globalAlpha = 0.3;
-      ctx.beginPath();
-      ctx.arc(drone.x, drone.y, half, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
     // The tuning core is white on both states; the ring is the band the Flux is
     // holding, and white only while it holds neither.
+    // A soft white halo on both states, stronger while it holds neither band: the
+    // Flux is the drone that reads as light rather than as a colour.
     ctx.fillStyle = "#ffffff";
+    ctx.globalAlpha = shimmer ? 0.3 : 0.13;
     ctx.beginPath();
-    ctx.arc(drone.x, drone.y, size * (shimmer ? 0.34 : 0.2), 0, Math.PI * 2);
+    ctx.arc(drone.x, drone.y, half, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(drone.x, drone.y, size * (shimmer ? 0.34 : 0.26), 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = shimmer ? "#ffffff" : BAND_COLOR[band];
     ctx.globalAlpha = shimmer ? 0.95 : 1;
@@ -257,11 +254,13 @@ function drawDrone(
   }
 
   if (drone.kind === "prism") {
-    ctx.strokeStyle = BAND_COLOR[drone.shellAlive ? band : oppositeBand(band)];
-    ctx.globalAlpha = 0.7;
-    ctx.lineWidth = size * 0.07;
+    // The violet rim is the Prism's own chassis, not a band: it is what tells the
+    // two-layer drone apart from a Shard and a Flux of the same band at a glance.
+    ctx.strokeStyle = COLOR.prismRim;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = size * 0.09;
     ctx.beginPath();
-    ctx.arc(drone.x, drone.y, half * 0.96, 0, Math.PI * 2);
+    ctx.arc(drone.x, drone.y, half * 0.95, 0, Math.PI * 2);
     ctx.stroke();
     ctx.globalAlpha = 1;
   }

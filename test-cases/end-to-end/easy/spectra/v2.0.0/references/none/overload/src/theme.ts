@@ -50,6 +50,14 @@ export const COLOR = {
   meterReady: "#fff2a8",
   /** The charge telegraph and the ship's hull accent. */
   charge: "#ffd86b",
+  /**
+   * The rim a Prism is ringed with.
+   *
+   * A chassis colour rather than a band — the ring carries no band, so it is free
+   * of the one-palette rule the bands answer to — and it is the same violet the
+   * field takes on under an inversion, which is the thing a Prism does.
+   */
+  prismRim: "#b46eff",
   /** The discharge wave. */
   discharge: "#dff8ff",
   /** The field-wide mark a spectral inversion carries. */
