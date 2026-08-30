@@ -1,19 +1,39 @@
-// Wireworm — screens.title-howto, under the `none` engine. CASE-PROVIDED.
+// Wireworm — screens/title-howto: confirming the second title item opens the
+// how-to screen.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/ui.md's `title` table: `HOW TO PLAY`, the second entry of `TITLE_ITEMS`,
+// "Moves to `howto`."
 //
-// The point it decides, from `test-case.toml`:
-//
-// HOW TO PLAY opens the how-to screen
-//
-// Confirming the second title item leaves the game on the howto screen.
+// The highlight is posed on the second item rather than pressed down onto it,
+// so this decides the confirm alone: `controls/menu-down` is where the down
+// binding is graded, and a build with a broken down binding and a working
+// how-to route must not fail both.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { TITLE_ITEMS } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { CONFIRM_KEY, poseTitle } from "./screens";
 
-test("screens.title-howto", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/none/screens/title-howto.test.ts has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it(`leaves the game on the howto screen after ${TITLE_ITEMS[1]}`, async () => {
+  await poseTitle(h, 1);
+
+  await h.tap(CONFIRM_KEY);
+  await captureStill(h, "howto");
+
+  assertEqual(
+    (await h.snapshot()).screen,
+    "howto",
+    `the screen ${TITLE_ITEMS[1]} opened`,
   );
 });
