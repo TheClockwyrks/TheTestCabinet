@@ -103,7 +103,9 @@ newsheet 32 "$LOAD/slug"
 slug_body 0 '#2f7fb0'
 slug_body 1 '#3d94c8'
 slug_body 2 '#4ac6ff'; spark 2 16 16 '#eaf6ff'
-slug_body 3 '#3d94c8'
+# The fall of the pulse, drawn a shade apart from its rise on frame 1 — the four
+# frames of a cycle are four different pictures (specs/assets.md).
+slug_body 3 '#368bbc'
 echo "produced the Slug's idle cycle -> $LOAD/slug"
 
 # ============================ CLUSTER (tiny, dense packs) =====================
