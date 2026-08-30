@@ -1,19 +1,74 @@
-// Wireworm — presentation.hud-score, under the `none` engine. CASE-PROVIDED.
+// Wireworm — presentation/hud-score: the HUD shows the running score.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/ui.md's HUD table: the bar carries three readouts, and the score is "the
+// running score, as digits. It is the most prominent of the three."
+// specs/board.md puts every one of them inside the bar's own region, `y` in
+// `[0, HUD_H]` (`[0, 80]`). specs/scoring.md fixes what the score becomes; this
+// point asks only that whatever it IS is on the bar, in digits a player reads.
 //
-// The point it decides, from `test-case.toml`:
+// THE READING IS THE FRAME'S OWN TEXT DRAWS, each placed in logical units
+// through the transform it was drawn under, so a build is free to set its
+// readout in any face, at any size, anywhere in the bar. A run COUNTS when the
+// digits in it read as the posed score: a label around it (`SCORE 12345`), a
+// grouping separator (`12,345`), and zero padding (`0012345`) all read as that
+// score, and none of them is a thing the specification fixes.
 //
-// The HUD shows the running score
+// THE POSED SCORE IS THE DISTINGUISHING VALUE. `12,345` is five digits with no
+// run of them anywhere else on the bar: the level readout carries `1` and
+// `TOTAL_LEVELS` (`12`) and the lives readout carries `START_LIVES` (`3`), so
+// nothing but the score readout can produce this figure, and a build that drew a
+// stale or a rounded score reads as a different number rather than as this one.
 //
-// With the score posed at 12,345 the HUD bar draws that figure.
+// The board beneath is empty and quiet, so nothing on it can reach the bar.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import { HUD_H } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  startPlaying,
+  textDraws,
+  type Harness,
+} from "../harness";
 
-test("presentation.hud-score", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/none/presentation/hud-score.test.ts has not been written yet",
+/** The score posed: five digits no other readout on the bar can produce. */
+const POSED_SCORE = 12345;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("draws the posed score inside the HUD bar", async () => {
+  await startPlaying(h);
+  await h.debug.setScore(POSED_SCORE);
+
+  const draws = textDraws(await h.frameCalls());
+  // The HUD bar carrying the posed score.
+  await captureStill(h, "hud");
+
+  assertEqual(
+    (await h.snapshot()).score,
+    POSED_SCORE,
+    "the posed score landed",
+  );
+
+  const onBar = draws.filter((draw) => draw.y >= 0 && draw.y <= HUD_H);
+  const reading = onBar.filter(
+    (draw) => Number.parseInt(draw.text.replace(/\D/g, ""), 10) === POSED_SCORE,
+  );
+  assertGreaterThan(
+    reading.length,
+    0,
+    `a run of text inside the HUD bar (y in [0, ${HUD_H}]) whose digits read ` +
+      `${POSED_SCORE} (specs/ui.md: the score is the running score, as ` +
+      `digits, drawn inside the bar); the bar's runs were ` +
+      `${JSON.stringify(onBar.map((draw) => draw.text))}`,
   );
 });

@@ -88,16 +88,23 @@ export interface Patch {
 }
 
 /**
- * Every device pixel inside `box`, in one crossing into the page.
+ * Every device pixel of the stage rectangle with corners `(x0, y0)` and
+ * `(x1, y1)`, in one crossing into the page.
  *
  * The canvas is found the way the harness finds it — the largest `<canvas>` on
- * the page — and the box is clamped to the surface, so a box that reaches past
- * an edge reads what is there rather than throwing.
+ * the page — and the rectangle is clamped to the surface, so one that reaches
+ * past an edge reads what is there rather than throwing.
  */
-export async function readBox(h: Harness, box: Box): Promise<Patch> {
+export async function readRect(
+  h: Harness,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): Promise<Patch> {
   const view = h.viewport();
-  const from = h.device(box.x - box.half, box.y - box.half);
-  const to = h.device(box.x + box.half, box.y + box.half);
+  const from = h.device(x0, y0);
+  const to = h.device(x1, y1);
   const width = Math.max(1, to.x - from.x);
   const height = Math.max(1, to.y - from.y);
   const read = await h.page.evaluate(
@@ -137,6 +144,17 @@ export async function readBox(h: Harness, box: Box): Promise<Patch> {
     top: read.top,
     scale: view.scale,
   };
+}
+
+/** Every device pixel inside `box`. */
+export function readBox(h: Harness, box: Box): Promise<Patch> {
+  return readRect(
+    h,
+    box.x - box.half,
+    box.y - box.half,
+    box.x + box.half,
+    box.y + box.half,
+  );
 }
 
 /** One packed pixel, back as a colour. */
@@ -218,7 +236,7 @@ export function litTile(h: Harness, c: number, r: number): Promise<Rgb> {
 /* Scanning for something drawn                                               */
 /* -------------------------------------------------------------------------- */
 
-/** How far a scan found the board's colour departed from, and where. */
+/** How far a scan found a place departed from what it was, and where. */
 export interface Departure {
   distance: number;
   x: number;
@@ -226,32 +244,51 @@ export interface Departure {
 }
 
 /**
- * The pixel within `radius` logical units of `(x, y)` that sits furthest from
- * `ground`, and how far it sits.
+ * The disc of `radius` logical units around `(x, y)`, read as a patch.
  *
- * The reading for a point asking whether SOMETHING was drawn at a place the game
- * itself reports — a bolt at the centre the snapshot gives it, lightning along
- * the chord between two tile centres — without asking what shape or colour the
- * build drew it in. A disc rather than a square, so the radius means the same
- * thing in every direction.
+ * The place a point asking whether SOMETHING was drawn looks at: a bolt at the
+ * centre the snapshot gives it, lightning at a station along the chord between
+ * two tile centres. The patch is square and {@link furthestChange} takes the
+ * disc out of it, so the radius means the same thing in every direction.
  */
-export async function furthestFrom(
+export function readDisc(
   h: Harness,
   x: number,
   y: number,
   radius: number,
-  ground: Rgb,
-): Promise<Departure> {
-  const patch = await readBox(h, {
+): Promise<Patch> {
+  return readBox(h, {
     x: Math.min(Math.max(x, 0), STAGE_W),
     y: Math.min(Math.max(y, 0), STAGE_H),
     half: radius,
   });
+}
+
+/**
+ * The pixel within `radius` logical units of `(x, y)` that MOVED furthest
+ * between two readings of the same place, and how far it moved.
+ *
+ * The reading for a point asking whether something was drawn where the game says
+ * it is, without asking what shape or colour the build drew it in — and without
+ * assuming a board colour, since specs/overview.md fixes none and a build is
+ * free to rule, shade or texture its ground. What is compared is each pixel
+ * against ITSELF on a reading of the same board with the thing gone, so a build
+ * that etched a trace through that disc is compared against its own trace.
+ */
+export function furthestChange(
+  before: Patch,
+  after: Patch,
+  x: number,
+  y: number,
+  radius: number,
+): Departure {
   let found: Departure = { distance: -1, x, y };
-  for (const [index, pixel] of patch.pixels.entries()) {
-    const at = patchPoint(patch, index);
+  for (const [index, pixel] of after.pixels.entries()) {
+    const was = before.pixels[index];
+    if (was === undefined) continue;
+    const at = patchPoint(after, index);
     if (Math.hypot(at.x - x, at.y - y) > radius) continue;
-    const distance = colorDistance(pixel, ground);
+    const distance = colorDistance(pixel, was);
     if (distance > found.distance) found = { distance, x: at.x, y: at.y };
   }
   return found;
