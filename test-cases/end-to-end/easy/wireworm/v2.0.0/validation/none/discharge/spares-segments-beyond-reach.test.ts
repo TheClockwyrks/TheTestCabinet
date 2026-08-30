@@ -1,20 +1,76 @@
-// Wireworm — discharge.spares-segments-beyond-reach, under the `none` engine. CASE-PROVIDED.
+// discharge/spares-segments-beyond-reach — a segment beyond the reach stands.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// `specs/discharge.md` bounds the fry as tightly as it bounds the chain: a
+// segment is destroyed when its tile "lies within `DISCHARGE_RADIUS` (`2`) tiles
+// of the tile of any node the discharge detonated", and "A segment further than
+// that from every detonated node is untouched and stays on its tile."
 //
-// The point it decides, from `test-case.toml`:
+// So the worm posed here stands three tiles from the one node that detonates —
+// one tile past the reach — and it is read on that same tile afterwards. A build
+// whose radius is `3`, or whose reach is Euclidean and rounded outward, destroys
+// it and the tile answers with no worm at all.
 //
-// A segment beyond the reach stands
+// The near side of this boundary is discharge/fries-segments-in-reach, its own
+// point: a build that fries the whole board and a build that fries nothing would
+// score alike on one paired item.
 //
-// A worm segment three tiles from every detonated node is still on its tile
-// afterwards.
+// The worm's own faculties are off. This point is about what the discharge does
+// not do to a segment, not about where the worm walks, so a segment that is still
+// on its tile is one the discharge left there rather than one that stepped back
+// onto it.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDefined, assertNull } from "../assert";
+import {
+  captureStill,
+  chargeAt,
+  createHarness,
+  poseWorm,
+  startPlaying,
+  type Harness,
+} from "../harness";
+import { detonate, wormOn } from "./detonation";
 
-test("discharge.spares-segments-beyond-reach", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/none/discharge/spares-segments-beyond-reach.test.ts has not been written yet",
+/** The critical node the bolt is fired into. */
+const STRUCK = { c: 12, r: 8 };
+
+/**
+ * The lone segment, three columns along the detonation's row: a Chebyshev
+ * distance of `3`, one past `DISCHARGE_RADIUS` (`2`), and the only node that
+ * detonates is the struck one.
+ */
+const BEYOND = { c: 15, r: 8 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("leaves a worm segment three tiles from the detonation on its tile", async () => {
+  await startPlaying(h);
+  await poseWorm(h, {
+    c: BEYOND.c,
+    r: BEYOND.r,
+    length: 1,
+    stepping: false,
+    body: false,
+  });
+
+  await detonate(h, STRUCK.c, STRUCK.r);
+
+  await captureStill(h, "spared");
+  const after = await h.snapshot();
+  assertNull(
+    chargeAt(after, STRUCK.c, STRUCK.r),
+    "precondition: the struck critical node detonated",
+  );
+  assertDefined(
+    wormOn(after, BEYOND.c, BEYOND.r),
+    "a worm still holding a segment three tiles from the detonation",
   );
 });
