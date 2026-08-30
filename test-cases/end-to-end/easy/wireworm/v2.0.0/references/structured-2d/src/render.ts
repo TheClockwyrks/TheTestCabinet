@@ -122,7 +122,9 @@ export function renderGround(state: WirewormState, ctx: Ctx): void {
   ctx.fillStyle = withAlpha(COLOR.bandEdge, 0.12);
   ctx.fillRect(0, BAND_TOP_Y, STAGE_W, 10);
 
-  // The HUD bar's own ground, drawn here so nothing on the board can reach it.
+  // The HUD bar's own ground. It is the board's ground layer that paints it, and
+  // every layer of play above is clipped to the board region (`src/stage.ts`),
+  // so nothing standing on the board reaches the bar (`specs/board.md`).
   ctx.fillStyle = COLOR.hudBar;
   ctx.fillRect(0, 0, STAGE_W, HUD_H);
   ctx.fillStyle = withAlpha(COLOR.hudRule, 0.9);

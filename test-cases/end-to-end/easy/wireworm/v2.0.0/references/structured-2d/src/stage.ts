@@ -19,6 +19,7 @@
 
 import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
 import type { DrawApi } from "@test-cabinet/structured-2d";
+import { BOARD_H, BOARD_W, BOARD_Y } from "./constants";
 import { wirewormState, type WirewormState } from "./game";
 import {
   renderArcs,
@@ -49,6 +50,32 @@ abstract class BoardLayer extends DrawComponent {
   ): void;
 }
 
+/**
+ * A layer of play, drawn inside the board's own region.
+ *
+ * Everything play consists of stands on the board, and the look is free to lay
+ * light around it: the charge halo under a node, the glow along a bolt, the
+ * lightning of an arc. All of it reaches past the body it belongs to, so a node
+ * on the entry row or a bolt climbing off the top of the board would paint over
+ * the HUD bar. The clip makes `specs/board.md`'s rule literal — play is confined
+ * to the board region beneath the bar — rather than leaving it to each figure to
+ * stay small enough.
+ *
+ * The board's own ground and the HUD are not play, so `Ground` and `Ui` draw
+ * unclipped.
+ */
+abstract class PlayLayer extends BoardLayer {
+  override draw(api: DrawApi): void {
+    const { ctx } = api;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, BOARD_Y, BOARD_W, BOARD_H);
+    ctx.clip();
+    super.draw(api);
+    ctx.restore();
+  }
+}
+
 /** The substrate, its traces, the player band, and the HUD bar behind it. */
 class Ground extends BoardLayer {
   constructor() {
@@ -64,7 +91,7 @@ class Ground extends BoardLayer {
 }
 
 /** Every node standing on the board, at its own charge. */
-class Nodes extends BoardLayer {
+class Nodes extends PlayLayer {
   constructor() {
     super(LAYER.nodes);
   }
@@ -78,7 +105,7 @@ class Nodes extends BoardLayer {
 }
 
 /** Every worm, over the field it winds through. */
-class Worms extends BoardLayer {
+class Worms extends PlayLayer {
   constructor() {
     super(LAYER.worms);
   }
@@ -92,7 +119,7 @@ class Worms extends BoardLayer {
 }
 
 /** The three support foes. */
-class Foes extends BoardLayer {
+class Foes extends PlayLayer {
   constructor() {
     super(LAYER.foes);
   }
@@ -106,7 +133,7 @@ class Foes extends BoardLayer {
 }
 
 /** Every bolt in flight. */
-class Bolts extends BoardLayer {
+class Bolts extends PlayLayer {
   constructor() {
     super(LAYER.bolts);
   }
@@ -120,7 +147,7 @@ class Bolts extends BoardLayer {
 }
 
 /** The cursor, inside its band. */
-class Cursor extends BoardLayer {
+class Cursor extends PlayLayer {
   constructor() {
     super(LAYER.cursor);
   }
@@ -134,7 +161,7 @@ class Cursor extends BoardLayer {
 }
 
 /** The arcs of a live discharge, over everything they cross. */
-class Arcs extends BoardLayer {
+class Arcs extends PlayLayer {
   constructor() {
     super(LAYER.arcs);
   }
