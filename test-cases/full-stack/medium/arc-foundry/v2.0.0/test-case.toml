@@ -3762,11 +3762,12 @@ validation = { script = "effects/impact-burst.test.ts", outputs = [
 [[review.categories.items]]
 id = "death-burst"
 title = "A dying unit pops"
-description = "Particles are drawn where a unit dies on the frame it is removed that were not drawn there on the frame before it."
+description = "A burst plays where a unit dies: the ground it stood on keeps moving after it is gone, over and above the ground an identical shot landed on without killing anything."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: kill a frozen unit with one shot and sample its
-# position either side. See validation/<engine>/effects/death-burst.test.ts.
+# Automated validation: read the ground a killing shot left bare against the
+# ground the same head's non-killing shot left bare. See
+# validation/<engine>/effects/death-burst.test.ts.
 validation = { script = "effects/death-burst.test.ts", outputs = [
   { id = "death", name = "The burst where a unit died", kind = "replay" },
 ] }
