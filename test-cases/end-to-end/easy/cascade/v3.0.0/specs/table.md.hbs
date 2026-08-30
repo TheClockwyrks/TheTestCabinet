@@ -1,87 +1,137 @@
-<!--
-SCAFFOLD PLACEHOLDER. This text is carried forward from v2.1.0 under its old
-name specs/table.md.
-The specification stage of the v3.0.0 rework rewrites it. Nothing below is
-v3.0.0 text yet.
--->
+# Cascade — The table
 
-# Table
+This file defines the geometry of the table: the size of a card, where each of
+the thirteen piles sits, how the cards of a pile are laid out, and the rectangle
+each pile answers a release in. What each pile accepts is in
+`specs/foundations.md`, `specs/tableau.md`, and `specs/stock.md`; the gestures
+resolved against these rectangles are in `specs/controls.md`. Every position is a
+top-left corner in the stage's logical units, as `specs/overview.md` states.
 
-## Overview
+## A card
 
-This file defines the geometry of the table and every pile on it. All positions
-and sizes are in the logical-pixel coordinate system defined in `specs/overview.md`
-(a fixed 1280 x 720 table, origin top-left). The rules of play for these piles are
-in `specs/rules.md`.
+Every card occupies a `CARD_W x CARD_H` (`100 x 140`) rectangle. That is its
+footprint wherever it sits: in a pile, overlapped in a column, held in hand, or
+in flight during the victory cascade. A card is drawn face-up, showing its rank
+and its suit, or face-down, showing its back.
 
-## Cards
+## The order of a pile
 
-- Every card occupies a `100 x 140` rectangle (corner radius `8`). This is the
-  card's footprint wherever it sits: in a pile slot, overlapped in a column, in
-  the hand while dragging, or in flight during the win cascade.
-- A card is either face-up (rank and suit visible) or face-down (back shown). The
-  rendering of each is described under Visual design in `specs/overview.md`.
+A pile is a stack ordered from the bottom card to the top card. The top card of
+the stock, the waste, or a foundation is the one drawn over the rest of that
+pile. A tableau column is fanned downward instead, so its top card is the one
+drawn **lowest** on the table, and that card is the column's exposed card: the
+one a run is stacked onto and the one a move takes first.
 
-## Piles
+## The piles
 
-The table holds thirteen piles split into two rows: a top row of the stock, the
-waste, and the four foundations; and the seven tableau columns below.
+The table holds thirteen piles in two rows. The top row carries the stock, the
+waste, and the four foundations; the seven tableau columns run beneath it.
 
-### Seven column anchors
+### Column anchors
 
-The seven tableau columns are evenly spaced across the table with a pitch of `122`
-(a `100`-wide card plus a `22` gap), and the group is centered, so the column left
-edges are at these `x` values:
+The seven columns are evenly spaced, at a pitch of `122`, which is a `100`-wide
+card and a `22` gap. `COLUMN_X` holds their left edges:
 
-| Column | 1   | 2   | 3   | 4   | 5   | 6   | 7   |
-| ------ | --- | --- | --- | --- | --- | --- | --- |
-| `x`    | 224 | 346 | 468 | 590 | 712 | 834 | 956 |
+| Column | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `COLUMN_X` | `224` | `346` | `468` | `590` | `712` | `834` | `956` |
 
-The top row's piles align to these same columns so the table reads as a grid.
+The gaps between the columns carry no pile and nothing card-sized is drawn in
+them.
 
-### Top row
+### The top row
 
-The top row begins at `y = 24` and has a height of `140` with the following piles:
+The top row sits at `TOP_ROW_Y` (`24`) and holds six piles, each anchored on one
+of the column positions above:
 
-- Stock, at column 1 (`x = 224`). The face-down draw pile. Clicking it turns
-  cards to the waste (see `specs/rules.md`).
-- Waste, at column 2 (`x = 346`). The face-up pile that the stock turns onto; only
-  its top card is playable. When the stock turns more than one card at a time, the
-  cards the waste is showing are fanned to the right (see `specs/rules.md`); the fan
-  stays clear of the stock and does not overlap the foundations.
-- Foundations, four slots at columns 4–7 (`x = 590, 712, 834, 956`). Each builds
-  one suit up from Ace to King. An empty foundation shows a dim suit-pip hint, but
-  any suit may be started on any empty foundation.
+| Pile | Anchor |
+| --- | --- |
+| The stock | `(STOCK_X, TOP_ROW_Y)`, `(224, 24)` |
+| The waste | `(WASTE_X, TOP_ROW_Y)`, `(346, 24)` |
+| Foundation `0` | `(FOUNDATION_X[0], TOP_ROW_Y)`, `(590, 24)` |
+| Foundation `1` | `(FOUNDATION_X[1], TOP_ROW_Y)`, `(712, 24)` |
+| Foundation `2` | `(FOUNDATION_X[2], TOP_ROW_Y)`, `(834, 24)` |
+| Foundation `3` | `(FOUNDATION_X[3], TOP_ROW_Y)`, `(956, 24)` |
 
-The gap at column 3 separates the draw piles on the left from the foundations on
-the right.
+`FOUNDATION_X` is `[590, 712, 834, 956]`. The third column position, `x = 468`,
+carries no pile in the top row and nothing card-sized is drawn there. It is the
+space that separates the two draw piles on the left from the foundations on the
+right.
 
-### Tableau
+The stock and the foundations are squared piles: every card sits at the pile's
+anchor, so the pile shows its top card alone.
 
-Below the top row are the tableau columns with the following attributes:
+### The waste
+{{#if (eq variant.slug "draw-three")}}
 
-- The seven columns begin at `y = 180`, each at its column `x` above.
-- Cards in a column overlap downward, offset from the card above by:
-  - `24` when the card above it is face-down;
-  - `34` when the card above it is face-up.
-  This keeps every face-down card's edge and every face-up card's rank corner
-  visible while the columns stay compact.
-- An empty column shows its slot outline at its anchor (`y = 180`).
+The cards the waste shows, which `specs/stock.md` defines, are fanned to the
+right from the waste anchor at a pitch of `WASTE_FAN` (`26`), oldest first, so
+with three cards shown they are drawn with their top-left corners at
+`(346, 24)`, `(372, 24)`, and `(398, 24)`, and the last of them is the waste's
+top card. At most three cards fan, so the fan begins at `346` and its right edge
+never passes `498`. Every other card the waste holds is squared away at the
+waste anchor beneath them.
+{{else}}
 
-### The HUD strip
+The card the waste shows, which `specs/stock.md` defines, is drawn with its
+top-left at the waste anchor, and every other card the waste holds is squared
+away beneath it.
+{{/if}}
 
-The row below the tableau, from about `y = 684` to `y = 712`, is reserved for the
-HUD controls (`specs/states.md`); tableau columns must stay clear of it (see
-compression below). It holds the New Game and Menu controls and the deal-mode
-label.
+A waste whose set memory is empty shows no card, so it draws the empty-slot mark
+at its anchor whatever cards it still holds.
+
+### Empty piles
+
+A pile holding no cards draws a card-sized mark at its anchor, `CARD_W x CARD_H`,
+so an empty slot reads apart from the bare table.
+
+### The columns
+
+Each column begins at `TABLEAU_Y` (`180`), at its own `COLUMN_X`. Its cards fan
+downward from there, each one offset below the card above it by:
+
+| The card above is | Offset |
+| --- | --- |
+| Face-down | `FACE_DOWN_OFFSET` (`24`) |
+| Face-up | `FACE_UP_OFFSET` (`34`) |
+
+So a column's first card has its top edge at `y = 180`, and each further card's
+top edge is that many units below the one before it.
 
 ### Long-column compression
 
-A column may grow long, a full descending run stacked on its original face-down
-cards. A column's cards must always stay within the table and clear of the HUD
-strip: the bottom card's lower edge may not fall below `y = 676`. If a column's
-natural extent at the offsets above would exceed that, reduce the face-up offset
-uniformly for that column (down to a floor of `14`) so the whole column fits,
-keeping every card's rank corner visible. The face-down offset is not compressed.
-This is a per-column, per-frame fit, so a column expands back to the normal
-offsets as cards leave it.
+A column's lowest card's bottom edge may not fall below `COLUMN_BOTTOM_LIMIT`
+(`676`). When a column's natural extent at the offsets above would pass that
+line, its face-up offset is reduced uniformly, the same value under every face-up
+card of that column, to the largest value that fits the column above the line.
+The reduced offset never falls below `FACE_UP_OFFSET_MIN` (`14`), and a column
+long enough to demand less than `14` draws `14`. The face-down offset stays at
+`24` however far a column is compressed.
+
+The fit is made per column and per frame, so a column that compressed and then
+lost cards draws the full `34` offset again.
+
+## Drop rectangles
+
+Each pile answers a release inside one rectangle, and `specs/controls.md` states
+how a release resolves against them.
+
+| Pile | Its drop rectangle |
+| --- | --- |
+| The stock | `CARD_W x CARD_H` at `(STOCK_X, TOP_ROW_Y)` |
+| The waste | `CARD_W x CARD_H` at `(WASTE_X, TOP_ROW_Y)`, whatever the shown set fans to |
+| A foundation | `CARD_W x CARD_H` at `(FOUNDATION_X[i], TOP_ROW_Y)` |
+| An empty column | `CARD_W x CARD_H` at `(COLUMN_X[i], TABLEAU_Y)` |
+| A column holding cards | `CARD_W` wide at `COLUMN_X[i]`, running from `TABLEAU_Y` down to the bottom edge of that column's lowest drawn card |
+
+The top row's rectangles end at `y = 164` and the columns' begin at `y = 180`, so
+no two of the thirteen rectangles overlap and a point lies in at most one of
+them. A point in none of them lies on no pile.
+
+## The HUD strip
+
+The band `STAGE_W` wide at `y = HUD_Y` (`680`), `HUD_H` (`36`) tall, is the HUD
+strip. It carries the three controls and the deal-mode label `specs/screens.md`
+defines, and it holds no pile. `COLUMN_BOTTOM_LIMIT` keeps every column clear of
+it.

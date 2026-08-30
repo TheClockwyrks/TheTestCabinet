@@ -1,137 +1,80 @@
-<!--
-SCAFFOLD PLACEHOLDER. This text is carried forward from v2.1.0 under its old
-name specs/rules.md.hbs, which the v3.0.0 decomposition splits into
-specs/deal.md, specs/foundations.md, specs/tableau.md and this file.
-The specification stage of the v3.0.0 rework rewrites it. Nothing below is
-v3.0.0 text yet.
--->
+# Cascade — The stock and the waste
 
-# Rules
+This file defines the stock, the waste, and this build's deal mode. Where the two
+piles sit and how the waste is laid out is in `specs/table.md`; the gestures that
+turn the stock and play off the waste are in `specs/controls.md`.
 
-## Overview
-
-This file defines how a game is dealt, every legal move, and this build's deal
-mode — how many cards the stock turns at once (its turn count) and the mode's menu
-label. It builds on the pile layout in `specs/table.md` and the coordinate system
-in `specs/overview.md`.
-
-## The deck and the deal
-
-- A single standard 52-card deck: four suits (♠ ♥ ♦ ♣), thirteen ranks each (Ace,
-  2–10, Jack, Queen, King). Ace is low (rank 1); King is high (rank 13).
-- Shuffle the full deck uniformly at random at the start of every new game. The
-  shuffle is genuinely random from game to game, so no two deals are alike and the
-  deal is not predictable.
-- Deal into the seven tableau columns, left to right: column `n` receives `n`
-  cards (column 1 gets 1, column 2 gets 2, and so on to column 7), for 28 cards in
-  all. In each column every card is dealt face-down except the last, which is
-  turned face-up. So after the deal each column shows one face-up card on top of
-  `n − 1` face-down cards.
-- The remaining 24 cards form the stock, face-down, in dealing order. The waste
-  and all four foundations start empty.
-
-## Foundations
-
-- The four foundations each build one suit upward from Ace to King: only an Ace
-  may start an empty foundation, and thereafter only the next-higher card of the
-  same suit may be added (2 on Ace, 3 on 2, and so on up to King on Queen).
-- Any suit may be started on any empty foundation; a suit is not tied to a fixed
-  slot. Once a foundation holds an Ace, it accepts only that suit.
-- Cards on the foundations may be pulled back to the tableau, a legal move, though
-  they are normally left there.
-
-## Tableau
-
-- A tableau column builds downward in rank and alternating in color: a card may be
-  placed on a face-up card whose rank is exactly one higher and whose color is the
-  opposite (red on black or black on red). For example a black 6 may go on a red
-  7.
-- Only a King (or a run headed by a King) may be moved onto an empty column.
-- Moving a run. A contiguous run of face-up cards that is already in
-  descending-alternating order may be moved together as a unit onto a legal target
-  (a tableau card one higher and opposite in color, or an empty column if the run
-  is headed by a King). You pick up the run from the card you grab down to the
-  bottom of the column; every card below the grabbed card moves with it.
-- Turning a column card. When a move leaves a column's new bottom card face-down,
-  that card is immediately turned face-up. A face-down card is never playable until
-  it is exposed and turned this way.
-- Face-down cards may not be moved, reordered, or peeked at.
-
-## Deal mode
+## This build's deal mode
 {{#if (eq variant.slug "draw-three")}}
 
-This build plays Draw Three, the classic Klondike deal.
+This build plays Draw Three.
 
-- The stock's turn count is three. Clicking the stock turns three cards face-up
-  onto the waste at once (or all that remain, if fewer than three are left). Only
-  the top card of the waste is playable; the two beneath it become playable only as
-  the top card is removed.
-- The cards the waste is showing (Stock and waste, below) are fanned to the right
-  so each of them is visible, with the playable top card frontmost and clear of the
-  stock and the foundations (`specs/table.md`). One, two, or three cards fan the
-  same way, from the waste position rightward.
-- The mode's menu and HUD label is `DRAW THREE` (see the title menu and the HUD in
-  `specs/states.md`).
+| Figure | Value |
+| --- | --- |
+| `TURN_COUNT` | `3` |
+| `DEAL_MODE` | `draw-three` |
+| `DEAL_MODE_LABEL` | `DRAW THREE` |
+
+`DEAL_MODE` is the identifier the build reports for its deal mode, and
+`DEAL_MODE_LABEL` is the text drawn on the title screen and in the HUD, as
+`specs/screens.md` states.
 {{else}}
 
-This build plays Draw One, the gentler Klondike deal.
+This build plays Draw One.
 
-- The stock's turn count is one. Clicking the stock turns exactly one card face-up
-  onto the waste. That single card sits on top of the waste and is the playable
-  card; the card beneath it (the previous turn) shows behind it.
-- Because only one card is turned per click, the waste needs no multi-card fan; a
-  single top card is shown at the waste position (`specs/table.md`), with the prior
-  cards squared beneath it.
-- The mode's menu and HUD label is `DRAW ONE` (see the title menu and the HUD in
-  `specs/states.md`). With Draw One and the unlimited passes below, every stock
-  card is reachable, so this deal is the more winnable one.
+| Figure | Value |
+| --- | --- |
+| `TURN_COUNT` | `1` |
+| `DEAL_MODE` | `draw-one` |
+| `DEAL_MODE_LABEL` | `DRAW ONE` |
+
+`DEAL_MODE` is the identifier the build reports for its deal mode, and
+`DEAL_MODE_LABEL` is the text drawn on the title screen and in the HUD, as
+`specs/screens.md` states.
 {{/if}}
 
-## Stock and waste
+## Turning the stock
 
-- Clicking the stock turns the deal mode's turn count of cards (above) face-up onto
-  the waste. If fewer than that many remain, it turns all that remain.
-- The waste keeps the cards of each turn together as a set, and remembers those
-  sets in the order they were turned. The cards it shows are the cards still on the
-  newest set that holds any, the frontmost of them being the top card of the waste.
-  Every other card on the waste is squared away behind them.
-- Playing off the waste takes the top card of the shown set, leaving that set one
-  card smaller. Once a set has been played off entirely, the waste shows what is
-  left of the set turned before it.
-- Only the top card of the waste is playable, onto a foundation or a tableau
-  column by the rules above. Playing it exposes the card beneath.
-- When the stock is empty, clicking its (empty) slot recycles the entire waste
-  back into the stock, face-down, preserving order, so it can be turned again.
-  Recycling clears the waste and its sets with it. There is no limit on the number
-  of passes through the stock.
+A turn of a stock holding cards moves `TURN_COUNT` cards onto the waste, or all
+that remain when the stock holds fewer than that. The cards are taken one at a
+time from the top of the stock and placed face-up on the waste, so the stock's
+top card is the deepest of the group the turn moved and the last card taken is
+the waste's new top card.
 
-## Legal moves
+## The waste's set memory
 
-A held card or run may be dropped only onto a pile that accepts it:
+The waste keeps the cards of each turn together as a **set** and remembers its
+sets in the order they were turned, oldest first. The cards on the waste belong
+to those sets from the bottom up, so the oldest set holds the bottom-most cards.
+Each turn appends one set, holding exactly the cards that turn moved.
 
-- Onto a foundation: a single card that is the next card up for that foundation
-  (an Ace onto an empty foundation, or the next-higher card of the matching suit).
-  A run may not be dropped onto a foundation; foundations take one card at a time.
-- Onto a tableau column: a single card, or a valid run, whose top card is one
-  lower and opposite in color to the column's current bottom card; or, onto an
-  empty column, any card or run headed by a King.
+The waste shows the cards it holds from the newest set that still holds any, and
+the last of those cards is the waste's top card. Every other card on the waste is
+squared away behind them, as `specs/table.md` lays out. Playing the top card off
+the waste leaves its set one card smaller, and a set played off entirely leaves
+the memory, so the waste falls back to what is left of the set turned before it.
 
-A drop that does not satisfy these rules is rejected: the card or run returns to
-where it was picked up, and nothing changes. The game never allows an illegal
-placement.
+A waste whose set memory is empty shows no card and offers none to play, whatever
+cards it still holds, and a move naming a waste card is refused.
 
-## Auto-move to foundation
+## Playing off the waste
 
-Double-clicking a playable card (the top of the waste, or the bottom face-up card
-of a tableau column) sends it directly to the foundation it belongs on, if that
-move is currently legal; otherwise the double-click does nothing. This is a
-convenience for the common "send this card home" move and obeys exactly the same
-foundation rules as a manual drop.
+Only the waste's top card may be played, onto a foundation that accepts it by
+`specs/foundations.md` or onto a column that accepts it by `specs/tableau.md`. A
+move naming any other card on the waste is refused. Once the top card has left,
+the card beneath it is the waste's top card.
 
-## Winning
+A card lifted off the waste and returned to it, because the move it began was
+refused or because the gesture was a click rather than a drop, rejoins the set it
+came from and leaves the set memory exactly as it was.
 
-The game is won when all 52 cards are on the foundations (each foundation complete
-from Ace to King). On the win, play stops and the victory cascade begins (see
-`specs/victory.md`). There is no separate loss state: a game with no legal moves
-left is simply unwinnable, and the player starts a new deal from the menu or the
-New Game control (see `specs/states.md`).
+## Recycling
+
+A turn of an empty stock recycles instead: every card on the waste returns to the
+stock face-down, in reverse order, so the card that lay at the bottom of the
+waste is the stock's top card and a further pass turns the same cards up in the
+same order. The waste is left empty and its set memory is emptied with it.
+
+A turn of a stock that holds cards never recycles. A turn with the stock and the
+waste both empty leaves both empty. Passes through the stock are unlimited, so a
+stock emptied and recycled any number of times behaves the same each time.

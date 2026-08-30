@@ -1,176 +1,370 @@
-<!--
-SCAFFOLD PLACEHOLDER. This text is carried forward from v2.1.0 under its old
-name specs/overview.md.
-The specification stage of the v3.0.0 rework rewrites it. Nothing below is
-v3.0.0 text yet.
--->
-
 # Cascade
 
 ## Overview
 
-Cascade is a single-player solitaire card game for the browser, a Klondike
-patience played on a green felt table. Twenty-eight cards are dealt into seven
-tableau columns, and the player builds the four foundations up from Ace to King,
-one suit each, by moving cards between the columns, turning cards from the stock,
-and freeing buried cards. Clear all fifty-two to the foundations and the game is
-won, at which point every foundation card launches off the table in a bouncing,
-screen-painting victory cascade that gives the game its name.
+Cascade is a single-player patience game for the browser, a Klondike solitaire
+played on a felt table. Twenty-eight cards are dealt into seven tableau columns,
+and the player builds four foundations up from Ace to King, one suit each, by
+moving cards between the columns, turning cards off the stock, and freeing the
+buried cards underneath.
 
-Cascade is played with a pointer — a mouse or a touchscreen, on the same footing:
-click or tap the stock to turn cards, drag a card (or an ordered run of cards)
-onto a legal pile, and double-click or double-tap a card to send it straight to
-its foundation. Touchscreen support is required, not optional (see the controls in
-`specs/states.md`). The craft of the build is a responsive, legible table and a
-win animation with real weight.
+Cascade's defining idea is its ending. The moment the fifty-second card reaches a
+foundation the table gives way: every card on the foundations launches off in
+turn, arcs under gravity, bounces along the floor, and paints itself onto the
+table as it goes, until the felt is buried under overlapping cards and the last
+flyer has drifted off a side edge.
 
-Cascade is its own game, with an original name, table, card design, and palette.
-Klondike is a public-domain set of rules, but do not reproduce the assets,
-branding, card art, or exact look of any existing solitaire product. Draw the
-cards and the table yourself from this specification.
+Cascade is played with a pointer, and a mouse and a touchscreen stand on the same
+footing. Cascade has its own name, look, and rules, and its branding and design
+are original to it.
 
-## How the specification is organized
+The specification spans several files under `specs/`. `specs/table.md` gives the
+geometry of the table and every pile on it; `specs/deal.md` the deck and the
+deal; `specs/foundations.md` what a foundation accepts; `specs/tableau.md` what a
+column accepts and how a run of cards moves; `specs/stock.md` the stock, the
+waste, and this build's deal mode; `specs/controls.md` the pointer and every
+control it answers; `specs/victory.md` the win and the victory cascade;
+`specs/screens.md` the four screens and the HUD; `specs/audio.md` the cues;
+`specs/state.md` what the game's state carries; `specs/instrumentation.md` the
+debug and automation surface; and `specs/showcase.md` the showcase the finished
+build ships. Read all of them and build the game they describe as one cohesive
+whole.
 
-This specification is split across several files:
+{{#if (eq engine.slug "none")}}
+## The runtime
 
-- `specs/overview.md` — this file: the overview, goal, hard requirements, free
-  choices, coordinate system, and visual design.
-- `specs/table.md` — the table layout: the stock, waste, foundations, and the
-  seven tableau columns, with positions, card size, and overlap.
-- `specs/rules.md` — the deal and the rules of play: how cards move, what moves
-  are legal, how the foundations and tableau build, how the game is won, and this
-  build's deal mode (how many cards the stock turns at a time and its menu label).
-- `specs/states.md` — the game states and screens, the controls (mouse and touch),
-  the HUD, and what is out of scope.
-- `specs/victory.md` — the victory cascade animation, defined with exact motion
-  values.
-- `specs/instrumentation.md` — the debug and automation API and the read-only
-  debug overlay the build exposes.
+This game stands on no engine, so the runtime under it is yours to write: the
+frame loop and the delta time it measures, the canvas fit, pointer and keyboard
+input, audio cues, and the debug overlay. Where this specification speaks of the
+runtime it means that layer, and it states only what Cascade needs from it. How
+the layer is structured is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+## The runtime
 
-Read every spec file and implement the game they describe as a single, cohesive
-build. The specs cross-reference each other by name; treat them as one
-specification.
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It owns the frame loop and
+the delta time the game is given, the pointer the table is played with, audio
+cues, the canvas fit, and the debug overlay. Read its documentation before you
+start. This specification states only what is specific to Cascade.
+
+The pointer reaches the game from the engine already in the stage's logical
+units, as the ordered samples delivered since the previous frame.
+`specs/controls.md` states what Cascade does with them.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It is a gameplay framework as
+much as a runtime: the game is written as subclasses of its classes, a game
+instance, a game mode, actors and their components, and the controllers that
+drive them, and the engine constructs, ticks, and renders them in a fixed order.
+It owns the frame loop and the delta time the game is given, rendering and the
+camera, the canvas fit, the pointer the table is played with, audio cues, and the
+debug overlay. Read its documentation before you start. This specification states
+only what is specific to Cascade.
+
+The logical design field handed to the engine is the stage, and the game leaves
+the camera at rest, so world units and the stage's logical units coincide and
+every position in this specification is both. The pointer reaches the game from
+the engine in those units, as the ordered samples the player controller reads
+each frame. `specs/controls.md` states what Cascade does with them.
+{{/if}}
+
+## The project you build in
+
+The project at the root of this repository is already wired up, and its
+`README.md` describes it. It is a TypeScript project built with Vite, tested with
+Vitest, linted with ESLint, and formatted with Prettier. That toolchain is fixed
+and supplied.
+
+{{#if (eq engine.slug "none")}}
+### What you implement
+
+Everything under `src/`. The directory does not exist yet.
+
+`index.html` loads `/src/main.ts` as its entry point, so that module is where
+your build starts. Beyond that the structure is yours: the frame loop and the
+canvas fit, pointer and keyboard input, audio, the debug overlay, the debug and
+automation surface, the figures this specification fixes, and the game itself.
+
+The game's state is yours to shape. `specs/state.md` states what it must carry,
+and `specs/instrumentation.md` states the one contract fixed over it.
+
+### What stays as it is
+
+- `index.html`, the page and the canvas the stage is fitted into.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from this specification
+
+Every number, identifier, cue name, and piece of screen copy this specification
+fixes is stated here under a name. Anything this specification does not name is
+yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test drives the game over its own clock for a counted number of frames,
+so it needs no browser, and `@napi-rs/canvas` is installed for a test that wants
+a real 2D context.
+{{else if (eq engine.slug "simple-2d")}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`.
+
+`src/game.ts` exports `game`, a `Game<CascadeState, CascadeDebugApi>`:
+`initialize` builds the state and the debug surface once and returns them
+together as `[state, debug]`, `update` takes the current state as a read-only
+view (`DeepReadonly<CascadeState>`) and returns the next state, advanced against
+the frame's delta time in seconds, and `render` is handed that next state,
+read-only again, and draws it. The engine holds the state by value and replaces
+it with what each `update` returns, so a frame builds the next state from the
+current one rather than writing into it, and nothing but `update` and the debug
+surface's poses advances the game. All three functions throw `"not implemented"`
+as they stand. Implement them.
+
+`src/game.ts` also declares and exports `CascadeState` and the types it is built
+from, exactly as `specs/state.md` states them, and `CascadeDebugApi`, the debug
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the table
+itself. The seeded stub exports a placeholder; replace it with the color your
+table uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.tcab/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, cue name, and piece of screen copy this specification
+fixes is exported from `src/constants.ts` under the name this specification gives
+it. Import it and use it. Where a spec states a value it also names the constant
+that holds it, and the constant is authoritative. Anything this specification
+does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over its own canvas and clock and advances
+the game a counted number of frames, so it needs no browser.
+{{else}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`. The file does
+not exist yet, and `src/main.ts` imports it, so the project does not compile
+until you create it.
+
+`src/game.ts` exports `game`, a `GameDefinition<CascadeDebugApi>`: the game
+instance class, a level registry holding the single level the game runs in, and
+`startLevel` naming it. The game opens that one level and never opens another;
+every screen is a value of the state's `screen` field, so the world and its game
+state live for the whole session. The instance's `initialize` defines the cues
+and returns the debug surface. The level's game mode runs the screens and the
+rules, and it adds a single player in its `beginPlay`, possessing nothing; that
+player's controller is where the pointer is read. The mode's `gameStateClass` is
+`CascadeState`, so the world's game state is the state `specs/state.md` declares.
+The actors, components, and controllers you write draw that state and drive it.
+
+`src/game.ts` also declares and exports `CascadeState` and the types it is built
+from, exactly as `specs/state.md` states them, and `CascadeDebugApi`, the debug
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the table
+itself.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.tcab/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, cue name, and piece of screen copy this specification
+fixes is exported from `src/constants.ts` under the name this specification gives
+it. Import it and use it. Where a spec states a value it also names the constant
+that holds it, and the constant is authoritative. Anything this specification
+does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over a canvas from `@napi-rs/canvas` and a
+surface and clock of its own, then advances the game a counted number of frames
+with `engine.advance`, so it needs no browser.
+{{/if}}
+
+### The checks the repository passes
+
+Four commands run over the finished repository before it is reviewed:
+
+| Command | Checks |
+| --- | --- |
+| `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
+| `npx eslint .` | The code is lint-clean. |
+| `npx prettier --check .` | The code is formatted. |
+| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
+
+They run on the repository as you leave it. `npm run typecheck`, `npm run lint`,
+`npm run format`, and `npm test` run the same four locally.
+
+### The build interface
+
+`npm ci` followed by `npm run build` produces the complete static site into
+`dist/` at the repository root, with an `index.html` at the root of that
+directory as the entry point. That directory runs correctly when served as-is
+from any static file server, at the root or at a sub-path. The scripts that do
+this are already in `package.json`.
 
 ## Goal of this build
 
-Produce a complete, polished, playable game of Klondike solitaire that runs
-entirely in a browser. This is a real front-end task: a full deck model,
-legal-move validation, drag-and-drop between piles, an auto-move to the
-foundations, win detection, a physics-driven win animation, and the menus and
-state transitions that tie a title screen, live play, and the win screen
-together. Aim for a build a person would actually enjoy playing, not a tech demo.
+Produce a complete, polished, playable game that runs entirely in a browser. Aim
+for a game a person would enjoy playing: unhurried, readable, and satisfying to
+finish.
+
+The build ships the whole game: the deal, the thirteen piles and every rule over
+them, the pointer that plays them, the four screens and the HUD, the ten audio
+cues, and the victory cascade. Every other spec file states one part of it.
 
 ### Hard requirements
 
-- Renders real graphics. Draw the table and the cards with Canvas 2D,
-  WebGL/WebGPU, or positioned DOM elements. A text-only or ASCII rendering does
-  not satisfy this requirement. Every card is drawn in code; there are no image
-  assets to load.
-- Runs in the browser with no backend. No server, accounts, database, or network
-  calls at runtime. Everything needed to play must be self-contained.
-- Works with mouse and touch. Every action — turning the stock, dragging a card or
-  run onto a pile, the double-click/double-tap auto-move, and every menu and HUD
-  control — must be fully playable both with a mouse and on a touchscreen. Touch is
-  a required input, not a nice-to-have; the game must be usable on a touch device
-  with no mouse attached (`specs/states.md`).
-- No API keys or credentials of any kind to build, run, or play.
-- npm-driven static build. The project must be a Node project with a
-  `package.json` at its root, buildable with only Node.js and npm-installed
-  dependencies (no separately installed language toolchain). Commit a
-  `package-lock.json`: the build is installed with `npm ci`, which requires that
-  lockfile. Running `npm ci` and then `npm run build` must produce the complete
-  static site, with no further manual step, into one of `dist/`, `build/`, or
-  `out/` at the project root, with an `index.html` at the root of that directory
-  as the entry point. That output directory must run correctly when served as-is
-  at the root of any static file server, since it is deployed to static hosting
-  exactly that way. You choose the language, framework, bundler, and rendering
-  approach behind this interface; only the `npm ci` and `npm run build` commands
-  and where the build output lands are fixed.
-- Debug and automation surface. Expose the `window.__cascade` debugging and
-  automation API and the read-only debug overlay described in
-  `specs/instrumentation.md`, on the same footing as the game itself.
-- Documentation. Include a `README.md` in the produced repository explaining what
-  the game is, how to install dependencies, how to run it in development, how to
-  produce the static production build, and the controls.
+{{#if (eq engine.slug "none")}}
+- Write the runtime the game stands on: the frame loop and its delta time, the
+  canvas fit, pointer and keyboard input, audio, and the debug overlay.
+{{else if (eq engine.slug "simple-2d")}}
+- Build on the {{engine.name}} engine, taking the frame loop, the pointer, audio,
+  and the debug overlay from it.
+{{else}}
+- Build on the {{engine.name}} engine, taking the frame loop, rendering, the
+  pointer, audio, and the debug overlay from it, and writing the game inside its
+  framework of game modes, actors, components, and controllers.
+{{/if}}
+- Render real graphics on the canvas, drawn as shapes and text. Every card face,
+  every card back, the table, and every screen is drawn in code.
+- Draw everything in code. The build ships no art or audio files and fetches
+  nothing at runtime.
+- Play with a pointer, with a mouse and a touchscreen on the same footing, as
+  `specs/controls.md` states.
+- Run in the browser with no backend. Everything needed to play is
+  self-contained, and no API key or credential is needed to build, run, or play.
+{{#if (eq engine.slug "none")}}
+- Hold the game's whole state in one value, the one the frame loop advances and
+  the debug surface reads.
+{{else if (eq engine.slug "simple-2d")}}
+- Hold the game's whole state in `CascadeState`, as `specs/state.md` declares it.
+{{else}}
+- Hold the game's whole authoritative state in `CascadeState`, the world's game
+  state, as `specs/state.md` declares it.
+{{/if}}
+- Expose the debug and automation surface `specs/instrumentation.md` specifies,
+  and the read-only debug overlay it describes, backed by the deterministic core
+  that file requires. This is a required part of the build.
+- Ship the showcase `specs/showcase.md` describes, at the root of this
+  repository.
+- Replace the starter `README.md` with one explaining what the game is, how to
+  install dependencies, how to run it in development, how to produce the static
+  production build, and the controls.
 
-### Free choices
+## Code quality
 
-You choose the language, framework, bundler, and rendering approach, subject to
-the requirements above. Plain TypeScript with Canvas 2D is entirely sufficient; a
-framework is not required. Favor a clean, well-structured codebase, with a clear
-model of the deck, the piles, and the legal moves, over any particular
-technology.
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the rules.
 
 ## Coordinate system and presentation
 
-All positions, sizes, and speeds in this document are given in logical pixels on
-a fixed 1280 x 720 table (16:9). The origin `(0, 0)` is the top-left; `x`
-increases to the right and `y` increases downward.
+All positions and sizes in this specification are given in the game's own logical
+units on a fixed stage of `STAGE_W x STAGE_H` (`1280 x 720`, 16:9). The origin
+`(0, 0)` is the top-left; `x` increases to the right and `y` increases downward.
 
-- The table scales uniformly to fit the browser window while preserving its 16:9
-  aspect ratio, letterboxed with the surrounding color on the remaining space.
-  The game must remain correct and centered at any window size.
-- Game logic (pile positions, hit-testing, the win animation) operates in
-  logical-pixel space, independent of the rendered scale.
-- The whole table must be on screen. At every window size the complete 1280 x 720
-  area is visible at once: the stock, the waste, all four foundations, every
-  tableau column including a long column at its full extent, and any HUD control,
-  fitted to the window and centered, with nothing clipped or pushed past the
-  edges. The build must fit correctly on load, before any input, and at any pixel
-  density.
+A card's position is its **top-left corner**. Wherever a card, a card in hand, or
+a card in flight is given, taken, or reported as an `(x, y)` pair, that pair is
+the top-left of its `CARD_W x CARD_H` footprint rather than its center. Every
+pile anchor `specs/table.md` fixes is a top-left in the same way.
+
+- `STAGE_W x STAGE_H` is the game's logical design size. Fitting it to the
+  browser window is the runtime's work: the uniform scale that preserves the
+  aspect ratio, the letterboxed centering, and the device pixel ratio. The
+  complete stage is therefore on screen at every window size, on load and at any
+  pixel density.
+- The letterbox bars around the stage carry the stage's background color.
+- Draw in logical units, and take the canvas element's own size from the runtime
+  alone.
+- Game logic operates in logical units, independent of the rendered scale. The
+  pointer position the game is given is in those same units, so a hit test
+  against a pile needs no conversion.
+
+Every rate in this specification is per second and every duration is in seconds,
+integrated against the delta time the runtime hands each update. The game runs on
+no fixed timestep, and the cascade's motion is integrated against that same delta
+as `specs/victory.md` states.
+
+## The screens the build has
+
+The build carries four screens, and the game is on exactly one of them at a time:
+`title`, `howto`, `playing`, and `won`. `specs/screens.md` defines what each one
+shows and where each one leads.
+
+## What the table shows
+
+While the game is being played, the table carries all thirteen piles: the stock,
+the waste, the four foundations, and the seven tableau columns, each at the
+anchor `specs/table.md` fixes. A run held in hand is drawn above the piles it
+passes over, and a legal drop target under it is drawn as highlighted. The HUD
+strip along the bottom carries the three controls and the deal-mode label.
+`specs/table.md` gives every pile's extent and `specs/screens.md` the HUD.
 
 ## Visual design
 
-The look is a warm deck of cards on a green felt table. The canonical palette and
-type are defined below; match them.
+Choose the colors and the typography, decide how a card face, a card back, an
+empty pile, and the table behind them are drawn, and decide how a held run and a
+highlighted target read against the rest.
 
-| Element                       | Color     |
-| ----------------------------- | --------- |
-| Table felt                    | `#1a7a4a` |
-| Felt shade (edge vignette)    | `#12603a` |
-| Empty pile slot outline       | `#0e5233` |
-| Card face                     | `#f7f4ec` |
-| Card face border              | `#cfc9b8` |
-| Red suit (hearts, diamonds)   | `#c62828` |
-| Black suit (spades, clubs)    | `#1b2733` |
-| Card back field               | `#2a5db0` |
-| Card back motif               | `#9ec1f5` |
-| Drop-target highlight         | `#ffd54a` |
-| Primary text (on felt)        | `#f4f9f5` |
-| Secondary / dim text          | `#bfe0cd` |
-| Accent (menu selection)       | `#ffd54a` |
+Whatever look you choose, a player reads all of the following at a glance.
 
-- Use a system sans-serif type family for all text (menus, labels, the card
-  ranks). Do not depend on a web font that must be downloaded; a system stack is
-  required so the game renders identically offline. Suits are drawn with the
-  standard Unicode pips `♠ ♥ ♦ ♣`, which the system font supplies.
-- Cards. A face-up card is a rounded rectangle (`100 x 140`, corner radius `8`)
-  in the card-face color with a thin border, showing its rank and a small suit
-  pip in the top-left corner (and mirrored, rotated 180°, in the bottom-right),
-  plus one large suit pip centered on the face. Red suits use the red color,
-  black suits the black. A face-down card is the same rectangle filled with the
-  card-back field color and an original repeating motif in the back-motif color (a
-  lattice, diamond grid, or similar of your own design). Cards carry a soft drop
-  shadow so a lifted or dragged card reads as floating above the table.
-- Empty slots. A pile with no cards shows its slot as a rounded rectangle outline
-  in the slot-outline color. The four foundation slots each show a large, dim suit
-  pip (`♠ ♥ ♦ ♣`) as a hint; the stock slot shows a circular recycle glyph when it
-  is empty but the waste still holds cards.
-- The three canonical screens, the title screen, the in-game table, and the win
-  screen with its cascade, are described in full under Game states in
-  `specs/states.md` and, for the animation, in `specs/victory.md`. Implement each
-  as described, in this palette and type.
+| What a player reads | Requirement |
+| --- | --- |
+| A card face | A face-up card's rank and its suit are drawn on it and legible at the logical stage size. |
+| Suit color | Hearts and diamonds are drawn in one color and spades and clubs in another, and the two are told apart at a glance. |
+| A card back | A face-down card reads apart from a face-up card and from the table behind it. |
+| The table | A card of either face reads apart from the table it sits on. |
+| An empty pile | A pile holding no cards reads as an empty slot at its anchor, apart from the bare table. |
+| A run in hand | A card or run being dragged reads as lifted above the piles it passes over. |
+| The drop target | A legal drop target under a held run reads apart from the same pile unhighlighted. |
+| Text | Every screen's text, and the label of every HUD control, is legible against its background at the logical stage size. |
 
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look:
-
-- `reference/title.png` — the title screen and main menu.
-- `reference/gameplay.png` — a representative in-game table mid-play.
-- `reference/victory.png` — the win screen with the cascade under way.
-
-Treat them as illustrative examples, not targets to reproduce: they show one way
-the screens can look, but design your own menus and layout rather than copy them.
-The only firm requirement is that every menu and navigation path this
-specification mandates is present, rendered in the palette and type the spec
-defines. They are images only; build the screens from this specification.
+The palette, the type, and every other aspect of the look are yours.
