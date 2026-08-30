@@ -31,7 +31,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
-import { CASCADE_DEBUG_VERSION, FOUNDATION_COUNT, TABLEAU_COLUMNS } from "../constants";
+import {
+  CASCADE_DEBUG_VERSION,
+  FOUNDATION_COUNT,
+  TABLEAU_COLUMNS,
+} from "../constants";
 import {
   captureStill,
   card,
@@ -181,10 +185,18 @@ it("reports every documented field, from a board carrying one of everything", as
     assertEqual(typeof view.faceUp, "boolean", `${what}.faceUp`);
   };
 
-  assertLength(s.stock, STOCK.length, "the cards this scenario put on the stock");
+  assertLength(
+    s.stock,
+    STOCK.length,
+    "the cards this scenario put on the stock",
+  );
   for (const entry of s.stock) assertCard(entry, "snapshot().stock[]");
 
-  assertLength(s.waste, WASTE.length, "the cards this scenario put on the waste");
+  assertLength(
+    s.waste,
+    WASTE.length,
+    "the cards this scenario put on the waste",
+  );
   for (const entry of s.waste) assertCard(entry, "snapshot().waste[]");
 
   assertLength(
@@ -238,7 +250,8 @@ it("reports every documented field, from a board carrying one of everything", as
       0,
       "snapshot().drag.cards, of which cards[0] is the grabbed card",
     );
-    for (const entry of drag.cards) assertCard(entry, "snapshot().drag.cards[]");
+    for (const entry of drag.cards)
+      assertCard(entry, "snapshot().drag.cards[]");
     assertEqual(typeof drag.fromPile, "string", "snapshot().drag.fromPile");
     assertEqual(typeof drag.fromIndex, "number", "snapshot().drag.fromIndex");
     assertEqual(typeof drag.x, "number", "snapshot().drag.x");
@@ -281,7 +294,11 @@ it("reports every documented field, from a board carrying one of everything", as
   assertEqual(typeof s.launchClock, "number", "snapshot().launchClock");
   assertEqual(typeof s.launched, "number", "snapshot().launched");
 
-  assertLength(s.flyers, FLYERS.length, "the cards this scenario put in flight");
+  assertLength(
+    s.flyers,
+    FLYERS.length,
+    "the cards this scenario put in flight",
+  );
   for (const flyer of s.flyers) {
     assertEqual(typeof flyer.id, "number", "snapshot().flyers[].id");
     assertEqual(typeof flyer.suit, "string", "snapshot().flyers[].suit");

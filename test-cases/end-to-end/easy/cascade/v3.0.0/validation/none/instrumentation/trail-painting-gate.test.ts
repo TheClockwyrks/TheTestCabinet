@@ -156,13 +156,21 @@ it("takes no stamp with the gate off while the card flies and is drawn, and stam
   // ---- The gated second ----------------------------------------------------
 
   await h.debug.setTrailPainting(false);
-  if (START.x + GATED_VX * SPAN_SECONDS > STAGE_W - CARD_W || START.y > FLOOR_Y) {
+  if (
+    START.x + GATED_VX * SPAN_SECONDS > STAGE_W - CARD_W ||
+    START.y > FLOOR_Y
+  ) {
     throw new RangeError(
       `cascade: a card posed at (${START.x}, ${START.y}) with vx ${GATED_VX} ` +
         `does not stay clear of the edges for ${SPAN_SECONDS} s`,
     );
   }
-  const id = await poseFlyer(h, { x: START.x, y: START.y, vx: GATED_VX, vy: 0 });
+  const id = await poseFlyer(h, {
+    x: START.x,
+    y: START.y,
+    vx: GATED_VX,
+    vy: 0,
+  });
   const before = await h.snapshot();
 
   await h.advance(framesFor(SPAN_SECONDS));
@@ -181,7 +189,10 @@ it("takes no stamp with the gate off while the card flies and is drawn, and stam
   const nearest = footprints.reduce(
     (best, at) =>
       Math.max(Math.abs(at.x - drawn.x), Math.abs(at.y - drawn.y)) < best.miss
-        ? { miss: Math.max(Math.abs(at.x - drawn.x), Math.abs(at.y - drawn.y)), at }
+        ? {
+            miss: Math.max(Math.abs(at.x - drawn.x), Math.abs(at.y - drawn.y)),
+            at,
+          }
         : best,
     { miss: Number.POSITIVE_INFINITY, at: { x: NaN, y: NaN } },
   );

@@ -66,9 +66,7 @@ const PILES: readonly { key: string; pile: PileName; index: number }[] = [
 function printPile(cards: readonly CardView[]): string {
   return cards.length === 0
     ? "(empty)"
-    : cards
-        .map((c) => `${c.suit}-${c.rank}${c.faceUp ? "u" : "d"}`)
-        .join(" ");
+    : cards.map((c) => `${c.suit}-${c.rank}${c.faceUp ? "u" : "d"}`).join(" ");
 }
 
 /** Every pile of a board, keyed by the name a failure should name. */

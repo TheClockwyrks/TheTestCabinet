@@ -151,7 +151,12 @@ it("restores every declared field to its title value and leaves muted alone", as
     press.y + (target.y - centre.y),
   );
 
-  for (const gate of ["setAutoFlip", "setWinDetect", "setLaunching", "setTrailPainting"] as const) {
+  for (const gate of [
+    "setAutoFlip",
+    "setWinDetect",
+    "setLaunching",
+    "setTrailPainting",
+  ] as const) {
     await h.debug[gate](false);
   }
 
