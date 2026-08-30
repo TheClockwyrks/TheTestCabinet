@@ -23,8 +23,9 @@ import {
   WORLD_SIZES,
 } from "./constants";
 import type { ScreenName } from "./constants";
+import { controlsFor } from "./controls";
 import { activate, buildings, nearbyBuilding } from "./flow";
-import { depthMeters } from "./figures";
+import { depthMeters, mineral } from "./figures";
 import { writeTile } from "./state";
 import {
   bareState,
@@ -353,6 +354,50 @@ describe("through the engine", () => {
     const snapshot = h.debug.snapshot(h.state);
     expect(snapshot.deepestDepthMeters).toBeCloseTo(deep, 5);
     expect(snapshot.depthMeters).toBeLessThan(deep);
+  });
+
+  it("runs a panel's controls from the mouse alone", async () => {
+    openScene(h);
+    standOn(h, 4, 1);
+    h.pose((debug, state) => debug.setCargo(state, "ferron", 3));
+    h.pose((debug, state) => debug.setPanel(state, "ore-market"));
+    await h.advance(1);
+
+    /** Click the middle of the control that runs `action`. */
+    const press = async (action: string): Promise<void> => {
+      const control = controlsFor(h.state).find((c) => c.action === action);
+      expect(control, action).toBeDefined();
+      if (!control) return;
+      expect(control.disabled, action).toBe(false);
+      h.click(control.x + control.w / 2, control.y + control.h / 2);
+      await h.advance(1);
+    };
+
+    await press("sell");
+    const sold = h.debug.snapshot(h.state);
+    expect(sold.cargo.slotsUsed).toBe(0);
+    expect(sold.credits).toBe(3 * mineral("ferron").value);
+
+    await press("panel:close");
+    expect(h.debug.snapshot(h.state).panel).toBeNull();
+
+    h.pose((debug, state) => debug.setCredits(state, 100000));
+    h.pose((debug, state) => debug.setPanel(state, "upgrade-shop"));
+    await h.advance(1);
+    await press("buy:drill");
+    expect(h.debug.snapshot(h.state).tiers.drill).toBe(2);
+
+    await press("panel:close");
+    h.pose((debug, state) => debug.setPanel(state, "supply-depot"));
+    await h.advance(1);
+    await press("buyitem:dynamite");
+    expect(h.debug.snapshot(h.state).items.dynamite).toBe(1);
+
+    await press("panel:close");
+    h.pose((debug, state) => debug.setPanel(state, "launch-pad"));
+    await h.advance(1);
+    await press("fabricate");
+    expect(h.debug.snapshot(h.state).rocket.installed).toEqual(["hull-frame"]);
   });
 
   it("goes back from every screen that has a back", async () => {
