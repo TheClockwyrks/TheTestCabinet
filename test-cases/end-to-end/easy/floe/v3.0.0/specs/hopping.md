@@ -1,4 +1,4 @@
-# Floe — the hunter
+# Floe — hopping
 
 <!--
   PLACEHOLDER — NOT THE SPECIFICATION.
@@ -13,4 +13,4 @@
 
 Section 3 of the Floe v3.0.0 design plan gives this file the following scope:
 
-The signature system: what a bear is, its continuous glide, its two speeds, its emergence, its routing and the routing rule's two fallbacks, what resets it, the catch, and the removal at a crossing's end.
+How the critter moves: one tile per press, the cooldown and the auto-repeat, the absolute-tile rule, and sole ownership of every rule that refuses a hop.

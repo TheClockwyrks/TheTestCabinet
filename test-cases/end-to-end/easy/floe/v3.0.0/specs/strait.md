@@ -1,4 +1,4 @@
-# Floe — the hunter
+# Floe — the strait
 
 <!--
   PLACEHOLDER — NOT THE SPECIFICATION.
@@ -13,4 +13,4 @@
 
 Section 3 of the Floe v3.0.0 design plan gives this file the following scope:
 
-The signature system: what a bear is, its continuous glide, its two speeds, its emergence, its routing and the routing rule's two fallbacks, what resets it, the catch, and the removal at a crossing's end.
+The geometry of the strait: the HUD bar, the 40x20 grid of 32-unit tiles, sole ownership of the tile-to-stage map, the five bands and their rows, the critter's start column, and the five bays' exact column pairs.

@@ -1,20 +1,61 @@
-# The default (and only) variant for this case: the standard Crossing run on the
-# one strait, with no per-variant overrides beyond its own title-menu view.
-# Listed first in the manifest's `variants`, so it is the default. Every path here
-# resolves against the version folder, like the manifest.
+# The one and only Floe variant: the whole strait, the whole eight-level run.
+# Listed as the single entry in the case manifest's `variants`, so it is the
+# default and every run is a run of it. Every path here resolves against the
+# version folder, exactly like the main manifest.
 slug = "base"
 name = "Base"
-description = "The standard Crossing run: the critter across the one strait, hunted by the bear, across all 8 levels."
+description = "The crossing on the one strait: eight lanes of sliding ice, eight lanes of drifting floes, five far-shore bays, and the bear that hunts you across all of it."
 
-# Variant-specific reference: the title view lists this variant's menu (CROSS, then
-# HOW TO PLAY), captured from this variant's reference-impl build and served as-is.
-# `gameplay` and `game-over` are common (in test-case.toml).
-reference = [{ view = "title", media = "reference/screenshots/base/title.png" }]
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# The eight levels are not variants and neither are the six screens. A level is
+# the run's own progression, reached by playing, exactly as Carom's Solo and
+# Versus are modes inside every variant rather than variants of their own, so
+# `specs/progression.md` is a COMMON spec declared in `test-case.toml` and seeded
+# for every run. A build ships all eight levels.
+#
+# Nothing in the seeded set branches on the variant either: the specs branch only
+# on the selected engine (`{{#if (eq engine.slug "none")}}`). So there is no spec
+# of any kind to put here. If you came to this file to add one, it almost
+# certainly belongs in `test-case.toml` as a common spec.
 
-# The authored, *correct* static build of this variant — the case-variant
-# analogue of a run's playable build. A bare directory path (resolved against
-# the version folder) holding a buildable web project, built with this case's
-# `[build]` install/build commands and deployed like a published run build via
-# `tcab publish-reference`, then shown on the case's "Reference" tab. It is
-# **never seeded into a run**.
-reference_implementation = "reference-impl/base"
+# What the game looks like played correctly, shown before anyone runs it: a
+# sustained take of real play — the critter working up through the ice band, a
+# bear emerging behind it and being reset by a plow, the water crossing floe to
+# floe with a bear swimming after it, and a bay filled — plus a still from the
+# same take mid-water and a still of the title screen. Every outcome on screen
+# arises from the game's own rules under scripted input, computed against the
+# reference's own lane arithmetic at a fixed seed; nothing is posed through the
+# debug surface. `showcase/base/showcase.toml` lists the media;
+# `showcase/base/showcase.md` carries the description.
+showcase = "showcase/base"
+
+# The authored correct build, one directory per supported engine, because the
+# build a reference demonstrates differs under each. This table must name EXACTLY
+# the engines the case supports (the resolver checks both directions), and the
+# case supports three: `references/none` carries its own runtime layer (the frame
+# loop and the fixed-tick accumulator, the canvas fit, keyboard input, audio, the
+# overlay, and the `window.__floe` surface), `references/simple-2d` hands all of
+# that to the engine package resolved from the repository's `packages/simple-2d`
+# and ships the game as `src/game.ts` beside the seeded entry point, and
+# `references/structured-2d` writes the game inside the gameplay framework
+# resolved from `packages/structured-2d`, as the game definition, instance, mode,
+# state, and actors `src/game.ts` exports. The game any of them implements is
+# identical, which is what makes a run on one engine comparable with a run on
+# another. With a single variant there is no per-variant level to the path, so
+# each reference's `src/` sits directly inside its engine directory, as Refract's
+# do. No reference directory is ever seeded into a run: each is the authored
+# answer, built with the case's own `[build]` commands and held to the same four
+# toolchain gates a run is, and each is what `tcab capture-baselines` drives to
+# synthesize the baseline half of the validation media for its engine.
+[reference_implementation]
+none = "references/none"
+"simple-2d" = "references/simple-2d"
+"structured-2d" = "references/structured-2d"
+
+# No `[workspaces]` override. The case's common per-engine table covers every run
+# and there is nothing variant-specific to replace it with.
+
+# No `[[review.categories]]` and no `[[domain]]`. With a single variant, every
+# item and every rated domain applies to every run, so they are all declared
+# commonly in `test-case.toml` rather than being split across two places.

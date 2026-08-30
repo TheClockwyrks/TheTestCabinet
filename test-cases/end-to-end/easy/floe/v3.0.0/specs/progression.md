@@ -1,4 +1,4 @@
-# Floe — the hunter
+# Floe — the run
 
 <!--
   PLACEHOLDER — NOT THE SPECIFICATION.
@@ -13,4 +13,4 @@
 
 Section 3 of the Floe v3.0.0 design plan gives this file the following scope:
 
-The signature system: what a bear is, its continuous glide, its two speeds, its emergence, its routing and the routing rule's two fallbacks, what resets it, the catch, and the removal at a crossing's end.
+The run: lives and what costs one, the crossing timer, the three sub-phases and their pauses, the respawn, the eight-level progression with its victory and its loss, the bonus life, and what the paused screen suspends.
