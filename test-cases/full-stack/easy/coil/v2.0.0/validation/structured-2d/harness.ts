@@ -768,8 +768,8 @@ function missingSurface(reason: string): CoilSurface {
 }
 
 /**
- * The debug surface the BUILD returned beside its state, read off the engine
- * that holds it.
+ * The debug surface the BUILD's instance returned from `initialize`, read off
+ * the engine that holds it.
  *
  * This is deliberately a READ and never a construction. The surface is the
  * build's deliverable: its game instance's `initialize` returns it
