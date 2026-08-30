@@ -1,78 +1,66 @@
-Introduced.
+## Deepcore is a TypeScript project, on any of three engines
 
-## The round trip out of a drilled shaft is checked
+This version stops handing a run a bare repository and hands it a real project
+instead. A run is seeded with a complete TypeScript workspace, with Vite, `tsc`,
+ESLint, Prettier and Vitest already configured and an `index.html` holding the
+canvas. How much of that project the model writes is what the engine decides,
+and the engine is chosen per run alongside the model and the harness.
 
-`movement.drill-down` proves one tile: hold down over rock, watch the miner sink into
-it, and see that tile become open tunnel. Everything after it is teleported where it
-needs to be, so nothing ever asked the one question the whole loop rests on — having dug
-a hole, can the miner get back out of it?
+Under `none` the workspace is that toolchain and nothing else. There is no
+`src/`: the build writes the fixed-step loop, the canvas fit, the keyboard
+input, the audio, the diagnostics overlay, the transform that scrolls the mine
+past the camera, the `window.__deepcore` surface, and every figure the
+specification fixes, and then the game on top of all of it.
 
-Two defects lived in that gap, and both leave a build that looks right on screen. A
-drill that animates and reports progress but never removes the rock: the miner appears to
-descend while the grid behind it stays solid, so a single-tile cut can still read
-correctly while nothing is really being mined. And a shaft the miner cannot climb —
-collision resolved against the pre-drill grid, a carved tunnel narrower than the miner's
-box, a lip it snags on — which strands the player at the bottom of their own dig and
-makes the game unwinnable however good the descent looks.
+Under [Simple 2D](/engines/simple-2d/) the workspace also carries the case-owned
+modules around the game, `src/constants.ts` and `src/main.ts`, and the model
+writes `src/game.ts` against them. That engine owns the frame loop, the canvas
+fit, input as named actions, audio as named cues and the overlay, but it owns
+neither rendering nor a camera, so the build still draws the mine itself and
+still applies its own scroll transform to the 2D context it is handed.
 
-`movement.climb-after-drill` cuts three rows of solid rock straight down, checks that
-each one really became open tunnel, and then holds thrust and confirms the miner rides
-the jetpack back up to the row it set out from, with fuel to spare and without ever
-cutting upward. Two mutants of the reference implementation fix what it is worth: one
-that completes each cut without clearing the tile, and one that refuses the miner any
-upward velocity below the surface. The first also fails `movement.drill-down`, which owns
-that tile; the second fails nothing else in the category — `drill-down` and `sky-open`
-both pass a build that digs a hole it can never leave.
+Under [Structured 2D](/engines/structured-2d/) the same two modules are seeded
+and the model writes its game module: the game definition, its mode, its live
+state, its actors, and the debug surface its instance's `initialize` returns.
+That engine owns rendering and a camera, so the descent down a shaft scrolls
+through the engine's own camera rather than through a transform the game
+applies.
 
-## Where a run begins is checked
+The mine is the same game under all three, so a score recorded under one engine
+is comparable with a score recorded under another. The specification branches
+only where the deliverable genuinely differs.
 
-Every other movement item teleports the miner to the situation it wants, and
-`presentation.buildings-placed` reads the surface ground line off the miner's own feet at
-spawn — so no check ever looked at where a fresh expedition actually starts. A build could
-open the camp onto a pre-dug shaft, or generate a tunnel under the spawn column, and begin
-the player underground or dropping into a hole, with every verdict unmoved.
+## The produced code is type-checked, linted, formatted and tested
 
-`specs/world.md` puts the camp on `row 0`, "where the miner spawns and returns to between
-digs", and `specs/gameplay.md` opens the loop with "the miner starts on the surface".
-`movement.spawn-on-surface` holds a build to it: three fresh expeditions, each generating
-its own mine, are started and then left alone for a second with nothing held. Each must
-begin at the surface with the shallow rows under the spawn column unmined, and must still
-be standing there after that second, never having descended. Three seeds rather than one
-because the mine is generated per game — a hole that only opens under the camp on some
-seeds is still a run that begins by falling down it.
+A `[toolchain]` table declares four commands run over the produced tree once it
+is installed: `npx tsc --noEmit`, `npx eslint .`, `npx prettier --check .`, and
+`npx vitest run --coverage`. They run against the code the model wrote, against
+configuration the case fixed, and their results are carried on the run. The
+typecheck gates: a build that does not compile is not reviewable, and is rated
+broken.
 
-## The render-decoupling requirement no longer contradicts itself
+## Every review point is decided by a validator
 
-`specs/controls.md` and `specs/instrumentation.md` require the simulation to run
-on a fixed timestep **decoupled from rendering**, and then described that
-decoupling as "Rendering reads the state, never the other way around." Read as a
-constraint on the renderer, the second sentence says the opposite of the first:
-it pins what is drawn to whatever the last completed step left behind, tying the
-picture to the tick boundary rather than freeing it from one.
+The checklist no longer leaves a point to a reviewer's unaided judgment. Every
+graded point carries a suite, the domains its failure lowers, and a failure cap
+saying how far that failure can pull the rating down, so a grade says which
+requirement failed and how much it cost. The points that used to be left to a
+person, the feel of the produced miner animation and the look of the mine among
+them, either gained a validator that decides something objective about the
+produced asset or stopped being a scored point and became part of the run-wide
+aesthetic rating.
 
-The wording now states the requirement only as the one-way dependency it is —
-the simulation never reads from, waits on, or is driven by the renderer — and
-says nothing about how the renderer presents that state. Nothing was added to
-what a build must do: the decoupling requirement is the one that was already
-there, and the sentence that could be read against it is gone.
+## The mockups, the proofs and the similarity checks are gone
 
-## The reference implementation draws between simulation steps
+Nothing pictorial is seeded as a target to match, no build is asked to
+screenshot itself into a `proof/` directory, and no screen is scored against a
+baseline image. Every piece of evidence a reviewer sees is captured by a
+validator from the build itself, side by side with the same capture from the
+reference. `specs/proof.md` went with them.
 
-The simulation runs at 60 Hz and a frame is presented whenever the display asks
-for one. The two rates do not divide evenly, so the number of steps that run
-between two frames varies, and drawing the raw state moved the miner, and with
-it the camera and so the whole mine drawn relative to it a different distance
-each frame — about half a step of position error, arriving metronomically at the
-beat frequency between the tick rate and the refresh rate. At 60 Hz on a 60 Hz
-display one step per frame is the nominal rate, so a single missed step freezes
-the picture outright for that frame. The camera matters as much as the miner
-here: everything is drawn relative to it, so a camera that snapped step to step
-juddered the entire view at once.
+## The finished game ships a showcase
 
-Each step now stamps where the moving objects stood when it began, and the loop
-hands the renderer the fraction of the next step the wall clock has already
-covered, so it draws between the two. The simulation itself is untouched — the
-interpolation state is written by the step and read only by the renderer, never
-the other way about — so a given seed and sequence of `step` calls reaches
-exactly the state it reached before, and a posed scenario is drawn exactly as it
-was stepped.
+A build now writes a short player-facing description of the game it made and a
+small ordered carousel of captured media beside its source, the way a store page
+presents a game. The case carries the same thing for itself, captured from the
+reference build.
