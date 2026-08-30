@@ -518,6 +518,18 @@ export interface HarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
   dpr?: number;
+  /**
+   * Whether to call `reset()` on the way in. Defaults to `true`.
+   *
+   * A harness normally resets, so a check starts from the state
+   * `specs/instrumentation.md` fixes rather than from whatever the build chose to
+   * initialize with. Pass `false` only where the requirement IS what the build
+   * initialized with, since `reset` would overwrite the very reading — today that
+   * is `screens/opens-on-title` and nothing else. The clock is stopped either
+   * way, so a build handed over this way still changes only when the harness says
+   * so.
+   */
+  reset?: boolean;
 }
 
 /** How far a sweep may run, and how many frames separate two samples. */
@@ -907,9 +919,11 @@ export async function createHarness(
 
   if (surfaceFault === null) {
     // Off the wall clock and back to the title before a check touches anything:
-    // from here the game changes only when this harness says so.
+    // from here the game changes only when this harness says so. The reset is
+    // skipped only for a check whose subject is the state the build initialized
+    // with, which a reset would erase (`HarnessOptions.reset`).
     await call("setAutoStep", [false]);
-    await call("reset", []);
+    if (options.reset ?? true) await call("reset", []);
     // And a recorder over the surface before a check can arm one. A build is
     // free to ask for its 2D context on the frame it first draws rather than
     // while it initializes, so the surface can be installed and answering
