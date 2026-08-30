@@ -1,0 +1,367 @@
+# Deepcore — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Deepcore carries a debugging and automation surface, `window.__deepcore`, so the
+game can be driven and inspected from code without touching a keyboard or waiting
+on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__deepcore` as soon as the game has
+initialized. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+{{else if (eq engine.slug "simple-2d")}}
+Deepcore carries a debugging and automation surface so the game can be driven and
+inspected from code without touching a keyboard or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from `engine.debug`,
+and it is reached that way alone: nothing is installed on the page. Every scenario
+driven from code reaches the game through it, so it is present and exactly as
+specified here. `src/game.ts` declares and exports its type, `DeepcoreDebugApi`.
+{{else}}
+Deepcore carries a debugging and automation surface so the game can be driven and
+inspected from code without touching a keyboard or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` returns the finished surface. The engine holds it and
+returns it from `engine.debug`, and it is reached that way alone: nothing is
+installed on the page. Every scenario driven from code reaches the game through
+it, so it is present and exactly as specified here. `src/game.ts` declares and
+exports its type, `DeepcoreDebugApi`.
+{{/if}}
+
+Each operation is a reading, a pose of a single value, or one of the panel actions
+below. A pose arranges the world, and the game's own physics, drill, hazard,
+economy, and save rules run from there exactly as they do in play, so a scenario
+driven from code behaves exactly like one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls it.
+The debug overlay is off until it is toggled.
+
+## A deterministic core
+
+The surface rests on the simulation being deterministic: every rate integrated
+against the delta time the game is given, so an interval of game time reaches the
+same state however it was divided into frames. Two more properties make it
+driveable from code:
+
+- Render-free core. Game state advances from the elapsed time the game is handed,
+  independent of a canvas, of the frame loop that measured it, and of wall-clock
+  time. The dependency runs one way: the simulation reads nothing from the
+  renderer.
+- Seeded randomness. Every random choice the game makes runs off a generator
+  seeded by `reset`, above all the mine's generation: the ore scatter, the hazard
+  and boulder placement, and the two material nodes' positions. Reseeding and
+  replaying the same calls reproduces the same mine and the same outcome exactly.
+  The Quantum Teleporter's height and speed draws are the one exception, and they
+  need not be reproducible from the seed.
+
+Given the same seed and the same sequence of calls and elapsed game time, the game
+reaches the same state every time.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The overlay belongs to the runtime layer beneath the game, and the surface carries
+no operation for it. That layer draws and toggles the overlay, and the game
+registers what it shows.
+
+The clock and the keyboard are the exception, because nothing outside this build
+owns them. The surface is what takes the game off real time and advances it,
+through `setAutoStep` and `advance`, and what injects key presses, through
+`keyDown`, `keyUp`, and `press`.
+{{else if (eq engine.slug "simple-2d")}}
+The clock, the keyboard, the pointer, and the overlay belong to the
+{{engine.name}} engine, which documents them in the `engine/` directory at the
+root of this repository, and the surface carries no operation for any of them. The
+engine advances the game frame by frame and can take it off real time, it drives
+the actions the game registers, and it draws and toggles the debug overlay.
+{{else}}
+The clock, the keyboard, the pointer, and the overlay belong to the
+{{engine.name}} engine, which documents them in the `engine/` directory at the
+root of this repository, and the surface carries no operation for any of them. The
+engine advances the game frame by frame and can take it off real time, it drives
+the actions the game registers, and it draws and toggles the debug overlay.
+{{/if}}
+
+What the overlay shows is Deepcore's, under Diagnostics below.
+
+## Signatures
+
+The surface carries `version` (`DEEPCORE_DEBUG_VERSION`, `1`), a plain number, and
+the operations below. Every argument and every returned value is a plain number,
+string, boolean, or JSON-serializable object. Positions and velocities are in the
+world units of the mine, and `col` and `row` are cell coordinates in its grid.
+
+{{#if (eq engine.slug "none")}}
+Each operation takes the parameters its row names and acts on the live game the
+moment it is called. A pose returns nothing; a reading returns what it read and
+changes nothing.
+{{else if (eq engine.slug "simple-2d")}}
+Each operation's first parameter is the current state,
+`DeepReadonly<DeepcoreState>`, followed by the parameters its row names. A pose
+returns the next `DeepcoreState`, built from the one it was handed, which it
+leaves as it was; a reading returns what it read.
+{{else}}
+Each operation takes the parameters its row names and acts on the live game the
+moment it is called. A pose returns nothing; a reading returns what it read and
+changes nothing.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+## The clock
+
+### `setAutoStep(enabled)`
+
+Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
+frame loop advancing the simulation from the wall clock, so the game changes only
+when `advance` says so. `setAutoStep(true)` returns it to running itself, which is
+how a build starts and how it is played.
+
+Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
+the state the most recent frame left.
+
+### `advance(seconds, frames)`
+
+Runs `frames` whole frames covering `seconds` of game time, each worth
+`seconds / frames`, immediately and in order. `frames` defaults to `1`. Each is a
+real frame, the same update the loop runs followed by a render, so the game's own
+physics, drill, hazards, and timers produce the result and the canvas reflects it.
+Every action held through `keyDown` drives the miner across those frames exactly
+as a player holding the key would.
+
+Every rate in this game is per second and integrated against the frame's delta
+time, so `advance(1, 1)` and `advance(1, 60)` cover the same second of game time
+and reach the same outcome, beyond the drift a change in step size explains.
+
+Advancing while the game is still stepping automatically adds to what the wall
+clock is already doing.
+
+## Injecting input
+
+`keyDown(code)` presses a key down, `keyUp(code)` releases one, and `press(code)`
+is a `keyDown` immediately followed by a `keyUp`. `code` is a
+`KeyboardEvent.code`, and injected keys flow through the same handling the real
+keyboard feeds, so they exercise the game's own key bindings rather than a
+parallel path. A key left down stays held, so a movement or thrust key
+drives the miner through the game's own update across every frame `advance` runs.
+
+Injecting input never changes `autoStep`.
+
+{{/if}}
+## Readings
+
+| Operation | Returns |
+| --- | --- |
+| `snapshot()` | The whole observable state, as the object under Snapshot shape below. |
+| `tileAt(col, row)` | One cell's observable state, as the object under Tile reads below. |
+| `findTile(kind)` | The `{ col, row }` of a cell of that kind, nearest to the miner where several exist, or `null` where there is none. `kind` is one of the tile kinds below. |
+| `buildings()` | One entry per surface building, `{ id, x, y, w, h }`, with `id` the building's id and `x, y, w, h` its footprint in world units. |
+
+Every reading is pure and changes nothing.
+
+## Poses
+
+Each pose sets one value and nothing else. Every value a pose sets is reported by
+`snapshot` or by `tileAt`, so a pose can be verified by setting a value and reading
+it back.
+
+| Operation | Sets |
+| --- | --- |
+| `reset(seed)` | The whole game back to the title screen, discarding any expedition in progress, and seeds the generator with `seed`, a number. Nothing else survives it. |
+| `setScreen(screen)` | The current screen, to one of the screen names below. |
+| `setPanel(panel)` | The open panel, to one of the panel ids below, or `null` to close whatever is open. |
+| `setMode(mode)` | The expedition's mode, `"standard"` or `"hardcore"`. |
+| `setWorldSize(size)` | The expedition's world size, `"quick"`, `"standard"`, or `"marathon"`. |
+| `generateMine()` | Generates a fresh mine from the current seed at the current world size, and places the miner at its spawn. |
+| `setMinerPosition(x, y)` | The miner's position, in world units. It moves the miner alone and changes no cell, so a miner placed inside solid rock stays lodged there until the real physics resolves it. A scenario that needs open space opens the cell itself first. |
+| `setMinerVelocity(vx, vy)` | The miner's velocity, in world units per second. |
+| `setFacing(facing)` | The miner's facing, `"east"` or `"west"`. |
+| `setFuel(value)` | The miner's fuel, clamped to the current maximum. |
+| `setHull(value)` | The miner's hull, clamped to the current maximum. |
+| `setCredits(value)` | The Credits balance. |
+| `setTier(track, tier)` | One upgrade track's tier, through the real upgrade path, so the maxima and the granted capacity follow as a purchase's would. `track` is one of the seven track names. |
+| `setCargo(ore, count)` | The number of units of one ore or gemstone held in the cargo bay, ignoring the slot cap so a scenario can pose any load. |
+| `setMaterial(material, count)` | The number of one exotic material held in the satchel, `"resonite"` or `"cryenite"`. |
+| `setItemCount(item, count)` | The number of one field supply held, by its id. |
+| `setTile(col, row, kind)` | One cell's kind, to `"rock"`, `"gas"`, `"lava"`, `"stone"`, `"bedrock"`, `"tunnel"`, or `"core"`, at that band's full health. This is how a scenario opens a cell, and how it removes what its requirement is not about. |
+| `setOreTile(col, row, ore)` | One cell to an ore vein holding the named ore or gemstone, at its band's full health. |
+| `setMaterialTile(col, row, material)` | One cell to a material node holding the named material, at its band's full health. |
+| `setTileHealth(col, row, health)` | One minable cell's remaining health, so a scenario can pose a partly cut tile. |
+| `setRocketInstalled(count)` | How many rocket components are installed, `0` through `5`, taken in order. |
+| `setCoreTimer(seconds)` | The seconds left on a live Core Sample's timer. |
+| `clearSave()` | Deletes the save slot. |
+{{#if (eq engine.slug "none")}}
+| `setMuted(muted)` | The audio mute toggle, the same one the mute control flips. |
+{{/if}}
+
+## Actions
+
+These invoke the game's own actions through the same code a player's click or
+keypress reaches, rather than posing an outcome. Each is the counterpart of a
+control the player operates with the mouse.
+
+| Operation | Does |
+| --- | --- |
+| `dropOre(ore)` | Discards one unit of that ore from the cargo bay, as the inventory's drop control does. |
+| `sell()` | Sells the cargo at the Ore Market. |
+| `buyFuel(units)` | Buys that many units of fuel at the Fuel Depot. |
+| `buyRepair(points)` | Buys that many points of hull repair at the Fuel Depot. |
+| `buyUpgrade(track)` | Buys the next tier on that track at the Upgrade Shop. |
+| `buyItem(item)` | Buys one field supply of that id at the Supply Depot. |
+| `useItem(item)` | Uses one field supply of that id. |
+| `takeCoreSample()` | Extracts a Core Sample as drilling the Core does, banking it and starting its timer. |
+| `jettison()` | Drops a carried Core Sample onto the miner's cell as a ground item. |
+| `fabricate()` | Fabricates the next uninstalled rocket component at the Launch Pad. |
+| `launch()` | Launches, once all five components are installed. |
+| `save()` | Saves the expedition, as activating the Save Pad does, and honours the refusal while a Core Sample's timer runs. |
+
+An action that the game's own rules refuse changes nothing, exactly as the control
+it stands for would.
+
+## Snapshot shape
+
+`snapshot` returns:
+
+```js
+{
+  version: 1,
+  screen: "title" | "mode-select" | "size-select" | "how-to-play"
+        | "in-mine" | "paused" | "victory" | "game-over",
+  panel: null | "fuel-depot" | "ore-market" | "upgrade-shop"
+       | "supply-depot" | "launch-pad" | "inventory",
+  mode: "standard" | "hardcore",
+  worldSize: "quick" | "standard" | "marathon",
+  coreRow: <number>,            // the deepest row at the current world size
+  menuIndex: <number>,          // the screen's highlighted menu item, from 0
+{{#if (eq engine.slug "none")}}
+  autoStep: <boolean>,          // false while the driver clocks the game
+{{/if}}
+  muted: <boolean>,
+  simTime: <number>,            // accumulated game time, in seconds
+  hasSave: <boolean>,
+  credits: <number>,
+  creditsEarned: <number>,      // the running total earned this expedition
+  depthMeters: <number>,
+  deepestDepthMeters: <number>,
+  coreTimer: <number> | null,   // seconds left on a live Core Sample, else null
+  coreGround: null | { col: <number>, row: <number> },
+  camera: { x: <number>, y: <number> },
+  miner: {
+    x: <number>, y: <number>,   // the top-left of the miner's box, in world units
+    vx: <number>, vy: <number>,
+    col: <number>, row: <number>,
+    facing: "east" | "west",
+    state: "idle" | "walk" | "drill-down" | "drill-side"
+         | "jetpack" | "fall" | "hurt" | "fuel-out",
+    grounded: <boolean>,
+    fuel: <number>, maxFuel: <number>,
+    hull: <number>, maxHull: <number>,
+    overloaded: <boolean>,
+    drilling: null | { col: <number>, row: <number>,
+                       dir: "down" | "left" | "right", progress: <number> },
+  },
+  cargo: {
+    slotsUsed: <number>, slotCap: <number>,
+    loadKg: <number>,
+    liftLimitKg: <number>,
+    ore: { <oreName>: <count> },   // held ore and gemstones, nonzero entries only
+  },
+  satchel: {
+    resonite: <number>, cryenite: <number>,
+    coreSample: <boolean>,
+  },
+  tiers: {
+    fuel: <number>, drill: <number>, cargo: <number>, hull: <number>,
+    jetpack: <number>, radiator: <number>, scanner: <number>,
+  },
+  items: {
+    "dynamite": <number>, "plastic-explosives": <number>,
+    "quantum-teleporter": <number>, "matter-transmitter": <number>,
+    "nanobots": <number>, "emergency-fuel": <number>,
+  },
+  rocket: {
+    installed: [ <componentId> ],       // in order: "hull-frame", "fuel-cells",
+                                        // "guidance", "thruster", "ignition"
+    nextComponent: <componentId> | null,
+  },
+  scanner: {
+    locked: <boolean>,
+    target: "resonite" | "cryenite" | null,
+    dirX: <number>, dirY: <number>,     // a unit direction to the target
+    distanceTiles: <number> | null,
+  },
+  summary: null | {
+    deepestDepthMeters: <number>, creditsEarned: <number>,
+    elapsedSeconds: <number>, mode: "standard" | "hardcore",
+    componentsInstalled: <number>,
+    deathCause: "fuel-out" | "hull-destroyed" | "core-detonation" | null,
+  },
+}
+```
+
+The shape is fixed and every field is present on every screen. A field the current
+screen does not use reports its resting value rather than going missing:
+`summary` is `null` until a run ends, `coreTimer` and `coreGround` are `null`
+while no Sample is live, `panel` is `null` while no panel is open, and
+`menuIndex` rests at `0` on `in-mine`.
+
+Three fields are derived rather than stored: `depthMeters` and
+`deepestDepthMeters` from the miner's position, `overloaded` from `loadKg` against
+`liftLimitKg`, and `drilling.progress`, which runs `0` to `1` as the target cell's
+health drains. `scanner.locked` is `false`, with the direction zero and the
+distance `null`, whenever nothing needed is in range, matching the indicator being
+hidden.
+
+## Tile reads
+
+The grid is large, so it is read a cell at a time rather than dumped whole.
+`tileAt(col, row)` returns:
+
+```js
+{
+  kind: "rock" | "ore" | "material" | "gas" | "lava"
+      | "stone" | "bedrock" | "tunnel" | "core",
+  band: "topsoil" | "rockbed" | "deepstone" | "coreshell" | null,
+  ore: <oreName> | null,
+  material: "resonite" | "cryenite" | null,
+  health: <number> | null,
+  maxHealth: <number> | null,
+}
+```
+
+`band` is `null` for a cell outside the four bands. `ore` is set on an ore cell and
+`material` on a material node, and both are `null` otherwise. `health` and
+`maxHealth` are `null` for a cell that is not minable. A cell outside the grid
+reads as `bedrock` with every other field `null`.
+
+## Diagnostics
+
+The debug overlay shows the values the game registers with it as diagnostic
+sources. Register at least the current screen and panel, the mode and world size,
+the miner's position, velocity, state, facing, and grounded flag, its fuel and
+hull against their maxima, any active drill target and its progress, the Credits,
+the depth in metres, the cargo's slots and load with the overload flag, the
+satchel's contents, the seven upgrade tiers, the Core Sample's timer, and the
+scanner's lock and target: the same facts the snapshot reports. Keep each short
+enough to read on a line, and keep every source a pure read, so watching the
+overlay leaves the game as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, it is shown and hidden by the backtick key (`KeyboardEvent.code`
+`Backquote`), it is off when the game starts, and it reads the game without
+changing it. Keep it visually plain and clearly separate from the status bar.
+{{else if (eq engine.slug "simple-2d")}}
+Registering those values is the whole of Deepcore's part. Each source is called
+with the state current at the read, as `DeepReadonly<DeepcoreState>`, and reads off
+that argument. Drawing the panel, toggling it, and keeping it read-only are the
+engine's.
+{{else}}
+Registering those values is the whole of Deepcore's part, done through the world's
+diagnostics in the game mode's `beginPlay`. Each source is a function of no
+arguments, called at each read; read the live state at the call, through the world
+the mode holds, so the panel reports the frame being drawn. Drawing the panel and
+toggling it are the engine's.
+{{/if}}

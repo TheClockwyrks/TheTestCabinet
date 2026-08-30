@@ -93,7 +93,7 @@ Sets the maximum hull.
 
 Sets three figures per tier: the heaviest load the jetpack can climb with, the
 empty-load climb speed cap, and the empty-load climb acceleration.
-`specs/character.md` states how a load scales the last two.
+How a load scales the last two is stated with the miner's movement.
 
 | Tier | `liftLimitKg` | `emptyClimb` | `emptyAccel` |
 | --- | --- | --- | --- |

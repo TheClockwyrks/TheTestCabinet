@@ -165,4 +165,4 @@ last lateral input, and its sprite mirrors to match.
 | `fuel-out` | Below the surface with fuel at `0`. |
 
 Each state is a produced animation cycle, played frame by frame on a timer while
-the state holds, as `specs/assets.md` states.
+the state holds.

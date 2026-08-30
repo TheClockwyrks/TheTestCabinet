@@ -64,7 +64,7 @@ status bar reads the slots used over the capacity, with the current load in
 kilograms alongside.
 
 - Slots limit how much is picked up.
-- Weight limits whether the haul can be flown out, as `specs/character.md` states.
+- Weight limits whether the haul can be flown out, through the jetpack's lift.
 - The bay is emptied by selling. Refuelling and repairing do not empty it.
 - Exotic materials are not cargo: they take no slot, carry no weight, and ride in
   a separate satchel.
@@ -97,7 +97,7 @@ Drilling a material node banks its material and removes the node. Collecting a
 material already held banks a spare.
 
 The Core Sample is different. Extracting one starts the destabilization timer
-`specs/hazards.md` fixes, and it is destroyed by a death or by that timer expiring.
+the hazards carry, and it is destroyed by a death or by that timer expiring.
 The Core is inexhaustible: drilling it never removes it, so another Core Sample is
 always available, and only one may be live at a time, whether carried or ticking on
 the ground.
