@@ -437,7 +437,11 @@ function placeNode(
 ): void {
   const band = MATERIAL_BAND[material];
   const index = ["topsoil", "rockbed", "deepstone", "coreshell"].indexOf(band);
-  const rowMin = Math.max(1, Math.round((index / 4) * (coreRow - 1)) + 1);
+  // The band rule is `floor(4 * (row - 1) / (coreRow - 1))`, so the shallowest row
+  // of band `i` is `1 + ceil(i * (coreRow - 1) / 4)`. Rounding instead starts the
+  // range one row too shallow wherever that product's fraction is under a half,
+  // which on the quick mine puts the rockbed's first row at 63, a topsoil row.
+  const rowMin = Math.max(1, Math.ceil((index / 4) * (coreRow - 1)) + 1);
   const rowMax = Math.min(
     coreRow - 1,
     Math.round(((index + 1) / 4) * (coreRow - 1)),
@@ -446,6 +450,8 @@ function placeNode(
     const row = draws.int(rowMin, rowMax);
     const col = draws.int(PLAYABLE_COL_MIN, PLAYABLE_COL_MAX);
     const tile = grid[row][col];
+    // The band rule decides, rather than the range arithmetic agreeing with it.
+    if (bandForRow(row, coreRow) !== band) continue;
     if (tile.kind !== "rock" && tile.kind !== "ore") continue;
     if (nodes.some((node) => node.col === col && node.row === row)) continue;
     grid[row][col] = makeMaterialTile(tile.band, material);
@@ -454,7 +460,8 @@ function placeNode(
   }
   // The band is packed solid, which the shares above make impossible; fall back
   // to a cell the search would have accepted so the node is always present.
-  const row = Math.min(coreRow - 1, Math.max(1, rowMin));
+  let row = Math.min(coreRow - 1, Math.max(1, rowMin));
+  while (row < rowMax && bandForRow(row, coreRow) !== band) row += 1;
   const col = PLAYABLE_COL_MIN;
   grid[row][col] = makeMaterialTile(bandForRow(row, coreRow), material);
   nodes.push({ material, col, row, collected: false });
