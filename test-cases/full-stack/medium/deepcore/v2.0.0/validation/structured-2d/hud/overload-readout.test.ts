@@ -1,24 +1,67 @@
-// Deepcore — hud.overload-readout. STUB: NOT YET AUTHORED.
+// hud/overload-readout — the bar says OVERLOAD once the load reaches the limit.
 //
-// The status bar reads OVERLOAD while the load is over the limit
+// `specs/ui.md`: the cargo reads `OVERLOAD` while the load fraction is `1` or
+// more, and `specs/character.md` fixes the fraction as `loadKg / liftLimitKg` and
+// the wall as the point the jetpack stops climbing. `OVERLOAD` is copy the
+// specification states, so this is the one status-bar point that can read the
+// words themselves rather than a treatment.
 //
-// The status bar reads OVERLOAD while the load fraction is 1 or more, so a
-// miner that cannot climb is told so before it tries.
-//
-// Automated validation: pose the cargo either side of the lift limit and read
-// the drawn status bar for the OVERLOAD text at the overloaded one alone.
-//
-// `test-case.toml` declares this suite as `hud/overload-readout.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (overload (image)) around the drive.
+// The bay is loaded either side of the limit with the cargo tier raised, so the
+// slot cap is nowhere near reached and what crosses is weight alone. The load
+// fractions actually reached are read off the snapshot and asserted to bracket
+// `1`, so the pose is known to be the one the requirement is about before the
+// screen is read.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { OVERLOAD } from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThan,
+} from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  layCamp,
+  loadToFraction,
+  openScene,
+  pinDrill,
+  stageTiers,
+  standAtCamp,
+  type Harness,
+} from "../harness";
 
-test("The status bar reads OVERLOAD while the load is over the limit", () => {
-  throw new Error(
-    "Deepcore validator `hud/overload-readout` is declared in test-case.toml but has not been authored yet.",
-  );
+/** Where the two poses sit, either side of the limit. */
+const UNDER = 0.85;
+const OVER = 1.05;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reads OVERLOAD over the lift limit and not under it", async () => {
+  openScene(h);
+  layCamp(h);
+  pinDrill(h);
+  standAtCamp(h);
+  stageTiers(h, { cargo: 5 });
+
+  const under = loadToFraction(h, UNDER);
+  const saidUnder = drewText(await h.frameCalls(), OVERLOAD);
+
+  const over = loadToFraction(h, OVER);
+  const saidOver = drewText(await h.frameCalls(), OVERLOAD);
+  captureStill(h, "overload");
+
+  assertLessThan(under.fraction, 1, "specs/character.md");
+  assertGreaterThanOrEqual(over.fraction, 1, "specs/character.md");
+  assertEqual(saidUnder, false, "specs/ui.md");
+  assertEqual(saidOver, true, "specs/ui.md");
 });

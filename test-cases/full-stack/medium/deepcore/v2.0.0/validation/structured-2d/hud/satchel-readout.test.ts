@@ -1,24 +1,59 @@
-// Deepcore — hud.satchel-readout. STUB: NOT YET AUTHORED.
+// hud/satchel-readout — the bar shows which materials are held.
 //
-// The status bar shows which materials are held
+// `specs/ui.md`: the status bar shows the materials satchel, reading which of
+// Resonite and Cryenite is held, so the rocket's requirements can be checked at a
+// glance. `specs/rocket.md` is why it matters: two components consume a material
+// that has to be in the satchel before `FABRICATE` will run.
 //
-// The status bar shows the materials satchel, reading which of Resonite and
-// Cryenite is held, so the rocket requirements can be checked at a glance.
-//
-// Automated validation: read the drawn status bar with neither, one and both
-// materials held and hold the three frames different.
-//
-// `test-case.toml` declares this suite as `hud/satchel-readout.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (satchel (image)) around the drive.
+// Which of the two is held is a two-bit reading, and how a build draws it — an
+// icon lit, a count, a name greyed out — is the build's. So the three states a
+// player has to tell apart are posed and the band is read for each, and each pair
+// of them must be drawn differently. The control is the same state read twice,
+// which comes back identical because no clock moves under a read.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  layCamp,
+  openScene,
+  pinDrill,
+  standAtCamp,
+  type Harness,
+} from "../harness";
+import { changed, sampleBar, type Reading } from "./bar";
 
-test("The status bar shows which materials are held", () => {
-  throw new Error(
-    "Deepcore validator `hud/satchel-readout` is declared in test-case.toml but has not been authored yet.",
-  );
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws the satchel differently for neither, one and both", async () => {
+  openScene(h);
+  layCamp(h);
+  pinDrill(h);
+  standAtCamp(h);
+
+  const held = (resonite: number, cryenite: number): Promise<Reading> => {
+    h.debug.setMaterial("resonite", resonite);
+    h.debug.setMaterial("cryenite", cryenite);
+    return sampleBar(h);
+  };
+
+  const neither = await held(0, 0);
+  const neitherAgain = await held(0, 0);
+  const one = await held(1, 0);
+  const both = await held(1, 1);
+  captureStill(h, "satchel");
+
+  assertEqual(changed(neither, neitherAgain), 0, "specs/ui.md");
+  assertGreaterThan(changed(neither, one), 0, "specs/ui.md");
+  assertGreaterThan(changed(one, both), 0, "specs/ui.md");
+  assertGreaterThan(changed(neither, both), 0, "specs/ui.md");
 });
