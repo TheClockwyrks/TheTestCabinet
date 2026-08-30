@@ -87,11 +87,11 @@ const ENTER_SWIRL = 0.85;
 const ENTER_SWIRL_DECAY = 0.9;
 
 /** How hard a dive bends toward the ship, and over what horizontal gap. */
-const DIVE_HOME_GAIN = 0.7;
-const DIVE_HOME_RANGE = 200;
+const DIVE_HOME_GAIN = 0.95;
+const DIVE_HOME_RANGE = 260;
 
 /** How wide a dive weaves, and how long one weave takes. */
-const DIVE_WEAVE_GAIN = 0.25;
+const DIVE_WEAVE_GAIN = 0.2;
 const DIVE_WEAVE_PERIOD = 1.6;
 
 /** How long a wrapping dive runs before it turns for home. */
@@ -223,11 +223,16 @@ function stepEntrance(sim: Sim, drone: MutDrone, h: number): void {
   if (arrived) enterPhase(drone, "formation");
 }
 
+/** Which way across the field a challenge drone's group sweeps. */
+function sweepSide(drone: MutDrone): number {
+  return Math.max(0, drone.entryGroup) % 2 === 0 ? 1 : -1;
+}
+
 /** One entering drone's step, on a challenge stage: a sweep across and out. */
 function stepChallengeSweep(sim: Sim, drone: MutDrone, h: number): void {
   if (!released(sim, drone)) return;
   const delay = releaseDelay(drone);
-  const side = drone.entryGroup % 2 === 0 ? 1 : -1;
+  const side = sweepSide(drone);
   const travelled = Math.max(0, drone.phaseClock - delay);
   const dy =
     CHALLENGE_WEAVE *
@@ -360,12 +365,14 @@ export function advanceDrones(sim: Sim, h: number, ev: FrameEvents): void {
     stepFire(sim, drone);
   }
 
-  // A challenge drone that has swept off the far edge has left the field.
+  // A challenge drone that has swept off the far edge has left the field. The
+  // near edge is where its group came in from, so a group waiting to be released
+  // has not left anything.
   if (!challenge) return;
-  const left = sim.drones.filter(
-    (drone) =>
-      drone.x < FIELD_LEFT - CHALLENGE_EXIT ||
-      drone.x > FIELD_RIGHT + CHALLENGE_EXIT,
+  const left = sim.drones.filter((drone) =>
+    sweepSide(drone) > 0
+      ? drone.x > FIELD_RIGHT + CHALLENGE_EXIT
+      : drone.x < FIELD_LEFT - CHALLENGE_EXIT,
   );
   if (left.length === 0) return;
   ev.waveDronesRemoved += left.filter(ofWave).length;

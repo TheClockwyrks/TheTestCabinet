@@ -348,3 +348,18 @@ export async function fireAt(
   h.pose((s, d) => d.addPlayerBullet(s, x, y + gap, band));
   await h.advance((gap + 20) / PLAYER_BULLET_SPEED);
 }
+
+/**
+ * Open the stage's own wave, built by the game rather than posed.
+ *
+ * The stage-intro hold is run out in one frame, which is the one moment
+ * `specs/stages.md` builds a wave in, so what stands on the field afterwards is
+ * the wave the game itself made.
+ */
+export async function startStage(h: Harness, stage: number): Promise<void> {
+  h.pose((s, d) => d.setStage(s, stage));
+  h.pose((s, d) => d.setScreen(s, "stageIntro"));
+  h.pose((s, d) => d.setPhase(s, "live"));
+  h.pose((s, d) => d.setPhaseTimer(s, 0));
+  await h.frames(1);
+}
