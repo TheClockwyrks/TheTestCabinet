@@ -274,11 +274,13 @@ waste, or recycles the whole waste back into the stock when the stock is empty.
 
 `move` names its source with three scalars and its target with two. `fromRow` is
 the index of the grabbed card within its pile, counted from the bottom, so `0` is
-the pile's bottom-most card; the grabbed card and every card below it in the pile
-move together as a run. It returns `true` when the game's own rules accepted the
-move and `false` when they refused it. An accepted move applies through the same
-path a released drop uses, so a newly exposed column card turns and a completed
-board wins. A refused move leaves the board unchanged.
+the pile's bottom-most card. The grabbed card and every card the pile holds after
+it move together as a run, so in a column that is the grabbed card and every card
+fanned below it on the table, and on a squared pile a `fromRow` naming the top
+card takes that card alone. It returns `true` when the game's own rules accepted
+the move and `false` when they refused it. An accepted move applies through the
+same path a released drop uses, so a newly exposed column card turns and a
+completed board wins. A refused move leaves the board unchanged.
 
 `autoMove` sends the named pile's playable card to the foundation it belongs on
 when that is legal, and does nothing otherwise. The playable card is the waste's
@@ -386,7 +388,7 @@ present, so every operation is verifiable by setting a value and reading it back
 ```
 
 Every field is read straight off the game's state, so what the snapshot reports
-is what the game holds. Four entries are built at the call rather than read off a
+is what the game holds. Five entries are built at the call rather than read off a
 field of their own:
 
 | Field | Built from |
