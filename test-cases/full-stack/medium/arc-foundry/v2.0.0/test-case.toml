@@ -549,6 +549,18 @@ failure_cap = "passable"
 validation = { script = "instrumentation/overload-driver-wave-clears.test.ts", outputs = [
   { id = "cleared", name = "The phase after the driver's Overload Dynamo has gone", kind = "replay" },
 ] }
+[[review.categories.items]]
+id = "start-run-keeps-the-arming"
+title = "startRun leaves an armed roll armed"
+description = "setNextRoll(\"discharge\", 4) followed by startRun still reports that arming, and the first rock the run places rolls it, because only a rock consuming it or clearNextRoll clears the arming."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: arm a roll, enter a run, read the arming, place a rock
+# and read it again. See validation/<engine>/instrumentation/start-run-keeps-
+# the-arming.test.ts.
+validation = { script = "instrumentation/start-run-keeps-the-arming.test.ts", outputs = [
+  { id = "armed", name = "The arming carried into the run", kind = "image" },
+] }
 
 # --- The yard and placement ---------------------------------------------------
 # The grid, the footprint, and where a structure may stand. Every position in the

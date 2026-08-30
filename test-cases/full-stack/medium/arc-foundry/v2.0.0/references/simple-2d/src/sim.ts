@@ -314,7 +314,8 @@ export function startRun(w: FoundryWorld): void {
   w.stepAcc = 0;
   w.renderAlpha = 0;
   w.nextId = 1;
-  w.armedRoll = null;
+  // The press keeps whatever `setNextRoll` armed: only a rock consuming it or
+  // `clearNextRoll` clears the arming (specs/instrumentation.md).
   w.pressRng = w.pressSeed;
   w.combatRng = (w.pressSeed ^ COMBAT_SALT) >>> 0;
   w.nextWave = buildWave(1, difficulty(w));

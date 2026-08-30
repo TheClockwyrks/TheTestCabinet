@@ -225,7 +225,8 @@ export class Game {
     this.waveClock = 0;
     this.simTime = 0;
     this.nextId = 1;
-    this.armedRoll = null;
+    // The press keeps whatever `setNextRoll` armed: only a rock consuming it or
+    // `clearNextRoll` clears the arming (specs/instrumentation.md).
     this.press = new Rng(this.pressSeed);
     // Derive the combat (crit) rng from the press seed too, so seeding the run through
     // reset({seed}) makes EVERY random draw — build rolls and crit rolls — reproducible
