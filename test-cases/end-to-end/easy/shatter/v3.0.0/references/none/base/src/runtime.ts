@@ -267,10 +267,24 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
     },
   };
 
-  /** Draw the state as it stands, over a freshly cleared canvas. */
+  /**
+   * Draw the state as it stands, over a freshly cleared canvas.
+   *
+   * The game draws inside a clip of the logical field. The field wraps, so a body
+   * on a seam is drawn at both edges at once and each copy reaches past the edge
+   * it straddles; without the clip that overhang lands on the letterbox bars,
+   * which `specs/overview.md` fixes as carrying the field's background colour.
+   * The clip is lifted before the overlay, because the panel is chrome in device
+   * space rather than part of the field.
+   */
   function draw(state: S): void {
     const ctx = openFrame();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, width, height);
+    ctx.clip();
     game.render(state, { ctx });
+    ctx.restore();
     // Drawn after the game and through the same context, with the transform
     // reset: the panel is chrome over the finished picture, not part of it.
     diagnostics.draw(ctx, { count, dt });

@@ -12,6 +12,7 @@ import { createCanvas } from "@napi-rs/canvas";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { FIELD_H, FIELD_W, TICK_DT } from "./constants";
+import { makeRock } from "./entities";
 import { game } from "./game";
 import { OVERLAY_KEY } from "./overlay";
 import { MAX_FRAME_SECONDS, createRuntime } from "./runtime";
@@ -271,6 +272,52 @@ describe("the canvas", () => {
     ).getContext("2d");
     const bar = ctx.getImageData(4, 4, 1, 1).data;
     expect([bar[0], bar[1], bar[2]]).toEqual([5, 7, 14]);
+    runtime.destroy();
+  });
+
+  it("keeps a body on a seam off the letterbox bars", () => {
+    const { canvas, runtime, frames } = stand({
+      cssWidth: 800,
+      cssHeight: 800,
+      dpr: 1,
+    });
+    clock = frames;
+    const state = runtime.initialize();
+    runtime.setAutoStep(false);
+    state.screen = "playing";
+    state.waveSpawning = false;
+    state.saucerSpawning = false;
+    // A Large straddling the bottom seam: its wrapped copy reaches past the top
+    // edge, and the bar above the field must still be the field's background.
+    state.rocks.push(makeRock(state, "large", 400, FIELD_H - 6, 0, 0));
+    runtime.advance(1);
+
+    const ctx = (
+      canvas as unknown as {
+        getContext(kind: "2d"): {
+          getImageData(
+            x: number,
+            y: number,
+            w: number,
+            h: number,
+          ): { data: Uint8ClampedArray };
+        };
+      }
+    ).getContext("2d");
+    const view = runtime.viewport();
+    const column = Math.round(view.offsetX + 400 * view.scale);
+    const bar = ctx.getImageData(column, 0, 1, Math.floor(view.offsetY)).data;
+    for (let i = 0; i < bar.length; i += 4) {
+      expect([bar[i], bar[i + 1], bar[i + 2]]).toEqual([5, 7, 14]);
+    }
+    // The rock itself is drawn, right up to the edge the clip stops it at.
+    const inside = ctx.getImageData(
+      column,
+      Math.ceil(view.offsetY) + 2,
+      1,
+      1,
+    ).data;
+    expect([inside[0], inside[1], inside[2]]).not.toEqual([5, 7, 14]);
     runtime.destroy();
   });
 });
