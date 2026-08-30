@@ -307,6 +307,21 @@ export function runFrames(
   return { state, fx, cues, loops: [...loops] };
 }
 
+/**
+ * Run one transition over a state and return the state it left.
+ *
+ * The state is a live object, so this mutates the one it is given rather than
+ * producing a second: a check that wants a before and an after reads the before
+ * off the state first.
+ */
+export function posing(
+  state: DeepcoreState,
+  apply: (d: DeepcoreState) => void,
+): DeepcoreState {
+  apply(state);
+  return state;
+}
+
 /** Hold a set of actions for the frames that follow. */
 export function holding(
   state: DeepcoreState,
