@@ -108,6 +108,17 @@ async function serve(root: string): Promise<{ server: Server; url: string }> {
         response.end(body);
       },
       () => {
+        // A browser asks the origin for `/favicon.ico` on its own, whether or
+        // not the page ever mentioned one, and `specs/overview.md` asks the
+        // build for a game rather than for a site icon. Answering that one
+        // request with "nothing here" rather than a 404 keeps a request the
+        // BROWSER made out of the page's error log, where a check reading
+        // `pageErrors` would otherwise read it as the build failing to load
+        // something. Every other missing file is still a 404 the suite sees.
+        if (path === "/favicon.ico") {
+          response.writeHead(204).end();
+          return;
+        }
         response.writeHead(404).end("not found");
       },
     );
