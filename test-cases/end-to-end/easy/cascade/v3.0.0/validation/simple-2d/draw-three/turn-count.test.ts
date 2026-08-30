@@ -12,12 +12,20 @@
 // leaves two and three. Five is also more than the turn count, so this is the
 // ordinary turn rather than the short-stock turn `draw-three/turn-remainder` decides.
 //
+// THE FIGURE IS WRITTEN OUT RATHER THAN IMPORTED. `src/constants.ts` is supplied
+// with the project and carries `TURN_COUNT` already, but this item's requirement is
+// the literal three ("the stock loses three and the waste gains three"), so reading
+// the figure back out of the build's own module would let a build that edited the
+// file it was told not to edit turn one card and pass. The literal is written here
+// for the same reason `draw-three/deal-mode-reported` writes it: those two are the
+// only points in this suite that hold the count against the specification, and every
+// other check may size itself to the figure the build reports.
+//
 // THE COUNTS ALONE ARE DECIDED HERE. Which card ended up on top is `stock.turn-order`,
 // the set the turn appends is `stock.turn-starts-a-set`, and that the turned cards
 // are face-up is `stock.turned-cards-face-up`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TURN_COUNT } from "../../src/constants";
 import { assertLength } from "../assert";
 import {
   captureStill,
@@ -26,6 +34,9 @@ import {
   poseStock,
   type Harness,
 } from "../harness";
+
+/** The turn count specs/stock.md fixes for this variant, as `TURN_COUNT`. */
+const TURN_COUNT = 3;
 
 /**
  * The stock the turn is taken from, bottom card first.
@@ -60,8 +71,8 @@ it("moves three cards from the stock to the waste", async () => {
   assertLength(
     after.waste,
     TURN_COUNT,
-    "cards one turn put on the waste, which is this build's TURN_COUNT " +
-      "(specs/stock.md)",
+    "cards one turn put on the waste, which is this variant's TURN_COUNT of " +
+      `${TURN_COUNT} (specs/stock.md)`,
   );
   assertLength(
     after.stock,

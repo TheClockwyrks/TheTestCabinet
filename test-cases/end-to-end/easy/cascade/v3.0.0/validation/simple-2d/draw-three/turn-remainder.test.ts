@@ -17,7 +17,6 @@
 // that separates them is `draw-three/turn-count`, where the pile has cards to spare.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TURN_COUNT } from "../../src/constants";
 import { assertDeepEqual, assertLength } from "../assert";
 import {
   captureStill,
@@ -26,6 +25,15 @@ import {
   poseStock,
   type Harness,
 } from "../harness";
+
+/**
+ * The turn count specs/stock.md fixes for this variant, as `TURN_COUNT`.
+ *
+ * Written out rather than read from the build's own `src/constants.ts` for the
+ * reason `draw-three/turn-count` gives: what makes this pose the short stock the
+ * rule is about is the specification's three, not a figure the build supplies.
+ */
+const TURN_COUNT = 3;
 
 /**
  * The short stock, bottom card first: one card fewer than a turn takes, face-down
