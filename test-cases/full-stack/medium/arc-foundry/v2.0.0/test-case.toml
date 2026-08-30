@@ -264,37 +264,51 @@ test = "npx vitest run --coverage"
 handle = "__foundry"
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
-# workspace. The specification is decomposed by concern: the overview, the board and
-# maps, the Load, the components, the scrap-press build loop, the gameplay (the
-# economy, Grid Integrity, the wave campaign and victory/overload, the post-final maze
-# rating, the SALVAGE start, and the key behaviors), the UI (the game states, the
-# required menus, the HUD, and out-of-scope), the difficulty and map/difficulty menus,
-# the controls, the asset-production contract, and the debugging surface. A spec's
-# `dest` defaults to its `source` (with a trailing `.hbs` stripped), so an `.md.hbs`
-# source seeds to the same `.md` path and a plain `.md` source is seeded verbatim.
+# workspace. The specification is decomposed one concern to a file: the overview, the
+# yard grid and the three maps, the pathing and mazing model, the Load, the base
+# components, the combination towers, the scrap-press build loop, the economy, the
+# campaign and its finale, the difficulties, the HUD, the screens and menus, the
+# controls, the asset-production contract, the debugging surface, and the showcase the
+# finished game ships. A spec's `dest` defaults to its `source` (with a trailing `.hbs`
+# stripped), so an `.md.hbs` source seeds to the same `.md` path and a plain `.md`
+# source is seeded verbatim.
+#
+# A spec is a Handlebars template only where it actually branches. `overview.md.hbs`
+# (the runtime layer the build is handed, and which files it writes) is the only one in
+# this group that does; everything the simulation specs fix is the same whatever the
+# build stands on.
 [[spec]]
-source = "specs/overview.md"
+source = "specs/overview.md.hbs"
 
 [[spec]]
-source = "specs/board.md"
+source = "specs/yard.md"
+
+[[spec]]
+source = "specs/pathing.md"
 
 [[spec]]
 source = "specs/enemies.md"
 
 [[spec]]
-source = "specs/towers.md"
+source = "specs/components.md"
 
 [[spec]]
-source = "specs/build.md"
+source = "specs/combinations.md"
 
 [[spec]]
-source = "specs/gameplay.md"
+source = "specs/scrap-press.md"
+
+[[spec]]
+source = "specs/economy.md"
+
+[[spec]]
+source = "specs/campaign.md"
+
+[[spec]]
+source = "specs/difficulty.md"
 
 [[spec]]
 source = "specs/ui.md"
-
-[[spec]]
-source = "specs/modes.md"
 
 [[spec]]
 source = "specs/controls.md"
@@ -302,15 +316,13 @@ source = "specs/controls.md"
 # The asset-production contract: every asset the game needs, which of the six
 # on-PATH binaries produces it, where it lands in the workspace, and how it is wired
 # into the build. Seeded for every variant so the produced-asset review items and
-# this spec stay in lockstep. This is the defining spec of a full-stack case, and its
-# electrical-VFX section is the headline of what this build is judged on.
+# this spec stay in lockstep. It is the defining spec of a full-stack case.
 [[spec]]
 source = "specs/assets.md"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# steppable core; a `window.__foundry` API to drive and inspect the game from code;
-# and a read-only debug overlay. Seeded for every variant and framed as an ordinary
-# developer affordance of the game.
+# The debugging and automation surface every build must expose: a deterministic core;
+# an API to pose and read the game from code; and a read-only debug overlay. Seeded for
+# every variant and framed as an ordinary developer affordance of the game.
 [[spec]]
 source = "specs/instrumentation.md"
 

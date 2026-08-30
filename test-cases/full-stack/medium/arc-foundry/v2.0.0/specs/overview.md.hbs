@@ -1,0 +1,351 @@
+# Arc Foundry
+
+## Overview
+
+Arc Foundry is an electro-industrial tower-defense game played in the browser on a
+derelict substation yard. A runaway surge of conductive scrap, the Load, spills from a
+blown feeder vent and crawls toward a grounding collector, and every unit that reaches
+the collector costs Grid Integrity. The player defends the yard by stamping salvaged
+components out of a scrap-press.
+
+Arc Foundry's defining idea is that a component is never chosen. A stamped rock rolls a
+random component type at a random quality the instant it lands, and every rock is also a
+wall, so the yard the Load crawls through is the maze the player built out of rolls they
+did not pick. Each level yields exactly one firing tower and hardens the rest into inert
+blockers, and power comes from folding matched rolls up a five-rung quality ladder and
+into recipe-built combination towers.
+
+Arc Foundry has its own name, look, and rules, and its assets, branding, and design are
+original to it.
+
+The specification spans several files under `specs/`. `specs/yard.md` gives the tile
+grid, the component footprint, and the three maps; `specs/pathing.md` how the Load
+crosses the yard and how walls lengthen its route; `specs/enemies.md` the Load roster and
+how it scales; `specs/components.md` the eight base component types and the quality
+ladder; `specs/combinations.md` the twelve combination towers; `specs/scrap-press.md` the
+stamp-and-harvest build loop; `specs/economy.md` Charge and Grid Integrity;
+`specs/campaign.md` the wave run and the maze-rating finale; `specs/difficulty.md` the
+three difficulties; `specs/hud.md` the status bar and the build panel;
+`specs/ui.md` the screens, the menus, and the audio cues; `specs/controls.md` the pointer
+and keyboard input; `specs/assets.md` the art, effects, and audio this build produces;
+`specs/instrumentation.md` the debug and automation surface; and `specs/showcase.md` the
+presentation the finished game ships beside its source. Read all of them and build the
+game they describe as one cohesive whole.
+
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This game stands on no engine, so the runtime under it is yours to write: the frame loop
+and the delta time it measures, the canvas fit, input from both the keyboard and the
+pointer, audio playback and its mute bit, loading the produced asset files, and the debug
+overlay. Where this specification speaks of the runtime it means that layer, and it
+states only what Arc Foundry needs from it. How the layer is structured is yours to
+decide.
+{{else if (eq engine.slug "simple-2d")}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the `engine/`
+directory at the root of this repository. It owns the frame loop and the delta time the
+game is given, the input actions the menus are driven by, the pointer the yard is built
+with, audio cues and their mute bit, loading the produced asset files, the canvas fit,
+and the debug overlay. Read its documentation before you start. This specification states
+only what is specific to Arc Foundry.
+
+The pointer reaches the game from the engine already in the stage's logical units, with
+its press and release edges. `specs/controls.md` states what Arc Foundry does with them.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the `engine/`
+directory at the root of this repository. It is a gameplay framework as much as a
+runtime: the game is written as subclasses of its classes, a game instance, a game mode,
+actors and their components, and the controllers that drive them, and the engine
+constructs, ticks, and renders them in a fixed order. It owns the frame loop and the
+delta time the game is given, rendering and the camera, the canvas fit, the input actions
+the menus are driven by, the pointer the yard is built with, audio cues and their mute
+bit, loading the produced asset files, and the debug overlay. Read its documentation
+before you start. This specification states only what is specific to Arc Foundry.
+
+The logical design field handed to the engine is the stage, and the game leaves the
+camera at rest, so world units and the stage's logical units coincide and every position
+in this specification is both. The pointer reaches the game from the engine already in
+those units, as ordered samples carrying its press and release edges.
+`specs/controls.md` states what Arc Foundry does with them.
+{{/if}}
+
+## The project you build in
+
+The project at the root of this repository is already wired up. It is a TypeScript
+project built with Vite, tested with Vitest, linted with ESLint, and formatted with
+Prettier. That toolchain is fixed and supplied.
+
+{{#if (eq engine.slug "none")}}
+### What you implement
+
+Everything under `src/`, and everything under `assets/`. Neither directory exists yet.
+
+`index.html` loads `/src/main.ts` as its entry point, so that module is where your build
+starts. Beyond that the structure is yours: the frame loop and the canvas fit, keyboard
+and pointer input, audio, asset loading, the diagnostics overlay, the debug and
+automation surface, the figures this specification fixes, and the game itself.
+
+The game's state is yours to shape. `specs/instrumentation.md` states the one contract
+fixed over it.
+
+### What stays as it is
+
+- `index.html`, the page and the canvas the stage is fitted into.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added along
+with the updated `package-lock.json`. Its existing entries and scripts stay as they are.
+
+### Every figure comes from this specification
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is stated here under a name. Anything this specification does not
+name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over `src/`.
+A test drives the game over its own clock for a counted number of frames, so it needs no
+browser, and `@napi-rs/canvas` is installed for a test that wants a real 2D context.
+{{else if (eq engine.slug "simple-2d")}}
+### What you implement
+
+`src/game.ts`, any new modules you add beside it under `src/`, and everything under
+`assets/`, which does not exist yet.
+
+`src/game.ts` exports `game`, a `Game<FoundryState, FoundryDebugApi>`: `initialize`
+builds the state and the debug surface once and returns them together as
+`[state, debug]`, `update` takes the current state as a read-only view
+(`DeepReadonly<FoundryState>`) and returns the next state, advanced against the frame's
+delta time in seconds, and `render` is handed that next state, read-only again, and draws
+it. The engine holds the state by value and replaces it with what each `update` returns,
+so a frame builds the next state from the current one rather than writing into it, and
+nothing but `update` and the debug surface's poses advances the game. All three functions
+throw `"not implemented"` as they stand. Implement them.
+
+`src/game.ts` also declares and exports `FoundryState`, the type the whole of the game's
+state is held in, and `FoundryDebugApi`, the debug and automation surface
+`specs/instrumentation.md` fixes. The shape of `FoundryState` is yours; every field it
+carries is `readonly`, because the engine hands it out read-only and replaces it whole.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas, binds
+  `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.tcab/`, holding the vendored engine and the particle runtime that `package.json`
+  resolves those dependencies from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added along
+with the updated `package-lock.json`. Its existing entries and scripts stay as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this specification
+gives it. Import it and use it. Where a spec states a value it also names the constant
+that holds it, and the constant is authoritative. Anything this specification does not
+name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over `src/`.
+A test stands the engine up over its own canvas and clock and advances the game a counted
+number of frames, so it needs no browser.
+{{else}}
+### What you implement
+
+`src/game.ts`, any new modules you add beside it under `src/`, and everything under
+`assets/`, which does not exist yet.
+
+`src/game.ts` exports `game`, a `GameDefinition<FoundryDebugApi>`: the game instance
+class, a level registry holding the single level the game runs in, and `startLevel`
+naming it. The game opens that one level and never opens another; every screen is a value
+of the game state's screen field, so the world and its game state live for the whole
+session. The instance's `initialize` registers the actions, defines the cues, loads the
+produced assets, and returns the debug surface. The level's game mode runs the screens and
+the rules, and it adds a single player in its `beginPlay`, possessing nothing; that
+player's controller is where the actions and the pointer are read. The mode's
+`gameStateClass` is `FoundryState`. The actors, components, and controllers you write
+draw that state and drive it. As seeded, the definition is a stub whose instance throws
+`"not implemented"`. Implement it.
+
+`src/game.ts` also declares and exports `FoundryState`, the class the whole of the game's
+authoritative state is held in, and `FoundryDebugApi`, the debug and automation surface
+`specs/instrumentation.md` fixes. The shape of `FoundryState` is yours.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas, binds
+  `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.tcab/`, holding the vendored engine and the particle runtime that `package.json`
+  resolves those dependencies from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added along
+with the updated `package-lock.json`. Its existing entries and scripts stay as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this specification
+gives it. Import it and use it. Where a spec states a value it also names the constant
+that holds it, and the constant is authoritative. Anything this specification does not
+name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over `src/`.
+A test stands the engine up over a canvas from `@napi-rs/canvas` and a surface and clock
+of its own, then advances the game a counted number of frames with `engine.advance`, so
+it needs no browser.
+{{/if}}
+
+### The checks the repository passes
+
+Four commands run over the finished repository before it is reviewed:
+
+| Command | Checks |
+| --- | --- |
+| `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
+| `npx eslint .` | The code is lint-clean. |
+| `npx prettier --check .` | The code is formatted. |
+| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
+
+They run on the repository as you leave it. `npm run typecheck`, `npm run lint`,
+`npm run format`, and `npm test` run the same four locally.
+
+### The build interface
+
+`npm ci` followed by `npm run build` produces the complete static site into `dist/` at the
+repository root, with an `index.html` at the root of that directory as the entry point.
+The scripts that do this are already in `package.json`.
+
+That directory runs correctly served as-is from any base path, at the root of a static
+file server or mounted under a sub-path of one, so every URL the build requests resolves
+against the page rather than against the origin root. `specs/assets.md` states the rule
+the produced files and the bundled code alike are loaded under.
+
+The build is self-contained. `npm ci` and `npm run build` produce the site from the files
+committed in this repository, with the asset-generation tools of `specs/assets.md` absent
+from `PATH` and with no network access.
+
+## Goal of this build
+
+Produce a complete, polished, playable game that runs entirely in a browser. Aim for a
+game a person would enjoy playing.
+
+The build ships one campaign, played on a map the player chooses from three and at a
+difficulty they choose from three. The yard, the Load, the components, the build loop,
+the economy, and the debug surface the other spec files describe are the same whichever
+map and difficulty are chosen.
+
+### Hard requirements
+
+{{#if (eq engine.slug "none")}}
+- Write the runtime the game stands on: the frame loop and its delta time, the canvas
+  fit, keyboard and pointer input, audio, asset loading, and the debug overlay.
+{{else if (eq engine.slug "simple-2d")}}
+- Build on the {{engine.name}} engine, taking the frame loop, the input actions, the
+  pointer, audio, asset loading, and the debug overlay from it.
+{{else}}
+- Build on the {{engine.name}} engine, taking the frame loop, rendering, the input
+  actions, the pointer, audio, asset loading, and the debug overlay from it, and writing
+  the game inside its framework of game modes, actors, components, and controllers.
+{{/if}}
+- Ship all three maps and all three difficulties, each reachable from the menus.
+- Render real graphics on the canvas.
+- Produce the game's art, effects, and audio during this build with the tools
+  `specs/assets.md` names, commit the produced files, and load them at runtime.
+- Run in the browser with no backend. Everything needed to play is self-contained, and no
+  API key or credential is needed to build, run, or play.
+{{#if (eq engine.slug "none")}}
+- Hold the game's whole state in one value, the one the frame loop advances and the debug
+  surface reads.
+{{else if (eq engine.slug "simple-2d")}}
+- Hold the game's whole state in `FoundryState`.
+{{else}}
+- Hold the game's whole authoritative state in `FoundryState`, the world's game state.
+{{/if}}
+- Replace the starter `README.md` with one explaining what the game is, how to install
+  dependencies, how to run it in development, how to produce the static production build,
+  and the controls.
+
+## Code quality
+
+The code is fit for a long-lived codebase shared with human developers. The type-check,
+lint, and format checks pass, and unit tests cover the simulation.
+
+## Coordinate system and presentation
+
+All positions and sizes in this specification are given in the game's own logical units
+on a fixed stage of `STAGE_W x STAGE_H` (`1280 x 720`, 16:9). The origin `(0, 0)` is the
+top-left; `x` increases to the right and `y` increases downward.
+
+- `STAGE_W x STAGE_H` is the game's logical design size. Fitting it to the browser window
+  is the runtime's: the uniform scale that preserves the aspect ratio, the letterboxed
+  centering, and the device pixel ratio. The complete stage is therefore on screen at
+  every window size, on load and at any pixel density, with nothing clipped and no
+  scrolling camera.
+- The letterbox bars around the stage carry the stage's background color.
+- Draw in logical units, and take the canvas element's own size from the runtime alone.
+- Game logic operates in logical units, independent of the rendered scale. The pointer
+  position the game is given is in those same units, so a hit test against a tile center
+  needs no conversion.
+
+Every rate in this specification is per second and every duration is in seconds,
+integrated against the delta time the runtime hands each update.
+
+## The three stage regions
+
+The stage carries three regions, fixed at every screen the yard is shown on.
+
+| Region | Extent | Constants | Holds |
+| --- | --- | --- | --- |
+| Status bar | `x` `0`–`1280`, `y` `0`–`56` | `BAR_H` (`56`) | The run's at-a-glance state and the global controls. |
+| Build panel | `x` `1000`–`1280`, `y` `56`–`720` | `PANEL_X` (`1000`), `PANEL_W` (`280`) | The press, the inspector, and the wave preview. |
+| Yard | `x` `0`–`1000`, `y` `56`–`720` | `BOARD_X` (`0`), `BOARD_Y` (`56`), `BOARD_W` (`1000`), `BOARD_H` (`664`) | The map's tile grid, the Load, the structures, projectiles, and effects. |
+
+The status bar and the build panel are always fully visible, and the yard is shown whole
+inside its region. `specs/hud.md` states what the bar and the panel carry, and
+`specs/yard.md` states the grid inside the yard region.
+
+## Visual design
+
+The yard is an oil-dark concrete substation lit by the flash of discharging components.
+Choose the colors and the typography, decide how each component type and quality tier is
+drawn, and decide how the yard, its flow toward the collector, and its effects read.
+
+Whatever look you choose, a player reads all of the following at a glance.
+
+| What a player reads | Requirement |
+| --- | --- |
+| Open yard against a wall | An open tile, a wall tile, and a fixed housing tile are told apart on sight. |
+| A legal placement | A held rock's footprint shows a placement it may take distinctly from one it may not. |
+| The waypoint chain | Each waypoint platform carries its order number, drawn over every structure and unit so nothing obscures it, and the flow runs visibly from the entry toward the collector. |
+| Component type | Each of the eight base types reads as its own type, coded distinctly from quality so the two axes never collide. |
+| Quality tier | The five tiers escalate visibly in finish and in firing-effect intensity, so a yard of Scrap and a yard of Tesla-Prime read differently on sight. |
+| A combination tower | A combination tower is unmistakable beside a base component. |
+| A blocker | An inert blocker reads as dead: no firing head, no glow. |
+| A candidate | A rolled candidate reads as still selectable, distinct from a kept component. |
+| Load health | Each unit carries a health bar that depletes as it takes damage. |
+| Firing | A firing component's head faces its target, and every shot is a visible traveling projectile or arc. |
+| Text | Text is legible against its background at the logical stage size. |
+
+The palette, type, and every other aspect of the look are yours.
