@@ -44,8 +44,11 @@ const MIN_BATCH = 3;
 /** The `y` bands a challenge group sweeps along. */
 const CHALLENGE_ROWS = [150, 220, 290, 360] as const;
 
-/** How far apart two drones of one challenge group start along their path. */
-const CHALLENGE_OFFSET = 46;
+/** How far apart two columns of one challenge group start along their path. */
+const CHALLENGE_OFFSET = 40;
+
+/** How far the second rank of a challenge group flies below the first. */
+const CHALLENGE_RANK_DY = 34;
 
 /** One slot of the formation a wave is built into. */
 interface SlotSpec {
@@ -241,7 +244,16 @@ export function buildChallenge(state: SpectraState): void {
     const fromLeft = group % 2 === 0;
     const y = CHALLENGE_ROWS[group % CHALLENGE_ROWS.length] as number;
     for (let index = 0; index < CHALLENGE_PER_GROUP; index += 1) {
-      const path = challengePath(y, fromLeft, index * CHALLENGE_OFFSET);
+      // Two ranks abreast rather than one long file: the whole group has to cross
+      // into the field inside one `ENTER_GROUP_GAP`, or its arrival interleaves
+      // with the next group's and the alternating bands stop reading as groups.
+      const column = Math.floor(index / 2);
+      const rank = index % 2;
+      const path = challengePath(
+        y + rank * CHALLENGE_RANK_DY,
+        fromLeft,
+        column * CHALLENGE_OFFSET,
+      );
       const start = path.at(0);
       const drone = addDrone(state, {
         kind: "shard",
@@ -249,7 +261,7 @@ export function buildChallenge(state: SpectraState): void {
         x: start.x,
         y: start.y,
         slotX: start.x,
-        slotY: y,
+        slotY: start.y,
         group,
         released: false,
         phase: "entering",

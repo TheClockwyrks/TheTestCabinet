@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  CHALLENGE_GROUPS,
   CHALLENGE_TOTAL,
   DIVE_FIRE_Y,
   DIVE_GAP_MAX,
@@ -637,6 +638,115 @@ describe("the swarm", () => {
     driven.advance(0.5, 60);
     const after = (driven.debug.snapshot().bullets[0] as { y: number }).y;
     expect(after - before).toBeCloseTo(ENEMY_BULLET_SPEED * 0.5, 3);
+  });
+});
+
+describe("the wave a stage builds", () => {
+  it("keeps a Prism's two escorts alongside it, in motion, through the entrance", () => {
+    const driven = driver();
+    startPosed(driven);
+    driven.debug.setWaveEntry(true);
+    driven.debug.setScreen("stageIntro");
+    driven.debug.setPhaseTimer(0);
+    driven.frame(1 / 120);
+    const prism = driven.debug
+      .snapshot()
+      .drones.find((drone) => drone.kind === "prism");
+    expect(prism).toBeDefined();
+    const previous = new Map<number, { x: number; y: number }>();
+    for (const drone of driven.debug.snapshot().drones) {
+      previous.set(drone.id, { x: drone.x, y: drone.y });
+    }
+    let escorted = false;
+    for (let step = 0; step < 1200 && !escorted; step += 1) {
+      driven.frame(1 / 120);
+      const shape = driven.debug.snapshot();
+      const anchor = shape.drones.find((drone) => drone.id === prism?.id);
+      if (anchor === undefined) break;
+      const moving = (id: number, x: number, y: number): boolean => {
+        const was = previous.get(id);
+        return was !== undefined && Math.hypot(x - was.x, y - was.y) > 1e-6;
+      };
+      const beside = shape.drones.filter(
+        (drone) =>
+          drone.kind === "shard" &&
+          Math.hypot(drone.x - anchor.x, drone.y - anchor.y) <= 320 &&
+          moving(drone.id, drone.x, drone.y),
+      );
+      escorted =
+        moving(anchor.id, anchor.x, anchor.y) &&
+        beside.some((drone) => drone.band === "cyan") &&
+        beside.some((drone) => drone.band === "magenta");
+      for (const drone of shape.drones) {
+        previous.set(drone.id, { x: drone.x, y: drone.y });
+      }
+    }
+    expect(escorted).toBe(true);
+  });
+
+  it("arrives a challenge stage in single-band groups that alternate", () => {
+    const driven = driver();
+    startPosed(driven);
+    driven.debug.setStage(3);
+    driven.debug.setWaveEntry(true);
+    driven.debug.setScreen("stageIntro");
+    driven.debug.setPhaseTimer(0);
+    driven.frame(1 / 120);
+    // Read each drone's band at the moment it is first inside the field on BOTH
+    // axes, which is what a player sees arrive.
+    const arrivals: { at: number; band: string }[] = [];
+    const seen = new Set<number>();
+    for (let step = 0; step < 3600; step += 1) {
+      driven.frame(1 / 120);
+      for (const drone of driven.debug.snapshot().drones) {
+        if (seen.has(drone.id)) continue;
+        if (drone.x < 0 || drone.x > 1280) continue;
+        if (drone.y < FIELD_TOP || drone.y > FIELD_BOTTOM) continue;
+        seen.add(drone.id);
+        arrivals.push({ at: step / 120, band: drone.band });
+      }
+      if (seen.size >= CHALLENGE_TOTAL) break;
+    }
+    expect(arrivals).toHaveLength(CHALLENGE_TOTAL);
+    // Merge adjacent same-band arrivals into waves, then compare.
+    const waves: string[] = [];
+    for (const arrival of arrivals) {
+      if (waves[waves.length - 1] !== arrival.band) waves.push(arrival.band);
+    }
+    expect(waves).toHaveLength(CHALLENGE_GROUPS);
+    for (let index = 1; index < waves.length; index += 1) {
+      expect(waves[index]).not.toBe(waves[index - 1]);
+    }
+  });
+});
+
+describe("a challenge group's flyover", () => {
+  it("leaves the field within eight seconds of its group's release", () => {
+    const driven = driver();
+    startPosed(driven);
+    driven.debug.setStage(3);
+    driven.debug.setWaveEntry(true);
+    driven.debug.setScreen("stageIntro");
+    driven.debug.setPhaseTimer(0);
+    driven.frame(1 / 120);
+    const group = new Map<number, number>();
+    for (const drone of driven.state.drones) group.set(drone.id, drone.group);
+    const alive = new Set(group.keys());
+    let worst = 0;
+    for (let step = 0; step < 2400 && alive.size > 0; step += 1) {
+      driven.frame(1 / 120);
+      const now = new Set(
+        driven.debug.snapshot().drones.map((drone) => drone.id),
+      );
+      for (const id of [...alive]) {
+        if (now.has(id)) continue;
+        alive.delete(id);
+        const released = (group.get(id) as number) * ENTER_GROUP_GAP;
+        worst = Math.max(worst, step / 120 - released);
+      }
+    }
+    expect(alive.size).toBe(0);
+    expect(worst).toBeLessThan(8);
   });
 });
 

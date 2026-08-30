@@ -487,13 +487,15 @@ function drawMeter(state: SpectraState, ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = ready ? COLOR.meterReady : COLOR.meterFill;
   ctx.fillRect(x, y, filled, h);
   if (ready) {
-    // A full meter is drawn distinctly from one a point below full.
+    // A full meter is drawn distinctly from one a point below full. The label sits
+    // above the bar rather than beside it, so it never reaches the polarity
+    // indicator's own region however wide the type it is set in turns out to be.
     ctx.strokeStyle = COLOR.meterReady;
     ctx.lineWidth = 3;
     ctx.strokeRect(x - 4, y - 4, w + 8, h + 8);
     ctx.fillStyle = COLOR.meterReady;
-    ctx.font = font(FONT.display, 15);
-    ctx.fillText("DISCHARGE READY", x + w + 14, y + h / 2);
+    ctx.font = font(FONT.display, 14);
+    ctx.fillText("DISCHARGE READY", x + 110, HUD_BOTTOM_TOP + 18);
   }
 }
 

@@ -51,6 +51,18 @@ export const DIVE_FLOOR_Y = FIELD_BOTTOM - 4;
 /** The `y` a drone's entrance starts at, above the play field. */
 export const ENTRY_Y = -60;
 
+/**
+ * How far outside the field the leading drone of a challenge group starts.
+ *
+ * Deliberately short. A group is released as one and has to ARRIVE as one:
+ * `specs/stages.md` gives every drone of a group the same band and consecutive
+ * groups opposite bands, and the groups are released `ENTER_GROUP_GAP` apart, so a
+ * group that took longer than that gap to finish crossing into the field would
+ * arrive interleaved with the next one and the bands would stop reading as groups.
+ * The lead-in and the within-group spacing together are bounded by that gap.
+ */
+export const CHALLENGE_LEAD_IN = 40;
+
 /** How far outside the field an entrance may swing, so the swoop stays readable. */
 const ENTRY_X_MARGIN = 40;
 
@@ -147,7 +159,9 @@ export function challengePath(
   offset: number,
 ): Path {
   const dir = fromLeft ? 1 : -1;
-  const startX = fromLeft ? -60 - offset : FIELD_RIGHT + 60 + offset;
+  const startX = fromLeft
+    ? -CHALLENGE_LEAD_IN - offset
+    : FIELD_RIGHT + CHALLENGE_LEAD_IN + offset;
   const endX = fromLeft ? FIELD_RIGHT + 80 : -80;
   return smoothPath([
     { x: startX, y },
