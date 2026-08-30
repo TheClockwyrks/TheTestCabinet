@@ -1,17 +1,32 @@
-<!--
-SCAFFOLD STUB — NOT THE SPECIFICATION.
+# Shatter — Scoring
 
-This file exists so `test-case.toml` resolves. The Specs stage of the
-v3.0.0 rework replaces it in full, written from nothing against the design
-plan and `guides/authoring/writing-case-specifications.md`. Its scope, from
-the plan's spec decomposition table, is:
+A game carries one running score, starting at `0`. This file states every figure
+it is paid and the extra ship it earns. Where the score is shown is in
+`specs/ui.md`.
 
-  SCORE_LARGE 20, SCORE_MEDIUM 50, SCORE_SMALL 100, SCORE_SAUCER 200; that
-  a rock the star recycles scores nothing; that the score only ever rises
-  within a game; and one extra ship each time the score crosses a multiple
-  of EXTRA_LIFE_STEP (10,000), with a brief indication when it is awarded.
--->
+## What scores
 
-# Scoring
+| Event | Constant | Figure |
+| --- | --- | --- |
+| A Large rock is destroyed | `SCORE_LARGE` | `20` |
+| A Medium rock is destroyed | `SCORE_MEDIUM` | `50` |
+| A Small rock is destroyed | `SCORE_SMALL` | `100` |
+| The saucer is destroyed | `SCORE_SAUCER` | `200` |
 
-Not yet written.
+Each figure is paid once, on the destruction itself, whatever destroyed the body.
+
+Nothing else scores. A rock the star recycles pays nothing, a shot that is
+absorbed by the core pays nothing, and a hit that leaves a rock standing pays
+nothing.
+
+The score only ever rises within a game. No event lowers it.
+
+## The extra ship
+
+One extra ship is granted each time the score crosses a multiple of
+`EXTRA_LIFE_STEP` (`10 000`) through play, so at `10 000`, at `20 000`, and on
+each multiple after that. A single award that carries the score across more than
+one multiple grants one ship for each multiple crossed.
+
+An extra ship being granted is announced on the field for at least half a second,
+distinctly from anything drawn there the moment before.
