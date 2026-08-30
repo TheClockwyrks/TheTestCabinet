@@ -29,7 +29,15 @@ description = "The stock turns one card at a time, so every card in it is reacha
 # lists the media; `showcase/draw-one/showcase.md` carries the description. Every
 # outcome on screen arises from the game's own rules under scripted pointer input;
 # posing an outcome through the debug surface would be fabrication.
-showcase = "showcase/draw-one"
+#
+# SCAFFOLD: the key below is COMMENTED OUT, and uncommenting it is the last
+# act of the showcase stage. A declared `showcase` must resolve — the
+# directory, a non-empty `showcase.md`, a `showcase.toml` naming at least one
+# `[[media]]`, and every media file it names — and the media does not exist
+# until it has been captured from the reference build. Declaring it before
+# then makes the whole case fail to resolve, and there is no honest
+# placeholder for a capture of real play.
+# showcase = "showcase/draw-one"
 
 # The authored, *correct* build of this variant, one directory per supported
 # engine, because the build a reference demonstrates differs under each. This table
