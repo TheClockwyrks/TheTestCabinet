@@ -1646,6 +1646,18 @@ validation = { script = "economy/unaffordable-refused.test.ts", outputs = [
   { id = "refused", name = "A purchase refused on a thin balance", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "unaffordable-controls-are-disabled"
+title = "A purchase the balance cannot cover is drawn disabled"
+description = "The Fuel Depot's two fixed increments are held to the whole of what they buy: each is drawn disabled one Credit short of FUEL_BUY_INCREMENT * FUEL_PRICE and of REPAIR_BUY_INCREMENT * REPAIR_PRICE, and drawn live at it, while fill-to-full is a separate control that stays live on any balance that buys a unit."
+domains = ["simulation", "presentation"]
+failure_cap = "passable"
+# Automated validation: open the Fuel Depot with one row full and read the
+# panel drawn either side of the other row's increment price, against a control
+# pair the same one Credit apart ten Credits higher.
+validation = { script = "economy/unaffordable-controls-are-disabled.test.ts", outputs = [
+  { id = "disabled", name = "The increment disabled on a thin balance", kind = "image" },
+] }
+[[review.categories.items]]
 id = "credits-never-negative"
 title = "Credits never go negative"
 description = "No sequence of purchases takes the balance below 0, so every sink refuses rather than borrowing."

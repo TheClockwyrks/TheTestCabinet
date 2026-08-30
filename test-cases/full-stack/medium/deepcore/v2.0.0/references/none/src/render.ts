@@ -1641,7 +1641,13 @@ function drawFuelDepot(
   const fuelD = fuelDeficit(game);
   const fuelFill = fuelCost(fuelD);
   const fuelFull = fuelD <= 0;
+  // FILL pays only for what is missing and only as far as the Credits reach, so
+  // one unit's price is enough for it. The fixed increment is all-or-nothing, so
+  // specs/gameplay.md's "an action that cannot be afforded is disabled" holds it
+  // to the whole of what it would buy.
   const cantBuyFuel = fuelFull || game.credits < FUEL_PRICE;
+  const cantBuyFuelIncrement =
+    fuelFull || game.credits < fuelCost(Math.min(FUEL_BUY_INCREMENT, fuelD));
   const fuelY = f.y + 150;
   gauge(
     ctx,
@@ -1669,7 +1675,7 @@ function drawFuelDepot(
     `+${FUEL_BUY_INCREMENT}`,
     "buyfuel:increment",
     {
-      disabled: cantBuyFuel,
+      disabled: cantBuyFuelIncrement,
       accent: P.fuel,
     },
   );
@@ -1694,6 +1700,9 @@ function drawFuelDepot(
   const hullRepair = repairCost(hullD);
   const hullFull = hullD <= 0;
   const cantBuyRepair = hullFull || game.credits < REPAIR_PRICE;
+  const cantBuyRepairIncrement =
+    hullFull ||
+    game.credits < repairCost(Math.min(REPAIR_BUY_INCREMENT, hullD));
   const hullY = f.y + 240;
   gauge(
     ctx,
@@ -1721,7 +1730,7 @@ function drawFuelDepot(
     `+${REPAIR_BUY_INCREMENT}`,
     "buyrepair:increment",
     {
-      disabled: cantBuyRepair,
+      disabled: cantBuyRepairIncrement,
       accent: P.hull,
     },
   );

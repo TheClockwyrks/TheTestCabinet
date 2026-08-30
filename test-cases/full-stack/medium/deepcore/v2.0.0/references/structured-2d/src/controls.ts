@@ -288,7 +288,14 @@ function panelControls(state: DeepcoreState, panel: PanelId): Control[] {
     case "fuel-depot": {
       const missingFuel = fuelDeficit(state.miner.fuel, state.tiers);
       const fuelFull = missingFuel <= 0;
+      // FILL pays only for what is missing and only as far as the Credits reach,
+      // so one unit's price is enough for it. The fixed increment is
+      // all-or-nothing, so specs/gameplay.md's "an action that cannot be
+      // afforded is disabled" holds it to the whole of what it would buy.
       const noFuelMoney = fuelFull || state.credits < FUEL_PRICE;
+      const noIncrementFuelMoney =
+        fuelFull ||
+        state.credits < fuelCost(Math.min(FUEL_BUY_INCREMENT, missingFuel));
       const fuelY = frame.y + DEPOT_ROWS.fuel;
       controls.push(
         control(
@@ -298,7 +305,7 @@ function panelControls(state: DeepcoreState, panel: PanelId): Control[] {
           38,
           "buyfuel:increment",
           `+${FUEL_BUY_INCREMENT}`,
-          { disabled: noFuelMoney, accent: PALETTE.fuel },
+          { disabled: noIncrementFuelMoney, accent: PALETTE.fuel },
         ),
         control(
           frame.x + 442,
@@ -313,6 +320,9 @@ function panelControls(state: DeepcoreState, panel: PanelId): Control[] {
       const missingHull = hullDeficit(state.miner.hull, state.tiers);
       const hullFull = missingHull <= 0;
       const noHullMoney = hullFull || state.credits < REPAIR_PRICE;
+      const noIncrementHullMoney =
+        hullFull ||
+        state.credits < repairCost(Math.min(REPAIR_BUY_INCREMENT, missingHull));
       const hullY = frame.y + DEPOT_ROWS.hull;
       controls.push(
         control(
@@ -322,7 +332,7 @@ function panelControls(state: DeepcoreState, panel: PanelId): Control[] {
           38,
           "buyrepair:increment",
           `+${REPAIR_BUY_INCREMENT}`,
-          { disabled: noHullMoney, accent: PALETTE.hull },
+          { disabled: noIncrementHullMoney, accent: PALETTE.hull },
         ),
         control(
           frame.x + 442,
