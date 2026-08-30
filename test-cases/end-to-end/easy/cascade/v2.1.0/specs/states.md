@@ -1,0 +1,84 @@
+# States
+
+## Overview
+
+This file defines the game's states and screens, the controls, the on-table HUD,
+and what is out of scope. It refers to the layout in `specs/table.md`, the rules
+in `specs/rules.md`, the win animation in `specs/victory.md`, and the deal mode
+defined in `specs/rules.md`.
+
+## Game states
+
+The game is a small state machine. Each state has a clear screen and controls.
+
+1. Title / main menu. Shows the title `CASCADE`, a short tagline (for example
+   `KLONDIKE SOLITAIRE`), and a vertical menu listing `NEW GAME` and `HOW TO
+   PLAY`, and, next to or beneath the title, a small label naming the deal mode
+   (see `specs/rules.md`). The felt table may show dimmed behind the menu. The
+   selected item is highlighted in the accent color.
+2. How to play. A simple screen describing the goal (build the four foundations
+   Ace-to-King by suit), the controls below, and the deal mode. Returns to
+   the menu.
+3. In game. The live table: stock, waste, four foundations, and the seven tableau
+   columns, played with a mouse or on a touchscreen. The HUD (below) sits clear of
+   the piles.
+4. Won. Entered the instant the last card reaches the foundations. The victory
+   cascade plays (see `specs/victory.md`) over the table, then a brief `YOU WIN`
+   message with a prompt to start a new game. Dismissing it (a click or the New
+   Game control) clears the cascade and deals a fresh game.
+
+There is no pause state and no timed loss; solitaire is untimed here, and this
+build keeps no score and no clock.
+
+## Controls
+
+Cascade is pointer-driven and must be fully playable both with a mouse and on a
+touchscreen — the two are equal footing, not a desktop game with a touch
+afterthought. Each control below reads for the mouse and its direct touch
+equivalent: a click is a tap, a mouse drag is a touch drag (press, move a finger,
+lift), and a double-click is a double-tap. No control may depend on hover, a right
+click, a scroll wheel, or a keyboard, since a touchscreen has none of them; the
+game must be complete on a touch device with no mouse attached.
+
+- Turn the stock: click or tap the stock pile to turn the mode's turn count of
+  cards onto the waste; click or tap the empty stock slot to recycle the waste (see
+  `specs/rules.md`).
+- Move a card or run: press on a playable card (mouse button or finger) and drag
+  it. Grabbing a face-up tableau card picks up that card and every face-up card
+  below it as a run (`specs/rules.md`); grabbing the waste's top card picks up that
+  one card. Release (mouse up or lift the finger) over a target pile to drop. While
+  dragging, the held cards follow the pointer and float above the table; a legal
+  drop target under the pointer is highlighted in the drop-target color. Releasing
+  over a legal target completes the move; releasing anywhere else returns the cards
+  to their origin. Card and drop targets must be large enough to grab reliably with
+  a fingertip, and dragging must not scroll or zoom the page.
+- Auto-move to foundation: double-click or double-tap a playable card (the waste's
+  top card, or the bottom face-up card of a column) to send it to its foundation
+  when legal (`specs/rules.md`).
+- HUD controls: click or tap the on-table controls (below).
+- Menus: click or tap an item to select and activate it.
+
+A face-down card is never draggable, and a face-down tableau card that becomes the
+column's bottom card is turned face-up automatically (`specs/rules.md`).
+
+## HUD
+
+The HUD is deliberately minimal (there is no score or clock):
+
+- A small `NEW GAME` control, and a small `MENU` control, placed clear of the
+  piles (for example along the bottom edge of the table). `NEW GAME` deals a fresh
+  game immediately; `MENU` returns to the title.
+- A small, dim mode label (for example `DRAW THREE`) so the deal mode is always
+  visible during play. Its text comes from `specs/rules.md`.
+- If you implement undo, an `UNDO` control may sit alongside these.
+
+## Out of scope
+
+- Other solitaire games. FreeCell, Spider, Pyramid, and the like are not part of
+  this build. Build only the Klondike solitaire this specification describes.
+- Scoring, timers, statistics, or a move counter; this build tracks none of them.
+- Hints, an auto-solver, or an auto-complete button that finishes the game for the
+  player.
+- Persistence of games or settings between sessions.
+- Network, online, or multiplayer play, and gamepad input. (Mouse and touch input
+  are both required and in scope — see the controls above; only gamepad is out.)
