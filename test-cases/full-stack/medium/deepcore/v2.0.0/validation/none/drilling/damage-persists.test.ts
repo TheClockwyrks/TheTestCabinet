@@ -14,7 +14,13 @@
 // of cutting takes it down from THAT health rather than from a full cell.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertBetween, assertEqual, assertLessThan } from "../assert";
+import {
+  assertBetween,
+  assertEqual,
+  assertLessThan,
+  assertLessThanOrEqual,
+  assertNotNull,
+} from "../assert";
 import { BAND_HEALTH, DRILL_DAMAGE, DRILL_HIT_INTERVAL } from "../constants";
 import {
   ACTION_KEY,
@@ -95,17 +101,19 @@ it("resumes a partly cut cell from the health it kept", async () => {
     await h.debug.setMinerPosition(minerXOn(COL), minerYOn(row));
     const from = kept.health ?? 0;
     let back = kept;
+    let first: typeof kept | null = null;
     await h.hold(ACTION_KEY.down);
     try {
       for (let frame = 0; frame < RESUME_FRAMES; frame += 1) {
         await h.advance(1);
         back = await h.tileAt(COL, row);
+        first ??= back;
         if (back.kind === "tunnel" || (back.health ?? 0) < from) break;
       }
     } finally {
       await h.release(ACTION_KEY.down);
     }
-    return { cut, kept, back };
+    return { cut, kept, back, first };
   });
 
   const partial = resumed.cut.health ?? 0;
@@ -119,5 +127,15 @@ it("resumes a partly cut cell from the health it kept", async () => {
   // And resumed from there: the next hit took it one damage below the health it
   // kept, rather than one below a cell that had gone back to full.
   assertEqual(resumed.back.kind, "rock", "specs/character.md");
+  // The resumed cut starts from the health the cell kept, so its FIRST sample is
+  // already at or below that. Without this, a build that reset the cell to full on
+  // restarting the cut still walks down through `partial - DAMAGE` and satisfies the
+  // check below, which is the one behaviour specs/character.md forbids.
+  assertNotNull(resumed.first, "specs/character.md");
+  assertLessThanOrEqual(
+    resumed.first?.health ?? 0,
+    partial,
+    "specs/character.md",
+  );
   assertEqual(resumed.back.health, partial - DAMAGE, "specs/character.md");
 });
