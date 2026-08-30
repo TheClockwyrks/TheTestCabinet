@@ -152,23 +152,14 @@ export function updateDrill(game: Game, dt: number): void {
     m.drilling = { col: tCol, row: tRow, dir, hitTimer: DRILL_HIT_INTERVAL };
   }
 
-  // Brace against the cell being cut.
+  // Brace against the cell being cut. A side cut eases the miner onto the floor it
+  // stands on, so it never floats off the ground mid-cut and stays grounded.
   if (m.travel) {
     m.vx = 0;
     m.vy = 0;
-    if (dir === "down") {
+    if (dir === "down")
       m.x = ease(m.x, tileLeft(tCol) + (TILE - MINER_W) / 2, BRACE_RATE, dt);
-      const below = cellAt(game, tCol, tRow + 1);
-      // With solid ground under the cell being cut the miner sinks into it as its
-      // health drains and arrives flush on the next floor as it breaks. Over open
-      // space or lava it stays put and falls into the opening instead.
-      const continuous =
-        !!below && isSolidKind(below.kind) && below.kind !== "lava";
-      const sink = continuous ? cutProgress(target) * TILE : 0;
-      m.y = tileTop(tRow) + sink - MINER_H;
-    } else {
-      m.y = ease(m.y, tileTop(row + 1) - MINER_H - 0.01, BRACE_RATE, dt);
-    }
+    else m.y = ease(m.y, tileTop(row + 1) - MINER_H - 0.01, BRACE_RATE, dt);
   }
 
   game.emitDrillDebris(dt, dir);
@@ -189,8 +180,20 @@ export function updateDrill(game: Game, dt: number): void {
       // A gas break shoves the miner, so settling it would cancel the blast.
       if (finished.dir === "down" && !brokeGas)
         settleAfterDown(game, finished.col, finished.row);
-      break;
+      return;
     }
+  }
+
+  // The miner's feet travel from the top of the cell being cut to its bottom in
+  // proportion to the cut's progress, so a held shaft reads as one continuous bore
+  // and the miner arrives flush on the next cell exactly as this one breaks. With
+  // open space or lava below it does not sink; it falls into the opening instead.
+  if (m.travel && m.drilling && m.drilling.dir === "down") {
+    const below = cellAt(game, tCol, tRow + 1);
+    const continuous =
+      !!below && isSolidKind(below.kind) && below.kind !== "lava";
+    const sink = continuous ? cutProgress(target) * TILE : 0;
+    m.y = tileTop(tRow) + sink - MINER_H;
   }
 }
 

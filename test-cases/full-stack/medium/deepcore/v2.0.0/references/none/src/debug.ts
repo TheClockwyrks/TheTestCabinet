@@ -41,7 +41,7 @@ import { buyItem, useItem } from "./items";
 import { menuItems } from "./menus";
 import { clearSave as clearSaveSlot } from "./save";
 import { fabricate } from "./rocket";
-import { bandForRow, isMinableKind } from "./world";
+import { isMinableKind, setCell } from "./world";
 import type { BuildingBox, DeepcoreSnapshot, Game, TileRead } from "./game";
 import type { Input } from "./input";
 import type {
@@ -276,17 +276,10 @@ export function installDebugApi(ctx: DebugContext): DeepcoreDebugApi {
 
   /** Set one cell to a fresh tile of a kind, at its band's full health where minable. */
   const placeTile = (col: number, row: number, kind: TileKind): void => {
-    const band = bandForRow(row, game.coreRow);
-    const tile = { kind, band } as {
-      kind: TileKind;
-      band: typeof band;
-      health?: number;
-    };
-    if (isMinableKind(kind)) tile.health = BAND_HEALTH[band];
     // A material node that stood here is gone with the cell it was in.
     const node = game.nodes.find((n) => n.col === col && n.row === row);
     if (node) node.collected = true;
-    game.grid[row]![col] = tile;
+    setCell(game.grid, col, row, kind, game.coreRow);
   };
 
   const api: DeepcoreDebugApi = {

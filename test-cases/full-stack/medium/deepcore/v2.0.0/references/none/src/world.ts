@@ -159,32 +159,14 @@ export function generateMine(rng: Rng, coreRow: number): Mine {
     grid.push(line);
   }
 
-  // Stone, gas, and ore, one draw per cell against the cumulative shares, so each
-  // kind's share of the minable cells is the one its rule states.
-  for (let row = 1; row < coreRow; row++) {
-    const f = depthFraction(row, coreRow);
-    const band = bandForRow(row, coreRow);
-    const stone = stoneDensityAt(f);
-    const gas = gasDensityAt(f);
-    const ore = row >= ORE_MIN_ROW ? ORE_DENSITY : 0;
-    for (let col = PLAYABLE_COL_MIN; col <= PLAYABLE_COL_MAX; col++) {
-      const u = rng.next();
-      if (u < stone) {
-        grid[row]![col] = makeTile("stone", band);
-      } else if (u < stone + gas) {
-        grid[row]![col] = makeTile("gas", band);
-      } else if (u < stone + gas + ore) {
-        const id = drawOre(rng, f);
-        if (id) {
-          const tile = makeTile("ore", band);
-          tile.ore = id;
-          grid[row]![col] = tile;
-        }
-      }
-    }
-  }
-
+  // Lava first, because it pools across rows and the others are placed a row at a
+  // time into what it leaves. Each kind is placed at the exact count its share
+  // states, carrying the fractional remainder from row to row, so a band's measured
+  // share is the stated one rather than a sample of it.
   placeLava(grid, rng, coreRow);
+  scatter(grid, rng, coreRow, "stone", stoneDensityAt, 1);
+  scatter(grid, rng, coreRow, "gas", gasDensityAt, 1);
+  scatterOre(grid, rng, coreRow);
 
   // The way down out of the camp.
   grid[1]![CAVE_MOUTH_COL] = makeTile("tunnel", bandForRow(1, coreRow));
@@ -202,27 +184,107 @@ export function generateMine(rng: Rng, coreRow: number): Mine {
   return { grid, nodes };
 }
 
+/** The playable cells of a row that still hold plain rock. */
+function plainRockCols(grid: Tile[][], row: number): number[] {
+  const cols: number[] = [];
+  for (let col = PLAYABLE_COL_MIN; col <= PLAYABLE_COL_MAX; col++) {
+    if (grid[row]![col]!.kind === "rock") cols.push(col);
+  }
+  return cols;
+}
+
+const PLAYABLE_COLS = PLAYABLE_COL_MAX - PLAYABLE_COL_MIN + 1;
+
 /**
- * Scatter lava from the deepstone down as pools: a seed drawn at the row's share over
- * the pool size, grown outward into neighbouring rock so a pool covers several cells.
+ * Turn the stated share of each row's playable cells into `kind`, from `firstRow` on.
+ * The fractional remainder carries to the next row, so the count over a band is the
+ * share the rule states rather than a draw around it.
+ */
+function scatter(
+  grid: Tile[][],
+  rng: Rng,
+  coreRow: number,
+  kind: TileKind,
+  densityAt: (f: number) => number,
+  firstRow: number,
+): void {
+  let owed = 0;
+  for (let row = firstRow; row < coreRow; row++) {
+    owed += densityAt(depthFraction(row, coreRow)) * PLAYABLE_COLS;
+    const want = Math.floor(owed);
+    if (want <= 0) continue;
+    const cols = plainRockCols(grid, row);
+    const take = Math.min(want, cols.length);
+    for (let i = 0; i < take; i++) {
+      const pick = rng.int(i, cols.length - 1);
+      const col = cols[pick]!;
+      cols[pick] = cols[i]!;
+      cols[i] = col;
+      grid[row]![col] = makeTile(kind, bandForRow(row, coreRow));
+    }
+    owed -= take;
+  }
+}
+
+/** Turn ORE_DENSITY of each row's playable cells into an ore vein, from ORE_MIN_ROW on. */
+function scatterOre(grid: Tile[][], rng: Rng, coreRow: number): void {
+  let owed = 0;
+  for (let row = ORE_MIN_ROW; row < coreRow; row++) {
+    owed += ORE_DENSITY * PLAYABLE_COLS;
+    const want = Math.floor(owed);
+    if (want <= 0) continue;
+    const f = depthFraction(row, coreRow);
+    const cols = plainRockCols(grid, row);
+    const take = Math.min(want, cols.length);
+    let placed = 0;
+    for (let i = 0; i < take; i++) {
+      const pick = rng.int(i, cols.length - 1);
+      const col = cols[pick]!;
+      cols[pick] = cols[i]!;
+      cols[i] = col;
+      const id = drawOre(rng, f);
+      if (!id) break;
+      const tile = makeTile("ore", bandForRow(row, coreRow));
+      tile.ore = id;
+      grid[row]![col] = tile;
+      placed++;
+    }
+    owed -= placed;
+  }
+}
+
+/**
+ * Scatter lava from the deepstone down as pools rather than single cells: a pool of
+ * LAVA_POOL_SIZE cells is grown wherever the running count falls behind the share the
+ * rows so far have asked for.
  */
 function placeLava(grid: Tile[][], rng: Rng, coreRow: number): void {
   const firstRow = Math.max(
     1,
     Math.ceil(DEEPSTONE_TOP_FRACTION * (coreRow - 1)) + 1,
   );
+  let owed = 0;
   for (let row = firstRow; row < coreRow; row++) {
-    const f = depthFraction(row, coreRow);
-    const seedChance = lavaDensityAt(f) / LAVA_POOL_SIZE;
-    if (seedChance <= 0) continue;
-    for (let col = PLAYABLE_COL_MIN; col <= PLAYABLE_COL_MAX; col++) {
-      if (!rng.chance(seedChance)) continue;
-      growPool(grid, rng, col, row, firstRow, coreRow);
+    owed += lavaDensityAt(depthFraction(row, coreRow)) * PLAYABLE_COLS;
+    let guard = 0;
+    while (owed >= 1 && guard++ < PLAYABLE_COLS) {
+      const col = rng.int(PLAYABLE_COL_MIN, PLAYABLE_COL_MAX);
+      const grown = growPool(
+        grid,
+        rng,
+        col,
+        row,
+        firstRow,
+        coreRow,
+        Math.round(owed),
+      );
+      if (grown === 0) break;
+      owed -= grown;
     }
   }
 }
 
-/** Grow one lava pool outward from a seed cell over plain rock and ore. */
+/** Grow one lava pool outward from a seed cell over plain rock. Returns cells turned. */
 function growPool(
   grid: Tile[][],
   rng: Rng,
@@ -230,20 +292,22 @@ function growPool(
   row: number,
   firstRow: number,
   coreRow: number,
-): void {
+  budget: number,
+): number {
+  const size = Math.min(LAVA_POOL_SIZE, Math.max(1, budget));
   const frontier: [number, number][] = [[col, row]];
   let placed = 0;
-  while (frontier.length && placed < LAVA_POOL_SIZE) {
+  while (frontier.length && placed < size) {
     const i = rng.int(0, frontier.length - 1);
     const [c, r] = frontier.splice(i, 1)[0]!;
     if (c < PLAYABLE_COL_MIN || c > PLAYABLE_COL_MAX) continue;
     if (r < firstRow || r >= coreRow) continue;
-    const kind = grid[r]![c]!.kind;
-    if (kind !== "rock" && kind !== "ore") continue;
+    if (grid[r]![c]!.kind !== "rock") continue;
     grid[r]![c] = makeTile("lava", bandForRow(r, coreRow));
     placed++;
     frontier.push([c + 1, r], [c - 1, r], [c, r + 1], [c, r - 1]);
   }
+  return placed;
 }
 
 /** Place one material node at a random minable cell of its band. */
@@ -384,6 +448,25 @@ const NEIGHBOURS: readonly (readonly [number, number])[] = [
   [0, 1],
   [0, -1],
 ];
+
+/**
+ * Replace one cell with a fresh tile of a kind, at its band's full health where the
+ * kind is minable. The cell it replaces is gone, along with whatever ore, material,
+ * or health it held.
+ */
+export function setCell(
+  grid: Tile[][],
+  col: number,
+  row: number,
+  kind: TileKind,
+  coreRow: number,
+): Tile {
+  const band = bandForRow(row, coreRow);
+  const tile = makeTile(kind, band);
+  if (isMinableKind(kind)) tile.health = BAND_HEALTH[band];
+  grid[row]![col] = tile;
+  return tile;
+}
 
 /**
  * An empty mine: the bedrock border, the camp row, and the Core chamber stand, and
