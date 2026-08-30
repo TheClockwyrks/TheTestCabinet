@@ -1,26 +1,80 @@
-// Deepcore — drilling.hits-to-break. STUB: NOT YET AUTHORED.
+// drilling/hits-to-break — the hits to break a cell follow the band and tier.
 //
-// The hits to break a cell follow the band and the drill tier
+// specs/character.md: each hit removes the drill tier's damage from the target
+// cell's health and the cell breaks when its health reaches `0`, so the hits to
+// break it are `ceil(BAND_HEALTH / damagePerHit)`. specs/world.md fixes
+// `BAND_HEALTH` per band and specs/upgrades.md the damage per drill tier, and
+// the table it prints alongside them — four hits in the topsoil at tier 1, four
+// in the coreshell at tier 5 — is that arithmetic written out.
 //
-// The hits to break a cell are ceil(BAND_HEALTH / damagePerHit) at the drill
-// tier, so a tier-1 drill takes 4 hits in the topsoil and 16 in the coreshell
-// while a tier-5 drill takes 1 and 4.
-//
-// Automated validation: pose a cell in each band, set the drill tier in turn
-// and count the hits a held cut takes to break it against the table in
-// specs/upgrades.md.
-//
-// `test-case.toml` declares this suite as `drilling/hits-to-break.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (break (replay)) around the drive.
+// So all twenty pairings are driven: one rock cell posed in each band, cut at
+// each of the five drill tiers, with the hits counted off the falls in the
+// cell's health rather than off the clock. The miner's body is held still, so
+// each cut starts from the same pose and the count is the drill's alone.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  BAND_HEALTH,
+  BAND_ORDER,
+  DRILL_DAMAGE,
+  MAX_TIER,
+  drillHitsFor,
+} from "../constants";
+import {
+  ACTION_KEY,
+  captureReplay,
+  createHarness,
+  openScene,
+  pinMiner,
+  rowInBand,
+  stageTiers,
+  standOn,
+  type Harness,
+} from "../harness";
+import { countHits } from "./hits";
 
-test("The hits to break a cell follow the band and the drill tier", () => {
-  throw new Error(
-    "Deepcore validator `drilling/hits-to-break` is declared in test-case.toml but has not been authored yet.",
-  );
+/** A column well clear of the camp, the cave mouth, and the Core. */
+const COL = 8;
+
+/** The pairing the replay is taken of: the deepest band at the weakest drill. */
+const SHOWN_BAND = "coreshell";
+const SHOWN_TIER = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("takes ceil(BAND_HEALTH / damage) hits in every band, at every tier", async () => {
+  await openScene(h);
+  await pinMiner(h);
+  const { coreRow } = await h.snapshot();
+
+  for (const band of BAND_ORDER) {
+    const row = rowInBand(band, coreRow);
+    for (let tier = 1; tier <= MAX_TIER.drill; tier += 1) {
+      const where = `${band} at drill tier ${tier} (specs/upgrades.md)`;
+      await stageTiers(h, { drill: tier });
+      await h.debug.setTile(COL, row, "rock");
+      await standOn(h, COL, row);
+      assertEqual((await h.tileAt(COL, row)).health, BAND_HEALTH[band], where);
+
+      const expected = drillHitsFor(BAND_HEALTH[band], DRILL_DAMAGE[tier - 1]);
+      const cut =
+        band === SHOWN_BAND && tier === SHOWN_TIER
+          ? await captureReplay(h, "break", () =>
+              countHits(h, ACTION_KEY.down, COL, row),
+            )
+          : await countHits(h, ACTION_KEY.down, COL, row);
+
+      assertEqual(cut.broke, true, where);
+      assertEqual(cut.hits, expected, where);
+    }
+  }
 });
