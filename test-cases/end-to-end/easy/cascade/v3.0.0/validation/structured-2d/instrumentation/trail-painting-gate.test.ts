@@ -12,13 +12,17 @@
 // the table underneath a flight — or to record one without a full-screen blit
 // in every frame — has to be able to hold the painting still.
 //
-// THREE READINGS WITH THE GATE OFF, AND ONE WITH IT ON.
+// THREE READINGS WITH THE GATE OFF, AND TWO WITH IT ON.
 //   Off: `trailStamps` is exactly where it was; the band of felt the card flew
 //   through is pixel-for-pixel the clean table it was before the flight; and
 //   the card itself has both MOVED and is still DRAWN where it now is.
-//   On: the same second over the same pose raises `trailStamps`.
-// The last of those is what makes the first three a gate rather than a build
-// that never painted at all.
+//   On: the same second over the same pose raises `trailStamps`, AND the same
+//   band of felt no longer reads as the clean table.
+// The on-half is what makes the off-half a gate rather than a build that never
+// painted at all, and it is read off the TABLE as well as off the counter
+// because a build that raises `trailStamps` while putting nothing on the layer
+// has satisfied its own bookkeeping and nothing the rule asked for. The two
+// halves therefore read the same band, and demand opposite things of it.
 //
 // THE BAND READ IS BARE FELT ON AN EMPTY TABLE, AND THE CARD IS NEVER IN IT
 // WHEN IT IS READ. The thirteen empty-slot marks specs/table.md fixes end at
@@ -146,12 +150,22 @@ it("takes no stamp over a second of flight with the gate off, while the card mov
   );
 });
 
-it("raises the stamp count over the same second with the gate on", async () => {
-  poseFlight(h, true);
+it("raises the stamp count and paints the table over the same second with the gate on", async () => {
+  const flyerId = poseFlight(h, true);
+  await h.drawFrame();
+  const clean = regionPixels(h, PROBE);
   const before = h.snapshot();
 
   await h.advanceSeconds(FLIGHT_SECONDS);
   const after = h.snapshot();
+
+  // The card is taken out of the flight before the band is read again, so what
+  // the reading finds in it is the layer the flight painted and never the card
+  // itself. It flew clear of the band anyway — its footprint ends at `750` —
+  // and removing it puts that beyond doubt.
+  h.debug.removeFlyer(flyerId);
+  await h.drawFrame();
+  captureStill(h, "painted");
 
   assertGreaterThan(
     after.trailStamps,
@@ -159,5 +173,12 @@ it("raises the stamp count over the same second with the gate on", async () => {
     `stamps reported after the same ${FLIGHT_SECONDS} s of flight with the ` +
       "gate on: a card in flight is stamped onto the painted layer " +
       "(specs/victory.md)",
+  );
+  assertGreaterThan(
+    pixelsChanged(clean, regionPixels(h, PROBE)),
+    0,
+    "pixels differing from the clean table in the band the card flew " +
+      "through, with the gate on: the stamp is on the table and not only in " +
+      "the count (specs/victory.md, specs/instrumentation.md)",
   );
 });
