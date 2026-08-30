@@ -339,7 +339,10 @@ export interface DeepcoreDebugApi {
   setPanel(panel: OpenPanel): Promise<void>;
   setMenuIndex(index: number): Promise<void>;
   setMode(mode: Mode): Promise<void>;
-  /** The size and with it `coreRow`. It changes no cell. */
+  /**
+   * The size and with it `coreRow`, and the mine the new depth leaves: emptied
+   * to that depth exactly as `clearMine` leaves it. It generates nothing.
+   */
   setWorldSize(size: WorldSize): Promise<void>;
   setCredits(value: number): Promise<void>;
   /** One track's tier. Fuel and hull held are clamped to the new maxima. */

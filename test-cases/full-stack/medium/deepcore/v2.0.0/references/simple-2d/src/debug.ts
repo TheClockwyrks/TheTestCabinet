@@ -802,11 +802,19 @@ export function createDebugApi(): DeepcoreDebugApi {
       });
     },
 
+    /**
+     * The size, `coreRow`, and the mine the new depth leaves.
+     *
+     * specs/instrumentation.md: a grid laid out for the old depth cannot
+     * describe a mine at the new one, so the mine is emptied to the new depth
+     * exactly as `clearMine` leaves it. Nothing is generated.
+     */
     setWorldSize(state, size) {
       const id = requireOneOf("setWorldSize", "size", size, WORLD_SIZES);
       return pose(state, (d) => {
         d.worldSize = id;
         d.coreRow = coreRowFor(id);
+        clearMine(d);
       });
     },
 

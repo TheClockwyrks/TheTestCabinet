@@ -457,6 +457,42 @@ validation = { script = "instrumentation/tile-at-outside-the-grid.test.ts", outp
   { id = "edge", name = "The mine at the border the read walks off", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "set-world-size-extends-the-mine"
+title = "A deeper world size leaves a mine that reaches the new depth"
+description = "setWorldSize to a deeper size moves coreRow and leaves the mine emptied to that depth, so a row past the old Core chamber is an in-grid open tunnel that carries a band and takes a pose, the bedrock border stands beside it and the Core sits at (CORE_COL, coreRow)."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: take the size from quick to marathon, read a row past
+# the old coreRow as an in-grid tunnel, pose it and read the posed cell back
+# at its band's full health, then read the border and the Core chamber.
+validation = { script = "instrumentation/set-world-size-extends-the-mine.test.ts", outputs = [
+  { id = "deeper", name = "The mine extended to a Marathon depth", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-world-size-shrinks-the-mine"
+title = "A shallower world size drops the rows past the new depth"
+description = "setWorldSize to a shallower size drops every row past the new coreRow, so a row that held generated terrain now reads with the documented out-of-grid shape, and what is left is the empty mine at the new depth with the Core at (CORE_COL, coreRow)."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: generate a marathon mine, take the size to quick, read
+# a deep row back as bedrock with every other field null and a shallow row as
+# open tunnel.
+validation = { script = "instrumentation/set-world-size-shrinks-the-mine.test.ts", outputs = [
+  { id = "shallower", name = "The mine cut back to a Quick depth", kind = "image" },
+] }
+[[review.categories.items]]
+id = "posing-outside-the-domain-fails"
+title = "A pose aimed outside the stated domain fails loudly"
+description = "setTile, setOreTile, setMaterialTile and setTileHealth each throw for a column or row the pose domain does not hold, including the camp row 0 and a row past coreRow, and nothing is posed on the way out: the cell reads exactly as it stood and the scanner gains no target."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: aim each of the four posing operations past each edge
+# of the stated domain, require every call to throw, and read the cell and the
+# scanner back unchanged after each.
+validation = { script = "instrumentation/posing-outside-the-domain-fails.test.ts", outputs = [
+  { id = "loud", name = "The mine at the border a pose walks off", kind = "image" },
+] }
+[[review.categories.items]]
 id = "find-tile"
 title = "findTile reports the nearest cell of a kind, and null where none exists"
 description = "On a cleared mine with two posed lava cells, findTile(lava) reports the one nearer the miner; with the mine cleared of lava entirely it reports null rather than a stale or invented cell."

@@ -364,7 +364,10 @@ export interface DeepcoreDebugApi<S = unknown> {
   setPanel(state: DeepReadonly<S>, panel: OpenPanel): S;
   setMenuIndex(state: DeepReadonly<S>, index: number): S;
   setMode(state: DeepReadonly<S>, mode: Mode): S;
-  /** The size and with it `coreRow`. It changes no cell. */
+  /**
+   * The size and with it `coreRow`, and the mine the new depth leaves: emptied
+   * to that depth exactly as `clearMine` leaves it. It generates nothing.
+   */
   setWorldSize(state: DeepReadonly<S>, size: WorldSize): S;
   setCredits(state: DeepReadonly<S>, value: number): S;
   /** One track's tier. Fuel and hull held are clamped to the new maxima. */

@@ -1655,9 +1655,9 @@ export interface SceneOptions {
   /** The generator's seed. Defaults to `DEFAULT_SEED`. */
   seed?: number;
   /**
-   * The world size. Naming one also regenerates the grid, because `setWorldSize`
-   * moves `coreRow` and leaves the cells where they were: a scene that changed
-   * the size and not the grid would be one whose grid and `coreRow` disagree.
+   * The world size. `setWorldSize` already empties the mine to the new depth, so
+   * naming one leaves the same cleared grid a scene opens with at the default
+   * size; the explicit clear below says so rather than leaning on it.
    */
   size?: WorldSize;
   /** The expedition's mode. Defaults to `standard`, as a `reset` leaves it. */
