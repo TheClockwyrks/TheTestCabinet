@@ -1,0 +1,1694 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# The case's stable identity, recorded in every run and the key the definition
+# store holds this case under.
+slug = "volute"
+
+# Human-readable display name for this test case.
+name = "Volute"
+
+# Test type. Volute is a `full-stack` case: an end-to-end (playable-browser-game)
+# case with one addition — the model under test must PRODUCE the game's own art,
+# effects, and audio DURING the run, with the asset-generation binaries on the run
+# image's `PATH`, and then build a game around them. The type schedules the run
+# onto the `test-cabinet-full-stack-2d` image, which carries exactly six binaries
+# on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and
+# `music` — and no others. `specs/assets.md` is the production contract. A root
+# identity field, so it sits above the first table header.
+type = "full-stack"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Volute is
+# easy: every rule is a table row or a one-line formula over a single fixed
+# polyline, with no physics to tune, no opponent to model, and no subsystem large
+# enough to need splitting out behind an interface. What it measures is whether a
+# build carries an exactly specified arcade loop — a train walking an arc-length
+# channel, an injector inserting into it, matching, chaining, four machineries,
+# five levels — all the way through without blurring a row, and produces the
+# hall's art and sound alongside it. The asset pass is what the runtime budget
+# below accounts for, not the difficulty.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "puzzle", "score-attack"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A geothermal pump hall where mineral cores ride a winding channel toward the \
+intake, and an injector at its center fires cores into the train to group like \
+charges and pull them out before the intake takes them — with every sprite, \
+effect, and sound produced during the build."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Per-version changelog entry (Markdown, relative to this version folder),
+# recording what changed in THIS version — a first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs, the selected variant, and the run's engine) and
+# handed to the model as the build instruction. It injects absolute in-container
+# paths through template variables rather than hardcoding them. The harness
+# prepends the standing full-stack asset-quality directive to the rendered prompt,
+# so this template does not restate it.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. This is the per-case default; a run can override it (for example
+# `tcab run --max-runtime`). Volute is an easy build, but a full-stack one: the
+# game plus a produced set of fifteen sprites, three sheets, four particle
+# systems, and fifteen cues. Six hours is comfortably more than a healthy build
+# needs while still bounding a session that never terminates.
+max_runtime_hours = 6
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. `npm install` — NOT `npm ci` — because
+# `packages` below writes the `@test-cabinet/particle-runtime` `file:` dependency
+# into the seeded `package.json` at seed time (and an engine run's vendored engine
+# alongside it), so the lockfile is completed here; `[build].install` stays
+# `npm ci` because by then the lockfile the model committed is what a rebuild must
+# install. The same command downloads the Playwright Chromium build — the base
+# image ships the OS libraries Chromium links against, but not the browser binary
+# — so the model can build the game and drive it in a browser without further
+# setup.
+init = "npm install && npx playwright install chromium"
+
+# NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the
+# whole point of a full-stack case: the model produces the hall's art, effects,
+# and audio itself, during the run, with the six binaries on the run image's
+# `PATH` (see `type` above and `specs/assets.md`).
+
+# The Test Cabinet runtime libraries installed into the run so the build can play
+# the particle systems it produces. `@test-cabinet/particle-runtime` is the same
+# library the review UI plays a produced effect with: core stages it into the run
+# and the seeded workspace `package.json` depends on it through its baked-in
+# `file:` path, so the build imports it by its bare name like any other dependency
+# and plays each produced `system.json` by simulating it live. Volute's four
+# effects — the extraction burst, the bore detonation, the intake swallow spray,
+# and the pickup shimmer — are all played this way through the runtime's
+# `./canvas` binding; `specs/assets.md` is the consumption contract. Every
+# workspace under `workspaces/` already declares the dependency at exactly the
+# `file:./.tcab/packages/@test-cabinet/particle-runtime` path resolution requires.
+# A root key, so it must precede the first table header.
+packages = ["@test-cabinet/particle-runtime"]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order —
+# the first is the default. Volute offers exactly one, so no spec branches on the
+# variant and no seeded file names a mode, an alternative, or a difficulty
+# setting: a run's seeded set describes one game.
+#   - base — the five-level hall run.
+# This list is a root key, so it must precede the first table header.
+variants = [
+  "variants/base.toml",
+]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the
+# canvas fit, the input actions, the audio bus, asset loading, and the on-screen
+# diagnostics; one of them also owns rendering, collision detection, and the
+# gameplay framework the game is written inside. It is a run dimension, chosen per
+# run alongside the model, the harness, and the variant, and recorded on the run;
+# it is not a property of the game.
+#
+# Volute supports three, and the game is the same under all of them. What differs
+# is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build
+#                     writes the frame loop, the canvas fit, keyboard and pointer
+#                     input, audio with looping cues, the loading of the produced
+#                     files, the debug overlay, and the `window.__volute` surface
+#                     itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules
+#                     around the game (`src/constants.ts` and `src/main.ts`); the
+#                     build writes `src/game.ts`, its state, and the debug surface
+#                     its `initialize` returns.
+#   - `structured-2d` vendors its framework engine the same way and seeds the same
+#                     two modules; the build writes the game module — the levels,
+#                     the game mode holding the hall's rules, the actors and the
+#                     controllers — and the debug surface its instance's
+#                     `initialize` returns.
+# The game they describe is the same one, so the checklist below is the same for
+# every engine and a score recorded under one is comparable with a score recorded
+# under another; the specs and the validators branch where the deliverable
+# differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` and `structured-2d` each carry a range and
+# are named in `[[engine]]` tables. A range is pinned because a specification is
+# written against a runtime contract: `min_version` is the 1.0.0 API the specs and
+# the validators are written against, and there is deliberately no `max_version`,
+# so a later 1.x or 2.x from the host package store is accepted as it lands.
+# Widening or moving a range means a new case version, so the pin is the statement
+# that THIS spec set matches THIS contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# at `engine/` for the model to read, so the specs seeded from this folder never
+# restate an engine's API and never fall out of date when it changes. Where a spec
+# speaks of the runtime it does so only to state what is specific to Volute under
+# it — which surfaces the build still supplies, Volute's actions, and Volute's cue
+# names — never to teach the runtime.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, an `index.html`
+# holding the canvas, and the `@test-cabinet/particle-runtime` dependency the
+# produced effects are played through. What differs is how much of the build is
+# supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own frame loop, canvas fit,
+#                     input, audio, asset loading, diagnostics overlay and
+#                     `window.__volute` surface, and every figure this
+#                     specification fixes, from the specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored
+#                     in at seed time so the build imports it by its bare package
+#                     name, and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them) and
+#                     `src/main.ts` (the browser entry). The build writes
+#                     `src/game.ts`.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds the same two case-owned modules. The build writes the
+#                     game the engine drives: its levels, the game mode holding
+#                     the hall's rules, its actors and controllers, and the debug
+#                     surface its instance's `initialize` returns.
+#
+# The seeded files land at the run root (`workspaces/none/package.json` seeds to
+# `package.json`). The single variant declares no `[workspaces]` of its own, so
+# every run of this case is seeded from this table.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/simple-2d"
+"structured-2d" = "workspaces/structured-2d"
+
+# How the validator (and the per-run static deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root: dependencies are installed, then the static build is produced
+# into `dist/`. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`, so the validated build installs exactly what the deploy
+# will. Both commands are required; there are no defaults, so every case states
+# exactly how its implementation is built.
+#
+# Nothing here invokes an asset-generation binary, and nothing may: the binaries
+# are on `PATH` only while the run is live, so the produced files are committed
+# and this build merely bundles them. `specs/assets.md` and `specs/overview.md`
+# state the same requirement to the model.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. The seeded workspace ships the configuration each command
+# reads (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`,
+# `vitest.config.ts`), so what is checked here is the code the model wrote against
+# configuration the case fixed. The commands run host-side over the collected tree
+# after the run's container is gone, so a slow suite costs the run none of its
+# runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken` and scores it zero,
+# because code that does not compile is not reviewable. The other three are
+# recorded and gate nothing — `test` additionally records the count and coverage
+# the build's own suite reports, which is how a build that ships tests is told
+# apart from one that ships none. Each is spelled `npx` rather than
+# `npm run <script>` so the check is the case's own statement of what is run and
+# does not depend on the model leaving the seeded scripts intact. The same four
+# commands are what `specs/overview.md` tells the model the repository must pass.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. The handle is required as soon as any review item declares a `validation`
+# script, which every one below does. It names the ENGINELESS contract: an
+# engineless build writes the surface itself and installs it on `window.__volute`,
+# so the handle is what a person opening the console of such a build finds. An
+# engine run has no global at all — the build writes the surface, its `initialize`
+# returns it, and a validator reads it back off `engine.debug`. The seeded
+# specification documents the same handle independently as an ordinary game debug
+# feature (see specs/instrumentation.md); this entry is reporter-side and never
+# seeded.
+#
+# `tick_hz` is Volute's fixed simulation rate. The engineless debug surface
+# advances the game in whole ticks (`step(ticks)`) rather than in seconds, so
+# there is no rounding and no ambiguity about what a step means, and this is the
+# rate the validation runtime relates that stepping back to real time with: one
+# tick is 1/60 of a second, so a second of simulated time is 60 ticks. Under an
+# engine it is the step a scripted clock takes by default, so the same scenario
+# walks the same number of ticks on all three engines and one tolerance covers
+# every suite. It matches the timestep `specs/instrumentation.md` mandates.
+[instrumentation]
+handle = "__volute"
+tick_hz = 60
+
+# The specs: every one is seeded for EVERY run, at the `dest` path within the run
+# workspace. The specification is decomposed by concern — the overview and the
+# field, the channel with its train and pressure, the injector and insertion,
+# matching and chaining, the machinery, the levels and cells, the controls, the
+# screens and audio, the game's state, the debug surface, and the asset-production
+# contract — so a reader can predict a file's contents from its name and find a
+# given rule in exactly one file.
+#
+# There is no per-variant spec and no variant branch anywhere in the set, because
+# the case offers one variant: a seeded set asserts exactly one game, with no
+# cross-variant language for the model to read.
+#
+# Six of the eleven are `.hbs` templates rendered before they land, and they
+# branch on `engine.slug` alone — on what the build is handed and what it writes.
+# `specs/overview.md.hbs` (the runtime under the game and the modules the build
+# owns), `specs/controls.md.hbs` (a written input layer against the engine's
+# registered actions), `specs/ui.md.hbs` (how cues and the two looping beds are
+# played and muted), `specs/state.md.hbs` (the state contract, or the framework
+# objects that hold it), `specs/instrumentation.md.hbs` (how the surface is
+# reached and the shape its operations take), and `specs/assets.md.hbs` (where the
+# produced files land and how each is loaded and drawn). The remaining five state
+# rules that are the same under every runtime and are seeded verbatim. A spec's
+# `dest` defaults to its `source` with a trailing `.hbs` stripped, so an `.md.hbs`
+# source seeds to the same `.md` path and these need only name their source.
+
+# The overview: the game, the runtime beneath it, what the build owns, the checks
+# the repository passes, the build interface, the fixed 960 x 540 field and its
+# angle convention, and the five charges.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+# The channel: the twelve-vertex polyline and its arc-length measure, the train
+# and its segments, advance, merging, emission, the seeded twelve, pressure, and
+# the order a tick resolves in.
+[[spec]]
+source = "specs/channel.md"
+
+# The injector: where it sits, the aim, firing and its cooldown, the loaded and
+# queued charges, a projectile's flight, which core a shot strikes, and where the
+# struck core seats.
+[[spec]]
+source = "specs/injector.md"
+
+# Matching and extraction: runs, the two events that extract one, the recoil a
+# removal leaves behind, the chain step, and what an extraction pays.
+[[spec]]
+source = "specs/extraction.md"
+
+# Machinery: the marks every twelfth core carries, the cycle they follow, how a
+# grant happens, the four kinds, and the rule that decides which one is active.
+[[spec]]
+source = "specs/machinery.md"
+
+# Progression: the five levels and their charge sets, quotas and feed speeds, the
+# clear condition and its bonus, the cells a run spends at the intake, the
+# interludes and endings, and the danger condition.
+[[spec]]
+source = "specs/progression.md"
+
+# The controls: the actions, their bindings, how the pointer and the turn actions
+# resolve into the aim, and what each screen reads. It branches on the engine for
+# whether the input layer is written or registered with the engine.
+[[spec]]
+source = "specs/controls.md.hbs"
+
+# The screens, the HUD, and the audio: the seven screens and what each shows, what
+# advances on each, the six HUD readouts, the fifteen cues and the two looping
+# beds, and mute. It branches on the engine for how a cue is played and muted.
+[[spec]]
+source = "specs/ui.md.hbs"
+
+# The shape of the game's state: what a core, a segment, a projectile, and the
+# machinery carry, and the whole value a tick advances. It branches on the engine
+# for whether the build holds one state value the engine advances or the framework
+# objects the engine owns.
+[[spec]]
+source = "specs/state.md.hbs"
+
+# The debugging and automation surface every build exposes: a deterministic,
+# steppable core, the operations that pose and read the running game, the snapshot
+# shape, and the read-only debug overlay. Framed as an ordinary developer
+# affordance of the game. It branches on the engine for how the surface is reached
+# (`window.__volute` under `none`, `engine.debug` under either engine) and for the
+# shape its operations take.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The asset-production contract: every sprite, sheet, particle system, and cue the
+# game needs, which of the six on-PATH binaries produces it, where the file lands
+# in the workspace, how the build reaches it, and the bar it meets. Seeded for
+# every run so the produced-asset points below and this spec stay in lockstep.
+# This is the defining spec of a full-stack case. It branches on the engine for
+# where the files land and how each is loaded and drawn.
+[[spec]]
+source = "specs/assets.md.hbs"
+
+# No `[[reference]]`, no `[[proof]]`, and no `[[check]]`: the specification fixes
+# behavior, not appearance, so there is no visual target to seed or to score
+# against. Every piece of evidence a reviewer sees comes from this case's own
+# validators, which pose each scenario against the game the build wrote and
+# capture what it renders. The automated load check still runs.
+
+# Scoring domains. A run is rated on each independently, and the run's overall
+# functional rating is the WORST across them — a flawless channel cannot mask an
+# injector that never seats a shot. Every case must declare at least one. This
+# case is on the engine format, so it is validator-rated: each domain's FUNCTIONAL
+# rating is decided by the validators behind the checklist below (every point
+# names the domains its failure lowers and how far — see `domains` and
+# `failure_cap` there), and the reviewer's judgement lives in the separate
+# AESTHETIC rating: how the hall looks, sounds, and feels to play.
+#
+# `presentation` is a first-class domain rather than a note on the others, because
+# this is a full-stack case: the produced art, motion, effects, and audio are half
+# of what a run delivers, and a build that ships a correct simulation behind
+# placeholder art has not finished the job.
+[[domain]]
+id = "channel"
+name = "Channel"
+description = "The train riding the channel: advance, catch-up, merging, extraction, chains, and pressure."
+
+[[domain]]
+id = "injector"
+name = "Injector"
+description = "The injector: aiming, firing, the loaded and queued charges, a shot's flight, and where it seats in the train."
+
+[[domain]]
+id = "progression"
+name = "Progression"
+description = "The shape of a run: the five levels, cells, quotas, the screens, scoring, and the machinery."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Assets"
+description = "The produced art, motion, effects, and audio, and how the hall reads and sounds while it is played."
+
+# Reviewer checklist, common to every run, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare
+# name grouping the points a reviewer reads — and each
+# `[[review.categories.items]]` under it is one graded review item, worth one
+# point (the default weight), so a category is worth the number of items it holds
+# and there is no fractional scoring. A category carries no prose of its own; each
+# item states in `description` the claim its validator checks. Eighty-three items
+# across eleven categories, all common: the case has one variant, so no point
+# lives in a variant file.
+#
+# The checklist is reporter-side material, never seeded into a run, so the model
+# never sees it. Each item restates a rule the seeded specification already
+# states, and every threshold a validator asserts is derived from a figure or a
+# rule in the specs plus an honest numeric tolerance — never from a reference
+# implementation. A validator that passes on the reference and fails a different
+# spec-compliant build is worse than no validator.
+#
+# EVERY point carries a validation script, and every point is one observable
+# behavior, so a build fails exactly the rule it breaks: seating ahead of a struck
+# core and seating behind it are two points, not one, and the same goes for the
+# left and right turn actions. Each script is a vitest suite under
+# `validation/<engine>/<category>/<item id>.test.ts`. The `<engine>` level is the
+# ENGINE the suite is written against — a validator speaks one engine's
+# vocabulary, so this case, which supports three, ships one directory per engine:
+# `validation/none/` drives the build in Chromium through `window.__volute`, and
+# `validation/simple-2d/` and `validation/structured-2d/` each run in process
+# against their vendored engine. The three walk the same scenarios; only how they
+# reach the build differs, and the `script` path declared here must resolve in all
+# three projects.
+#
+# Every drive follows one shape. `reset`, `startLevel(n)`, `clearTrain()`,
+# `poseTrain(cores)` and the other setters pose an isolated hall, and then the
+# real systems are stepped — `step(ticks)` engineless, a scripted engine clock
+# under an engine — and what the drive asserts is read back from `snapshot`. No
+# pose decides an outcome: every extraction, every score, and every chain a
+# validator reads comes from stepping the game, which is what
+# `instrumentation.pose-decides-nothing` holds the build to directly.
+#
+# STANDING TOLERANCES, unless a point's own description states otherwise. A tick
+# is 1/60 s (`tick_hz` above), so stepped ticks convert to simulated seconds
+# exactly.
+#   arc position or field distance   ±0.5 units
+#   speed, over at least 30 ticks    ±2% of the stated figure
+#   duration or cadence              ±2 ticks
+#   angle                            ±1 degree
+#   pressure                         ±0.05
+#   count, score, charge id, screen  exact
+#   two sampled pixels told apart    RGB distance above 50 on a 0-441 scale
+#
+# THE MEDIA a point declares is produced by its own suite, from the scenario the
+# case controls: an `image` output is a captured frame and a `replay` output the
+# draw-command recording the suite takes across the drive. A recorded clip is a
+# browser drive's output and this case has no browser drive: all three validator
+# projects arm the recorder themselves, the engineless one over the 2D context it
+# injects, so motion is handed back as a replay. Both are evidence beside the
+# verdict rather than any part of it — a point passes or fails on its assertions
+# alone.
+#
+# EVERY point also carries `domains` and `failure_cap`, because this case is
+# validator-rated: a point's validator, not a reviewer, decides the functional
+# rating. `domains` names the scoring domains a failure lowers — a point about the
+# train lowers `channel`, a point about a shot lowers `injector`, a point about
+# both lowers both. `failure_cap` is the highest functional rating those domains
+# may reach while the point fails; each domain takes the LOWEST cap among its
+# failing points, and a domain with no failing point is flawless. The caps are
+# graded by how much of the game a failure takes away: `broken` for a
+# gameplay-critical rule (the debug surface, the advance, an insertion, an
+# extraction, the fail condition); `scuffed` for a secondary rule (a machinery
+# effect, a level figure, a screen transition, the legibility of the charges); and
+# `passable` for polish (a tolerance, an edge case, a cue, a produced-asset
+# detail). No point caps at `great` or at `flawless`: a failure always costs.
+#
+# Rules the specification states that no point below decides are deliberate
+# omissions rather than oversights. Each is either the complement of a graded
+# point — a run of two spanning a merge, a shot fired at or after the cooldown,
+# a second press of mute — or a secondary effect of one already graded, such as
+# backflow suppressing emission or a bore leaving the chain where it stands.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+# The build writes the debug surface, so these two points check that it is there
+# and that it is honest. Every other point below poses its scenario through the
+# same surface, which means a surface the build hollowed out also shows up as
+# those points failing to run; the first point names that fault plainly, and the
+# second holds the surface to the rule that makes every other verdict meaningful.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "debug-surface"
+title = "Debug and automation surface present"
+description = "Every operation specs/instrumentation.md names is present as a function on the debug surface, each poses or reads the running game, and a snapshot reports the full documented shape with live values."
+domains = ["channel", "injector", "progression", "presentation"]
+failure_cap = "broken"
+# Automated validation: reflect that every named operation is installed as a
+# function, call each against a started run, and confirm a snapshot reports every
+# documented field with values that move when the game is stepped. See
+# validation/<engine>/instrumentation/debug-surface.test.ts.
+validation = { script = "instrumentation/debug-surface.test.ts", outputs = [
+  { id = "state", name = "The posed hall the surface was read against", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pose-decides-nothing"
+title = "A pose decides no outcome"
+description = "Posing a run of three matching cores in one segment extracts nothing on its own: the three stay on the channel and the score stays 0 until a real insertion or merge."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: startLevel(1), setQuotaRemaining(0), clearTrain(), pose
+# three halide cores at s = 100, 128 and 156, step 60 ticks, and confirm the core
+# count is 3 and the score 0. See
+# validation/<engine>/instrumentation/pose-decides-nothing.test.ts.
+validation = { script = "instrumentation/pose-decides-nothing.test.ts", outputs = [
+  { id = "posed", name = "Three matching cores posed and left alone", kind = "image" },
+] }
+
+# --- The channel --------------------------------------------------------------
+# The train and the channel it rides. The arc-length measure is the foundation
+# every other figure in the case is stated against, so it is graded on its own
+# before anything that moves along it. Advance is three points — the lead
+# segment's feed, a trailing segment's catch-up, and the clamp where the two meet
+# — because a build that gets one right and another wrong must score differently
+# from one that gets both right.
+[[review.categories]]
+id = "channel"
+title = "The channel"
+[[review.categories.items]]
+id = "seeded-twelve"
+title = "A level opens with twelve cores"
+description = "A level opens with exactly 12 cores standing on the channel."
+domains = ["channel"]
+failure_cap = "broken"
+# Automated validation: startLevel(1) and confirm the snapshot's train holds 12
+# cores. See validation/<engine>/channel/seeded-twelve.test.ts.
+validation = { script = "channel/seeded-twelve.test.ts", outputs = [
+  { id = "opening", name = "The channel as the level opens", kind = "image" },
+] }
+[[review.categories.items]]
+id = "seed-layout"
+title = "The opening train is spaced along the channel"
+description = "The opening twelve run from the inlet to arc distance 308, with consecutive arc positions 28 apart."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: startLevel(1) and confirm the tail is at s = 0, the head
+# at s = 308, and every consecutive pair 28 apart. See
+# validation/<engine>/channel/seed-layout.test.ts.
+validation = { script = "channel/seed-layout.test.ts", outputs = [
+  { id = "opening", name = "The opening train", kind = "image" },
+] }
+[[review.categories.items]]
+id = "arc-position"
+title = "A core sits at its arc distance along the channel"
+description = "A core's field position is its arc distance from the inlet walked along the channel polyline: 880 puts it at (920, 40), 1340 at (920, 500), 3240 at (840, 120), 4360 at (220, 220), and 4990 at (490, 320)."
+domains = ["channel"]
+failure_cap = "broken"
+# Automated validation: setQuotaRemaining(0), clearTrain(), pose one core at each
+# arc distance in turn, and compare the field point the snapshot reports for it
+# against the expected point (±1 unit). See
+# validation/<engine>/channel/arc-position.test.ts.
+validation = { script = "channel/arc-position.test.ts", outputs = [
+  { id = "walk", name = "Cores posed at known arc distances", kind = "image" },
+] }
+[[review.categories.items]]
+id = "feed-advance"
+title = "The lead segment advances at the feed speed"
+description = "On level 1, at pressure 0 with no machinery active, the lead segment gains 22 units of arc per second."
+domains = ["channel"]
+failure_cap = "broken"
+# Automated validation: startLevel(1), setPressure(0), setQuotaRemaining(0),
+# clearTrain(), pose one core at s = 1000, step 60 ticks, and confirm it stands at
+# 1022. See validation/<engine>/channel/feed-advance.test.ts.
+validation = { script = "channel/feed-advance.test.ts", outputs = [
+  { id = "advance", name = "The lead segment riding the channel", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "catchup-advance"
+title = "A trailing segment closes at the catch-up speed"
+description = "A segment that is not the lead segment gains 180 units of arc per second."
+domains = ["channel"]
+failure_cap = "broken"
+# Automated validation: pose a lead core at s = 2000 and a lone trailing core at
+# s = 1000, step 30 ticks, and confirm the trailing core stands at 1090 (±1). See
+# validation/<engine>/channel/catchup-advance.test.ts.
+validation = { script = "channel/catchup-advance.test.ts", outputs = [
+  { id = "catchup", name = "A detached segment catching up", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "merge-clamp"
+title = "A catching-up segment clamps behind the one ahead"
+description = "A catching-up segment stops exactly 28 units of arc behind the tail of the segment ahead rather than passing it."
+domains = ["channel"]
+failure_cap = "broken"
+# Automated validation: pose a lead core at s = 2000 and a trailing core at
+# s = 1900, step 90 ticks, and confirm the trailing core's arc position is the
+# lead core's less 28. See validation/<engine>/channel/merge-clamp.test.ts.
+validation = { script = "channel/merge-clamp.test.ts", outputs = [
+  { id = "merge", name = "A segment clamping onto the one ahead", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "merge-single-segment"
+title = "Merged segments ride as one"
+description = "Once two segments have met they ride as one, so the trailing core takes the feed speed rather than the catch-up speed."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: continue the merge drive a further 60 ticks and confirm
+# the trailing core gained 22 units of arc rather than 120.
+# See validation/<engine>/channel/merge-single-segment.test.ts.
+validation = { script = "channel/merge-single-segment.test.ts", outputs = [
+  { id = "joined", name = "The joined train riding at feed speed", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "emission-cadence"
+title = "The inlet emits once the tail has cleared"
+description = "While cores remain in the quota the inlet places a core at arc distance 0 as soon as the tail core has reached 28."
+domains = ["channel"]
+failure_cap = "broken"
+# Automated validation: startLevel(1), setQuotaRemaining(10), clearTrain(), pose
+# one core at s = 20, and step tick by tick — no second core while the posed core
+# is below 28, and a core at s = 0 within one tick of it reaching 28. See
+# validation/<engine>/channel/emission-cadence.test.ts.
+validation = { script = "channel/emission-cadence.test.ts", outputs = [
+  { id = "emit", name = "A core appearing at the inlet", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "quota-exhausted"
+title = "An exhausted quota stops the inlet"
+description = "With the quota spent, no further core appears at the inlet however far the train rides."
+domains = ["channel", "progression"]
+failure_cap = "broken"
+# Automated validation: setQuotaRemaining(0), clearTrain(), pose one core at
+# s = 100, step 600 ticks, and confirm the core count is still 1. See
+# validation/<engine>/channel/quota-exhausted.test.ts.
+validation = { script = "channel/quota-exhausted.test.ts", outputs = [
+  { id = "empty-inlet", name = "The inlet, quota spent", kind = "image" },
+] }
+[[review.categories.items]]
+id = "emission-charge-present"
+title = "An emitted core carries a charge already on the channel"
+description = "A core placed at the inlet carries a charge drawn from the set of charges already standing on the channel."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: startLevel(5), clearTrain(), pose a train of halide cores
+# alone, setQuotaRemaining(20), step until ten further cores have been placed, and
+# confirm every one of them is halide. See
+# validation/<engine>/channel/emission-charge-present.test.ts.
+validation = { script = "channel/emission-charge-present.test.ts", outputs = [
+  { id = "emitted", name = "Cores emitted onto a single-charge channel", kind = "image" },
+] }
+[[review.categories.items]]
+id = "self-advancing"
+title = "The hall runs on its own clock"
+description = "With nothing stepping the game from outside, the train rides the channel on the build's own clock."
+domains = ["channel"]
+failure_cap = "broken"
+# Automated validation: start a level, hand the build a real wall clock, let a
+# stretch of real time pass without stepping, and confirm the head's arc position
+# increased — a build that only advances when something pokes it stays where it
+# was put. See validation/<engine>/channel/self-advancing.test.ts.
+validation = { script = "channel/self-advancing.test.ts", outputs = [
+  { id = "before", name = "The instant play begins", kind = "image" },
+  { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
+] }
+
+# --- Pressure -----------------------------------------------------------------
+# Pressure is the hall's difficulty dial: it rises with a crowded channel and
+# feeds straight back into the speed the train rides at. Rise, bleed, and the drop
+# an extraction pays are three separate formulas, so they are three points, and
+# the multiplier they all feed is graded on its own because a build can compute
+# pressure perfectly and never apply it.
+[[review.categories]]
+id = "pressure"
+title = "Pressure"
+[[review.categories.items]]
+id = "rise"
+title = "Pressure rises with a crowded channel"
+description = "With more than 24 cores on the channel, pressure rises by 0.05 per second for each core above 24."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: setPressure(0), setQuotaRemaining(0), pose 44 cores in one
+# segment (a rise of 1.0 per second), step 60 ticks, and confirm pressure is 1.0.
+# See validation/<engine>/pressure/rise.test.ts.
+validation = { script = "pressure/rise.test.ts", outputs = [
+  { id = "rise", name = "Pressure climbing under a crowded channel", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bleed"
+title = "Pressure bleeds off an uncrowded channel"
+description = "With 24 cores or fewer on the channel, pressure falls by 2.0 per second."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: setPressure(50), setQuotaRemaining(0), pose 24 cores, step
+# 60 ticks, and confirm pressure is 48.0. See
+# validation/<engine>/pressure/bleed.test.ts.
+validation = { script = "pressure/bleed.test.ts", outputs = [
+  { id = "bleed", name = "Pressure bleeding away", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "extraction-drop"
+title = "Each extracted core drops pressure"
+description = "Each core a removal takes off the channel lowers pressure by 0.8 at the moment of the removal."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: setPressure(50), pose a run a fired core turns into a
+# matching run of three, drive the real insertion, and confirm pressure fell by
+# 2.4 net of that tick's rise or bleed (±0.1). See
+# validation/<engine>/pressure/extraction-drop.test.ts.
+validation = { script = "pressure/extraction-drop.test.ts", outputs = [
+  { id = "drop", name = "Pressure dropping on an extraction", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "clamped-high"
+title = "Pressure stops at 100"
+description = "Pressure never rises above 100."
+domains = ["channel"]
+failure_cap = "passable"
+# Automated validation: setPressure(99.9), setQuotaRemaining(0), pose 100 cores,
+# step 60 ticks, and confirm pressure is at most 100. See
+# validation/<engine>/pressure/clamped-high.test.ts.
+validation = { script = "pressure/clamped-high.test.ts", outputs = [
+  { id = "gauge", name = "The gauge at its upper limit", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clamped-low"
+title = "Pressure stops at 0"
+description = "Pressure never falls below 0."
+domains = ["channel"]
+failure_cap = "passable"
+# Automated validation: setPressure(0.5), setQuotaRemaining(0), pose 10 cores,
+# step 60 ticks, and confirm pressure is at least 0. See
+# validation/<engine>/pressure/clamped-low.test.ts.
+validation = { script = "pressure/clamped-low.test.ts", outputs = [
+  { id = "gauge", name = "The gauge at its lower limit", kind = "image" },
+] }
+[[review.categories.items]]
+id = "feed-multiplier"
+title = "Pressure multiplies the feed speed"
+description = "The lead segment's speed is the level's feed speed multiplied by 1 + pressure / 100."
+domains = ["channel"]
+failure_cap = "broken"
+# Automated validation: startLevel(1) (feed speed 22), setPressure(50),
+# setQuotaRemaining(0), pose one core at s = 1000, step 60 ticks, and confirm it
+# gained 33 units of arc (±0.7). See
+# validation/<engine>/pressure/feed-multiplier.test.ts.
+validation = { script = "pressure/feed-multiplier.test.ts", outputs = [
+  { id = "fast", name = "The train riding under pressure", kind = "replay" },
+] }
+
+# --- The injector -------------------------------------------------------------
+# The half of the game the player holds. Aiming is three points because the
+# pointer and the two turn actions are three independent paths into one angle, and
+# a build that turns the wrong way under one of them must score differently from
+# one that turns the wrong way under both.
+[[review.categories]]
+id = "injector"
+title = "The injector"
+[[review.categories.items]]
+id = "aim-pointer"
+title = "The barrel aims at the pointer"
+description = "A pointer position sets the aim to the angle from the injector's center at (420, 330) to that position."
+domains = ["injector"]
+failure_cap = "scuffed"
+# Automated validation: move the pointer to (420, 130), an aim of 270 degrees, and
+# then to (720, 330), an aim of 0 degrees, reading the reported aim each time. See
+# validation/<engine>/injector/aim-pointer.test.ts.
+validation = { script = "injector/aim-pointer.test.ts", outputs = [
+  { id = "aim", name = "The barrel tracking the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "aim-rotate-left"
+title = "Left rotates the aim"
+description = "Holding the turn-left action swings the aim counter-clockwise at 180 degrees per second."
+domains = ["injector"]
+failure_cap = "scuffed"
+# Automated validation: setQuotaRemaining(0), poseTrain one core at s = 1300,
+# which is nowhere near the shot's path and keeps the level from clearing under an
+# exhausted quota, fire(180) to leave the aim at a known 180 degrees, hold turn
+# left for 30 ticks, and confirm the reported aim is 90 degrees (±2). See
+# validation/<engine>/injector/aim-rotate-left.test.ts.
+validation = { script = "injector/aim-rotate-left.test.ts", outputs = [
+  { id = "left", name = "The barrel swinging under Left", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "aim-rotate-right"
+title = "Right rotates the aim"
+description = "Holding the turn-right action swings the aim clockwise at 180 degrees per second."
+domains = ["injector"]
+failure_cap = "scuffed"
+# Automated validation: the same opening hall and the same opening aim of 180
+# degrees, hold turn right for 30 ticks, and confirm the reported aim is 270
+# degrees (±2). See
+# validation/<engine>/injector/aim-rotate-right.test.ts.
+validation = { script = "injector/aim-rotate-right.test.ts", outputs = [
+  { id = "right", name = "The barrel swinging under Right", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cooldown-blocks"
+title = "The injector refuses a shot inside its cooldown"
+description = "A second shot fired less than 0.18 s after the first produces no projectile."
+domains = ["injector"]
+failure_cap = "scuffed"
+# Automated validation: setQuotaRemaining(0), poseTrain one core at the inlet so
+# the level does not clear, fire(270), step 7 ticks, and raise the fire control
+# itself — which honors the cooldown where fire() clears it — on the 8th tick, at
+# most 0.133 s into the cooldown; confirm exactly one projectile exists. Step 5
+# more and raise it again on the 14th, at least 0.217 s in, and confirm a second
+# projectile appears. Both presses sit clear of the standing ±2 ticks on a
+# duration whichever way a build orders the tick within it. See
+# validation/<engine>/injector/cooldown-blocks.test.ts.
+validation = { script = "injector/cooldown-blocks.test.ts", outputs = [
+  { id = "denied", name = "A second shot refused", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "projectile-speed"
+title = "A fired core flies at its stated speed"
+description = "A fired core travels 620 units per second in a straight line along the angle it was fired at."
+domains = ["injector"]
+failure_cap = "broken"
+# Automated validation: setQuotaRemaining(0), poseTrain one core at s = 1300 so
+# the level does not clear, fire(270), step 30 ticks, and confirm the projectile
+# stands 310 units from (420, 330) (±3) on a bearing of 270 degrees.
+# See validation/<engine>/injector/projectile-speed.test.ts.
+validation = { script = "injector/projectile-speed.test.ts", outputs = [
+  { id = "flight", name = "A fired core in flight", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "swap"
+title = "Swap exchanges the loaded and queued cores"
+description = "The swap action exchanges the loaded charge with the queued charge."
+domains = ["injector"]
+failure_cap = "scuffed"
+# Automated validation: setLoaded("halide"), setQueued("cobalt"), press the swap
+# control, and confirm loaded is cobalt and queued halide. See
+# validation/<engine>/injector/swap.test.ts.
+validation = { script = "injector/swap.test.ts", outputs = [
+  { id = "swapped", name = "The injector after a swap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discard-off-field"
+title = "A core that leaves the field is discarded"
+description = "A fired core whose center leaves the 960 x 540 field is discarded rather than left in flight."
+domains = ["injector"]
+failure_cap = "scuffed"
+# Automated validation: clearTrain(), fire(270), step 60 ticks — far enough to
+# clear the top edge, and short enough that the cores the inlet places stay by the
+# inlet, off the shot's path — and confirm no projectile remains.
+# See validation/<engine>/injector/discard-off-field.test.ts.
+validation = { script = "injector/discard-off-field.test.ts", outputs = [
+  { id = "discard", name = "A shot leaving the hall", kind = "replay" },
+] }
+
+# --- Insertion ----------------------------------------------------------------
+# Where a fired core lands is the single rule the whole game turns on, so it is
+# graded finely: contact and its complement, which core a shot picks out of
+# several, the tie, the two sides it can seat on, and what the train does to make
+# room. A build that seats every shot behind the core it struck plays a different
+# game from one that seats correctly, and only separate points say so.
+[[review.categories]]
+id = "insertion"
+title = "Insertion"
+[[review.categories.items]]
+id = "contact-distance"
+title = "A shot seats on contact"
+description = "A flying core seats into the train once its center comes within 28 units of a core's center."
+domains = ["injector", "channel"]
+failure_cap = "broken"
+# Automated validation: setQuotaRemaining(0), pose a lone core on the straight top
+# run, aim a shot whose path passes 24 units from its center — inside the 28-unit
+# window by 3.3 units on the worst tick the flight can be sampled at — drive it,
+# and confirm the projectile is gone and the train holds two cores. See
+# validation/<engine>/insertion/contact-distance.test.ts.
+validation = { script = "insertion/contact-distance.test.ts", outputs = [
+  { id = "seat", name = "A fired core seating into the train", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-contact-beyond"
+title = "A shot that misses passes by"
+description = "A flying core whose closest approach to every core exceeds 28 units seats nowhere."
+domains = ["injector"]
+failure_cap = "broken"
+# Automated validation: the same pose, setQuotaRemaining(0), aim a shot whose path
+# passes 29 units from the core's center, step past it, and confirm the train
+# still holds one core. See
+# validation/<engine>/insertion/no-contact-beyond.test.ts.
+validation = { script = "insertion/no-contact-beyond.test.ts", outputs = [
+  { id = "miss", name = "A fired core passing the train", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "nearest-core"
+title = "The nearest core is struck"
+description = "When more than one core is within reach on the same tick, the one whose center is nearest the projectile is struck."
+domains = ["injector"]
+failure_cap = "scuffed"
+# Automated validation: two cores one spacing apart seat a shot in the same slot
+# whichever of them is struck, so the pair is posed 42 units of arc apart, where
+# the two answers are 14 units apart. A 42-unit pair is TWO segments, so the rear
+# core closes at the catch-up rate of 180 units/s while the front rides the feed:
+# the pose has to allow for both, since the geometry below is the one that holds
+# after the tick's advance. setQuotaRemaining(0), keep one core parked off the
+# shot's path so the level cannot clear, fire along the straight top run's
+# perpendicular, step until the projectile is one tick short of the run, pose the
+# pair across its path so that after that tick's advance the projectile stands 18
+# units from the rear core's center and 24 from the front core's, step one tick,
+# and confirm the seated core took the slot at the rear core's arc position rather
+# than the slot 14 ahead of it. See
+# validation/<engine>/insertion/nearest-core.test.ts.
+validation = { script = "insertion/nearest-core.test.ts", outputs = [
+  { id = "nearest", name = "A shot seating beside the nearer core", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "tie-break-forward"
+title = "A tie is broken toward the head"
+description = "When two cores are the same distance from a shot, the one with the larger arc position is struck."
+domains = ["injector"]
+failure_cap = "passable"
+# Automated validation: the same 42-unit pair, posed the same way and against the
+# same two rates. Fire perpendicular to the straight top run, step until the
+# projectile is one tick short of it, pose the pair so that after that tick's
+# advance the projectile's center lies on the perpendicular bisector between the
+# two and both center distances are equal, step one tick, and confirm the seated
+# core took the slot 14 units ahead of the rear core, the slot behind the core
+# with the larger arc position. See
+# validation/<engine>/insertion/tie-break-forward.test.ts.
+validation = { script = "insertion/tie-break-forward.test.ts", outputs = [
+  { id = "tie", name = "A shot arriving between two cores", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "insert-ahead"
+title = "A shot arriving from the front seats ahead"
+description = "A core arriving on the forward side of the core it strikes takes an arc position greater than the struck core's."
+domains = ["injector", "channel"]
+failure_cap = "broken"
+# Automated validation: setQuotaRemaining(0), pose a lone core on the straight top
+# run, where forward is +x, fire so the projectile's center at contact is at
+# larger x than the core's,
+# and confirm the seated core's arc position is the greater. See
+# validation/<engine>/insertion/insert-ahead.test.ts.
+validation = { script = "insertion/insert-ahead.test.ts", outputs = [
+  { id = "ahead", name = "A core seating ahead of the struck core", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "insert-behind"
+title = "A shot arriving from behind seats behind"
+description = "A core arriving on the trailing side of the core it strikes takes an arc position less than the struck core's."
+domains = ["injector", "channel"]
+failure_cap = "broken"
+# Automated validation: the same pose, setQuotaRemaining(0), fire so the
+# projectile's center at contact is at smaller x than the core's, and confirm the
+# seated core's arc position is the lesser. See validation/<engine>/insertion/insert-behind.test.ts.
+validation = { script = "insertion/insert-behind.test.ts", outputs = [
+  { id = "behind", name = "A core seating behind the struck core", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "backward-shift"
+title = "The train shifts back to make room"
+description = "Every core from the seated slot back toward the tail moves back by 28, and the head keeps its arc position."
+domains = ["channel", "injector"]
+failure_cap = "broken"
+# Automated validation: setQuotaRemaining(0), pose a five-core segment, seat a
+# core behind the third, and confirm the head's arc position is unchanged and the
+# tail's fell by exactly 28. See validation/<engine>/insertion/backward-shift.test.ts.
+validation = { script = "insertion/backward-shift.test.ts", outputs = [
+  { id = "shift", name = "The train shifting back around a seated core", kind = "replay" },
+] }
+
+# --- Extraction and chains ----------------------------------------------------
+# What a run of three pays and what it leaves behind. The threshold is graded from
+# both sides — three extracts, two does not — because a build that extracts every
+# pair is a different game rather than a slightly wrong one. The chain is graded
+# as three points, the step a merge adds, the step an insertion takes it back to,
+# and the lapse the quiet hall pays, since a build can step the chain up
+# correctly and never let it fall back.
+[[review.categories]]
+id = "extraction"
+title = "Extraction and chains"
+[[review.categories.items]]
+id = "extract-three"
+title = "A run of three is extracted"
+description = "Seating a core that completes a maximal run of three matching charges within its segment draws that run out of the channel."
+domains = ["channel"]
+failure_cap = "broken"
+# Automated validation: setQuotaRemaining(0), pose halide, halide, cobalt in one
+# segment, seat a halide beside the pair, step, and confirm the three halide cores
+# are gone and the cobalt remains. See validation/<engine>/extraction/extract-three.test.ts.
+validation = { script = "extraction/extract-three.test.ts", outputs = [
+  { id = "extract", name = "Three matching cores drawn out", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-extract-two"
+title = "A run of two stays on the channel"
+description = "Seating a core that completes a run of only two matching charges draws nothing out and scores nothing."
+domains = ["channel"]
+failure_cap = "broken"
+# Automated validation: setQuotaRemaining(0), pose halide, cobalt, cobalt in one
+# segment, seat a halide beside the single halide, step, and confirm the core
+# count rose by one and no score was awarded. See validation/<engine>/extraction/no-extract-two.test.ts.
+validation = { script = "extraction/no-extract-two.test.ts", outputs = [
+  { id = "stays", name = "Two matching cores riding on", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "score-formula"
+title = "An extraction scores by its size and chain step"
+description = "An extraction of three cores at chain step 1 adds exactly 30 to the score."
+domains = ["channel", "progression"]
+failure_cap = "scuffed"
+# Automated validation: from a score of 0, drive the run-of-three extraction and
+# confirm the score is exactly 30 (10 x 3 x 1). See
+# validation/<engine>/extraction/score-formula.test.ts.
+validation = { script = "extraction/score-formula.test.ts", outputs = [
+  { id = "score", name = "The score after a three-core extraction", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "recoil-distance"
+title = "The trailing train recoils"
+description = "After a run is drawn out, the cores behind it fall back 42 units of arc, clamped at no less than arc position 0."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: startLevel(1), setPressure(0), setQuotaRemaining(0), pose
+# one segment of seven cores — three of one charge at the head and four of another
+# behind them — record the trailing tail's arc distance, seat a shot into the head
+# three to extract them, and confirm the tail fell by 69.63 (±0.2) across that
+# tick: the 28 units the insertion shifted the whole train back plus the 42 units
+# of recoil, less the 0.37 the segment advanced at the feed. The 42 is not
+# separately readable, because the insertion's shift lands on the same tick. Then
+# the clamp: pose two segments so a merge extraction leaves one trailing group
+# whose last core stands 23.2 units out, and confirm that group falls to arc
+# position 0 rather than past it. See
+# validation/<engine>/extraction/recoil-distance.test.ts.
+validation = { script = "extraction/recoil-distance.test.ts", outputs = [
+  { id = "recoil", name = "The train recoiling behind an extraction", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "recoil-hold"
+title = "The recoiled train holds"
+description = "A recoiled group stays put for 0.4 s of simulation time before it advances again."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: immediately after the extraction, step 23 ticks (0.383 s)
+# and confirm the recoiled tail's arc distance is unchanged (±0.2). See
+# validation/<engine>/extraction/recoil-hold.test.ts.
+validation = { script = "extraction/recoil-hold.test.ts", outputs = [
+  { id = "hold", name = "The train held after a recoil", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "merge-extraction"
+title = "A merge can extract"
+description = "When a segment meets the one ahead and the maximal same-charge run spanning the join reaches three, that run is drawn out."
+domains = ["channel"]
+failure_cap = "broken"
+# Automated validation: setQuotaRemaining(0), pose a lead segment ending in two
+# cobalt cores and a detached trailing segment headed by one cobalt, let the
+# catch-up close the gap, and confirm the three cobalt cores are gone. See
+# validation/<engine>/extraction/merge-extraction.test.ts.
+validation = { script = "extraction/merge-extraction.test.ts", outputs = [
+  { id = "merge-extract", name = "A run extracted across a join", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "chain-increment"
+title = "A merge extraction steps the chain up"
+description = "A merge extraction following an insertion extraction scores at the next chain step, so a three-core run adds exactly 60."
+domains = ["channel", "progression"]
+failure_cap = "scuffed"
+# Automated validation: pose the hall so an insertion extraction of three is
+# followed by a merge extraction of three, and confirm the second added exactly 60
+# (10 x 3 x 2). See validation/<engine>/extraction/chain-increment.test.ts.
+validation = { script = "extraction/chain-increment.test.ts", outputs = [
+  { id = "chain", name = "A chained extraction scoring double", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "chain-insertion-resets"
+title = "An insertion extraction takes the chain back to step 1"
+description = "An insertion extraction scores at chain step 1 whatever step the chain stood at, so a three-core run adds exactly 30."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: from a hall whose chain a merge extraction has taken to
+# step 2, drive an insertion extraction of three inside the chain window and
+# confirm it added exactly 30 and the reported chain step is 1. See
+# validation/<engine>/extraction/chain-insertion-resets.test.ts.
+validation = { script = "extraction/chain-insertion-resets.test.ts", outputs = [
+  { id = "reset", name = "A fresh run drawn out at step 1", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "chain-reset"
+title = "The chain resets when the hall goes quiet"
+description = "With 2.0 s of simulation time passing without an extraction, the chain step falls back to 1."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: after a chained extraction has taken the chain to step 2,
+# setQuotaRemaining(0), step 122 ticks (2.03 s) with nothing extracting and with
+# cores still standing on the channel — an emptied channel under an exhausted
+# quota clears the level, which stops the chain timer instead of letting it lapse
+# — and confirm the reported chain step is 1, its timer 0, and the screen still
+# playing. See
+# validation/<engine>/extraction/chain-reset.test.ts.
+validation = { script = "extraction/chain-reset.test.ts", outputs = [
+  { id = "reset", name = "The chain lapsing", kind = "replay" },
+] }
+
+# --- Machinery ----------------------------------------------------------------
+# The four kinds a marked core grants. The cadence that places a mark, the cycle
+# that names it, and the grant that fires it are three separate rules, and each of
+# the four effects is graded on its own because a build can implement one
+# faithfully and stub another.
+[[review.categories]]
+id = "machinery"
+title = "Machinery"
+[[review.categories.items]]
+id = "mark-cadence"
+title = "Every twelfth core is marked"
+description = "Every twelfth core of a level carries a mark, counting the twelve the level opens with."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: startLevel(1), confirm the twelfth core — the tail of the
+# opening train, at s = 0 — is marked and the other eleven are not, then step
+# until 24 cores have entered the level and confirm the 24th is marked and the
+# 13th through 23rd are not. See validation/<engine>/machinery/mark-cadence.test.ts.
+validation = { script = "machinery/mark-cadence.test.ts", outputs = [
+  { id = "marked", name = "The marked cores of a level", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mark-cycle"
+title = "The marks cycle in order"
+description = "The marks of a level come up as choke, then backflow, then bore, then sightline."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: on level 5, whose quota of 90 reaches a fourth mark, walk
+# the mark counter with setQuotaRemaining and clearTrain so the inlet emits the
+# 12th, 24th, 36th and 48th core of the level one at a time, and read each core's
+# mark off the snapshot. Confirm they are choke, backflow, bore and sightline in
+# that order. The cycle is read from the marks themselves rather than through the
+# grants they would produce, so a build with a correct cycle and a broken grant
+# fails one point and not three; what a bore does when it is granted belongs to
+# bore-radius. See validation/<engine>/machinery/mark-cycle.test.ts.
+validation = { script = "machinery/mark-cycle.test.ts", outputs = [
+  { id = "cycle", name = "Four marks taken in turn", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "grant-on-extraction"
+title = "Drawing out a marked core grants its machinery"
+description = "Extracting a run that contains a marked core grants that machinery on the tick of the extraction."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: pose a run of three whose middle core is marked choke,
+# seat the completing core, step one tick, and confirm choke is the active
+# machinery on that tick. See
+# validation/<engine>/machinery/grant-on-extraction.test.ts.
+validation = { script = "machinery/grant-on-extraction.test.ts", outputs = [
+  { id = "grant", name = "Machinery granted from a marked core", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "choke-multiplier"
+title = "Choke slows the feed"
+description = "While choke is active the feed speed is multiplied by 0.4, so a level-1 lead segment gains 8.8 units of arc per second."
+domains = ["progression", "channel"]
+failure_cap = "scuffed"
+# Automated validation: startLevel(1), setPressure(0), grantMachinery("choke"),
+# pose one core at s = 1000, step 60 ticks, and confirm it gained 8.8 units of arc
+# (±0.3). See validation/<engine>/machinery/choke-multiplier.test.ts.
+validation = { script = "machinery/choke-multiplier.test.ts", outputs = [
+  { id = "choke", name = "The train crawling under choke", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "machinery-expires"
+title = "Machinery runs out"
+description = "Choke lapses after 8 s, so the lead segment is back at the level's feed speed."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: startLevel(1), setPressure(0), setQuotaRemaining(0), pose
+# one core at s = 500, grantMachinery("choke"), step 481 ticks (8.02 s), step 60
+# further ticks, and confirm the core gained 22 units of arc over those 60. See validation/<engine>/machinery/machinery-expires.test.ts.
+validation = { script = "machinery/machinery-expires.test.ts", outputs = [
+  { id = "expiry", name = "Choke lapsing after its run", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "backflow-direction"
+title = "Backflow drives the train back"
+description = "While backflow is active every core moves toward the inlet at 60 units per second."
+domains = ["progression", "channel"]
+failure_cap = "scuffed"
+# Automated validation: pose a segment with its head at s = 2000,
+# grantMachinery("backflow"), step 30 ticks, and confirm the head stands at 1970
+# (±1). See validation/<engine>/machinery/backflow-direction.test.ts.
+validation = { script = "machinery/backflow-direction.test.ts", outputs = [
+  { id = "backflow", name = "The train driven toward the inlet", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bore-radius"
+title = "Bore clears its neighborhood"
+description = "A bore removes every core whose center lies within 90 units, measured straight across the field, of the position the marked core held when its run was extracted, and leaves the machinery already running untouched."
+domains = ["progression", "channel"]
+failure_cap = "scuffed"
+# Automated validation: setQuotaRemaining(0), pose a run whose tail core carries a
+# bore mark laid across the vertex at arc 880, grantMachinery("choke") so a timed
+# machinery is running across the bore, drive the extraction, and read the
+# extraction point and the survivors' field points off the snapshot on the tick it
+# resolves, since the merge and the recoil both move cores before the bore reads
+# them. Confirm every core within 90 units of the extraction point is gone, the
+# nearest core beyond 90 units remains, and the choke is still the active
+# machinery with its own time still running down. See
+# validation/<engine>/machinery/bore-radius.test.ts.
+validation = { script = "machinery/bore-radius.test.ts", outputs = [
+  { id = "bore", name = "The bore clearing the cores around it", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "sightline-ray"
+title = "Sightline draws the aim ray"
+description = "While sightline is active a ray is drawn from the injector's center along the aim to the first core it meets."
+domains = ["progression", "presentation"]
+failure_cap = "passable"
+# Automated validation: pose one core along a known aim from (420, 330) and render
+# the same hall twice, once with grantMachinery("sightline") and once without.
+# Confirm the pixels the two frames differ in form one span running from the
+# injector along the aim, and that the span ends at the core's near edge, 14 units
+# short of its center (±3), rather than carrying on past it. See
+# validation/<engine>/machinery/sightline-ray.test.ts.
+validation = { script = "machinery/sightline-ray.test.ts", outputs = [
+  { id = "ray", name = "The aim ray reaching its first core", kind = "image" },
+] }
+[[review.categories.items]]
+id = "single-active"
+title = "One machinery at a time"
+description = "A new timed machinery replaces the one already running, so only the newer kind is active, and a grant starts its full duration afresh even when it is the kind already running."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: grantMachinery("choke"), step 60 ticks,
+# grantMachinery("sightline"), and confirm the active machinery is sightline alone
+# at its full 12 s and the feed speed is back off the choke. Then step 60 ticks
+# more, confirm the sightline has run down, grantMachinery("sightline") again, and
+# confirm it is back at its full 12 s. See
+# validation/<engine>/machinery/single-active.test.ts.
+validation = { script = "machinery/single-active.test.ts", outputs = [
+  { id = "replaced", name = "A grant replacing the one before it", kind = "image" },
+] }
+
+# --- Levels, cells and the run ------------------------------------------------
+# The shape of a run. The three per-level tables are graded as three points, one
+# per column, so a build that carries the quotas and drops the feed speeds fails
+# exactly that. The two endings and the two ways a level leaves play are each
+# their own point, because the fail path is the one a build is most likely to
+# leave unfinished.
+[[review.categories]]
+id = "progression"
+title = "Levels, cells and the run"
+[[review.categories.items]]
+id = "quota-table"
+title = "Each level runs its own quota"
+description = "The quota a level opens with is 45, 55, 65, 75 and 90 for levels 1 through 5."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: startLevel(n) for each n and confirm the quota remaining
+# plus the twelve already placed matches the level's figure. See
+# validation/<engine>/progression/quota-table.test.ts.
+validation = { script = "progression/quota-table.test.ts", outputs = [
+  { id = "quota", name = "The quota a level opens with", kind = "image" },
+] }
+[[review.categories.items]]
+id = "feed-speed-table"
+title = "Each level runs at its own feed speed"
+description = "The feed speed of a level is 22, 26, 30, 34 and 38 units per second for levels 1 through 5."
+domains = ["progression", "channel"]
+failure_cap = "scuffed"
+# Automated validation: for each n — startLevel(n), setPressure(0),
+# setQuotaRemaining(0), clearTrain(), pose one core at s = 1000, step 60 ticks,
+# and confirm the gain in arc equals the level's figure. See
+# validation/<engine>/progression/feed-speed-table.test.ts.
+validation = { script = "progression/feed-speed-table.test.ts", outputs = [
+  { id = "speeds", name = "The train riding under each level's feed", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "charge-set-table"
+title = "Each level uses only its own charges"
+description = "No core in a level carries a charge outside that level's set: level 1 uses halide, sulfur and cobalt; levels 2 and 3 add garnet; levels 4 and 5 add olivine."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: for each n — startLevel(n), read the opening twelve, step
+# through twenty further emissions, and confirm every charge seen is a member of
+# that level's set. See validation/<engine>/progression/charge-set-table.test.ts.
+validation = { script = "progression/charge-set-table.test.ts", outputs = [
+  { id = "charges", name = "The charges a level opens with", kind = "image" },
+] }
+[[review.categories.items]]
+id = "level-cleared"
+title = "Emptying an exhausted channel clears the level"
+description = "A level clears the moment its quota is spent and the last core leaves the channel, and the screen becomes cleared."
+domains = ["progression"]
+failure_cap = "broken"
+# Automated validation: setQuotaRemaining(0), pose a single run of three, drive
+# the extraction that empties the channel, and confirm the screen becomes cleared.
+# See validation/<engine>/progression/level-cleared.test.ts.
+validation = { script = "progression/level-cleared.test.ts", outputs = [
+  { id = "clear", name = "The last core drawn out", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "clear-bonus"
+title = "A cleared level scores its bonus"
+description = "Clearing a level adds 500 to the score, on top of what the clearing extraction itself paid."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: record the score immediately before the clearing
+# extraction, drive it, and confirm the score rose by that extraction's own value
+# plus exactly 500. See validation/<engine>/progression/clear-bonus.test.ts.
+validation = { script = "progression/clear-bonus.test.ts", outputs = [
+  { id = "bonus", name = "The score after a clear", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory"
+title = "Clearing the fifth level wins the run"
+description = "Clearing level 5 ends the run on the victory screen."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: startLevel(5), setQuotaRemaining(0), drive the clearing
+# extraction, and confirm the screen is victory on that tick. See
+# validation/<engine>/progression/victory.test.ts.
+validation = { script = "progression/victory.test.ts", outputs = [
+  { id = "victory", name = "The run won", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cell-lost-at-intake"
+title = "A core reaching the intake spends a cell"
+description = "A core whose arc position reaches 5000 spends exactly one cell."
+domains = ["progression"]
+failure_cap = "broken"
+# Automated validation: pose one core at s = 4980 on level 1, step until it passes
+# 5000, and confirm the cells remaining fell by exactly 1. See
+# validation/<engine>/progression/cell-lost-at-intake.test.ts.
+validation = { script = "progression/cell-lost-at-intake.test.ts", outputs = [
+  { id = "intake", name = "A core swallowed by the intake", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cell-loss-clears-channel"
+title = "A spent cell empties the channel"
+description = "Spending a cell removes every core from the channel and discards every projectile."
+domains = ["progression", "channel"]
+failure_cap = "scuffed"
+# Automated validation: pose several cores with the head at s = 4980, fire a shot,
+# drive the loss, and confirm no core and no projectile remain. See
+# validation/<engine>/progression/cell-loss-clears-channel.test.ts.
+validation = { script = "progression/cell-loss-clears-channel.test.ts", outputs = [
+  { id = "cleared", name = "The channel emptied after a setback", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cell-loss-resets-level"
+title = "A spent cell restores the level's opening figures"
+description = "Spending a cell puts the pressure back to 0, clears the active machinery, takes the chain step back to 1, and refills the level's quota."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: from the same hall, with the pressure raised, a machinery
+# granted, the chain stepped up and the quota part spent, drive the loss and
+# confirm the four figures stand at what a level start leaves them. See
+# validation/<engine>/progression/cell-loss-resets-level.test.ts.
+validation = { script = "progression/cell-loss-resets-level.test.ts", outputs = [
+  { id = "reset", name = "The run's figures after a setback", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over"
+title = "The run ends with the last cell"
+description = "Spending the third cell ends the run on the gameover screen with no cells remaining."
+domains = ["progression"]
+failure_cap = "broken"
+# Automated validation: startLevel(1), drive three cores into the intake in turn,
+# and confirm the screen becomes gameover with the cells remaining at 0. See
+# validation/<engine>/progression/game-over.test.ts.
+validation = { script = "progression/game-over.test.ts", outputs = [
+  { id = "over", name = "The last cell spent", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "danger-threshold"
+title = "The hall reads as in danger near the intake"
+description = "The run is in danger while the head's arc position is at least 4000."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose a single core at s = 3990 and confirm the danger
+# state is off, then pose it at s = 4010 and confirm it is on. See
+# validation/<engine>/progression/danger-threshold.test.ts.
+validation = { script = "progression/danger-threshold.test.ts", outputs = [
+  { id = "danger", name = "The hall in danger", kind = "image" },
+] }
+
+# --- Screens and controls -----------------------------------------------------
+# The frame around the hall. Pausing and resuming are two points, and what a pause
+# actually does to the train is a third, because a build can show a pause screen
+# over a hall that never stopped riding.
+[[review.categories]]
+id = "screens"
+title = "Screens and controls"
+[[review.categories.items]]
+id = "title"
+title = "The hall opens on its title"
+description = "A fresh hall opens on the title screen."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: read the screen the build stands the hall up on before
+# anything resets it and confirm it is title, then reset() and confirm the
+# reported screen is title again. See validation/<engine>/screens/title.test.ts.
+validation = { script = "screens/title.test.ts", outputs = [
+  { id = "title", name = "The title screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "start-enter"
+title = "Enter starts a run"
+description = "Pressing Enter on the title screen starts a run on level 1."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: from the title, dispatch Enter and confirm the screen is
+# playing with level 1 under way. See validation/<engine>/screens/start-enter.test.ts.
+validation = { script = "screens/start-enter.test.ts", outputs = [
+  { id = "playing", name = "The hall in play", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-escape"
+title = "Escape pauses"
+description = "Pressing Escape during play sets the screen to paused."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: during play, dispatch Escape and confirm the screen is
+# paused. See validation/<engine>/screens/pause-escape.test.ts.
+validation = { script = "screens/pause-escape.test.ts", outputs = [
+  { id = "paused", name = "The hall paused", kind = "image" },
+] }
+[[review.categories.items]]
+id = "resume-escape"
+title = "Escape resumes"
+description = "Pressing Escape while paused sets the screen back to playing."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: from paused, dispatch Escape and confirm the screen is
+# playing again. See validation/<engine>/screens/resume-escape.test.ts.
+validation = { script = "screens/resume-escape.test.ts", outputs = [
+  { id = "resumed", name = "The hall running again", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-freezes"
+title = "A paused hall stands still"
+description = "While paused the train does not ride: the head's arc position is unchanged over an interval far longer than a tick."
+domains = ["progression", "channel"]
+failure_cap = "scuffed"
+# Automated validation: pause during play, step 120 ticks, and confirm the head's
+# arc distance is unchanged (±0.2). See
+# validation/<engine>/screens/pause-freezes.test.ts.
+validation = { script = "screens/pause-freezes.test.ts", outputs = [
+  { id = "frozen", name = "The train standing still while paused", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "mute-toggle"
+title = "M mutes the hall"
+description = "Pressing M during play mutes the hall's audio, which the game reports as muted."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: during play, dispatch KeyM and confirm the snapshot's
+# muted flag is set. A muted bed goes on looping silently, so what a mute is read
+# from is the reported bit rather than a count of audio sources. See
+# validation/<engine>/screens/mute-toggle.test.ts.
+validation = { script = "screens/mute-toggle.test.ts", outputs = [
+  { id = "muted", name = "The hall with its audio muted", kind = "image" },
+] }
+
+# --- Produced art and the HUD -------------------------------------------------
+# The produced half of the deliverable. These points assert only that a thing is
+# present and told apart, never a color value, a palette, a font, or a layout:
+# how the hall looks is what the reviewer's aesthetic rating judges, and a
+# validator that asserted a hex value would fail a perfectly good build. What is
+# graded here is what the specification actually fixes — that the five charges are
+# told apart, that they are told apart without color, that the cores are produced
+# sprites rather than code-drawn discs, that the produced sheet and the produced
+# particle system play, and that the HUD carries its six readouts.
+[[review.categories]]
+id = "presentation"
+title = "Produced art and the HUD"
+[[review.categories.items]]
+id = "charges-distinct"
+title = "The five charges are told apart"
+description = "The five charges are mutually distinguishable where they stand on the channel."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: pose one core of each charge at known arc positions on the
+# straight top run, render, take each core's mean RGB over the disc of radius 13
+# around its center — a mean rather than one pixel, since every core carries a
+# glyph over its face — and confirm all ten pairwise RGB distances exceed 50 on a
+# 0-441 scale. See
+# validation/<engine>/presentation/charges-distinct.test.ts.
+validation = { script = "presentation/charges-distinct.test.ts", outputs = [
+  { id = "charges", name = "The five charges side by side", kind = "image" },
+] }
+[[review.categories.items]]
+id = "charges-vs-field"
+title = "Every charge stands off the field"
+description = "Every charge stands apart from the field and from the channel plate behind it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: from the same frame, take the mean RGB of the 9 x 9 patch
+# at (320, 270), which is empty field 50 units clear of every leg, and of the
+# 9 x 9 patch at (320, 220), which is bare channel plate on the leg the posed
+# cores are not on, and confirm each of the five core samples is more than 50 on
+# the 0-441 scale from both. See
+# validation/<engine>/presentation/charges-vs-field.test.ts.
+validation = { script = "presentation/charges-vs-field.test.ts", outputs = [
+  { id = "charges", name = "The five charges on the channel", kind = "image" },
+] }
+[[review.categories.items]]
+id = "charge-glyphs"
+title = "The charges are told apart without color"
+description = "Each charge carries a glyph of its own, so the five stay tellable apart with color removed."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: convert each of the five 28 x 28 core sprites to a binary
+# luminance mask at its own median luminance and confirm every pair of masks
+# differs in more than 15% of the sprite's pixels, so no two charges differ by hue
+# alone. See
+# validation/<engine>/presentation/charge-glyphs.test.ts.
+validation = { script = "presentation/charge-glyphs.test.ts", outputs = [
+  { id = "glyphs", name = "The five charges rendered flat", kind = "image" },
+] }
+[[review.categories.items]]
+id = "produced-core-sprites"
+title = "The cores are produced sprites"
+description = "A core is drawn from a produced 28 x 28 sprite image rather than from code-drawn geometry."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: confirm the frame's draw operations include an image draw
+# sourced from a produced asset file at the core's position, at a 28 x 28 source
+# size. Identify the sprite by the IDENTITY of the image drawn — the source URL
+# hashed, or its pixels compared — never by matching a path under assets/: a
+# bundler inlines a small produced PNG as a `data:` URI, which is still the
+# committed file and still resolves page-relative. See
+# validation/<engine>/presentation/produced-core-sprites.test.ts.
+validation = { script = "presentation/produced-core-sprites.test.ts", outputs = [
+  { id = "core", name = "A core at rest", kind = "image" },
+] }
+[[review.categories.items]]
+id = "extraction-flash"
+title = "The extraction flash plays"
+description = "The produced flash sheet plays over a run as it is drawn out, its frames advancing across the following frames."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: drive an extraction and confirm the frames across it draw
+# successive images from the flash sheet at the extraction's position, the frames
+# identified by the identity of each image drawn rather than by a path under
+# assets/, since a small produced PNG may be bundled as a `data:` URI. See
+# validation/<engine>/presentation/extraction-flash.test.ts.
+validation = { script = "presentation/extraction-flash.test.ts", outputs = [
+  { id = "flash", name = "The flash over a drawn-out run", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "extraction-burst"
+title = "The extraction burst plays"
+description = "The produced particle burst plays over a run as it is drawn out, emitting live particles at the extraction's position."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: drive an extraction and drive the same posed hall again
+# with nothing extracting, and confirm the frames after the extraction carry draw
+# operations within 60 units of the extraction point that the control run has
+# none of, and that those operations differ from one frame to the next. See validation/<engine>/presentation/extraction-burst.test.ts.
+validation = { script = "presentation/extraction-burst.test.ts", outputs = [
+  { id = "burst", name = "The burst over a drawn-out run", kind = "replay" },
+] }
+# The six HUD readouts are six points, one per readout, because a build that
+# draws four of them must score differently from one that draws all six. Each is
+# driven to a value nothing else on the HUD is showing, so the draw that carries
+# it is unambiguous. The surface poses no score and no cell count, so both are
+# reached by driving the game: an extraction pays the score and an arrival at the
+# intake spends the cell.
+[[review.categories.items]]
+id = "hud-score"
+title = "The HUD carries the score"
+description = "During play the HUD draws the run's score in digits."
+domains = ["presentation", "progression"]
+failure_cap = "scuffed"
+# Automated validation: startLevel(1), setQuotaRemaining(0), pose four matching
+# cores and one of another charge, seat the fifth matching core so an extraction
+# of five scores exactly 50 and a core is left standing, render, and confirm the
+# frame draws the text 50. See
+# validation/<engine>/presentation/hud-score.test.ts.
+validation = { script = "presentation/hud-score.test.ts", outputs = [
+  { id = "hud", name = "The HUD at a score of 50", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-level"
+title = "The HUD carries the level"
+description = "During play the HUD draws the number of the level in play."
+domains = ["presentation", "progression"]
+failure_cap = "scuffed"
+# Automated validation: from a fresh run, startLevel(4) with the score still 0,
+# step one tick, and confirm the frame draws the text 4. See
+# validation/<engine>/presentation/hud-level.test.ts.
+validation = { script = "presentation/hud-level.test.ts", outputs = [
+  { id = "hud", name = "The HUD on level 4", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-cells"
+title = "The HUD carries one cell icon per cell"
+description = "During play the HUD draws the produced cell icon once for each cell remaining."
+domains = ["presentation", "progression"]
+failure_cap = "scuffed"
+# Automated validation: startLevel(1), pose one core at s = 4980, step until it
+# reaches the intake, render, and confirm the frame draws the produced cell icon
+# exactly twice. Both HUD icons are 24 x 24, so tell the cell icon from the
+# pressure icon by the identity of the image drawn rather than by its source size
+# — and by identity rather than by a path, since a small produced PNG may be
+# bundled as a `data:` URI. See validation/<engine>/presentation/hud-cells.test.ts.
+validation = { script = "presentation/hud-cells.test.ts", outputs = [
+  { id = "hud", name = "The HUD with two cells left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-pressure"
+title = "The HUD's gauge fills with the pressure"
+description = "The HUD carries a gauge marked with the produced pressure icon, filled in proportion to the current pressure."
+domains = ["presentation", "channel"]
+failure_cap = "scuffed"
+# Automated validation: setQuotaRemaining(0), pose one core, and render the same
+# hall three times, at setPressure(0), setPressure(50) and setPressure(100),
+# stepping 6 ticks after each pose so a gauge that eases has settled. Confirm every frame draws the produced pressure
+# icon, and that more pixels differ between the 0 frame and the 100 frame than
+# between the 0 frame and the 50 frame. See
+# validation/<engine>/presentation/hud-pressure.test.ts.
+validation = { script = "presentation/hud-pressure.test.ts", outputs = [
+  { id = "empty", name = "The gauge at 0", kind = "image" },
+  { id = "full", name = "The gauge at 100", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-loaded"
+title = "The HUD draws the loaded charge as its core"
+description = "During play the HUD draws the charge the injector holds loaded as that charge's core sprite."
+domains = ["presentation", "injector"]
+failure_cap = "scuffed"
+# Automated validation: startLevel(5), setQuotaRemaining(0), pose three garnet
+# cores, setLoaded("halide"), setQueued("cobalt"), step one tick, and confirm the
+# frame draws the halide core sprite, a charge no core on the channel carries.
+# Tell the five core sprites apart by the identity of the image drawn, not by a
+# path under assets/: a small produced PNG may be bundled as a `data:` URI. See
+# validation/<engine>/presentation/hud-loaded.test.ts.
+validation = { script = "presentation/hud-loaded.test.ts", outputs = [
+  { id = "hud", name = "The HUD holding halide loaded", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-queued"
+title = "The HUD draws the queued charge as its core"
+description = "During play the HUD draws the charge that loads on the next firing as that charge's core sprite."
+domains = ["presentation", "injector"]
+failure_cap = "scuffed"
+# Automated validation: from the same frame, confirm it also draws the cobalt core
+# sprite, a second core sprite of a charge no core on the channel carries,
+# identified the same way. See validation/<engine>/presentation/hud-queued.test.ts.
+validation = { script = "presentation/hud-queued.test.ts", outputs = [
+  { id = "hud", name = "The HUD holding cobalt queued", kind = "image" },
+] }
+
+# --- Produced sound -----------------------------------------------------------
+# The audible half of the produced set, graded the same way as the visible half:
+# that a produced cue sounds on the event the specification binds it to, and that
+# the bed runs under a run. Nothing here judges how a cue sounds; that is the
+# reviewer's aesthetic rating of the presentation domain.
+[[review.categories]]
+id = "audio"
+title = "Produced sound"
+[[review.categories.items]]
+id = "fire-cue"
+title = "The injector is heard firing"
+description = "A produced cue plays on the tick the injector fires, and on no tick before it."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: arm audio with a real gesture and step into play until the
+# music bed is running, then open the probe there: step 30 ticks with nothing
+# raising a cue, fire once, and confirm the injector's cue sounds on the firing
+# tick and on no tick of the probe before it. See
+# validation/<engine>/audio/fire-cue.test.ts.
+validation = { script = "audio/fire-cue.test.ts", outputs = [
+  { id = "fire", name = "The shot whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "extraction-cue"
+title = "An extraction is heard"
+description = "A produced cue plays on the tick a run is drawn out."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: arm audio, let the music bed get up, then drive a merge
+# extraction of three — the extraction the specs put no other cue on the tick of,
+# where an insertion puts seat on the same tick — and confirm the hall sounds on
+# the extraction's tick. See validation/<engine>/audio/extraction-cue.test.ts.
+validation = { script = "audio/extraction-cue.test.ts", outputs = [
+  { id = "extract", name = "The extraction whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "music-bed"
+title = "The hall loop plays under a run"
+description = "The produced hall loop runs as a looping source under a run in play."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: arm audio by starting the run with a real Enter press,
+# step into play, and confirm a looping audio source is running. See
+# validation/<engine>/audio/music-bed.test.ts.
+validation = { script = "audio/music-bed.test.ts", outputs = [
+  { id = "music", name = "The hall loop under a run", kind = "replay" },
+] }

@@ -1,0 +1,201 @@
+# Volute — the assets you produce
+
+Volute ships with no pre-made art and no pre-made sound. This machine carries
+asset tools on its `PATH`, and every sprite, sheet, particle system, and cue the
+game plays is produced with them, committed, and wired in. This file is the
+contract: what to produce, which tool produces it, where the file lands, and
+how the build reaches it.
+
+Production is a one-time step. The tools belong to this machine and are absent
+when the project is installed and rebuilt elsewhere, so the committed files are
+the assets and the build bundles them. `npm ci` and `npm run build` invoke no
+tool, and the built site fetches nothing from outside its own `dist/`.
+
+## The tools
+
+| Tool | Produces | Used for |
+| --- | --- | --- |
+| `draw` | one sprite, a PNG | the cores, the machinery marks, the injector, the intake maw, the channel plate, the HUD icons |
+| `draw-sheet` | a sprite sheet, one PNG per frame | the fire recoil, the maw swallow, the extraction flash |
+| `particle-2d` | a particle system, a `system.json` | the extraction burst, the bore detonation, the intake swallow spray, the pickup shimmer |
+| `sfx-synth` | a procedural sound, a `.wav` | the injector's cues and the pickup |
+| `sfx-sample` | a sampled sound over a baked pack, a `.wav` | the extraction steps, the intake, and the run's cues |
+| `music` | sequenced music over a baked bank, a `.wav` and a `.mid` | the two music beds |
+
+Each is a command-line tool, and `<tool> --help` states its operations
+(`<tool> <operation> --help` for one operation's flags). In outline, each records
+the operations run against it and then renders the finished file. `draw` and
+`draw-sheet` rasterize a fixed-size RGBA canvas from drawing operations;
+`draw-sheet` takes a `--frame` on every operation and lands a sheet as separate
+files, one PNG per frame. `particle-2d` authors emitters, forces, and
+per-particle curves into a system that is simulated live rather than baked into
+frames. The audio tools record synth voices, sampled layers, or sequenced notes
+and render a PCM `.wav`; `sfx-sample` draws on a baked sample pack and `music` on
+a baked instrument bank, both browsed through their own help, and `music` emits a
+portable `.mid` beside the `.wav` that plays.
+
+## The hall
+
+The mood is a working geothermal pump hall, deep and hot: cast metal, plate worn
+by decades of running, condensation, and mineral that carries its own light. The
+cores are the one bright thing in it, and the intake is the one threatening
+thing. Palette, type, and styling are yours, chosen once and held across every
+sprite, effect, and screen so the hall reads as one place.
+
+## Where the files land, and how they are drawn
+
+Every produced file loads page-relative, since the built site is served from a
+sub-path as well as from a root, and the project's Vite config already emits
+relative URLs.
+
+The picture is layered the same way whatever draws it: the channel plate under
+the train, the cores with their marks and the injector above it, the sheets and
+the particle effects above those, and the HUD and the screens last.
+{{#if (eq engine.slug "none")}}
+Commit the produced files under `assets/`, and resolve each PNG, `system.json`,
+and `.wav` through the bundler. The build owns the loading, the decoding, and the
+2D context, so it holds the decoded images, parsed systems, and audio buffers
+outside the game's state and draws them in that order each frame.
+{{else if (eq engine.slug "simple-2d")}}
+Commit the produced files under `public/assets/`, which the engine serves at its
+asset root and the build copies into `dist/` unchanged. Load every image with
+`api.assets.loadImage` and every cue with `api.audio.load`, awaited in
+`initialize`, so nothing is still decoding on the first frame. `render` draws the
+loaded images into the frame's context in that order.
+{{else}}
+Commit the produced files under `public/assets/`, which the engine serves at its
+asset root and the build copies into `dist/` unchanged. Load them through the
+engine's asset loaders before the world that needs them is built. Each core,
+projectile, injector, and intake actor carries its produced sprite on a sprite
+component, and the channel plate, the sheets, and the effects take layers that
+hold that order.
+{{/if}}
+
+## The sprites
+
+Produce each of these as a single PNG with `draw`, on a transparent canvas. Every
+sprite is pixel art drawn at one unit per pixel, so a sprite 28 pixels wide
+stands 28 units wide on the field, and the game samples it nearest-neighbor so it
+stays crisp at the canvas fit.
+
+| Sprite | Canvas | Count |
+| --- | --- | --- |
+| core, one per charge | 28 x 28 | 5 |
+| machinery mark | 16 x 16 | 4 |
+| injector base | 44 x 44 | 1 |
+| injector barrel | 44 x 20 | 1 |
+| intake maw | 64 x 64 | 1 |
+| channel plate | 64 x 64 | 1 |
+| HUD cell icon | 24 x 24 | 1 |
+| pressure icon | 24 x 24 | 1 |
+
+The five cores fill their canvas as round, faceted mineral, each carrying the
+color and the glyph its charge is drawn with, and each reads clearly against the
+channel plate and against the field. A marked core draws its mark over its core
+sprite, and the four marks, `choke`, `backflow`, `bore`, and `sightline`, are
+told apart from each other at that size.
+
+The injector base and barrel read as one machine seated on the field. Author the
+barrel pointing toward `+x` so the game rotates it to the aim, and give its
+pointing end a silhouette unmistakable at any angle. The intake maw reads as an
+opening that takes cores in and is the heaviest object on the field. The channel
+plate is a tile that sits flush against itself on all four sides, quiet enough
+that a core standing on it is the brighter of the two. The two HUD icons read at
+24 units against the HUD's own ground.
+
+## The sheets
+
+Produce each of these with `draw-sheet`, one PNG per frame, and animate the
+frames in the game.
+
+| Sheet | Frames | Canvas | Plays |
+| --- | --- | --- | --- |
+| injector fire recoil | 4 | 44 x 20 | once per shot, over the barrel |
+| intake maw swallow | 6 | 64 x 64 | once per core the intake takes, over the maw |
+| extraction flash | 6 | 48 x 48 | once over each core an extraction removes |
+
+The recoil kicks the barrel back along its own axis and returns it, and it plays
+through inside the fire cooldown so consecutive shots each read as a shot. The
+swallow opens the maw and closes it on the core it takes. The extraction flash is
+shared by every charge, tinted in the game to the charge that extracted, and it
+plays through before the recoil hold ends, so a run of extractions reads as a run
+rather than as one long glare.
+
+## The effects
+
+Produce each of these with `particle-2d` as a `system.json`, and play it live.
+
+| System | Fired at | Character |
+| --- | --- | --- |
+| extraction burst | each core an extraction removes | a sharp outward throw in the extracted charge's color, gone almost as fast as it arrives |
+| bore detonation | the extraction point of a bore | heavier and slower than the burst, reading across the whole ground the bore clears |
+| intake swallow spray | the intake, as it takes a core | a short spray drawn inward and down, reading as something lost rather than won |
+| pickup shimmer | the marked core an extraction removes | a bright, brief rise that separates a grant from an ordinary extraction |
+
+Play them through `@test-cabinet/particle-runtime`, an installed dependency
+imported by its bare name, using its `./canvas` binding: a player is constructed
+over a parsed system and a 2D rendering context and advanced each frame with that
+frame's delta, and it simulates the system and composites the particles itself.
+Its options carry the seed, the composite mode, and whether the context is
+cleared before compositing, and the package's own types are the authoritative
+API. The effects sit over the finished frame, and each instance plays at the
+position of the event that raised it.
+{{#if (eq engine.slug "none")}}
+The build hands the player the same context it draws the field into.
+{{else if (eq engine.slug "simple-2d")}}
+The context is the one `render` receives, so a live effect advances on the frame
+delta `update` was handed.
+{{else}}
+A draw component is what puts a player's output on the field, so an effect takes
+its place in the layer order like any other picture.
+{{/if}}
+
+Each play of a system varies, and that variation is correct.
+
+## The sound
+
+Produce a distinct sound for every cue, under exactly these names, and play each
+on the event `specs/ui.md` binds it to.
+
+| Cue | Tool | Character |
+| --- | --- | --- |
+| `fire` | `sfx-synth` | a short dry release of pressure, light enough to sound many times a second |
+| `seat` | `sfx-synth` | a soft mechanical seat, the sound of a core settling into the train |
+| `swap` | `sfx-synth` | a lighter flick, never mistaken by ear for `seat` |
+| `denied` | `sfx-synth` | a flat, blunt refusal, unmistakably negative |
+| `machinery` | `sfx-synth` | a bright rising acknowledgement that carries over whatever else is sounding |
+| `extract-1` to `extract-5` | `sfx-sample` | one sound at five rising steps, each step recognizably the same sound higher, so a chain is heard climbing |
+| `intake` | `sfx-sample` | a low rumble with real weight, heard through the music bed |
+| `level-clear` | `sfx-sample` | settled and resolved, the sound of a hall run clean |
+| `cell-lost` | `sfx-sample` | heavy and final, the loudest bad news the game gives |
+| `hall-loop` | `music` | a slow, low, mechanical bed that stays welcome across a long session |
+| `danger-loop` | `music` | the same hall under strain, tighter and more insistent, and told from `hall-loop` within a second of starting |
+
+The two music beds are each authored to loop cleanly, the file's end running into
+its start with no click, no gap, and no jump in level.
+{{#if (eq engine.slug "none")}}
+Decode each `.wav` with the Web Audio API, play a cue on its event, and run the
+two beds through looping sources.
+{{else if (eq engine.slug "simple-2d")}}
+Bind each name in `CUES` and `EXTRACT_CUES` to its file with `api.audio.load`,
+and run the two beds through `api.audio.loop` and `api.audio.stop`.
+{{else}}
+Bind each name in `CUES` and `EXTRACT_CUES` to its file through the engine's
+`audio.load`, and run the two beds through the world's `audio.loop` and
+`audio.stop`.
+{{/if}}
+
+## What is drawn in code
+
+Everything else on screen is drawn in code, with no produced file behind it: the
+HUD's readouts, gauges, and frames, every screen and all of its copy, the debug
+overlay, the sightline ray, the danger read, and the routing that lays the
+produced plate along the channel and places every sprite on it.
+
+## Genuinely produced
+
+Every core, mark, injector, maw, and icon on screen is a produced sprite; the
+barrel, the maw, and each extraction move on produced frames; every burst is a
+simulated particle system; and every cue and both beds are produced sound.
+Everything the game shows and plays traces to a file produced here or to the
+chrome drawn in code above.

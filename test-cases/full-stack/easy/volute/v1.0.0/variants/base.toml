@@ -1,0 +1,55 @@
+# The only Volute variant: the five-level hall run. Listed first in the case
+# manifest's `variants`, so it is also the default. Every path here resolves
+# against the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The five-level hall run: three charges at the inlet rising to five, quotas from 45 to 90, and three cells to spend."
+
+# This variant seeds no spec of its own. The case has one variant, so nothing in
+# the seeded set branches on the variant and nothing names a mode: the case's
+# common `[[spec]]` list is the whole of what a run receives, and a run's seeded
+# set reads as one self-contained game.
+#
+# It declares no `[workspaces]` either, so every run is seeded from the case's own
+# per-engine table, and no `[[review.categories]]`: the whole eighty-three-point
+# checklist is common, because there is no second variant for a point to be stated
+# wrongly for.
+
+# The authored, *correct* static build of this variant — the case-variant analogue
+# of a run's `links.playableBuild`. It names a directory (resolved against the
+# version folder) holding a buildable web project; it is built out-of-band with
+# this case's `[build]` install/build commands run from that directory (its static
+# output landing in `dist/`, exactly like a run's build) and deployed like a
+# published run build via `tcab publish-reference`, then shown on the case's
+# "Reference" tab. It is **never seeded into a run** — handing a model the finished
+# game would defeat the test — so it takes no part in this variant's seed set.
+#
+# The key is a table keyed by engine slug, because the build a reference
+# demonstrates differs under each: `references/none/base` carries its own runtime
+# in `src/runtime.ts`, `references/simple-2d/base` hands the same surfaces to the
+# engine package resolved from the repository's `packages/simple-2d`, and
+# `references/structured-2d/base` builds the same game inside the framework of the
+# engine package resolved from `packages/structured-2d`. The game every one
+# implements is identical, which is what makes a run on one engine comparable with
+# a run on another. The table must name every engine the case supports and nothing
+# else.
+#
+# Volute is a `full-stack` case, so each reference also carries a produced asset
+# set — the same fifty-two files under all three, byte for byte — committed beside
+# its source and bundled by its own build. A reference never shells out to `draw`,
+# `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample` or `music`: those tools
+# are on the run image's `PATH` for the model under test, not for a build, so
+# `npm ci && npm run build` succeeds with none of them present.
+#
+# This is also what `tcab capture-baselines` drives to produce the baseline half of
+# this variant's validation media: the same vitest validator suites that decide a
+# run's points, run against the authored answer. The validators are written from
+# the specs, never from the reference; the reference only demonstrates them passing.
+[reference_implementation]
+none = "references/none/base"
+"simple-2d" = "references/simple-2d/base"
+"structured-2d" = "references/structured-2d/base"
+
+# There is deliberately no `showcase`. The key is optional, and the curated demo
+# media captured from the reference builds above land with the validator suites
+# and the baselines in a later pass.
