@@ -156,7 +156,13 @@ export function pointerDown(
   state.lastPress = { x, y, at: state.simTime };
 
   if (state.screen === "won") {
+    // A press anywhere, during the cascade or after it, deals a fresh game and
+    // moves to `playing` (`specs/victory.md`). The whole gesture is spent on the
+    // press: it leaves no press behind, so the release that follows resolves
+    // nothing and cannot activate a HUD control the fresh table has only just
+    // put under it, and the next press pairs with no double click.
     newGame(state, events);
+    state.lastPress = null;
     return;
   }
   // On `title` and `howto` the pointer answers the controls, which a CLICK

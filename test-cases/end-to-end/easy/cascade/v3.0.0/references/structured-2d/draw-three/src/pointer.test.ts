@@ -444,6 +444,26 @@ describe("the controls", () => {
     expect(shot.stock).toHaveLength(DEAL_STOCK_CARDS);
     expect(shot.trailStamps).toBe(0);
   });
+
+  it("spends the whole gesture on a won-screen press, HUD or not", () => {
+    // The press lands where the FRESH table draws a HUD control, so a build
+    // whose release re-resolved on the new screen would answer that control:
+    // MENU would walk straight back to the title, SOUND would flip the mute
+    // bit, and NEW GAME would deal a second time. The gesture belongs to the
+    // `won` screen, and a control answers only on the screen it belongs to.
+    for (const rect of [HUD_MENU, HUD_SOUND, HUD_NEW_GAME]) {
+      h.debug.setScreen("won");
+      const wasMuted = h.debug.snapshot().muted;
+      const at = middleOf(rect);
+      clickAt(h, at.x, at.y);
+      const shot = h.debug.snapshot();
+      expect(shot.screen).toBe("playing");
+      expect(shot.stock).toHaveLength(DEAL_STOCK_CARDS);
+      expect(shot.muted).toBe(wasMuted);
+      // Nothing is left for a following press to pair a double click with.
+      expect(shot.lastPress).toBeNull();
+    }
+  });
 });
 
 describe("the engine's own pointer", () => {
