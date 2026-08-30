@@ -286,7 +286,7 @@ instead.
 | `setCharge(amount)` | Sets the current Charge, at least `0`. |
 | `setIntegrity(amount)` | Sets the current Grid Integrity. It resolves no defeat by itself; the game's own rules resolve on the next advance. |
 | `setRefinement(level)` | Sets the refinement level, `0` through `REFINEMENT_MAX`, and with it the roll odds. It spends no Charge. |
-| `setWave(n)` | Sets the current wave number, at least `0`, so units released from now on scale to wave `n`. |
+| `setWave(n)` | Sets the current wave number, at least `0`, so units released from now on scale to wave `n`. The scaling of `specs/enemies.md` is defined from wave `1`, so a `0` scales as wave `1`. |
 | `setStamps(n)` | Sets the stamps remaining in the level's allowance, `0` through `STAMPS_PER_LEVEL`. |
 
 ### Structures
@@ -345,7 +345,9 @@ rock consumes it or `clearNextRoll` clears it.
 
 `spawnUnit` releases a live unit from that moment, appended to the snapshot's `units`, so
 the released unit is its last entry. It arrives at the entry heading for `WP1`, at full
-health for the current wave, travelling, carrying no slow and no burn. The next advance
+health for the current wave, travelling, carrying no slow and no burn. A run reaches wave
+`1` before any unit of its own is released, so a unit released while the counter still
+reads `0` takes wave `1`'s health, which is the lowest the scaling defines. The next advance
 moves it, fires at it, and resolves its leak at the collector exactly as it would a unit
 of a composed wave. Releasing one from a build phase therefore puts the run into a live
 wave, so the phase reads `"wave"`, or `"finale"` for the Overload Dynamo, and the

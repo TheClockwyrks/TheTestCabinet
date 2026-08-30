@@ -94,6 +94,8 @@ HP(w) = round( baseHP * baseMult * [ (1 + k * (w - 1)) + c * (r^(w - 1) - 1) ] )
   it is rounded to the nearest integer, with an exact half rounding up.
 - The bracket carries a linear ramp `(1 + k * (w - 1))` and an exponential surcharge
   `c * (r^(w - 1) - 1)`. The surcharge is exactly `0` at wave `1`.
+- Waves are numbered `1` through `N`, so the formula is defined from `w = 1` and wave
+  `1`'s figure is the lowest health any unit of a type ever carries.
 
 At wave `1` the formula yields `round(baseHP * baseMult)`. On Medium, whose `baseMult` is
 `0.22`, a Mote's `44 * 0.22 = 9.68` is `10` health and a Filament's `74 * 0.22 = 16.28`
