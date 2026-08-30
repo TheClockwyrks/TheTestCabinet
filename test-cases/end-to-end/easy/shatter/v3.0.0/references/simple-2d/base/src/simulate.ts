@@ -66,9 +66,7 @@ function advancePositions(sim: Sim): void {
 
 /** Every clock the game keeps, counted down by the tick it runs in. */
 function runClocks(sim: Sim): void {
-  const ship = sim.ship;
-  ship.invuln = countDown(ship.invuln, TICK_DT);
-  if (ship.fireCooldown > 0) ship.fireCooldown -= 1;
+  if (sim.ship.fireCooldown > 0) sim.ship.fireCooldown -= 1;
 
   sim.bullets = sim.bullets.filter((bullet) => {
     bullet.life = countDown(bullet.life, TICK_DT);
@@ -149,6 +147,11 @@ function stepPlaying(sim: Sim, input: FrameInput, ev: TickEvents): void {
     goTo(sim, "paused");
     return;
   }
+
+  // The respawn grace is counted down before anything can touch the ship, so
+  // lethal contact resumes on the tick it reaches zero rather than the one
+  // after, and a grace opened by a loss this tick is not spent on that tick.
+  sim.ship.invuln = countDown(sim.ship.invuln, TICK_DT);
 
   const thrust = shipControl(sim, input);
   saucerMind(sim);
