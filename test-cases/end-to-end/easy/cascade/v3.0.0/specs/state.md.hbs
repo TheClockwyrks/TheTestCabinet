@@ -165,6 +165,12 @@ place, and each field initializer below is that field's title-screen value, the
 same value the debug surface's `reset` restores. `GameState` comes from the
 engine's package, and `DEFAULT_SEED` from `src/constants.ts`.
 
+`src/constants.ts` fixes the vocabulary the world is built with. The one level is
+registered under its name in `LEVELS`, which is the level `startLevel` names, and
+every actor drawing the table, the cascade, or the HUD carries its tag from
+`TAGS`, so those actors are found with `world.byTag` under the names this
+specification uses.
+
 ```ts
 export type Screen = "title" | "howto" | "playing" | "won";
 
