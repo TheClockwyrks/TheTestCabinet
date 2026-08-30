@@ -76,8 +76,9 @@ init = "npm install && npx playwright install chromium"
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order — the
 # first is the default. Neither variant seeds a mode spec of its own: what differs
-# between them — the mode's menu entry and, for maze, the interior obstacle course —
-# is branched by variant slug inside the common `specs/gameplay.md.hbs` template.
+# between them — the mode's menu entry, its HUD label and, for maze, the interior
+# obstacle course — is branched by variant slug inside the common
+# `specs/mode.md.hbs` template.
 # Each variant is exactly one mode:
 #   - base — Classic mode: the grid-serpent run on the open board.
 #   - maze — Maze mode: the run on a board laced with fixed fatal interior obstacles to
@@ -101,11 +102,11 @@ variants = [
 #   - `none`          supplies no runtime and no `src/` at all, so the build writes
 #                     the fixed-tick loop, the canvas fit, the keyboard input, the
 #                     audio, the overlay and the `window.__coil` surface itself.
-#   - `simple-2d`     vendors the runtime as a package and seeds the modules around
-#                     it (`src/constants.ts`, `src/main.ts`, and the `src/game.ts`
-#                     the build writes, debug surface included).
+#   - `simple-2d`     vendors the runtime as a package and seeds the entry module
+#                     around it (`src/main.ts`, plus the `src/game.ts` the build
+#                     writes, debug surface included).
 #   - `structured-2d` vendors its framework engine the same way and seeds the same
-#                     two modules; the build writes its game module — the game
+#                     entry module; the build writes its game module — the game
 #                     definition, its mode, its state and its actors — and the debug
 #                     surface its instance's `initialize` returns.
 # What does NOT differ is the asset-production pass. Every engine run still produces
@@ -151,14 +152,16 @@ min_version = "1.0.0"
 #                     specs alone.
 #   - `simple-2d`     declares the engine in its `package.json`, which is vendored in
 #                     at seed time so the build imports it by its bare package name,
-#                     and seeds the case-owned modules around the game:
-#                     `src/constants.ts` (every figure this specification fixes,
-#                     which a validator imports; the look is NOT among them) and
-#                     `src/main.ts` (the browser entry). The build writes
+#                     and seeds the one case-owned module around the game,
+#                     `src/main.ts` (the browser entry). Every figure the
+#                     specification fixes is named in the specs and declared by the
+#                     build, because two of them — the mode's menu entry and its
+#                     obstacle course — differ between the variants that share this
+#                     one workspace. The build writes
 #                     `src/game.ts`: the state, the debug surface its `initialize`
 #                     returns beside that state, and the game's update and render.
 #   - `structured-2d` declares that engine in its `package.json` the same way and
-#                     seeds the same two case-owned modules. The build writes
+#                     seeds the same one case-owned module. The build writes
 #                     `src/game.ts`: the game definition the engine drives — its mode,
 #                     its live state, and its actors — and the debug surface its
 #                     instance's `initialize` returns.
@@ -239,9 +242,9 @@ handle = "__coil"
 # rather than a different game, and a rule belongs beside the rules it sits with.
 #
 # The specification is decomposed by concern: the overview, the board geometry, the
-# movement simulation, the combo scoring, the gameplay (the mode and its menu entry),
-# the UI (game states, controls, audio, and the HUD), the produced-asset contract, and
-# the debugging/automation surface.
+# movement simulation, the scoring and the combo, the mode and its menu entry, the
+# controls, the screens and the audio, the produced-asset contract, the
+# debugging/automation surface, and the showcase the build ships.
 #
 # A source is an `.hbs` template only where it actually branches, and there are two
 # axes to branch on. `variant.slug` selects the mode — its menu entry and, for Maze,
@@ -251,7 +254,7 @@ handle = "__coil"
 # (with a trailing `.hbs` stripped), so an `.md.hbs` source seeds to the same `.md`
 # path and a plain `.md` source is seeded verbatim.
 [[spec]]
-source = "specs/overview.md"
+source = "specs/overview.md.hbs"
 
 [[spec]]
 source = "specs/board.md"
@@ -260,21 +263,25 @@ source = "specs/board.md"
 source = "specs/movement.md"
 
 [[spec]]
-source = "specs/combo.md"
+source = "specs/scoring.md"
 
 [[spec]]
-source = "specs/gameplay.md.hbs"
+source = "specs/mode.md.hbs"
 
 [[spec]]
-source = "specs/ui.md"
+source = "specs/controls.md.hbs"
 
-# The asset-production contract: the assets the model must PRODUCE with the six on-PATH
-# binaries during the run — the snake's full sprite set and the game's sound and music —
-# where each lands in the workspace, and how it is wired into the build; and what stays
-# drawn in code. Seeded for every variant so the produced-asset review items and this
-# spec stay in lockstep. This is the defining spec of a full-stack case.
 [[spec]]
-source = "specs/assets.md"
+source = "specs/ui.md.hbs"
+
+# The asset-production contract: the assets the model must PRODUCE with the on-PATH
+# binaries during the run — the snake's sprite set and the game's cues and music —
+# where each file lands in the workspace, how it is loaded, and the bar each is held
+# to; and what stays drawn in code. It branches on the engine, because an engineless
+# build loads and decodes its own files while an engine run goes through the engine's
+# asset loader and cue bus. This is the defining spec of a full-stack case.
+[[spec]]
+source = "specs/assets.md.hbs"
 
 # The debugging and automation surface every build must expose: a deterministic,
 # steppable core, an API to drive and inspect the game from code, and a read-only debug
@@ -284,6 +291,13 @@ source = "specs/assets.md"
 # reached and what shape its operations take.
 [[spec]]
 source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished build ships beside its source: a `showcase/` directory
+# holding a player-facing description and a short carousel of captured media. It
+# branches on the engine, because an engineless build records motion as a `.webm`
+# clip while an engine run records it as a replay through the engine's recorder.
+[[spec]]
+source = "specs/showcase.md.hbs"
 
 # Scoring domains. A reviewer rates each declared domain independently while playing
 # the build, and the run's overall rating is the WORST across them — a flawless snake
