@@ -63,25 +63,35 @@ covers:
 {{/if}}
 - the controls.
 
+{{#if (eq variant.slug "warhead")}}
 The controls it names include every key `specs/controls.md` binds, written as the
-standalone words `ARROWS`, `WASD`, `SPACE`, `ENTER`, `ESC`, `P`,
-{{#if (eq variant.slug "warhead")}}`M`, and `F`.{{else}}and `M`.{{/if}}
+standalone words `ARROWS`, `WASD`, `SPACE`, `ENTER`, `ESC`, `P`, `M`, and `F`.
+{{else}}
+The controls it names include every key `specs/controls.md` binds, written as the
+standalone words `ARROWS`, `WASD`, `SPACE`, `ENTER`, `ESC`, `P`, and `M`.
+{{/if}}
 
 Leaving the screen returns to `title`, with the title's highlight at the first
 entry.
 
 ### `playing`
 
+{{#if (eq variant.slug "warhead")}}
+The live field: the star, the ship, every rock, every shot and every torpedo in
+flight, the saucer while it is visiting, and every saucer bullet, with the HUD
+drawn over them.
+{{else}}
 The live field: the star, the ship, every rock, every shot in flight, the saucer
 while it is visiting, and every saucer bullet, with the HUD drawn over them.
+{{/if}}
 
 ### `paused`
 
 Reached by pausing during live play. The field stays visible behind the menu and
 is frozen: nothing advances. No body moves, no timer runs down, no wave arrives,
 no rock spawns, no saucer arrives or fires, and no cue plays, so a paused game is
-exactly where it was when it was paused. The accumulated simulation time goes on rising: it counts the ticks the game ran
-rather than the play it ran.
+exactly where it was when it was paused. The accumulated simulation time goes on
+rising: it counts the ticks the game ran rather than the play it ran.
 
 | Element | Constant | Content |
 | --- | --- | --- |
