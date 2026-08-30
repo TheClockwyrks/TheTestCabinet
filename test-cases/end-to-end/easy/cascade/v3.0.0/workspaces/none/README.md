@@ -21,14 +21,13 @@ overlay — and you write the game itself on top of it.
 
 You also write the `window.__cascade` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how the
-game is driven from code, so it is present and exactly as specified. Under this
-engine it additionally carries the clock, as `setAutoStep` and `advance`, because
-nothing outside the build owns it.
+game is driven from code, so it is present and exactly as specified. It carries
+the clock as well, as `setAutoStep` and `advance`, because nothing outside the
+build owns it.
 
 Every figure the specification fixes — the table's geometry, the control
 rectangles, the double-click window, the cascade's cadence and its gravity, the
 screen copy — is stated in `specs/`, and the value stated there is authoritative.
-There is no `src/constants.ts` here to read it from, so read the specs.
 
 Cascade draws every card, the table, the HUD and every screen in code. There are
 no image assets, and none are seeded.
