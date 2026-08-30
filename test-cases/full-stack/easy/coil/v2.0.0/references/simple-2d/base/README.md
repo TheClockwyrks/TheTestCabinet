@@ -40,16 +40,16 @@ The game is played from the keyboard alone. Every control is a **registered
 engine action** on the `dpad-4` touch layout, and keys are named by their
 physical `KeyboardEvent.code`, so the bindings hold whatever layout you type on.
 
-| Action    | Keys                  | On the board             | On a menu                      |
-| --------- | --------------------- | ------------------------ | ------------------------------ |
-| `up`      | `ArrowUp`, `KeyW`     | Turns the snake up       | Moves the highlight up         |
-| `down`    | `ArrowDown`, `KeyS`   | Turns the snake down     | Moves the highlight down       |
-| `left`    | `ArrowLeft`, `KeyA`   | Turns the snake left     | Nothing                        |
-| `right`   | `ArrowRight`, `KeyD`  | Turns the snake right    | Nothing                        |
-| `confirm` | `Enter`, `Space`      | Nothing                  | Accepts the highlighted item   |
-| `back`    | `Escape`              | Pauses the round         | Leaves the screen              |
-| `pause`   | `KeyP`                | Pauses the round         | Resumes, on the pause menu     |
-| `mute`    | `KeyM`                | Toggles sound            | Toggles sound                  |
+| Action    | Keys                 | On the board          | On a menu                    |
+| --------- | -------------------- | --------------------- | ---------------------------- |
+| `up`      | `ArrowUp`, `KeyW`    | Turns the snake up    | Moves the highlight up       |
+| `down`    | `ArrowDown`, `KeyS`  | Turns the snake down  | Moves the highlight down     |
+| `left`    | `ArrowLeft`, `KeyA`  | Turns the snake left  | Nothing                      |
+| `right`   | `ArrowRight`, `KeyD` | Turns the snake right | Nothing                      |
+| `confirm` | `Enter`, `Space`     | Nothing               | Accepts the highlighted item |
+| `back`    | `Escape`             | Pauses the round      | Leaves the screen            |
+| `pause`   | `KeyP`               | Pauses the round      | Resumes, on the pause menu   |
+| `mute`    | `KeyM`               | Toggles sound         | Toggles sound                |
 
 A turn is buffered and takes effect on the next step, and the snake can only
 turn across the way it is travelling, so it never doubles back on itself.
@@ -144,16 +144,16 @@ sounds are produced with the asset-generation tools and committed under
 `assets/`, and the build bundles those committed files. It never runs the tools,
 so the project builds wherever they are absent.
 
-| File                        | Made with    | Is                                     |
-| --------------------------- | ------------ | -------------------------------------- |
+| File                        | Made with    | Is                                         |
+| --------------------------- | ------------ | ------------------------------------------ |
 | `assets/snake/head/0-3.png` | `draw-sheet` | The head at rest, and its three-frame bite |
-| `assets/snake/body.png`     | `draw`       | A straight horizontal run               |
-| `assets/snake/corner.png`   | `draw`       | A bend, open east and south             |
-| `assets/snake/tail.png`     | `draw`       | The last cell, connecting west          |
-| `assets/audio/eat.wav`      | `sfx-synth`  | The pellet                              |
-| `assets/audio/combo-up.wav` | `sfx-synth`  | The multiplier rising                   |
-| `assets/audio/death.wav`    | `sfx-synth`  | The end of a round                      |
-| `assets/audio/music.wav`    | `music`      | The loop under a round                  |
+| `assets/snake/body.png`     | `draw`       | A straight horizontal run                  |
+| `assets/snake/corner.png`   | `draw`       | A bend, open east and south                |
+| `assets/snake/tail.png`     | `draw`       | The last cell, connecting west             |
+| `assets/audio/eat.wav`      | `sfx-synth`  | The pellet                                 |
+| `assets/audio/combo-up.wav` | `sfx-synth`  | The multiplier rising                      |
+| `assets/audio/death.wav`    | `sfx-synth`  | The end of a round                         |
+| `assets/audio/music.wav`    | `music`      | The loop under a round                     |
 
 Each is loaded through the **engine's** asset loader, under its one root, so the
 build constructs no URL of its own. `public/assets` links that committed tree
@@ -241,12 +241,12 @@ events, and the pixels the render produced.
 
 | Path                 | Holds                                                            |
 | -------------------- | ---------------------------------------------------------------- |
-| `src/constants.ts`   | Every figure the specification fixes. Supplied with the project.  |
+| `src/constants.ts`   | Every figure the specification fixes. Supplied with the project. |
 | `src/main.ts`        | The entry point. Supplied with the project.                      |
 | `src/game.ts`        | `CoilState`, the screens, the tick accumulator, and the `Game`.  |
 | `src/sim.ts`         | The round: one whole tick, in the six steps the spec fixes.      |
 | `src/board.ts`       | The grid's geometry and the valid pellet set.                    |
-| `src/mode.ts`        | What the mode this build ships means for the rest of it.          |
+| `src/mode.ts`        | What the mode this build ships means for the rest of it.         |
 | `src/menus.ts`       | The items each menu-bearing screen holds.                        |
 | `src/rng.ts`         | The seeded generator the pellet is drawn from.                   |
 | `src/input.ts`       | The engine actions, registered and read one edge per frame.      |
