@@ -1,3 +1,14 @@
+<!--
+  STALE — CARRIED FORWARD FROM v2.0.0 AND NOT YET REWRITTEN.
+
+  The Scaffold stage of the Floe v3.0.0 rework copied this file forward
+  unchanged, so the entries below are v2.0.0's. A per-version changelog must
+  record what changed in THIS version, and a later stage of the rework replaces
+  this file with v3.0.0's entry: three engines, the rewritten debug surface, the
+  rewritten spec set, per-engine references and validator suites, the case
+  showcase, and the move to stage coordinates throughout.
+-->
+
 ## Added the `window.__floe` debug API and overlay
 
 A new common spec, `specs/instrumentation.md`, adds a `window.__floe` debugging and

@@ -1,3 +1,15 @@
+<!--
+  STALE — CARRIED FORWARD FROM v2.0.0 AND NOT YET REWRITTEN.
+
+  The Scaffold stage of the Floe v3.0.0 rework copied this file forward
+  unchanged. Everything below still describes v2.0.0: the single `workspaces/base`
+  project, the `reference/` mockups, `reference-impl/`, `specs/proof.md` and the
+  flat `validation/` tree, none of which v3.0.0 has. A later stage of the rework
+  replaces it with a description of THIS version: three engines, three seeded
+  workspaces, fifteen specs, per-engine references and validator suites, and the
+  case showcase. Read `test-case.toml` rather than this file until then.
+-->
+
 # Floe — `v2.0.0`
 
 This is version `v2.0.0` of the **Floe** test case. The implemented game is an
