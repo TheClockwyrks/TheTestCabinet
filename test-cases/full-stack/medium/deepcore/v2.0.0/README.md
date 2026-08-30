@@ -131,13 +131,15 @@ edited.
 
 ## What this version still owes
 
-Neither of the following exists on disk yet, and both are named here so the gap
-is not mistaken for a decision.
+`references/none/` is written: it satisfies this version's specification, ships
+its own `showcase/`, and passes the four checks the specification names. The
+rest is named here so the gap is not mistaken for a decision.
 
 | Owed | Blocked on |
 | --- | --- |
-| A reference build under each of `references/none`, `references/simple-2d` and `references/structured-2d`, and the validator suites that stand in place of the 912 stubs. | Nothing. `references/none/` carries v1.0.0's build as a port base; its own README lists what the port has to close. |
-| `showcase/base/` (a `showcase.md`, a `showcase.toml`, and flat media) with `showcase = "showcase/base"` on `variants/base.toml`, and `validation-baseline/<engine>/base/`. | A reference build to capture from. Version resolution passes without either, so nothing fails until they are wanted. |
+| A reference build under `references/simple-2d` and `references/structured-2d`. | Nothing. Each directory carries a README of its own saying so. |
+| The validator suites that stand in place of the 912 stubs. | Nothing. `references/none/` is the build the engineless suites drive. |
+| `showcase/base/` (a `showcase.md`, a `showcase.toml`, and flat media) with `showcase = "showcase/base"` on `variants/base.toml`, and `validation-baseline/<engine>/base/`. | The validator suites, for the baselines. `references/none/showcase/` is what the case showcase is captured from. |
 
 ## Versioning
 
