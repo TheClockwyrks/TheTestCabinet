@@ -1,11 +1,26 @@
 # Dependencies — reinstalled with `npm ci`; never committed.
 node_modules/
 
-# Production build output — produced by `npm run build` and deployed to static
-# hosting separately, so it is not part of the published source repository.
-dist/
-build/
-out/
+# Production build output — produced by `npm run build`. Every pattern here is
+# ANCHORED to the repository root on purpose: `@test-cabinet/particle-runtime` is
+# vendored into this repository at `.tcab/packages/@test-cabinet/particle-runtime/`,
+# prebuilt, and its own `dist/` is committed with the project. An unanchored
+# `dist/` would match that directory too and leave the build unable to resolve the
+# library it plays its produced particle systems with.
+/dist/
+/build/
+/out/
+
+# Coverage reports — produced by `npm test`.
+coverage/
+
+# Asset-authoring scratch. Only the finished PNG, `.wav`, and `system.json` files
+# under `assets/` are committed, never the intermediate configuration, action log,
+# or preview files an asset tool leaves beside what it produced.
+assets/**/*.config.json
+assets/**/*.actions.json
+assets/**/*.preview.png
+assets/**/*.preview.gif
 
 # Playwright verification scratch.
 test-results/
