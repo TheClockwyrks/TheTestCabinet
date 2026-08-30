@@ -249,7 +249,7 @@ function drawDrone(
     ctx.restore();
     return;
   }
-  drawAccent(ctx, band, drone.x, drone.y, size * 0.14);
+  drawAccent(ctx, band, drone.x, drone.y, size * 0.16);
 }
 
 /** The seeded silhouette a drone is drawn from, in the band it reads as. */
@@ -639,12 +639,12 @@ function drawHowTo(state: SpectraState, ctx: CanvasRenderingContext2D): void {
     weight: "700",
   });
   HOWTO_LINES.forEach((line, index) => {
-    text(ctx, line, 150, 140 + index * 22, {
+    text(ctx, line, 300, 140 + index * 22, {
       size: 16,
       color: index >= HOWTO_LINES.length - 2 ? COLOR.textDim : COLOR.text,
     });
   });
-  text(ctx, "ESC returns to the menu", STAGE_W / 2, 690, {
+  text(ctx, "ESC returns to the menu", STAGE_W / 2, 688, {
     size: 15,
     color: COLOR.textFaint,
     align: "center",

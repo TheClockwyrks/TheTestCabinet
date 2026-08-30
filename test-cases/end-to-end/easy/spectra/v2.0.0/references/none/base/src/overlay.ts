@@ -80,9 +80,12 @@ export class Diagnostics {
     ctx.font = `${PANEL.fontPx}px monospace`;
     ctx.textBaseline = "top";
     ctx.textAlign = "left";
+    // A pixel of slack past the measured run, so the longest line never sits
+    // flush against the panel's own edge.
     const width =
       Math.max(...lines.map((line) => ctx.measureText(line).width)) +
-      PANEL.padding * 2;
+      PANEL.padding * 2 +
+      4;
     ctx.fillStyle = PANEL.background;
     ctx.fillRect(
       0,
