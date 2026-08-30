@@ -1547,13 +1547,33 @@
           "description": "Cost, recorded as comparable and actual."
         },
         "runTimeSeconds": {
-          "description": "End-to-end wall-clock time of the run, in seconds.",
+          "description": "End-to-end wall-clock time of the whole run, in seconds, excluding any\ntime the run's container spent queued for cluster capacity before it\nstarted.\n\nThis is what the run cost in machine time. It is the sum of\n[`Self::setup_seconds`], [`Self::session_seconds`] and\n[`Self::teardown_seconds`], and a question about the model is answered by\nthe session alone: setup is shared by every run of a test case and\ndominates this figure whenever the session is short.",
           "format": "double",
           "type": "number"
+        },
+        "sessionSeconds": {
+          "description": "Wall-clock time of the harness session alone, in seconds — the model's own\nworking time, and the figure that describes a model.\n\n`None` on a record written before the stage durations were measured, which\nis distinct from `Some(0.0)`.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "setupSeconds": {
+          "description": "Wall-clock time from the start of the run until the harness session began,\nin seconds: rendering the case's references, seeding the workspace,\nstarting the container, probing its environment, installing the harness,\nand running the test case's `init` step.\n\nThe queueing wait excluded from [`Self::run_time_seconds`] is subtracted\nhere, the stage that contains it. `None` on a record written before the\nstage durations were measured.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "teardownSeconds": {
+          "description": "Wall-clock time spent collecting the produced tree and stopping the\ncontainer, in seconds.\n\nTaken as the remainder of [`Self::run_time_seconds`], so the three stages\nsum to it exactly. `None` on a record written before the stage durations\nwere measured.",
+          "format": "double",
+          "type": ["number", "null"]
         },
         "tokens": {
           "$ref": "#/$defs/TokenMetrics",
           "description": "Normalized token usage."
+        },
+        "validationSeconds": {
+          "description": "Wall-clock time of the [validation](crate::validation) pass, in seconds.\n\nRecorded outside [`Self::run_time_seconds`], which is frozen before\nvalidation and before every [post-run stage](crate::post_run) runs. `None`\non a canceled run, which skips validation, and on a record written before\nthe stage durations were measured.",
+          "format": "double",
+          "type": ["number", "null"]
         }
       },
       "required": ["runTimeSeconds", "tokens", "cost"],

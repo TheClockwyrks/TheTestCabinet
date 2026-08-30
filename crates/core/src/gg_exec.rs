@@ -22,6 +22,10 @@
 //!    [event](crate::event::EventKind) so the existing console feed renders activity,
 //!    while summing the per-turn `usage` deltas into the run's [`HarnessOutcome`].
 //!
+//! The first two are one function and the third is another, because the split is where
+//! the run's session clock starts: installing gg is setup the run engine spends on the
+//! model's behalf, exactly as a third-party harness's install is.
+//!
 //! The one credential — `OPENROUTER_API_KEY` — is injected into the container by the
 //! shared auth plumbing (gg's [registry entry](crate::harness_registry) declares it as
 //! its `api_key_env`/`container_key_env`), never written into the invocation file.
@@ -368,22 +372,37 @@ fn release_download_command(repo: &str, version: &str, target: &str, dest: &str)
     )
 }
 
-/// Run the gg **execution branch** to completion against the started run container and
-/// produce its [`HarnessOutcome`].
+/// Everything a gg session launches against, in place inside the run container: the
+/// binary, the invocation file it reads, and the version it reports.
+///
+/// Produced by [`prepare_gg`] and consumed by [`run_gg_session`]. The split is what
+/// keeps gg's install out of the session's measured duration: the two halves are the
+/// run engine's setup stage and its session stage, and the session's clock starts
+/// between them.
+pub(crate) struct PreparedGg {
+    /// The command that launches the installed binary against the invocation file.
+    command: Vec<String>,
+    /// The version the installed binary reported, absent when the probe failed.
+    harness_version: Option<String>,
+}
+
+/// Run gg's **setup stage** against the started run container: install the binary,
+/// write the [`GgInvocation`] it reads, and capture the version it reports.
+///
+/// This is gg's counterpart to the third-party harness install and probe stages, and it
+/// is setup rather than session: it downloads a release over the network and it is
+/// shared by every run of a configuration, so the caller runs it before the session's
+/// clock starts (see [`RunMetrics::setup_seconds`](crate::metrics::RunMetrics)).
 ///
 /// Reuses the already-started `handle`, `runtime`, and `events` sink from the
 /// surrounding [`RunEngine::execute`](crate::RunEngine::execute), plus the resolved
 /// `install`, the run's `request` (for its capability set), the rendered `base_prompt`,
-/// the seeded `workspace_dir`, the run's `max_runtime` (which bounds the release
-/// download), the `run_id` (used as the gg session id), the `provided_files` the test
-/// case seeded (workspace-relative spec and reference paths, for the
-/// [autoload-specifications](crate::gg::CAPABILITY_AUTOLOAD_SPECS)
-/// capability), and the run's `events` sink.
-///
-/// The caller bounds this whole future by the run's maximum runtime exactly as a
-/// third-party harness session is bounded.
+/// the seeded `workspace_dir`, the run's `max_runtime` (which bounds each container
+/// call made here), the `run_id` (used as the gg session id), and the `provided_files`
+/// the test case seeded (workspace-relative spec and reference paths, for the
+/// [autoload-specifications](crate::gg::CAPABILITY_AUTOLOAD_SPECS) capability).
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn run_gg(
+pub(crate) async fn prepare_gg(
     runtime: &dyn ContainerRuntime,
     handle: &ContainerHandle,
     install: &GgInstall,
@@ -394,8 +413,7 @@ pub(crate) async fn run_gg(
     max_runtime: u64,
     run_id: &str,
     events: &mut dyn EventSink,
-    cancel: &RunCancellation,
-) -> Result<HarnessOutcome> {
+) -> Result<PreparedGg> {
     // 1. Ensure the binary is present. A `Local` install was already materialized into
     //    the container at start time (as a `ContainerFile`), so only a `Release` needs a
     //    run-time download. Bracket both with the install system events so the feed shows
@@ -457,24 +475,66 @@ pub(crate) async fn run_gg(
     // 2. Write the invocation file gg reads via `--config`. Its capability set is the
     //    run's (validated present for a gg run); the credential is *not* in it — gg reads
     //    OPENROUTER_API_KEY from the container env the shared auth plumbing injected.
-    let invocation = build_invocation(request, base_prompt, workspace_dir, provided_files, run_id)?;
-    let json = serde_json::to_vec(&invocation)?;
-    write_container_file(runtime, handle, GG_INVOCATION_PATH, &json, 0o600).await?;
-
     // 3. Query the installed binary's version for the run record. Best-effort: a run is
     //    still valid if the probe fails.
-    let harness_version = gg_version(runtime, handle, install.container_path()).await;
+    //
+    // Both are container calls, so both are bounded by the run's maximum runtime exactly
+    // as the download above is and as every other in-container setup step. Neither takes
+    // measurable time against a healthy runtime; the bound is what keeps a wedged one
+    // from spending a session's worth of wall clock before the session starts.
+    let configure = async {
+        let invocation =
+            build_invocation(request, base_prompt, workspace_dir, provided_files, run_id)?;
+        let json = serde_json::to_vec(&invocation)?;
+        write_container_file(runtime, handle, GG_INVOCATION_PATH, &json, 0o600).await?;
+        Ok::<Option<String>, Error>(gg_version(runtime, handle, install.container_path()).await)
+    };
+    let harness_version =
+        match tokio::time::timeout(std::time::Duration::from_secs(max_runtime), configure).await {
+            Ok(result) => result?,
+            Err(_elapsed) => {
+                return Err(Error::HarnessInstallTimedOut {
+                    slug: GG_SLUG.to_string(),
+                    seconds: max_runtime,
+                });
+            }
+        };
 
-    // 4. Launch gg and ingest its NDJSON telemetry line by line, bridging each event to
-    //    the sink and summing usage/cost. The idle watchdog kills a gg that stops
-    //    producing output for too long — a stalled provider request — exactly as it does
-    //    a third-party harness session.
-    let command = vec![
-        install.container_path().to_string(),
-        "--config".to_string(),
-        GG_INVOCATION_PATH.to_string(),
-    ];
+    Ok(PreparedGg {
+        command: vec![
+            install.container_path().to_string(),
+            "--config".to_string(),
+            GG_INVOCATION_PATH.to_string(),
+        ],
+        harness_version,
+    })
+}
+
+/// Run a [prepared](PreparedGg) gg **session** to completion against the started run
+/// container and produce its [`HarnessOutcome`].
+///
+/// Launches `gg --config <path>` and ingests its NDJSON telemetry line by line, bridging
+/// each event to the `events` sink and summing usage and cost into the outcome. The idle
+/// watchdog kills a gg that stops producing output for too long — a stalled provider
+/// request — exactly as it does a third-party harness session, and `cancel` carries an
+/// operator's kill.
+///
+/// The caller bounds this future by the run's maximum runtime and measures it as the
+/// run's session, exactly as a third-party harness session is bounded and measured.
+pub(crate) async fn run_gg_session(
+    runtime: &dyn ContainerRuntime,
+    handle: &ContainerHandle,
+    prepared: PreparedGg,
+    events: &mut dyn EventSink,
+    cancel: &RunCancellation,
+) -> Result<HarnessOutcome> {
+    let PreparedGg {
+        command,
+        harness_version,
+    } = prepared;
     let mut sink = GgIngestSink::new(events);
+    // Launch gg against the invocation file and ingest its NDJSON telemetry line by
+    // line, bridging each event to the sink and summing usage and cost.
     // Drive the session, racing it against an operator's kill. The race is scoped so the
     // stream future is dropped before `sink` is read below: whatever the outcome, every
     // line gg produced has already been folded into the sink and bridged onto the run's
@@ -530,7 +590,7 @@ pub(crate) async fn run_gg(
         }
     };
 
-    // 5. Classify the result.
+    // Classify the result.
     //    - The idle watchdog firing means gg stopped responding: it is hung, not failed.
     //    - A non-zero exit means the session produced nothing there is any point scoring,
     //      for one of three reasons, all of them ours rather than the model's — which is

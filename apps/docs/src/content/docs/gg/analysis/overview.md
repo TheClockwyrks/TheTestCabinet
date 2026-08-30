@@ -22,13 +22,13 @@ run document.
 ## Where analysis runs
 
 All post-run analysis runs on the host, after the working tree is collected,
-before validation, and outside the harness session's runtime cap. The run engine
-has one insertion point for it and every stage goes through that point. Three
-properties follow from the placement:
+before validation, and outside the run's runtime cap. The run engine has one
+insertion point for it and every stage goes through that point. Three properties
+follow from the placement:
 
-- Analysis never spends the test case's runtime budget. The cap wraps the
-  harness session alone, and the run's measured duration is frozen before the
-  seam runs.
+- Analysis never spends the test case's runtime budget. The cap bounds the
+  harness session and bounds each in-container setup step, each on its own, and
+  the run's measured duration is frozen before the seam runs.
 - What is measured is the code the model wrote. Validation runs the case's
   install and build commands in the produced tree itself, so a stage placed
   after it would measure build output, a rewritten lockfile and toolchain caches

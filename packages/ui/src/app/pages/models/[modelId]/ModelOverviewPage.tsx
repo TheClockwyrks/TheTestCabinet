@@ -346,8 +346,13 @@ function CohortReport({
     [fieldCompleted, model.modelIds],
   );
 
-  const meanRuntime = useMemo(
-    () => meanReported(modelCompleted, (run) => run.metrics.runTimeSeconds),
+  // The session alone, never the run time: setup is shared by every run of the
+  // case and dominates a run's wall clock, so a mean run time by model reports
+  // mostly how long the container took to build. A run recorded before session
+  // durations were measured reports none, and `meanReported` skips it.
+  const meanSession = useMemo(
+    () =>
+      meanReported(modelCompleted, (run) => run.metrics.sessionSeconds ?? null),
     [modelCompleted],
   );
 
@@ -405,17 +410,19 @@ function CohortReport({
                 }
               />
               <Tile
-                label="Mean run time"
-                value={meanRuntime === null ? "—" : formatRunTime(meanRuntime)}
+                label="Mean session time"
+                value={meanSession === null ? "—" : formatRunTime(meanSession)}
               />
             </div>
             {/* The averages above are over completed runs, the two rings below
                 over every run — say so rather than let the two disagree
-                silently. */}
+                silently. The session mean narrows further, to the completed runs
+                that recorded a session duration. */}
             <p className={styles.note}>
               Means are over the {modelCompleted.length} completed{" "}
               {modelCompleted.length === 1 ? "run" : "runs"}; the breakdowns
-              below cover all {rollup.runs}.
+              below cover all {rollup.runs}. Mean session time covers the
+              completed runs that recorded one.
             </p>
           </section>
 

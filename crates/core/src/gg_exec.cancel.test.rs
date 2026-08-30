@@ -3,9 +3,9 @@
 //! [sentinel](GG_CANCEL_PATH), keeps draining while it winds down so its epilogue is
 //! ingested, and hands back a *complete* partial outcome rather than an error.
 //!
-//! These drive [`run_gg`] against a container double, so the whole branch runs for real —
-//! the invocation write, the version probe, the streamed ingest and the cancel race —
-//! with only the container itself faked.
+//! These drive [`prepare_gg`] and [`run_gg_session`] against a container double, so the
+//! whole branch runs for real — the invocation write, the version probe, the streamed
+//! ingest and the cancel race — with only the container itself faked.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -74,7 +74,7 @@ impl GgContainer {
 #[async_trait::async_trait]
 impl ContainerRuntime for GgContainer {
     async fn start(&self, _spec: &ContainerSpec) -> Result<ContainerStart> {
-        unreachable!("run_gg drives an already-started container")
+        unreachable!("a gg session drives an already-started container")
     }
 
     async fn exec(&self, _container: &ContainerHandle, command: &[String]) -> Result<ExecOutput> {
@@ -132,7 +132,7 @@ impl ContainerRuntime for GgContainer {
     }
 }
 
-/// A local install, so `run_gg` skips the release download entirely.
+/// A local install, so `prepare_gg` skips the release download entirely.
 fn local_install() -> GgInstall {
     GgInstall::Local {
         host_path: PathBuf::from("/nonexistent/gg"),
@@ -140,7 +140,7 @@ fn local_install() -> GgInstall {
     }
 }
 
-/// Drive `run_gg` against `container` with `cancel`, returning its outcome.
+/// Drive a prepared gg session against `container` with `cancel`, returning its outcome.
 async fn drive(
     container: &GgContainer,
     cancel: &RunCancellation,
@@ -150,7 +150,7 @@ async fn drive(
     };
     let request = gg_request("mock/primary");
     let mut events = CollectingSink::default();
-    let outcome = run_gg(
+    let prepared = prepare_gg(
         container,
         &handle,
         &local_install(),
@@ -161,9 +161,10 @@ async fn drive(
         3600,
         "run-1",
         &mut events,
-        cancel,
     )
-    .await;
+    .await
+    .expect("gg's setup stage runs against the double");
+    let outcome = run_gg_session(container, &handle, prepared, &mut events, cancel).await;
     (outcome, events.events)
 }
 
@@ -249,7 +250,7 @@ async fn a_session_that_will_not_wind_down_still_hands_back_what_it_streamed() {
         };
         let request = gg_request("mock/primary");
         let mut events = CollectingSink::default();
-        run_gg(
+        let prepared = prepare_gg(
             &container,
             &handle,
             &local_install(),
@@ -260,9 +261,10 @@ async fn a_session_that_will_not_wind_down_still_hands_back_what_it_streamed() {
             3600,
             "run-1",
             &mut events,
-            &cancel,
         )
         .await
+        .expect("gg's setup stage runs against the double");
+        run_gg_session(&container, &handle, prepared, &mut events, &cancel).await
     });
 
     // Let the drain reach the pending session, then run out its grace.

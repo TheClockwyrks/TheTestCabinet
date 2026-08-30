@@ -40,7 +40,11 @@ export const OVERVIEW_DASHBOARD_ID = "overview";
  *   denominator nobody chose.
  * - `metric.*` is **absent, never zero** on a run that produced nothing, so a median and a
  *   sum over it are already restricted to runs that genuinely ran — no filter needed, and
- *   adding one would be wrong twice over.
+ *   adding one would be wrong twice over. The same rule restricts the session-length panel
+ *   to the runs that recorded a session duration.
+ * - The session panel reads `metric.sessionSeconds`, the harness session alone.
+ *   `metric.runTimeSeconds` covers the container setup every run of a test case shares, so
+ *   a median of it by model would mostly compare setup to itself.
  * - The histogram's `1d` is a *starting* width. The board's range picker retunes the first
  *   date-histogram key to the range's own interval, so this text reads correctly at every
  *   range without TCQ needing an `auto` interval it cannot compile.
@@ -79,7 +83,7 @@ export const OVERVIEW_DASHBOARD: GgDashboard = {
     },
     {
       title: "Median session length by model",
-      query: "| stats median(metric.runTimeSeconds) as p50_seconds by model",
+      query: "| stats median(metric.sessionSeconds) as p50_seconds by model",
       width: 6,
     },
     {

@@ -1,7 +1,9 @@
-//! Run metrics: normalized token classes, cost, and run time.
+//! Run metrics: normalized token classes, cost, and the run's stage durations.
 //!
 //! See `docs/metrics.md`. The Test Cabinet does not reduce a run to a single
 //! score; these values describe the resources a run consumed.
+
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -194,12 +196,119 @@ impl Cost {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunMetrics {
-    /// End-to-end wall-clock time of the run, in seconds.
+    /// End-to-end wall-clock time of the whole run, in seconds, excluding any
+    /// time the run's container spent queued for cluster capacity before it
+    /// started.
+    ///
+    /// This is what the run cost in machine time. It is the sum of
+    /// [`Self::setup_seconds`], [`Self::session_seconds`] and
+    /// [`Self::teardown_seconds`], and a question about the model is answered by
+    /// the session alone: setup is shared by every run of a test case and
+    /// dominates this figure whenever the session is short.
     pub run_time_seconds: f64,
+    /// Wall-clock time of the harness session alone, in seconds — the model's own
+    /// working time, and the figure that describes a model.
+    ///
+    /// `None` on a record written before the stage durations were measured, which
+    /// is distinct from `Some(0.0)`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub session_seconds: Option<f64>,
+    /// Wall-clock time from the start of the run until the harness session began,
+    /// in seconds: rendering the case's references, seeding the workspace,
+    /// starting the container, probing its environment, installing the harness,
+    /// and running the test case's `init` step.
+    ///
+    /// The queueing wait excluded from [`Self::run_time_seconds`] is subtracted
+    /// here, the stage that contains it. `None` on a record written before the
+    /// stage durations were measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub setup_seconds: Option<f64>,
+    /// Wall-clock time spent collecting the produced tree and stopping the
+    /// container, in seconds.
+    ///
+    /// Taken as the remainder of [`Self::run_time_seconds`], so the three stages
+    /// sum to it exactly. `None` on a record written before the stage durations
+    /// were measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub teardown_seconds: Option<f64>,
+    /// Wall-clock time of the [validation](crate::validation) pass, in seconds.
+    ///
+    /// Recorded outside [`Self::run_time_seconds`], which is frozen before
+    /// validation and before every [post-run stage](crate::post_run) runs. `None`
+    /// on a canceled run, which skips validation, and on a record written before
+    /// the stage durations were measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub validation_seconds: Option<f64>,
     /// Normalized token usage.
     pub tokens: TokenCounts,
     /// Cost, recorded as comparable and actual.
     pub cost: Cost,
+}
+
+/// The wall-clock durations measured across one run's lifecycle, partitioned so
+/// the stages sum to the run's measured duration exactly.
+///
+/// Built once by the run engine and handed to
+/// [`RunEngine::collect_metrics`](crate::RunEngine::collect_metrics), which is the
+/// only thing that writes the duration fields of [`RunMetrics`].
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct RunDurations {
+    /// The whole run, queueing wait already excluded.
+    pub run_time_seconds: f64,
+    /// Everything before the harness session began.
+    pub setup_seconds: f64,
+    /// The harness session alone.
+    pub session_seconds: f64,
+    /// Tree collection and container stop, the remainder of the run.
+    pub teardown_seconds: f64,
+    /// The validation pass, which sits outside the run's measured duration.
+    /// `None` for a run that skipped validation.
+    pub validation_seconds: Option<f64>,
+}
+
+impl RunDurations {
+    /// Partition a run's measured wall clock into its lifecycle stages.
+    ///
+    /// `elapsed` is the run timer read once teardown is complete and
+    /// `before_teardown` the same timer read the instant the harness session
+    /// ended; both still carry `scheduling_wait`, the time the run's container
+    /// spent queued for capacity, which is subtracted from the run's measured
+    /// duration and from the setup stage that contains it. `session` is the
+    /// session's own elapsed time, measured around the capped drive itself.
+    ///
+    /// Teardown is taken as the remainder rather than measured, so setup, session
+    /// and teardown sum to [`Self::run_time_seconds`] exactly however the timers
+    /// were read. Each stage is clamped into what remains of the run so the
+    /// partition holds even for durations that could not have been produced by a
+    /// real run.
+    pub fn partition(
+        elapsed: Duration,
+        before_teardown: Duration,
+        session: Duration,
+        scheduling_wait: Duration,
+        validation: Option<Duration>,
+    ) -> Self {
+        let run_time_seconds = elapsed.saturating_sub(scheduling_wait).as_secs_f64();
+        let setup_seconds = (before_teardown
+            .saturating_sub(scheduling_wait)
+            .as_secs_f64()
+            - session.as_secs_f64())
+        .clamp(0.0, run_time_seconds);
+        let session_seconds = session
+            .as_secs_f64()
+            .clamp(0.0, run_time_seconds - setup_seconds);
+        RunDurations {
+            run_time_seconds,
+            setup_seconds,
+            session_seconds,
+            teardown_seconds: run_time_seconds - setup_seconds - session_seconds,
+            validation_seconds: validation.map(|validation| validation.as_secs_f64()),
+        }
+    }
 }
 
 #[cfg(test)]

@@ -24,7 +24,7 @@ A run emits exactly one per model call it made.
 | `turns` | How many turns this agent has recorded, including this one. It is this agent's own running total rather than the run's, and the same figure its turn ceiling is measured against. |
 | `loopAborts` | How many replies [loop detection](/gg/loop-detection/) discarded before this turn produced one. Omitted when zero. |
 | `loopAbortWords`, `loopAbortChars` | How much generated output those discarded replies produced, measured by the detector as they streamed. Present on exactly the turns `loopAborts` is. There is no token count and no price, since an abandoned stream reports no usage, and this output is deliberately absent from the turn's cost. |
-| `responseChars`, `responseOutputTokens` | The reply's size: its raw text in characters, and its completion tokens (output plus reasoning, the unit a provider's output cap is measured in). Omitted when zero. The summary folds `maxResponseChars` and `maxResponseOutputTokens` as maxima over the turns whose outcome was `progressed` or `finished`, which is the datum an output ceiling would later be chosen from. |
+| `responseChars`, `responseOutputTokens` | The reply's size in two units: characters, and completion tokens (output plus reasoning, the unit a provider's output cap is measured in). The character count covers the model's raw text together with the `program` string of every `submit_program` call the turn made, which under responses as code carries nearly all of the turn's output. Omitted when zero. |
 
 `consecutiveErrors` is `0` on every non-error turn, including a `finished` or
 `fatal` one that followed failures. gg's internal counter is cleared only by a
@@ -37,6 +37,14 @@ The count is carried rather than re-derived because it is per agent while the
 stream is run-wide. Turns from concurrently running agents interleave
 arbitrarily, so a reader folding the stream could only reconstruct a run-wide
 streak, which is an artefact of scheduling rather than a fact about any agent.
+
+The summary folds `maxResponseChars` and `maxResponseOutputTokens` as maxima
+over every turn except one recorded `model_length_capped`, whatever the turn's
+outcome. That one turn's reply was cut off at the provider's output cap and is
+the reply an output ceiling exists to cut, so a ceiling chosen from it would be
+chosen from itself. Every other reply was generated whole and is data, so a long
+program that then failed to compile still sets the figure a later ceiling is
+chosen from.
 
 Under [responses as code](/gg/responses-as-code/overview/) this event sits beside
 [`code_execution`](/gg/telemetry/code-execution/) and does not duplicate it. That

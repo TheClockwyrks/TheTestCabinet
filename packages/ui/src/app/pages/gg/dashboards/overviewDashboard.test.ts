@@ -29,6 +29,7 @@ const CORPUS: GgRunDoc[] = [
       limit: "none",
       score: 0.8,
       "metric.runTimeSeconds": 900,
+      "metric.sessionSeconds": 300,
       "metric.cost": 1.25,
       "has.summary": true,
       "summary.ranOutOfContext": false,
@@ -44,6 +45,7 @@ const CORPUS: GgRunDoc[] = [
       limit: "wallClock",
       score: 0.2,
       "metric.runTimeSeconds": 7200,
+      "metric.sessionSeconds": 3600,
       "metric.cost": 9.5,
       "has.summary": true,
       "summary.ranOutOfContext": true,
@@ -51,6 +53,23 @@ const CORPUS: GgRunDoc[] = [
   },
   // No summary, no metrics: the run that would silently shrink a rate's denominator.
   { fields: { id: "c", started: Date.UTC(2026, 6, 3), state: "infra_error", "has.summary": false } },
+  // A run recorded before stage durations were measured: it carries the whole run's
+  // wall clock and no session duration at all.
+  {
+    fields: {
+      id: "d",
+      started: Date.UTC(2026, 6, 4),
+      state: "completed",
+      model: "legacy/model",
+      preset: "baseline",
+      limit: "none",
+      score: 0.5,
+      "metric.runTimeSeconds": 1800,
+      "metric.cost": 2.0,
+      "has.summary": true,
+      "summary.ranOutOfContext": false,
+    },
+  },
 ];
 
 describe("the built-in overview dashboard", () => {
@@ -92,6 +111,30 @@ describe("the built-in overview dashboard", () => {
       p.query.includes("summary.ranOutOfContext"),
     );
     expect(overflow?.query).toContain("has.summary:true");
+  });
+
+  it("plots the harness session, not the run's whole wall clock", () => {
+    // The run time covers the container setup every run of a test case shares, and
+    // that setup dominates a short run — so a median of it by model would compare
+    // mostly setup to itself. The panel that describes a model reads the session.
+    const panel = OVERVIEW_DASHBOARD.panels.find((p) =>
+      p.title.includes("session length"),
+    );
+    expect(panel?.query).toContain("metric.sessionSeconds");
+    expect(panel?.query).not.toContain("metric.runTimeSeconds");
+
+    const result = evaluate(CORPUS, compileQuery(parseQuery(panel!.query).query));
+    const medians = new Map(
+      (result.buckets ?? []).map((bucket) => [
+        bucket.key[0]?.value,
+        bucket.values[0]?.value,
+      ]),
+    );
+    expect(medians.get("anthropic/claude")).toBe(300);
+    expect(medians.get("openai/gpt")).toBe(3600);
+    // Absent, never zero: a run that recorded no session duration contributes
+    // nothing rather than dragging its model's median to zero.
+    expect(medians.get("legacy/model")).toBeUndefined();
   });
 
   it("draws its histogram at the board range's interval, not the text's", () => {

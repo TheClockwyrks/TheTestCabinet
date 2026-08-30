@@ -25,7 +25,7 @@ summary = "..."               # optional site-card abstract (inline; NOT seeded)
 description = "description.md" # optional site-facing prose (NOT seeded)
 changelog = "changelog.md"    # REQUIRED per-version changelog (NOT seeded)
 prompt = "prompt.hbs"         # prompt template handed to the harness (required)
-max_runtime_hours = 2         # cap on the harness session (default 1)
+max_runtime_hours = 2         # cap on the session and each setup step (default 1)
 workspace = "workspaces/base" # starter project seeded at the run root
 init = "cargo fetch"          # optional command run after seeding
 

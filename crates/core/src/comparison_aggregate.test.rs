@@ -129,6 +129,7 @@ fn record(r: Run) -> RunRecord {
                 comparable: Some(r.cost),
                 actual: Some(r.cost),
             },
+            ..RunMetrics::default()
         },
         validation: validation(r.scripts),
         links: RunLinks {

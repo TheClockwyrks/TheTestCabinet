@@ -49,6 +49,7 @@ fn sample_record() -> RunRecord {
                 comparable: Some(1.25),
                 actual: Some(1.40),
             },
+            ..RunMetrics::default()
         },
         validation: ValidationSummary {
             debug_scripts: Vec::new(),
@@ -179,6 +180,46 @@ fn round_trips_through_json() {
     let json = serde_json::to_string(&record).expect("serialize");
     let parsed: RunRecord = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(record, parsed);
+}
+
+#[test]
+fn the_stage_durations_are_omitted_when_absent_and_carried_when_measured() {
+    // A record written before the stage durations were measured deserializes with
+    // all four absent, and absent is not zero: a consumer must be able to tell a
+    // run that recorded no session from one whose session took no time.
+    let json = serde_json::to_string(&sample_record()).expect("serialize");
+    assert!(
+        !json.contains("sessionSeconds"),
+        "an unmeasured stage must not appear on the record at all",
+    );
+    let parsed: RunRecord = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(parsed.metrics.session_seconds, None);
+    assert_eq!(parsed.metrics.setup_seconds, None);
+    assert_eq!(parsed.metrics.teardown_seconds, None);
+    assert_eq!(parsed.metrics.validation_seconds, None);
+
+    let mut measured = sample_record();
+    measured.metrics.setup_seconds = Some(200.0);
+    measured.metrics.session_seconds = Some(90.0);
+    measured.metrics.teardown_seconds = Some(10.0);
+    measured.metrics.validation_seconds = Some(45.0);
+    let value = serde_json::to_value(&measured).expect("serialize");
+    assert_eq!(value["metrics"]["setupSeconds"], json!(200.0));
+    assert_eq!(value["metrics"]["sessionSeconds"], json!(90.0));
+    assert_eq!(value["metrics"]["teardownSeconds"], json!(10.0));
+    assert_eq!(value["metrics"]["validationSeconds"], json!(45.0));
+    // …and the three stages still describe the run they were partitioned from.
+    assert_eq!(
+        measured.metrics.setup_seconds.unwrap()
+            + measured.metrics.session_seconds.unwrap()
+            + measured.metrics.teardown_seconds.unwrap(),
+        measured.metrics.run_time_seconds,
+    );
+
+    let round_tripped: RunRecord =
+        serde_json::from_str(&serde_json::to_string(&measured).expect("serialize"))
+            .expect("deserialize");
+    assert_eq!(measured, round_tripped);
 }
 
 #[test]

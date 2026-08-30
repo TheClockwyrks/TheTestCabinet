@@ -31,7 +31,7 @@ export function queryExamples(interval: GgInterval): QueryExample[] {
     {
       question: "Long recent sessions on one provider",
       query:
-        'started >= now-30d and model:"anthropic/*" and metric.runTimeSeconds >= 1800',
+        'started >= now-30d and model:"anthropic/*" and metric.sessionSeconds >= 1800',
     },
     {
       question: "Runs that were never offered the edit tool",

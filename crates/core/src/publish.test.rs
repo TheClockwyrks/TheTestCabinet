@@ -58,6 +58,7 @@ fn sample_record() -> RunRecord {
                 comparable: Some(0.2667),
                 actual: Some(0.2667),
             },
+            ..RunMetrics::default()
         },
         validation: ValidationSummary {
             debug_scripts: Vec::new(),

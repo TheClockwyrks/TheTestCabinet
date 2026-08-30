@@ -897,9 +897,9 @@ fn only_the_turn_outcome_event_feeds_the_error_rollup() {
 
 /// The rejected-reply rollup and the response maxima, folded together because they are two halves
 /// of one ruling: a length-capped reply's spend reaches the summary **only** through the rejected
-/// bucket, and the maxima — the data an output ceiling would later be chosen from — fold only
-/// over the turns that worked, so the degenerate reply that motivated the ceiling can never be
-/// the figure that sets it.
+/// bucket, and the maxima — the data an output ceiling would later be chosen from — skip exactly
+/// that turn and no other, so the degenerate reply that motivated the ceiling can never be the
+/// figure that sets it while every reply the model generated whole still can.
 #[test]
 fn rejected_replies_and_response_maxima_fold_into_the_summary() {
     let tracker = SessionSummaryTracker::new();
@@ -970,7 +970,21 @@ fn rejected_replies_and_response_maxima_fold_into_the_summary() {
             65_000,
         ),
     );
-    // The turns that worked: a progressed one and the finishing one set the maxima.
+    // A turn that failed to compile the program it wrote: the program was generated whole, so its
+    // size is data and this turn sets both maxima.
+    tracker.observe(
+        None,
+        &sized_turn(
+            GgTurnOutcome::Error,
+            Some(GgTurnErrorType::TranspileCompile),
+            21_089,
+            5_000,
+        ),
+    );
+    // A fatal turn is folded too: gg's own machinery breaking afterwards says nothing about how
+    // long a reply the model wrote.
+    tracker.observe(None, &sized_turn(GgTurnOutcome::Fatal, None, 9_000, 2_000));
+    // The turns that worked, both smaller than the errored one.
     tracker.observe(
         None,
         &sized_turn(GgTurnOutcome::Progressed, None, 4_200, 900),
@@ -993,10 +1007,77 @@ fn rejected_replies_and_response_maxima_fold_into_the_summary() {
     );
     assert_eq!(summary.errors.by_type.get("model_length_capped"), Some(&2));
     assert_eq!(
-        summary.max_response_chars, 6_400,
-        "the maxima fold only over the turns that worked"
+        summary.max_response_chars, 21_089,
+        "the maxima fold over every turn but the length-capped one, so the failed compile's \
+         program sets the figure and the 260k rejected reply never does"
     );
-    assert_eq!(summary.max_response_output_tokens, 1_500);
+    assert_eq!(
+        summary.max_response_output_tokens, 5_000,
+        "the same turn in the provider's own unit"
+    );
+}
+
+/// The production shape the fold's rule exists for: a compiled arm writes one large program, the
+/// compiler rejects it, and every turn that worked is small. The run's largest reply is the
+/// errored turn's, and that is what the summary must report — gating on the outcome put one such
+/// arm at a quarter of its peers while every arm had written a program of the same size.
+#[test]
+fn the_largest_reply_is_reported_even_when_its_turn_errored() {
+    let tracker = SessionSummaryTracker::new();
+    let sized = |outcome: GgTurnOutcome,
+                 error_type: Option<GgTurnErrorType>,
+                 chars: u64,
+                 output_tokens: u64| {
+        match turn(outcome, error_type, u64::from(error_type.is_some()), 0) {
+            GgTelemetryKind::TurnOutcome {
+                outcome,
+                error,
+                error_type,
+                consecutive_errors,
+                turns,
+                loop_aborts,
+                loop_abort_words,
+                loop_abort_chars,
+                ..
+            } => GgTelemetryKind::TurnOutcome {
+                outcome,
+                error,
+                error_type,
+                consecutive_errors,
+                turns,
+                loop_aborts,
+                loop_abort_words,
+                loop_abort_chars,
+                response_chars: chars,
+                response_output_tokens: output_tokens,
+            },
+            other => panic!("not a turn outcome: {other:?}"),
+        }
+    };
+
+    tracker.observe(None, &sized(GgTurnOutcome::Progressed, None, 3_100, 700));
+    tracker.observe(
+        None,
+        &sized(
+            GgTurnOutcome::Error,
+            Some(GgTurnErrorType::TranspileCompile),
+            21_089,
+            5_200,
+        ),
+    );
+    tracker.observe(None, &sized(GgTurnOutcome::Progressed, None, 4_858, 1_100));
+    tracker.observe(None, &sized(GgTurnOutcome::Finished, None, 2_400, 600));
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(
+        summary.max_response_chars, 21_089,
+        "the run's largest reply belongs to the turn that failed to compile it"
+    );
+    assert_eq!(summary.max_response_output_tokens, 5_200);
+    assert_eq!(
+        summary.errors.turns, 4,
+        "the maxima's rule leaves the error rollup's denominator alone"
+    );
 }
 
 /// A usage delta as an agent's model call reports it: the model it ran on, the provider that

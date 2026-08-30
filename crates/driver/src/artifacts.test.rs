@@ -188,6 +188,7 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
                 comparable: Some(0.0),
                 actual: Some(0.0),
             },
+            ..RunMetrics::default()
         },
         validation: ValidationSummary {
             debug_scripts: Vec::new(),

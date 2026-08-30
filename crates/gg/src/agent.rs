@@ -7436,8 +7436,9 @@ impl Agent {
             // recorded at whichever of this loop's exits the turn eventually takes — and is empty
             // on a run that left the capability disarmed, which is the default.
             let loop_aborts = response.loop_aborts;
-            // The reply's size — its raw text, exactly as sent — threaded to every
-            // record_turn of this turn so the outcome event carries it; see [`ResponseSize`].
+            // The reply's size — its text plus every submitted program, exactly as sent —
+            // threaded to every record_turn of this turn so the outcome event carries it; see
+            // [`ResponseSize`].
             let response_size = ResponseSize::of(&response);
             if loop_aborts.any() {
                 // Said out loud, and said as a `warn`: every one of those replies was generated,
@@ -8745,8 +8746,8 @@ impl Agent {
             loop_abort_words: loop_aborts.words,
             loop_abort_chars: loop_aborts.chars,
             // The reply's size, in the two units an output ceiling would be judged in. Ridden on
-            // the outcome event because the summary folds its maxima over exactly the turns that
-            // worked, and the outcome is the only event that knows which those were.
+            // the outcome event because the summary folds its maxima over every turn but the
+            // length-capped one, and the outcome is the only event that names which turn that was.
             response_chars: response.chars,
             response_output_tokens: response.output_tokens,
         });
@@ -12396,11 +12397,13 @@ fn record_usage(response: &ModelResponse, emitter: &Emitter, profile_id: &str, m
 /// Threaded into [`record_turn`](Agent::record_turn) so the turn's outcome event carries it and
 /// [`GgSessionSummary::max_response_chars`](test_cabinet_core::gg::GgSessionSummary) /
 /// [`max_response_output_tokens`](test_cabinet_core::gg::GgSessionSummary) can be folded as maxima
-/// over the turns that **worked** — the datum the owner reads before choosing an output ceiling,
-/// which must accommodate every reply that was doing its job.
+/// over every turn the provider did not cut off at its output cap, whatever gg made of the turn —
+/// the datum the owner reads before choosing an output ceiling, which must accommodate every reply
+/// the model generated whole.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct ResponseSize {
-    /// The reply's raw text, in characters.
+    /// The reply's generated characters: its raw text plus the `program` string of every
+    /// `submit_program` call it carried.
     chars: u64,
     /// The reply's completion tokens (output plus reasoning), when the provider reported usage.
     output_tokens: u64,

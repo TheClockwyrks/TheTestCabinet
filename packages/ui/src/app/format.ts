@@ -136,6 +136,18 @@ export function formatRunTime(seconds: number): string {
   return `${minutes}m ${rest}s`;
 }
 
+// One of a run's lifecycle stage durations, or an em dash when the run recorded
+// none. A record written before the stage durations were measured carries none,
+// and a canceled run records no validation duration; printing `0s` for either
+// would read as a stage that finished instantly.
+export function formatStageDuration(
+  seconds: number | null | undefined,
+): string {
+  return seconds === null || seconds === undefined
+    ? "—"
+    : formatRunTime(seconds);
+}
+
 // A run's start time for a dense table cell: calendar date + 24h local time
 // ("Jul 6, 2026, 14:05"). An unparseable timestamp reads as an em dash.
 export function formatTimestamp(iso: string): string {

@@ -2566,6 +2566,7 @@ fn record_with_metrics(id: &str) -> RunRecord {
             comparable: Some(1.5),
             actual: Some(1.5),
         },
+        ..RunMetrics::default()
     };
     r
 }
