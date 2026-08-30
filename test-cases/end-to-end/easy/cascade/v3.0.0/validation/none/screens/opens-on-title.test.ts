@@ -6,13 +6,20 @@
 // opened straight onto a table, or onto its how-to page, has none of the entry
 // the specification describes — which is why the item is capped at `broken`.
 //
-// WHAT THIS READS, AND THE ONE LIMIT ON IT. The harness takes the game off the
-// wall clock and calls `reset()` before a check touches anything, so the reading
-// below is of a build that has initialized and been reset, and `reset` restores
-// `screen` to `"title"` (`specs/instrumentation.md`). The two statements agree,
-// so a conformant build answers `"title"` either way and a build that answers
-// anything else has broken one of them. Nothing here poses a screen: the whole
-// point is to read the one the build is holding when it is handed over.
+// THE READING IS TAKEN BEFORE ANY RESET, which is the whole of what makes this
+// item decide anything. `specs/instrumentation.md` has `reset` restore `screen`
+// to `"title"` as well, so a harness that reset on the way in would read `title`
+// off a build that opened on its table and reset correctly — a false pass on the
+// most severely capped item in this group. So the harness is built with
+// `reset: false`: the page it opens is a build that has just started, with
+// nothing held and nothing asked of it, and the clock is stopped before the
+// reading either way, so what is read is the screen the build chose for itself.
+//
+// Nothing is posed and nothing is cleared, for the same reason. The requirement
+// is the state the build hands over, so touching it before the reading would be
+// measuring the harness. That `reset` ALSO returns to the title is
+// `instrumentation/reset-restores-title`: two requirements, two items, and a
+// build that has broken one of them is now graded for exactly that one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -24,7 +31,7 @@ const SETTLE_FRAMES = 1;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ reset: false });
 });
 
 afterEach(async () => {
@@ -37,5 +44,9 @@ it("is on the title screen when it is handed over", async () => {
   await h.advance(SETTLE_FRAMES);
   await captureStill(h, "title");
 
-  assertEqual(opened.screen, "title", "the screen the game opened on");
+  assertEqual(
+    opened.screen,
+    "title",
+    "the screen the game opened on, read before any reset (specs/screens.md)",
+  );
 });
