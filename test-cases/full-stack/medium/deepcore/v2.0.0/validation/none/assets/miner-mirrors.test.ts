@@ -11,8 +11,8 @@
 // nowhere near as closely as one and its own reflection.
 //
 // THE COMPARISON IS AGAINST A CONTROL, not against a threshold plucked out of the
-// air. The same two readings are also compared UNFLIPPED, which is how far apart
-// two pictures of the same miner facing opposite ways are, and the flipped
+// air. The same two readings are also compared AS THEY STAND, which is how far
+// apart two pictures of the same miner facing opposite ways are, and the flipped
 // comparison has to be far closer than that. Nothing here needs to know a palette
 // or a sprite's exact placement inside the box.
 //
@@ -41,7 +41,7 @@ const COL = PLAYABLE_COL_MIN + 8;
 /** How the box is sampled: a whole number of columns, so a flip is exact. */
 const STEP = 4;
 
-/** How much closer the flipped comparison must be than the unflipped one. */
+/** How much closer the flipped comparison must be than the one as it stands. */
 const MARGIN = 0.5;
 
 /** Flip a reading of `columns` wide left to right, row by row. */

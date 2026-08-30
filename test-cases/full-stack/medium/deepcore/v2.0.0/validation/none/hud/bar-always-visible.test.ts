@@ -6,7 +6,7 @@
 // them needs a palette or a layout:
 //
 //   1. SOMETHING IS DRAWN THERE, at the camp and at the bottom of the mine alike.
-//      A band that came back one flat colour at either is a bar that is not on
+//      A band that came back one flat color at either is a bar that is not on
 //      screen.
 //   2. THE WORLD IS NOT. The bar is read at two columns of the SAME deep row, so
 //      every figure it shows is identical and the world behind it is completely

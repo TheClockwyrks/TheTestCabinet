@@ -52,7 +52,7 @@ const BOX_STEP = 4;
  */
 export const BOX_CHANGED_MIN = 24;
 
-/** The colours inside a stage rectangle, as `r`, `g`, `b` triples end to end. */
+/** The colors inside a stage rectangle, as `r`, `g`, `b` triples end to end. */
 export async function sampleBox(
   h: Harness,
   box: Box,

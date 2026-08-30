@@ -22,7 +22,7 @@
 //      and a gauge that changed its treatment moves the whole of itself.
 //
 // THE READ IS ONE CROSSING, NOT ONE PER PIXEL. The region is pulled back as a
-// single `getImageData` and subsampled inside the page, because a band is nearly
+// single `getImageData` and sampled down inside the page, because a band is nearly
 // three hundred thousand pixels and a check compares half a dozen of them.
 //
 // Every reading costs one driven frame, and the game is off its clock, so two
@@ -66,7 +66,7 @@ export const VIEW_REGION: Region = {
   h: STAGE_H - HUD_H,
 };
 
-/** A subsampled region of the canvas, as `r`, `g`, `b` triples end to end. */
+/** A region of the canvas sampled at a stride, as `r`, `g`, `b` triples. */
 export type Reading = number[];
 
 async function readRegion(
@@ -161,7 +161,7 @@ export function changed(
 /**
  * How many of a reading's samples differ from its first one.
  *
- * A region that came back one flat colour was drawn on by nothing, which is what
+ * A region that came back one flat color was drawn on by nothing, which is what
  * separates a status bar that is on screen from one that is not.
  */
 export function varied(reading: Reading, threshold = CHANGED_MIN): number {

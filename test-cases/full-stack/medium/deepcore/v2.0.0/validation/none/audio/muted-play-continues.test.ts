@@ -17,7 +17,7 @@
 // outside an engineless build: `audio-init.js` sees a source being started, and a
 // build that mutes by declining to start one is as conformant as one that mutes
 // through a master gain. So what is decided here is the half that is readable, and
-// it is the half that matters to a player who unmutes mid-descent.
+// it is the half that matters to a player who turns the sound back on mid-descent.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
