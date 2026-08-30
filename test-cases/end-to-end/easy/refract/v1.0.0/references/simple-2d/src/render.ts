@@ -554,7 +554,7 @@ const HOWTO_LINES: readonly string[] = [
 function drawHowto(ctx: Ctx): void {
   text(ctx, "HOW TO PLAY", STAGE_CX, 78, 40, COLOR.text, "center", 700);
   HOWTO_LINES.forEach((line, index) => {
-    text(ctx, line, 248, 138 + index * 27, 19, COLOR.text, "left", 500);
+    text(ctx, line, 248, 130 + index * 25, 19, COLOR.text, "left", 500);
   });
   drawControl(ctx, HOWTO_BACK, BACK_LABEL, "ESC");
 }
