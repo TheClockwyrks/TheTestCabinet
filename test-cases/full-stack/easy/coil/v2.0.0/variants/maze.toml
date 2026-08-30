@@ -30,8 +30,20 @@ none = "references/none/maze"
 "simple-2d" = "references/simple-2d/maze"
 "structured-2d" = "references/structured-2d/maze"
 
-# No `[workspaces]` override. The case's common per-engine table covers every run and
-# there is nothing about Maze mode to replace it with.
+# This variant needs a starter project of its own under each engine that seeds one:
+# the seeded `src/constants.ts` carries this mode — `MODE_ITEM` and `MODE_LABEL`
+# (`MAZE`), and the eighteen `OBSTACLE_CELLS` of the fixed course — where the case's
+# carries Classic's. The table REPLACES the case's `[workspaces]` rather than
+# layering on it, so it names one directory per engine exactly as the case's does.
+#
+# The engineless project is the case's own, shared with every variant. It holds no
+# game code for a variant to differ in — only the configuration the build is written
+# against — and what this variant changes about the game is carried by the specs,
+# which are rendered per variant before they land.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/maze/simple-2d"
+"structured-2d" = "workspaces/maze/structured-2d"
 
 [[domain]]
 id = "maze"

@@ -25,8 +25,10 @@ none = "references/none/base"
 "simple-2d" = "references/simple-2d/base"
 "structured-2d" = "references/structured-2d/base"
 
-# No `[workspaces]` override. The case's common per-engine table covers every run and
-# there is nothing about Classic mode to replace it with.
+# No `[workspaces]` override. This is the default variant, so the case's own
+# `[workspaces]` names Classic's starter projects directly: the `src/constants.ts`
+# seeded under each engine carries `MODE_ITEM` and `MODE_LABEL` (`CLASSIC`) and an
+# empty `OBSTACLE_CELLS`. The engineless project is shared with every variant.
 
 # No `[[domain]]` and no `[[review.categories]]` yet. Maze declares its own `maze`
 # domain and the four points that go with it; the points whose behavior differs
