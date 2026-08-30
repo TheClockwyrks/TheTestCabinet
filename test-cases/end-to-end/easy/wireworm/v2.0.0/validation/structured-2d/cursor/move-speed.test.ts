@@ -1,23 +1,84 @@
-// Wireworm — cursor.move-speed, under the `structured-2d` engine. CASE-PROVIDED.
+// cursor/move-speed — a held movement key slides the cursor at CURSOR_SPEED.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/cursor.md: "While a movement is held the cursor travels at
+// `CURSOR_SPEED` (430) units per second, integrated against the delta time of
+// each update. The rate is the same in every direction." So a key held for
+// exactly one second moves the cursor exactly `CURSOR_SPEED` units, and the
+// displacement over a known window is the direct reading of the rate.
 //
-// The point it decides, from `test-case.toml`:
-//
-// A held movement key moves at 430 units/s
-//
-// Held for exactly one second from mid-band, left and right, the cursor
-// travels CURSOR_SPEED (430) units within 5%. Two horizontal probes only: the
-// band is 32 units tall, so a vertical hold clamps after 0.074 s and would
-// measure the clamp, not the rate. Vertical movement is controls.up-arrow and
-// controls.down-arrow.
+// TWO HORIZONTAL PROBES, AND NO VERTICAL ONE. The player band is 32 units tall —
+// `y` in [672, 704] (specs/board.md) — which a cursor at `CURSOR_SPEED` crosses
+// in 0.074 s, so a vertical hold over any window worth measuring reports the
+// clamp rather than the rate. Horizontally the band is the full width of the
+// board, and both probes run from its centre: 640 ± 430 is 1070 and 210, well
+// inside [`CURSOR_X_MIN`, `CURSOR_X_MAX`] (16, 1264), so neither probe ever
+// touches a bound. That the cursor moves vertically at all is
+// `controls.up-arrow` and `controls.down-arrow`'s requirement.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { CURSOR_SPEED } from "../../src/constants";
+import { assertLessThanOrEqual } from "../assert";
+import {
+  BAND_CX,
+  BAND_CY,
+  captureReplay,
+  createHarness,
+  holdActionFor,
+  startPlaying,
+  TICK_HZ,
+  type Harness,
+} from "../harness";
 
-test("cursor.move-speed", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/structured-2d/cursor/move-speed.test.ts has not been written yet",
+/** The window each probe is held for, in frames: exactly one second. */
+const HOLD_TICKS = TICK_HZ;
+
+/**
+ * How far the measured displacement may sit from `CURSOR_SPEED`, in logical
+ * units: the 5% the review item states, over a window of exactly one second,
+ * where the distance travelled and the rate are the same number.
+ */
+const SPEED_TOLERANCE = CURSOR_SPEED * 0.05;
+
+/** Frames at rest between the two probes, so the replay reads as two holds. */
+const SETTLE_TICKS = 12;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("travels CURSOR_SPEED units in a second, left and right", async () => {
+  startPlaying(h);
+
+  const probes = await captureReplay(h, "probe", async () => {
+    h.debug.setCursor(BAND_CX, BAND_CY);
+    const rightFrom = h.snapshot().cursor.x;
+    await holdActionFor(h, "right", HOLD_TICKS);
+    const rightTo = h.snapshot().cursor.x;
+
+    await h.advance(SETTLE_TICKS);
+
+    h.debug.setCursor(BAND_CX, BAND_CY);
+    const leftFrom = h.snapshot().cursor.x;
+    await holdActionFor(h, "left", HOLD_TICKS);
+    const leftTo = h.snapshot().cursor.x;
+
+    return { right: rightTo - rightFrom, left: leftTo - leftFrom };
+  });
+
+  assertLessThanOrEqual(
+    Math.abs(probes.right - CURSOR_SPEED),
+    SPEED_TOLERANCE,
+    `right for a second travelled ${probes.right}`,
+  );
+  assertLessThanOrEqual(
+    Math.abs(probes.left + CURSOR_SPEED),
+    SPEED_TOLERANCE,
+    `left for a second travelled ${probes.left}`,
   );
 });
