@@ -1,28 +1,83 @@
-// Arc Foundry — `yard.housings-fixed-blocked`. CASE-PROVIDED. NOT YET WRITTEN.
+// yard/housings-fixed-blocked — The Transformer Yard's two housings are
+// Fixed-blocked tiles: nothing is ever built on them, and the chain still has an
+// open route around both.
 //
-// The manifest declares this point at `yard/housings-fixed-blocked.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// A Fixed-blocked tile is the one tile state the player can never change
+// (`specs/yard.md`), and the housings are what make this map a different puzzle
+// from the other two rather than the same yard with different waypoints. A build
+// that draws them and does not block them turns the map's whole topology back
+// into an open field; one that blocks them and seals the chain makes the map
+// unplayable from its first frame.
 //
-// THE REQUIREMENT. On The Transformer Yard the two housing rectangles — col
-// 12-19 by row 6-12 and col 30-37 by row 20-26 — are Fixed-blocked: a
-// placement covering any of their tiles is refused, and the base waypoint
-// chain still has an open route around both.
-//
-// HOW IT IS DECIDED. Attempt a placement inside each housing rectangle and
-// read the maze length of the empty map back. The evidence it hands back is
-// `housings` (image): a refused placement on a transformer housing.
+// Both halves are read here, because they are the same requirement: the tiles are
+// impassable AND a route around them exists on an empty yard.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  mapById,
+  openYard,
+  type Harness,
+} from "../harness";
 
-describe("yard.housings-fixed-blocked", () => {
-  it("The Transformer Yard's housings are fixed and unbuildable", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `yard.housings-fixed-blocked` has not been written yet",
+/** The map whose housings are under test. */
+const MAP = "transformer";
+
+/**
+ * Anchors taken against each housing: one wholly inside it, and one half on it,
+ * so a build that tests the anchor tile alone is caught as well as one that
+ * tests nothing.
+ */
+const ATTEMPTS = [
+  { how: "wholly inside the first housing", col: 14, row: 8 },
+  { how: "half onto the first housing", col: 11, row: 8 },
+  { how: "wholly inside the second housing", col: 32, row: 22 },
+  { how: "half onto the second housing", col: 29, row: 22 },
+];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("refuses every placement on a housing, and still routes around both", async () => {
+  openYard(h, { map: MAP });
+
+  const opened = h.snapshot();
+  assertEqual(opened.map, MAP, "the map the run opened on");
+
+  // The chain has an open ground route around both housings on an empty yard, so
+  // the maze length is a real figure rather than the absence of one.
+  assertTrue(
+    Number.isFinite(opened.mazeLength),
+    `snapshot().mazeLength to be a route length in tiles on an empty ` +
+      `${mapById(MAP).name}, whose chain has an open route around both housings`,
+  );
+  assertGreaterThan(
+    opened.mazeLength,
+    0,
+    "snapshot().mazeLength on an empty Transformer Yard",
+  );
+
+  for (const attempt of ATTEMPTS) {
+    h.debug.placeBlocker(attempt.col, attempt.row);
+    assertEqual(
+      h.snapshot().structures.length,
+      0,
+      `the yard to stay empty after a placement anchored at ` +
+        `(${attempt.col}, ${attempt.row}), ${attempt.how} — its tiles are ` +
+        `Fixed-blocked and never change state (specs/yard.md)`,
     );
-  });
+  }
+
+  await h.advance(1);
+  captureStill(h, "housings");
 });
