@@ -41,6 +41,18 @@ import { durationSeconds, fileOf, readWave } from "./wav";
 /** How long past the file's own end the bed must still be sounding. */
 const MARGIN_SECONDS = 1;
 
+/**
+ * The longest span the bed is listened to for, in seconds of simulation.
+ *
+ * Every second of the span is real frames of the game, so an unbounded one would
+ * let the length of a build's own file decide how long this check runs. Half a
+ * minute is far longer than a looping bed for a browser game, so for any such bed
+ * the span outlasts the file and decides the requirement; for one longer still,
+ * what is decided is the same statement over half a minute, which is never a wrong
+ * verdict and only a weaker one.
+ */
+const LONGEST_SPAN = 30;
+
 /** The frames of the first build phase the bed must start inside. */
 const OPENING = ticks(0.5);
 
@@ -73,12 +85,13 @@ it("starts the bed on the first build phase and keeps it sounding past its file"
 
   // The file's own length, so the span below outlasts whatever the build produced.
   const file = durationSeconds(readWave(fileOf(CUES.music)));
+  const span = Math.min(file, LONGEST_SPAN) + MARGIN_SECONDS;
 
   const run = await captureReplay(h, "music", async () => {
     openRun(h);
     await h.advance(OPENING);
     const opening = [...bed];
-    await h.advanceSeconds(file + MARGIN_SECONDS);
+    await h.advanceSeconds(span);
     return { opening, all: [...bed], frame: h.engine.frame().count };
   });
 
@@ -97,9 +110,9 @@ it("starts the bed on the first build phase and keeps it sounding past its file"
         ? "stopped"
         : "sounding",
     "sounding",
-    `the ${CUES.music} cue still to be sounding after ${(file + MARGIN_SECONDS).toFixed(1)} ` +
-      `seconds of the first build phase, which is longer than the ${file.toFixed(1)} ` +
-      "seconds its own produced file runs for, so the bed loops rather than " +
-      "ending (specs/ui.md)",
+    `the ${CUES.music} cue still to be sounding after ${span.toFixed(1)} ` +
+      `seconds of the first build phase, against the ${file.toFixed(1)} seconds ` +
+      "its own produced file runs for, so the bed loops rather than ending " +
+      "(specs/ui.md)",
   );
 });

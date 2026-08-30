@@ -27,6 +27,11 @@
 // announces the play by name. That is what the `audio/` points read, and it is why
 // they neither need this module nor use it.
 //
+// ONE COPY PER CATEGORY, DELIBERATELY. Each category owns the helpers its own
+// suites import, as every category in this project does, so a category can be read
+// and moved on its own. The two copies are the same file but for the paragraph
+// above naming what this category needs served.
+//
 // THIS IS A HOST FACILITY, NOT A FIXTURE. It serves whatever the build committed,
 // so a build that produced no frames still gets none, a build that produced the
 // wrong size still gets that size, and every point that reads a produced file off
@@ -75,6 +80,10 @@ export function serveProducedAssets(): void {
   };
   scope.createImageBitmap = async (blob: Blob): Promise<ImageBitmap> => {
     const bytes = Buffer.from(await blob.arrayBuffer());
-    return (await loadImage(bytes)) as unknown as ImageBitmap;
+    const image = await loadImage(bytes);
+    // A no-op `close`, because that is the one member of `ImageBitmap` a game may
+    // reach for that a decoded image does not carry, and a build releasing a frame
+    // it has finished with must not fault on the host that decoded it.
+    return Object.assign(image, { close: () => {} }) as unknown as ImageBitmap;
   };
 }

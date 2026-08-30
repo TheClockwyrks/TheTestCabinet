@@ -89,12 +89,22 @@ export function onFrame(cues: readonly TimedCue[], frame: number): TimedCue[] {
   return cues.filter((cue) => cue.frame === frame);
 }
 
-/** The cues that sounded before one frame of the drive, by name. */
+/**
+ * The cues that sounded before one frame of the drive, the music bed aside.
+ *
+ * This is what a point's "and on no frame before it" half reads, so the bed has to
+ * be out of it: `specs/ui.md` has the music cue sounding "under the yard from the
+ * first build phase onward", and a build is free to keep it going with the bus's
+ * loop or by asking for it again — the second of which the engine announces as an
+ * ordinary play, at whatever moment the bed came round. That is the game doing
+ * exactly what the specification asks, so it can never be the evidence that a build
+ * blipped on a frame the specification named no event for.
+ */
 export function beforeFrame(
   cues: readonly TimedCue[],
   frame: number,
 ): TimedCue[] {
-  return cues.filter((cue) => cue.frame < frame);
+  return cues.filter((cue) => cue.frame < frame && cue.cue !== CUES.music);
 }
 
 /** Just the names, for a failure that reads as a list of cues. */

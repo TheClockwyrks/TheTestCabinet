@@ -25,6 +25,11 @@
 // a Web Audio context and the host has none — so `audio/<cue>.wav` fails here as it
 // always did, and nothing in this category listens for a sound.
 //
+// ONE COPY PER CATEGORY, DELIBERATELY. Each category owns the helpers its own
+// suites import, as every category in this project does, so a category can be read
+// and moved on its own. The two copies are the same file but for the paragraph
+// above naming what this category needs served.
+//
 // THIS IS A HOST FACILITY, NOT A FIXTURE. It serves whatever the build committed,
 // so a build that authored no system still gets none, a build that authored an
 // empty one still gets that, and every point that reads a produced file off disk
@@ -73,6 +78,10 @@ export function serveProducedAssets(): void {
   };
   scope.createImageBitmap = async (blob: Blob): Promise<ImageBitmap> => {
     const bytes = Buffer.from(await blob.arrayBuffer());
-    return (await loadImage(bytes)) as unknown as ImageBitmap;
+    const image = await loadImage(bytes);
+    // A no-op `close`, because that is the one member of `ImageBitmap` a game may
+    // reach for that a decoded image does not carry, and a build releasing a frame
+    // it has finished with must not fault on the host that decoded it.
+    return Object.assign(image, { close: () => {} }) as unknown as ImageBitmap;
   };
 }
