@@ -1,19 +1,68 @@
-// Wireworm — controls.pause-escape, under the `none` engine. CASE-PROVIDED.
+// Wireworm — controls/pause-escape: Escape reaches the pause action during play.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/controls.md binds `pause` to `KeyP` and `Escape`, states that `pause`
+// "pauses live play, opening the pause screen", and reads it as a press edge,
+// "once per press". specs/ui.md names the screen it opens: `paused`, "reached by
+// `pause` during live play".
 //
-// The point it decides, from `test-case.toml`:
+// ESCAPE IS THE KEY THAT CARRIES TWO ACTIONS. specs/controls.md binds it to both
+// `back` and `pause` and settles the ambiguity by screen: "`Escape` pauses while
+// the game is being played and leaves the screen otherwise". This point is the
+// pause half, read from live play, where the specification says pause is what it
+// means; the `back` half is read on the screens that have somewhere to go back to
+// (`screens.howto-back`). A build that resolved the two the wrong way round
+// answers `KeyP` and fails here, which is exactly the distinction the two pause
+// points exist to draw.
 //
-// Escape pauses the game
+// THIS POINT IS ABOUT THE KEY, not about the screen it opens. What the pause
+// screen SHOWS is `screens.pause-screen`'s reading, that the board behind it stops
+// is `screens.pause-freezes`'s, and what its three items do belongs to the three
+// `screens.pause-*` points. So the one thing read here is where the game stands
+// after the press.
 //
-// Escape pauses the game
+// THE PRESS IS ONE FRAME LONG. `Harness.tap` puts the key down, runs exactly one
+// frame, and lifts it, which is the shape a press edge is seen in however the
+// build reads its keyboard. One more frame runs afterwards, so a build that opens
+// the screen at the top of the update following the press is read fairly.
+//
+// THE WORLD IS AN EMPTY LIVE BOARD. `startPlaying` empties the four rosters and
+// shuts the three world gates, so nothing on the board can end the level, cost a
+// life or move the game off `playing` on its own.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startPlaying,
+  type Harness,
+} from "../harness";
 
-test("controls.pause-escape", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/none/controls/pause-escape.test.ts has not been written yet",
+/** The key this point is about, the second of the two `pause` is bound to. */
+const KEY = "Escape";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("leaves the game on the pause screen when Escape is pressed during play", async () => {
+  await startPlaying(h);
+  await h.advance(1);
+
+  await h.tap(KEY);
+  await h.advance(1);
+  const after = await h.snapshot();
+  await captureStill(h, "paused");
+
+  assertEqual(
+    after.screen,
+    "paused",
+    "the screen an Escape press during live play leaves the game on",
   );
 });
