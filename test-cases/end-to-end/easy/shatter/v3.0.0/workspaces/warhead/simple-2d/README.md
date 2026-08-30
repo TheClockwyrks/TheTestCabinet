@@ -57,9 +57,10 @@ carries a complete worked example of testing a game this way.
 - **`src/main.ts`** — the fixed entry point. It creates the engine over the
   page's canvas, binds `game` to it, and runs.
 - **`src/constants.ts`** — every figure the specification fixes: the field and
-  the star, the gravity law, the ship, the bullets, the rocks, the saucer, the
-  waves, the score, the screen copy, the action bindings, the cue names. Read
-  from it. The look is deliberately NOT among them.
+  the star, the gravity law, the ship, the bullets, the torpedo, the rocks and
+  their armor, the saucer, the waves, the score, the screen copy, the action
+  bindings, the cue names. Read from it. The look is deliberately NOT among
+  them.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.

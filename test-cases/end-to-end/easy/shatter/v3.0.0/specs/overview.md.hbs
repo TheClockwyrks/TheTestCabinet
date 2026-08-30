@@ -53,8 +53,9 @@ the game they describe as one cohesive whole.
 | `specs/simulation.md` | The fixed timestep and the order of work inside one tick. |
 | `specs/ship.md` | The ship and how it flies. |
 | `specs/weapons.md` | What the ship shoots. |
-| `specs/rocks.md` | The drifting rocks, how they split, and how the star recycles them. |
-| `specs/saucer.md` | The enemy saucer. |
+{{#if (eq variant.slug "warhead")}}| `specs/rocks.md` | The drifting rocks, the armor they carry, how they split, and how the star recycles them. |
+{{else}}| `specs/rocks.md` | The drifting rocks, how they split, and how the star recycles them. |
+{{/if}}| `specs/saucer.md` | The enemy saucer. |
 | `specs/collision.md` | Every impact and what it does. |
 | `specs/progression.md` | Lives, respawns, and the wave loop. |
 | `specs/scoring.md` | Every score figure and the extra ship. |

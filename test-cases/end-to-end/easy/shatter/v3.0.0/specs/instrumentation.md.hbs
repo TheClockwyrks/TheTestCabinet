@@ -159,8 +159,9 @@ read and changes nothing.
 
 | Operation | Effect |
 | --- | --- |
-| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
-| `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+{{#if (eq engine.slug "none")}}| `reset(options)` | Restores the state to the title-screen values listed below. |
+{{else}}| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
+{{/if}}| `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
 
 `reset` restores `screen` to `"title"`, `menuIndex` to `0`, `score` to `0`,
 `lives` to `START_LIVES` (`3`), `wave` to `0`, and `waveBanner` to `0`. It empties
