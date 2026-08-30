@@ -469,10 +469,16 @@ const HOWTO_LINES: readonly string[] = [
   "CORRUPTOR slams what it crosses straight to critical.",
 ];
 
-const HOWTO_CONTROLS: readonly string[] = [
-  "MOVE   ARROWS  or  WASD",
-  "FIRE   SPACE",
-  "PAUSE  P        MUTE  M",
+/**
+ * The controls the how-to names. Each key is drawn as a run of its own, so the
+ * words `SPACE`, `ARROWS` and `WASD` stand alone on the screen the way
+ * `specs/ui.md` asks for them.
+ */
+const HOWTO_CONTROLS: readonly { label: string; keys: readonly string[] }[] = [
+  { label: "MOVE", keys: ["ARROWS", "WASD"] },
+  { label: "FIRE", keys: ["SPACE"] },
+  { label: "PAUSE", keys: ["P"] },
+  { label: "MUTE", keys: ["M"] },
 ];
 
 /** Everything above the board: the HUD, the level banner, and each screen. */
@@ -573,8 +579,20 @@ function renderHowto(ctx: Ctx): void {
       COLOR.text,
     );
   });
-  HOWTO_CONTROLS.forEach((line, index) => {
-    text(ctx, line, STAGE_W / 2, 590 + index * 30, digits(20), COLOR.accent);
+  HOWTO_CONTROLS.forEach((row, index) => {
+    const y = 566 + index * 30;
+    text(ctx, row.label, STAGE_W / 2 - 40, y, font(19), COLOR.textDim, "right");
+    let x = STAGE_W / 2 - 10;
+    row.keys.forEach((key, at) => {
+      if (at > 0) {
+        text(ctx, "or", x, y, font(16, "normal"), COLOR.textDim, "left");
+        ctx.font = font(16, "normal");
+        x += ctx.measureText("or").width + 12;
+      }
+      text(ctx, key, x, y, digits(20), COLOR.accent, "left");
+      ctx.font = digits(20);
+      x += ctx.measureText(key).width + 12;
+    });
   });
   text(ctx, "ESC to go back", STAGE_W / 2, 692, font(16), COLOR.textDim);
 }
