@@ -454,6 +454,27 @@ describe("the debug surface", () => {
     expect(snap.simTime).toBe(0);
   });
 
+  it("seeds the wave's whole layout from reset", async () => {
+    /** The stage-1 wave `reset({ seed })` lays out: every kind, slot and band. */
+    const laidOut = async (seed: number): Promise<string[]> => {
+      h.pose((s, d) => d.reset(s, { seed }));
+      h.pose((s, d) => d.setScreen(s, "stageIntro"));
+      h.pose((s, d) => d.setPhaseTimer(s, 0.01));
+      await h.frames(2);
+      return h
+        .snapshot()
+        .drones.map(
+          (drone) =>
+            `${drone.kind}@${drone.slotX},${drone.slotY}:${drone.band}`,
+        );
+    };
+
+    const seven = await laidOut(7);
+    expect(seven.length).toBeGreaterThan(8);
+    expect(await laidOut(7)).toEqual(seven);
+    expect(await laidOut(8)).not.toEqual(seven);
+  });
+
   it("gives every entity a distinct id and appends what it adds", () => {
     startPosed();
     const first = addDrone("shard", 300, 200);
@@ -508,6 +529,28 @@ describe("the debug surface", () => {
     expect(drone(id)?.x).toBeCloseTo(400, 6);
     expect(drone(id)?.y).toBeCloseTo(200, 6);
     expect(drone(id)?.phase).toBe("diving");
+  });
+
+  it("leaves a gated drone's band clock and its firing running", async () => {
+    startPosed();
+    // Travel gates LOCOMOTION alone (`specs/instrumentation.md`), so a diver
+    // held still past the fire line still takes its shot and a Flux held still
+    // still runs its window.
+    const diver = addDrone("shard", LANE_CENTER, DIVE_FIRE_Y + 40);
+    h.pose((s, d) => d.setDronePhase(s, diver, "diving"));
+    h.pose((s, d) => d.setDroneTravel(s, diver, false));
+
+    const flux = addDrone("flux", 300, 200);
+    h.pose((s, d) => d.setDroneTravel(s, flux, false));
+    h.pose((s, d) => d.setDroneBandClock(s, flux, 0));
+
+    await h.frames(2);
+    expect(h.snapshot().bullets.filter((b) => !b.friendly)).toHaveLength(1);
+    expect(drone(diver)?.y).toBeCloseTo(DIVE_FIRE_Y + 40, 6);
+
+    await h.advance(fluxHold(1) + FLUX_SHIMMER * 0.5);
+    expect(drone(flux)?.shimmer).toBe(true);
+    expect(drone(flux)?.x).toBeCloseTo(300, 6);
   });
 
   it("loads every seeded file through the engine's loader", () => {
@@ -948,6 +991,36 @@ describe("the swarm", () => {
     expect(jumps).toBeLessThanOrEqual(1);
     expect(maxY).toBeLessThan(FIELD_BOTTOM + 4);
     expect(drone(id)?.phase).toBe("formation");
+  });
+
+  it("brings a wrapping dive back in above the field's top", async () => {
+    startPosed();
+    // Two drones, so one of them takes the id whose dive runs off the bottom
+    // rather than turning back above it.
+    const ids = [addDrone("shard", 500, 500), addDrone("shard", 700, 500)];
+    for (const id of ids) h.pose((s, d) => d.setDronePhase(s, id, "diving"));
+
+    let wrapped = false;
+    let above = Number.POSITIVE_INFINITY;
+    const previous = new Map(ids.map((id) => [id, drone(id)?.y ?? 0]));
+    for (let i = 0; i < FPS * 6 && !wrapped; i++) {
+      await h.frames(1);
+      for (const id of ids) {
+        const now = drone(id);
+        const was = previous.get(id) ?? 0;
+        if (now === undefined) continue;
+        previous.set(id, now.y);
+        if (was > FIELD_BOTTOM - 40 && now.y < was - 100) {
+          wrapped = true;
+          above = now.y;
+        }
+      }
+    }
+    expect(wrapped).toBe(true);
+    // Back in ABOVE the play field, and near enough its top edge that the wrap
+    // reads as one continuation of the same dive (`specs/swarm.md`).
+    expect(above).toBeLessThan(FIELD_TOP);
+    expect(above).toBeGreaterThan(FIELD_TOP - 40);
   });
 
   it("launches its first dive after the delay, and later dives on cadence", async () => {
