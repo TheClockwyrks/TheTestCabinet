@@ -1,25 +1,176 @@
-// Deepcore — modes.standard-restores-the-save. STUB: NOT YET AUTHORED.
+// modes/standard-restores-the-save — continuing from a Standard death puts the
+// expedition back as it was saved.
 //
-// Continuing from a save restores the expedition
+// specs/modes.md, Standard: "Restoring puts the player back on the surface with
+// the saved mine, Credits, upgrade tiers, installed components, cargo, materials,
+// fuel and hull." So `CONTINUE FROM SAVE` is a restore rather than a retry: every
+// holding comes back at the value the pad wrote, not at the value the expedition
+// held when it died and not at a fresh expedition's.
 //
-// CONTINUE FROM SAVE puts the player back on the surface with the saved mine,
-// Credits, upgrade tiers, installed components, cargo, materials, fuel and
-// hull.
+// THE EXPEDITION IS DIRTIED BETWEEN THE SAVE AND THE DEATH, deliberately. Each
+// holding is posed once before the save and again, to a different value, after
+// it, so a build that ignored the save and simply carried on reads back the
+// dirtied value, and a build that started fresh reads back the default. Only a
+// real restore reads back the saved one.
 //
-// Automated validation: save a distinctive expedition, die, continue and hold
-// each restored field against what was saved.
-//
-// `test-case.toml` declares this suite as `modes/standard-restores-the-save.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (restored (image)) around the drive.
+// ISOLATION. One Standard expedition on a generated mine with the slot cleared
+// first, so the mine that comes back is the one that was saved. The death is a
+// hull standing at `0`, and the choice is the Game Over screen's first entry,
+// which specs/ui.md fixes as `CONTINUE FROM SAVE` while a Standard save exists.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
+import {
+  ROCKET_COMPONENT_IDS,
+  SURFACE_ROW,
+  UPGRADE_TRACKS,
+  type Ore,
+  type UpgradeTrack,
+} from "../constants";
+import {
+  ACTION_KEY,
+  captureStill,
+  createHarness,
+  stageCargo,
+  stageTiers,
+  type Harness,
+  type TileKind,
+} from "../harness";
+import { bankSave, driveDeath, openGeneratedAtCamp } from "../save/expedition";
 
-test("Continuing from a save restores the expedition", () => {
-  throw new Error(
-    "Deepcore validator `modes/standard-restores-the-save` is declared in test-case.toml but has not been authored yet.",
+/** What the pad wrote. */
+const SAVED = {
+  credits: 3300,
+  tiers: {
+    fuel: 2,
+    drill: 3,
+    cargo: 2,
+    hull: 4,
+    jetpack: 3,
+    radiator: 2,
+    scanner: 2,
+  } as Record<UpgradeTrack, number>,
+  components: 3,
+  cargo: { marlite: 5, voltite: 2 } as Partial<Record<Ore, number>>,
+  materials: { resonite: 2, cryenite: 1 },
+  fuel: 61,
+  hull: 173,
+};
+
+/** What the expedition held when it died, none of which may come back. */
+const DIRTIED = {
+  credits: 12,
+  cargo: { ferron: 9 } as Partial<Record<Ore, number>>,
+  materials: { resonite: 0, cryenite: 0 },
+  fuel: 4,
+};
+
+/** A cell posed into the mine before the save, which the restore must return. */
+const MARK_COL = 7;
+const MARK_ROW = 44;
+const MARK_KIND: TileKind = "stone";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("restores every saved holding and the saved mine on CONTINUE FROM SAVE", async () => {
+  await openGeneratedAtCamp(h, { mode: "standard" });
+
+  await stageTiers(h, SAVED.tiers);
+  await h.debug.setCredits(SAVED.credits);
+  await h.debug.setRocketInstalled(SAVED.components);
+  await stageCargo(h, SAVED.cargo);
+  await h.debug.setMaterial("resonite", SAVED.materials.resonite);
+  await h.debug.setMaterial("cryenite", SAVED.materials.cryenite);
+  await h.debug.setFuel(SAVED.fuel);
+  await h.debug.setHull(SAVED.hull);
+  await h.debug.setTile(MARK_COL, MARK_ROW, MARK_KIND);
+  await bankSave(h);
+
+  // Everything moved on after the save, so nothing below can read back right by
+  // having been left alone.
+  await h.debug.setCredits(DIRTIED.credits);
+  await stageCargo(h, DIRTIED.cargo);
+  await h.debug.setMaterial("resonite", DIRTIED.materials.resonite);
+  await h.debug.setMaterial("cryenite", DIRTIED.materials.cryenite);
+  await h.debug.setFuel(DIRTIED.fuel);
+  await h.debug.setTile(MARK_COL, MARK_ROW, "tunnel");
+
+  const over = await driveDeath(h, "hull-destroyed");
+  assertEqual(
+    over.hasSave,
+    true,
+    "specs/modes.md: a Standard death leaves the save to be restored",
+  );
+
+  await h.debug.setMenuIndex(0);
+  await h.tap(ACTION_KEY.activate);
+  await h.advance(1);
+
+  const restored = await h.snapshot();
+  await captureStill(h, "restored");
+  assertEqual(
+    restored.screen,
+    "in-mine",
+    "specs/modes.md: CONTINUE FROM SAVE restores the save into the mine",
+  );
+  assertLessThanOrEqual(
+    restored.miner.row,
+    SURFACE_ROW,
+    "specs/modes.md: restoring puts the player back on the surface",
+  );
+  assertEqual(
+    restored.credits,
+    SAVED.credits,
+    "specs/modes.md: the saved Credits come back",
+  );
+  for (const track of UPGRADE_TRACKS) {
+    assertEqual(
+      restored.tiers[track],
+      SAVED.tiers[track],
+      `specs/modes.md: the saved ${track} tier comes back`,
+    );
+  }
+  assertDeepEqual(
+    restored.rocket.installed,
+    ROCKET_COMPONENT_IDS.slice(0, SAVED.components),
+    "specs/modes.md: the saved installed components come back",
+  );
+  assertDeepEqual(
+    restored.cargo.ore,
+    SAVED.cargo,
+    "specs/modes.md: the saved cargo comes back",
+  );
+  assertEqual(
+    restored.satchel.resonite,
+    SAVED.materials.resonite,
+    "specs/modes.md: the saved Resonite comes back",
+  );
+  assertEqual(
+    restored.satchel.cryenite,
+    SAVED.materials.cryenite,
+    "specs/modes.md: the saved Cryenite comes back",
+  );
+  assertEqual(
+    restored.miner.fuel,
+    SAVED.fuel,
+    "specs/modes.md: the saved fuel comes back",
+  );
+  assertEqual(
+    restored.miner.hull,
+    SAVED.hull,
+    "specs/modes.md: the saved hull comes back",
+  );
+  assertEqual(
+    (await h.tileAt(MARK_COL, MARK_ROW)).kind,
+    MARK_KIND,
+    "specs/modes.md: the saved mine comes back",
   );
 });
