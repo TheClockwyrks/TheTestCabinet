@@ -1,20 +1,116 @@
-// Wireworm — worm.body-follows, under the `none` engine. CASE-PROVIDED.
+// worm/body-follows — each segment moves into the tile the segment ahead of it
+// held before the step.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/worm.md, "The body follows": "Every step, once the head has moved, each
+// remaining segment moves into the tile the segment ahead of it occupied before
+// that step. The chain therefore travels the head's exact path, one tile behind
+// the segment ahead of it."
 //
-// The point it decides, from `test-case.toml`:
+// WHAT IS ASSERTED IS THE FOLLOW RELATION, NOT A PATH. The check reads the worm
+// before each step and again after it, and holds every trailing segment against
+// the tile its predecessor stood on going in. That is the rule as the spec writes
+// it, and it says nothing about where the head went — which is
+// `worm.winds-horizontal`'s requirement — so a build that winds correctly and
+// drags its body wrongly fails here alone, and a build whose head goes somewhere
+// unexpected is still graded on whether the chain followed it.
 //
-// Each segment moves into the tile ahead of it
-//
-// Over five steps of a six-segment worm, each segment occupies the tile the
-// segment ahead of it held on the previous step.
+// THE WORLD IS ONE SIX-SEGMENT WORM ON A CLEAR ROW. `startPlaying` leaves the
+// board empty and the three world gates shut, and the worm is posed along a clear
+// row with its whole body behind it, columns `5` to `10`, so five steps carry the
+// head to column `15` without meeting an edge, a node or another segment. Both
+// faculties are left on, because the body's follow IS this requirement.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { WORM_STEP_L1 } from "../constants";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  framesFor,
+  poseWorm,
+  requireWorm,
+  startPlaying,
+  type Harness,
+  type UntilResult,
+  type WormView,
+} from "../harness";
 
-test("worm.body-follows", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/none/worm/body-follows.test.ts has not been written yet",
-  );
+/** Where the head is posed, with the body laid out behind it to column 5. */
+const START_C = 10;
+const START_R = 5;
+
+/** Segments the worm carries. */
+const LENGTH = 6;
+
+/** Steps driven. Five carries the head to column 15, still clear of the edge. */
+const STEPS = 5;
+
+/**
+ * How long one step may take before the sweep gives up, in frames. Four of level
+ * 1's `WORM_STEP_L1` (`0.14` s) intervals: a bound on a step that never happened,
+ * not a tolerance on when it did.
+ */
+const STEP_TIMEOUT = framesFor(WORM_STEP_L1 * 4);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("moves every segment into the tile the one ahead of it held", async () => {
+  await startPlaying(h);
+  const id = await poseWorm(h, { c: START_C, r: START_R, length: LENGTH });
+
+  /** The worm going into each step, and what the board looked like after it. */
+  const steps: { before: WormView; swept: UntilResult }[] = [];
+
+  await captureReplay(h, "body", async () => {
+    let before = requireWorm(await h.snapshot(), id, "the posed chain");
+    for (let step = 1; step <= STEPS; step += 1) {
+      const from = before.segments[0];
+      // Every step is swept for even after one has failed, so the record holds an
+      // entry per step and the failure reported is the FIRST step that went wrong.
+      const swept = await h.until(
+        (s) => {
+          const worm = s.worms.find((held) => held.id === id);
+          if (worm === undefined) return false;
+          const head = worm.segments[0];
+          return head.c !== from.c || head.r !== from.r;
+        },
+        { maxFrames: STEP_TIMEOUT, poll: 1 },
+      );
+      steps.push({ before, swept });
+      if (swept.hit) {
+        before = requireWorm(swept.snapshot, id, `after step ${step}`);
+      }
+    }
+  });
+
+  for (let step = 1; step <= STEPS; step += 1) {
+    const { before, swept } = steps[step - 1];
+    assertEqual(
+      swept.hit,
+      true,
+      `step ${step}: the head to leave its tile within ${STEP_TIMEOUT} frames`,
+    );
+    const after = requireWorm(swept.snapshot, id, `step ${step}`);
+    assertLength(
+      after.segments,
+      LENGTH,
+      `after step ${step}: the worm's segments, none added and none lost`,
+    );
+    for (let i = 1; i < LENGTH; i += 1) {
+      assertDeepEqual(
+        after.segments[i],
+        before.segments[i - 1],
+        `after step ${step}: segment ${i} on the tile segment ${i - 1} held ` +
+          "before the step",
+      );
+    }
+  }
 });
