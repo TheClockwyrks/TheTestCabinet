@@ -1,26 +1,92 @@
-// Deepcore — movement.stopped-by-wall. STUB: NOT YET AUTHORED.
+// movement/stopped-by-wall — a walk into a wall stops at its face.
 //
-// A walk into a wall stops at its face
+// `specs/character.md`: "The miner's box never overlaps a cell that is not a
+// tunnel. It rests on top of solid cells and is stopped by walls." Where a fall
+// meets a floor, a walk meets a wall, and the box comes to rest flush against the
+// wall cell's near face: not inside it, and not a gap short of it.
 //
-// Walking into a solid cell stops the miner with its box flush against that
-// cell rather than passing through it or standing off it, whatever the drill
-// is doing.
+// `specs/character.md` also has a side cut start exactly there — "the cut into the
+// neighboring cell begins only once the miner's box is flush against it" — so a
+// build that stops the miner a few units off the face never starts a side cut at
+// all, and one that lets the box overlap has already dug through the wall it was
+// meant to be stopped by.
 //
-// Automated validation: clear a corridor ending in a posed solid cell, hold
-// right with the drill off until the miner stops, and hold the resting box
-// edge against the cell face.
+// THE DRILL IS GATED, because a cut is the thing that happens NEXT and this is
+// the check about the stop. With the drill running the wall would break and the
+// miner would walk on, which is correct behaviour and a different requirement.
 //
-// `test-case.toml` declares this suite as `movement/stopped-by-wall.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (wall (replay)) around the drive.
+// THE TOLERANCE. One world unit of the eighty a tile spans, on the near side
+// alone: a walk resolved within a frame may leave the box a fraction of that
+// frame's travel short of the face, and overlapping the wall is not admitted at
+// all.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { MINER_W, TILE } from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
+import {
+  ACTION_KEY,
+  captureReplay,
+  createHarness,
+  driveHold,
+  fillColumn,
+  layFloor,
+  openScene,
+  pinDrill,
+  standOn,
+  type Harness,
+} from "../harness";
 
-test("A walk into a wall stops at its face", () => {
-  throw new Error(
-    "Deepcore validator `movement/stopped-by-wall` is declared in test-case.toml but has not been authored yet.",
+const START_COL = 6;
+const WALL_COL = 13;
+const ROW = 12;
+
+/** Long enough to cross the run-up and settle against the wall. */
+const WALK_FRAMES = 300;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("stops a walk with the box flush against the wall's face", async () => {
+  openScene(h);
+  layFloor(h, ROW);
+  // The wall rises out of the floor across the rows the box occupies.
+  fillColumn(h, WALL_COL, ROW - 2, ROW - 1, "rock");
+  standOn(h, START_COL, ROW, "east");
+  pinDrill(h);
+
+  const walk = await captureReplay(h, "wall", () =>
+    driveHold(h, ACTION_KEY.right, WALK_FRAMES),
+  );
+
+  const { miner } = walk.snapshot;
+  const face = WALL_COL * TILE;
+  assertEqual(miner.grounded, true, "the miner still on the floor at the wall");
+  assertLessThanOrEqual(
+    miner.x + MINER_W,
+    face,
+    "the box's right edge against the wall's near face",
+  );
+  assertGreaterThanOrEqual(
+    miner.x + MINER_W,
+    face - 1,
+    "the box's right edge against the wall's near face",
+  );
+
+  // And the wall is still a wall: it stopped the miner rather than being cut.
+  assertEqual(
+    h.tileAt(WALL_COL, ROW - 1).kind,
+    "rock",
+    "the cell the walk was stopped by",
   );
 });
