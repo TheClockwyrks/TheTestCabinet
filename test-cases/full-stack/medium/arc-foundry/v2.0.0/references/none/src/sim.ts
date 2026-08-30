@@ -319,7 +319,12 @@ export class Game {
   // ---- Unit construction ------------------------------------------------------
   private makeUnit(type: Unit["type"]): Unit {
     const def = LOAD[type];
-    const hp = scaledHp(def.baseHp, this.wave, this.diff);
+    // The scaling of specs/enemies.md is defined FROM WAVE 1, and a run reaches
+    // wave 1 before it releases a unit of its own — so a unit released while the
+    // counter still reads 0 (which `spawnUnit` can do from the opening build
+    // phase) takes wave 1's health, the lowest the scaling defines
+    // (specs/instrumentation.md).
+    const hp = scaledHp(def.baseHp, Math.max(1, this.wave), this.diff);
     const entry = this.board.chain[0]!;
     const c = tileCenter(entry.col, entry.row);
     const u: Unit = {
