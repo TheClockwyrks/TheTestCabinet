@@ -1,27 +1,89 @@
-// Arc Foundry — `combos.recipe-incomplete-refused`. CASE-PROVIDED. NOT YET WRITTEN.
+// combos/recipe-incomplete-refused — an incomplete recipe offers no fold.
 //
-// The manifest declares this point at `combos/recipe-incomplete-refused.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/combinations.md: "a recipe is satisfied only when the yard holds every
+// ingredient it lists, counted as a multiset." specs/scrap-press.md fixes the
+// inspector as offering one action per REACHABLE recipe, so a yard one
+// ingredient short offers none, and a combine committed on a piece that would
+// have been an ingredient folds nothing.
 //
-// THE REQUIREMENT. A yard missing any one ingredient of a recipe offers no
-// COMBINE SPECIAL for that tower, and a combine committed on a would-be
-// ingredient does not build it.
-//
-// HOW IT IS DECIDED. Stand a recipe one ingredient short, read the offered
-// actions, and attempt the combine. The evidence it hands back is `refused`
-// (image): the incomplete recipe offering no fold.
+// The Static Web's recipe is `coil@1` + `capacitor@1` + `choke@1`; the yard is
+// posed with the first two alone. The two are of different types, so no
+// quality-fold is available either and a combine has nothing at all to resolve.
+// What is read is that no recipe row is offered and that committing the combine
+// leaves both components standing exactly as they were.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  comboDef,
+  createHarness,
+  openYard,
+  standComponent,
+  type Harness,
+} from "../harness";
+import { anchored, offeredRecipes, tierOf } from "./towers";
 
-import { fail } from "../assert";
+const TOWER = comboDef("staticweb");
+const INITIATOR = { col: 10, row: 10 };
+const PARTNER = { col: 14, row: 10 };
 
-describe("combos.recipe-incomplete-refused", () => {
-  it("An incomplete recipe offers no fold", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `combos.recipe-incomplete-refused` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("offers no recipe, and folds nothing, while an ingredient is missing", async () => {
+  openYard(h);
+  const first = standComponent(
+    h,
+    TOWER.recipe[0]!.type,
+    tierOf(TOWER.recipe[0]!),
+    INITIATOR.col,
+    INITIATOR.row,
+  );
+  const second = standComponent(
+    h,
+    TOWER.recipe[1]!.type,
+    tierOf(TOWER.recipe[1]!),
+    PARTNER.col,
+    PARTNER.row,
+  );
+
+  h.debug.select(first);
+  await h.advance(1);
+  captureStill(h, "refused");
+  assertLength(
+    offeredRecipes(h.debug.panelButtons()),
+    0,
+    `the ${TOWER.name} is one ingredient short, so no recipe is reachable`,
+  );
+
+  // Committed anyway, from a piece that would have been an ingredient.
+  h.debug.select(first);
+  h.debug.addToCombineSet(second);
+  h.debug.combine(first);
+
+  const s = h.snapshot();
+  assertLength(s.structures, 2, "nothing was folded and nothing was consumed");
+  assertEqual(
+    anchored(s, INITIATOR.col, INITIATOR.row).kind,
+    "component",
+    "the initiating piece still stands as the component it was",
+  );
+  assertEqual(
+    anchored(s, INITIATOR.col, INITIATOR.row).type,
+    TOWER.recipe[0]!.type,
+    "the initiating piece is unchanged",
+  );
+  assertEqual(
+    anchored(s, PARTNER.col, PARTNER.row).kind,
+    "component",
+    "the second piece still stands as the component it was",
+  );
 });
