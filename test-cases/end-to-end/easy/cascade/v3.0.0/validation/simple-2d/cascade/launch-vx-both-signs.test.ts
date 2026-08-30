@@ -1,23 +1,65 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/cascade/launch-vx-both-signs.test.ts
+// cascade/launch-vx-both-signs — cards launch to both sides.
 //
-// The review item `cascade.launch-vx-both-signs` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/victory.md gives each launch's `vx` "a sign chosen with equal probability",
+// so a cascade throws cards to the left and to the right. The magnitude is
+// `launch-vx-magnitude`; what this refuses is a build that fixed the sign, or that
+// took the sign from something other than a draw, and so sends every card the same
+// way.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// IT IS READ OVER A WHOLE CASCADE. Fifty-two draws of a fair sign land all one way
+// with probability one in `2^51`, so a conformant build that failed this would be a
+// far rarer event than a machine fault; a shorter run would not carry that.
 //
-// What this item must decide, from the manifest:
-//
-//   Cards launch to both sides
-//
-//   Across fifty-two launches both signs of vx occur.
+// The two directions are asserted separately so a failure names the side the build
+// never threw to.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { DECK_SIZE, LAUNCH_INTERVAL } from "../../src/constants";
+import { assertGreaterThanOrEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  framesFor,
+  startCascade,
+  type Harness,
+} from "../harness";
+import { watchLaunches } from "./flight";
 
-it("cascade.launch-vx-both-signs — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/cascade/launch-vx-both-signs.test.ts is a scaffold stub, not a validator",
+/** A whole deck of launches, with three intervals to spare. */
+const MAX_FRAMES = framesFor(LAUNCH_INTERVAL * (DECK_SIZE + 3));
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(() => {
+  harness?.dispose();
+});
+
+it("throws launched cards to both sides", async () => {
+  startCascade(harness);
+  harness.debug.setTrailPainting(false);
+
+  const launches = await watchLaunches(
+    harness,
+    MAX_FRAMES,
+    (seen) => seen.length >= DECK_SIZE,
+  );
+  captureStill(harness, "launches");
+
+  const rightward = launches.filter((launch) => launch.flyer.vx > 0).length;
+  const leftward = launches.filter((launch) => launch.flyer.vx < 0).length;
+
+  assertGreaterThanOrEqual(
+    rightward,
+    1,
+    `cards launched to the right, out of ${launches.length} launches`,
+  );
+  assertGreaterThanOrEqual(
+    leftward,
+    1,
+    `cards launched to the left, out of ${launches.length} launches`,
   );
 });

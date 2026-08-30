@@ -1,23 +1,69 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/cascade/launch-vy.test.ts
+// cascade/launch-vy — a launched card leaves with the stated upward pop.
 //
-// The review item `cascade.launch-vy` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/victory.md's launch table gives every launched card the same `vy`,
+// `LAUNCH_VY`, which is negative because y grows downward: the card pops upward.
+// Unlike `vx`, no part of it is drawn from the generator, so the figure is exact for
+// every one of the fifty-two.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
-//
-// What this item must decide, from the manifest:
-//
-//   A launched card pops upward at -120
-//
-//   The new flyer's vy is LAUNCH_VY.
+// It is read on the launching frame, where the card has not moved yet: "A card
+// launched in a frame takes no motion in that frame" (specs/victory.md), so the
+// frame's gravity has not been applied to it and the reading is the launch velocity
+// itself.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { LAUNCH_INTERVAL, LAUNCH_VY } from "../../src/constants";
+import { assertCloseTo, assertGreaterThanOrEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  framesFor,
+  startCascade,
+  type Harness,
+} from "../harness";
+import { watchLaunches } from "./flight";
 
-it("cascade.launch-vy — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/cascade/launch-vy.test.ts is a scaffold stub, not a validator",
+/**
+ * How exactly the launch speed must be the stated one, as decimal places.
+ *
+ * `LAUNCH_VY` is a whole number the build is handed rather than a quantity it
+ * integrates, so what this leaves room for is a float copied through an arithmetic
+ * of the build's own, not a measurement.
+ */
+const LAUNCH_VY_DIGITS = 3;
+
+/** Two intervals of room, so a slow clock is read rather than timed out. */
+const MAX_FRAMES = framesFor(LAUNCH_INTERVAL * 3);
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(() => {
+  harness?.dispose();
+});
+
+it("pops a launched card upward at the stated speed", async () => {
+  startCascade(harness);
+  harness.debug.setTrailPainting(false);
+
+  const launches = await watchLaunches(
+    harness,
+    MAX_FRAMES,
+    (seen) => seen.length >= 1,
+  );
+  captureStill(harness, "launch");
+
+  assertGreaterThanOrEqual(
+    launches.length,
+    1,
+    "cards launched by a running cascade, which this point needs one of",
+  );
+  assertCloseTo(
+    launches[0].flyer.vy,
+    LAUNCH_VY,
+    LAUNCH_VY_DIGITS,
+    "the vertical velocity a card launches with, in units per second",
   );
 });
