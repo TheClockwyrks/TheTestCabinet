@@ -531,9 +531,14 @@ export function installDebugApi(ctx: DebugContext): void {
     // player's press are the same event to the game. Each takes effect immediately.
 
     pointerMove(x, y) {
+      ctx.refreshControls();
       ctx.pointerMove(num("pointerMove", "x", x), num("pointerMove", "y", y));
     },
+    // A press hit-tests the controls the game as it stands draws. The animation loop lays a
+    // frame out before every real press, so laying one out here is what makes a posed press
+    // and a player's press the same event rather than one aimed at a stale layout.
     pointerDown(x, y) {
+      ctx.refreshControls();
       ctx.pointerDown(num("pointerDown", "x", x), num("pointerDown", "y", y));
     },
     pointerUp() {
