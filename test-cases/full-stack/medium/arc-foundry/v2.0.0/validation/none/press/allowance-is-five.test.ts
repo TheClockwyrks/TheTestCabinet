@@ -1,26 +1,67 @@
-// Arc Foundry — `press.allowance-is-five`. CASE-PROVIDED. NOT YET WRITTEN.
+// press/allowance-is-five — a build phase grants five rock stamps, and the sixth
+// drop is refused.
 //
-// The manifest declares this point at `press/allowance-is-five.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE ALLOWANCE IS THE WHOLE ECONOMY OF THE BUILD PHASE. Placing a rock costs no
+// Charge (`specs/scrap-press.md`), so nothing but the stamp count limits how much
+// of the yard a level fills: five is what makes a level a decision rather than a
+// filling-in. A build that grants six has a different game, and one that grants
+// four leaves a recipe the player was collecting for out of reach.
 //
-// THE REQUIREMENT. A build phase opens with stampsLeft at STAMPS_PER_LEVEL
-// (5), five drops are accepted, and the sixth is refused with nothing placed.
-//
-// HOW IT IS DECIDED. Take six drops in one build phase and read the structure
-// count and stampsLeft after each. The evidence it hands back is `spent`
-// (image): the yard after the allowance is spent.
+// So the count is read at the phase's opening and after every one of six drops,
+// which is what separates "the sixth was refused" from "the fifth never landed".
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { STAMPS_PER_LEVEL } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** Six clear anchors, one more than the allowance grants. */
+const ANCHORS = [10, 14, 18, 22, 26, 30].map((col) => ({ col, row: 8 }));
 
-describe("press.allowance-is-five", () => {
-  it("A build phase grants five stamps", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `press.allowance-is-five` has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("accepts five drops in a build phase and refuses the sixth", async () => {
+  await openYard(h);
+
+  const opened = await h.snapshot();
+  assertEqual(opened.phase, "build", "the phase a run opens on");
+  assertEqual(
+    opened.stampsLeft,
+    STAMPS_PER_LEVEL,
+    "the stamps a build phase opens with",
+  );
+
+  for (const [at, anchor] of ANCHORS.entries()) {
+    await h.debug.placeRock(anchor.col, anchor.row);
+    const s = await h.snapshot();
+    const drop = at + 1;
+    const landed = Math.min(drop, STAMPS_PER_LEVEL);
+    assertEqual(
+      s.structures.length,
+      landed,
+      `the structures on the yard after drop ${drop} of ${ANCHORS.length}, ` +
+        `against an allowance of ${STAMPS_PER_LEVEL}`,
     );
-  });
+    assertEqual(
+      s.stampsLeft,
+      STAMPS_PER_LEVEL - landed,
+      `the stamps left after drop ${drop} of ${ANCHORS.length}`,
+    );
+  }
+
+  await h.advance(1);
+  await captureStill(h, "spent");
 });

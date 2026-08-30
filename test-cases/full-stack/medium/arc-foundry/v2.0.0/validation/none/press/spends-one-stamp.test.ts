@@ -1,26 +1,72 @@
-// Arc Foundry — `press.spends-one-stamp`. CASE-PROVIDED. NOT YET WRITTEN.
+// press/spends-one-stamp — a drop that lands spends exactly one stamp, and a drop
+// that is refused spends none.
 //
-// The manifest declares this point at `press/spends-one-stamp.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/scrap-press.md` puts the roll on the landing rather than on the pull,
+// and the stamp with it: placing a rock spends one, and a placement that fails
+// any condition is refused with no stamp spent. The two halves are one
+// requirement seen from either side, and both are read here on the same yard —
+// the second drop is refused because it lands on the first drop's own footprint,
+// which is a placement the player can attempt at any moment during a build phase.
 //
-// THE REQUIREMENT. A successful drop lowers stampsLeft by exactly one, and a
-// refused drop leaves it where it was.
-//
-// HOW IT IS DECIDED. Read stampsLeft either side of an accepted drop and a
-// refused one. The evidence it hands back is `stamps` (image): the stamp
-// allowance across a placement.
+// A build that charges the stamp when the press is pulled loses one to every
+// illegal footprint the player brushes past; one that charges nothing at all has
+// a build phase with no limit in it.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { STAMPS_PER_LEVEL } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** Where the accepted drop lands, and where the refused one is attempted. */
+const AT = { col: 20, row: 8 };
 
-describe("press.spends-one-stamp", () => {
-  it("A landed rock spends exactly one stamp", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `press.spends-one-stamp` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("takes one stamp for a landed drop and none for a refused one", async () => {
+  await openYard(h);
+  assertEqual(
+    (await h.snapshot()).stampsLeft,
+    STAMPS_PER_LEVEL,
+    "the stamps a build phase opens with",
+  );
+
+  await h.debug.placeRock(AT.col, AT.row);
+  const landed = await h.snapshot();
+  assertEqual(landed.structures.length, 1, "the structures a landed drop left");
+  assertEqual(
+    landed.stampsLeft,
+    STAMPS_PER_LEVEL - 1,
+    `the stamps left after one drop landed at (${AT.col}, ${AT.row})`,
+  );
+
+  // The same footprint again: its tiles are no longer Open and it carries a
+  // candidate rather than a blocker, so the placement is refused.
+  await h.debug.placeRock(AT.col, AT.row);
+  const refused = await h.snapshot();
+  await captureStill(h, "stamps");
+
+  assertEqual(
+    refused.structures.length,
+    1,
+    `the structures after a second drop onto the occupied footprint at ` +
+      `(${AT.col}, ${AT.row})`,
+  );
+  assertEqual(
+    refused.stampsLeft,
+    STAMPS_PER_LEVEL - 1,
+    "the stamps left after a refused drop, which spends none",
+  );
 });

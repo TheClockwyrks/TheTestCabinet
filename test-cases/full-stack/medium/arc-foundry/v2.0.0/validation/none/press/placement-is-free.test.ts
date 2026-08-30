@@ -1,25 +1,60 @@
-// Arc Foundry — `press.placement-is-free`. CASE-PROVIDED. NOT YET WRITTEN.
+// press/placement-is-free — Charge is never spent on a stamp.
 //
-// The manifest declares this point at `press/placement-is-free.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/economy.md` names exactly two sinks, refinement and a tower upgrade, and
+// `specs/scrap-press.md` says the rest plainly: placing a rock is free, so the
+// allowance is the only limit on how many rocks a level places. The two rules
+// together are what make the build phase's decision about WHERE rather than about
+// whether the player can afford to look.
 //
-// THE REQUIREMENT. Charge is unchanged across a placement: the five-per-level
-// allowance is the only limit on how many rocks a level places.
-//
-// HOW IT IS DECIDED. Read Charge either side of five drops. The evidence it
-// hands back is `hud` (image): the HUD across a free placement.
+// Charge is read either side of a whole level's worth of drops, so a build that
+// charges even one per rock is caught rather than rounded away.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { STAMPS_PER_LEVEL } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** Charge in the bank, well above anything a rock could plausibly cost. */
+const CHARGE = 100;
 
-describe("press.placement-is-free", () => {
-  it("Placing a rock is free", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `press.placement-is-free` has not been written yet",
+/** A whole allowance of clear anchors. */
+const ANCHORS = [10, 14, 18, 22, 26].map((col) => ({ col, row: 8 }));
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("leaves Charge untouched across a whole level of drops", async () => {
+  await openYard(h, { charge: CHARGE });
+  assertEqual((await h.snapshot()).charge, CHARGE, "the Charge in the bank");
+
+  for (const [at, anchor] of ANCHORS.entries()) {
+    await h.debug.placeRock(anchor.col, anchor.row);
+    const s = await h.snapshot();
+    assertEqual(
+      s.structures.length,
+      at + 1,
+      `the structures on the yard after drop ${at + 1}`,
     );
-  });
+    assertEqual(
+      s.charge,
+      CHARGE,
+      `the Charge after drop ${at + 1} of ${STAMPS_PER_LEVEL}: placing a rock ` +
+        `is free (specs/scrap-press.md)`,
+    );
+  }
+
+  await h.advance(1);
+  await captureStill(h, "hud");
 });

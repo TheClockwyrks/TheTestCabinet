@@ -1,27 +1,92 @@
-// Arc Foundry — `press.harvest-starts-the-wave`. CASE-PROVIDED. NOT YET WRITTEN.
+// press/harvest-starts-the-wave — there is no send control; the harvest is what
+// launches the wave.
 //
-// The manifest declares this point at `press/harvest-starts-the-wave.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// TWO CLAIMS, AND THE FIRST ONE IS AN ABSENCE. `specs/campaign.md` makes the
+// build phase untimed: it shows no countdown, it never starts a wave on its own,
+// and the Load waits. A build with a timer behind the phase takes the decision
+// away from the player at whatever moment it runs out, so the phase is sat in for
+// a long stretch of simulation first and the yard is read to be still waiting.
 //
-// THE REQUIREMENT. There is no send control: the build phase runs until a
-// harvest is committed, and the moment it is, the phase becomes wave and the
-// wave number advances by one.
-//
-// HOW IT IS DECIDED. Sit in a build phase over ten seconds of simulation,
-// confirm no wave started, then keep a candidate and read the phase. The
-// evidence it hands back is `launch` (replay): the wave the harvest launched.
+// The second is the commitment. `specs/scrap-press.md` makes committing the
+// harvest the thing that starts the wave, and a level cannot advance without one.
+// So a candidate is kept, and the phase and the wave counter move on that call.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  standCandidate,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** How long the untimed build phase is sat in before anything is committed. */
+const WAIT_SECONDS = 10;
 
-describe("press.harvest-starts-the-wave", () => {
-  it("Committing the harvest is what starts the wave", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `press.harvest-starts-the-wave` has not been written yet",
+/** The roll that commits the harvest, and where it lands. */
+const ROLLS = { type: "capacitor", quality: 1 } as const;
+const AT = { col: 20, row: 10 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("waits for the harvest, and starts the wave on it", async () => {
+  await openYard(h);
+  const opened = await h.snapshot();
+  assertEqual(opened.phase, "build", "the phase a run opens on");
+  assertEqual(opened.wave, 0, "the wave counter before the first harvest");
+
+  const driven = await captureReplay(h, "launch", async () => {
+    // The phase is untimed: a long stretch of simulation starts nothing.
+    await h.advanceSeconds(WAIT_SECONDS);
+    const waited = await h.snapshot();
+
+    const candidate = await standCandidate(
+      h,
+      ROLLS.type,
+      ROLLS.quality,
+      AT.col,
+      AT.row,
     );
+    await h.debug.keep(candidate);
+    const launched = await h.snapshot();
+
+    await h.advanceSeconds(2);
+    return { waited, launched };
   });
+
+  assertEqual(
+    driven.waited.phase,
+    "build",
+    `the phase after ${WAIT_SECONDS}s of an untimed build phase`,
+  );
+  assertEqual(
+    driven.waited.wave,
+    opened.wave,
+    `the wave counter after ${WAIT_SECONDS}s of an untimed build phase`,
+  );
+  assertEqual(
+    driven.waited.waveActive,
+    false,
+    `a wave running after ${WAIT_SECONDS}s of an untimed build phase`,
+  );
+
+  assertEqual(
+    driven.launched.phase,
+    "wave",
+    "the phase once the level's harvest was committed",
+  );
+  assertEqual(
+    driven.launched.wave,
+    opened.wave + 1,
+    "the wave the harvest launched",
+  );
 });
