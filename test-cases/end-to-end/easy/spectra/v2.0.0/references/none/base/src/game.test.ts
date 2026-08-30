@@ -1,16 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  CHALLENGE_TOTAL,
-  DISCHARGE_MAX_R,
-  DISCHARGE_TIME,
   DIVE_FIRE_Y,
   DIVE_FIRST_DELAY,
   DIVE_GAP_MAX,
   DIVE_GAP_MIN,
   ENEMY_BULLET_SPEED,
   ENTER_GROUP_GAP,
-  EXTRA_LIFE_AT,
   FIELD_BOTTOM,
   FIELD_TOP,
   FIRE_INTERVAL,
@@ -23,23 +19,13 @@ import {
   READY_HOLD,
   RESONANCE_ABSORB,
   RESONANCE_KILL,
-  RESONANCE_MAX,
-  SCORE_CHALLENGE_DRONE,
-  SCORE_FLUX_DIVE,
-  SCORE_FLUX_FORM,
-  SCORE_PERFECT_BONUS,
   SCORE_PRISM_CORE,
   SCORE_PRISM_SHELL,
-  SCORE_SHARD_DIVE,
-  SCORE_SHARD_FORM,
-  SCORE_STAGE_CLEAR,
   SHIP_H,
   SHIP_SPEED,
   SHIP_X_MAX,
   SHIP_X_MIN,
   SHIP_Y,
-  STAGE_CLEARED_HOLD,
-  STAGE_INTRO_HOLD,
   START_LIVES,
   bulletSpeedScale,
   fluxHold,
@@ -629,7 +615,9 @@ describe("the swarm's own faculties", () => {
     drone("shard", 600, 200);
     d.setDiveClock(0);
     h.advance(DIVE_FIRST_DELAY * 0.9, 60);
-    expect(d.snapshot().drones.every((e) => e.phase === "formation")).toBe(true);
+    expect(d.snapshot().drones.every((e) => e.phase === "formation")).toBe(
+      true,
+    );
     h.advance(DIVE_FIRST_DELAY * 0.2, 20);
     expect(d.snapshot().drones.some((e) => e.phase === "diving")).toBe(true);
     // And the clock returned to zero at the launch.
@@ -669,7 +657,9 @@ describe("the swarm's own faculties", () => {
     for (let i = 0; i < 5; i += 1) drone("shard", 400 + i * 60, 200);
     d.setDiveClock(0);
     h.advance(20, 600);
-    expect(d.snapshot().drones.every((e) => e.phase === "formation")).toBe(true);
+    expect(d.snapshot().drones.every((e) => e.phase === "formation")).toBe(
+      true,
+    );
     // And the clock itself is held.
     expect(d.snapshot().diveClock).toBe(0);
   });
@@ -721,7 +711,9 @@ describe("the swarm's own faculties", () => {
     h.advance(6, 360);
     // Bullets leave the field, so the count is of what was fired, not what is
     // in flight: clear as they go and count.
-    expect(d.snapshot().bullets.filter((b) => !b.friendly).length).toBeLessThanOrEqual(1);
+    expect(
+      d.snapshot().bullets.filter((b) => !b.friendly).length,
+    ).toBeLessThanOrEqual(1);
   });
 
   it("flies its whole dive silent while its firing is off", () => {

@@ -129,7 +129,9 @@ describe("the keyboard", () => {
   });
 
   it("takes any event carrying a code, and nothing else", () => {
-    expect(asKeyboardEvent({ code: "KeyM" } as unknown as Event)).not.toBeNull();
+    expect(
+      asKeyboardEvent({ code: "KeyM" } as unknown as Event),
+    ).not.toBeNull();
     expect(asKeyboardEvent({} as unknown as Event)).toBeNull();
     const { keys, target } = bound();
     target.dispatchEvent({ type: "keydown" } as unknown as Event);

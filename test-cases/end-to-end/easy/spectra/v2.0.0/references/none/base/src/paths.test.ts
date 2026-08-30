@@ -73,9 +73,9 @@ describe("a path", () => {
     let previous = path.at(0);
     for (let d = 1; d <= path.length; d += 1) {
       const point = path.at(d);
-      expect(Math.hypot(point.x - previous.x, point.y - previous.y)).toBeLessThan(
-        1.4,
-      );
+      expect(
+        Math.hypot(point.x - previous.x, point.y - previous.y),
+      ).toBeLessThan(1.4);
       previous = point;
     }
   });

@@ -241,6 +241,9 @@ export function harnessWith(art: Art): Harness {
   const canvas = createCanvas(STAGE_W, STAGE_H);
   const raw = canvas.getContext("2d");
   const ctx = raw as unknown as CanvasRenderingContext2D;
+  // The whole frame is read once and cached: a per-pixel `getImageData` over a
+  // 1280x720 stage costs more than the drawing it inspects.
+  let pixels: Uint8ClampedArray | null = null;
 
   // Recorded rather than wrapped in a proxy: the renderer is typed against the
   // DOM context, and one patched method is the whole of what a test reads back.
@@ -325,16 +328,20 @@ export function harnessWith(art: Art): Harness {
     },
     advance,
     draw() {
+      pixels = null;
       game.render(state, { ctx });
     },
     muted: () => muted,
     read(x, y) {
-      const data = raw.getImageData(x, y, 1, 1).data;
+      pixels ??= raw.getImageData(0, 0, STAGE_W, STAGE_H).data;
+      const column = Math.min(STAGE_W - 1, Math.max(0, Math.round(x)));
+      const row = Math.min(STAGE_H - 1, Math.max(0, Math.round(y)));
+      const at = (row * STAGE_W + column) * 4;
       return [
-        data[0] as number,
-        data[1] as number,
-        data[2] as number,
-        data[3] as number,
+        pixels[at] as number,
+        pixels[at + 1] as number,
+        pixels[at + 2] as number,
+        pixels[at + 3] as number,
       ];
     },
     clearDrawn() {

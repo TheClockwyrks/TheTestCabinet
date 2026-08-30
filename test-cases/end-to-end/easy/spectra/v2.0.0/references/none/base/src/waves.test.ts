@@ -30,6 +30,7 @@ import {
   entrancePath,
   fluxCount,
   groupLayout,
+  longestEntrance,
   prismCount,
   waveColumns,
   waveRows,
@@ -49,9 +50,7 @@ describe("a standard wave's formation", () => {
         const mirrored = FORM_COLS - 1 - (col as number);
         expect(filled.has(`${mirrored},${row}`)).toBe(true);
         // And the mirror really is about FORM_CENTER_X.
-        expect(slotX(col as number) + slotX(mirrored)).toBe(
-          2 * FORM_CENTER_X,
-        );
+        expect(slotX(col as number) + slotX(mirrored)).toBe(2 * FORM_CENTER_X);
       }
     }
   });
@@ -61,8 +60,12 @@ describe("a standard wave's formation", () => {
       const slots = buildLayout(stage);
       const kinds = slots.map((slot) => slot.kind);
       const shards = kinds.filter((kind) => kind === "shard").length;
-      expect(kinds.filter((kind) => kind === "flux").length).toBeGreaterThanOrEqual(2);
-      expect(kinds.filter((kind) => kind === "prism").length).toBeGreaterThanOrEqual(1);
+      expect(
+        kinds.filter((kind) => kind === "flux").length,
+      ).toBeGreaterThanOrEqual(2);
+      expect(
+        kinds.filter((kind) => kind === "prism").length,
+      ).toBeGreaterThanOrEqual(1);
       expect(shards).toBeGreaterThan(slots.length / 2);
       const bands = new Set(slots.map((slot) => slot.band));
       expect(bands.has("cyan")).toBe(true);
@@ -239,6 +242,13 @@ describe("an entrance path", () => {
     }
   });
 
+  it("keeps the longest entrance of every stage inside its six seconds", () => {
+    for (const stage of STANDARD_STAGES) {
+      expect(longestEntrance(stage)).toBeLessThanOrEqual(6);
+      expect(longestEntrance(stage)).toBeGreaterThan(1);
+    }
+  });
+
   it("staggers the groups by ENTER_GROUP_GAP", () => {
     expect(ENTER_GROUP_GAP).toBe(0.6);
     // The last group of the largest wave is still released well inside the
@@ -317,9 +327,9 @@ describe("a challenge stage's flyover", () => {
     const drones = buildChallengeWave(state);
     expect(drones.length).toBe(CHALLENGE_TOTAL);
     for (let group = 0; group < CHALLENGE_GROUPS; group += 1) {
-      expect(
-        drones.filter((drone) => drone.entryGroup === group).length,
-      ).toBe(CHALLENGE_PER_GROUP);
+      expect(drones.filter((drone) => drone.entryGroup === group).length).toBe(
+        CHALLENGE_PER_GROUP,
+      );
     }
   });
 
@@ -346,9 +356,7 @@ describe("a challenge stage's flyover", () => {
     const state = createState(stubArt());
     state.stage = 3;
     for (const drone of buildChallengeWave(state)) {
-      expect(
-        drone.x < FIELD_LEFT || drone.x > FIELD_RIGHT,
-      ).toBe(true);
+      expect(drone.x < FIELD_LEFT || drone.x > FIELD_RIGHT).toBe(true);
       expect(drone.phase).toBe("entering");
     }
   });

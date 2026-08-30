@@ -76,10 +76,7 @@ describe("the seeded sprites", () => {
   it("are four 64-square rasters in straight alpha", () => {
     for (const name of ["fighter", "shard", "flux", "prism"]) {
       const raster = sources[name] as Raster;
-      expect([raster.width, raster.height]).toEqual([
-        SPRITE_SIZE,
-        SPRITE_SIZE,
-      ]);
+      expect([raster.width, raster.height]).toEqual([SPRITE_SIZE, SPRITE_SIZE]);
       // Only drawn pixels are opaque, so each composites over the dark field.
       expect(opaqueCount(raster)).toBeGreaterThan(500);
       expect(opaqueCount(raster)).toBeLessThan(SPRITE_SIZE * SPRITE_SIZE);
@@ -150,10 +147,7 @@ describe("deriving the other band-state", () => {
   it("reads the two band-states far enough apart to tell at a glance", () => {
     // The bands' own colours are far apart out of the 441 the cube spans.
     expect(
-      rgbDistance(
-        [...BAND_RGB.cyan, 255],
-        [...BAND_RGB.magenta, 255],
-      ),
+      rgbDistance([...BAND_RGB.cyan, 255], [...BAND_RGB.magenta, 255]),
     ).toBeGreaterThan(120);
     // And so are the two derived states of one silhouette.
     expect(
