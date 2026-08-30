@@ -55,7 +55,13 @@ import {
   CAMP_ORDER,
   coreRowFor,
 } from "./tuning";
-import { colCenterX, emptyMine, generateMine, tileLeft } from "./world";
+import {
+  colCenterX,
+  emptyMine,
+  generateMine,
+  resizeGrid,
+  tileLeft,
+} from "./world";
 
 /** A building's footprint in world units, as the debug surface reports it. */
 export interface BuildingBox {
@@ -298,6 +304,17 @@ export function loadExpedition(d: Draft): boolean {
   d.menuIndex = 0;
   d.screen = "in-mine";
   return true;
+}
+
+/**
+ * Resize the mine onto `d.coreRow`, the way an array is resized. Every cell the
+ * old depth and the new one share comes through untouched, rows past the new
+ * depth go along with the material nodes that sat in them, and rows the old depth
+ * did not reach open as an empty mine's. Nothing is generated.
+ */
+export function resizeMine(d: Draft): void {
+  d.grid = resizeGrid(d.grid, d.coreRow);
+  d.nodes = d.nodes.filter((node) => node.row < d.coreRow);
 }
 
 /** Empty the mine, leaving the border, the camp, and the Core chamber standing. */

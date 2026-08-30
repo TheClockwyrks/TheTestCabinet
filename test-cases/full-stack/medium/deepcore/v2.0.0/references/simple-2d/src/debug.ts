@@ -84,6 +84,7 @@ import {
   clearGroundItems,
   clearMine,
   regenerateMine,
+  resizeMine,
   startLaunch,
   trySave,
 } from "./flow";
@@ -803,18 +804,20 @@ export function createDebugApi(): DeepcoreDebugApi {
     },
 
     /**
-     * The size, `coreRow`, and the mine the new depth leaves.
+     * The size, `coreRow`, and the depth the mine reaches.
      *
-     * specs/instrumentation.md: a grid laid out for the old depth cannot
-     * describe a mine at the new one, so the mine is emptied to the new depth
-     * exactly as `clearMine` leaves it. Nothing is generated.
+     * specs/instrumentation.md, Resizing the mine: the grid is resized onto the
+     * new depth the way an array is resized. Every cell the two depths share
+     * comes through untouched, rows past the new depth go with the nodes that
+     * sat in them, rows the old depth did not reach open as an empty mine's, and
+     * the Core chamber follows the new depth. Nothing is generated.
      */
     setWorldSize(state, size) {
       const id = requireOneOf("setWorldSize", "size", size, WORLD_SIZES);
       return pose(state, (d) => {
         d.worldSize = id;
         d.coreRow = coreRowFor(id);
-        clearMine(d);
+        resizeMine(d);
       });
     },
 

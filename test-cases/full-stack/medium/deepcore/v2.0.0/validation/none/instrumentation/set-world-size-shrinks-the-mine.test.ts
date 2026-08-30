@@ -1,15 +1,21 @@
 // instrumentation/set-world-size-shrinks-the-mine — a shallower size drops the
 // rows past the new depth.
 //
-// The other direction of `specs/instrumentation.md`'s `setWorldSize`: the mine
-// "is emptied to the new depth exactly as `clearMine` leaves it". A row past the
-// new `coreRow` is no longer part of the mine, so it reads the way the same file
-// says a cell outside the grid reads: "`bedrock` with every other field `null`".
+// The other direction of `specs/instrumentation.md`'s `setWorldSize`, from
+// Resizing the mine: a cell "in a row past the new Core chamber, where the size
+// gets shallower" is "Gone with its row. The mine no longer reaches that row, so
+// `tileAt` there reads as a cell outside the grid" — "`bedrock` with every other
+// field `null`". The row at the new `coreRow` becomes "The Core chamber, whatever
+// the row held before: bedrock across the row, with the Core at `CORE_COL`."
 //
 // The mine is GENERATED at the deeper size first, so what the shrink has to get
-// rid of is real terrain rather than the empty grid a scene opens with — and a
-// row inside the new depth is read afterwards to hold the other half of the
-// claim, that what is left is emptied rather than the deep mine truncated.
+// rid of is real terrain rather than the empty grid a scene opens with, and the
+// new deepest row is read afterwards to hold the other half of the claim: the
+// mine ends in a Core chamber at the new depth rather than in whatever terrain
+// the deep mine happened to have there.
+//
+// WHAT THIS POINT DOES NOT DECIDE. Whether the cells ABOVE the new Core chamber
+// come through the resize is its own point, and so are the material nodes.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CORE_COL, coreRowFor } from "../constants";
@@ -27,10 +33,9 @@ import {
 const FROM = "marathon" as const;
 const TO = "quick" as const;
 
-/** A playable column, a row past the new Core chamber, and one well inside it. */
+/** A playable column and a row past the new Core chamber. */
 const COL = 5;
 const DEEP_ROW = 700;
-const SHALLOW_ROW = 120;
 
 let h: Harness;
 
@@ -59,9 +64,6 @@ it("drops the rows past the new Core chamber when the size is taken shallower", 
   if (DEEP_ROW <= coreRowFor(TO) || DEEP_ROW >= coreRowFor(FROM)) {
     fail(`a row between the ${TO} and ${FROM} Core chambers`, `row ${DEEP_ROW}`);
   }
-  if (SHALLOW_ROW < 1 || SHALLOW_ROW >= coreRowFor(TO)) {
-    fail(`a row inside the ${TO} mine`, `row ${SHALLOW_ROW}`);
-  }
   assertNotNull(
     generated.band,
     `the band tileAt(${COL}, ${DEEP_ROW}) reported while the mine was ${FROM}`,
@@ -81,15 +83,21 @@ it("drops the rows past the new Core chamber when the size is taken shallower", 
   assertNull(dropped.health, `the health ${at} reports`);
   assertNull(dropped.maxHealth, `the maxHealth ${at} reports`);
 
-  // What is left is the empty mine at the new depth, not the deep one cut short.
-  assertEqual(
-    (await h.tileAt(COL, SHALLOW_ROW)).kind,
-    "tunnel",
-    "specs/instrumentation.md: emptied to the new depth exactly as clearMine leaves it",
-  );
+  // And the mine ends in a Core chamber at the new depth: the row that becomes
+  // `coreRow` is bedrock across its width, whatever terrain it held before.
   assertEqual(
     (await h.tileAt(CORE_COL, shallow.coreRow)).kind,
     "core",
     "specs/world.md: the Core sits at (CORE_COL, coreRow)",
+  );
+  assertEqual(
+    (await h.tileAt(COL, shallow.coreRow)).kind,
+    "bedrock",
+    "specs/world.md: every cell of the Core chamber is bedrock border except the Core tile",
+  );
+  assertEqual(
+    (await h.tileAt(0, shallow.coreRow)).kind,
+    "bedrock",
+    "specs/world.md: column 0 is the bedrock border",
   );
 });

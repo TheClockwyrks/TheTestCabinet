@@ -459,7 +459,7 @@ validation = { script = "instrumentation/tile-at-outside-the-grid.test.ts", outp
 [[review.categories.items]]
 id = "set-world-size-extends-the-mine"
 title = "A deeper world size leaves a mine that reaches the new depth"
-description = "setWorldSize to a deeper size moves coreRow and leaves the mine emptied to that depth, so a row past the old Core chamber is an in-grid open tunnel that carries a band and takes a pose, the bedrock border stands beside it and the Core sits at (CORE_COL, coreRow)."
+description = "setWorldSize to a deeper size moves coreRow and extends the grid to it, so a row past the old Core chamber is an in-grid open tunnel that carries a band and takes a pose, the bedrock border stands beside it and the Core sits at (CORE_COL, coreRow)."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: take the size from quick to marathon, read a row past
@@ -471,14 +471,74 @@ validation = { script = "instrumentation/set-world-size-extends-the-mine.test.ts
 [[review.categories.items]]
 id = "set-world-size-shrinks-the-mine"
 title = "A shallower world size drops the rows past the new depth"
-description = "setWorldSize to a shallower size drops every row past the new coreRow, so a row that held generated terrain now reads with the documented out-of-grid shape, and what is left is the empty mine at the new depth with the Core at (CORE_COL, coreRow)."
+description = "setWorldSize to a shallower size drops every row past the new coreRow, so a row that held generated terrain now reads with the documented out-of-grid shape, and the mine ends in a Core chamber at the new depth: bedrock across that row with the Core at (CORE_COL, coreRow)."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: generate a marathon mine, take the size to quick, read
-# a deep row back as bedrock with every other field null and a shallow row as
-# open tunnel.
+# a deep row back as bedrock with every other field null, then read the new
+# deepest row as the Core chamber.
 validation = { script = "instrumentation/set-world-size-shrinks-the-mine.test.ts", outputs = [
   { id = "shallower", name = "The mine cut back to a Quick depth", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-world-size-deeper-keeps-the-cells"
+title = "A deeper world size keeps every cell the two depths hold"
+description = "setWorldSize to a deeper size resizes the grid rather than rebuilding it, so a posed ore vein, gas pocket, lava cell, boulder and part-cut rock above the old Core chamber all read back with the same kind, band, ore, material and health, including a cell whose band no longer matches the band its row now falls in."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose one of every kind at three depths inside a quick
+# mine, take the size to marathon, and hold each cell's whole tileAt reading
+# against what it was, on rows whose band the deeper mine moves.
+validation = { script = "instrumentation/set-world-size-deeper-keeps-the-cells.test.ts", outputs = [
+  { id = "kept", name = "The posed cells after the mine is taken deeper", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-world-size-shallower-keeps-the-cells"
+title = "A shallower world size keeps every cell the two depths hold"
+description = "setWorldSize to a shallower size drops only the rows past the new coreRow, so a posed ore vein, gas pocket, lava cell, boulder and part-cut rock above it all read back with the same kind, band, ore, material and health, including a cell whose band no longer matches the band its row now falls in."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose one of every kind at three depths inside a
+# marathon mine, take the size to quick, and hold each cell's whole tileAt
+# reading against what it was, on rows whose band the shallower mine moves.
+validation = { script = "instrumentation/set-world-size-shallower-keeps-the-cells.test.ts", outputs = [
+  { id = "kept", name = "The posed cells after the mine is taken shallower", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-world-size-moves-the-core-chamber"
+title = "A deeper world size leaves exactly one Core chamber, at the new depth"
+description = "setWorldSize to a deeper size moves the Core chamber to the new coreRow rather than adding a second one, so findTile(core) reports (CORE_COL, coreRow) for a miner standing at the camp and the row that was the Core chamber is an ordinary row of the mine, open tunnel across the playable columns with the bedrock border beside it."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: take the size from quick to marathon with the miner at
+# the camp, read findTile(core) as the new coreRow, and read the old Core
+# chamber row back as open tunnel between the bedrock border.
+validation = { script = "instrumentation/set-world-size-moves-the-core-chamber.test.ts", outputs = [
+  { id = "moved", name = "The mine where the Core chamber used to stand", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-world-size-deeper-keeps-the-nodes"
+title = "A deeper world size keeps the material nodes"
+description = "setWorldSize to a deeper size leaves the buried material nodes where they are, so a scanner locked on a node before the resize is still locked on it afterwards, at the same distance, and the node's cell still reports its material."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose one Resonite node inside a quick mine with the
+# scanner at its top tier and the miner beside it, take the size to marathon,
+# and read the lock, the target and the distance back unchanged.
+validation = { script = "instrumentation/set-world-size-deeper-keeps-the-nodes.test.ts", outputs = [
+  { id = "kept", name = "The scanner still locked after the mine is taken deeper", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-world-size-shallower-drops-the-nodes"
+title = "A shallower world size drops the material nodes past the new depth"
+description = "setWorldSize to a shallower size takes a buried material node past the new coreRow with the row it sat in, so a scanner locked on that node before the resize reports nothing locked and no target afterwards rather than pointing at a cell the mine no longer holds."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose one Resonite node just past the standard depth in
+# a marathon mine with the scanner at its top tier and the miner above it, take
+# the size to standard, and read the lock and the target back as gone.
+validation = { script = "instrumentation/set-world-size-shallower-drops-the-nodes.test.ts", outputs = [
+  { id = "dropped", name = "The mine after the node past the new depth is dropped", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "posing-outside-the-domain-fails"

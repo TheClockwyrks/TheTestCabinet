@@ -81,6 +81,7 @@ import { clearSave, hasSave, readSave, writeSave } from "./save";
 import {
   colCenterX,
   emptyMine,
+  resizeGrid,
   generateMine,
   isMinableKind,
   tileLeft,
@@ -1274,5 +1275,16 @@ export class Game {
   clearMine(): void {
     this.grid = emptyMine(this.coreRow);
     this.nodes = [];
+  }
+
+  /**
+   * Resize the mine onto the current `coreRow`, the way an array is resized.
+   * Every cell the old depth and the new one share comes through untouched, rows
+   * past the new depth go along with the material nodes that sat in them, and
+   * rows the old depth did not reach open as an empty mine's.
+   */
+  resizeMine(): void {
+    this.grid = resizeGrid(this.grid, this.coreRow);
+    this.nodes = this.nodes.filter((node) => node.row < this.coreRow);
   }
 }

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BAND_HEALTH,
   CAM_LEAD_MAX,
+  CORE_COL,
   CORE_TIMER,
   DEEPCORE_DEBUG_VERSION,
   FUEL_TIERS,
@@ -416,6 +417,45 @@ describe("posing the expedition", () => {
     expect(snapshot.mode).toBe("hardcore");
     expect(snapshot.worldSize).toBe("marathon");
     expect(snapshot.coreRow).toBe(coreRowFor("marathon"));
+  });
+
+  it("resizes the mine onto a deeper size instead of emptying it", () => {
+    h.pose((debug, state) => debug.setWorldSize(state, "quick"));
+    const was = coreRowFor("quick");
+    h.pose((debug, state) => debug.setOreTile(state, 5, 100, "ferron"));
+    h.pose((debug, state) => debug.setTileHealth(state, 5, 100, 1));
+    const kept = h.debug.tileAt(h.state, 5, 100);
+
+    h.pose((debug, state) => debug.setWorldSize(state, "marathon"));
+    const now = coreRowFor("marathon");
+
+    // The cell comes through with its own band, which the deeper mine no longer
+    // computes for that row.
+    expect(h.debug.tileAt(h.state, 5, 100)).toEqual(kept);
+    expect(kept.band).toBe("rockbed");
+    expect(h.debug.tileAt(h.state, 5, 900).kind).toBe("tunnel");
+    expect(h.debug.tileAt(h.state, 0, 900).kind).toBe("bedrock");
+    // One Core chamber, and it is the new deepest row.
+    expect(h.debug.findTile(h.state, "core")).toEqual({
+      col: CORE_COL,
+      row: now,
+    });
+    expect(h.debug.tileAt(h.state, CORE_COL, was).kind).toBe("tunnel");
+  });
+
+  it("resizes the mine onto a shallower size, dropping the rows past it", () => {
+    h.pose((debug, state) => debug.setWorldSize(state, "marathon"));
+    h.pose((debug, state) => debug.generateMine(state));
+    const kept = h.debug.tileAt(h.state, 5, 100);
+
+    h.pose((debug, state) => debug.setWorldSize(state, "quick"));
+    const now = coreRowFor("quick");
+
+    expect(h.debug.tileAt(h.state, 5, 100)).toEqual(kept);
+    expect(h.debug.tileAt(h.state, 5, 700).band).toBeNull();
+    expect(h.debug.tileAt(h.state, CORE_COL, now).kind).toBe("core");
+    expect(h.debug.tileAt(h.state, 5, now).kind).toBe("bedrock");
+    expect(h.debug.snapshot(h.state).coreRow).toBe(now);
   });
 
   it("sets a tier, clamping the pools to the new maxima and charging nothing", () => {

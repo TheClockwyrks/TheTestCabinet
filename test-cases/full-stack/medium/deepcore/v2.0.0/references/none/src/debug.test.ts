@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BAND_HEALTH,
   CAM_LEAD_MAX,
+  CORE_COL,
   CORE_TIMER,
   DEEPCORE_DEBUG_VERSION,
   FUEL_BUY_INCREMENT,
@@ -330,6 +331,41 @@ describe("posing the expedition", () => {
     expect(api.snapshot().mode).toBe("hardcore");
     api.setWorldSize("quick");
     expect(api.snapshot().worldSize).toBe("quick");
+    expect(api.snapshot().coreRow).toBe(250);
+  });
+
+  it("resizes the mine onto a deeper size instead of emptying it", () => {
+    const { api } = surface();
+    api.setWorldSize("quick");
+    api.setOreTile(5, 100, "ferron");
+    api.setTileHealth(5, 100, 1);
+    const kept = api.tileAt(5, 100);
+
+    api.setWorldSize("marathon");
+
+    // The cell comes through with its own band, which the deeper mine no longer
+    // computes for that row.
+    expect(api.tileAt(5, 100)).toEqual(kept);
+    expect(kept.band).toBe("rockbed");
+    expect(api.tileAt(5, 900).kind).toBe("tunnel");
+    expect(api.tileAt(0, 900).kind).toBe("bedrock");
+    // One Core chamber, and it is the new deepest row.
+    expect(api.findTile("core")).toEqual({ col: CORE_COL, row: 1000 });
+    expect(api.tileAt(CORE_COL, 250).kind).toBe("tunnel");
+  });
+
+  it("resizes the mine onto a shallower size, dropping the rows past it", () => {
+    const { api } = surface();
+    api.setWorldSize("marathon");
+    api.generateMine();
+    const kept = api.tileAt(5, 100);
+
+    api.setWorldSize("quick");
+
+    expect(api.tileAt(5, 100)).toEqual(kept);
+    expect(api.tileAt(5, 700).band).toBeNull();
+    expect(api.tileAt(CORE_COL, 250).kind).toBe("core");
+    expect(api.tileAt(5, 250).kind).toBe("bedrock");
     expect(api.snapshot().coreRow).toBe(250);
   });
 

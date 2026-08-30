@@ -2,10 +2,11 @@
 // that reaches the new depth.
 //
 // `specs/instrumentation.md`, `setWorldSize`: it sets "the expedition's world
-// size ... and with it `coreRow`. The mine that stood at the old depth cannot
-// describe one at the new depth, so it is emptied to the new depth exactly as
-// `clearMine` leaves it: the bedrock border, the camp row and the Core chamber
-// stand, and every playable cell between them is open tunnel."
+// size ... and with it `coreRow` and the depth the mine reaches", and Resizing
+// the mine says a row "the old depth did not reach" holds "What an empty mine
+// holds at that depth: the bedrock border across columns `0` and `31`, open
+// tunnel across the playable columns, carrying the band the new depth gives that
+// row."
 //
 // That matters because the same file fixes the pose domain as `row` from `1` to
 // `coreRow`. A build that moved `coreRow` and left the grid where it was would
@@ -16,7 +17,11 @@
 // So the size is taken from Quick to Marathon and a row PAST the old depth is
 // read: it is inside the grid, it is open tunnel, and it takes a pose that reads
 // back. The Core chamber and the bedrock border are read at the new depth too,
-// because "emptied to the new depth" is a claim about all three.
+// because reaching the new depth is a claim about all three.
+//
+// WHAT THIS POINT DOES NOT DECIDE. Whether the cells the two depths SHARE come
+// through the resize is its own point, and so is the old Core chamber ceasing to
+// be one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BAND_HEALTH, CORE_COL, WORLD_COLS } from "../../src/constants";
@@ -93,7 +98,7 @@ it("reaches rows past the old depth after the size is taken deeper", async () =>
   assertEqual(
     opened.kind,
     "tunnel",
-    "specs/instrumentation.md: every playable cell between the camp and the Core chamber is open tunnel",
+    "specs/instrumentation.md: a row the old depth did not reach opens as an empty mine's",
   );
   assertNotNull(opened.band, `the band tileAt(${COL}, ${DEEP_ROW}) reports`);
   assertNull(opened.health, "specs/instrumentation.md: a tunnel is not minable");

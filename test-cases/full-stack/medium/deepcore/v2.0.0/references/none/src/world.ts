@@ -496,6 +496,27 @@ export function emptyMine(coreRow: number): Tile[][] {
   return grid;
 }
 
+/**
+ * The grid a mine of `coreRow` depth holds when a mine that stood at another
+ * depth is resized onto it, the way an array is resized. Every cell above both
+ * Core chambers comes through exactly as it stood; rows past the new depth go;
+ * rows the old depth did not reach open as an empty mine's; and the Core chamber
+ * follows the new depth, so `row coreRow` is the only one.
+ */
+export function resizeGrid(grid: Tile[][], coreRow: number): Tile[][] {
+  const resized = emptyMine(coreRow);
+  // The rows above BOTH Core chambers are the ones that exist at either depth.
+  // The old Core chamber is never among them, so a deeper size leaves it an
+  // ordinary row and a shallower one makes the row that becomes `coreRow` the
+  // chamber.
+  const shared = Math.min(grid.length - 1, coreRow);
+  for (let row = 0; row < shared; row++) {
+    const line = grid[row];
+    if (line) resized[row] = line;
+  }
+  return resized;
+}
+
 /** The world x the miner's box sits at when it stands centered on a column. */
 export function colCenterX(col: number, width: number): number {
   return tileLeft(col) + (TILE - width) / 2;
