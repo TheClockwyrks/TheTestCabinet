@@ -7,3 +7,9 @@ node_modules/
 coverage/
 .tcab/
 package-lock.json
+
+# Material this project is handed rather than writes: the specification it is
+# built against and the engine's own documentation. Both are read, never edited,
+# so neither is held to this project's formatting.
+specs/
+engine/

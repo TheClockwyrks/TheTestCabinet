@@ -6,3 +6,8 @@ build/
 out/
 coverage/
 package-lock.json
+
+# Material this project is handed rather than writes: the specification it is
+# built against. It is read, never edited, so it is not held to this project's
+# formatting.
+specs/
