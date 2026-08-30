@@ -1,26 +1,109 @@
-// Arc Foundry — `abilities.choke-slow-expires`. CASE-PROVIDED. NOT YET WRITTEN.
+// abilities/choke-slow-expires — the slow runs out and the unit recovers.
 //
-// The manifest declares this point at `abilities/choke-slow-expires.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/components.md fixes the duration: "The Choke's hit applies a slow for
+// `CHOKE_SLOW_DUR` (`1.2`) seconds." specs/enemies.md fixes what happens at the
+// end of it: "Once `slowUntil` passes, `slowFactor` returns to `1`", and while it
+// has not passed the unit moves at the reduced speed.
 //
-// THE REQUIREMENT. CHOKE_SLOW_DUR (1.2) seconds after the hit the unit's
-// slowFactor returns to 1 and it moves at its base speed again.
-//
-// HOW IT IS DECIDED. Hit a travelling unit once, advance past the duration,
-// and sample its speed either side of the expiry. The evidence it hands back
-// is `expiry` (replay): the unit recovering its speed.
+// The Choke is taken off the yard the moment its shot lands, because it fires
+// again every three-quarters of a second and "a fresh hit refreshes the duration"
+// — so a check that left it standing would be measuring the cadence rather than
+// the duration. What is read is three things: `slowUntil` sits one duration past
+// the hit, the unit is still slowed a little before that moment, and its factor is
+// back at exactly `1` and its speed back at its roster speed a little after it.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertCloseTo, assertEqual } from "../assert";
+import { CHOKE_SLOW, CHOKE_SLOW_DUR } from "../../src/constants";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  parkUnit,
+  standComponent,
+  structureById,
+  unitById,
+  type Harness,
+} from "../harness";
+import { awaitEffect } from "./impact";
 
-import { fail } from "../assert";
+const ANCHOR = { col: 10, row: 10 };
 
-describe("abilities.choke-slow-expires", () => {
-  it("A slow expires after CHOKE_SLOW_DUR", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `abilities.choke-slow-expires` has not been written yet",
-    );
+/** Inside the Scrap Choke's `104`. */
+const TARGET_RANGE = 60;
+
+/** The tier the duration is read at. */
+const TIER = 1;
+
+/** How far either side of the expiry the unit is sampled, in seconds. */
+const EITHER_SIDE = 0.2;
+
+/**
+ * How far `slowUntil` may sit from the moment the hit was first seen.
+ *
+ * The check samples every frame of its own clock, and a build is free to run its
+ * simulation in whole internal steps, so the frame the slow is first VISIBLE on
+ * can sit a little past the update that applied it.
+ */
+const STAMP_SLACK = 0.05;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("holds the slow to the end of CHOKE_SLOW_DUR and then returns it to 1", async () => {
+  openYard(h, { wave: 5 });
+  const id = standComponent(h, "choke", TIER, ANCHOR.col, ANCHOR.row);
+  const structure = structureById(h.snapshot(), id);
+  const target = parkUnit(h, "dynamo", {
+    x: structure.cx + TARGET_RANGE,
+    y: structure.cy,
   });
+
+  const recovered = await captureReplay(h, "expiry", async () => {
+    const struck = await awaitEffect(h, target, (unit) => unit.slowFactor < 1);
+    const hitAt = struck.simTime;
+    const slowed = unitById(struck, target);
+
+    // Nothing may refresh the slow while its own duration is being measured.
+    h.debug.clearStructures();
+    h.debug.clearProjectiles();
+
+    await h.advanceSeconds(CHOKE_SLOW_DUR - EITHER_SIDE);
+    const before = unitById(h.snapshot(), target);
+    await h.advanceSeconds(2 * EITHER_SIDE);
+    const after = unitById(h.snapshot(), target);
+    return { hitAt, slowed, before, after };
+  });
+
+  assertBetween(
+    recovered.slowed.slowUntil,
+    recovered.hitAt + CHOKE_SLOW_DUR - STAMP_SLACK,
+    recovered.hitAt + CHOKE_SLOW_DUR + STAMP_SLACK,
+    `slowUntil against the simulation clock at the hit plus ` +
+      `CHOKE_SLOW_DUR (${CHOKE_SLOW_DUR}s) (specs/components.md)`,
+  );
+  assertCloseTo(
+    recovered.before.slowFactor,
+    1 - CHOKE_SLOW[TIER - 1]!,
+    6,
+    `slowFactor ${EITHER_SIDE}s before the slow was due to expire`,
+  );
+  assertEqual(
+    recovered.after.slowFactor,
+    1,
+    `slowFactor ${EITHER_SIDE}s after the slow expired (specs/enemies.md)`,
+  );
+  assertCloseTo(
+    recovered.after.speed,
+    recovered.after.baseSpeed,
+    6,
+    "the speed the unit recovered once the slow expired",
+  );
 });

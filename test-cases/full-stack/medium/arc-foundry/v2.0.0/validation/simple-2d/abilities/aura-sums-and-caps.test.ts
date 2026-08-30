@@ -1,27 +1,109 @@
-// Arc Foundry — `abilities.aura-sums-and-caps`. CASE-PROVIDED. NOT YET WRITTEN.
+// abilities/aura-sums-and-caps — auras add up, and stop adding up at AURA_CAP.
 //
-// The manifest declares this point at `abilities/aura-sums-and-caps.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/components.md fixes both: "Aura bonuses from several sources covering one
+// structure sum, and the summed bonus is capped at `AURA_CAP` (`1.0`, doubling the
+// structure's damage)."
 //
-// THE REQUIREMENT. Bonuses from several Regulators covering one structure add
-// together, and the summed bonus is capped at AURA_CAP (1.0), so a structure
-// under enough Regulators reports exactly twice its base damage and no more.
+// Two arrangements are read on one yard, the second replacing the first. Two Scrap
+// Regulators over one Capacitor is the summing case: `0.10` and `0.10` make
+// `0.20`, so a build that takes the largest bonus rather than the total reports
+// `6.6` where `7.2` is due. Five Tesla-Prime Regulators over the same Capacitor is
+// the ceiling: their bonuses sum to `1.10`, over the cap, so the Capacitor must
+// report exactly twice its bare damage and not a fraction more.
 //
-// HOW IT IS DECIDED. Stand two Regulators over one structure, read its damage,
-// then stand enough to exceed the cap and read it again. The evidence it hands
-// back is `cap` (image): the capped damage under many auras.
+// Every Regulator's centre is inside its own radius of the Capacitor's, and no
+// Regulator is buffed by any of this: an aura reaches firing structures, and a
+// Regulator never fires.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo } from "../assert";
+import { AURA_CAP, REGULATOR_AURA } from "../../src/constants";
+import {
+  captureStill,
+  componentDamage,
+  createHarness,
+  emptyYard,
+  openYard,
+  standComponent,
+  structureById,
+  type Harness,
+  type Tier,
+} from "../harness";
 
-import { fail } from "../assert";
+/** The Capacitor every arrangement is read on. */
+const CAPACITOR = { col: 20, row: 15 };
+const CAPACITOR_TIER = 1;
 
-describe("abilities.aura-sums-and-caps", () => {
-  it("Aura bonuses sum and cap at AURA_CAP", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `abilities.aura-sums-and-caps` has not been written yet",
-    );
-  });
+/** Two places within a Scrap Regulator's `90` of that centre. */
+const PAIR = [
+  { col: 17, row: 15 },
+  { col: 23, row: 15 },
+];
+
+/** Five places within a Tesla-Prime Regulator's `114` of that centre. */
+const MANY = [
+  { col: 17, row: 15 },
+  { col: 23, row: 15 },
+  { col: 20, row: 12 },
+  { col: 20, row: 18 },
+  { col: 17, row: 12 },
+];
+
+const BARE = componentDamage("capacitor", CAPACITOR_TIER);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+/** Stand one Capacitor under `places` Regulators of `tier`, and read its damage. */
+function damageUnder(
+  harness: Harness,
+  tier: Tier,
+  places: readonly { col: number; row: number }[],
+): number {
+  emptyYard(harness);
+  const id = standComponent(
+    harness,
+    "capacitor",
+    CAPACITOR_TIER,
+    CAPACITOR.col,
+    CAPACITOR.row,
+  );
+  for (const place of places) {
+    standComponent(harness, "regulator", tier, place.col, place.row);
+  }
+  return structureById(harness.snapshot(), id).damage;
+}
+
+it("sums two bonuses and holds a fifth of them at twice the bare damage", async () => {
+  openYard(h);
+
+  const summed = damageUnder(h, 1, PAIR);
+  const scrapBonus = REGULATOR_AURA[0]!.bonus;
+  assertCloseTo(
+    summed,
+    BARE * (1 + PAIR.length * scrapBonus),
+    6,
+    `the damage under ${PAIR.length} Scrap Regulators, whose ${scrapBonus} ` +
+      `bonuses sum to ${PAIR.length * scrapBonus} (specs/components.md)`,
+  );
+
+  const capped = damageUnder(h, 5, MANY);
+  await h.advance(1);
+  captureStill(h, "cap");
+  const uncapped = MANY.length * REGULATOR_AURA[4]!.bonus;
+  assertCloseTo(
+    capped,
+    BARE * (1 + AURA_CAP),
+    6,
+    `the damage under ${MANY.length} Tesla-Prime Regulators, whose bonuses ` +
+      `sum to ${uncapped} and are capped at AURA_CAP (${AURA_CAP}) ` +
+      `(specs/components.md)`,
+  );
 });
