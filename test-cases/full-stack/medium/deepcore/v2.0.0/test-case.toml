@@ -563,6 +563,18 @@ validation = { script = "instrumentation/travel-faculty.test.ts", outputs = [
   { id = "held", name = "The miner held in place while it cuts", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "travel-faculty-holds-an-abandoned-cut"
+title = "With travel off a cut given up part way moves the miner nowhere"
+description = "A down cut abandoned mid-bore leaves a held miner exactly where it was posed: the put-back a build needs when the miner sinks into the cell it is boring is a write to the body like any other, so setMinerTravel(false) holds it too, and the cell's health still falls."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose a minable cell under a held miner, hold down for
+# half a second, let the key up and run a second of frames, then read the
+# position and velocity exactly as posed with the cell's health down.
+validation = { script = "instrumentation/travel-faculty-holds-an-abandoned-cut.test.ts", outputs = [
+  { id = "held", name = "The miner held through an abandoned cut", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "drill-faculty"
 title = "With the drill off no cut starts or progresses"
 description = "setMinerDrill(false) stops the drill cutting: no cell loses health, no cell breaks, nothing is banked and no drill hit spends fuel, while the miner still walks, falls, thrusts and takes damage exactly as it does with the drill running."

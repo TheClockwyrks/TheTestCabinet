@@ -87,7 +87,11 @@ export function updateDrill(d: Draft, dt: number): void {
   // A down cut that is not being continued leaves the miner embedded in the cell
   // it was boring. Lift it back onto that cell before its own cell is read, or
   // the collision resolver reads the embedding as walking into a wall.
-  if (!lockedDown && cur && cur.dir === "down") {
+  // The lift-back is a move of the BODY, so it is gated on the travel faculty
+  // like every other one: specs/instrumentation.md has the body hold its posed
+  // position "whatever is held on the keyboard", with collision displacement
+  // named among what moves it nowhere.
+  if (!lockedDown && cur && cur.dir === "down" && m.travel) {
     const standY = tileTop(cur.row) - MINER_H - 0.01;
     if (m.y > standY) {
       m.y = standY;
