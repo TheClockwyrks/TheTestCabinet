@@ -1,26 +1,74 @@
-// Arc Foundry — `input.pointer-clears-selection`. CASE-PROVIDED. NOT YET WRITTEN.
+// input/pointer-clears-selection — a press on open yard clears the selection.
 //
-// The manifest declares this point at `input/pointer-clears-selection.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/controls.md`: "Press on empty yard — Clears the
+// selection." `specs/instrumentation.md` reports both halves of what a selection
+// is, `selected` and `combineSet`, and pairs them everywhere else: the operation
+// that clears a selection "clears the selection and the combine set". So a press
+// on nothing leaves nothing selected and nothing set aside to fold.
 //
-// THE REQUIREMENT. Pressing on a stretch of open yard with a structure
-// selected clears the selection and the combine set.
-//
-// HOW IT IS DECIDED. Select a structure, press on empty yard, and read the
-// selection and the set back. The evidence it hands back is `cleared` (image):
-// the cleared selection.
+// HOW IT IS DECIDED. One base structure stands on an otherwise empty yard, is
+// selected, and is put into the explicit combine set, so there is a selection to
+// lose. The pointer is then pressed at the centre of a tile well clear of it, with
+// nothing held on the cursor, and both fields are read back.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { assertDeepEqual, assertEqual, assertNull } from "../assert";
+import {
+  captureStill,
+  clickTile,
+  createHarness,
+  openYard,
+  standComponent,
+  type Harness,
+} from "../harness";
 
-describe("input.pointer-clears-selection", () => {
-  it("A press on empty yard clears the selection", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `input.pointer-clears-selection` has not been written yet",
-    );
-  });
+/** Where the structure stands, and a tile of open yard well clear of it. */
+const ANCHOR = { col: 10, row: 0 };
+const OPEN = { col: 30, row: 10 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("clears the selection and the combine set on a press over open yard", async () => {
+  openYard(h);
+  const id = standComponent(h, "capacitor", 2, ANCHOR.col, ANCHOR.row);
+  h.debug.select(id);
+  h.debug.addToCombineSet(id);
+
+  const posed = h.snapshot();
+  assertEqual(
+    posed.selected,
+    id,
+    "a structure selected before the press (specs/instrumentation.md)",
+  );
+  assertEqual(
+    posed.held.active,
+    false,
+    "nothing held on the cursor, so the press is a press on the yard rather " +
+      "than a drop (specs/controls.md)",
+  );
+
+  await clickTile(h, OPEN.col, OPEN.row);
+  captureStill(h, "cleared");
+
+  const after = h.snapshot();
+  assertNull(
+    after.selected,
+    `pressing open yard at (${OPEN.col}, ${OPEN.row}) to clear the selection ` +
+      "(specs/controls.md)",
+  );
+  assertDeepEqual(
+    after.combineSet,
+    [],
+    "the combine set after the selection is cleared " +
+      "(specs/instrumentation.md)",
+  );
 });
