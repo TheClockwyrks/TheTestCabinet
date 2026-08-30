@@ -30,13 +30,12 @@
 // retires the old source to the build.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
-  BINDINGS,
-  CUES,
-  PAUSE_ITEMS,
-  START_CELLS,
-} from "../../src/constants";
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThanOrEqual,
+} from "../assert";
+import { BINDINGS, CUES, PAUSE_ITEMS, START_CELLS } from "../../src/constants";
 
 import {
   captureReplay,

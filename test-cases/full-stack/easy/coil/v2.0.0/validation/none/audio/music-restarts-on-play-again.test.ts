@@ -24,7 +24,11 @@
 // asked for from the moment PLAY AGAIN was confirmed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertGreaterThanOrEqual } from "../assert";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThanOrEqual,
+} from "../assert";
 import { CUES, KEY, START_CELLS } from "../constants";
 import {
   captureReplay,

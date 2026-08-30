@@ -29,7 +29,11 @@
 // the table fixes — which edge the piece joins on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual, assertLessThanOrEqual, fail } from "../assert";
+import {
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+  fail,
+} from "../assert";
 import { SPRITE_PATHS } from "../../src/constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {

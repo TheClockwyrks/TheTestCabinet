@@ -57,7 +57,11 @@ it("advances from an empty accumulator after a round has ended", async () => {
   // One update carrying five and a half ticks past the tick that ends the round.
   await deliver(h, OVERRUN_SECONDS, 1);
   const ended = await h.snapshot();
-  assertEqual(ended.screen, "gameover", "the screen the overrunning update left");
+  assertEqual(
+    ended.screen,
+    "gameover",
+    "the screen the overrunning update left",
+  );
 
   const resumed = await captureReplay(h, "resumed", async () => {
     await h.debug.setScreen("playing");
@@ -70,5 +74,9 @@ it("advances from an empty accumulator after a round has ended", async () => {
     ended.ticks,
     `ticks resolved by ${RESUME_SECONDS} s of the resumed round`,
   );
-  assertDeepEqual(resumed.snake, ended.snake, "the chain the resumed round left");
+  assertDeepEqual(
+    resumed.snake,
+    ended.snake,
+    "the chain the resumed round left",
+  );
 });
