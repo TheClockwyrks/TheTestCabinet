@@ -1,0 +1,20 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`.
+dist/
+build/
+out/
+
+# Coverage reports — produced by `npm test`.
+coverage/
+
+# Playwright verification scratch.
+test-results/
+playwright-report/
+
+# Logs.
+*.log
+
+# Scratch that `tcab validate --implementation` writes beside the build.
+.tcab/
