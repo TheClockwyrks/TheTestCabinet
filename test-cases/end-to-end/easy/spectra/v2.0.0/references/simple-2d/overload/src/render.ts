@@ -561,15 +561,11 @@ function drawHud(
   state: DeepReadonly<SpectraState>,
 ): void {
   label(ctx, String(state.score), 40, 46, 36, COLOR.textBright);
-  label(
-    ctx,
-    `${HUD_STAGE_LABEL} ${state.stage}`,
-    1240,
-    44,
-    24,
-    COLOR.text,
-    "right",
-  );
+  // The label and the digits are drawn apart, so each reads as itself.
+  label(ctx, String(state.stage), 1240, 44, 24, COLOR.textBright, "right");
+  ctx.font = font(24);
+  const digits = ctx.measureText(String(state.stage)).width;
+  label(ctx, HUD_STAGE_LABEL, 1228 - digits, 44, 24, COLOR.text, "right");
   drawLives(ctx, state);
   drawResonance(ctx, state);
   drawPolarity(ctx, state);
@@ -582,6 +578,13 @@ function scrim(ctx: CanvasRenderingContext2D, color: string): void {
   ctx.fillRect(0, FIELD_TOP, 1280, FIELD_BOTTOM - FIELD_TOP);
 }
 
+/**
+ * A vertical menu, its highlighted row drawn distinctly.
+ *
+ * Each item is drawn as its own text and nothing else, so what the screen shows is
+ * the entry the specification names; the carets that mark the highlight are drawn
+ * beside it rather than around it.
+ */
 function drawMenu(
   ctx: CanvasRenderingContext2D,
   items: readonly string[],
@@ -592,16 +595,20 @@ function drawMenu(
 ): void {
   items.forEach((item, i) => {
     const chosen = i === index;
-    const text = chosen ? `> ${item} <` : item;
+    const at = y + i * step;
     label(
       ctx,
-      text,
+      item,
       640,
-      y + i * step,
+      at,
       size,
       chosen ? COLOR.accent : COLOR.textDim,
       "center",
     );
+    if (!chosen) return;
+    const half = ctx.measureText(item).width / 2 + size * 0.7;
+    label(ctx, ">", 640 - half, at, size, COLOR.accent, "center");
+    label(ctx, "<", 640 + half, at, size, COLOR.accent, "center");
   });
 }
 
@@ -702,16 +709,10 @@ function drawGameOver(
 ): void {
   scrim(ctx, COLOR.scrim);
   label(ctx, "GAME OVER", 640, 230, 68, COLOR.textBright, "center");
-  label(ctx, `SCORE ${state.score}`, 640, 300, 32, COLOR.text, "center");
-  label(
-    ctx,
-    `${HUD_STAGE_LABEL} ${state.stage}`,
-    640,
-    344,
-    26,
-    COLOR.textDim,
-    "center",
-  );
+  label(ctx, "SCORE", 500, 300, 32, COLOR.textDim, "right");
+  label(ctx, String(state.score), 520, 300, 32, COLOR.text);
+  label(ctx, HUD_STAGE_LABEL, 500, 344, 26, COLOR.textDim, "right");
+  label(ctx, String(state.stage), 520, 344, 26, COLOR.text);
   drawMenu(ctx, GAME_OVER_ITEMS, state.menuIndex, 440, 50, 30);
 }
 
