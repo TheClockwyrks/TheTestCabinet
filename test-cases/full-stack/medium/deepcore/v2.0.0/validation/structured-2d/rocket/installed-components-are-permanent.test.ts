@@ -1,24 +1,63 @@
-// Deepcore — rocket.installed-components-are-permanent. STUB: NOT YET AUTHORED.
+// Deepcore — rocket/installed-components-are-permanent: what is on the pad stays
+// on the pad.
 //
-// Installed components survive a death
+// `specs/rocket.md`: "Installed components are permanent. They survive a death in
+// either mode and cannot be un-fabricated or refunded." `specs/modes.md` says the
+// same from the death's side: a death "leaves every installed rocket component
+// installed", in both modes.
 //
-// Installed components are permanent: they survive a death in either mode and
-// cannot be un-fabricated or refunded.
+// So a death is driven twice over, once in each mode, from the same posed
+// checklist, and the list is read back unchanged each time — the same components
+// in the same order, with the summary agreeing on the count. Both modes are one
+// requirement here because the specification states permanence as one rule that
+// the mode does not touch.
 //
-// Automated validation: install components, drive a death in each mode and
-// read the installed list unchanged afterwards.
-//
-// `test-case.toml` declares this suite as `rocket/installed-components-are-permanent.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (kept (image)) around the drive.
+// The death itself is the game's: the hull is posed at `0`, which
+// `specs/instrumentation.md` says "is not itself a death: the game's own
+// continuous check is what ends the expedition, on the next update".
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { MODES, ROCKET_COMPONENT_IDS } from "../../src/constants";
+import { assertDeepEqual, assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { openPadScene, runUntilScreenLeaves } from "./pad-scene";
 
-test("Installed components survive a death", () => {
-  throw new Error(
-    "Deepcore validator `rocket/installed-components-are-permanent` is declared in test-case.toml but has not been authored yet.",
-  );
+/** How many components stand on the pad when the miner dies. */
+const INSTALLED = 3;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("keeps every installed component through a death in either mode", async () => {
+  for (const mode of MODES) {
+    openPadScene(h);
+    h.debug.setMode(mode);
+    h.debug.setPanel(null);
+    h.debug.setRocketInstalled(INSTALLED);
+    h.debug.setHull(0);
+
+    const over = await runUntilScreenLeaves(h, "in-mine");
+
+    assertEqual(over.screen, "game-over", `the screen a ${mode} death ends on`);
+    assertEqual(over.mode, mode, "the mode the expedition was played in");
+    assertDeepEqual(
+      over.rocket.installed,
+      ROCKET_COMPONENT_IDS.slice(0, INSTALLED),
+      `the checklist after a ${mode} death`,
+    );
+    assertEqual(
+      over.summary?.componentsInstalled,
+      INSTALLED,
+      `components the ${mode} summary counts`,
+    );
+  }
+
+  captureStill(h, "kept");
 });

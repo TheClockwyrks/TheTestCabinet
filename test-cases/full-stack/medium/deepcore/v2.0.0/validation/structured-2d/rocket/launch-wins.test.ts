@@ -1,24 +1,56 @@
-// Deepcore — rocket.launch-wins. STUB: NOT YET AUTHORED.
+// Deepcore — rocket/launch-wins: launching a finished rocket wins the game.
 //
-// Launching takes the game to the Victory screen
+// `specs/rocket.md`: "Launching plays the rocket lifting off the pad ... and
+// takes the game to the Victory screen ... Launching is the only way to win.
+// There is no other ending." `specs/ui.md` gives the `victory` screen "The
+// expedition summary, after the rocket launches."
 //
-// Launching with all five installed lifts the rocket off the pad and takes the
-// game to the victory screen, which is the only ending the game has.
+// All five components are posed installed and the pad's own `LAUNCH` is called;
+// the game is then run on until it reaches `victory`, since the specification
+// puts the lift-off between the press and the screen without fixing how long it
+// takes. The recording covers the whole of it, which is what the review item's
+// output is for.
 //
-// Automated validation: install all five, launch and read the screen at
-// victory with the summary populated.
-//
-// `test-case.toml` declares this suite as `rocket/launch-wins.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (liftoff (replay)) around the drive.
+// The summary is read at the end, because the Victory screen is the summary:
+// `specs/gameplay.md` says it reports the mode and the number of components
+// installed, and `specs/modes.md` reserves a death cause for a death — so a
+// victory carries none.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { ROCKET_COMPONENT_IDS } from "../../src/constants";
+import { assertEqual, assertNotNull, assertNull } from "../assert";
+import { captureReplay, createHarness, type Harness } from "../harness";
+import { openPadScene, runUntilScreenLeaves } from "./pad-scene";
 
-test("Launching takes the game to the Victory screen", () => {
-  throw new Error(
-    "Deepcore validator `rocket/launch-wins` is declared in test-case.toml but has not been authored yet.",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("lifts the rocket off the pad and reaches the victory screen", async () => {
+  openPadScene(h);
+  h.debug.setRocketInstalled(ROCKET_COMPONENT_IDS.length);
+
+  const before = h.snapshot();
+  assertNull(before.rocket.nextComponent, "a component still to build");
+  assertEqual(before.screen, "in-mine", "the screen the launch is called from");
+
+  const won = await captureReplay(h, "liftoff", async () => {
+    h.debug.launch();
+    return runUntilScreenLeaves(h, "in-mine");
+  });
+
+  assertEqual(won.screen, "victory", "the screen a launch takes the game to");
+  assertNotNull(won.summary, "an expedition summary on the victory screen");
+  assertEqual(
+    won.summary?.componentsInstalled,
+    ROCKET_COMPONENT_IDS.length,
+    "components the summary counts",
   );
+  assertNull(won.summary?.deathCause, "a death cause on a victory");
 });
