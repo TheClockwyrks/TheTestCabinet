@@ -140,12 +140,13 @@ read and changes nothing.
 ### `setAutoStep(enabled)`
 
 Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
-frame loop feeding elapsed time to the simulation, so the game changes only when
-`advance` says so. `setAutoStep(true)` returns it to running itself, which is how
-a build starts and how it is played.
+frame loop feeding elapsed time to the simulation, so no tick runs until
+`advance` runs one. `setAutoStep(true)` returns the game to advancing itself,
+which is how a build starts and how it is played.
 
-Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
-the state the most recent frame left.
+Drawing and input are unaffected either way: the loop keeps rendering and keeps
+reading the actions, so a menu still answers a key press and a steering request
+still lands in the buffer while the simulation is held.
 
 ### `advance(seconds, frames)`
 
