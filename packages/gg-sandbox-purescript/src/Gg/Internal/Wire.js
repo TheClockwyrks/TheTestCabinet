@@ -38,13 +38,21 @@ const notExported = (operation, written) =>
 // fully-qualified name a PureScript program writes — `Gg.Files.readFile` — and its last segment
 // is the family's own name for the same function. One string rather than two because the two halves
 // are the same word: what differs is the qualifier.
+//
+// `read` turns what gg answered into the value the typed function hands back, and it is applied
+// HERE rather than by a functor lift over the effect. The engine captures ten stack frames, and
+// reaching the membrane from here spends five of them: four inside gg's own SDK and one for the
+// `apply` below. A lift over the effect spends four more in `Effect`'s own foreign module, because
+// `map` for `Effect` is `liftA1` and each of its two `bindE` applications is two frames. Applied
+// inside this frame, the bridge is one frame and the calling program's own frame is inside the
+// capture. `read` runs after the call returned, so it is never on the failure path.
 export const callImpl =
-  (operation) => (namespace) => (written) => (args) => () => {
+  (read) => (operation) => (namespace) => (written) => (args) => () => {
     const family = gg[namespace];
     const name = written.slice(written.lastIndexOf(".") + 1);
     const fn = family === undefined ? undefined : family[name];
     if (typeof fn !== "function") throw notExported(operation, written);
-    return fn.apply(family, args);
+    return read(fn.apply(family, args));
   };
 
 export const lowerImpl = (converters) => (record) => {

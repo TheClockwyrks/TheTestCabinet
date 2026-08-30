@@ -28,6 +28,7 @@
 module Gg.Internal.Wire
   ( Wire
   , call
+  , callMap
   , call_
   , wire
   , taken
@@ -67,7 +68,12 @@ foreign import data Wire :: Type
 -- | `written`'s last segment, which is the same word on both sides — so the one string carries the
 -- | dispatch and the sentence a refusal is reported in, and a refusal names the call the model wrote
 -- | rather than the one the bridge made.
-foreign import callImpl :: String -> String -> String -> Array Wire -> Effect Wire
+-- |
+-- | `read` turns what gg answered into the value the typed function hands back, and the bridge
+-- | applies it inside its own frame rather than lifting it over the effect. The guest's engine
+-- | captures ten stack frames, so a crossing that costs one frame is what leaves the calling
+-- | program's own frame inside the capture.
+foreign import callImpl :: forall a. (Wire -> a) -> String -> String -> String -> Array Wire -> Effect a
 
 -- | Lower a record by converting the fields a converter is given for, and passing every other
 -- | field through untouched.
@@ -93,13 +99,24 @@ wire = unsafeCoerce
 taken :: forall a. Wire -> a
 taken = unsafeCoerce
 
--- | Call a function that answers with something.
+-- | Call a function that answers with something, taken as the type the caller says it is.
 call :: forall a. String -> String -> String -> Array Wire -> Effect a
-call operation namespace written args = taken <$> callImpl operation namespace written args
+call = callImpl taken
+
+-- | Call a function whose answer is built out of what came back by `read`.
+-- |
+-- | The same crossing as [`call`](#v:call), with the conversion carried across the bridge rather
+-- | than mapped over the effect afterwards.
+callMap :: forall a b. (a -> b) -> String -> String -> String -> Array Wire -> Effect b
+callMap read = callImpl (read <<< taken)
 
 -- | Call a function whose answer is nothing worth having.
 call_ :: String -> String -> String -> Array Wire -> Effect Unit
-call_ operation namespace written args = void (callImpl operation namespace written args)
+call_ = callImpl dropped
+
+-- | Read a result that has nothing in it.
+dropped :: Wire -> Unit
+dropped _ = unit
 
 -- | A record of optional arguments, with the fields named in `converters` converted on the way out.
 lower :: forall converters given. Record converters -> Record given -> Wire

@@ -56,13 +56,13 @@ instruction it emits, and remove the collision paragraph from
 `apps/docs/src/content/docs/gg/languages/purescript.md`.
 
 Clearing the previous response's build output each turn is what keeps a repeated
-name unambiguous. See `tasks/gg-sandbox/workspace-per-agent.md`.
+name unambiguous. See `tasks/gg-sandbox/done/workspace-per-agent.md`.
 
 ## Done when
 
-- [ ] `module_name`, `module_name_span`, `skip_trivia` and `is_module_name_byte` are gone.
-- [ ] The esbuild entry point is derived from the output tree.
-- [ ] A response reusing a module name from an earlier response compiles and runs.
-- [ ] A response whose leading block comment holds non-ASCII text compiles and runs.
-- [ ] The unique-module-name instruction is gone from the arm and from the docs.
-- [ ] Gates green.
+- [x] `module_name`, `module_name_span`, `skip_trivia` and `is_module_name_byte` are gone.
+- [x] The esbuild entry point is derived from the output tree.
+- [x] A response reusing a module name from an earlier response compiles and runs.
+- [x] A response whose leading block comment holds non-ASCII text compiles and runs.
+- [x] The unique-module-name instruction is gone from the arm and from the docs.
+- [x] Gates green.

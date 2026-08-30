@@ -184,7 +184,7 @@ archiveThread ranges =
 -- | `InvalidArgument` for an empty query.
 searchArchive :: String -> Effect ArchiveSearch
 searchArchive query =
-  archiveSearch <$> Wire.call "search_archive" "context" "Gg.Context.searchArchive" [ Wire.wire query ]
+  Wire.callMap archiveSearch "search_archive" "context" "Gg.Context.searchArchive" [ Wire.wire query ]
 
 -- | Compact the context window: the detailed thread is dropped and restarted from a summary.
 -- |

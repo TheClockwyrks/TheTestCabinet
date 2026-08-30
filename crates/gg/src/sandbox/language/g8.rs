@@ -357,10 +357,7 @@ const KNOWN_HOLES: &[Hole] = &[
 /// because it is the one a model meets most: a path that was right last turn and is not right now.
 pub(super) fn responder(name: &str, args: &Value) -> ToolOutcome {
     match name {
-        // `read_skill` fails the same way for the one arm whose read reaches the model through a
-        // functor lift: a direct string-returning call is what keeps that arm's fault located at
-        // the model's own line.
-        "read_file" | "read_skill" => ToolOutcome::failed(
+        "read_file" => ToolOutcome::failed(
             ToolFailure::NotFound,
             "no such file or directory: missing.md".to_string(),
         ),

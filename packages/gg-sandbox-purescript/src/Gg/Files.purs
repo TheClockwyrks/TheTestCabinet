@@ -181,8 +181,8 @@ readFile
   -> Record given
   -> Effect FileRead
 readFile path options =
-  fileRead TextFile ImageFile
-    <$> Wire.call "read_file" "files" "Gg.Files.readFile" [ Wire.wire path, Wire.lower {} options ]
+  Wire.callMap (fileRead TextFile ImageFile) "read_file" "files" "Gg.Files.readFile"
+    [ Wire.wire path, Wire.lower {} options ]
 
 -- | Write UTF-8 text to a file, creating parent directories and replacing what is there.
 -- |
@@ -258,7 +258,7 @@ listDir
   => Record given
   -> Effect (Array DirEntry)
 listDir options =
-  map dirEntry <$> Wire.call "list_dir" "files" "Gg.Files.listDir" [ Wire.pick "path" options ]
+  Wire.callMap (map dirEntry) "list_dir" "files" "Gg.Files.listDir" [ Wire.pick "path" options ]
 
 -- | Search the workspace's files for a regular expression, honouring the ignore files.
 -- |

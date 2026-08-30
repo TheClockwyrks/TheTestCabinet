@@ -21,6 +21,6 @@ leading block comment, a nested block comment, a string, and a raw string.
 
 ## Done when
 
-- [ ] A code module carrying non-ASCII text in a comment or string lexes cleanly.
-- [ ] Tests cover non-ASCII text in each of the four lexer modes.
-- [ ] Gates green.
+- [x] A code module carrying non-ASCII text in a comment or string lexes cleanly.
+- [x] Tests cover non-ASCII text in each of the four lexer modes.
+- [x] Gates green.
