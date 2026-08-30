@@ -1,24 +1,64 @@
-// Deepcore — materials.scanner-range-tier-3. STUB: NOT YET AUTHORED.
+// materials/scanner-range-tier-3 — tier 3 reaches thirty-two tiles.
 //
-// Tier 3 locks within thirty-two tiles
+// `specs/upgrades.md` gives scanner tier 3 a range of `32` tiles and says what
+// that buys: the band's node locks from anywhere across it once the miner is at
+// its depth. The rule being read is the same one tier 2 is read against, on the
+// same terms: the straight-line distance between the miner's cell and the node's
+// cell, one tile inside the bound and one tile outside it.
 //
-// At scanner tier 3 a needed node locks on within 32 tiles, so the node in the
-// band the miner is standing in locks from right across the world.
-//
-// Automated validation: pose a needed node at just inside and just outside 32
-// tiles at tier 3 and read the lock at each.
-//
-// `test-case.toml` declares this suite as `materials/scanner-range-tier-3.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (range (image)) around the drive.
+// The separation runs down the column rather than across the row, because
+// `specs/world.md` gives the world 32 columns and a horizontal offset of 33
+// tiles would fall outside it.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertNull } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  cellDistance,
+  clearNode,
+  minerCell,
+  openScanner,
+  poseNode,
+  scannerRange,
+  settled,
+} from "./scanner-scene";
 
-test("Tier 3 locks within thirty-two tiles", () => {
-  throw new Error(
-    "Deepcore validator `materials/scanner-range-tier-3` is declared in test-case.toml but has not been authored yet.",
+/** The tier under test, and the range specs/upgrades.md gives it. */
+const TIER = 3;
+const RANGE = scannerRange(TIER);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("locks inside thirty-two tiles and stays unlocked beyond them", async () => {
+  openScanner(h, TIER);
+  const me = minerCell(await settled(h));
+
+  const inside = { col: me.col, row: me.row + RANGE - 1 };
+  poseNode(h, inside, "cryenite");
+  const near = await settled(h);
+  captureStill(h, "range");
+  assertEqual(near.scanner.locked, true, "specs/mining.md, one tile inside");
+  assertEqual(near.scanner.target, "cryenite", "specs/mining.md");
+  assertCloseTo(
+    near.scanner.distanceTiles ?? Number.NaN,
+    cellDistance(minerCell(near), inside),
+    2,
+    "specs/mining.md",
   );
+
+  clearNode(h, inside);
+  const outside = { col: me.col, row: me.row + RANGE + 1 };
+  poseNode(h, outside, "cryenite");
+  const far = await settled(h);
+  assertEqual(far.scanner.locked, false, "specs/mining.md, one tile outside");
+  assertNull(far.scanner.target, "specs/instrumentation.md");
+  assertNull(far.scanner.distanceTiles, "specs/instrumentation.md");
 });
