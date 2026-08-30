@@ -1,8 +1,69 @@
 # Meltdown — Audio
 
-SCAFFOLD. This file is a placeholder created by the scaffold stage so the
-manifest resolves; the specification stage replaces it in full.
+The game plays ten cues, one per event. This file defines the cues and what mute
+does.
 
-Scope this file owns, and nothing else:
+## The cues
 
-The cues and mute: the ten cue names and the event each answers; that a cue is raised by the frame that resolves its event and played from the frame loop; that audio is synthesized rather than loaded; that the game plays nothing before the first interaction; that mute silences everything and the game stays playable muted. Branches on engine.slug.
+| Cue | The event it answers |
+| --- | --- |
+| `fire` | An emitter's shot resolves. |
+| `trip` | An emitter trips. |
+| `death` | A surge unit's hp reaches `0`. |
+| `leak` | A surge unit reaches its assigned exhaust. |
+| `place` | A tower is placed on the floor. |
+| `sell` | A placed tower is sold. |
+| `wave-clear` | A wave clears. |
+| `victory` | The victory screen opens. |
+| `game-over` | The game-over screen opens. |
+| `menu` | A menu highlight moves. |
+
+Each cue is short and distinct from the other nine.
+
+A cue is raised by the frame that resolves the event it answers, and it is played
+from the frame loop, so a cue always names one real frame: the frame the shot
+landed on, the frame the wave cleared on, the frame the tower was placed on. An
+event that does not resolve raises nothing, so a placement refused as invalid
+plays no `place` cue.
+
+{{#if (eq engine.slug "none")}}
+## Playing them
+
+Audio is synthesized with the Web Audio API. The build ships no audio file and
+loads none.
+
+Browsers block audio until the page has been interacted with, so the game plays
+nothing at all before the first input reaches it, and it starts and runs
+correctly whether or not audio can start.
+
+## Mute
+
+The build owns the mute bit. It is toggled by the `mute` action and by the
+panel's mute control, from any screen, and `specs/hud.md` states how the control
+reads.
+
+While muted, none of the ten cues produces any sound. The game stays fully
+playable muted: nothing about the floor, the run, or the screens changes with the
+mute bit.
+{{else}}
+## Playing them
+
+The cues are defined once, when the game is initialized, and played through the
+{{engine.name}} engine's audio bus, which the engine documents in the `engine/`
+directory at the root of this repository. Each cue is synthesized rather than
+loaded: the build ships no audio file.
+
+The engine owns the first-interaction unlock, so the game plays nothing before
+the first input reaches it and it starts and runs correctly whether or not audio
+can start.
+
+## Mute
+
+The engine owns the mute bit. It is toggled by the `mute` action and by the
+panel's mute control, from any screen, and `specs/hud.md` states how the control
+reads.
+
+While muted, none of the ten cues produces any sound. The game stays fully
+playable muted: nothing about the floor, the run, or the screens changes with the
+mute bit.
+{{/if}}

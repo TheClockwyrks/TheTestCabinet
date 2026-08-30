@@ -1,8 +1,511 @@
-# Meltdown — Instrumentation
+# Meltdown — Debug and automation surface
 
-SCAFFOLD. This file is a placeholder created by the scaffold stage so the
-manifest resolves; the specification stage replaces it in full.
+{{#if (eq engine.slug "none")}}
+Meltdown carries a debugging and automation surface, `window.__meltdown`, so the
+game can be driven and inspected from code without holding a key or waiting on
+real time.
 
-Scope this file owns, and nothing else:
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__meltdown` as soon as the game
+has initialized. Every scenario driven from code reaches the game through it, so
+it is present and exactly as specified here.
 
-The debug and automation surface: the deterministic core; every operation by name, signature and effect, including the world gate and the three faculty gates, each stated as gating one faculty and nothing else, and setScreen and setPhase stated as running no entry effect; that no operation plays a cue and why; what reset restores; the snapshot shape, with pointer, muted and simTime called out as the three fields the game keeps honest every frame; the identity rules; the debug overlay. There is no setMuted, no setWaveCount, no canPlace and no step. Branches on engine.slug.
+Each operation is a read of the game's state, a pose of one field of it, or a
+move of the clock. A pose arranges the floor, and the game's own pathing,
+targeting, damage, heat, and scoring rules run from there exactly as they do in
+play, so a scenario driven from code behaves exactly like one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else if (eq engine.slug "simple-2d")}}
+Meltdown carries a debugging and automation surface so the game can be driven and
+inspected from code without holding a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on the
+page. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a reading or a pose of `MeltdownState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a
+writable one. A pose takes the current state, as `DeepReadonly<MeltdownState>`,
+and returns the next `MeltdownState`; a reading takes the state the same way and
+returns what it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.setTowerHeat(s, id, 60))`, and a reading against the
+engine's current state, as `debug.snapshot(engine.state)`. A pose arranges the
+floor, and the game's own pathing, targeting, damage, heat, and scoring rules run
+from there exactly as they do in play, so a scenario driven from code behaves
+exactly like one played by hand. `src/game.ts` declares and exports its type,
+`MeltdownDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Meltdown carries a debugging and automation surface so the game can be driven and
+inspected from code without holding a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` returns the finished surface. The engine holds it
+and returns it from `engine.debug`, and it is reached that way alone: nothing is
+installed on the page. Every scenario driven from code reaches the game through
+it, so it is present and exactly as specified here.
+
+Each operation acts on the live game at the moment it is called. A pose takes
+only the parameters its row names, arranges the running game through the same
+systems play uses, and returns nothing; a reading returns plain data built at the
+call and changes nothing. A pose arranges the floor, and the game's own pathing,
+targeting, damage, heat, and scoring rules run from there exactly as they do in
+play, so a scenario driven from code behaves exactly like one played by hand.
+`src/game.ts` declares and exports its type, `MeltdownDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
+
+## A deterministic core
+
+The surface rests on the simulation being deterministic: every rate integrated
+against the game time each frame advances by, so an interval of game time reaches
+the same state however it was divided into frames. Two more properties make the
+game driveable from code:
+
+- Render-free core. Game state advances from the elapsed time the game is handed,
+  independent of a canvas, of the frame loop that measured it, and of wall-clock
+  time. The dependency runs one way: the simulation reads nothing from the
+  renderer. Whether a tile is blocked, which unit an emitter targets, how much a
+  shot removes, and how a frame's heat resolves are all decided from the floor
+  alone.
+- Seeded randomness. Any randomness the game uses runs off a generator seeded
+  from the state's generator field, and it keeps its whole generator state in
+  that field, so reseeding and replaying the same calls reproduces the same
+  result exactly. The vent each unit enters at is drawn from it.
+
+Given the same seed and the same sequence of calls and elapsed game time, the
+game reaches the same state every time.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard, the pointer's own hardware events, and the overlay belong to the
+runtime layer beneath the game, and the surface carries no operation for the
+keyboard or the overlay. That layer reports which keys are down and draws and
+toggles the debug overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `advance` below.
+
+Muting is the other. There is no operation that sets it: `mute` is reached the
+way a player reaches it, through its binding in `specs/controls.md` or the
+panel's mute control, and the snapshot reports the result.
+{{else}}
+The clock, the keyboard, the audio bus, and the overlay belong to the
+{{engine.name}} engine, which documents them in the `engine/` directory at the
+root of this repository, and the surface carries no operation for any of them.
+The engine advances the game frame by frame and can take it off real time, it
+drives the actions the game registers, it owns muting, and it draws and toggles
+the debug overlay.
+
+There is therefore no operation that sets muting: `mute` is reached the way a
+player reaches it, through its binding in `specs/controls.md` or the panel's mute
+control, and the snapshot reports the result.
+{{/if}}
+
+The pointer is on the surface, because a scripted scenario presses the panel and
+the floor the way a player does. What the overlay shows is Meltdown's, under
+Diagnostics below.
+
+## Identity
+
+Every tower and every surge unit carries an `id`: a number, distinct among the
+entities live at any moment, reported by `snapshot` and taken by every
+per-entity operation. Two rules make an id findable without an assignment
+scheme:
+
+- An entity added through this surface is appended to its roster, so it is the
+  last entry and its id is read from there. A tower committed by `place` is
+  appended the same way.
+- An id is never reused while the entity holding it is live, and an entity keeps
+  its id for its whole life.
+
+## The operations
+
+The surface carries `version` (`MELTDOWN_DEBUG_VERSION`, `1`), a plain number,
+and the operations below. Values are plain numbers, strings, and booleans. `col`
+and `row` are tile coordinates as `specs/floor.md` defines them, and every `x`
+and `y` the surface takes or reports is an entity's centre in the stage's logical
+units, so a caller aiming at a tile passes that tile's centre,
+`(18 + 19c + 9.5, 18 + 19r + 9.5)`.
+{{#if (eq engine.slug "simple-2d")}}
+
+Each operation takes the current state, `DeepReadonly<MeltdownState>`, as its
+first parameter. A pose returns the next `MeltdownState`, built from the one it
+was handed, which it leaves as it was; a reading returns what it read. The
+signatures below name the parameters that follow the state, so
+`setTowerHeat(id, heat)` below is `setTowerHeat(state, id, heat)` on the surface
+and `snapshot()` is `snapshot(state)`.
+{{else if (eq engine.slug "structured-2d")}}
+
+Each operation takes only the parameters its signature names and acts on the live
+game the moment it is called. A pose returns nothing; a reading returns what it
+read and changes nothing.
+{{/if}}
+
+### The core
+
+| Operation | Effect |
+| --- | --- |
+| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
+| `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+
+`reset` restores `screen` to `"title"`, `phase` to `"opening"`, `menuIndex` to
+`0`, `mode` to `"containment"`, `difficulty` to `"medium"`, `money` to the
+starting money that pair gives, `lives` to its starting lives, `score` to `0`,
+`wave` to `1`, `buildTimer` to `0`, `wavePending` to `0`, `speed` to `1`,
+`selected` to `null`, `hoverShop` to `null`, `build` to `null`, and `simTime` to
+`0`. It empties the tower and surge rosters, clears the spawner's clock, and
+turns the world gate `waveSpawning` back on.
+
+`options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
+game's randomness. `muted` is left exactly as it stands, because muting is a
+player preference the runtime owns, and so is `pointer`, which mirrors something
+the runtime owns as well.
+{{#if (eq engine.slug "none")}}
+`autoStep` is left as it stands too: who drives the clock is not part of the
+game's state.
+
+### The clock
+
+| Operation | Effect |
+| --- | --- |
+| `setAutoStep(enabled)` | Takes the game off real time, and gives it back. |
+| `advance(seconds, frames)` | Runs whole frames of game time immediately. |
+
+`setAutoStep(false)` stops the frame loop advancing the simulation from the wall
+clock, so the game changes only when `advance` says so. `setAutoStep(true)`
+returns it to running itself, which is how a build starts and how it is played.
+Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
+the state the most recent frame left. It changes no game state, and is reported
+as `autoStep`.
+
+`advance(seconds, frames)` runs `frames` whole frames covering `seconds` of game
+time, each worth `seconds / frames`, immediately and in order. `frames` defaults
+to `1`. Each is a real frame, the same update the loop runs followed by a render,
+so the game's own rules produce the result and the canvas reflects it.
+
+Every rate in this game is per second and integrated against the frame's game
+time, so `advance(1, 1)` and `advance(1, 120)` cover the same second and reach
+the same outcome, beyond the drift a change in step size explains.
+{{/if}}
+
+### The screen and the run
+
+| Operation | Effect |
+| --- | --- |
+| `setScreen(screen)` | Sets the current screen: `"title"`, `"modeselect"`, `"difficultyselect"`, `"howto"`, `"playing"`, `"paused"`, `"victory"`, or `"gameover"`. |
+| `setPhase(phase)` | Sets the sub-phase of the `playing` screen: `"opening"`, `"building"`, or `"wave"`. |
+| `setMenuIndex(n)` | Sets the highlighted row of whatever menu the current screen shows, counted from `0`. |
+| `setMode(mode)` | Sets the mode: `"containment"`, `"hundred"`, `"deeppockets"`, `"bottleneck"`, or `"suddendeath"`. |
+| `setDifficulty(difficulty)` | Sets the difficulty: `"easy"`, `"medium"`, or `"hard"`. |
+| `setMoney(amount)` | Sets the current money. |
+| `setLives(count)` | Sets the lives remaining. |
+| `setScore(n)` | Sets the score. |
+| `setWave(n)` | Sets the current wave number. |
+| `setBuildTimer(seconds)` | Sets the seconds left in the current build phase. |
+| `setWavePending(n)` | Sets how many units of the current wave are still to be released. |
+| `setSpeed(speed)` | Sets the game-speed toggle, `1` or `2`. |
+
+`setScreen` and `setPhase` set that field alone and run no entry effect. Neither
+resets a menu index, pays interest or a wave-clear bonus, grants a score, changes
+any tower's freshness, releases or clears a wave, or plays a cue. Reaching an
+entry effect is what the run's own transitions are for.
+
+`setMode` and `setDifficulty` change no other field. The derived figures of
+`specs/modes.md`, `waveCount`, `startMoney`, `startLives`, `interest`, and
+`buildZone`, follow them, and the run's live money, lives, and wave do not.
+
+`setLives` triggers no game over: the loss belongs to the leak path, and this is
+a precondition. `setScore` pays no bonus and grants nothing, whatever boundary it
+carries the score across. `setWave` rebuilds nothing, releases nothing, and
+clears nothing; the coming wave's type and count and the hp scaling follow it.
+
+### The world gate
+
+| Operation | Gates |
+| --- | --- |
+| `setWaveSpawning(enabled)` | The run's own release of surge: the build timer's automatic start of the next wave when it reaches `0`, and the spawner's release of the units counted by `wavePending`. Off, no unit arrives unless one is added, and a build timer driven to `0` leaves the phase where it stands. The timer still counts down, a unit already on the floor still walks, and everything else runs on. It is on by default, restored to on by `reset`, and reported as `waveSpawning`. |
+
+### The towers
+
+| Operation | Effect |
+| --- | --- |
+| `addTower(type, col, row, rotation)` | Adds one tower of `type` with its footprint's top-left at tile `(col, row)` and its placement `rotation` (`0` to `3`). It costs nothing, spends nothing, and runs no placement check. The footprint's tiles become blocked and the routes are recomputed exactly as a placed tower's are. The tower starts at heat `0`, level `1`, not tripped, with `spent` equal to its build cost, `fresh` true, and both faculties on. It is appended to `towers`. |
+| `removeTower(id)` | Removes that tower. Its footprint reopens and the routes are recomputed. It pays no refund and changes neither money nor score. |
+| `clearTowers()` | Removes every tower, reopening every footprint and recomputing the routes. It pays no refund and changes neither money nor score, and it leaves the surge standing. |
+| `setTowerHeat(id, heat)` | Sets the emitter's heat, a number in `[0, 100]`. It does not trip the tower: the trip belongs to the heat model, and this is a precondition. |
+| `setTowerTripped(id, tripped)` | Sets whether the tower is offline on a trip. It sets that flag alone, touching neither the heat nor `tripTimer` and raising no cue. |
+| `setTowerTripTimer(id, seconds)` | Sets the seconds left on the trip cooldown. It sets that field alone and does not trip or un-trip the tower. |
+| `setTowerLevel(id, level)` | Sets the tower's level, `1`, `2`, or `3`. It spends nothing, and every stat `specs/towers.md` derives from the level follows. |
+| `setTowerFresh(id, fresh)` | Sets whether the tower still refunds in full. |
+| `setTowerFiring(id, enabled)` | The firing gate, below. |
+| `setTowerThermal(id, enabled)` | The thermal gate, below. |
+
+Two faculty gates hold one faculty of one tower, and each gates that faculty and
+nothing else. Both are on for a tower the game itself placed, and both are
+reported by `snapshot`.
+
+| Gate | What it holds |
+| --- | --- |
+| `firingEnabled` | The tower's targeting and firing: acquiring a target, resolving a shot, the damage and splash the shot deals, the slow a Rime applies, and the `heatPerShot` the shot adds. Off, the tower's thermal model runs exactly as an idle tower's does: it cools, conducts, exchanges with movers, and trips. |
+| `thermalEnabled` | The tower's part in the heat model: its air cooling, its conduction with its neighbours, the flow a Forge or a Sink drives into or out of it, and its trip. Off, an emitter's heat holds exactly where it was posed while it goes on acquiring targets, firing at its rate, and dealing its damage at that pinned heat. |
+
+There is no operation that rotates a placed tower. Orientation is fixed at
+placement, so `rotation` is set by `addTower` and by the preview's rotation at
+the moment `place` commits.
+
+### Building
+
+`setArmed`, `setPreview`, and `setPreviewRotation` pose the held preview.
+`place`, `upgradeTower`, and `sellTower` are single things a player does, running
+through the game's own code, so each has every consequence
+`specs/building.md` gives it.
+
+| Operation | Effect |
+| --- | --- |
+| `setArmed(type)` | Arms placement for a tower `type`, exactly as choosing its shop entry does. `null` disarms. |
+| `setPreview(col, row)` | Moves the held preview so its footprint's top-left sits at tile `(col, row)`, clamped so the footprint stays fully on the grid. `build.valid` follows through the real placement check. |
+| `setPreviewRotation(rotation)` | Sets the held rotation, `0` to `3`. |
+| `place()` | Commits the held preview at its current footprint if `build.valid` is true, exactly as a press on the floor does. On an invalid footprint it builds nothing and spends nothing. |
+| `setSelected(id)` | Selects the placed tower with that id, opening its inspector. `null` deselects. |
+| `setHoverShop(type)` | Sets the shop entry currently hovered, so the panel shows that type's info. `null` clears the hover. |
+| `upgradeTower(id)` | Upgrades that tower one level through the real upgrade code, deducting its `upgradeCost` when it is affordable and the tower is below level `3`, and changing nothing otherwise. |
+| `sellTower(id)` | Sells that tower through the real sell code: it pays its `refund` into money, removes it, reopens its footprint, recomputes the routes, and clears the selection if it was selected. |
+
+No operation on this surface plays a cue, and none can. A cue is raised by the
+frame that resolves the event it answers and is played from the frame loop, and
+an operation of this surface resolves outside that frame. Every cue is reached
+the way a player reaches it.
+
+There is no operation that asks whether a footprint could be placed.
+`build.valid` answers that through the same check, and it is the value the player
+sees on the preview.
+
+### The surge
+
+| Operation | Effect |
+| --- | --- |
+| `addUnit(type, vent)` | Adds one unit of `type` (`"mote"`, `"sprint"`, `"hulk"`, `"swarm"`, `"drift"`, or `"core"`) at `vent` (`"left"` or `"top"`), entering it into the same pathing and combat systems the spawner uses. Its exhaust is that vent's fixed opposite, its `maxHp` is its base hp scaled for the current wave, and it counts toward `waveRemaining` while the phase is `wave`. It is appended to `surge`. |
+| `removeUnit(id)` | Removes that unit. It costs no life, pays no bounty, and changes neither score nor money. |
+| `clearSurge()` | Removes every unit, leaving the towers standing with their heat, levels, and tallies untouched. It costs no life, pays no bounty, and changes neither score nor money. |
+| `setUnitPosition(id, x, y)` | Places the unit's centre at a logical stage position. Its route is recomputed from the tile that position falls in; its vent and exhaust are unchanged. |
+| `setUnitHp(id, hp)` | Sets the unit's current hp. It does not kill the unit: death belongs to the damage path. |
+| `setUnitMaxHp(id, maxHp)` | Sets the unit's maximum hp, which its health bar is drawn against. |
+| `setUnitSlow(id, factor)` | Sets the fraction of speed the live slow removes, `0` for none. `speed` follows immediately. |
+| `setUnitSlowTimer(id, seconds)` | Sets the seconds the live slow has left, `0` for none. |
+| `setUnitMotion(id, enabled)` | The motion gate, below. |
+
+`motion` gates the unit's locomotion, which is whether it advances along its
+route or its flight line, and nothing else. Off, the unit holds its position, and
+its route is still computed from the tile it stands on, so `remaining` still
+follows the floor and rises when a wall is built across its way. It is `true` for
+a unit the game itself released.
+
+A unit's flight and its vent are fixed by its type and by where it entered, so
+the surface poses neither.
+
+### The pointer
+
+These feed the same pointer input path the runtime feeds, so a posed press and a
+player's press are the same event. Positions are logical stage coordinates.
+
+| Operation | Effect |
+| --- | --- |
+| `pointerDown(x, y)` | Reports a press at that position. |
+| `pointerMove(x, y)` | Reports a move to that position. |
+| `pointerUp()` | Reports a release at the last reported position. |
+
+## Snapshot shape
+
+`snapshot` returns exactly this object. Every field an operation can set is
+present, so every operation is verifiable by setting a value and reading it back.
+
+```js
+{
+  version: 1,
+  screen: "title" | "modeselect" | "difficultyselect" | "howto"
+        | "playing" | "paused" | "victory" | "gameover",
+  phase: "opening" | "building" | "wave",   // the sub-phase of "playing"
+  menuIndex: <number>,                      // highlighted row, from 0
+  mode: "containment" | "hundred" | "deeppockets" | "bottleneck" | "suddendeath",
+  difficulty: "easy" | "medium" | "hard",
+  money: <number>,
+  lives: <number>,
+  score: <number>,
+  wave: <number>,                           // the wave this phase belongs to
+  waveCount: <number>,                      // derived from mode and difficulty
+  startMoney: <number>,                     // derived
+  startLives: <number>,                     // derived
+  interest: <boolean>,                      // derived: this mode pays interest
+  buildTimer: <number>,                     // seconds left; 0 in the opening phase
+  wavePending: <number>,                    // units of this wave still to release
+  waveRemaining: <number>,                  // derived: wavePending + live wave units
+  nextWave: { type: <surgeType>, count: <number> } | null,
+  speed: 1 | 2,
+  muted: <boolean>,                         // the game's copy of the runtime's mute bit
+  waveSpawning: <boolean>,                  // the world gate
+{{#if (eq engine.slug "none")}}
+  autoStep: <boolean>,                      // who drives the clock
+{{/if}}
+  pointer: { x: <number>, y: <number>,      // the pointer's own position, in logical
+             down: <boolean> },             // stage units, and whether it is pressed
+  selected: <number> | null,
+  hoverShop: <towerType> | null,
+  build: {                                  // the held preview, else null
+    type: <towerType>,
+    col: <number>, row: <number>,           // the footprint's top-left tile
+    rotation: 0 | 1 | 2 | 3,
+    valid: <boolean>,
+  } | null,
+  buildZone: { col0: <number>, row0: <number>,
+               col1: <number>, row1: <number> } | null,   // inclusive; null off Bottleneck
+  paths: {
+    // The cheapest open route from each vent's opening to its opposite exhaust's
+    // opening, in tiles, under the surge's own step rules.
+    left: { length: <number> },             // left vent to right exhaust
+    top:  { length: <number> },             // top vent to bottom exhaust
+  },
+  // Every control the build panel offers, as its hit rectangle in logical stage
+  // units, so a scripted scenario operates the panel the build laid out.
+  controls: {
+    shop: [ { type: <towerType>, x, y, w, h }, ... ],  // one per entry, in shop order
+    rotate:  { x, y, w, h } | null,         // null when no placement is armed
+    cancel:  { x, y, w, h } | null,
+    upgrade: { x, y, w, h } | null,         // null when no tower is selected
+    sell:    { x, y, w, h } | null,
+    send:    { x, y, w, h },
+    speed:   { x, y, w, h },
+    pause:   { x, y, w, h },
+    mute:    { x, y, w, h },
+  },
+  towers: [
+    {
+      id: <number>,
+      type: <towerType>,
+      col: <number>, row: <number>,         // footprint top-left tile
+      size: 2 | 3 | 4,
+      rotation: 0 | 1 | 2 | 3,
+      level: 1 | 2 | 3,
+      heat: <number>,                       // 0..100; 0 for the Forge and Sink
+      redline: <number>,
+      heatMult: <number>,                   // live multiplier; 0 for movers only
+      damage: <number>,                     // per-shot damage; 0 for movers only
+      slowFactor: <number>,                 // the Rime's live slow fraction; 0 otherwise
+      output: <number>,                     // the Forge's setpoint or the Sink's per-edge
+                                            // cooling at this level; 0 for emitters
+      tripped: <boolean>,
+      tripTimer: <number>,                  // seconds left on the cooldown, else 0
+      firing: <boolean>,                    // has a target and is online this frame;
+                                            // always false while tripped
+      targeting: <number> | null,           // the id of the unit it is firing on
+      radiatorFaces: [ "N" | "E" | "S" | "W", ... ],   // world-oriented; empty for movers
+      kills: <number>,
+      damageDealt: <number>,
+      spent: <number>,                      // total money spent on this tower
+      refund: <number>,                     // what selling it pays right now
+      upgradeCost: <number>,                // 0 at level 3
+      fresh: <boolean>,                     // still refunds in full
+      firingEnabled: <boolean>,
+      thermalEnabled: <boolean>,
+    },
+  ],
+  surge: [
+    {
+      id: <number>,
+      type: <surgeType>,
+      x: <number>, y: <number>,             // the unit's CENTRE
+      col: <number>, row: <number>,         // the tile its centre falls in
+      hp: <number>, maxHp: <number>,
+      speed: <number>,                      // current speed, reflecting any slow
+      baseSpeed: <number>,                  // its unslowed speed
+      slowed: <boolean>,
+      slowFactor: <number>,                 // the fraction of speed the slow removes
+      slowTimer: <number>,                  // seconds the slow has left
+      flying: <boolean>,
+      vent: "left" | "top",
+      exhaust: "right" | "bottom",
+      remaining: <number>,                  // route length still to travel, in tiles
+      motion: <boolean>,
+    },
+  ],
+  simTime: <number>,                        // accumulated simulation time, in seconds
+}
+```
+
+Notes on the shape:
+
+- Every `(x, y)` this surface reports or accepts is the entity's centre.
+- `waveCount`, `startMoney`, `startLives`, `interest`, and `buildZone` are
+  derived from `mode` and `difficulty` by the table in `specs/modes.md`.
+- `waveRemaining` is `wavePending` plus the number of live units while the phase
+  is `wave`, and `wavePending` alone otherwise. `nextWave` reports the type and
+  count the progression gives the coming wave, and is `null` where there is no
+  coming wave.
+- `paths` is never `null`, because the floor can never be sealed, so a wall that
+  lengthens a route shows up in its length.
+- `remaining` is measured under the surge's own step rules, an orthogonal step
+  costing `1` tile and a diagonal `sqrt(2)`; for a flyer it is the straight-line
+  distance to its exhaust divided by the tile size.
+- `radiatorFaces` are reported in world orientation, so they name the faces that
+  point outward after the tower's placement rotation.
+- `slowed` is true exactly when `slowFactor` is above `0`.
+- `controls` reports where the build panel put each control, refreshed at the
+  call. It is a diagnostic read: no operation sets it and nothing in the game
+  depends on it.
+- `pointer` mirrors the position the pointer input reports and whether the
+  pointer is currently pressed, refreshed in every update. It is the pointer's
+  own position, never an entity's centre.
+- `muted` is the game's copy of the runtime's mute bit, refreshed in every
+  update, so the snapshot reports the bit the runtime holds. It is not read at
+  the call. No operation sets it; the `mute` action and the panel's mute control
+  do.
+- `heatMult` and `damage` are `0` for the Forge and the Sink and for nothing
+  else. The Rime reports both like any other emitter, because it is one.
+- `simTime` accumulates the game time the simulation advanced by, so it holds
+  still while the game is paused and gains at twice the rate at `speed` `2`.
+{{#if (eq engine.slug "none")}}
+- `autoStep` reports which side is driving the clock.
+{{/if}}
+
+## Diagnostics
+
+The debug overlay is read-only, never changes gameplay, and shows the values the
+game registers with it as diagnostic sources. Register at least:
+
+- the current `screen` and `phase`;
+- the mode and the difficulty;
+- the money, the lives, the wave, and the score;
+- the lengths of the two routes;
+- for each tower, its id, its type, its level, its heat, its redline, whether it
+  is tripped, and its kills;
+- for each surge unit, its id, its type, the tile it stands on, its hp, and
+  whether it is slowed.
+
+Keep each one short enough to read on a line, and keep every source a pure read,
+so watching the overlay leaves the game exactly as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, it is shown and hidden by the backtick key as `specs/controls.md`
+states, it is off when the game starts, and it reads the game without changing
+it.
+{{else if (eq engine.slug "simple-2d")}}
+Registering those values is the whole of Meltdown's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the read,
+as `DeepReadonly<MeltdownState>`, and reads off that argument. Drawing the panel,
+toggling it, and keeping it read-only are the engine's.
+{{else}}
+Registering those values is the whole of Meltdown's part, through
+`world.diagnostics` in the game mode's `beginPlay`. Each source is a function of
+no arguments, called at each read; read the live state at the call, through the
+world the mode holds, so the panel reports the frame being drawn. Drawing the
+panel and toggling it are the engine's.
+{{/if}}
