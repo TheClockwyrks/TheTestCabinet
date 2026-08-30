@@ -83,7 +83,7 @@ import {
 } from "./surface";
 
 export { HANDLE, REQUIRED_OPS, OBSTACLE_OPS };
-export type { CoilSnapshot, CoilDebugApi, DrivenSurface };
+export type { Cell, CoilSnapshot, CoilDebugApi, DrivenSurface };
 
 declare module "vitest" {
   export interface ProvidedContext {
