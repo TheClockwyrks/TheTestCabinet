@@ -1,23 +1,86 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/draw-one/mode-label-title.test.ts
+// draw-one/mode-label-title — the title screen draws the literal DRAW ONE.
 //
-// The review item `draw-one.mode-label-title` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/screens.md gives the title screen a deal-mode label,
+// `DEAL_MODE_LABEL`, "drawn somewhere on the screen so a player sees which deal
+// the game is played with", and specs/stock.md fixes this build's label as the
+// literal `DRAW ONE`. So what is read here is the text one frame of the title
+// screen drew.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE LITERAL IS THE WHOLE REQUIREMENT. The common point
+// `screens.title-shows-mode-label` holds the drawn label against the
+// `dealModeLabel` the build itself reports, so that pair decides CONSISTENCY; this
+// one decides that the literal the specification fixes is what a Draw One build
+// draws. A build that draws `DRAW THREE` consistently everywhere passes there and
+// fails here, which is where the fault belongs.
 //
-// What this item must decide, from the manifest:
+// AND THE TITLE SCREEN ALONE. `draw-one/mode-label-hud` reads the same literal
+// during play, so a build correct on the title screen and wrong in the HUD misses
+// one requirement rather than two.
 //
-//   The title screen's label reads DRAW ONE
+// HOW THE TEXT IS READ. specs/screens.md fixes the words and leaves the type, the
+// case, and the layout to the build, so the frame's runs of text are joined and
+// matched on the label's words in order: a build that draws the label as one run
+// and one that centers the two words as two runs both satisfy the requirement, and
+// nothing here asks where on the screen it landed.
 //
-//   The title screen draws the literal DRAW ONE, this variant's DEAL_MODE_LABEL.
+// THE TABLE IS EMPTY. The screen is posed with `setScreen` rather than left to
+// whatever `reset` restored, and all thirteen piles are cleared, so the world
+// holds only the screen the requirement is about (specs/instrumentation.md). The
+// label concerns no card, so no card is posed.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { DEAL_MODE_LABEL } from "../../src/constants";
+import { assertEqual, assertMatches } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drawFrame,
+  drawnText,
+  type Harness,
+} from "../harness";
 
-it("draw-one.mode-label-title — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/draw-one/mode-label-title.test.ts is a scaffold stub, not a validator",
+/**
+ * `DEAL_MODE_LABEL`'s words, in order, however the build spaces or splits them.
+ *
+ * The label is one literal, and its WORDS are what a player reads; whether the
+ * build draws them in one call or in two is a layout decision specs/screens.md
+ * leaves to it. The match is case-insensitive for the same reason, and each end is
+ * held to a word boundary so a longer word ending in `ONE` is not read as the
+ * label.
+ */
+const LABEL = new RegExp(
+  `(^|[^A-Za-z0-9])${DEAL_MODE_LABEL.trim().split(/\s+/).join("\\s+")}($|[^A-Za-z0-9])`,
+  "i",
+);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws DRAW ONE on the title screen", async () => {
+  h.debug.reset();
+  h.debug.setScreen("title");
+  h.debug.clearTable();
+
+  const calls = await drawFrame(h);
+  captureStill(h, "title");
+
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "the screen the game was posed on, which is where the title screen's " +
+      "label is read (specs/instrumentation.md)",
+  );
+  assertMatches(
+    drawnText(calls).join(" "),
+    LABEL,
+    `the text the title screen drew, which carries ${DEAL_MODE_LABEL}, this ` +
+      "build's DEAL_MODE_LABEL (specs/screens.md, specs/stock.md)",
   );
 });
