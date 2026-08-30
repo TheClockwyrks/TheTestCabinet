@@ -1,0 +1,17 @@
+# Everything that is not authored source: installed packages, build output,
+# coverage reports, and the vendored engine.
+node_modules/
+/dist/
+/build/
+/out/
+coverage/
+package-lock.json
+.tcab/
+assets/
+
+# Prose. The formatter handles code; Markdown is left to its own linter.
+*.md
+
+# Vite copies this directory into `dist/` verbatim; `public/assets` is a link
+# to the produced files at the root, which are already ignored above.
+public/

@@ -1,0 +1,200 @@
+// Deepcore — the harness this build's own tests run the game through.
+//
+// Not a test itself: `vitest.config.ts` collects `*.test.ts` alone, so this
+// module is shared setup rather than a suite. It stands a REAL engine up over an
+// `@napi-rs/canvas` canvas and a `SurfaceMetrics` of its own, with a
+// `ConstantClock` so an advance of `n` frames is exactly `n * FRAME_MS` of game
+// time. There is no browser and no document behind it: the game runs, draws, and
+// is posed exactly as it does in a page.
+//
+// The produced assets are not loaded here — a Node process has no `fetch` for
+// them and no `createImageBitmap` — so every sprite comes back `null` and the
+// renderer draws its fallbacks. That is the point: the simulation is what these
+// tests are about, and it does not read the renderer at all.
+
+import { createCanvas } from "@napi-rs/canvas";
+import type { SKRSContext2D } from "@napi-rs/canvas";
+import {
+  ConstantClock,
+  createEngine,
+  type Engine,
+  type SurfaceMetrics,
+} from "@test-cabinet/simple-2d";
+import { STAGE_H, STAGE_W } from "./constants";
+import type { ActionName } from "./constants";
+import { ACTIONS } from "./constants";
+import type { DeepcoreDebugApi } from "./debug";
+import { BACKGROUND, game } from "./game";
+import type { DeepcoreState } from "./game";
+import type { DeepReadonly } from "ts-essentials";
+
+/** The step every advance takes, in milliseconds. */
+export const FRAME_MS = 1000 / 60;
+
+/** A keyboard-shaped event, as the engine's own listener reads one. */
+class KeyEvent extends Event {
+  readonly code: string;
+  readonly repeat = false;
+
+  constructor(type: "keydown" | "keyup", code: string) {
+    super(type);
+    this.code = code;
+  }
+}
+
+/** A pointer-shaped event, as the engine's own listener reads one. */
+class PointerEvt extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly isPrimary = true;
+
+  constructor(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    x: number,
+    y: number,
+  ) {
+    super(type);
+    this.clientX = x;
+    this.clientY = y;
+  }
+}
+
+/** One cue the engine reported playing. */
+export interface CuePlay {
+  cue: string;
+  gain: number;
+}
+
+/** A game standing on a real engine, with the levers a test drives it by. */
+export interface Harness {
+  readonly engine: Engine<DeepcoreState, DeepcoreDebugApi>;
+  readonly state: DeepReadonly<DeepcoreState>;
+  readonly debug: DeepcoreDebugApi;
+  readonly ctx: SKRSContext2D;
+  readonly cues: CuePlay[];
+  readonly loops: string[];
+  /** Apply one debug pose, as `engine.apply` does. */
+  pose(
+    op: (
+      debug: DeepcoreDebugApi,
+      state: DeepReadonly<DeepcoreState>,
+    ) => DeepcoreState,
+  ): void;
+  /** Advance a counted number of frames. */
+  advance(frames: number): Promise<void>;
+  /** Advance far enough to cover `seconds` of game time. */
+  seconds(seconds: number): Promise<void>;
+  hold(action: ActionName): void;
+  release(action: ActionName): void;
+  tap(action: ActionName): void;
+  click(x: number, y: number): void;
+  dispose(): void;
+}
+
+/** The first key code bound to an action. */
+export function keyFor(action: ActionName): string {
+  return ACTIONS[action][0];
+}
+
+/** An in-memory storage slot, so the save tests have somewhere to write. */
+export function installStorage(): void {
+  const held = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => held.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      held.set(key, value);
+    },
+    removeItem: (key: string) => {
+      held.delete(key);
+    },
+    clear: () => held.clear(),
+    key: (index: number) => [...held.keys()][index] ?? null,
+    get length() {
+      return held.size;
+    },
+  };
+  Object.defineProperty(globalThis, "localStorage", {
+    value: storage,
+    configurable: true,
+    writable: true,
+  });
+}
+
+/** Take the storage slot away again, as a browser that blocks site data does. */
+export function removeStorage(): void {
+  Object.defineProperty(globalThis, "localStorage", {
+    value: undefined,
+    configurable: true,
+    writable: true,
+  });
+}
+
+/** Stand a fresh engine up over the game and resolve once it has initialized. */
+export async function createHarness(): Promise<Harness> {
+  const canvas = createCanvas(STAGE_W, STAGE_H);
+  const ctx = canvas.getContext("2d");
+  const element = Object.assign(canvas, {
+    style: {} as CSSStyleDeclaration,
+    getContext: () => ctx,
+  }) as unknown as HTMLCanvasElement;
+
+  const events = new EventTarget();
+  const surface: SurfaceMetrics = {
+    cssWidth: () => STAGE_W,
+    cssHeight: () => STAGE_H,
+    dpr: () => 1,
+    events: () => events,
+  };
+
+  // Exactly the options `src/main.ts` passes, plus the clock and the surface a
+  // headless run needs.
+  const engine = createEngine<DeepcoreState, DeepcoreDebugApi>({
+    canvas: element,
+    width: STAGE_W,
+    height: STAGE_H,
+    game,
+    background: BACKGROUND,
+    clock: new ConstantClock(FRAME_MS),
+    surface,
+  });
+
+  const cues: CuePlay[] = [];
+  const loops: string[] = [];
+  engine.events.on("cue:played", ({ cue, gain }) => cues.push({ cue, gain }));
+  engine.events.on("cue:looped", ({ cue }) => loops.push(cue));
+
+  await engine.initialize();
+
+  return {
+    engine,
+    get state() {
+      return engine.state;
+    },
+    // Read off the engine rather than built here, so a build that failed to hand
+    // its surface over would fail at once.
+    debug: engine.debug,
+    ctx,
+    cues,
+    loops,
+    pose(op) {
+      engine.apply((state) => op(engine.debug, state));
+    },
+    advance: (frames) => engine.advance(frames),
+    seconds: (span) => engine.advance(Math.round((span * 1000) / FRAME_MS)),
+    hold: (action) => {
+      events.dispatchEvent(new KeyEvent("keydown", keyFor(action)));
+    },
+    release: (action) => {
+      events.dispatchEvent(new KeyEvent("keyup", keyFor(action)));
+    },
+    tap: (action) => {
+      events.dispatchEvent(new KeyEvent("keydown", keyFor(action)));
+      events.dispatchEvent(new KeyEvent("keyup", keyFor(action)));
+    },
+    click: (x, y) => {
+      events.dispatchEvent(new PointerEvt("pointerdown", x, y));
+      events.dispatchEvent(new PointerEvt("pointerup", x, y));
+    },
+    dispose: () => engine.destroy(),
+  };
+}
