@@ -1,5 +1,5 @@
 # Everything that is not authored source: installed packages, build output,
-# coverage reports, and the vendored packages.
+# coverage reports, and the vendored engine.
 node_modules/
 /dist/
 /build/
@@ -7,3 +7,6 @@ node_modules/
 coverage/
 .tcab/
 package-lock.json
+
+# Prose. The formatter handles code; Markdown is left to its own linter.
+*.md
