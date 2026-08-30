@@ -1,10 +1,5 @@
 // Cascade — the vitest project the CASE's validators run as. CASE-PROVIDED.
 //
-// SCAFFOLD. The validator stage of the v3.0.0 rework owns this project; what is
-// here now is the shape, so the case resolves and so a suite added to it runs
-// against the right root. Every suite under this directory is a throwing stub
-// until that stage replaces it.
-//
 // A project of its own, separate from the build's `vitest.config.ts` at the
 // workspace root. The two never mix: the build's config names `src/**/*.test.ts`
 // and measures coverage over `src/`, so the tests a build wrote are counted and
@@ -20,8 +15,11 @@
 // from this file's own URL rather than from the working directory, so the command
 // above works from anywhere.
 //
-// The environment is `node`. The Structured 2D engine takes every measurement from the
-// `SurfaceMetrics` the harness supplies, so these suites need no DOM.
+// The environment is `node`. The Structured 2D engine takes every measurement
+// from the `SurfaceMetrics` the harness supplies, so these suites need no DOM —
+// and the one thing a build DOES need a browser for, the offscreen surface the
+// victory cascade paints its trail onto, `validation/canvas-shim.ts` stands up
+// over `@napi-rs/canvas` before any module of the build is evaluated.
 
 import { defineConfig } from "vitest/config";
 
