@@ -178,8 +178,11 @@ export function hitNode(
     setCharge(state.field, c, r, charge - 1);
     return;
   }
-  detonate(state, c, r, cues);
-  checkLevelCleared(state, cues);
+  // A level clears on the step in which the last of its segments is REMOVED, so
+  // the clear is checked only where the discharge actually destroyed one. A
+  // detonation on a board carrying no worm is a shot at the terrain, not a clear.
+  const discharge = detonate(state, c, r, cues);
+  if (discharge.fried > 0) checkLevelCleared(state, cues);
 }
 
 /**

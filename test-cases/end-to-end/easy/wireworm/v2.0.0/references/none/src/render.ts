@@ -529,25 +529,27 @@ function drawTitle(ctx: Ctx, state: WirewormState): void {
 
 function drawHowTo(ctx: Ctx): void {
   const cx = STAGE_W / 2;
-  write(ctx, HOWTO_TITLE, cx, 132, {
-    size: 42,
+  write(ctx, HOWTO_TITLE, cx, 122, {
+    size: 40,
     weight: 700,
     color: COLOR.text,
     align: "center",
   });
-  let y = 186;
+  // Left-aligned on a fixed margin: the rules read as prose rather than as a
+  // ragged stack, and every line lands inside the board region.
+  let y = 168;
   for (const line of HOWTO_LINES) {
     if (line.length > 0) {
-      write(ctx, line, cx, y, {
+      write(ctx, line, 300, y, {
         size: 18,
         weight: 400,
         color: COLOR.textDim,
-        align: "center",
+        align: "left",
       });
     }
-    y += 25;
+    y += 23;
   }
-  write(ctx, HOWTO_HINT, cx, STAGE_H - 38, {
+  write(ctx, HOWTO_HINT, cx, STAGE_H - 22, {
     size: 16,
     weight: 400,
     color: COLOR.textFaint,

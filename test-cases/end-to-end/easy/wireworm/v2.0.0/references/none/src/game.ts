@@ -253,12 +253,15 @@ export function advance(
   // Simulation time accumulates whatever the screen, so a run left alone on the
   // title screen is still on the same clock as one being played.
   state.simTime += dt;
+  // The arcs of a discharge are part of the board, and the board is frozen only
+  // while the game is paused, so they run down on every other screen: a
+  // detonation that ended the run does not leave its lightning hanging.
+  if (state.screen !== "paused") decayArcs(state, dt);
   if (state.screen !== "playing") return;
 
   if (state.cursor.invulnerable > 0) {
     state.cursor.invulnerable = Math.max(0, state.cursor.invulnerable - dt);
   }
-  decayArcs(state, dt);
 
   // The banner and the respawn run their timers and nothing else; each brings in
   // the level's worm as it gives way to live play.
