@@ -1,26 +1,70 @@
-// Arc Foundry — `targeting.weakest`. CASE-PROVIDED. NOT YET WRITTEN.
+// targeting/weakest — `weakest` shoots whatever carries the least health.
 //
-// The manifest declares this point at `targeting/weakest.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/components.md fixes it: `weakest` "Selects the in-range unit that is
+// Carrying the least remaining health". This is the other direction of
+// `strongest`, and its own point for the same reason `last` is `first`'s: a build
+// that has one right and the other inverted, or wired to the same code, must grade
+// differently from one that has both.
 //
-// THE REQUIREMENT. A structure set to weakest fires at the in-range unit
-// carrying the least remaining health.
-//
-// HOW IT IS DECIDED. Park the same units, set weakest, fire once, and read the
-// projectile's target. The evidence it hands back is `weakest` (replay): the
-// weakest target selected.
+// The same three units on the same yard as `strongest`, posed to the same three
+// healths at one distance and one checkpoint, so the two priorities are read off
+// an identical arrangement and must answer with opposite ends of it.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  releaseUnit,
+  type Harness,
+} from "../harness";
+import { firstShotTarget, standShooter } from "./scenario";
 
-import { fail } from "../assert";
+/** Three healths, all under a Dynamo's maximum at wave 1, at one distance. */
+const PLACES = [
+  { hp: 200, at: { x: 0, y: -60 } },
+  { hp: 100, at: { x: 60, y: 0 } },
+  { hp: 300, at: { x: 0, y: 60 } },
+];
 
-describe("targeting.weakest", () => {
-  it("weakest selects the unit with the least health", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `targeting.weakest` has not been written yet",
-    );
-  });
+/** The checkpoint all three head for, so the chain cannot separate them. */
+const WAYPOINT = 3;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("shoots the unit with the least remaining health", async () => {
+  await openYard(h, { wave: 1 });
+  const shooter = await standShooter(h, "weakest");
+
+  const posed: { hp: number; id: number }[] = [];
+  for (const place of PLACES) {
+    posed.push({
+      hp: place.hp,
+      id: await releaseUnit(h, "dynamo", {
+        waypoint: WAYPOINT,
+        at: { x: shooter.cx + place.at.x, y: shooter.cy + place.at.y },
+        hp: place.hp,
+        frozen: true,
+      }),
+    });
+  }
+
+  const target = await captureReplay(h, "weakest", () => firstShotTarget(h));
+
+  const least = posed.reduce((a, b) => (a.hp < b.hp ? a : b));
+  assertEqual(
+    target,
+    least.id,
+    `the unit carrying ${least.hp} health, the least of the three in range ` +
+      `(specs/components.md)`,
+  );
 });

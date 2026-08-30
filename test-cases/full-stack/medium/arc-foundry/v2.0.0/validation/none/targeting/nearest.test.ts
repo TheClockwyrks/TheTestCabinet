@@ -1,27 +1,69 @@
-// Arc Foundry — `targeting.nearest`. CASE-PROVIDED. NOT YET WRITTEN.
+// targeting/nearest — `nearest` shoots whatever is closest.
 //
-// The manifest declares this point at `targeting/nearest.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
-//
-// THE REQUIREMENT. A structure set to nearest fires at the in-range unit at
-// the shortest straight-line distance from its centre, whatever their
+// specs/components.md fixes it: `nearest` "Selects the in-range unit that is At the
+// shortest straight-line distance from the structure's center", whatever their
 // positions along the chain.
 //
-// HOW IT IS DECIDED. Park frozen units at known distances, set nearest, fire
-// once, and read the projectile's target. The evidence it hands back is
-// `nearest` (replay): the nearest target selected.
+// Three units are held at three distinct distances inside the radius, at one
+// health, and at one checkpoint, so nothing but the distance can separate them and
+// no tie-break is in play. The closest is not the one furthest along, because all
+// three share a checkpoint and the tie-break never fires — so a build that quietly
+// falls back on the chain ordering picks the wrong one.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  releaseUnit,
+  type Harness,
+} from "../harness";
+import { firstShotTarget, standShooter } from "./scenario";
 
-import { fail } from "../assert";
+/** Three distinct distances, all inside the Scrap Capacitor's `100`. */
+const PLACES = [
+  { away: 90, at: { x: -90, y: 0 } },
+  { away: 40, at: { x: 40, y: 0 } },
+  { away: 65, at: { x: 0, y: 65 } },
+];
 
-describe("targeting.nearest", () => {
-  it("nearest selects the closest unit", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `targeting.nearest` has not been written yet",
-    );
-  });
+/** The checkpoint all three head for, so the chain cannot separate them. */
+const WAYPOINT = 3;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("shoots the unit at the shortest straight-line distance", async () => {
+  await openYard(h, { wave: 1 });
+  const shooter = await standShooter(h, "nearest");
+
+  const posed: { away: number; id: number }[] = [];
+  for (const place of PLACES) {
+    posed.push({
+      away: place.away,
+      id: await releaseUnit(h, "dynamo", {
+        waypoint: WAYPOINT,
+        at: { x: shooter.cx + place.at.x, y: shooter.cy + place.at.y },
+        frozen: true,
+      }),
+    });
+  }
+
+  const target = await captureReplay(h, "nearest", () => firstShotTarget(h));
+
+  const closest = posed.reduce((a, b) => (a.away < b.away ? a : b));
+  assertEqual(
+    target,
+    closest.id,
+    `the unit standing ${closest.away} from the centre, the closest of the ` +
+      `three in range (specs/components.md)`,
+  );
 });
