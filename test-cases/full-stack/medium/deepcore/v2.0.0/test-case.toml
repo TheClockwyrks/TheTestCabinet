@@ -3285,6 +3285,18 @@ failure_cap = "passable"
 validation = { script = "panels/clicking-a-building-activates-it.test.ts", outputs = [
   { id = "click", name = "A building opened by a click", kind = "replay" },
 ] }
+[[review.categories.items]]
+id = "clicking-a-building-needs-the-miner-at-it"
+title = "Clicking a building the miner is not standing at does nothing"
+description = "A surface building answers a click only where the activate action would also reach it, so with the miner standing at one building a click on any other opens no panel and the Save Pad writes no save."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: stand the miner where activate opens one named
+# building, then click each other on-screen building in turn and read the
+# panel still null and hasSave still false.
+validation = { script = "panels/clicking-a-building-needs-the-miner-at-it.test.ts", outputs = [
+  { id = "ignored", name = "A distant building ignoring a click", kind = "replay" },
+] }
 
 # --- The Status Bar and the Overlays ------------------------------------------
 # What a player reads without hunting for it. Every point here is decided from the

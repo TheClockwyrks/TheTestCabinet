@@ -35,12 +35,13 @@ import {
   nextUpgradePrice,
   repairCost,
 } from "./economy";
-import { atSurface, cargoValue } from "./figures";
+import { cargoValue } from "./figures";
+import { nearbyBuilding } from "./flow";
 import type { DeepcoreState } from "./game";
 import { menuItems } from "./menus";
 import { allInstalled, canFabricate, nextComponent } from "./rocket";
 import { PALETTE } from "./theme";
-import { BUILDING_H, BUILDING_W, buildingPlace, CAMP_ORDER } from "./tuning";
+import { BUILDING_H, BUILDING_W, buildingPlace } from "./tuning";
 import { tileLeft } from "./world";
 
 /** One clickable control: where it is, what it reads, and what choosing it runs. */
@@ -197,26 +198,32 @@ function statusBarControls(state: DeepcoreState): Control[] {
 }
 
 /**
- * The six buildings' hit areas, which stand where the camera puts them. Clicking
- * one activates it exactly as `activate` does while standing at it, so the Save
- * Pad banks the expedition and every other building opens its panel.
+ * The hit area of the building the miner is standing at, and of no other.
+ *
+ * specs/controls.md: clicking a surface building "activates it, exactly as
+ * `activate` does while standing at it", and a control is offered only where it
+ * acts. The keyboard path is `activateNearbyBuilding`, which asks
+ * `nearbyBuilding` whether the miner is within `BUILDING_REACH`, so the mouse
+ * path asks the same question of the same predicate — a click on a building
+ * across the camp has nothing to land on.
  */
 function buildingControls(state: DeepcoreState): Control[] {
-  if (!atSurface(state.miner)) return [];
+  const near = nearbyBuilding(state.miner);
+  if (near === null) return [];
   const offX = -state.camX;
   const groundY = SURFACE_Y + HUD_H - state.camY;
-  return CAMP_ORDER.map((id) => {
-    const place = buildingPlace(id);
-    const cx = tileLeft(place.col) + TILE / 2 + offX;
-    return control(
+  const place = buildingPlace(near);
+  const cx = tileLeft(place.col) + TILE / 2 + offX;
+  return [
+    control(
       cx - BUILDING_W / 2,
       Math.max(HUD_H, groundY - BUILDING_H - 6),
       BUILDING_W,
       BUILDING_H + 6,
-      id === "save-pad" ? "save" : `open:${id}`,
+      near === "save-pad" ? "save" : `open:${near}`,
       null,
-    );
-  });
+    ),
+  ];
 }
 
 /** The current screen's menu, as a column of buttons. */

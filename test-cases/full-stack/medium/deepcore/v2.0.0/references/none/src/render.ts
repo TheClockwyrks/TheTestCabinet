@@ -326,9 +326,15 @@ function drawMine(
 
   drawCoreCountdown(ctx, game, view);
 
-  // Building activation hitboxes (only usable at the surface with no panel open).
+  // The activation hitbox of the building the miner is STANDING AT, and of no
+  // other. specs/controls.md: a click on a surface building activates it "exactly
+  // as `activate` does while standing at it", and a control is offered only where
+  // it acts — so the mouse asks `nearbyBuilding`, the same predicate the keyboard
+  // path asks, rather than hanging a hit area on every building in the camp.
   if (game.screen === "in-mine" && !game.panel && game.atSurface()) {
-    for (const b of BUILDINGS) {
+    const near = game.nearbyBuilding();
+    const b = near ? BUILDINGS.find((x) => x.id === near) : null;
+    if (b) {
       const bx = b.col * TILE + TILE / 2 + offX;
       const by = groundY - BUILDING_H - 6;
       // The Save Pad has no menu — clicking it banks the expedition (specs/gameplay.md); every
@@ -340,11 +346,6 @@ function drawMine(
         h: BUILDING_H + 6,
         action: b.id === "save-pad" ? "save" : `open:${b.id}`,
       });
-    }
-    const near = game.nearbyBuilding();
-    const b = near ? BUILDINGS.find((x) => x.id === near) : null;
-    if (b) {
-      const bx = b.col * TILE + TILE / 2 + offX;
       text(
         ctx,
         b.id === "save-pad" ? "[E] SAVE" : `[E] ${b.label}`,
