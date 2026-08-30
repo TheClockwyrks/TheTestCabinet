@@ -41,9 +41,9 @@ path named below, and is committed.
 {{#if (eq engine.slug "none")}}
 The build loads them itself. Every URL it requests resolves against the page
 rather than against the origin root, so the site runs unchanged whether it is
-served from the root of a static host or mounted under a sub-path. A root-
-absolute URL such as `/assets/snake/body.png` does not meet this: it resolves
-against the origin and fails under a sub-path.
+served from the root of a static host or mounted under a sub-path. A
+root-absolute URL such as `/assets/snake/body.png` does not meet this: it
+resolves against the origin and fails under a sub-path.
 {{else}}
 The {{engine.name}} engine provides the asset loader and the audio cue bus, both
 documented in the `engine/` directory at the root of this repository. The loader
