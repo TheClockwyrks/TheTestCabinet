@@ -1,27 +1,84 @@
-// Arc Foundry — `effects.aura-pulse`. CASE-PROVIDED. NOT YET WRITTEN.
+// Arc Foundry — effects/aura-pulse: a structure carrying an aura is marked by one.
 //
-// The manifest declares this point at `effects/aura-pulse.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT, from `specs/assets.md`: the aura pulse is spawned while "a
+// structure carrying an aura stands on the yard", it carries "a slow pulse ring at
+// the source, marking the aura it projects", and it is spawned "at the position of
+// the event that raised it: ... the aura pulse at its source". `specs/components.md`
+// gives the aura to the Regulator, which "never fires: it has no range, no damage,
+// no firing head, no projectile, and no targeting priority, and its aura is its
+// whole reach".
 //
-// THE REQUIREMENT. Particles are drawn at a Regulator standing on the yard
-// that are not drawn at a Capacitor standing in the same place, so the aura it
-// projects is marked.
+// THE READING IS A COMPARISON, BECAUSE THE PULSE IS NOT AN EVENT. Every other
+// effect has a frame it is raised on and a frame before it; this one is played the
+// whole time the source stands. So the same anchor is stood on twice, once by a
+// Regulator and once by a Capacitor of the same tier, and the ground around it read
+// both times. A Capacitor carries no aura (`specs/components.md` gives the aura to
+// the Regulator alone), so what the two readings differ by is the mark on the aura
+// source.
 //
-// HOW IT IS DECIDED. Stand a Regulator and a Capacitor at the same anchor in
-// turn and sample the surrounding yard. The evidence it hands back is `aura`
-// (replay): the pulse at an aura source.
+// WHAT IS READ, AND WHY IT IS OUTSIDE THE FOOTPRINT. `specs/assets.md` also gives
+// the Regulator a cycle at `components/regulator/fire/`, "the Regulator's slow aura
+// pulse, played as a loop rather than on a shot" — which is drawn on the mount, a
+// `40 x 40` sprite on a `2` by `2` footprint. Reading inside the footprint would
+// therefore read that cycle rather than the pulse the aura projects, and pass a
+// build that animated the mount and marked nothing. The ring sampled starts outside
+// the footprint and stays well inside the `90` units of aura radius a Scrap
+// Regulator projects.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
+import { structureCenter } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  emptyYard,
+  openYard,
+  standComponent,
+  ticks,
+  type Harness,
+} from "../harness";
+import { annulus, motion } from "./region";
 
-import { fail } from "../assert";
+/** Clear ground, well away from the map's waypoint platforms and its chain. */
+const ANCHOR = { col: 24, row: 17 };
 
-describe("effects.aura-pulse", () => {
-  it("A structure carrying an aura pulses", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `effects.aura-pulse` has not been written yet",
-    );
+/** Outside the `2` by `2` footprint, inside the Scrap aura radius of `90`. */
+const POINTS = annulus(structureCenter(ANCHOR.col, ANCHOR.row), 26, 60, 4);
+
+const WINDOW = ticks(0.2);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("marks the ground around a Regulator and not around a Capacitor", async () => {
+  await openYard(h, { wave: 1 });
+
+  // The control first: a firing component of the same tier at the same anchor,
+  // with nothing in range so it never fires.
+  await standComponent(h, "capacitor", 1, ANCHOR.col, ANCHOR.row);
+  await h.advance(1);
+  const unmarked = await motion(h, POINTS, WINDOW);
+
+  await emptyYard(h);
+  const marked = await captureReplay(h, "aura", async () => {
+    await standComponent(h, "regulator", 1, ANCHOR.col, ANCHOR.row);
+    await h.advance(1);
+    return motion(h, POINTS, WINDOW);
   });
+
+  assertGreaterThan(
+    marked,
+    unmarked,
+    "the ground around a standing Regulator to change on more frames than the " +
+      "ground around a Capacitor standing at the same anchor, so the aura it " +
+      `projects is marked (specs/assets.md); the Capacitor's changed on ` +
+      `${unmarked} of ${WINDOW} frames`,
+  );
 });

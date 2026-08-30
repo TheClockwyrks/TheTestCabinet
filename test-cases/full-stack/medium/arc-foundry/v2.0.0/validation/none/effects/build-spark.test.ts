@@ -1,26 +1,82 @@
-// Arc Foundry — `effects.build-spark`. CASE-PROVIDED. NOT YET WRITTEN.
+// Arc Foundry — effects/build-spark: a landing rock throws its produced spark.
 //
-// The manifest declares this point at `effects/build-spark.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT, from `specs/assets.md`: the build spark is spawned when "a rock
+// lands", it carries "a shower of sparks and a snap of arc at the new footprint",
+// and an instance of the matching system is spawned "at the position of the event
+// that raised it: the build spark at the stamped footprint".
 //
-// THE REQUIREMENT. Particles are drawn at the new footprint on the frame a
-// rock lands that were not drawn there on the frame before it.
+// WHAT IS READ, AND WHY IT IS MOTION RATHER THAN A BEFORE-AND-AFTER. A rock
+// landing puts a candidate on the footprint, so the footprint looks different from
+// how it looked a frame earlier whether or not anything was played there — a
+// comparison across the drop alone would pass a build with no effects at all. What
+// a played system leaves instead is a footprint that keeps changing: the systems
+// are "played live and simulated as it plays, so it varies from one firing to the
+// next" (`specs/assets.md`). So the footprint is read frame by frame over the
+// tenth of a second before the drop and over the tenth of a second after it, and
+// the drop must set it moving.
 //
-// HOW IT IS DECIDED. Sample the footprint on the frame before a drop and on
-// the frame of the drop. The evidence it hands back is `spark` (replay): the
-// spark at a landing rock.
+// THE WORLD IS EMPTY BUT FOR THE ROCK. `openYard` clears every structure, unit and
+// projectile, so nothing else on the yard can move a pixel inside the footprint.
+//
+// THE BOUND. The region must change on more frames after the drop than before it,
+// and on at least half the frames of the window. Half rather than all, because
+// nothing fixes how long a spark lasts or how it fades; a shower of sparks
+// simulated at all moves on nearly every frame, and a standing candidate on none.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
+import { structureCenter } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  standCandidate,
+  ticks,
+  type Harness,
+} from "../harness";
+import { lattice, motion } from "./region";
 
-import { fail } from "../assert";
+/** Clear ground, well away from the map's waypoint platforms and its chain. */
+const ANCHOR = { col: 24, row: 18 };
 
-describe("effects.build-spark", () => {
-  it("A landing rock throws a build spark", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `effects.build-spark` has not been written yet",
-    );
+/** Inside the `2` by `2` footprint of `specs/yard.md`: `+/-20` about its centre. */
+const POINTS = lattice(structureCenter(ANCHOR.col, ANCHOR.row), 16, 4);
+
+const WINDOW = ticks(0.1);
+const MOVING = WINDOW / 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("sets the stamped footprint moving when the rock lands", async () => {
+  await openYard(h, { wave: 1 });
+  await h.advance(1);
+  const still = await motion(h, POINTS, WINDOW);
+
+  const played = await captureReplay(h, "spark", async () => {
+    await standCandidate(h, "capacitor", 1, ANCHOR.col, ANCHOR.row);
+    await h.advance(1);
+    return motion(h, POINTS, WINDOW);
   });
+
+  assertGreaterThan(
+    played,
+    still,
+    "the stamped footprint to change on more frames after a rock lands on it " +
+      "than before, so a build spark is played there (specs/assets.md); the " +
+      `empty footprint changed on ${still} of ${WINDOW} frames`,
+  );
+  assertGreaterThanOrEqual(
+    played,
+    MOVING,
+    `the footprint to keep changing across the tenth of a second after the ` +
+      `drop, as a live particle system does (specs/assets.md)`,
+  );
 });
