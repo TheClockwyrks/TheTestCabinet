@@ -1,20 +1,99 @@
-<!--
-SCAFFOLD STUB — NOT THE SPECIFICATION.
+# Shatter — Weapons
 
-This file exists so `test-case.toml` resolves. The Specs stage of the
-v3.0.0 rework replaces it in full, written from nothing against the design
-plan and `guides/authoring/writing-case-specifications.md`. Its scope, from
-the plan's spec decomposition table, is:
+This file defines what the ship shoots. The ship itself is in `specs/ship.md`,
+what a shot does when it lands is in `specs/collision.md`, and the keys that fire
+are in `specs/controls.md`.
 
-  Common: the bullet radius, the muzzle velocity, the lifetime, the on-
-  screen cap, the fire gate, and the motion trail. warhead adds: the
-  single charge, TORPEDO_RECHARGE rising linearly from 0 to 1, at most one
-  torpedo in flight, the refill on respawn, the launch from the nose
-  carrying none of the ship's drift, TORPEDO_SPEED/R/LIFE, the forward
-  cone, the nearest-body rule, the turn rate, and the per-tick re-
-  evaluation. Branches on variant.slug.
--->
+## The gun
 
-# Weapons
+The ship's gun fires small round bullets from its nose.
 
-Not yet written.
+| Rule | Value |
+| --- | --- |
+| Collision radius | `BULLET_R` (`3`) |
+| Launch position | The ship's nose: ahead of the ship's centre along its facing, and no further from it than `SHIP_R` (`14`) |
+| Launch velocity | The ship's current velocity plus `MUZZLE_SPEED` (`520`) along the ship's facing |
+| Lifetime | `BULLET_LIFE` (`1.5` seconds), after which the bullet is removed |
+| On-screen limit | `MAX_BULLETS` (`4`) of the ship's bullets in flight at once. While four are live, firing adds none until one leaves. |
+| Fire gate | `FIRE_INTERVAL_TICKS` (`22`) whole ticks between shots |
+
+One press of the fire key takes one shot when the gate allows it. Holding the key
+takes a shot every `FIRE_INTERVAL_TICKS` for as long as it is held and the cap
+allows one, so a held key tops out at `TICK_HZ / FIRE_INTERVAL_TICKS` shots per
+second of game time.
+
+A bullet is pulled by the well, wraps at the edges, and is removed when it is
+absorbed by the star's core or when it lands, as `specs/collision.md` states.
+
+## The bullet trail
+
+Behind every moving bullet a fading tail traces its recent path, so the way the
+star bends a shot reads at a glance.
+
+- It reads as one continuous streak, a smooth comet rather than a row of discrete
+  dots.
+- It tapers from the bullet: widest and brightest where it meets the bullet, then
+  narrowing and fading to nothing at its oldest end.
+- It spans a fixed slice of recent travel, the last `TRAIL_TICKS` (`18`) ticks of
+  the bullet's motion, so its drawn length is proportional to the bullet's current
+  speed.
+- Across a wrap it follows the bullet to the opposite edge rather than smearing
+  across the field, so no drawn part of it is further from the bullet than
+  `TRAIL_TICKS` of the bullet's travel by the shortest wrapped separation.
+{{#if (eq variant.slug "warhead")}}
+
+## The torpedo
+
+The ship carries a second weapon on its own key: a single guided torpedo on a slow
+recharge, distinct from the gun's bullets above.
+
+### The charge
+
+The ship holds one torpedo charge, a number from `0` to `1`. A game begins with
+the charge at `1`, ready to fire.
+
+- Launching a torpedo spends the charge, taking it to `0`.
+- The charge then rises **linearly** from `0` to `1` over `TORPEDO_RECHARGE`
+  (`10` seconds) of game time, so it reads `0.5` at five seconds and `0.25` at two
+  and a half.
+- The torpedo key does nothing while the charge is below `1`.
+- At most one torpedo is in flight at a time. While one is up, the key launches
+  nothing whatever the charge reads.
+- A respawn refills the charge to `1` and cancels any recharge in progress, so a
+  fresh ship always begins with its torpedo ready.
+
+### The launch
+
+A torpedo leaves the ship's nose, ahead of the ship's centre along its facing and
+no further from it than `SHIP_R` (`14`), with its heading set to the ship's facing
+at that moment. It is self-propelled and
+carries none of the ship's drift, so its velocity at launch is `TORPEDO_SPEED`
+(`420`) along that heading and nothing else.
+
+### The flight
+
+| Rule | Value |
+| --- | --- |
+| Collision radius | `TORPEDO_R` (`6`) |
+| Speed | `TORPEDO_SPEED` (`420`), held constant whether or not it is turning |
+| Lifetime | `TORPEDO_LIFE` (`3.5` seconds), after which a torpedo that has hit nothing is removed |
+
+The well never pulls a torpedo, so it holds its own course straight through the
+gravity the star exerts. It wraps at the field's edges carrying its speed, and it
+is removed when it is absorbed by the star's core or when it lands, as
+`specs/collision.md` states.
+
+### The guidance
+
+Every tick a torpedo looks for a target. A body is a candidate when it is a rock
+or the saucer and its bearing from the torpedo lies within `TORPEDO_CONE`
+(`15` degrees) of the torpedo's current heading, on either side, so the cone spans
+`30` degrees and looks forward alone. Among the candidates the torpedo takes the
+nearest by shortest wrapped distance.
+
+With a target, the torpedo turns its heading toward that target's current position
+at up to `TORPEDO_TURN` (`160` degrees per second), keeping its speed. With no
+candidate this tick, it flies straight on its current heading. It re-evaluates
+every tick, so it acquires, loses, and re-acquires targets over its flight, and a
+body behind it is never acquired.
+{{/if}}

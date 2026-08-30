@@ -1,19 +1,63 @@
-<!--
-SCAFFOLD STUB — NOT THE SPECIFICATION.
+# Shatter — The simulation
 
-This file exists so `test-case.toml` resolves. The Specs stage of the
-v3.0.0 rework replaces it in full, written from nothing against the design
-plan and `guides/authoring/writing-case-specifications.md`. Its scope, from
-the plan's spec decomposition table, is:
+This file defines the core the whole game advances on: the fixed timestep, the
+order of work inside one tick, and the randomness the game draws from.
 
-  The fixed timestep TICK_HZ (120) and TICK_DT (1/120 s), integrated in
-  whole ticks; the per-tick order (control forces, then the gravity
-  acceleration, then velocity, then position, then the wrap, then
-  collision resolution); the render-free requirement; and seeded
-  randomness. Branches on engine.slug for who hands the game its elapsed
-  time.
--->
+## The fixed timestep
 
-# The simulation
+The simulation runs on a fixed timestep of `TICK_HZ` (`120`) ticks per second, so
+one tick is `TICK_DT` (`1 / 120` of a second) of game time exactly. The simulation
+advances in whole ticks and never in a partial one.
 
-Not yet written.
+{{#if (eq engine.slug "none")}}
+The runtime measures how much real time each frame covers and hands it to the
+game. The game's own timestep is the one above, so the elapsed time a frame brings
+is converted into whole ticks with the remainder carried into the next frame.
+{{else}}
+The engine measures how much real time each frame covers and hands the game that
+delta in seconds; it imposes no timestep of its own. The game's own timestep is
+the one above, so the delta a frame brings is converted into whole ticks with the
+remainder carried into the next frame.
+{{/if}}
+
+## One tick
+
+Every tick runs the following in this order, over every body on the field.
+
+1. Control forces: the ship's facing turns and its thrust acceleration is taken
+   along that facing, and the saucer steers.
+2. The gravity acceleration from the star, for every pulled body, as
+   `specs/gravity.md` states.
+3. Velocity: each body's velocity gains the accelerations of steps 1 and 2 over
+   `TICK_DT`, and the ship's drag and speed cap are then applied to its velocity
+   as `specs/ship.md` fixes.
+4. Position: each body's position advances by its velocity over `TICK_DT`.
+5. The wrap, bringing each position back into the field.
+6. Collision resolution, as `specs/collision.md` states.
+
+Every timer the game keeps counts down by `TICK_DT` on the tick it runs in.
+
+## A render-free core
+
+The simulation advances from the elapsed time the game is handed, independent of a
+canvas, of the frame loop that measured it, and of wall-clock time. The dependency
+runs one way: the simulation reads nothing from the renderer. Whether a shot lands,
+where a fragment goes, and when a wave turns over are all decided from the field
+alone.
+
+## Seeded randomness
+
+Any randomness the game uses runs off a generator seeded from the state's
+generator field, and the generator keeps its whole state in that field, so
+reseeding and replaying the same calls reproduces the same result exactly. The
+draws the game makes are:
+
+- a wave's rock positions, their drift directions, and their base drift speeds;
+- the point outside an edge a recycled rock re-enters at, and the fresh base drift
+  speed it takes;
+- the edge and the row a saucer enters at, the interval until the next arrival,
+  the direction of its first weave, and the aim error of each shot it takes;
+- the drawn spin a rock carries.
+
+Given the same seed and the same sequence of calls and elapsed game time, the game
+reaches the same state every time.

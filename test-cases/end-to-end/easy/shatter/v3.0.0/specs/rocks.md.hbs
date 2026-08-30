@@ -1,19 +1,100 @@
-<!--
-SCAFFOLD STUB — NOT THE SPECIFICATION.
+# Shatter — The rocks
 
-This file exists so `test-case.toml` resolves. The Specs stage of the
-v3.0.0 rework replaces it in full, written from nothing against the design
-plan and `guides/authoring/writing-case-specifications.md`. Its scope, from
-the plan's spec decomposition table, is:
+This file defines the drifting rocks: their sizes, how they move, what a destroyed
+rock leaves behind, and what the star does with one it swallows. What destroys a
+rock and where its fragments are thrown are in `specs/collision.md`, and the waves
+that put rocks on the field are in `specs/progression.md`.
 
-  The three sizes with ROCK_RADIUS and the base drift ranges; that a rock
-  drifts under momentum, is curved by the well, wraps, and spins
-  cosmetically; the size ladder a destroyed rock produces; star recycling;
-  and the identity rule for fragments. warhead adds ROCK_HEALTH, the hit
-  flash, the damaged look, fragments at full health, and recycling
-  carrying damage across. Branches on variant.slug.
--->
+## The three sizes
 
-# The rocks
+A rock is one of three sizes. Each collides as a circle of the radius below,
+whatever it is drawn as.
 
-Not yet written.
+| Size | `ROCK_RADIUS` | Base drift speed |
+| --- | --- | --- |
+| `large` | `46` | `ROCK_SPEED_MIN.large` to `ROCK_SPEED_MAX.large` (`60` to `110`) |
+| `medium` | `26` | `90` to `150` |
+| `small` | `14` | `130` to `210` |
+
+A rock's base drift speed is the speed it enters the field with, drawn uniformly
+from its size's range. The well then speeds it up and slows it down as it falls
+toward and climbs away from the star, so its instantaneous speed varies from
+there.
+
+## How a rock moves
+
+A rock drifts under momentum, is curved continuously by the well
+(`specs/gravity.md`), and wraps at the field's edges carrying its velocity across.
+Rocks pass through one another freely.
+
+Each rock also carries a slow drawn rotation for visual life. That spin is
+cosmetic: it changes neither the rock's velocity nor its collision, so a rock
+under no force other than the well moves exactly along the path the well and its
+own momentum give it.
+
+## Splitting
+
+Destroying a rock produces the size below it:
+
+| Destroyed | Leaves |
+| --- | --- |
+| `large` | Two `medium` |
+| `medium` | Two `small` |
+| `small` | Nothing |
+
+Both fragments appear at the destroyed rock's position. The velocity each takes is
+in `specs/collision.md`, which owns both fans. Splitting is the only thing that
+reduces the number of rocks on the field.
+
+The two fragments are appended to the rock roster in order, each taking a fresh
+id, and the destroyed rock's id is not reused while any live entity holds it.
+{{#if (eq variant.slug "warhead")}}
+
+## Armor
+
+Every rock carries health, a whole number of hits it takes from the gun before it
+is destroyed.
+
+| Size | `ROCK_HEALTH` |
+| --- | --- |
+| `large` | `3` |
+| `medium` | `2` |
+| `small` | `1` |
+
+- A bullet that hits a rock lowers that rock's health by exactly `1`, and the
+  bullet is removed.
+- While health remains the rock is not destroyed, does not split, and scores
+  nothing.
+- Only the hit that takes health to `0` destroys the rock, at which point it
+  splits and scores as above.
+- A fragment enters at full health for its size, so a `medium` fragment enters at
+  `2` and a `small` at `1`.
+- Health never recovers.
+
+### Damage feedback
+
+Each hit that leaves a rock standing produces a brief bright flash on the struck
+rock lasting `HIT_FLASH_TIME` (`0.1` seconds), after which the rock returns to the
+appearance its remaining health gives it.
+
+A rock is drawn progressively more damaged as its health falls, so a player can
+judge how many hits it has left. A rock at full health is drawn undamaged.
+{{/if}}
+
+## Star recycling
+
+A rock the star swallows is the same rock relocated, not a fresh one.
+
+When a rock's circle reaches the star's core (`specs/collision.md`), the rock is
+taken from the core and immediately re-placed at the same size. It re-enters at a
+random point on one of the four edges of the field, heading inward into the field,
+at a fresh base drift speed drawn from its size's range.
+
+Recycling scores nothing and leaves the field's rock count unchanged: the star
+churns the board but never empties it.
+{{#if (eq variant.slug "warhead")}}
+
+A recycled rock carries exactly the health it had when the star took it, and it
+re-enters drawn with the damage that health gives it. Its speed is reset and its
+health is not.
+{{/if}}
