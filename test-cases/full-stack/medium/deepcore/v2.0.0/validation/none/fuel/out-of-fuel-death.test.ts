@@ -1,25 +1,75 @@
-// Deepcore — fuel.out-of-fuel-death. STUB: NOT YET AUTHORED.
+// fuel/out-of-fuel-death — running dry underground ends the expedition.
 //
-// Running dry underground ends the expedition
+// specs/character.md: fuel reaching `0` while the miner is below the surface
+// ground line strands it — the jetpack is dead and there is no way up — and that
+// is a death. specs/gameplay.md has a Game Over screen summarize the expedition,
+// with how the miner died among what it reports, and
+// specs/instrumentation.md names that reading `summary.deathCause`.
 //
-// Fuel reaching 0 while the miner is below the surface ground line strands it
-// and ends the expedition at the game-over screen with the death cause
-// fuel-out.
-//
-// Automated validation: pose a near-empty tank on a miner below the surface,
-// burn the rest and read the screen and the summary death cause.
-//
-// `test-case.toml` declares this suite as `fuel/out-of-fuel-death.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (strand (replay)) around the drive.
+// The tank is posed just short of empty on a miner standing on a posed floor well
+// below the ground line, with nothing held and the drill gated, and the
+// life-support trickle alone empties it. So the death is the game's own
+// continuous check rather than a posed screen: nothing here sets `screen`.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
+import { LIFE_SUPPORT_BURN, SURFACE_Y } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  layFloor,
+  minerFeet,
+  openScene,
+  pinDrill,
+  standOn,
+  TICK_HZ,
+  type Harness,
+} from "../harness";
 
-test("Running dry underground ends the expedition", () => {
-  throw new Error(
-    "Deepcore validator `fuel/out-of-fuel-death` is declared in test-case.toml but has not been authored yet.",
+/** A column and a row well clear of the camp, the cave mouth, and the Core. */
+const COL = 8;
+const ROW = 12;
+
+/** What is left in the tank: half a second of life support. */
+const LEFT = LIFE_SUPPORT_BURN / 2;
+
+/** Frames the sweep may spend: ten times what the trickle needs. */
+const MAX_FRAMES = 10 * TICK_HZ;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("ends the expedition at Game Over when the tank empties underground", async () => {
+  await openScene(h);
+  await layFloor(h, ROW);
+  await standOn(h, COL, ROW);
+  await pinDrill(h);
+  await h.debug.setFuel(LEFT);
+  await h.advance(1);
+
+  const before = await h.snapshot();
+  assertEqual(before.screen, "in-mine", "specs/ui.md");
+  assertEqual(before.summary, null, "specs/instrumentation.md");
+  assertGreaterThan(minerFeet(before.miner), SURFACE_Y, "specs/world.md");
+
+  const dead = await captureReplay(h, "strand", () =>
+    h.until((s) => s.screen === "game-over", { maxFrames: MAX_FRAMES }),
+  );
+
+  assertEqual(dead.hit, true, "specs/character.md");
+  assertEqual(dead.snapshot.screen, "game-over", "specs/gameplay.md");
+  assertEqual(dead.snapshot.miner.fuel, 0, "specs/character.md");
+  assertNotNull(dead.snapshot.summary, "specs/gameplay.md");
+  assertEqual(
+    dead.snapshot.summary?.deathCause,
+    "fuel-out",
+    "specs/instrumentation.md",
   );
 });

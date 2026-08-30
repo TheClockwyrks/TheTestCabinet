@@ -1,26 +1,84 @@
-// Deepcore — fuel.life-support. STUB: NOT YET AUTHORED.
+// fuel/life-support — being underground burns life support.
 //
-// Being underground burns life support
+// specs/character.md: fuel is spent by being underground, at `LIFE_SUPPORT_BURN`
+// (`0.4`) fuel per second while the miner is below the surface ground line. It is
+// charged whatever the miner is doing, so a long dig costs fuel even standing
+// still, and walking and standing themselves cost nothing.
 //
-// Below the surface ground line the miner burns LIFE_SUPPORT_BURN (0.4) fuel
-// per second whatever it is doing, so a long dig costs fuel even standing
-// still.
+// The miner stands on a posed floor well below the ground line with nothing held
+// and its drill gated, so the only drain the specification leaves running is the
+// one under test. Ten seconds is run in a hundred and twenty frames rather than
+// twelve hundred: `specs/instrumentation.md` has every rate integrated against
+// the frame's delta, so the span reaches the same total either way.
 //
-// Automated validation: stand the miner idle on a posed floor below the
-// surface with nothing held, advance a fixed span and hold the fuel spent
-// against LIFE_SUPPORT_BURN times the span.
-//
-// `test-case.toml` declares this suite as `fuel/life-support.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (underground (replay)) around the drive.
+// The miner's body is held still for the span. Travel is not what this point
+// exercises, and holding it does two things the reading needs: it keeps the feet
+// exactly on the ground line `specs/world.md` fixes, rather than a contact
+// epsilon below it, and it lets the span run in a hundred and twenty frames.
+// `specs/instrumentation.md` has every rate integrated against the frame's
+// delta, so a coarse division reaches the same fuel — but a quarter-second frame
+// is a quarter-second of gravity for a body that is free to move, and collision
+// against a one-tile floor is not a rate.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertEqual } from "../assert";
+import { LIFE_SUPPORT_BURN, SURFACE_Y } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  layFloor,
+  minerFeet,
+  openScene,
+  pinDrill,
+  pinMiner,
+  standOn,
+  type Harness,
+} from "../harness";
 
-test("Being underground burns life support", () => {
-  throw new Error(
-    "Deepcore validator `fuel/life-support` is declared in test-case.toml but has not been authored yet.",
+/** A column and a row well clear of the camp, the cave mouth, and the Core. */
+const COL = 8;
+const ROW = 12;
+
+/** The span, and the frames it is divided into. */
+const HOLD_SECONDS = 10;
+const FRAMES = 120;
+
+/** The spend, and the two frames of it a build may bill either side of the span. */
+const EXPECTED = LIFE_SUPPORT_BURN * HOLD_SECONDS;
+const TOLERANCE = (2 * EXPECTED) / FRAMES;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("spends LIFE_SUPPORT_BURN a second while the miner is underground", async () => {
+  await openScene(h);
+  await layFloor(h, ROW);
+  await standOn(h, COL, ROW);
+  await pinDrill(h);
+  await pinMiner(h);
+  await h.advance(1);
+
+  const before = await h.snapshot();
+  assertEqual(before.miner.grounded, true, "specs/character.md");
+  assertEqual(before.miner.state, "idle", "specs/character.md");
+  assertBetween(minerFeet(before.miner), SURFACE_Y, Infinity, "specs/world.md");
+
+  const after = await captureReplay(h, "underground", async () => {
+    await h.advanceSeconds(HOLD_SECONDS, FRAMES);
+    return await h.snapshot();
+  });
+
+  assertBetween(
+    before.miner.fuel - after.miner.fuel,
+    EXPECTED - TOLERANCE,
+    EXPECTED + TOLERANCE,
+    "specs/character.md",
   );
 });
