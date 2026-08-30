@@ -16,7 +16,10 @@ import {
   MAX_QUALITY,
   QUALITY_TIERS,
   TARGETING_PRIORITIES,
+  type ComboId,
   type ComponentType,
+  type DifficultyId,
+  type MapId,
   type TargetingPriority,
 } from "./constants";
 
@@ -136,3 +139,47 @@ export const LOAD_RADIUS: Readonly<Record<string, number>> = {
 export function qualityIndex(quality: number): number {
   return Math.max(0, Math.min(MAX_QUALITY - 1, Math.round(quality) - 1));
 }
+
+/**
+ * One accent per combination tower: the base type its identity leans on, so a tower
+ * reads as a keystone built out of something recognizable, with the apex taking the
+ * combo gold itself.
+ */
+export const COMBO_COLOR: Readonly<Record<ComboId, string>> = {
+  fusecluster: TYPE_COLOR.arcnode,
+  staticweb: TYPE_COLOR.coil,
+  slagdriver: TYPE_COLOR.discharge,
+  corroder: TYPE_COLOR.rectifier,
+  ionprism: TYPE_COLOR.rectifier,
+  forkarray: TYPE_COLOR.emitter,
+  nullcore: TYPE_COLOR.regulator,
+  rupturenode: TYPE_COLOR.arcnode,
+  blightcoil: TYPE_COLOR.rectifier,
+  reactorpile: TYPE_COLOR.coil,
+  auroralance: TYPE_COLOR.choke,
+  singularity: COL.combo,
+};
+
+/** One accent per difficulty, on the select cards. */
+export const DIFFICULTY_COLOR: Readonly<Record<DifficultyId, string>> = {
+  easy: COL.legal,
+  medium: COL.charge,
+  hard: COL.alert,
+};
+
+/** A one-word read of each map's shape, drawn on its select card. */
+export const MAP_STYLE: Readonly<Record<MapId, string>> = {
+  substation: "SERPENTINE",
+  switchyard: "BUSBAR",
+  transformer: "CHOKEPOINT",
+};
+
+/** A sentence on what each map's topology asks of a maze, drawn on its select card. */
+export const MAP_BLURB: Readonly<Record<MapId, string>> = {
+  substation:
+    "A perimeter spiral: fold the route down the edges, then in through the center to the right-side sink.",
+  switchyard:
+    "A crossing star: six legs cut back and forth through the middle, so the center band is the premium maze.",
+  transformer:
+    "Two fixed transformer housings split the yard, and the center waypoint threads the gap as the route loops the corridors.",
+};
