@@ -1,24 +1,91 @@
-// Deepcore — modes.hardcore-continue-resumes-in-progress. STUB: NOT YET AUTHORED.
+// modes/hardcore-continue-resumes-in-progress — Hardcore saves, it just does not
+// rescue a death.
 //
-// A Hardcore save still resumes an expedition in progress
+// specs/modes.md, Hardcore: "A Hardcore save still resumes an expedition in
+// progress through `CONTINUE`; it cannot rescue a death." So the mode deletes the
+// save ON A DEATH without disabling saving: an expedition banked at the pad and
+// left through the title comes straight back through the title's `CONTINUE`,
+// exactly as a Standard one does.
 //
-// CONTINUE on the title screen resumes a Hardcore save that was never died on,
-// so the mode deletes the save on death without disabling saving.
+// THE DEATH IS DELIBERATELY ABSENT. `modes/hardcore-deletes-the-save` drives the
+// other half; this one never lets the miner die, so what it reads is the save
+// working in the mode that is supposed to be unforgiving about it.
 //
-// Automated validation: save in Hardcore, return to the title without dying,
-// continue and read the expedition resumed.
-//
-// `test-case.toml` declares this suite as `modes/hardcore-continue-resumes-in-progress.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (resume (image)) around the drive.
+// ISOLATION. One Hardcore expedition on an empty mine with the slot cleared
+// first, the miner standing at the camp where saving is allowed, and a
+// distinctive Credits balance so the expedition that comes back is visibly the
+// one that was banked.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TITLE_ITEMS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  type Harness,
+} from "../harness";
+import {
+  bankSave,
+  continueFromTitle,
+  menuLength,
+  openAtCamp,
+} from "../save/expedition";
 
-test("A Hardcore save still resumes an expedition in progress", () => {
-  throw new Error(
-    "Deepcore validator `modes/hardcore-continue-resumes-in-progress` is declared in test-case.toml but has not been authored yet.",
+/** The balance the save carries, so the resumed expedition names itself. */
+const CREDITS = 5150;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness({ storage: true });
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("resumes a banked Hardcore expedition through the title's CONTINUE", async () => {
+  await openAtCamp(h, { mode: "hardcore" });
+  h.debug.setCredits(CREDITS);
+  bankSave(h);
+
+  h.debug.setScreen("title");
+  const calls = await h.frameCalls();
+  assertEqual(
+    drewText(calls, TITLE_ITEMS[0]),
+    true,
+    "specs/modes.md: a Hardcore save puts CONTINUE on the title",
+  );
+  assertEqual(
+    await menuLength(h),
+    TITLE_ITEMS.length,
+    "specs/ui.md: the title menu carries CONTINUE while the Hardcore save exists",
+  );
+
+  await continueFromTitle(h);
+  await h.advance(1);
+
+  const resumed = h.snapshot();
+  captureStill(h, "resume");
+  assertEqual(
+    resumed.screen,
+    "in-mine",
+    "specs/modes.md: CONTINUE resumes the Hardcore expedition in progress",
+  );
+  assertEqual(
+    resumed.mode,
+    "hardcore",
+    "specs/modes.md: the resumed expedition is still Hardcore",
+  );
+  assertEqual(
+    resumed.credits,
+    CREDITS,
+    "specs/gameplay.md: the resumed expedition is the one that was banked",
+  );
+  assertEqual(
+    resumed.hasSave,
+    true,
+    "specs/modes.md: resuming does not spend the save",
   );
 });
