@@ -121,7 +121,8 @@ export async function watchRoster(
   };
 
   sample(0);
-  for (let done = 0; done < frames; ) {
+  let done = 0;
+  while (done < frames) {
     const step = Math.min(poll, frames - done);
     await h.advance(step);
     done += step;
