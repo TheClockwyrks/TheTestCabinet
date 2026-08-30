@@ -1,27 +1,85 @@
-// Deepcore — instrumentation.snapshot-resting-values. STUB: NOT YET AUTHORED.
+// instrumentation/snapshot-resting-values — unused fields rest, they do not vanish.
 //
-// Fields the current state does not use report their resting values
+// `specs/instrumentation.md`: "The shape is fixed and every field is present on
+// every screen. A field the current screen does not use reports its resting value
+// rather than going missing: `summary` is `null` until the expedition ends,
+// `coreTimer` and `coreGround` are `null` while no Sample is live, `panel` is
+// `null` while no panel is open, `notice` is `null` while no card is armed or on
+// screen, and `menuIndex` rests at `0` on `in-mine`."
 //
-// The shape is fixed whatever the screen: summary is null until the expedition
-// ends, coreTimer and coreGround are null while no Sample is live, panel is
-// null while no panel is open, notice is null while no card is armed, and
-// menuIndex rests at 0 on in-mine. No field goes missing.
+// WHY THIS IS ITS OWN POINT. A build that omits a field it is not using reads the
+// same as a build that has the field and sets it wrongly: `snapshot.summary` is
+// `undefined` either way to a caller that does not look. The distinction matters
+// because every check in this project reads the state through one shape, and a
+// shape whose keys come and go is one a check cannot compare against.
 //
-// Automated validation: read the snapshot on a fresh in-mine expedition and on
-// the title screen and hold each unused field against the resting-values list
-// in specs/instrumentation.md.
-//
-// `test-case.toml` declares this suite as `instrumentation/snapshot-resting-values.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (resting (image)) around the drive.
+// TWO SCREENS ARE READ, and they are the two that use least of the shape: a fresh
+// in-mine expedition, where none of the five is in use and `menuIndex` is
+// explicitly at rest; and the title, where the expedition itself has not started.
+// Each field is read for PRESENCE first, which is what separates a rest from an
+// omission, and then for the value the specification rests it at.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertHasProperty, assertNull } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openScene,
+  type DeepcoreSnapshot,
+  type Harness,
+} from "../harness";
 
-test("Fields the current state does not use report their resting values", () => {
-  throw new Error(
-    "Deepcore validator `instrumentation/snapshot-resting-values` is declared in test-case.toml but has not been authored yet.",
+let h: Harness;
+
+/** The five fields the specification names, held at rest, plus the menu index. */
+function assertResting(s: DeepcoreSnapshot, at: string): void {
+  for (const field of [
+    "summary",
+    "coreTimer",
+    "coreGround",
+    "panel",
+    "notice",
+    "menuIndex",
+  ] as const) {
+    assertHasProperty(s, field, `the snapshot on ${at}`);
+  }
+  assertNull(s.summary, `summary on ${at}`);
+  assertNull(s.coreTimer, `coreTimer on ${at}`);
+  assertNull(s.coreGround, `coreGround on ${at}`);
+  assertNull(s.panel, `panel on ${at}`);
+  assertNull(s.notice, `notice on ${at}`);
+}
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("rests summary, coreTimer, coreGround, panel and notice at null rather than dropping them", async () => {
+  // A fresh expedition: nothing has ended, no Sample is live, no panel is open
+  // and no card is armed, and the in-mine screen has no menu.
+  openScene(h);
+  await h.advance(2);
+  const inMine = h.snapshot();
+  captureStill(h, "resting");
+
+  assertEqual(inMine.screen, "in-mine", "the screen the reading is taken on");
+  assertResting(inMine, "in-mine");
+  assertEqual(inMine.menuIndex, 0, "menuIndex on in-mine");
+  assertEqual(
+    inMine.satchel.coreSample,
+    false,
+    "the Sample the coreTimer rests without",
   );
+
+  // And the title, where the expedition has not started at all.
+  openScene(h, { screen: "title" });
+  await h.advance(2);
+  const title = h.snapshot();
+
+  assertEqual(title.screen, "title", "the screen the reading is taken on");
+  assertResting(title, "title");
 });

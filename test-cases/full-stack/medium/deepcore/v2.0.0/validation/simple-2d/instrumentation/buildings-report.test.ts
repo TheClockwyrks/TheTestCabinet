@@ -1,26 +1,76 @@
-// Deepcore — instrumentation.buildings-report. STUB: NOT YET AUTHORED.
+// instrumentation/buildings-report — buildings() reports the six of them.
 //
-// buildings reports one entry per surface building
+// `specs/instrumentation.md` gives `buildings()` one job: "One entry per surface
+// building, `{ id, x, y, w, h }`, with `id` the building's id and `x`, `y`, `w`,
+// `h` its footprint in world units." `specs/world.md` names the six and their ids:
+// `fuel-depot`, `ore-market`, `save-pad`, `upgrade-shop`, `supply-depot`,
+// `launch-pad`.
 //
-// buildings() returns exactly six entries, one per building id in
-// specs/world.md (fuel-depot, ore-market, save-pad, upgrade-shop,
-// supply-depot, launch-pad), each carrying a numeric x, y, w and h footprint
-// in world units.
+// The reading is a deliverable rather than a convenience: `specs/world.md`
+// deliberately leaves where the buildings stand to the build, so this is the only
+// way a check can find one to walk to. A build that reported five, or reported
+// them under names of its own, leaves every point about the camp's panels unable
+// to reach the building it is about.
 //
-// Automated validation: read buildings() on a started expedition and hold the
-// id set and each entry shape against the six buildings specs/world.md names.
-//
-// `test-case.toml` declares this suite as `instrumentation/buildings-report.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (camp (image)) around the drive.
+// WHAT IS READ HERE, AND WHAT IS NOT. That there are exactly six entries, that
+// their ids are exactly the six the specification names, and that each carries a
+// footprint made of four finite numbers with a positive width and height. Where
+// those footprints sit — on the ground line, apart from each other, clear of the
+// cave mouth — is fixed by `specs/world.md` and read by the camp's own points.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { BUILDINGS } from "../../src/constants";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThan,
+  assertLength,
+} from "../assert";
+import {
+  captureStill,
+  createHarness,
+  layCamp,
+  openScene,
+  pinDrill,
+  standAtCamp,
+  type Harness,
+} from "../harness";
 
-test("buildings reports one entry per surface building", () => {
-  throw new Error(
-    "Deepcore validator `instrumentation/buildings-report` is declared in test-case.toml but has not been authored yet.",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reports one entry per surface building, with a numeric footprint", async () => {
+  openScene(h);
+  layCamp(h);
+  standAtCamp(h);
+  pinDrill(h);
+  await h.advance(2);
+  captureStill(h, "camp");
+
+  const boxes = h.debug.buildings();
+  assertLength(boxes, BUILDINGS.length, "entries buildings() reported");
+  assertDeepEqual(
+    [...boxes.map((box) => box.id)].sort(),
+    [...BUILDINGS].sort(),
+    "the ids buildings() reported",
   );
+
+  for (const box of boxes) {
+    for (const field of ["x", "y", "w", "h"] as const) {
+      assertEqual(
+        Number.isFinite(box[field]),
+        true,
+        `"${box.id}" reporting a numeric ${field}, and got ${String(box[field])}`,
+      );
+    }
+    assertGreaterThan(box.w, 0, `the width of "${box.id}"`);
+    assertGreaterThan(box.h, 0, `the height of "${box.id}"`);
+  }
 });

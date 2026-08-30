@@ -1,25 +1,68 @@
-// Deepcore — instrumentation.find-tile. STUB: NOT YET AUTHORED.
+// instrumentation/find-tile — the nearest cell of a kind, and null where none is.
 //
-// findTile reports the nearest cell of a kind, and null where none exists
+// `specs/instrumentation.md`: `findTile(kind)` returns "The `{ col, row }` of a
+// cell of that kind, the one nearest the miner where several exist, or `null`
+// where the mine holds none."
 //
-// On a cleared mine with two posed lava cells, findTile(lava) reports the one
-// nearer the miner; with the mine cleared of lava entirely it reports null
-// rather than a stale or invented cell.
+// Two readings, and they are the two the sentence has. With two cells of one kind
+// posed at plainly different distances the reading is the nearer of them, which a
+// build that returns the first cell of its own scan order fails. With the mine
+// holding none of that kind at all the reading is `null`, which a build that
+// cached its last answer, or that clamps to the closest cell of some other kind,
+// fails.
 //
-// Automated validation: clear the mine, pose two cells of one kind at known
-// distances from the miner, read findTile, then clear them and read it again.
-//
-// `test-case.toml` declares this suite as `instrumentation/find-tile.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (nearest (image)) around the drive.
+// LAVA IS THE KIND POSED, because an empty mine holds none of it: `reset` leaves
+// the grid as `clearMine` does, so the two cells this poses are the only lava in
+// the world and the `null` reading is a real absence rather than a search that
+// ran out of budget. The distances are three cells and twenty-four, which is the
+// nearer cell under any distance a build might measure in.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertNull } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openScene,
+  pinDrill,
+  standOn,
+  type Harness,
+} from "../harness";
 
-test("findTile reports the nearest cell of a kind, and null where none exists", () => {
-  throw new Error(
-    "Deepcore validator `instrumentation/find-tile` is declared in test-case.toml but has not been authored yet.",
+const COL = 4;
+const ROW = 12;
+
+/** The two posed cells: one three columns away, one twenty-four. */
+const NEAR = { col: COL + 3, row: ROW };
+const FAR = { col: COL + 24, row: ROW };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reports the nearer of two posed cells, and null once neither is there", async () => {
+  openScene(h);
+  h.debug.setTile(COL, ROW, "rock");
+  standOn(h, COL, ROW);
+  pinDrill(h);
+  h.debug.setTile(NEAR.col, NEAR.row, "lava");
+  h.debug.setTile(FAR.col, FAR.row, "lava");
+  await h.advance(2);
+  captureStill(h, "nearest");
+
+  assertDeepEqual(
+    h.debug.findTile("lava"),
+    NEAR,
+    "the nearest lava cell to the miner",
   );
+
+  // With both posed away, there is no lava in the mine at all.
+  h.debug.setTile(NEAR.col, NEAR.row, "tunnel");
+  h.debug.setTile(FAR.col, FAR.row, "tunnel");
+  assertNull(h.debug.findTile("lava"), "the reading with no lava in the mine");
 });
