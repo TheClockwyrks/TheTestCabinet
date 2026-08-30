@@ -111,7 +111,7 @@ export const COLOR = {
   /** The wash drawn over the field behind a menu or a banner. */
   scrim: "rgba(3, 5, 12, 0.78)",
   /** The lighter wash a banner over live play sits on. */
-  scrimLight: "rgba(3, 5, 12, 0.5)",
+  scrimLight: "rgba(3, 5, 12, 0.32)",
 } as const;
 
 /**
