@@ -1,25 +1,53 @@
-// Deepcore — core-run.carried-detonation-kills. STUB: NOT YET AUTHORED.
+// Deepcore — core-run/carried-detonation-kills: the timer running out on a
+// carried Sample kills the miner.
 //
-// The timer expiring on a carried Sample kills the miner
+// `specs/hazards.md`: "A detonation while the Sample is carried kills the miner
+// outright." `specs/modes.md` names the cause: "The Core Sample's timer expiring
+// while it is carried ... `core-detonation`", and a death "ends the expedition at
+// the Game Over screen".
 //
-// The timer reaching 0 while the Sample is carried kills the miner outright
-// whatever its hull, ending the expedition with the death cause
-// core-detonation.
-//
-// Automated validation: pose a carried Sample with a short timer and a full
-// hull, run the timer out and read the screen and the summary death cause.
-//
-// `test-case.toml` declares this suite as `core-run/carried-detonation-kills.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (detonation (replay)) around the drive.
+// The Sample is posed carried with a short timer and the hull left FULL, which is
+// what makes the reading say "outright": a miner at full hull cannot have died of
+// anything else, and the summary's cause is read to say so. The game is then run
+// on until it leaves `in-mine`, so it is the game's own timer and its own death
+// check that end the expedition rather than anything posed.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNotNull } from "../assert";
+import { captureReplay, createHarness, type Harness } from "../harness";
+import { openCampScene, runUntilOver } from "./core-scene";
 
-test("The timer expiring on a carried Sample kills the miner", () => {
-  throw new Error(
-    "Deepcore validator `core-run/carried-detonation-kills` is declared in test-case.toml but has not been authored yet.",
+/** Short enough to run out inside the drive, long enough not to be instant. */
+const SHORT_TIMER = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("kills the miner outright when a carried Sample's timer runs out", async () => {
+  openCampScene(h);
+  const { miner } = h.snapshot();
+  h.debug.setHull(miner.maxHull);
+  h.debug.setCoreCarried(true);
+  h.debug.setCoreTimer(SHORT_TIMER);
+
+  const over = await captureReplay(h, "detonation", () => runUntilOver(h));
+
+  assertEqual(
+    over.screen,
+    "game-over",
+    "the screen the detonation left the game on",
+  );
+  assertNotNull(over.summary, "an expedition summary after the detonation");
+  assertEqual(
+    over.summary?.deathCause,
+    "core-detonation",
+    "the cause the summary reports",
   );
 });

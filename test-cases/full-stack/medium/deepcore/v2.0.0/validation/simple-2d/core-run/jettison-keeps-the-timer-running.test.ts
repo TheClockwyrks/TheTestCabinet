@@ -1,25 +1,74 @@
-// Deepcore — core-run.jettison-keeps-the-timer-running. STUB: NOT YET AUTHORED.
+// Deepcore — core-run/jettison-keeps-the-timer-running: dropping the Sample
+// neither pauses nor resets its clock.
 //
-// Jettisoning neither pauses nor resets the timer
+// `specs/items.md`: "the miner may jettison it, dropping it onto its current cell
+// as a ground item ... The destabilization timer keeps running on the dropped
+// Sample. Jettisoning neither pauses nor resets it."
 //
-// Jettisoning drops the Sample onto the miner cell as a ground item and the
-// destabilization timer keeps running unchanged across the drop.
+// A Sample is posed carried with its timer part run, and the jettison control
+// `specs/instrumentation.md` names is called. Three readings decide it: the
+// Sample leaves the satchel and appears as a ground item on the cell the snapshot
+// says the miner is in, the timer across the drop is the one it had rather than
+// `CORE_TIMER` again, and a driven span afterwards takes it down by that span.
 //
-// Automated validation: pose a carried Sample at a known timer, jettison and
-// read the timer continuing from where it stood with coreGround set to the
-// miner cell.
-//
-// `test-case.toml` declares this suite as `core-run/jettison-keeps-the-timer-running.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (drop (replay)) around the drive.
+// The reset half is what the posed timer is for: a Sample dropped at a full
+// ninety seconds could not tell a timer that carried on from one that started
+// over.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertDeepEqual, assertEqual } from "../assert";
+import { captureReplay, createHarness, type Harness } from "../harness";
+import { elapse, openCampScene } from "./core-scene";
 
-test("Jettisoning neither pauses nor resets the timer", () => {
-  throw new Error(
-    "Deepcore validator `core-run/jettison-keeps-the-timer-running` is declared in test-case.toml but has not been authored yet.",
+/** Well short of `CORE_TIMER`, so a restarted timer would be unmistakable. */
+const POSED_TIMER = 40;
+
+/** The span the dropped Sample's timer is measured over. */
+const SPAN = 3;
+
+/** Slack on a span read across whole frames. */
+const TOLERANCE = 0.2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("drops the Sample on the miner's cell with its timer still running", async () => {
+  openCampScene(h);
+  h.debug.setCoreCarried(true);
+  h.debug.setCoreTimer(POSED_TIMER);
+
+  const run = await captureReplay(h, "drop", async () => {
+    const before = h.snapshot();
+    h.debug.jettison();
+    const dropped = h.snapshot();
+    await elapse(h, SPAN);
+    return { before, dropped, later: h.snapshot() };
+  });
+
+  assertEqual(run.dropped.satchel.coreSample, false, "a Sample still carried");
+  assertDeepEqual(
+    run.dropped.coreGround,
+    { col: run.before.miner.col, row: run.before.miner.row },
+    "the cell the Sample was dropped on",
+  );
+
+  assertBetween(
+    run.dropped.coreTimer ?? Number.NaN,
+    POSED_TIMER - TOLERANCE,
+    POSED_TIMER + TOLERANCE,
+    "the timer across the drop",
+  );
+  assertBetween(
+    (run.dropped.coreTimer ?? Number.NaN) - (run.later.coreTimer ?? Number.NaN),
+    SPAN - TOLERANCE,
+    SPAN + TOLERANCE,
+    `seconds the dropped Sample's timer fell over ${SPAN}s`,
   );
 });
