@@ -21,7 +21,9 @@ describe("the deck", () => {
   it("is one of each of the fifty-two suit-and-rank pairs", () => {
     const deck = buildDeck();
     expect(deck).toHaveLength(52);
-    expect(new Set(deck.map((c) => `${c.suit}-${String(c.rank)}`)).size).toBe(52);
+    expect(new Set(deck.map((c) => `${c.suit}-${String(c.rank)}`)).size).toBe(
+      52,
+    );
     expect(Math.min(...deck.map((c) => c.rank))).toBe(1);
     expect(Math.max(...deck.map((c) => c.rank))).toBe(13);
   });
@@ -81,18 +83,18 @@ describe("a foundation", () => {
   });
 
   it("takes one card at a time", () => {
-    expect(
-      foundationAccepts([], [card("spades", 1), card("hearts", 13)]),
-    ).toBe(false);
+    expect(foundationAccepts([], [card("spades", 1), card("hearts", 13)])).toBe(
+      false,
+    );
   });
 });
 
 describe("a column", () => {
   it("takes a King, or a run led by one, onto an empty column", () => {
     expect(columnAccepts([], [card("spades", 13)])).toBe(true);
-    expect(
-      columnAccepts([], [card("spades", 13), card("hearts", 12)]),
-    ).toBe(true);
+    expect(columnAccepts([], [card("spades", 13), card("hearts", 12)])).toBe(
+      true,
+    );
     expect(columnAccepts([], [card("spades", 12)])).toBe(false);
     expect(columnAccepts([], [card("spades", 1)])).toBe(false);
   });
@@ -107,9 +109,9 @@ describe("a column", () => {
   });
 
   it("accepts nothing onto a face-down lowest card", () => {
-    expect(
-      columnAccepts([card("hearts", 8, false)], [card("spades", 7)]),
-    ).toBe(false);
+    expect(columnAccepts([card("hearts", 8, false)], [card("spades", 7)])).toBe(
+      false,
+    );
   });
 
   it("refuses a slice that is not an ordered run", () => {

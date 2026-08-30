@@ -1,7 +1,13 @@
 // The seeded generator: the same seed replays the same draws.
 
 import { describe, expect, it } from "vitest";
-import { nextBelow, nextRandom, nextRange, nextSign, shuffleInPlace } from "./rng";
+import {
+  nextBelow,
+  nextRandom,
+  nextRange,
+  nextSign,
+  shuffleInPlace,
+} from "./rng";
 import { buildDeck } from "./cards";
 
 describe("nextRandom", () => {
@@ -61,7 +67,9 @@ describe("the shuffle", () => {
     const deck = buildDeck();
     shuffleInPlace(deck, 1);
     expect(deck).toHaveLength(52);
-    expect(new Set(deck.map((c) => `${c.suit}-${String(c.rank)}`)).size).toBe(52);
+    expect(new Set(deck.map((c) => `${c.suit}-${String(c.rank)}`)).size).toBe(
+      52,
+    );
     expect(deck.map((c) => c.rank).join("")).not.toBe(
       buildDeck()
         .map((c) => c.rank)
