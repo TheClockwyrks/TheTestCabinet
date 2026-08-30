@@ -129,11 +129,11 @@ Changing a priority costs nothing and takes effect on the next shot.
 
 ### The Coil's chain
 
-The Coil's projectile hits its primary target, then the hit leaps to the nearest unit not
-yet struck by that shot within `COIL_LEAP_RANGE` (`70`) of the last unit struck, and
-again from there. Each leap deals `COIL_FALLOFF` (`0.7`) times the previous hit's damage,
+The Coil's projectile hits its primary target, then the hit leaps to the nearest unit it
+has not already struck within `COIL_LEAP_RANGE` (`70`) of the last unit struck, and again
+from there. Each leap deals `COIL_FALLOFF` (`0.7`) times the previous hit's damage,
 so the primary takes full damage, the first leap `0.7` of it, the second `0.49`, and so
-on. A leap that finds no unstruck unit in range ends the chain.
+on. A leap that finds no unit in range it has not already struck ends the chain.
 
 `COIL_LEAPS` holds the maximum number of additional leaps by tier:
 

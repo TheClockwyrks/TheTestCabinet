@@ -48,5 +48,5 @@ The run opens with `START_INTEGRITY` (`20`) Grid Integrity.
 - Grid Integrity never regenerates.
 - Grid Integrity reaching `0` or below ends the run in defeat immediately, even mid-wave.
 
-Grid Integrity decides win and loss and is never scored. The run's only end-of-run figure
-is the Maze Rating of `specs/campaign.md`.
+Grid Integrity decides win and loss and nothing else. The run's only end-of-run figure is
+the Maze Rating of `specs/campaign.md`.
