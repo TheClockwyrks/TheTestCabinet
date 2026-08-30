@@ -41,7 +41,7 @@ next lives anywhere else. Implement the game.
 against the frame's real elapsed seconds; the simulation advances in whole ticks
 of `TICK_DT` (1/120 s), running as many as that elapsed time completes and
 carrying the remainder into the next frame. Every rate in `src/constants.ts` is
-integrated against that tick rather than against the tick's own delta, and
+integrated against that tick rather than against the frame's own delta, and
 `state.simTime` accumulates `TICK_DT` on every tick whatever the screen.
 `specs/overview.md` states the rule, and the engine's per-world timers express it
 directly.
@@ -95,7 +95,8 @@ documentation defines every other piece of that recipe.
   replace them.
 - **`index.html`** — the page and the canvas the engine fits the stage into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
+  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
+  and `.gitignore`.
 - **`.tcab/`** — the vendored engine.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
