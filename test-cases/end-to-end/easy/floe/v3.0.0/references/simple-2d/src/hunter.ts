@@ -243,11 +243,21 @@ export function commitStep(
   return true;
 }
 
-/** Let a settled bear's own routing commit its next step, where it has one. */
+/**
+ * Let a settled bear's own routing commit its next step, where it has one.
+ *
+ * This runs AFTER the tick's travel, so a bear commits on the tick it is settled on
+ * a tile and travels along the new step from the next tick. That is what makes
+ * `specs/hunter.md`'s property hold on every tick without exception: the tick a
+ * bear's step changes on is always a tick whose centre is exactly a tile centre,
+ * whether it settled there this tick or was standing there already.
+ */
 function routeStep(sim: Sim, bear: MutBear): void {
-  if (!bear.routing || !settled(bear)) return;
-  const direction = chooseStep(sim, bear);
-  if (direction !== null) commitStep(sim, bear, direction);
+  if (!settled(bear)) return;
+  if (bear.routing) {
+    const direction = chooseStep(sim, bear);
+    if (direction !== null) commitStep(sim, bear, direction);
+  }
   // Nowhere open to go, or the step refused: the bear holds the tile it is on and
   // chooses again next tick, so nothing is carried into a step it never took.
   if (settled(bear)) bear.carry = 0;
@@ -255,7 +265,15 @@ function routeStep(sim: Sim, bear: MutBear): void {
 
 /** Carry a bear along the step it is on by one tick (`specs/hunter.md`). */
 function travelBear(sim: Sim, bear: MutBear, dt: number): void {
-  if (!bear.travel || settled(bear)) return;
+  if (!bear.travel) return;
+  if (settled(bear)) {
+    // Standing on a tile with no step to travel on. The tick's travel is CARRIED
+    // rather than spent, exactly as the travel left over at a tile centre is, so a
+    // bear that commits a step this tick loses nothing by having committed it at a
+    // centre; a bear that commits none has its carry dropped below.
+    bear.carry += bearSpeed(sim, bear) * TILE * dt;
+    return;
+  }
 
   const goalX = tileCX(bear.stepCol);
   const goalY = tileCY(bear.stepRow);
@@ -273,7 +291,6 @@ function travelBear(sim: Sim, bear: MutBear, dt: number): void {
     bear.col = bear.stepCol;
     bear.row = bear.stepRow;
     bear.carry = travel - remaining;
-    routeStep(sim, bear);
     return;
   }
 
@@ -292,8 +309,8 @@ export function stepBears(sim: Sim, dt: number): void {
     if (bear.sense && hasCritter) {
       bear.target = { col: targetCol, row: targetRow };
     }
-    routeStep(sim, bear);
     travelBear(sim, bear, dt);
+    routeStep(sim, bear);
   }
 }
 
