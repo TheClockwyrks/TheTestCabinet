@@ -12,10 +12,18 @@
 // anywhere above it would resolve the bolt early and this check would pass
 // without the rule it decides ever having run.
 //
+// THE SWEEP STOPS AT THE FRAME THE ROSTER EMPTIES, AND ITS CEILING DEMANDS NO
+// RATE. From row 19's centre (704) the line at `BOARD_Y` is 624 units up, which
+// a bolt at `BOLT_SPEED` crosses in 0.693 s; the ceiling is 1.5 s, more than
+// twice that, so a build whose bolts climb at half the stated rate still gets
+// its bolt over the line inside the sweep and is docked for the rate by
+// `cursor.bolt-travels-up` alone. A fixed window sized to the stated rate would
+// have made this point a second, quieter speed check.
+//
 // THE READING IS TAKEN EVERY FRAME, not once at the end. "Gone once its centre
 // passes BOARD_Y" is a rule about where a bolt is allowed to be, and a build
 // that carried its bolt up into the HUD bar for a while and dropped it
-// afterwards would satisfy an end-of-window roster count while breaking the rule
+// afterwards would satisfy an end-of-sweep roster count while breaking the rule
 // outright. So every frame of the climb is checked against the line, and the
 // roster is read at the end.
 
@@ -40,14 +48,14 @@ const COLUMN = 12;
 const START_ROW = 19;
 
 /**
- * The drive, in frames of the harness's 100 Hz clock: 0.8 s.
+ * The ceiling on the sweep, in frames of the harness's 100 Hz clock: 1.5 s.
  *
- * From row 19's centre (704) the line at `BOARD_Y` is 624 units up, which a bolt
- * at `BOLT_SPEED` crosses in 0.693 s. The drive runs 15% past that, so a build
- * whose bolt is a little slow still gets its bolt over the line inside the
- * window — the rate itself is `cursor.bolt-travels-up`'s requirement.
+ * Twice the 0.693 s a bolt at `BOLT_SPEED` needs to carry its centre from row
+ * 19 over `BOARD_Y`, so the figure is a ceiling and not a measurement: what it
+ * decides is how slow a build's bolts have to be before this point can no longer
+ * read the departure at all.
  */
-const DRIVE_FRAMES = framesFor(0.8);
+const SWEEP_CEILING = framesFor(1.5);
 
 /** Bolts left in flight once the one posed has left the board. */
 const BOLTS_AFTER = 0;
@@ -79,11 +87,15 @@ it("takes the bolt out of flight as its centre passes BOARD_Y", async () => {
   await poseBolt(h, COLUMN, START_ROW);
 
   let highestReached = (await h.snapshot()).bolts[0]?.y ?? BOARD_Y;
-  for (let frame = 0; frame < DRIVE_FRAMES; frame += 1) {
+  let flown = 0;
+  for (let frame = 0; frame < SWEEP_CEILING; frame += 1) {
     await h.advance(1);
-    for (const bolt of (await h.snapshot()).bolts) {
+    flown += 1;
+    const flying = (await h.snapshot()).bolts;
+    for (const bolt of flying) {
       highestReached = Math.min(highestReached, bolt.y);
     }
+    if (flying.length === BOLTS_AFTER) break;
   }
   await captureStill(h, "empty");
 
@@ -98,8 +110,8 @@ it("takes the bolt out of flight as its centre passes BOARD_Y", async () => {
   assertLength(
     (await h.snapshot()).bolts,
     BOLTS_AFTER,
-    `bolts in flight after ${DRIVE_FRAMES} frames ` +
-      `(${seconds(DRIVE_FRAMES)} s) up an empty column — at BOLT_SPEED ` +
+    `bolts in flight after ${flown} frames (${seconds(flown)} s) up an empty ` +
+      `column, against a ceiling of ${SWEEP_CEILING} — at BOLT_SPEED ` +
       `(${BOLT_SPEED}) the one posed on row ${START_ROW} crosses BOARD_Y ` +
       "0.693 s in",
   );
