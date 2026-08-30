@@ -1,32 +1,76 @@
-/*
- * Coil validator: `visibility.obstacle-apart-from-board`. PLACEHOLDER.
- *
- * An obstacle stands apart from the board.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * The pixel at an obstacle cell's center is more than 50/441 in RGB distance
- * from an empty interior cell.
- *
- * HOW:
- * render a live board and sample an obstacle cell against an empty interior
- * cell.
- *
- * MEDIA IT MUST CAPTURE: scene (image).
- *
- * It is the `maze` variant's own point, decided only when that variant runs.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// visibility/obstacle-apart-from-board — an obstacle cell is not the colour of
+// the board it sits in.
+//
+// WHAT THE SPECIFICATION FIXES. `specs/mode.md` states of the course that "an
+// obstacle cell is part of the board rather than part of the snake. It is drawn
+// one cell in size, distinctly from the wall border, from the snake, and from the
+// pellet, so a player reads the course at a glance." The field it is read
+// against is `specs/overview.md`'s dark interior. No palette is fixed, so what is
+// read is separation alone, against the review item's figure for clearly apart:
+// more than 50 of the 441 the RGB cube spans. This suite decides the field half;
+// the snake half is `visibility/obstacle-apart-from-snake`.
+//
+// THE WORLD THIS POSES. ONE obstacle cell, on a cell of the check's choosing,
+// rather than the course the mode lays. The requirement is about how an obstacle
+// cell is drawn, not about where they are, so the isolated world holds one of
+// them and the rest of the interior stays empty — which is also what makes the
+// empty cell this samples against unambiguously empty. `specs/instrumentation.md`
+// carries `clearObstacles` and `addObstacle` for exactly this, and `poseScene`
+// spends them in the order the surface accepts. The pellet is off the board and
+// travel is switched off.
+//
+// A build whose mode lays no obstacle cell carries neither operation, and this
+// point belongs only to the mode that does.
 
-test("visibility.obstacle-apart-from-board", () => {
-  throw new Error(
-    "validator not implemented: visibility/obstacle-apart-from-board.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  chainFrom,
+  colorDistance,
+  createHarness,
+  HOME_HEAD,
+  poseScene,
+  sampleCells,
+  type Cell,
+  type Harness,
+} from "../harness";
+
+/** The review item's distance: clearly apart on the 0–441 RGB scale. */
+const DISTINCT_MIN = 50;
+
+/** The one obstacle cell this world holds, clear of the posed chain. */
+const OBSTACLE_CELL: Cell = { col: 20, row: 5 };
+
+/** The interior cell the posed world leaves empty, far from both and from the wall. */
+const BOARD_CELL: Cell = { col: 20, row: 12 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws an obstacle cell apart from an empty interior cell", async () => {
+  poseScene(h, {
+    obstacles: [OBSTACLE_CELL],
+    snake: chainFrom(HOME_HEAD, "right", 3),
+    dir: "right",
+    pellet: null,
+    travel: false,
+  });
+  await h.advance(1);
+  captureStill(h, "scene");
+
+  const [obstacle, board] = sampleCells(h, [OBSTACLE_CELL, BOARD_CELL]);
+
+  assertGreaterThan(
+    colorDistance(obstacle, board),
+    DISTINCT_MIN,
+    "the RGB distance between an obstacle cell's centre and an empty interior cell's",
   );
 });

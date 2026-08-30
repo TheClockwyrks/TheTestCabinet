@@ -1,33 +1,72 @@
-/*
- * Coil validator: `visibility.head-apart-from-body`. PLACEHOLDER.
- *
- * The head stands apart from the body.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * The pixel at the head cell's center is more than 50/441 in RGB distance from
- * the pixel at a body cell's center, so the leading cell is never mistaken for
- * a segment.
- *
- * HOW:
- * pose a chain several cells long, render, and sample the head cell against a
- * middle body cell.
- *
- * MEDIA IT MUST CAPTURE: scene (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// visibility/head-apart-from-body — the head cell is not the colour of the body
+// behind it.
+//
+// WHAT THE SPECIFICATION FIXES. `specs/overview.md` requires the head cell drawn
+// distinctly from every body cell, "so the leading cell is unmistakable at any
+// length", and `specs/assets.md` states the same requirement of the produced art:
+// "the head is clearly brighter or otherwise stronger than the body, so the
+// leading cell separates from the trail at any length". Neither fixes a palette,
+// so what is read is separation alone, against the review item's figure for
+// clearly apart: more than 50 of the 441 the RGB cube spans.
+//
+// THE WORLD THIS POSES. A chain long enough to hold a MIDDLE body cell — one
+// that is neither the head nor the last cell, since `specs/assets.md` draws the
+// last cell with the tail sprite and this point is about the body. The pellet is
+// off the board and the obstacle course is cleared, so nothing else is painted
+// near either sample, and travel is switched off because a colour exercises no
+// faculty of the snake's.
+//
+// The chain runs straight, so the body cell sampled is a straight run rather
+// than a bend: both are body, and a straight run is the cell a player sees most
+// of.
 
-test("visibility.head-apart-from-body", () => {
-  throw new Error(
-    "validator not implemented: visibility/head-apart-from-body.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  chainFrom,
+  colorDistance,
+  createHarness,
+  HOME_HEAD,
+  poseScene,
+  sampleCells,
+  type Harness,
+} from "../harness";
+
+/** The review item's distance: clearly apart on the 0–441 RGB scale. */
+const DISTINCT_MIN = 50;
+
+/** Head, one straight body cell, a second, and the tail. */
+const LENGTH = 4;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws the head apart from a body cell", async () => {
+  const chain = chainFrom(HOME_HEAD, "right", LENGTH);
+  poseScene(h, {
+    snake: chain,
+    dir: "right",
+    pellet: null,
+    travel: false,
+  });
+  await h.advance(1);
+  captureStill(h, "scene");
+
+  // Index 1: the cell directly behind the head, a straight run between two
+  // neighbours and not the last cell of the chain.
+  const [head, body] = sampleCells(h, [chain[0], chain[1]]);
+
+  assertGreaterThan(
+    colorDistance(head, body),
+    DISTINCT_MIN,
+    "the RGB distance between the head cell's centre and a body cell's",
   );
 });
