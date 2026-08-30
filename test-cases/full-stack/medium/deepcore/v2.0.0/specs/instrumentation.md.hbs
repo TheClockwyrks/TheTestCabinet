@@ -27,11 +27,12 @@ and it is reached that way alone: nothing is installed on the page. Every scenar
 driven from code reaches the game through it, so it is present and exactly as
 specified here.
 
-Each operation is a reading or a pose of `DeepcoreState`, written in the shape of
-`update`, because the engine holds the state by value and nothing holds a writable
-one. A pose takes the current state, as `DeepReadonly<DeepcoreState>`, and returns
-the next `DeepcoreState`; a reading takes the state the same way and returns what
-it read. A caller drives a pose through the engine's `apply`, as
+Each operation is a reading, a pose of one value, or one of the controls below,
+and every one of them is written in the shape of `update`, because the engine holds
+the state by value and nothing holds a writable one. A pose and a control take the
+current state, as `DeepReadonly<DeepcoreState>`, and return the next
+`DeepcoreState`; a reading takes the state the same way and returns what it read. A
+caller drives a pose through the engine's `apply`, as
 `engine.apply((s) => debug.setFuel(s, 40))`, and a reading against the engine's
 current state, as `debug.snapshot(engine.state)`. A pose sets one thing, and the
 game's own physics, drill, hazard, economy, and save rules run from there exactly
@@ -49,15 +50,16 @@ returns it from `engine.debug`, and it is reached that way alone: nothing is
 installed on the page. Every scenario driven from code reaches the game through
 it, so it is present and exactly as specified here.
 
-Each operation acts on the live game at the moment it is called. A pose takes only
-the parameters its row names, arranges the running game through the same systems
-play uses, and returns nothing; a reading takes the parameters its row names,
-returns plain data built at the call, and changes nothing. A pose sets one thing,
-and the game's own physics, drill, hazard, economy, and save rules run from there
-exactly as they do in play. Deepcore runs in one world for the whole session and
-every screen is a value of `screen`, so a pose that changes the screen takes
-effect at the call rather than riding a level transition. `src/game.ts` declares
-and exports its type, `DeepcoreDebugApi`.
+Each operation is a reading, a pose of one value, or one of the controls below,
+and each acts on the live game at the moment it is called. A pose and a control
+take only the parameters this file names for them, arrange the running game through
+the same systems play uses, and return nothing; a reading takes the parameters this
+file names for it, returns plain data built at the call, and changes nothing. A
+pose sets one thing, and the game's own physics, drill, hazard, economy, and save
+rules run from there exactly as they do in play. Deepcore runs in one world for
+the whole session and every screen is a value of `screen`, so a pose that changes
+the screen takes effect at the call rather than riding a level transition.
+`src/game.ts` declares and exports its type, `DeepcoreDebugApi`.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
@@ -152,20 +154,21 @@ them. Nothing a caller does not ask for happens.
 
 {{#if (eq engine.slug "simple-2d")}}
 Each operation's first parameter is the current state,
-`DeepReadonly<DeepcoreState>`, followed by the parameters its row names, so
-`snapshot()` below is called as `snapshot(state)` and `setFuel(value)` as
-`setFuel(state, value)`. A pose returns the next `DeepcoreState`, built from the
-one it was handed, which it leaves as it was; a reading returns what it read.
+`DeepReadonly<DeepcoreState>`, followed by the parameters this file names for it,
+so `snapshot()` below is called as `snapshot(state)` and `setFuel(value)` as
+`setFuel(state, value)`. A pose and a control return the next `DeepcoreState`,
+built from the one they were handed, which they leave as it was; a reading returns
+what it read.
 {{else}}
-Each operation takes the parameters its row names and acts on the live game the
-moment it is called. A pose returns nothing; a reading returns what it read and
-changes nothing.
+Each operation takes the parameters this file names for it and acts on the live
+game the moment it is called. A pose and a control return nothing; a reading
+returns what it read and changes nothing.
 {{/if}}
 
-An argument outside the domain its row states is invalid, and the call fails
-loudly rather than guessing what was meant. So is a call whose subject is not in
-the condition the row states, such as a cell outside the grid or a live Core
-Sample where the operation requires none.
+An argument outside the domain this file states for it is invalid, and the call
+fails loudly rather than guessing what was meant. So is a call whose subject is not
+in the condition the operation states, such as a cell outside the grid or a live
+Core Sample where the operation requires none.
 
 ### Readings
 
