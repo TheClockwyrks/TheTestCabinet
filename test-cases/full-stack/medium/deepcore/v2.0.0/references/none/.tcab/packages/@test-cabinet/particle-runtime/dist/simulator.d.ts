@@ -39,6 +39,12 @@ export declare class ParticleSimulator {
     private readonly childEmitters;
     /** Effective forces per emitter: the global set overlaid with the emitter's own. */
     private readonly effForces;
+    /**
+     * The turbulence field, held for the simulator's whole life so its lattice memo is
+     * shared by every particle across every frame — the field is the same for all of
+     * them and never changes over time.
+     */
+    private readonly turbulence;
     private particles;
     private spawners;
     private rateAccum;

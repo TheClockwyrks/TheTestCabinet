@@ -1,20 +1,31 @@
 {
   "name": "deepcore",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Deepcore — a subterranean dig-and-build game that runs entirely in the browser, whose animated miner, environment art, particle VFX, and audio the build produces itself (build the escape rocket to win).",
+  "description": "Deepcore — a subterranean dig-and-build game that runs entirely in the browser, on no engine, whose art, animation, effects, and audio the build produces itself.",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --port 4173"
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/particle-runtime": "file:vendor/particle-runtime"
+    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"
   },
   "devDependencies": {
-    "playwright": "1.61.0",
-    "typescript": "5.6.3",
-    "vite": "5.4.11"
+    "@eslint/js": "^9",
+    "@napi-rs/canvas": "^0.1",
+    "@vitest/coverage-v8": "^3",
+    "eslint": "^9",
+    "playwright": "^1.61.0",
+    "prettier": "^3",
+    "typescript": "^5",
+    "typescript-eslint": "^8",
+    "vite": "^6",
+    "vitest": "^3"
   }
 }

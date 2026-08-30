@@ -11,7 +11,8 @@
  * interpolation — is re-exported from there so there is a single source of truth for
  * it, exactly as `@test-cabinet/voxel-runtime`'s contract re-exports the rig types.
  */
-export type InterpSpec = "constant" | "linear" | "bezier" | "ease-in" | "ease-out" | "ease-in-out";
+import type { InterpSpec } from "@test-cabinet/run-record";
+export type { InterpSpec } from "@test-cabinet/run-record";
 /** A real 3-vector `[x, y, z]`. In a 2D system every `z` is `0`. */
 export type Vec3 = [number, number, number];
 /** The emission-source shape a particle is born on. */
