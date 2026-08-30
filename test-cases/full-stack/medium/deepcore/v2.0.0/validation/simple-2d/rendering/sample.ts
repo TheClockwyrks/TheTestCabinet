@@ -122,12 +122,6 @@ export function runOf(
 }
 
 /**
- * How far, in samples, `sample` has slid along the run relative to `reference`.
- *
- * The shift that minimizes the mean squared difference over the overlap, searched
- * over `maxShift` samples either way. A picture that has not moved answers `0`.
- */
-/**
  * Mean squared difference between two levelled profiles at one shift, or null
  * where the shift leaves them no overlap to compare.
  */
@@ -148,6 +142,12 @@ function scoreAt(
   return count === 0 ? null : sum / count;
 }
 
+/**
+ * How far, in samples, `sample` has slid along the run relative to `reference`.
+ *
+ * The shift that minimizes the mean squared difference over the overlap, searched
+ * over `maxShift` samples either way. A picture that has not moved answers `0`.
+ */
 export function bestShift(
   reference: readonly number[],
   sample: readonly number[],
@@ -165,17 +165,8 @@ export function bestShift(
   let best = 0;
   let bestScore = scoreAt(a, b, 0) ?? Number.POSITIVE_INFINITY;
   for (let d = -maxShift; d <= maxShift; d += 1) {
-    let sum = 0;
-    let count = 0;
-    for (let i = 0; i < a.length; i += 1) {
-      const j = i + d;
-      if (j < 0 || j >= b.length) continue;
-      const delta = b[j] - a[i];
-      sum += delta * delta;
-      count += 1;
-    }
-    if (count === 0) continue;
-    const score = sum / count;
+    const score = scoreAt(a, b, d);
+    if (score === null) continue;
     // A strict improvement only, so a tie never displaces the resting seed.
     if (score < bestScore - 1e-9) {
       bestScore = score;
