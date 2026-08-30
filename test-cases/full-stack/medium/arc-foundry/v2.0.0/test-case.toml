@@ -307,11 +307,23 @@ source = "specs/campaign.md"
 [[spec]]
 source = "specs/difficulty.md"
 
+# The heads-up display: the status bar, the build panel and its inspector, the two
+# read-only overlays, and what is drawn over the yard itself. Seeded verbatim: what the
+# panel carries is the same whatever the build stands on.
 [[spec]]
-source = "specs/ui.md"
+source = "specs/hud.md"
 
+# The screens, what each menu contains and where each choice leads, and the twelve audio
+# cues. It branches on the engine only for where a cue is defined and played: the
+# runtime layer the build writes under `none`, the engine's cue bus otherwise.
 [[spec]]
-source = "specs/controls.md"
+source = "specs/ui.md.hbs"
+
+# How a player operates the game: how simulation time advances, the pointer, the
+# registered actions and their keys, and what each control commits. It branches on the
+# engine for which layer owns the frame loop and delivers the pointer.
+[[spec]]
+source = "specs/controls.md.hbs"
 
 # The asset-production contract: every asset the game needs, which of the six
 # on-PATH binaries produces it, where it lands in the workspace, and how it is wired
