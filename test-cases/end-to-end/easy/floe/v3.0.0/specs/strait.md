@@ -61,7 +61,7 @@ A crossing begins with the critter on the near shore at column `START_COL`
 ## The five bays
 
 The bay row is solid far shore except at five bays, each exactly two columns
-wide. The pairs are, left to right:
+wide. `BAYS` holds the pairs, left to right:
 
 | Bay index | Columns |
 | --- | --- |

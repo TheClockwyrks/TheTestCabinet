@@ -17,11 +17,12 @@ whole span carries the critter.
 
 ## The eight lanes
 
-Each row of the water band is one lane. A lane carries one kind of floe, drifts
-in one direction, and drifts at one speed. `dir` is `1` for a lane drifting
-rightward (increasing `x`) and `-1` for a lane drifting leftward. Speed is in
-tiles per second at level 1, and gap is the whole tiles of open water a lane
-leaves between consecutive floes.
+Each row of the water band is one lane, and `WATER_LANES` names the eight in
+ascending row order. A lane carries one kind of floe, drifts in one direction,
+and drifts at one speed. `dir` is `1` for a lane drifting rightward (increasing
+`x`) and `-1` for a lane drifting leftward. Speed is in tiles per second at level
+1, and gap is the whole tiles of open water a lane leaves between consecutive
+floes.
 
 | Row | Kind | Length | `dir` | Speed (level 1) | Gap |
 | --- | --- | --- | --- | --- | --- |

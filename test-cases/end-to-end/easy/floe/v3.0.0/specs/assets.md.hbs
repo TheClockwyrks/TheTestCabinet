@@ -14,16 +14,17 @@ the ice and the water.
 
 | Folder | Frames | Frame size | Spans | What it covers |
 | --- | --- | --- | --- | --- |
-| `assets/crosser/` | `8` (`0`–`7`) | 32 x 32 | 1 tile | The critter |
-| `assets/bear/` | `18` (`0`–`17`) | 32 x 32 | 1 tile | The bear, running, swimming, and lunging |
-| `assets/plow/` | `1` (`0`) | 96 x 32 | 3 tiles | The snow plow |
-| `assets/dogsled/` | `1` (`0`) | 64 x 32 | 2 tiles | The dogsled |
-| `assets/car/` | `1` (`0`) | 64 x 32 | 2 tiles | The car |
-| `assets/pan/` | `1` (`0`) | 32 x 32 | 1 tile | The one-tile floe |
-| `assets/raft/` | `2` (`0`–`1`) | 128 x 32 | 3 or 4 tiles | The long floes |
+| `assets/crosser/` | `CROSSER_FRAMES` (`8`), `0`–`7` | 32 x 32 | 1 tile | The critter |
+| `assets/bear/` | `BEAR_FRAMES` (`18`), `0`–`17` | 32 x 32 | 1 tile | The bear, running, swimming, and lunging |
+| `assets/plow/` | `PLOW_FRAMES` (`1`), `0` | 96 x 32 | 3 tiles | The snow plow |
+| `assets/dogsled/` | `DOGSLED_FRAMES` (`1`), `0` | 64 x 32 | 2 tiles | The dogsled |
+| `assets/car/` | `CAR_FRAMES` (`1`), `0` | 64 x 32 | 2 tiles | The car |
+| `assets/pan/` | `PAN_FRAMES` (`1`), `0` | 32 x 32 | 1 tile | The one-tile floe |
+| `assets/raft/` | `RAFT_FRAMES` (`2`), `0`–`1` | 128 x 32 | 3 or 4 tiles | The long floes |
 
-Frame sizes are in pixels of source art. A tile is `TILE` (`32`) logical units
-square, so a 32 x 32 frame maps onto one tile at a scale of one.
+Frame sizes are in pixels of source art, `SPRITE_TILE` (`32`) to a tile. A tile
+is `TILE` (`32`) logical units square, so a 32 x 32 frame maps onto one tile at a
+scale of one.
 
 ## How they are drawn
 
@@ -31,8 +32,9 @@ square, so a 32 x 32 frame maps onto one tile at a scale of one.
   so the critter and a bear are drawn where `specs/strait.md`'s map puts them.
 - A lane item's frame is drawn `32` units wide for every tile the item spans,
   with its left edge on the item's own `x` and its top on its row's top edge: a
-  plow `96` units wide over its three tiles, a dogsled and a car `64` over their
-  two, a one-tile floe `32` over its one.
+  plow `PLOW_W` (`96`) units wide over its three tiles, a dogsled `DOGSLED_W`
+  (`64`) and a car `CAR_W` (`64`) over their two, a one-tile floe `PAN_W` (`32`)
+  over its one. `RAFT_W` (`128`) is the width of the raft art itself.
 - The three-tile raft is the left `96 x 32` of `assets/raft/0.png`, drawn over its
   three tiles. The four-tile raft is the whole of `assets/raft/1.png`, drawn over
   its four tiles. A long floe reads as one continuous slab rather than as small

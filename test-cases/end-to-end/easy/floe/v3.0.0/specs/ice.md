@@ -25,16 +25,20 @@ its length `len` is in tiles, so it occupies `[x, x + TILE * len)` on its own ro
 | `dogsled` | `2` tiles | `assets/dogsled/` |
 | `car` | `2` tiles | `assets/car/` |
 
+`ITEM_LEN` names the length in tiles of every lane item, a floe's as well as a
+vehicle's.
+
 Every tile a vehicle covers is closed to the critter: a hop onto it is refused,
 as `specs/hopping.md` states.
 
 ## The eight lanes
 
-Each row of the ice band is one lane. A lane carries one kind of vehicle, runs in
-one direction, and runs at one speed. `dir` is `1` for a lane running rightward
-(increasing `x`) and `-1` for a lane running leftward. Speed is in tiles per
-second at level 1, and gap is the whole tiles of clear ice a lane leaves between
-consecutive vehicles.
+Each row of the ice band is one lane, and `ICE_LANES` names the eight in
+ascending row order. A lane carries one kind of vehicle, runs in one direction,
+and runs at one speed. `dir` is `1` for a lane running rightward (increasing `x`)
+and `-1` for a lane running leftward. Speed is in tiles per second at level 1,
+and gap is the whole tiles of clear ice a lane leaves between consecutive
+vehicles.
 
 | Row | Kind | Length | `dir` | Speed (level 1) | Gap |
 | --- | --- | --- | --- | --- | --- |
