@@ -90,8 +90,11 @@ export function moveMenu(
 ): void {
   const count = menuItems(state.screen).length;
   if (count === 0) return;
+  const before = highlighted(state);
   state.menuIndex = (((state.menuIndex + delta) % count) + count) % count;
-  cue(CUES.menu);
+  // The cue answers a highlight MOVING (specs/audio.md), so a one-row menu,
+  // where every step lands back on the row already highlighted, raises none.
+  if (state.menuIndex !== before) cue(CUES.menu);
 }
 
 /** Take the highlighted row of the current screen's menu. */

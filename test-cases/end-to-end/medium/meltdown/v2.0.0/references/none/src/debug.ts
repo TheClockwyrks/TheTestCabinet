@@ -44,6 +44,7 @@ import { resetState, type MeltdownState, type Tower } from "./state";
 import {
   damageOf,
   heatMultOf,
+  isEmitterTower,
   outputOf,
   radiatorFaces,
   redlineOf,
@@ -465,7 +466,11 @@ export function createDebugApi(host: DebugHost): MeltdownDebugApi {
 
     setTowerHeat(id, heat) {
       const held = tower(id);
-      if (held !== null) held.heat = clamp(heat, 0, 100);
+      // The Forge and the Sink carry no heat of their own and report `0` for it
+      // forever (specs/towers.md), so this operation is the emitter's alone.
+      if (held !== null && isEmitterTower(held)) {
+        held.heat = clamp(heat, 0, 100);
+      }
     },
 
     setTowerTripped(id, tripped) {

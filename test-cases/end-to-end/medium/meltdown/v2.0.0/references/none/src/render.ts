@@ -40,7 +40,7 @@ import {
 import { SURGE_DEFS, TOWER_DEFS, emitterStats, isEmitter } from "./defs";
 import { heldIsValid } from "./build";
 import { MODE_BLURBS, modeFigures } from "./modes";
-import { HOWTO_ITEMS, highlighted, menuItems, menuRects } from "./menus";
+import { highlighted, menuItems, menuRects } from "./menus";
 import { INFO_RECT, INNER_X, PANEL, STATUS_RECT, panelControls } from "./panel";
 import type { MeltdownState, Tower, Unit } from "./state";
 import {
@@ -1073,32 +1073,45 @@ function drawDifficultySelect(
   });
 }
 
+/**
+ * What the how-to screen covers, one line per line drawn (specs/screens.md):
+ * the goal, the controls, heat as power and the redline trip, the Forge and the
+ * Sink, the heat-averse Rime, flyers and the air-only Flak, that a Containment
+ * wave fields a single type, and the economy.
+ */
 const HOWTO_LINES: readonly string[] = [
-  "GOAL   The surge pours in at the two vents and crosses the floor to the",
-  "       opposite exhaust. Every leak costs lives; lose them all and the",
-  "       reactor is gone. Clear the last wave to contain it.",
+  "GOAL    The surge pours in at the two vents and crosses the floor to the",
+  "        opposite exhaust. Every leak costs lives; lose them all and the",
+  "        reactor is gone. Clear the last wave to contain it.",
   "",
-  "WALLS  Every tower is a wall, so you build the maze the surge walks.",
-  "       You can never seal the floor: a placement that would is refused.",
+  "WALLS   Every tower is a wall, so you build the maze the surge walks. You",
+  "        can never seal the floor: a placement that would is refused.",
   "",
-  "HEAT   An emitter fires harder the hotter it runs, up to its own redline",
-  "       and flat from there. Carry one all the way to 100 and it TRIPS",
-  "       offline for five seconds, cooling to nothing, leaving a hole.",
+  "HEAT    An emitter fires harder the hotter it runs, up to its own redline",
+  "        and flat from there. Carry one all the way to 100 and it TRIPS",
+  "        offline for five seconds, cooling to nothing, leaving a hole.",
   "",
-  "COOL   A tower sheds heat only through faces touching open air, and its",
-  "       radiator faces shed far better. Rotate before you place to aim",
-  "       them. Pack guns tight and the block bakes its own core.",
+  "COOL    A tower sheds heat only through faces touching open air, and its",
+  "        radiator faces shed far better. Rotate before you place to aim",
+  "        them. Pack guns tight and the block bakes its own core.",
   "",
-  "MOVE   The FORGE warms every emitter it touches toward its setpoint. The",
-  "       SINK drains them, even through a face nothing else can cool.",
+  "MOVE    The FORGE warms every emitter it touches toward its setpoint. The",
+  "        SINK drains them, even through a face nothing else can cool.",
   "",
-  "RIME   The cryo RIME runs the rule backward: it slows hardest when cold,",
-  "       and its shots deal ordinary damage besides.",
+  "RIME    The cryo RIME runs the rule backward: it slows hardest when cold,",
+  "        and its shots deal ordinary damage besides.",
   "",
-  "AIR    The DRIFT flies over the maze entirely. Only the FLAK can hit it.",
+  "AIR     The DRIFT flies over the maze entirely. Only the FLAK can hit it.",
   "",
-  "WAVES  A Containment wave fields one type. Kills pay a bounty, a cleared",
-  "       wave pays a bonus, and money left over earns 8% interest.",
+  "WAVES   A Containment wave fields one type. Kills pay a bounty, a cleared",
+  "        wave pays a bonus, and money left over earns 8% interest.",
+  "",
+  "MOUSE   Tap a shop entry to arm it, the floor to place, a tower to select.",
+  "        Every menu row and every panel control is a tap as well.",
+  "",
+  "KEYS    1-8 arm a tower  R rotate  U upgrade  S sell  SPACE send a wave",
+  "        F speed  P pause  M mute  ARROWS and ENTER drive a menu  ESC backs",
+  "        out: it cancels a placement, then a selection, then pauses.",
 ];
 
 function drawHowTo(state: MeltdownState, ctx: CanvasRenderingContext2D): void {
@@ -1108,12 +1121,11 @@ function drawHowTo(state: MeltdownState, ctx: CanvasRenderingContext2D): void {
     weight: "700",
   });
   HOWTO_LINES.forEach((line, i) => {
-    text(ctx, line, 120, 108 + i * 20, {
-      size: 13,
+    text(ctx, line, 116, 100 + i * 16, {
+      size: 12,
       color: line.startsWith(" ") ? COLOR.textDim : COLOR.text,
     });
   });
-  void HOWTO_ITEMS;
   drawMenu(state, ctx);
 }
 
