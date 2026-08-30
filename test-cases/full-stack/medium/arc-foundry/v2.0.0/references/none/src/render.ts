@@ -3396,7 +3396,7 @@ function drawHowto(
   text(ctx, "CONTROLS", 150, fy + 22, 12, COL.text3, "left", "700", 1.5);
   wrap(
     ctx,
-    "B press · click place / select · SHIFT-click multi-select · K keep · C combine · G downgrade · U upgrade · T target · F speed (1/2/4/8×) · SPACE pause · Esc menu · M mute",
+    "B press · click place / select · SHIFT-click multi-select · K keep · G downgrade · C combine · U upgrade · T target · X dismantle · F speed (1/2/4/8×) · SPACE pause · V recipes · L damage · M mute · ↑ / ↓ move · Enter confirm · Esc back",
     150,
     fy + 44,
     980,
