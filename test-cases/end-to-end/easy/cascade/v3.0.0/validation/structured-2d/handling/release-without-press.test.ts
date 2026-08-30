@@ -1,23 +1,90 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/handling/release-without-press.test.ts
+// handling/release-without-press — a release with nothing held changes nothing.
 //
-// The review item `handling.release-without-press` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/controls.md: "A gesture runs from a press to the release that
+// follows it", and "A release with nothing in hand and no control or stock under
+// its press changes nothing." A release that follows no press at all has neither a
+// run to put down nor a press point to activate anything from, so it is that
+// sentence's case with nothing left to argue about.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// WHERE THE RELEASE LANDS. On the centre of the STOCK's drop rectangle, which
+// specs/table.md fixes as `CARD_W x CARD_H` at `(STOCK_X, TOP_ROW_Y)`. That is the
+// one point on the table where a gesture with nothing in hand has an effect to
+// have — a CLICK there turns the stock (specs/controls.md), which
+// `handling/stock-click-turns` decides — so a build that answers a bare release as
+// though it were a click turns cards here and fails, while a build that
+// distinguishes the two leaves the stock alone.
 //
-// What this item must decide, from the manifest:
+// WHAT IS READ. The thirteen piles and the waste's set memory, before the release
+// and again after it, and the hand. "Nothing" is not one field: a check that read
+// only the stock would pass a build that left the stock alone and disturbed a
+// column.
 //
-//   A release with nothing held changes nothing
-//
-//   The board and drag are unchanged.
+// THE BOARD CARRIES A STOCK, A COLUMN AND A STARTED FOUNDATION, so a build that
+// answers a bare release by landing, turning or sending something home has
+// somewhere to do it and is caught.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertNull } from "../assert";
+import {
+  ACE,
+  captureStill,
+  card,
+  createHarness,
+  dropRectIn,
+  openTable,
+  poseColumn,
+  poseFoundation,
+  poseStock,
+  rectCenter,
+  releaseAt,
+  TWO,
+  type Harness,
+} from "../harness";
+import { boardText } from "./gestures";
 
-it("handling.release-without-press — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/handling/release-without-press.test.ts is a scaffold stub, not a validator",
+/** The board the release must not disturb. */
+const FOUNDATION = 0;
+const SUIT = "spades";
+const COLUMN = 0;
+const CARDS = [card(SUIT, TWO)];
+const STOCK = [card("hearts", ACE), card("hearts", TWO), card("hearts", 3)];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("leaves the whole board and the hand as they were when a release follows no press", async () => {
+  // `reset`, which `openTable` runs first, clears the last press
+  // (specs/instrumentation.md), so the release below follows no press at all.
+  openTable(h);
+  poseFoundation(h, FOUNDATION, SUIT, ACE);
+  poseColumn(h, COLUMN, CARDS);
+  poseStock(h, STOCK);
+
+  const before = boardText(h.snapshot());
+  const at = rectCenter(dropRectIn(h.snapshot(), "stock"));
+  releaseAt(h, at.x, at.y);
+
+  const after = h.snapshot();
+  await h.advance(1);
+  captureStill(h, "unchanged");
+
+  assertDeepEqual(
+    boardText(after),
+    before,
+    "the thirteen piles and the waste's set memory after a release over the " +
+      "stock that followed no press: a gesture runs from a press, and a " +
+      "release with nothing in hand changes nothing (specs/controls.md)",
+  );
+  assertNull(
+    after.drag,
+    "the run in hand after the release, which was empty before it and has " +
+      "nothing to put down (specs/controls.md)",
   );
 });
