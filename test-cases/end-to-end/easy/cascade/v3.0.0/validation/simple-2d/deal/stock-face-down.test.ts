@@ -9,6 +9,15 @@
 // the bottom of the pile, so a build that turns only its top card face-up fails
 // with that row named.
 //
+// THERE HAS TO BE A CARD TO READ. A pile of no cards shows no face-up card, so a
+// build that dealt no stock at all would satisfy a bare sweep of its faces without
+// ever having drawn one face-down. So the pile is asserted to hold at least one
+// card before its faces are read: specs/deal.md's step 3 forms the stock out of the
+// cards the tableau did not take, so a dealt stock has cards in it. That is a
+// precondition for the reading rather than the count itself — how many it holds is
+// `deal/stock-count`, and a stock of nineteen face-down cards passes here and fails
+// there.
+//
 // WHAT IT LEAVES ALONE. The faces alone. How many cards the stock holds is
 // `deal/stock-count`, and the order they are in is not a claim this item makes:
 // specs/deal.md fixes the dealt order, but a shuffled deck makes any particular
@@ -16,7 +25,7 @@
 // is what holds a build to dealing reproducibly.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   cardSpec,
@@ -43,6 +52,12 @@ it("forms the stock face-down", async () => {
   captureStill(harness, "dealt");
 
   const { stock } = harness.snapshot();
+  assertGreaterThanOrEqual(
+    stock.length,
+    1,
+    "cards in the stock a deal formed, whose faces are read below " +
+      "(specs/deal.md)",
+  );
   for (const [row, card] of stock.entries()) {
     assertEqual(
       card.faceUp,
