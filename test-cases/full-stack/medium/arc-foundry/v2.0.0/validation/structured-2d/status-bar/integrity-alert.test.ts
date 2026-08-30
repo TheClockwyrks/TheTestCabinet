@@ -1,27 +1,84 @@
-// Arc Foundry — `status-bar.integrity-alert`. CASE-PROVIDED. NOT YET WRITTEN.
+// status-bar/integrity-alert — the Grid Integrity read goes to alert at five.
 //
-// The manifest declares this point at `status-bar/integrity-alert.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/hud.md`: the Grid Integrity read "reads as an alert once it falls to `5`
+// or below", and `INTEGRITY_ALERT` is that `5`.
 //
-// THE REQUIREMENT. The Grid Integrity read is drawn differently once the
-// figure falls to INTEGRITY_ALERT (5) or below: the pixels sampled inside its
-// region at 6 and at 5 differ by more than 50 of 441 in RGB distance.
+// HOW A DRAWN ALERT IS TOLD FROM A CHANGED DIGIT. Posing `6` and then `5` moves
+// the pixels of the read whether or not a build has an alert treatment at all,
+// because the digit itself changed. So the drop across the threshold is measured
+// against a CONTROL that changes the same digit and crosses nothing: `16` to
+// `15`. Both pairs redraw a `6` as a `5` in the same place; only one of them
+// crosses `INTEGRITY_ALERT`. A build that draws the read differently in alert
+// moves every point the read covers on the crossing — the ink shared by `6` and
+// `5` included — and moves only the ink they differ in on the control, so the
+// crossing moves strictly more. A build with no alert treatment moves the same
+// points either way.
 //
-// HOW IT IS DECIDED. Pose Grid Integrity at 6 and at 5 and sample the region
-// the figure is drawn in. The evidence it hands back is `alert` (image): the
-// Grid Integrity read in alert.
+// WHERE THE READ IS SAMPLED. `specs/hud.md` orders the bar left to right, with
+// the Charge, Grid Integrity, wave, and maze-length reads all left of the combos
+// toggle, and `statusControls` reports where that toggle was drawn. So the strip
+// of the bar left of it is where the four reads were drawn, and it is sampled
+// whole rather than at a rectangle no reading reports.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  statusControl,
+  type Harness,
+} from "../harness";
+import { BAR_H, INTEGRITY_ALERT } from "../../src/constants";
+import {
+  DISTINCT,
+  changedPoints,
+  lattice,
+  maxDistance,
+  sample,
+} from "./reading";
 
-import { fail } from "../assert";
+/** The crossing, and a control that redraws the same digit ten above it. */
+const CROSSING = [INTEGRITY_ALERT + 1, INTEGRITY_ALERT] as const;
+const CONTROL = [INTEGRITY_ALERT + 11, INTEGRITY_ALERT + 10] as const;
 
-describe("status-bar.integrity-alert", () => {
-  it("Grid Integrity reads as an alert at five or below", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `status-bar.integrity-alert` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("draws the Grid Integrity read differently at five and below", async () => {
+  openYard(h, { charge: 473 });
+
+  // Everything left of the first status control: the four reads of specs/hud.md.
+  const combos = statusControl(h, "combos");
+  const reads = lattice({ x: 0, y: 0, w: Math.max(combos.x, 1), h: BAR_H }, 2);
+
+  const readAt = async (integrity: number) => {
+    h.debug.setIntegrity(integrity);
+    return sample(h, reads);
+  };
+
+  const atSixteen = await readAt(CONTROL[0]);
+  const atFifteen = await readAt(CONTROL[1]);
+  const atSix = await readAt(CROSSING[0]);
+  const atFive = await readAt(CROSSING[1]);
+  captureStill(h, "alert");
+
+  assertGreaterThan(
+    maxDistance(atSix, atFive),
+    DISTINCT,
+    "how far the Grid Integrity read moves between 6 and 5, in RGB distance",
+  );
+  assertGreaterThan(
+    changedPoints(atSix, atFive),
+    changedPoints(atSixteen, atFifteen),
+    "how many sampled points the drop into alert moves, against the same " +
+      "digit redrawn ten above the threshold",
+  );
 });
