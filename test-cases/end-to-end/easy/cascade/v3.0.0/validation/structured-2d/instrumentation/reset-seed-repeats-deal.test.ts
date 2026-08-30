@@ -18,12 +18,18 @@
 // A WHOLE BOARD, NOT A SAMPLE. Every one of the thirteen piles is compared, in
 // order, so a build whose columns reproduce but whose stock does not fails here.
 //
+// THE FIRST BOARD IS READ AS NON-EMPTY FIRST. An empty board reproduces another
+// empty board perfectly, so a build whose `deal` laid out nothing would pass a
+// comparison of two of them without any generator at all. That reading is a
+// precondition and not the requirement: how many cards a deal lays out is the
+// `deal` group's.
+//
 // WHAT IT DOES NOT DECIDE. That the deal is a full deck dealt into the shape
 // specs/deal.md fixes is the `deal` group's; that two DIFFERENT seeds differ is
 // `instrumentation/reset-seed-differs`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual } from "../assert";
+import { assertDeepEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -74,6 +80,13 @@ it("deals the identical arrangement of all fifty-two cards from one seed, twice"
   h.debug.setScreen("playing");
   await h.drawFrame();
   captureStill(h, "dealt");
+
+  assertGreaterThan(
+    first.length,
+    0,
+    `cards the first deal from seed ${SEED} put on the table: two empty ` +
+      "boards reproduce each other whatever the generator did (specs/deal.md)",
+  );
 
   assertDeepEqual(
     second,

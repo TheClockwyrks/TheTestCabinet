@@ -33,13 +33,23 @@
 // — and it keeps the recorded replay to the cards themselves rather than a
 // full-screen blit per frame.
 //
+// THE FIRST RUN'S FLIGHT IS READ AS NON-EMPTY FIRST. Two cascades that launched
+// nothing agree card for card, so a build that never launched would pass a
+// comparison of two empty flights without drawing a single velocity. That
+// reading is a precondition and not the requirement: how fast a cascade launches
+// is `cascade.launch-cadence`'s.
+//
 // WHAT IT DOES NOT DECIDE. That the launch velocities lie in their stated range
 // is `cascade.launch-vx-magnitude`, and that both signs occur is
 // `cascade.launch-vx-both-signs`. This point decides only that the same seed
 // reaches the same place twice.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLength, assertLessThanOrEqual } from "../assert";
+import {
+  assertGreaterThanOrEqual,
+  assertLength,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -63,6 +73,16 @@ const SPAN = 1;
  * nothing but an identical replay meets it.
  */
 const POSITION_TOLERANCE = 0.5;
+
+/**
+ * Cards the first run's flight must hold for the comparison to read anything.
+ *
+ * `SPAN` is a second and specs/victory.md launches one card every
+ * `LAUNCH_INTERVAL` (`0.18` s), so a conformant build has five or six cards up;
+ * two is a floor far below that, and above the nothing two empty flights would
+ * agree on.
+ */
+const MIN_FLYERS = 2;
 
 /** Enter the cascade from `SEED`, with painting held off, and run it for `SPAN`. */
 async function runCascade(
@@ -92,6 +112,14 @@ afterEach(() => {
 it("puts every flyer in the same place on two runs from one seed", async () => {
   const first = await runCascade(h, false);
   const second = await runCascade(h, true);
+
+  assertGreaterThanOrEqual(
+    first.flyers.length,
+    MIN_FLYERS,
+    `cards in flight after ${SPAN} s of the first run's cascade: two flights ` +
+      "holding none would agree whatever the generator did " +
+      "(specs/victory.md)",
+  );
 
   assertLength(
     second.flyers,

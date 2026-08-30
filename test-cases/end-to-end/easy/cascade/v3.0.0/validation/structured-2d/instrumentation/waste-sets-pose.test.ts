@@ -21,8 +21,9 @@
 // the answer, and the failure says which the build computed.
 //
 // AND THE MEMORY IS READ BEFORE, BETWEEN AND AFTER, in three readings:
-//   - empty, over a waste that already holds its five cards, where the count is
-//     `0` "whatever cards it still holds";
+//   - empty, over a waste that already holds its five cards — read as holding
+//     them, since a count of `0` over a waste holding nothing would say nothing
+//     — where the count is `0` "whatever cards it still holds";
 //   - after the two sets are appended, where `wasteSets` reports them oldest
 //     first and the count follows the newest;
 //   - after `clearWasteSets`, where the memory is empty again and the five
@@ -78,6 +79,13 @@ it("appends a set, reports the memory, and empties it, with the shown count foll
   poseWaste(h, WASTE_CARDS, []);
 
   const bare = h.snapshot();
+  assertLength(
+    bare.waste,
+    WASTE_CARDS.length,
+    "cards posed on the waste the memory is read over: the count that follows " +
+      "is 0 whatever cards the waste holds, which says nothing at all over a " +
+      "waste holding none",
+  );
   assertLength(
     bare.wasteSets,
     0,

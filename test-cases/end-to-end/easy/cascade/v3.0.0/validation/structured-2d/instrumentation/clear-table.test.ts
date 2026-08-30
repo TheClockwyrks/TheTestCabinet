@@ -23,12 +23,27 @@
 // are two different things (specs/stock.md): a build that empties the pile and
 // leaves a set behind reports a waste that shows cards it does not hold.
 //
-// WHAT IT DOES NOT DECIDE. That the painted layer survives is read by the
-// `cascade` group's trail items; that ONE pile can be emptied on its own is
+// THE PAINTED LAYER IS READ HERE TOO, because it is the third thing the rule's
+// own sentence says the call leaves alone. So the flyers are flown for a moment
+// with `trailPainting` on before the call, and the stamp count is read as
+// non-zero going in and unchanged coming out: a layer with nothing on it would
+// survive the call whatever the call did to it.
+//
+// EVERY PILE IS READ AS LOADED BEFORE THE CALL. A pile that was already empty is
+// emptied by a call that does nothing, so a board that failed to pose would pass
+// all thirteen readings; the same is true of a flight holding no cards and a set
+// memory holding no sets. Each is therefore read going in as well as coming out.
+//
+// WHAT IT DOES NOT DECIDE. That ONE pile can be emptied on its own is
 // `instrumentation/clear-pile`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertLength } from "../assert";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThan,
+  assertLength,
+} from "../assert";
 import {
   ACE,
   COLUMNS,
@@ -48,6 +63,7 @@ import {
   captureStill,
   card,
   createHarness,
+  framesFor,
   openTable,
   pileOf,
   poseColumn,
@@ -95,6 +111,15 @@ const POSED_GATES = {
   trailPainting: true,
 } as const;
 
+/**
+ * How long the two cards are flown before the call, in frames.
+ *
+ * Long enough that a build painting its trail has put stamps on the layer, and
+ * short enough that neither card has left the table. A tenth of a second carries
+ * a card of this flight fifteen units.
+ */
+const PAINT_FRAMES = framesFor(0.1);
+
 /** Every pile and index the board carries, so the reading walks all thirteen. */
 const PILES: readonly { pile: PileKind; index: number }[] = [
   { pile: "stock", index: 0 },
@@ -131,7 +156,39 @@ it("empties all thirteen piles and the set memory, and leaves the flyers and the
   h.debug.setLaunching(POSED_GATES.launching);
   h.debug.setTrailPainting(POSED_GATES.trailPainting);
 
+  // The flight is run for a moment with `trailPainting` on, so the layer the
+  // call must leave alone has something on it to leave.
+  h.debug.setScreen("won");
+  await h.advance(PAINT_FRAMES);
+
   const before = h.snapshot();
+
+  for (const { pile, index } of PILES) {
+    assertGreaterThan(
+      pileOf(before, pile, index).length,
+      0,
+      `cards posed on the ${pile} pile ${index} before clearTable: a pile ` +
+        "already empty is emptied by a call that does nothing",
+    );
+  }
+  assertLength(
+    before.wasteSets,
+    WASTE_SETS.length,
+    "the sets posed on the waste before clearTable, which the call has to " +
+      "empty (specs/instrumentation.md)",
+  );
+  assertLength(
+    before.flyers,
+    FLYERS.length,
+    "the cards posed in flight before clearTable, which the call has to " +
+      "leave alone (specs/instrumentation.md)",
+  );
+  assertGreaterThan(
+    before.trailStamps,
+    0,
+    "stamps the flight put on the painted layer before clearTable, which the " +
+      "call has to leave alone (specs/instrumentation.md)",
+  );
 
   h.debug.clearTable();
   const after = h.snapshot();
@@ -159,6 +216,12 @@ it("empties all thirteen piles and the set memory, and leaves the flyers and the
     before.flyers,
     "the cards in flight after clearTable, which leaves the flyers alone " +
       "(specs/instrumentation.md)",
+  );
+  assertEqual(
+    after.trailStamps,
+    before.trailStamps,
+    "stamps on the painted layer after clearTable, which leaves the painted " +
+      "layer alone (specs/instrumentation.md)",
   );
   assertDeepEqual(
     {
