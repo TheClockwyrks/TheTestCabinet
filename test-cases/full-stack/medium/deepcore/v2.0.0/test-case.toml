@@ -3926,11 +3926,15 @@ title = "The Mine on Screen"
 [[review.categories.items]]
 id = "stage-fit"
 title = "The stage is fitted and centered"
-description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the whole stage is inside the surface at its own aspect ratio, centered with even letterboxing."
+description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the whole STAGE_W x STAGE_H (1280 x 720) stage is inside the surface at its own aspect ratio, centered with even letterboxing, and the bars carry the stage background color within an RGB distance of 25 of 441."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: size the surface wider, taller and at a raised ratio
-# in turn and hold the drawn stage extent, aspect and centering at each.
+# Automated validation: size the surface wider, taller and at a raised ratio in
+# turn; hold the drawn stage extent, aspect and centering at each, and sample a
+# bar against the stage background the build fixes. The fit itself is the
+# runtime's under an engine, but the bar color is the build's either way: it is
+# the `BACKGROUND` src/game.ts exports under an engine, and the color the build
+# clears to without one.
 validation = { script = "rendering/stage-fit.test.ts", outputs = [
   { id = "fit", name = "The stage fitted in an off-aspect window", kind = "image" },
 ] }
