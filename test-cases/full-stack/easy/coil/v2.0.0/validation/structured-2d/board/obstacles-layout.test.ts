@@ -1,31 +1,83 @@
-/*
- * Coil validator: `board.obstacles-layout`. PLACEHOLDER.
- *
- * The board carries the fixed obstacle course.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * After a reset, obstacles is exactly the eighteen cells of OBSTACLE_CELLS,
- * the four bars specs/mode.md fixes, and none of them changes while the round
- * runs.
- *
- * HOW:
- * reset, read the obstacle list back as a set, compare it against the eighteen
- * cells, then run a stretch of play and read it again.
- *
- * MEDIA IT MUST CAPTURE: layout (image).
- *
- * It is the `maze` variant's own point, decided only when that variant runs.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// board/obstacles-layout — the course a round is laid with is the eighteen cells
+// specs/mode.md fixes, and it stands still while the round runs.
+//
+// WHAT THE SPECIFICATION FIXES. specs/mode.md names `OBSTACLE_CELLS` as four
+// bars, tabulated cell by cell, and says of them: "They are the same cells in
+// every round, they never change while a round runs, and they are exactly these
+// four bars ... That is 18 cells." specs/instrumentation.md has `reset` put "the
+// obstacle course back to `OBSTACLE_CELLS`", and the snapshot report `obstacles`
+// as "the obstacle cells currently on the board, in any order".
+//
+// SO THE COMPARISON IS A SET COMPARISON. The order the build holds the course in
+// is the build's, stated as such, so the two lists are compared as sets: no cell
+// of the course missing, no cell on the board that the course does not name, and
+// no cell laid twice.
+//
+// AND THEN THE ROUND IS RUN. "They never change while a round runs" is a second
+// sentence and a second read: the round's own opening chain is walked down the
+// starting row, with the pellet off the board so nothing is eaten and nothing
+// grows, and the list is read again. A build that lays the course from a
+// generator, or that drops a cell the head passes beside, differs between the two
+// reads. Nothing is posed onto the board for the walk, so the only thing that can
+// go wrong between the two reads is the thing this point is about.
+//
+// The Classic mode lays no obstacle cell, and this point belongs only to the mode
+// that lays a course.
 
-test("board.obstacles-layout", () => {
-  throw new Error("validator not implemented: board/obstacles-layout.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertLength } from "../assert";
+import { OBSTACLE_CELLS } from "../../src/constants";
+import {
+  captureStill,
+  createHarness,
+  poseScene,
+  type Cell,
+  type Harness,
+} from "../harness";
+
+/**
+ * Ticks the round is run for before the course is read a second time.
+ *
+ * The opening chain of specs/board.md heads right from `(15, 8)`, so twelve ticks
+ * carry it to `(27, 8)` and leave it inside the border.
+ */
+const TICKS = 12;
+
+/** A cell as one comparable string, so two courses compare as sets. */
+function keys(cells: readonly Cell[]): string[] {
+  return cells.map((cell) => `${cell.col},${cell.row}`).sort();
+}
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("lays exactly the fixed course, and holds it through the round", async () => {
+  const laid = poseScene(h, { obstacles: "course", pellet: null });
+  await h.advance(1);
+  captureStill(h, "layout");
+
+  assertLength(
+    laid.obstacles,
+    OBSTACLE_CELLS.length,
+    "obstacle cells on the board after a reset",
+  );
+  assertDeepEqual(
+    keys(laid.obstacles),
+    keys(OBSTACLE_CELLS),
+    "the course the board carries, as a set of cells",
+  );
+
+  const played = await h.tick(TICKS);
+  assertDeepEqual(
+    keys(played.obstacles),
+    keys(OBSTACLE_CELLS),
+    `the course after ${TICKS} ticks of play, as a set of cells`,
+  );
 });
