@@ -45,6 +45,15 @@ the audio: each of those is decided by reading something objective off the runni
 build rather than by looking at a picture of it. A reviewer rates the run's
 aesthetics and may override a verdict.
 
+The checklist is far finer than the one it replaces: 282 points across 24
+categories, where a point that could once fail for either of two reasons is now
+two points, and the edge cases the rules already imply — a weaker slow landing on
+a stronger one, a chain with nothing left to leap to, a placement that would
+strand a unit already on the yard — are points of their own. A third scoring
+domain joins them: `audio` rates the twelve produced cues on their own, beside
+`simulation` for how the foundry plays and `presentation` for the produced art and
+the interface that presents it.
+
 The validators are per engine rather than per variant. `validation/none/` drives
 the built site in headless Chromium through `window.__foundry`; `validation/simple-2d/`
 and `validation/structured-2d/` run in process against the vendored engine and

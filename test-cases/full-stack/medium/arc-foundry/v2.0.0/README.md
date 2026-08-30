@@ -121,6 +121,14 @@ This case is validator-rated: every point on the checklist carries a Vitest suit
 and the validators decide the functional rating through each point's failure cap.
 A reviewer rates the run's aesthetics and may override a verdict.
 
+The checklist runs to 282 points across 24 categories, one observable behavior
+each, and each names the scoring domains its failure lowers. There are three:
+`simulation` for how the foundry plays, `presentation` for the produced sprites,
+animation cycles and electrical effects along with the code-drawn interface that
+presents them, and `audio` for the twelve produced cues. A run's overall rating is
+the worst across the three, and each domain takes the lowest failure cap among its
+failing points.
+
 `validation/` holds one project per engine, `validation/none/`,
 `validation/simple-2d/` and `validation/structured-2d/`, each with a suite per
 review point at `<category>/<id>.test.ts`. The `none` suites drive the built site
