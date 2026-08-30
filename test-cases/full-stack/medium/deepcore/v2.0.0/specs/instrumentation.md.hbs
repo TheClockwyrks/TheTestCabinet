@@ -100,9 +100,10 @@ moment it is called. A pose returns nothing; a reading returns what it read and
 changes nothing.
 {{else if (eq engine.slug "simple-2d")}}
 Each operation's first parameter is the current state,
-`DeepReadonly<DeepcoreState>`, followed by the parameters its row names. A pose
-returns the next `DeepcoreState`, built from the one it was handed, which it
-leaves as it was; a reading returns what it read.
+`DeepReadonly<DeepcoreState>`, followed by the parameters its row names, so
+`snapshot()` below is called as `snapshot(state)` and `setFuel(value)` as
+`setFuel(state, value)`. A pose returns the next `DeepcoreState`, built from the
+one it was handed, which it leaves as it was; a reading returns what it read.
 {{else}}
 Each operation takes the parameters its row names and acts on the live game the
 moment it is called. A pose returns nothing; a reading returns what it read and
@@ -200,7 +201,8 @@ it back.
 
 These invoke the game's own actions through the same code a player's click or
 keypress reaches, rather than posing an outcome. Each is the counterpart of a
-control the player operates with the mouse.
+control the player operates with the mouse, and each follows the same signature
+convention as a pose.
 
 | Operation | Does |
 | --- | --- |
