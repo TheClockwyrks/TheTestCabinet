@@ -1,23 +1,49 @@
-// SCAFFOLD PLACEHOLDER — validation/none/deal/stock-face-down.test.ts
+// Cascade — deal/stock-face-down: the stock a deal leaves is face-down.
 //
-// The review item `deal.stock-face-down` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/deal.md, The deal: "The remaining `DEAL_STOCK_CARDS` (`24`) cards form
+// the stock, face-down, in the order they were left in after the tableau was
+// dealt." A face-down stock is what makes turning it a decision rather than a
+// formality: specs/stock.md turns cards from it onto the waste one at a time, and
+// a player who can already read the deck has nothing left to turn it for.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// HOW IT IS REACHED. `openTable` resets, enters play and clears all thirteen
+// piles, so every card read here is one this deal put in the stock; then
+// `deal()`, the game's own deal path (specs/instrumentation.md), lays the board.
 //
-// What this item must decide, from the manifest:
-//
-//   The stock is face-down
-//
-//   Every stock card is face-down.
+// The reading is the COUNT of face-up cards in the stock rather than each card in
+// turn, because there is no ordering to the fault: a stock is either dealt
+// face-down or it is not, and the number showing is what says how far a build
+// missed. HOW MANY cards the stock holds is deal/stock-count.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openTable,
+  type Harness,
+} from "../harness";
 
-it("deal.stock-face-down — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/deal/stock-face-down.test.ts is a scaffold stub, not a validator",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("deals every stock card face-down", async () => {
+  await openTable(h);
+  await h.debug.deal();
+  await h.advance(1);
+  await captureStill(h, "dealt");
+
+  const { stock } = await h.snapshot();
+  assertEqual(
+    stock.filter((card) => card.faceUp).length,
+    0,
+    `face-up cards among the ${stock.length} the deal left in the stock (specs/deal.md)`,
   );
 });

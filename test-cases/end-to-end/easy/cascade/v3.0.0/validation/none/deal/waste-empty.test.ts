@@ -1,23 +1,62 @@
-// SCAFFOLD PLACEHOLDER — validation/none/deal/waste-empty.test.ts
+// Cascade — deal/waste-empty: a deal leaves the waste empty, sets and all.
 //
-// The review item `deal.waste-empty` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/deal.md, The deal: "The waste starts empty, with no sets in its memory,
+// and all `FOUNDATION_COUNT` (`4`) foundations start empty." Both halves matter
+// and both are read here, because specs/stock.md derives what the waste SHOWS
+// from its set memory rather than from the cards on it: a waste dealt clean but
+// left carrying a set from the game before would show cards it does not hold,
+// and `wasteVisibleCount` would open a new game claiming a card to play.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// HOW IT IS REACHED. `openTable` resets, enters play and clears all thirteen
+// piles; then a set is deliberately posed onto the waste with `addWasteSet`
+// before the deal, so the memory the deal has to empty is a memory that was
+// really there. A check that dealt onto an already-empty memory would pass a
+// build whose deal never touches the field at all.
 //
-// What this item must decide, from the manifest:
+// The card posed under that set is what makes the pose a legal one: a set claims
+// cards from the waste (specs/stock.md), so `poseWaste` is given one card and one
+// set of one rather than a set claiming cards the waste does not hold.
 //
-//   The waste starts empty
-//
-//   The waste and its set memory are both empty after a deal.
+// THE FOUNDATIONS ARE THEIR OWN CHECK, deal/foundations-empty, so a build that
+// clears the waste and not the foundations grades apart from one that clears
+// neither.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  card,
+  createHarness,
+  openTable,
+  poseWaste,
+  type Harness,
+} from "../harness";
 
-it("deal.waste-empty — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/deal/waste-empty.test.ts is a scaffold stub, not a validator",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("empties the waste and its set memory", async () => {
+  await openTable(h);
+  // One card on the waste, on a set of its own, so the deal has both a card and
+  // a set memory to clear.
+  await poseWaste(h, [card("7D")], [1]);
+
+  await h.debug.deal();
+  await h.advance(1);
+  await captureStill(h, "dealt");
+
+  const { waste, wasteSets } = await h.snapshot();
+  assertLength(waste, 0, "cards on the waste after a deal (specs/deal.md)");
+  assertDeepEqual(
+    wasteSets,
+    [],
+    "the waste's set memory after a deal (specs/deal.md)",
   );
 });
