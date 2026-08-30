@@ -1,23 +1,74 @@
-// SCAFFOLD PLACEHOLDER — validation/none/screens/hud-new-game-deals.test.ts
+// screens/hud-new-game-deals — the HUD's `NEW GAME` deals a fresh game and stays
+// on `playing`.
 //
-// The review item `screens.hud-new-game-deals` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// `specs/screens.md`, the HUD's table: "`NEW GAME` | `HUD_ITEMS[0]` |
+// `HUD_NEW_GAME` | Deals a fresh game and stays on `playing`."
+// `specs/controls.md` fixes the rectangle at `{ x: 224, y: 680, w: 180, h: 36 }`
+// and fixes that a control answers a click — a press with its release within
+// `DRAG_THRESHOLD` of it.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// BOTH HALVES ARE ASSERTED, because the sentence has two, and they fail
+// differently: a build that dealt and dropped back to the title has the same
+// cards on the table as a correct one, and a build that stayed on `playing`
+// without dealing has the same screen. The table is cleared before the click, so
+// the fifty-two cards afterwards are this control's doing.
 //
-// What this item must decide, from the manifest:
-//
-//   The HUD's NEW GAME deals a fresh game
-//
-//   A press inside HUD_NEW_GAME produces a fresh deal and stays on playing.
+// It is the HUD's own item. The title screen's `NEW GAME`, which reaches
+// `playing` from OUTSIDE it, is `screens/title-new-game-enters-play`: two
+// controls, two rectangles, two items, so a build that wired one and not the
+// other grades for exactly the one it missed. The shape of the deal belongs to
+// the `deal` group.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLength } from "../assert";
+import { DECK_SIZE, HUD_NEW_GAME } from "../constants";
+import {
+  captureStill,
+  clickAt,
+  createHarness,
+  everyCard,
+  openTable,
+  rectCenter,
+  type Harness,
+} from "../harness";
 
-it("screens.hud-new-game-deals — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/screens/hud-new-game-deals.test.ts is a scaffold stub, not a validator",
+/** The point pressed and released: the centre of the control's own rectangle. */
+const PRESS = rectCenter(HUD_NEW_GAME);
+
+/** One frame, so the canvas carries the table the assertions read. */
+const SETTLE_FRAMES = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("deals a full deck without leaving the table", async () => {
+  await openTable(h);
+  assertLength(
+    everyCard(await h.snapshot()),
+    0,
+    "the cards on the table before the click",
+  );
+
+  await clickAt(h, PRESS.x, PRESS.y);
+  await h.advance(SETTLE_FRAMES);
+  await captureStill(h, "dealt");
+
+  const after = await h.snapshot();
+  assertLength(
+    everyCard(after),
+    DECK_SIZE,
+    "the cards the click put on the table (specs/deal.md)",
+  );
+  assertEqual(
+    after.screen,
+    "playing",
+    "the screen the HUD's NEW GAME left the game on (specs/screens.md)",
   );
 });

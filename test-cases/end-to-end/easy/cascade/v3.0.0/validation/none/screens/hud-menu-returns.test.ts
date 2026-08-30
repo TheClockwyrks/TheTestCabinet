@@ -1,23 +1,57 @@
-// SCAFFOLD PLACEHOLDER — validation/none/screens/hud-menu-returns.test.ts
+// screens/hud-menu-returns — the HUD's `MENU` returns to `title`.
 //
-// The review item `screens.hud-menu-returns` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// `specs/screens.md`, the HUD's table: "`MENU` | `HUD_ITEMS[1]` | `HUD_MENU` |
+// Returns to `title`." `specs/controls.md` fixes the rectangle at
+// `{ x: 420, y: 680, w: 120, h: 36 }` and fixes that a control answers a click
+// whose press point lies inside it.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
-//
-// What this item must decide, from the manifest:
-//
-//   The HUD's MENU returns to the title
-//
-//   A press inside HUD_MENU reaches title.
+// THE PRESS POINT IS THE DISTINGUISHING VALUE. All three HUD rectangles sit side
+// by side in one strip — `HUD_NEW_GAME` ends at `x = 404`, this one runs
+// `420..540`, and `HUD_SOUND` begins at `556` — so the press at this rectangle's
+// centre, `(480, 698)`, is `60` from either neighbor's nearest edge. A build
+// that mapped the strip to the wrong control deals a fresh game or flips `muted`
+// instead of reaching the title, which reads as a different answer rather than as
+// a quiet pass. `screens/hud-new-game-deals` and `screens/hud-sound-toggles` are
+// those two.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { HUD_MENU } from "../constants";
+import {
+  captureStill,
+  clickAt,
+  createHarness,
+  openTable,
+  rectCenter,
+  type Harness,
+} from "../harness";
 
-it("screens.hud-menu-returns — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/screens/hud-menu-returns.test.ts is a scaffold stub, not a validator",
+/** The point pressed and released: the centre of the control's own rectangle. */
+const PRESS = rectCenter(HUD_MENU);
+
+/** One frame, so the canvas carries the screen the assertion read. */
+const SETTLE_FRAMES = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("returns to the title screen", async () => {
+  await openTable(h);
+
+  await clickAt(h, PRESS.x, PRESS.y);
+  await h.advance(SETTLE_FRAMES);
+  await captureStill(h, "title");
+
+  assertEqual(
+    (await h.snapshot()).screen,
+    "title",
+    "the screen the HUD's MENU reached (specs/screens.md)",
   );
 });
