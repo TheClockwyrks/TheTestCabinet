@@ -1,24 +1,91 @@
-// Deepcore — cargo.refuel-does-not-empty-the-bay. STUB: NOT YET AUTHORED.
+// cargo/refuel-does-not-empty-the-bay — the Fuel Depot leaves the cargo alone.
 //
-// Refuelling and repairing leave the cargo alone
+// specs/mining.md: "the bay is emptied by selling. Refueling and repairing do not
+// empty it." specs/gameplay.md keeps the two apart the same way: the Ore Market
+// is the one source of Credits and the one place the bay is emptied, while the
+// Fuel Depot is a sink that buys fuel and hull repair.
 //
-// Buying fuel or hull repair at the Fuel Depot leaves the cargo bay exactly as
-// it was, so a haul survives a refuelling stop and is still there to sell.
-//
-// Automated validation: pose a bay and Credits, buy fuel and repair, then read
-// the bay unchanged.
-//
-// `test-case.toml` declares this suite as `cargo/refuel-does-not-empty-the-bay.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (bay (image)) around the drive.
+// So the miner arrives at the Fuel Depot with a haul and a part-empty tank and
+// hull, and every one of that panel's four controls is run: the fixed fuel
+// increment, the fixed repair increment, and the two fill-to-full ones. The
+// reading is the bay afterwards, unchanged down to the kilogram — and, so the
+// check is not passing on a depot that did nothing, that the tank and the hull
+// really did rise and the balance really did fall.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import { ORES, type Ore } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  layCamp,
+  openScene,
+  pinDrill,
+  pinMiner,
+  stageCargo,
+  standAtBuilding,
+  type Harness,
+} from "../harness";
 
-test("Refuelling and repairing leave the cargo alone", () => {
-  throw new Error(
-    "Deepcore validator `cargo/refuel-does-not-empty-the-bay` is declared in test-case.toml but has not been authored yet.",
-  );
+/** The bay posed: a haul worth carrying through a refuelling stop. */
+const HAUL: Partial<Record<Ore, number>> = { cobaltine: 4, halcite: 2 };
+
+/** The weight that haul carries, as specs/mining.md weighs it. */
+const LOAD_KG = Object.entries(HAUL).reduce(
+  (sum, [ore, count]) => sum + ORES[ore as Ore].weight * (count as number),
+  0,
+);
+
+/** What the climb is posed as having left, and the balance to spend. */
+const FUEL_LEFT = 50;
+const HULL_LEFT = 50;
+const CREDITS = 1000;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("leaves the bay exactly as it was through a refuelling stop", async () => {
+  await openScene(h);
+  await layCamp(h);
+  await standAtBuilding(h, "fuel-depot");
+  await pinMiner(h);
+  await pinDrill(h);
+  await stageCargo(h, HAUL);
+  await h.debug.setCredits(CREDITS);
+  await h.debug.setFuel(FUEL_LEFT);
+  await h.debug.setHull(HULL_LEFT);
+  await h.debug.setPanel("fuel-depot");
+  await h.advance(1);
+
+  const before = await h.snapshot();
+  assertEqual(before.cargo.slotsUsed, 6, "specs/mining.md");
+  assertEqual(before.cargo.loadKg, LOAD_KG, "specs/mining.md");
+
+  await h.debug.buyFuel();
+  await h.debug.buyRepair();
+  await h.debug.fillFuel();
+  await h.debug.repairFull();
+  await h.advance(1);
+  await captureStill(h, "bay");
+
+  const after = await h.snapshot();
+  // The depot did its work, so the bay below survived a stop rather than a no-op.
+  assertGreaterThan(after.miner.fuel, before.miner.fuel, "specs/gameplay.md");
+  assertGreaterThan(after.miner.hull, before.miner.hull, "specs/gameplay.md");
+  assertLessThan(after.credits, CREDITS, "specs/gameplay.md");
+
+  // And the bay is untouched.
+  assertEqual(after.cargo.slotsUsed, before.cargo.slotsUsed, "specs/mining.md");
+  assertEqual(after.cargo.loadKg, LOAD_KG, "specs/mining.md");
+  for (const [ore, count] of Object.entries(HAUL)) {
+    assertEqual(after.cargo.ore[ore as Ore], count, `${ore} (specs/mining.md)`);
+  }
+  assertEqual(after.creditsEarned, 0, "specs/gameplay.md");
 });
