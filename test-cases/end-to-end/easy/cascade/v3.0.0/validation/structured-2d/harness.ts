@@ -115,7 +115,7 @@ import {
 } from "../src/constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
-import type { CardSpec } from "./fixtures";
+import { ALL_SUITS, type CardSpec } from "./fixtures";
 import type {
   CascadeDebugApi,
   CascadeSnapshot,
@@ -1632,9 +1632,12 @@ export function poseNearlyWon(
   const column = options.column ?? 0;
   openTable(h, options.seed);
 
-  const suits: Suit[] = ["spades", "hearts", "diamonds", "clubs"];
+  // One foundation per suit, in the order a deck is built. Which suit sits on
+  // which foundation is arbitrary — any suit may start any foundation
+  // (specs/foundations.md) — so the deck's own order is used and the index the
+  // named suit landed on comes back with the rest.
   let foundation = 0;
-  suits.forEach((each, index) => {
+  ALL_SUITS.forEach((each, index) => {
     if (each === suit) foundation = index;
     poseFoundation(h, index, each, each === suit ? 12 : 13);
   });
