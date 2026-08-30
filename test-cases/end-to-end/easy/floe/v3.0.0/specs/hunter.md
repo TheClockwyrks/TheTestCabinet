@@ -109,16 +109,16 @@ advanced none.
 
 A bear leaves the strait, and its slot falls empty, on each of these:
 
-| Event | |
+| Event | What happens |
 | --- | --- |
-| Traffic | A vehicle in a lane whose speed is above `0` covers either of the two tiles the bear occupies. |
-| A crossing ends | The critter loses a life, or a crossing ends in a bay. Every bear on the strait leaves. |
+| Traffic arrives on it | A vehicle in a lane whose speed is above `0` covers either of the two tiles the bear occupies, and that bear leaves. |
+| A crossing ends | The critter loses a life, or a crossing ends in a bay, and every bear on the strait leaves. |
 
 A bear removed by traffic is replaced on the emerging conditions above, so its
 slot fills again once its delay has passed.
 
 ## Catching the critter
 
-A bear catches the critter when the distance between their centers is at most
-`BEAR_CATCH_DIST` (`18`) units. The critter loses a life, wherever on the strait
+A bear catches the critter, while the critter is in play, when the distance
+between their centers is at most `BEAR_CATCH_DIST` (`18`) units. The critter loses a life, wherever on the strait
 the two met, and `specs/progression.md` fixes what that costs.
