@@ -408,7 +408,6 @@ function drawUnit(ctx: CanvasRenderingContext2D, unit: Unit): void {
 /** The brief traces the frame's shots left. */
 function drawShots(state: MeltdownState, ctx: CanvasRenderingContext2D): void {
   for (const shot of state.shots) {
-    ctx.strokeStyle = alpha("#ffffff", Math.min(1, shot.life * 8));
     ctx.strokeStyle = shot.color;
     ctx.globalAlpha = Math.min(1, shot.life * 10);
     ctx.lineWidth = 2;
