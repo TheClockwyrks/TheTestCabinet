@@ -8,7 +8,11 @@ import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { routes } from "../../../routes";
 import runExec from "../RunExec.module.scss";
 import { useGgRuntime } from "./ggRuntime";
-import { useGgRunState, type GgMonitorStatus } from "./useGgRunState";
+import {
+  useGgRunState,
+  type GgMonitorStatus,
+  type SetupStage,
+} from "./useGgRunState";
 import { GgDashboard, type GgDashboardStatus } from "./GgDashboard";
 import { GgRunPanels } from "./GgRunPanels";
 
@@ -28,8 +32,15 @@ export function GgRunMonitorPage() {
   const { active: worker } = useWorkers();
   const runs = useRunsRuntime();
   const state = useGgRunState(jobId);
-  const { status, error, sawSession, sessionEndStatus, usage, capabilitySet } =
-    state;
+  const {
+    status,
+    error,
+    sawSession,
+    sessionEndStatus,
+    usage,
+    capabilitySet,
+    setupStage,
+  } = state;
   const live = status.kind === "running";
 
   // The run's two clocks. The wall clock ticks while the stream is live and settles on the
@@ -52,7 +63,7 @@ export function GgRunMonitorPage() {
   );
 
   const dashboardStatus: GgDashboardStatus = {
-    ...statusPhase(status, sawSession),
+    ...statusPhase(status, sawSession, setupStage),
     note:
       sessionEndStatus && status.kind === "running"
         ? `gg session ended: ${sessionEndStatus}. Finalizing…`
@@ -172,23 +183,50 @@ export function GgRunMonitorPage() {
   );
 }
 
-// The status pill's label, detail, and cue for the current phase. Queued (no gg
-// session yet) and running are the two live phases; a terminal state reflects the
+// The status pill's label, detail, and cue for the current phase. Setting up (gg has
+// yet to speak) and running are the two live phases; a terminal state reflects the
 // transport outcome — and, where gg reported it, the session's own end status.
+//
+// The pre-session phase is reported from the orchestrator's own setup stages rather
+// than as one flat "Queued", because they are not the same wait and the difference is
+// most of an operator's question. A run genuinely awaiting a runner has produced no
+// events at all; a run whose container is up and whose test case is installing a
+// browser has produced several, and can sit there for ten minutes legitimately. Calling
+// both of them "waiting for a runner and container" told an operator the cluster had
+// given them nothing when it had in fact given them everything and was busy in the
+// workspace — so the pill now names the stage the orchestrator last reported, and keeps
+// the runner-and-container wording for the case it is actually true of.
 function statusPhase(
   status: GgMonitorStatus,
   sawSession: boolean,
+  setupStage: SetupStage | null,
 ): Pick<GgDashboardStatus, "label" | "detail" | "tone"> {
   if (status.kind === "running") {
-    return sawSession
-      ? // No detail: the pill already says the run is live, and a run has as many agents
-        // working as it has dispatched, so there is nothing true to add in one phrase.
-        { label: "Running", detail: null, tone: "live" }
-      : {
-          label: "Queued",
-          detail: "waiting for a runner and container",
-          tone: "live",
-        };
+    if (sawSession) {
+      // No detail: the pill already says the run is live, and a run has as many agents
+      // working as it has dispatched, so there is nothing true to add in one phrase.
+      return { label: "Running", detail: null, tone: "live" };
+    }
+    // Nothing has been reported yet, so nothing has been allocated yet — the one case
+    // the original wording describes.
+    if (!setupStage) {
+      return {
+        label: "Queued",
+        detail: "waiting for a runner and container",
+        tone: "live",
+      };
+    }
+    return {
+      label: "Setting up",
+      // The orchestrator's own phrasing for the stage at its status, carried verbatim
+      // from the event (`SystemStage::describe` in crates/core) so this reads the same
+      // as the setup rows in the feed beneath it.
+      detail: setupStage.message,
+      // A failed stage is terminal in effect — the run does not proceed past it — so it
+      // reads as a failure straight away rather than glowing "live" until the stream
+      // catches up and closes.
+      tone: setupStage.status === "failed" ? "fail" : "live",
+    };
   }
   switch (status.outcome.kind) {
     case "completed":
