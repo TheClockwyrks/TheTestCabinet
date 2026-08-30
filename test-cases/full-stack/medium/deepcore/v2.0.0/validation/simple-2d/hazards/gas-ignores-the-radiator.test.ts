@@ -1,24 +1,80 @@
-// Deepcore — hazards.gas-ignores-the-radiator. STUB: NOT YET AUTHORED.
+// hazards/gas-ignores-the-radiator — the radiator is for lava alone.
 //
-// The radiator does not reduce gas damage
+// `specs/hazards.md` says it twice over: "Nothing reduces gas damage. Hull is
+// the only counter", and `specs/upgrades.md` scopes the radiator to lava, "both
+// the contact drain and the lump for drilling through a lava cell. It does not
+// reduce gas damage."
 //
-// Nothing reduces gas damage: the same posed detonation costs the same hull at
-// radiator tier 1 and at tier 5, so hull is the only counter to gas.
-//
-// Automated validation: detonate the same posed pocket at radiator tier 1 and
-// tier 5 and hold the two hull losses equal.
-//
-// `test-case.toml` declares this suite as `hazards/gas-ignores-the-radiator.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (unshielded (replay)) around the drive.
+// So the same detonation is driven twice, once at radiator tier 1 and once at
+// tier 5, whose effectiveness of `0.8` would cut a shielded figure to a fifth.
+// The two losses are held equal to each other rather than to the curve, because
+// what this point decides is that the tier changes nothing; the curve itself is
+// `hazards/gas-damage-scales-with-depth`.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
+import { MAX_TIER, RADIATOR_TIERS } from "../../src/constants";
+import {
+  captureReplay,
+  createHarness,
+  openScene,
+  pinMiner,
+  type Harness,
+} from "../harness";
+import {
+  armHull,
+  bandRow,
+  cutUnderfoot,
+  FAST_DRILL_TIER,
+  HAZARD_COL,
+} from "./scene";
 
-test("The radiator does not reduce gas damage", () => {
-  throw new Error(
-    "Deepcore validator `hazards/gas-ignores-the-radiator` is declared in test-case.toml but has not been authored yet.",
+/** The tier whose hull survives a rockbed detonation twice over. */
+const HULL_TIER = 5;
+
+/** The two columns the two identical pockets are posed in. */
+const BARE_COL = HAZARD_COL;
+const SHIELDED_COL = HAZARD_COL + 4;
+
+/** How far the two losses may sit apart, in hull points. */
+const TOLERANCE = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("costs the same hull at radiator tier 1 and at tier 5", async () => {
+  openScene(h);
+  pinMiner(h);
+  h.debug.setTier("drill", FAST_DRILL_TIER);
+  const row = bandRow(h.snapshot(), "rockbed");
+
+  const readings = await captureReplay(h, "unshielded", async () => {
+    h.debug.setTier("radiator", 1);
+    armHull(h, HULL_TIER);
+    const bare = await cutUnderfoot(h, BARE_COL, row, "gas");
+
+    h.debug.setTier("radiator", MAX_TIER.radiator);
+    armHull(h, HULL_TIER);
+    const shielded = await cutUnderfoot(h, SHIELDED_COL, row, "gas");
+    return { bare, shielded };
+  });
+
+  assertEqual(readings.bare.cut.broke, true, "specs/hazards.md");
+  assertEqual(readings.shielded.cut.broke, true, "specs/hazards.md");
+  assertGreaterThan(readings.bare.loss, 0, "specs/hazards.md");
+  assertBetween(
+    readings.shielded.loss,
+    readings.bare.loss - TOLERANCE,
+    readings.bare.loss + TOLERANCE,
+    `specs/upgrades.md, radiator effectiveness ${
+      RADIATOR_TIERS[MAX_TIER.radiator - 1]
+    } does not touch gas`,
   );
 });
