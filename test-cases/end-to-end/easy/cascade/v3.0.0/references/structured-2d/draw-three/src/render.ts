@@ -39,14 +39,8 @@ import {
 } from "./constants";
 import { colorOf, rankLabel } from "./deck";
 import type { CardState, CascadeState, Suit } from "./game";
-import {
-  columnBottom,
-  columnCardYs,
-  drawnCards,
-  pileAnchor,
-  wasteFanXs,
-} from "./layout";
-import { wasteShown, wasteVisibleCount } from "./piles";
+import { columnBottom, drawnCards, pileAnchor } from "./layout";
+import { wasteVisibleCount } from "./piles";
 import { CARD_RADIUS, COLOR, LAYER, font } from "./theme";
 
 /** The four lines the how-to screen is written in, in a player's own words. */
@@ -490,14 +484,4 @@ export function renderWon(
   ctx.strokeStyle = COLOR.accent;
   ctx.stroke();
   centredText(ctx, WIN_TEXT, STAGE_W / 2, 350, font(84), COLOR.accent);
-}
-
-/** Where the cards the waste shows are drawn, for a caller that needs the fan. */
-export function wasteCardXs(state: CascadeState): number[] {
-  return wasteFanXs(wasteShown(state).length);
-}
-
-/** Where each card of a column is drawn, for a caller that needs the fan. */
-export function columnCardTops(state: CascadeState, index: number): number[] {
-  return columnCardYs(state.tableau[index] ?? []);
 }

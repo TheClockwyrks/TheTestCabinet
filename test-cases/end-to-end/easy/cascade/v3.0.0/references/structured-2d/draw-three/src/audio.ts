@@ -130,14 +130,6 @@ export function noEvents(): FrameEvents {
   };
 }
 
-/** Fold one batch into another, so a batch of batches still raises each once. */
-export function mergeEvents(into: FrameEvents, from: FrameEvents): FrameEvents {
-  for (const key of Object.keys(into) as (keyof FrameEvents)[]) {
-    if (from[key]) into[key] = true;
-  }
-  return into;
-}
-
 /**
  * Flip the mute bit if the batch asked, then play the cue for each event it
  * raised, once per kind. A batch that raised more than one plays each of those

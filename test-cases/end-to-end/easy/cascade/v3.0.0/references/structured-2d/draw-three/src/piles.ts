@@ -17,12 +17,6 @@
 import { FOUNDATION_COUNT, TABLEAU_COLUMNS } from "./constants";
 import type { CardState, CascadeState, PileKind } from "./game";
 
-/** A pile named the way every card operation names one. */
-export interface PileRef {
-  pile: PileKind;
-  index: number;
-}
-
 /** Whether `pile` and `index` name one of the thirteen piles. */
 export function validPile(pile: PileKind, index: number): boolean {
   if (!Number.isInteger(index) || index < 0) return false;
@@ -94,12 +88,6 @@ export function wasteShown(state: CascadeState): CardState[] {
   const count = Math.min(wasteVisibleCount(state), state.waste.length);
   if (count <= 0) return [];
   return state.waste.slice(state.waste.length - count);
-}
-
-/** The card the waste offers to play, or `null` when it offers none. */
-export function wasteTop(state: CascadeState): CardState | null {
-  const shown = wasteShown(state);
-  return shown.length === 0 ? null : shown[shown.length - 1];
 }
 
 /**

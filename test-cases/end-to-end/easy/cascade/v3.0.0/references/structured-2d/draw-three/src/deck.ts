@@ -37,20 +37,6 @@ export function rankLabel(rank: number): string {
   }
 }
 
-/** The symbol a suit is drawn with. */
-export function suitSymbol(suit: Suit): string {
-  switch (suit) {
-    case "spades":
-      return "♠";
-    case "hearts":
-      return "♥";
-    case "diamonds":
-      return "♦";
-    default:
-      return "♣";
-  }
-}
-
 /** The carrier of the id counter: the game's own state object. */
 export interface Identity {
   nextId: number;
