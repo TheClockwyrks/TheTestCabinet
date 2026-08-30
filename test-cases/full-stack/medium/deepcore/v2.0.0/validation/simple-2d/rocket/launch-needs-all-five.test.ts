@@ -7,24 +7,35 @@
 // nothing.
 //
 // The pad's own `LAUNCH` is called at every installed count from none to four,
-// and the game is run on a moment after each: the screen must still be `in-mine`
-// and the checklist must still hold exactly what it held. Then the fifth is posed
-// and the pad is read as having nothing left to fabricate, which
-// `specs/instrumentation.md` reports as `nextComponent` at `null` — the state
-// `specs/rocket.md` says the pad shows `LAUNCH` in.
+// and the game is run on a moment after each: the screen must still be `in-mine`,
+// the checklist must still hold exactly what it held, and — the reading that
+// really bites — the `launch` cue must never have sounded. `specs/rocket.md` says
+// launching "plays the rocket lifting off the pad", so a build that committed to
+// a lift-off announces it on the frame it committed, several seconds before the
+// Victory screen would show; watching the cue BY NAME catches that at once, where
+// waiting for the screen to change would need the whole animation to play out.
+// Then the fifth is posed and the pad is read as having nothing left to
+// fabricate, which `specs/instrumentation.md` reports as `nextComponent` at
+// `null` — the state `specs/rocket.md` says the pad shows `LAUNCH` in.
 //
 // What launching then does is a requirement of its own, and has a validator of
 // its own; this one stops at the offer.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCKET_COMPONENT_IDS } from "../../src/constants";
+import { CUES, ROCKET_COMPONENT_IDS } from "../../src/constants";
 import {
   assertDeepEqual,
   assertEqual,
   assertNotNull,
   assertNull,
 } from "../assert";
-import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  sounded,
+  watchCues,
+  type Harness,
+} from "../harness";
 import { elapse, openPadScene } from "./pad-scene";
 
 /** Driven after each refused launch, so a delayed lift-off would still show. */
@@ -42,6 +53,7 @@ afterEach(() => {
 
 it("refuses a launch below five components and offers it at five", async () => {
   openPadScene(h);
+  const played = watchCues(h);
 
   for (let count = 0; count < ROCKET_COMPONENT_IDS.length; count += 1) {
     h.debug.setRocketInstalled(count);
@@ -64,6 +76,11 @@ it("refuses a launch below five components and offers it at five", async () => {
       after.rocket.installed,
       ROCKET_COMPONENT_IDS.slice(0, count),
       `the checklist after launching with ${count} installed`,
+    );
+    assertEqual(
+      sounded(played, CUES.launch),
+      false,
+      `specs/rocket.md: a lift-off begun with ${count} components installed`,
     );
   }
 
