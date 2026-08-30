@@ -1,26 +1,79 @@
-// Arc Foundry — `controls.key-stamp`. CASE-PROVIDED. NOT YET WRITTEN.
+// controls/key-stamp — `KeyB` pulls the press and arms a rock.
 //
-// The manifest declares this point at `controls/key-stamp.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/controls.md` binds the `stamp` action to `KeyB` and
+// says what it does: "Pulls the press and arms a rock." `specs/scrap-press.md`
+// adds what an armed rock is — blank, held on the cursor, with no type and no
+// quality until it lands — and that arming costs nothing, because "the roll
+// happens only on a successful drop". `specs/instrumentation.md` has the snapshot
+// report the cursor as `held`, so the arming is read there.
 //
-// THE REQUIREMENT. Pressing KeyB during a build phase arms a blank rock on the
-// cursor, and the held state reads active.
-//
-// HOW IT IS DECIDED. Press KeyB in a build phase and read the held state back.
-// The evidence it hands back is `armed` (image): the rock armed by the press
-// key.
+// HOW IT IS DECIDED. A run is opened on an empty yard at a build phase, which is
+// where `specs/controls.md` makes `stamp` available, and the key is pressed as a
+// player presses it: a real key event dispatched at the engine's own surface,
+// which is the layer the game reads its actions through, and the one frame that
+// delivers the edge. The held state is read before and after, and the stamp
+// allowance with it.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { STAMPS_PER_LEVEL } from "../../src/constants";
+import { assertEqual, assertNull } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  keyFor,
+  openYard,
+  pressAction,
+  type Harness,
+} from "../harness";
 
-describe("controls.key-stamp", () => {
-  it("KeyB pulls the press", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `controls.key-stamp` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("arms a blank rock on the cursor when KeyB is pressed", async () => {
+  openYard(h);
+
+  const before = h.snapshot();
+  assertEqual(
+    before.held.active,
+    false,
+    "nothing held on the cursor before the press key is touched " +
+      "(specs/instrumentation.md)",
+  );
+  assertEqual(
+    before.phase,
+    "build",
+    "a build phase, which is where `stamp` is available (specs/controls.md)",
+  );
+
+  await pressAction(h, "stamp");
+  captureStill(h, "armed");
+
+  const armed = h.snapshot();
+  assertEqual(
+    armed.held.active,
+    true,
+    `pressing ${keyFor("stamp")} in a build phase to arm a rock on the cursor ` +
+      "(specs/controls.md)",
+  );
+  // The rock is BLANK: it has no type and no quality until it lands, and pulling
+  // the press spends nothing, because the roll happens only on a successful drop
+  // (specs/scrap-press.md).
+  assertNull(
+    armed.nextRoll,
+    "an armed rock to carry no rolled component yet (specs/scrap-press.md)",
+  );
+  assertEqual(
+    armed.stampsLeft,
+    STAMPS_PER_LEVEL,
+    "the stamp allowance after arming but before dropping " +
+      "(specs/scrap-press.md)",
+  );
 });
