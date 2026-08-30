@@ -109,7 +109,6 @@ export function spawnBear(
       bear.routing = true;
       bear.travel = true;
       bear.carry = 0;
-      bear.lunge = 0;
     },
   });
 }

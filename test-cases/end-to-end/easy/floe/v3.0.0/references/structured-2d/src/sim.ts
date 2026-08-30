@@ -593,7 +593,6 @@ function struckByTraffic(world: World, state: FloeState, bear: Bear): boolean {
 function stepBears(world: World, state: FloeState, dt: number): void {
   const critter = critterOf(world);
   for (const bear of bearsOf(world)) {
-    if (bear.lunge > 0) bear.lunge = Math.max(0, bear.lunge - dt);
     if (bear.sense && critter.present) {
       bear.target = { col: critterCol(critter), row: critterRow(critter) };
     }
@@ -701,7 +700,16 @@ function stepCatch(world: World, state: FloeState, bus: Bus): void {
       bear.transform.y - critter.transform.y,
     );
     if (distance > BEAR_CATCH_DIST) continue;
-    bear.lunge = DEATH_PAUSE;
+    // The lunge outlives the bear by the length of the hold: the catch takes
+    // every bear off the strait on this tick, and `specs/assets.md` still asks
+    // for the lunge frames on it.
+    state.effects.push({
+      kind: "lunge",
+      x: bear.transform.x,
+      y: bear.transform.y,
+      life: DEATH_PAUSE,
+      span: DEATH_PAUSE,
+    });
     loseLife(world, state, "caught", bus);
     return;
   }

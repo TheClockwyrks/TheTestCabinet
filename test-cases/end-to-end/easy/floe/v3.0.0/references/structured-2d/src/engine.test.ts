@@ -87,6 +87,29 @@ function distance(
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
+/**
+ * How far the drawn pixels over one tile get from the band around it, taking the
+ * furthest sample of a grid over the tile: a sprite has transparent corners, so
+ * what matters is that SOME of it reads apart, not all of it.
+ */
+function apart(
+  h: Harness,
+  at: readonly [number, number],
+  band: readonly [number, number],
+): number {
+  const ground = h.pixel(band[0], band[1]);
+  let furthest = 0;
+  for (let dy = -10; dy <= 10; dy += 2) {
+    for (let dx = -10; dx <= 10; dx += 2) {
+      furthest = Math.max(
+        furthest,
+        distance(h.pixel(at[0] + dx, at[1] + dy), ground),
+      );
+    }
+  }
+  return furthest;
+}
+
 /** The names of the cues played, in order. */
 function played(h: Harness): string[] {
   return h.cues.map((play) => play.cue);
@@ -697,19 +720,34 @@ describe("what a player reads at a glance", () => {
     expect(distance(filled, open)).toBeGreaterThan(60);
   });
 
-  it("draws the critter apart from the band it stands on", async () => {
+  it("draws the critter apart from every band it can stand on", async () => {
     empty(harness);
-    harness.debug.addCritter(20, ROW_NEAR);
-    await harness.step(1);
-    const band = harness.pixel(tileCX(4), tileCY(ROW_NEAR));
-    let apart = 0;
-    for (let dy = -8; dy <= 8; dy += 4) {
-      for (let dx = -8; dx <= 8; dx += 4) {
-        const at = harness.pixel(tileCX(20) + dx, tileCY(ROW_NEAR) + dy);
-        if (distance(at, band) > 40) apart += 1;
-      }
+    harness.debug.setLaneSpeed(6, 0);
+    harness.debug.addFloe(6, "raft4", tileLeft(19));
+    for (const row of [ROW_NEAR, 15, ROW_MEDIAN, 6]) {
+      harness.debug.addCritter(20, row);
+      await harness.step(1);
+      expect(harness.snapshot().critter.footing).not.toBe("water");
+      expect(
+        apart(harness, [tileCX(20), tileCY(row)], [tileCX(4), tileCY(row)]),
+      ).toBeGreaterThan(60);
     }
-    expect(apart).toBeGreaterThan(4);
+  });
+
+  it("draws a bear apart from every band it can travel on", async () => {
+    empty(harness);
+    harness.debug.removeCritter();
+    for (const row of [ROW_NEAR, 15, ROW_MEDIAN]) {
+      harness.debug.clearBears();
+      harness.debug.addBear(20, row);
+      const id = harness.snapshot().bears[0].id;
+      harness.debug.setBearTravel(id, false);
+      harness.debug.setBearRouting(id, false);
+      await harness.step(1);
+      expect(
+        apart(harness, [tileCX(20), tileCY(row)], [tileCX(4), tileCY(row)]),
+      ).toBeGreaterThan(60);
+    }
   });
 
   it("keeps a submerged bear trackable over the water", async () => {
@@ -721,15 +759,34 @@ describe("what a player reads at a glance", () => {
     harness.debug.setBearRouting(id, false);
     await harness.step(1);
     expect(harness.snapshot().bears[0].swimming).toBe(true);
-    const water = harness.pixel(tileCX(30), tileCY(5));
-    let apart = 0;
-    for (let dy = -8; dy <= 8; dy += 4) {
-      for (let dx = -8; dx <= 8; dx += 4) {
-        const at = harness.pixel(tileCX(20) + dx, tileCY(5) + dy);
-        if (distance(at, water) > 30) apart += 1;
-      }
-    }
-    expect(apart).toBeGreaterThan(4);
+    expect(
+      apart(harness, [tileCX(20), tileCY(5)], [tileCX(30), tileCY(5)]),
+    ).toBeGreaterThan(60);
+  });
+
+  it("draws the bear's lunge on the tick of the catch", async () => {
+    empty(harness);
+    harness.debug.setCatchTest(true);
+    harness.debug.addCritter(20, ROW_MEDIAN);
+    harness.debug.addBear(20, ROW_MEDIAN);
+    const id = harness.snapshot().bears[0].id;
+    harness.debug.setBearTravel(id, false);
+    harness.debug.setBearRouting(id, false);
+    await harness.step(1);
+    // The catch takes the bear off the strait on this tick, and the lunge is
+    // drawn where it stood (specs/hunter.md, specs/assets.md).
+    expect(harness.snapshot().bears).toEqual([]);
+    expect(harness.snapshot().phase).toBe("dying");
+    expect(
+      harness.state.effects.some((effect) => effect.kind === "lunge"),
+    ).toBe(true);
+    expect(
+      apart(
+        harness,
+        [tileCX(20), tileCY(ROW_MEDIAN)],
+        [tileCX(4), tileCY(ROW_MEDIAN)],
+      ),
+    ).toBeGreaterThan(60);
   });
 
   it("draws every tile a vehicle spans, and each kind apart", async () => {

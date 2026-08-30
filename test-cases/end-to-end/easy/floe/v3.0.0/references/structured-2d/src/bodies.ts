@@ -42,7 +42,6 @@ import {
 } from "./constants";
 import type { Facing, FloeKind, ItemKind, VehicleKind } from "./game";
 import {
-  BEAR_LUNGE_BASE,
   BEAR_SWIM_BASE,
   art,
   facingPair,
@@ -51,7 +50,6 @@ import {
   type Frame,
 } from "./sprites";
 import {
-  BEAR_LUNGE_FPS,
   BEAR_RUN_FPS,
   BEAR_SWIM_FPS,
   COLOR,
@@ -188,8 +186,6 @@ export class Bear extends TileBody {
    * units, added to the next tick's travel so no distance is lost at a center.
    */
   carry = 0;
-  /** Seconds left of the lunge the catch is drawn with; purely presentational. */
-  lunge = 0;
 
   constructor() {
     super();
@@ -197,20 +193,16 @@ export class Bear extends TileBody {
   }
 
   /**
-   * The run pair for its facing on ice, the submerged swim pair over open water,
-   * and the lunge on the tick it catches (specs/assets.md). The swim frames
-   * already carry the silhouette and its wake, and a bear draws above the floes,
-   * so one passing beneath a raft stays trackable.
+   * The run pair for its facing on ice, and the submerged swim pair over open
+   * water (specs/assets.md). The swim frames already carry the silhouette and
+   * its wake, and a bear draws above the floes, so one passing beneath a raft
+   * stays trackable. The lunge belongs to the tick of the catch, by which time
+   * the bear has left the strait, so `src/scenery.ts` draws it.
    */
   sync(alpha: number, simTime: number, swimming: boolean): void {
-    const index =
-      this.lunge > 0
-        ? BEAR_LUNGE_BASE + beat(simTime, BEAR_LUNGE_FPS)
-        : swimming
-          ? BEAR_SWIM_BASE +
-            facingPair(this.facing) +
-            beat(simTime, BEAR_SWIM_FPS)
-          : facingPair(this.facing) + beat(simTime, BEAR_RUN_FPS);
+    const index = swimming
+      ? BEAR_SWIM_BASE + facingPair(this.facing) + beat(simTime, BEAR_SWIM_FPS)
+      : facingPair(this.facing) + beat(simTime, BEAR_RUN_FPS);
     this.place(art().bear[index], alpha);
   }
 }

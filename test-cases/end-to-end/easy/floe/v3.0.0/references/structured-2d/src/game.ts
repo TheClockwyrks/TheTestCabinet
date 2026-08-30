@@ -145,10 +145,18 @@ export interface HuntSlot {
   emptyFor: number;
 }
 
-/** A splash or a spray, drawn in code for a moment after a death. */
+/**
+ * What a death leaves on the strait for a moment: the splash of a fall, the
+ * spray of a crush, and the bear's lunge.
+ *
+ * The lunge is here rather than on the bear because a catch takes every bear off
+ * the strait on the tick it costs the life (`specs/hunter.md`), so the roster is
+ * already empty by the time the frame draws; `specs/assets.md` still asks for the
+ * lunge frames on that tick, and this is what carries them.
+ */
 export interface Effect {
   /** What it is drawn as. */
-  kind: "splash" | "spray";
+  kind: "splash" | "spray" | "lunge";
   /** Its center, in stage units. */
   x: number;
   y: number;

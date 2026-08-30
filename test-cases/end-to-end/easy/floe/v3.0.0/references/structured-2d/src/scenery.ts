@@ -33,7 +33,8 @@ import {
 } from "./constants";
 import { bayColumns } from "./grid";
 import { floeState } from "./game";
-import { COLOR, LAYER } from "./theme";
+import { BEAR_LUNGE_BASE, art } from "./sprites";
+import { BEAR_LUNGE_FPS, COLOR, LAYER, beat } from "./theme";
 
 /** A row band, as a stage rectangle. */
 function bandRect(
@@ -119,13 +120,37 @@ class BandsArt extends DrawComponent {
   }
 }
 
-/** The splash of a fall and the spray of a crush (specs/water.md, specs/ice.md). */
+/**
+ * What a death leaves behind: the splash of a fall, the spray of a crush, and
+ * the bear's lunge (specs/water.md, specs/ice.md, specs/assets.md).
+ *
+ * The lunge is the one of the three that is drawn from the seeded art. It is
+ * drawn here rather than by the bear because the catch takes every bear off the
+ * strait on the tick it costs the life, so by the time the frame draws there is
+ * no bear left to carry it.
+ */
 class EffectsArt extends DrawComponent {
   draw(api: DrawApi): void {
     const { ctx } = api;
-    for (const effect of floeState(this.world).effects) {
+    const state = floeState(this.world);
+    for (const effect of state.effects) {
       const life = Math.max(0, Math.min(1, effect.life / effect.span));
       ctx.globalAlpha = api.mode === "shaded" ? life : 1;
+      if (effect.kind === "lunge") {
+        const frame =
+          art().bear[BEAR_LUNGE_BASE + beat(state.simTime, BEAR_LUNGE_FPS)];
+        if (frame !== null) {
+          ctx.drawImage(
+            frame,
+            effect.x - TILE / 2,
+            effect.y - TILE / 2,
+            TILE,
+            TILE,
+          );
+        }
+        ctx.globalAlpha = 1;
+        continue;
+      }
       ctx.strokeStyle = effect.kind === "splash" ? COLOR.splash : COLOR.spray;
       ctx.lineWidth = 3;
       for (const ring of [0, 1]) {
