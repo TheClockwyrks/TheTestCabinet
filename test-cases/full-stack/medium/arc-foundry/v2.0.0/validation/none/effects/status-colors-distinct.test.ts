@@ -68,14 +68,17 @@ afterEach(async () => {
 it("keeps slow, burn and aura apart from each other and from the firing effects", async () => {
   await evidence(h, "colors", async () => {
     // One unit carrying both statuses, beside a support node, so the still shows
-    // the three colors the reading is about on one screen.
+    // the three colors the reading is about on one screen. The node is what is
+    // selected, not the unit: `select` names a STRUCTURE (specs/instrumentation.md),
+    // and selecting it is what draws its aura, so the frame carries the slow and
+    // the burn on the unit and the aura around the node.
     await openYard(h, { wave: 1 });
-    await standComponent(h, "regulator", 3, 20, 14);
-    const unit = await parkUnit(h, "slug", tileCenter(25, 15), {
+    const node = await standComponent(h, "regulator", 3, 20, 14);
+    await parkUnit(h, "slug", tileCenter(25, 15), {
       slow: { amount: 0.3, seconds: 4 },
       burn: { dps: 2, seconds: 4 },
     });
-    await h.debug.select(unit);
+    await h.debug.select(node);
     await h.advance(2);
   });
 
