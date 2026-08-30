@@ -1,11 +1,13 @@
 # Dependencies — reinstalled with `npm ci`; never committed.
 node_modules/
 
-# Production build output — produced by `npm run build` and deployed to static
-# hosting separately, so it is not part of the published source repository.
+# Production build output — produced by `npm run build`.
 dist/
 build/
 out/
+
+# Coverage reports — produced by `npm test`.
+coverage/
 
 # Playwright verification scratch.
 test-results/
