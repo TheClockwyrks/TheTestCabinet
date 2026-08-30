@@ -15,14 +15,44 @@
 // from a well-formed empty one.
 //
 // Nothing here reads the build. The runtime is a dependency of the project the
-// build was made in, resolved exactly as the build resolves it.
+// build was made in, resolved exactly as the build resolves it. The still the
+// review item declares is a picture of one of the systems actually playing in the
+// mine, so a reviewer sees what the files turn into as well as that they parse.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { ParticleSimulator } from "@test-cabinet/particle-runtime";
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
 import { assertEqual } from "../assert";
+import { BAND_HEALTH, PLAYABLE_COL_MIN } from "../constants";
+import {
+  ACTION_KEY,
+  captureStill,
+  createHarness,
+  layFloor,
+  openScene,
+  pinMiner,
+  standOn,
+  type Harness,
+} from "../harness";
 import { readProducedText } from "./produced";
 import { FX_SYSTEMS } from "./spec";
+
+/** Where the still is taken: a coreshell cell held under the drill. */
+const ROW = 450;
+const COL = PLAYABLE_COL_MIN + 8;
+
+/** Frames the cut runs for before the picture is taken. */
+const CUTTING = 20;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
 
 /** The step the simulator is driven in, in milliseconds. */
 const STEP_MS = 16;
@@ -33,7 +63,7 @@ const PLAY_MS = 2000;
 /** A fixed seed, so a system that emits is seen to emit every time. */
 const SEED = 1;
 
-it("parses all twelve produced systems and plays each to particles", () => {
+it("parses all twelve produced systems and plays each to particles", async () => {
   const faults: string[] = [];
   for (const name of FX_SYSTEMS) {
     const file = `assets/fx/${name}.json`;
@@ -62,6 +92,17 @@ it("parses all twelve produced systems and plays each to particles", () => {
     }
     if (live === 0) faults.push(`${file}: produced no particle`);
   }
+
+  // One of them, playing in the mine, as the picture the review item declares.
+  await openScene(h);
+  await layFloor(h, ROW);
+  await standOn(h, COL, ROW);
+  await pinMiner(h);
+  await h.debug.setTileHealth(COL, ROW, BAND_HEALTH.coreshell);
+  await h.hold(ACTION_KEY.down);
+  await h.advance(CUTTING);
+  await captureStill(h, "fx");
+  await h.release(ACTION_KEY.down);
 
   assertEqual(faults.join(", "), "", "specs/assets.md");
 });
