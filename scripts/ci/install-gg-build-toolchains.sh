@@ -38,6 +38,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 # shellcheck source=packages/gg-sandbox-csharp/csharp-version.sh
 source "$REPO_ROOT/packages/gg-sandbox-csharp/csharp-version.sh"
+# shellcheck source=scripts/ci/fetch.sh
+source "$REPO_ROOT/scripts/ci/fetch.sh"
 
 DOTNET_SDK_DIR="$GG_BUILD_PREFIX/dotnet-sdk-$GG_DOTNET_SDK_VERSION"
 WASI_SDK_DIR="$GG_BUILD_PREFIX/wasi-sdk-$GG_WASI_SDK_VERSION-full"
@@ -62,7 +64,7 @@ else
 	trap 'rm -rf "$WORK"' EXIT
 	echo "Installing the .NET SDK $GG_DOTNET_SDK_VERSION ($(gg_dotnet_architecture)) -> $DOTNET_SDK_DIR"
 	mkdir -p "$DOTNET_SDK_DIR"
-	curl -sSfL https://dot.net/v1/dotnet-install.sh -o "$WORK/dotnet-install.sh"
+	gg_fetch https://dot.net/v1/dotnet-install.sh "$WORK/dotnet-install.sh"
 	chmod +x "$WORK/dotnet-install.sh"
 	"$WORK/dotnet-install.sh" --channel "$GG_DOTNET_CHANNEL" --version "$GG_DOTNET_SDK_VERSION" \
 		--architecture "$(gg_dotnet_architecture)" --install-dir "$DOTNET_SDK_DIR" --no-path
@@ -95,9 +97,15 @@ if [ -x "$WASI_SDK_DIR/bin/clang" ]; then
 	echo "wasi-sdk $GG_WASI_SDK_VERSION already installed at $WASI_SDK_DIR"
 else
 	echo "Installing wasi-sdk $GG_WASI_SDK_VERSION ($(gg_wasi_sdk_platform)) -> $WASI_SDK_DIR"
+	# Staged to a file rather than piped into `tar`, which is what it used to be. A pipe cannot be
+	# resumed: this is ~650 MB, and the whole of it was re-fetched every time the connection dropped
+	# once. `gg_fetch` resumes and retries, and the archive is deleted once it has been unpacked.
+	SDK_ARCHIVE="$(gg_fetch_dir)/wasi-sdk-$GG_WASI_SDK_VERSION-$(gg_wasi_sdk_platform).tar.gz"
+	gg_fetch "$(gg_wasi_sdk_url)" "$SDK_ARCHIVE"
 	rm -rf "$WASI_SDK_DIR"
 	mkdir -p "$WASI_SDK_DIR"
-	curl -sSfL "$(gg_wasi_sdk_url)" | tar -xz -C "$WASI_SDK_DIR" --strip-components=1
+	tar -xzf "$SDK_ARCHIVE" -C "$WASI_SDK_DIR" --strip-components=1
+	rm -f "$SDK_ARCHIVE"
 fi
 test -d "$WASI_SDK_DIR/share/wasi-sysroot/lib/$GG_CSHARP_TARGET/noeh"
 
@@ -114,8 +122,8 @@ else
 	rm -rf "$PACK_DIR"
 	mkdir -p "$PACK_DIR"
 	lower="$(echo "$GG_DOTNET_MONO_WASI_PACK" | tr '[:upper:]' '[:lower:]')"
-	curl -sSfL "https://api.nuget.org/v3-flatcontainer/$lower/$GG_DOTNET_RUNTIME_VERSION/$lower.$GG_DOTNET_RUNTIME_VERSION.nupkg" \
-		-o "$PACK_DIR/mono-wasi.nupkg"
+	gg_fetch "https://api.nuget.org/v3-flatcontainer/$lower/$GG_DOTNET_RUNTIME_VERSION/$lower.$GG_DOTNET_RUNTIME_VERSION.nupkg" \
+		"$PACK_DIR/mono-wasi.nupkg"
 	unzip -q -o "$PACK_DIR/mono-wasi.nupkg" -d "$PACK_DIR"
 	rm -f "$PACK_DIR/mono-wasi.nupkg"
 fi

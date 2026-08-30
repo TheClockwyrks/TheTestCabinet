@@ -47,6 +47,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=packages/gg-sandbox-csharp/csharp-version.sh
 source "$ROOT/packages/gg-sandbox-csharp/csharp-version.sh"
+# shellcheck source=scripts/ci/fetch.sh
+source "$ROOT/scripts/ci/fetch.sh"
 
 INSTALL_DIR="${DOTNET_INSTALL_DIR:-$GG_DOTNET_DEFAULT_HOME}"
 STAMP="$INSTALL_DIR/dotnet-version"
@@ -86,7 +88,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 ARCH="$(gg_dotnet_architecture)"
 echo "Installing .NET SDK $GG_DOTNET_SDK_VERSION ($ARCH) -> $INSTALL_DIR"
-curl -sSfL https://dot.net/v1/dotnet-install.sh -o "$WORK/dotnet-install.sh"
+gg_fetch https://dot.net/v1/dotnet-install.sh "$WORK/dotnet-install.sh"
 chmod +x "$WORK/dotnet-install.sh"
 "$WORK/dotnet-install.sh" --channel "$GG_DOTNET_CHANNEL" --version "$GG_DOTNET_SDK_VERSION" \
 	--architecture "$ARCH" --install-dir "$WORK/sdk" --no-path
@@ -205,15 +207,15 @@ aarch64 | arm64) DEB_ARCH="arm64" ;;
 	exit 1
 	;;
 esac
-curl -sSfL "https://deb.debian.org/debian/dists/bookworm/main/binary-$DEB_ARCH/Packages.gz" \
-	-o "$WORK/Packages.gz"
+gg_fetch "https://deb.debian.org/debian/dists/bookworm/main/binary-$DEB_ARCH/Packages.gz" \
+	"$WORK/Packages.gz"
 gzip -dc "$WORK/Packages.gz" >"$WORK/Packages"
 ICU_FILENAME="$(awk '$0=="Package: libicu72"{found=1} found&&/^Filename:/{print $2; exit}' "$WORK/Packages")"
 if [ -z "$ICU_FILENAME" ]; then
 	echo "error: Debian bookworm has no libicu72 for $DEB_ARCH." >&2
 	exit 1
 fi
-curl -sSfL "https://deb.debian.org/debian/$ICU_FILENAME" -o "$WORK/libicu72.deb"
+gg_fetch "https://deb.debian.org/debian/$ICU_FILENAME" "$WORK/libicu72.deb"
 mkdir -p "$WORK/icu" "$INSTALL_DIR/lib"
 (cd "$WORK/icu" && ar x "$WORK/libicu72.deb" && tar -xf data.tar.*)
 # Three of the package's six libraries. `libicutu`, `libicuio` and `libicutest` are the transliterator

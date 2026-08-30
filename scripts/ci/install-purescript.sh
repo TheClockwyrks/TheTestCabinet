@@ -28,6 +28,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=packages/gg-sandbox-purescript/purescript-version.sh
 source "$ROOT/packages/gg-sandbox-purescript/purescript-version.sh"
+# shellcheck source=scripts/ci/fetch.sh
+source "$ROOT/scripts/ci/fetch.sh"
 
 INSTALL_DIR="${PURS_INSTALL_DIR:-$HOME/.local/bin}"
 mkdir -p "$INSTALL_DIR"
@@ -52,9 +54,9 @@ if [ -x "$INSTALL_DIR/purs" ] && [ "$("$INSTALL_DIR/purs" --version 2>/dev/null)
 	echo "purs $PURS_VERSION already installed"
 else
 	echo "Installing purs $PURS_VERSION ($PURS_ASSET) -> $INSTALL_DIR"
-	curl -sSfL \
+	gg_fetch \
 		"https://github.com/purescript/purescript/releases/download/v$PURS_VERSION/$PURS_ASSET.tar.gz" \
-		-o "$WORK/purs.tar.gz"
+		"$WORK/purs.tar.gz"
 	tar -xzf "$WORK/purs.tar.gz" -C "$WORK"
 	install -m 0755 "$WORK/purescript/purs" "$INSTALL_DIR/purs"
 	"$INSTALL_DIR/purs" --version
@@ -65,9 +67,9 @@ if [ -x "$INSTALL_DIR/esbuild" ] && [ "$("$INSTALL_DIR/esbuild" --version 2>/dev
 	echo "esbuild $ESBUILD_VERSION already installed"
 else
 	echo "Installing esbuild $ESBUILD_VERSION ($ESBUILD_PLATFORM) -> $INSTALL_DIR"
-	curl -sSfL \
+	gg_fetch \
 		"https://registry.npmjs.org/@esbuild/$ESBUILD_PLATFORM/-/$ESBUILD_PLATFORM-$ESBUILD_VERSION.tgz" \
-		-o "$WORK/esbuild.tgz"
+		"$WORK/esbuild.tgz"
 	tar -xzf "$WORK/esbuild.tgz" -C "$WORK"
 	install -m 0755 "$WORK/package/bin/esbuild" "$INSTALL_DIR/esbuild"
 	"$INSTALL_DIR/esbuild" --version

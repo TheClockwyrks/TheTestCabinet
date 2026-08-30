@@ -119,6 +119,10 @@
 # image build every toolchain in it.
 !/scripts/ci/install-*.sh
 !/scripts/ci/lib.sh
+# The third file in that closure, and not a glob because it is one file: the resuming,
+# retrying `curl` six of those installers fetch their toolchain archive with. Without it
+# they die on their own `source` line, having copied cleanly.
+!/scripts/ci/fetch.sh
 
 # The gg build's own shared shell, which those installers source: `gg-downloads.sh` resolves the
 # pinned `wit-bindgen` and wasmtime adapter, `gg-npm-tools.sh` resolves the pinned npm-delivered

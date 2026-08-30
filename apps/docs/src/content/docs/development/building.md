@@ -225,6 +225,17 @@ on create, which reconciles an image built before a pin moved. A missing
 toolchain fails the build with the arm named and the fix stated. A failure naming
 `node_modules` is fixed by `npm ci`.
 
+An interrupted install is safe to re-run, and it is cheap. Between them these
+scripts fetch about 3 GB — the Swift toolchain alone is 1.05 GB — and every one of
+those fetches goes through `gg_fetch` (`scripts/ci/fetch.sh`), which retries a
+dropped connection and resumes rather than restarting. The partial archive is kept
+under `~/.cache/tcab/downloads` (the same path the service-image build mounts a
+cache over), so re-running the installer after a failure picks up where it stopped
+instead of paying for the whole transfer again; each installer deletes its own
+archive once the tree it feeds has verified itself. Nothing under an install prefix
+is touched until every byte is on disk, so a fetch that fails leaves a toolchain a
+machine already had rather than half of one.
+
 To read an arm's build artifacts, or a catalogue, run the same scripts the build
 runs:
 

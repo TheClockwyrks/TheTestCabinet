@@ -55,6 +55,8 @@ export PATH="$HOME/.local/bin:$PATH"
 source "$REPO_ROOT/scripts/gg-npm-tools.sh"
 # shellcheck source=scripts/gg-downloads.sh
 source "$REPO_ROOT/scripts/gg-downloads.sh"
+# shellcheck source=scripts/ci/fetch.sh
+source "$REPO_ROOT/scripts/ci/fetch.sh"
 
 # Three of the resolutions below are `npm install --prefix`, and npm is the ONE prerequisite this
 # script assumes rather than installs — like `uv` and `cargo` below, and for the same reason: a
@@ -103,7 +105,7 @@ if [ -d "$GEM_DIR/stdlib" ]; then
 else
 	echo "Fetching the opal $OPAL_VERSION gem -> $GEM_DIR"
 	mkdir -p "$GEM_DIR"
-	curl -sSfL "https://rubygems.org/downloads/opal-$OPAL_VERSION.gem" -o "$GEM_DIR/opal.gem"
+	gg_fetch "https://rubygems.org/downloads/opal-$OPAL_VERSION.gem" "$GEM_DIR/opal.gem"
 	tar -xf "$GEM_DIR/opal.gem" -C "$GEM_DIR" data.tar.gz
 	tar -xzf "$GEM_DIR/data.tar.gz" -C "$GEM_DIR"
 	test -d "$GEM_DIR/stdlib"
