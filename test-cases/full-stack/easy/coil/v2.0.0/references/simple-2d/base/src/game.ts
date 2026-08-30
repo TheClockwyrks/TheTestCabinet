@@ -1,53 +1,51 @@
-// Coil — the game. THIS IS THE FILE YOU IMPLEMENT.
+// Coil — the game: the state contract, the per-frame update, and the binding of
+// the three functions the engine drives.
 //
-// `src/main.ts`, `src/constants.ts` and the project's configuration are supplied
-// with the project and stay as they are. What is missing is the game: the state
-// it holds, the debug surface that poses and reads that state, and the three
-// functions below.
+// A `Game<S, D>` is three functions, a state type, and the debug surface the game
+// hands to the engine. `initialize` runs once and returns the state and the
+// surface together as `[state, debug]`. `update` and `render` then run once each
+// per frame — `update` first, with the frame's delta time in SECONDS, then
+// `render`. The state is the only channel between them, and it is a VALUE: the
+// engine hands `update` the current state as a `DeepReadonly` view and stores what
+// it returns, and `render` draws that. Nothing in this build writes to a state it
+// was handed; every function over the state is a transition, current state in and
+// next state out, built by spreading what it keeps around what it changes.
 //
-// FIRST, DECLARE AND EXPORT `CoilState`, the game's whole state, and
-// `CoilDebugApi`, the debug and automation surface `specs/instrumentation.md`
-// specifies. The stub below is written against both names, so this project does
-// not compile until they exist — the type check failing on a freshly seeded
-// workspace is the starting point, not a broken seed. What `CoilState` carries
-// is yours to shape, subject to the snapshot `specs/instrumentation.md` fixes.
+// THE STATE SHAPE BELOW IS A CONTRACT. It is what the debug surface in
+// `src/debug.ts` poses and reads, and `specs/instrumentation.md` fixes the
+// snapshot taken off it. Every field is declared here under its name, type and
+// meaning; `initialize` builds the whole state in one go, so no field is optional;
+// and `reset` on the surface restores exactly these fields. Every field is
+// `readonly` and every array is a `readonly` array, so the declared type and the
+// `DeepReadonly` view the engine hands out are the same shape and a transition
+// spreads one state into the next without a cast.
 //
-// THEN IMPLEMENT the three functions. `initialize` runs once, when the engine is
-// initialized, and returns the state and the debug surface together, as the pair
-// `[state, debug]`. `update` and `render` then run once each per frame — `update`
-// first, with the frame's delta time in SECONDS, then `render`.
-//
-// COIL RUNS ON A FIXED TICK. `update` accumulates the seconds it is handed and
-// resolves one tick for each whole TICK_SECONDS the accumulator holds, carrying
-// the remainder, and it resolves each tick in the six-step order
-// `specs/movement.md` fixes. Ticks run on the `playing` screen alone, and
-// `render` advances nothing.
-//
-// The state is a VALUE, and every frame is a transition over it. The engine hands
-// `update` the current state as a read-only view (`DeepReadonly<CoilState>`) and
-// stores whatever `update` returns as the next state; `render` is handed that
-// next state, as the same read-only view, and returns nothing. Nothing ever holds
-// a writable `CoilState`: `update` builds the next state from the current one
-// (spread the parts that change, `map` over the arrays) rather than assigning
-// into it, and a frame that returns `undefined` is refused by the engine. The
-// engine's own documentation, seeded at `engine/`, defines all of this and the
-// scoped APIs each function receives; read it before you start.
-//
-// The engine returns the surface from `engine.debug`, exactly as `initialize`
-// handed it over, which is how the game is driven from code
-// (`specs/instrumentation.md`). Because no one holds a writable state, the
-// surface is written in the shape of `update`: a pose takes the current state and
-// returns the next (`setScore(state, points)`), a reading takes the state and
-// returns what it read (`snapshot(state)`), and a caller drives them through
-// `engine.apply` and `engine.state`. Where its implementation lives under `src/`
-// is your call; the only fixed point is that `initialize` returns it.
-//
-// THE ART AND THE SOUND ARE YOURS TO PRODUCE. Coil ships neither. `specs/assets.md`
-// states which binary on the `PATH` makes each file, where it lands under
-// `assets/`, and the bar it is held to; `src/constants.ts` names the paths. Load
-// them through the engine's asset loader and bind the cues to its cue bus, both
-// documented at `engine/`.
+// The screens are wrapped around the round the same way: this file owns the tick
+// accumulator, so `update` consumes elapsed game time into whole ticks and carries
+// the remainder, and a second of game time is eight ticks whether it arrived in
+// one update or in sixty. Drawing advances nothing.
 
+import { loadSprites, type SnakeSprites } from "./assets";
+import { defineCues, playTickEvents } from "./audio";
+import { createDebugApi, type CoilDebugApi } from "./debug";
+import { registerDiagnostics } from "./diagnostics";
+import { pressedActions, registerActions } from "./input";
+import { menuItems } from "./menus";
+import { renderGame } from "./render";
+import { seedState } from "./rng";
+import { layChain, requestTurn, spawnPellet, tick } from "./sim";
+import { COLORS } from "./theme";
+import {
+  BITE_SECONDS,
+  CUES,
+  DEFAULT_SEED,
+  OBSTACLE_CELLS,
+  TICK_SECONDS,
+  type ActionName,
+  type Cell,
+  type Direction,
+  type Screen,
+} from "./constants";
 import type {
   Game,
   InitApi,
@@ -56,67 +54,362 @@ import type {
 } from "@test-cabinet/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
+// The surface is part of the module contract and is declared beside the game it
+// types, so the type is exported from here whichever module implements it.
+export type { CoilDebugApi };
+
 /**
- * The stage background, a CSS color string. `src/main.ts` hands it to the engine
- * as the color the canvas is cleared to each frame, so the letterbox bars around
- * the stage match the board's surround. This placeholder is replaced by the
- * build with the color its board uses.
+ * The stage background. `src/main.ts` hands it to the engine as the color the
+ * canvas is cleared to each frame, so the letterbox bars around the stage match
+ * the board's surround.
  */
-export const BACKGROUND = "#000";
+export const BACKGROUND: string = COLORS.stage;
 
-const NOT_IMPLEMENTED = "Coil: src/game.ts is not implemented yet";
+/** Whether this build's mode lays a course of obstacle cells across the board. */
+export const HAS_OBSTACLES = OBSTACLE_CELLS.length > 0;
+
+// ---- The state contract --------------------------------------------------
+
+export interface CoilState {
+  /** The screen the game is on; a build opens on `title`. */
+  readonly screen: Screen;
+  /** The highlighted item of the current screen's menu, counted from 0. */
+  readonly menuIndex: number;
+
+  /** The running score of the current round. */
+  readonly score: number;
+  /** The highest score reached in this session. */
+  readonly best: number;
+  /** The combo multiplier M, in `[1, COMBO_MAX]`. */
+  readonly combo: number;
+  /** Seconds of simulation time left on the combo window; `0` is closed. */
+  readonly comboWindow: number;
+
+  /** The engine's mute bit, mirrored into the state every frame. */
+  readonly muted: boolean;
+  /** Ticks resolved since the last reset. */
+  readonly ticks: number;
+  /** Simulation time accumulated on the playing screen since the last reset. */
+  readonly simTime: number;
+
+  /** The direction the head advances in on the next tick. */
+  readonly dir: Direction;
+  /** The steering requests waiting on the buffer, oldest first. */
+  readonly turns: readonly Direction[];
+  /** The chain, head at index 0 and tail at the last index. */
+  readonly snake: readonly Cell[];
+  /** The live pellet, or `null` while no pellet is on the board. */
+  readonly pellet: Cell | null;
+  /** The obstacle cells currently on the board. */
+  readonly obstacles: readonly Cell[];
+
+  /** Step 1 of the tick, and whether a steering request is taken at all. */
+  readonly steering: boolean;
+  /** Steps 2 to 5 of the tick. */
+  readonly travel: boolean;
+  /** The placement inside step 5. */
+  readonly pelletRespawn: boolean;
+
+  /** Game time held past the last whole tick, carried into the next update. */
+  readonly accumulator: number;
+  /** Seconds left of the head's bite; `0` is the resting pose. */
+  readonly biteRemaining: number;
+  /** The pellet generator's whole state (`src/rng.ts`). */
+  readonly rngState: number;
+  /** The produced sprite set, loaded once before the first frame. */
+  readonly sprites: SnakeSprites;
+}
 
 /**
- * The game this build's engine drives.
+ * The slack the accumulator allows a tick boundary.
  *
- * Implement all three functions. Nothing else in the project needs changing for
- * the game to run: `src/main.ts` already binds this object to the engine.
+ * A second delivered as sixty updates of a sixtieth each sums to a hair under a
+ * second in binary floating point, and the specification requires it to resolve
+ * the same eight ticks a second delivered in one update does. Comparing against
+ * the boundary less this tolerance is what makes the two agree. It is far smaller
+ * than any interval a caller can mean, so it never lets an early tick through.
  */
+const TICK_EPSILON = 1e-9;
+
+/** The actions that steer, and the direction each one asks for. */
+const STEER: Partial<Record<ActionName, Direction>> = {
+  up: "up",
+  down: "down",
+  left: "left",
+  right: "right",
+};
+
+// ---- Building and restoring the session ----------------------------------
+
+/**
+ * The whole opening state: the title screen, a fresh round laid out but not
+ * started, the mode's obstacle course, and all three driver switches on.
+ *
+ * `sprites` and `muted` are the two things a session carries in from outside it —
+ * the files the engine loaded and the player's sound preference — so both are
+ * handed in rather than decided here.
+ */
+export function createInitialState(
+  sprites: SnakeSprites,
+  muted: boolean,
+  seed: number = DEFAULT_SEED,
+): CoilState {
+  return layChain({
+    screen: "title",
+    menuIndex: 0,
+    score: 0,
+    best: 0,
+    combo: 1,
+    comboWindow: 0,
+    muted,
+    ticks: 0,
+    simTime: 0,
+    dir: "right",
+    turns: [],
+    snake: [],
+    pellet: null,
+    obstacles: OBSTACLE_CELLS.map((cell) => ({ col: cell.col, row: cell.row })),
+    steering: true,
+    travel: true,
+    pelletRespawn: true,
+    accumulator: 0,
+    biteRemaining: 0,
+    rngState: seedState(seed),
+    sprites,
+  });
+}
+
+/**
+ * Every field the snapshot reports back to its opening value, the course back to
+ * the mode's, the three switches back on, and the generator reseeded.
+ *
+ * `muted` is untouched, because muting is a player preference rather than a value
+ * a round opens with, and the sprites are kept because they are the files the
+ * engine loaded rather than anything a round decides.
+ */
+export function resetSession(state: CoilState, seed: number): CoilState {
+  return createInitialState(state.sprites, state.muted, seed);
+}
+
+/** Begin a round: the board as `specs/board.md` lays it, with its first pellet. */
+export function startRound(state: CoilState): CoilState {
+  const laid = layChain({
+    ...state,
+    screen: "playing",
+    menuIndex: 0,
+    accumulator: 0,
+    biteRemaining: 0,
+    pellet: null,
+  });
+  // Placed after the chain is laid, so it never lands under a starting cell.
+  return spawnPellet(laid).state;
+}
+
+/** Move to `screen` and highlight its first item. */
+export function goTo(state: CoilState, screen: Screen): CoilState {
+  return { ...state, screen, menuIndex: 0 };
+}
+
+// ---- Routing one press edge ----------------------------------------------
+
+/**
+ * Route one press edge to what it does on the screen the game is on
+ * (specs/controls.md).
+ *
+ * Pure, and deliberately blind to `mute`: muting is the engine's bit rather than a
+ * field of the state, so `update` reads that edge and flips the bus, and this
+ * routes everything else.
+ */
+export function handleAction(state: CoilState, action: ActionName): CoilState {
+  if (state.screen === "playing") {
+    const dir = STEER[action];
+    if (dir) return requestTurn(state, dir);
+    if (action === "back" || action === "pause") return goTo(state, "paused");
+    return state;
+  }
+  return routeMenu(state, action);
+}
+
+function routeMenu(state: CoilState, action: ActionName): CoilState {
+  const items = menuItems(state.screen);
+  switch (action) {
+    case "up":
+      if (items.length === 0) return state;
+      return {
+        ...state,
+        menuIndex: (state.menuIndex - 1 + items.length) % items.length,
+      };
+    case "down":
+      if (items.length === 0) return state;
+      return { ...state, menuIndex: (state.menuIndex + 1) % items.length };
+    case "confirm":
+      return accept(state);
+    case "back":
+      return leave(state);
+    case "pause":
+      return state.screen === "paused" ? goTo(state, "playing") : state;
+    default:
+      return state;
+  }
+}
+
+/**
+ * Accept the highlighted item of the current screen's menu.
+ *
+ * Keyed by the item's index rather than by its label, so the title's first item
+ * starts a round whatever the mode names it.
+ */
+function accept(state: CoilState): CoilState {
+  const index = state.menuIndex;
+  switch (state.screen) {
+    case "title":
+      return index === 0 ? startRound(state) : goTo(state, "howto");
+    case "howto":
+      return goTo(state, "title");
+    case "paused":
+      if (index === 0) return goTo(state, "playing");
+      if (index === 1) return startRound(state);
+      return goTo(state, "title");
+    case "gameover":
+    case "cleared":
+      return index === 0 ? startRound(state) : goTo(state, "title");
+    default:
+      return state;
+  }
+}
+
+/** Leave the current screen for the one it was reached from. */
+function leave(state: CoilState): CoilState {
+  switch (state.screen) {
+    case "howto":
+    case "gameover":
+    case "cleared":
+      return goTo(state, "title");
+    case "paused":
+      return goTo(state, "playing");
+    default:
+      return state;
+  }
+}
+
+// ---- The frame -----------------------------------------------------------
+
+/** The head's sprite frame: 0 at rest, and 1 to 3 through the bite an eat began. */
+export function biteFrame(state: { readonly biteRemaining: number }): number {
+  // The remainder is compared against a tolerance rather than zero, because a
+  // caller that delivers BITE_SECONDS in sixty updates leaves a float dust behind
+  // that a caller delivering it in one does not, and the two must agree.
+  if (state.biteRemaining <= 1e-6) return 0;
+  const spent = BITE_SECONDS - state.biteRemaining;
+  return 1 + Math.min(2, Math.floor((spent / BITE_SECONDS) * 3));
+}
+
+/**
+ * Resolve every whole tick the accumulator holds, playing each tick's cues on the
+ * tick it resolves.
+ *
+ * A tick that ends the round moves the game off the `playing` screen, and the loop
+ * stops there: nothing advances once a round is over.
+ */
+function runTicks(state: CoilState, api: UpdateApi): CoilState {
+  let next = state;
+  while (next.accumulator >= TICK_SECONDS - TICK_EPSILON) {
+    const result = tick({
+      ...next,
+      accumulator: next.accumulator - TICK_SECONDS,
+    });
+    next = result.state;
+    if (result.events.ate) next = { ...next, biteRemaining: BITE_SECONDS };
+    playTickEvents(api, result.events);
+    if (result.ended !== null) {
+      next = goTo(next, result.ended === "cleared" ? "cleared" : "gameover");
+      break;
+    }
+  }
+  return next;
+}
+
+/**
+ * Keep the music bed matching the screen (specs/ui.md).
+ *
+ * Reconciled every frame rather than started and stopped at the transitions,
+ * because a round can also be entered and left through the debug surface, whose
+ * poses are transitions over the state and play nothing.
+ */
+function syncMusic(state: CoilState, api: UpdateApi): void {
+  const wanted = state.screen === "playing" || state.screen === "paused";
+  const looping = api.audio.looping(CUES.music);
+  if (wanted && !looping) api.audio.loop(CUES.music);
+  if (!wanted && looping) api.audio.stop(CUES.music);
+}
+
+// ---- The game the engine drives ------------------------------------------
+
 export const game: Game<CoilState, CoilDebugApi> = {
   /**
-   * Runs once, before any frame.
+   * Runs once, before any frame: register every action against its bindings,
+   * declare the four cues and load the produced file behind each, load the sprite
+   * set, register the diagnostic sources, and build the complete initial state.
    *
-   * Register every action in ACTIONS against its BINDINGS, define the four CUES
-   * over the produced files, load the sprite set through the asset loader,
-   * register the diagnostic sources specs/instrumentation.md lists — each is
-   * handed the state current at the read, so none closes over the state built
-   * here — and build the complete initial state: the title screen, with every
-   * field of CoilState set. Return it beside the debug surface.
+   * Neither the diagnostics nor the surface holds the state: a source is handed
+   * the state current at the read, and every operation on the surface takes the
+   * state it poses and returns the next one (specs/instrumentation.md).
    */
-  initialize(_api: InitApi<CoilState>): [CoilState, CoilDebugApi] {
-    throw new Error(NOT_IMPLEMENTED);
+  async initialize(
+    api: InitApi<CoilState>,
+  ): Promise<[CoilState, CoilDebugApi]> {
+    registerActions(api);
+    registerDiagnostics(api);
+    const [sprites] = await Promise.all([loadSprites(api), defineCues(api)]);
+    return [createInitialState(sprites, false), createDebugApi()];
   },
 
   /**
    * Runs once per frame, before `render`: the next state, from the current one.
    *
-   * `dt` is the real elapsed SECONDS of this frame. Read the frame's actions and
-   * act on them per screen as specs/controls.md states, accumulate `dt` into the
-   * tick accumulator and into `simTime` on the `playing` screen, resolve every
-   * whole tick the accumulator holds in the order specs/movement.md fixes, play
-   * cues on the tick their event resolves, and mirror the engine's mute bit into
-   * the returned state's `muted`. The value returned is what `render` draws and
-   * what the next `update` receives; `state` itself is read-only and stays as it
-   * was.
+   * The action edges are read first and exactly once each — they are news for one
+   * frame only — then the elapsed seconds are consumed into whole ticks on the
+   * `playing` screen alone, then the bite winds down, and the two things the state
+   * mirrors rather than owns, the best score and the engine's mute bit, are
+   * refreshed on the state the frame leaves behind.
    */
   update(
-    _state: DeepReadonly<CoilState>,
-    _api: UpdateApi,
-    _dt: number,
+    state: DeepReadonly<CoilState>,
+    api: UpdateApi,
+    dt: number,
   ): CoilState {
-    throw new Error(NOT_IMPLEMENTED);
+    let next: CoilState = state;
+
+    for (const action of pressedActions(api)) {
+      if (action === "mute") api.audio.setMuted(!api.audio.muted());
+      else next = handleAction(next, action);
+    }
+
+    if (next.screen === "playing") {
+      next = runTicks(
+        {
+          ...next,
+          simTime: next.simTime + dt,
+          accumulator: next.accumulator + dt,
+        },
+        api,
+      );
+    }
+    syncMusic(next, api);
+
+    return {
+      ...next,
+      biteRemaining: Math.max(0, next.biteRemaining - dt),
+      // The best rises the instant the live score passes it, during play rather
+      // than at the end of a round, so a best posed below the live score is
+      // raised back to it on the very next update.
+      best: Math.max(next.best, next.score),
+      muted: api.audio.muted(),
+    };
   },
 
-  /**
-   * Runs once per frame, after `update`, with the state `update` returned.
-   *
-   * `api.ctx` arrives cleared and already carrying the logical transform, so draw
-   * in 1280x720 coordinates and never read the canvas element's size. Map each
-   * cell onto its logical square with BOARD_X, BOARD_Y, and CELL. The state
-   * arrives read-only, so the type is what guarantees that rendering changes
-   * nothing.
-   */
-  render(_state: DeepReadonly<CoilState>, _api: RenderApi): void {
-    throw new Error(NOT_IMPLEMENTED);
+  /** Runs once per frame, after `update`. Draws the state it is handed. */
+  render(state: DeepReadonly<CoilState>, api: RenderApi): void {
+    renderGame(state, api.ctx);
   },
 };
