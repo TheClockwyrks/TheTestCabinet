@@ -279,14 +279,14 @@ impl ProgramLanguage for PureScript {
     ///
     /// A frame the engine reports as a position in the bundle therefore reads back as
     /// `program.purs:11:27` — the model's own file at the line it wrote — and a frame in a library
-    /// or in this arm's SDK reads as that PureScript module's own path in the shipped tree. The name
-    /// each frame takes is the one the map itself records for the token, rather than a single name
-    /// gg picks, because a bundle is made of many sources and only the map knows which one a frame
-    /// came from.
+    /// reads as that PureScript module's own path in the shipped tree. The name each frame takes is
+    /// the one the map itself records for the token, rather than a single name gg picks, because a
+    /// bundle is made of many sources and only the map knows which one a frame came from.
     ///
-    /// Two sources in that map are neither the model's nor a library's, and their frames are struck
+    /// Some sources in that map are neither the model's nor a library's, and their frames are struck
     /// rather than reported: [the entry module](compile::ENTRY_FILE) gg generates for the bundler,
-    /// and any position in the bundle the composed map resolves nothing for.
+    /// [this arm's own SDK](compile::ggs_own_sources) under both the names it carries in the map, and
+    /// any position in the bundle the composed map resolves nothing for.
     ///
     /// One map covers every frame, code modules included: a module is compiled into the program's
     /// own project, so its JavaScript is part of the one bundle and its `Lib.<Key>.purs` is one of
@@ -297,7 +297,7 @@ impl ProgramLanguage for PureScript {
             None,
             program,
         )))
-        .map(|locations| locations.hiding([compile::ENTRY_FILE.to_string()]))
+        .map(|locations| locations.hiding(compile::ggs_own_sources()))
     }
 
     /// This language's catalogue, parsed once and checked to be **this** language's.

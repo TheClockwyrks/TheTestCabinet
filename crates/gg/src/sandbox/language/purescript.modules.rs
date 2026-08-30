@@ -96,38 +96,45 @@ fn export_list(source: &str, mask: Option<&CodeMask>) -> Option<Vec<String>> {
     Some(out)
 }
 
-/// The offset of the `(` that opens the export list of the module header, or `None` for a header
-/// with no list, no header at all, or a header gg cannot read.
-fn header_list_start(source: &str, mask: Option<&CodeMask>) -> Option<usize> {
-    let bytes = source.as_bytes();
-    let mut at = 0;
-    // The header is the first code-context `module` at the start of a line; everything above it is
-    // comment or blank, both of which the mask and the trim below step over.
-    for (offset, line) in lines_with_offsets(source) {
-        if line.trim().is_empty() || !is_code(mask, offset) {
-            continue;
-        }
-        at = offset + (line.len() - line.trim_start().len());
-        break;
-    }
+/// The byte span of the **name** in `source`'s module header, or `None` for a source that opens
+/// with no header.
+///
+/// The one place either half of this arm reads a `module … where` header. [The export
+/// list](export_list) resumes from the end of this span, and [the compile](super::compile) writes a
+/// code module's binding name over it, so a header the two disagreed about would be a module
+/// compiled under one name and read under another.
+///
+/// The header opens at the first byte the [mask](super::mask) calls code and that is not
+/// whitespace: everything above it is comment or blank. The keyword must be followed by whitespace,
+/// since `moduleName` is an identifier. The name itself is a qualified proper name, which `purs`
+/// reads over the whole of Unicode rather than over ASCII.
+pub(super) fn header_name_span(
+    source: &str,
+    mask: Option<&CodeMask>,
+) -> Option<std::ops::Range<usize>> {
+    let (at, _) = source
+        .char_indices()
+        .find(|&(offset, character)| !character.is_whitespace() && is_code(mask, offset))?;
     let rest = source[at..].strip_prefix("module")?;
     if !rest.starts_with(|character: char| character.is_whitespace()) {
         return None;
     }
-    let mut cursor = source.len() - rest.len();
-    cursor += rest.len() - rest.trim_start().len();
-    // The module's own (qualified) name, then whatever follows it.
-    while cursor < bytes.len() && is_module_name_byte(bytes[cursor]) {
-        cursor += 1;
-    }
-    let after = source[cursor..].trim_start();
-    let at = source.len() - after.len();
-    after.starts_with('(').then_some(at)
+    let start = source.len() - rest.trim_start().len();
+    let end = source[start..]
+        .char_indices()
+        .find(|(_, character)| {
+            !(character.is_alphanumeric() || matches!(character, '.' | '_' | '\''))
+        })
+        .map_or(source.len(), |(offset, _)| start + offset);
+    (end > start).then_some(start..end)
 }
 
-/// Whether a byte may appear in a qualified module name (`Data.Map.Internal`).
-fn is_module_name_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'_' || byte == b'\''
+/// The offset of the `(` that opens the export list of the module header, or `None` for a header
+/// with no list, no header at all, or a header gg cannot read.
+fn header_list_start(source: &str, mask: Option<&CodeMask>) -> Option<usize> {
+    let after = source[header_name_span(source, mask)?.end..].trim_start();
+    let at = source.len() - after.len();
+    after.starts_with('(').then_some(at)
 }
 
 /// The offset of the `)` that closes the `(` at `open`, counting nesting and skipping anything the
@@ -286,8 +293,13 @@ fn arguments(signature: &str) -> Vec<&str> {
 }
 
 /// `text` split on `separator` wherever it appears outside every bracket, with each piece trimmed.
+///
+/// The walk is over bytes and every separator is ASCII, so the match is a byte comparison: a
+/// signature carrying a `∀` binder or a Unicode type name leaves the walk inside a character, where
+/// re-slicing `text` would panic.
 fn split_top_level<'a>(text: &'a str, separator: &str) -> Vec<&'a str> {
     let bytes = text.as_bytes();
+    let separator = separator.as_bytes();
     let mut out = Vec::new();
     let mut depth = 0usize;
     let mut start = 0;
@@ -296,7 +308,7 @@ fn split_top_level<'a>(text: &'a str, separator: &str) -> Vec<&'a str> {
         match bytes[at] {
             b'(' | b'[' | b'{' => depth += 1,
             b')' | b']' | b'}' => depth = depth.saturating_sub(1),
-            _ if depth == 0 && text[at..].starts_with(separator) => {
+            _ if depth == 0 && bytes[at..].starts_with(separator) => {
                 out.push(text[start..at].trim());
                 at += separator.len();
                 start = at;

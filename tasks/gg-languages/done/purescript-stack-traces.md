@@ -44,7 +44,7 @@ measured where it was failing.
 
 ## Done when
 
-- [ ] A runtime failure names `program.purs` and the model's own line.
-- [ ] SDK frames are struck from the reported set.
-- [ ] The G8 gate exercises this arm through a call the model actually reaches for.
-- [ ] Gates green.
+- [x] A runtime failure names `program.purs` and the model's own line.
+- [x] SDK frames are struck from the reported set.
+- [x] The G8 gate exercises this arm through a call the model actually reaches for.
+- [x] Gates green.

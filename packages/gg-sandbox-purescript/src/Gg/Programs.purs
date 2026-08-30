@@ -64,7 +64,7 @@ type ProgramSummary =
 -- | One summary per program already run, oldest first: its id, the turn it ran on, how big it was,
 -- | and whether it ran to its end. A session that has run nothing yet gets an empty array.
 history :: Effect (Array ProgramSummary)
-history = map programSummary <$> Wire.call "history" "programs" "Gg.Programs.history" []
+history = Wire.callMap (map programSummary) "history" "programs" "Gg.Programs.history" []
 
 -- | Fetch the exact source of one program that ran, by the id its acknowledgement carried.
 -- |

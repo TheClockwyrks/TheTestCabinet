@@ -139,6 +139,49 @@ fn a_frame_in_ggs_own_source_is_struck() {
     );
 }
 
+/// **A source gg's own is named by prefix, so a whole directory is hidden at once.**
+///
+/// A bundled arm compiles gg's own SDK into the model's program, and the SDK arrives in the map as
+/// every one of its own module paths rather than as one file name. The test is written against the
+/// resolved source rather than the rendered frame because that is where the knowledge is: the frame
+/// reads `libs/gg-sdk/src/Gg/Views.purs:3:1`, and only the map says which of the bundle's sources
+/// produced it.
+#[test]
+fn a_frame_under_a_hidden_prefix_is_struck() {
+    let source = format!(
+        "const a = 1;\n{}",
+        inline(MAPPINGS, "libs/gg-sdk/src/Gg/Views.purs")
+    );
+    let locations = Locations::read([("program.js".to_string(), None, source.as_str())])
+        .expect("the source carries a map")
+        .hiding(["libs/gg-sdk/".to_string()]);
+    assert_eq!(
+        locations.rewrite("Error: boom\n    at <anonymous> (program.js:1:1)\n"),
+        "Error: boom\n… and 1 more frame, in code this program was compiled into rather than in \
+         code it contains."
+    );
+}
+
+/// **A prefix matches at the start of the source's name and nowhere else.**
+///
+/// The name a map resolves to is a path, and the same directory name deeper in one is a different
+/// place: a library that happened to vendor a directory called `gg-sdk` is code the model's program
+/// really was compiled against, so its frames are reported.
+#[test]
+fn a_prefix_matched_later_in_a_path_is_kept() {
+    let source = format!(
+        "const a = 1;\n{}",
+        inline(MAPPINGS, "libs/vendored-7.0.0/libs/gg-sdk/src/Main.purs")
+    );
+    let locations = Locations::read([("program.js".to_string(), None, source.as_str())])
+        .expect("the source carries a map")
+        .hiding(["libs/gg-sdk/".to_string()]);
+    assert_eq!(
+        locations.rewrite("    at inner (program.js:1:1)"),
+        "    at inner (libs/vendored-7.0.0/libs/gg-sdk/src/Main.purs:3:1)"
+    );
+}
+
 /// **A line the map has a token on, but none at or before the position the engine named, answers
 /// with that line's first token.**
 ///

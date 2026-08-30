@@ -33,9 +33,14 @@
 //!
 //! Two frames name a place the model has no program at, and neither may be reported: a position in a
 //! mapped text the map resolves nothing for, which is a line of the compiler's own output, and a
-//! position in a source gg itself wrote to hold a bundle together. A frame that survives therefore
-//! names a file the model wrote or a library its program compiled against, and a report that struck
-//! anything closes by counting it.
+//! position in a source that is gg's own. A frame that survives therefore names a file the model
+//! wrote or a library its program compiled against, and a report that struck anything closes by
+//! counting it.
+//!
+//! Which sources are gg's own is decided on the name the map resolved to rather than on the text of
+//! the rendered frame, and each is named by a prefix. That is what lets an arm hide a directory: a
+//! bundled arm compiles gg's own SDK into the model's program, and the SDK arrives in the map as
+//! every one of its own module paths rather than as one file name.
 
 use sourcemap::SourceMap;
 
@@ -60,13 +65,18 @@ struct Mapped {
 pub(crate) struct Locations {
     /// Every text this program is made of that carries a map.
     texts: Vec<Mapped>,
-    /// The sources in those maps that **gg** wrote rather than the model or a library, and whose
-    /// frames are therefore struck.
+    /// **Prefixes of the source names that are gg's** rather than the model's or a library's, whose
+    /// frames are struck.
     ///
     /// A bundled arm needs an entry module to point its bundler at, and that module is gg's: it
     /// names the entry point the model declared and the specifiers a turn's code modules are
-    /// declared under. The bundler records it as a source like any other, so without this it reads
-    /// back as an ordinary frame in a file the model never wrote and cannot open.
+    /// declared under. An arm that compiles gg's own SDK into the same bundle adds the directories
+    /// that SDK's sources and its compiled output live under. The bundler records each of them as a
+    /// source like any other, so without this they read back as ordinary frames in files the model
+    /// never wrote and cannot open.
+    ///
+    /// A prefix rather than a whole name because a directory is the unit an SDK arrives as. An exact
+    /// name is the prefix that is the whole of it.
     ggs_own: Vec<String>,
 }
 
@@ -95,8 +105,8 @@ impl Locations {
         })
     }
 
-    /// The same locations with [gg's own sources](Self::ggs_own) named, for an arm that had to
-    /// generate one.
+    /// The same locations with [gg's own sources](Self::ggs_own) named by prefix, for an arm that
+    /// generated one or compiled its own SDK into the bundle.
     pub(crate) fn hiding(mut self, ggs_own: impl IntoIterator<Item = String>) -> Self {
         self.ggs_own = ggs_own.into_iter().collect();
         self
@@ -116,18 +126,13 @@ impl Locations {
         let mut kept = String::with_capacity(text.len());
         let mut struck = 0usize;
         for line in text.split_inclusive('\n') {
-            let mut unresolved = false;
+            let mut strike = false;
             let rewritten = self.texts.iter().fold(line.to_string(), |line, mapped| {
-                let (line, missed) = mapped.rewrite(&line);
-                unresolved |= missed;
-                line
+                let rewritten = mapped.rewrite(&line, &self.ggs_own);
+                strike |= rewritten.unresolved || rewritten.ggs_own;
+                rewritten.text
             });
-            if unresolved
-                || self
-                    .ggs_own
-                    .iter()
-                    .any(|source| locates(&rewritten, source))
-            {
+            if strike {
                 struck += 1;
                 continue;
             }
@@ -151,18 +156,14 @@ impl Locations {
     }
 }
 
-/// Whether `text` carries `name` followed by a `:<line>:<column>`, which is what a frame in `name`
-/// looks like and what an ordinary mention of the name does not.
-fn locates(text: &str, name: &str) -> bool {
-    let mut rest = text;
-    while let Some(at) = rest.find(name) {
-        let after = &rest[at + name.len()..];
-        if position(after).is_some() {
-            return true;
-        }
-        rest = after;
-    }
-    false
+/// One line read through one map, and what the reading found.
+struct Rewritten {
+    /// The line, with every position this map resolved written in that source's own coordinates.
+    text: String,
+    /// Whether a position in this map's own text went unresolved.
+    unresolved: bool,
+    /// Whether a position resolved into a source that is gg's own.
+    ggs_own: bool,
 }
 
 impl Mapped {
@@ -174,10 +175,16 @@ impl Mapped {
     /// emitted, so the positions that miss are the ones in text the compiler added of its own, and
     /// the coordinate left behind names a line of a program the model has never seen.
     ///
+    /// And **whether a position resolved into one of `ggs_own`**, which strikes the line for the
+    /// other reason. It is decided here, on the name the map answered with, because that name is
+    /// what says where the frame came from; the rendered line carries a file name and a position and
+    /// nothing about which of the bundle's many sources produced them.
+    ///
     /// A mention of the name that carries no position is not one of those, and is untouched.
-    fn rewrite(&self, text: &str) -> (String, bool) {
+    fn rewrite(&self, text: &str, ggs_own: &[String]) -> Rewritten {
         let mut out = String::with_capacity(text.len());
         let mut unresolved = false;
+        let mut hidden = false;
         let mut rest = text;
         while let Some(at) = rest.find(&self.guest) {
             let (before, from) = rest.split_at(at);
@@ -186,6 +193,7 @@ impl Mapped {
             match position(after) {
                 Some((line, column, tail)) => match self.resolve(line, column) {
                     Some((source, line, column)) => {
+                        hidden |= ggs_own.iter().any(|prefix| source.starts_with(prefix));
                         out.push_str(&format!("{source}:{line}:{column}"));
                         rest = tail;
                     }
@@ -202,7 +210,11 @@ impl Mapped {
             }
         }
         out.push_str(rest);
-        (out, unresolved)
+        Rewritten {
+            text: out,
+            unresolved,
+            ggs_own: hidden,
+        }
     }
 
     /// The source, 1-based line and 1-based column one 1-based generated position resolves to.

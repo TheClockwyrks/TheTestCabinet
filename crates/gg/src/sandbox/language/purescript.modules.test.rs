@@ -318,3 +318,129 @@ fn a_declaration_with_no_signature_is_quoted_from_its_definition() {
     assert_eq!(exports[1].kind, ModuleExportKind::Function);
     assert_eq!(exports[1].declaration, "greet who =");
 }
+
+/// **A module whose comments and strings hold text outside ASCII is read.**
+///
+/// This is the reading a code skill's documentation page is built from, and the source it reads is
+/// whatever a model wrote: an em-dash in the header comment, an accent in a doc comment, an emoji in
+/// a string literal.
+#[test]
+fn a_module_whose_comments_and_strings_hold_text_outside_ascii_is_read() {
+    let module = "{- Snake — grid helpers. -}\n\
+                  module Helpers where\n\
+                  \n\
+                  -- | Greet someone naïvely.\n\
+                  greet :: String -> String\n\
+                  greet who = \"café ☕ \" <> who\n\
+                  \n\
+                  bullet = \"•\"\n\
+                  \n\
+                  {- decoy = 1 — still a comment -}\n";
+    let exports = exports(module);
+    assert_eq!(names(module), ["greet", "bullet"]);
+    assert_eq!(exports[0].doc.as_deref(), Some("Greet someone naïvely."));
+
+    // The block comment still closes where it is written, so what it holds declares nothing.
+    assert!(!names(module).contains(&"decoy".to_string()));
+}
+
+/// **A declaration written outside ASCII is read**, which is what the byte walk that splits a
+/// signature at its arrows and constraints has to survive.
+#[test]
+fn a_declaration_written_outside_ascii_is_read() {
+    let exports = exports(
+        "module Helpers where\n\
+         \n\
+         -- | Measure a région.\n\
+         área :: Naïve -> String\n\
+         área = show\n",
+    );
+    assert_eq!(exports.len(), 1);
+    assert_eq!(exports[0].name, "área");
+    assert_eq!(exports[0].kind, ModuleExportKind::Function);
+    assert_eq!(exports[0].parameters, ["Naïve"]);
+    assert_eq!(exports[0].returns, ["String"]);
+}
+
+/// **A signature written with PureScript's Unicode spellings is read.**
+///
+/// The `∀` binder comes off with `forall`, and the split that finds a signature's positions looks
+/// for the ASCII `=>` and `->`: a `⇒` stays where it is written, so the constraint it introduces is
+/// read as a position rather than as a constraint. Over-reporting a type name costs a documentation
+/// view a model did not need, where losing the declaration costs it the call.
+#[test]
+fn a_signature_written_with_unicode_operators_is_read() {
+    let exports = exports(
+        "module Helpers where\n\
+         \n\
+         greet :: ∀ a. Show a ⇒ a -> String\n\
+         greet = show\n",
+    );
+    assert_eq!(exports.len(), 1);
+    assert_eq!(exports[0].name, "greet");
+    assert_eq!(exports[0].declaration, "greet :: ∀ a. Show a ⇒ a -> String");
+    assert_eq!(exports[0].parameters, ["Show"]);
+    assert_eq!(exports[0].returns, ["String"]);
+}
+
+/// **The header's own name span** — the one reading of a `module … where` header this arm makes.
+///
+/// Read here as the export list reads it, and read by [the compile](super::super::compile) to file a
+/// code module under its binding key: what this returns is the range that key is written over, so a
+/// name it cut short or ran past would be a module compiled under a name nothing imports.
+#[test]
+fn the_header_names_the_module_up_to_whatever_ends_the_name() {
+    let span = |source: &str| {
+        header_name_span(source, super::super::mask::code_mask(source).as_ref())
+            .map(|span| source[span].to_string())
+    };
+
+    assert_eq!(
+        span("module Solve where\nmain = 1\n").as_deref(),
+        Some("Solve")
+    );
+    // A qualified name is one name, not a name and two dots.
+    assert_eq!(
+        span("module My.Deeply.Nested where\nx = 1\n").as_deref(),
+        Some("My.Deeply.Nested")
+    );
+    // An export list ends the name, and primes and underscores are part of one.
+    assert_eq!(
+        span("module Solve\n  ( main\n  ) where\nmain = 1\n").as_deref(),
+        Some("Solve")
+    );
+    assert_eq!(
+        span("module Solve_1' where\nx = 1\n").as_deref(),
+        Some("Solve_1'")
+    );
+    // `purs` reads a proper name over the whole of Unicode, so this reading does too.
+    assert_eq!(
+        span("module Ünicode where\nx = 1\n").as_deref(),
+        Some("Ünicode")
+    );
+
+    // Comments above the header are comment, whatever they say and whatever alphabet they say it in
+    // — a line comment, a block comment, and PureScript's nested block comment.
+    assert_eq!(
+        span("-- module NotThisOne where\nmodule Solve where\nx = 1\n").as_deref(),
+        Some("Solve")
+    );
+    assert_eq!(
+        span("{- Snake — naïve 🚀 -}\nmodule Solve where\nx = 1\n").as_deref(),
+        Some("Solve")
+    );
+    assert_eq!(
+        span("{- outer {- inner -} still outer -}\nmodule Solve where\nx = 1\n").as_deref(),
+        Some("Solve")
+    );
+    // The header opens at the first code byte rather than at the start of a line, so a comment and
+    // the header on one line is still a header.
+    assert_eq!(
+        span("{- a note -} module Solve where\nx = 1\n").as_deref(),
+        Some("Solve")
+    );
+
+    // A source that declares no module, and one whose first word only looks like the keyword.
+    assert_eq!(span("import Prelude\nmain = 1\n"), None);
+    assert_eq!(span("moduleName = 1\n"), None);
+}

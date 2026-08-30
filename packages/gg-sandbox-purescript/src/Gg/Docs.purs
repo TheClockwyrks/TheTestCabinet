@@ -145,8 +145,7 @@ search
   => Record given
   -> Effect DocSearch
 search options =
-  docSearch
-    <$> Wire.call "search" "docs" "Gg.Docs.search" [ Wire.lower { kind: docKindWire } options ]
+  Wire.callMap docSearch "search" "docs" "Gg.Docs.search" [ Wire.lower { kind: docKindWire } options ]
 
 -- | Take one documentation view out of the context window, by the key it was opened under.
 -- |

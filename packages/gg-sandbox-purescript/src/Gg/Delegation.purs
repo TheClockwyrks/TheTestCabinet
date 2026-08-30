@@ -166,8 +166,8 @@ waitForSubagents
   => Record given
   -> Effect (Array SubagentResult)
 waitForSubagents options =
-  map subagentResult
-    <$> Wire.call "wait_for_subagents" "delegation" "Gg.Delegation.waitForSubagents" [ Wire.pick "ids" options ]
+  Wire.callMap (map subagentResult) "wait_for_subagents" "delegation" "Gg.Delegation.waitForSubagents"
+    [ Wire.pick "ids" options ]
 
 -- | Deliver a message to a running child agent's inbox, which it reads at its next turn.
 -- |

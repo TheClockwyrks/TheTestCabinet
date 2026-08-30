@@ -78,10 +78,10 @@ openFile
   -> Record given
   -> Effect FileRead
 openFile path options =
-  fileRead TextFile ImageFile
-    -- `read_file`, not `open_file`: the first argument is the GATE, and showing a file is a read gg
-    -- also puts in the window, so it is `read_file` being withheld that this call refuses under.
-    <$> Wire.call "read_file" "views" "Gg.Views.openFile" [ Wire.wire path, Wire.lower {} options ]
+  -- `read_file`, not `open_file`: the operation argument is the GATE, and showing a file is a read
+  -- gg also puts in the window, so it is `read_file` being withheld that this call refuses under.
+  Wire.callMap (fileRead TextFile ImageFile) "read_file" "views" "Gg.Views.openFile"
+    [ Wire.wire path, Wire.lower {} options ]
 
 -- | Place a value the program computed in the context window, under a label.
 -- |
