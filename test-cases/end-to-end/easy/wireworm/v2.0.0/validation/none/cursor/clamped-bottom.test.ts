@@ -1,20 +1,92 @@
-// Wireworm — cursor.clamped-bottom, under the `none` engine. CASE-PROVIDED.
+// cursor/clamped-bottom — the cursor's centre stops at the band's floor bound.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// `specs/cursor.md`: "Its center is clamped to the band's four bounds ...
+// `CURSOR_Y_MAX` (`704`) ... A movement held against a bound leaves the cursor
+// resting exactly on that bound."
 //
-// The point it decides, from `test-case.toml`:
+// THE POSE IS THE OPPOSITE BOUND, for the reason `cursor.clamped-top` states:
+// the band is 32 units tall, so the 120-unit inset the horizontal pair uses
+// cannot be posed on this axis at all — `setCursor` applies the real clamp and
+// the pose would land on the bound being tested. Starting at `CURSOR_Y_MIN` is
+// the widest separation the band allows, and crossing it inside a one-second
+// hold asks for 32 units per second, under a tenth of `CURSOR_SPEED`.
 //
-// The cursor stops at the floor
+// THE WORLD IS THE CURSOR ALONE, as `startPlaying` leaves it.
 //
-// Posed at CURSOR_Y_MIN (672) and driven down for a second, the cursor's
-// centre y rests at CURSOR_Y_MAX (704) and goes no higher.
+// WHAT THIS DOES NOT DECIDE. That `ArrowDown` is the key that moves down is
+// `controls.down-arrow`'s requirement. This point reads one number: where the
+// cursor's centre y came to rest.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { BAND_CX, CURSOR_Y_MAX, CURSOR_Y_MIN } from "../constants";
+import { assertLessThanOrEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  framesFor,
+  startPlaying,
+  type Harness,
+} from "../harness";
 
-test("cursor.clamped-bottom", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/none/cursor/clamped-bottom.test.ts has not been written yet",
+/** The key bound to `down` (`specs/controls.md`). */
+const KEY = "ArrowDown";
+
+/**
+ * The hold, in frames of the harness's 100 Hz clock: exactly one second.
+ *
+ * The band is 32 units tall, which a cursor travelling at `CURSOR_SPEED` crosses
+ * in 0.074 s, so the drive leaves the cursor pressed against the bound for
+ * essentially all of its length.
+ */
+const HOLD_FRAMES = framesFor(1);
+
+/**
+ * How far off the bound the resting centre may be, in logical units.
+ *
+ * `specs/cursor.md` states the rest as exact, so this allows floating-point
+ * residue and nothing else. The other bound of this axis is 32 units away.
+ */
+const BOUND_TOLERANCE = 0.5;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("rests the cursor's centre on CURSOR_Y_MAX and takes it no further", async () => {
+  await startPlaying(h);
+  await h.debug.setCursor(BAND_CX, CURSOR_Y_MIN);
+
+  // Sampled every frame, so "goes no higher" is read across the whole drive.
+  let highest = (await h.snapshot()).cursor.y;
+  await h.hold(KEY);
+  try {
+    for (let frame = 0; frame < HOLD_FRAMES; frame += 1) {
+      await h.advance(1);
+      highest = Math.max(highest, (await h.snapshot()).cursor.y);
+    }
+  } finally {
+    await h.release(KEY);
+  }
+  await captureStill(h, "clamped");
+
+  const resting = (await h.snapshot()).cursor.y;
+  assertLessThanOrEqual(
+    Math.abs(resting - CURSOR_Y_MAX),
+    BOUND_TOLERANCE,
+    `the cursor's centre y after ${HOLD_FRAMES} frames of held ${KEY} from ` +
+      `CURSOR_Y_MIN (${CURSOR_Y_MIN}), against CURSOR_Y_MAX ` +
+      `(${CURSOR_Y_MAX}) — specs/cursor.md and specs/board.md`,
+  );
+  assertLessThanOrEqual(
+    highest,
+    CURSOR_Y_MAX + BOUND_TOLERANCE,
+    "the highest centre y the cursor reported at any frame of the hold, " +
+      `against CURSOR_Y_MAX (${CURSOR_Y_MAX})`,
   );
 });
