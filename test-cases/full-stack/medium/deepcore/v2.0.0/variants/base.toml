@@ -1,29 +1,49 @@
-# The default (and only) Deepcore variant: the standard expedition. Listed first in
-# the case manifest's `variants`, so it is the default. The mode (Standard / Hardcore)
-# is chosen on the in-game MODE SELECT menu and changes only what happens on death
-# (`specs/modes.md`), so it is NOT a variant — there is one expedition, and this variant
-# carries no per-variant mode spec. Every path here resolves against the version folder,
-# exactly like the main manifest.
+# The default (and only) Deepcore variant: the standard expedition. Listed as the single
+# entry in the case manifest's `variants`, so it is the default and every run is a run of
+# it. Every path here resolves against the version folder, exactly like the main manifest.
 slug = "base"
 name = "Base"
 description = "The standard expedition: start on the surface with tier-1 gear and 0 Credits, dig to the core, and build the five-part escape rocket, with Standard/Hardcore chosen in-game (they change only what happens on death)."
 
-# This variant seeds no spec of its own: the single expedition / campaign start (its
-# main-menu `NEW EXPEDITION` entry and the expedition framing) is folded into the common
-# `specs/gameplay.md`. The mode itself stays in-game (`specs/modes.md`).
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# Standard and Hardcore are not variants. They are modes the player picks from the mode
+# menu, and they change only what happens on death, so `specs/modes.md` is a COMMON spec
+# declared in `test-case.toml` and seeded for every run. Quick, Standard and Marathon are
+# a world-size choice on the same menu and are likewise common. The single expedition and
+# its main-menu entry are folded into the common `specs/gameplay.md`.
+#
+# Nothing in the seeded set branches on the variant either: the specs branch only on the
+# selected engine. So there is no spec of any kind to put here. If you came to this file
+# to add one, it almost certainly belongs in `test-case.toml` as a common spec.
 
-# This variant's own `title` reference: the main menu (NEW EXPEDITION / HOW TO PLAY),
-# captured from this variant's reference-impl build and served as-is. The menu is
-# variant-specific; `mine`, `surface`, and `game-over` are common (declared in the main
-# manifest).
-reference = [{ view = "title", media = "reference/screenshots/base/title.png" }]
+# The authored correct build, one directory per supported engine, because the build a
+# reference demonstrates differs under each. This table must name EXACTLY the engines the
+# case supports (the resolver checks both directions), and the case supports three:
+# `references/none` carries its own runtime layer (the fixed-step loop, canvas fit,
+# keyboard input, audio, overlay, the scrolling camera transform, and the
+# `window.__deepcore` surface), `references/simple-2d` hands the loop, the fit, the input,
+# the audio and the overlay to the engine package resolved from the repository's
+# `packages/simple-2d` — still drawing the mine and applying its own scroll transform,
+# because that engine owns neither rendering nor a camera — and
+# `references/structured-2d` writes the game inside the gameplay framework resolved from
+# `packages/structured-2d`, where the scroll down the shaft is that engine's own camera.
+# The game any of them implements is identical, which is what makes a run on one engine
+# comparable with a run on another. This is a full-stack case, so each reference also
+# PRODUCED its own art, animation, VFX, and audio during authoring (committed under its
+# own `assets/`); the build itself only loads them, so `npm ci && npm run build` is
+# self-contained. No reference directory is ever seeded into a run: each is the authored
+# answer, built with the case's own `[build]` commands and held to the same four
+# toolchain gates a run is, and each is what `tcab capture-baselines` drives to
+# synthesize the baseline half of the validation media for its engine.
+[reference_implementation]
+none = "references/none"
+"simple-2d" = "references/simple-2d"
+"structured-2d" = "references/structured-2d"
 
-# The authored, *correct* static build of this variant — the case-variant analogue of a
-# run's playable build. A bare directory path (resolved against the version folder)
-# holding a buildable web project, built with this case's `[build]` install/build
-# commands and deployed like a published run build via `tcab publish-reference`, then
-# shown on the case's "Reference" tab. It is **never seeded into a run**. This is a
-# full-stack case, so this build also PRODUCED its own art, animation, VFX, and audio
-# during authoring (committed under `reference-impl/base/assets/`); the build itself only
-# loads them, so `npm ci && npm run build` is self-contained.
-reference_implementation = "reference-impl/base"
+# No `[workspaces]` override. The case's common per-engine table covers every run and
+# there is nothing variant-specific to replace it with.
+
+# No `[[review.categories]]` and no `[[domain]]`. With a single variant, every point and
+# every rated domain applies to every run, so they are all declared commonly in
+# `test-case.toml` rather than being split across two places.

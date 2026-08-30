@@ -1,9 +1,12 @@
-slug = "deepcore"
 # The Test Cabinet test case manifest.
 #
 # Declares, for this exact version, which files are seeded into a run, which
-# reference views are rendered and seeded as visual targets, and which validation
-# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# The case's stable identity: the definition-store key, recorded in every run.
+slug = "deepcore"
 
 # Human-readable display name for this test case.
 name = "Deepcore"
@@ -75,27 +78,22 @@ prompt = "prompt.hbs"
 # healthy build needs while still bounding a runaway session.
 max_runtime_hours = 8
 
-# Starter workspace seeded into the root of every run before the specs. It gives the
-# model a baseline project to build on: a `package.json` that pins `playwright` as a
-# dev dependency and declares the produced-effect runtime (`packages`, below) as a
-# baked-in `file:` dependency. The seeded files land at the run root
-# (`workspaces/base/package.json` seeds to `package.json`).
-workspace = "workspaces/base"
-
 # Init command, run in the run container once the workspace and specs are seeded and
 # before the harness starts. `npm install` — NOT `npm ci` — because `packages` injects
 # the `@test-cabinet/particle-runtime` `file:` dependency this build plays its produced
-# particle systems with, so the lockfile is completed at seed time; the same command
-# downloads the Playwright Chromium build (the base image ships the OS libraries
-# Chromium links against, but not the browser binary), so the model can build and
-# verify immediately against a project-local Playwright.
+# particle systems with, and an engine run has its engine package vendored in the same
+# way, so the lockfile is completed at seed time; the same command downloads the
+# Playwright Chromium build (the base image ships the OS libraries Chromium links
+# against, but not the browser binary), so the model can build the game and look at it
+# in a browser without any further setup.
 init = "npm install && npx playwright install chromium"
 
 # NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the whole
 # point of a full-stack case: the model PRODUCES the game's art, animation, and audio
 # itself, during the run, with the six binaries on the run image's `PATH` (see `type`
-# above and `specs/assets.md`). The `reference/` mockups below are harness-side visual
-# targets rendered via `[[reference]]`, not seeded game assets.
+# above and `specs/assets.md`). Nothing pictorial is seeded, and no rendered mockup is
+# shown to the model or to the reviewer: every piece of evidence a reviewer sees is
+# captured by a validator from the build itself.
 
 # Test Cabinet runtime libraries installed into the run so the build can play the
 # particle systems it produces. `@test-cabinet/particle-runtime` is the same library
@@ -105,8 +103,10 @@ init = "npm install && npx playwright install chromium"
 # produced `system.json` by simulating it live. The VFX — drill debris, jetpack exhaust,
 # gas explosions, lava embers, ore sparkle, core extraction and detonation, launch
 # exhaust, and death bursts — are all produced `particle-2d` systems played this way;
-# see `specs/assets.md` for the consumption contract. (A root key, so it must sit above
-# the first `[table]` header.)
+# see `specs/assets.md` for the consumption contract. It is declared for every engine:
+# neither engine draws particles, and both hand the game a raw 2D context to play a
+# produced system through. (A root key, so it must sit above the first `[table]`
+# header.)
 packages = ["@test-cabinet/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
@@ -114,48 +114,159 @@ packages = ["@test-cabinet/particle-runtime"]
 # own file under `variants/`. Standard vs Hardcore is an IN-GAME MODE menu — it changes
 # only what happens on death — not a variant, so there is no per-variant mode file; the
 # single expedition / campaign start is folded into the common `specs/gameplay.md`, and
-# the expedition is one and the same in both modes (`specs/modes.md`). This list is a
-# root key, so it must sit above the first `[table]` header below.
+# the expedition is one and the same in both modes (`specs/modes.md`). Quick, Standard
+# and Marathon are likewise a world-size choice made on the same in-game menu, not a
+# variant. This list is a root key, so it must sit above the first `[table]` header
+# below.
 variants = [
   "variants/base.toml",
 ]
 
-# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
-# implementation into a served static site. These run verbatim from the build's
-# repository root. `npm ci` is deliberate — it requires the build to commit a
-# `package-lock.json`. Both commands are required; there are no defaults. The build
-# must be self-contained: it bundles the committed produced assets without invoking the
-# asset tools, which are on `PATH` only while the run is live (`specs/assets.md`).
+# The engines a run of this case may select. An engine is the runtime the produced game
+# is built on — the frame loop and the delta time it hands the game, the input actions a
+# player drives it with, the audio bus, asset loading, and the on-screen diagnostics;
+# one of them also owns rendering, a camera, and the gameplay framework. It is a *run
+# dimension*, chosen per run alongside the model, the harness, and the variant, and
+# recorded on the run; it is not a property of the game.
+#
+# Deepcore supports three, and the mine is the same under all of them. What differs is
+# how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build writes the
+#                     fixed-step loop, the canvas fit, the keyboard input, the audio,
+#                     the overlay, the scrolling camera transform, and the
+#                     `window.__deepcore` surface itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules around it
+#                     (`src/constants.ts`, `src/main.ts`, and the `src/game.ts` the
+#                     build writes, debug surface included). It owns the loop, the fit,
+#                     the input, the audio and the overlay, but NOT rendering and NOT a
+#                     camera, so the build still draws the mine itself and applies its
+#                     own scroll transform to the 2D context it is handed.
+#   - `structured-2d` vendors its framework engine the same way and seeds the same two
+#                     modules; the build writes its game module — the game definition,
+#                     its mode, its state, its actors, and the debug surface its
+#                     instance's `initialize` returns. This engine owns rendering and a
+#                     camera, so the vertical scroll down the shaft is the engine's
+#                     camera rather than a transform the game applies.
+# The game they describe is the same one, so the review items are the same for every
+# engine and a score recorded under one is comparable with a score recorded under
+# another; the specs and the validators branch only where the deliverable differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in the
+# bare `engines` list; `simple-2d` and `structured-2d` each carry a range and are named
+# in `[[engine]]` tables. `min_version` is the 1.0.0 API this specification and these
+# validators are written against, and there is deliberately no `max_version`, so a later
+# 1.x or 2.x from the host package store is accepted as it lands. Widening or moving a
+# range means a new case version, so the pin is the statement that THIS spec set matches
+# THIS contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine ships
+# its own documentation from its own package, and seeding puts it in the run for the
+# model to read, so the specs seeded from this folder never restate an engine's API and
+# never fall out of date when it changes.
+#
+# `engines` is a root key, so it must sit above the first `[table]` header.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest configuration
+# the `[toolchain]` commands below run against, an `index.html` holding the canvas, and
+# a `package.json` declaring `@test-cabinet/particle-runtime` by its baked-in `file:`
+# path. What differs is how much of the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no `src/`:
+#                     the build writes its own fixed-step loop, canvas fit, keyboard
+#                     input, audio, diagnostics overlay, camera transform and
+#                     `window.__deepcore` surface, and every figure the specification
+#                     fixes, from the specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored in at
+#                     seed time so the build imports it by its bare package name, and
+#                     seeds the case-owned modules around the game: `src/constants.ts`
+#                     (every figure this specification fixes, which a validator imports;
+#                     the look is NOT among them) and `src/main.ts` (the browser entry).
+#                     The build writes `src/game.ts`: the mine's state, the debug
+#                     surface its `initialize` returns beside that state, and the game's
+#                     update and render.
+#   - `structured-2d` declares that engine in its `package.json` the same way and seeds
+#                     the same two case-owned modules. The build writes `src/game.ts`:
+#                     the game definition the engine drives — its mode, its live state,
+#                     and its actors — and the debug surface its instance's `initialize`
+#                     returns.
+#
+# The table must name EXACTLY the engines the case supports; the resolver checks both
+# directions. The seeded files land at the run root (`workspaces/none/package.json`
+# seeds to `package.json`).
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/simple-2d"
+"structured-2d" = "workspaces/structured-2d"
+
+# How validation (and the per-run static deploy) turns a produced implementation into a
+# served static site. These run verbatim from the build's repository root: dependencies
+# are installed, then the static build is produced into `dist/`, `build/`, or `out/`.
+# `npm ci` is deliberate — it requires the build to commit a `package-lock.json`, so the
+# validated build installs exactly what the deploy will. Both commands are required;
+# there are no defaults. The build must be self-contained: it bundles the committed
+# produced assets without invoking the asset tools, which are on `PATH` only while the
+# run is live (`specs/assets.md`).
 [build]
 install = "npm ci"
 build = "npm run build"
 
-# Instrumentation: the debug-and-automation surface every build installs, named once here
-# so a review item's `validation` driver (and the validator that runs it) knows which
-# `window` global to drive. The seeded specification documents the same handle
-# independently as an ordinary game debug feature (see `specs/instrumentation.md`); this
-# entry is reporter-side and never seeded. It is required because review items below
-# declare `validation` scripts.
+# The TypeScript toolchain run over the produced implementation once `[build]`'s install
+# has completed. The seeded workspace ships the configuration each of these commands
+# reads (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so
+# what is checked here is the code the model wrote against configuration the case fixed.
+# The commands run host-side over the collected tree after the run's container is gone,
+# so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does not
+# compile is not reviewable. The other three are recorded and gate nothing — `test`
+# additionally records the count and coverage the build's own suite reports, which is how
+# a build that ships tests is told apart from one that ships none. Each is spelled `npx`
+# rather than `npm run <script>` so the check is the case's own statement of what is run
+# and does not depend on the model leaving the seeded scripts intact.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once here. It
+# is reporter-side and never seeded; the seeded specification documents the surface
+# independently, as an ordinary debugging feature the game needs (see
+# `specs/instrumentation.md`). It is required because the review items below declare
+# `validation` scripts, and the surface is what every one of them poses its scenario
+# through.
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface itself
+# and installs it on `window.__deepcore` once the game has initialized, so the handle is
+# what a person opening the console of such a build finds. An engine run has NO global at
+# all: the build writes the surface, its `initialize` returns it — beside the state as
+# `[state, debug]` under `simple-2d`, alone under `structured-2d` — and a caller reads it
+# back off `engine.debug`. One handle, three ways to reach the same operations.
+#
+# There is deliberately no `tick_hz`. A validator now builds its own clock and advances
+# it, rather than asking a case-wide rate to relate whole ticks back to real time, so the
+# step size belongs to the validator and to the specification rather than to this table.
 [instrumentation]
 handle = "__deepcore"
-# The fixed simulation rate, in Hz. Deepcore's debug API advances time in whole
-# simulation ticks (`step(ticks)`) rather than in seconds, so there is no rounding
-# and no ambiguity about what a step means. This is the rate the validation runtime
-# uses to relate that exact stepping back to real time — one tick is 1/60 of a
-# second, so a second of game time is 60 ticks. It must match the timestep the
-# seeded `specs/controls.md` mandates.
-tick_hz = 60
 
-# Common specs: seeded for EVERY variant, at the `dest` path within the run workspace.
-# The specification is decomposed by concern: the overview, the mine, the miner, mining,
-# the hazards, the upgrades, the rocket, the gameplay (the single expedition, the Credits
-# economy, the surface loop, saving, and scoring — the expedition / campaign start is
-# folded in here, not a per-variant file), the UI (the game states, the required menus,
-# the HUD, and what is out of scope), the modes (Standard vs Hardcore, chosen in-game),
-# the controls, the field supplies, the provided-art contract, the debugging surface, and
-# the proof. All common specs are plain Markdown, seeded verbatim. A spec's `dest`
-# defaults to its `source` (with a trailing `.hbs` stripped), so these need only name the
-# source they seed.
+# Common specs: seeded for EVERY run, at the `dest` path within the run workspace. The
+# specification is decomposed by concern: the overview, the mine, the miner, mining, the
+# hazards, the upgrades, the rocket, the gameplay (the single expedition, the Credits
+# economy, the surface loop, saving, and scoring), the UI (the game states, the required
+# menus, the HUD, and what is out of scope), the modes (Standard vs Hardcore, chosen
+# in-game), the controls, the field supplies, the asset-production contract, and the
+# debugging surface. A spec's `dest` defaults to its `source` (with a trailing `.hbs`
+# stripped), so these need only name the source they seed.
 [[spec]]
 source = "specs/overview.md"
 
@@ -192,98 +303,33 @@ source = "specs/controls.md"
 # The six single-use FIELD SUPPLY items (explosives, teleporters, nanobots, emergency fuel)
 # bought at the SUPPLY DEPOT building and used in the mine, plus the Core Sample JETTISON
 # with its GROUND ITEM (a one-way discard, not re-collectable) and location-aware detonation.
-# Seeded for every variant so the item behaviors, prices, and radii stay in lockstep with the build.
 [[spec]]
 source = "specs/items.md"
 
 # The asset-production contract: every asset the game needs, which of the six on-PATH
 # binaries produces it, where it lands in the workspace, and how it is wired into the
-# build. Seeded for every variant so the produced-asset review items and this spec stay
-# in lockstep. This is the defining spec of a full-stack case, and its animated-miner
-# section is the headline of what this build is judged on.
+# build. This is the defining spec of a full-stack case, and its animated-miner section
+# is the headline of what this build is judged on.
 [[spec]]
 source = "specs/assets.md"
 
-# The debugging and automation surface every build exposes: a deterministic, steppable
-# core; a `window.__deepcore` API to drive and inspect the game from code; and a
-# read-only debug overlay. Seeded for every variant and framed as an ordinary developer
-# affordance of the game. The `[instrumentation]` table above names the same handle for
-# the reporter, and the review items below drive it.
+# The debugging and automation surface every build exposes: a deterministic, render-free
+# core; an API to drive and inspect the game from code through its own real input path;
+# and a read-only debug overlay. Framed as an ordinary developer affordance of the game.
+# The `[instrumentation]` table above names the same handle for the reporter, and the
+# review items below drive it.
 [[spec]]
 source = "specs/instrumentation.md"
 
-# Proof of implementation: instructs the build to capture evidence at the exact paths
-# the `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]`
-# entries must match.
-[[spec]]
-source = "specs/proof.md"
-
-# Common reference views, seeded for EVERY variant. Each `media` is a 1280x720 screenshot
-# captured (with Playwright) from this case's playable reference-impl build — the authored,
-# correct game under `reference-impl/` — and served as-is (seeded into the run as a visual
-# target, never rendered). There is no mockup to keep in sync: the build is the ground
-# truth. See `reference/README.md` for how each frame is driven and regenerated. The
-# `title` view is variant-specific (declared per variant) because the menu differs by
-# variant; `mine`, `surface`, and `game-over` look the same in every variant.
-[[reference]]
-view = "mine"
-media = "reference/screenshots/mine.png"
-
-[[reference]]
-view = "surface"
-media = "reference/screenshots/surface.png"
-
-[[reference]]
-view = "game-over"
-media = "reference/screenshots/game-over.png"
-
-# Proof of implementation, requested for every variant. Each declares a `dest` path
-# (relative to the run workspace root) the build must write a screenshot or `.webm`
-# clip to; `specs/proof.md` instructs the build to produce them at exactly these paths.
-# Validation records whether each turned up (informational). The media kind is inferred
-# from the extension: `.png` is an image, `.webm` a video (the format Playwright records
-# natively; the public gallery transcodes it to mp4).
-[[proof]]
-id = "title"
-name = "Title menu"
-dest = "proof/title.png"
-
-[[proof]]
-id = "mine"
-name = "Live dig"
-dest = "proof/mine.png"
-
-[[proof]]
-id = "surface"
-name = "Surface camp"
-dest = "proof/surface.png"
-
-[[proof]]
-id = "game-over"
-name = "End screen"
-dest = "proof/game-over.png"
-
-[[proof]]
-id = "loop"
-name = "Dig-sell-upgrade loop clip"
-dest = "proof/loop.webm"
-
-[[proof]]
-id = "core-run"
-name = "Core run + launch clip"
-dest = "proof/core-run.webm"
-
-# Reference-similarity checks (opt-in) are intentionally not declared. The reference
-# screenshots are seeded as illustrative examples of the screens, not layouts to
-# reproduce, so menus and screens are left to the model's design and are reviewed by a
-# human rather than scored against a baseline. The automated load check still runs.
+# No `[[reference]]`, no `[[check]]`, and no `[[proof]]`. Nothing pictorial is seeded as
+# a target to match, no build is asked to screenshot itself, and no screen is scored
+# against a baseline image: what a reviewer sees is captured by the validators below.
 
 # Scoring domains. The reviewer rates each independently while playing the build, and
 # the run's overall rating is the WORST across them — a flawless mining sim cannot mask
 # a stiff, un-produced miner, and a gorgeous animated character cannot mask a mine that
-# does not dig or an economy that cannot be won. Domains are case-level; an individual
-# review item rolls up to one through its optional `domain`, while a general item
-# (states, window fit) omits it.
+# does not dig or an economy that cannot be won. Domains are case-level; a graded review
+# item names the domains its failure lowers, and its `failure_cap` states how far.
 [[domain]]
 id = "simulation"
 name = "Mine & Expedition Systems"
