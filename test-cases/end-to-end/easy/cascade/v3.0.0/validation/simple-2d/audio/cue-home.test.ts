@@ -1,23 +1,121 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/audio/cue-home.test.ts
+// audio/cue-home — a card a foundation accepts plays the home cue.
 //
-// The review item `audio.cue-home` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/audio.md fixes `CUES.home` (`"home"`) as the cue played when "a card is
+// accepted onto a foundation, by any move", and governs all ten with one sentence:
+// "Each is played on the frame its event happens and at most once on that frame."
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// So the measurement is: pose one Ace in a column with every foundation empty, run
+// a quiet lead, press the Ace on one frame and release it over an empty foundation
+// on the next, and read what sounded on the release's frame against what sounded on
+// every frame before it — the quiet lead and the press frame included.
 //
-// What this item must decide, from the manifest:
+// THE CARD IS SENT HOME, NOT POSED. `addCard` puts a card on a foundation without a
+// move putting it there, so it would never raise this cue, and the pointer
+// operations are poses with no route to the engine's audio bus (`harness.ts`). The
+// arrival read here is the build's own rules accepting the card, inside a frame's
+// own update.
 //
-//   A card reaching a foundation plays the home cue
+// AN ACE ONTO AN EMPTY FOUNDATION is the one arrival that needs no other card on
+// the table: specs/foundations.md has an empty foundation accept "an Ace, of any
+// suit", so the whole world is one card and one empty slot and nothing else can
+// raise a cue of any name. The same frame legitimately raises `drop` as well —
+// specs/audio.md has a frame that raises more than one cue play each of those once,
+// and this point counts `home` alone.
 //
-//   A card accepted by a foundation plays home.
+// THE GESTURE IS SPLIT ACROSS TWO FRAMES, for the reason `audio/cue-drop` states: a
+// press sharing the release's frame would hide a build that sounded `home` on the
+// press rather than on the arrival.
+//
+// WHAT THIS DOES NOT DECIDE. What a foundation accepts, and which foundation a card
+// belongs on, are the `foundations` group's requirements. This point reads the cue
+// alone, and asks of the move only that the Ace reached the foundation.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { CUES, DOUBLE_CLICK_WINDOW } from "../../src/constants";
+import { assertDeepEqual, assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  framesFor,
+  openTable,
+  placeOf,
+  poseColumn,
+  pressPoint,
+  releasePoint,
+  watchCues,
+  type Harness,
+} from "../harness";
+import { playedBefore, playedOn, pressFrame, releaseFrame } from "./cues";
 
-it("audio.cue-home — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/audio/cue-home.test.ts is a scaffold stub, not a validator",
+/**
+ * Frames of silence driven on the posed table before the press.
+ *
+ * A whole `DOUBLE_CLICK_WINDOW` (`0.30` s, specs/controls.md), which is the longest
+ * span this case fixes anywhere — the launch interval, the only other duration in
+ * the case, is `0.18` s (specs/victory.md). So a build that sounds a cue on any
+ * period the case names has to cross a window longer than its own period without
+ * sounding anything. It is also longer than the double-click window itself, so the
+ * press below is measured against no press before it.
+ */
+const QUIET_LEAD = framesFor(DOUBLE_CLICK_WINDOW);
+
+/** The card that is sent home, where it waits, and the foundation it lands on. */
+const CARD = "AS";
+const FROM_COLUMN = 0;
+const FROM_ROW = 0;
+const FOUNDATION = 0;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("plays CUES.home on the frame a foundation accepts a card, and not before", async () => {
+  const cues = watchCues(h);
+  openTable(h);
+  const [ace] = poseColumn(h, FROM_COLUMN, [CARD]);
+  assertEqual(
+    h.snapshot().foundations[FOUNDATION].length,
+    0,
+    `posing: foundation ${String(FOUNDATION)} is empty, which is what makes ` +
+      `it accept the ${CARD} (specs/foundations.md)`,
+  );
+  await h.advance(QUIET_LEAD);
+
+  await pressFrame(
+    h,
+    pressPoint(h.snapshot(), "tableau", FROM_COLUMN, FROM_ROW),
+  );
+  const at = await releaseFrame(
+    h,
+    releasePoint(h.snapshot(), "foundation", FOUNDATION),
+  );
+  captureStill(h, "home");
+
+  const landed = placeOf(h.snapshot(), ace);
+  assertDeepEqual(
+    landed === null ? null : { pile: landed.pile, index: landed.index },
+    { pile: "foundation", index: FOUNDATION },
+    `the pile holding the ${CARD} after it was released over foundation ` +
+      `${String(FOUNDATION)}, which is the arrival whose cue this point reads ` +
+      "(specs/foundations.md)",
+  );
+  assertEqual(
+    playedBefore(cues, at, CUES.home),
+    0,
+    `times CUES.home played over the ${String(QUIET_LEAD)} quiet frames and ` +
+      "the press frame before the release (specs/audio.md: a cue is played on " +
+      "the frame its event happens)",
+  );
+  assertEqual(
+    playedOn(cues, at, CUES.home),
+    1,
+    "times CUES.home played on the frame the foundation accepted the card, " +
+      "which is its own frame and at most once on it (specs/audio.md)",
   );
 });
