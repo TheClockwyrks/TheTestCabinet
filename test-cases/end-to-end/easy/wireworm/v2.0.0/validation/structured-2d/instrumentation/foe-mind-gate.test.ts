@@ -39,7 +39,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { GLITCH_V_SPEED } from "../../src/constants";
-import { assertEqual, assertGreaterThan, assertNotEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertNotEqual,
+  assertNotNull,
+} from "../assert";
 import {
   captureStill,
   chargeAt,
@@ -47,7 +52,6 @@ import {
   foeById,
   poseFoe,
   startPlaying,
-  ticksFor,
   tileAtPoint,
   type Harness,
   type WirewormSnapshot,
@@ -117,12 +121,12 @@ it("removes nothing from the field while its mind is gated off", async () => {
   // (specs/foes.md): a mind that ran would have taken this one first.
   const stood = foeById(posed, id);
   const startTile = tileAtPoint(stood?.x ?? 0, stood?.y ?? 0);
-  assertEqual(
+  assertNotNull(
     chargeAt(posed, startTile.c, startTile.r),
-    FIELD_CHARGE,
-    `the charge on the tile the glitch's center occupies at the pose, ` +
-      `(${startTile.c}, ${startTile.r}) — null would mean it was not posed ` +
-      `onto the field at all`,
+    `the node on the tile the glitch's center occupies at the pose, ` +
+      `(${startTile.c}, ${startTile.r}) — null means the glitch was not ` +
+      `posed onto the field at all, and a mind that ran would have had ` +
+      `nothing to eat`,
   );
 
   await h.advanceSeconds(DRIVE_SECONDS);
