@@ -748,7 +748,11 @@ id = "stage-fit"
 title = "The whole stage stays visible and centred"
 description = "The entire 1280x720 stage — the full HUD bar, the whole board and all four edges — is visible, fitted and centred at three window sizes and two pixel densities, including on load before any input."
 domains = ["presentation"]
-failure_cap = "broken"
+# A stage that is not fitted still runs and is still played: what it costs is a
+# window size at which part of the board or the bar is cut off, which is normal
+# play made unpleasant rather than play made impossible. The cap names the one
+# domain the declaration lowers.
+failure_cap = "scuffed"
 validation = { script = "board/stage-fit.test.ts", outputs = [
   { id = "fitted", name = "The whole stage at the smallest window tested", kind = "image" },
 ] }
@@ -906,7 +910,7 @@ id = "drop-leaves-charge"
 title = "A drop leaves the node it lands on untouched"
 description = "A worm dropping onto a charge-2 node leaves that node at charge 2."
 domains = ["charge", "worm"]
-failure_cap = "broken"
+failure_cap = "passable"
 validation = { script = "nodes/drop-leaves-charge.test.ts", outputs = [
   { id = "landed", name = "The worm on the charge-2 node it dropped onto", kind = "image" },
 ] }
@@ -924,7 +928,7 @@ id = "dive-leaves-charge"
 title = "A dive leaves the nodes it passes through untouched"
 description = "The charge-2 nodes a diving worm's head passes down through are still at charge 2 afterwards."
 domains = ["charge", "worm"]
-failure_cap = "broken"
+failure_cap = "passable"
 validation = { script = "nodes/dive-leaves-charge.test.ts", outputs = [
   { id = "dived", name = "The charged column the dive passed down", kind = "image" },
 ] }
@@ -933,7 +937,7 @@ id = "shared-tile-keeps-charge"
 title = "A bolt into a shared tile leaves the charge alone"
 description = "A bolt into a tail standing on a charge-2 node leaves that node at charge 2. The shortening is worm.shot-tail-shortens's requirement."
 domains = ["charge", "worm"]
-failure_cap = "broken"
+failure_cap = "passable"
 # This point asserts the CHARGE alone. The shortening is
 # `worm.shot-tail-shortens`'s requirement, so a build that fails the shortening
 # is docked there and not twice.
@@ -1119,7 +1123,7 @@ id = "step-cadence"
 title = "Level 1 steps every 0.14 s"
 description = "At level 1 the head takes exactly one step per 0.14 s of game time over a run of ten steps."
 domains = ["worm"]
-failure_cap = "broken"
+failure_cap = "scuffed"
 validation = { script = "worm/step-cadence.test.ts", outputs = [
   { id = "cadence", name = "The board at the end of the ten timed steps", kind = "image" },
 ] }
@@ -1383,7 +1387,7 @@ id = "move-speed"
 title = "A held movement key moves at 430 units/s"
 description = "Held for exactly one second from mid-band, left and right, the cursor travels CURSOR_SPEED (430) units within 5%. Two horizontal probes only: the band is 32 units tall, so a vertical hold clamps after 0.074 s and would measure the clamp, not the rate. Vertical movement is controls.up-arrow and controls.down-arrow."
 domains = ["arcade"]
-failure_cap = "broken"
+failure_cap = "passable"
 validation = { script = "cursor/move-speed.test.ts", outputs = [
   { id = "probe", name = "The one-second horizontal hold that was measured", kind = "replay" },
 ] }
@@ -1410,7 +1414,7 @@ id = "bolt-travels-up"
 title = "A bolt climbs at 900 units/s"
 description = "A bolt posed with addBolt(x, 704) on a clear column rises 450 units — BOLT_SPEED (900) over a 0.5 s window — within 5%, ending near y = 254, well inside the board. The window is sized to the board: it is only 640 units tall, so a full second at 900 units/s would take the bolt off the top, where cursor.bolt-vanishes-at-top requires it to be gone."
 domains = ["arcade"]
-failure_cap = "broken"
+failure_cap = "passable"
 # The window is 0.5 s because the board is only 640 units tall: at BOLT_SPEED
 # (900) a full second would carry the bolt off the top, where
 # `cursor.bolt-vanishes-at-top` requires it to be gone.
@@ -1597,7 +1601,7 @@ id = "dropper-falls"
 title = "The dropper falls straight down its column"
 description = "Over one second a dropper's centre x is unchanged and its centre y has risen by DROPPER_SPEED (150) within 5%."
 domains = ["arcade"]
-failure_cap = "broken"
+failure_cap = "passable"
 validation = { script = "foes/dropper-falls.test.ts", outputs = [
   { id = "fall", name = "The second of fall that was measured", kind = "replay" },
 ] }
@@ -1681,7 +1685,7 @@ id = "corruptor-crawls"
 title = "The corruptor crawls at 130 units/s"
 description = "Over one second a corruptor's centre x moves CORRUPTOR_SPEED (130) within 5%."
 domains = ["arcade"]
-failure_cap = "broken"
+failure_cap = "passable"
 validation = { script = "foes/corruptor-crawls.test.ts", outputs = [
   { id = "crawl", name = "The second of crawl that was measured", kind = "replay" },
 ] }
