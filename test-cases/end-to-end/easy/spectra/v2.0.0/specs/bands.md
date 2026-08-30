@@ -21,11 +21,13 @@ the following that holds.
 
 - The entity is a Prism whose shell has been broken, so the layer now exposed is its
   core.
+- The entity is a Flux that is shimmering, so it is settled on neither band and reads
+  as the one it is moving toward. `specs/drones.md` states the window.
 - A spectral inversion is active and the entity is a drone or an enemy bullet.
 
-The two swaps compose as toggles rather than additively, so two of them cancel: a
-Prism whose stored band is cyan, whose shell has been broken, under an active
-inversion, reads cyan.
+The swaps compose as toggles rather than additively, so two of them cancel: a Prism
+whose stored band is cyan, whose shell has been broken, under an active inversion,
+reads cyan.
 
 The ship's band and the player's bullets are never swapped. A player bullet's
 effective band always equals its stored band, and the ship reads its own true band

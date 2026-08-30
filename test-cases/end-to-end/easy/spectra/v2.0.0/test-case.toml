@@ -326,7 +326,7 @@ source = "specs/field.md"
 [[spec]]
 source = "specs/simulation.md"
 
-# The two bands and what a band decides: EFFECTIVE band and the two swaps that
+# The two bands and what a band decides: EFFECTIVE band and the three swaps that
 # produce it, match-to-destroy, that a mismatched shot is consumed and destroys
 # nothing, the dual-use shield, the flip and its lockout, and the spectral
 # inversion's own rules. What a mismatch does to the DRONE is deferred to

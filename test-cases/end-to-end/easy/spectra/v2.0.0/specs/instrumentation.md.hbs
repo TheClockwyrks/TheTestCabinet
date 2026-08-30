@@ -402,9 +402,9 @@ their own, and the notes that go with them:
 
 - `effectiveBand` is the band an entity currently reads and counts as, by the
   definition in `specs/bands.md`: the entity's stored `band`, taken as the opposite
-  once for each of the shell being broken and an inversion being active. A player
-  bullet's `effectiveBand` therefore always equals its `band`, and a stored-cyan
-  Prism with its shell broken, under an inversion, reads cyan.
+  once for each of the shell being broken, a Flux shimmering, and an inversion being
+  active. A player bullet's `effectiveBand` therefore always equals its `band`, and a
+  stored-cyan Prism with its shell broken, under an inversion, reads cyan.
 - `shimmer` is derived: true exactly while `bandClock >= fluxHold(stage)`, and false
   on a Shard or a Prism. A Flux mid-shimmer is settled on neither band, and its
   `effectiveBand` reports the band it is moving toward, so a reader takes the pair

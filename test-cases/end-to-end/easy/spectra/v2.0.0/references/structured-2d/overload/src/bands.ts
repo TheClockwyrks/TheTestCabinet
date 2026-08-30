@@ -1,11 +1,12 @@
 // Spectra — the two bands and everything a band decides (specs/bands.md).
 //
 // One definition carries the whole band system: an entity's EFFECTIVE band is
-// its stored band, taken as the opposite once for each of the two swaps that
-// hold — a Prism whose shell has been broken, so the exposed layer is its core,
-// and an active spectral inversion over a drone or an enemy bullet. The two
-// compose as toggles rather than additively, so two of them cancel: a
-// stored-cyan Prism whose shell has been broken, under an inversion, reads cyan.
+// its stored band, taken as the opposite once for each of the three swaps that
+// hold — a Prism whose shell has been broken, so the exposed layer is its core, a
+// Flux mid-shimmer, which reads as the band it is moving toward, and an active
+// spectral inversion over a drone or an enemy bullet. They compose as toggles
+// rather than additively, so two of them cancel: a stored-cyan Prism whose shell
+// has been broken, under an inversion, reads cyan.
 //
 // The ship's band and the player's bullets are never swapped, which is why
 // `bulletEffectiveBand` asks whether the bullet is friendly and the ship has no
