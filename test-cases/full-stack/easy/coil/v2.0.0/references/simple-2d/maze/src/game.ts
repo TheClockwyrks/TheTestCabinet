@@ -306,7 +306,11 @@ export function biteFrame(state: { readonly biteRemaining: number }): number {
  * tick it resolves.
  *
  * A tick that ends the round moves the game off the `playing` screen, and the loop
- * stops there: nothing advances once a round is over.
+ * stops there: nothing advances once a round is over. The time the update was
+ * still carrying past that tick is SPENT rather than banked
+ * (`specs/movement.md`) — held back, it would be waiting the moment a game was
+ * put back on `playing` and would march the chain several cells on the first
+ * update after that.
  */
 function runTicks(state: CoilState, api: UpdateApi): CoilState {
   let next = state;
@@ -319,7 +323,10 @@ function runTicks(state: CoilState, api: UpdateApi): CoilState {
     if (result.events.ate) next = { ...next, biteRemaining: BITE_SECONDS };
     playTickEvents(api, result.events);
     if (result.ended !== null) {
-      next = goTo(next, result.ended === "cleared" ? "cleared" : "gameover");
+      next = goTo(
+        { ...next, accumulator: 0 },
+        result.ended === "cleared" ? "cleared" : "gameover",
+      );
       break;
     }
   }

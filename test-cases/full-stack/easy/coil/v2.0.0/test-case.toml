@@ -1309,6 +1309,32 @@ validation = { script = "states/no-tick-after-round-ends.test.ts", outputs = [
   { id = "still", name = "The game-over screen advancing nothing", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "ended-round-banks-no-time"
+title = "A round that has ended banks no time"
+description = "The elapsed time an update was carrying past the tick that ended the round is spent rather than held back, so the simulation advances from an empty accumulator the next time it is asked to."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: end a round on a single update carrying far more than one
+# tick, put the game back on playing, hand it a microsecond, and read ticks and
+# the chain. See
+# validation/<engine>/states/ended-round-banks-no-time.test.ts.
+validation = { script = "states/ended-round-banks-no-time.test.ts", outputs = [
+  { id = "resumed", name = "The first update after a round that ended mid-frame", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "playing-resumes-after-a-round-ended"
+title = "A game put back on playing plays on"
+description = "After a round has ended, setting the screen back to playing resolves ticks over the board as it stands and never returns the game to the screen the round ended on."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: drive a real death, pose a safe chain through the
+# surface, set the screen back to playing, run one tick, and read the screen, the
+# tick count and the head. See
+# validation/<engine>/states/playing-resumes-after-a-round-ended.test.ts.
+validation = { script = "states/playing-resumes-after-a-round-ended.test.ts", outputs = [
+  { id = "playing-on", name = "A round played on after an ending", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "menu-index-resets"
 title = "Arriving at a menu screen highlights its first item"
 description = "Leaving a menu-bearing screen with the highlight moved off its first item and arriving at another sets menuIndex to 0."

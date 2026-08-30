@@ -107,6 +107,12 @@ export class Game {
    *
    * Ticks resolve on the playing screen alone, one for each whole `TICK_SECONDS`
    * the accumulator holds, and the remainder carries into the next update.
+   *
+   * A tick that ENDS the round is the last tick of that round, and the time the
+   * update was still carrying past it is spent rather than banked
+   * (`specs/movement.md`). Held back, it would be waiting the moment a game was
+   * put back on `playing` and would march the chain several cells on the first
+   * update after that.
    */
   update(dt: number): void {
     if (this.screen === "playing") {
@@ -114,8 +120,10 @@ export class Game {
       this.accumulator += dt;
       while (this.accumulator >= TICK_SECONDS - TICK_EPSILON) {
         this.accumulator -= TICK_SECONDS;
-        this.resolveTick();
-        if (this.screen !== "playing") break;
+        if (this.resolveTick()) {
+          this.accumulator = 0;
+          break;
+        }
       }
     }
     if (this.biteRemaining > 0) {
@@ -271,8 +279,9 @@ export class Game {
     }
   }
 
-  private resolveTick(): void {
-    const events = this.sim.tick();
+  /** Resolve one tick, play its cues, and report whether it ended the round. */
+  private resolveTick(): boolean {
+    const { events, ended } = this.sim.tick();
     this.ticks += 1;
     if (this.sim.score > this.best) this.best = this.sim.score;
     if (events.ate) {
@@ -281,8 +290,10 @@ export class Game {
     }
     if (events.comboRose) this.audio.play(CUES.comboUp);
     if (events.died) this.audio.play(CUES.death);
-    if (this.sim.ended) {
-      this.goTo(this.sim.endReason === "cleared" ? "cleared" : "gameover");
+    if (ended !== null) {
+      this.goTo(ended === "cleared" ? "cleared" : "gameover");
+      return true;
     }
+    return false;
   }
 }

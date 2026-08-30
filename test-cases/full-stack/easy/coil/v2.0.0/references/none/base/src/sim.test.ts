@@ -173,10 +173,9 @@ describe("collision", () => {
       s.clearPellet();
       s.setSnake(cells);
       s.dir = dir;
-      const events = s.tick();
-      expect(events.died).toBe(true);
-      expect(s.ended).toBe(true);
-      expect(s.endReason).toBe("dead");
+      const result = s.tick();
+      expect(result.events.died).toBe(true);
+      expect(result.ended).toBe("dead");
     }
   });
 
@@ -191,8 +190,7 @@ describe("collision", () => {
       { col: 11, row: 8 },
     ]);
     s.dir = "right";
-    s.tick();
-    expect(s.ended).toBe(false);
+    expect(s.tick().ended).toBeNull();
     expect(s.snake[0]).toEqual({ col: 11, row: 8 });
   });
 
@@ -206,9 +204,9 @@ describe("collision", () => {
     ]);
     s.dir = "right";
     s.setPellet(11, 8);
-    const events = s.tick();
-    expect(events.died).toBe(true);
-    expect(s.endReason).toBe("dead");
+    const result = s.tick();
+    expect(result.events.died).toBe(true);
+    expect(result.ended).toBe("dead");
   });
 
   it("ends the round on a body segment", () => {
@@ -224,7 +222,7 @@ describe("collision", () => {
       { col: 13, row: 8 },
     ]);
     s.dir = "right";
-    expect(s.tick().died).toBe(true);
+    expect(s.tick().events.died).toBe(true);
   });
 
   it("resolves no further step once the head has died", () => {
@@ -323,10 +321,9 @@ describe("the driver switches", () => {
     const before = s.snake.map((cell) => ({ ...cell }));
     s.travel = false;
     s.requestTurn("up");
-    for (let i = 0; i < 20; i++) s.tick();
+    for (let i = 0; i < 20; i++) expect(s.tick().ended).toBeNull();
     expect(s.snake).toEqual(before);
     expect(s.dir).toBe("up");
-    expect(s.ended).toBe(false);
   });
 
   it("drains the combo window while travel is off", () => {
@@ -344,9 +341,8 @@ describe("the driver switches", () => {
     s.setSnake(chain(10, 8, 3));
     s.dir = "right";
     s.setPellet(11, 8);
-    s.tick();
+    expect(s.tick().ended).toBeNull();
     expect(s.pellet).toBeNull();
-    expect(s.ended).toBe(false);
     expect(s.score).toBe(PELLET_POINTS);
   });
 });
@@ -368,8 +364,7 @@ describe("the pellet", () => {
     for (let i = 0; i < 200; i++) {
       s.setSnake(chain(s.pellet!.col - 1, s.pellet!.row, 4));
       s.dir = "right";
-      s.tick();
-      if (s.ended) break;
+      if (s.tick().ended !== null) break;
       const pellet = s.pellet!;
       expect(
         s.snake.some(
@@ -402,9 +397,7 @@ describe("the pellet", () => {
     else if (free.col < head.col) s.dir = "left";
     else if (free.row > head.row) s.dir = "down";
     else s.dir = "up";
-    s.tick();
-    expect(s.ended).toBe(true);
-    expect(s.endReason).toBe("cleared");
+    expect(s.tick().ended).toBe("cleared");
     expect(s.pellet).toBeNull();
   });
 });
@@ -414,7 +407,7 @@ describe("obstacles", () => {
     const s = sim();
     s.clearPellet();
     s.addObstacle(16, 8);
-    expect(s.tick().died).toBe(true);
+    expect(s.tick().events.died).toBe(true);
   });
 
   it("adds a cell once, however often it is asked for", () => {
@@ -435,7 +428,7 @@ describe("obstacles", () => {
     s.clearPellet();
     s.setSnake(chain(19, 5, 3));
     s.dir = "right";
-    expect(s.tick().died).toBe(false);
+    expect(s.tick().events.died).toBe(false);
   });
 });
 

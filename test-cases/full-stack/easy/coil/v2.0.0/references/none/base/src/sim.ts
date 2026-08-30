@@ -41,6 +41,13 @@ export interface TickEvents {
   died: boolean;
 }
 
+/** What one tick left behind: its events, and how it ended the round if it did. */
+export interface TickResult {
+  events: TickEvents;
+  /** How this tick ended the round, or `null` when the round runs on. */
+  ended: EndReason | null;
+}
+
 const DELTA: Record<Dir, { col: number; row: number }> = {
   up: { col: 0, row: -1 },
   down: { col: 0, row: 1 },
@@ -65,6 +72,17 @@ export function isAdjacent(a: Cell, b: Cell): boolean {
   return Math.abs(a.col - b.col) + Math.abs(a.row - b.row) === 1;
 }
 
+/**
+ * The round: the board's contents, and the six-step tick over them.
+ *
+ * NOTHING HERE REMEMBERS THAT A ROUND ENDED. A tick REPORTS an ending on the tick
+ * it resolves it and the screen is what records it from there
+ * (`specs/instrumentation.md`: "The screen is the whole record of a round having
+ * ended, so a game moved back to `playing` plays on from the board as it stands").
+ * A latch of its own would be state the snapshot does not report, so two games
+ * reading identically would tick differently — and a game put back on `playing`
+ * would be frozen with nothing to say why.
+ */
 export class Sim {
   /** The chain, head at index 0 and tail at the last index. */
   snake: Cell[] = [];
@@ -80,10 +98,6 @@ export class Sim {
   combo = 1;
   /** Seconds of simulation time left on the combo window; 0 is closed. */
   comboWindow = 0;
-  /** Whether the round has ended, and how. */
-  ended = false;
-  endReason: EndReason | null = null;
-
   /** Step 1 of the tick, and whether a steering request is taken at all. */
   steering = true;
   /** Steps 2 to 5 of the tick. */
@@ -135,8 +149,6 @@ export class Sim {
     this.score = 0;
     this.combo = 1;
     this.comboWindow = 0;
-    this.ended = false;
-    this.endReason = null;
   }
 
   /**
@@ -146,7 +158,6 @@ export class Sim {
    */
   requestTurn(dir: Dir): void {
     if (!this.steering) return;
-    if (this.ended) return;
     if (this.turns.length >= TURN_QUEUE_MAX) return;
     this.turns.push(dir);
   }
@@ -166,9 +177,9 @@ export class Sim {
   }
 
   /** Resolve one whole tick, in the six steps `specs/movement.md` fixes. */
-  tick(): TickEvents {
+  tick(): TickResult {
     const events: TickEvents = { ate: false, comboRose: false, died: false };
-    if (this.ended) return events;
+    let ended: EndReason | null = null;
 
     // 1 — take the oldest buffered turn and apply it if it is perpendicular.
     if (this.steering && this.turns.length > 0) {
@@ -189,10 +200,8 @@ export class Sim {
 
       // 3 — a fatal cell ends the round, and steps 4 to 6 do not run.
       if (this.fatal(col, row, willEat)) {
-        this.ended = true;
-        this.endReason = "dead";
         events.died = true;
-        return events;
+        return { events, ended: "dead" };
       }
 
       // 4 — prepend the head, and keep the tail only on the tick that eats.
@@ -209,10 +218,7 @@ export class Sim {
         this.score += PELLET_POINTS * this.combo;
         this.comboWindow = COMBO_WINDOW;
         if (this.pelletRespawn) {
-          if (!this.spawnPellet()) {
-            this.ended = true;
-            this.endReason = "cleared";
-          }
+          if (!this.spawnPellet()) ended = "cleared";
         } else {
           this.pellet = null;
         }
@@ -227,7 +233,7 @@ export class Sim {
         this.combo = 1;
       }
     }
-    return events;
+    return { events, ended };
   }
 
   /** The combo window as a fraction of a full one, for the draining HUD bar. */

@@ -159,7 +159,11 @@ const TICK_EPSILON = 1e-9;
  * the tick it resolves.
  *
  * A tick that ends the round moves the game off the `playing` screen, and the
- * loop stops there: nothing advances once a round is over.
+ * loop stops there: nothing advances once a round is over. The time the update
+ * was still carrying past that tick is SPENT rather than banked
+ * (`specs/movement.md`) — held back, it would be waiting the moment a game was
+ * put back on `playing` and would march the chain several cells on the first
+ * update after that.
  */
 function runTicks(state: CoilState, audio: WorldAudio): void {
   while (state.accumulator >= TICK_SECONDS - TICK_EPSILON) {
@@ -167,6 +171,7 @@ function runTicks(state: CoilState, audio: WorldAudio): void {
     const result = tick(state);
     playTickEvents(audio, result.events);
     if (result.ended !== null) {
+      state.accumulator = 0;
       goTo(state, result.ended === "cleared" ? "cleared" : "gameover");
       return;
     }
