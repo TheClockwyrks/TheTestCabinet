@@ -152,6 +152,46 @@ export function isCellSized(sprite: Sprite): boolean {
   return sprite.width === CELL && sprite.height === CELL;
 }
 
+/**
+ * How many rows of one vertical edge column of a sprite carry paint.
+ *
+ * `edge` is `"left"` for column `0` and `"right"` for the last column. What it
+ * answers is whether the picture REACHES that edge, which is what a joining edge
+ * has to do: `specs/assets.md` requires the straight, corner and tail sprites to
+ * "join without a seam or a gap, so a continuous snake looks continuous where two
+ * cells meet".
+ */
+export function edgeRows(sprite: Sprite, edge: "left" | "right"): number {
+  const column = edge === "left" ? 0 : sprite.width - 1;
+  let rows = 0;
+  for (let y = 0; y < sprite.height; y += 1) {
+    if (sprite.pixels[(y * sprite.width + column) * 4 + 3] > 0) rows += 1;
+  }
+  return rows;
+}
+
+/**
+ * How many rows of a sprite's joining edge must carry paint for the join to be a
+ * join: four, the smallest square mark a player can see at one cell.
+ *
+ * `specs/assets.md` fixes no tube width, so nothing here reads how THICK a build
+ * drew its snake; what is read is that the edge the sprite joins on is reached at
+ * all rather than floating clear of it.
+ */
+export const JOIN_MIN_ROWS = 4;
+
+/**
+ * How much of the joining edge's coverage the sprite's FREE edge may carry and
+ * still read as a free end: half.
+ *
+ * A tail has one neighbour, so one of its two edges continues the snake and the
+ * other terminates it. A build whose two edges carry the same coverage has drawn
+ * a piece of body rather than a tail, and the snake reads as running on past the
+ * cell where it ends. Half leaves a taper that stops short of the far edge, or
+ * one that ends in a blunt tip, comfortably inside.
+ */
+export const FREE_MAX_SHARE = 0.5;
+
 /** How much of a sprite carries paint: the share of its pixels that are not clear. */
 export function paintShare(sprite: Sprite): number {
   let painted = 0;

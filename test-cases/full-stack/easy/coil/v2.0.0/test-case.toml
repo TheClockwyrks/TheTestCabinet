@@ -1876,6 +1876,33 @@ validation = { script = "presentation/tail-sprite-produced.test.ts", outputs = [
   { id = "sprite", name = "The produced tail sprite", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "tail-sprite-faces-its-neighbor"
+title = "The tail sprite is authored joining on its right edge"
+description = "assets/snake/tail.png reaches the right edge, where its one neighbor lies, and terminates well short of the left, which is the snake's free end."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: decode the produced file and count the painted rows of
+# each of its two vertical edge columns. The picture on the board cannot answer
+# this: a sprite authored backwards and a renderer that turns it backwards
+# compose to the right frame. See
+# validation/<engine>/presentation/tail-sprite-faces-its-neighbor.test.ts.
+validation = { script = "presentation/tail-sprite-faces-its-neighbor.test.ts", outputs = [
+  { id = "authored", name = "The tail sprite as it was authored", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tail-turned-toward-its-neighbor"
+title = "The tail is turned toward the segment it joins"
+description = "The last cell of the chain is drawn with the tail sprite under the quarter turn that carries its authored right edge onto its one neighbor, so a tail whose neighbor lies to its right is drawn under no turn."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: pose a chain laid east along a row and read the quarter
+# turn the blit on its last cell was drawn under. The rendered picture cannot
+# answer this; the transform at the blit can. See
+# validation/<engine>/presentation/tail-turned-toward-its-neighbor.test.ts.
+validation = { script = "presentation/tail-turned-toward-its-neighbor.test.ts", outputs = [
+  { id = "turned", name = "The tail drawn on the last cell of a chain laid east", kind = "image" },
+] }
+[[review.categories.items]]
 id = "sprites-distinct"
 title = "The body, corner and tail sprites differ"
 description = "The straight, corner and tail sprites are three different images: each pair differs on a measurable share of its pixels, so one sprite has not been shipped three times."

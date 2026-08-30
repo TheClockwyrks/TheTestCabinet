@@ -35,6 +35,13 @@
  *     from the frame's operations, because a build is free to set it once when it
  *     builds its context and never mention it again.
  *
+ *   - THE QUARTER TURN it was drawn under: where the transform in force carried
+ *     the source's own `+x` axis. `specs/assets.md` authors each sprite in one
+ *     orientation and has it "rotated in quarter turns when it is drawn", and the
+ *     picture on the canvas cannot answer whether a build did that: a sprite
+ *     authored backwards and a renderer that turns it backwards compose to the
+ *     right picture on every frame. Only the turn itself separates the two halves.
+ *
  * WHAT IS DELIBERATELY NOT REQUIRED. Which sprite is which: nothing here knows
  * that `id` 3 is the corner. `specs/assets.md` fixes the FILES, not how a build
  * names or orders the images it loads them into, so a check reads that two cells
@@ -54,6 +61,35 @@
   const byObject = new WeakMap();
 
   let next = 0;
+
+  /**
+   * How far from an exact quarter turn a transform may sit and still be read as
+   * one, in quarter turns. A thousandth of a quarter turn is about a twelfth of
+   * a degree: far below anything a build could mean by an orientation, and far
+   * above the dust a composition of a letterbox fit, a translate and a rotate
+   * leaves behind.
+   */
+  const QUARTER_TOLERANCE = 1e-3;
+
+  /**
+   * The quarter turns `m` carries the `+x` axis through, or `null` for a
+   * transform that is not a whole number of quarter turns.
+   *
+   * Read off the LINEAR part alone — the source's `+x` axis lands on `(a, b)` —
+   * so the translate that puts a sprite on its cell and the uniform scale of the
+   * letterbox fit contribute nothing. `0` is the sprite drawn as authored, `1` a
+   * quarter turn toward `down`, `2` a half turn, `3` a quarter turn toward `up`.
+   * A reflection is measured the same way and is not rejected: what a check about
+   * facing needs to know is where the edge authored on the right ended up, and
+   * the image of `+x` is exactly that.
+   */
+  const quarterTurnsOf = (m) => {
+    if (!(Math.hypot(m.a, m.b) > 0)) return null;
+    const turns = Math.atan2(m.b, m.a) / (Math.PI / 2);
+    const nearest = Math.round(turns);
+    if (Math.abs(turns - nearest) > QUARTER_TOLERANCE) return null;
+    return ((nearest % 4) + 4) % 4;
+  };
 
   /** The URL a source draws from, or `null` for one that has none. */
   const urlOf = (source) => {
@@ -141,6 +177,7 @@
           w: m.a * dw + m.c * dh,
           h: m.b * dw + m.d * dh,
           smoothing: this.imageSmoothingEnabled === true,
+          quarterTurns: quarterTurnsOf(m),
         });
       } catch {
         // Watching a blit can never change one: a source the probe cannot read

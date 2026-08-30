@@ -15,7 +15,7 @@
 #                                    frames 1-3 = a bite (open, chomp wide, close).
 #   assets/snake/body.png            draw, a straight HORIZONTAL tube (west<->east).
 #   assets/snake/corner.png          draw, a 90-degree bend open EAST and SOUTH.
-#   assets/snake/tail.png            draw, connects on WEST, tapers to a point EAST.
+#   assets/snake/tail.png            draw, connects on EAST, tapers to a point WEST.
 #
 # Usage:  bash scripts/gen-sprites.sh   (draw + draw-sheet must be on PATH, or
 #         built under $CARGO_TARGET_DIR).
@@ -220,25 +220,30 @@ for p in 22 28; do
 done
 
 # =============================================================================
-# TAIL — the final segment: connects on its WEST edge (full thickness) and
-# TAPERS to a point at the EAST tip (tip points +col / east).
+# TAIL — the final segment: connects on its EAST edge (full thickness) and
+# TAPERS to a point at the WEST tip. Authored joining EAST because that is the
+# one direction every sprite in this set is authored toward: the head faces east,
+# the body runs west<->east, the corner opens east and south, and the tail's one
+# neighbour lies to its east. The renderer turns each of them in quarter turns
+# from there, so a sprite is produced once and never a second time for a second
+# direction.
 # =============================================================================
 newsprite "$SNAKE/tail.png"
-# outline pass: a solid tapering wedge from the west edge to a point at the east, the band
+# outline pass: a solid tapering wedge from the east edge to a point at the west, the band
 # centred on the tube axis (y15.5) so it aligns with the body segment it follows.
-for x in $(seq 0 28); do
-  H=$(( ((28-x)*10 + 14) / 28 ))          # half-height 10 at west → 0 at the tip
+for x in $(seq 3 31); do
+  H=$(( ((x-3)*10 + 14) / 28 ))          # half-height 0 at the tip → 10 at east
   d line --x0 "$x" --y0 $((16-H)) --x1 "$x" --y1 $((15+H)) --color "$BODY_OUT"
 done
 # fill pass: inset by the 1px outline
-for x in $(seq 0 26); do
-  H=$(( ((28-x)*10 + 14) / 28 ))
+for x in $(seq 5 31); do
+  H=$(( ((x-3)*10 + 14) / 28 ))
   h=$((H-1)); [ "$h" -lt 1 ] && continue
   d line --x0 "$x" --y0 $((16-h)) --x1 "$x" --y1 $((15+h)) --color "$BODY_C"
 done
 # glossy core stripe along the taper (symmetric about the axis), continuous with the body.
-for x in $(seq 0 24); do
-  H=$(( ((28-x)*10 + 14) / 28 ))
+for x in $(seq 7 31); do
+  H=$(( ((x-3)*10 + 14) / 28 ))
   [ "$H" -ge 2 ] && d fill-rect --x "$x" --y 15 --width 1 --height 2 --color "$BODY_HI"
 done
 

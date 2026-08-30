@@ -5,6 +5,12 @@
 // The snake is drawn from the produced sprite set alone: the head sheet turned to
 // the snake's facing and playing its bite, the straight sprite turned to a run, the
 // corner sprite at every bend, and the tail sprite turned toward its one neighbor.
+//
+// EVERY SPRITE IS AUTHORED FACING ONE WAY AND TURNED FROM THERE. The head faces
+// east, the body runs west<->east, the corner opens east and south, and the tail
+// joins on its east edge. A cell's draw is that one picture under the quarter turn
+// (or, for the corner, the axis map) that carries the authored direction onto the
+// direction the board asks for, so no sprite is produced twice.
 // Every sprite is sampled with smoothing off, so the pixel art stays sharp at every
 // scale the stage is fitted to.
 //
@@ -240,9 +246,12 @@ function drawSnake(
   for (let i = 1; i < chain.length; i++) {
     const cell = chain[i]!;
     if (i === chain.length - 1) {
-      // The tail points away from the segment ahead of it.
-      const outgoing = directionBetween(chain[i - 1]!, cell);
-      drawSprite(ctx, sprites.tail, cell, ANGLE[outgoing]);
+      // The tail JOINS the segment ahead of it. The sprite is authored joining
+      // east (`scripts/gen-sprites.sh`), so the quarter turn that carries `right`
+      // onto the direction from this cell to its one neighbour puts the join edge
+      // against that neighbour and the taper on the free side.
+      const toNeighbor = directionBetween(cell, chain[i - 1]!);
+      drawSprite(ctx, sprites.tail, cell, ANGLE[toNeighbor]);
       continue;
     }
     const toHead = directionBetween(cell, chain[i - 1]!);
@@ -491,7 +500,8 @@ function drawTitleCoil(ctx: CanvasRenderingContext2D, assets: Assets): void {
     ctx.drawImage(image, -CELL / 2, -CELL / 2, CELL, CELL);
     ctx.restore();
   };
-  at(sprites.tail, 0, -32, -Math.PI / 2);
+  // Its one neighbour, the body cell, lies below it, so the join edge turns down.
+  at(sprites.tail, 0, -32, Math.PI / 2);
   at(sprites.body, 0, 0, Math.PI / 2);
   at(sprites.corner, 0, 32, Math.PI);
   at(sprites.head[0] ?? null, -32, 32, Math.PI);

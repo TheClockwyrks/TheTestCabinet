@@ -380,6 +380,20 @@ export interface Blit {
   h: number;
   /** Whether image smoothing was on at the moment of this blit. */
   smoothing: boolean;
+  /**
+   * The quarter turns the blit carried the sprite's OWN `+x` axis through, or
+   * `null` when the transform was not a whole number of quarter turns.
+   *
+   * `0` is the sprite drawn the way it was authored, `1` a quarter turn toward
+   * `down`, `2` a half turn, `3` a quarter turn toward `up` — the same order
+   * `right`, `down`, `left`, `up` runs in on a y-down canvas. `specs/assets.md`
+   * authors each sprite in ONE orientation and has it "rotated in quarter turns
+   * when it is drawn", and this is the turn it was drawn under. The picture on
+   * the canvas cannot answer that on its own: a sprite authored backwards and a
+   * renderer that turns it backwards compose to the right picture, and only the
+   * turn itself tells the two halves apart.
+   */
+  quarterTurns: number | null;
 }
 
 /** A cue the build played, and the frame of the drive it played it on. */
@@ -1050,6 +1064,36 @@ function through(m: Matrix, x: number, y: number): { x: number; y: number } {
 }
 
 /**
+ * How far from an exact quarter turn a transform may sit and still be read as
+ * one, in quarter turns.
+ *
+ * A thousandth of a quarter turn is about a twelfth of a degree: far below
+ * anything a build could mean by an orientation, and far above the dust a
+ * composition of a letterbox fit, a translate and a rotate leaves behind.
+ */
+const QUARTER_TOLERANCE = 1e-3;
+
+/**
+ * The quarter turns a transform carries the `+x` axis through, or `null` for a
+ * transform that is not a whole number of quarter turns.
+ *
+ * Read off the LINEAR part alone — the sprite's `+x` axis lands on `(a, b)` —
+ * so the translate that puts the sprite on its cell and the uniform scale of the
+ * letterbox fit contribute nothing. A reflection is measured the same way and is
+ * not rejected here: what a check about facing needs to know is where the edge
+ * that was authored on the right ended up, and that is exactly what the image of
+ * `+x` says.
+ */
+function quarterTurnsOf(m: Matrix): number | null {
+  const [a, b] = m;
+  if (!(Math.hypot(a, b) > 0)) return null;
+  const turns = Math.atan2(b, a) / (Math.PI / 2);
+  const nearest = Math.round(turns);
+  if (Math.abs(turns - nearest) > QUARTER_TOLERANCE) return null;
+  return ((nearest % 4) + 4) % 4;
+}
+
+/**
  * The destination rectangle of a `drawImage` call, in the space it was issued
  * in, or `null` for a call whose arguments are not one of the three forms.
  *
@@ -1116,6 +1160,7 @@ export function blitsOf(calls: readonly DrawCall[]): Blit[] {
       w: Math.max(...xs) - x,
       h: Math.max(...ys) - y,
       smoothing: at.smoothing,
+      quarterTurns: quarterTurnsOf(at.transform),
     });
   }
   return blits;
@@ -1149,6 +1194,24 @@ export function blitsOnCell(
       Math.abs(centre.x - at.x) <= half && Math.abs(centre.y - at.y) <= half
     );
   });
+}
+
+/**
+ * The blit that painted cell `(col, row)`, or `null` for a cell no blit landed
+ * on.
+ *
+ * The LAST blit on the cell, for the same reason {@link spriteOnCell} takes it:
+ * that is the one a player sees. A check that needs the whole stack has
+ * {@link blitsOnCell}.
+ */
+export function blitOnCell(
+  h: Harness,
+  blits: readonly Blit[],
+  col: number,
+  row: number,
+): Blit | null {
+  const on = blitsOnCell(h, blits, col, row);
+  return on.length === 0 ? null : on[on.length - 1]!;
 }
 
 /**

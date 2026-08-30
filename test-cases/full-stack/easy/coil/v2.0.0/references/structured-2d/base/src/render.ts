@@ -230,9 +230,12 @@ function drawSnake(
   for (let i = 1; i < chain.length; i++) {
     const cell = chain[i]!;
     if (i === chain.length - 1) {
-      // The tail points away from the segment ahead of it.
-      const outgoing = directionBetween(chain[i - 1]!, cell);
-      drawSprite(ctx, sprites.tail, cell, ANGLE[outgoing]);
+      // The tail JOINS the segment ahead of it. The sprite is authored joining
+      // east (`scripts/gen-sprites.sh`), so the quarter turn that carries `right`
+      // onto the direction from this cell to its one neighbour puts the join edge
+      // against that neighbour and the taper on the free side.
+      const toNeighbor = directionBetween(cell, chain[i - 1]!);
+      drawSprite(ctx, sprites.tail, cell, ANGLE[toNeighbor]);
       continue;
     }
     const toHead = directionBetween(cell, chain[i - 1]!);
@@ -461,7 +464,8 @@ function drawTitleCoil(ctx: Ctx, sprites: SnakeSprites): void {
     ctx.drawImage(image, -CELL / 2, -CELL / 2, CELL, CELL);
     ctx.restore();
   };
-  at(sprites.tail, 0, -32, -Math.PI / 2);
+  // Its one neighbour, the body cell, lies below it, so the join edge turns down.
+  at(sprites.tail, 0, -32, Math.PI / 2);
   at(sprites.body, 0, 0, Math.PI / 2);
   at(sprites.corner, 0, 32, Math.PI);
   at(sprites.head[0] ?? null, -32, 32, Math.PI);

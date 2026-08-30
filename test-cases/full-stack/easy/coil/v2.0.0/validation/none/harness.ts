@@ -163,6 +163,20 @@ export interface Blit {
   h: number;
   /** Whether image smoothing was on at the moment of this blit. */
   smoothing: boolean;
+  /**
+   * The quarter turns the blit carried the sprite's OWN `+x` axis through, or
+   * `null` when the transform was not a whole number of quarter turns.
+   *
+   * `0` is the sprite drawn the way it was authored, `1` a quarter turn toward
+   * `down`, `2` a half turn, `3` a quarter turn toward `up` — the same order
+   * `right`, `down`, `left`, `up` runs in on a y-down canvas. `specs/assets.md`
+   * authors each sprite in ONE orientation and has it "rotated in quarter turns
+   * when it is drawn", and this is the turn it was drawn under. The picture on
+   * the canvas cannot answer that on its own: a sprite authored backwards and a
+   * renderer that turns it backwards compose to the right picture, and only the
+   * turn itself tells the two halves apart. See `image-init.js`.
+   */
+  quarterTurns: number | null;
 }
 
 /** A cue the build played, and the frame of the drive it played it on. */
@@ -1851,6 +1865,24 @@ export function blitsOnCell(
       Math.abs(centre.x - at.x) <= half && Math.abs(centre.y - at.y) <= half
     );
   });
+}
+
+/**
+ * The blit that painted cell `(col, row)`, or `null` for a cell no blit landed
+ * on.
+ *
+ * The LAST blit on the cell, for the same reason {@link spriteOnCell} takes it:
+ * that is the one a player sees. A check that needs the whole stack has
+ * {@link blitsOnCell}.
+ */
+export function blitOnCell(
+  h: Harness,
+  blits: readonly Blit[],
+  col: number,
+  row: number,
+): Blit | null {
+  const on = blitsOnCell(h, blits, col, row);
+  return on.length === 0 ? null : on[on.length - 1]!;
 }
 
 /**
