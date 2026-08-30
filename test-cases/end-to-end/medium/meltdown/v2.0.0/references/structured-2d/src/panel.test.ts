@@ -109,17 +109,37 @@ describe("where the controls are", () => {
     const id = poseTower(harness, "arc", 30, 20, 0);
     harness.debug.setSelected(id);
     const controls = harness.debug.snapshot().controls;
-    const keys = ["rotate", "cancel", "upgrade", "sell", "send", "speed", "pause", "mute"] as const;
+    const keys = [
+      "rotate",
+      "cancel",
+      "upgrade",
+      "sell",
+      "send",
+      "speed",
+      "pause",
+      "mute",
+    ] as const;
     const rects = [
-      ...controls.shop.map((entry) => ({ x: entry.x, y: entry.y, w: entry.w, h: entry.h })),
+      ...controls.shop.map((entry) => ({
+        x: entry.x,
+        y: entry.y,
+        w: entry.w,
+        h: entry.h,
+      })),
       ...keys.map((key) => controls[key]),
-    ].filter((rect): rect is { x: number; y: number; w: number; h: number } => rect !== null);
+    ].filter(
+      (rect): rect is { x: number; y: number; w: number; h: number } =>
+        rect !== null,
+    );
     for (let i = 0; i < rects.length; i += 1) {
       for (let j = i + 1; j < rects.length; j += 1) {
         const a = rects[i];
         const b = rects[j];
         const overlaps =
-          a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+          a.x < b.x + b.w &&
+          b.x < a.x + a.w &&
+          a.y < b.y + b.h &&
+          b.y < a.y + a.h;
         expect(overlaps).toBe(false);
       }
     }
@@ -360,7 +380,9 @@ describe("the wave controls", () => {
     harness.cues.length = 0;
     harness.debug.setArmed("arc");
     await harness.press(tileCX(26), tileCY(12));
-    expect(harness.cues.some((c) => c.cue === "place" && c.gain > 0)).toBe(true);
+    expect(harness.cues.some((c) => c.cue === "place" && c.gain > 0)).toBe(
+      true,
+    );
     harness.dispose();
   });
 });

@@ -183,9 +183,7 @@ describe("clearing a wave", () => {
     const afterBonus = SURGE_DEFS.mote.bounty + waveClearBonus(4);
     expect(waveClearBonus(4)).toBe(WAVE_CLEAR_BASE + WAVE_CLEAR_PER_WAVE * 4);
     expect(snapshot.money).toBe(afterBonus + interestOn(afterBonus));
-    expect(snapshot.score).toBe(
-      SURGE_DEFS.mote.bounty + SCORE_WAVE_CLEAR * 4,
-    );
+    expect(snapshot.score).toBe(SURGE_DEFS.mote.bounty + SCORE_WAVE_CLEAR * 4);
     expect(snapshot.wave).toBe(5);
     expect(snapshot.phase).toBe("building");
     // The build phase opened at its full length and has been running since.

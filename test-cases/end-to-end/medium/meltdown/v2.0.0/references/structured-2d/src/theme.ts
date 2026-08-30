@@ -12,12 +12,12 @@
 // confuse with heat is kept off that axis — the surge is green, violet and
 // magenta, a tripped tower is a dark carmine no live heat reaches, and the
 // casing is a neutral grey. The distances below are stated as the sum of the
-// three channel differences, out of 441.
+// three channel differences, out of 765.
 
 /** A CSS color as three channels, so a separation can be stated. */
 export type Rgb = readonly [number, number, number];
 
-/** The sum of the per-channel differences: 0 for a match, 441 at the extremes. */
+/** The sum of the per-channel differences: 0 for a match, 765 at the extremes. */
 export function separation(a: Rgb, b: Rgb): number {
   return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
 }
@@ -43,7 +43,7 @@ const RAMP_MID_AT = 0.55;
 /**
  * The color an emitter is drawn at, as a function of its heat. Two linear
  * segments through the three stops above, so the cold end and the near-redline
- * end sit 426 apart out of 441.
+ * end sit 392 apart out of 765.
  */
 export function heatRgb(heat: number): Rgb {
   const t = Math.max(0, Math.min(1, heat / 100));
@@ -79,8 +79,13 @@ export const RGB = {
   /** A radiator face against a plain one: 509 apart. */
   radiator: [150, 240, 255],
   plainFace: [40, 44, 52],
-  /** A tripped tower, at 200 or more from every color the ramp shows. */
-  tripped: [142, 32, 48],
+  /**
+   * A tripped tower. It is drawn in this color at every heat, so what it has
+   * to read apart from is the whole ramp rather than one stop of it: its
+   * closest approach to any color the ramp shows is 164, and the hazard
+   * stripes drawn over it are further still.
+   */
+  tripped: [110, 10, 36],
   trippedMark: [255, 90, 80],
   forge: [201, 119, 42],
   sink: [46, 168, 200],

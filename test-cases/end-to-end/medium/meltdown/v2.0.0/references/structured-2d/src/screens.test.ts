@@ -37,7 +37,14 @@ describe("the menus", () => {
 
   it("wraps down from the last row and up from the first, on every menu", async () => {
     const harness = await createHarness();
-    for (const screen of ["title", "modeselect", "difficultyselect", "paused", "victory", "gameover"] as const) {
+    for (const screen of [
+      "title",
+      "modeselect",
+      "difficultyselect",
+      "paused",
+      "victory",
+      "gameover",
+    ] as const) {
       const rows = menuRows(screen);
       harness.debug.setScreen(screen);
       harness.debug.setMenuIndex(rows - 1);

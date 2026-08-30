@@ -15,7 +15,12 @@ import {
   waveSize,
   waveType,
 } from "./constants";
-import { nextWaveInfo, releaseTypeFor, waveSizeFor, waveTypeFor } from "./waves";
+import {
+  nextWaveInfo,
+  releaseTypeFor,
+  waveSizeFor,
+  waveTypeFor,
+} from "./waves";
 import { meltdownState } from "./game";
 import { createHarness, startRun, stepSeconds } from "./harness";
 
@@ -105,7 +110,10 @@ describe("Bottleneck", () => {
     harness.debug.setArmed("arc");
     harness.debug.setPreview(BOTTLENECK_ZONE.col0, BOTTLENECK_ZONE.row0);
     expect(harness.debug.snapshot().build?.valid).toBe(true);
-    harness.debug.setPreview(BOTTLENECK_ZONE.col1 - 1, BOTTLENECK_ZONE.row1 - 1);
+    harness.debug.setPreview(
+      BOTTLENECK_ZONE.col1 - 1,
+      BOTTLENECK_ZONE.row1 - 1,
+    );
     expect(harness.debug.snapshot().build?.valid).toBe(true);
     harness.dispose();
   });
