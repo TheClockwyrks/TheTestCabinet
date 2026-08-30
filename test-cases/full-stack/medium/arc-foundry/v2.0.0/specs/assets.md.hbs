@@ -103,8 +103,7 @@ crisp at every scale the stage is fitted to.
 | Combination base | `combos/<id>/base.png` | `40 x 40` | The fixed mount, one per tower. |
 | Combination head | `combos/<id>/head.png` | `40 x 40` | The rotating head, one per tower. A tower has no tier variants. |
 | Blocker | `blocker.png` | `40 x 40` | The inert fused rock an unharvested candidate hardens into. |
-| Projectile | `projectiles/<type>.png` | `12 x 12` | The traveling shot, one per firing base type: seven sprites. |
-| Load unit | `load/<type>/0.png` | `20 x 20`, the Slug and the Dynamo `32 x 32` | The unit's first idle frame, which doubles as its still sprite. |
+| Projectile | `projectiles/<type>.png` | `12 x 12` | The traveling shot, one per firing base type: seven sprites. A combination tower's shot reuses the sprite of the base type its dominant output matches. |
 | Charge icon | `icons/charge.png` | `16 x 16` | The status bar's Charge mark. |
 | Integrity icon | `icons/integrity.png` | `16 x 16` | The status bar's Grid Integrity mark. |
 | Type icon | `icons/type-<type>.png` | `16 x 16` | One glyph per base component type, for the panel. |
@@ -131,7 +130,7 @@ four frames, `0.png` through `3.png`, played as a loop.
 
 | Cycle | Path | What it shows |
 | --- | --- | --- |
-| Load idle | `load/<type>/0.png` .. `3.png` | The unit seething with charge as it travels. One cycle per Load type, six in all. The Dynamo's carries a visible overload wobble. |
+| Load idle | `load/<type>/0.png` .. `3.png` | The unit seething with charge as it travels, at `20 x 20`, and `32 x 32` for the Slug, the Dynamo, and the Overload Dynamo. One cycle per Load type, seven in all counting the Overload Dynamo. Frame `0` doubles as the unit's still sprite. The Dynamo's carries a visible overload wobble. |
 | Component firing | `components/<type>/fire/0.png` .. `3.png` | The head's charge-and-discharge, played once per shot. One cycle per firing base type, seven in all. |
 | Regulator idle | `components/regulator/fire/0.png` .. `3.png` | The Regulator's slow aura pulse, played as a loop rather than on a shot, since it never fires. |
 | Combination firing | `combos/<id>/fire/0.png` .. `3.png` | The tower's discharge, played once per shot. One cycle per tower, twelve in all. |

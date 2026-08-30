@@ -91,18 +91,21 @@ stage's logical units, `col` and `row` are tile coordinates, and an `id` is a st
 or a unit's identifier as `snapshot` reports it.
 
 {{#if (eq engine.slug "none")}}
-Each operation takes only the parameters its table names. A pose returns nothing; a
-reading returns what it read and changes nothing.
+Each operation takes only the parameters its table names, and an operation whose name
+carries no parameter list takes none. A pose returns nothing; a reading returns what it
+read and changes nothing.
 {{else if (eq engine.slug "simple-2d")}}
 Each operation's first parameter is the current state, `DeepReadonly<FoundryState>`,
-before the parameters its table names. A pose returns the next `FoundryState`, built from
+before the parameters its table names, so an operation whose name carries no parameter
+list takes the state alone. A pose returns the next `FoundryState`, built from
 the one it was handed, which it leaves as it was; a reading returns what it read. A
 caller drives a pose through the engine's `apply`, as
 `engine.apply((s) => debug.setCharge(s, 500))`, and a reading against the engine's
 current state, as `debug.snapshot(engine.state)`.
 {{else}}
-Each operation takes only the parameters its table names and acts on the live world the
-moment it is called. A pose returns nothing; a reading returns what it read and changes
+Each operation takes only the parameters its table names, and an operation whose name
+carries no parameter list takes none. Each acts on the live world the moment it is
+called. A pose returns nothing; a reading returns what it read and changes
 nothing.
 {{/if}}
 
@@ -128,10 +131,10 @@ scales what `advance` covers exactly as it scales a real frame.
 
 | Operation | Returns |
 | --- | --- |
-| `snapshot()` | The plain object under Snapshot shape below. |
-| `panelButtons()` | The build panel inspector's action controls for the selected structure, in slot order. |
-| `menuButtons()` | The choices of the menu screen currently showing, in the order they are presented. |
-| `statusControls()` | The status bar's speed, pause, and mute controls, in the order they are drawn. |
+| `snapshot` | The plain object under Snapshot shape below. |
+| `panelButtons` | The build panel inspector's action controls for the selected structure, in slot order. |
+| `menuButtons` | The choices of the menu screen currently showing, in the order they are presented. |
+| `statusControls` | The status bar's speed, pause, and mute controls, in the order they are drawn. |
 
 `panelButtons` and `menuButtons` each return an array of
 `{ action, label, x, y, w, h, disabled }`. `label` is the text as drawn, `x`, `y`, `w`,
@@ -173,7 +176,7 @@ a choice.
 | `reset(options)` | Returns the game to its title state. `options` is optional, and `options.seed` seeds every random draw, defaulting to `DEFAULT_SEED` (`1`). It clears the map and difficulty back to their defaults, empties the yard, and returns Charge, Grid Integrity, refinement, the wave counter, the Maze Rating, and the simulation clock to their opening values. The mute bit is untouched. |
 | `setMap(map)` | Sets the map the next run opens on: `"substation"`, `"switchyard"`, or `"transformer"`. It defaults to `"substation"`. |
 | `setDifficulty(difficulty)` | Sets the difficulty the next run opens at: `"easy"`, `"medium"`, or `"hard"`. It defaults to `"medium"`. |
-| `startRun()` | Begins a run on the current map at the current difficulty, exactly as confirming the difficulty select does, and opens it on its first build phase. |
+| `startRun` | Begins a run on the current map at the current difficulty, exactly as confirming the difficulty select does, and opens it on its first build phase. |
 | `setScreen(screen)` | Moves to a named screen, exactly as reaching it in play does. `screen` is one of the eight identifiers in `specs/ui.md`. |
 | `setMenuIndex(index)` | Sets the highlighted entry on the menu screen showing, counted from `0`. |
 | `setPaused(paused)` | Engages or releases the in-place pause. |
@@ -194,23 +197,23 @@ a choice.
 
 | Operation | Effect |
 | --- | --- |
-| `clearStructures()` | Removes every candidate, component, combination tower, and blocker from the yard, reopens their tiles, clears the selection and the combine set, and recomputes the route. |
+| `clearStructures` | Removes every candidate, component, combination tower, and blocker from the yard, reopens their tiles, clears the selection and the combine set, and recomputes the route. |
 | `setNextRoll(type, quality)` | Arms the exact component the next placed rock rolls. `type` is a base component identifier and `quality` is `1` through `5`. The rock still enters through the real placement path; this fixes only what it rolls. |
-| `clearNextRoll()` | Clears the arming and returns the press to its seeded random roll. |
+| `clearNextRoll` | Clears the arming and returns the press to its seeded random roll. |
 | `placeRock(col, row)` | Drops a rock at the anchor tile through the real placement path: it rolls, becomes a candidate, spends one stamp, and the route is recomputed. It is refused exactly as a pointer press would be when the footprint is illegal, and the refusal is readable in the snapshot. |
 | `placeComponent(type, quality, col, row)` | Places a permanent firing component of that type at that quality, at the anchor tile, as though it had been harvested there. It spends no stamp, consumes no harvest, and starts no wave. |
 | `placeCombo(combo, col, row)` | Places a combination tower at upgrade level `0` at the anchor tile. `combo` is a tower identifier. |
 | `placeBlocker(col, row)` | Places an inert blocker at the anchor tile. |
 | `select(id)` | Selects a structure, as a pointer press on it would. |
-| `clearSelection()` | Clears the selection and the combine set. |
+| `clearSelection` | Clears the selection and the combine set. |
 | `addToCombineSet(id)` | Adds one base structure to the explicit combine set, or removes it when it is already in the set. |
-| `clearCombineSet()` | Empties the explicit combine set and leaves the selection as it is. |
+| `clearCombineSet` | Empties the explicit combine set and leaves the selection as it is. |
 | `keep(id)` | Harvests a candidate as a permanent component. It is the level's harvest, so it starts the wave. |
 | `downgrade(id)` | Harvests a candidate as a permanent component one quality tier lower. It is the harvest, so it starts the wave. |
 | `combine(id)` | Commits a combine from the initiating structure: a quality fold of a matching pair, or a reachable recipe. With a combine set it folds exactly that set; otherwise it resolves the ingredients itself, preferring a candidate over a standing structure. It starts the wave when it consumes a candidate and leaves the phase running when it folds standing structures only. |
 | `dismantle(id)` | Removes a structure, reopens its tiles, and recomputes the route. |
 | `setTargeting(id, priority)` | Sets a firing structure's targeting priority to one of the five. |
-| `upgradeQuality()` | Buys the next refinement level for Charge. |
+| `upgradeQuality` | Buys the next refinement level for Charge. |
 | `upgradeCombo(id)` | Raises a combination tower's upgrade level by one, for Charge. |
 
 The three `place` operations pose a yard directly, so a scenario stands up exactly the
@@ -221,8 +224,8 @@ structures its requirement is about. Each is refused on an illegal footprint exa
 
 | Operation | Effect |
 | --- | --- |
-| `clearUnits()` | Removes every live unit from the yard without paying a bounty or costing Grid Integrity. |
-| `clearProjectiles()` | Removes every projectile in flight without applying its damage. |
+| `clearUnits` | Removes every live unit from the yard without paying a bounty or costing Grid Integrity. |
+| `clearProjectiles` | Removes every projectile in flight without applying its damage. |
 | `spawnUnit(type)` | Releases one unit at the map's entry through the real spawner, scaled to the current wave. `type` is `"mote"`, `"spark"`, `"slug"`, `"cluster"`, `"filament"`, `"dynamo"`, or `"overload"`. |
 | `setUnitPosition(id, x, y)` | Moves a live unit to a logical position. |
 | `setUnitWaypoint(id, index)` | Sets the chain node a live unit is heading for, `1` through `k + 1`. |
