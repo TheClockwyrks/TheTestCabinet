@@ -25,6 +25,12 @@ mode and difficulty and nothing else.
 | Bottleneck | 300 | 20 | 20 | yes | yes | Columns 13 to 36, rows 8 to 27 |
 | Sudden Death | 300 | 20 | 1 | yes | yes | The whole floor |
 
+The table is `MODE_TABLE`, over the three Containment rows of
+`DIFFICULTY_TABLE`. The starting lives are `START_LIVES` (`20`) on every mode but
+Sudden Death, whose `SUDDEN_DEATH_LIVES` is `1`, and the four fixed starting
+sums are `HUNDRED_MONEY` (`600`), `DEEP_POCKETS_MONEY` (`10000`),
+`BOTTLENECK_MONEY` (`300`), and `SUDDEN_DEATH_MONEY` (`300`).
+
 A run that has just started is in the `opening` phase on Wave 1, with its money
 at that row's starting money and its lives at that row's starting lives.
 

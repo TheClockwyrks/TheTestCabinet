@@ -38,8 +38,9 @@ A footprint's size and shape are the same at every rotation.
 
 Size is the footprint's side in tiles, cost is in money, range is a radius in
 tiles, fire rate is shots per second, and `heatPerShot` is the heat one shot adds
-before mass divides it. Every figure in the table is a level I figure except
-size, redline, and mass, which no upgrade changes.
+before mass divides it. An upgrade moves four of these figures and no others,
+under Levels below: range, fire rate, base damage, and `heatPerShot`. Those four
+are given at level I. Size, cost, redline, and mass are the same at every level.
 
 Each emitter has a stance the figures give it:
 
