@@ -1,25 +1,85 @@
-// Deepcore — world.buildings-on-the-ground. STUB: NOT YET AUTHORED.
+// world/buildings-on-the-ground — every building rises from the camp ground.
 //
-// Every building stands on the ground line
+// `specs/world.md` leaves where the six buildings stand to the build and fixes
+// two things about each footprint: "Every footprint's base sits on the ground
+// line: `y + h` equals `SURFACE_Y` (`80`), and the building rises from there into
+// the open sky", and "Every footprint lies within columns `1`–`30`". A building
+// floating above the ground, or sunk into the first row of rock, or standing over
+// the bedrock border, is one a prospector walking the camp cannot reach the way
+// the camp is meant to be walked.
 //
-// Each of the six building footprints has y + h equal to SURFACE_Y (80) and
-// lies within columns 1 to 30, so every building rises from the camp ground
-// into the open sky and none sits over the border.
+// The footprints are read through `buildings()`, which
+// `specs/instrumentation.md` has report "`{ id, x, y, w, h }`, with `id` the
+// building's id and `x`, `y`, `w`, `h` its footprint in world units". Each of the
+// six ids `specs/world.md` names is looked up by name, so a build that reported
+// five fails here naming the one that is not standing on the ground.
 //
-// Automated validation: read buildings() and hold each footprint base against
-// SURFACE_Y and each horizontal extent inside the playable columns.
-//
-// `test-case.toml` declares this suite as `world/buildings-on-the-ground.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (camp (image)) around the drive.
+// Columns `1`–`30` span world `x` from `TILE` to `(PLAYABLE_COL_MAX + 1) * TILE`,
+// which is `80` to `2480`, since a cell's rectangle runs from `col * TILE`.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  BUILDINGS,
+  PLAYABLE_COL_MAX,
+  PLAYABLE_COL_MIN,
+  SURFACE_Y,
+  TILE,
+} from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+  fail,
+} from "../assert";
+import {
+  captureStill,
+  createHarness,
+  layCamp,
+  openScene,
+  pinDrill,
+  standAtCamp,
+  type Harness,
+} from "../harness";
 
-test("Every building stands on the ground line", () => {
-  throw new Error(
-    "Deepcore validator `world/buildings-on-the-ground` is declared in test-case.toml but has not been authored yet.",
-  );
+/** The world `x` the playable columns run between. */
+const FIELD_LEFT = PLAYABLE_COL_MIN * TILE;
+const FIELD_RIGHT = (PLAYABLE_COL_MAX + 1) * TILE;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("sits every footprint's base on the ground line, inside the playable columns", async () => {
+  openScene(h);
+  layCamp(h);
+  standAtCamp(h);
+  pinDrill(h);
+  await h.advance(2);
+
+  const boxes = h.debug.buildings();
+  for (const id of BUILDINGS) {
+    const box = boxes.find((entry) => entry.id === id);
+    if (box === undefined) {
+      fail(
+        `a footprint for the "${id}" specs/world.md names`,
+        `buildings() reported ${boxes.length === 0 ? "none" : boxes.map((b) => b.id).join(", ")}`,
+      );
+    }
+    assertEqual(box.y + box.h, SURFACE_Y, `the base of "${id}"`);
+    assertGreaterThanOrEqual(box.x, FIELD_LEFT, `the left edge of "${id}"`);
+    assertLessThanOrEqual(
+      box.x + box.w,
+      FIELD_RIGHT,
+      `the right edge of "${id}"`,
+    );
+  }
+
+  // The picture: the camp the six buildings stand on.
+  captureStill(h, "camp");
 });
