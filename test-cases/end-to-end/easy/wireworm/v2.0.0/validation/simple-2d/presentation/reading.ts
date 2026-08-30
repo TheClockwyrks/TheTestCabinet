@@ -18,7 +18,7 @@
 // their marks happened to differ in AREA. So the reading is the mean of the
 // brightest {@link LIT_FRACTION} of the box's pixels: the mark itself, which is
 // what a player's eye goes to and what specs/overview.md's legibility table is
-// written about ("each state is visibly brighter or more energetic than the one
+// written about ("each state is drawn visibly brighter than the one
 // below it").
 //
 // The same reading is taken off bare board, where every pixel is the same colour

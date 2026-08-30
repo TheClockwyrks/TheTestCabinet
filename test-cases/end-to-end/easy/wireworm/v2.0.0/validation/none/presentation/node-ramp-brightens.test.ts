@@ -1,8 +1,8 @@
 // Wireworm — presentation/node-ramp-brightens: the ramp climbs toward critical.
 //
 // specs/overview.md's legibility table: the four charge states "read as a ramp:
-// each state is visibly brighter or more energetic than the one below it, with
-// critical the most so". That is a rule about ORDER rather than about any
+// each state is drawn visibly brighter than the one below it, with critical the
+// brightest. The palette is yours". That is a rule about ORDER rather than about any
 // colour, which is what makes it checkable while the palette stays the build's:
 // whatever four colours the build chose, the brightness of the tile a node
 // paints must climb at every step from inert to critical.
@@ -32,6 +32,20 @@ import {
   type Harness,
 } from "../harness";
 import { brightness, litTile } from "./reading";
+
+/**
+ * How much brighter each state must read than the one below it, on the 0–255
+ * brightness scale.
+ *
+ * specs/overview.md asks for "visibly brighter", not for a stated step, and it
+ * fixes no palette — so the bar is what a measurement can honestly call an
+ * increase rather than a rounding. Each reading is the mean of the lit fraction
+ * of a tile, so the noise floor is the canvas's own rounding, under a level; `4`
+ * is several times that and is a step a player reads as a change of state. The
+ * `none`, `simple-2d` and `structured-2d` suites read the same figure over the
+ * same four columns.
+ */
+const STEP_MIN = 4;
 
 /** The row the four nodes are posed on: mid-board, clear of the player band. */
 const RAMP_ROW = 8;
@@ -72,11 +86,12 @@ it("brightens the node's tile at every step of the charge ramp", async () => {
 
   for (let charge = 1; charge <= CHARGE_MAX; charge += 1) {
     assertGreaterThan(
-      lit[charge],
-      lit[charge - 1],
-      `charge ${charge} to read brighter than charge ${charge - 1} ` +
-        `(specs/overview.md: each state is visibly brighter or more energetic ` +
-        `than the one below it, with critical the most so); charge ` +
+      lit[charge] - lit[charge - 1],
+      STEP_MIN,
+      `charge ${charge} to read at least ${STEP_MIN} brighter than charge ` +
+        `${charge - 1} ` +
+        `(specs/overview.md: each state is drawn visibly brighter than the ` +
+        `one below it, with critical the brightest); charge ` +
         `${charge - 1} sampled a brightness of ${lit[charge - 1].toFixed(1)} ` +
         `of 255`,
     );
