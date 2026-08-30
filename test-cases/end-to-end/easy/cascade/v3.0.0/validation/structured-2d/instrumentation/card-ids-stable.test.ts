@@ -1,23 +1,82 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/instrumentation/card-ids-stable.test.ts
+// instrumentation/card-ids-stable — a card keeps its id when it moves.
 //
-// The review item `instrumentation.card-ids-stable` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/instrumentation.md, under Identity: "A card keeps its id for
+// as long as it is on the table, across every move, turn, flip, and recycle,
+// and a card that launches keeps it as a flyer." That is the rule that makes an
+// id worth reading: a scenario notes the id of the card it cares about, drives
+// the game, and finds that card again wherever the rules put it. A build that
+// rebuilds a card on arrival — a fresh object with a fresh number — leaves every
+// such reading following a card that no longer exists.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE MOVE IS THE PLAINEST ONE THERE IS: an Ace off a column onto an empty
+// foundation, which specs/foundations.md accepts from any suit. Nothing else is
+// on the table, so the card the foundation reports afterwards can only be the
+// card the column gave it, and the reading is its number.
 //
-// What this item must decide, from the manifest:
+// THE READING NAMES THE SUIT AND RANK TOO, so a failure says whether the build
+// moved the wrong card or renumbered the right one.
 //
-//   A card keeps its id across a move
-//
-//   A card moved from a column to a foundation is reported with the id it carried before the move.
+// WHAT IT DOES NOT DECIDE. That an empty foundation accepts an Ace is
+// `foundations.ace-starts-empty`; that ids are distinct in the first place is
+// `instrumentation/card-ids-distinct`.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
+import {
+  ACE,
+  captureStill,
+  card,
+  createHarness,
+  openTable,
+  pileOf,
+  poseColumn,
+  topOf,
+  type Harness,
+} from "../harness";
 
-it("instrumentation.card-ids-stable — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/instrumentation/card-ids-stable.test.ts is a scaffold stub, not a validator",
+/** The card that moves: an Ace, which an empty foundation takes from any suit. */
+const MOVED = card("spades", ACE);
+
+/** The column it is lifted from, and the empty foundation it lands on. */
+const COLUMN = 2;
+const FOUNDATION = 3;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reports the moved card on its foundation with the id it left the column with", async () => {
+  openTable(h);
+  const [id] = poseColumn(h, COLUMN, [MOVED]);
+
+  const accepted = h.debug.move("tableau", COLUMN, 0, "foundation", FOUNDATION);
+  const after = h.snapshot();
+
+  await h.advance(1);
+  captureStill(h, "moved");
+
+  assertEqual(
+    accepted,
+    true,
+    `move() to accept the ${MOVED.suit} Ace onto empty foundation ` +
+      `${FOUNDATION}: a foundation holding nothing accepts an Ace of any ` +
+      "suit (specs/foundations.md)",
+  );
+
+  const arrived = topOf(pileOf(after, "foundation", FOUNDATION));
+  assertDeepEqual(
+    arrived === undefined
+      ? null
+      : { suit: arrived.suit, rank: arrived.rank, id: arrived.id },
+    { suit: MOVED.suit, rank: MOVED.rank, id },
+    `the card on foundation ${FOUNDATION} after the move: a card keeps its ` +
+      "id for as long as it is on the table, across every move " +
+      "(specs/instrumentation.md)",
   );
 });
