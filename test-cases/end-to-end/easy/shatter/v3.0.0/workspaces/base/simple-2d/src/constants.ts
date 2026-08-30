@@ -10,14 +10,14 @@
 // no value here is ever expressed in real pixels and gameplay never leaves
 // logical space. Every position is an entity's CENTRE.
 //
-// Every rate is PER SECOND and every duration is in SECONDS, with one deliberate
-// exception: FIRE_INTERVAL_TICKS and TRAIL_TICKS are in whole simulation ticks,
+// Every rate is PER SECOND and every duration is in SECONDS, with two deliberate
+// exceptions: FIRE_INTERVAL_TICKS and TRAIL_TICKS are in whole simulation ticks,
 // because `specs/weapons.md` fixes them that way. The engine hands the game the
 // real elapsed seconds of each frame and imposes no timestep of its own;
 // `specs/simulation.md` fixes the game's own, TICK_HZ, which the build runs by
 // accumulating those deltas.
 //
-// What is NOT here is the look. No colour, no font stack and no HUD layout
+// What is NOT here is the look. No color, no font stack and no HUD layout
 // figure: `specs/overview.md` leaves the palette, the type and every other
 // aspect of the appearance to the build, and BACKGROUND is the build's own
 // export from `src/game.ts`.
