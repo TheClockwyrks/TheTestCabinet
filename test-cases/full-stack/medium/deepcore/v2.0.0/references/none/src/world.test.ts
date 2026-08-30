@@ -24,12 +24,20 @@ import type { Band, Tile, TileKind } from "./types";
 const CORE_ROW = STANDARD_ROWS;
 const PLAYABLE_COLS = PLAYABLE_COL_MAX - PLAYABLE_COL_MIN + 1;
 
-function mine(seed: number): { grid: Tile[][]; nodes: { col: number; row: number }[] } {
+function mine(seed: number): {
+  grid: Tile[][];
+  nodes: { col: number; row: number }[];
+} {
   return generateMine(new Rng(seed), CORE_ROW);
 }
 
 /** Count cells of a kind in a band, against the count its share asks for. */
-function share(grid: Tile[][], band: Band, kind: TileKind, densityAt: (f: number) => number) {
+function share(
+  grid: Tile[][],
+  band: Band,
+  kind: TileKind,
+  densityAt: (f: number) => number,
+) {
   let got = 0;
   let want = 0;
   for (let row = 1; row < CORE_ROW; row++) {
@@ -87,7 +95,9 @@ describe("generation", () => {
       ];
       for (const [band, kind, densityAt] of checks) {
         const { got, want } = share(grid, band, kind, densityAt);
-        expect(Math.abs(got - want) / want).toBeLessThanOrEqual(DENSITY_TOLERANCE);
+        expect(Math.abs(got - want) / want).toBeLessThanOrEqual(
+          DENSITY_TOLERANCE,
+        );
       }
       // Ore is the same share at every depth, over the rows it may appear in.
       let ore = 0;
@@ -97,7 +107,9 @@ describe("generation", () => {
         }
       }
       const wantOre = (CORE_ROW - ORE_MIN_ROW) * PLAYABLE_COLS * ORE_DENSITY;
-      expect(Math.abs(ore - wantOre) / wantOre).toBeLessThanOrEqual(DENSITY_TOLERANCE);
+      expect(Math.abs(ore - wantOre) / wantOre).toBeLessThanOrEqual(
+        DENSITY_TOLERANCE,
+      );
     }
   });
 
@@ -108,8 +120,10 @@ describe("generation", () => {
       const band = bandAtFraction(f);
       for (let col = PLAYABLE_COL_MIN; col <= PLAYABLE_COL_MAX; col++) {
         const kind = grid[row]![col]!.kind;
-        if (band === "topsoil") expect(kind === "stone" || kind === "gas").toBe(false);
-        if (band === "topsoil" || band === "rockbed") expect(kind).not.toBe("lava");
+        if (band === "topsoil")
+          expect(kind === "stone" || kind === "gas").toBe(false);
+        if (band === "topsoil" || band === "rockbed")
+          expect(kind).not.toBe("lava");
       }
     }
   });
@@ -174,7 +188,8 @@ describe("generation", () => {
           stack.push([nc, nr]);
         }
       }
-      for (const node of m.nodes) expect(seen.has(key(node.col, node.row))).toBe(true);
+      for (const node of m.nodes)
+        expect(seen.has(key(node.col, node.row))).toBe(true);
       expect(seen.has(key(CORE_COL, CORE_ROW))).toBe(true);
     }
   });
