@@ -1,25 +1,100 @@
-// Deepcore — assets.gas-seep-round-robin. STUB: NOT YET AUTHORED.
+// assets/gas-seep-round-robin — every visible pocket breathes in its turn.
 //
-// Every visible gas pocket wisps in turn
+// `specs/hazards.md`: "Seeps are emitted over the gas pockets currently on screen
+// in round-robin turn, so every visible pocket wisps within `GAS_SEEP_PERIOD`
+// (`2`) seconds and a player watching a suspect cell sees it breathe."
+// `specs/assets.md` gives the seep its produced system and describes it as "A faint
+// wisp of pale gas rising from the cell".
 //
-// The gas-seep system is emitted over the gas pockets currently on screen in
-// round-robin turn, so every visible pocket wisps within GAS_SEEP_PERIOD (2)
-// seconds and a player watching a suspect cell sees it breathe.
+// EVERY pocket is what makes this a round robin rather than one emitter. So three
+// pockets are posed across the view and all three are watched over ONE
+// `GAS_SEEP_PERIOD`, in a single pass rather than one at a time, because the
+// requirement is about what happens to all of them over the same stretch of time.
+// Each cell has to draw more than it draws with no seep over it, and that baseline
+// is taken from the same cells posed as PLAIN ROCK — which is exactly how
+// `specs/overview.md` says a gas pocket is drawn, so the difference is the wisp and
+// not the tile.
 //
-// Automated validation: pose several gas pockets in view, advance
-// GAS_SEEP_PERIOD and hold at least one seep emitted over each of them.
+// THE WINDOW IS THE SECOND ONE, not the first. Whatever a build's turn-taking is
+// timed off, it was not counting the pockets before they existed, so the period
+// straight after they are posed is one the requirement says nothing about. A whole
+// `GAS_SEEP_PERIOD` is let run first and the pockets are watched over the one
+// after it, which is the steady state the sentence describes.
 //
-// `test-case.toml` declares this suite as `assets/gas-seep-round-robin.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (seep (replay)) around the drive.
+// The miner stands clear of all three with its travel and drill held, so nothing is
+// cut, nothing detonates, and no other effect is playing over any of them.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  GAS_SEEP_PERIOD,
+  PLAYABLE_COL_MIN,
+  TILE,
+} from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  cellCenter,
+  createHarness,
+  layFloor,
+  openScene,
+  pinDrill,
+  pinMiner,
+  standOn,
+  ticks,
+  worldToStage,
+  type Harness,
+} from "../harness";
+import { peaksNear } from "./effects";
 
-test("Every visible gas pocket wisps in turn", () => {
-  throw new Error(
-    "Deepcore validator `assets/gas-seep-round-robin` is declared in test-case.toml but has not been authored yet.",
+/** A rockbed row, the shallowest band `specs/world.md` puts gas in. */
+const ROW = 200;
+const MINER_COL = PLAYABLE_COL_MIN + 2;
+
+/** Three pockets, spread across the view and clear of the miner. */
+const POCKET_COLS = [MINER_COL + 3, MINER_COL + 5, MINER_COL + 7];
+
+/** Frames the baseline is taken over. */
+const BASELINE_FRAMES = 6;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness({ assets: true });
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("wisps over each visible pocket inside one seep period", async () => {
+  openScene(h);
+  pinDrill(h);
+  layFloor(h, ROW + 1);
+  standOn(h, MINER_COL, ROW + 1);
+  pinMiner(h);
+  for (const col of POCKET_COLS) h.debug.setTile(col, ROW, "rock");
+  await h.advance(2);
+
+  const snapshot = h.snapshot();
+  const points = POCKET_COLS.map((col) => {
+    const centre = cellCenter(col, ROW);
+    return worldToStage(snapshot, centre.x, centre.y);
+  });
+
+  const rock = await peaksNear(h, BASELINE_FRAMES, TILE, points);
+
+  // One seep period is exactly `ticks(GAS_SEEP_PERIOD)` frames of the harness
+  // clock, so the watch covers the window the specification names.
+  const period = ticks(GAS_SEEP_PERIOD);
+  const gas = await captureReplay(h, "seep", async () => {
+    for (const col of POCKET_COLS) h.debug.setTile(col, ROW, "gas");
+    await h.advance(period);
+    return peaksNear(h, period, TILE, points);
+  });
+
+  const quiet = gas.flatMap((peak, at) =>
+    peak <= rock[at] ? [POCKET_COLS[at]] : [],
   );
+
+  assertEqual(quiet.join(", "), "", "specs/hazards.md");
 });

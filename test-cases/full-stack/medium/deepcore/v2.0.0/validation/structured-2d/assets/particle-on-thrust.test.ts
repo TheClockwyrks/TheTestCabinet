@@ -1,23 +1,82 @@
-// Deepcore — assets.particle-on-thrust. STUB: NOT YET AUTHORED.
+// assets/particle-on-thrust — the exhaust plays under a thrusting miner.
 //
-// Thrusting plays the jetpack exhaust
+// `specs/assets.md`: `jetpack-exhaust.json` fires while "The miner is thrusting"
+// and carries "A downward plume of hot exhaust and sparks, pulsing with the hold".
+// So the drawing under the miner is counted twice over one cleared shaft: falling
+// with nothing held, and climbing with thrust held. `specs/character.md` makes the
+// first genuinely quiet — falling costs no fuel and carries no effect of its own —
+// so the difference is the plume.
 //
-// The jetpack-exhaust system is played under the miner while thrust is held.
+// The point measured MOVES with the miner, because that is what the requirement
+// says: the plume is under the jetpack rather than at the place the climb started.
+// It is re-read before every frame of both readings.
 //
-// Automated validation: hold thrust in a cleared shaft and observe an instance
-// of jetpack-exhaust played under the miner.
-//
-// `test-case.toml` declares this suite as `assets/particle-on-thrust.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (exhaust (replay)) around the drive.
+// The mine is cleared and the drill is held, so nothing is cut, nothing is landed
+// on, and no other effect can be playing.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  MINER_H,
+  MINER_W,
+  PLAYABLE_COL_MIN,
+  TILE,
+} from "../../src/constants";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  ACTION_KEY,
+  captureReplay,
+  createHarness,
+  minerXOn,
+  openScene,
+  pinDrill,
+  placeAt,
+  worldToStage,
+  type Harness,
+} from "../harness";
+import { peakNear } from "./effects";
 
-test("Thrusting plays the jetpack exhaust", () => {
-  throw new Error(
-    "Deepcore validator `assets/particle-on-thrust` is declared in test-case.toml but has not been authored yet.",
-  );
+const ROW = 200;
+const COL = PLAYABLE_COL_MIN + 8;
+
+/** Frames each reading is taken over. */
+const FRAMES = 20;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness({ assets: true });
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws more under the miner while thrusting than while falling", async () => {
+  openScene(h);
+  pinDrill(h);
+  placeAt(h, minerXOn(COL), ROW * TILE);
+  await h.advance(2);
+
+  /** The point under the miner's feet, wherever it is now. */
+  const under = (): { x: number; y: number } => {
+    const snapshot = h.snapshot();
+    return worldToStage(
+      snapshot,
+      snapshot.miner.x + MINER_W / 2,
+      snapshot.miner.y + MINER_H,
+    );
+  };
+
+  const falling = await peakNear(h, FRAMES, TILE, under);
+
+  const thrusting = await captureReplay(h, "exhaust", async () => {
+    h.hold(ACTION_KEY.up);
+    const peak = await peakNear(h, FRAMES, TILE, under);
+    const snapshot = h.snapshot();
+    h.release(ACTION_KEY.up);
+    return { peak, snapshot };
+  });
+
+  assertEqual(thrusting.snapshot.miner.state, "jetpack", "specs/character.md");
+  assertGreaterThan(thrusting.peak, falling, "specs/assets.md");
 });
