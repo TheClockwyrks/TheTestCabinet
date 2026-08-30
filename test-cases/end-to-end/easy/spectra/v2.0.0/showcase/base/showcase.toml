@@ -1,0 +1,11 @@
+# SCAFFOLD PLACEHOLDER. The showcase stage replaces this file with the real
+# carousel: a leading `.json.gz` replay of sustained play, then two stills from
+# the same take, captured from `references/simple-2d/base`.
+#
+# One entry is the minimum a showcase may declare, and `placeholder.png` is a flat
+# swatch rather than a capture — it is here only so the manifest resolves, and it
+# goes with this comment.
+
+[[media]]
+file = "placeholder.png"
+name = "Placeholder — the showcase has not been captured yet"
