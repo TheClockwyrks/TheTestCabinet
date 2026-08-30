@@ -19,7 +19,9 @@ function fixed(value: number): string {
 }
 
 /** Register every diagnostic source, each a read of the state it is given. */
-export function registerDiagnostics(api: InitApi<WirewormState>): void {
+export function registerDiagnostics(
+  api: Pick<InitApi<WirewormState>, "diagnostics">,
+): void {
   api.diagnostics.register(
     "screen",
     (state) => `${state.screen} / ${state.phase} ${fixed(state.phaseTimer)}s`,
