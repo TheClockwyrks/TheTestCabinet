@@ -227,10 +227,15 @@ export const SHAKE_FADE = 0.3;
 
 // ---- The upgrade ladders, as the shop reads them -------------------------
 
-/** The Credits the next tier on a track costs, or `null` once it is maxed out. */
+/**
+ * The Credits the next tier on a track costs, or `null` once it is maxed out.
+ *
+ * `UPGRADE_PRICES` is indexed by the tier being LEFT, counted from zero, so the
+ * step out of tier `1` takes the ladder's first rung.
+ */
 export function upgradePrice(track: TrackName, tier: number): number | null {
   if (tier >= MAX_TIER[track]) return null;
-  return UPGRADE_PRICES[tier] ?? null;
+  return UPGRADE_PRICES[tier - 1] ?? null;
 }
 
 /** The drill's rung as the shop reads it: a power rating rather than raw damage. */

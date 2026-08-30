@@ -20,11 +20,22 @@ import {
   type Engine,
   type SurfaceMetrics,
 } from "@test-cabinet/simple-2d";
-import { STAGE_H, STAGE_W } from "./constants";
+import {
+  MINER_H,
+  MINER_W,
+  PLAYABLE_COL_MAX,
+  PLAYABLE_COL_MIN,
+  STAGE_H,
+  STAGE_W,
+  TILE,
+} from "./constants";
 import type { ActionName } from "./constants";
 import { ACTIONS } from "./constants";
 import type { DeepcoreDebugApi } from "./debug";
-import { BACKGROUND, game } from "./game";
+import { noAssets } from "./assets";
+import { commit, draft } from "./state";
+import type { Draft } from "./state";
+import { BACKGROUND, createInitialState, game } from "./game";
 import type { DeepcoreState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
@@ -197,4 +208,77 @@ export async function createHarness(): Promise<Harness> {
     },
     dispose: () => engine.destroy(),
   };
+}
+
+// ---- Scenes -------------------------------------------------------------
+
+/** An emptied mine on the in-mine screen, which every posed scene starts from. */
+export function openScene(h: Harness): void {
+  h.pose((debug, state) => debug.reset(state));
+  h.pose((debug, state) => debug.clearMine(state));
+  h.pose((debug, state) => debug.setScreen(state, "in-mine"));
+}
+
+/** Lay a floor of plain rock across the playable width of one row. */
+export function layFloor(h: Harness, row: number): void {
+  for (let col = PLAYABLE_COL_MIN; col <= PLAYABLE_COL_MAX; col += 1) {
+    h.pose((debug, state) => debug.setTile(state, col, row, "rock"));
+  }
+}
+
+/** Stand the miner on top of the cell `(col, row)`, centered on its column. */
+export function standOn(h: Harness, col: number, row: number): void {
+  h.pose((debug, state) =>
+    debug.setMinerPosition(
+      state,
+      col * TILE + (TILE - MINER_W) / 2,
+      row * TILE - MINER_H,
+    ),
+  );
+  h.pose((debug, state) => debug.setMinerVelocity(state, 0, 0));
+}
+
+/** Put the miner's box at a world position, at rest. */
+export function placeAt(h: Harness, x: number, y: number): void {
+  h.pose((debug, state) => debug.setMinerPosition(state, x, y));
+  h.pose((debug, state) => debug.setMinerVelocity(state, 0, 0));
+}
+
+/** The world y a miner standing on top of `row` rests its box at. */
+export function feetOn(row: number): number {
+  return row * TILE - MINER_H;
+}
+
+// ---- Posing a state without an engine ------------------------------------
+
+/**
+ * A state with no loaded assets, on the in-mine screen over an empty mine.
+ *
+ * A rule that never reads the renderer can be exercised over one of these
+ * directly, with no engine and no canvas: open a draft, run the rule, and read
+ * the state it leaves. The frame's own tests still go through the engine.
+ */
+export function bareState(): DeepcoreState {
+  const state = createInitialState(noAssets());
+  return inDraft(state, (d) => {
+    d.screen = "in-mine";
+  });
+}
+
+/** Run one transition over a draft of `state` and return what it leaves. */
+export function inDraft(
+  state: DeepReadonly<DeepcoreState>,
+  apply: (d: Draft) => void,
+): DeepcoreState {
+  const d = draft(state);
+  apply(d);
+  return commit(d);
+}
+
+/** Put the miner's box at a world position, at rest, in a draft. */
+export function posedAt(d: Draft, x: number, y: number): void {
+  d.miner.x = x;
+  d.miner.y = y;
+  d.miner.vx = 0;
+  d.miner.vy = 0;
 }
