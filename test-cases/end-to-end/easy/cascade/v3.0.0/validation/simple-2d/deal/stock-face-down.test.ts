@@ -1,23 +1,53 @@
-// SCAFFOLD PLACEHOLDER — validation/simple-2d/deal/stock-face-down.test.ts
+// deal/stock-face-down — every card a deal puts in the stock is face-down.
 //
-// The review item `deal.stock-face-down` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/deal.md: "The remaining `DEAL_STOCK_CARDS` (`24`) cards form the
+// stock, face-down, in the order they were left in after the tableau was dealt." A
+// face-up stock hands the player the whole reserve at a glance, which is
+// information Klondike does not give.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// EVERY CARD IS NAMED. Each stock card is its own assertion carrying its row from
+// the bottom of the pile, so a build that turns only its top card face-up fails
+// with that row named.
 //
-// What this item must decide, from the manifest:
-//
-//   The stock is face-down
-//
-//   Every stock card is face-down.
+// WHAT IT LEAVES ALONE. The faces alone. How many cards the stock holds is
+// `deal/stock-count`, and the order they are in is not a claim this item makes:
+// specs/deal.md fixes the dealt order, but a shuffled deck makes any particular
+// order unobservable from outside, and `instrumentation/reset-seed-repeats-deal`
+// is what holds a build to dealing reproducibly.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  cardSpec,
+  createHarness,
+  openTable,
+  type Harness,
+} from "../harness";
 
-it("deal.stock-face-down — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/simple-2d/deal/stock-face-down.test.ts is a scaffold stub, not a validator",
-  );
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(() => {
+  harness?.dispose();
+});
+
+it("forms the stock face-down", async () => {
+  openTable(harness);
+  harness.debug.deal();
+
+  await harness.advance(1);
+  captureStill(harness, "dealt");
+
+  const { stock } = harness.snapshot();
+  for (const [row, card] of stock.entries()) {
+    assertEqual(
+      card.faceUp,
+      false,
+      `stock row ${row}, the card ${cardSpec(card)} face-down (specs/deal.md)`,
+    );
+  }
 });
