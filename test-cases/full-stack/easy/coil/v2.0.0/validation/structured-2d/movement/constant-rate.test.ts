@@ -1,30 +1,64 @@
-/*
- * Coil validator: `movement.constant-rate`. PLACEHOLDER.
- *
- * Eight ticks in a second of game time.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * One second of game time resolves exactly eight ticks, so ticks rises by
- * eight and the head travels eight cells.
- *
- * HOW:
- * pose a clear run ahead of the head, advance one second of game time on the
- * validator's own clock, and read ticks and the head cell.
- *
- * MEDIA IT MUST CAPTURE: rate (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// movement/constant-rate — one second of game time is exactly eight ticks.
+//
+// specs/movement.md: "The simulation advances in whole ticks of `TICK_SECONDS`
+// (`0.125`), which is eight ticks per second", and "a second of game time is
+// eight ticks whether the runtime delivered it in one update or in sixty". So the
+// figure is exact rather than approximate, and both witnesses are read: the
+// game's own tick counter, and the eight cells of travel that counter is supposed
+// to mean.
+//
+// The second is delivered on the harness's clock, which is `FRAME_HZ` frames of
+// `1 / FRAME_HZ` of a second — every one of them an exactly representable binary
+// fraction, so the second the build accumulates is a second and the reading does
+// not turn on the last bit of a repeating decimal.
 
-test("movement.constant-rate", () => {
-  throw new Error("validator not implemented: movement/constant-rate.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
+import { TICK_SECONDS } from "../../src/constants";
+import {
+  ahead,
+  arrangeStep,
+  captureReplay,
+  createHarness,
+  FRAME_HZ,
+  type Cell,
+  type Harness,
+} from "../harness";
+
+/** Ticks one second of game time is worth, as specs/movement.md fixes the rate. */
+const TICKS_PER_SECOND = Math.round(1 / TICK_SECONDS);
+
+/** Where the chain is posed: a clear run of far more than eight cells to its right. */
+const HEAD: Cell = { col: 5, row: 8 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("resolves eight ticks, and eight cells of travel, in one second", async () => {
+  const posed = arrangeStep(h, { head: HEAD, dir: "right", length: 3 });
+  assertEqual(posed.snapshot.ticks, 0, "ticks before the second");
+
+  const after = await captureReplay(h, "rate", async () => {
+    await h.advance(FRAME_HZ);
+    return h.snapshot();
+  });
+
+  assertEqual(
+    after.ticks,
+    TICKS_PER_SECOND,
+    "ticks in one second of game time",
+  );
+  assertCloseTo(after.simTime, 1, 6, "the second of game time delivered");
+  assertDeepEqual(
+    after.snake[0],
+    ahead(HEAD, "right", TICKS_PER_SECOND),
+    "the head after one second",
+  );
 });

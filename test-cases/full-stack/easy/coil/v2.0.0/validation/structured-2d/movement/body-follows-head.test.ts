@@ -1,33 +1,76 @@
-/*
- * Coil validator: `movement.body-follows-head`. PLACEHOLDER.
- *
- * Each segment takes the cell ahead of it.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * After a tick that eats nothing, every body segment holds the cell the
- * segment ahead of it held before the tick, so the chain stays contiguous with
- * no gap and no branch.
- *
- * HOW:
- * pose a chain several cells long, run one tick, and compare the new chain
- * against the old one shifted by a cell.
- *
- * MEDIA IT MUST CAPTURE: follow (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// movement/body-follows-head — after a tick that eats nothing, every segment
+// holds the cell the segment ahead of it held.
+//
+// specs/board.md: "The body always traces the exact path the head has taken, with
+// no gap and no branch." specs/movement.md's step 4 says how: on a tick that eats
+// nothing the new head is prepended and the tail cell is dropped, which is the
+// same statement read one segment at a time.
+//
+// THE CHAIN IS BENT ON PURPOSE. A straight chain is satisfied by a build that
+// simply redraws a straight line of the right length behind its head, and that
+// build has no body at all: it has a head and a ruler. A chain with two corners
+// in it can only come out right if each segment really took the cell in front of
+// it, so the corners travel down the body as the head moves on.
 
-test("movement.body-follows-head", () => {
-  throw new Error(
-    "validator not implemented: movement/body-follows-head.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertLength } from "../assert";
+import {
+  ahead,
+  captureReplay,
+  createHarness,
+  poseScene,
+  type Cell,
+  type Harness,
+} from "../harness";
+
+/**
+ * A chain with two corners in it, head first.
+ *
+ * Head at `(12, 8)` travelling right, the body running back to `(11, 8)`, down
+ * the column at `(11, 9)` and `(11, 10)`, then left along `(10, 10)` and
+ * `(9, 10)`. Each cell is orthogonally adjacent to the one before it and none
+ * repeats, which is what specs/instrumentation.md requires of a posed chain.
+ */
+const CHAIN: Cell[] = [
+  { col: 12, row: 8 },
+  { col: 11, row: 8 },
+  { col: 11, row: 9 },
+  { col: 11, row: 10 },
+  { col: 10, row: 10 },
+  { col: 9, row: 10 },
+];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("hands every segment the cell the one ahead of it held", async () => {
+  const posed = poseScene(h, { snake: CHAIN, dir: "right", pellet: null });
+  assertDeepEqual(posed.snake, CHAIN, "the posed chain");
+
+  const after = await captureReplay(h, "follow", () => h.tick());
+
+  assertLength(
+    after.snake,
+    CHAIN.length,
+    "the chain after a tick that ate nothing",
   );
+  assertDeepEqual(
+    after.snake[0],
+    ahead(CHAIN[0], "right"),
+    "the head after the tick",
+  );
+  for (let i = 1; i < CHAIN.length; i += 1) {
+    assertDeepEqual(
+      after.snake[i],
+      CHAIN[i - 1],
+      `segment ${i} takes the cell segment ${i - 1} held`,
+    );
+  }
 });
