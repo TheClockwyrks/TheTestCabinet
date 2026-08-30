@@ -318,6 +318,9 @@ initialized. Five of them are derived rather than stored:
 | `critter.footing` | Its row and the floes on it, as `specs/strait.md` fixes. |
 | A bear's `swimming` | The tile it is travelling into: a water-band tile no floe covers. |
 
+While the critter is out of play, `present` is `false` and its tile, center, and
+facing report the last values it held.
+
 A bear settled on a tile reports `stepCol` and `stepRow` equal to `col` and
 `row`. A bear between tiles reports the tile it settled on as `col` and `row` and
 the tile it is entering as `stepCol` and `stepRow`, and it occupies both.
