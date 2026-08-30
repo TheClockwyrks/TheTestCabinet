@@ -15,16 +15,20 @@ self-contained: it bundles these committed files and never invokes the tools. Re
 
 ## How assets are loaded (`src/assets.ts`)
 
-- PNGs are discovered with `import.meta.glob('../assets/**/*.png', { query: '?url' })`,
-  `system.json` VFX with `../assets/fx/*.json`, and `.wav` audio with
-  `../assets/audio/*.wav`. Vite resolves every URL **page-relative** (`base: './'` in
-  `vite.config.ts`) so the build runs under any sub-path — never a root-absolute `/…`.
-- The loader key for a PNG is its path under `assets/` without the extension, e.g.
-  `tiles/topsoil-0.png` → `tiles/topsoil-0`. Ordered frame sets (`…/frameNN.png`) are
-  gathered and sorted by their trailing number.
-- The loader is **tolerant**: a missing file yields an empty/undefined entry and the
-  renderer draws a neutral code fallback, so `npm run build` and a headless load both
-  succeed before an asset lands.
+- Everything goes through the **engine's own loader** (`InitApi.assets`, documented in
+  `engine/assets.md`), which resolves each path under its asset root, `assets/`, relative to
+  the page. Nothing here fetches a file itself and no URL is root-absolute, so the built
+  site runs under any sub-path.
+- What is loaded is a **manifest, not a directory scan**: `src/assets.ts` states the frame
+  count of each cycle and the variant count of each band, because the build knows exactly
+  which files it produced. A scan would either miss a file or ask the loader for one that
+  was never made.
+- The loader is **tolerant**: a file that is missing or will not decode yields `null` for
+  that one sprite and the renderer draws a neutral code fallback in its place, so
+  `npm run build` and a headless load both succeed before an asset lands.
+- `vite.config.ts` copies `public/` into `dist/` verbatim, and `public/assets` links to the
+  committed `assets/` tree, so the paths the loader resolves in development are the paths
+  the built site serves.
 
 ## Tiles — `scripts/gen-world.sh` (all `80 x 80`)
 
@@ -33,10 +37,10 @@ do not upscale a smaller sprite.
 
 | Files | Count | Loader key / accessor | Notes |
 | --- | --- | --- | --- |
-| `tiles/{topsoil,rockbed,deepstone,coreshell}-{0,1,2}.png` | 12 | `assets.tileVariants(band)` | 3 variants per band; picked per cell by a stable hash so a wall does not repeat one stamp. Roughly **uniform** fine grain. |
-| `tiles/bedrock.png` | 1 | `assets.tile("bedrock")` | Unminable border / floor / Core-chamber walls. |
-| `tiles/tunnel.png` | 1 | `assets.tile("tunnel")` | The dark carved-tunnel **interior** fill. The inset dirt lip + rounded corners are shaped **in code** (`drawCarved` in `render.ts`) over the band-dirt tile; this sprite is clipped inside that shape. |
-| `tiles/stone-{0,1}.png` | 2 | `assets.stone()` | Unbreakable-stone boulders — a distinct, smooth, harder-looking material than the grainy dirt. |
+| `tiles/{topsoil,rockbed,deepstone,coreshell}-{0,1,2}.png` | 12 | `assets.bands[band]` | 3 variants per band; picked per cell by a stable hash so a wall does not repeat one stamp. Roughly **uniform** fine grain. |
+| `tiles/bedrock.png` | 1 | `assets.bedrock` | Unminable border / floor / Core-chamber walls. |
+| `tiles/tunnel.png` | 1 | `assets.tunnel` | The dark carved-tunnel **interior** fill. The inset dirt lip + rounded corners are shaped **in code** (`drawCarved` in `src/render.ts`) over the band-dirt tile; this sprite is clipped inside that shape. |
+| `tiles/stone-{0,1}.png` | 2 | `assets.stone` | Unbreakable-stone boulders — a distinct, smooth, harder-looking material than the grainy dirt. |
 | `tiles/crack/frame{00..03}.png` | 4 | `assets.crack` | Drill-damage overlay (transparent). `drawDrillDamage` picks the frame from each tile's persisted damage fraction (`1 − health/maxHealth`) and draws it on every damaged tile; deepens front-to-back. |
 
 There is **no gas tile**: a gas pocket is drawn as ordinary band rock (hidden) and betrayed
@@ -46,20 +50,20 @@ only by the `gas-seep` VFX below. There is no separate tunnel-edge sprite — th
 
 Laid over the band rock. Ores are an embedded **smear** of their mineral (not a discrete
 dot); gemstones are a **cut, faceted jewel** — visually distinct from the ore smears
-(`specs/mining.md`). Both are keyed by `Ore` and read via `assets.ore(ore)`.
+(`specs/mining.md`). Both are keyed by `Ore` and read via `assets.ore[ore]`.
 
 | Files | Count | Loader accessor |
 | --- | --- | --- |
-| `ore/{ferron,marlite,cuprite,argenite,cobaltine,voltite,halcite,pyronium,cindrite,adamite}.png` | 10 | `assets.ore(ore)` — ore smears |
-| `ore/{verdite,roselite,aurite}.png` | 3 | `assets.ore(ore)` — faceted gemstones (rockbed/deepstone/coreshell) |
+| `ore/{ferron,marlite,cuprite,argenite,cobaltine,voltite,halcite,pyronium,cindrite,adamite}.png` | 10 | `assets.ore[ore]` — ore smears |
+| `ore/{verdite,roselite,aurite}.png` | 3 | `assets.ore[ore]` — faceted gemstones (rockbed/deepstone/coreshell) |
 
 ## Materials — `scripts/gen-world.sh` (`80 x 80`)
 
 | Files | Count | Loader accessor | Notes |
 | --- | --- | --- | --- |
-| `materials/resonite.png`, `materials/cryenite.png` | 2 | `assets.material(name)` | Buried exotic-material nodes (blue / violet crystal). |
-| `materials/core.png` | 1 | `assets.material("core")` | The glowing Core in its chamber. |
-| `materials/core-sample.png` | 1 | `assets.material("core-sample")` | The extracted unstable-sample icon. |
+| `materials/resonite.png`, `materials/cryenite.png` | 2 | `assets.materials[name]` | Buried exotic-material nodes (blue / violet crystal). |
+| `materials/core.png` | 1 | `assets.materials["core"]` | The glowing Core in its chamber. |
+| `materials/core-sample.png` | 1 | `assets.materials["core-sample"]` | The extracted unstable-sample icon. |
 
 ## Hazards — lava shimmer — `scripts/gen-world.sh`
 
@@ -70,8 +74,8 @@ dot); gemstones are a **cut, faceted jewel** — visually distinct from the ore 
 ## The animated miner — `scripts/gen-miner.sh` (`80 x 80`, THE HEADLINE)
 
 One `draw-sheet` cycle per animation state; frames land under `miner/<state>/frameNN.png`
-and are read as `assets.miner[state]`, played by the renderer on a timer and mirrored to
-face west.
+and are read as `assets.miner[state]`, advanced at `ANIM_FPS` against the game's own
+accumulated time rather than the wall clock, and mirrored to face west.
 
 | State | Frames | State | Frames |
 | --- | --- | --- | --- |
@@ -86,29 +90,32 @@ face west.
 
 | Files | Count | Native size | Loader accessor | Notes |
 | --- | --- | --- | --- | --- |
-| `surface/{fuel-depot,ore-market,save-pad,upgrade-shop,supply-depot,launch-pad}.png` | 6 | `112 x 132` | `assets.surface(id)` | The six camp buildings (Supply Depot sells the single-use field supplies). |
-| `surface/cave-mouth.png` | 1 | `120 x 48` | `assets.surface("cave-mouth")` | The way down at the spawn column. |
+| `surface/{fuel-depot,ore-market,save-pad,upgrade-shop,supply-depot,launch-pad}.png` | 6 | `112 x 132` | `assets.surface[id]` | The six camp buildings (Supply Depot sells the single-use field supplies). |
+| `surface/cave-mouth.png` | 1 | `120 x 48` | `assets.surface["cave-mouth"]` | The way down at the spawn column. |
 | `rocket/stage{0..5}.png` | 6 | `96 x 160` | `assets.rocket[stage]` | The escape rocket; frame chosen by installed-component count, so it visibly gains each part. |
-| `icons/{fuel,hull,cargo,credits,depth,resonite,cryenite}.png` | 7 | `20 x 20` | `assets.icon(name)` | Small HUD glyphs. |
+| `icons/{fuel,hull,cargo,credits,depth,resonite,cryenite}.png` | 7 | `20 x 20` | `assets.icons[name]` | Small HUD glyphs. |
 | `surface/sky.png`, `surface/ground.png` | 2 | — | (unused) | Left in the script; the renderer fills sky/ground in code. |
 
 ## Particle VFX — `scripts/gen-fx.sh` (`particle-2d` → `system.json`)
 
-Simulated live via `@test-cabinet/particle-runtime`'s canvas binding (`src/particles.ts`),
-spawned at each event's world position; each is read as `assets.fx[kind]`. The on-screen
-footprint per kind is set in `src/particles.ts` (`FOOTPRINT`), scaled to the 80px world.
+Simulated live through `@test-cabinet/particle-runtime`'s `ParticleSimulator` and drawn by
+`src/effects.ts` straight into the mine's own transform, so a burst sits at its event's
+world position and scrolls with the cell it happened at. The world footprint per kind is
+set in `src/effects.ts` (`FOOTPRINT`), scaled to the 80-unit tile.
 
 | Files | Count |
 | --- | --- |
 | `fx/{gas-seep,drill-debris,jetpack-exhaust,ore-sparkle,material-shimmer,gas-explosion,lava-embers,impact-dust,core-extract,core-detonation,launch-exhaust,death-burst}.json` | 12 |
 
 `gas-seep` is the very subtle wisp fired sparsely over on-screen gas pockets
-(`Game.emitGasSeeps`) — the only tell that a hidden pocket is there.
+(`emitGasSeeps` in `src/simulation.ts`) — the only tell that a hidden pocket is there.
 
 ## Audio — `scripts/gen-audio.sh` (`sfx-synth` / `sfx-sample` / `music`)
 
-Loaded page-relative and decoded with the Web Audio API (`src/audio.ts`), read as
-`assets.audioUrls[cue]`.
+Bound to the engine's audio cues by name (`api.audio.load(cue, "audio/<cue>.wav")` in
+`src/audio.ts`), which owns the graph, the mute bit, and the first-gesture unlock. Each cue
+is declared with a quiet synthesized stand-in first, so a clip that fails to decode leaves
+the name playable rather than bringing a frame down.
 
 | Files | Count | Notes |
 | --- | --- | --- |
