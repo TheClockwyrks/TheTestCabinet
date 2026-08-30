@@ -1960,6 +1960,18 @@ validation = { script = "presentation/bite-returns-to-rest.test.ts", outputs = [
   { id = "rest", name = "The head returning to its resting frame", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "bite-freezes-while-paused"
+title = "The bite holds its frame while the game is paused"
+description = "The head's bite runs on the round's own time, so the cell keeps the frame the pause caught it on however much real time passes behind the pause menu."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: start a bite with an eat, read the image on the head
+# cell, pause, advance well past BITE_SECONDS, and read the head cell again. See
+# validation/<engine>/presentation/bite-freezes-while-paused.test.ts.
+validation = { script = "presentation/bite-freezes-while-paused.test.ts", outputs = [
+  { id = "frozen", name = "A bite held behind the pause menu", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "sprites-sampled-crisp"
 title = "The sprites are sampled without smoothing"
 description = "The sprites are painted with image smoothing off, so the produced pixel art stays sharp at every scale the stage is fitted to."
