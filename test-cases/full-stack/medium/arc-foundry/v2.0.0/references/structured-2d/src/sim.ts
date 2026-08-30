@@ -128,12 +128,6 @@ function ownCandidate(w: FoundryState, id: number): Candidate | null {
   return s && s.kind === "candidate" ? s : null;
 }
 
-/** The live unit with this identity, in a world the caller may advance. */
-export function ownUnit(w: FoundryState, id: number): Unit | null {
-  const u = w.units.find((x) => x.id === id);
-  return u && !u.dead ? u : null;
-}
-
 /** The next draw from the scrap-press generator, advancing the world's copy of it. */
 function pressDraw(w: FoundryState): number {
   const rng = stream(w.pressRng);

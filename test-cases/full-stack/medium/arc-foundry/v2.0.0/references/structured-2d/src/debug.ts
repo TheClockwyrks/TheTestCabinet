@@ -77,7 +77,6 @@ import {
   firingStructureById,
   keep,
   liveUnitById,
-  ownUnit,
   placeBlocker,
   placeCombo,
   placeComponent,
@@ -121,6 +120,7 @@ import {
 } from "./layout";
 import { abilityTags } from "./tables";
 import { foundryState, type FoundryState } from "./state";
+import type { Unit } from "./types";
 import type { World } from "@test-cabinet/structured-2d";
 
 // ---- The shapes the readings return (specs/instrumentation.md) -----------
@@ -391,11 +391,11 @@ function structure(op: string, state: FoundryState, id: unknown): number {
   return n;
 }
 
-/** A live unit's identity, or a loud failure. */
-function unit(op: string, state: FoundryState, id: unknown): number {
-  const n = num(op, "id", id);
-  if (!liveUnitById(state, n)) invalid(op, "an id a live unit carries", id);
-  return n;
+/** The live unit an id names, or a loud failure. */
+function unit(op: string, state: FoundryState, id: unknown): Unit {
+  const u = liveUnitById(state, num(op, "id", id));
+  if (!u) invalid(op, "an id a live unit carries", id);
+  return u;
 }
 
 // ---- The readings --------------------------------------------------------
@@ -862,7 +862,7 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
 
     setUnitPosition(id, x, y) {
       const state = live();
-      const u = ownUnit(state, unit("setUnitPosition", state, id))!;
+      const u = unit("setUnitPosition", state, id);
       setUnitPosition(
         state,
         u,
@@ -873,13 +873,13 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
 
     setUnitWaypoint(id, index) {
       const state = live();
-      const u = ownUnit(state, unit("setUnitWaypoint", state, id))!;
+      const u = unit("setUnitWaypoint", state, id);
       setUnitWaypoint(state, u, int("setUnitWaypoint", "index", index, 1, 7));
     },
 
     setUnitHp(id, hp) {
       const state = live();
-      const u = ownUnit(state, unit("setUnitHp", state, id))!;
+      const u = unit("setUnitHp", state, id);
       // The Overload Dynamo carries no depleting health, so it takes no health change.
       if (u.invincible) {
         invalid("setUnitHp", "an id a unit with depleting health carries", id);
@@ -893,7 +893,7 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
 
     setUnitSlow(id, amount, seconds) {
       const state = live();
-      const u = ownUnit(state, unit("setUnitSlow", state, id))!;
+      const u = unit("setUnitSlow", state, id);
       const a = num("setUnitSlow", "amount", amount);
       if (a < 0 || a > 1)
         invalid("setUnitSlow", "amount to be in 0..1", amount);
@@ -904,7 +904,7 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
 
     setUnitBurn(id, dps, seconds) {
       const state = live();
-      const u = ownUnit(state, unit("setUnitBurn", state, id))!;
+      const u = unit("setUnitBurn", state, id);
       const d = num("setUnitBurn", "dps", dps);
       if (d < 0) invalid("setUnitBurn", "dps to be at least 0", dps);
       const s = num("setUnitBurn", "seconds", seconds);
@@ -915,7 +915,7 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
 
     setUnitFrozen(id, frozen) {
       const state = live();
-      const u = ownUnit(state, unit("setUnitFrozen", state, id))!;
+      const u = unit("setUnitFrozen", state, id);
       setUnitFrozen(u, bool("setUnitFrozen", "frozen", frozen));
     },
   };
