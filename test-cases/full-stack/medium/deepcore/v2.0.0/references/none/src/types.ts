@@ -1,62 +1,49 @@
-// Deepcore — shared domain types.
+// Deepcore — the value vocabularies and state shapes the simulation, the renderer,
+// and the asset loader agree on.
 //
-// These are the value vocabularies and state shapes the simulation, renderer, and
-// asset loader agree on. Numeric tuning lives in constants.ts; this file is the type
-// contract. Sources: specs/world.md, specs/character.md, specs/mining.md,
-// specs/hazards.md, specs/upgrades.md, specs/rocket.md, specs/gameplay.md, specs/ui.md,
-// specs/modes.md.
+// Numeric tuning lives in constants.ts; this file is the type contract between the
+// modules that share it.
 
 // ---------------------------------------------------------------------------
-// World (specs/world.md)
+// The mine (specs/world.md)
 // ---------------------------------------------------------------------------
 
-/** The four depth bands (the Core chamber is handled separately as row 500). */
+/** The four depth bands the minable rows are divided into. */
 export type Band = "topsoil" | "rockbed" | "deepstone" | "coreshell";
 
-/**
- * Every grid cell is one of these kinds. A minable cell becomes `tunnel` once drilled.
- * `rock` carries the band's fill; `ore` and `material` carry their payload; `gas` and
- * `lava` are hazards; `bedrock` is the unminable border/floor/chamber walls.
- */
+/** Every cell is one of these kinds. A minable cell becomes a tunnel once drilled out. */
 export type TileKind =
-  | "rock" // plain minable rock of the row's band
-  | "ore" // minable rock with an ore deposit
-  | "material" // minable rock holding a buried exotic material node
-  | "gas" // gas pocket (detonates when drilled) — drawn as ordinary band rock (hidden)
-  | "lava" // molten hazard, not minable
-  | "stone" // unbreakable stone boulder — not minable, impassable, scattered obstacle
-  | "bedrock" // unminable border / floor / Core-chamber walls
-  | "tunnel" // open space (original gap or drilled-out)
-  | "core"; // the glowing Core in its chamber (yields the Core Sample)
+  | "rock"
+  | "ore"
+  | "material"
+  | "gas"
+  | "lava"
+  | "stone"
+  | "bedrock"
+  | "tunnel"
+  | "core";
 
 export interface Tile {
   kind: TileKind;
-  /** The band this cell's rock belongs to (for fill + hardness). */
+  /** The band this cell's rock belongs to, which fixes its fill and its health. */
   band: Band;
-  /** For `ore` tiles: which ore is deposited. */
+  /** Which ore an ore cell holds. */
   ore?: Ore;
-  /** For `material` tiles: which buried material node this is. */
-  material?: Material;
+  /** Which exotic material a material node holds. */
+  material?: "resonite" | "cryenite";
   /**
-   * Remaining tile HEALTH (specs/character.md). Undefined until the tile is first drilled,
-   * at which point it is seeded to the band's `maxHealth`; each drill hit subtracts the
-   * drill's damage-per-hit. Damage PERSISTS on the grid: a tile drilled partway and then
-   * abandoned keeps its reduced health (and shows its cracks), so resuming continues from
-   * where it left off rather than restarting from full. The tile breaks at `health <= 0`.
+   * Remaining health, seeded to the band's BAND_HEALTH the first time the cell is
+   * drilled. Damage persists on the cell, so an abandoned cut resumes from here.
    */
   health?: number;
-  /** True once a minable cell has been drilled out (redundant with kind === tunnel). */
-  mined?: boolean;
 }
 
 // ---------------------------------------------------------------------------
-// Ore & materials (specs/mining.md)
+// Ore and materials (specs/mining.md)
 // ---------------------------------------------------------------------------
 
+/** The ten mineral ores and the three gemstones, which behave alike once collected. */
 export type Ore =
-  // The ten mineral ores, shallow → deep (specs/mining.md). Each appears over a depth-frequency
-  // curve (constants.ts ORES); the four SIGNATURE ores the upgrade ladder is anchored to are
-  // Cuprite / Argenite / Voltite / Pyronium (specs/upgrades.md).
   | "ferron"
   | "marlite"
   | "cuprite"
@@ -67,25 +54,28 @@ export type Ore =
   | "pyronium"
   | "cindrite"
   | "adamite"
-  // Gemstones — a rarer, cut-crystal find per band below the topsoil (specs/mining.md). Carried,
-  // slotted, weighed, and sold exactly like ore; distinguished only by `ORES[o].gem` (rendering,
-  // placement, and worth), so every ore-keyed system (cargo, economy, inventory) covers them.
   | "verdite"
   | "roselite"
   | "aurite";
 
-/** The three exotic materials the rocket needs (Core Sample is unstable). */
+/** The three exotic materials the rocket consumes. */
 export type Material = "resonite" | "cryenite" | "core-sample";
 
+/** Ore held in the cargo bay, counted per type. */
+export type Cargo = Record<Ore, number>;
+
+/** The satchel, which weighs nothing and takes no cargo slot. */
+export interface Satchel {
+  resonite: number;
+  cryenite: number;
+  /** At most one Core Sample is ever carried. */
+  coreSample: boolean;
+}
+
 // ---------------------------------------------------------------------------
-// Field supplies — single-use items (specs/items.md)
+// Field supplies (specs/items.md)
 // ---------------------------------------------------------------------------
 
-/**
- * The six single-use "field supply" items, bought with Credits at the Supply Depot
- * and carried as a COUNT per type (each use consumes one). Their prices, blast radii,
- * and effect magnitudes are pinned in constants.ts (specs/items.md).
- */
 export type ItemId =
   | "dynamite"
   | "plastic-explosives"
@@ -94,35 +84,14 @@ export type ItemId =
   | "nanobots"
   | "emergency-fuel";
 
-/** Held-item counts, one entry per item type. */
+/** Held field-supply counts, one entry per supply. */
 export type ItemCounts = Record<ItemId, number>;
 
-// ---------------------------------------------------------------------------
-// Ground items (specs/items.md)
-// ---------------------------------------------------------------------------
-
-/**
- * An item dropped on the world grid, sitting on a tile. Today the ONLY ground item is a
- * jettisoned Core Sample (specs/items.md): its destabilization timer keeps running on the
- * ground (the global coreTimer) and it detonates AT its ground location (killing only a
- * miner within the blast). A jettisoned Sample is a one-way discard — it CANNOT be picked
- * back up; another must be drilled from the Core (which is inexhaustible, specs/mining.md).
- */
+/** An item resting on a cell. A jettisoned Core Sample is the only one. */
 export interface GroundItem {
   kind: "core-sample";
   col: number;
   row: number;
-}
-
-/** Ore held in the cargo bay, counted per type. */
-export type Cargo = Record<Ore, number>;
-
-/** The materials satchel: which buried materials the miner currently holds. */
-export interface Satchel {
-  resonite: number;
-  cryenite: number;
-  /** At most one Core Sample is ever carried; destroyed on death. */
-  coreSample: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,42 +99,26 @@ export interface Satchel {
 // ---------------------------------------------------------------------------
 
 export type UpgradeTrack =
-  | "fuel"
-  | "drill"
-  | "cargo"
-  | "hull"
-  | "jetpack"
-  | "radiator"
-  | "scanner";
+  "fuel" | "drill" | "cargo" | "hull" | "jetpack" | "radiator" | "scanner";
 
-/** Current tier (1..5) on each upgrade track. */
+/** The current tier on each track. */
 export type UpgradeTiers = Record<UpgradeTrack, number>;
 
 // ---------------------------------------------------------------------------
-// Rocket (specs/rocket.md)
+// The rocket (specs/rocket.md)
 // ---------------------------------------------------------------------------
 
 export type RocketComponentId =
-  | "hull-frame"
-  | "fuel-cells"
-  | "guidance"
-  | "thruster"
-  | "ignition";
-
-/** Alias kept for spec-parity naming. */
-export type RocketComponent = RocketComponentId;
+  "hull-frame" | "fuel-cells" | "guidance" | "thruster" | "ignition";
 
 // ---------------------------------------------------------------------------
-// Miner (specs/character.md)
+// The prospector (specs/character.md)
 // ---------------------------------------------------------------------------
 
-/** Which way the miner's sprite faces (mirrored for west). */
+/** Which way the miner's sprite faces. The west facing is the east one mirrored. */
 export type Facing = "east" | "west";
 
-/**
- * The miner's animation states — one produced sprite-sheet cycle per state
- * (specs/character.md, specs/assets.md). These map 1:1 to `assets/miner/<state>/`.
- */
+/** The miner's animation states, one produced cycle each. */
 export type MinerState =
   | "idle"
   | "walk"
@@ -176,54 +129,45 @@ export type MinerState =
   | "hurt"
   | "fuel-out";
 
+export interface DrillProgress {
+  col: number;
+  row: number;
+  dir: "down" | "left" | "right";
+  /**
+   * Seconds until the next hit lands. The target cell's remaining health lives on the
+   * cell, so it survives the cut being abandoned; this only paces the hits.
+   */
+  hitTimer: number;
+}
+
 export interface Miner {
-  /** Continuous logical-pixel position (top-left of the miner's 48x48 box). */
+  /** The top-left of the miner's box, in world units. Continuous, never snapped. */
   x: number;
   y: number;
-  /**
-   * Where the miner stood when the current step began, so the renderer can draw
-   * between that and (x, y) — see Game.renderAlpha. Written by the step and read
-   * by the renderer, never the other way about.
-   */
-  prevX: number;
-  prevY: number;
   vx: number;
   vy: number;
   facing: Facing;
   state: MinerState;
   fuel: number;
   hull: number;
-  /** Non-null while a drill is in progress; targets a grid cell. */
+  /** Non-null while a cut is in progress. */
   drilling: DrillProgress | null;
-}
-
-export interface DrillProgress {
-  col: number;
-  row: number;
-  /** Direction the miner is drilling. */
-  dir: "down" | "left" | "right";
-  /**
-   * Seconds until the next drill HIT lands (counts down; on reaching 0 a hit is applied —
-   * damage subtracted from the target tile's health, fuel spent — and it is reset by
-   * HIT_INTERVAL). The tile's remaining health lives on the Tile itself (so it persists if
-   * the cut is abandoned), not here — this only tracks the hit cadence for the active cut.
-   */
-  hitTimer: number;
+  /** Whether the miner's body moves. Held by the travel faculty gate. */
+  travel: boolean;
+  /** Whether the miner's drill cuts. Held by the drill faculty gate. */
+  drill: boolean;
 }
 
 // ---------------------------------------------------------------------------
-// Modes & how a death occurred (specs/modes.md, specs/hazards.md)
+// The expedition (specs/gameplay.md, specs/modes.md)
 // ---------------------------------------------------------------------------
 
 export type Mode = "standard" | "hardcore";
 
 export type DeathCause = "fuel-out" | "hull-destroyed" | "core-detonation";
 
-// ---------------------------------------------------------------------------
-// Game states (specs/ui.md)
-// ---------------------------------------------------------------------------
-
-export type GamePhase =
+/** The eight screens the game is in exactly one of. */
+export type Screen =
   | "title"
   | "mode-select"
   | "size-select"
@@ -233,14 +177,8 @@ export type GamePhase =
   | "victory"
   | "game-over";
 
-/**
- * Which overlay panel is open, if any. These are the surface buildings that HAVE a menu
- * (opened only at the camp) plus `inventory`, the cargo hold, openable ANYWHERE (surface
- * or mid-dig) to review and drop ore (specs/mining.md, specs/ui.md). The Save Pad has NO
- * menu — activating it banks the expedition directly (specs/gameplay.md), so it is not a panel.
- */
-export type OpenPanel =
-  | null
+/** The six panels, of which only the inventory opens away from a building. */
+export type Panel =
   | "fuel-depot"
   | "ore-market"
   | "upgrade-shop"
@@ -248,11 +186,10 @@ export type OpenPanel =
   | "launch-pad"
   | "inventory";
 
-/**
- * Identity of a surface building (specs/world.md). Every building except the Save Pad opens
- * an overlay panel of the same name; the Save Pad has no menu (it saves on activation), so
- * its id is not an `OpenPanel`.
- */
+/** The open panel, or null while none is. */
+export type OpenPanel = Panel | null;
+
+/** A surface building. The Save Pad is the one that opens no panel. */
 export type BuildingId =
   | "fuel-depot"
   | "ore-market"
@@ -261,77 +198,15 @@ export type BuildingId =
   | "supply-depot"
   | "launch-pad";
 
-/** End-screen run summary (specs/gameplay.md — not persisted). */
+/** The two hazards that raise a one-time notice card. */
+export type Hazard = "gas" | "lava";
+
+/** What the Victory and Game Over screens summarize. It is not persisted. */
 export interface RunSummary {
   deepestDepthMeters: number;
   creditsEarned: number;
   elapsedSeconds: number;
   mode: Mode;
   componentsInstalled: number;
-  deathCause?: DeathCause;
-}
-
-/** The whole mutable game state the simulation owns. */
-export interface GameState {
-  phase: GamePhase;
-  mode: Mode;
-  panel: OpenPanel;
-  credits: number;
-  creditsEarned: number;
-  cargo: Cargo;
-  satchel: Satchel;
-  tiers: UpgradeTiers;
-  installed: Set<RocketComponentId>;
-  /** Held single-use field-supply items, counted per type (specs/items.md). */
-  items: ItemCounts;
-  /** Items dropped on the world grid (today only a jettisoned Core Sample, specs/items.md). */
-  groundItems: GroundItem[];
-  miner: Miner;
-  /** Grid[row][col] tiles. */
-  grid: Tile[][];
-  /** Horizontal camera offset (world x at the left of the viewport) — the mine is wider
-   *  than the viewport, so the camera scrolls across it (specs/world.md). */
-  cameraX: number;
-  /** Vertical camera offset (world y at the top of the viewport). */
-  cameraY: number;
-  /** Seconds remaining on the Core Sample timer, or null if not carrying it. */
-  coreTimer: number | null;
-  deepestRow: number;
-  elapsedSeconds: number;
-  summary: RunSummary | null;
-}
-
-// ---------------------------------------------------------------------------
-// Assets manifest (specs/assets.md)
-// ---------------------------------------------------------------------------
-
-/**
- * The produced assets, wired in via Vite globs (page-relative URLs — specs/assets.md).
- * Each field is a resolved URL (or an ordered list of frame URLs) the loader hands to
- * the renderer / audio / particle systems. This interface is the canonical wiring
- * contract; the concrete loader in assets.ts populates it from `import.meta.glob`.
- */
-export interface AssetManifest {
-  /** Miner animation cycles: state → ordered frame URLs (frame00, frame01, …). */
-  miner: Record<MinerState, string[]>;
-  /** Band + unbreakable-stone + tunnel + bedrock tile sprites, keyed by sprite name. */
-  tiles: Record<string, string>;
-  /** Drill-damage crack overlay frames (ordered, deepening with the cut). */
-  crack: string[];
-  /** Ore vein sprites keyed by ore. */
-  ore: Record<Ore, string>;
-  /** Material-node / core sprites keyed by sprite name. */
-  materials: Record<string, string>;
-  /** Hazard sprites: lava shimmer (ordered frames). Gas has no tile — it uses band rock. */
-  hazards: { lava: string[] };
-  /** Surface building + camp sprites keyed by name. */
-  surface: Record<string, string>;
-  /** Rocket assembly-stage frames, ordered stage0..stage5. */
-  rocket: string[];
-  /** HUD glyph sprites keyed by name. */
-  icons: Record<string, string>;
-  /** Particle system.json URLs keyed by effect name. */
-  fx: Record<string, string>;
-  /** Audio .wav URLs keyed by cue name. */
-  audio: Record<string, string>;
+  deathCause: DeathCause | null;
 }

@@ -1,53 +1,55 @@
 // Deepcore — the single-slot expedition save (specs/gameplay.md, specs/modes.md).
 //
-// The player has AT MOST ONE save at a time, written only at the surface Save Pad and
-// stored in the browser's localStorage. A save is a full snapshot of the expedition taken
-// while standing safely at the camp — enough to resume exactly: the generated mine, the
-// Credits/tiers/rocket progress, the cargo and materials, and the miner's fuel/hull. The
-// Core Sample is never in hand when a save is taken (the pad refuses it, game.ts), so the
-// unstable timer is never persisted. localStorage may be unavailable (a locked-down
-// context); every access is guarded so the game still runs, only without saving.
+// There is one slot, written only at the surface Save Pad, held in the browser. A save
+// is a complete snapshot of the expedition taken while the miner stands safely at the
+// camp: the generated mine and its size, the mode, the banked Credits, every tier, the
+// installed components, the held supplies, the cargo, the satchel, and the fuel and
+// hull. A live Core Sample is never in hand when a save is taken, so its timer is never
+// persisted. Storage may be unavailable, in which case the game runs without saving.
 
-import type { Cargo, ItemCounts, Mode, RocketComponentId, Tile, UpgradeTiers } from "./types";
+import type {
+  Cargo,
+  ItemCounts,
+  Mode,
+  RocketComponentId,
+  Tile,
+  UpgradeTiers,
+} from "./types";
 import type { WorldSize } from "./constants";
 import type { MaterialNode } from "./world";
 
 const SAVE_KEY = "deepcore.save.v1";
 
-/** A complete expedition snapshot (see module comment). */
+/** A complete expedition snapshot. */
 export interface SaveData {
   version: 1;
   mode: Mode;
-  /** The world SIZE the expedition was dug at (specs/world.md). Optional so pre-size saves,
-   *  which predate the option, load as the Standard mine. */
-  size?: WorldSize;
+  size: WorldSize;
   credits: number;
   creditsEarned: number;
   tiers: UpgradeTiers;
   installed: RocketComponentId[];
-  /** Held single-use field-supply item counts (specs/items.md). Optional for old saves. */
-  items?: ItemCounts;
+  items: ItemCounts;
   cargo: Cargo;
   satchel: { resonite: number; cryenite: number };
   grid: Tile[][];
   nodes: MaterialNode[];
-  spawnCol: number;
-  deepestRow: number;
+  deepestDepthMeters: number;
   elapsedSeconds: number;
   fuel: number;
   hull: number;
 }
 
-/** localStorage if reachable, else null (a sandboxed context disables saving entirely). */
+/** The browser's storage, or null where it cannot be reached. */
 function storage(): Storage | null {
   try {
-    return window.localStorage ?? null;
+    return globalThis.localStorage ?? null;
   } catch {
     return null;
   }
 }
 
-/** Whether a saved expedition currently exists (drives the menu CONTINUE option). */
+/** Whether a saved expedition exists, which is what puts CONTINUE on the main menu. */
 export function hasSave(): boolean {
   const s = storage();
   if (!s) return false;
@@ -58,7 +60,7 @@ export function hasSave(): boolean {
   }
 }
 
-/** Read and validate the saved expedition, or null if none / unreadable. */
+/** Read the saved expedition, or null where there is none or it cannot be read. */
 export function readSave(): SaveData | null {
   const s = storage();
   if (!s) return null;
@@ -73,7 +75,7 @@ export function readSave(): SaveData | null {
   }
 }
 
-/** Write (overwrite) the single save slot. Returns false if storage is unavailable. */
+/** Overwrite the single slot. False where storage is unavailable. */
 export function writeSave(data: SaveData): boolean {
   const s = storage();
   if (!s) return false;
@@ -85,13 +87,13 @@ export function writeSave(data: SaveData): boolean {
   }
 }
 
-/** Delete the save slot (a Hardcore death or a victory consumes the save). */
+/** Delete the slot, which a Hardcore death does and a victory does. */
 export function clearSave(): void {
   const s = storage();
   if (!s) return;
   try {
     s.removeItem(SAVE_KEY);
   } catch {
-    /* ignore */
+    // Storage went away; there is nothing to delete.
   }
 }

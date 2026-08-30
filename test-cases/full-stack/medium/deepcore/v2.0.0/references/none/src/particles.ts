@@ -80,7 +80,11 @@ interface Live {
 
 export class Bursts {
   private live: Live[] = [];
-  constructor(private readonly systems: Partial<Record<FxKind, ParticleSystem | undefined>>) {}
+  constructor(
+    private readonly systems: Partial<
+      Record<FxKind, ParticleSystem | undefined>
+    >,
+  ) {}
 
   spawn(ev: FxEvent): void {
     const system = this.systems[ev.kind];
@@ -114,14 +118,22 @@ export class Bursts {
       b.player.update(dt);
       b.age += dt * 1000;
     }
-    this.live = this.live.filter((b) => b.age < b.dur + 200 || b.player.simulator.liveCount > 0);
+    this.live = this.live.filter(
+      (b) => b.age < b.dur + 200 || b.player.simulator.liveCount > 0,
+    );
   }
 
   /** Composite every live burst over the world, offset so world → screen (camera). */
   draw(ctx: CanvasRenderingContext2D, offsetX: number, offsetY: number): void {
     for (const b of this.live) {
       ctx.globalCompositeOperation = b.additive ? "lighter" : "source-over";
-      ctx.drawImage(b.canvas, b.x + offsetX - b.size / 2, b.y + offsetY - b.size / 2, b.size, b.size);
+      ctx.drawImage(
+        b.canvas,
+        b.x + offsetX - b.size / 2,
+        b.y + offsetY - b.size / 2,
+        b.size,
+        b.size,
+      );
     }
     ctx.globalCompositeOperation = "source-over";
   }

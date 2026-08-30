@@ -10,39 +10,58 @@
 // asset falls back to a neutral code drawing so the build never crashes (specs/assets.md).
 
 import {
-  BANDS,
-  DEPOT_INCREMENT,
+  BAND_FILL,
+  BUILDINGS,
+  BUILDING_H,
+  BUILDING_W,
   FONT_STACK,
-  FUEL_COST_PER_UNIT,
-  GRID_MARGIN_X,
+  FUEL_BUY_INCREMENT,
+  FUEL_PRICE,
+  HUD_H,
   ITEMS,
   LOW_FUEL_FRACTION,
   LOW_HULL_FRACTION,
-  maxTierFor,
+  MINER_H,
+  MINER_W,
   ORES,
   PALETTE,
-  REPAIR_COST_PER_POINT,
+  REPAIR_BUY_INCREMENT,
+  REPAIR_PRICE,
   ROCKET_COMPONENTS,
-  STAGE_HEIGHT,
-  STAGE_WIDTH,
-  STATUS_BAR_HEIGHT,
-  TILE_SIZE,
+  SIZE_BLURB,
+  SPAWN_COL,
+  STAGE_H,
+  STAGE_W,
+  SURFACE_Y,
+  TILE,
+  TRACK_DISPLAY,
+  UPGRADE_LABEL,
   UPGRADE_TRACKS,
-  VIEWPORT_HEIGHT,
-  VIEWPORT_Y,
-  WORLD,
+  VIEW_H,
   WORLD_COLS,
-  WORLD_SIZES,
   WORLD_SIZE_ORDER,
+  maxTierFor,
 } from "./constants";
 import type { ItemId, Material, MinerState, Ore, Tile } from "./types";
 import { isMinableKind, tileMaxHealth } from "./world";
-import { SURFACE_BUILDINGS, BUILDING_W, BUILDING_H } from "./game";
 import type { Game } from "./game";
-import { MINER_H, MINER_W, SURFACE_FEET_Y, minerCenterX, minerCenterY } from "./physics";
-import { cargoValue, fuelCost, fuelDeficit, hullDeficit, nextUpgradePrice, repairCost } from "./economy";
+import { minerCenterX, minerCenterY } from "./physics";
+import {
+  cargoValue,
+  fuelCost,
+  fuelDeficit,
+  hullDeficit,
+  nextUpgradePrice,
+  repairCost,
+} from "./economy";
 import { hasSave } from "./save";
-import { canFabricate, hasMaterial, nextComponent, allInstalled } from "./rocket";
+import { menuItems } from "./menus";
+import {
+  canFabricate,
+  hasMaterial,
+  nextComponent,
+  allInstalled,
+} from "./rocket";
 import type { Assets } from "./assets";
 import { isReady } from "./assets";
 import type { Bursts } from "./particles";
@@ -56,16 +75,13 @@ export interface Clickable {
   disabled?: boolean;
 }
 
+/** What the renderer needs beyond the game itself. */
 export interface View {
+  /** Wall-clock seconds since the page loaded, for purely cosmetic cycling. */
   time: number;
-  menuIndex: number;
   muted: boolean;
+  /** The pointer in the stage's logical units. */
   pointer: { x: number; y: number };
-}
-
-export interface MenuItem {
-  label: string;
-  action: string;
 }
 
 const P = PALETTE;
@@ -79,65 +95,6 @@ const FPS: Record<MinerState, number> = {
   hurt: 12,
   "fuel-out": 3,
 };
-
-// ---------------------------------------------------------------------------
-// Menu content (specs/ui.md, specs/modes.md) — shared with keyboard nav in main.ts
-// ---------------------------------------------------------------------------
-
-export function menuItems(game: Game): MenuItem[] {
-  switch (game.phase) {
-    case "title": {
-      // CONTINUE appears only when a saved expedition exists (specs/ui.md).
-      const items: MenuItem[] = [];
-      if (hasSave()) items.push({ label: "CONTINUE", action: "continue" });
-      items.push({ label: "NEW EXPEDITION", action: "nav:mode-select" });
-      items.push({ label: "HOW TO PLAY", action: "nav:how-to" });
-      return items;
-    }
-    case "mode-select":
-      return [
-        { label: "STANDARD", action: "mode:standard" },
-        { label: "HARDCORE", action: "mode:hardcore" },
-        { label: "BACK", action: "nav:title" },
-      ];
-    case "size-select":
-      // The world SIZE picked after the mode — scales the depth of the mine (specs/world.md).
-      return [
-        { label: WORLD_SIZES.quick.label, action: "size:quick" },
-        { label: WORLD_SIZES.standard.label, action: "size:standard" },
-        { label: WORLD_SIZES.marathon.label, action: "size:marathon" },
-        { label: "BACK", action: "nav:mode-select" },
-      ];
-    case "how-to-play":
-      return [{ label: "BACK", action: "nav:title" }];
-    case "paused":
-      return [
-        { label: "RESUME", action: "resume" },
-        { label: "RESTART", action: "restart" },
-        { label: "QUIT TO MENU", action: "nav:title" },
-      ];
-    case "victory":
-      return [
-        { label: "PLAY AGAIN", action: "again" },
-        { label: "MENU", action: "nav:title" },
-      ];
-    case "game-over":
-      // A Standard death keeps the save, so it can be restored; Hardcore consumed it, so
-      // the only path on is a fresh expedition (specs/modes.md).
-      if (game.mode === "standard" && hasSave()) {
-        return [
-          { label: "CONTINUE FROM SAVE", action: "continue" },
-          { label: "MENU", action: "nav:title" },
-        ];
-      }
-      return [
-        { label: "PLAY AGAIN", action: "again" },
-        { label: "MENU", action: "nav:title" },
-      ];
-    default:
-      return [];
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Text + primitives
@@ -154,7 +111,13 @@ interface TextOpts {
   maxWidth?: number;
 }
 
-function text(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, o: TextOpts = {}): void {
+function text(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  x: number,
+  y: number,
+  o: TextOpts = {},
+): void {
   ctx.font = `${o.bold ? "bold " : ""}${o.size ?? 16}px ${FONT_STACK}`;
   ctx.fillStyle = o.color ?? P.textPrimary;
   ctx.textAlign = o.align ?? "left";
@@ -163,7 +126,14 @@ function text(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, o:
   else ctx.fillText(s, x, y);
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
   const rr = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
   ctx.moveTo(x + rr, y);
@@ -174,7 +144,13 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-function isHot(view: View, x: number, y: number, w: number, h: number): boolean {
+function isHot(
+  view: View,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
   const p = view.pointer;
   return p.x >= x && p.x <= x + w && p.y >= y && p.y <= y + h;
 }
@@ -201,7 +177,11 @@ function button(
   ctx.stroke();
   text(ctx, label, x + w / 2, y + h / 2, {
     size: Math.min(20, h * 0.42),
-    color: opts.disabled ? P.textTertiary : hot ? P.textPrimary : P.textSecondary,
+    color: opts.disabled
+      ? P.textTertiary
+      : hot
+        ? P.textPrimary
+        : P.textSecondary,
     align: "center",
     baseline: "middle",
     bold: true,
@@ -224,93 +204,28 @@ export function render(
   const cl: Clickable[] = [];
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = P.void;
-  ctx.fillRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
+  ctx.fillRect(0, 0, STAGE_W, STAGE_H);
 
-  if (game.phase === "in-mine" || game.phase === "paused") {
+  if (game.screen === "in-mine" || game.screen === "paused") {
     drawMine(ctx, game, assets, bursts, view, cl);
     drawStatusBar(ctx, game, view, cl);
-    if (game.phase === "in-mine" && game.panel) drawPanel(ctx, game, view, cl);
-    if (game.phase === "paused") drawPauseMenu(ctx, game, view, cl);
+    if (game.screen === "in-mine" && game.panel) drawPanel(ctx, game, view, cl);
+    if (game.screen === "paused") drawPauseMenu(ctx, game, view, cl);
     drawNotes(ctx, game);
-    if (game.phase === "in-mine" && game.tip) drawTip(ctx, game, cl);
+    if (game.screen === "in-mine") drawNotice(ctx, game, cl);
   } else {
     drawBackdrop(ctx, game, assets, view);
-    if (game.phase === "title") drawTitle(ctx, game, view, cl);
-    else if (game.phase === "mode-select") drawModeSelect(ctx, game, view, cl);
-    else if (game.phase === "size-select") drawSizeSelect(ctx, game, view, cl);
-    else if (game.phase === "how-to-play") drawHowTo(ctx, game, view, cl);
-    else if (game.phase === "victory") drawEndScreen(ctx, game, view, cl, true);
-    else if (game.phase === "game-over") drawEndScreen(ctx, game, view, cl, false);
+    if (game.screen === "title") drawTitle(ctx, game, view, cl);
+    else if (game.screen === "mode-select") drawModeSelect(ctx, game, view, cl);
+    else if (game.screen === "size-select") drawSizeSelect(ctx, game, view, cl);
+    else if (game.screen === "how-to-play") drawHowTo(ctx, game, view, cl);
+    else if (game.screen === "victory")
+      drawEndScreen(ctx, game, view, cl, true);
+    else if (game.screen === "game-over")
+      drawEndScreen(ctx, game, view, cl, false);
   }
-
-  // The read-only debug overlay draws last, over everything, when toggled (specs/instrumentation.md).
-  if (game.debugOverlay) drawDebugOverlay(ctx, game);
 
   return cl;
-}
-
-// ---------------------------------------------------------------------------
-// The read-only debug overlay (specs/instrumentation.md)
-// ---------------------------------------------------------------------------
-
-/**
- * A plain diagnostic layer over the running game: the live internal state (screen/panel, mode,
- * world size, autoStep, the miner's position/velocity/state/facing/grounded/fuel/hull and active
- * drill, Credits/depth/cargo+OVERLOAD, satchel, tiers, the Core timer, and the scanner lock) —
- * the same facts snapshot() reports. Toggled with the backtick key (main.ts); off by default;
- * draws only, never changing gameplay. Deliberately visually plain, separate from the HUD.
- */
-function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
-  const s = game.debugSnapshot();
-  const m = s.miner;
-  const fx1 = (n: number): string => n.toFixed(1);
-  const oreEntries = Object.entries(s.cargo.ore);
-  const drill = m.drilling
-    ? `${m.drilling.dir} (${m.drilling.col},${m.drilling.row}) ${(m.drilling.progress * 100).toFixed(0)}%`
-    : "none";
-  const lines: string[] = [
-    `screen ${s.screen}   panel ${s.panel ?? "-"}`,
-    `mode ${s.mode}   size ${s.worldSize}   autoStep ${s.autoStep}   muted ${s.muted}`,
-    `simTime ${fx1(s.simTime)}s   hasSave ${s.hasSave}`,
-    `miner  x ${m.x.toFixed(0)} y ${m.y.toFixed(0)}  v ${m.vx.toFixed(0)},${m.vy.toFixed(0)}  cell ${m.col},${m.row}`,
-    `state ${m.state}  facing ${m.facing}  grounded ${m.grounded}  drill ${drill}`,
-    `fuel ${fx1(m.fuel)}/${fx1(m.maxFuel)}   hull ${fx1(m.hull)}/${fx1(m.maxHull)}   overload ${m.overloaded}`,
-    `credits ${s.credits}  depth ${s.depthMeters}m (max ${s.deepestDepthMeters}m)`,
-    `cargo ${s.cargo.slotsUsed}/${s.cargo.slotCap}  ${fx1(s.cargo.loadKg)}/${fx1(s.cargo.liftLimitKg)}kg  ${oreEntries.map(([k, v]) => `${k}:${v}`).join(" ") || "empty"}`,
-    `satchel res ${s.satchel.resonite} cry ${s.satchel.cryenite} core ${s.satchel.coreSample}`,
-    `tiers F${s.tiers.fuel} D${s.tiers.drill} C${s.tiers.cargo} H${s.tiers.hull} J${s.tiers.jetpack} R${s.tiers.radiator} S${s.tiers.scanner}`,
-    `coreTimer ${s.coreTimer === null ? "-" : fx1(s.coreTimer) + "s"}   rocket ${s.rocket.installed.length}/5 next ${s.rocket.nextComponent ?? "-"}`,
-    `scanner locked ${s.scanner.locked}  target ${s.scanner.target ?? "-"}  dist ${s.scanner.distanceTiles === null ? "-" : fx1(s.scanner.distanceTiles)}`,
-  ];
-
-  const pad = 12;
-  const lineH = 18;
-  const x = 16;
-  const y = 16;
-  const w = 620;
-  const h = pad * 2 + 20 + lines.length * lineH;
-
-  ctx.save();
-  ctx.fillStyle = "rgba(5, 7, 10, 0.82)";
-  ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = PALETTE.coreGlow;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x + 0.5, y + 0.5, w, h);
-
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  ctx.fillStyle = PALETTE.coreGlow;
-  ctx.font = `700 12px ${FONT_STACK}`;
-  ctx.fillText("DEBUG", x + pad, y + pad);
-
-  ctx.fillStyle = "#b7c2d0";
-  ctx.font = `14px ${FONT_STACK}`;
-  let ly = y + pad + 20;
-  for (const line of lines) {
-    ctx.fillText(line, x + pad, ly);
-    ly += lineH;
-  }
-  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------
@@ -318,7 +233,7 @@ function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
 // ---------------------------------------------------------------------------
 
 function bandFill(band: Tile["band"]): string {
-  return BANDS[band].fill;
+  return BAND_FILL[band];
 }
 
 function drawMine(
@@ -329,9 +244,9 @@ function drawMine(
   view: View,
   cl: Clickable[],
 ): void {
-  const cam = game.viewCameraY;
-  let offX = -game.viewCameraX; // world x → screen x (the mine scrolls horizontally, specs/world.md)
-  let offY = VIEWPORT_Y - cam;
+  const cam = game.camY;
+  let offX = -game.camX; // world x → screen x (the mine scrolls horizontally, specs/world.md)
+  let offY = HUD_H - cam;
   // Screen shake (specs/hazards.md): jitter the whole mine — tiles, miner, and VFX all read
   // through offX/offY, so they shake together. Fades out over the shake's final 0.3s.
   if (game.shakeT > 0) {
@@ -342,34 +257,65 @@ function drawMine(
 
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, VIEWPORT_Y, STAGE_WIDTH, VIEWPORT_HEIGHT);
+  ctx.rect(0, HUD_H, STAGE_W, VIEW_H);
   ctx.clip();
 
-  // Sky above the ground line (world y < SURFACE_FEET_Y).
-  const groundY = SURFACE_FEET_Y + offY;
+  // Sky above the ground line (world y < SURFACE_Y).
+  const groundY = SURFACE_Y + offY;
   ctx.fillStyle = P.duskSky;
-  ctx.fillRect(0, VIEWPORT_Y, STAGE_WIDTH, Math.max(0, Math.min(STAGE_HEIGHT, groundY) - VIEWPORT_Y));
+  ctx.fillRect(
+    0,
+    HUD_H,
+    STAGE_W,
+    Math.max(0, Math.min(STAGE_H, groundY) - HUD_H),
+  );
   // Deep field below the visible world floor.
   ctx.fillStyle = P.void;
-  const worldBottom = WORLD.rows * TILE_SIZE + offY;
-  if (worldBottom < STAGE_HEIGHT) ctx.fillRect(0, worldBottom, STAGE_WIDTH, STAGE_HEIGHT - worldBottom);
+  const worldBottom = (game.coreRow + 1) * TILE + offY;
+  if (worldBottom < STAGE_H)
+    ctx.fillRect(0, worldBottom, STAGE_W, STAGE_H - worldBottom);
 
   // Visible tile window (both axes). Row 0 is the open surface strip — drawn by drawSurface,
   // not as a mine tile — so the tile loop starts at row 1.
   // A one-tile margin around the visible window so a screen shake (offX/offY jitter) never
   // exposes an undrawn row/column at the edge.
-  const rowTop = Math.max(1, Math.floor(cam / TILE_SIZE) - 1);
-  const rowBot = Math.min(WORLD.rows - 1, Math.floor((cam + VIEWPORT_HEIGHT) / TILE_SIZE) + 1);
-  const colLeft = Math.max(0, Math.floor(game.viewCameraX / TILE_SIZE) - 1);
-  const colRight = Math.min(WORLD_COLS - 1, Math.floor((game.viewCameraX + STAGE_WIDTH) / TILE_SIZE) + 1);
+  const rowTop = Math.max(1, Math.floor(cam / TILE) - 1);
+  const rowBot = Math.min(
+    game.coreRow + 1 - 1,
+    Math.floor((cam + VIEW_H) / TILE) + 1,
+  );
+  const colLeft = Math.max(0, Math.floor(game.camX / TILE) - 1);
+  const colRight = Math.min(
+    WORLD_COLS - 1,
+    Math.floor((game.camX + STAGE_W) / TILE) + 1,
+  );
 
   for (let r = rowTop; r <= rowBot; r++) {
     for (let c = colLeft; c <= colRight; c++) {
-      drawTile(ctx, assets, game.grid, r, c, GRID_MARGIN_X + c * TILE_SIZE + offX, r * TILE_SIZE + offY, view);
+      drawTile(
+        ctx,
+        assets,
+        game.grid,
+        r,
+        c,
+        c * TILE + offX,
+        r * TILE + offY,
+        view,
+      );
     }
   }
 
-  drawDrillDamage(ctx, game, assets, offX, offY, rowTop, rowBot, colLeft, colRight);
+  drawDrillDamage(
+    ctx,
+    game,
+    assets,
+    offX,
+    offY,
+    rowTop,
+    rowBot,
+    colLeft,
+    colRight,
+  );
   drawSurface(ctx, game, assets, offX, offY);
   drawGroundItems(ctx, game, assets, view, offX, offY);
   drawMiner(ctx, game, assets, view, offX, offY);
@@ -381,29 +327,36 @@ function drawMine(
   drawCoreCountdown(ctx, game, view);
 
   // Building activation hitboxes (only usable at the surface with no panel open).
-  if (game.phase === "in-mine" && !game.panel && game.atSurface()) {
-    for (const b of SURFACE_BUILDINGS) {
-      const bx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
+  if (game.screen === "in-mine" && !game.panel && game.atSurface()) {
+    for (const b of BUILDINGS) {
+      const bx = b.col * TILE + TILE / 2 + offX;
       const by = groundY - BUILDING_H - 6;
       // The Save Pad has no menu — clicking it banks the expedition (specs/gameplay.md); every
       // other building opens its overlay panel.
       cl.push({
         x: bx - BUILDING_W / 2,
-        y: Math.max(VIEWPORT_Y, by),
+        y: Math.max(HUD_H, by),
         w: BUILDING_W,
         h: BUILDING_H + 6,
         action: b.id === "save-pad" ? "save" : `open:${b.id}`,
       });
     }
-    const b = game.nearbyBuilding();
+    const near = game.nearbyBuilding();
+    const b = near ? BUILDINGS.find((x) => x.id === near) : null;
     if (b) {
-      const bx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
-      text(ctx, b.id === "save-pad" ? "[E] SAVE" : `[E] ${b.label}`, bx, groundY - BUILDING_H - 16, {
-        size: 14,
-        color: P.credits,
-        align: "center",
-        bold: true,
-      });
+      const bx = b.col * TILE + TILE / 2 + offX;
+      text(
+        ctx,
+        b.id === "save-pad" ? "[E] SAVE" : `[E] ${b.label}`,
+        bx,
+        groundY - BUILDING_H - 16,
+        {
+          size: 14,
+          color: P.credits,
+          align: "center",
+          bold: true,
+        },
+      );
     }
   }
 }
@@ -438,7 +391,7 @@ function drawTile(
   y: number,
   view: View,
 ): void {
-  const s = TILE_SIZE;
+  const s = TILE;
   const tile = grid[row]![col]!;
   switch (tile.kind) {
     case "bedrock": {
@@ -452,35 +405,61 @@ function drawTile(
     }
     case "tunnel": {
       // Inset dirt lip + rounded corners, joining open neighbors, in code (specs/world.md).
-      drawCarved(ctx, assets, grid, tile, row, col, x, y, cellOpen, (px, py) => {
-        const img = assets.tile("tunnel");
-        if (isReady(img)) ctx.drawImage(img, px, py, s, s);
-        else {
-          ctx.fillStyle = P.tunnel;
-          ctx.fillRect(px, py, s, s);
-        }
-      });
+      drawCarved(
+        ctx,
+        assets,
+        grid,
+        tile,
+        row,
+        col,
+        x,
+        y,
+        cellOpen,
+        (px, py) => {
+          const img = assets.tile("tunnel");
+          if (isReady(img)) ctx.drawImage(img, px, py, s, s);
+          else {
+            ctx.fillStyle = P.tunnel;
+            ctx.fillRect(px, py, s, s);
+          }
+        },
+      );
       break;
     }
     case "lava": {
       // Dirt-fringed, joining adjacent lava into one pool (specs/world.md, specs/hazards.md).
-      drawCarved(ctx, assets, grid, tile, row, col, x, y, cellLava, (px, py) => {
-        const img = assets.lava.length ? assets.lava[Math.floor(view.time * 8) % assets.lava.length] : undefined;
-        if (isReady(img)) ctx.drawImage(img, px, py, s, s);
-        else {
-          const pulse = 0.5 + 0.5 * Math.sin(view.time * 6 + px * 0.1);
-          ctx.fillStyle = P.lava;
-          ctx.fillRect(px, py, s, s);
-          ctx.fillStyle = `rgba(255,210,120,${0.25 + 0.3 * pulse})`;
-          ctx.fillRect(px + 10, py + 10, s - 20, s - 20);
-        }
-      });
+      drawCarved(
+        ctx,
+        assets,
+        grid,
+        tile,
+        row,
+        col,
+        x,
+        y,
+        cellLava,
+        (px, py) => {
+          const img = assets.lava.length
+            ? assets.lava[Math.floor(view.time * 8) % assets.lava.length]
+            : undefined;
+          if (isReady(img)) ctx.drawImage(img, px, py, s, s);
+          else {
+            const pulse = 0.5 + 0.5 * Math.sin(view.time * 6 + px * 0.1);
+            ctx.fillStyle = P.lava;
+            ctx.fillRect(px, py, s, s);
+            ctx.fillStyle = `rgba(255,210,120,${0.25 + 0.3 * pulse})`;
+            ctx.fillRect(px + 10, py + 10, s - 20, s - 20);
+          }
+        },
+      );
       break;
     }
     case "stone": {
       // Unbreakable stone — a solid boulder, not inset (specs/world.md).
       const variants = assets.stone();
-      const img = variants.length ? variants[tileVariant(row, col, variants.length)] : undefined;
+      const img = variants.length
+        ? variants[tileVariant(row, col, variants.length)]
+        : undefined;
       if (isReady(img)) ctx.drawImage(img, x, y, s, s);
       else drawStoneFallback(ctx, x, y);
       break;
@@ -490,7 +469,14 @@ function drawTile(
       if (isReady(img)) ctx.drawImage(img, x, y, s, s);
       else {
         drawBandRock(ctx, assets, tile, x, y, row, col);
-        const g = ctx.createRadialGradient(x + s / 2, y + s / 2, 2, x + s / 2, y + s / 2, s / 2);
+        const g = ctx.createRadialGradient(
+          x + s / 2,
+          y + s / 2,
+          2,
+          x + s / 2,
+          y + s / 2,
+          s / 2,
+        );
         g.addColorStop(0, "#fff3d0");
         g.addColorStop(0.5, P.coreSample);
         g.addColorStop(1, "rgba(255,74,42,0)");
@@ -577,7 +563,7 @@ function buildCarvePath(
   openDR: boolean,
   openDL: boolean,
 ): void {
-  const s = TILE_SIZE;
+  const s = TILE;
   const m = CARVE_INSET;
   const rad = CARVE_RADIUS;
   const HALF = Math.PI / 2;
@@ -591,7 +577,8 @@ function buildCarvePath(
   type Corner = "convex" | "concave" | "sharp";
   const kind = (a: boolean, bb: boolean, diag: boolean): Corner =>
     !a && !bb ? "convex" : a && bb && !diag ? "concave" : "sharp";
-  const off = (k: Corner): number => (k === "convex" ? rad : k === "concave" ? m : 0);
+  const off = (k: Corner): number =>
+    k === "convex" ? rad : k === "concave" ? m : 0;
   const kTL = kind(openU, openL, openUL);
   const kTR = kind(openU, openR, openUR);
   const kBR = kind(openD, openR, openDR);
@@ -643,14 +630,30 @@ function drawCarved(
   const openDR = open(grid, col + 1, row + 1);
   const openDL = open(grid, col - 1, row + 1);
   ctx.save();
-  buildCarvePath(ctx, x, y, openL, openR, openU, openD, openUL, openUR, openDR, openDL);
+  buildCarvePath(
+    ctx,
+    x,
+    y,
+    openL,
+    openR,
+    openU,
+    openD,
+    openUL,
+    openUR,
+    openDR,
+    openDL,
+  );
   ctx.clip();
   fill(x, y);
   ctx.restore();
 }
 
-function drawStoneFallback(ctx: CanvasRenderingContext2D, x: number, y: number): void {
-  const s = TILE_SIZE;
+function drawStoneFallback(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+): void {
+  const s = TILE;
   ctx.fillStyle = "#3f4652";
   ctx.fillRect(x, y, s, s);
   ctx.fillStyle = "#4c5360";
@@ -690,9 +693,10 @@ function drawDrillDamage(
       const tile = line[c]!;
       if (!isMinableKind(tile.kind) || tile.health === undefined) continue;
       const maxH = tileMaxHealth(tile);
-      const frac = maxH > 0 ? Math.min(1, Math.max(0, 1 - tile.health / maxH)) : 0;
+      const frac =
+        maxH > 0 ? Math.min(1, Math.max(0, 1 - tile.health / maxH)) : 0;
       if (frac <= 0) continue;
-      drawCrackOverlay(ctx, frames, frac, GRID_MARGIN_X + c * TILE_SIZE + offX, r * TILE_SIZE + offY);
+      drawCrackOverlay(ctx, frames, frac, c * TILE + offX, r * TILE + offY);
     }
   }
 }
@@ -710,7 +714,7 @@ function drawCrackOverlay(
     const idx = Math.min(frames.length - 1, Math.floor(frac * frames.length));
     const img = frames[idx];
     if (isReady(img)) {
-      ctx.drawImage(img, x, y, TILE_SIZE, TILE_SIZE);
+      ctx.drawImage(img, x, y, TILE, TILE);
       return;
     }
   }
@@ -718,13 +722,16 @@ function drawCrackOverlay(
   const n = 2 + Math.floor(frac * 5);
   ctx.strokeStyle = `rgba(20,16,12,${0.35 + 0.5 * frac})`;
   ctx.lineWidth = 2;
-  const cx = x + TILE_SIZE / 2;
-  const cy = y + TILE_SIZE / 2;
+  const cx = x + TILE / 2;
+  const cy = y + TILE / 2;
   ctx.beginPath();
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + frac;
     ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(a) * TILE_SIZE * 0.42 * frac, cy + Math.sin(a) * TILE_SIZE * 0.42 * frac);
+    ctx.lineTo(
+      cx + Math.cos(a) * TILE * 0.42 * frac,
+      cy + Math.sin(a) * TILE * 0.42 * frac,
+    );
   }
   ctx.stroke();
 }
@@ -741,24 +748,31 @@ function drawBandRock(
   // Pick one of the band's produced tile variants by a stable per-cell hash, so a wall
   // of the same band does not visibly repeat a single texture (specs/world.md).
   const variants = assets.tileVariants(tile.band);
-  const img = variants.length ? variants[tileVariant(row, col, variants.length)] : undefined;
+  const img = variants.length
+    ? variants[tileVariant(row, col, variants.length)]
+    : undefined;
   if (isReady(img)) {
-    ctx.drawImage(img, x, y, TILE_SIZE, TILE_SIZE);
+    ctx.drawImage(img, x, y, TILE, TILE);
   } else {
     ctx.fillStyle = bandFill(tile.band);
-    ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+    ctx.fillRect(x, y, TILE, TILE);
     // A little texture so plain rock is not a flat square.
     ctx.fillStyle = "rgba(0,0,0,0.14)";
     ctx.fillRect(x + 6, y + 30, 12, 6);
     ctx.fillRect(x + 28, y + 10, 10, 6);
     if (tile.band === "coreshell") {
       ctx.fillStyle = "rgba(255,106,42,0.16)";
-      ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+      ctx.fillRect(x, y, TILE, TILE);
     }
   }
 }
 
-function drawOreFallback(ctx: CanvasRenderingContext2D, ore: Ore, x: number, y: number): void {
+function drawOreFallback(
+  ctx: CanvasRenderingContext2D,
+  ore: Ore,
+  x: number,
+  y: number,
+): void {
   const col = ORES[ore].color;
   // A diagonal smear of overlapping lobes (echoing the produced ore vein) — an embedded
   // streak through the rock, not discrete dots — used only until the sprite decodes.
@@ -797,7 +811,12 @@ function drawOreFallback(ctx: CanvasRenderingContext2D, ore: Ore, x: number, y: 
  * glance as the rarer, richer find (specs/mining.md). Drawn until the produced gem sprite
  * decodes; the shape mirrors gen-world.sh's `gem`.
  */
-function drawGemFallback(ctx: CanvasRenderingContext2D, ore: Ore, x: number, y: number): void {
+function drawGemFallback(
+  ctx: CanvasRenderingContext2D,
+  ore: Ore,
+  x: number,
+  y: number,
+): void {
   const base = ORES[ore].color;
   const cx = x + 40;
   // Dark embedded socket.
@@ -806,7 +825,9 @@ function drawGemFallback(ctx: CanvasRenderingContext2D, ore: Ore, x: number, y: 
   ctx.arc(cx, y + 42, 19, 0, Math.PI * 2);
   ctx.fill();
   // Faceted body: table top (y 22), wide girdle (y 38), culet point (y 60).
-  const top = y + 22, gird = y + 38, cul = y + 60;
+  const top = y + 22,
+    gird = y + 38,
+    cul = y + 60;
   ctx.beginPath();
   ctx.moveTo(cx - 10, top);
   ctx.lineTo(cx + 10, top);
@@ -848,16 +869,21 @@ function drawGemFallback(ctx: CanvasRenderingContext2D, ore: Ore, x: number, y: 
   ctx.fillRect(x + 62, y + 19, 2, 2);
 }
 
-function drawMaterialFallback(ctx: CanvasRenderingContext2D, material: Material, x: number, y: number): void {
+function drawMaterialFallback(
+  ctx: CanvasRenderingContext2D,
+  material: Material,
+  x: number,
+  y: number,
+): void {
   const col = material === "resonite" ? P.resonite : P.cryenite;
-  const cx = x + TILE_SIZE / 2;
-  const cy = y + TILE_SIZE / 2;
-  const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, TILE_SIZE / 2);
+  const cx = x + TILE / 2;
+  const cy = y + TILE / 2;
+  const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, TILE / 2);
   g.addColorStop(0, "#ffffff");
   g.addColorStop(0.4, col);
   g.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = g;
-  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  ctx.fillRect(x, y, TILE, TILE);
   ctx.fillStyle = col;
   ctx.beginPath();
   ctx.moveTo(cx, cy - 14);
@@ -875,22 +901,29 @@ function drawSurface(
   offX: number,
   offY: number,
 ): void {
-  const groundY = SURFACE_FEET_Y + offY;
-  if (groundY < VIEWPORT_Y - 200 || groundY > STAGE_HEIGHT + 200) return;
+  const groundY = SURFACE_Y + offY;
+  if (groundY < HUD_H - 200 || groundY > STAGE_H + 200) return;
 
   // Camp ground strip on top of row 1 (spanning the whole world width, scrolled by offX).
   ctx.fillStyle = P.surfaceGround;
-  ctx.fillRect(GRID_MARGIN_X + offX, groundY - 10, WORLD_COLS * TILE_SIZE, 10);
+  ctx.fillRect(offX, groundY - 10, WORLD_COLS * TILE, 10);
 
   // The six buildings, centered on their tiles, resting on the ground line.
-  for (const b of SURFACE_BUILDINGS) {
-    const cxb = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
+  for (const b of BUILDINGS) {
+    const cxb = b.col * TILE + TILE / 2 + offX;
     const bx = cxb - BUILDING_W / 2;
     const img = assets.surface(b.id);
     if (isReady(img)) {
       ctx.drawImage(img, bx, groundY - BUILDING_H, BUILDING_W, BUILDING_H);
     } else {
-      drawBuildingFallback(ctx, b.id, bx, groundY - BUILDING_H, BUILDING_W, BUILDING_H);
+      drawBuildingFallback(
+        ctx,
+        b.id,
+        bx,
+        groundY - BUILDING_H,
+        BUILDING_W,
+        BUILDING_H,
+      );
     }
     text(ctx, b.label.toUpperCase(), cxb, groundY - BUILDING_H - 8, {
       size: 11,
@@ -903,9 +936,9 @@ function drawSurface(
   drawRocket(ctx, game, assets, offX, offY);
 
   // Cave mouth at the spawn column.
-  const cx = GRID_MARGIN_X + game.spawnCol * TILE_SIZE + offX;
+  const cx = SPAWN_COL * TILE + offX;
   const cimg = assets.surface("cave-mouth");
-  if (isReady(cimg)) ctx.drawImage(cimg, cx, groundY - 8, TILE_SIZE, 30);
+  if (isReady(cimg)) ctx.drawImage(cimg, cx, groundY - 8, TILE, 30);
 }
 
 function drawBuildingFallback(
@@ -942,9 +975,9 @@ function drawRocket(
   offX: number,
   offY: number,
 ): void {
-  const b = SURFACE_BUILDINGS.find((x) => x.id === "launch-pad")!;
-  const cx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
-  const groundY = SURFACE_FEET_Y + offY;
+  const b = BUILDINGS.find((x) => x.id === "launch-pad")!;
+  const cx = b.col * TILE + TILE / 2 + offX;
+  const groundY = SURFACE_Y + offY;
   const stage = game.installed.size; // 0..5 components installed
   const rise = game.launchAnim !== null ? game.launchAnim * 230 : 0;
   const baseY = groundY - rise;
@@ -1004,16 +1037,18 @@ function drawMiner(
   if (game.launchAnim !== null) return;
 
   const m = game.miner;
-  const drawW = TILE_SIZE; // the miner sprite is authored to fill an 80px tile (with headroom)
-  const drawH = TILE_SIZE;
-  const mx = m.prevX + (m.x - m.prevX) * game.renderAlpha;
-  const my = m.prevY + (m.y - m.prevY) * game.renderAlpha;
+  const drawW = TILE; // the miner sprite is authored to fill an 80px tile (with headroom)
+  const drawH = TILE;
+  const mx = m.x;
+  const my = m.y;
   const sx = mx + MINER_W / 2 - drawW / 2 + offX;
   const sy = my + MINER_H - drawH;
   const screenY = sy + offY;
 
   const frames = assets.miner[m.state];
-  const img = frames.length ? frames[Math.floor(view.time * FPS[m.state]) % frames.length] : undefined;
+  const img = frames.length
+    ? frames[Math.floor(view.time * FPS[m.state]) % frames.length]
+    : undefined;
 
   ctx.save();
   if (m.facing === "west") {
@@ -1045,9 +1080,9 @@ function drawGroundItems(
 ): void {
   const g = game.coreGround();
   if (!g) return;
-  const s = TILE_SIZE;
-  const x = GRID_MARGIN_X + g.col * TILE_SIZE + offX;
-  const y = g.row * TILE_SIZE + offY;
+  const s = TILE;
+  const x = g.col * TILE + offX;
+  const y = g.row * TILE + offY;
   const pulse = 0.5 + 0.5 * Math.sin(view.time * 6);
   const img = assets.material("core");
   if (isReady(img)) {
@@ -1055,7 +1090,14 @@ function drawGroundItems(
     ctx.drawImage(img, x, y, s, s);
     ctx.globalAlpha = 1;
   } else {
-    const gr = ctx.createRadialGradient(x + s / 2, y + s / 2, 2, x + s / 2, y + s / 2, s / 2);
+    const gr = ctx.createRadialGradient(
+      x + s / 2,
+      y + s / 2,
+      2,
+      x + s / 2,
+      y + s / 2,
+      s / 2,
+    );
     gr.addColorStop(0, "#fff3d0");
     gr.addColorStop(0.5, P.coreSample);
     gr.addColorStop(1, "rgba(255,74,42,0)");
@@ -1147,20 +1189,26 @@ function drawMinerFallback(
 // Over-world HUD: scanner + core countdown
 // ---------------------------------------------------------------------------
 
-function drawScanner(ctx: CanvasRenderingContext2D, game: Game, offX: number, offY: number): void {
+function drawScanner(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  offX: number,
+  offY: number,
+): void {
   const scan = game.scan;
   // Only draw the indicator when the scanner has actually LOCKED ON to a needed material within
   // range (specs/mining.md). With no lock there is NO indicator at all — an idle "no signal"
   // readout would just clutter the view the whole time you are out of range.
-  if (!scan.needed || !scan.hasSignal) return;
+  if (!scan.locked) return;
   const mx = minerCenterX(game.miner) + offX;
   const my = minerCenterY(game.miner) + offY - 64;
-  if (my < VIEWPORT_Y) return;
+  if (my < HUD_H) return;
 
   ctx.save();
   ctx.translate(mx, my);
-  const col = scan.material === "cryenite" ? P.cryenite : P.resonite;
-  ctx.rotate(scan.angle);
+  const col = scan.target === "cryenite" ? P.cryenite : P.resonite;
+  const angle = Math.atan2(scan.dirY, scan.dirX);
+  ctx.rotate(angle);
   ctx.fillStyle = col;
   ctx.beginPath();
   ctx.moveTo(20, 0);
@@ -1168,19 +1216,30 @@ function drawScanner(ctx: CanvasRenderingContext2D, game: Game, offX: number, of
   ctx.lineTo(6, 7);
   ctx.closePath();
   ctx.fill();
-  ctx.rotate(-scan.angle);
-  text(ctx, `${scan.distTiles.toFixed(0)}m`, 0, -14, { size: 11, color: col, align: "center", bold: true });
+  ctx.rotate(-angle);
+  text(ctx, `${(scan.distanceTiles ?? 0).toFixed(0)}t`, 0, -14, {
+    size: 11,
+    color: col,
+    align: "center",
+    bold: true,
+  });
   ctx.restore();
 }
 
-function drawCoreCountdown(ctx: CanvasRenderingContext2D, game: Game, view: View): void {
+function drawCoreCountdown(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+): void {
   if (game.coreTimer === null) return;
   const t = game.coreTimer;
   const danger = t < 30;
-  const blink = danger ? 0.5 + 0.5 * Math.sin(view.time * (t < 12 ? 18 : 8)) : 1;
+  const blink = danger
+    ? 0.5 + 0.5 * Math.sin(view.time * (t < 12 ? 18 : 8))
+    : 1;
   const w = 260;
-  const x = STAGE_WIDTH / 2 - w / 2;
-  const y = VIEWPORT_Y + 12;
+  const x = STAGE_W / 2 - w / 2;
+  const y = HUD_H + 12;
   ctx.globalAlpha = danger ? 0.55 + 0.45 * blink : 1;
   roundRect(ctx, x, y, w, 46, 8);
   ctx.fillStyle = "rgba(20,10,8,0.85)";
@@ -1245,59 +1304,100 @@ function gauge(
   });
 }
 
-function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+function drawStatusBar(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
   ctx.fillStyle = "#0c1015";
-  ctx.fillRect(0, 0, STAGE_WIDTH, STATUS_BAR_HEIGHT);
+  ctx.fillRect(0, 0, STAGE_W, HUD_H);
   ctx.strokeStyle = "#20272f";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(0, STATUS_BAR_HEIGHT + 0.5);
-  ctx.lineTo(STAGE_WIDTH, STATUS_BAR_HEIGHT + 0.5);
+  ctx.moveTo(0, HUD_H + 0.5);
+  ctx.lineTo(STAGE_W, HUD_H + 0.5);
   ctx.stroke();
 
   const y = 26;
   const fuelAlert = game.miner.fuel < game.maxFuel() * LOW_FUEL_FRACTION;
   const hullAlert = game.miner.hull < game.maxHull() * LOW_HULL_FRACTION;
-  gauge(ctx, 16, y, 150, "FUEL", game.miner.fuel, game.maxFuel(), P.fuel, fuelAlert);
-  gauge(ctx, 182, y, 150, "HULL", game.miner.hull, game.maxHull(), P.hull, hullAlert);
+  gauge(
+    ctx,
+    16,
+    y,
+    150,
+    "FUEL",
+    game.miner.fuel,
+    game.maxFuel(),
+    P.fuel,
+    fuelAlert,
+  );
+  gauge(
+    ctx,
+    182,
+    y,
+    150,
+    "HULL",
+    game.miner.hull,
+    game.maxHull(),
+    P.hull,
+    hullAlert,
+  );
 
   // Cargo as SLOTS used / capacity (specs/mining.md). Reads OVERLOAD (alert color) when the
   // haul's WEIGHT is too heavy for the jetpack to lift (specs/character.md), and turns alert
   // when the bay is full by slot count. The current load in kg rides alongside so the player
   // can see how close to un-liftable a heavy haul is.
   const overloaded = game.overloaded();
-  const full = game.cargoUsed() >= game.cargoCap();
+  const full = game.slotsUsed() >= game.cargoCap();
   text(ctx, overloaded ? "OVERLOAD" : "CARGO", 340, y - 4, {
     size: 10,
     color: overloaded ? P.alert : P.textSecondary,
   });
-  text(ctx, `${game.cargoUsed()}/${game.cargoCap()}`, 340, y + 12, {
+  text(ctx, `${game.slotsUsed()}/${game.cargoCap()}`, 340, y + 12, {
     size: 16,
     color: overloaded || full ? P.alert : P.cargo,
     bold: true,
   });
-  text(ctx, `${Math.round(game.cargoWeight())}kg`, 340, y + 26, {
+  text(ctx, `${Math.round(game.loadKg())}kg`, 340, y + 26, {
     size: 10,
     color: overloaded ? P.alert : P.textTertiary,
   });
 
   // Credits
   text(ctx, "CREDITS", 452, y - 4, { size: 10, color: P.textSecondary });
-  text(ctx, `${game.credits}`, 452, y + 12, { size: 16, color: P.credits, bold: true });
+  text(ctx, `${game.credits}`, 452, y + 12, {
+    size: 16,
+    color: P.credits,
+    bold: true,
+  });
 
   // Depth
   text(ctx, "DEPTH", 596, y - 4, { size: 10, color: P.textSecondary });
-  text(ctx, `${game.depthMeters()} m`, 596, y + 12, { size: 16, color: P.textPrimary, bold: true });
+  text(ctx, `${game.depthMeters()} m`, 596, y + 12, {
+    size: 16,
+    color: P.textPrimary,
+    bold: true,
+  });
 
   // Materials satchel
   text(ctx, "SATCHEL", 712, y - 4, { size: 10, color: P.textSecondary });
-  const chip = (mx: number, label: string, held: boolean, color: string): void => {
+  const chip = (
+    mx: number,
+    label: string,
+    held: boolean,
+    color: string,
+  ): void => {
     ctx.globalAlpha = held ? 1 : 0.3;
     ctx.fillStyle = color;
     roundRect(ctx, mx, y - 2, 16, 16, 4);
     ctx.fill();
     ctx.globalAlpha = 1;
-    text(ctx, label, mx + 20, y + 10, { size: 11, color: held ? P.textPrimary : P.textTertiary });
+    text(ctx, label, mx + 20, y + 10, {
+      size: 11,
+      color: held ? P.textPrimary : P.textTertiary,
+    });
   };
   chip(712, "Res", game.satchel.resonite > 0, P.resonite);
   chip(772, "Cry", game.satchel.cryenite > 0, P.cryenite);
@@ -1313,41 +1413,60 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
   }
 
   // Inventory (BAG) + Pause + Mute controls (right).
-  button(ctx, cl, view, STAGE_WIDTH - 222, 12, 64, 32, "BAG", "sys:inventory", {
+  button(ctx, cl, view, STAGE_W - 222, 12, 64, 32, "BAG", "sys:inventory", {
     selected: game.panel === "inventory",
   });
-  button(ctx, cl, view, STAGE_WIDTH - 150, 12, 64, 32, "PAUSE", "sys:pause", {});
-  button(ctx, cl, view, STAGE_WIDTH - 78, 12, 64, 32, view.muted ? "UNMUTE" : "MUTE", "sys:mute", {});
+  button(ctx, cl, view, STAGE_W - 150, 12, 64, 32, "PAUSE", "sys:pause", {});
+  button(
+    ctx,
+    cl,
+    view,
+    STAGE_W - 78,
+    12,
+    64,
+    32,
+    view.muted ? "UNMUTE" : "MUTE",
+    "sys:mute",
+    {},
+  );
 }
 
 function drawNotes(ctx: CanvasRenderingContext2D, game: Game): void {
-  let y = VIEWPORT_Y + 70;
+  let y = HUD_H + 70;
   for (const n of game.notes) {
     const a = Math.min(1, n.t);
     ctx.globalAlpha = a;
-    text(ctx, n.text, STAGE_WIDTH / 2, y, { size: 15, color: P.alert, align: "center", bold: true });
+    text(ctx, n.text, STAGE_W / 2, y, {
+      size: 15,
+      color: P.alert,
+      align: "center",
+      bold: true,
+    });
     ctx.globalAlpha = 1;
     y += 22;
   }
 }
 
 /**
- * The first-time hazard tip (specs/hazards.md, specs/ui.md): a NON-blocking, dismissible
- * alert card explaining a hazard the player just met (why the hull dropped), shown at most
- * once per expedition for gas and once for lava. The mine keeps running behind it; the card
- * is dismissed by a click or SPACE (main.ts) and auto-fades after TIP_LIFE, so it can never
- * stall a run. The whole card is one clickable that dismisses it.
+ * The first-time hazard notice (specs/hazards.md, specs/ui.md): a non-blocking card
+ * explaining the hazard the miner just met, raised at most once per expedition for gas
+ * and once for lava. The mine keeps running behind it, it fades on its own after
+ * NOTICE_FADE, and the whole card is one clickable that dismisses it.
  */
-function drawTip(ctx: CanvasRenderingContext2D, game: Game, cl: Clickable[]): void {
-  const tip = game.tip;
-  if (!tip) return;
+function drawNotice(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  cl: Clickable[],
+): void {
+  const notice = game.notice;
+  if (!notice || !notice.shown) return;
   const w = 640;
   const h = 172;
-  const x = STAGE_WIDTH / 2 - w / 2;
+  const x = STAGE_W / 2 - w / 2;
   // Anchored low in the viewport, clear of the miner (who sits near the vertical centre), so the
   // card explains the hull drop without covering where the action just happened (specs/hazards.md).
-  const y = STAGE_HEIGHT - h - 36;
-  const fade = Math.min(1, tip.t / 0.6); // fade out over the card's final 0.6s
+  const y = STAGE_H - h - 36;
+  const fade = Math.min(1, notice.t / 0.6); // fade out over the card's final 0.6s
   ctx.globalAlpha = fade;
   roundRect(ctx, x, y, w, h, 12);
   ctx.fillStyle = "rgba(18,10,8,0.93)";
@@ -1359,10 +1478,20 @@ function drawTip(ctx: CanvasRenderingContext2D, game: Game, cl: Clickable[]): vo
   ctx.fillStyle = P.alert;
   roundRect(ctx, x + 22, y + 22, 36, 36, 8);
   ctx.fill();
-  text(ctx, "!", x + 40, y + 47, { size: 28, color: "#1a0d0a", align: "center", baseline: "middle", bold: true });
-  text(ctx, tip.kind === "gas" ? "GAS POCKET" : "LAVA", x + 74, y + 46, { size: 22, color: P.alert, bold: true });
+  text(ctx, "!", x + 40, y + 47, {
+    size: 28,
+    color: "#1a0d0a",
+    align: "center",
+    baseline: "middle",
+    bold: true,
+  });
+  text(ctx, notice.hazard === "gas" ? "GAS POCKET" : "LAVA", x + 74, y + 46, {
+    size: 22,
+    color: P.alert,
+    bold: true,
+  });
   const lines =
-    tip.kind === "gas"
+    notice.hazard === "gas"
       ? [
           "Gas pockets hide as ordinary rock — drilling one DETONATES it, and",
           "that blast is the hull hit, deadlier the deeper you are. Watch for the",
@@ -1384,7 +1513,7 @@ function drawTip(ctx: CanvasRenderingContext2D, game: Game, cl: Clickable[]): vo
     align: "right",
   });
   ctx.globalAlpha = 1;
-  cl.push({ x, y, w, h, action: "tip:dismiss" });
+  cl.push({ x, y, w, h, action: "notice:dismiss" });
 }
 
 // ---------------------------------------------------------------------------
@@ -1398,20 +1527,29 @@ function panelFrame(
   h = 480,
 ): { x: number; y: number; w: number; h: number } {
   ctx.fillStyle = "rgba(5,7,10,0.72)";
-  ctx.fillRect(0, VIEWPORT_Y, STAGE_WIDTH, VIEWPORT_HEIGHT);
-  const x = STAGE_WIDTH / 2 - w / 2;
-  const y = STAGE_HEIGHT / 2 - h / 2 + 20;
+  ctx.fillRect(0, HUD_H, STAGE_W, VIEW_H);
+  const x = STAGE_W / 2 - w / 2;
+  const y = STAGE_H / 2 - h / 2 + 20;
   roundRect(ctx, x, y, w, h, 12);
   ctx.fillStyle = P.panel;
   ctx.fill();
   ctx.strokeStyle = "#2a333d";
   ctx.lineWidth = 2;
   ctx.stroke();
-  text(ctx, title, x + 28, y + 40, { size: 24, color: P.textPrimary, bold: true });
+  text(ctx, title, x + 28, y + 40, {
+    size: 24,
+    color: P.textPrimary,
+    bold: true,
+  });
   return { x, y, w, h };
 }
 
-function drawPanel(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+function drawPanel(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
   switch (game.panel) {
     case "fuel-depot":
       drawFuelDepot(ctx, game, view, cl);
@@ -1436,16 +1574,43 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Cl
   }
 }
 
-function closeButton(ctx: CanvasRenderingContext2D, f: { x: number; y: number; w: number; h: number }, view: View, cl: Clickable[]): void {
-  button(ctx, cl, view, f.x + f.w - 130, f.y + f.h - 56, 110, 40, "CLOSE", "panel:close", {});
+function closeButton(
+  ctx: CanvasRenderingContext2D,
+  f: { x: number; y: number; w: number; h: number },
+  view: View,
+  cl: Clickable[],
+): void {
+  button(
+    ctx,
+    cl,
+    view,
+    f.x + f.w - 130,
+    f.y + f.h - 56,
+    110,
+    40,
+    "CLOSE",
+    "panel:close",
+    {},
+  );
 }
 
-function drawFuelDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+function drawFuelDepot(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
   const f = panelFrame(ctx, "FUEL DEPOT");
-  text(ctx, "Buy fuel and hull repair with Credits — nothing refills for free.", f.x + 28, f.y + 74, {
-    size: 15,
-    color: P.textSecondary,
-  });
+  text(
+    ctx,
+    "Buy fuel and hull repair with Credits — nothing refills for free.",
+    f.x + 28,
+    f.y + 74,
+    {
+      size: 15,
+      color: P.textSecondary,
+    },
+  );
   text(ctx, `Credits: ${game.credits}`, f.x + f.w - 28, f.y + 40, {
     size: 18,
     color: P.credits,
@@ -1457,35 +1622,105 @@ function drawFuelDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
   const fuelD = fuelDeficit(game);
   const fuelFill = fuelCost(fuelD);
   const fuelFull = fuelD <= 0;
-  const cantBuyFuel = fuelFull || game.credits < FUEL_COST_PER_UNIT;
+  const cantBuyFuel = fuelFull || game.credits < FUEL_PRICE;
   const fuelY = f.y + 150;
-  gauge(ctx, f.x + 28, fuelY, 300, "FUEL", game.miner.fuel, game.maxFuel(), P.fuel, false);
-  text(ctx, `${FUEL_COST_PER_UNIT} Cr / unit`, f.x + 28, fuelY + 34, { size: 12, color: P.textTertiary });
-  button(ctx, cl, view, f.x + 352, fuelY - 12, 78, 38, `+${DEPOT_INCREMENT}`, "buyfuel:25", {
-    disabled: cantBuyFuel,
-    accent: P.fuel,
+  gauge(
+    ctx,
+    f.x + 28,
+    fuelY,
+    300,
+    "FUEL",
+    game.miner.fuel,
+    game.maxFuel(),
+    P.fuel,
+    false,
+  );
+  text(ctx, `${FUEL_PRICE} Cr / unit`, f.x + 28, fuelY + 34, {
+    size: 12,
+    color: P.textTertiary,
   });
-  button(ctx, cl, view, f.x + 442, fuelY - 12, 200, 38, fuelFull ? "FULL" : `FILL ${fuelFill} Cr`, "buyfuel:full", {
-    disabled: cantBuyFuel,
-    accent: P.fuel,
-  });
+  button(
+    ctx,
+    cl,
+    view,
+    f.x + 352,
+    fuelY - 12,
+    78,
+    38,
+    `+${FUEL_BUY_INCREMENT}`,
+    "buyfuel:increment",
+    {
+      disabled: cantBuyFuel,
+      accent: P.fuel,
+    },
+  );
+  button(
+    ctx,
+    cl,
+    view,
+    f.x + 442,
+    fuelY - 12,
+    200,
+    38,
+    fuelFull ? "FULL" : `FILL ${fuelFill} Cr`,
+    "buyfuel:full",
+    {
+      disabled: cantBuyFuel,
+      accent: P.fuel,
+    },
+  );
 
   // ---- Hull row ----
   const hullD = hullDeficit(game);
   const hullRepair = repairCost(hullD);
   const hullFull = hullD <= 0;
-  const cantBuyRepair = hullFull || game.credits < REPAIR_COST_PER_POINT;
+  const cantBuyRepair = hullFull || game.credits < REPAIR_PRICE;
   const hullY = f.y + 240;
-  gauge(ctx, f.x + 28, hullY, 300, "HULL", game.miner.hull, game.maxHull(), P.hull, false);
-  text(ctx, `${REPAIR_COST_PER_POINT} Cr / hull`, f.x + 28, hullY + 34, { size: 12, color: P.textTertiary });
-  button(ctx, cl, view, f.x + 352, hullY - 12, 78, 38, `+${DEPOT_INCREMENT}`, "buyrepair:25", {
-    disabled: cantBuyRepair,
-    accent: P.hull,
+  gauge(
+    ctx,
+    f.x + 28,
+    hullY,
+    300,
+    "HULL",
+    game.miner.hull,
+    game.maxHull(),
+    P.hull,
+    false,
+  );
+  text(ctx, `${REPAIR_PRICE} Cr / hull`, f.x + 28, hullY + 34, {
+    size: 12,
+    color: P.textTertiary,
   });
-  button(ctx, cl, view, f.x + 442, hullY - 12, 200, 38, hullFull ? "FULL" : `REPAIR ${hullRepair} Cr`, "buyrepair:full", {
-    disabled: cantBuyRepair,
-    accent: P.hull,
-  });
+  button(
+    ctx,
+    cl,
+    view,
+    f.x + 352,
+    hullY - 12,
+    78,
+    38,
+    `+${REPAIR_BUY_INCREMENT}`,
+    "buyrepair:increment",
+    {
+      disabled: cantBuyRepair,
+      accent: P.hull,
+    },
+  );
+  button(
+    ctx,
+    cl,
+    view,
+    f.x + 442,
+    hullY - 12,
+    200,
+    38,
+    hullFull ? "FULL" : `REPAIR ${hullRepair} Cr`,
+    "buyrepair:full",
+    {
+      disabled: cantBuyRepair,
+      accent: P.hull,
+    },
+  );
 
   text(
     ctx,
@@ -1494,21 +1729,36 @@ function drawFuelDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
     f.y + 340,
     { size: 12, color: P.textTertiary },
   );
-  text(ctx, "blasts, lava, and hard landings — none of it comes back on its own.", f.x + 28, f.y + 360, {
-    size: 12,
-    color: P.textTertiary,
-  });
+  text(
+    ctx,
+    "blasts, lava, and hard landings — none of it comes back on its own.",
+    f.x + 28,
+    f.y + 360,
+    {
+      size: 12,
+      color: P.textTertiary,
+    },
+  );
   closeButton(ctx, f, view, cl);
 }
 
-function drawOreMarket(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+function drawOreMarket(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
   // The cargo breakdown: one row per ORE HELD (specs/mining.md). Only ores actually carried are
   // listed, so the list scales with the ten ores + three gems without overflowing.
   const f = panelFrame(ctx, "ORE MARKET", 760, 600);
   let y = f.y + 90;
   text(ctx, "ORE", f.x + 28, y, { size: 12, color: P.textTertiary });
   text(ctx, "HELD × VALUE", f.x + 260, y, { size: 12, color: P.textTertiary });
-  text(ctx, "SUBTOTAL", f.x + f.w - 40, y, { size: 12, color: P.textTertiary, align: "right" });
+  text(ctx, "SUBTOTAL", f.x + f.w - 40, y, {
+    size: 12,
+    color: P.textTertiary,
+    align: "right",
+  });
   y += 22;
   let listed = 0;
   for (const o of Object.keys(ORES) as Ore[]) {
@@ -1521,25 +1771,48 @@ function drawOreMarket(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
     ctx.arc(f.x + 34, y - 5, 6, 0, Math.PI * 2);
     ctx.fill();
     text(ctx, o.toUpperCase(), f.x + 48, y, { size: 15, color: P.textPrimary });
-    text(ctx, `${n} × ${v}`, f.x + 260, y, { size: 15, color: P.textSecondary });
-    text(ctx, `${n * v}`, f.x + f.w - 40, y, { size: 15, color: P.credits, align: "right" });
+    text(ctx, `${n} × ${v}`, f.x + 260, y, {
+      size: 15,
+      color: P.textSecondary,
+    });
+    text(ctx, `${n * v}`, f.x + f.w - 40, y, {
+      size: 15,
+      color: P.credits,
+      align: "right",
+    });
     y += 28;
   }
   if (listed === 0) {
-    text(ctx, "Cargo bay empty — drill ore veins below to fill it.", f.x + 28, y + 2, {
-      size: 14,
-      color: P.textTertiary,
-    });
+    text(
+      ctx,
+      "Cargo bay empty — drill ore veins below to fill it.",
+      f.x + 28,
+      y + 2,
+      {
+        size: 14,
+        color: P.textTertiary,
+      },
+    );
     y += 28;
   }
   const total = cargoValue(game.cargo);
   y += 8;
-  text(ctx, `TOTAL: ${total} Credits`, f.x + 28, y, { size: 18, color: P.credits, bold: true });
-  text(ctx, `Hold ${game.cargoUsed()}/${game.cargoCap()} slots · ${Math.round(game.cargoWeight())} kg`, f.x + f.w - 40, y, {
-    size: 14,
-    color: P.textSecondary,
-    align: "right",
+  text(ctx, `TOTAL: ${total} Credits`, f.x + 28, y, {
+    size: 18,
+    color: P.credits,
+    bold: true,
   });
+  text(
+    ctx,
+    `Hold ${game.slotsUsed()}/${game.cargoCap()} slots · ${Math.round(game.loadKg())} kg`,
+    f.x + f.w - 40,
+    y,
+    {
+      size: 14,
+      color: P.textSecondary,
+      align: "right",
+    },
+  );
   button(ctx, cl, view, f.x + 28, f.y + f.h - 56, 160, 40, "SELL ALL", "sell", {
     disabled: total <= 0,
     accent: P.credits,
@@ -1547,7 +1820,12 @@ function drawOreMarket(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
   closeButton(ctx, f, view, cl);
 }
 
-function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+function drawUpgradeShop(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
   // The seven upgrade tracks, one per row (single-use field supplies now live in their own
   // SUPPLY DEPOT building — specs/items.md, specs/world.md).
   const f = panelFrame(ctx, "UPGRADE SHOP", 760, 560);
@@ -1558,11 +1836,10 @@ function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, 
     bold: true,
   });
 
-  const tracks = Object.keys(UPGRADE_TRACKS) as (keyof typeof UPGRADE_TRACKS)[];
   const colL = f.x + 28;
   let y = f.y + 84;
-  for (const t of tracks) {
-    const def = UPGRADE_TRACKS[t];
+  for (const t of UPGRADE_TRACKS) {
+    const def = TRACK_DISPLAY[t];
     const tier = game.tiers[t];
     const price = nextUpgradePrice(game, t);
     const maxed = price === null;
@@ -1570,19 +1847,40 @@ function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, 
     // Radiator reads best as a percentage; the scanner as its tile range (with tier 1 = no
     // scanner at all); the rest read as their raw value.
     const fmt = (v: number): string =>
-      t === "radiator" ? `${Math.round(v * 100)}%` : t === "scanner" && v === 0 ? "no scanner" : `${v}`;
+      t === "radiator"
+        ? `${Math.round(v * 100)}%`
+        : t === "scanner" && v === 0
+          ? "no scanner"
+          : `${v}`;
     const curVal = def.values[tier - 1]!;
     const nextVal = maxed ? null : def.values[tier]!;
     // The scanner's readout omits the "tiles range" unit for the "no scanner" state so it doesn't
     // read "no scanner tiles range".
-    const unitFor = (v: number): string => (t === "scanner" && v === 0 ? "" : ` ${def.unit}`);
-    text(ctx, def.label.toUpperCase(), colL, y + 4, { size: 15, color: P.textPrimary, bold: true });
-    text(ctx, `Tier ${tier}/${trackMax} — ${fmt(curVal)}${unitFor(curVal)}`, colL, y + 22, {
-      size: 12,
-      color: P.textSecondary,
+    const unitFor = (v: number): string =>
+      t === "scanner" && v === 0 ? "" : ` ${def.unit}`;
+    text(ctx, UPGRADE_LABEL[t], colL, y + 4, {
+      size: 15,
+      color: P.textPrimary,
+      bold: true,
     });
+    text(
+      ctx,
+      `Tier ${tier}/${trackMax} — ${fmt(curVal)}${unitFor(curVal)}`,
+      colL,
+      y + 22,
+      {
+        size: 12,
+        color: P.textSecondary,
+      },
+    );
     if (!maxed) {
-      text(ctx, `Next: ${fmt(nextVal!)}${unitFor(nextVal!)}`, colL + 380, y + 4, { size: 13, color: P.hull });
+      text(
+        ctx,
+        `Next: ${fmt(nextVal!)}${unitFor(nextVal!)}`,
+        colL + 380,
+        y + 4,
+        { size: 13, color: P.hull },
+      );
       text(ctx, `${price} Cr`, colL + 380, y + 22, {
         size: 13,
         color: game.credits >= price! ? P.credits : P.alert,
@@ -1602,12 +1900,23 @@ function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, 
  * with a code-drawn icon, its blurb, the count held, and a price/BUY greyed out when
  * unaffordable — its own surface building and the fourth Credits sink (specs/gameplay.md).
  */
-function drawSupplyDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+function drawSupplyDepot(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
   const f = panelFrame(ctx, "SUPPLY DEPOT", 760, 520);
-  text(ctx, "Single-use field supplies — used in the mine with 1–6 or the bag.", f.x + 28, f.y + 74, {
-    size: 14,
-    color: P.textSecondary,
-  });
+  text(
+    ctx,
+    "Single-use field supplies — used in the mine with 1–6 or the bag.",
+    f.x + 28,
+    f.y + 74,
+    {
+      size: 14,
+      color: P.textSecondary,
+    },
+  );
   text(ctx, `Credits: ${game.credits}`, f.x + f.w - 28, f.y + 40, {
     size: 18,
     color: P.credits,
@@ -1624,7 +1933,10 @@ function drawSupplyDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, 
       color: P.textPrimary,
       bold: true,
     });
-    text(ctx, def.blurb, f.x + 72, ry + 26, { size: 12, color: P.textTertiary });
+    text(ctx, def.blurb, f.x + 72, ry + 26, {
+      size: 12,
+      color: P.textTertiary,
+    });
     text(ctx, `${def.price} Cr`, f.x + f.w - 132, ry + 4, {
       size: 13,
       color: afford ? P.credits : P.alert,
@@ -1635,10 +1947,21 @@ function drawSupplyDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, 
       color: held > 0 ? P.textSecondary : P.textTertiary,
       align: "right",
     });
-    button(ctx, cl, view, f.x + f.w - 118, ry - 4, 90, 38, "BUY", `buyitem:${def.id}`, {
-      disabled: !afford,
-      accent: P.credits,
-    });
+    button(
+      ctx,
+      cl,
+      view,
+      f.x + f.w - 118,
+      ry - 4,
+      90,
+      38,
+      "BUY",
+      `buyitem:${def.id}`,
+      {
+        disabled: !afford,
+        accent: P.credits,
+      },
+    );
     ry += 58;
   }
   closeButton(ctx, f, view, cl);
@@ -1649,7 +1972,13 @@ function drawSupplyDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, 
  * drawn, consistent with the in-code HUD chrome; no produced sprite). Each reads as its
  * item by shape and palette color.
  */
-function drawItemIcon(ctx: CanvasRenderingContext2D, id: ItemId, x: number, y: number, s: number): void {
+function drawItemIcon(
+  ctx: CanvasRenderingContext2D,
+  id: ItemId,
+  x: number,
+  y: number,
+  s: number,
+): void {
   const cx = x + s / 2;
   const cy = y + s / 2;
   switch (id) {
@@ -1718,7 +2047,12 @@ function drawItemIcon(ctx: CanvasRenderingContext2D, id: ItemId, x: number, y: n
   }
 }
 
-function drawLaunchPad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+function drawLaunchPad(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
   const f = panelFrame(ctx, "LAUNCH PAD");
   let y = f.y + 78;
   const next = nextComponent(game);
@@ -1738,10 +2072,21 @@ function drawLaunchPad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
       ctx.lineTo(f.x + 40, y - 4);
       ctx.stroke();
     }
-    const col = installed ? P.textSecondary : isNext ? P.textPrimary : P.textTertiary;
-    text(ctx, `${c.order}. ${c.label}`, f.x + 56, y + 5, { size: 16, color: col, bold: isNext });
+    const col = installed
+      ? P.textSecondary
+      : isNext
+        ? P.textPrimary
+        : P.textTertiary;
+    text(
+      ctx,
+      `${ROCKET_COMPONENTS.indexOf(c) + 1}. ${c.label}`,
+      f.x + 56,
+      y + 5,
+      { size: 16, color: col, bold: isNext },
+    );
     let req = `${c.credits} Cr`;
-    if (c.material) req += ` + 1 ${c.material === "core-sample" ? "Core Sample" : c.material}`;
+    if (c.material)
+      req += ` + 1 ${c.material === "core-sample" ? "Core Sample" : c.material}`;
     text(ctx, installed ? "INSTALLED" : req, f.x + f.w - 40, y + 5, {
       size: 13,
       color: installed ? P.credits : P.textSecondary,
@@ -1752,16 +2097,25 @@ function drawLaunchPad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
 
   y = f.y + f.h - 108;
   if (allInstalled(game)) {
-    text(ctx, "All components installed. Ready for liftoff.", f.x + 28, y, { size: 15, color: P.credits });
-    button(ctx, cl, view, f.x + 28, y + 16, 200, 44, "LAUNCH", "launch", { accent: P.credits });
+    text(ctx, "All components installed. Ready for liftoff.", f.x + 28, y, {
+      size: 15,
+      color: P.credits,
+    });
+    button(ctx, cl, view, f.x + 28, y + 16, 200, 44, "LAUNCH", "launch", {
+      accent: P.credits,
+    });
   } else if (next) {
     const ok = canFabricate(game);
     const matOk = hasMaterial(game, next.material);
     const affOk = game.credits >= next.credits;
     let hint = `Next: ${next.label}`;
     if (!affOk) hint += "  — not enough Credits";
-    else if (!matOk) hint += `  — need ${next.material === "core-sample" ? "the Core Sample" : next.material}`;
-    text(ctx, hint, f.x + 28, y, { size: 14, color: ok ? P.textPrimary : P.alert });
+    else if (!matOk)
+      hint += `  — need ${next.material === "core-sample" ? "the Core Sample" : next.material}`;
+    text(ctx, hint, f.x + 28, y, {
+      size: 14,
+      color: ok ? P.textPrimary : P.alert,
+    });
     // The next component is named in the hint above and the checklist, so the button stays short.
     button(ctx, cl, view, f.x + 28, y + 16, 220, 44, "FABRICATE", "fabricate", {
       disabled: !ok,
@@ -1771,14 +2125,25 @@ function drawLaunchPad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
   closeButton(ctx, f, view, cl);
 }
 
-function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+function drawInventory(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
   // Two-column: cargo (ore) + satchel on the left, FIELD SUPPLIES (USE) on the right
   // (specs/items.md, specs/mining.md).
   const f = panelFrame(ctx, "CARGO HOLD", 980, 600);
-  text(ctx, "Everything you're carrying. DROP ore to shed weight; USE a field supply.", f.x + 28, f.y + 66, {
-    size: 14,
-    color: P.textSecondary,
-  });
+  text(
+    ctx,
+    "Everything you're carrying. DROP ore to shed weight; USE a field supply.",
+    f.x + 28,
+    f.y + 66,
+    {
+      size: 14,
+      color: P.textSecondary,
+    },
+  );
 
   // ---- Left: ore rows (only ores actually HELD, so the list scales with the 13 ore types) ----
   const colL = f.x + 28;
@@ -1797,31 +2162,55 @@ function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
     ctx.beginPath();
     ctx.arc(colL + 6, y - 5, 6, 0, Math.PI * 2);
     ctx.fill();
-    text(ctx, o.toUpperCase(), colL + 20, y, { size: 15, color: P.textPrimary });
-    text(ctx, `${n} × ${w}kg`, colL + 200, y, { size: 14, color: P.textSecondary });
-    text(ctx, `${n * w} kg`, colL + 288, y, { size: 15, color: P.textSecondary });
+    text(ctx, o.toUpperCase(), colL + 20, y, {
+      size: 15,
+      color: P.textPrimary,
+    });
+    text(ctx, `${n} × ${w}kg`, colL + 200, y, {
+      size: 14,
+      color: P.textSecondary,
+    });
+    text(ctx, `${n * w} kg`, colL + 288, y, {
+      size: 15,
+      color: P.textSecondary,
+    });
     button(ctx, cl, view, colL + 356, y - 18, 90, 28, "DROP", `drop:${o}`, {
       accent: P.alert,
     });
     y += 32;
   }
   if (listed === 0) {
-    text(ctx, "Bay empty — nothing to carry yet.", colL + 20, y + 2, { size: 14, color: P.textTertiary });
+    text(ctx, "Bay empty — nothing to carry yet.", colL + 20, y + 2, {
+      size: 14,
+      color: P.textTertiary,
+    });
     y += 32;
   }
   y += 6;
   const overloaded = game.overloaded();
-  text(ctx, `Slots ${game.cargoUsed()}/${game.cargoCap()}   ·   Load ${Math.round(game.cargoWeight())} kg`, colL, y, {
-    size: 15,
-    color: overloaded ? P.alert : P.textPrimary,
-    bold: true,
-  });
-  if (overloaded) {
-    text(ctx, "OVERLOAD — too heavy for the jetpack. Drop ore to fly out.", colL, y + 20, {
-      size: 12,
-      color: P.alert,
+  text(
+    ctx,
+    `Slots ${game.slotsUsed()}/${game.cargoCap()}   ·   Load ${Math.round(game.loadKg())} kg`,
+    colL,
+    y,
+    {
+      size: 15,
+      color: overloaded ? P.alert : P.textPrimary,
       bold: true,
-    });
+    },
+  );
+  if (overloaded) {
+    text(
+      ctx,
+      "OVERLOAD — too heavy for the jetpack. Drop ore to fly out.",
+      colL,
+      y + 20,
+      {
+        size: 12,
+        color: P.alert,
+        bold: true,
+      },
+    );
   }
   const sat = game.satchel;
   text(
@@ -1835,8 +2224,15 @@ function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
   // ---- Right: field supplies (USE) + jettison ----
   const colR = f.x + 500;
   const rw = 452;
-  text(ctx, "FIELD SUPPLIES", colR, f.y + 100, { size: 15, color: P.credits, bold: true });
-  text(ctx, "Single-use — hotkeys 1–6 or USE.", colR, f.y + 118, { size: 11, color: P.textTertiary });
+  text(ctx, "FIELD SUPPLIES", colR, f.y + 100, {
+    size: 15,
+    color: P.credits,
+    bold: true,
+  });
+  text(ctx, "Single-use — hotkeys 1–6 or USE.", colR, f.y + 118, {
+    size: 11,
+    color: P.textTertiary,
+  });
   let ry = f.y + 134;
   for (const def of ITEMS) {
     const held = game.items[def.id] ?? 0;
@@ -1851,19 +2247,36 @@ function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
       color: held > 0 ? P.credits : P.textTertiary,
       align: "right",
     });
-    button(ctx, cl, view, colR + rw - 100, ry - 19, 100, 30, "USE", `useitem:${def.id}`, {
-      disabled: held <= 0,
-      accent: P.hull,
-    });
+    button(
+      ctx,
+      cl,
+      view,
+      colR + rw - 100,
+      ry - 19,
+      100,
+      30,
+      "USE",
+      `useitem:${def.id}`,
+      {
+        disabled: held <= 0,
+        accent: P.hull,
+      },
+    );
     ry += 40;
   }
 
   // Jettison control — active while carrying the unstable Core Sample (specs/items.md).
   const carryingCore = sat.coreSample;
-  text(ctx, "CORE SAMPLE", colR, ry + 6, { size: 13, color: P.coreSample, bold: true });
+  text(ctx, "CORE SAMPLE", colR, ry + 6, {
+    size: 13,
+    color: P.coreSample,
+    bold: true,
+  });
   text(
     ctx,
-    carryingCore ? "Drop it and flee before it detonates — you can't pick it back up." : "Not carrying the Core Sample.",
+    carryingCore
+      ? "Drop it and flee before it detonates — you can't pick it back up."
+      : "Not carrying the Core Sample.",
     colR,
     ry + 24,
     { size: 11, color: carryingCore ? P.textSecondary : P.textTertiary },
@@ -1880,20 +2293,25 @@ function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
 // Menus & state screens
 // ---------------------------------------------------------------------------
 
-function drawBackdrop(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, view: View): void {
+function drawBackdrop(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  view: View,
+): void {
   // A dim slice of the mine behind the menus (specs/ui.md).
-  const g = ctx.createLinearGradient(0, 0, 0, STAGE_HEIGHT);
+  const g = ctx.createLinearGradient(0, 0, 0, STAGE_H);
   g.addColorStop(0, P.duskSky);
   g.addColorStop(0.35, "#141b28");
   g.addColorStop(0.7, P.deepstoneFill);
   g.addColorStop(1, P.coreshellFill);
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
+  ctx.fillRect(0, 0, STAGE_W, STAGE_H);
   // faint drifting motes
   ctx.fillStyle = "rgba(255,207,74,0.10)";
   for (let i = 0; i < 40; i++) {
-    const x = (i * 137 + view.time * 12) % STAGE_WIDTH;
-    const y = (i * 89) % STAGE_HEIGHT;
+    const x = (i * 137 + view.time * 12) % STAGE_W;
+    const y = (i * 89) % STAGE_H;
     ctx.fillRect(x, y, 2, 2);
   }
   void game;
@@ -1909,39 +2327,71 @@ function menuColumn(
 ): void {
   const items = menuItems(game);
   const w = 320;
-  const x = STAGE_WIDTH / 2 - w / 2;
+  const x = STAGE_W / 2 - w / 2;
   let y = startY;
   for (let i = 0; i < items.length; i++) {
     button(ctx, cl, view, x, y, w, 52, items[i]!.label, items[i]!.action, {
-      selected: view.menuIndex === i,
+      selected: game.menuIndex === i,
       accent: P.credits,
     });
     y += 64;
   }
 }
 
-function drawTitle(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
-  text(ctx, "DEEPCORE", STAGE_WIDTH / 2, 200, { size: 88, color: P.credits, align: "center", bold: true });
-  text(ctx, "Dig down. Build the rocket. Fly home.", STAGE_WIDTH / 2, 250, {
+function drawTitle(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
+  text(ctx, "DEEPCORE", STAGE_W / 2, 200, {
+    size: 88,
+    color: P.credits,
+    align: "center",
+    bold: true,
+  });
+  text(ctx, "Dig down. Build the rocket. Fly home.", STAGE_W / 2, 250, {
     size: 20,
     color: P.textSecondary,
     align: "center",
   });
   menuColumn(ctx, game, view, cl, 340);
-  text(ctx, "Stranded on Vhera Deep — the only way off the rock is the escape rocket.", STAGE_WIDTH / 2, 560, {
-    size: 14,
-    color: P.textTertiary,
-    align: "center",
-  });
+  text(
+    ctx,
+    "Stranded on Vhera Deep — the only way off the rock is the escape rocket.",
+    STAGE_W / 2,
+    560,
+    {
+      size: 14,
+      color: P.textTertiary,
+      align: "center",
+    },
+  );
 }
 
-function drawModeSelect(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
-  text(ctx, "CHOOSE MODE", STAGE_WIDTH / 2, 140, { size: 44, color: P.textPrimary, align: "center", bold: true });
-  text(ctx, "Same mine, same rocket — only the price of dying differs. Save at the surface Save Pad.", STAGE_WIDTH / 2, 180, {
-    size: 15,
-    color: P.textSecondary,
+function drawModeSelect(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
+  text(ctx, "CHOOSE MODE", STAGE_W / 2, 140, {
+    size: 44,
+    color: P.textPrimary,
     align: "center",
+    bold: true,
   });
+  text(
+    ctx,
+    "Same mine, same rocket — only the price of dying differs. Save at the surface Save Pad.",
+    STAGE_W / 2,
+    180,
+    {
+      size: 15,
+      color: P.textSecondary,
+      align: "center",
+    },
+  );
   // Descriptions beside the buttons.
   const descs = [
     "STANDARD — a death lets you restore from your last save and keep going.",
@@ -1949,10 +2399,14 @@ function drawModeSelect(ctx: CanvasRenderingContext2D, game: Game, view: View, c
   ];
   let dy = 260;
   for (const d of descs) {
-    text(ctx, d, STAGE_WIDTH / 2, dy, { size: 13, color: P.textTertiary, align: "center" });
+    text(ctx, d, STAGE_W / 2, dy, {
+      size: 13,
+      color: P.textTertiary,
+      align: "center",
+    });
     dy += 26;
   }
-  text(ctx, "Next: choose how DEEP the mine goes.", STAGE_WIDTH / 2, dy + 4, {
+  text(ctx, "Next: choose how DEEP the mine goes.", STAGE_W / 2, dy + 4, {
     size: 13,
     color: P.textSecondary,
     align: "center",
@@ -1960,35 +2414,83 @@ function drawModeSelect(ctx: CanvasRenderingContext2D, game: Game, view: View, c
   menuColumn(ctx, game, view, cl, 360);
 }
 
-function drawSizeSelect(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
-  text(ctx, "WORLD SIZE", STAGE_WIDTH / 2, 140, { size: 44, color: P.textPrimary, align: "center", bold: true });
-  text(ctx, "How deep is the mine? Same game, same bands and hazards — a shorter or longer descent to the Core.", STAGE_WIDTH / 2, 180, {
-    size: 15,
-    color: P.textSecondary,
+function drawSizeSelect(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
+  text(ctx, "WORLD SIZE", STAGE_W / 2, 140, {
+    size: 44,
+    color: P.textPrimary,
     align: "center",
+    bold: true,
   });
+  text(
+    ctx,
+    "How deep is the mine? Same game, same bands and hazards — a shorter or longer descent to the Core.",
+    STAGE_W / 2,
+    180,
+    {
+      size: 15,
+      color: P.textSecondary,
+      align: "center",
+    },
+  );
   // Each size's one-line blurb (constants.ts), in the same shallow → deep order as the buttons.
   let dy = 250;
   for (const s of WORLD_SIZE_ORDER) {
-    text(ctx, WORLD_SIZES[s].blurb, STAGE_WIDTH / 2, dy, { size: 13, color: P.textTertiary, align: "center" });
+    text(ctx, SIZE_BLURB[s], STAGE_W / 2, dy, {
+      size: 13,
+      color: P.textTertiary,
+      align: "center",
+    });
     dy += 26;
   }
   menuColumn(ctx, game, view, cl, 350);
 }
 
-function drawHowTo(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
-  const cx = STAGE_WIDTH / 2;
-  text(ctx, "HOW TO PLAY", cx, 110, { size: 40, color: P.textPrimary, align: "center", bold: true });
+function drawHowTo(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
+  const cx = STAGE_W / 2;
+  text(ctx, "HOW TO PLAY", cx, 110, {
+    size: 40,
+    color: P.textPrimary,
+    align: "center",
+    bold: true,
+  });
   // Short and scannable — a label + one line each (a wall of text goes unread).
   const rows: [string, string][] = [
     ["GOAL", "Build the 5-part escape rocket at the Launch Pad, then LAUNCH."],
     ["DIG", "A/D move · S/↓ drills down · drill sideways at a wall. Never up."],
-    ["CLIMB", "W/↑/Space jetpacks up (burns fuel); falling is free. No ceiling."],
-    ["TRADE", "Haul ore up, SELL it, then buy fuel, upgrades & supplies. Nothing's free."],
-    ["CARGO", "Limited slots, and ore has weight — a heavy load won't lift. Bag (I) drops it."],
-    ["FIND", "Buy a SCANNER to point you to the buried materials the rocket needs."],
-    ["DANGER", "Gas, lava, and hard falls hurt. The Core Sample's 90s timer detonates."],
-    ["SAVE", "Stand on the Save Pad and press E. Hardcore deaths are permanent."],
+    [
+      "CLIMB",
+      "W/↑/Space jetpacks up (burns fuel); falling is free. No ceiling.",
+    ],
+    [
+      "TRADE",
+      "Haul ore up, SELL it, then buy fuel, upgrades & supplies. Nothing's free.",
+    ],
+    [
+      "CARGO",
+      "Limited slots, and ore has weight — a heavy load won't lift. Bag (I) drops it.",
+    ],
+    [
+      "FIND",
+      "Buy a SCANNER to point you to the buried materials the rocket needs.",
+    ],
+    [
+      "DANGER",
+      "Gas, lava, and hard falls hurt. The Core Sample's 90s timer detonates.",
+    ],
+    [
+      "SAVE",
+      "Stand on the Save Pad and press E. Hardcore deaths are permanent.",
+    ],
   ];
   const labelX = cx - 430;
   const bodyX = cx - 300;
@@ -1998,11 +2500,17 @@ function drawHowTo(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Cl
     text(ctx, v, bodyX, y, { size: 15, color: P.textSecondary });
     y += 40;
   }
-  text(ctx, "Esc pauses · M mutes · E/Enter or click uses a building.", cx, y + 6, {
-    size: 13,
-    color: P.textTertiary,
-    align: "center",
-  });
+  text(
+    ctx,
+    "Esc pauses · M mutes · E/Enter or click uses a building.",
+    cx,
+    y + 6,
+    {
+      size: 13,
+      color: P.textTertiary,
+      align: "center",
+    },
+  );
   menuColumn(ctx, game, view, cl, 588);
 }
 
@@ -2023,12 +2531,18 @@ function drawEndScreen(
   const s = game.summary;
   // A Standard death keeps the save, so the run can be picked back up (specs/modes.md).
   const restorable = !victory && game.mode === "standard" && hasSave();
-  text(ctx, victory ? "ESCAPE!" : restorable ? "YOU DIED" : "GAME OVER", STAGE_WIDTH / 2, 160, {
-    size: 72,
-    color: victory ? P.credits : P.alert,
-    align: "center",
-    bold: true,
-  });
+  text(
+    ctx,
+    victory ? "ESCAPE!" : restorable ? "YOU DIED" : "GAME OVER",
+    STAGE_W / 2,
+    160,
+    {
+      size: 72,
+      color: victory ? P.credits : P.alert,
+      align: "center",
+      bold: true,
+    },
+  );
   text(
     ctx,
     victory
@@ -2036,7 +2550,7 @@ function drawEndScreen(
       : restorable
         ? "Restore your last save to continue the expedition."
         : "The expedition ends here.",
-    STAGE_WIDTH / 2,
+    STAGE_W / 2,
     210,
     { size: 20, color: P.textSecondary, align: "center" },
   );
@@ -2049,12 +2563,18 @@ function drawEndScreen(
       ["Mode", s.mode === "hardcore" ? "Hardcore" : "Standard"],
       ["Rocket components", `${s.componentsInstalled}/5`],
     ];
-    if (!victory && s.deathCause) rows.push(["Cause", causeLabel(s.deathCause)]);
-    const x = STAGE_WIDTH / 2 - 200;
+    if (!victory && s.deathCause)
+      rows.push(["Cause", causeLabel(s.deathCause)]);
+    const x = STAGE_W / 2 - 200;
     let y = 280;
     for (const [k, v] of rows) {
       text(ctx, k, x, y, { size: 16, color: P.textSecondary });
-      text(ctx, v, x + 400, y, { size: 16, color: P.textPrimary, align: "right", bold: true });
+      text(ctx, v, x + 400, y, {
+        size: 16,
+        color: P.textPrimary,
+        align: "right",
+        bold: true,
+      });
       y += 32;
     }
   }
@@ -2067,9 +2587,19 @@ function formatTime(sec: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function drawPauseMenu(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+function drawPauseMenu(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+): void {
   ctx.fillStyle = "rgba(5,7,10,0.68)";
-  ctx.fillRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
-  text(ctx, "PAUSED", STAGE_WIDTH / 2, 220, { size: 56, color: P.textPrimary, align: "center", bold: true });
+  ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+  text(ctx, "PAUSED", STAGE_W / 2, 220, {
+    size: 56,
+    color: P.textPrimary,
+    align: "center",
+    bold: true,
+  });
   menuColumn(ctx, game, view, cl, 300);
 }

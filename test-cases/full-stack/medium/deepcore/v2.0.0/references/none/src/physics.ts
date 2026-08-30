@@ -1,29 +1,23 @@
-// Deepcore — the miner's physics (specs/character.md, specs/controls.md).
+// Deepcore — the miner's movement and its collision against the tile grid
+// (specs/character.md).
 //
-// A fixed-timestep integration: gravity pulls the miner down to a terminal speed, the
-// jetpack thrusts up (the only way to gain height), lateral input walks/drifts, and a
-// single-tile grid collision keeps the miner out of solid rock, bedrock, and lava. A
-// landing faster than a safe threshold reports its impact speed so the caller can bill
-// hull damage (specs/hazards.md). This module applies forces and resolves collision; the
-// fuel/hull economy and the animation-state choice live in game.ts.
+// Gravity pulls the miner down to a load-scaled terminal speed, the jetpack pushes it
+// up while thrust is held, lateral input walks and drifts it, and the box is kept out
+// of every cell that is not a tunnel. A landing above the safe speed reports its speed
+// so the caller can bill the hull. This module applies motion alone: the fuel and hull
+// economy and the choice of animation state belong to the game.
 
-import { GRAVITY, TILE_SIZE, WALK_SPEED } from "./constants";
+import { GRAVITY, MINER_H, MINER_W, WALK_SPEED } from "./constants";
 import type { Miner, Tile } from "./types";
 import { colAtX, isSolidKind, rowAtY, tileLeft, tileTop } from "./world";
 
-/**
- * Collision box (a little narrower/shorter than an 80px tile so a one-tile-wide tunnel is
- * passable). Scaled with the tile size from the 48px reference (34×44 → 57×73).
- */
-export const MINER_W = 57;
-export const MINER_H = 73;
-
-/** Lateral acceleration toward the walk speed (px/s^2, scaled with the 80px tile). */
+/** Lateral acceleration toward the walk speed. */
 const LATERAL_ACCEL = 2833;
-/** Velocity decay when no lateral input (px/s^2, scaled): strong on the ground, light in air. */
+/** Lateral decay with no input: firm on the ground, light in the air. */
 const GROUND_FRICTION = 4333;
 const AIR_FRICTION = 833;
 
+/** The held actions movement reads. */
 export interface MoveInput {
   left: boolean;
   right: boolean;
@@ -33,37 +27,62 @@ export interface MoveInput {
 
 export interface MoveResult {
   grounded: boolean;
-  /** True while the jetpack is actually firing (thrust held with fuel). */
+  /** True while the jetpack is firing, which is thrust held with fuel left. */
   thrusting: boolean;
-  /** True while drifting laterally in the air (bills a little fuel). */
+  /** True while drifting laterally in the air, which bills a little fuel. */
   lateralAir: boolean;
-  /** Downward speed at the instant of a hard landing this tick, else 0. */
+  /** Downward speed at the instant of a landing this update, else 0. */
   landedSpeed: number;
 }
 
-/** Center column/row of the miner (the cell it occupies). */
+/** The column the miner's center falls in. */
 export function minerCol(m: Miner): number {
   return colAtX(m.x + MINER_W / 2);
 }
+/** The row the miner's center falls in. */
 export function minerRow(m: Miner): number {
   return rowAtY(m.y + MINER_H / 2);
 }
+/** World x of the miner's center. */
+export function minerCenterX(m: Miner): number {
+  return m.x + MINER_W / 2;
+}
+/** World y of the miner's center. */
+export function minerCenterY(m: Miner): number {
+  return m.y + MINER_H / 2;
+}
+/** World y of the miner's feet. */
+export function minerFeetY(m: Miner): number {
+  return m.y + MINER_H;
+}
 
-/** Whether any solid tile overlaps the box [x, x+w] × [y, y+h]. */
-export function solidBox(grid: Tile[][], x: number, y: number, w: number, h: number): boolean {
+/** Whether any cell that is not a tunnel overlaps the box. */
+export function solidBox(
+  grid: Tile[][],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
   const c0 = colAtX(x);
   const c1 = colAtX(x + w - 0.001);
   const r0 = rowAtY(y);
   const r1 = rowAtY(y + h - 0.001);
+  const cols = grid[0]?.length ?? 0;
   for (let r = r0; r <= r1; r++) {
     for (let c = c0; c <= c1; c++) {
-      if (c < 0 || c >= grid[0]!.length) return true; // off the sides = wall
-      if (r >= grid.length) return true; // below the world floor = wall
-      if (r < 0) continue; // above the world top = OPEN SKY, no ceiling (specs/character.md)
+      if (c < 0 || c >= cols) return true; // past the sides is a wall
+      if (r >= grid.length) return true; // below the floor is a wall
+      if (r < 0) continue; // above the camp is open sky, with no ceiling
       if (isSolidKind(grid[r]![c]!.kind)) return true;
     }
   }
   return false;
+}
+
+/** Whether the miner is resting on solid ground. */
+export function isGrounded(grid: Tile[][], m: Miner): boolean {
+  return solidBox(grid, m.x, m.y + 2, MINER_W, MINER_H);
 }
 
 function approach(cur: number, target: number, maxDelta: number): number {
@@ -73,17 +92,15 @@ function approach(cur: number, target: number, maxDelta: number): number {
 }
 
 /**
- * Advance the miner one fixed step under gravity/thrust/lateral input and resolve grid
- * collision. `canThrust` gates the jetpack on remaining fuel (specs/character.md).
+ * Advance the miner one update.
  *
- * `thrustAccel` is the RAW upward acceleration applied while thrust is held — the caller passes
- * `GRAVITY + net`, where the net climb accel falls linearly with the load (game.ts
- * `thrustAccel()`, specs/character.md) — so a heavier haul climbs slower, and when the load is
- * at the lift limit the net is zero: thrust merely cancels gravity, the jetpack only slows the
- * fall and the miner cannot climb until it sheds weight or upgrades. `climbCap` is the EFFECTIVE
- * climb-speed cap for the current load (game.ts `climbCap()`), so a heavy haul is throttled to a
- * low climb speed while an empty miner reaches its tier's full cap. `fallCap` is the WEIGHT-
- * SCALED fall terminal (game.ts `fallTerminal()`): a heavier haul falls faster and lands harder.
+ * `climbAccel` is the net upward acceleration the jetpack produces at the current
+ * load, which gravity does not fight while thrust is held: at the lift limit it is
+ * zero, so holding thrust arrests the fall's acceleration and produces no climb.
+ * `climbCap` caps the upward speed and `fallCap` the downward one, both load-scaled.
+ *
+ * With the travel faculty held, the body moves nowhere and its velocity stands, but
+ * the miner still reads as grounded and still reports what it is trying to do.
  */
 export function stepMovement(
   m: Miner,
@@ -91,42 +108,43 @@ export function stepMovement(
   input: MoveInput,
   canThrust: boolean,
   dt: number,
-  thrustAccel: number,
+  climbAccel: number,
   climbCap: number,
   fallCap: number,
 ): MoveResult {
-  // --- Horizontal intent ---
-  const targetVx = (input.right ? WALK_SPEED : 0) - (input.left ? WALK_SPEED : 0);
-  const groundedNow = solidBox(grid, m.x, m.y + 2, MINER_W, MINER_H);
+  const grounded0 = isGrounded(grid, m);
+  const thrusting = input.thrust && canThrust;
+  const targetVx =
+    (input.right ? WALK_SPEED : 0) - (input.left ? WALK_SPEED : 0);
+
+  if (!m.travel) {
+    return {
+      grounded: grounded0,
+      thrusting,
+      lateralAir: !grounded0 && targetVx !== 0,
+      landedSpeed: 0,
+    };
+  }
+
   if (targetVx !== 0) {
     m.vx = approach(m.vx, targetVx, LATERAL_ACCEL * dt);
   } else {
-    m.vx = approach(m.vx, 0, (groundedNow ? GROUND_FRICTION : AIR_FRICTION) * dt);
+    m.vx = approach(m.vx, 0, (grounded0 ? GROUND_FRICTION : AIR_FRICTION) * dt);
   }
 
-  // --- Vertical intent ---
-  // Gravity pulls down; the jetpack pushes up with a mass-scaled acceleration. If the load
-  // is heavy enough that thrustAccel <= GRAVITY the miner still sinks — that is the "too
-  // heavy to take off" wall (specs/character.md), handled with no special case here.
-  m.vy += GRAVITY * dt;
-  const thrusting = input.thrust && canThrust;
-  if (thrusting) m.vy -= thrustAccel * dt;
+  if (thrusting) m.vy -= climbAccel * dt;
+  else m.vy += GRAVITY * dt;
   if (m.vy < -climbCap) m.vy = -climbCap;
   if (m.vy > fallCap) m.vy = fallCap;
 
-  // --- Horizontal collision ---
   m.x += m.vx * dt;
   if (solidBox(grid, m.x, m.y, MINER_W, MINER_H)) {
-    if (m.vx > 0) {
-      m.x = tileLeft(colAtX(m.x + MINER_W)) - MINER_W - 0.01;
-    } else if (m.vx < 0) {
-      m.x = tileLeft(colAtX(m.x) + 1) + 0.01;
-    }
+    if (m.vx > 0) m.x = tileLeft(colAtX(m.x + MINER_W)) - MINER_W - 0.01;
+    else if (m.vx < 0) m.x = tileLeft(colAtX(m.x) + 1) + 0.01;
     m.vx = 0;
   }
 
-  // --- Vertical collision ---
-  const preVy = m.vy;
+  const beforeVy = m.vy;
   m.y += m.vy * dt;
   let grounded = false;
   let landedSpeed = 0;
@@ -134,34 +152,30 @@ export function stepMovement(
     if (m.vy > 0) {
       m.y = tileTop(rowAtY(m.y + MINER_H)) - MINER_H - 0.01;
       grounded = true;
-      landedSpeed = preVy;
+      landedSpeed = beforeVy;
     } else if (m.vy < 0) {
       m.y = tileTop(rowAtY(m.y) + 1) + 0.01;
     }
     m.vy = 0;
   }
-  // No ceiling above the surface (specs/character.md): the miner may thrust up into the
-  // open sky as far as its fuel lasts, wasting fuel, then fall back down. Nothing clamps
-  // its rise — the only limit is the fuel it burns getting there.
+  // There is no ceiling above the camp, so nothing clamps the rise.
 
-  if (!grounded) grounded = solidBox(grid, m.x, m.y + 2, MINER_W, MINER_H);
+  if (!grounded) grounded = isGrounded(grid, m);
 
-  const lateralAir = !grounded && targetVx !== 0;
-  return { grounded, thrusting, lateralAir, landedSpeed };
+  return {
+    grounded,
+    thrusting,
+    lateralAir: !grounded && targetVx !== 0,
+    landedSpeed,
+  };
 }
 
-/** World-space center of the miner (for camera, particles, scanner). */
-export function minerCenterX(m: Miner): number {
-  return m.x + MINER_W / 2;
-}
-export function minerCenterY(m: Miner): number {
-  return m.y + MINER_H / 2;
-}
-
-/** Snap-toward helper the drill uses to brace the miner to a column/row while cutting. */
-export function ease(cur: number, target: number, rate: number, dt: number): number {
+/** Move a value toward a target at a rate, without overshooting it. */
+export function ease(
+  cur: number,
+  target: number,
+  rate: number,
+  dt: number,
+): number {
   return approach(cur, target, rate * dt);
 }
-
-/** The world-y a miner standing on the surface floor rests at (feet on top of row 1). */
-export const SURFACE_FEET_Y = TILE_SIZE;

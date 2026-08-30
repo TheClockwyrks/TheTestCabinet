@@ -17,7 +17,8 @@ export type Cue =
   | "death";
 
 /** Cues that play as a sustained loop while active (started/stopped by the game). */
-export type LoopCue = "drill" | "thrust" | "alarm-fuel" | "alarm-core" | "music";
+export type LoopCue =
+  "drill" | "thrust" | "alarm-fuel" | "alarm-core" | "music";
 
 type Name = Cue | LoopCue;
 
@@ -25,7 +26,10 @@ export class Audio {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private buffers = new Map<Name, AudioBuffer>();
-  private loops = new Map<LoopCue, { src: AudioBufferSourceNode; gain: GainNode }>();
+  private loops = new Map<
+    LoopCue,
+    { src: AudioBufferSourceNode; gain: GainNode }
+  >();
   private started = false;
   private lastPlay = new Map<Cue, number>();
   private wantLoops = new Set<LoopCue>();
@@ -42,7 +46,8 @@ export class Audio {
     }
     const AC =
       window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
@@ -77,7 +82,11 @@ export class Audio {
     if (this.muted === muted) return;
     this.muted = muted;
     if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(this.muted ? 0 : 0.7, this.ctx.currentTime, 0.02);
+      this.master.gain.setTargetAtTime(
+        this.muted ? 0 : 0.7,
+        this.ctx.currentTime,
+        0.02,
+      );
     }
   }
 

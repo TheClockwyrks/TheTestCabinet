@@ -1,64 +1,69 @@
 // Deepcore — the scanner (specs/mining.md).
 //
-// Always-on, it points toward the NEAREST uncollected material the miner still needs — a
-// Resonite while lacking Resonite, a Cryenite while lacking Cryenite — within its tier
-// range. It NEVER points at the Core Sample (the Core is not hidden, only deep). Returns
-// the direction (an angle) and a distance read the HUD draws in code; the drawn indicator
-// tightens as the miner closes in.
+// It points at the buried material node the miner still needs, and never at the Core.
+// The lock holds only while the node is within the tier's range, measured in tiles as
+// the straight-line distance between the miner's cell and the node's cell.
 
-import { SCANNER_RANGE, TILE_SIZE } from "./constants";
-import { minerCenterX, minerCenterY } from "./physics";
-import { tileLeft, tileTop } from "./world";
+import { SCANNER_RANGE } from "./constants";
+import { minerCol, minerRow } from "./physics";
 import type { Game } from "./game";
 
 export interface ScanResult {
-  /** True when a needed material exists at all (something to find). */
-  needed: boolean;
-  /** True when the nearest needed material is within scanner range. */
-  hasSignal: boolean;
-  /** Direction to the target, radians (world-space; +x right, +y down). */
-  angle: number;
-  /** Distance to the target in tiles. */
-  distTiles: number;
-  /** Which material the arrow is homing on. */
-  material: "resonite" | "cryenite" | null;
+  /** True while a needed node is within range. */
+  locked: boolean;
+  /** Which material the lock is on. */
+  target: "resonite" | "cryenite" | null;
+  /** A unit direction from the miner's cell to the node's. */
+  dirX: number;
+  dirY: number;
+  /** The distance in tiles, or null while nothing is locked. */
+  distanceTiles: number | null;
 }
 
+const NO_LOCK: ScanResult = {
+  locked: false,
+  target: null,
+  dirX: 0,
+  dirY: 0,
+  distanceTiles: null,
+};
+
+/** The scanner's range in tiles at the miner's current tier. */
 export function scannerRangeTiles(game: Game): number {
-  return SCANNER_RANGE[game.tiers.scanner - 1]!;
+  return SCANNER_RANGE[game.tiers.scanner - 1] ?? 0;
 }
 
-/** Compute the scanner read for this frame (specs/mining.md). */
+/** Read the scanner as it stands. Pure: it changes nothing. */
 export function computeScan(game: Game): ScanResult {
-  const needResonite = game.satchel.resonite === 0 && !game.installed.has("guidance");
-  const needCryenite = game.satchel.cryenite === 0 && !game.installed.has("thruster");
-  const needed = needResonite || needCryenite;
-  const base: ScanResult = { needed, hasSignal: false, angle: 0, distTiles: 0, material: null };
-  if (!needed) return base;
+  const needResonite = game.satchel.resonite === 0;
+  const needCryenite = game.satchel.cryenite === 0;
+  if (!needResonite && !needCryenite) return NO_LOCK;
 
-  const mx = minerCenterX(game.miner);
-  const my = minerCenterY(game.miner);
-  let best: { dx: number; dy: number; d: number; material: "resonite" | "cryenite" } | null = null;
+  const col = minerCol(game.miner);
+  const row = minerRow(game.miner);
+  let best: {
+    dx: number;
+    dy: number;
+    d: number;
+    material: "resonite" | "cryenite";
+  } | null = null;
   for (const node of game.nodes) {
     if (node.collected) continue;
     if (node.material === "resonite" && !needResonite) continue;
     if (node.material === "cryenite" && !needCryenite) continue;
-    const nx = tileLeft(node.col) + TILE_SIZE / 2;
-    const ny = tileTop(node.row) + TILE_SIZE / 2;
-    const dx = nx - mx;
-    const dy = ny - my;
+    const dx = node.col - col;
+    const dy = node.row - row;
     const d = Math.hypot(dx, dy);
-    if (!best || d < best.d) best = { dx, dy, d, material: node.material as "resonite" | "cryenite" };
+    if (!best || d < best.d) best = { dx, dy, d, material: node.material };
   }
-  if (!best) return base;
+  if (!best || best.d > scannerRangeTiles(game)) return NO_LOCK;
 
-  const distTiles = best.d / TILE_SIZE;
-  const range = scannerRangeTiles(game);
+  const inv = best.d > 0 ? 1 / best.d : 0;
   return {
-    needed: true,
-    hasSignal: distTiles <= range,
-    angle: Math.atan2(best.dy, best.dx),
-    distTiles,
-    material: best.material,
+    locked: true,
+    target: best.material,
+    dirX: best.dx * inv,
+    dirY: best.dy * inv,
+    distanceTiles: best.d,
   };
 }
