@@ -1,23 +1,77 @@
-// SCAFFOLD PLACEHOLDER — validation/none/handling/stock-click-turns.test.ts
+// handling/stock-click-turns — a press and a release on the stock turns cards
+// onto the waste.
 //
-// The review item `handling.stock-click-turns` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// `specs/controls.md` fixes the gesture: a release "Within `DRAG_THRESHOLD` (`5`)
+// of the press point" is a click, and a click "turns the stock, as
+// `specs/stock.md` states, when the press point lies in the stock's drop
+// rectangle". `specs/stock.md` fixes how many: "A turn of a stock holding cards
+// moves `TURN_COUNT` cards onto the waste".
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// WHY THE TURN COUNT IS READ RATHER THAN WRITTEN. `TURN_COUNT` is one of the four
+// figures that differ between the two deal modes, so a common check never
+// hard-codes it: the expected growth is `snapshot().turnCount`, which
+// `draw-one/deal-mode-reported` and `draw-three/deal-mode-reported` separately
+// pin to the figure their own `specs/stock.md` fixes.
 //
-// What this item must decide, from the manifest:
+// WHAT THIS DECIDES, AND WHAT DECIDES IT ELSEWHERE. The subject is the GESTURE.
+// Which cards a turn moves, in what order, and what it does to the waste's set
+// memory are the `stock` group's, driven through `turnStock()`; a build whose
+// `turnStock()` is right but whose stock does not answer a click fails here and
+// nowhere else.
 //
-//   A press and release on the stock turns cards
-//
-//   The waste grows by the turn count.
+// The stock is posed with more cards than either deal mode's turn takes, so a
+// turn is never a remainder turn and the growth really is the turn count.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan, assertLength } from "../assert";
+import {
+  cardCenter,
+  cards,
+  captureStill,
+  clickAt,
+  createHarness,
+  openTable,
+  pileTopLeft,
+  poseStock,
+  type Harness,
+} from "../harness";
 
-it("handling.stock-click-turns — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/handling/stock-click-turns.test.ts is a scaffold stub, not a validator",
+/** The stock, bottom card first. More than any deal mode's turn takes. */
+const STOCK = ["2C", "5H", "9S", "JD", "4C", "7H"] as const;
+
+/** One frame, so the canvas carries the board the assertions read. */
+const SETTLE_FRAMES = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("turns the deal mode's turn count of cards when the stock is clicked", async () => {
+  await openTable(h);
+  await poseStock(h, cards(...STOCK));
+
+  const posed = await h.snapshot();
+  const turnCount = posed.turnCount;
+  assertGreaterThan(turnCount, 0, "the turn count this build reports");
+  assertLength(posed.waste, 0, "the waste before the click");
+
+  const anchor = pileTopLeft("stock");
+  const press = cardCenter(anchor.x, anchor.y);
+  await clickAt(h, press.x, press.y);
+  await h.advance(SETTLE_FRAMES);
+  await captureStill(h, "turned");
+
+  const after = await h.snapshot();
+  assertLength(after.waste, turnCount, "the cards the click put on the waste");
+  assertEqual(
+    after.stock.length,
+    STOCK.length - turnCount,
+    "the cards the click left on the stock",
   );
 });
