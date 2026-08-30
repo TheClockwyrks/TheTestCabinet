@@ -380,7 +380,11 @@ class Session {
         lastCombo = snapshot.combo;
         this.offerStill(snapshot);
         const want = steer(snapshot);
-        if (want !== null && want !== snapshot.dir && snapshot.turns.length === 0) {
+        if (
+          want !== null &&
+          want !== snapshot.dir &&
+          snapshot.turns.length === 0
+        ) {
           await this.press(STEER_KEY[want]);
           continue;
         }
