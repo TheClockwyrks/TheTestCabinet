@@ -6,11 +6,16 @@
 // ON each menu item, where a pointer-driven menu would take the click, and the
 // screen and the highlight must both stand still.
 //
-// Where each item is drawn is read from the frame's own text draws, mapped
-// through the transform in force at each call, so the press lands on the item
-// wherever the build's layout put it. Finding the items drawn at all is this
-// check's precondition — the title's copy has its own point — and a build whose
-// title never draws its menu fails that precondition by name.
+// Where each item is drawn is read from the frame's own text draws, coalesced
+// into logical runs and mapped through the transform in force at each call, so
+// the press lands on the item wherever the build's layout put it. A run rather
+// than a raw draw, because canvas exposes no portable letter-spacing and a
+// build that tracks its menu copy draws a glyph per call, which would leave
+// this check a one-glyph box to press instead of the item; specs/ui.md fixes
+// the copy of a menu item, and how it is spaced is the build's. Finding the
+// items drawn at all is this check's precondition — the title's copy has its
+// own point — and a build whose title never draws its menu fails that
+// precondition by name.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
@@ -18,9 +23,9 @@ import { TITLE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
+  drawnTextRuns,
   mousePress,
   mouseRelease,
-  textDraws,
   type Harness,
   type TextDraw,
 } from "../harness";
@@ -54,7 +59,7 @@ it("leaves screen and menuIndex unchanged by a press on each item", async () => 
   assertEqual(opened.screen, "title", "the game opens on the title");
   assertEqual(opened.menuIndex, 0, "menuIndex is 0 on arriving at the title");
 
-  const draws = textDraws(await h.frameCalls());
+  const draws = drawnTextRuns(await h.frameCalls());
 
   for (const item of TITLE_ITEMS) {
     const at = anchorOf(draws, item);

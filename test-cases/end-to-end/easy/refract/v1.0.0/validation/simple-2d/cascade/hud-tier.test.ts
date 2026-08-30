@@ -7,6 +7,10 @@
 // runs are read back, and one of them must be the label with the current
 // tier's digit beside it, the pair clear of the board's extent. The adjacency
 // and glyph-band figures are stated in cascade/hud.ts.
+//
+// The frame's text is read as COALESCED RUNS rather than as raw `fillText`
+// calls, because a build is free to letter-space its HUD and canvas has no
+// portable property for it, so tracked copy is drawn a glyph at a time.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { HUD_TIER_LABEL } from "../../src/constants";
@@ -14,7 +18,7 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnTextSpans,
+  drawnTextRuns,
   resetTo,
   startCascade,
   type Harness,
@@ -42,7 +46,7 @@ it("draws TIER with the current tier's digit beside it, clear of the board", asy
   captureStill(h, "hud");
 
   const found = findLabelWithFigure(
-    drawnTextSpans(h),
+    drawnTextRuns(h),
     HUD_TIER_LABEL,
     tier,
     `a playing frame drawing HUD_TIER_LABEL (${HUD_TIER_LABEL}) with the ` +

@@ -7,6 +7,13 @@
 // The item's three cases, in one session: `selectIndex` 0 on the fresh grid,
 // 0 again after solving board 1 and returning, and 1 after entering board 2
 // and backing out.
+//
+// GETTING BACK TO THE GRID. The solve leaves the game on the solved screen,
+// and specs/modes/campaign.md gives that screen two exits to `select`: its
+// third menu choice, back to select, and the `back` action. This item's
+// subject is on the far side of that step, not the step itself, so it must
+// not pin one of the two — `gridFromSolved` takes whichever the build honours,
+// and which one that is stays campaign/solved-back's verdict alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -18,6 +25,7 @@ import {
   startCampaign,
   type Harness,
 } from "../harness";
+import { gridFromSolved } from "./reading";
 
 let h: Harness;
 
@@ -45,9 +53,8 @@ it("lands on board 1 fresh, on board 1 after its solve, on board 2 after backing
     "board 1 opens for the solve",
   );
   await solveCampaignBoard(h, 0);
-  await fireAction(h, "back");
+  await gridFromSolved(h);
   const afterSolve = await h.snapshot();
-  assertEqual(afterSolve.screen, "select", "back on solved returns the grid");
   assertEqual(
     afterSolve.selectIndex,
     0,

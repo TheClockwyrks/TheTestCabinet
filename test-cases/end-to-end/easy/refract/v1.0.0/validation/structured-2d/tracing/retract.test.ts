@@ -8,6 +8,15 @@
 // The beam is three segments of GEO_7X6's lens diagonal, drawn held and then
 // backed out node by node to its first cell, all under one press. The
 // declared output is a REPLAY of the unwinding.
+//
+// specs/controls.md phrases this requirement about the pointer a PLAYER holds,
+// so the drag is driven through the engine's own pointer input rather than
+// through the debug surface's pointer operations. Those resolve between frames
+// (specs/instrumentation.md), and no rule says a posed press is still held
+// after a frame has advanced — driving them across the `advance` calls this
+// replay needs would grade that unstated behavior instead of this one. Each
+// player helper raises the real sample and then runs the one frame that
+// delivers it, and the replay's own frames follow.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertNotNull } from "../assert";
@@ -16,8 +25,9 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  moveToCell,
-  pressCell,
+  playerMoveTo,
+  playerPress,
+  playerRelease,
   resetTo,
   type Harness,
 } from "../harness";
@@ -42,10 +52,10 @@ it("moving onto the node behind the live end removes the last segment, repeated 
   await loadBoard(h, GEO_7X6);
 
   // Draw A -> B -> C -> D and keep the press held.
-  pressCell(h, A);
-  moveToCell(h, B);
-  moveToCell(h, C);
-  moveToCell(h, D);
+  await playerPress(h, A);
+  await playerMoveTo(h, B);
+  await playerMoveTo(h, C);
+  await playerMoveTo(h, D);
   assertDeepEqual(
     h.snapshot().beams.triangle?.cells,
     [A, B, C, D],
@@ -55,7 +65,7 @@ it("moving onto the node behind the live end removes the last segment, repeated 
   await captureReplay(h, "retract", async () => {
     await h.advance(6);
 
-    moveToCell(h, C);
+    await playerMoveTo(h, C);
     let snap = h.snapshot();
     assertDeepEqual(
       snap.beams.triangle?.cells,
@@ -65,7 +75,7 @@ it("moving onto the node behind the live end removes the last segment, repeated 
     assertDeepEqual(snap.tracing?.live, C, "that node becomes the live end");
     await h.advance(6);
 
-    moveToCell(h, B);
+    await playerMoveTo(h, B);
     snap = h.snapshot();
     assertDeepEqual(
       snap.beams.triangle?.cells,
@@ -75,7 +85,7 @@ it("moving onto the node behind the live end removes the last segment, repeated 
     assertDeepEqual(snap.tracing?.live, B, "the live end steps back with it");
     await h.advance(6);
 
-    moveToCell(h, A);
+    await playerMoveTo(h, A);
     snap = h.snapshot();
     assertDeepEqual(
       snap.beams.triangle?.cells,
@@ -87,5 +97,5 @@ it("moving onto the node behind the live end removes the last segment, repeated 
     await h.advance(6);
   });
 
-  h.debug.pointerUp();
+  await playerRelease(h, A);
 });

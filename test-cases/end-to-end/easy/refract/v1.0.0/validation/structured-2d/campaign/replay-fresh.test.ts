@@ -7,6 +7,13 @@
 // entering a board always starts it with every beam empty, whether it is a
 // first attempt or a replay; progress is per board and is never partially
 // banked).
+//
+// GETTING BACK TO THE GRID. The solve leaves the game on the solved screen,
+// and specs/modes/campaign.md gives that screen two exits to `select`: its
+// third menu choice, back to select, and the `back` action. This item's
+// subject is on the far side of that step, not the step itself, so it must
+// not pin one of the two — `gridFromSolved` takes whichever the build honours,
+// and which one that is stays campaign/solved-back's verdict alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -18,7 +25,7 @@ import {
   tapAction,
   type Harness,
 } from "../harness";
-import { assertBeamsEmpty } from "./support";
+import { assertBeamsEmpty, gridFromSolved } from "./support";
 
 let h: Harness;
 
@@ -39,7 +46,7 @@ it("re-enters a solved board with every beam empty, as a first attempt does", as
 
   solveCampaignBoard(h, 0);
   await h.advance(1);
-  await tapAction(h, "back"); // solved -> select
+  await gridFromSolved(h);
 
   // Re-enter the solved board: the highlight sits on the board just solved.
   assertEqual(h.snapshot().selectIndex, 0, "the highlight sits on board 1");

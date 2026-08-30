@@ -1,24 +1,35 @@
-// Refract — campaign/select-grid: the grid shows every board, 1 through 24,
-// six columns by four rows, in number order.
+// Refract — campaign/select-grid: the select frame draws every board's number,
+// 1 through 24, in number order, six columns by four rows.
 //
-// specs/modes/campaign.md: "The grid presents all 24 boards in number order,
-// six columns wide and four rows tall, one row per set, Set A at the top",
-// and each board "shows its number". The numbers are read off the frame's
-// text draws with their anchors; the arrangement is decided by clustering —
-// each number's anchor sits with its own row and column, rows descending and
-// columns running rightward in number order — while the tiles' art stays the
-// build's own.
+// The grid is read off one rendered frame's LOGICAL RUNS of text: each number's
+// drawn centre, clustered along y into rows and along x into columns. The
+// item's three clauses are then held directly — four rows of six, six columns
+// of four, and the numbers running 1..24 across the rows from the top left —
+// which is the layout specs/modes/campaign.md fixes ("The grid presents all 24
+// boards in number order, six columns wide and four rows tall, one row per set,
+// Set A at the top"), together with "Each board in the grid shows its number".
+// Both are presence-and-arrangement requirements the specification states, so a
+// validator may assert them; how the tiles look is not asserted anywhere here.
+//
+// WHY RUNS AND NOT `fillText` CALLS. A build's letter spacing is a font choice
+// ("Palettes, fonts, layouts, and styling are the build's choices"), and canvas
+// carries no portable letter-spacing property, so a glyph per `fillText` is the
+// ordinary way to do it. A heading reading `1 OF 24 SOLVED` then puts a lone
+// `"2"` and a lone `"4"` among the raw draws, which invents a fifth row of a
+// grid that has four. The runs coalesce a heading back into one string and are
+// a PARTITION, so a heading's digits can never read as a board's number.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertLessThan } from "../assert";
+import { assertDeepEqual, assertLength } from "../assert";
 import {
   captureStill,
   createHarness,
+  drawnTextRuns,
   startCampaign,
-  textDraws,
   type Harness,
 } from "../harness";
-import { colCenters, minGap, numberDraws, rowCenters } from "./reading";
+import { CAMPAIGN_LENGTH } from "../notation";
+import { GRID_COLS, GRID_ROWS, readSelectGrid } from "./reading";
 
 let h: Harness;
 
@@ -30,48 +41,42 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws 1 through 24 clustered into six columns and four rows, in number order", async () => {
+it("draws 1 through 24 in number order, six columns by four rows", async () => {
   await startCampaign(h);
+
   const calls = await h.frameCalls();
   await captureStill(h, "grid");
 
-  // Every number is drawn; the finder fails on the first one missing.
-  const numbers = numberDraws(textDraws(calls));
-
-  // Rows descend the frame and columns run rightward, in number order.
-  const rows = rowCenters(numbers);
-  const cols = colCenters(numbers);
-  for (let row = 1; row < rows.length; row += 1) {
-    assertGreaterThan(
-      rows[row],
-      rows[row - 1],
-      `row ${row + 1} of the grid sits below row ${row}`,
-    );
-  }
-  for (let col = 1; col < cols.length; col += 1) {
-    assertGreaterThan(
-      cols[col],
-      cols[col - 1],
-      `column ${col + 1} of the grid sits right of column ${col}`,
-    );
-  }
-
-  // Each number clusters with its own row and column: board n (1-based) sits
-  // in row floor((n-1)/6), column (n-1)%6, nearer its own band than any other.
-  const rowGap = minGap(rows);
-  const colGap = minGap(cols);
-  numbers.forEach((draw, index) => {
-    const row = Math.floor(index / 6);
-    const col = index % 6;
-    assertLessThan(
-      Math.abs(draw.y - rows[row]),
-      rowGap / 2,
-      `board ${index + 1} clusters into row ${row + 1}`,
-    );
-    assertLessThan(
-      Math.abs(draw.x - cols[col]),
-      colGap / 2,
-      `board ${index + 1} clusters into column ${col + 1}`,
+  const grid = readSelectGrid(drawnTextRuns(calls));
+  assertLength(
+    grid.rows,
+    GRID_ROWS,
+    "the numbers cluster into four rows, one per set (specs/modes/campaign.md)",
+  );
+  grid.rows.forEach((row, index) => {
+    assertLength(
+      row,
+      GRID_COLS,
+      `row ${index + 1} holds six boards (specs/modes/campaign.md)`,
     );
   });
+  assertLength(
+    grid.columns,
+    GRID_COLS,
+    "the numbers cluster into six columns (specs/modes/campaign.md)",
+  );
+  grid.columns.forEach((column, index) => {
+    assertLength(
+      column,
+      GRID_ROWS,
+      `column ${index + 1} holds four boards (specs/modes/campaign.md)`,
+    );
+  });
+
+  assertDeepEqual(
+    grid.rows.flat().map((point) => point.board),
+    Array.from({ length: CAMPAIGN_LENGTH }, (_, index) => index + 1),
+    "the numbers run 1 through 24 in number order across the rows, from the " +
+      "top row down, so Set A's six are the top row (specs/modes/campaign.md)",
+  );
 });

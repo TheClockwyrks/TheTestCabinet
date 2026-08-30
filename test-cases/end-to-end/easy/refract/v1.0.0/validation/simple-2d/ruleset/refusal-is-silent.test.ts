@@ -14,12 +14,13 @@
 //
 // After every one of the three, the beams are identical to the snapshot taken
 // at the press — byte for byte, both channels — and the trace is still live
-// at T(0,0). The release then puts the board back to what it was before the
-// gesture: a trace that added no segment leaves its channel's beam carrying
-// none (specs/controls.md), so nothing the sweep crossed survives. The declared
-// `sweep` replay records the frames the build drew while the sweep ran;
-// frames are advanced between the poses so the recording shows the board
-// holding still, and it is evidence beside the verdict, never part of it.
+// at T(0,0). The release that follows only ends the gesture and records the
+// closing frames of the replay; what a trace that added no segment leaves
+// behind is specs/controls.md (Releasing), decided by
+// `tracing/trace-empty-release`. The declared `sweep` replay records the
+// frames the build drew while the sweep ran; frames are advanced between the
+// poses so the recording shows the board holding still, and it is evidence
+// beside the verdict, never part of it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
@@ -73,11 +74,6 @@ it("leaves the beam identical and the trace live across three illegal targets", 
     [2, 2],
   ]);
 
-  // The board before the gesture: what everything must still equal once the
-  // trace that added no segment is released (specs/controls.md: such a trace
-  // leaves its channel's beam carrying none).
-  const baseline = h.snapshot();
-
   await captureReplay(h, "sweep", async () => {
     h.debug.pointerDown(at(0, 0).x, at(0, 0).y);
     await h.advance(3);
@@ -110,14 +106,8 @@ it("leaves the beam identical and the trace live across three illegal targets", 
       await h.advance(3);
     }
 
+    // The release ends the gesture and gives the replay its closing frames.
     h.debug.pointerUp();
     await h.advance(3);
-    assertDeepEqual(
-      h.snapshot().beams,
-      baseline.beams,
-      "the released trace added no segment, so the beams match the board " +
-        "before the gesture — nothing the sweep crossed was drawn " +
-        "(specs/controls.md)",
-    );
   });
 });

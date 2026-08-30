@@ -1,31 +1,54 @@
-// Refract — campaign/sets: the select frame labels its four row bands with the
-// four SET_LABELS entries, in order from the top.
+// Refract — campaign/sets: the select frame names all four sets, in order down
+// the frame.
 //
-// One rendered select frame is read twice: the board numbers give the grid's
-// four row bands (specs/modes/campaign.md: six columns wide and four rows
-// tall, one row per set), and the frame's other text draws must include every
-// entry of SET_LABELS — SET A, SET B, SET C, SET D — each sitting nearer its
-// own row band than any other. "Aligned with its own row band" is read as
-// nearest-band because the label's exact offset (above the row, beside it) is
-// the build's to design; which row a label belongs to is not.
+// specs/modes/campaign.md: "Each row is labelled with its set's entry in
+// SET_LABELS (SET A, SET B, SET C, SET D), in that order from the top row
+// down." Two things are fixed there and both are held here: that all four
+// entries are drawn, and that they run top to bottom in that order. WHICH ROW
+// of tiles a label sits beside, and how far from it, is presentation the
+// reviewer judges through the scoring domains — a build may set its labels
+// above their rows, beside them, or in a rail down the edge, and every one of
+// those honours the sentence.
 //
-// A set is a grouping only and gates nothing: the gate-free half is carried by
-// the unlock rule itself (campaign/unlocking.test.ts asserts solving board n
-// unlocks n + 1, with no set boundary in the rule), so this suite holds only
-// the labelling.
+// NOTHING IS BORROWED FROM THE GRID. Reading the board numbers here to find
+// row bands passed this item's verdict through surface campaign/select-grid
+// owns: a build that marks a locked tile instead of numbering it, or that
+// letter-spaces its heading, failed here for a fault that has nothing to do
+// with its set labels. The labels place themselves.
+//
+// The copy is matched case-insensitively with runs of whitespace squashed on
+// both sides, because letter spacing is a font choice and a build that draws
+// its label a glyph at a time spells it with the spacing it chose.
+//
+// THE ORDER IS READ AS A CHAIN, NOT AS FOUR FIRST DRAWS. Text runs arrive in
+// the order the build drew them, and draw order is not top-to-bottom order:
+// taking each label's first-drawn run would grade the order a renderer happens
+// to emit its text in rather than the frame the player reads. A label may also
+// honestly appear more than once — its heading beside its own row, and a
+// legend naming all four together. So what is asserted is that the four CAN be
+// read down the frame in order: each label in turn is taken at the topmost of
+// its draws that still sits below the one taken for the label before it. A
+// build whose SET D sits above its SET A has no such reading anywhere on the
+// screen and fails; a build that prints a legend is not failed for the one
+// line its four labels share.
+//
+// A set is a grouping only and gates nothing. That half is carried by the
+// unlock rule itself — campaign/unlocking asserts that solving board n unlocks
+// board n + 1, with no set boundary anywhere in the rule — so this suite holds
+// only the labelling.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { SET_LABELS } from "../../src/constants";
-import { assertEqual, fail } from "../assert";
+import { fail } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnTextSpans,
+  drawnTextLines,
+  drawnTextRuns,
   resetTo,
   startCampaign,
   type Harness,
 } from "../harness";
-import { readSelectGrid, requireSixByFour } from "./helpers";
 
 let h: Harness;
 
@@ -37,7 +60,12 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws all four set labels, each on its own row band", async () => {
+/** One line of copy as it reads: upper case, its runs of whitespace squashed. */
+function squash(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+it("draws all four set labels, in order down the frame", async () => {
   await resetTo(h);
   await startCampaign(h);
 
@@ -45,38 +73,47 @@ it("draws all four set labels, each on its own row band", async () => {
   await h.advance(1);
   captureStill(h, "select");
 
-  const grid = readSelectGrid(h);
-  requireSixByFour(grid);
-  const spans = drawnTextSpans(h);
+  const lines = drawnTextLines(h.calls);
+  const runs = drawnTextRuns(h);
 
-  SET_LABELS.forEach((label, set) => {
-    const drawn = spans.filter((span) =>
-      span.text.toUpperCase().includes(label),
-    );
-    if (drawn.length === 0) {
+  // All four entries are drawn…
+  for (const label of SET_LABELS) {
+    const wanted = squash(label);
+    if (!lines.some((line) => squash(line).includes(wanted))) {
       fail(
         `the select frame drawing ${JSON.stringify(label)} ` +
           "(SET_LABELS, specs/modes/campaign.md: each row is labelled with " +
-          "its set's entry, in order from the top row down)",
-        spans.map((span) => span.text),
+          "its set's entry, in that order from the top row down)",
+        lines,
       );
     }
-    for (const span of drawn) {
-      let nearest = 0;
-      for (let row = 1; row < grid.rowY.length; row += 1) {
-        if (
-          Math.abs(span.y - grid.rowY[row]) <
-          Math.abs(span.y - grid.rowY[nearest])
-        ) {
-          nearest = row;
-        }
-      }
-      assertEqual(
-        nearest,
-        set,
-        `${label} sits nearest row band ${set + 1} of the grid ` +
-          "(specs/modes/campaign.md: one row per set, Set A at the top)",
+  }
+
+  // …and they read down the frame in order: each label taken at the topmost
+  // of its draws that still sits below the one taken for the label before it.
+  let above: number | null = null;
+  let previous: string | null = null;
+  for (const label of SET_LABELS) {
+    const wanted = squash(label);
+    const top = runs
+      .filter((run) => squash(run.text).includes(wanted))
+      .map((run) => run.y)
+      .filter((y) => above === null || y > above)
+      .reduce<number | null>(
+        (lowest, y) => (lowest === null || y < lowest ? y : lowest),
+        null,
+      );
+    if (top === null) {
+      fail(
+        previous === null
+          ? `a placed draw of ${JSON.stringify(label)}, to read down the frame`
+          : `a draw of ${JSON.stringify(label)} below the draw of ` +
+              `${JSON.stringify(previous)} it follows ` +
+              "(specs/modes/campaign.md: in that order from the top row down)",
+        runs.map((run) => `${run.text} @ y ${run.y}`),
       );
     }
-  });
+    above = top;
+    previous = label;
+  }
 });

@@ -10,6 +10,15 @@
 // NODE_HIT_R - 2 from its target's center, never on it — until every segment
 // is gone, and the trace is read back live after every step: nothing here
 // releases. The whole held drag is recorded as the item's `retract` replay.
+//
+// specs/controls.md phrases this requirement about the pointer a PLAYER holds,
+// so the drag is driven through the engine's own pointer input rather than
+// through the debug surface's pointer operations. Those resolve between frames
+// (specs/instrumentation.md), and no rule says a posed press is still held
+// after a frame has advanced — driving them across the `advance` calls this
+// replay needs would grade that unstated behavior instead of this one. Each
+// real sample is followed by the one frame that delivers it to the game's
+// update, and then by the frames the replay wants.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertNotNull } from "../assert";
@@ -42,13 +51,15 @@ it("removes the last segment per backing move, unwinding the beam without a rele
 
   await captureReplay(h, "retract", async () => {
     // Draw T(0,0)-t(0,1)-t(1,1)-t(2,1) with the pointer held.
-    h.debug.pointerDown(at(0, 0).x, at(0, 0).y);
+    h.pointer("pointerdown", at(0, 0).x, at(0, 0).y);
+    await h.advance(1);
     for (const [col, row] of [
       [0, 1],
       [1, 1],
       [2, 1],
     ] as const) {
-      h.debug.pointerMove(at(col, row).x, at(col, row).y);
+      h.pointer("pointermove", at(col, row).x, at(col, row).y);
+      await h.advance(1);
       await h.advance(4);
     }
     assertDeepEqual(
@@ -85,9 +96,12 @@ it("removes the last segment per backing move, unwinding the beam without a rele
       },
       { to: [0, 0], cells: [{ col: 0, row: 0 }] },
     ];
+    let last = at(2, 1);
     for (const step of steps) {
       const target = at(step.to[0], step.to[1]);
-      h.debug.pointerMove(target.x + (NODE_HIT_R - 2), target.y);
+      last = { x: target.x + (NODE_HIT_R - 2), y: target.y };
+      h.pointer("pointermove", last.x, last.y);
+      await h.advance(1);
       await h.advance(4);
 
       const snapshot = h.snapshot();
@@ -108,7 +122,8 @@ it("removes the last segment per backing move, unwinding the beam without a rele
       );
     }
 
-    h.debug.pointerUp();
+    h.pointer("pointerup", last.x, last.y);
+    await h.advance(1);
     await h.advance(4);
   });
 });

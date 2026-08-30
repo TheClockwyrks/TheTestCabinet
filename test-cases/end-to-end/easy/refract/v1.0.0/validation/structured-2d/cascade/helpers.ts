@@ -108,10 +108,21 @@ export function spanClearOf(span: TextSpan, keepOut: KeepOut): boolean {
   return !(crossesX && insideY);
 }
 
-/** The number a run's digits read as, or `null` for a run with no digit. */
-export function digitsOf(span: TextSpan): number | null {
-  const digits = span.text.replace(/\D/g, "");
-  return digits.length === 0 ? null : Number.parseInt(digits, 10);
+/**
+ * The WHOLE NUMBERS a run carries, in order: `"SOLVED 12"` reads `[12]` and a
+ * one-line HUD `"CASCADE · SOLVED 1 · TIER 1"` reads `[1, 1]`.
+ *
+ * Reading a run's digits stripped of everything else instead would spell one
+ * number out of two — that same line would read as eleven — so the same-run
+ * allowance below would never fire on the very layout it exists for. The
+ * specification fixes the labels and the values but not the layout, so a build
+ * may draw both readouts on one line and each number in it must still read as
+ * itself.
+ */
+export function numbersIn(span: TextSpan): number[] {
+  return (span.text.match(/\d+/g) ?? []).map((digits) =>
+    Number.parseInt(digits, 10),
+  );
 }
 
 /**
@@ -131,10 +142,15 @@ export function spansAdjacent(a: TextSpan, b: TextSpan): boolean {
 }
 
 /**
- * The frame draws `label` with the digit reading `value` adjacent, and both
- * runs sit clear of `keepOut` — the whole of a HUD readout item's claim
- * (specs/modes/cascade.md "The count"). The digit may live in the label's own
+ * The frame draws `label` with the number `value` adjacent, and both runs sit
+ * clear of `keepOut` — the whole of a HUD readout item's claim
+ * (specs/modes/cascade.md "The count"). The number may live in the label's own
  * run or in a run beside it.
+ *
+ * `spans` is the frame's COALESCED runs (the harness's `drawnTextRuns`), not
+ * its raw `fillText` calls: canvas has no portable letter-spacing property, so
+ * a build that tracks its HUD draws a glyph per call, and a label read off the
+ * raw calls would never be found on a build that drew exactly the right words.
  */
 export function assertLabeledDigitClear(
   spans: readonly TextSpan[],
@@ -153,7 +169,7 @@ export function assertLabeledDigitClear(
       spans.map((span) => span.text),
     );
   }
-  const digitRuns = spans.filter((span) => digitsOf(span) === value);
+  const digitRuns = spans.filter((span) => numbersIn(span).includes(value));
   const pair = labels.flatMap((labelSpan) =>
     digitRuns
       .filter((digitSpan) => spansAdjacent(labelSpan, digitSpan))
@@ -161,7 +177,7 @@ export function assertLabeledDigitClear(
   );
   if (pair.length === 0) {
     fail(
-      `the digit ${value} within one CELL_PITCH (96) of the ` +
+      `the number ${value} within one CELL_PITCH (96) of the ` +
         `${JSON.stringify(label)} label (specs/modes/cascade.md: the value ` +
         `is shown beside its label)`,
       spans.map(

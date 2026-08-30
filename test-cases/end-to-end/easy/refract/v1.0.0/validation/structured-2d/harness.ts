@@ -273,16 +273,33 @@ export interface Harness {
    * `pointermove`/`pointerup` listeners.
    *
    * {@link hold}, {@link release} and {@link tap} are the keyboard side of it,
-   * named because every menu check needs them. The pointer side has no named
-   * helper here because only the audio checks need it: a cue is specified as
+   * and {@link pointer} is the pointer side. It stays exposed for a check that
+   * needs to raise some other event on the same target.
+   */
+  readonly events: EventTarget;
+
+  /**
+   * Dispatch a REAL pointer event at a logical stage point, through the
+   * engine's own pointer input — the player's path, where the sample is read
+   * by the next frame's update — as opposed to the debug surface's pointer
+   * operations, which are immediate poses. The point is mapped through the
+   * current viewport and DPR, so it names the same logical spot under any
+   * surface options. Advance a frame after dispatching for the game to read
+   * it.
+   *
+   * Two kinds of check need this rather than the poses. A cue is specified as
    * playing "on the frame its event happens, from update" (specs/ui.md), and a
    * pointer operation on the debug surface resolves at the CALL rather than
    * inside an update (specs/instrumentation.md), so a check that must pin a
-   * cue's frame raises its event as a real pointer sample the engine's input
-   * system delivers to the player controller — a player's own path — and
-   * reaches that path through here.
+   * cue's frame has to raise a real sample. And specs/controls.md phrases
+   * extending and retracting about the pointer a PLAYER holds, so a check that
+   * decides a held drag drives the held drag.
    */
-  readonly events: EventTarget;
+  pointer(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    x: number,
+    y: number,
+  ): void;
 
   /** Where a logical point lands in the canvas's backing store. */
   device(x: number, y: number): { x: number; y: number };
@@ -302,6 +319,27 @@ class KeyEvent extends Event {
     super(type);
     this.code = code;
     this.repeat = repeat;
+  }
+}
+
+/**
+ * A `PointerEvent`-shaped event: the engine's input system reads `clientX`,
+ * `clientY`, and `isPrimary`, structurally, so this drives it exactly as a
+ * browser's own event does.
+ */
+class PointerLikeEvent extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly isPrimary = true;
+
+  constructor(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    clientX: number,
+    clientY: number,
+  ) {
+    super(type);
+    this.clientX = clientX;
+    this.clientY = clientY;
   }
 }
 
@@ -378,6 +416,59 @@ export function setsOf(
   return calls.flatMap((call) =>
     call.kind === "set" && call.property === property ? [call.value] : [],
   );
+}
+
+/**
+ * A snapshot with every beam cell narrowed to the two fields the specs fix.
+ *
+ * specs/state.md declares `interface Cell { col, row }` and
+ * specs/instrumentation.md's Snapshot shape writes `cells: [{ col, row }]`, so
+ * `col` and `row` are what a cell means. Neither says a cell may carry nothing
+ * else, and specs/state.md's contract grants the build fields that "hold
+ * derived data you can rebuild from the declared ones" — a cell that also names
+ * its node's kind or channel is exactly that. So every check compares on the
+ * two fields the specs fix, and no check grades the rest either way. A cell
+ * missing `col` or `row` still fails: the projection reads those two properties
+ * and yields `undefined`.
+ *
+ * The snapshot the surface returned is never touched. Every container the
+ * projection rewrites is a fresh object, so a check holding an earlier snapshot
+ * sees what it saw.
+ */
+function projectCells(snapshot: RefractSnapshot): RefractSnapshot {
+  const projected: RefractSnapshot = { ...snapshot };
+
+  const beams: unknown = snapshot.beams;
+  if (typeof beams === "object" && beams !== null) {
+    const narrowed: Record<string, unknown> = { ...beams };
+    for (const [channel, beam] of Object.entries(narrowed)) {
+      if (typeof beam !== "object" || beam === null) continue;
+      const cells: unknown = (beam as { cells?: unknown }).cells;
+      if (!Array.isArray(cells)) continue;
+      narrowed[channel] = {
+        ...beam,
+        cells: (cells as CellRef[]).map((cell) => ({
+          col: cell.col,
+          row: cell.row,
+        })),
+      };
+    }
+    projected.beams = narrowed as RefractSnapshot["beams"];
+  }
+
+  const tracing = snapshot.tracing;
+  if (typeof tracing === "object" && tracing !== null) {
+    const live: unknown = tracing.live;
+    if (typeof live === "object" && live !== null) {
+      const cell = live as CellRef;
+      projected.tracing = {
+        ...tracing,
+        live: { col: cell.col, row: cell.row },
+      };
+    }
+  }
+
+  return projected;
 }
 
 /**
@@ -542,7 +633,7 @@ export async function createHarness(
     cues,
     assetFailures,
 
-    snapshot: () => debug.snapshot(),
+    snapshot: () => projectCells(debug.snapshot()),
 
     advance: (frames) => engine.advance(frames),
 
@@ -550,7 +641,7 @@ export async function createHarness(
       const maxFrames = untilOptions.maxFrames ?? 600;
       const poll = Math.max(1, untilOptions.poll ?? 1);
 
-      let snapshot = debug.snapshot();
+      let snapshot = projectCells(debug.snapshot());
       if (predicate(snapshot)) return { hit: true, frames: 0, snapshot };
 
       let frames = 0;
@@ -558,7 +649,7 @@ export async function createHarness(
         const step = Math.min(poll, maxFrames - frames);
         await engine.advance(step);
         frames += step;
-        snapshot = debug.snapshot();
+        snapshot = projectCells(debug.snapshot());
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
       }
       return { hit: false, frames, snapshot };
@@ -580,6 +671,18 @@ export async function createHarness(
       await engine.advance(1);
     },
     events: keys,
+
+    pointer: (type, x, y) => {
+      // The inverse of the engine's own mapping: its input system reads
+      // `clientX`/`clientY` as CSS pixels from the canvas's top-left corner,
+      // multiplies by the device pixel ratio, and maps through the live
+      // viewport fit — so a logical point goes back out the same way, through
+      // the world's camera and the fit, then divided by the ratio.
+      const point = toDevice(engine.world, engine.viewport(), x, y);
+      keys.dispatchEvent(
+        new PointerLikeEvent(type, point.x / dpr, point.y / dpr),
+      );
+    },
 
     device: (x, y) => toDevice(engine.world, engine.viewport(), x, y),
     pixel: (x, y) => {
@@ -1088,6 +1191,99 @@ export function moveToCell(h: Harness, cell: CellRef): void {
   h.debug.pointerMove(x, y);
 }
 
+/* ---- The player's own pointer path ----------------------------------------- */
+//
+// The debug surface's pointer operations resolve "against the live state before
+// the call returns rather than deferred to the next frame"
+// (specs/instrumentation.md), which is exactly right for arranging a board and
+// wrong for two kinds of check. A cue is fixed as played "on the frame its
+// event happens", by the code that raised it (specs/ui.md), and an event
+// resolved between frames has no frame to be played on. And specs/controls.md
+// phrases extending and retracting about the pointer a PLAYER holds, so the
+// held drag is the subject rather than a way to reach one.
+//
+// The helpers below raise the real sample through {@link Harness.pointer} and
+// then run the ONE frame that delivers it, so the frame a cue must play on is
+// the frame the helper advanced — and nothing about the game's own resolution
+// is bypassed: the hit radius, the grab rules, and every limit run as they do
+// for a player.
+
+/**
+ * Press at `cell`'s center as a player's pointer does, then run the one frame
+ * that delivers the sample to the game.
+ */
+export async function playerPress(h: Harness, cell: CellRef): Promise<void> {
+  const { x, y } = centerOf(h, cell);
+  h.pointer("pointerdown", x, y);
+  await h.advance(1);
+}
+
+/**
+ * Move the held pointer to `cell`'s center as a player's pointer does, then
+ * run the one frame that delivers the sample — the frame whatever the move
+ * raises happens on.
+ */
+export async function playerMoveTo(h: Harness, cell: CellRef): Promise<void> {
+  const { x, y } = centerOf(h, cell);
+  h.pointer("pointermove", x, y);
+  await h.advance(1);
+}
+
+/**
+ * Move the held pointer to a logical stage POINT rather than to a cell center,
+ * then run the one frame that delivers the sample. For a check that has to put
+ * the pointer somewhere a cell center is not — just inside or just outside a
+ * node's targeting radius.
+ */
+export async function playerMoveToPoint(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<void> {
+  h.pointer("pointermove", x, y);
+  await h.advance(1);
+}
+
+/**
+ * Release at `cell`'s center as a player's pointer does, then run the one frame
+ * that delivers the sample.
+ */
+export async function playerRelease(h: Harness, cell: CellRef): Promise<void> {
+  const { x, y } = centerOf(h, cell);
+  h.pointer("pointerup", x, y);
+  await h.advance(1);
+}
+
+/**
+ * Draw `cells` end to end the way a player draws them: a press on the first, a
+ * move to each of the rest, and a release on the last — every sample real,
+ * every one delivered by its own frame.
+ */
+export async function playerDraw(
+  h: Harness,
+  cells: readonly CellRef[],
+): Promise<void> {
+  const [first, ...rest] = cells;
+  if (first === undefined) return;
+  await playerPress(h, first);
+  for (const cell of rest) await playerMoveTo(h, cell);
+  await playerRelease(h, cells[cells.length - 1]);
+}
+
+/**
+ * Enter a mode through the surface's `startMode`, then run the one frame that
+ * draws the screen it opened.
+ *
+ * specs/instrumentation.md defines `startMode` as entering a mode "exactly as
+ * choosing its menu item does", so a check that only needs to BE in a mode
+ * poses it. The title menu stays the subject of the `screens/` items, which is
+ * where the binding is what is being decided.
+ */
+export async function poseMode(h: Harness, mode: Mode): Promise<void> {
+  h.debug.startMode(mode);
+  await h.advance(1);
+}
+
 /** `[col, row]` pairs — the shape `routes.ts` stores — as `trace` cells. */
 export function toCells(
   route: ReadonlyArray<readonly [number, number]>,
@@ -1444,16 +1640,24 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
 }
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
+ * Whether the frame spelled `text` inside some logical run of text, ignoring
+ * case.
  *
  * Substring rather than equality on purpose: the copy a check asserts is the
  * case's own, but how a build presents it is the build's, and a menu entry is
  * commonly drawn with a selection marker or padding around it. Requiring the
  * exact run would fail a screen that shows precisely the right words.
+ *
+ * Read off {@link drawnTextLines} rather than off the raw calls, so a heading
+ * letter-spaced a glyph per `fillText` is found by the words it spells. Every
+ * raw string is a substring of the run it belongs to, so coalescing can only
+ * add a match and never take one away.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
   const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+  return drawnTextLines(calls).some((line) =>
+    line.toLowerCase().includes(wanted),
+  );
 }
 
 /** One run of text a frame drew, and the logical x range its glyphs span. */
@@ -1504,6 +1708,174 @@ export function drawnTextSpans(h: Harness): TextSpan[] {
           ? w
           : 0;
     spans.push({ text, x, y, left: x - before, right: x - before + w });
+  }
+  return spans;
+}
+
+/* ---- Logical runs of text -------------------------------------------------- */
+//
+// A build that letter-spaces a heading draws a glyph per `fillText`, which is
+// the only portable way to letter-space canvas text: the property canvas
+// exposes for it is not portable, so the ordinary implementation walks the
+// string. specs/ui.md fixes the COPY a screen shows; "Palettes, fonts, layouts,
+// and styling are the build's choices" makes the spacing between its glyphs the
+// build's. So a check that asserts copy reads it off the logical RUN the frame
+// spells, never off the `fillText` split that spelled it.
+//
+// THE MERGE RULE. A draw joins the run before it when the two share a baseline
+// and sit side by side: `|Δbaseline| <= 0.75` device px, the later draw's left
+// edge at or after the run's right edge less `0.5` px, and the gap between them
+// at most `0.6 * meanAdvance` of the run so far, where `meanAdvance` is its
+// measured width over its character count. A run's measured width is the extent
+// it occupies, right minus left, so its mean advance carries whatever letter
+// spacing its own glyphs were set at: a heading tracked wider than 0.6 of a bare
+// glyph still reads as one run, while a HUD figure a clear gap from its label
+// stays its own. Texts are concatenated verbatim, so a run drawn a glyph at a
+// time comes back as the string it spells, tracked spaces included. The comparison is RELATIVE, so it is decided in device
+// space, where the calls were made, and no viewport conversion is needed to
+// decide it; {@link drawnTextRuns} converts the merged run afterwards with the
+// arithmetic {@link drawnTextSpans} already uses.
+//
+// WHAT STAYS RAW. {@link drawnText} and {@link drawnTextSpans} are untouched.
+// The overlay check diffs line SETS off `drawnText` and must not see merged
+// text, and the readout-geometry checks need each draw's own extent: a merged
+// span is wider than any of its members, so holding one clear of a region asks
+// a different question. Every reader opts in.
+
+/** How far apart two draws' baselines may sit and still read as one run. */
+const RUN_BASELINE_SLACK = 0.75;
+
+/** How far a draw may sit back inside the run before it and still join it. */
+const RUN_BACKTRACK_SLACK = 0.5;
+
+/** The share of the run's mean advance a gap may reach and still join it. */
+const RUN_GAP_RATIO = 0.6;
+
+/**
+ * One run of text, measured where the calls were made: device pixels.
+ *
+ * `chars` accumulates as draws join, so the run's mean advance — its extent over
+ * `chars` — is the distance its glyphs really advanced by.
+ */
+interface DeviceRun {
+  text: string;
+  baseline: number;
+  left: number;
+  right: number;
+  chars: number;
+  /** The alignment of the run's FIRST draw, which places it about its anchor. */
+  textAlign: string;
+}
+
+/**
+ * Where one text call landed, in device pixels, or `null` when it drew no text.
+ *
+ * A call whose anchor is not a pair of numbers placed nothing on the canvas. It
+ * still comes back, with no place, so the copy it spells is read; it can never
+ * join a run, because every comparison against `NaN` is false.
+ */
+function deviceDraw(call: DrawCall): DeviceRun | null {
+  if (call.kind !== "call" || call.text === undefined) return null;
+  const [text, ax, ay] = call.args;
+  if (typeof text !== "string" || text.length === 0) return null;
+  const { transform: m, width, textAlign } = call.text;
+  const scaled = width * Math.hypot(m.a, m.b);
+  const run: DeviceRun = {
+    text,
+    baseline: NaN,
+    left: NaN,
+    right: NaN,
+    chars: text.length,
+    textAlign,
+  };
+  if (typeof ax !== "number" || typeof ay !== "number") return run;
+  const before =
+    textAlign === "center"
+      ? scaled / 2
+      : textAlign === "right" || textAlign === "end"
+        ? scaled
+        : 0;
+  run.baseline = m.b * ax + m.d * ay + m.f;
+  run.left = m.a * ax + m.c * ay + m.e - before;
+  run.right = run.left + scaled;
+  return run;
+}
+
+/** Whether `next` continues `open` under the merge rule stated above. */
+function joinsRun(open: DeviceRun, next: DeviceRun): boolean {
+  if (Math.abs(next.baseline - open.baseline) > RUN_BASELINE_SLACK)
+    return false;
+  if (!(next.left >= open.right - RUN_BACKTRACK_SLACK)) return false;
+  const meanAdvance = (open.right - open.left) / open.chars;
+  return next.left - open.right <= RUN_GAP_RATIO * meanAdvance;
+}
+
+/**
+ * The frame's text draws coalesced into logical runs, in device pixels.
+ *
+ * A PARTITION: every text draw belongs to exactly one run, so a heading drawn
+ * `1 OF 24 SOLVED` a glyph at a time yields one run and no stray run equal to
+ * `"2"`. The placed draws come back in reading order — down the frame, then
+ * across it — because that is the order the merge walks them in; the unplaced
+ * ones follow.
+ */
+function deviceRuns(calls: readonly DrawCall[]): DeviceRun[] {
+  const placed: DeviceRun[] = [];
+  const unplaced: DeviceRun[] = [];
+  for (const call of calls) {
+    const draw = deviceDraw(call);
+    if (draw === null) continue;
+    (Number.isFinite(draw.left) ? placed : unplaced).push(draw);
+  }
+  placed.sort((a, b) => a.baseline - b.baseline || a.left - b.left);
+
+  const runs: DeviceRun[] = [];
+  for (const draw of placed) {
+    const open = runs[runs.length - 1];
+    if (open !== undefined && joinsRun(open, draw)) {
+      open.text += draw.text;
+      open.right = Math.max(open.right, draw.right);
+      open.chars += draw.chars;
+      continue;
+    }
+    runs.push({ ...draw });
+  }
+  return [...runs, ...unplaced];
+}
+
+/** Every logical run of text the frame spelled, as the strings it spells. */
+export function drawnTextLines(calls: readonly DrawCall[]): string[] {
+  return deviceRuns(calls).map((run) => run.text);
+}
+
+/**
+ * Every logical run of text the frame spelled, placed in logical units.
+ *
+ * The placed companion to {@link drawnTextLines}, and the reader a check uses
+ * when it needs both the copy and where it sits — a board's number on the
+ * select grid, a HUD label and the figure beside it. A run's anchor is derived
+ * back from its merged extent under its first draw's alignment, so a run of one
+ * draw comes back exactly as {@link drawnTextSpans} reports it.
+ *
+ * A draw that named no place is left out: it has copy but no geometry, and
+ * {@link drawnTextLines} is where its copy is read.
+ */
+export function drawnTextRuns(h: Harness): TextSpan[] {
+  const view = h.engine.viewport();
+  const spans: TextSpan[] = [];
+  for (const run of deviceRuns(h.calls)) {
+    if (!Number.isFinite(run.left) || !Number.isFinite(run.baseline)) continue;
+    const left = (run.left - view.offsetX) / view.scale;
+    const right = (run.right - view.offsetX) / view.scale;
+    const y = (run.baseline - view.offsetY) / view.scale;
+    const width = right - left;
+    const before =
+      run.textAlign === "center"
+        ? width / 2
+        : run.textAlign === "right" || run.textAlign === "end"
+          ? width
+          : 0;
+    spans.push({ text: run.text, x: left + before, y, left, right });
   }
   return spans;
 }

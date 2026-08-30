@@ -446,6 +446,59 @@ const SURFACE_REQUIREMENT =
   "(specs/instrumentation.md)";
 
 /**
+ * A snapshot with every beam cell narrowed to the two fields the specs fix.
+ *
+ * specs/state.md declares `interface Cell { col, row }` and
+ * specs/instrumentation.md's Snapshot shape writes `cells: [{ col, row }]`, so
+ * `col` and `row` are what a cell means. Neither says a cell may carry nothing
+ * else, and specs/state.md's contract grants the build fields that "hold
+ * derived data you can rebuild from the declared ones" — a cell that also names
+ * its node's kind or channel is exactly that. So every check compares on the
+ * two fields the specs fix, and no check grades the rest either way. A cell
+ * missing `col` or `row` still fails: the projection reads those two properties
+ * and yields `undefined`.
+ *
+ * The snapshot the surface returned is never touched. Every container the
+ * projection rewrites is a fresh object, so a check holding an earlier
+ * snapshot sees what it saw.
+ */
+function projectCells(snapshot: RefractSnapshot): RefractSnapshot {
+  const projected: RefractSnapshot = { ...snapshot };
+
+  const beams: unknown = snapshot.beams;
+  if (typeof beams === "object" && beams !== null) {
+    const narrowed: Record<string, unknown> = { ...beams };
+    for (const [channel, beam] of Object.entries(narrowed)) {
+      if (typeof beam !== "object" || beam === null) continue;
+      const cells: unknown = (beam as { cells?: unknown }).cells;
+      if (!Array.isArray(cells)) continue;
+      narrowed[channel] = {
+        ...beam,
+        cells: (cells as CellRef[]).map((cell) => ({
+          col: cell.col,
+          row: cell.row,
+        })),
+      };
+    }
+    projected.beams = narrowed as RefractSnapshot["beams"];
+  }
+
+  const tracing = snapshot.tracing;
+  if (typeof tracing === "object" && tracing !== null) {
+    const live: unknown = tracing.live;
+    if (typeof live === "object" && live !== null) {
+      const cell = live as CellRef;
+      projected.tracing = {
+        ...tracing,
+        live: { col: cell.col, row: cell.row },
+      };
+    }
+  }
+
+  return projected;
+}
+
+/**
  * The imperative reading of the raw surface, over the runtime that holds the
  * state.
  *
@@ -477,6 +530,13 @@ function driveSurface(
         ...args: unknown[]
       ) => unknown;
       if (readings.includes(property)) {
+        // The one point a snapshot is read on this engine, so the one place a
+        // beam's cells are narrowed. `h.snapshot()` and both `debug.snapshot()`
+        // reads inside `until` come through here.
+        if (property === "snapshot") {
+          return (): unknown =>
+            projectCells(op.call(raw, engine.state) as RefractSnapshot);
+        }
         return (): unknown => op.call(raw, engine.state);
       }
       return (...args: unknown[]): void => {
@@ -1081,6 +1141,20 @@ export async function startCascade(h: Harness): Promise<RefractSnapshot> {
   return snapshot;
 }
 
+/**
+ * Enter a mode through the surface's `startMode`, then run the one frame that
+ * draws the screen it opened.
+ *
+ * specs/instrumentation.md defines `startMode` as entering a mode "exactly as
+ * choosing its menu item does", so a check that only needs to BE in a mode
+ * poses it rather than walking the title menu. The title menu stays the subject
+ * of the `screens/` items, which is where the binding is what is being decided.
+ */
+export async function poseMode(h: Harness, mode: Mode): Promise<void> {
+  h.debug.startMode(mode);
+  await h.advance(1);
+}
+
 /** The snapshot's board as the oracle's `Board`, for `rules.ts`/`solver.ts`. */
 export function oracleBoard(snapshot: RefractSnapshot): Board {
   return {
@@ -1365,15 +1439,24 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
 }
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
+ * Whether the frame spelled `text` inside some logical run of text, ignoring
+ * case.
  *
  * Substring rather than equality on purpose: the copy a check asserts is the
  * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it.
+ * commonly drawn with a selection marker or padding around it. Requiring the
+ * exact run would fail a screen that shows precisely the right words.
+ *
+ * Read off {@link drawnTextLines} rather than off the raw calls, so a heading
+ * letter-spaced a glyph per `fillText` is found by the words it spells. Every
+ * raw string is a substring of the run it belongs to, so coalescing can only
+ * add a match and never take one away.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
   const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+  return drawnTextLines(calls).some((line) =>
+    line.toLowerCase().includes(wanted),
+  );
 }
 
 /** One run of text a frame drew, and the logical x range its glyphs span. */
@@ -1419,6 +1502,174 @@ export function drawnTextSpans(h: Harness): TextSpan[] {
           ? w
           : 0;
     spans.push({ text, x, y, left: x - before, right: x - before + w });
+  }
+  return spans;
+}
+
+/* ---- Logical runs of text -------------------------------------------------- */
+//
+// A build that letter-spaces a heading draws a glyph per `fillText`, which is
+// the only portable way to letter-space canvas text: the property canvas
+// exposes for it is not portable, so the ordinary implementation walks the
+// string. specs/ui.md fixes the COPY a screen shows; "Palettes, fonts, layouts,
+// and styling are the build's choices" makes the spacing between its glyphs the
+// build's. So a check that asserts copy reads it off the logical RUN the frame
+// spells, never off the `fillText` split that spelled it.
+//
+// THE MERGE RULE. A draw joins the run before it when the two share a baseline
+// and sit side by side: `|Δbaseline| <= 0.75` device px, the later draw's left
+// edge at or after the run's right edge less `0.5` px, and the gap between them
+// at most `0.6 * meanAdvance` of the run so far, where `meanAdvance` is its
+// measured width over its character count. A run's measured width is the extent
+// it occupies, right minus left, so its mean advance carries whatever letter
+// spacing its own glyphs were set at: a heading tracked wider than 0.6 of a bare
+// glyph still reads as one run, while a HUD figure a clear gap from its label
+// stays its own. Texts are concatenated verbatim, so a run drawn a glyph at a
+// time comes back as the string it spells, tracked spaces included. The comparison is RELATIVE, so it is decided in device
+// space, where the calls were made, and no viewport conversion is needed to
+// decide it; {@link drawnTextRuns} converts the merged run afterwards with the
+// arithmetic {@link drawnTextSpans} already uses.
+//
+// WHAT STAYS RAW. {@link drawnText} and {@link drawnTextSpans} are untouched.
+// The overlay check diffs line SETS off `drawnText` and must not see merged
+// text, and the readout-geometry checks need each draw's own extent: a merged
+// span is wider than any of its members, so holding one clear of a region asks
+// a different question. Every reader opts in.
+
+/** How far apart two draws' baselines may sit and still read as one run. */
+const RUN_BASELINE_SLACK = 0.75;
+
+/** How far a draw may sit back inside the run before it and still join it. */
+const RUN_BACKTRACK_SLACK = 0.5;
+
+/** The share of the run's mean advance a gap may reach and still join it. */
+const RUN_GAP_RATIO = 0.6;
+
+/**
+ * One run of text, measured where the calls were made: device pixels.
+ *
+ * `chars` accumulates as draws join, so the run's mean advance — its extent over
+ * `chars` — is the distance its glyphs really advanced by.
+ */
+interface DeviceRun {
+  text: string;
+  baseline: number;
+  left: number;
+  right: number;
+  chars: number;
+  /** The alignment of the run's FIRST draw, which places it about its anchor. */
+  textAlign: string;
+}
+
+/**
+ * Where one text call landed, in device pixels, or `null` when it drew no text.
+ *
+ * A call whose anchor is not a pair of numbers placed nothing on the canvas. It
+ * still comes back, with no place, so the copy it spells is read; it can never
+ * join a run, because every comparison against `NaN` is false.
+ */
+function deviceDraw(call: DrawCall): DeviceRun | null {
+  if (call.kind !== "call" || call.text === undefined) return null;
+  const [text, ax, ay] = call.args;
+  if (typeof text !== "string" || text.length === 0) return null;
+  const { transform: m, width, textAlign } = call.text;
+  const scaled = width * Math.hypot(m.a, m.b);
+  const run: DeviceRun = {
+    text,
+    baseline: NaN,
+    left: NaN,
+    right: NaN,
+    chars: text.length,
+    textAlign,
+  };
+  if (typeof ax !== "number" || typeof ay !== "number") return run;
+  const before =
+    textAlign === "center"
+      ? scaled / 2
+      : textAlign === "right" || textAlign === "end"
+        ? scaled
+        : 0;
+  run.baseline = m.b * ax + m.d * ay + m.f;
+  run.left = m.a * ax + m.c * ay + m.e - before;
+  run.right = run.left + scaled;
+  return run;
+}
+
+/** Whether `next` continues `open` under the merge rule stated above. */
+function joinsRun(open: DeviceRun, next: DeviceRun): boolean {
+  if (Math.abs(next.baseline - open.baseline) > RUN_BASELINE_SLACK)
+    return false;
+  if (!(next.left >= open.right - RUN_BACKTRACK_SLACK)) return false;
+  const meanAdvance = (open.right - open.left) / open.chars;
+  return next.left - open.right <= RUN_GAP_RATIO * meanAdvance;
+}
+
+/**
+ * The frame's text draws coalesced into logical runs, in device pixels.
+ *
+ * A PARTITION: every text draw belongs to exactly one run, so a heading drawn
+ * `1 OF 24 SOLVED` a glyph at a time yields one run and no stray run equal to
+ * `"2"`. The placed draws come back in reading order — down the frame, then
+ * across it — because that is the order the merge walks them in; the unplaced
+ * ones follow.
+ */
+function deviceRuns(calls: readonly DrawCall[]): DeviceRun[] {
+  const placed: DeviceRun[] = [];
+  const unplaced: DeviceRun[] = [];
+  for (const call of calls) {
+    const draw = deviceDraw(call);
+    if (draw === null) continue;
+    (Number.isFinite(draw.left) ? placed : unplaced).push(draw);
+  }
+  placed.sort((a, b) => a.baseline - b.baseline || a.left - b.left);
+
+  const runs: DeviceRun[] = [];
+  for (const draw of placed) {
+    const open = runs[runs.length - 1];
+    if (open !== undefined && joinsRun(open, draw)) {
+      open.text += draw.text;
+      open.right = Math.max(open.right, draw.right);
+      open.chars += draw.chars;
+      continue;
+    }
+    runs.push({ ...draw });
+  }
+  return [...runs, ...unplaced];
+}
+
+/** Every logical run of text the frame spelled, as the strings it spells. */
+export function drawnTextLines(calls: readonly DrawCall[]): string[] {
+  return deviceRuns(calls).map((run) => run.text);
+}
+
+/**
+ * Every logical run of text the frame spelled, placed in logical units.
+ *
+ * The placed companion to {@link drawnTextLines}, and the reader a check uses
+ * when it needs both the copy and where it sits — a board's number on the
+ * select grid, a HUD label and the figure beside it. A run's anchor is derived
+ * back from its merged extent under its first draw's alignment, so a run of one
+ * draw comes back exactly as {@link drawnTextSpans} reports it.
+ *
+ * A draw that named no place is left out: it has copy but no geometry, and
+ * {@link drawnTextLines} is where its copy is read.
+ */
+export function drawnTextRuns(h: Harness): TextSpan[] {
+  const view = h.engine.viewport();
+  const spans: TextSpan[] = [];
+  for (const run of deviceRuns(h.calls)) {
+    if (!Number.isFinite(run.left) || !Number.isFinite(run.baseline)) continue;
+    const left = (run.left - view.offsetX) / view.scale;
+    const right = (run.right - view.offsetX) / view.scale;
+    const y = (run.baseline - view.offsetY) / view.scale;
+    const width = right - left;
+    const before =
+      run.textAlign === "center"
+        ? width / 2
+        : run.textAlign === "right" || run.textAlign === "end"
+          ? width
+          : 0;
+    spans.push({ text: run.text, x: left + before, y, left, right });
   }
   return spans;
 }

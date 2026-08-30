@@ -3,14 +3,24 @@
 //
 // specs/board.md pins the silhouettes — triangle, square, diamond — so channel
 // identity reads by form as well as by hue, while the hues themselves are the
-// build's. So the reading is hue-independent: each lens's pixels within NODE_R
-// of its center, binarized against the bench into a mask, and the three masks
-// compared pairwise by intersection-over-union after centroid alignment. Two
-// genuinely different silhouettes overlap well below 0.85; three copies of one
-// shape recolored overlap near 1. Whether each mask is exactly the triangle,
-// the square, and the diamond is visible to the reviewer in the captured
-// frame; what is decided here is the part decidable without shape
-// recognition — that the three forms differ.
+// build's. So the reading is hue-independent: each lens's BODY within NODE_R of
+// its center, and the three bodies compared pairwise by
+// intersection-over-union after centroid alignment. Two genuinely different
+// silhouettes overlap well below 0.85; three copies of one shape recolored
+// overlap near 1. Whether each body is exactly the triangle, the square, and
+// the diamond is visible to the reviewer in the captured frame; what is decided
+// here is the part decidable without shape recognition — that the three forms
+// differ.
+//
+// THE BODY IS BINARIZED RELATIVELY, at half the form's own strongest reading
+// against the board's own ground. specs/board.md grants a build node artwork
+// around the silhouette — "a halo, a backing, a highlight", item 4 of
+// "Presentation is yours" — out to CELL_PITCH / 2 (48), and an absolute cut
+// admits every pixel of a soft glow as silhouette, so three differently shaped
+// forms wearing one glow read as one form. The relative cut reads the
+// silhouettes the specification pins and leaves out the ornament it grants. It
+// does not loosen the comparison: a build that draws all three channels as one
+// square reads 1.000 under either cut.
 //
 // The lenses sit on the top row, two cells apart, so each disk reads one
 // form alone; the emitters every present channel must carry sit two rows
@@ -20,14 +30,18 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLessThan } from "../assert";
 import {
   captureStill,
-  center,
   createHarness,
   loadBoard,
-  sampleBench,
   type Harness,
 } from "../harness";
-import { CHANNELS } from "../notation";
-import { iouAligned, maskOf, sampleDisk, type Mask } from "./sampling";
+import { cellCenter, CHANNELS, NODE_R } from "../notation";
+import {
+  bodyArea,
+  bodyIoU,
+  bodyMask,
+  groundSample,
+  type BodyMask,
+} from "./sampling";
 
 /** One lens of each channel on the top row; the required emitters below. */
 const THREE_LENSES = `
@@ -49,34 +63,33 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("binarizes the three lens silhouettes into masks that overlap below 0.85 pairwise", async () => {
+it("reads the three lens silhouettes as bodies that overlap below 0.85 pairwise", async () => {
   const board = await loadBoard(h, THREE_LENSES);
   await captureStill(h, "nodes");
-  const bench = await sampleBench(h);
+  const ground = await groundSample(h, board);
 
-  const masks: Mask[] = [];
+  const bodies: BodyMask[] = [];
   for (const [index, channel] of CHANNELS.entries()) {
-    const at = center(board, { col: index * 2, row: 0 });
-    const disk = await sampleDisk(h, at.x, at.y);
-    const mask = maskOf(disk, bench);
-    // A mask with nothing in it is not a distinct silhouette, it is a lens
-    // that never rendered a visible form at all — and an empty mask would
+    const at = cellCenter(index * 2, 0, board.cols, board.rows);
+    const body = await bodyMask(h, at.x, at.y, NODE_R, ground);
+    // A body with nothing in it is not a distinct silhouette, it is a lens
+    // that never rendered a visible form at all — and an empty body would
     // overlap everything by zero and pass. specs/board.md draws a lens as the
     // filled silhouette of its channel, so there is form here to compare.
     assertGreaterThan(
-      mask.size,
+      bodyArea(body),
       0,
       `the ${channel} lens renders a visible form within NODE_R of its center`,
     );
-    masks.push(mask);
+    bodies.push(body);
   }
 
-  for (let a = 0; a < masks.length; a += 1) {
-    for (let b = a + 1; b < masks.length; b += 1) {
+  for (let a = 0; a < bodies.length; a += 1) {
+    for (let b = a + 1; b < bodies.length; b += 1) {
       assertLessThan(
-        iouAligned(masks[a], masks[b]),
+        bodyIoU(bodies[a], bodies[b]),
         IOU_MAX,
-        `mask overlap (IoU, centroid-aligned) of ${CHANNELS[a]} against ${CHANNELS[b]}`,
+        `body overlap (IoU, centroid-aligned) of ${CHANNELS[a]} against ${CHANNELS[b]}`,
       );
     }
   }

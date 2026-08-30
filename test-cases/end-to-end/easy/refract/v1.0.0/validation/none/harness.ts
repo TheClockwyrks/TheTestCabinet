@@ -108,7 +108,12 @@ export const REFRACT_DEBUG_VERSION = 1;
 
 /** The screens the game can be on. */
 export type Screen =
-  "title" | "howto" | "select" | "playing" | "solved" | "complete";
+  | "title"
+  | "howto"
+  | "select"
+  | "playing"
+  | "solved"
+  | "complete";
 
 /** The two ways to play. */
 export type Mode = "campaign" | "cascade";
@@ -215,9 +220,22 @@ export function seconds(ticks: number): number {
 /* The harness                                                                */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Where a `fillText`/`strokeText` call put its text, as this harness measures
+ * it after the fact.
+ *
+ * The injected recorder writes the console player's replay format and carries
+ * no measurement, so the width is taken afterwards, in the page, under the font
+ * the walk found in force at the call. See {@link measureTextCalls}.
+ */
+export interface TextGeometry {
+  width: number;
+  textAlign: string;
+}
+
 /** One recorded operation on the 2D context, in the order the render made it. */
 export type DrawCall =
-  | { kind: "call"; method: string; args: unknown[] }
+  | { kind: "call"; method: string; args: unknown[]; text?: TextGeometry }
   | { kind: "set"; property: string; value: unknown };
 
 /** A sound the build emitted, and the frame of the drive it emitted it on. */
@@ -524,6 +542,65 @@ async function readSurfaceFault(page: Page): Promise<string | null> {
   return null;
 }
 
+/**
+ * A snapshot with every beam cell narrowed to the two fields the specs fix.
+ *
+ * specs/state.md declares `interface Cell { col, row }` and
+ * specs/instrumentation.md's Snapshot shape writes `cells: [{ col, row }]`, so
+ * `col` and `row` are what a cell means. Neither says a cell may carry nothing
+ * else, and specs/state.md's contract grants the build fields that "hold
+ * derived data you can rebuild from the declared ones" — a cell that also names
+ * its node's kind or channel is exactly that. So every check compares on the
+ * two fields the specs fix, and no check grades the rest either way. A cell
+ * missing `col` or `row` still fails: the projection reads those two properties
+ * and yields `undefined`.
+ *
+ * The snapshot the page returned is never touched. Every container the
+ * projection rewrites is a fresh object, so a check holding an earlier snapshot
+ * sees what it saw.
+ *
+ * The engineless project reads the build through `window.__refract` in a
+ * browser rather than in process, so the narrowing happens on THIS side of the
+ * crossing, on the structure Playwright handed back — but it is the same
+ * narrowing the `simple-2d` and `structured-2d` harnesses apply at their own
+ * single read point, and a build that passes there passes here.
+ */
+function projectCells(snapshot: RefractSnapshot): RefractSnapshot {
+  const projected: RefractSnapshot = { ...snapshot };
+
+  const beams: unknown = snapshot.beams;
+  if (typeof beams === "object" && beams !== null) {
+    const narrowed: Record<string, unknown> = { ...beams };
+    for (const [channel, beam] of Object.entries(narrowed)) {
+      if (typeof beam !== "object" || beam === null) continue;
+      const cells: unknown = (beam as { cells?: unknown }).cells;
+      if (!Array.isArray(cells)) continue;
+      narrowed[channel] = {
+        ...beam,
+        cells: (cells as { col: number; row: number }[]).map((cell) => ({
+          col: cell.col,
+          row: cell.row,
+        })),
+      };
+    }
+    projected.beams = narrowed as RefractSnapshot["beams"];
+  }
+
+  const tracing = snapshot.tracing;
+  if (typeof tracing === "object" && tracing !== null) {
+    const live: unknown = tracing.live;
+    if (typeof live === "object" && live !== null) {
+      const cell = live as { col: number; row: number };
+      projected.tracing = {
+        ...tracing,
+        live: { col: cell.col, row: cell.row },
+      };
+    }
+  }
+
+  return projected;
+}
+
 /* ---- Building one --------------------------------------------------------- */
 
 /**
@@ -584,6 +661,14 @@ export async function createHarness(
             if (property === "then" || property === "constructor")
               return undefined;
             const name = String(property);
+            // One of the two points a snapshot crosses back out of the page, so
+            // one of the two places a beam's cells are narrowed. `h.snapshot()`
+            // reads through here; `drive` — which reads one back beside the
+            // frames it ran — is the other.
+            if (name === "snapshot") {
+              return async (...args: unknown[]): Promise<RefractSnapshot> =>
+                projectCells((await call(name, args)) as RefractSnapshot);
+            }
             return (...args: unknown[]) => call(name, args);
           },
         }) as RefractDebugApi);
@@ -665,7 +750,8 @@ export async function createHarness(
           sink.push({ frame: frameCount, t: timeMs });
       }
     }
-    return result.snapshot;
+    // The second of the two points a snapshot crosses back out of the page.
+    return projectCells(result.snapshot);
   };
 
   const readPixels = async (
@@ -798,7 +884,9 @@ export async function createHarness(
           window as unknown as { __refractRec: { last(): unknown[] } }
         ).__refractRec.last(),
       )) as RecordedOp[];
-      return ops.map(toDrawCall);
+      const calls = ops.map(toDrawCall);
+      await measureTextCalls(page, calls);
+      return calls;
     },
 
     probe: (names) =>
@@ -939,6 +1027,106 @@ function toDrawCall(op: RecordedOp): DrawCall {
   return op.op === "call"
     ? { kind: "call", method: op.method, args: op.args }
     : { kind: "set", property: op.property, value: op.value };
+}
+
+/** One text call, and the text state the walk found in force at it. */
+interface PendingMeasure {
+  call: Extract<DrawCall, { kind: "call" }>;
+  text: string;
+  font: string;
+  textAlign: string;
+}
+
+/** The 2D context's own defaults, in force until the build sets its own. */
+const DEFAULT_FONT = "10px sans-serif";
+const DEFAULT_TEXT_ALIGN = "start";
+
+/**
+ * Attach a measured width and the alignment in force to every text call of a
+ * recorded frame.
+ *
+ * The recorder records `font` and `textAlign` as ordinary property sets, and
+ * `save`/`restore` stack them exactly as they stack the transform, so the state
+ * at each call is recovered by walking the frame. The widths themselves are
+ * measured IN THE PAGE, against an offscreen 2D context, so a run is measured
+ * under the build's own loaded fonts — in ONE crossing, over the distinct
+ * (text, font) pairs the frame used, however many calls spelled them.
+ *
+ * The walk starts from the context's own defaults, because a frame's operation
+ * list holds what that frame issued and not what it inherited. A build that
+ * sets its font every frame, which is the ordinary render, is measured exactly;
+ * one that sets it once and relies on the inheritance is measured against the
+ * default font, which under-reports the width and so only ever leaves runs
+ * apart that would otherwise have joined.
+ */
+async function measureTextCalls(page: Page, calls: DrawCall[]): Promise<void> {
+  const pending: PendingMeasure[] = [];
+  const stack: { font: string; textAlign: string }[] = [];
+  let current = { font: DEFAULT_FONT, textAlign: DEFAULT_TEXT_ALIGN };
+
+  for (const call of calls) {
+    if (call.kind === "set") {
+      if (call.property === "font" && typeof call.value === "string") {
+        current = { ...current, font: call.value };
+      } else if (
+        call.property === "textAlign" &&
+        typeof call.value === "string"
+      ) {
+        current = { ...current, textAlign: call.value };
+      }
+      continue;
+    }
+    if (call.method === "save") {
+      stack.push(current);
+      continue;
+    }
+    if (call.method === "restore") {
+      const popped = stack.pop();
+      if (popped !== undefined) current = popped;
+      continue;
+    }
+    if (call.method !== "fillText" && call.method !== "strokeText") continue;
+    const text = call.args[0];
+    if (typeof text !== "string" || text.length === 0) continue;
+    pending.push({
+      call,
+      text,
+      font: current.font,
+      textAlign: current.textAlign,
+    });
+  }
+  if (pending.length === 0) return;
+
+  const key = (font: string, text: string): string => `${font}\u0000${text}`;
+  const distinct = new Map<string, { font: string; text: string }>();
+  for (const item of pending) {
+    distinct.set(key(item.font, item.text), {
+      font: item.font,
+      text: item.text,
+    });
+  }
+  const wanted = [...distinct.values()];
+
+  const widths = (await page.evaluate((items) => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (ctx === null) throw new Error("refract: no 2D context to measure in");
+    return items.map((item) => {
+      ctx.font = item.font;
+      return ctx.measureText(item.text).width;
+    });
+  }, wanted)) as number[];
+
+  const measured = new Map<string, number>();
+  for (const [index, item] of wanted.entries()) {
+    measured.set(key(item.font, item.text), widths[index]);
+  }
+  for (const item of pending) {
+    item.call.text = {
+      width: measured.get(key(item.font, item.text)) ?? 0,
+      textAlign: item.textAlign,
+    };
+  }
 }
 
 /** Every argument list `method` was called with, in order. */
@@ -1493,16 +1681,24 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
 }
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
+ * Whether the frame spelled `text` inside some logical run of text, ignoring
+ * case.
  *
  * Substring rather than equality on purpose: the copy a check asserts is the
  * case's own, but how a build presents it is the build's, and a menu entry is
  * commonly drawn with a selection marker or padding around it. Requiring the
  * exact run would fail a screen that shows precisely the right words.
+ *
+ * Read off {@link drawnTextLines} rather than off the raw calls, so a heading
+ * letter-spaced a glyph per `fillText` is found by the words it spells. Every
+ * raw string is a substring of the run it belongs to, so coalescing can only
+ * add a match and never take one away.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
   const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+  return drawnTextLines(calls).some((line) =>
+    line.toLowerCase().includes(wanted),
+  );
 }
 
 /** One run of text a frame drew, and where it drew it in canvas pixels. */
@@ -1511,6 +1707,9 @@ export interface TextDraw {
   /** The anchor the run was drawn at, mapped through the transform in force. */
   x: number;
   y: number;
+  /** The horizontal extent of the glyphs, under the same transform. */
+  left: number;
+  right: number;
 }
 
 /** A 2D affine transform, in the canvas's `[a, b, c, d, e, f]` order. */
@@ -1591,14 +1790,124 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
       const at = numbers(args.slice(1), 2);
       if (typeof text !== "string" || at === null) continue;
       const [x, y] = at;
+      const anchorX = current[0] * x + current[2] * y + current[4];
+      const anchorY = current[1] * x + current[3] * y + current[5];
+      // The run's width under the same horizontal scale the anchor took, and
+      // the alignment that places it about that anchor. A call the measurement
+      // pass never reached carries no width, and stands as a point.
+      const width =
+        (call.text?.width ?? 0) * Math.hypot(current[0], current[1]);
+      const align = call.text?.textAlign ?? DEFAULT_TEXT_ALIGN;
+      const before =
+        align === "center"
+          ? width / 2
+          : align === "right" || align === "end"
+            ? width
+            : 0;
       draws.push({
         text,
-        x: current[0] * x + current[2] * y + current[4],
-        y: current[1] * x + current[3] * y + current[5],
+        x: anchorX,
+        y: anchorY,
+        left: anchorX - before,
+        right: anchorX - before + width,
       });
     }
   }
   return draws;
+}
+
+/* ---- Logical runs of text -------------------------------------------------- */
+//
+// A build that letter-spaces a heading draws a glyph per `fillText`, which is
+// the only portable way to letter-space canvas text: the property canvas
+// exposes for it is not portable, so the ordinary implementation walks the
+// string. specs/ui.md fixes the COPY a screen shows; "Palettes, fonts, layouts,
+// and styling are the build's choices" makes the spacing between its glyphs the
+// build's. So a check that asserts copy reads it off the logical RUN the frame
+// spells, never off the `fillText` split that spelled it.
+//
+// THE MERGE RULE, the same in all three engine projects. A draw joins the run
+// before it when the two share a baseline and sit side by side:
+// `|Δbaseline| <= 0.75` device px, the later draw's left edge at or after the
+// run's right edge less `0.5` px, and the gap between them at most
+// `0.6 * meanAdvance` of the run so far, where `meanAdvance` is its measured
+// width over its character count. A run's measured width is the extent it
+// occupies, right minus left, so its mean advance carries whatever letter
+// spacing its own glyphs were set at: a heading tracked wider than 0.6 of a
+// bare glyph still reads as one run, while a HUD figure a clear gap from its
+// label stays its own. Texts are concatenated verbatim, so a run drawn a glyph
+// at a time comes back as the string it spells, tracked spaces included. The comparison is RELATIVE, so it is decided where the calls were
+// made, in the canvas's own pixels, and needs no conversion to decide it.
+//
+// WHAT STAYS RAW. {@link drawnText} is untouched, and {@link textDraws} still
+// reports one entry per call: the overlay check diffs line SETS off the first,
+// and the readout-geometry checks need each draw's own extent, because a merged
+// run is wider than any of its members and holding one clear of a region asks a
+// different question. Every reader opts in.
+//
+// NOT EXERCISED BY A MODEL BUILD. No engineless build exists in the cohort this
+// was written against, so the walk above and the merge below are proven here
+// against the `none` reference alone.
+
+/** How far apart two draws' baselines may sit and still read as one run. */
+const RUN_BASELINE_SLACK = 0.75;
+
+/** How far a draw may sit back inside the run before it and still join it. */
+const RUN_BACKTRACK_SLACK = 0.5;
+
+/** The share of the run's mean advance a gap may reach and still join it. */
+const RUN_GAP_RATIO = 0.6;
+
+/** Whether `next` continues `open`, `chars` long, under the rule stated above. */
+function joinsRun(open: TextDraw, chars: number, next: TextDraw): boolean {
+  if (Math.abs(next.y - open.y) > RUN_BASELINE_SLACK) return false;
+  if (!(next.left >= open.right - RUN_BACKTRACK_SLACK)) return false;
+  const meanAdvance = (open.right - open.left) / chars;
+  return next.left - open.right <= RUN_GAP_RATIO * meanAdvance;
+}
+
+/**
+ * The frame's text draws coalesced into logical runs, placed as `textDraws`
+ * places one draw.
+ *
+ * A PARTITION: every text draw belongs to exactly one run, so a heading drawn
+ * `1 OF 24 SOLVED` a glyph at a time yields one run and no stray run equal to
+ * `"2"`. The runs come back in reading order — down the frame, then across
+ * it — because that is the order the merge walks them in.
+ *
+ * A run's anchor is derived back from its merged extent under the alignment of
+ * its first draw, so a run of one draw comes back exactly as `textDraws`
+ * reports it.
+ */
+export function drawnTextRuns(calls: readonly DrawCall[]): TextDraw[] {
+  const draws = textDraws(calls)
+    .filter((draw) => draw.text.length > 0)
+    .sort((a, b) => a.y - b.y || a.left - b.left);
+
+  const runs: TextDraw[] = [];
+  /** How many characters each run spells, for its mean advance. */
+  const chars: number[] = [];
+
+  for (const draw of draws) {
+    const open = runs[runs.length - 1];
+    const last = chars.length - 1;
+    if (open !== undefined && joinsRun(open, chars[last], draw)) {
+      // The anchor holds: the run keeps the placement of its first draw, and
+      // only its right edge and the copy it spells grow.
+      open.text += draw.text;
+      open.right = Math.max(open.right, draw.right);
+      chars[last] += draw.text.length;
+      continue;
+    }
+    runs.push({ ...draw });
+    chars.push(draw.text.length);
+  }
+  return runs;
+}
+
+/** Every logical run of text the frame spelled, as the strings it spells. */
+export function drawnTextLines(calls: readonly DrawCall[]): string[] {
+  return drawnTextRuns(calls).map((run) => run.text);
 }
 
 /**

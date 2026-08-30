@@ -18,6 +18,14 @@
 // resets with seed 7 and holds the snapshot against the whole title-state
 // list, reading it before any frame runs so simTime is the pose's own 0.
 //
+// The campaign precondition is read BEFORE the mode switch. Whether campaign
+// progress survives `startMode` is `campaign/campaign-progress-persists`'s
+// requirement, and reading `solvedBoards` after the switch would make this
+// item fail on a build that misses that one. And `muted` is compared against
+// whatever the mute toggle left rather than against `true`, because the
+// binding that turns muting on is `screens/mute`'s requirement; what reset
+// owes is that it leaves the bit alone.
+//
 // The second check reads the seed through the game's own determinism:
 // specs/instrumentation.md fixes that the same seed and the same calls reach
 // the same state, so two resets with seed 7 must generate the same first
@@ -59,27 +67,30 @@ it("restores every title-screen value after progress in both modes", async () =>
   await resetTo(h, 5);
   await startCampaign(h);
   await driveCourse(h, 1);
+
+  const campaignDirty = h.snapshot();
+  assertDeepEqual(
+    campaignDirty.solvedBoards,
+    [0],
+    "precondition: campaign board 1 is recorded solved",
+  );
+  assertEqual(
+    campaignDirty.unlockedCount,
+    2,
+    "precondition: solving board 1 unlocked board 2",
+  );
+
   h.debug.startMode("cascade");
   await solveGenerated(h, 1);
   await tapAction(h, "mute");
 
   const dirty = h.snapshot();
-  assertDeepEqual(
-    dirty.solvedBoards,
-    [0],
-    "precondition: campaign board 1 is recorded solved",
-  );
-  assertEqual(
-    dirty.unlockedCount,
-    2,
-    "precondition: solving board 1 unlocked board 2",
-  );
   assertEqual(
     dirty.solvedCount,
     1,
     "precondition: one cascade board is solved",
   );
-  assertEqual(dirty.muted, true, "precondition: mute was toggled on");
+  const mutedBefore = dirty.muted;
 
   // The reset, and the snapshot the pose itself left — read before any frame
   // runs, so simTime is the restored 0 and not a frame's tick.
@@ -91,6 +102,7 @@ it("restores every title-screen value after progress in both modes", async () =>
   assertEqual(title.screen, "title", "reset restores the title screen");
   assertEqual(title.menuIndex, 0, "the first menu item is highlighted");
   assertEqual(title.mode, "campaign", "mode goes back to campaign");
+  assertEqual(title.board.nodes.length, 0, "no board in play");
   assertNull(title.tracing, "no trace is live");
   for (const [channel, beam] of Object.entries(title.beams)) {
     assertEqual(beam.cells.length, 0, `every beam is empty (${channel})`);
@@ -105,7 +117,7 @@ it("restores every title-screen value after progress in both modes", async () =>
   assertEqual(title.tier, 1, "cascade tier is back to 1");
   assertEqual(
     title.muted,
-    true,
+    mutedBefore,
     "muted is untouched — the runtime owns muting",
   );
 });

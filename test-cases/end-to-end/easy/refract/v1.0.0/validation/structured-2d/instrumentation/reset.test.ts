@@ -16,6 +16,27 @@
 // next advanced frame (the shared convention), and simTime accumulates the
 // delta of EVERY update whatever the screen — so the read one landing frame
 // after reset sees simTime restored to zero plus at most that one frame.
+//
+// The campaign precondition is read BEFORE the mode switch. Whether campaign
+// progress survives `startMode` is `campaign/campaign-progress-persists`'s
+// requirement, and reading `solvedBoards` after the switch would make this
+// item fail on a build that misses that one. And `muted` is compared against
+// whatever the mute toggle left rather than against `true`, because the
+// binding that turns muting on is `screens/mute`'s requirement; what reset
+// owes is that it leaves the bit alone.
+//
+// A DELIBERATE ENGINE DIFFERENCE, not a drift: this engine's branch of
+// specs/state.md fixes the no-board-in-play board as `cols` 0, `rows` 0 and no
+// nodes, so both dimensions are asserted here. The simple-2d branch fixes only
+// that no board is in play, and its reference reports `{cols: 1, rows: 1}`
+// with no nodes, so the same two assertions there would fail a spec-honoring
+// build. `nodes` empty is the clause all three engines share.
+//
+// `rngState` is not asserted directly. specs/instrumentation.md says only that
+// `options.seed` seeds it, and a build that derives its initial generator
+// state from the seed honors that sentence while holding a different number,
+// so the seed is read through the one window the spec does fix: the same seed
+// and the same calls reproduce the same result.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -33,6 +54,7 @@ import {
   captureStill,
   createHarness,
   driveCourse,
+  poseMode,
   pressCell,
   resetTo,
   seconds,
@@ -40,13 +62,9 @@ import {
   traceBeams,
   type Harness,
 } from "../harness";
+import { boardToNotation } from "../notation";
 import { solve } from "../solver";
 import { DEFAULT_SEED } from "../surface";
-
-/** The live state's rngState — a field the snapshot deliberately omits. */
-function rngState(h: Harness): unknown {
-  return (h.state as unknown as { rngState?: unknown }).rngState;
-}
 
 let h: Harness;
 
@@ -93,9 +111,9 @@ it("restores the title-screen values after progress in both modes, leaving muted
   assertNotNull(h.snapshot().tracing, "a trace is live before the reset");
 
   // Mute through the real registered action; the runtime owns the bit and
-  // reset must leave it alone.
+  // reset must leave it alone, whichever way the toggle left it.
   await tapAction(h, "mute");
-  assertEqual(h.snapshot().muted, true, "muted before the reset");
+  const mutedBefore = h.snapshot().muted;
 
   const before = h.snapshot();
   assertGreaterThan(before.simTime, 0, "simTime accumulated before the reset");
@@ -137,21 +155,39 @@ it("restores the title-screen values after progress in both modes, leaving muted
   assertEqual(after.solvedCount, 0, "cascade progress back to solvedCount 0");
   assertEqual(after.tier, 1, "cascade progress back to tier 1");
 
-  // options.seed seeds rngState (specs/state.md: a reset with a seed sets it).
-  assertEqual(rngState(h), 7, "rngState seeded from options.seed");
-
   // muted is untouched; the runtime owns muting.
-  assertEqual(after.muted, true, "reset leaves muted untouched");
+  assertEqual(after.muted, mutedBefore, "reset leaves muted untouched");
 });
 
-it("a reset naming no seed seeds rngState with DEFAULT_SEED", async () => {
-  await resetTo(h, 7);
-  assertEqual(rngState(h), 7, "the named seed lands first");
+it("seeds rngState from options.seed, defaulting to DEFAULT_SEED (1)", async () => {
+  // The first cascade board generated after a reset, as notation: the same
+  // seed and the same calls must reach the same state
+  // (specs/instrumentation.md "A deterministic core").
+  const firstCascadeBoard = async (seed?: number): Promise<string> => {
+    await resetTo(h, seed);
+    await poseMode(h, "cascade");
+    const opened = h.snapshot();
+    assertEqual(
+      opened.screen,
+      "playing",
+      "startMode('cascade') opens on playing (specs/modes/cascade.md)",
+    );
+    return boardToNotation(boardFromSnapshot(opened));
+  };
 
-  await resetTo(h);
+  const seededOnce = await firstCascadeBoard(7);
+  const seededAgain = await firstCascadeBoard(7);
   assertEqual(
-    rngState(h),
-    DEFAULT_SEED,
-    "options.seed defaults to DEFAULT_SEED (1)",
+    seededAgain,
+    seededOnce,
+    "reset({seed: 7}) twice generates the same first cascade board",
+  );
+
+  const seedless = await firstCascadeBoard(undefined);
+  const seededDefault = await firstCascadeBoard(DEFAULT_SEED);
+  assertEqual(
+    seededDefault,
+    seedless,
+    "reset() seeds rngState with DEFAULT_SEED (1)",
   );
 });

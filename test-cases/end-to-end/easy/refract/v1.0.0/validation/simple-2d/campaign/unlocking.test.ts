@@ -10,6 +10,13 @@
 // already solved changes no unlock state. It is a replay."
 //
 // The still is the grid right after the first solve, where the unlock shows.
+//
+// GETTING BACK TO THE GRID. The solve leaves the game on the solved screen,
+// and specs/modes/campaign.md gives that screen two exits to `select`: its
+// third menu choice, back to select, and the `back` action. This item's
+// subject is on the far side of that step, not the step itself, so it must
+// not pin one of the two — `gridFromSolved` takes whichever the build honours,
+// and which one that is stays campaign/solved-back's verdict alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -23,6 +30,7 @@ import {
   tapAction,
   type Harness,
 } from "../harness";
+import { gridFromSolved } from "./helpers";
 
 let h: Harness;
 
@@ -50,12 +58,7 @@ it("solving board 1 unlocks board 2, and a replay changes nothing", async () => 
     "board 1 alone is recorded solved (specs/modes/campaign.md)",
   );
 
-  await tapAction(h, "back");
-  assertEqual(
-    h.snapshot().screen,
-    "select",
-    "back on the solved screen returns to the grid",
-  );
+  await gridFromSolved(h);
   captureStill(h, "unlocked");
 
   // The highlight landed on board 1, so one confirm re-enters it for the

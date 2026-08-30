@@ -7,9 +7,13 @@
 // highlight exactly as they were.
 //
 // Where the items are drawn is the build's own layout, so the suite does not
-// guess: it reads each item's run out of the frame's recorded text draws,
-// mapped to logical stage units through the transform and alignment the
-// context held at the call, and presses at the middle of that run. The pointer
+// guess: it reads each item's LOGICAL RUN out of the frame's recorded text
+// draws, mapped to logical stage units through the transform and alignment the
+// context held at the call, and presses at the middle of that run. A run rather
+// than a raw draw, because canvas exposes no portable letter-spacing and a
+// build that tracks its menu copy draws a glyph per call, which would leave
+// this check a one-glyph box to press instead of the item. specs/ui.md fixes
+// the copy of a menu item; how it is spaced is the build's. The pointer
 // operations take effect the moment they are called (specs/instrumentation.md),
 // and a settling frame is run after them anyway so a build that mishandled the
 // press on a later frame is caught too.
@@ -20,7 +24,7 @@ import { assertEqual, assertNotNull } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnTextSpans,
+  drawnTextRuns,
   resetTo,
   type Harness,
   type TextSpan,
@@ -52,7 +56,7 @@ it("leaves the title unchanged by presses on its drawn menu items", async () => 
   // One clean frame's draws, to find where the build put its menu.
   h.calls.length = 0;
   await h.advance(1);
-  const spans = drawnTextSpans(h);
+  const spans = drawnTextRuns(h);
 
   for (const item of TITLE_ITEMS) {
     const span = spanOf(spans, item);

@@ -8,9 +8,15 @@
 // The presses are REAL pointer events through the engine's own input path —
 // `h.pointer` maps a logical point through the live viewport, the way a
 // player's pointer arrives — and each is aimed at where the item's text was
-// actually drawn, read off the frame's own draw calls via `drawnTextSpans`, so
+// actually drawn, read off the frame's own draw calls via `drawnTextRuns`, so
 // the press lands on the item wherever the build laid its menu out. A title
 // that never drew one of its items fails here on the missing item, named.
+//
+// RUNS, NOT RAW DRAWS. The extent this check aims at is a logical run's, not
+// one `fillText` call's: canvas exposes no portable letter-spacing, so a build
+// that tracks its menu copy draws a glyph per call, and the raw draws hand this
+// check a one-glyph box to press instead of the item. specs/ui.md fixes the
+// copy of a menu item; how it is spaced is the build's.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TITLE_ITEMS } from "../../src/constants";
@@ -18,7 +24,7 @@ import { assertEqual, fail } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnTextSpans,
+  drawnTextRuns,
   resetTo,
   type Harness,
   type TextSpan,
@@ -51,7 +57,7 @@ it("a press and release on each drawn title item changes nothing", async () => {
   await resetTo(h);
   h.calls.length = 0;
   await h.advance(1);
-  const spans = drawnTextSpans(h);
+  const spans = drawnTextRuns(h);
 
   for (const item of TITLE_ITEMS) {
     const span = spanOf(spans, item);

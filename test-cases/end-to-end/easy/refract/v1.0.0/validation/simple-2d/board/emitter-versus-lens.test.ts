@@ -1,136 +1,120 @@
 // Refract — board/emitter-versus-lens: an emitter reads as outlined against a
 // lens's fill.
 //
-// specs/board.md: an emitter and a lens of the same channel share one
-// silhouette and differ only by outline against fill, so a player reads a
-// node's channel and its role in the same glance. The check poses both roles
-// of one channel on one board (R3_REDRAW, "TtT") and reads the difference the
-// specification states, in the review item's figures:
+// specs/board.md "Nodes": "An emitter and a lens of the same channel share one
+// silhouette and differ only by outline against fill", so a player reads a
+// node's channel and its role in the same glance. That sentence is the whole
+// requirement, and it fixes nothing about what sits at the very center of
+// either node. A build may lay an optical iris over a filled silhouette, or a
+// lamp pip at an outlined emitter's light source, and both still read outline
+// against fill, so the reading is of COVERAGE and not of the center pixel:
 //
-//   - the lens is FILLED: its center cluster differs from the background
-//     sample by more than 50 of 441;
-//   - the emitter is OPEN: its center cluster stays within 25 of 441 of the
-//     background at its center;
-//   - yet the emitter is THERE: somewhere on a sweep of the radii inside
-//     NODE_R (30), a pixel differs from the background by more than 50 — the
-//     outline.
+//   1. both nodes are DRAWN — the loudest pixel within NODE_R (30) of each cell
+//      center stands more than 50 of 441 from the board's own ground;
+//   2. the lens is FILLED — its body covers more than half of the inner disc of
+//      radius NODE_R / 2 (15) about its center;
+//   3. the emitter is OUTLINED — its body covers less than half of that same
+//      disc, because a stroke only crosses the inner disc where a fill occupies
+//      it.
 //
-// WHICH BACKGROUND THE OPEN CENTER IS HELD TO. "The background at its
-// center": an open center shows through whatever ground the build laid
-// there, and specs/board.md lets that ground carry quiet texture — the
-// empty-cells item allows it a full 50 of drift from the far-field
-// background sample, which is twice this item's 25. So the open reading is
-// taken against the LOCAL ground, sampled just outside the emitter's hit
-// radius, where the same texture sits; the far-field sample would fail a
-// perfectly open emitter for the bench's own legal shading. The loud
-// checks (the fill, the outline) stay against the background sample: they
-// clear 50 over any ground within the empty-cells allowance.
+// BOTH FIGURES COME FROM THE SPECIFICATION, not from this case's builds.
+//
+// The inner disc is NODE_R / 2 because that is the largest disc about a cell
+// center that lies inside every one of the three silhouettes specs/board.md
+// pins, each drawn to NODE_R: an equilateral triangle inscribed in a circle of
+// radius R has an incircle of radius R / 2, and a square and a diamond
+// inscribed in the same circle enclose more than that. So a FILLED silhouette
+// of any channel covers the whole of that disc, and the reading never charges a
+// build for the shape it was told to draw.
+//
+// The line is one half — the midpoint of "covers its interior, or does not".
+// A fill covers the inner disc entirely. An outline covers only where its
+// stroke crosses it: three bands tangent to a disc of radius 15, each of width
+// w, cover less than half of it for every w below about 13 px, and a 13 px
+// stroke on a form 60 px across is not an outline any more but a fill, which is
+// the failure this item exists to catch in the first place. An iris, a center
+// pip, a glow, or a socket adds to an emitter's coverage without carrying it
+// over the half, and none of them is forbidden by the specification.
+//
+// The posed board "T.tT" carries an empty cell, so both readings compare
+// against the board's OWN ground: specs/board.md lets an empty cell carry quiet
+// background texture, and what a node sits on is that ground, not the bench off
+// the board.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
-import { R3_REDRAW } from "../fixtures";
+import { assertGreaterThan, assertLessThan } from "../assert";
 import {
   captureStill,
-  colorDistance,
   createHarness,
   loadBoard,
-  nodeCenter,
   resetTo,
-  sampleBackground,
-  sampleColor,
   type Harness,
-  type Rgb,
 } from "../harness";
-import { NODE_R } from "../notation";
+import { cellCenter, NODE_R, parseBoard } from "../notation";
+import { APART_MIN, bodyCoverage, bodyMask, groundSample } from "./masks";
 
-/** The review item's distance: clearly apart from the background. */
-const APART_MIN = 50;
+/**
+ * Two triangle emitters, an empty cell, and a triangle lens: the outline, the
+ * ground both are read against, and the fill, all on one legal board.
+ */
+const EMITTER_GROUND_LENS = "T.tT";
 
-/** The review item's distance: an open center reads as background. */
-const OPEN_MAX = 25;
+/** Where the read emitter and the read lens sit on that board. */
+const EMITTER_COL = 0;
+const LENS_COL = 2;
 
-/** Radii swept for the emitter's outline: inside NODE_R, clear of the exact
- * center pixel the open check already read. */
-const SWEEP_RADII_FROM = 2;
+/** The inner disc a fill occupies and an outline only crosses: the incircle of
+ * the triangle inscribed in NODE_R, the smallest interior of the three pinned
+ * silhouettes. */
+const INNER_R = NODE_R / 2;
 
-/** How far from the emitter's center its local ground is sampled: outside
- * NODE_HIT_R (44), clear of the neighbouring lens's NODE_R box. */
-const GROUND_R = 64;
-
-/** Pixels sampled around each swept radius. */
-const SWEEP_ANGLES = 48;
+/** The midpoint of "covers its interior, or does not". */
+const FILLED_MIN = 0.5;
 
 let h: Harness;
 
 beforeEach(async () => {
   h = await createHarness();
+  await resetTo(h, 1);
 });
 
 afterEach(() => {
   h?.dispose();
 });
 
-/** The single rendered pixel at a logical point, as an Rgb. */
-function pixelColor(x: number, y: number): Rgb {
-  const [r, g, b] = h.pixel(x, y);
-  return { r, g, b };
-}
-
-it("fills the lens, leaves the emitter's center open, and draws its outline", async () => {
-  await resetTo(h, 1);
-  // R3_REDRAW, "TtT": an emitter at (0,0) and a lens at (1,0) of one channel.
-  await loadBoard(h, R3_REDRAW);
+it("fills a lens and outlines an emitter of the same channel", async () => {
+  await loadBoard(h, EMITTER_GROUND_LENS);
+  const board = parseBoard(EMITTER_GROUND_LENS);
+  // An emitter and a lens of one channel.
   captureStill(h, "pair");
 
-  const background = sampleBackground(h);
-  const emitter = nodeCenter(0, 0, 3, 1);
-  const lens = nodeCenter(1, 0, 3, 1);
+  const ground = groundSample(h, board);
+  const emitterAt = cellCenter(EMITTER_COL, 0, board.cols, board.rows);
+  const lensAt = cellCenter(LENS_COL, 0, board.cols, board.rows);
+  const emitter = bodyMask(h, emitterAt.x, emitterAt.y, NODE_R, ground);
+  const lens = bodyMask(h, lensAt.x, lensAt.y, NODE_R, ground);
 
-  // The lens is filled: its center is clearly apart from the background.
+  // Both are drawn at all: the loudest pixel of each form.
   assertGreaterThan(
-    colorDistance(sampleColor(h, lens.x, lens.y), background),
+    emitter.peak,
     APART_MIN,
-    "the lens's filled center (specs/board.md: a lens is the filled " +
-      "silhouette of its channel)",
+    "the emitter's loudest pixel within NODE_R of its center (drawn)",
+  );
+  assertGreaterThan(
+    lens.peak,
+    APART_MIN,
+    "the lens's loudest pixel within NODE_R of its center (drawn)",
   );
 
-  // The emitter's center is open: it reads as the ground it sits on. The
-  // local ground is the average of three samples just outside the hit
-  // radius, away from the lens beside it.
-  const grounds = [
-    sampleColor(h, emitter.x - GROUND_R, emitter.y),
-    sampleColor(h, emitter.x, emitter.y - GROUND_R),
-    sampleColor(h, emitter.x, emitter.y + GROUND_R),
-  ];
-  const ground = {
-    r: (grounds[0].r + grounds[1].r + grounds[2].r) / 3,
-    g: (grounds[0].g + grounds[1].g + grounds[2].g) / 3,
-    b: (grounds[0].b + grounds[1].b + grounds[2].b) / 3,
-  };
-  assertLessThanOrEqual(
-    colorDistance(sampleColor(h, emitter.x, emitter.y), ground),
-    OPEN_MAX,
-    "the emitter's open center against the background at its center " +
-      "(specs/board.md: an emitter is the OUTLINED silhouette, so its " +
-      "center shows the background through)",
-  );
-
-  // Yet the emitter is drawn: somewhere inside NODE_R its outline stands
-  // apart from the background.
-  let loudest = 0;
-  for (let radius = SWEEP_RADII_FROM; radius < NODE_R; radius += 1) {
-    for (let step = 0; step < SWEEP_ANGLES; step += 1) {
-      const angle = (2 * Math.PI * step) / SWEEP_ANGLES;
-      const sample = pixelColor(
-        emitter.x + radius * Math.cos(angle),
-        emitter.y + radius * Math.sin(angle),
-      );
-      loudest = Math.max(loudest, colorDistance(sample, background));
-    }
-  }
+  // The fill occupies the inner disc; the outline only crosses it.
   assertGreaterThan(
-    loudest,
-    APART_MIN,
-    "the emitter's outline somewhere on the radius sweep inside NODE_R (30)",
+    bodyCoverage(lens, INNER_R),
+    FILLED_MIN,
+    `the lens's body over the inner disc of radius ${INNER_R} (filled)`,
+  );
+  assertLessThan(
+    bodyCoverage(emitter, INNER_R),
+    FILLED_MIN,
+    `the emitter's body over the inner disc of radius ${INNER_R} (outlined)`,
   );
 });

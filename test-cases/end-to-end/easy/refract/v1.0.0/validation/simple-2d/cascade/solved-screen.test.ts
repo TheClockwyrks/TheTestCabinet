@@ -5,44 +5,63 @@
 // (BOARD SOLVED), the boards-solved count, and a vertical menu of
 // SOLVED_ITEMS (NEXT BOARD, RESTART) in that order, with `menuIndex` 0 on
 // arrival. The scenario enters Cascade for real and poses boards through
-// `loadBoard` — a posed board is a board like any other, so solving it moves
-// to the cascade `solved` screen. Two solves put the count at 2, so no other
-// digit on the bench (the tier, at 1) can stand in for it.
+// `loadBoard` — "a board posed this way is a board like any other"
+// (specs/instrumentation.md) — so solving one moves to the cascade `solved`
+// screen. Two solves put the count at 2, so no other figure on the screen
+// (the tier, at 1) can stand in for it.
 //
-// THE BOARD STAYS DRAWN BEHIND. The spec's own words are that the finished
-// board "stays visible behind it", and a translucent overlay that dims the
-// stage evenly keeps it visible — so what is decidable is VISIBILITY on the
-// solved frame itself, not pixel equality against an earlier frame. (The
-// item's "sampled node centers unchanged" phrasing is stricter than the spec
-// it restates: a conformant scrim changes every pixel while leaving the board
-// plainly visible, so this check asserts the spec's claim; the mismatch is
-// flagged to the case's maintainers.) Each lens center — the lens is the node
-// whose form FILLS its center (specs/board.md; an emitter is open there) —
-// must still read against the solved frame's own background sample by more
-// than 50 of 441, the checklist's own board-visibility figure, skipping any
-// center a drawn text run of the overlay covers.
+// THE COPY IS READ AS RUNS. A build may letter-space its headings and canvas
+// carries no portable property for it, so tracked copy is drawn a glyph per
+// `fillText` call; the frame's COALESCED runs are what carry the words, and
+// the count is matched as one of the whole numbers a run spells rather than
+// as its digits run together.
+//
+// THE BOARD STAYS DRAWN BEHIND — AND ONLY THAT. The spec's words are that the
+// finished board "stays visible behind it ... so the player sees the shape
+// they made". What a validator can decide from that is whether the board was
+// DRAWN under the overlay at all, rather than erased or hidden behind an
+// opaque panel. How strongly it reads through a scrim is the build's own look
+// — specs/board.md pins neither a palette nor a background — and belongs to
+// the reviewer's domain ratings, not here.
+//
+// So each lens centre — the lens is the node whose form FILLS its centre
+// (specs/board.md; an emitter is outlined and open there, so its centre is
+// legitimately bench-coloured) — is compared against AN EMPTY CELL OF THE
+// SAME BOARD ON THE SAME FRAME, never against a stage-edge patch. Under a
+// full-stage scrim of alpha `a` both readings are veiled identically, so what
+// is left is the board's own contrast rather than the build's overlay
+// opacity; a build that did not draw the board reads exactly 0, because both
+// points are then the same veiled pixel. VISIBLE (5 of 441) is the room two
+// genuinely different colours still need once a heavy veil has scaled them
+// both toward each other.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThan,
+  fail,
+} from "../assert";
 import { SOLVED_ITEMS, SOLVED_TITLE_TEXT } from "../../src/constants";
 import { GEO_3X3 } from "../fixtures";
 import {
   captureStill,
   colorDistance,
   createHarness,
+  drawnTextRuns,
   drawnTextSpans,
   drewText,
   loadBoard,
   nodeCenter,
   resetTo,
-  sampleBackground,
   sampleColor,
   startCascade,
   traceRoute,
   type Harness,
+  type Rgb,
   type TextSpan,
 } from "../harness";
-import { NODE_R, parseBoard } from "../notation";
+import { BOARD_CX, BOARD_CY, NODE_R, parseBoard } from "../notation";
 
 /** The forced GEO_3X3 solve: T(0,0) — t(1,1) — T(2,2) (fixtures.ts). */
 const GEO_3X3_ROUTE: readonly (readonly [number, number])[] = [
@@ -52,13 +71,20 @@ const GEO_3X3_ROUTE: readonly (readonly [number, number])[] = [
 ];
 
 /**
- * The board under test: two channels in separate rows (specs/board.md
- * notation), each with a filled lens mid-row to sample the finished board by.
+ * The board under test: two channels, one across the top row and one across
+ * the bottom row of a full-width grid (specs/board.md notation), each with a
+ * filled lens between its two emitters. The wide empty field beside and
+ * between them is what this reading needs — a build's overlay copy is drawn
+ * about the stage's centre, so the grid's far corners are empty cells the copy
+ * does not reach, and one of them is the local bench each lens is read
+ * against.
  */
 const TWO_ROWS = `
-TtT
-...
-SsS
+TtT....
+.......
+.......
+.......
+SsS....
 `;
 const TRIANGLE_ROW: readonly (readonly [number, number])[] = [
   [0, 0],
@@ -66,18 +92,23 @@ const TRIANGLE_ROW: readonly (readonly [number, number])[] = [
   [2, 0],
 ];
 const SQUARE_ROW: readonly (readonly [number, number])[] = [
-  [0, 2],
-  [1, 2],
-  [2, 2],
+  [0, 4],
+  [1, 4],
+  [2, 4],
 ];
+
+/** Two colours this far apart of 441 are two colours, not one under a veil. */
+const VISIBLE = 5;
 
 /**
  * Whether a drawn text run plausibly covers the point: within the run's
  * horizontal extent widened by NODE_R, and within 48 logical units of its
  * anchor line — a generous allowance for glyph height, since the case fixes
- * no font. Centers a run covers are skipped rather than compared: the item is
+ * no font. Points a run covers are skipped rather than compared: the item is
  * about the overlay leaving the board visible, not where the build put its
- * copy.
+ * copy, and a pixel under a glyph reads the copy's colour instead of the
+ * board's. Read off the RAW draws rather than the coalesced runs, because the
+ * finer extents skip the fewest points.
  */
 function covered(span: TextSpan, x: number, y: number): boolean {
   return (
@@ -129,58 +160,93 @@ it("draws BOARD SOLVED, the count, and the menu in order, over the finished boar
     true,
     `the solved frame draws SOLVED_TITLE_TEXT (${SOLVED_TITLE_TEXT})`,
   );
-  const spans = drawnTextSpans(h);
-  const countRuns = spans.filter(
-    (span) => Number.parseInt(span.text.replace(/\D/g, ""), 10) === 2,
+  const runs = drawnTextRuns(h);
+  const countRuns = runs.filter((run) =>
+    (run.text.match(/\d+/g) ?? []).some((d) => Number.parseInt(d, 10) === 2),
   );
   assertGreaterThan(
     countRuns.length,
     0,
     "the solved frame draws the boards-solved count (2)",
   );
-  const lower = (text: string): string => text.toLowerCase();
-  const next = spans.find((span) =>
-    lower(span.text).includes(lower(SOLVED_ITEMS[0])),
-  );
-  const restart = spans.find((span) =>
-    lower(span.text).includes(lower(SOLVED_ITEMS[1])),
-  );
-  if (next === undefined || restart === undefined) {
-    assertEqual(
-      [next?.text, restart?.text],
-      SOLVED_ITEMS,
-      "the solved frame draws both SOLVED_ITEMS (NEXT BOARD, RESTART)",
+  const itemRuns = SOLVED_ITEMS.map((item) => {
+    const found = runs.find((run) =>
+      run.text.toLowerCase().includes(item.toLowerCase()),
     );
-    return;
-  }
+    if (found === undefined) {
+      fail(
+        `the solved frame draws ${JSON.stringify(item)} ` +
+          "(specs/modes/cascade.md: the solved screen's menu)",
+        runs.map((run) => run.text),
+      );
+    }
+    return found;
+  });
   assertLessThan(
-    next.y,
-    restart.y,
+    itemRuns[0].y,
+    itemRuns[1].y,
     "NEXT BOARD is drawn above RESTART: the vertical menu keeps the " +
       "SOLVED_ITEMS order (specs/modes/cascade.md)",
   );
 
   // The finished board stays drawn behind: on the solved frame itself, each
-  // lens center clear of the overlay's text runs still reads against the
-  // frame's own background by more than 50 of 441.
+  // lens centre reads against an EMPTY CELL of the same board on the same
+  // frame — the local bench, veiled by whatever the overlay laid over both.
   const board = parseBoard(TWO_ROWS);
-  const background = sampleBackground(h);
+  const spans = drawnTextSpans(h);
+  const clear = (x: number, y: number): boolean =>
+    !spans.some((span) => covered(span, x, y));
+  const occupied = new Set(
+    board.nodes.map((node) => `${node.col},${node.row}`),
+  );
+
+  const emptyCells: { col: number; row: number; x: number; y: number }[] = [];
+  for (let row = 0; row < board.rows; row += 1) {
+    for (let col = 0; col < board.cols; col += 1) {
+      if (occupied.has(`${col},${row}`)) continue;
+      const at = nodeCenter(col, row, board.cols, board.rows);
+      emptyCells.push({ col, row, x: at.x, y: at.y });
+    }
+  }
+  // Farthest from the grid's centre first: a build's overlay copy is drawn
+  // about (BOARD_CX, BOARD_CY), so the outermost empty cell is the one least
+  // likely to be under a glyph.
+  emptyCells.sort(
+    (a, b) =>
+      Math.hypot(b.x - BOARD_CX, b.y - BOARD_CY) -
+      Math.hypot(a.x - BOARD_CX, a.y - BOARD_CY),
+  );
+  const benchCell = emptyCells.find((cell) => clear(cell.x, cell.y)) ?? null;
+  const bench: Rgb | null =
+    benchCell === null ? null : sampleColor(h, benchCell.x, benchCell.y);
+  const benchAt =
+    benchCell === null ? "" : `(${benchCell.col}, ${benchCell.row})`;
+  if (bench === null) {
+    fail(
+      "an empty cell of the posed board clear of the overlay's copy, to " +
+        "read the board's own bench from on this frame",
+      runs.map((run) => run.text),
+    );
+  }
+
   let sampled = 0;
   for (const node of board.nodes) {
     if (node.kind !== "lens") continue;
-    const center = nodeCenter(node.col, node.row, board.cols, board.rows);
-    if (spans.some((span) => covered(span, center.x, center.y))) continue;
+    const at = nodeCenter(node.col, node.row, board.cols, board.rows);
+    if (!clear(at.x, at.y)) continue;
     sampled += 1;
     assertGreaterThan(
-      colorDistance(sampleColor(h, center.x, center.y), background),
-      50,
-      `the ${String(node.channel)} lens at (${node.col}, ${node.row}) stays ` +
-        "visible behind the solved screen (specs/modes/cascade.md)",
+      colorDistance(sampleColor(h, at.x, at.y), bench),
+      VISIBLE,
+      `the ${String(node.channel)} lens at (${node.col}, ${node.row}) is ` +
+        `drawn behind the solved screen — read against the board's own ` +
+        `empty cell ${benchAt} on the same frame ` +
+        "(specs/modes/cascade.md: the finished board stays visible behind it)",
     );
   }
   assertGreaterThan(
     sampled,
     0,
-    "at least one lens center sits clear of the overlay's text runs",
+    "at least one lens centre sits clear of the overlay's copy",
   );
 });
