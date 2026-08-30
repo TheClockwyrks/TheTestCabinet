@@ -1,23 +1,70 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/deal/lowest-face-up.test.ts
+// deal/lowest-face-up — every column's lowest card is dealt face-up.
 //
-// The review item `deal.lowest-face-up` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/deal.md: "In each column, every card is dealt face-down except
+// the last one dealt, which is turned face-up. Each column therefore shows exactly
+// one face-up card, and it is the column's lowest card on the table." Those seven
+// cards are the whole of what a player can see and play at the start of a game, so
+// a build that deals them face-down deals an unplayable board.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// WHICH CARD IS THE LOWEST. specs/instrumentation.md orders every pile from its
+// bottom card to its top card and states that in a tableau column the last element
+// is the card drawn lowest on the table. So the card this reads is the LAST entry
+// of each column, whatever a build calls it internally.
 //
-// What this item must decide, from the manifest:
+// ONE DIRECTION ONLY. This decides that the seven lowest cards are face-up. That
+// the twenty-one cards above them are face-down is `deal/rest-face-down`, so a
+// build that deals every card face-up fails that item and passes this one, and a
+// build that deals every card face-down fails this one alone.
 //
-//   Each column's lowest card is face-up
-//
-//   All seven lowest cards are face-up.
+// A column that a deal left empty is a fault this item reports as well, because a
+// column with no lowest card shows none, and `deal/column-sizes` names the missing
+// cards separately.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TABLEAU_COLUMNS } from "../../src/constants";
+import { assertEqual, fail } from "../assert";
+import {
+  captureStill,
+  cardKey,
+  createHarness,
+  openTable,
+  pileOf,
+  topOf,
+  type Harness,
+} from "../harness";
 
-it("deal.lowest-face-up — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/deal/lowest-face-up.test.ts is a scaffold stub, not a validator",
-  );
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(() => {
+  harness?.dispose();
+});
+
+it("turns the last card dealt to each column face-up", async () => {
+  openTable(harness);
+  harness.debug.deal();
+
+  await harness.advance(1);
+  captureStill(harness, "dealt");
+
+  const dealt = harness.snapshot();
+  for (let column = 0; column < TABLEAU_COLUMNS; column += 1) {
+    const lowest = topOf(pileOf(dealt, "tableau", column));
+    if (lowest === undefined) {
+      fail(
+        `a lowest card in column ${column}, which a deal turns face-up ` +
+          "(specs/deal.md)",
+        "a column a deal left empty",
+      );
+    }
+    assertEqual(
+      lowest.faceUp,
+      true,
+      `column ${column}'s lowest card, the ${cardKey(lowest)}, face-up ` +
+        "(specs/deal.md)",
+    );
+  }
 });

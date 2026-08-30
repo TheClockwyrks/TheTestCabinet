@@ -1,23 +1,79 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/deal/full-deck.test.ts
+// deal/full-deck — a deal puts one full deck on the table, one of each card.
 //
-// The review item `deal.full-deck` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// THE RULE. specs/deal.md: the deck is `DECK_SIZE` (`52`) cards, four `SUITS` by
+// thirteen ranks from `RANK_MIN` (`1`, the Ace) to `RANK_MAX` (`13`, the King), and
+// "each of the fifty-two suit-and-rank pairs appears in the deck exactly once". The
+// deal then lays that deck out: twenty-eight cards to the tableau and the remaining
+// twenty-four to the stock, with the waste and the foundations empty. So the cards
+// on the thirteen piles after a deal are the deck itself.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// This is the item that catches a deal built from a deck that is short a card,
+// carries a duplicate, or was drawn WITH replacement — a board that looks perfectly
+// ordinary and is unwinnable, or winnable twice over, for reasons a player can
+// never see.
 //
-// What this item must decide, from the manifest:
+// TWO READINGS, IN ORDER. First the total, which names a deck of the wrong size
+// outright; then each of the fifty-two pairs, so a board of fifty-two cards holding
+// two Aces of spades and no Ace of hearts fails naming both.
 //
-//   The deal uses one full deck
+// THE ROSTER IS THE DECK ITSELF. `fullDeck()` is the fifty-two suit-and-rank pairs
+// specs/deal.md defines, built from the `SUITS` and the ranks `src/constants.ts`
+// carries, so the pairs looked for here are the pairs the build was handed.
 //
-//   The fifty-two cards dealt are exactly one of each of the fifty-two suit-and-rank pairs.
+// FACES ARE NOT READ HERE, and neither is which pile a card landed on: those are
+// `deal/lowest-face-up`, `deal/rest-face-down`, `deal/stock-face-down`,
+// `deal/column-sizes` and `deal/stock-count`. What this decides is the IDENTITY of
+// the cards, in one direction.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { DECK_SIZE } from "../../src/constants";
+import { assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  cardKey,
+  createHarness,
+  everyCard,
+  fullDeck,
+  openTable,
+  type Harness,
+} from "../harness";
 
-it("deal.full-deck — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/deal/full-deck.test.ts is a scaffold stub, not a validator",
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(() => {
+  harness?.dispose();
+});
+
+it("deals exactly one of each of the fifty-two suit-and-rank pairs", async () => {
+  openTable(harness);
+  harness.debug.deal();
+
+  await harness.advance(1);
+  captureStill(harness, "dealt");
+
+  const dealt = everyCard(harness.snapshot());
+  assertLength(
+    dealt,
+    DECK_SIZE,
+    "cards on the thirteen piles after a deal (specs/deal.md)",
   );
+
+  const copies = new Map<string, number>();
+  for (const site of dealt) {
+    const key = cardKey(site.card);
+    copies.set(key, (copies.get(key) ?? 0) + 1);
+  }
+
+  for (const spec of fullDeck()) {
+    assertEqual(
+      copies.get(cardKey(spec)) ?? 0,
+      1,
+      `copies of the ${cardKey(spec)} on the table after a deal ` +
+        "(specs/deal.md)",
+    );
+  }
 });
