@@ -858,6 +858,35 @@ describe("Draw Three", () => {
     expect(snap.waste[snap.waste.length - 1]?.id).toBe(fallback);
   });
 
+  it("shows one card fewer while the front of the set is in hand", async () => {
+    openTable();
+    for (let i = 0; i < 6; i++) addCard("stock", 0, "spades", i + 1, false);
+    h.pose((s, d) => d.turnStock(s));
+    h.pose((s, d) => d.turnStock(s));
+    await h.frames(1);
+    const felt: Rgba = [23, 122, 74, 255];
+    const third = WASTE_X + 2 * WASTE_FAN + 50;
+    // Right of where the second fanned card reaches, so only the third covers it.
+    const beyond = WASTE_X + WASTE_FAN + CARD_W + 8;
+    expect(distance(h.pixel(beyond, TOP_ROW_Y + 70), felt)).toBeGreaterThan(90);
+
+    // Lifted and carried away, the front card leaves the fan showing the two of
+    // its own set that are still on the pile, and pulls none up from beneath.
+    h.mouseDown(third, TOP_ROW_Y + 70);
+    h.mouseMove(700, 460);
+    await h.frames(1);
+    expect(h.snapshot().drag?.cards).toHaveLength(1);
+    expect(distance(h.pixel(beyond, TOP_ROW_Y + 70), felt)).toBeLessThan(10);
+    expect(
+      distance(h.pixel(WASTE_X + WASTE_FAN + 10, TOP_ROW_Y + 70), felt),
+    ).toBeGreaterThan(90);
+
+    h.mouseUp(700, 460);
+    await h.frames(1);
+    expect(h.snapshot().waste).toHaveLength(6);
+    expect(distance(h.pixel(beyond, TOP_ROW_Y + 70), felt)).toBeGreaterThan(90);
+  });
+
   it("refuses a move naming a card behind the frontmost fanned one", () => {
     openTable();
     for (let i = 0; i < 3; i++) addCard("stock", 0, "spades", i + 1, false);

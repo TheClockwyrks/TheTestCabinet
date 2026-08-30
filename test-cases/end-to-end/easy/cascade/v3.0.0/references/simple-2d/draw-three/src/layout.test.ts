@@ -130,6 +130,17 @@ describe("the waste", () => {
     );
   });
 
+  it("counts the set one card lower while one of its cards is in hand", () => {
+    // Three turns of three with the newest set's top card lifted: the fan shows
+    // the two of that set still on the pile, never one from the set beneath.
+    expect(
+      wasteShownCount(board({ waste: column(8), wasteSets: [3, 3, 3] })),
+    ).toBe(2);
+    expect(
+      wasteShownCount(board({ waste: column(2), wasteSets: [1, 1, 1] })),
+    ).toBe(0);
+  });
+
   it("fans at the pitch and never passes 498", () => {
     expect(wasteFanX(0)).toBe(WASTE_X);
     expect(wasteFanX(1)).toBe(372);

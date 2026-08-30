@@ -131,12 +131,17 @@ export function columnBottom(column: readonly CardView[]): number {
 /**
  * How many of the waste's cards are shown (`specs/stock.md`).
  *
- * The newest set's count, held to the cards the waste actually holds, so a set
- * memory that outran its pile still shows only cards that are there.
+ * The waste shows the cards of its newest set, and only those. The sets fill the
+ * waste from the bottom up, so the newest set's cards are the last ones of the
+ * `sum` the memory accounts for; when a card of that set is in hand the sum
+ * outruns the pile and the set is showing one fewer, which is why the fan counts
+ * down and never pulls a card up from the set beneath it.
  */
 export function wasteShownCount(board: BoardView): number {
   const newest = board.wasteSets[board.wasteSets.length - 1] ?? 0;
-  return Math.max(0, Math.min(newest, board.waste.length));
+  const accounted = board.wasteSets.reduce((total, count) => total + count, 0);
+  const onPile = board.waste.length + newest - accounted;
+  return Math.max(0, Math.min(newest, board.waste.length, onPile));
 }
 
 /** The left edge of the `k`th shown waste card, oldest first. */
