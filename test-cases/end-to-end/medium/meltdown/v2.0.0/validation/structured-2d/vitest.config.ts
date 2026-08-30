@@ -30,8 +30,12 @@ export default defineConfig({
     passWithNoTests: false,
     coverage: { enabled: false },
     // A posed floor is advanced with `engine.advance`, so even a scenario that
-    // spends a minute of game time costs milliseconds; the ceiling is for the
-    // sweeps that release a whole wave against a maze.
+    // spends a minute of game time costs milliseconds. The ceiling is for the
+    // sweeps that release a whole wave against a maze, and for the handful of
+    // checks that spend REAL time: a question about whether time passes is
+    // measured on the build's own clock, so those hand the frame loop back and
+    // wait out a window of wall-clock seconds (`harness.ts`, Windows on the
+    // build's own clock).
     testTimeout: 60_000,
   },
 });
