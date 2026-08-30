@@ -33,7 +33,14 @@ export default defineConfig({
     passWithNoTests: false,
     coverage: { enabled: false },
     // A wave driven to its clear, or a run driven to its finale, is thousands of
-    // frames of real simulation; generous here, and still seconds in practice.
-    testTimeout: 60_000,
+    // frames of real simulation, and a check that reads a whole campaign's worth
+    // of compositions drives fourteen of them in one test. Those drives run in
+    // this process rather than in a browser, so a file in flight is a core in
+    // use: the ceiling has to hold when every worker is simulating at once, not
+    // only when one file runs alone. Three minutes is that ceiling. It is a cap
+    // on a hang, not a budget anything spends — the heaviest check in the
+    // project finishes inside a minute on its own — and the whole run is capped
+    // again from outside.
+    testTimeout: 180_000,
   },
 });
