@@ -35,6 +35,10 @@ export function scannerRangeTiles(game: Game): number {
 
 /** Read the scanner as it stands. Pure: it changes nothing. */
 export function computeScan(game: Game): ScanResult {
+  // Tier 1 is no scanner at all, so nothing locks and nothing is shown.
+  const range = scannerRangeTiles(game);
+  if (range <= 0) return NO_LOCK;
+
   const needResonite = game.satchel.resonite === 0;
   const needCryenite = game.satchel.cryenite === 0;
   if (!needResonite && !needCryenite) return NO_LOCK;
@@ -56,7 +60,7 @@ export function computeScan(game: Game): ScanResult {
     const d = Math.hypot(dx, dy);
     if (!best || d < best.d) best = { dx, dy, d, material: node.material };
   }
-  if (!best || best.d > scannerRangeTiles(game)) return NO_LOCK;
+  if (!best || best.d > range) return NO_LOCK;
 
   const inv = best.d > 0 ? 1 / best.d : 0;
   return {
