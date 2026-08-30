@@ -1,10 +1,5 @@
 // Cascade — the vitest project the CASE's validators run as. CASE-PROVIDED.
 //
-// SCAFFOLD. The validator stage of the v3.0.0 rework owns this project; what is
-// here now is the shape, so the case resolves and so a suite added to it runs
-// against the right root. Every suite under this directory is a throwing stub
-// until that stage replaces it.
-//
 // A project of its own, separate from the build's `vitest.config.ts` at the
 // workspace root. The two never mix: the build's config names `src/**/*.test.ts`
 // and measures coverage over `src/`, so the tests a build wrote are counted and
@@ -20,8 +15,10 @@
 // from this file's own URL rather than from the working directory, so the command
 // above works from anywhere.
 //
-// The environment is `node`. The Simple 2D engine takes every measurement from the
-// `SurfaceMetrics` the harness supplies, so these suites need no DOM.
+// The environment is `node`. The engine takes every measurement from the
+// `SurfaceMetrics` the harness supplies, so these suites need no DOM, and the two
+// browser drawing surfaces a build may reach for are stood up over
+// `@napi-rs/canvas` by `canvas-shim.ts`, which `harness.ts` imports first.
 
 import { defineConfig } from "vitest/config";
 
@@ -34,8 +31,9 @@ export default defineConfig({
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
-    // A cascade advanced in frames of 1/240 s is thousands of frames of real
-    // integration; generous here, and still a fraction of a second in practice.
+    // Every scenario is posed and stepped in process, so a suite costs
+    // milliseconds; the ceiling is for the few that run a whole cascade out in
+    // frames of 1/240 s.
     testTimeout: 60_000,
   },
 });
