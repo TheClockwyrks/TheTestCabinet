@@ -1,23 +1,49 @@
-// SCAFFOLD PLACEHOLDER — validation/none/screens/title-shows-items.test.ts
+// screens/title-shows-items — the title screen draws both of its menu items.
 //
-// The review item `screens.title-shows-items` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// `specs/screens.md`, the `title` screen's element table: Items, `TITLE_ITEMS`,
+// "`NEW GAME`, `HOW TO PLAY`, in that order", and below it "Each item's label is
+// drawn inside the rectangle `specs/controls.md` fixes for it". This item decides
+// that both LABELS are drawn; whether each landed inside its own rectangle is
+// `presentation/hud-labels-drawn`'s sibling question for the HUD, and what each
+// item DOES is `screens/title-new-game-enters-play` and
+// `screens/title-how-to-opens`.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
-//
-// What this item must decide, from the manifest:
-//
-//   The title screen shows both items
-//
-//   Both TITLE_ITEMS literals, NEW GAME and HOW TO PLAY, are drawn on the title screen.
+// Both labels are asserted here rather than split into two items because the
+// requirement is one menu: `specs/screens.md` names them as a single element,
+// `TITLE_ITEMS`, and splitting would grade one menu twice.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { TITLE_ITEMS } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  type Harness,
+} from "../harness";
+import { openTitle } from "./screens";
 
-it("screens.title-shows-items — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/screens/title-shows-items.test.ts is a scaffold stub, not a validator",
-  );
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("draws both title-screen menu items", async () => {
+  await openTitle(h);
+
+  const calls = await h.frameCalls();
+  await captureStill(h, "title");
+
+  for (const item of TITLE_ITEMS) {
+    assertEqual(
+      drewText(calls, item),
+      true,
+      `the title screen draws the item "${item}" (specs/screens.md)`,
+    );
+  }
 });

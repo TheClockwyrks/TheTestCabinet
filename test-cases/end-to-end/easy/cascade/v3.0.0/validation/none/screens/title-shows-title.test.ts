@@ -1,23 +1,49 @@
-// SCAFFOLD PLACEHOLDER — validation/none/screens/title-shows-title.test.ts
+// screens/title-shows-title — the title screen draws `TITLE_TEXT`.
 //
-// The review item `screens.title-shows-title` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// `specs/screens.md` gives the `title` screen a table of elements, and its first
+// row is the Title, `TITLE_TEXT`, whose content is `CASCADE`. The file states
+// that "Every piece of screen copy below carries the name this specification
+// gives it, and the literal text it names is the text that is drawn", so the
+// literal is the requirement and the palette, the type and the layout around it
+// are not.
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
-//
-// What this item must decide, from the manifest:
-//
-//   The title screen shows the title
-//
-//   CASCADE is drawn on the title screen.
+// The match is by substring and case-insensitive (`drewText`), because a build is
+// free to draw the word inside a longer run, and by CASE because the literal the
+// specification fixes is upper case while the casing a font renders is the
+// build's. The tagline and the two menu items are `screens/title-shows-tagline`
+// and `screens/title-shows-items`: three literals, three items, so a build that
+// drew one and dropped another grades differently from one that drew all three.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { TITLE_TEXT } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  type Harness,
+} from "../harness";
+import { openTitle } from "./screens";
 
-it("screens.title-shows-title — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/none/screens/title-shows-title.test.ts is a scaffold stub, not a validator",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it(`draws "${TITLE_TEXT}" on the title screen`, async () => {
+  await openTitle(h);
+
+  const calls = await h.frameCalls();
+  await captureStill(h, "title");
+
+  assertEqual(
+    drewText(calls, TITLE_TEXT),
+    true,
+    `the title screen draws "${TITLE_TEXT}" (specs/screens.md)`,
   );
 });
