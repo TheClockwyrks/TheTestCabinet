@@ -1,23 +1,100 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/table/tableau-anchor-y.test.ts
+// Cascade — table/tableau-anchor-y: a column's first card has its top edge at
+// `TABLEAU_Y`.
 //
-// The review item `table.tableau-anchor-y` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/table.md, The columns: "Each column begins at `TABLEAU_Y` (`180`), at
+// its own `COLUMN_X`", and "So a column's first card has its top edge at
+// `y = 180`".
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// THE READING IS y ALONE, and that is what all seven columns are posed for.
+// Which x a column stands at is `column-anchors`' point, so this check never
+// names one: it counts how many card-sized boxes below the top row were drawn
+// with their top edge at `180`, and a build that put its columns at the right
+// height passes wherever across the table it put them.
 //
-// What this item must decide, from the manifest:
+// Posing a card on EVERY column is what makes the count mean something. A column
+// holding no cards draws its empty mark at the same anchor (specs/table.md,
+// Empty piles), so a build that drew its cards at some other height, on a table
+// where six columns were empty, would still leave six card-sized marks at `180`.
+// With all seven columns holding a card there is no mark left to answer for
+// them, and the seven boxes at the anchor can only be the seven first cards.
 //
-//   A column's first card starts at 180
-//
-//   The first card of a posed column is drawn with its top edge at y = 180.
+// The top row is excluded by the specification's own line — "The top row's
+// rectangles end at `y = 164` and the columns' begin at `y = 180`" — so the six
+// piles up there, and the marks they draw while empty, are never counted.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  CARD_H,
+  TABLEAU_COLUMNS,
+  TABLEAU_Y,
+  TOP_ROW_Y,
+} from "../../src/constants";
+import { assertGreaterThanOrEqual } from "../assert";
+import {
+  alternatingRun,
+  captureStill,
+  COLUMNS,
+  createHarness,
+  KING,
+  openTable,
+  poseCard,
+  type Harness,
+} from "../harness";
+import { cardBoxes, corners } from "./placed";
 
-it("table.tableau-anchor-y — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/table/tableau-anchor-y.test.ts is a scaffold stub, not a validator",
+/**
+ * How far a drawn box's size may sit from `100 x 140`, as a fraction of each
+ * side, and still be READ as a card.
+ *
+ * This is identification and not a requirement: it is how a check picks the
+ * cards out of a frame that also drew pips, ranks, the felt and the HUD strip,
+ * and it is deliberately loose so that the ONE point about the footprint is the
+ * one that decides it. A build that drew every card a few units small has its
+ * geometry read here exactly like any other and is charged once, by `card-size`.
+ * A fifth of each side is far wider than a defect of that kind and far narrower
+ * than anything else this game puts on the table.
+ */
+const CARD_LIKE_TOLERANCE = 0.2;
+
+/**
+ * How far a first card's top edge may sit from `TABLEAU_Y` (`180`), in logical
+ * units. The anchor is a whole number in a space that maps one-to-one onto the
+ * canvas here, so a conformant build lands on it exactly; a build that used the
+ * top row's `24`, or that left room for a heading, is tens of units away.
+ */
+const ANCHOR_TOLERANCE = 1;
+
+/** Where the top row's own footprint ends (specs/table.md). */
+const TOP_ROW_BOTTOM = TOP_ROW_Y + CARD_H;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("starts every posed column's first card at y = 180", async () => {
+  openTable(h);
+  const cards = alternatingRun(KING, TABLEAU_COLUMNS);
+  COLUMNS.forEach((column) => poseCard(h, "tableau", column, cards[column]));
+
+  const calls = await h.drawFrame();
+  captureStill(h, "column");
+  const boxes = cardBoxes(h, calls, CARD_LIKE_TOLERANCE);
+  const tableau = boxes.filter((box) => box.y > TOP_ROW_BOTTOM);
+  const atAnchor = tableau.filter(
+    (box) => Math.abs(box.y - TABLEAU_Y) <= ANCHOR_TOLERANCE,
+  );
+
+  assertGreaterThanOrEqual(
+    atAnchor.length,
+    TABLEAU_COLUMNS,
+    `the first card of each of the ${TABLEAU_COLUMNS} posed columns drawn ` +
+      `with its top edge at y = ${TABLEAU_Y}; below the top row the frame ` +
+      `drew card-sized boxes at ${corners(tableau)}`,
   );
 });
