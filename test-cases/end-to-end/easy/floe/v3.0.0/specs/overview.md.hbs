@@ -1,16 +1,381 @@
-# Floe — overview
+# Floe
 
-<!--
-  PLACEHOLDER — NOT THE SPECIFICATION.
+## Overview
 
-  This file is a scaffold stub. The Specs stage of the Floe v3.0.0 rework
-  replaces it in full with the specification section 3 of the design plan
-  assigns to it. If this notice is still here, this file has not been written
-  and no run seeded from it is valid.
--->
+Floe is a single-screen arcade crossing game for the browser. A small tundra
+critter starts on the near shore of a frozen strait and works its way to the far
+shore: first across eight lanes of sliding traffic, then over a solid median
+shelf, then across eight lanes of open water by riding the floes drifting along
+them. The far shore is a wall of solid ice cut by five bays, and a level is done
+when all five are filled.
 
-**This file has not been written yet.**
+Floe's defining idea is the hunter. A polar bear emerges on the near shore behind
+the critter and pursues it across the whole strait, gliding continuously along the
+grid, routing around the same traffic the critter dodges and swimming out over the
+open water after it. The bear is not a lane hazard on a fixed track, so no tile is
+safe to wait on and every pause is paid for in ground.
 
-Section 3 of the Floe v3.0.0 design plan gives this file the following scope:
+Floe has its own name, look, and rules, and its branding and design are original
+to it.
 
-What the game is, what the finished build must be, and the model the whole simulation runs on: the premise, the hard requirements, the free choices, the fixed 1280x720 stage and its uniform fit, the centre convention for the critter and the bears against the left-edge convention for a lane item, the fixed timestep (`TICK_HZ` 120), and the legibility table. Branches on `engine.slug`.
+The specification spans several files under `specs/`.
+
+| File | What it fixes |
+| --- | --- |
+| `specs/overview.md` | The stage, the fixed timestep, the project, and what a player reads at a glance. |
+| `specs/strait.md` | The strait's geometry: the tile grid, the tile-to-stage map, the five bands, and the five bays. |
+| `specs/hopping.md` | How the critter moves, and every rule that refuses a hop. |
+| `specs/ice.md` | The ice band: eight lanes of sliding vehicles, and the covering rule. |
+| `specs/water.md` | The water band: eight lanes of drifting floes, the carry, and the water itself. |
+| `specs/bays.md` | The five goal bays and the bonus catch. |
+| `specs/hunter.md` | The bear: its glide, its speeds, its emergence, its routing, and its catch. |
+| `specs/progression.md` | The run: lives, the crossing timer, the phases, and the eight levels. |
+| `specs/scoring.md` | Every score figure. |
+| `specs/controls.md` | The keys and what each one drives. |
+| `specs/ui.md` | The six screens, the HUD, and the audio cues. |
+| `specs/assets.md` | The sprite art seeded with the project, and how the game draws it. |
+| `specs/state.md` | The state the game holds. |
+| `specs/instrumentation.md` | The debugging and automation surface over that state. |
+| `specs/showcase.md` | The showcase the finished game ships beside its source. |
+
+Read all of them and build the game they describe as one cohesive whole.
+
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This game stands on no engine, so the runtime under it is yours to write: the
+frame loop and the elapsed time it measures, the canvas fit, keyboard input,
+image loading, audio, and the debug overlay. Where this specification speaks of
+the runtime it means that layer, and it states only what Floe needs from it. How
+the layer is structured is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It owns the frame loop and
+the delta time the game is given, the input actions the critter and the menus are
+driven by, audio cues, asset loading, the canvas fit, and the debug overlay. Read
+its documentation before you start. This specification states only what is
+specific to Floe.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It is a gameplay framework as
+much as a runtime: the game is written as subclasses of its classes, a game
+instance, a game mode, actors and their components, and the controllers that
+drive them, and the engine constructs, ticks, and renders them in a fixed order.
+It owns the frame loop and the delta time the game is given, rendering and the
+camera, the canvas fit, the input actions the critter and the menus are driven
+by, audio cues, asset loading, and the debug overlay. Read its documentation
+before you start. This specification states only what is specific to Floe.
+
+The logical design field handed to the engine is the stage, and the game leaves
+the camera at rest, so world units and the stage's logical units coincide and
+every position in this specification is both.
+{{/if}}
+
+## The project you build in
+
+The project at the root of this repository is already wired up, and its
+`README.md` describes it. It is a TypeScript project built with Vite, tested with
+Vitest, linted with ESLint, and formatted with Prettier. That toolchain is fixed
+and supplied.
+
+{{#if (eq engine.slug "none")}}
+### What you implement
+
+Everything under `src/`. The directory does not exist yet.
+
+`index.html` loads `/src/main.ts` as its entry point, so that module is where
+your build starts. Beyond that the structure is yours: the frame loop and the
+canvas fit, keyboard input, sprite loading, audio, the debug overlay, the
+debugging and automation surface, the figures this specification fixes, and the
+game itself.
+
+The game's state is yours to shape. `specs/state.md` states what it must carry,
+and `specs/instrumentation.md` states the one contract fixed over it.
+
+### What stays as it is
+
+- `index.html`, the page and the canvas the stage is fitted into.
+- `assets/`, the seeded sprite art. `specs/assets.md` is the contract for it.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from this specification
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is stated here under a name. Anything this specification does
+not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test drives the game over its own clock for a counted number of ticks,
+so it needs no browser, and `@napi-rs/canvas` is installed for a test that wants
+a real 2D context.
+{{else if (eq engine.slug "simple-2d")}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`.
+
+`src/game.ts` exports `game`, a `Game<FloeState, FloeDebugApi>`: `initialize`
+builds the state and the debug surface once and returns them together as
+`[state, debug]`, `update` takes the current state as a read-only view
+(`DeepReadonly<FloeState>`) and returns the next state, advanced against the
+frame's delta time in seconds, and `render` is handed that next state, read-only
+again, and draws it. The engine holds the state by value and replaces it with
+what each `update` returns, so a frame builds the next state from the current one
+rather than writing into it, and nothing but `update` and the debug surface's
+poses advances the game. All three functions throw `"not implemented"` as they
+stand. Implement them.
+
+`src/game.ts` also declares and exports `FloeState` and the types it is built
+from, exactly as `specs/state.md` states them, and `FloeDebugApi`, the debugging
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the strait
+itself. The seeded stub exports a placeholder; replace it with the color your
+strait uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `assets/`, the seeded sprite art. `specs/assets.md` is the contract for it.
+- `.tcab/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it also
+names the constant that holds it, and the constant is authoritative. Anything
+this specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over its own canvas and clock and advances
+the game a counted number of frames, so it needs no browser.
+{{else}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`. The file does
+not exist yet: `src/main.ts` imports it, so the project does not compile until
+you create it and export `BACKGROUND` and `game` from it.
+
+`src/game.ts` exports `game`, a `GameDefinition<FloeDebugApi>`: the game instance
+class, a level registry holding the single level the game runs in, and
+`startLevel` naming it. The game opens that one level and never opens another;
+every screen is a value of the state's `screen` field, so the world and its game
+state live for the whole session and a level advance in Floe's own sense
+rearranges the strait rather than opening a world. The instance's `initialize`
+registers the actions, defines the cues, and returns the debug surface. The
+level's game mode runs the screens and the rules, and it adds a single player in
+its `beginPlay`, possessing nothing; that player's controller is where the
+actions are read. The mode's `gameStateClass` is `FloeState`, so the world's game
+state is the state `specs/state.md` declares. The actors, components, and
+controllers you write draw that state and drive it.
+
+`src/game.ts` also declares and exports `FloeState` and the types it is built
+from, exactly as `specs/state.md` states them, and `FloeDebugApi`, the debugging
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the strait
+itself. Choose the color your strait uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `assets/`, the seeded sprite art. `specs/assets.md` is the contract for it.
+- `.tcab/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it also
+names the constant that holds it, and the constant is authoritative. Anything
+this specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over a canvas from `@napi-rs/canvas` and a
+surface and clock of its own, then advances the game a counted number of frames
+with `engine.advance`, so it needs no browser.
+{{/if}}
+
+### The checks the repository passes
+
+Four commands run over the finished repository before it is reviewed:
+
+| Command | Checks |
+| --- | --- |
+| `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
+| `npx eslint .` | The code is lint-clean. |
+| `npx prettier --check .` | The code is formatted. |
+| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
+
+They run on the repository as you leave it. `npm run typecheck`, `npm run lint`,
+`npm run format`, and `npm test` run the same four locally.
+
+### The build interface
+
+`npm ci` followed by `npm run build` produces the complete static site into
+`dist/` at the repository root, with an `index.html` at the root of that
+directory as the entry point. That directory runs correctly when served as-is at
+any base path of any static file server, so every URL the build requests at
+runtime resolves against the page rather than against the origin root. The
+scripts that do this are already in `package.json`.
+
+## Goal of this build
+
+Produce a complete, polished, playable game that runs entirely in a browser. Aim
+for a game a person would enjoy playing.
+
+### Hard requirements
+
+{{#if (eq engine.slug "none")}}
+- Write the runtime the game stands on: the frame loop and its elapsed time, the
+  canvas fit, keyboard input, image loading, audio, and the debug overlay.
+{{else if (eq engine.slug "simple-2d")}}
+- Build on the {{engine.name}} engine, taking the frame loop, the input actions,
+  audio, asset loading, and the debug overlay from it.
+{{else}}
+- Build on the {{engine.name}} engine, taking the frame loop, rendering, the
+  input actions, audio, asset loading, and the debug overlay from it, and writing
+  the game inside its framework of game modes, actors, components, and
+  controllers.
+{{/if}}
+- Render real graphics on the canvas: the critter, the bear, the vehicles, and
+  the floes drawn from the sprite art seeded under `assets/`, and everything else
+  drawn in code, as `specs/assets.md` states.
+- Run in the browser with no backend. Everything needed to play is
+  self-contained, and no API key or credential is needed to build, run, or play.
+{{#if (eq engine.slug "none")}}
+- Hold the game's whole state in one value, the one the simulation advances and
+  the debugging surface reads.
+{{else if (eq engine.slug "simple-2d")}}
+- Hold the game's whole state in `FloeState`, as `specs/state.md` declares it.
+{{else}}
+- Hold the game's whole authoritative state in `FloeState`, the world's game
+  state, as `specs/state.md` declares it.
+{{/if}}
+- Ship the debugging and automation surface `specs/instrumentation.md` specifies,
+  complete and exactly as specified.
+- Ship the showcase `specs/showcase.md` specifies at the root of this repository.
+- Replace the starter `README.md` with one explaining what the game is, how to
+  install dependencies, how to run it in development, how to produce the static
+  production build, and the controls.
+
+## Code quality
+
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the simulation.
+
+## Coordinate system and presentation
+
+All positions and sizes in this specification are given in the game's own logical
+units on a fixed stage of `STAGE_W x STAGE_H` (`1280 x 720`, 16:9). The origin
+`(0, 0)` is the top-left; `x` increases to the right and `y` increases downward.
+The strait sits inside that stage and its geometry is in `specs/strait.md`. There
+is one coordinate system in this game and it is the stage's: every position, in
+this specification and in everything the game reports, is measured from the
+stage's top-left corner.
+
+- `STAGE_W x STAGE_H` is the game's logical design size. Fitting it to the
+  browser window is the runtime's: the uniform scale that preserves the aspect
+  ratio, the letterboxed centering, and the device pixel ratio. The complete
+  stage is therefore on screen at every window size, on load and at any pixel
+  density.
+- The letterbox bars around the stage carry the stage's background color.
+- Draw in logical units, and take the canvas element's own size from the runtime
+  alone.
+- Game logic operates in logical units, independent of the rendered scale.
+
+Two conventions apply without exception, because a body and a lane item are
+different shapes:
+
+| What | Its reported position is |
+| --- | --- |
+| The critter, a bear, the bonus catch | Its **center**. |
+| A vehicle, a floe | Its **left edge**. It spans `[x, x + 32 * len)` on its row, where `len` is its length in tiles. |
+
+## The fixed timestep
+
+The simulation runs on a fixed timestep of `TICK_HZ` (`120`) steps per second, so
+one simulation tick, `TICK_DT`, is exactly `1/120` s. Every rate in this
+specification is per second and every duration is in seconds, and both are
+integrated in whole ticks of that length.
+
+{{#if (eq engine.slug "none")}}
+A frame reports how much time has elapsed and the simulation advances by the
+whole `TICK_DT` ticks that elapsed time completes, carrying the remainder into
+the next frame, so the number of ticks run over an interval of game time is the
+same however that interval was divided into frames.
+{{else}}
+The engine hands each frame a delta time and the simulation advances by the whole
+`TICK_DT` ticks that delta completes, carrying the remainder into the next frame,
+so the number of ticks run over an interval of game time is the same however that
+interval was divided into frames.
+{{/if}}
+
+The tick is the game's whole clock. The lanes' motion, the critter's hop
+cooldown, the bear's travel, the crossing timer, the phase pauses, and the bonus
+catch's cadence all advance inside it, so the same starting state driven by the
+same inputs over the same elapsed game time reaches the same state every time.
+
+## Visual design
+
+The strait is yours to design. Choose the colors and the typography, decide how
+the ice, the water, and the shores are drawn, how the bays read, and what the HUD
+and each screen look like.
+
+Whatever look you choose, a player reads all of the following at a glance.
+
+| What a player reads | Requirement |
+| --- | --- |
+| The five bands | The near shore, the ice band, the median shelf, the water band, and the far shore are told apart at a glance, and the two solid safe strips read as safe against the two crossing zones on either side. |
+| Deep water | A water tile carrying no floe reads as water a player must not stand on, distinct from a floe on the same row. |
+| The bays | An open bay reads as an opening in the far shore, distinct from the solid shore beside it, and a filled bay reads as filled. |
+| The critter | The critter reads apart from every band it can stand on, and from a floe under it. |
+| The bear | A bear reads apart from every band it can travel on. A submerged bear stays trackable: something distinct from the water is drawn where it is, so it is never invisible. |
+| The vehicles | A plow, a dogsled, and a car read apart from one another and from the ice under them, and each reads as covering every tile it spans. |
+| Text | Every HUD readout and every screen's text is legible against its background at the logical stage size. |
+
+The palette, the type, and every other aspect of the look are yours.
