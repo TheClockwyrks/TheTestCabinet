@@ -1,10 +1,17 @@
-// SCAFFOLD PLACEHOLDER — replaced by the Validators stage of the v3.0.0 rework.
+// Shatter — per-suite scaffolding for the browser the checks drive. CASE-PROVIDED.
 //
-// `validation/none/vitest.config.ts` names this file as a per-worker setup file,
-// so it has to exist for the engineless project to run at all. The real one
-// gives each suite worker the teardown that returns its page when the file is
-// done.
+// `globalSetup.ts` owns the one server and the one Chromium; each suite file runs
+// in a worker of its own and connects to that browser to open a page. This gives
+// every suite the matching teardown without asking a suite author to remember it:
+// when the file's last test has run, the page and the connection go back.
+//
+// It is a `setupFiles` entry rather than something the harness does on its own
+// because there is no other moment to do it in — a worker has no lifecycle hook
+// of its own, and a harness cannot know it built the last one.
 
-// Intentionally empty until the Validators stage writes the per-suite page
-// teardown.
-export {};
+import { afterAll } from "vitest";
+import { closeWorkerBrowser } from "./harness";
+
+afterAll(async () => {
+  await closeWorkerBrowser();
+});
