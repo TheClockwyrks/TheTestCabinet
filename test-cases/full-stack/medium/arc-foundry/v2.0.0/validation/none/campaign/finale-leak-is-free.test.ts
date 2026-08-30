@@ -1,26 +1,59 @@
-// Arc Foundry — `campaign.finale-leak-is-free`. CASE-PROVIDED. NOT YET WRITTEN.
+// campaign/finale-leak-is-free — the Overload Dynamo's own leak costs nothing.
 //
-// The manifest declares this point at `campaign/finale-leak-is-free.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/campaign.md's finale, third step: "When it grounds out at the collector
+// it costs no Grid Integrity, and the game advances to the victory screen."
+// specs/enemies.md says the same of the unit: "Grounding out at the collector
+// costs no Grid Integrity." Every other unit in the game costs its leak value
+// there (specs/economy.md), so this is the one grounding that is free, and a
+// build that runs the Dynamo through its ordinary leak path takes `5` — the
+// Dynamo's leak value — off a run it had already won.
 //
-// THE REQUIREMENT. The Overload Dynamo grounding out at the collector costs no
-// Grid Integrity, and the game advances to the victory screen on that frame.
+// The run is played to its last clear so that the Dynamo grounding out is a real
+// finale ending a real run, which is what the victory screen is on the other side
+// of. The Dynamo is then walked the last three tiles into the collector rather
+// than being followed the whole way round, because the length of its walk is the
+// sibling `finale-dynamo-walks` check and what this one is about is the frame it
+// arrives on.
 //
-// HOW IT IS DECIDED. Walk the Overload Dynamo to the collector and read Grid
-// Integrity and the screen as it grounds out. The evidence it hands back is
-// `ground` (replay): the Overload Dynamo grounding out.
+// Grid Integrity is read either side of that frame, and the screen on it.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import { captureReplay, type Harness } from "../harness";
+import { createRunHarness, leakOne, onlyUnit, reachFinale } from "./runs";
 
-import { fail } from "../assert";
+const DIFFICULTY = "easy";
 
-describe("campaign.finale-leak-is-free", () => {
-  it("The Overload Dynamo's leak costs nothing", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `campaign.finale-leak-is-free` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createRunHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("takes no Grid Integrity when the Dynamo grounds out, and wins the run", async () => {
+  const { cleared } = await reachFinale(h, DIFFICULTY);
+  assertEqual(cleared.snapshot.phase, "finale", "the finale is running");
+
+  const before = cleared.snapshot.integrity;
+  assertGreaterThan(before, 0, "the run reached its finale with a grid intact");
+
+  const dynamo = onlyUnit(cleared.snapshot, "overload");
+  const grounded = await captureReplay(h, "ground", () =>
+    leakOne(h, "overload", dynamo.id),
+  );
+
+  assertEqual(
+    grounded.integrity,
+    before,
+    "the Overload Dynamo grounding out costs no Grid Integrity",
+  );
+  assertEqual(
+    grounded.screen,
+    "victory",
+    "the frame it grounds out, the run reaches the victory screen",
+  );
 });

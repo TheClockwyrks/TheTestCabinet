@@ -1,27 +1,115 @@
-// Arc Foundry — `campaign.defeat-has-no-rating`. CASE-PROVIDED. NOT YET WRITTEN.
+// campaign/defeat-has-no-rating — a lost run never reaches the finale.
 //
-// The manifest declares this point at `campaign/defeat-has-no-rating.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// specs/campaign.md: "A defeat never reaches the finale, so a defeated run has no
+// Maze Rating." The finale is what produces the figure — "The run keeps no
+// running score. Its one end-of-run figure is the Maze Rating, produced by a
+// finale that runs after wave `N` is cleared" — and the outcome table sends a
+// defeat straight to the defeat screen, immediately.
 //
-// THE REQUIREMENT. A run lost to Grid Integrity never reaches the finale: the
-// phase never becomes finale, the Maze Rating stays 0, and the overload screen
-// draws no rating.
+// The run is lost on its LAST wave, which is where a build is most likely to
+// take the wrong branch: the wave that would have ended in the finale ends in
+// defeat instead. Grid Integrity is posed at `1`, wave `N` is launched by the
+// level's harvest, and one of the wave's own units is walked into the collector.
 //
-// HOW IT IS DECIDED. Lose a run on the final wave and read the phase, the Maze
-// Rating and the overload screen. The evidence it hands back is `defeat`
-// (image): the overload screen without a rating.
+// Three things are read. The phase is sampled at every step from the launch to
+// the defeat, and never reads `finale`. The Maze Rating is still `0`, which
+// specs/instrumentation.md gives as its resting value "before the finale". And
+// the screen the run ends on is `overload`, on which no drawn text names a
+// rating — specs/campaign.md puts the Maze Rating on the victory screen and
+// nowhere else.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLength } from "../assert";
+import { callsTo, captureStill, type Harness } from "../harness";
+import {
+  COLLECTOR,
+  LEAK_FROM,
+  createRunHarness,
+  harvestWave,
+  openFinalWave,
+  RUN_HZ,
+} from "./runs";
 
-import { fail } from "../assert";
+/** One short of the end: any unit's leak takes the counter to zero or below. */
+const INTEGRITY = 1;
 
-describe("campaign.defeat-has-no-rating", () => {
-  it("A defeated run has no Maze Rating", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `campaign.defeat-has-no-rating` has not been written yet",
-    );
-  });
+const DIFFICULTY = "easy";
+
+/** Frames between two samples of the phase. */
+const POLL = 4;
+
+/** Half a minute of simulation: past the walk of three tiles staged here. */
+const MAX_FRAMES = 30 * RUN_HZ;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createRunHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("ends the last wave on the overload screen, with no finale and no rating", async () => {
+  const waves = await openFinalWave(h, DIFFICULTY);
+  await h.debug.setIntegrity(INTEGRITY);
+  await harvestWave(h, waves);
+
+  const phases = new Set<string>();
+  let walked = false;
+  let ended = null as null | Awaited<ReturnType<Harness["snapshot"]>>;
+
+  for (let frames = 0; frames < MAX_FRAMES; frames += POLL) {
+    await h.advance(POLL);
+    const s = await h.snapshot();
+    phases.add(String(s.phase));
+    if (s.screen === "overload") {
+      ended = s;
+      break;
+    }
+    // The first unit the wave releases is walked into the collector, which is
+    // the leak that empties the counter.
+    if (!walked && s.units.length > 0) {
+      const first = s.units[0]!;
+      await h.debug.setUnitWaypoint(first.id, COLLECTOR);
+      await h.debug.setUnitPosition(first.id, LEAK_FROM.x, LEAK_FROM.y);
+      await h.debug.setUnitFrozen(first.id, false);
+      walked = true;
+    }
+  }
+
+  assertEqual(
+    ended === null,
+    false,
+    `the run to be lost on wave ${waves} once its counter emptied`,
+  );
+  const defeat = ended!;
+
+  assertEqual(
+    phases.has("finale"),
+    false,
+    `the phase never to read \`finale\` on a lost run; it read ` +
+      `${[...phases].join(", ")}`,
+  );
+  assertEqual(
+    defeat.screen,
+    "overload",
+    "a lost run ends on the defeat screen",
+  );
+  assertEqual(defeat.phase, null, "a run off the yard reports no phase");
+  assertEqual(defeat.mazeRating, 0, "a defeated run has no Maze Rating");
+
+  const calls = await h.frameCalls();
+  await captureStill(h, "defeat");
+  const drawn = [
+    ...callsTo(calls, "fillText"),
+    ...callsTo(calls, "strokeText"),
+  ].map((args) => String(args[0] ?? "").toLowerCase());
+  assertLength(
+    drawn.filter((text) => text.includes("rating")),
+    0,
+    "the defeat screen draws no rating; the Maze Rating shows on the victory " +
+      `screen (specs/campaign.md). It drew ${drawn.join(" | ")}`,
+  );
 });
