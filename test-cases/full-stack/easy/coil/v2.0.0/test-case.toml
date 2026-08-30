@@ -953,7 +953,7 @@ validation = { script = "combo/caps-at-max.test.ts", outputs = [
 [[review.categories.items]]
 id = "window-reopens-on-eat"
 title = "An eat reopens the window in full"
-description = "An eat sets the combo window back to a full COMBO_WINDOW (3.5 seconds) whatever was left on it."
+description = "An eat reopens the combo window at a full COMBO_WINDOW (3.5 seconds) at step 5 of the tick, whatever was left on it, and step 6 of that same tick then draws one TICK_SECONDS off it."
 domains = ["gameplay"]
 failure_cap = "passable"
 # Automated validation: pose a nearly spent window, eat a pellet, and read the
