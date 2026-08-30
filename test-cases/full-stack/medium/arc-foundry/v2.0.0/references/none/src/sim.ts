@@ -530,6 +530,8 @@ export class Game {
     center: { x: number; y: number },
     target: Unit,
   ): void {
+    // Where the bolt is DRAWN from: the head, a little off the footprint's centre.
+    // The projectile itself launches from the centre, as specs/components.md fixes.
     const muzzle = 16;
     const mx = center.x + Math.cos(c.aimAngle) * muzzle;
     const my = center.y + Math.sin(c.aimAngle) * muzzle;
@@ -544,10 +546,10 @@ export class Game {
       tier: c.tier,
       combo: c.combo,
       dmg,
-      x: mx,
-      y: my,
-      prevX: mx,
-      prevY: my,
+      x: center.x,
+      y: center.y,
+      prevX: center.x,
+      prevY: center.y,
       angle: c.aimAngle,
       speed: PROJECTILE_SPEED,
       targetId: target.id,
