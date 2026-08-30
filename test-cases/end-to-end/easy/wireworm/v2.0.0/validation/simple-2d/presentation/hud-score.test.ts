@@ -1,19 +1,74 @@
-// Wireworm — presentation.hud-score, under the `simple-2d` engine. CASE-PROVIDED.
+// presentation/hud-score — the HUD shows the running score.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/ui.md's HUD table: the score readout shows "The running score, as digits.
+// It is the most prominent of the three." specs/board.md puts it on the bar, at
+// `y` in `[0, HUD_H]` (`[0, 80]`), and says the readouts are drawn inside it. The
+// score is what every scoring rule in specs/scoring.md pays into, so a bar that
+// does not carry it leaves a player with no reading of the run at all.
 //
-// The point it decides, from `test-case.toml`:
+// THE FIGURE IS POSED AND THE BAR IS READ. `setScore` is a precondition and
+// nothing else — specs/instrumentation.md: "It grants no bonus life: the award
+// belongs to the scoring path" — so the board this runs on is the empty, quiet
+// one `startPlaying` opens, with a score written onto it and nothing else
+// touched.
 //
-// The HUD shows the running score
+// `12345` IS CHOSEN SO IT CANNOT BE ANYTHING ELSE ON THE BAR. Five digits, none
+// repeated, and no other readout at these settings spells it: the level is `1`,
+// the total is `TOTAL_LEVELS` (`12`), and the lives are `START_LIVES` (`3`). So a
+// run of digits reading `12345` is the score and can be nothing but the score.
 //
-// With the score posed at 12,345 the HUD bar draws that figure.
+// HOW THE FIGURE IS COMPOSED IS THE BUILD'S. specs/ui.md fixes the figure and not
+// its presentation, so a label around it (`SCORE 12,345`), a thousands separator,
+// and zero padding (`012345`) all read as the same figure — and a bar that drew
+// its digits one glyph at a time is read across the whole bar, left to right, so
+// a build that spells the score out in single characters is not failed for the
+// way it draws them.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertTrue } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startPlaying,
+  type Harness,
+} from "../harness";
+import { barText, digitsAcross, figuresIn, hudSpans } from "./hud";
 
-test("presentation.hud-score", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/simple-2d/presentation/hud-score.test.ts has not been written yet",
+/**
+ * The score this point poses.
+ *
+ * The review item's own figure. It is five digits with none repeated, so it
+ * cannot be confused with the level, the total or the lives that share the bar,
+ * and it is large enough that a build padding it to a fixed width still spells
+ * it out.
+ */
+const SCORE = 12345;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws the posed score on the HUD bar", async () => {
+  startPlaying(h);
+  h.debug.setScore(SCORE);
+  h.calls.length = 0;
+  await h.advance(1);
+  captureStill(h, "hud");
+
+  const spans = hudSpans(h);
+  const asOneRun = spans.some((span) => figuresIn(span).includes(SCORE));
+  const acrossTheBar = digitsAcross(spans).includes(String(SCORE));
+
+  assertTrue(
+    asOneRun || acrossTheBar,
+    `the score ${SCORE} drawn on the HUD bar, y in [0, 80] (specs/ui.md: the ` +
+      "running score, as digits; specs/board.md: the readouts are drawn " +
+      `inside the HUD bar) — the bar drew ${barText(spans)}`,
   );
 });
