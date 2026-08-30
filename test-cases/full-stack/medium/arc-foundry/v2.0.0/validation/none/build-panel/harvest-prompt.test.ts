@@ -1,27 +1,63 @@
-// Arc Foundry — `build-panel.harvest-prompt`. CASE-PROVIDED. NOT YET WRITTEN.
+// build-panel/harvest-prompt — START before wave 1, SEND after it.
 //
-// The manifest declares this point at `build-panel/harvest-prompt.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/hud.md` fixes the panel's harvest prompt as a non-clickable line reading
+// `KEEP OR COMBINE A ROLL TO START` "before wave `1`" and
+// `KEEP OR COMBINE A ROLL TO SEND` "during a build phase after wave `1`", which
+// are `HARVEST_PROMPT_FIRST` and `HARVEST_PROMPT_LATER`.
 //
-// THE REQUIREMENT. The panel draws HARVEST_PROMPT_START (KEEP OR COMBINE A
-// ROLL TO START) during the build phase before wave 1, and HARVEST_PROMPT_SEND
-// (KEEP OR COMBINE A ROLL TO SEND) during every build phase after it.
-//
-// HOW IT IS DECIDED. Read the panel's text draws in the opening build phase
-// and in the one after wave 1 clears. The evidence it hands back is `prompt`
-// (image): the harvest prompt in both phases.
+// `specs/campaign.md` opens a run with the wave counter at `0` and numbers the
+// waves from `1`, so the counter is what tells the opening build phase from every
+// later one, and `setWave` moves it directly. Both prompts are read in both
+// phases, so a build that draws the same line in each fails rather than passing
+// on half the requirement.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
+import { HARVEST_PROMPT_FIRST, HARVEST_PROMPT_LATER } from "../constants";
+import { PANEL, drew } from "./reading";
 
-import { fail } from "../assert";
+let h: Harness;
 
-describe("build-panel.harvest-prompt", () => {
-  it("The harvest prompt reads START before wave 1 and SEND after", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `build-panel.harvest-prompt` has not been written yet",
-    );
-  });
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("prompts to START in the opening build phase and to SEND after wave 1", async () => {
+  await openYard(h, { wave: 0 });
+
+  const opening = await h.frameCalls();
+  assertEqual(
+    drew(opening, PANEL, HARVEST_PROMPT_FIRST),
+    true,
+    "whether the panel prompts to START in the build phase before wave 1",
+  );
+  assertEqual(
+    drew(opening, PANEL, HARVEST_PROMPT_LATER),
+    false,
+    "whether the panel already prompts to SEND before wave 1",
+  );
+
+  await h.debug.setWave(1);
+  const later = await h.frameCalls();
+  await captureStill(h, "prompt");
+  assertEqual(
+    drew(later, PANEL, HARVEST_PROMPT_LATER),
+    true,
+    "whether the panel prompts to SEND in a build phase after wave 1",
+  );
+  assertEqual(
+    drew(later, PANEL, HARVEST_PROMPT_FIRST),
+    false,
+    "whether the panel still prompts to START after wave 1",
+  );
 });

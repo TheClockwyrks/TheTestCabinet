@@ -1,26 +1,82 @@
-// Arc Foundry — `build-panel.inspector-regulator-substitutes`. CASE-PROVIDED. NOT YET WRITTEN.
+// build-panel/inspector-regulator-substitutes — a Regulator's inspector reads its aura.
 //
-// The manifest declares this point at `build-panel/inspector-regulator-substitutes.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/hud.md`: a selected Regulator reads "its type, its quality tier, and its
+// aura radius and bonus in place of damage, range, and fire rate".
+// `specs/components.md` fixes that aura by tier in `REGULATOR_AURA` — at Charged,
+// a radius of `102` and a bonus of `+16%` — and `specs/instrumentation.md` has
+// the snapshot report both as `auraRadius` and `auraBonus`.
 //
-// THE REQUIREMENT. Selecting a Regulator draws its aura radius and bonus in
-// place of damage, range and fire rate.
-//
-// HOW IT IS DECIDED. Select a Regulator and read the panel's text draws
-// against its reported auraRadius and auraBonus. The evidence it hands back is
-// `inspector` (image): the Regulator's inspector.
+// The two figures are held against the snapshot's own, so the reading is of the
+// build's Regulator rather than of a table copied twice, and the bonus counts as
+// drawn whether it is set as a percentage or as a fraction. Two tiers are read,
+// because a panel that draws one tier's aura from a constant would pass on one.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertContains, assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  standComponent,
+  structureById,
+  type Harness,
+} from "../harness";
+import { NON_FIRING_TYPE, REGULATOR_AURA, type Tier } from "../constants";
+import { PANEL, figures } from "./reading";
 
-import { fail } from "../assert";
+const TIERS_READ: readonly Tier[] = [3, 5];
 
-describe("build-panel.inspector-regulator-substitutes", () => {
-  it("A Regulator's inspector reads its aura instead", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `build-panel.inspector-regulator-substitutes` has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+/** A bonus reads as drawn as a percentage or as a fraction. */
+function drawsBonus(drawn: readonly number[], bonus: number): boolean {
+  return drawn.some(
+    (f) => Math.abs(f - bonus * 100) <= 0.5 || Math.abs(f - bonus) <= 0.005,
+  );
+}
+
+it("draws the Regulator's aura radius and bonus, at two tiers", async () => {
+  await openYard(h);
+
+  for (const tier of TIERS_READ) {
+    const regulator = await standComponent(h, NON_FIRING_TYPE, tier, 10, 10);
+    await h.debug.select(regulator);
+
+    const drawn = await h.frameCalls();
+    if (tier === TIERS_READ[0]) await captureStill(h, "inspector");
+    const reported = structureById(await h.snapshot(), regulator);
+    assertEqual(
+      reported.auraRadius,
+      REGULATOR_AURA[tier - 1]!.radius,
+      `the aura radius a tier-${tier} Regulator reports (specs/components.md)`,
     );
-  });
+    assertEqual(
+      reported.auraBonus,
+      REGULATOR_AURA[tier - 1]!.bonus,
+      `the aura bonus a tier-${tier} Regulator reports (specs/components.md)`,
+    );
+
+    const panel = figures(drawn, PANEL);
+    assertContains(
+      panel,
+      reported.auraRadius,
+      `the panel's figures with a tier-${tier} Regulator selected`,
+    );
+    assertEqual(
+      drawsBonus(panel, reported.auraBonus),
+      true,
+      `whether the panel draws the tier-${tier} aura bonus ` +
+        `${reported.auraBonus}; it drew ${panel.join(", ")}`,
+    );
+
+    await h.debug.dismantle(regulator);
+  }
 });

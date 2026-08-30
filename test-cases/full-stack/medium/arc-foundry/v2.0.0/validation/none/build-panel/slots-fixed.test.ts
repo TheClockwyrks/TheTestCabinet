@@ -1,28 +1,81 @@
-// Arc Foundry — `build-panel.slots-fixed`. CASE-PROVIDED. NOT YET WRITTEN.
+// build-panel/slots-fixed — every action the selection can offer keeps its slot.
 //
-// The manifest declares this point at `build-panel/slots-fixed.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/hud.md`: "every action the selected structure can ever offer is drawn
+// for as long as that structure stays selected, each in its own slot, in a fixed
+// order", and "an action that is unavailable right now is drawn disabled in its
+// slot, visibly inert and ignoring clicks, rather than hidden, removed, or
+// collapsed". Which order that is belongs to the build: the specification fixes
+// that there IS one and that it holds, not what it is, so what is decided here is
+// that the slots, their labels, and their order are the same before and after.
 //
-// THE REQUIREMENT. Every action a selected structure can ever offer is drawn
-// for as long as it stays selected, each in its own slot and in a fixed order,
-// and an action that is unavailable right now is reported disabled in its slot
-// rather than missing from panelButtons.
-//
-// HOW IT IS DECIDED. Select a candidate with no partner, read panelButtons,
-// give it a partner, and compare the two lists slot for slot. The evidence it
-// hands back is `panel` (image): the inspector's fixed action slots.
+// THE STATE CHANGE. A candidate with no matching partner on the yard cannot
+// combine, and `specs/scrap-press.md` offers a quality-combine "on a base
+// structure that has a matching partner anywhere on the yard". So a second
+// candidate of the same type at the same quality turns exactly one action from
+// unavailable to available and touches nothing else: neither tier is an
+// ingredient of any recipe in `specs/combinations.md`, so no `combine-special`
+// row appears or disappears with it. The two readings therefore have to name the
+// same actions with the same labels in the same order, and differ only in
+// `disabled`.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  panelControl,
+  standCandidate,
+  type Harness,
+} from "../harness";
+import type { PanelButton } from "../surface";
 
-import { fail } from "../assert";
+/** A type and tier no recipe of specs/combinations.md calls for. */
+const TYPE = "capacitor";
+const TIER = 2;
 
-describe("build-panel.slots-fixed", () => {
-  it("Every action the selection can offer is drawn in its own slot", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `build-panel.slots-fixed` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+/** A row's identity: the slot it is, not the state it is in. */
+function slots(buttons: readonly PanelButton[]): string[] {
+  return buttons.map((b) => `${b.action} — ${b.label}`);
+}
+
+it("draws the same slots in the same order once a partner appears", async () => {
+  await openYard(h);
+  const alone = await standCandidate(h, TYPE, TIER, 10, 10);
+  await h.debug.select(alone);
+
+  const before = await h.debug.panelButtons();
+  await captureStill(h, "panel");
+
+  assertEqual(
+    (await panelControl(h, "combine")).disabled,
+    true,
+    "whether the combine slot is drawn disabled for a candidate with no " +
+      "matching partner on the yard",
+  );
+
+  await standCandidate(h, TYPE, TIER, 14, 10);
+  await h.debug.select(alone);
+
+  const after = await h.debug.panelButtons();
+  assertDeepEqual(
+    slots(after),
+    slots(before),
+    "the inspector's slots once a matching partner stands on the yard",
+  );
+  assertEqual(
+    (await panelControl(h, "combine")).disabled,
+    false,
+    "whether the combine slot is enabled once a matching partner stands",
+  );
 });
