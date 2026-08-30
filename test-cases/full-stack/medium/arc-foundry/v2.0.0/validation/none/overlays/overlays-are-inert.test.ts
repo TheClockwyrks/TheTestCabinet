@@ -1,28 +1,117 @@
-// Arc Foundry — `overlays.overlays-are-inert`. CASE-PROVIDED. NOT YET WRITTEN.
+// overlays/overlays-are-inert — an open overlay changes nothing about the run.
 //
-// The manifest declares this point at `overlays/overlays-are-inert.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/hud.md` says of the recipe book and of the damage leaderboard alike: "it
+// does not pause or alter the game". `specs/controls.md` fixes what the
+// simulation clock does instead — it advances by `dt * speed` on `playing` unless
+// the game is paused — and names no overlay among the things that stop it.
 //
-// THE REQUIREMENT. Opening either overlay leaves the simulation running: over
-// ten seconds of simulation with the recipe book open and again with the
-// leaderboard open, simTime and the units advance exactly as they do with both
-// closed.
+// So the same ten seconds are run three times from the same seed, with both
+// overlays closed, with the recipe book open, and with the leaderboard open, and
+// the run has to arrive at the same place each time: the same simulation clock,
+// and the same unit at the same point of the same leg of the chain. The unit is
+// released travelling rather than held, because a held unit would still be where
+// it started under an overlay that froze everything.
 //
-// HOW IT IS DECIDED. Advance ten seconds with each overlay open and with both
-// closed and compare simTime and the unit positions. The evidence it hands
-// back is `inert` (replay): the wave running under an open overlay.
+// `openYard` resets between the three, and `reset` seeds every random draw from
+// `DEFAULT_SEED`, so the three runs are the same run.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  lastUnit,
+  openYard,
+  releaseUnit,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** The span specs/hud.md's point is stated over. */
+const SPAN = 10;
+/** A thousandth of a unit: floating point, not a rule about the game. */
+const DIGITS = 3;
 
-describe("overlays.overlays-are-inert", () => {
-  it("Neither overlay pauses or alters the game", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `overlays.overlays-are-inert` has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+interface Reached {
+  simTime: number;
+  x: number;
+  y: number;
+  waypointIndex: number;
+  progress: number;
+}
+
+/** Ten seconds of the same run, with `overlay` open, or with neither. */
+async function tenSeconds(
+  overlay: "combos" | "damage" | null,
+): Promise<Reached> {
+  await openYard(h);
+  if (overlay !== null) await h.debug.setOverlay(overlay, true);
+  await releaseUnit(h, "mote");
+  await h.advanceSeconds(SPAN);
+  const snapshot = await h.snapshot();
+  const unit = lastUnit(snapshot);
+  return {
+    simTime: snapshot.simTime,
+    x: unit.x,
+    y: unit.y,
+    waypointIndex: unit.waypointIndex,
+    progress: unit.progress,
+  };
+}
+
+it("runs the same ten seconds with either overlay open as with neither", async () => {
+  const closed = await tenSeconds(null);
+  assertCloseTo(
+    closed.simTime,
+    SPAN,
+    DIGITS,
+    "the simulation clock after ten seconds with both overlays closed",
+  );
+
+  const withBook = await captureReplay(h, "inert", () => tenSeconds("combos"));
+  const withBoard = await tenSeconds("damage");
+
+  for (const [what, reached] of [
+    ["the recipe book", withBook],
+    ["the damage leaderboard", withBoard],
+  ] as const) {
+    assertCloseTo(
+      reached.simTime,
+      closed.simTime,
+      DIGITS,
+      `the simulation clock after ten seconds with ${what} open`,
     );
-  });
+    assertEqual(
+      reached.waypointIndex,
+      closed.waypointIndex,
+      `the checkpoint the unit is heading for with ${what} open`,
+    );
+    assertCloseTo(
+      reached.progress,
+      closed.progress,
+      DIGITS,
+      `the route the unit has left with ${what} open`,
+    );
+    assertCloseTo(
+      reached.x,
+      closed.x,
+      DIGITS,
+      `where the unit stands with ${what} open`,
+    );
+    assertCloseTo(
+      reached.y,
+      closed.y,
+      DIGITS,
+      `where the unit stands with ${what} open`,
+    );
+  }
 });
