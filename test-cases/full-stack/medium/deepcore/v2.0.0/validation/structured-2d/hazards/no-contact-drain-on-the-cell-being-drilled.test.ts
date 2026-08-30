@@ -1,25 +1,94 @@
-// Deepcore — hazards.no-contact-drain-on-the-cell-being-drilled. STUB: NOT YET AUTHORED.
+// hazards/no-contact-drain-on-the-cell-being-drilled — one charge, not two.
 //
-// The cell being drilled is not charged twice
+// `specs/hazards.md` carves the exception out by hand: "The contact drain is not
+// charged on the cell currently being drilled: that cell's heat is the lump." So
+// cutting into lava costs `LAVA_DRILL_DEEPSTONE` and nothing else, however long
+// the cut takes.
 //
-// The contact drain is not charged on the cell currently being drilled: that
-// cell heat is the lump alone, so cutting into lava costs the lump and not the
-// lump plus a drain for the seconds the cut took.
+// THE POSE IS THE ONE THAT MAKES IT DECIDABLE. `specs/character.md` says a down
+// cut sinks: "the miner's feet travel from the top of that cell to its bottom in
+// proportion to the cut's progress", but only where the cell below the one being
+// cut is solid, since "With open space or lava below the cell being cut, the
+// miner does not sink." So a plain rock cell is laid under the lava, and the
+// miner really does travel down through the lava cell it is cutting, with its
+// box inside that cell for most of the cut. A build that charged the drain on
+// the cell under the drill would charge it for nearly the whole descent.
 //
-// Automated validation: cut a posed lava cell through and hold the total hull
-// lost against the lump alone, net of any other lava the box touches.
-//
-// `test-case.toml` declares this suite as `hazards/no-contact-drain-on-the-cell-being-drilled.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (once (replay)) around the drive.
+// The cut runs at drill tier 1 on purpose, where `specs/upgrades.md`'s twelve
+// hits take a second and a half: the whole point is a long stay inside the cell,
+// and the drain that stay would carry is 48 hull, which no tolerance here could
+// hide.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertEqual, assertLessThan } from "../assert";
+import {
+  BAND_HEALTH,
+  DRILL_DAMAGE_TIERS,
+  DRILL_HIT_INTERVAL,
+  LAVA_CONTACT_DPS,
+  LAVA_DRILL_DEEPSTONE,
+} from "../../src/constants";
+import {
+  captureReplay,
+  createHarness,
+  driveCut,
+  openScene,
+  standOn,
+  type Harness,
+} from "../harness";
+import { armHull, bandRow, drillHitsFor, HAZARD_COL } from "./scene";
 
-test("The cell being drilled is not charged twice", () => {
-  throw new Error(
-    "Deepcore validator `hazards/no-contact-drain-on-the-cell-being-drilled` is declared in test-case.toml but has not been authored yet.",
+/** The tier whose hull survives the lump and would survive the drain as well. */
+const HULL_TIER = 5;
+
+/** How far the reading may sit from the lump, in hull points. */
+const TOLERANCE = 3;
+
+/** The seconds twelve hits at drill tier 1 take, which is how long a drain would run. */
+const CUT_SECONDS =
+  drillHitsFor(BAND_HEALTH.deepstone, DRILL_DAMAGE_TIERS[0]) *
+  DRILL_HIT_INTERVAL;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("charges a lava cut the lump alone, not the lump and a drain", async () => {
+  openScene(h);
+  h.debug.setTier("drill", 1);
+  h.debug.setTier("radiator", 1);
+  const full = armHull(h, HULL_TIER);
+  const row = bandRow(h.snapshot(), "deepstone");
+
+  // Lava to cut, with solid rock beneath it so the miner sinks through the cell
+  // it is cutting rather than hovering above an opening.
+  h.debug.setTile(HAZARD_COL, row, "lava");
+  h.debug.setTile(HAZARD_COL, row + 1, "rock");
+  standOn(h, HAZARD_COL, row);
+
+  const cut = await captureReplay(h, "once", () =>
+    driveCut(h, "down", { col: HAZARD_COL, row }),
+  );
+
+  assertEqual(cut.broke, true, "specs/hazards.md");
+  const loss = full - cut.snapshot.miner.hull;
+  assertBetween(
+    loss,
+    LAVA_DRILL_DEEPSTONE - TOLERANCE,
+    LAVA_DRILL_DEEPSTONE + TOLERANCE,
+    "specs/hazards.md, the lump alone",
+  );
+  // Stated the other way round as well, against the drain the cut would have
+  // carried had the cell under the drill been charged for it.
+  assertLessThan(
+    loss,
+    LAVA_DRILL_DEEPSTONE + LAVA_CONTACT_DPS * CUT_SECONDS * 0.5,
+    "specs/hazards.md, no contact drain on the cell being drilled",
   );
 });

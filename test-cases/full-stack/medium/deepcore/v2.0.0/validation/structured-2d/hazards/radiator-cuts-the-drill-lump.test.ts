@@ -1,24 +1,74 @@
-// Deepcore — hazards.radiator-cuts-the-drill-lump. STUB: NOT YET AUTHORED.
+// hazards/radiator-cuts-the-drill-lump — the radiator thins the lump too.
 //
-// The radiator reduces the lava drill lump
+// `specs/hazards.md` gives the radiator both lava drains: "The radiator tier's
+// effectiveness reduces both the contact drain and the lump by that fraction."
+// So an identical deepstone lava cell is cut through at every radiator tier and
+// each lump is held against `LAVA_DRILL_DEEPSTONE * (1 - effectiveness)`, which
+// is the 33 hull at tier 3 the review item names.
 //
-// The radiator tier effectiveness reduces the lump for drilling through a lava
-// cell by the same fraction, so a deepstone lava cell costs 33 hull at tier 3.
-//
-// Automated validation: cut the same posed lava cell at several radiator tiers
-// and hold each lump against the stated reduction.
-//
-// `test-case.toml` declares this suite as `hazards/radiator-cuts-the-drill-lump.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (shielded (replay)) around the drive.
+// Every tier rather than one, because each effectiveness is its own figure in
+// `specs/upgrades.md`'s table. Five identical cells in five columns of the same
+// row, so every reading is of the same cut at a different tier.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertEqual } from "../assert";
+import { LAVA_DRILL_DEEPSTONE, RADIATOR_TIERS } from "../../src/constants";
+import {
+  captureReplay,
+  createHarness,
+  openScene,
+  pinMiner,
+  type Harness,
+} from "../harness";
+import {
+  armHull,
+  bandRow,
+  cutUnderfoot,
+  FAST_DRILL_TIER,
+  HAZARD_COL,
+} from "./scene";
 
-test("The radiator reduces the lava drill lump", () => {
-  throw new Error(
-    "Deepcore validator `hazards/radiator-cuts-the-drill-lump` is declared in test-case.toml but has not been authored yet.",
-  );
+/** The tier whose hull survives the bare lump with room to read the loss. */
+const HULL_TIER = 5;
+
+/** How far a reading may sit from its lump, in hull points. */
+const TOLERANCE = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("burns the lump less the tier's effectiveness at every tier", async () => {
+  openScene(h);
+  pinMiner(h);
+  h.debug.setTier("drill", FAST_DRILL_TIER);
+  const row = bandRow(h.snapshot(), "deepstone");
+
+  const lumps = await captureReplay(h, "shielded", async () => {
+    const seen: number[] = [];
+    for (let tier = 1; tier <= RADIATOR_TIERS.length; tier += 1) {
+      h.debug.setTier("radiator", tier);
+      armHull(h, HULL_TIER);
+      const burn = await cutUnderfoot(h, HAZARD_COL + tier * 2, row, "lava");
+      assertEqual(burn.cut.broke, true, `specs/hazards.md, tier ${tier}`);
+      seen.push(burn.loss);
+    }
+    return seen;
+  });
+
+  for (let tier = 1; tier <= RADIATOR_TIERS.length; tier += 1) {
+    const expected = LAVA_DRILL_DEEPSTONE * (1 - RADIATOR_TIERS[tier - 1]);
+    assertBetween(
+      lumps[tier - 1],
+      expected - TOLERANCE,
+      expected + TOLERANCE,
+      `specs/hazards.md, a deepstone lava cell at radiator tier ${tier}`,
+    );
+  }
 });
