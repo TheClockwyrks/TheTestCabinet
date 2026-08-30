@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Meltdown \u2014 an open-field tower defense where the towers are the walls and every emitter fires harder the hotter it runs, built on the Simple 2D engine, that runs entirely in the browser.",
+  "description": "Meltdown — an open-field tower defense where the towers are the walls and every emitter fires harder the hotter it runs, built on the Simple 2D engine, that runs entirely in the browser.",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
