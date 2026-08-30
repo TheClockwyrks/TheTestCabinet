@@ -94,6 +94,8 @@ The game's state is yours to shape. `specs/state.md` states what it must carry, 
 
 - `assets/`, the seeded art. `specs/assets.md` is its contract.
 - `index.html`, the page and the canvas the stage is fitted into.
+- `.tcab/`, holding the vendored particle runtime that `package.json` resolves the
+  dependency from.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
   `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
   `vite.config.ts` serves `assets/` in development and copies the same tree into
