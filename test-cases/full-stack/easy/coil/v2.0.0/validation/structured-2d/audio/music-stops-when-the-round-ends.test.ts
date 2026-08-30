@@ -1,12 +1,12 @@
-// audio/music-stops-when-the-round-ends — the bed is not playing once the round
-// it was under has ended.
+// audio/music-stops-when-the-round-ends — the bed is stopped once the round it
+// was under has ended.
 //
 // WHAT THE SPECIFICATION FIXES. `specs/ui.md`, of the `music` bed: it "loops
-// under the round it began with... Once the round has ended the bed is not
-// playing, so a player who dies, clears the board, or leaves the round for the
-// title hears no bed on the screen they land on". `specs/movement.md` ends a
-// round when the head enters a fatal cell, and `specs/ui.md` makes `gameover`
-// the screen that ending reaches.
+// under the round it began with... Once the round has ended the bed is stopped
+// rather than left running quietly, so a player who dies, clears the board, or
+// leaves the round for the title hears no bed on the screen they land on".
+// `specs/movement.md` ends a round when the head enters a fatal cell, and
+// `specs/ui.md` makes `gameover` the screen that ending reaches.
 //
 // WHY THE ROUND IS BEGUN AND ENDED FOR REAL. Both halves of this scenario are
 // things `specs/instrumentation.md` says a pose is NOT. A round only begins when

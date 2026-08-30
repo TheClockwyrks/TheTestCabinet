@@ -2172,7 +2172,7 @@ validation = { script = "audio/music-restarts-on-play-again.test.ts", outputs = 
 [[review.categories.items]]
 id = "music-stops-when-the-round-ends"
 title = "The music bed stops when the round ends"
-description = "The music bed is no longer playing once the round it was under has ended, so no bed runs on under the game over screen."
+description = "The music bed is stopped once the round it was under has ended, so no bed runs on under the game over screen."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: start a round from the title, let the chain run into the
