@@ -1,22 +1,75 @@
-// Wireworm — progression.empty-board-does-not-clear, under the `none` engine. CASE-PROVIDED.
+// progression/empty-board-does-not-clear — a board that never held a segment is
+// being played, not cleared.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// `specs/progression.md`, Clearing a level: "A level clears on the step in which
+// the last of its worm segments is removed. The clear is that removal, so a
+// board that holds no worm segments and has had none removed is being played
+// rather than cleared, and the level stands."
 //
-// The point it decides, from `test-case.toml`:
+// This is the predicate half of the rule, and it is LOAD-BEARING FOR THE WHOLE
+// SUITE. The shared harness's `startPlaying` poses an empty board, which is what
+// lets every mechanic scenario in this project stand up exactly the entities its
+// requirement concerns and nothing else. A build that treats "no worms on the
+// board" as a clear advances the level the instant any of those scenarios is
+// posed, and none of them can be posed at all.
 //
-// An empty board is playing, not cleared
+// So the board is posed and then simply left alone for several seconds of game
+// time with all three world gates shut — no foe spawns, no worm enters, no
+// contact costs a life — and the run is read where it was. A build that clears
+// on the predicate answers with a level one higher and a `banner` phase; a build
+// that clears and keeps clearing answers with a level several higher, or with
+// the victory screen; a correct build answers with the level it was posed on,
+// still in live play.
 //
-// A board posed with no worm, from which no segment has been removed, is still
-// on the same level and still active several seconds later. This is the rule
-// the whole harness rests on — startPlaying poses an empty board — so a build
-// that clears on it makes every mechanic scenario in the suite unposeable.
+// The level posed is deliberately not `1`, so a build that mistakes an empty
+// board for a fresh run rather than a clear is caught by the same reading.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  framesFor,
+  startPlaying,
+  type Harness,
+} from "../harness";
 
-test("progression.empty-board-does-not-clear", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/none/progression/empty-board-does-not-clear.test.ts has not been written yet",
+/** The level the empty board is posed on, and the level it must still report. */
+const LEVEL = 4;
+
+/** How long the board is left alone, in seconds of game time. */
+const HELD_FOR = 5;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("holds its level through seconds of empty live play", async () => {
+  await startPlaying(h, { level: LEVEL });
+
+  await h.advance(framesFor(HELD_FOR));
+
+  await captureStill(h, "playing");
+  const after = await h.snapshot();
+  assertEqual(
+    after.screen,
+    "playing",
+    `the screen after ${HELD_FOR}s on an empty board`,
+  );
+  assertEqual(
+    after.phase,
+    "active",
+    `the phase after ${HELD_FOR}s on an empty board`,
+  );
+  assertEqual(
+    after.level,
+    LEVEL,
+    `the level after ${HELD_FOR}s on an empty board`,
   );
 });
