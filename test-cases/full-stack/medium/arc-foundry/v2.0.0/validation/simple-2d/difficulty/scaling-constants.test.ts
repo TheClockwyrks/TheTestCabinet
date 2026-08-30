@@ -82,6 +82,9 @@ it("scales maximum health by the constants of the chosen difficulty", async () =
     }
   }
 
+  // Every reading above is already taken, and every unit released is frozen on an
+  // otherwise empty yard, so the one frame the still is of moves nothing.
+  await h.advance(1);
   captureStill(h, "scaling");
 
   // The three curves are three different curves. Every type separates them,

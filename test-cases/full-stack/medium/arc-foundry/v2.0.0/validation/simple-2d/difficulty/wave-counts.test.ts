@@ -8,8 +8,11 @@
 //
 // HOW IT IS DECIDED. A run is opened at each difficulty in turn, through the same
 // path confirming the difficulty select takes, and `totalWaves` is read straight
-// back off the snapshot. Nothing is advanced: the count is a property of the run
-// the moment it opens, not of anything that happens in it.
+// back off the snapshot before anything is advanced: the count is a property of
+// the run the moment it opens, not of anything that happens in it. The one frame
+// that runs afterwards draws the run the last reading was taken from, which is
+// what the still is of; the build phase is untimed (`specs/campaign.md`), so it
+// moves nothing this check read.
 //
 // WHAT THIS POINT IS NOT. That clearing wave `N` ends the run is the campaign
 // checklist's `victory-after-final-wave`, and how tough wave `N` is is
@@ -59,6 +62,7 @@ it("reports the wave count each difficulty states", async () => {
     counts.push(s.totalWaves);
   }
 
+  await h.advance(1);
   captureStill(h, "counts");
 
   // The three are three different lengths of run, so a build reporting one

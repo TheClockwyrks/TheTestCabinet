@@ -131,6 +131,9 @@ it("opens every run with the same Charge, Integrity, stamps and refinement", asy
       };
     },
   );
+  // The allocations are read and compared above; the one frame the still is of
+  // draws the last run opened, and the build phase is untimed.
+  await h.advance(1);
   captureStill(h, "same");
 });
 
