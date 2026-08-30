@@ -422,9 +422,9 @@ function drawHowto(
   height: number,
 ): void {
   scrim(ctx, width, height, COLOR.scrim);
-  label(ctx, "HOW TO PLAY", width / 2, 110, 44, COLOR.accent, "center");
+  label(ctx, "HOW TO PLAY", width / 2, 96, 44, COLOR.accent, "center");
   HOWTO_LINES.forEach((line, index) => {
-    label(ctx, line, width / 2, 170 + index * 28, 19, COLOR.text, "center");
+    label(ctx, line, width / 2, 158 + index * 28, 19, COLOR.text, "center");
   });
   label(ctx, "ESC  BACK", width / 2, height - 40, 20, COLOR.textDim, "center");
 }
@@ -505,10 +505,13 @@ export function renderGame(
   drawFoes(ctx, state);
   drawArcs(ctx, state);
   drawBolts(ctx, state);
-  if (state.screen !== "title" && state.screen !== "howto") {
+  // The cursor and the HUD belong to a run, so the two screens a run has not
+  // opened from show the board alone behind their copy.
+  const inRun = state.screen !== "title" && state.screen !== "howto";
+  if (inRun) {
     drawCursor(ctx, state);
+    drawHud(ctx, state, width);
   }
-  drawHud(ctx, state, width);
 
   switch (state.screen) {
     case "title":

@@ -1,101 +1,230 @@
-# Wireworm — starter project
+# Wireworm — `simple-2d` reference implementation
 
-This repository is the starting point for building **Wireworm**, the game the
-specification under `specs/` describes. Read `specs/overview.md` first; it says
-how the rest of the specification is organized.
+The authored, **correct** reference build of the Wireworm end-to-end test case,
+on the [Simple 2D](../../../../../../../packages/simple-2d) engine. It is the
+answer a run on `simple-2d` is compared against. It is **never seeded into a
+run** — handing a model the finished game would defeat the test — and takes no
+part in the case's seed set. The case specs under `../../specs/` remain
+authoritative for the design.
 
-The project is already wired up. It builds on the **Simple 2D** engine, which is
-installed as an ordinary dependency and documents itself under `engine/` — read
-that alongside the specs. What is missing is the game.
+The project is the case's seeded workspace with `src/game.ts` implemented, the
+game split across new modules beside it, and its own tests written alongside, so
+what is here is exactly what a run on this engine is asked to produce.
 
-## What you own
+---
 
-**`src/game.ts`, and any new files you add beside it.**
+**Wireworm** is a fixed-shooter arcade game played on a circuit board. A
+segmented data-worm winds down a `40 x 20` grid of capacitor nodes; the player is
+a defrag cursor pinned to a shallow band along the floor, firing upward to cut
+the worm apart before it reaches the band.
 
-`src/game.ts` declares and exports `WirewormState`, exactly as `specs/state.md`
-fixes it, and `WirewormDebugApi`, the debug and automation surface
-`specs/instrumentation.md` specifies. The seeded stub is written against both
-names, so the project does not compile until they exist — a fresh workspace
-failing `npm run typecheck` is the starting point, not a broken seed.
+Its defining idea is the **charged field**. Every node the worm is turned by
+gains a charge, so the collision that steers the worm also arms the terrain it
+steers on. Shoot a node at full charge and it detonates, arcing through the whole
+connected cluster of charged nodes around it, clearing them and frying every worm
+segment caught in the blast. Every segment a bolt cuts leaves a fresh node
+behind, so the field thickens as the fight goes on — and a critical node the worm
+reaches sends it diving straight down its column at the band.
 
-`src/game.ts` then exports `game`, a `Game<WirewormState, WirewormDebugApi>`:
-three functions over that state. `initialize` builds the state and the debug
-surface once and returns them together as `[state, debug]`; `update` takes the
-current state as a read-only view (`DeepReadonly<WirewormState>`, from
-`ts-essentials`) and returns the next state, advanced against the frame's delta
-time in seconds; and `render` is handed that next state, read-only again, and
-draws it. The engine holds the state by value and replaces it with whatever
-`update` returns, so a frame builds the next state from the current one rather
-than writing into it, and the type is what guarantees that rendering changes
-nothing. All three currently throw `"not implemented"`. Implement them.
+Three support foes work the board alongside it: the **glitch** skitters through
+the lower board eating nodes, the **dropper** falls down a column reseeding the
+field beneath it, and the **corruptor** crawls the upper board slamming nodes
+straight to critical. A run is twelve levels on one board, three lives, and a
+worm that lengthens and quickens at every level.
 
-**The worm is clocked; everything else is a rate.** The worm advances one tile
-each time its own step clock reaches the level's step interval, and a frame
-covering several intervals runs several steps in order — `specs/worm.md` states
-the rule. The cursor, the bolts, the foes and the phase timers are all per-second
-rates integrated against the delta time the engine hands `update`.
+This is a self-contained static web app — plain **TypeScript** over the engine,
+drawing to an **HTML5 canvas**, bundled with **Vite**. No backend, accounts,
+network calls, or API keys; everything needed to play is in the built bundle.
 
-**The sprite art comes from the engine's asset loader**, which resolves every
-path under the fixed `assets/` root relative to the page. Await every frame
-inside `initialize`, so a frame is a plain image value by the time anything draws
-it.
+## The look
 
-The debug surface is a required deliverable. The engine returns it from
-`engine.debug` exactly as `initialize` handed it over, and that is how the game
-is driven from code, so it is present and exactly as
-`specs/instrumentation.md` specifies. Because nothing holds a writable state, its
-operations are written in the shape of `update`: a pose takes the current state
-and returns the next, and a caller applies it through
-`engine.apply((s) => debug.setNode(s, c, r, charge))`; a reading takes the state
-and returns what it read, as `debug.snapshot(engine.state)`. Nothing is published
-to the page.
+The cold, near-black circuit substrate, its trace grid, the lit rail along the
+player band and the mint-and-cyan chrome are this build's own. The specification
+fixes the rules and the geometry and deliberately leaves the palette, the type
+and the layout to the build, stating only what a player has to read at a glance:
+the four charge states as a ramp, the worm apart from the field, the cursor
+apart from its band, the three foes apart from one another. So the look lives in
+`src/theme.ts` rather than beside the case-fixed figures in `src/constants.ts`,
+which carries no color and no typeface at all.
 
-`WirewormState` **is a contract**. Keep every field, under the name, type, and
-meaning `specs/state.md` gives it. You may add fields, but only for data you can
-rebuild from the declared ones: the declared fields are the whole of the
-authoritative state, and the surface's `reset()` restores exactly those.
+The nodes, the worm, the cursor and the three foes are drawn from the **seeded
+sprite art** under `assets/`, loaded through the engine's asset loader under the
+fixed `assets/` root. Everything else — the board, the band, a bolt, a discharge
+arc, the HUD, every screen — is drawn in code.
 
-Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
-runs them in process, with coverage over `src/`. The engine's documentation
-carries a complete worked example of testing a game this way.
+## Controls
 
-## What you must not edit
+Every keyboard control is a **registered engine action** on the
+`dpad-4-two-buttons` touch layout:
 
-- **`src/main.ts`** — the fixed entry point. It creates the engine over the
-  page's canvas, binds `game` to it, and runs.
-- **`src/constants.ts`** — every figure the specification fixes: the stage and
-  board geometry and the tile-to-stage map, the worm's cadence and length, the
-  charge and discharge figures, the cursor's bounds and rate, the run and its
-  scoring, every foe's speeds and gates, the sprite frame counts and rates, the
-  action names, the bindings, the cue names, and the screen copy. Read from it.
-- **`assets/`** — the seeded sprite art. `specs/assets.md` is the contract for
-  what each folder holds and which frame is drawn for which state. Draw the game
-  from these frames; do not redraw them, add to them, or replace them.
-- **`index.html`** — the page and the canvas the engine fits the stage into.
-- **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
-- **`.tcab/`** — the vendored engine.
+| Action                           | Keys               | Does                                                            |
+| -------------------------------- | ------------------ | --------------------------------------------------------------- |
+| `up` / `down` / `left` / `right` | Arrows or `WASD`   | Moves the cursor inside its band; moves a menu highlight.       |
+| `a` / `b`                        | `Space`            | Fires a bolt, every `0.15` s while held, up to three in flight. |
+| `confirm`                        | `Enter` or `Space` | Takes the highlighted menu item.                                |
+| `back`                           | `Esc`              | Leaves the current screen.                                      |
+| `pause`                          | `P` or `Esc`       | Pauses live play.                                               |
+| `mute`                           | `M`                | Toggles sound, on any screen.                                   |
 
-Add dependencies to `package.json` if you genuinely need them, and commit the
-`package-lock.json` — the build is installed with `npm ci`. Leave the existing
-entries alone.
+The **backtick** key (`` ` ``) toggles the engine's debug overlay, which shows
+the screen and phase, the score, lives and level, how many nodes stand, each
+worm's id, length, head tile, headings and diving flag, each foe's id, kind and
+position, the cursor, and how many bolts are in flight. That key belongs to the
+engine, not to this game.
 
-## Commands
+## What the engine owns
 
-- `npm run dev` — serves the game with hot reload.
-- `npm run build` — type-checks, then emits the static site into `dist/`.
-- `npm run preview` — serves `dist/` for a final check.
-- `npm run typecheck` — `tsc --noEmit`.
-- `npm run lint` — ESLint.
-- `npm run format` — Prettier, in check mode.
-- `npm test` — Vitest over `src/**/*.test.ts`, with coverage.
+`@test-cabinet/simple-2d` supplies everything that is the same in every browser
+game, and none of it is written here: the frame loop and its delta time in
+seconds, the state held by value and handed out `DeepReadonly`, the canvas fit
+(uniform scale, centered letterbox, device pixel ratio), named keyboard actions
+with edge detection, audio cue synthesis with mute and the first-gesture unlock,
+asset loading under the fixed `assets/` root, and the debug overlay. What is left
+is the game: the field, the worm, the discharge, the foes, the run, the drawing,
+and the state the debug surface poses.
 
-## Before you finish
+## The state is a value
 
-- `npm run build` produces `dist/` with `index.html` at its root and the sprite
-  art under `dist/assets/`, and that directory runs as-is on any static host.
-- `npm run typecheck`, `npm run lint`, `npm run format`, and `npm test` all pass.
-  The same four commands are run over the repository you leave behind.
-- **Replace this file** with the `README.md` `specs/overview.md` asks the
-  finished build to ship: what the game is, how to install it, how to run it in
-  development, how to produce the production build, and the controls.
+Every field of `WirewormState` is `readonly` and every array a `readonly` array,
+so the declared type and the `DeepReadonly` view the engine hands out are the
+same shape, and nothing in this build writes to a state it was handed. What a
+frame does instead is copy the state into `Sim` — a field-for-field mutable
+mirror in `src/sim.ts` — advance that, and return it, which keeps each rule
+readable as the rule while the immutability the engine requires is enforced at
+the one boundary where it matters. There is no module-level game state and no
+closure over mutable data; `render` and every diagnostic source are reads of the
+state they are given, and the compiler is what says they cannot change it.
+
+**The worm is clocked; everything else is a rate.** Each worm carries its own
+step accumulator and takes one tile step for each interval that accumulates,
+carrying the remainder, so a frame covering several intervals runs several steps
+in order. The cursor, the bolts, the foes, the arcs and the phase timers are all
+per-second rates integrated against `dt`.
+
+## Debugging and automation
+
+The game exposes the debugging and automation surface `specs/instrumentation.md`
+fixes, **through the engine**: `src/debug.ts` builds it, `initialize` returns it
+beside the state as `[state, createDebugApi()]`, and a caller reads that same
+object back off **`engine.debug`**. Nothing is published on the page.
+
+Every operation is a pose or a reading over `WirewormState`, written in the shape
+of `update`, and each pose sets one field and takes scalars:
+
+```ts
+engine.apply((s) => engine.debug.setNode(s, 10, 10, 3));
+engine.apply((s) => engine.debug.addWorm(s, 10, 11));
+engine.apply((s) => engine.debug.addBolt(s, 336, 528));
+await engine.advance(20);
+const { nodes, worms, arcs, score } = engine.debug.snapshot(engine.state);
+```
+
+Beside the core (`reset`, seedable, and `snapshot`) it carries the screen and run
+poses, the three **world gates** — `setFoeSpawning`, `setWormEntry` and
+`setCursorContact`, each gating one faculty of the level itself so a posed
+scenario is not invaded by entities its requirement never asked for — the cursor
+and bolt operations, the node-field operations, the per-worm and per-foe
+operations with their two faculty gates each, and the four `clear*` operations,
+one per roster. Everything about _driving a browser game_ — the clock, exact
+frames, key events, the overlay, the mute bit — is the engine's, which is why the
+surface carries no `advance`, no `keyDown` and no `setMuted`. It is inert during
+normal play.
+
+## Requirements
+
+- Node.js 20+ and npm. No other toolchain is needed.
+
+## Install
+
+From the repository root, install the npm workspace and build its packages:
+
+```sh
+npm ci && npm run build:packages
+```
+
+Then, in this directory:
+
+```sh
+npm ci
+```
+
+The engine, `@test-cabinet/simple-2d`, is a relative `file:` dependency on the
+repository's `packages/simple-2d`, which npm installs as a symlink, so this
+project builds and tests against the engine's current source. A run receives the
+same package at `.tcab/engine/@test-cabinet/simple-2d/` instead, so the import in
+the sources is the same either way.
+
+## Run in development
+
+```sh
+npm run dev
+```
+
+Vite serves the game with hot reload at the URL it prints (default
+`http://localhost:5173`), and serves the `assets/` tree from the project root.
+
+## Production build
+
+```sh
+npm run build
+```
+
+This type-checks the sources and emits a complete static site into **`dist/`**,
+with `index.html` at its root and the sprite art under `dist/assets/`. Serve that
+directory as-is from any static file server, at any base path:
+
+```sh
+npm run preview        # serves dist/ locally for a final check
+```
+
+## Checks
+
+```sh
+npm run typecheck      # tsc --noEmit
+npm run lint           # eslint
+npm run format         # prettier --check
+npm test               # vitest, with coverage over src/
+```
+
+`npm test` runs the build's own suite **in process**: it stands a real engine up
+over an `@napi-rs/canvas` canvas and a `SurfaceMetrics` of its own, steps it with
+`engine.advance` against a `ConstantClock`, drives the keyboard by dispatching
+events at the surface's event target, poses scenarios through `engine.apply`, and
+reads results back from the state, the debug surface, the engine's cue events and
+the pixels the render produced. No browser is involved. One file
+(`src/sprites.test.ts`) additionally stands `fetch` and `createImageBitmap` up
+over the project's own `assets/` directory, so the seeded frames are loaded and
+drawn for real.
+
+## Project layout
+
+```
+index.html            Vite entry; hosts the <canvas>, sized by CSS alone
+vite.config.ts        Build config (emits to dist/, copies assets/ into it)
+vitest.config.ts      The build's own test suite, over src/
+assets/               The seeded sprite art, six folders of 32x32 frames
+src/
+  main.ts             Bootstrap: create the engine, initialize it, and run
+  constants.ts        Every figure the specification fixes (logical 1280x720);
+                      seeded by the case and not edited
+  theme.ts            This build's own look: palette and type
+  game.ts             The WirewormState contract, BACKGROUND, and the three
+                      functions the engine drives
+  sim.ts              The mutable mirror a frame is built in, and FrameEvents
+  field.ts            The node field: charge, the tile map, the starting scatter
+  worm.ts             Entry, the step, and the runs a cut worm falls into
+  discharge.ts        The chain, what it fries, and the arcs it reports
+  bolts.ts            Firing, swept flight, and what a bolt resolves against
+  foes.ts             The three foes' motion, their effect, and their spawners
+  cursor.ts           The band clamp, the movement rate, and contact
+  scoring.ts          Every figure paid, and the bonus life it earns
+  flow.ts             The opening state, reset, the run, the life, the level
+  simulate.ts         One frame, from the top: the order the rules run in
+  assets.ts           Loading the seeded frames through the engine's loader
+  input.ts            The registered actions and this frame's reads
+  audio.ts            The ten engine cues
+  diagnostics.ts      The values the engine's overlay shows
+  debug.ts            The debug surface: poses and readings over WirewormState
+  render.ts           All canvas drawing, in logical space
+  *.test.ts           The build's own tests, beside the code they cover
+```
