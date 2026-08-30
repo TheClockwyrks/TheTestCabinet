@@ -13,14 +13,43 @@ None of it is seeded into a run. A reference build is the authored, correct
 implementation the case's own validators are proven against, and the source
 `tcab capture-baselines` builds to capture `validation-baseline/<engine>/<variant>/`.
 
-Version resolution requires all six directories to exist, so each holds a
-`.gitkeep` until its build lands. That marker is the whole of what is there.
+Version resolution requires all six directories to exist, so one that has no
+build yet holds a `.gitkeep`, and that marker is the whole of what is there.
 
-## All six are empty
+## What is built
 
-No `v2.0.0` reference exists for any engine yet. Each build is written against
-the seeded specification of this version, engine by engine, and installed into
-its own directory.
+| Path | State |
+| --- | --- |
+| `none/base`, `none/maze` | Built. A Vite + TypeScript project on no engine, with its produced assets, its own tests, and its showcase. |
+| `simple-2d/base`, `simple-2d/maze` | Not written yet. A `.gitkeep` holds the directory. |
+| `structured-2d/base`, `structured-2d/maze` | Not written yet. A `.gitkeep` holds the directory. |
+
+## The two engineless builds
+
+They are one project, twice. `diff -rq` over the pair names `src/mode.ts` and
+nothing else outside `showcase/`, whose media is captured from each build in
+turn. That one file names the mode, and everything that follows from it is
+derived there: the menu entry and the HUD label, whether the interior carries
+`OBSTACLE_CELLS`, whether the debug surface lays `clearObstacles` and
+`addObstacle`, and which cells the how-to-play screen calls fatal.
+
+Each is its own npm project rather than a workspace member, so it is installed
+and checked from its own directory:
+
+```sh
+npm ci
+npx tsc --noEmit && npx eslint . && npx prettier --check . && npx vitest run
+npm run build
+```
+
+`npm run build` emits a self-contained static site into `dist/`, bundling the
+committed files under `assets/` and running with the asset-generation binaries
+absent. `scripts/gen-sprites.sh` and `scripts/gen-audio.sh` are how those files
+were produced, and they are run by hand rather than by the build.
+`scripts/capture-showcase.mjs` serves the built site, plays it with real key
+presses, and writes the showcase media.
+
+## The `v1.0.0` build is not one of them
 
 `none/base` and `none/maze` briefly held the `v1.0.0` build, carried across when
 the version's directories were keyed by engine. It was removed rather than left
@@ -42,4 +71,4 @@ version's labels. It implements the `v1.0.0` specification, and it is wrong for
 - it ships no `showcase/` directory.
 
 The tree itself is frozen at `../../v1.0.0/reference-impl/` if the old build is
-worth reading while a new one is written.
+worth reading while the remaining four are written.
