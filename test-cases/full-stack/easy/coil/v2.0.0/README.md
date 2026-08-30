@@ -34,11 +34,11 @@ mishandles turning both fall short.
 
 Coil is designed for three engines, and seeds a different project for each:
 
-| Engine          | What the seeded project supplies                                                                                                                                                                                                                                              |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `none`          | The toolchain configuration and `index.html`, and nothing else. There is no `src/`. The build writes the fixed-tick loop and its clock, the canvas fit, keyboard input, audio, the overlay and the `window.__coil` surface, and then the game on top of it.                   |
-| `simple-2d`     | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts`. Its `initialize` returns the debug surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`. |
-| `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored the same way, plus the same two case-owned modules. The build writes `src/game.ts`: the game definition, its mode, its live state and its actors, and the debug surface its instance's `initialize` returns.   |
+| Engine          | What the seeded project supplies                                                                                                                                                                                                                                           |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`          | The toolchain configuration and `index.html`, and nothing else. There is no `src/`. The build writes the fixed-tick loop and its clock, the canvas fit, keyboard input, audio, the overlay and the `window.__coil` surface, and then the game on top of it.                |
+| `simple-2d`     | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/main.ts`. The build writes `src/game.ts`. Its `initialize` returns the debug surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`.                     |
+| `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored the same way, plus the same one case-owned module. The build writes `src/game.ts`: the game definition, its mode, its live state and its actors, and the debug surface its instance's `initialize` returns. |
 
 The asset-production pass is common to all three. No engine supplies art or sound,
 so every run produces the snake's sprite set and the game's audio with the
@@ -54,9 +54,9 @@ Coil ships two variants, each a single mode:
 | `maze`  | Maze mode on a board laced with a fixed course of fatal interior obstacles the snake must thread. |
 
 Every spec is common and seeded for both. What differs between the two modes, the
-mode's menu entry and the interior obstacle course, is branched by variant slug
-inside `specs/gameplay.md.hbs`, so a run's seeded set describes exactly one mode
-and reads as self-contained.
+mode's menu entry, its HUD label and the interior obstacle course, is branched by
+variant slug inside `specs/mode.md.hbs`, so a run's seeded set describes exactly
+one mode and reads as self-contained.
 
 Maze declares its own `maze` scoring domain and the review points that roll up to
 it. It also declares its own version of each common point whose behavior the
@@ -84,16 +84,18 @@ points.
 The specification is split across `specs/` by concern, and every file is seeded
 for every run:
 
-| Spec                 | Covers                                                                     |
-| -------------------- | -------------------------------------------------------------------------- |
-| `overview.md`        | What is built, the code quality, and the commands run over the repository. |
-| `board.md`           | The grid, the cell geometry, and the walls.                                |
-| `movement.md`        | The fixed tick, grid-locked motion, turning, growth and collision.         |
-| `combo.md`           | The multiplier, its decay window, its cap and the scoring formula.         |
-| `gameplay.md`        | The mode this run builds and its main-menu entry.                          |
-| `ui.md`              | The game states, the controls, the audio cues and the HUD.                 |
-| `assets.md`          | The production contract for the assets the model must make.                |
-| `instrumentation.md` | The debug and automation surface and the diagnostics overlay.              |
+| Spec                 | Covers                                                                      |
+| -------------------- | --------------------------------------------------------------------------- |
+| `overview.md`        | What is built, the runtime, the code quality, and the commands run over it. |
+| `board.md`           | The cell grid, the wall border, the starting chain and pellet placement.    |
+| `movement.md`        | The fixed tick, the order it resolves in, turning, growth and collision.    |
+| `scoring.md`         | The score, the multiplier, its window and its cap, and the best score.      |
+| `mode.md`            | The mode this run builds, its menu entry and its obstacle course.           |
+| `controls.md`        | The actions, the keys bound to them, and what each does on each screen.     |
+| `ui.md`              | The screens, the menus, the HUD and the audio cues.                         |
+| `assets.md`          | The production contract for the assets the build must make.                 |
+| `instrumentation.md` | The debug and automation surface and the diagnostics overlay.               |
+| `showcase.md`        | The showcase directory the finished build ships beside its source.          |
 
 ## Assets and media
 

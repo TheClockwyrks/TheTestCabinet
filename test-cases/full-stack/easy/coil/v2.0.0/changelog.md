@@ -11,9 +11,10 @@ grid serpent under all three. Under `none` the workspace is the toolchain and th
 page: the build writes the fixed-tick loop, the canvas fit, keyboard input, audio,
 the diagnostics overlay, every figure the specification fixes, and the debugging
 surface it installs on `window.__coil`. Under either engine the workspace vendors
-the runtime as a package and carries the case-owned modules around the game,
-`src/constants.ts` and `src/main.ts`, and the build writes `src/game.ts` and the
-debug surface its `initialize` returns.
+the runtime as a package and carries the one case-owned module around the game,
+`src/main.ts`, and the build writes `src/game.ts` and the debug surface its
+`initialize` returns. Every figure the specification fixes is named in the specs
+and declared by the build, on every engine.
 
 Saying that takes a new way to name the starter project. A `[workspaces]` table
 names one directory per engine, and a reference implementation is named the same
@@ -58,6 +59,19 @@ board told apart from both.
 
 In exchange, every behavior a validator reads is stated exactly, and each point on
 the checklist is one observable behavior with one validator behind it.
+
+## The specification is re-cut, and it branches on the engine
+
+The seeded set is decomposed by concern into ten files. The scoring and the combo
+leave the old `combo.md` for `scoring.md`, the mode leaves `gameplay.md` for
+`mode.md`, the controls leave the UI file for `controls.md`, and `showcase.md`
+joins the set. `overview.md`, `controls.md`, `ui.md`, `assets.md`,
+`instrumentation.md` and `showcase.md` branch on the selected engine, so a run
+reads only what its own runtime hands it and what it must write itself.
+
+The best score is now the best of the session rather than a figure kept in browser
+storage between sessions, and nothing persists between sessions. It still rises
+live as the score passes it and still carries from one round to the next.
 
 ## The points the two modes disagree on
 

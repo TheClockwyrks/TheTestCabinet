@@ -7,7 +7,7 @@ description = "Classic mode: grow the snake, thread the open board, and build th
 
 # This variant seeds no spec of its own: the mode — its menu entry (`CLASSIC`) and
 # the open, obstacle-free board — is the default branch of the common
-# `specs/gameplay.md.hbs`, selected by the variant slug when that template is
+# `specs/mode.md.hbs`, selected by the variant slug when that template is
 # rendered for this variant.
 
 # The authored, *correct* playable build of this variant, one directory per supported
