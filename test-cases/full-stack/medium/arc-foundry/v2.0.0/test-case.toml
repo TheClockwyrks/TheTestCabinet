@@ -2709,7 +2709,7 @@ validation = { script = "controls/key-mute.test.ts", outputs = [
 [[review.categories.items]]
 id = "press-edge-only"
 title = "Every action but modify is read as a press edge"
-description = "Holding a bound key down fires its action exactly once: with KeyF held for sixty frames the speed multiplier steps once, not sixty times."
+description = "Holding a bound key down fires its action exactly once: with KeyF held across dozens of frames the speed multiplier steps one place, not one place per frame."
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: hold a bound key across many frames and count the
