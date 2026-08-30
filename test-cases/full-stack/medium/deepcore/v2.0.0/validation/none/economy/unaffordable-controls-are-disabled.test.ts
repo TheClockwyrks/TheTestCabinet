@@ -100,7 +100,7 @@ it("draws the Fuel Depot's fixed increments differently one Credit short of thei
   const fuelControlLow = await at(FUEL_INCREMENT_COST + CONTROL_OFFSET - 1);
   const fuelAffordable = await at(FUEL_INCREMENT_COST);
   const fuelShort = await at(FUEL_INCREMENT_COST - 1);
-  captureStill(h, "disabled");
+  await captureStill(h, "disabled");
 
   // The hull row, with the tank full so nothing on it changes.
   await h.debug.setFuel(FUEL_TANK_MAX[0]);

@@ -52,7 +52,7 @@ it("drops the rows past the new Core chamber when the size is taken shallower", 
 
   await h.debug.setWorldSize(TO);
   await h.advance(1);
-  captureStill(h, "shallower");
+  await captureStill(h, "shallower");
   const shallow = await h.snapshot();
 
   assertEqual(deep.coreRow, coreRowFor(FROM), `specs/world.md: coreRow at ${FROM}`);

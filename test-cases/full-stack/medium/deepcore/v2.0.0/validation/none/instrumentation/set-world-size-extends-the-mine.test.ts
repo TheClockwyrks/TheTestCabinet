@@ -64,7 +64,7 @@ it("reaches rows past the old depth after the size is taken deeper", async () =>
 
   await h.debug.setWorldSize(TO);
   await h.advance(1);
-  captureStill(h, "deeper");
+  await captureStill(h, "deeper");
   const deep = await h.snapshot();
 
   assertEqual(

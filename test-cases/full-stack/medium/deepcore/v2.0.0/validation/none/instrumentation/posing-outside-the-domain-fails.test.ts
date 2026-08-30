@@ -76,7 +76,7 @@ it("refuses every posing operation aimed outside the stated domain", async () =>
   await h.debug.setTile(COL, ROW, "rock");
   await standOn(h, COL, ROW);
   await h.advance(2);
-  captureStill(h, "loud");
+  await captureStill(h, "loud");
 
   const before = await h.snapshot();
   const outside: readonly (readonly [number, number])[] = [

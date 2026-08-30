@@ -94,7 +94,7 @@ it("answers no click on the status bar while the pause menu is up", async () => 
   await h.debug.setScreen("paused");
   await h.advance(2);
   const paused = await h.snapshot();
-  captureStill(h, "inert");
+  await captureStill(h, "inert");
 
   const found = live;
   let atLive = null as Awaited<ReturnType<Harness["snapshot"]>> | null;

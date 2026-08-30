@@ -190,7 +190,7 @@ it("leaves the world behind the pause menu exactly where the pause found it", as
     await h.advanceSeconds(HELD_SECONDS, HELD_FRAMES);
     moved = Math.max(moved, await slideFrom(held));
   }
-  captureStill(h, "frozen");
+  await captureStill(h, "frozen");
 
   assertEqual(
     cut.broke,
