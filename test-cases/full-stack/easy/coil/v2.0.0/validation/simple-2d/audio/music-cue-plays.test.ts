@@ -2,10 +2,11 @@
 // before.
 //
 // WHAT THE SPECIFICATION FIXES. `specs/ui.md` names the event: `music` plays when
-// "a round begins. It loops under the game until the round ends." `specs/mode.md`
-// makes the first item of the title menu the mode's own entry, and `specs/ui.md`
-// says what accepting it does: "`confirm` on it starts a round, which sets
-// `screen` to `playing` with the board laid out as `specs/board.md` states."
+// "a round begins", and the bed "loops under the round it began with".
+// `specs/mode.md` makes the first item of the title menu the mode's own entry,
+// and `specs/ui.md` says what accepting it does: "`confirm` on it starts a
+// round, which sets `screen` to `playing` with the board laid out as
+// `specs/board.md` states."
 //
 // WHY THIS ONE POINT PRESSES KEYS. Every other point in this project reaches its
 // screen through `setScreen`, because a build with a broken menu and a correct

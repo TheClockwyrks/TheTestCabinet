@@ -390,7 +390,7 @@ function startMusic(api: UpdateApi): void {
 
 /**
  * Stop the music bed once the round it was playing under is over (specs/ui.md:
- * it "loops under the game until the round ends").
+ * "Once the round has ended the bed is not playing").
  *
  * Reconciled every frame rather than stopped at the transitions, because a round
  * can also be left through the debug surface. Only the STOP is reconciled this

@@ -1,10 +1,10 @@
 // audio/music-restarts-on-pause-restart — RESTART from the pause menu starts the
 // bed again.
 //
-// specs/ui.md fixes the event: `music` plays when "a round begins. It loops under
-// the game until the round ends." And of the pause menu: "`RESTART` starts a
-// fresh round in the same mode." A fresh round beginning is a round beginning, so
-// the bed sounds for it.
+// specs/ui.md fixes the event: `music` plays when "a round begins", and the bed
+// "loops under the round it began with". And of the pause menu: "`RESTART`
+// starts a fresh round in the same mode." A fresh round beginning is a round
+// beginning, so the bed sounds for it.
 //
 // WHY THE PAUSE PATH IS ITS OWN POINT. `music-cue-plays` decides the title path
 // and nothing else: it watches a bed start on a board that had none under it. The

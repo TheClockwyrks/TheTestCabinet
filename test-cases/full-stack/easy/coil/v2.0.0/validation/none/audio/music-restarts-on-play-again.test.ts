@@ -1,10 +1,10 @@
 // audio/music-restarts-on-play-again — PLAY AGAIN from the game over starts the
 // bed again.
 //
-// specs/ui.md fixes the event: `music` plays when "a round begins. It loops under
-// the game until the round ends." And of the game-over menu: "`confirm` on `PLAY
-// AGAIN` starts a fresh round in the same mode." A fresh round beginning is a
-// round beginning, so the bed sounds for it.
+// specs/ui.md fixes the event: `music` plays when "a round begins", and the bed
+// "loops under the round it began with". And of the game-over menu: "`confirm`
+// on `PLAY AGAIN` starts a fresh round in the same mode." A fresh round
+// beginning is a round beginning, so the bed sounds for it.
 //
 // WHY THIS PATH IS ITS OWN POINT. `music-cue-plays` decides the title path only:
 // it watches a bed start on the first round of a session. A build can sound the
