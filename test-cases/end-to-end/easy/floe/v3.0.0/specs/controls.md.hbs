@@ -31,10 +31,9 @@ The {{engine.name}} engine owns the keyboard and documents it in the `engine/`
 directory at the root of this repository. The game registers named actions with
 it and reads them back; it never reads a key event itself.
 
-`LAYOUT` is the control scheme the engine is built with, and `ACTIONS` is the
-whole vocabulary the game registers: the layout's own four movement actions plus
-the menu and system actions the engine appends to every layout. `BINDINGS` maps
-each action to the `KeyboardEvent.code` values that fire it.
+`LAYOUT` is the control scheme the engine is built with, `ACTIONS` is the whole
+vocabulary the game registers, and `BINDINGS` maps each action to the
+`KeyboardEvent.code` values that fire it.
 
 | Action | Keys |
 | --- | --- |
