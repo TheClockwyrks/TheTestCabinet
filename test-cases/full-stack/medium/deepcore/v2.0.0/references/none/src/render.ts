@@ -251,8 +251,14 @@ function drawMine(
   // through offX/offY, so they shake together. Fades out over the shake's final 0.3s.
   if (game.shakeT > 0) {
     const amp = game.shakeAmp * Math.min(1, game.shakeT / 0.3);
-    offX += Math.sin(view.time * 83) * amp;
-    offY += Math.cos(view.time * 71) * amp;
+    // The phase runs off the shake's own remaining time rather than off the
+    // view's clock. specs/ui.md draws the `paused` screen over "the frozen,
+    // dimmed world", and the view's clock keeps running there — so a jitter
+    // driven by it would keep moving over a world whose amplitude, camera and
+    // simulation had all stopped. `shakeT` stops with them, at the same rate the
+    // clock runs at while the shake is live.
+    offX += Math.sin(game.shakeT * 83) * amp;
+    offY += Math.cos(game.shakeT * 71) * amp;
   }
 
   ctx.save();

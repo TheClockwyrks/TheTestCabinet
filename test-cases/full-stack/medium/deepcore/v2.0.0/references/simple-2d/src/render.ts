@@ -247,8 +247,15 @@ function drawMine(
   let shakeY = 0;
   if (state.shakeT > 0) {
     const amp = state.shakeAmp * Math.min(1, state.shakeT / SHAKE_FADE);
-    shakeX = Math.sin(state.simTime * 83) * amp;
-    shakeY = Math.cos(state.simTime * 71) * amp;
+    // The phase runs off the shake's own remaining time rather than off
+    // `simTime`. specs/ui.md draws the `paused` screen over "the frozen, dimmed
+    // world", and `simTime` "accumulates the delta time of every update,
+    // whatever the screen" — so a jitter driven by it would keep moving over a
+    // world whose amplitude, camera and simulation had all stopped. `shakeT`
+    // stops with them, at the same rate `simTime` runs at while the shake is
+    // live.
+    shakeX = Math.sin(state.shakeT * 83) * amp;
+    shakeY = Math.cos(state.shakeT * 71) * amp;
   }
   const offX = -state.camX + shakeX;
   const offY = HUD_H - state.camY + shakeY;

@@ -191,9 +191,15 @@ export function showsMine(state: DeepcoreState): boolean {
 export function shakeOffset(state: DeepcoreState): { x: number; y: number } {
   if (state.shakeT <= 0) return { x: 0, y: 0 };
   const amp = state.shakeAmp * Math.min(1, state.shakeT / SHAKE_FADE);
+  // The phase runs off the shake's own remaining time rather than off `simTime`.
+  // specs/ui.md draws the `paused` screen over "the frozen, dimmed world", and
+  // `simTime` "accumulates the delta time of every update, whatever the screen"
+  // — so a jitter driven by it would keep moving over a world whose amplitude,
+  // camera and simulation had all stopped. `shakeT` stops with them, at the same
+  // rate `simTime` runs at while the shake is live.
   return {
-    x: Math.sin(state.simTime * 83) * amp,
-    y: Math.cos(state.simTime * 71) * amp,
+    x: Math.sin(state.shakeT * 83) * amp,
+    y: Math.cos(state.shakeT * 71) * amp,
   };
 }
 

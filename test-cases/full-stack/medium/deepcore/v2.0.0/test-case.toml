@@ -4152,6 +4152,18 @@ validation = { script = "rendering/screen-shake.test.ts", outputs = [
   { id = "shake", name = "The world shaken by a detonation", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "pause-holds-the-drawn-world-still"
+title = "The world behind the pause menu is frozen"
+description = "The pause screen shows the frozen world, so a screen shake still in flight when the menu opened stops where it was: the drawn world does not move for as long as the menu is up."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: detonate a posed pocket, confirm the jitter is live,
+# open the pause menu and read the drawn world's displacement across several
+# seconds of game time held at zero.
+validation = { script = "rendering/pause-holds-the-drawn-world-still.test.ts", outputs = [
+  { id = "frozen", name = "The frozen world behind the pause menu", kind = "image" },
+] }
+[[review.categories.items]]
 id = "screen-shake-is-only-visual"
 title = "The shake never moves the simulation"
 description = "The screen shake is purely visual: the miner world position, its velocity and every cell are exactly what they would be without it, so a blast never displaces the game itself."
