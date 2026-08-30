@@ -1,20 +1,100 @@
-// Wireworm — worm.blocked-by-edge, under the `simple-2d` engine. CASE-PROVIDED.
+// worm/blocked-by-edge — the board's side edge blocks a horizontal step, and the
+// worm drops one row and reverses.
 //
-// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
-// validation stage replaces it with the suite that decides the point. It fails
-// deliberately, so an unwritten validator can never read as a passing one.
+// specs/worm.md, "Winding": a horizontal step is blocked when the target tile is
+// "off the board, which is a column outside `0` to `39`", and a blocked step
+// reverses `dh` and moves the head one row in its vertical heading, "staying in
+// its own column". The closing rule of the section is what this point holds a
+// build to: "A worm never leaves the board through an edge."
 //
-// The point it decides, from `test-case.toml`:
+// BOTH EDGES, ONE POINT. The left edge and the right edge are the same bound
+// mirrored, exercised the same way, so they share a validator: a build that walks
+// off one walks off the other. They are posed as two scenarios rather than as two
+// worms in one world, with `reset` between them, so neither can reach the other.
 //
-// The side edge blocks and turns the worm
+// THE WORLD IS ONE HEAD AGAINST AN EDGE. `startPlaying` leaves the board empty and
+// the three world gates shut, and each scenario puts back one worm of a SINGLE
+// segment on the edge column, heading outward. Nothing else is on the board, so
+// the only thing that can block the step is the edge itself — no node, no segment,
+// and no body to follow.
 //
-// A worm heading into column 0 or column 39's outer edge drops one row and
-// reverses.
+// The row is `5`, high above the player band, so the vertical heading never has to
+// flip: that is `worm.oscillates-at-floor`'s requirement and `worm.oscillates-at-
+// top`'s, and a drop into row `6` is unambiguous here.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { COLS, WORM_STEP_L1 } from "../../src/constants";
+import { assertDeepEqual, assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  headOf,
+  poseWorm,
+  segmentAt,
+  startPlaying,
+  ticksFor,
+  wormOf,
+  type Harness,
+  type UntilResult,
+} from "../harness";
 
-test("worm.blocked-by-edge", () => {
-  throw new Error(
-    "wireworm v2.0.0: validation/simple-2d/worm/blocked-by-edge.test.ts has not been written yet",
-  );
+/** The row both scenarios run on: clear, and far above the player band. */
+const ROW = 5;
+
+/** How long the step may take before the sweep gives up, in frames. */
+const STEP_TIMEOUT = ticksFor(WORM_STEP_L1 * 4);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+/**
+ * Pose one head on `column` heading `dh` outward, and run the step it is blocked
+ * on.
+ *
+ * The harness is reset first, so each scenario opens on the world `startPlaying`
+ * poses and neither carries anything of the other's.
+ */
+async function driveIntoEdge(
+  column: number,
+  dh: number,
+): Promise<{ id: number; swept: UntilResult }> {
+  h.debug.reset();
+  startPlaying(h);
+  const id = poseWorm(h, column, ROW, 1, dh, 1);
+  const swept = await h.until((s) => !segmentAt(s, column, ROW), {
+    maxFrames: STEP_TIMEOUT,
+    poll: 1,
+  });
+  return { id, swept };
+}
+
+it("turns the worm at either side edge rather than letting it leave the board", async () => {
+  const left = await driveIntoEdge(0, -1);
+  const right = await driveIntoEdge(COLS - 1, 1);
+  captureStill(h, "edge");
+
+  for (const [name, column, dh, read] of [
+    ["the left edge", 0, -1, left],
+    ["the right edge", COLS - 1, 1, right],
+  ] as const) {
+    assertEqual(
+      read.swept.hit,
+      true,
+      `${name}: the head to leave tile (${column}, ${ROW}) within ${STEP_TIMEOUT} frames`,
+    );
+    const worm = wormOf(read.swept.snapshot, read.id);
+    assertDeepEqual(
+      headOf(worm),
+      { c: column, r: ROW + 1 },
+      `${name}: the head one row on, holding its own column`,
+    );
+    assertEqual(worm.dh, -dh, `${name}: dh after the step, posed at ${dh}`);
+  }
 });
