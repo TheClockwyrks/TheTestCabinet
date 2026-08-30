@@ -1,0 +1,20 @@
+// Wireworm — foes.glitch-cap, under the `simple-2d` engine. CASE-PROVIDED.
+//
+// PLACEHOLDER. The scaffold stage created this file so the manifest resolves; the
+// validation stage replaces it with the suite that decides the point. It fails
+// deliberately, so an unwritten validator can never read as a passing one.
+//
+// The point it decides, from `test-case.toml`:
+//
+// At most two glitches on the board
+//
+// With setFoeSpawning(true) over a minute of level-5 play, the roster never
+// holds more than GLITCH_MAX_ON_BOARD (2) glitches at once.
+
+import { test } from "vitest";
+
+test("foes.glitch-cap", () => {
+  throw new Error(
+    "wireworm v2.0.0: validation/simple-2d/foes/glitch-cap.test.ts has not been written yet",
+  );
+});

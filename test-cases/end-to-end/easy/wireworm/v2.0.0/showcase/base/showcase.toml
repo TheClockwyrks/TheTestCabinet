@@ -1,0 +1,15 @@
+# PLACEHOLDER. The scaffold stage created this file so the manifest resolves.
+#
+# The showcase stage replaces it with the ordered carousel it captures from
+# `references/none`, driven through that build's own `window.__wireworm` surface:
+# a sustained stretch of real play leading, then the stills. Every outcome on
+# screen must arise from the game's own rules under scripted input — posing an
+# outcome through the debug surface would be fabrication.
+#
+# A showcase must declare at least one media entry to resolve, so the one below
+# is a plainly-marked placeholder frame rather than anything captured from the
+# game. Delete it with this comment when the real carousel lands.
+
+[[media]]
+file = "placeholder.png"
+name = "Placeholder — replaced by the captured showcase"
