@@ -1,32 +1,52 @@
-/*
- * Coil validator: `turning.turn-right-from-vertical`. PLACEHOLDER.
- *
- * Turning right while travelling vertically.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * Travelling up, a right request sets dir to right on the next tick and the
- * head advances one cell right.
- *
- * HOW:
- * pose the chain facing up with clear board to its right, request right, run
- * one tick, and read dir and the head cell.
- *
- * MEDIA IT MUST CAPTURE: right (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// turning/turn-right-from-vertical — travelling up, a right request turns the
+// snake right on the next tick.
+//
+// specs/movement.md: step 1 "takes the oldest buffered request and applies it only
+// when it is perpendicular to the direction the snake is travelling in on this
+// tick. While travelling horizontally only `up` and `down` are perpendicular;
+// while travelling vertically only `left` and `right` are." This is one of those
+// four turns, and it has a point of its own because a build that steers three ways
+// and drops the fourth has to grade differently from one that steers none.
+//
+// The reading is the pair the rule fixes: `dir` after the tick, and the cell the
+// head advanced into, which is one cell right of where it stood.
 
-test("turning.turn-right-from-vertical", () => {
-  throw new Error(
-    "validator not implemented: turning/turn-right-from-vertical.test.ts",
-  );
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
+import { KEY, type Cell } from "../constants";
+import {
+  ahead,
+  arrangeStep,
+  captureReplay,
+  createHarness,
+  type Harness,
+} from "../harness";
+
+/**
+ * Where the chain is posed: clear board to its right, and below it for
+ * the chain to trail into.
+ */
+const HEAD: Cell = { col: 10, row: 8 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("turns right from an upward run, on the tick after the request", async () => {
+  const posed = await arrangeStep(h, { head: HEAD, dir: "up", length: 3 });
+  assertEqual(posed.snapshot.dir, "up", "the posed direction");
+
+  const turned = await captureReplay(h, "right", async () => {
+    await h.tap(KEY.right);
+    return h.tick();
+  });
+
+  assertEqual(turned.dir, "right", "dir after the tick");
+  assertDeepEqual(turned.snake[0], ahead(HEAD, "right"), "the head after the tick");
 });

@@ -1,33 +1,53 @@
-/*
- * Coil validator: `turning.same-direction-discarded`. PLACEHOLDER.
- *
- * A request repeating the heading is discarded.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * A request naming the direction the snake already travels in is discarded at
- * step 1: dir is unchanged, the head advances the way it was going, and the
- * request is gone from turns.
- *
- * HOW:
- * pose the chain facing right, request right, run one tick, and confirm dir,
- * the head's travel and an emptied buffer.
- *
- * MEDIA IT MUST CAPTURE: repeat (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// turning/same-direction-discarded — a request naming the heading the snake
+// already travels in is discarded at step 1.
+//
+// specs/movement.md: "A request that repeats the current direction and a request
+// that reverses it are both discarded at step 1, and the snake keeps its
+// direction." Discarded rather than applied harmlessly, which is why the buffer
+// is read as well as the heading: a build that leaves a repeat sitting on the
+// buffer has spent one of the two places `TURN_QUEUE_MAX` allows, and the next
+// real turn the player asks for is the one that gets thrown away.
+//
+// So three readings, all of one rule: the heading is unchanged, the head advanced
+// the way it was already going, and the request is gone from `turns`.
 
-test("turning.same-direction-discarded", () => {
-  throw new Error(
-    "validator not implemented: turning/same-direction-discarded.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
+import { KEY, type Cell } from "../constants";
+import {
+  ahead,
+  arrangeStep,
+  captureReplay,
+  createHarness,
+  type Harness,
+} from "../harness";
+
+/** Where the chain is posed: a clear run to its right. */
+const HEAD: Cell = { col: 10, row: 8 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("keeps the heading and empties the buffer on a repeated request", async () => {
+  await arrangeStep(h, { head: HEAD, dir: "right", length: 3 });
+
+  const after = await captureReplay(h, "repeat", async () => {
+    await h.tap(KEY.right);
+    return h.tick();
+  });
+
+  assertEqual(after.dir, "right", "dir after a repeated request");
+  assertDeepEqual(
+    after.snake[0],
+    ahead(HEAD, "right"),
+    "the head after a repeated request",
   );
+  assertDeepEqual(after.turns, [], "turns after step 1 discarded the request");
 });

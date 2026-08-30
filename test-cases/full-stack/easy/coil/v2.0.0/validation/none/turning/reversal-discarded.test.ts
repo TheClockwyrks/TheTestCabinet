@@ -1,33 +1,59 @@
-/*
- * Coil validator: `turning.reversal-discarded`. PLACEHOLDER.
- *
- * A reversal into the neck is discarded.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * A request naming the opposite of the current direction is discarded at step
- * 1: dir is unchanged and the head advances the way it was going, so the snake
- * never reverses into its own neck.
- *
- * HOW:
- * pose the chain facing right, request left, run one tick, and confirm dir and
- * the head's travel are unchanged.
- *
- * MEDIA IT MUST CAPTURE: reversal (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// turning/reversal-discarded — a request naming the opposite of the current
+// heading is discarded at step 1.
+//
+// specs/movement.md: "A request that repeats the current direction and a request
+// that reverses it are both discarded at step 1, and the snake keeps its
+// direction. The snake therefore never reverses into its own neck."
+//
+// WHY THE CHAIN MATTERS HERE. The posed chain trails directly behind the head, so
+// the cell a reversal would send the head into is the neck: a build that applies
+// the reversal does not merely turn, it drives the head into its own second
+// segment on that same tick and ends the round. Both outcomes are caught by the
+// same two readings, because a heading of `right` and a head one cell further
+// right is the only thing the rule permits.
 
-test("turning.reversal-discarded", () => {
-  throw new Error(
-    "validator not implemented: turning/reversal-discarded.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
+import { KEY, type Cell } from "../constants";
+import {
+  ahead,
+  arrangeStep,
+  captureReplay,
+  createHarness,
+  type Harness,
+} from "../harness";
+
+/** Where the chain is posed: a clear run to its right, and its neck to its left. */
+const HEAD: Cell = { col: 10, row: 8 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("keeps the heading when the request reverses it", async () => {
+  const posed = await arrangeStep(h, { head: HEAD, dir: "right", length: 3 });
+  assertDeepEqual(
+    posed.snapshot.snake[1],
+    ahead(HEAD, "left"),
+    "the neck a reversal would enter",
   );
+
+  const after = await captureReplay(h, "reversal", async () => {
+    await h.tap(KEY.left);
+    return h.tick();
+  });
+
+  assertEqual(after.dir, "right", "dir after a reversing request");
+  assertDeepEqual(
+    after.snake[0],
+    ahead(HEAD, "right"),
+    "the head after a reversing request",
+  );
+  assertEqual(after.screen, "playing", "the round after a reversing request");
 });
