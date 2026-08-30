@@ -1,103 +1,86 @@
-// Wireworm — board/tile-centres: a node is drawn on the tile centre the formula
-// gives.
+// Wireworm — board/tile-centres: a node is drawn on the tile centre the
+// tile-to-stage map gives.
 //
-// specs/board.md owns the tile-to-stage map and states it once:
+// specs/board.md fixes that map and nothing else states it: tile `(c, r)` spans
+// `x` in `[32c, 32c + 32]` and `y` in `[80 + 32r, 80 + 32r + 32]`, its centre is
+// `(32c + 16, 80 + 32r + 16)`, and "a node fills its tile and is drawn centered
+// on that point". So what is read here is the PICTURE against that formula
+// rather than any state the surface reports: a node posed on a tile has to
+// change what is painted at that tile's centre, and a node posed on one tile has
+// to leave the tile beside it alone.
 //
-//   tileCX(c) = TILE * c + TILE / 2
-//   tileCY(r) = BOARD_Y + TILE * r + TILE / 2
+// The two readings are one scenario read twice rather than two requirements. A
+// build that dropped the `+ TILE / 2` and drew each node on its tile's corner
+// paints nothing at the centre; a build that dropped `BOARD_Y` paints the wrong
+// row entirely; and a build that filled every tile of the board paints the
+// neighbour too. Each of the three reads back as a different failure, which is
+// what the control sample is for.
 //
-// so tile `(c, r)`'s centre is `(32c + 16, 80 + 32r + 16)`, and "A node fills its
-// tile and is drawn centered on that point". Everything else in the game is
-// measured against those centres — which tile a bolt's centre is inside, which
-// tile the worm's head steps to, which tiles a discharge's Chebyshev radius
-// reaches — so a board drawn on any other origin or pitch puts the picture and
-// the rules in different places.
-//
-// EIGHT TILES SPREAD OVER THE WHOLE BOARD, because a drift is a function of `c`
-// and `r`: the four corners of the scatter rows and four tiles around the middle
-// pin the origin and the pitch on both axes at once. A build that derived its
-// grid from the wrong origin misses them all; one that used the wrong pitch
-// misses the far ones while the near ones still land.
-//
-// THE TILE BESIDE EACH IS THE CONTROL, and it is read as a comparison against the
-// node's own tile rather than against a colour this check chose. That is what
-// separates a build that centred its nodes from one that filled every tile
-// alike: on the second, a node's tile and the empty tile beside it read the same.
-// Reading the control from the neighbouring tile rather than from somewhere far
-// away also means a board drawn with a gradient or a vignette — the look is the
-// build's, and specs/overview.md fixes no palette — cannot swing the reading.
-//
-// The nodes are posed at charge `2`. The charge is immaterial to where a node is
-// DRAWN, and specs/overview.md's legibility table has the four states read as a
-// ramp with each brighter than the one below, so a charged node is the state that
-// makes the pixel control a reading about placement rather than about how dimly a
-// build chooses to draw an inert one — which the `nodes` points grade.
+// EIGHT SPREAD TILES, because one tile decides nothing: a map that is right at
+// the origin and wrong in its scale is right on one tile and wrong across the
+// board. They span the columns and the scatter rows, and none is the neighbour
+// of another. Every reading is a CHANGE against the same tile on the empty
+// board, so the build's own palette is never assumed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, tileCX, tileCY } from "../../src/constants";
-import { assertGreaterThan, fail } from "../assert";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   colorDistance,
   createHarness,
-  drawFrame,
-  drawnImages,
   sampleTile,
   startPlaying,
   type Harness,
 } from "../harness";
 
 /**
- * The review item's tolerance: a node is drawn centred on its tile "within half
- * a tile", which is `TILE / 2` (`16`) logical units on each axis.
+ * How far a tile's colour must move when a node is posed on it, in RGB distance
+ * on the 0–441 scale, for the node to count as drawn there.
+ *
+ * A change rather than a colour, so no palette is assumed. 25 is about a
+ * twentieth of the scale: far under anything a node legible at a glance
+ * (specs/overview.md) could measure, and far over the rounding a canvas round
+ * trip leaves.
  */
-const CENTRE_MAX = TILE / 2;
+const PAINTED_MIN = 25;
 
 /**
- * The largest a drawn box may be and still be read as one node, in tiles.
+ * How far the tile BESIDE a posed node may move, on the same scale, and still
+ * count as the background it was.
  *
- * specs/board.md: "A node fills its tile", so a node's own draw is about `TILE`
- * on a side. The bound is what keeps a backdrop image — a board substrate drawn
- * as one big picture — from being mistaken for a node that happens to have its
- * centre near a tile, and it is twice as generous as the figure the spec states.
+ * The neighbour is read against its own colour on the empty board, so a build
+ * that shades or textures its board is compared against its own shading. 8 is
+ * rounding and rasterization room around a tile nothing was drawn on — a third
+ * of {@link PAINTED_MIN}, so a tile a node reached and a tile it did not can
+ * never both pass.
  */
-const NODE_BOX_MAX = 2 * TILE;
+const BACKGROUND_MAX = 8;
 
 /**
- * How far a node's tile must read from the empty tile beside it, in RGB distance
- * on the 0–441 scale.
+ * The charge the posed nodes carry.
  *
- * specs/overview.md requires a node to be told apart at a glance — the four
- * charge states read as a ramp, and the worm reads apart from "a node of any
- * charge" — so a node against bare board is a loud difference, not a subtle one.
- * 40 is under a tenth of the scale: comfortably below anything legible, and far
- * above the nothing that separates two tiles of the same empty board.
+ * Charge 2 is a plainly drawn node — the state above the ramp's floor, so it is
+ * not the dimmest thing on the board — and it is inert as far as this scenario
+ * goes: nothing here fires a bolt, so no detonation and no chain can move it
+ * (specs/nodes.md, specs/discharge.md).
  */
-const APART_MIN = 40;
+const POSED_CHARGE = 2;
 
 /**
- * Eight tiles spread over the board: the four corners of the scatter rows
- * specs/board.md names (rows `1` to `17`) and four around the middle.
- *
- * They are kept out of the player band, rows `18` and `19`, because the cursor
- * lives there and is the one entity a scenario cannot remove.
+ * Eight tiles spread across the columns and down the scatter rows, each with the
+ * tile to its right free and no two adjacent, so every node's control sample is
+ * a tile no other node could have reached.
  */
 const TILES = [
-  { c: 0, r: 1 },
-  { c: 39, r: 1 },
-  { c: 0, r: 17 },
-  { c: 39, r: 17 },
-  { c: 13, r: 6 },
-  { c: 26, r: 6 },
-  { c: 13, r: 12 },
-  { c: 26, r: 12 },
+  { c: 2, r: 1 },
+  { c: 9, r: 3 },
+  { c: 16, r: 5 },
+  { c: 23, r: 8 },
+  { c: 30, r: 11 },
+  { c: 37, r: 14 },
+  { c: 6, r: 16 },
+  { c: 20, r: 17 },
 ] as const;
-
-/** The empty tile each posed node is read against: the one on its left, or on
- * its right at the board's left edge. None of them holds a posed node. */
-function beside(c: number): number {
-  return c > 0 ? c - 1 : c + 1;
-}
 
 let h: Harness;
 
@@ -109,59 +92,32 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws a node on each of eight spread tiles' formula centres", async () => {
+it("draws each node on its own tile centre and not on the tile beside it", async () => {
   startPlaying(h);
-  for (const tile of TILES) h.debug.setNode(tile.c, tile.r, 2);
-
-  const drawn = drawnImages(h, await drawFrame(h));
-  captureStill(h, "tiles");
-
-  for (const tile of TILES) {
-    const cx = tileCX(tile.c);
-    const cy = tileCY(tile.r);
-    const on = drawn.filter(
-      (image) =>
-        image.w <= NODE_BOX_MAX &&
-        image.h <= NODE_BOX_MAX &&
-        Math.abs(image.x - cx) <= CENTRE_MAX &&
-        Math.abs(image.y - cy) <= CENTRE_MAX,
-    );
-    if (on.length === 0) {
-      const nearest = drawn
-        .filter((image) => image.w <= NODE_BOX_MAX && image.h <= NODE_BOX_MAX)
-        .map((image) => ({
-          x: Math.round(image.x),
-          y: Math.round(image.y),
-          off: Math.round(Math.hypot(image.x - cx, image.y - cy)),
-        }))
-        .sort((a, b) => a.off - b.off)
-        .slice(0, 3);
-      fail(
-        `the node on tile (${tile.c}, ${tile.r}) drawn within ${CENTRE_MAX} ` +
-          `units of its centre (${cx}, ${cy}) — specs/board.md: ` +
-          "tileCX(c) = 32c + 16, tileCY(r) = 80 + 32r + 16",
-        { nearestSpritesDrawn: nearest },
-      );
-    }
-  }
-});
-
-it("leaves the tile beside each posed node reading as bare board", async () => {
-  startPlaying(h);
-  for (const tile of TILES) h.debug.setNode(tile.c, tile.r, 2);
   await h.advance(1);
 
-  for (const tile of TILES) {
-    const empty = beside(tile.c);
-    const apart = colorDistance(
-      sampleTile(h, tile.c, tile.r),
-      sampleTile(h, empty, tile.r),
-    );
+  // What each tile centre and each neighbour's centre holds with nothing on the
+  // board, so every reading below is a change the build made.
+  const bare = TILES.map((tile) => ({
+    node: sampleTile(h, tile.c, tile.r),
+    beside: sampleTile(h, tile.c + 1, tile.r),
+  }));
+
+  for (const tile of TILES) h.debug.setNode(tile.c, tile.r, POSED_CHARGE);
+  await h.advance(1);
+  captureStill(h, "tiles");
+
+  TILES.forEach((tile, index) => {
+    const at = `tile (${tile.c}, ${tile.r})`;
     assertGreaterThan(
-      apart,
-      APART_MIN,
-      `tile (${tile.c}, ${tile.r}), which holds a node, against the empty ` +
-        `tile (${empty}, ${tile.r}) beside it`,
+      colorDistance(bare[index].node, sampleTile(h, tile.c, tile.r)),
+      PAINTED_MIN,
+      `${at}: the node's own tile centre`,
     );
-  }
+    assertLessThanOrEqual(
+      colorDistance(bare[index].beside, sampleTile(h, tile.c + 1, tile.r)),
+      BACKGROUND_MAX,
+      `${at}: the tile beside it`,
+    );
+  });
 });

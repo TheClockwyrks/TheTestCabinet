@@ -1,91 +1,80 @@
 // presentation/hud-lives — the HUD shows the lives remaining.
 //
-// specs/ui.md's HUD table: the lives readout shows "The lives remaining, as a row
-// of icons or as a count." specs/board.md puts it on the bar. A life is what a
-// worm segment or a foe reaching the cursor costs (specs/cursor.md) and what
-// running out of them ends the run on (specs/progression.md), so a bar that does
-// not carry the lives leaves a player unable to see how close the run is to over.
+// specs/ui.md's HUD table: the lives readout shows "the lives remaining, as a
+// row of icons or as a count". specs/board.md puts every readout inside the
+// bar's own region, `y` in `[0, HUD_H]` (`[0, 80]`). Lives are what the run has
+// left (specs/progression.md), so a player who cannot see how many are left
+// cannot tell a safe mistake from a fatal one.
 //
-// SPECS/UI.MD ALLOWS TWO FORMS, SO THIS POINT READS BOTH, and either satisfies
-// it. The two are read in the two places the answer can be:
+// THE FILE ALLOWS TWO SPELLINGS, SO THE POINT READS BOTH.
 //
-//  - AS A COUNT — a run of digits on the bar that reads exactly the posed lives.
-//    `2` is chosen because no other readout carries it at these settings: the
-//    score is `0`, the level is `1`, and the total is `TOTAL_LEVELS` (`12`),
-//    whose digit runs read `12` rather than `1` and `2`.
-//  - AS A ROW OF ICONS — a row is not text and it is not a shape this suite can
-//    name, so what is read is the bar's own picture: how many of the bar's pixels
-//    change when a life is added. A row of icons puts one more icon on the bar
-//    per life, so the second life and the third each change about the same area
-//    of it. That signature is what separates a row from a bar's worth of
-//    unrelated redrawing.
+// AS A COUNT. Some run of text inside the bar names the posed figure as a
+// standalone number — `2`, `x2`, `LIVES 2` all read as two, and the digits `12`
+// do not, which is what the standalone reading is for. That settles it outright.
 //
-// THE NOISE FLOOR IS MEASURED RATHER THAN ASSUMED. A build is free to animate its
-// HUD, and two frames of an animated bar differ whether the lives changed or not,
-// so the icon reading first takes two frames at the SAME lives and holds
-// everything it measures against how far apart those two were.
+// AS A ROW OF ICONS. Otherwise the bar is read as a picture, twice: once with
+// the lives posed at `0` and once at each figure this point cares about. The
+// pixels that CHANGED between the two are exactly the marks the readout draws
+// for those lives, and they are counted as connected clusters. Whatever one
+// life's mark costs in clusters — one blob, or an outline and a fill drawn
+// apart — two lives must cost exactly twice, and that is the reading of "two
+// lives shown": the bar draws one more mark per life, and at two it has drawn
+// two of them. A build that drew a fixed row of icons, or drew the wrong number
+// of them, does not scale that way.
 //
-// EVERY READING IS TAKEN ON THE SAME BOARD: the empty, quiet one `startPlaying`
-// opens, with nothing posed but the lives themselves. `setLives` is a
-// precondition and nothing else, and the three values it is posed at are all
-// above zero, so nothing here crosses the game-over rule specs/progression.md
-// states.
+// THE `0` BASELINE IS SAFE TO POSE. specs/progression.md ends a run on "a
+// contact takes lives to `0`" — the game over is the contact's, not a state the
+// build is free to notice on its own — and `startPlaying` holds the cursor's
+// contact test off with nothing on the board to touch it. So the baseline frame
+// is the same board with no lives drawn on it.
+//
+// THE SCORE IS POSED AT `0` AND THE LEVEL AT `1`, so no other readout on the bar
+// can carry a standalone `2` and be read as the lives.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { HUD_H, STAGE_W } from "../../src/constants";
-import { assertTrue } from "../assert";
+import { assertEqual, fail } from "../assert";
 import {
   captureStill,
   createHarness,
   startPlaying,
   type Harness,
 } from "../harness";
-import { barText, figuresIn, hudSpans } from "./hud";
+import { hudSpans } from "./hud";
+
+/** The lives posed: the figure the point decides. */
+const POSED_LIVES = 2;
+
+/** The score and level posed beside them, so no other run carries a 2. */
+const POSED_SCORE = 0;
+const POSED_LEVEL = 1;
 
 /**
- * The lives this point poses, and the two the icon reading is measured against.
+ * How much a pixel must change between the two frames to count as drawn, as a
+ * sum over the three channels out of `765`.
  *
- * `2` is the review item's own figure. `1` is the baseline a row of icons is
- * counted from and `3` is the step past it, so the icon reading has two
- * increments to compare; all three are above zero, so none of them reaches the
- * game-over rule.
+ * The two frames are the same board rendered twice, so a pixel that is not part
+ * of the lives readout is identical in both and this is a floor under nothing
+ * but a build whose bar carries a faint animation of its own. `24` is an
+ * average of `8` a channel, well under any mark a player could see.
  */
-const LIVES = 2;
-const FEWER = 1;
-const MORE = 3;
+const CHANGED_MIN = 24;
 
 /**
- * How much a channel must move for a pixel to count as changed, out of 255.
+ * The smallest cluster of changed pixels that counts as a mark, in device
+ * pixels.
  *
- * Below this a difference is the canvas's own rounding rather than something the
- * build drew differently. Eight levels is about three per cent of the scale:
- * far under anything visible, and far over any rounding.
+ * `16` is a four-by-four square, which is below anything legible in an
+ * `80`-unit bar and above the stray pixel an anti-aliased edge leaves behind.
  */
-const CHANNEL_MOVED = 8;
+const CLUSTER_MIN = 16;
 
-/**
- * How many times the noise between two frames of an unchanged bar a real change
- * must be.
- *
- * The floor exists so an animated HUD cannot be mistaken for a readout that
- * answers to the lives. Four times is a change that is plainly the lives rather
- * than the animation, and it is measured against the build's own bar rather than
- * against a figure this check chose.
- */
-const OVER_NOISE = 4;
-
-/**
- * How far the third life's added area may sit from twice the second's, as a
- * fraction of the second's.
- *
- * A row of icons adds one icon per life, so the area added by the third life is
- * twice the area added by the second, counted from the same baseline. Half is a
- * generous band — it admits `1.5x` through `2.5x` — because a build may lay its
- * icons out with a count or a label beside them, which shifts both figures by the
- * same fixed amount. A readout that does not grow with the lives at all is far
- * outside it.
- */
-const ROW_TOLERANCE = 0.5;
+/** One rendered frame's HUD bar, as raw device pixels. */
+interface Bar {
+  data: Uint8ClampedArray;
+  width: number;
+  height: number;
+}
 
 let h: Harness;
 
@@ -97,63 +86,99 @@ afterEach(() => {
   h?.dispose();
 });
 
-/** The HUD bar's pixels as the frame on the canvas left them (specs/board.md). */
-function bar(harness: Harness): Uint8ClampedArray {
-  const from = harness.device(0, 0);
-  const to = harness.device(STAGE_W, HUD_H);
-  return harness.ctx.getImageData(from.x, from.y, to.x - from.x, to.y - from.y)
-    .data;
-}
-
-/** How many pixels of the bar two frames of it disagree about. */
-function moved(a: Uint8ClampedArray, b: Uint8ClampedArray): number {
-  let count = 0;
-  for (let i = 0; i < a.length; i += 4) {
-    if (
-      Math.abs(a[i] - b[i]) >= CHANNEL_MOVED ||
-      Math.abs(a[i + 1] - b[i + 1]) >= CHANNEL_MOVED ||
-      Math.abs(a[i + 2] - b[i + 2]) >= CHANNEL_MOVED
-    ) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-it("draws the lives remaining on the HUD bar, as icons or as a count", async () => {
-  startPlaying(h);
-
-  // The baseline, and a second frame of it: how far apart two frames of an
-  // unchanged bar are is this build's own noise floor.
-  h.debug.setLives(FEWER);
-  await h.advance(1);
-  const baseline = bar(h);
-  await h.advance(1);
-  const noise = moved(baseline, bar(h));
-
-  h.debug.setLives(LIVES);
+/** Pose the lives, run one frame, and read the HUD bar back off the canvas. */
+async function barAtLives(lives: number): Promise<Bar> {
+  h.debug.setLives(lives);
   h.calls.length = 0;
   await h.advance(1);
-  const spans = hudSpans(h);
-  const secondLife = moved(baseline, bar(h));
+  assertEqual(h.snapshot().lives, lives, `the posed lives (${lives}) landed`);
+  const corner = h.device(0, 0);
+  const far = h.device(STAGE_W, HUD_H);
+  const width = far.x - corner.x;
+  const height = far.y - corner.y;
+  const { data } = h.ctx.getImageData(corner.x, corner.y, width, height);
+  return { data, width, height };
+}
+
+/** How many connected clusters of changed pixels separate two readings. */
+function clustersChanged(before: Bar, after: Bar): number {
+  const { width, height } = after;
+  const changed = new Uint8Array(width * height);
+  for (let index = 0; index < width * height; index += 1) {
+    const at = index * 4;
+    const delta =
+      Math.abs(after.data[at] - before.data[at]) +
+      Math.abs(after.data[at + 1] - before.data[at + 1]) +
+      Math.abs(after.data[at + 2] - before.data[at + 2]);
+    changed[index] = delta > CHANGED_MIN ? 1 : 0;
+  }
+
+  const taken = new Uint8Array(width * height);
+  let clusters = 0;
+  for (let index = 0; index < width * height; index += 1) {
+    if (changed[index] === 0 || taken[index] === 1) continue;
+    taken[index] = 1;
+    let size = 0;
+    const pending = [index];
+    while (pending.length > 0) {
+      const at = pending.pop() as number;
+      size += 1;
+      const x = at % width;
+      const y = (at - x) / width;
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const next = ny * width + nx;
+          if (changed[next] === 1 && taken[next] === 0) {
+            taken[next] = 1;
+            pending.push(next);
+          }
+        }
+      }
+    }
+    if (size >= CLUSTER_MIN) clusters += 1;
+  }
+  return clusters;
+}
+
+it("shows two lives on the HUD bar, as a count or as two icons", async () => {
+  startPlaying(h);
+  h.debug.setScore(POSED_SCORE);
+  h.debug.setLevel(POSED_LEVEL);
+
+  const none = await barAtLives(0);
+  const one = await barAtLives(1);
+  const posed = await barAtLives(POSED_LIVES);
+  // The HUD bar carrying two lives.
   captureStill(h, "hud");
 
-  h.debug.setLives(MORE);
-  await h.advance(1);
-  const thirdLife = moved(baseline, bar(h));
+  // As a count: a run of text on the bar naming the figure on its own.
+  const onBar = hudSpans(h);
+  const counted = onBar.filter((span) =>
+    new RegExp(`(?<![0-9])${POSED_LIVES}(?![0-9])`).test(span.text),
+  );
+  if (counted.length > 0) return;
 
-  const asACount = spans.some((span) => figuresIn(span).includes(LIVES));
-  const asARow =
-    secondLife > OVER_NOISE * (noise + 1) &&
-    Math.abs(thirdLife - 2 * secondLife) <= ROW_TOLERANCE * secondLife;
-
-  assertTrue(
-    asACount || asARow,
-    `the ${LIVES} lives drawn on the HUD bar, y in [0, 80] — as a run of ` +
-      `digits reading ${LIVES}, or as a row of icons the bar gains one of per ` +
-      "life (specs/ui.md: the lives remaining, as a row of icons or as a " +
-      `count) — the bar drew ${barText(spans)}, and adding a life moved ` +
-      `${secondLife} then ${thirdLife} of its pixels against a noise floor of ` +
-      `${noise}`,
+  // As a row of icons: one more mark per life, and two of them at two lives.
+  const perLife = clustersChanged(none, one);
+  if (perLife === 0) {
+    fail(
+      `the HUD bar to show the lives remaining, as a count among its text or ` +
+        `as a row of icons (specs/ui.md); with one life posed the bar drew ` +
+        `nothing it does not draw with none, and no run of its text named ` +
+        `${POSED_LIVES} on its own`,
+      `the bar's runs were ${JSON.stringify(onBar.map((span) => span.text))}`,
+    );
+  }
+  assertEqual(
+    clustersChanged(none, posed),
+    perLife * POSED_LIVES,
+    `the HUD bar's lives readout to draw ${POSED_LIVES} marks with ` +
+      `${POSED_LIVES} lives posed, where it draws 1 with one (specs/ui.md: ` +
+      `the lives remaining, as a row of icons or as a count) — one life's ` +
+      `mark measured ${perLife} cluster(s) of changed pixels, so two lives ` +
+      `must measure ${perLife * POSED_LIVES}`,
   );
 });

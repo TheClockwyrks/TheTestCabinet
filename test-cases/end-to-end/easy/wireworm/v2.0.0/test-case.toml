@@ -764,7 +764,7 @@ validation = { script = "board/hud-above-board.test.ts", outputs = [
 [[review.categories.items]]
 id = "tile-centres"
 title = "Nodes sit on the tile centres the formula gives"
-description = "A node posed at each of eight spread tiles is drawn centred on (32c + 16, 80 + 32r + 16), within half a tile, and the tile beside each is background."
+description = "A node posed at each of eight spread tiles changes what is painted at that tile's centre, (32c + 16, 80 + 32r + 16), and leaves the tile beside it as the background it was."
 domains = ["charge", "presentation"]
 failure_cap = "scuffed"
 # The second clause — the tile beside each is background — is a control sample
