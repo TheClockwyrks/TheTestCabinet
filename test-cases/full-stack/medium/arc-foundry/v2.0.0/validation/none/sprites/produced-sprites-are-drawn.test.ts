@@ -1,27 +1,79 @@
-// Arc Foundry — `sprites.produced-sprites-are-drawn`. CASE-PROVIDED. NOT YET WRITTEN.
+// sprites/produced-sprites-are-drawn — the yard is drawn FROM the produced files.
 //
-// The manifest declares this point at `sprites/produced-sprites-are-drawn.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// `specs/assets.md` divides everything the game shows in two: a file produced
+// with one of the six tools, or one of the code-drawn elements it lists. A
+// component is in the first half — `components/<type>/base.png` is "the fixed
+// mount a head turns on" and `components/<type>/head-<tier>.png` "the rotating
+// head" — and `specs/overview.md` puts "placing the produced yard sprites" among
+// what the build does. A repository that produced the files and then drew its
+// components in code has satisfied every path and canvas in this category while
+// shipping art nothing plays.
 //
-// THE REQUIREMENT. A frame drawn with a component standing on the yard draws
-// an image inside that component's footprint, so the produced files are what
-// the yard is drawn from rather than sitting unused beside a code-drawn game.
-//
-// HOW IT IS DECIDED. Stand a component, render one frame, and read the image
-// draws whose destination covers its footprint. The evidence it hands back is
-// `drawn` (image): the component drawn from its produced sprite.
+// WHAT IS READ. The images the frame blitted, and where each landed on the stage,
+// mapped through whatever transform drew it — a head is rotated to its heading
+// (`specs/components.md`), so what a blit's arguments say and where it lands are
+// two different things. The count of blits landing inside one `2` by `2`
+// footprint is taken with the tiles empty and again with a component standing on
+// them, and standing the component has to add to it. The count is a DIFFERENCE
+// rather than a total because `specs/assets.md` also has the yard's substrate
+// blitted across those same tiles, and that blit is not the component.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  standComponent,
+  type Harness,
+} from "../harness";
+import { FOOTPRINT, TILE } from "../constants";
+import { imageDraws } from "./reading";
 
-import { fail } from "../assert";
+const ANCHOR = { col: 10, row: 10 };
+const FOOTPRINT_BOX = {
+  x0: ANCHOR.col * TILE,
+  y0: 56 + ANCHOR.row * TILE,
+  x1: ANCHOR.col * TILE + FOOTPRINT * TILE,
+  y1: 56 + ANCHOR.row * TILE + FOOTPRINT * TILE,
+};
 
-describe("sprites.produced-sprites-are-drawn", () => {
-  it("The build draws the sprites it produced", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `sprites.produced-sprites-are-drawn` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+/** How many images the frame blitted with their middle inside the footprint. */
+async function blitsOnTheFootprint(): Promise<number> {
+  return imageDraws(await h.frameCalls()).filter(
+    (draw) =>
+      draw.cx >= FOOTPRINT_BOX.x0 &&
+      draw.cx <= FOOTPRINT_BOX.x1 &&
+      draw.cy >= FOOTPRINT_BOX.y0 &&
+      draw.cy <= FOOTPRINT_BOX.y1,
+  ).length;
+}
+
+it("blits more onto a component's tiles once the component stands", async () => {
+  await openYard(h);
+
+  const bare = await blitsOnTheFootprint();
+
+  await standComponent(h, "capacitor", 3, ANCHOR.col, ANCHOR.row);
+  await h.debug.clearSelection();
+  const standing = await blitsOnTheFootprint();
+  await captureStill(h, "drawn");
+
+  assertGreaterThan(
+    standing,
+    bare,
+    `how many images the frame blitted onto the footprint at (${ANCHOR.col}, ` +
+      `${ANCHOR.row}) with a Charged Capacitor standing on it, against the ` +
+      `${bare} it blitted onto the same tiles bare`,
+  );
 });
