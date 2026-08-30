@@ -1,26 +1,47 @@
-// Arc Foundry — `screens.mapselect-back`. CASE-PROVIDED. NOT YET WRITTEN.
+// screens/mapselect-back — the map select's BACK returns to the title.
 //
-// The manifest declares this point at `screens/mapselect-back.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/ui.md`, of `mapselect`: "A `BACK` choice returns to
+// `title`." It is the way out of a choice a player has changed their mind about,
+// and `specs/ui.md` makes every menu "fully operable with the pointer alone", so
+// the choice is taken here the way the pointer takes one.
 //
-// THE REQUIREMENT. Taking the BACK entry from the map select moves the screen
-// to title.
-//
-// HOW IT IS DECIDED. Open the map select, take BACK, and read the screen. The
-// evidence it hands back is `title` (image): the title returned to from the
-// map select.
+// HOW IT IS DECIDED. The map select is opened directly, through the operation that
+// reaches a screen "exactly as reaching it in play does", so a build with a broken
+// title menu still has this point decided on its own terms. The BACK choice is
+// found by the action it carries rather than by where it was drawn, and pressed at
+// the centre of the rectangle the build itself reported for it. The screen is read
+// back.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openMenu,
+  pressMenu,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+let h: Harness;
 
-describe("screens.mapselect-back", () => {
-  it("The map select's BACK returns to the title", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `screens.mapselect-back` has not been written yet",
-    );
-  });
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("returns to the title when BACK is taken from the map select", async () => {
+  await h.debug.reset();
+  await openMenu(h, "mapselect");
+
+  await pressMenu(h, "back");
+  await captureStill(h, "title");
+
+  assertEqual(
+    (await h.snapshot()).screen,
+    "title",
+    "the screen the map select's BACK choice returns to (specs/ui.md)",
+  );
 });
