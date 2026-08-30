@@ -1,33 +1,73 @@
-/*
- * Coil validator: `audio.music-file-produced`. PLACEHOLDER.
- *
- * The music bed ships a produced track.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * assets/audio/music.wav exists, decodes as a WAV of non-zero length, and
- * carries audible signal rather than silence.
- *
- * HOW:
- * read the WAV off the built workspace, parse its header, and measure its peak
- * amplitude. The check reads a file and drives nothing, so its evidence is a
- * still.
- *
- * MEDIA IT MUST CAPTURE: music (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// audio/music-file-produced — the music bed is a track this build made, not
+// silence.
+//
+// WHAT THE SPECIFICATION FIXES. `specs/assets.md` puts the `music` bed at
+// `assets/audio/music.wav`, made with the `music` binary — which "writes a `.wav`
+// and a `.mid` beside it; the `.wav` is what the game plays" — and requires the
+// file to be produced during this build and committed rather than downloaded or
+// stood in for. `specs/ui.md` has it play when a round begins and loop under the
+// game until the round ends. So the file exists, it is a WAV, it holds samples,
+// and those samples carry signal.
+//
+// WHAT IT DELIBERATELY DOES NOT READ. What the track is like: "a loop that sits
+// under the game rather than over it", looping "without an audible seam" and
+// carrying "no part that competes with the three cues", is `specs/assets.md`'s
+// sound bar and the presentation domain's aesthetic rating. That the build plays
+// it when a round begins is `audio/music-cue-plays`.
+//
+// HOW THE FILE IS READ. Off the repository the build produced, at the path
+// `specs/assets.md` fixes: the RIFF header in Node, so a file merely wearing the
+// extension is caught, and the samples through the browser, which decodes every
+// sample format the generators may write — see `audio/sounds.ts`.
+//
+// THE EVIDENCE. This point drives nothing, so its declared still is a picture of
+// what the bed plays under: a round in play, with the snake threading toward its
+// pellet.
 
-test("audio.music-file-produced", () => {
-  throw new Error(
-    "validator not implemented: audio/music-file-produced.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan, fail } from "../assert";
+import { CUES, CUE_FILES, type Cell } from "../constants";
+import {
+  captureStill,
+  chainFrom,
+  createHarness,
+  HOME_HEAD,
+  type Harness,
+} from "../harness";
+import { decodeSound, SILENCE_FLOOR, showRound } from "./sounds";
+
+/** The path `specs/assets.md` fixes for the music bed. */
+const FILE = CUE_FILES[CUES.music];
+
+/** A pellet out across the board, so the round reads as one being played. */
+const PELLET: Cell = { col: 20, row: 5 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("ships a produced music bed carrying audible signal", async () => {
+  const { sound, reason } = await decodeSound(h, FILE);
+
+  await showRound(h, {
+    snake: chainFrom(HOME_HEAD, "right", 5),
+    dir: "right",
+    pellet: PELLET,
+    travel: false,
+  });
+  await captureStill(h, "music");
+
+  if (sound === null) fail(`a WAV at ${FILE} the browser decodes`, reason);
+  assertGreaterThan(sound.frames, 0, `sample frames in ${FILE}`);
+  assertGreaterThan(
+    sound.peak,
+    SILENCE_FLOOR,
+    `the peak sample of ${FILE}, on a full scale of 1`,
   );
 });

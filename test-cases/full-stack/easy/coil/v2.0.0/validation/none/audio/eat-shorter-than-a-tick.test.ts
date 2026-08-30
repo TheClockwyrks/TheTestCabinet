@@ -1,32 +1,66 @@
-/*
- * Coil validator: `audio.eat-shorter-than-a-tick`. PLACEHOLDER.
- *
- * The eat cue is shorter than a tick.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * assets/audio/eat.wav is shorter than TICK_SECONDS (0.125 s), so eight of
- * them in a second stay distinct rather than smearing into one tone.
- *
- * HOW:
- * read the WAV's header and compute its duration from its sample count and
- * rate. The check reads a file and drives nothing, so its evidence is a still.
- *
- * MEDIA IT MUST CAPTURE: eat (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// audio/eat-shorter-than-a-tick — the eat cue fits inside one tick.
+//
+// WHAT THE SPECIFICATION FIXES. `specs/assets.md` states it as the eat's own
+// bar: "`eat` is short and dry, well under a tick, so eight of them in a second
+// stay distinct rather than smearing into one tone." The tick is
+// `specs/movement.md`'s `TICK_SECONDS` (`0.125`), which is the interval a snake
+// travelling through a line of pellets eats on, so a cue longer than one is still
+// sounding when the next begins.
+//
+// WHAT IS READ. The file's own length, taken from the decoded buffer, against
+// `TICK_SECONDS`. "Well under" is the bar's own hedge and not a figure, so what
+// is asserted is the figure the tick actually is: a cue at or over a tick smears,
+// and a cue under it does not. How far under is the build's to choose.
+//
+// HOW THE FILE IS READ. Off the repository the build produced, at the path
+// `specs/assets.md` fixes, and decoded through the browser, which handles every
+// sample format the generators may write — see `audio/sounds.ts`. That the file
+// exists at all and carries signal is `audio/eat-file-produced`.
+//
+// THE EVIDENCE. This point drives nothing, so its declared still is a picture of
+// the moment the cue belongs to: the head one cell from the pellet it eats.
 
-test("audio.eat-shorter-than-a-tick", () => {
-  throw new Error(
-    "validator not implemented: audio/eat-shorter-than-a-tick.test.ts",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertLessThan, fail } from "../assert";
+import { CUES, CUE_FILES, TICK_SECONDS } from "../constants";
+import {
+  ahead,
+  captureStill,
+  chainFrom,
+  createHarness,
+  HOME_HEAD,
+  type Harness,
+} from "../harness";
+import { decodeSound, showRound } from "./sounds";
+
+/** The path `specs/assets.md` fixes for the eat cue. */
+const FILE = CUE_FILES[CUES.eat];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("ships an eat cue shorter than one tick", async () => {
+  const { sound, reason } = await decodeSound(h, FILE);
+
+  await showRound(h, {
+    snake: chainFrom(HOME_HEAD, "right", 4),
+    dir: "right",
+    pellet: ahead(HOME_HEAD, "right"),
+    travel: false,
+  });
+  await captureStill(h, "eat");
+
+  if (sound === null) fail(`a WAV at ${FILE} the browser decodes`, reason);
+  assertLessThan(
+    sound.duration,
+    TICK_SECONDS,
+    `the length of ${FILE} in seconds, against TICK_SECONDS`,
   );
 });
