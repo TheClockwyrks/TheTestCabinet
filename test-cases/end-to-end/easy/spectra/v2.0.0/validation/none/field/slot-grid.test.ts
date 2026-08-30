@@ -1,0 +1,17 @@
+// Spectra — field/slot-grid: a formation slot sits where the grid puts it
+//
+// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
+// file with the suite that decides the point `field.slot-grid` on the
+// `none` configuration, and captures the media `test-case.toml` declares
+// for it.
+//
+// It THROWS rather than passing, on purpose: a point whose suite was never
+// written must fail loudly instead of silently scoring.
+
+import { it } from "vitest";
+
+it("A formation slot sits where the grid puts it", () => {
+  throw new Error(
+    "Spectra: validation/none/field/slot-grid.test.ts is a scaffold placeholder and has not been implemented",
+  );
+});
