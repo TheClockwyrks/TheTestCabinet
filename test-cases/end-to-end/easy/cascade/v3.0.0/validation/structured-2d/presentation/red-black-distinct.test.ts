@@ -12,7 +12,7 @@
 //
 //   Red and black suits are told apart
 //
-//   The colours a heart and a spade are drawn in differ by at least 90 of 441 in RGB distance.
+//   The colors a heart and a spade are drawn in differ by at least 90 of 441 in RGB distance.
 
 import { it } from "vitest";
 

@@ -10,9 +10,9 @@
 //
 // What this item must decide, from the manifest:
 //
-//   A column builds down in alternating colour
+//   A column builds down in alternating color
 //
-//   A card one rank lower and the opposite colour is accepted onto a column's lowest card.
+//   A card one rank lower and the opposite color is accepted onto a column's lowest card.
 
 import { it } from "vitest";
 

@@ -12,7 +12,7 @@
 //
 //   A column refuses a higher rank
 //
-//   A card one rank higher and opposite in colour is refused.
+//   A card one rank higher and opposite in color is refused.
 
 import { it } from "vitest";
 

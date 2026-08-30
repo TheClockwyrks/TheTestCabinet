@@ -12,7 +12,7 @@
 //
 //   A column refuses a rank gap
 //
-//   A card two ranks lower and opposite in colour is refused.
+//   A card two ranks lower and opposite in color is refused.
 
 import { it } from "vitest";
 

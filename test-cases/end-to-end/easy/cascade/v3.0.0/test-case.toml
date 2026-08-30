@@ -313,7 +313,7 @@ source = "specs/deal.md"
 source = "specs/foundations.md"
 
 # The seven columns and what they accept: building down in rank and alternating in
-# colour, only a King or a King-headed run onto an empty column, nothing at all
+# color, only a King or a King-headed run onto an empty column, nothing at all
 # onto a column whose lowest card is face-down, what a grab takes, that a
 # face-down source is refused, and that a newly exposed lowest card turns face-up.
 # Seeded verbatim.
@@ -401,7 +401,7 @@ source = "specs/showcase.md.hbs"
 # there is no honest one to seed here — every build is expected to look different,
 # and a screenshot diff would score the build that copied the mockup best rather
 # than the build that designed the best table. v2.x seeded reference mockups and a
-# canonical thirteen-colour palette; dropping both is one of the things this major
+# canonical thirteen-color palette; dropping both is one of the things this major
 # bump is for.
 #
 # `[[proof]]` is likewise empty: no proof media is asked of the build, and
@@ -447,7 +447,7 @@ description = "The table's geometry, the four screens and the HUD, whether the p
 # `[[review.categories]]` is a CATEGORY — a bare name grouping the points — and
 # each item entry under it is one graded review item, worth one point (the default
 # weight), so a category is worth the number of items it holds. No item declares a
-# `weight`: every observable behaviour on this checklist counts the same, and the
+# `weight`: every observable behavior on this checklist counts the same, and the
 # relative importance of a failure is carried by `failure_cap`, not by arithmetic.
 #
 # A category carries no prose of its own; each item states in `description` the
@@ -462,7 +462,7 @@ description = "The table's geometry, the four screens and the HUD, whether the p
 # specs plus a numeric tolerance stated in the item.
 #
 # EVERY point carries a validation script, and every point is ONE OBSERVABLE
-# BEHAVIOUR, so a build fails exactly the rule it breaks: the run that moves as a
+# BEHAVIOR, so a build fails exactly the rule it breaks: the run that moves as a
 # unit and the order it arrives in are two points, not one. Each script is a vitest
 # suite under `validation/<engine>/<category>/<item id>.test.ts`. The `<engine>`
 # level is the ENGINE the suite is written against — a validator speaks one
@@ -1210,26 +1210,26 @@ id = "tableau"
 title = "The Tableau"
 [[review.categories.items]]
 id = "build-down-alternating"
-title = "A column builds down in alternating colour"
-description = "A card one rank lower and the opposite colour is accepted onto a column's lowest card."
+title = "A column builds down in alternating color"
+description = "A card one rank lower and the opposite color is accepted onto a column's lowest card."
 domains = ["rules"]
 failure_cap = "broken"
 validation = { script = "tableau/build-down-alternating.test.ts", outputs = [
   { id = "accepted", name = "The card accepted onto the column", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "reject-same-colour"
-title = "A column refuses the same colour"
-description = "A card one rank lower of the same colour is refused."
+id = "reject-same-color"
+title = "A column refuses the same color"
+description = "A card one rank lower of the same color is refused."
 domains = ["rules"]
 failure_cap = "broken"
-validation = { script = "tableau/reject-same-colour.test.ts", outputs = [
-  { id = "refused", name = "The column refusing the same-coloured card", kind = "image" },
+validation = { script = "tableau/reject-same-color.test.ts", outputs = [
+  { id = "refused", name = "The column refusing the same-colored card", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "reject-rank-higher"
 title = "A column refuses a higher rank"
-description = "A card one rank higher and opposite in colour is refused."
+description = "A card one rank higher and opposite in color is refused."
 domains = ["rules"]
 failure_cap = "passable"
 validation = { script = "tableau/reject-rank-higher.test.ts", outputs = [
@@ -1238,7 +1238,7 @@ validation = { script = "tableau/reject-rank-higher.test.ts", outputs = [
 [[review.categories.items]]
 id = "reject-rank-gap"
 title = "A column refuses a rank gap"
-description = "A card two ranks lower and opposite in colour is refused."
+description = "A card two ranks lower and opposite in color is refused."
 domains = ["rules"]
 failure_cap = "passable"
 validation = { script = "tableau/reject-rank-gap.test.ts", outputs = [
@@ -1247,7 +1247,7 @@ validation = { script = "tableau/reject-rank-gap.test.ts", outputs = [
 [[review.categories.items]]
 id = "reject-equal-rank"
 title = "A column refuses an equal rank"
-description = "A card of the same rank and opposite colour is refused."
+description = "A card of the same rank and opposite color is refused."
 domains = ["rules"]
 failure_cap = "passable"
 validation = { script = "tableau/reject-equal-rank.test.ts", outputs = [
@@ -1417,20 +1417,20 @@ validation = { script = "runs/reject-broken-run.test.ts", outputs = [
 [[review.categories.items]]
 id = "onto-legal-card"
 title = "A run lands on a legal card"
-description = "A run whose leading card is one lower and opposite in colour to the target's lowest card is accepted."
+description = "A run whose leading card is one lower and opposite in color to the target's lowest card is accepted."
 domains = ["rules"]
 failure_cap = "broken"
 validation = { script = "runs/onto-legal-card.test.ts", outputs = [
   { id = "accepted", name = "The run on the card it fits", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "reject-wrong-colour"
-title = "A run of the wrong colour is refused"
-description = "A run whose leading card matches the target's colour is refused."
+id = "reject-wrong-color"
+title = "A run of the wrong color is refused"
+description = "A run whose leading card matches the target's color is refused."
 domains = ["rules"]
 failure_cap = "passable"
-validation = { script = "runs/reject-wrong-colour.test.ts", outputs = [
-  { id = "refused", name = "The run refused for its colour", kind = "image" },
+validation = { script = "runs/reject-wrong-color.test.ts", outputs = [
+  { id = "refused", name = "The run refused for its color", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "reject-wrong-rank"
@@ -2254,7 +2254,7 @@ validation = { script = "winning/press-clears-and-deals.test.ts", outputs = [
 # every single-flyer point read one parabola instead of fifty-two.
 #
 # Unless an item says otherwise, a point here advances the clock in frames of
-# 1/240 s, fine enough that a figure quantised to a frame boundary still meets the
+# 1/240 s, fine enough that a figure quantized to a frame boundary still meets the
 # stated tolerances. A suite that advances in 1/60 s frames instead will fail
 # conformant builds on the timing items.
 #
@@ -2544,7 +2544,7 @@ validation = { script = "presentation/suit-drawn.test.ts", outputs = [
 [[review.categories.items]]
 id = "red-black-distinct"
 title = "Red and black suits are told apart"
-description = "The colours a heart and a spade are drawn in differ by at least 90 of 441 in RGB distance."
+description = "The colors a heart and a spade are drawn in differ by at least 90 of 441 in RGB distance."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/red-black-distinct.test.ts", outputs = [

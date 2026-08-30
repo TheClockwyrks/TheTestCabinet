@@ -12,7 +12,7 @@
 //
 //   A run lands on a legal card
 //
-//   A run whose leading card is one lower and opposite in colour to the target's lowest card is accepted.
+//   A run whose leading card is one lower and opposite in color to the target's lowest card is accepted.
 
 import { it } from "vitest";
 

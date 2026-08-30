@@ -1,6 +1,6 @@
-// SCAFFOLD PLACEHOLDER — validation/none/tableau/reject-equal-rank.test.ts
+// SCAFFOLD PLACEHOLDER — validation/none/tableau/reject-same-color.test.ts
 //
-// The review item `tableau.reject-equal-rank` declares this script in the case manifest, so
+// The review item `tableau.reject-same-color` declares this script in the case manifest, so
 // the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
 // the v3.0.0 rework replaces it with the real suite.
 //
@@ -10,14 +10,14 @@
 //
 // What this item must decide, from the manifest:
 //
-//   A column refuses an equal rank
+//   A column refuses the same color
 //
-//   A card of the same rank and opposite color is refused.
+//   A card one rank lower of the same color is refused.
 
 import { it } from "vitest";
 
-it("tableau.reject-equal-rank — the validator is not written yet", () => {
+it("tableau.reject-same-color — the validator is not written yet", () => {
   throw new Error(
-    "Cascade v3.0.0: validation/none/tableau/reject-equal-rank.test.ts is a scaffold stub, not a validator",
+    "Cascade v3.0.0: validation/none/tableau/reject-same-color.test.ts is a scaffold stub, not a validator",
   );
 });

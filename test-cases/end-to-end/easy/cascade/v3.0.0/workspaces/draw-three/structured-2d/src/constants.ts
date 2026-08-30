@@ -16,10 +16,10 @@
 // of its own. There is deliberately no fixed-step constant: nothing in this game
 // counts frames.
 //
-// What is deliberately NOT here: no colour, no font stack, and no card corner
+// What is deliberately NOT here: no color, no font stack, and no card corner
 // radius. `specs/overview.md` fixes what a player must be able to READ at a
 // glance and leaves every other aspect of the look to this build, so a figure
-// that decides nothing about the rules has no place in this file. The one colour
+// that decides nothing about the rules has no place in this file. The one color
 // the project carries is `BACKGROUND`, which `src/game.ts` exports.
 
 // ---- Stage and table (specs/table.md) ------------------------------------
