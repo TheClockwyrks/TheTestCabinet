@@ -71,7 +71,7 @@ description = "The Maze mode: the fixed course of fatal interior obstacles the s
 #
 # Everything else here is an ADDITION rather than a replacement: the rules the course
 # obeys, the two operations the debug surface carries only in this mode, and the
-# colour distance the course is held to. `domains` and `failure_cap` are on the same
+# color distance the course is held to. `domains` and `failure_cap` are on the same
 # scale the case manifest sets out above its `[review]` table, and a point may name
 # a common domain, this variant's own `maze` domain, or both.
 
@@ -214,7 +214,7 @@ failure_cap = "scuffed"
 # an empty interior cell. See
 # validation/<engine>/visibility/obstacle-apart-from-board.test.ts.
 validation = { script = "visibility/obstacle-apart-from-board.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colours were sampled from", kind = "image" },
+  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "obstacle-apart-from-snake"
@@ -226,5 +226,5 @@ failure_cap = "scuffed"
 # obstacle cell against the head and a body cell. See
 # validation/<engine>/visibility/obstacle-apart-from-snake.test.ts.
 validation = { script = "visibility/obstacle-apart-from-snake.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colours were sampled from", kind = "image" },
+  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
 ] }

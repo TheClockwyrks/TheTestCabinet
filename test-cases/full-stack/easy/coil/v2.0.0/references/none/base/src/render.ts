@@ -83,7 +83,7 @@ function pad(n: number): string {
 function drawBoard(ctx: CanvasRenderingContext2D, sim: Sim, view: RenderView): void {
   const bx = cellX(0);
   const by = cellY(0);
-  // Wall ring: fill the whole board in the wall colour, then punch out the interior.
+  // Wall ring: fill the whole board in the wall color, then punch out the interior.
   ctx.fillStyle = C.wall;
   ctx.fillRect(bx, by, CELL * (IN_COL1 - IN_COL0 + 3), CELL * (IN_ROW1 - IN_ROW0 + 3));
   const ix = cellX(IN_COL0);
@@ -109,7 +109,7 @@ function drawBoard(ctx: CanvasRenderingContext2D, sim: Sim, view: RenderView): v
   }
   ctx.stroke();
 
-  // Maze obstacles: fatal interior bars in the obstacle colour with a soft glow.
+  // Maze obstacles: fatal interior bars in the obstacle color with a soft glow.
   if (sim.obstacles.length > 0) {
     ctx.save();
     ctx.shadowColor = C.obstacle;

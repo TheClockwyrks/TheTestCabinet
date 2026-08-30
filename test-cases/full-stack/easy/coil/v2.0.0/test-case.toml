@@ -369,7 +369,7 @@ description = "Everything a player sees and hears. The produced assets first: th
 # NOTHING here asks a reviewer to judge how the game looks or sounds. Appearance is
 # rated through the domains above. The points about what is drawn assert only what
 # the specification fixes: that the stage is fitted, that the pieces on the board
-# are told apart by a stated colour distance, that the copy each screen names is
+# are told apart by a stated color distance, that the copy each screen names is
 # drawn, that the snake is painted from produced sprites rather than from shapes,
 # and that the produced sounds carry signal and hold the lengths `specs/assets.md`
 # fixes for them.
@@ -1679,7 +1679,7 @@ validation = { script = "controls/menu-horizontal-inert.test.ts", outputs = [
 ] }
 
 # --- Visibility ---------------------------------------------------------------
-# The pieces on the board are told apart by colour, read from the rendered
+# The pieces on the board are told apart by color, read from the rendered
 # pixels against a stated RGB distance. The distance is the requirement; the
 # palette is the build's and is rated through the domains.
 [[review.categories]]
@@ -1695,7 +1695,7 @@ failure_cap = "scuffed"
 # and sample the head cell against an empty interior cell. See
 # validation/<engine>/visibility/head-apart-from-board.test.ts.
 validation = { script = "visibility/head-apart-from-board.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colours were sampled from", kind = "image" },
+  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "head-apart-from-body"
@@ -1707,7 +1707,7 @@ failure_cap = "scuffed"
 # head cell against a middle body cell. See
 # validation/<engine>/visibility/head-apart-from-body.test.ts.
 validation = { script = "visibility/head-apart-from-body.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colours were sampled from", kind = "image" },
+  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "pellet-apart-from-board"
@@ -1719,7 +1719,7 @@ failure_cap = "scuffed"
 # against an empty interior cell. See
 # validation/<engine>/visibility/pellet-apart-from-board.test.ts.
 validation = { script = "visibility/pellet-apart-from-board.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colours were sampled from", kind = "image" },
+  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "pellet-apart-from-snake"
@@ -1731,7 +1731,7 @@ failure_cap = "scuffed"
 # and sample the pellet against the head and a body cell. See
 # validation/<engine>/visibility/pellet-apart-from-snake.test.ts.
 validation = { script = "visibility/pellet-apart-from-snake.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colours were sampled from", kind = "image" },
+  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "wall-apart-from-interior"
@@ -1743,7 +1743,7 @@ failure_cap = "passable"
 # empty interior cell. See
 # validation/<engine>/visibility/wall-apart-from-interior.test.ts.
 validation = { script = "visibility/wall-apart-from-interior.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colours were sampled from", kind = "image" },
+  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
 ] }
 
 # --- Presentation -------------------------------------------------------------

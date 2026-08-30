@@ -97,9 +97,9 @@ head_frame() {
     Ho=$(ho "$x"); Hf=$((Ho-1)); [ "$Hf" -lt 0 ] && continue
     sc line --frame "$f" --x0 "$x" --y0 $((16-Hf)) --x1 "$x" --y1 $((15+Hf)) --color "$HEAD_C"
   done
-  # 3) NECK BLEND — grade the back of the head from the body colour up to the head
-  #    colour so it joins the neck without a hard bright step (the front keeps the bright
-  #    head colour, so the leading cell is still clearly distinguishable).
+  # 3) NECK BLEND — grade the back of the head from the body color up to the head
+  #    color so it joins the neck without a hard bright step (the front keeps the bright
+  #    head color, so the leading cell is still clearly distinguishable).
   local gx gc
   for gx in $(seq 0 11); do
     Ho=$(ho "$gx"); Hf=$((Ho-1)); [ "$Hf" -lt 0 ] && continue
