@@ -63,7 +63,7 @@ accelerators.
 | `Space` | Pauses in place, and resumes. |
 | `V` | Opens and closes the recipe book. |
 | `L` | Opens and closes the damage leaderboard. |
-| `M` | Mutes and unmutes. |
+| `M` | Toggles audio mute. |
 | `Shift` | Held across a press on a structure, adds it to the combine set. |
 | `↑` `↓` `Enter` | Move and take a menu choice. |
 | `Esc` | Backs out: a held rock, then the selection, then an overlay, then the pause menu. |
