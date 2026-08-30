@@ -1,28 +1,42 @@
-/*
- * Coil validator: `states.opens-on-title`. PLACEHOLDER.
- *
- * The game opens on the title screen.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * A freshly loaded game is on the title screen with menuIndex at 0.
- *
- * HOW:
- * load the build and read the screen and the highlight before any input.
- *
- * MEDIA IT MUST CAPTURE: title (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// states/opens-on-title — a freshly loaded game is on the title, on its first
+// menu item.
+//
+// specs/ui.md: "the game opens on `title`", and "Arriving at any of these screens
+// sets `menuIndex` to `0`." Both are read off the game as it stands the moment it
+// has initialized, before a key is pressed and before anything is posed.
+//
+// WHAT MAKES THIS A READING OF THE LOAD. The harness builds the engine, subscribes
+// to it, and calls `engine.initialize()` — which is the build's own `initialize`,
+// the same call the page makes — and then hands the harness over WITHOUT
+// resetting. So the first snapshot a check takes is the state the load left, and
+// nothing here has to reopen the build in a second page to get at it. Reading it
+// after a reset would decide the reset rather than the load, because
+// specs/instrumentation.md has a reset restore the title screen and a `menuIndex`
+// of `0` whatever the build did at load, and a build that opened on its own
+// how-to screen would pass.
 
-test("states.opens-on-title", () => {
-  throw new Error("validator not implemented: states/opens-on-title.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("loads onto the title screen with the first item highlighted", async () => {
+  const loaded = h.snapshot();
+
+  // The one frame the still is taken off, run after the reading rather than
+  // before it, so what is asserted is the state the load itself left.
+  await h.advance(1);
+  captureStill(h, "title");
+
+  assertEqual(loaded.screen, "title", "the screen a freshly loaded game is on");
+  assertEqual(loaded.menuIndex, 0, "the highlighted item of the title menu");
 });
