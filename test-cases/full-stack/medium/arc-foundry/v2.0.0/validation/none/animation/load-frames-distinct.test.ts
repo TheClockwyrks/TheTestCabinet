@@ -1,26 +1,56 @@
-// Arc Foundry — `animation.load-frames-distinct`. CASE-PROVIDED. NOT YET WRITTEN.
+// Arc Foundry — animation/load-frames-distinct: within one Load type's cycle the
+// four frames are four different pictures.
 //
-// The manifest declares this point at `animation/load-frames-distinct.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT, from `specs/assets.md`: an idle cycle "loops while its subject
+// is on the yard", and what the cycles must deliver is "that the Load visibly
+// crackles". A cycle whose four frames are the same picture cannot crackle
+// however fast it is played, so the four frames of each of the seven cycles are
+// pairwise different images.
 //
-// THE REQUIREMENT. Within each Load type's cycle the four frames are pairwise
-// different images, so the unit visibly crackles rather than holding one pose.
+// COMPARED AS PIXELS, NOT AS BYTES. Two encodings of one picture are one picture,
+// and `./images.ts` decodes each frame and compares the decoded RGBA. Frames of
+// different sizes are different pictures by definition and are not compared
+// further.
 //
-// HOW IT IS DECIDED. Decode each cycle's four frames and compare their pixels
-// pairwise. The evidence it hands back is `cycle` (image): one Load cycle's
-// four frames.
+// EXACT, WITH NO TOLERANCE, AND IN ONE DIRECTION ONLY. What is asked is that the
+// pictures differ at all — a single pixel is enough. How MUCH they differ, and
+// whether the difference reads as crackle, is the aesthetic rating's, not this
+// point's. So a build that redrew one spark between frames passes and a build
+// that committed `0.png` four times fails, which is the line the review item
+// draws.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual } from "../assert";
+import { SPAWN_TYPES } from "../constants";
+import { createHarness, openYard, releaseUnit, type Harness } from "../harness";
+import { cycleFrames, decodeAll, duplicatePairs, evidence } from "./images";
 
-import { fail } from "../assert";
+let h: Harness;
 
-describe("animation.load-frames-distinct", () => {
-  it("A Load cycle's four frames differ", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `animation.load-frames-distinct` has not been written yet",
-    );
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("draws four different pictures in each Load type's cycle", async () => {
+  await evidence(h, "cycle", async () => {
+    await openYard(h);
+    await releaseUnit(h, "slug", { tile: { col: 24, row: 16 }, frozen: true });
+    await h.advance(1);
   });
+
+  const repeated: string[] = [];
+  for (const type of SPAWN_TYPES) {
+    const frames = await decodeAll(cycleFrames(`load/${type}`));
+    repeated.push(...duplicatePairs(frames));
+  }
+  assertDeepEqual(
+    repeated,
+    [],
+    "the four frames of each Load cycle to be four different pictures, so the " +
+      "unit visibly crackles (specs/assets.md)",
+  );
 });

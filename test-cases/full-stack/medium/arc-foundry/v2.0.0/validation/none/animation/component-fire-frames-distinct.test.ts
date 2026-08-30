@@ -1,26 +1,55 @@
-// Arc Foundry — `animation.component-fire-frames-distinct`. CASE-PROVIDED. NOT YET WRITTEN.
+// Arc Foundry — animation/component-fire-frames-distinct: within one component's
+// firing cycle the four frames are four different pictures.
 //
-// The manifest declares this point at `animation/component-fire-frames-distinct.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT, from `specs/assets.md`: a firing cycle shows "the head's
+// charge-and-discharge, played once per shot", and what the cycles must deliver is
+// "that a firing structure visibly charges and discharges". A cycle whose frames
+// are one picture repeated shows neither, so the four frames of each of the eight
+// cycles are pairwise different images.
 //
-// THE REQUIREMENT. Within each firing cycle the four frames are pairwise
-// different images, so a firing structure visibly charges and discharges.
-//
-// HOW IT IS DECIDED. Decode each cycle's four frames and compare their pixels
-// pairwise. The evidence it hands back is `cycle` (image): one firing cycle's
-// four frames.
+// COMPARED AS PIXELS AND IN ONE DIRECTION. Each frame is decoded and the decoded
+// RGBA compared, so two encodings of one picture read as one picture. What is
+// asked is that the pictures differ at all; how much they differ, and whether the
+// difference reads as a discharge, is the aesthetic rating's.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual } from "../assert";
+import { COMPONENT_TYPES } from "../constants";
+import {
+  createHarness,
+  openYard,
+  standComponent,
+  type Harness,
+} from "../harness";
+import { cycleFrames, decodeAll, duplicatePairs, evidence } from "./images";
 
-import { fail } from "../assert";
+let h: Harness;
 
-describe("animation.component-fire-frames-distinct", () => {
-  it("A firing cycle's four frames differ", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `animation.component-fire-frames-distinct` has not been written yet",
-    );
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("draws four different pictures in each component's firing cycle", async () => {
+  await evidence(h, "cycle", async () => {
+    await openYard(h);
+    await standComponent(h, "capacitor", 5, 24, 15);
+    await h.advance(1);
   });
+
+  const repeated: string[] = [];
+  for (const type of COMPONENT_TYPES) {
+    const frames = await decodeAll(cycleFrames(`components/${type}/fire`));
+    repeated.push(...duplicatePairs(frames));
+  }
+  assertDeepEqual(
+    repeated,
+    [],
+    "the four frames of each component's firing cycle to be four different " +
+      "pictures, so a firing structure visibly charges and discharges " +
+      "(specs/assets.md)",
+  );
 });

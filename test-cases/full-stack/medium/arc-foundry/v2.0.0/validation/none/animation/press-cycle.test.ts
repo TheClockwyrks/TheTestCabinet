@@ -1,25 +1,66 @@
-// Arc Foundry — `animation.press-cycle`. CASE-PROVIDED. NOT YET WRITTEN.
+// Arc Foundry — animation/press-cycle: the press ships a four-frame stamping
+// cycle whose frames are four different pictures.
 //
-// The manifest declares this point at `animation/press-cycle.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT, from the animation table of `specs/assets.md`: "Press —
+// `press/0.png` .. `3.png` — the press stamping, played when a rock is placed."
+// Every cycle in that table is four frames "played as a loop", and a cycle whose
+// frames are one picture repeated shows no stamp, so this point asks both halves
+// at once: the four files exist and decode, and they are pairwise different
+// images.
 //
-// THE REQUIREMENT. assets/press/0.png through 3.png exist and the four frames
-// are pairwise different images.
+// WHY BOTH HALVES ARE ONE POINT HERE. The press is a single cycle rather than a
+// family of them, so "the press has a four-frame stamping cycle" is one
+// requirement in one direction; the Load's and the components' cycles are split
+// into a presence point and a distinctness point because each of those is a
+// family and a build can miss one member of it without missing the other.
 //
-// HOW IT IS DECIDED. Read the four files and compare their pixels pairwise.
-// The evidence it hands back is `press` (image): the press's produced cycle.
+// No size is asserted: `specs/assets.md` fixes one for the Load's idle cycles and
+// deliberately fixes none for the press.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual } from "../assert";
+import {
+  createHarness,
+  openYard,
+  standCandidate,
+  type Harness,
+} from "../harness";
+import {
+  cycleFrames,
+  decodeAll,
+  duplicatePairs,
+  evidence,
+  missing,
+} from "./images";
 
-import { fail } from "../assert";
+const FRAMES = cycleFrames("press");
 
-describe("animation.press-cycle", () => {
-  it("The press has a four-frame stamping cycle", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `animation.press-cycle` has not been written yet",
-    );
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("produces four different stamping frames", async () => {
+  await evidence(h, "press", async () => {
+    await openYard(h);
+    await standCandidate(h, "capacitor", 1, 24, 15);
+    await h.advance(1);
   });
+
+  assertDeepEqual(
+    missing(FRAMES),
+    [],
+    "assets/press/0.png through 3.png on disk (specs/assets.md)",
+  );
+  const frames = await decodeAll(FRAMES);
+  assertDeepEqual(
+    duplicatePairs(frames),
+    [],
+    "the press's four frames to be four different pictures (specs/assets.md)",
+  );
 });
