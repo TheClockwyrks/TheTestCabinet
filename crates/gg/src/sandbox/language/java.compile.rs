@@ -62,8 +62,8 @@
 //! Nothing. gg catches nothing, describes nothing and re-reports nothing. A program that throws dies
 //! the way TeaVM kills it — `printHeader(); printStack(); abort();` — and what the model reads is the
 //! exception's own message and the model's own file and lines, off the guest's standard error, which
-//! is where [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) says to read
-//! it. The one thing gg changed is that upstream TeaVM printed the frames and not the header; see
+//! is where [the failure rule](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures) says to
+//! read it. The one thing gg changed is that upstream TeaVM printed the frames and not the header; see
 //! `packages/gg-sandbox-jvm/vendor/org/teavm/runtime/ExceptionHandling.java`.
 //!
 //! There is no source map on this road and no offset anywhere in this file. A location arrives in the
@@ -370,10 +370,9 @@ fn bind_module(workspace: &Workspace, module: &CodeModule) -> Result<String, Pre
     if workspace.module_build(key, &module.source).is_some() {
         return Ok(module_classes(workspace, key));
     }
-    let wrapped =
-        source::wrap_module(&module.source, key).map_err(|failure| about(key, failure))?;
+    let wrapped = source::wrap_module(&module.source, key).map_err(|failure| ours(key, failure))?;
     build_module(workspace, key, &wrapped.source, &module.source)
-        .map_err(|failure| about(key, failure))?;
+        .map_err(|failure| ours(key, failure))?;
     Ok(module_classes(workspace, key))
 }
 
@@ -409,24 +408,37 @@ fn build_module(
     Ok(())
 }
 
-/// One of [`build_module`]'s failures, said as something about the code this session loaded.
+/// Re-attribute a [rebuilt module](bind_module)'s refusal to gg, whichever of the model-facing
+/// bands it arrived in.
 ///
-/// Only the model-facing bands are renamed: a toolchain failure is the operator's whatever compiled
-/// when it happened, and saying a key in front of it would blame a skill for a JVM that would not
-/// start.
-fn about(key: &str, failure: PrepareFailure) -> PrepareFailure {
-    let said = match failure {
-        PrepareFailure::Program(PrepareError::Syntax(said) | PrepareError::Compile(said)) => {
-            PrepareError::Compile(format!(
-                "the code this session loaded at `{key}` does not compile: {said}"
+/// A module is compiled at the read that binds it, so its author already read this diagnostic in
+/// their own coordinates and this arm refusing the same bytes now is this arm disagreeing with
+/// itself. The program beside it compiles, and the file the diagnostic names is one that program's
+/// author never wrote, so handing it back under `Compiler error` charges a model for a program it
+/// wrote correctly and offers it nothing to change.
+///
+/// Both producers are covered because both are gg's here: the [wrap](source::wrap_module), which
+/// refuses a module whose shape this arm has no lowering for, and the compile under it, which
+/// refuses one `javac` read and disagreed with.
+///
+/// A [toolchain failure](PrepareFailure::Toolchain) passes through. A JVM that would not start is
+/// already gg's rather than the model's, and saying a key in front of it would blame a skill for it.
+fn ours(key: &str, failure: PrepareFailure) -> PrepareFailure {
+    match failure {
+        PrepareFailure::Program(error @ (PrepareError::Syntax(_) | PrepareError::Compile(_))) => {
+            PrepareFailure::Lowering(format!(
+                "javac refused the code module gg compiled as `{key}` beside the program, which \
+                 compiled on its own when it was loaded:\n{error}"
             ))
         }
-        PrepareFailure::Program(PrepareError::Unsupported(said)) => PrepareError::Unsupported(
-            format!("the code this session loaded at `{key}` cannot be built: {said}"),
-        ),
-        other => return other,
-    };
-    PrepareFailure::Program(said)
+        PrepareFailure::Program(error @ PrepareError::Unsupported(_)) => {
+            PrepareFailure::Lowering(format!(
+                "gg could not lower the code module bound at `{key}` beside the program, which it \
+                 accepted when it was loaded:\n{error}"
+            ))
+        }
+        other => other,
+    }
 }
 
 /// The main class and target file that ask [the driver](super::super::jvm) for `javac` alone.
@@ -881,6 +893,21 @@ pub(super) fn placed() -> Result<&'static Placed, String> {
         })
         .as_ref()
         .map_err(Clone::clone)
+}
+
+/// **The packages `javac` said this program could not import**, read out of the rendering
+/// [`Diagnostic::render`](Diagnostic::render) produced.
+///
+/// `javac` names the package rather than the type: an `import java.utl.List;` is reported as
+/// `package java.utl does not exist`, located at the import line. The message is taken in
+/// `Locale.ROOT`, so the sentence is the same on every machine.
+pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
+    diagnostic
+        .lines()
+        .flat_map(|line| {
+            crate::sandbox::language::diagnostics::named(line, "package ", " does not exist")
+        })
+        .collect()
 }
 
 #[cfg(test)]

@@ -149,7 +149,9 @@ below.
    a program may import is a property of the artifact, and the file that decides
    it is the one the catalogue's `libraries` section is reflected out of.
    Declaring it in a template instead produces a sentence a model reads and the
-   component contradicts.
+   component contradicts. An arm that declares a set also states how its
+   compiler names an import it could not resolve, so a rejection is answered
+   with the modules matching that name rather than the whole inventory.
 3. Hand-write the SDK, idiomatic for the language and obeying the rules every
    agent-facing surface obeys. Python's is
    `packages/gg-sandbox-python/src/gg/`, one module per capability. Which

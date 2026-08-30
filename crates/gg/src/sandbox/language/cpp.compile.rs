@@ -601,6 +601,10 @@ fn precompile_module(
 
 /// The interface of the module bound at `module.name`, precompiling it first when this agent's
 /// workspace holds no build made from these bytes.
+///
+/// The precompile is the miss rather than the rule — a module reaching a program compile was
+/// precompiled at the read that loaded it — and it is what keeps a program handed a module this
+/// workspace never saw compiling. A refusal here is [gg's own](ours).
 fn bind_module(
     module: &CodeModule,
     toolchain: &Toolchain<'_>,
@@ -609,7 +613,38 @@ fn bind_module(
 ) -> Result<PathBuf, PrepareFailure> {
     match workspace.module_build(&module.name, &module.source) {
         Some(artifacts) if !artifacts.is_empty() => Ok(artifacts[0].clone()),
-        _ => precompile_module(&module.name, &module.source, toolchain, workspace, context),
+        _ => precompile_module(&module.name, &module.source, toolchain, workspace, context)
+            .map_err(|failure| ours(&module.name, failure)),
+    }
+}
+
+/// Re-attribute a [rebuilt module](bind_module)'s refusal to gg, whichever of the model-facing
+/// bands it arrived in.
+///
+/// A module is compiled at the read that binds it, so its author already read this diagnostic in
+/// their own coordinates and this arm refusing the same bytes now is this arm disagreeing with
+/// itself. The program beside it compiles, and `module_<key>.cppm` is a file that program's author
+/// never wrote, so handing the diagnostic back under `Compiler error` charges a model for a program
+/// it wrote correctly and offers it nothing to change.
+///
+/// A [toolchain failure](PrepareFailure::Toolchain) passes through, already being gg's rather than
+/// the model's.
+fn ours(key: &str, failure: PrepareFailure) -> PrepareFailure {
+    match failure {
+        PrepareFailure::Program(error @ (PrepareError::Syntax(_) | PrepareError::Compile(_))) => {
+            PrepareFailure::Lowering(format!(
+                "clang {} refused the code module gg compiled as `{key}` beside the program, which \
+                 compiled on its own when it was loaded:\n{error}",
+                compiler_version(),
+            ))
+        }
+        PrepareFailure::Program(error @ PrepareError::Unsupported(_)) => {
+            PrepareFailure::Lowering(format!(
+                "gg could not lower the code module bound at `{key}` beside the program, which it \
+                 accepted when it was loaded:\n{error}"
+            ))
+        }
+        other => other,
     }
 }
 
@@ -1226,6 +1261,25 @@ fn fingerprint(archive: &[u8]) -> u64 {
     let mut hasher = std::hash::DefaultHasher::new();
     archive.hash(&mut hasher);
     hasher.finish()
+}
+
+/// **The headers `clang++` said this program could not include**, read out of the text this arm
+/// [renders](rendered).
+///
+/// `clang++` reports an unresolvable `#include` as a fatal error quoting the spelling the program
+/// wrote: `'vectr' file not found`. The quotes are the compiler's and the angle brackets are not
+/// carried into them, which is why [matching](crate::sandbox::supporting) strips the brackets this
+/// arm's catalogue spells its modules with.
+pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
+    diagnostic
+        .lines()
+        .filter(|line| line.contains("file not found"))
+        .filter_map(|line| {
+            crate::sandbox::language::diagnostics::named(line, "'", "'")
+                .into_iter()
+                .next()
+        })
+        .collect()
 }
 
 #[cfg(test)]

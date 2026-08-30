@@ -24,7 +24,7 @@ the per-failure cost of a compile error is comparable across arms.
 
 ## Done when
 
-- [ ] A compile failure carries diagnostics and matched candidates.
-- [ ] One bound on supporting material applies to every arm.
-- [ ] A gate asserts the bound holds for each arm that declares a library set.
-- [ ] Gates green.
+- [x] A compile failure carries diagnostics and matched candidates.
+- [x] One bound on supporting material applies to every arm.
+- [x] A gate asserts the bound holds for each arm that declares a library set.
+- [x] Gates green.

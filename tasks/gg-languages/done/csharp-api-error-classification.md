@@ -26,9 +26,9 @@ JavaScript, Python and PureScript runs of the same test case.
 
 Audit every arm's guest for the same shape and fix each one that flattens an API
 failure into a generic throw. `crates/gg/src/sandbox/outcome.rs` states that an
-uncaught failed call is `ProgramApiError` on all arms; make that true and bring
-the arm's gate cell in `csharp.substrate.test.rs` and the note in
-`apps/docs/src/content/docs/gg/telemetry/turn-outcomes.md` onto it.
+uncaught failed call is `ProgramApiError` on every arm whose guest reports one;
+make that true and bring the arm's gate cell in `csharp.substrate.test.rs` and
+the note in `apps/docs/src/content/docs/gg/telemetry/turn-outcomes.md` onto it.
 
 ## Design
 
@@ -38,8 +38,8 @@ the way it classifies every other arm's.
 
 ## Done when
 
-- [ ] An uncaught gg API failure is `program_api_error` on the C# arm.
-- [ ] A withheld capability is `program_unknown_name` on the C# arm.
-- [ ] Every other arm's guest is audited and any arm with the same shape is fixed.
-- [ ] The gate cells and the telemetry documentation state one rule for all arms.
-- [ ] Gates green.
+- [x] An uncaught gg API failure is `program_api_error` on the C# arm.
+- [x] A withheld capability is `program_unknown_name` on the C# arm.
+- [x] Every other arm's guest is audited and any arm with the same shape is fixed.
+- [x] The gate cells and the telemetry documentation state one rule for all arms.
+- [x] Gates green.

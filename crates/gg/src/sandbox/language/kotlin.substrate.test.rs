@@ -268,9 +268,9 @@ pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
 /// A runtime failure on this arm arrives as a [`Trap`](SandboxError::Trap) carrying the guest's own
 /// standard error, and not as a structured `ProgramError`: nothing in this arm's SDK and nothing in
 /// gg's generated entry class intercepts a failure to report one, so what the host has is what
-/// TeaVM's runtime wrote before it aborted. That is the
-/// [D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) shape — capture rather than
-/// interception — and it is why these tests read a string rather than a struct.
+/// TeaVM's runtime wrote before it aborted. That is the [failure rule's](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures)
+/// shape — capture rather than interception — and it is why these tests read a string rather than a
+/// struct.
 pub(super) fn trap(outcome: &SandboxOutcome) -> &str {
     match &outcome.result {
         Ok(result) => panic!(
@@ -466,7 +466,7 @@ fn the_ambient_wasi_surface_reaches_a_kotlin_program() {
 /// **An uncaught failure reaches the model as its own runtime's dying words**, at the model's own
 /// file and lines — and gg catches nothing on the way.
 ///
-/// Two halves, and ruling D8a asks for both: **what** went wrong, which is the exception's own
+/// Two halves, and the failure rule asks for both: **what** went wrong, which is the exception's own
 /// header, and **where**, which is TeaVM's own stack trace over the model's own file. Neither
 /// reaches the model through anything gg wrote: `GgEntry` has no `catch`, and what is read here is
 /// the guest's standard error.
@@ -546,8 +546,8 @@ fn an_uncaught_failure_reaches_the_model_in_its_runtimes_own_words() {
     );
 
     // AND A CLASS THE MODEL DECLARED ITSELF, thrown with no message at all — the case no list gg
-    // carried could ever have covered, and the one that decides whether ruling D8a's *what* is
-    // answered for a program's own exception type or only for the ones somebody enumerated.
+    // carried could ever have covered, and the one that decides whether the failure rule's *what*
+    // is answered for a program's own exception type or only for the ones somebody enumerated.
     let outcome = evaluate(
         &prepare(
             "class OutOfCoffee : RuntimeException()\n\

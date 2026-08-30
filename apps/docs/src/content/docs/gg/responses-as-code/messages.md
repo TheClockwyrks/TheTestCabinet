@@ -17,7 +17,7 @@ exactly three messages.
 
 | Heading | When | Body |
 | --- | --- | --- |
-| `Compiler error` | the program did not compile, so none of it ran | the language's diagnostic, verbatim, and the library set it was measured against |
+| `Compiler error` | the program did not compile, so none of it ran | the language's diagnostic, verbatim, and a bounded amount of supporting material drawn from the library set it was measured against |
 | `Runtime error` | it compiled and then threw, or a sandbox limit stopped it | the error |
 | `Notice` | a fact about the session rather than about the program | the fact |
 
@@ -57,9 +57,10 @@ that fault implies, because at that point the fact is part of the diagnostic. A
 gg's modules, plus `lib` when the agent has loaded code. A documentation lookup
 that resolves nothing is answered by the host with at most three of the nearest
 names this agent binds, indented under the message. A compile failure on an arm
-whose catalogue declares a library set is answered with that set, since it is
-what the compiler resolved against. Each is a fact the fault implies, never
-advice about what to do with it.
+whose catalogue declares a library set is answered from that set, since it is
+what the compiler resolved against, with the modules matching an import the
+diagnostic could not resolve or with the whole set where it names none. Each is
+a fact the fault implies, never advice about what to do with it.
 
 ### Runtime errors
 

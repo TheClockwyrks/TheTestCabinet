@@ -70,8 +70,11 @@
 //! seventeen lines; a Swift diagnostic drags an excerpt and a caret behind it, so eight of those is
 //! a screen. Each arm names its own constant and says why, next to the compiler it measured.
 //!
-//! **Whether the library set is cut.** It is not — see [`library_set`], which is the one thing this
-//! module renders rather than bounds, and the paragraph there is the argument.
+//! **What an arm's diagnostic says.** The [supporting material](supporting) a failure carries is
+//! drawn from the arm's library set by matching the imports the diagnostic could not resolve, and
+//! which words those are is the arm's fact: each reads them out of its own compiler's wording
+//! through [`unresolved_imports`](super::ProgramLanguage::unresolved_imports). What this module
+//! owns is the matching, the rendering and the one bound both go through.
 //!
 //! **Whether an arm needs a bound at all.** Three registered arms are absent from the table above
 //! and none of them is an oversight. [Ruby](super::ruby)'s Opal driver catches a single thrown
@@ -89,11 +92,11 @@
 ///
 /// * a **count**, not an ellipsis — a model that needs the rest can tell there is a rest, and how
 ///   much of one, which is the difference between a bound and a truncation;
-/// * a count of what the **caller** dropped, which is not the same number in both shapes and is
+/// * a count of what the **caller** dropped, which is not the same number in each shape and is
 ///   worth saying rather than glossing: [`capped`] counts survivors of its de-duplication, so a
 ///   repetition it folded is not counted twice; [`capped_lines`] does not de-duplicate at all and
-///   counts groups as the compiler wrote them. Both are honest about their own input, and neither
-///   claims to be the other;
+///   counts groups as the compiler wrote them; [`supporting`] counts library names. Each is honest
+///   about its own input, and none claims to be another;
 /// * "like these" rather than "more errors", because on the shapes that reach here the dropped
 ///   items are *usually* the tail of a list the kept ones open — the [measurement](self) is of one
 ///   mistake repeated — and because saying "errors" would be wrong on the arms whose lists are of
@@ -210,8 +213,62 @@ pub(super) fn capped_lines(rendered: &str, opens: impl Fn(&str) -> bool, shown: 
     text
 }
 
-/// **The library set a compile failure is answered with** — every group the arm's catalogue
-/// declares, rendered as the lines a model reads under the `Compiler error` heading.
+/// **The bound every arm holds its supporting material to**, in bytes of UTF-8.
+///
+/// One constant rather than an argument, which is the whole difference between this and `shown`: a
+/// diagnostic's cost is the arm's own fact, and what a rejection may spend on material *about* the
+/// arm is not. A cross-language study compares what a compile failure cost the next turn, so the
+/// number an arm may spend on it is the one number in this module an arm may not restate.
+///
+/// Bytes rather than entries, because the arms' entries differ by an order of magnitude —
+/// `<vector>` against `Control.Comonad.Cofree.Class` — so a count of entries bounds nothing
+/// comparable. 1024 is roughly 256 tokens, and it is above every arm's whole declared set but
+/// [PureScript's](super::purescript), which is 4893 bytes of module names on every rejection and is
+/// the measurement this bound exists for.
+pub const SUPPORTING: usize = 1024;
+
+/// **Every value a line writes between `opens` and the next `closes`**, in the order they appear.
+///
+/// The one piece of parsing this module offers the arms. Each names an unresolved import in a
+/// wording of its own — ``unresolved import `serd` ``, `package java.utl does not exist`,
+/// `no such module 'Algorithm'` — and each of those is one value between two delimiters. Which
+/// sentence and which delimiters is the arm's fact; scanning for them is not, and seven copies of
+/// this loop would be seven places for an off-by-one.
+///
+/// An empty value is skipped, so a pair of adjacent delimiters names nothing. An `opens` with no
+/// `closes` after it ends the scan, because a delimiter a line never closed is a sentence this arm
+/// did not recognise rather than a name running to the end of it.
+pub(super) fn named(line: &str, opens: &str, closes: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut rest = line;
+    while let Some(at) = rest.find(opens) {
+        let after = &rest[at + opens.len()..];
+        let Some(end) = after.find(closes) else {
+            break;
+        };
+        if end > 0 {
+            found.push(after[..end].to_string());
+        }
+        rest = &after[end + closes.len()..];
+    }
+    found
+}
+
+/// The heading over the whole set.
+const WHOLE: &str = "Libraries available to your program:";
+
+/// The heading over the modules that match what a program could not import.
+const MATCHED: &str = "Libraries available to your program that match what it imported:";
+
+/// **The supporting material a compile failure carries** — the modules of this arm's library set
+/// that answer the diagnostic, rendered as the lines a model reads under the `Compiler error`
+/// heading and [bounded](SUPPORTING).
+///
+/// `unresolved` is what the arm read out of its own diagnostic
+/// ([`unresolved_imports`](super::ProgramLanguage::unresolved_imports)). Where any of those names
+/// [matches](matched) a module the catalogue declares, the material is those modules. Where the
+/// diagnostic named none, or none of them matched, it is the whole set: a program that named
+/// nothing recognisable is the one with most to learn from the inventory.
 ///
 /// `None` for an arm whose catalogue declares no set, which is the arm whose programs get their
 /// runtime's own standard library and nothing else: there is no set to quote, and a heading over an
@@ -221,39 +278,181 @@ pub(super) fn capped_lines(rendered: &str, opens: impl Fn(&str) -> bool, shown: 
 ///
 /// It used to be a section of every arm's system prompt, read on every turn of every run whether or
 /// not the model ever reached for a library. What it prevents is one mistake — a program written
-/// against a package this arm does not carry — and that mistake is **detected**, by the compiler,
-/// on the turn that made it. So it is delivered there: a model that never writes an import never
-/// reads it, and the one that did reads it beside the diagnostic that made it relevant.
+/// against a package this arm does not carry — and that mistake is **detected**, by the compiler, on
+/// the turn that made it. So it is delivered there: a model that never writes an import never reads
+/// it, and the one that did reads it beside the diagnostic that made it relevant.
 ///
 /// It is quoted from [`libraries`](super::super::signatures::SignatureCatalogue::libraries) rather
-/// than authored, for the reason every model-facing word about an arm's surface is: a second copy
-/// of the set, written in prose, drifts from the artifact that decides it with nothing to catch it.
+/// than authored, for the reason every model-facing word about an arm's surface is: a second copy of
+/// the set, written in prose, drifts from the artifact that decides it with nothing to catch it.
 ///
-/// # Why this one is not bounded
+/// # Why cutting it is honest here
 ///
-/// Everything else this module touches is a **list of mistakes**, which grows with the program: one
-/// misremembered name at fifty call sites is fifty diagnostics, and the [bound](self) is what stops
-/// a model paying for all fifty. A library set does not grow with the program. It is a fixed fact
-/// about the arm — the largest today is PureScript's, at a little under 5 KB — and it is the same
-/// size on a program with one mistake and on a program with a hundred.
-///
-/// Cutting it would also be the one cut here that **lies**. A dropped diagnostic is a diagnostic the
-/// model is told the count of and can ask for again by fixing what it was shown; a dropped library
-/// name reads as a library the arm does not have, which is exactly the false negative this set is
-/// carried to prevent.
-pub fn library_set(catalogue: &super::super::signatures::SignatureCatalogue) -> Option<String> {
+/// A dropped library name would read as a library the arm does not have, which is exactly the false
+/// negative the set is carried to prevent — so nothing is dropped silently. Whole names are dropped
+/// off the end and the block closes with [the count](more), and the names most likely to be dropped
+/// are the ones the diagnostic did not ask about.
+pub fn supporting(
+    catalogue: &super::super::signatures::SignatureCatalogue,
+    unresolved: &[String],
+) -> Option<String> {
     if catalogue.libraries.is_empty() {
         return None;
     }
-    let groups: Vec<String> = catalogue
+    let whole: Vec<(&str, Vec<&str>)> = catalogue
         .libraries
         .iter()
-        .map(|group| format!("- {}: {}", group.group, group.modules.join(", ")))
+        .map(|group| {
+            (
+                group.group.as_str(),
+                group.modules.iter().map(String::as_str).collect(),
+            )
+        })
         .collect();
-    Some(format!(
-        "Libraries available to your program:\n\n{}",
-        groups.join("\n")
-    ))
+    match candidates(&whole, unresolved) {
+        Some(matched) => Some(block(MATCHED, &matched)),
+        None => Some(block(WHOLE, &whole)),
+    }
+}
+
+/// The groups of `whole` reduced to the modules `unresolved` [matches](matched), with the empty
+/// groups dropped — or `None` when nothing matched, which is what asks for the whole set.
+///
+/// Catalogue order is kept, both between groups and inside them, so a model reads the candidates in
+/// the shape the set itself has.
+fn candidates<'a>(
+    whole: &[(&'a str, Vec<&'a str>)],
+    unresolved: &[String],
+) -> Option<Vec<(&'a str, Vec<&'a str>)>> {
+    if unresolved.is_empty() {
+        return None;
+    }
+    let picked: Vec<(&str, Vec<&str>)> = whole
+        .iter()
+        .filter_map(|(group, modules)| {
+            let kept: Vec<&str> = modules
+                .iter()
+                .copied()
+                .filter(|module| unresolved.iter().any(|name| matched(module, name)))
+                .collect();
+            (!kept.is_empty()).then_some((*group, kept))
+        })
+        .collect();
+    (!picked.is_empty()).then_some(picked)
+}
+
+/// **Whether a catalogue module answers a name a program could not import.**
+///
+/// One rule for every arm, because a similarity rule per arm is eleven different standards for the
+/// same question. Three ways to match, and each answers a different mistake:
+///
+/// * the module **is** the name, so the arm carries it and the diagnostic is about something else,
+///   which is the most informative of the three;
+/// * one **extends** the other at a path separator — the module the name reached into
+///   (`java.util` for `java.util.List`), or the modules under a namespace the program named
+///   (`kotlin.math` for `kotlin`);
+/// * their **last segments** are within two edits, which is the misspelling this whole path exists
+///   for. Segments shorter than three characters are held to equality instead, since two edits over
+///   three letters is not a resemblance.
+///
+/// Both sides are normalised first: a compiler quotes a name (`'Algorithm'`), a C++ catalogue spells
+/// a module with its brackets (`<vector>`), and neither punctuation is part of the name. Comparison
+/// is case-insensitive throughout, because a misremembered name is as often miscased as misspelt.
+fn matched(module: &str, name: &str) -> bool {
+    let module = segments(module);
+    let name = segments(name);
+    if module.is_empty() || name.is_empty() {
+        return false;
+    }
+    if module == name {
+        return true;
+    }
+    if module.len() < name.len() && name.starts_with(&module[..]) {
+        return true;
+    }
+    if name.len() < module.len() && module.starts_with(&name[..]) {
+        return true;
+    }
+    let (last, other) = (
+        module.last().expect("checked non-empty"),
+        name.last().expect("checked non-empty"),
+    );
+    let short = last.chars().count().min(other.chars().count());
+    short >= 3 && edits(last, other) <= 2
+}
+
+/// A module path or an imported name as its comparable segments: lower-cased, with the punctuation a
+/// compiler or a catalogue wraps around a name removed, split on every separator the arms spell a
+/// path with.
+fn segments(path: &str) -> Vec<String> {
+    path.trim()
+        .trim_matches(['<', '>', '\'', '"', '`', ';', ',', '.'])
+        .split(['.', '/'])
+        .flat_map(|part| part.split("::"))
+        .filter(|part| !part.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// The Levenshtein distance between two segments, counted in characters.
+///
+/// One row of the matrix at a time: the inputs are one path segment each, so the cost is a handful
+/// of comparisons and the allocation is what would dominate a cleverer version.
+fn edits(left: &str, right: &str) -> usize {
+    let right: Vec<char> = right.chars().collect();
+    let mut previous: Vec<usize> = (0..=right.len()).collect();
+    let mut current = vec![0usize; right.len() + 1];
+    for (row, from) in left.chars().enumerate() {
+        current[0] = row + 1;
+        for (column, to) in right.iter().enumerate() {
+            let substitution = previous[column] + usize::from(from != *to);
+            current[column + 1] = substitution
+                .min(previous[column + 1] + 1)
+                .min(current[column] + 1);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+    previous[right.len()]
+}
+
+/// Render `groups` under `heading`, dropping whole module names off the end until the block fits
+/// [`SUPPORTING`] and closing with [the count](more) of what went.
+///
+/// Whole names, never a prefix of one: a truncated module name is a library nobody has, and the
+/// count is what keeps a cut set from reading as the arm's whole inventory.
+fn block(heading: &str, groups: &[(&str, Vec<&str>)]) -> String {
+    let total: usize = groups.iter().map(|(_, modules)| modules.len()).sum();
+    let mut kept = total;
+    loop {
+        let rendered = render(heading, groups, kept, total - kept);
+        if kept == 0 || rendered.len() <= SUPPORTING {
+            return rendered;
+        }
+        kept -= 1;
+    }
+}
+
+/// The block as a model reads it: the heading, a blank line, one line per group that kept anything,
+/// and the count line when `dropped` is not zero.
+fn render(heading: &str, groups: &[(&str, Vec<&str>)], kept: usize, dropped: usize) -> String {
+    let mut budget = kept;
+    let mut lines: Vec<String> = Vec::new();
+    for (group, modules) in groups {
+        if budget == 0 {
+            break;
+        }
+        let take = budget.min(modules.len());
+        lines.push(format!("- {group}: {}", modules[..take].join(", ")));
+        budget -= take;
+    }
+    let mut text = format!("{heading}\n\n{}", lines.join("\n"));
+    if dropped > 0 {
+        if !lines.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(&more(dropped));
+    }
+    text
 }
 
 #[cfg(test)]

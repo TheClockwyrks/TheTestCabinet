@@ -242,8 +242,8 @@ beside the segment carries that module's own `import` line.
 The arm names `javac` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one the
 compiler refuses is not executed, and that a call the run withheld compiles and
-fails when it runs. The library set TeaVM can translate is carried by a compile
-failure rather than by the prompt.
+fails when it runs. The library set TeaVM can translate is reached through a
+compile failure rather than through the prompt.
 
 ## Code modules
 

@@ -203,7 +203,8 @@ The arm names `swiftc` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one `swiftc`
 refuses comes back as diagnostics at the model's own line and column instead of
 running, and that a call the run withheld compiles and fails when it runs. The
-linked library set is carried by a compile failure rather than by the prompt.
+linked library set is reached through a compile failure rather than through the
+prompt.
 
 Source gg synthesizes for this arm is written in the same idiom, under the same
 import line: `import gg` and then `try gg.views.openFile("src/main.swift")`,

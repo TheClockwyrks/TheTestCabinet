@@ -14,6 +14,12 @@
 //! [`KNOWN_HOLES`] holds a row for, because a row records what a model reads *instead* and says
 //! nothing about how the turn is filed.
 //!
+//! Shape (a) carries one rule across every arm on top of that, checked before any program runs: an
+//! uncaught gg API failure is recorded as `program_api_error` where the guest sees the throw and
+//! as `sandbox_trap` where the runtime kills the program first. An arm declaring anything else
+//! saw the throw and dropped its code, which is what makes one event count as two different things
+//! from one arm to the next.
+//!
 //! # Not every cell reaches a run, and each one says which
 //!
 //! Five of the shapes cannot be written on the arm they are driven against: the arm's compiler
@@ -205,14 +211,14 @@ pub(super) struct Case {
     /// The one thing in this gate that is not about what the model *reads*, and it is here because
     /// nothing else in the tree pinned it. G8 asserts the [band](Answered::band), which is what the
     /// model sees; the class is what a **study** sees, and the two moved apart without a gate
-    /// noticing: since [D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) made the
-    /// mechanism capture rather than interception, an uncaught throw on an arm with no exception
+    /// noticing: [the failure rule](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures) makes the
+    /// mechanism capture rather than interception, so an uncaught throw on an arm with no exception
     /// mechanism reaching the host dies as a wasm trap and is recorded as
     /// [`SandboxTrap`](TurnErrorType::SandboxTrap) rather than as one of the three
     /// `Program*` classes. Six arms moved across on this branch and every gate stayed green — and
     /// the ECMAScript arms later moved back, because a guest that can see the throw at its entry
     /// point reports it: an uncaught failed call is
-    /// [`ProgramApiError`](TurnErrorType::ProgramApiError) there as on Python, Ruby and C++, and
+    /// [`ProgramApiError`](TurnErrorType::ProgramApiError) there as on Python, Ruby, C++ and C#, and
     /// `SandboxTrap` is reserved for a real ceiling or trap.
     ///
     /// It is therefore declared per cell rather than derived, and asserted for **every** cell
@@ -434,6 +440,21 @@ pub(super) fn gate(arm: GgProgramLanguage, cases: &[Case]) {
             cases.iter().any(|case| case.shape == hole.shape),
             "{arm} holds a row for {} that no case drives; delete the row or write the case",
             hole.shape.label()
+        );
+    }
+    for case in cases.iter().filter(|case| case.shape == Shape::ApiError) {
+        assert!(
+            matches!(
+                case.recorded,
+                Some(TurnErrorType::ProgramApiError | TurnErrorType::SandboxTrap)
+            ),
+            "{arm} records an uncaught gg API failure as {:?}. There are two readings of this \
+             shape and no third: a guest that sees the throw at its entry point reports it with \
+             the failure's own code and the turn is `ProgramApiError`, and a guest whose runtime \
+             kills the program first reports nothing and the turn is `SandboxTrap`. Anything else \
+             is a guest that saw the throw and dropped the code, which makes one event count as \
+             two different things depending on the arm",
+            case.recorded
         );
     }
 

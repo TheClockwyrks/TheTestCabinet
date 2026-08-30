@@ -172,6 +172,19 @@ goes through the same prepare step: a rejection hands the author's diagnostic
 back on the use, and a compiler that could not finish ends the run with the
 crash detail on the operator's stream.
 
+A module is compiled at the read that binds it, so an arm rebuilding one beside
+a program is compiling a source it already accepted. A rebuild the compiler
+refuses is a lowering failure naming the binding, whatever band the compiler's
+own diagnostic would otherwise fall in. The author reads that diagnostic on the
+read that loaded the module; the model that wrote the program reads nothing,
+because the file the diagnostic names is one it did not write.
+
+A gate holds every arm to that. It hands each arm's program step a module the
+arm's own compiler refuses and no build is recorded for, and reads the band
+back, so an arm that files a rebuild's diagnostic against the model fails rather
+than passing quietly. An arm that compiles no module beside a program says so in
+the same table.
+
 ## Authorship
 
 The bytes a language compiles are the bytes it was handed. A preparation writes
@@ -391,21 +404,38 @@ is therefore decided in exactly one place, the arm that renders it, and the
 shared bound in `sandbox/language/diagnostics.rs` is what the arms decide it
 with.
 
-A compile failure carries one thing beside the diagnostic. Where the arm's
-catalogue declares a library set, `diagnostics::library_set` renders it group by
-group from that catalogue and the message ends with it, after a blank line: it
-is what the compiler measured the program against, and it is the reason no
-[prompt](/gg/prompts/) carries a package inventory. An arm whose catalogue
-declares no set is answered with the diagnostic alone.
+A compile failure carries supporting material beside the diagnostic, after a
+blank line, so the compiler's own first line stays the message's first line.
+Every arm holds that material to one bound, `diagnostics::SUPPORTING`, of 1024
+bytes of UTF-8, so what a rejection costs the next turn is comparable across
+arms. An arm whose catalogue declares no library set is answered with the
+diagnostic alone.
 
-That set is the one thing this module renders rather than bounds. Everything
-else it touches is a list of mistakes, which grows with the program — one
-misremembered name at fifty call sites is fifty diagnostics — and the bound is
-what stops a model paying for all fifty. A library set does not grow with the
-program: it is a fixed fact about the arm, the same size on a program with one
-mistake and on a program with a hundred. Cutting it would also be the one cut
-here that lies, because a dropped library name reads as a library the arm does
-not have.
+The material is drawn from the arm's library set, which is what the compiler
+measured the program against and the reason no [prompt](/gg/prompts/) carries a
+package inventory. Where the diagnostic names imports the compiler could not
+resolve, the material is the modules of that set which match those names. Where
+it names none, or none of them match, the material is the whole set, because a
+program that named nothing recognisable is the one with most to learn from the
+inventory.
+
+Each arm reads the unresolved names out of its own compiler's wording, through
+`ProgramLanguage::unresolved_imports`, and one shared rule decides what a name
+matches: a module equal to it, a module it extends or that extends it at a path
+separator, or a module whose last path segment is within two edits of its own.
+An arm whose compiler names an unresolved import in no wording of its own
+answers with an empty list, and is answered with the whole set.
+
+The bound drops whole module names off the end and closes with the count line
+the diagnostic bounds close with, so a set it cut is counted rather than quietly
+shortened.
+
+Two gates hold the arms to this. One walks the registry and holds every arm that
+declares a library set to the bound, in the largest case its own catalogue can
+produce. The other drives a program naming an unresolved import through each
+arm's real compiler and asserts the arm recovered the name the program wrote,
+so a compiler that rewords its diagnostic fails here rather than silently
+answering every rejection with a whole inventory.
 
 Two helpers cover the two shapes an arm holds its diagnostics in.
 

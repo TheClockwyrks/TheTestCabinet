@@ -34,8 +34,8 @@ console.log(text);
                 located: Located::At("program.ts:5:36"),
                 answered: Answered::AtRuntime,
                 // The guest reads the `code` off the uncaught `ApiError` and reports it, so the
-                // turn is filed as the program fighting the API — as on Python, Ruby and C++ —
-                // and never as a sandbox trap.
+                // turn is filed as the program fighting the API — as on every arm whose guest sees
+                // the throw — and never as a sandbox trap.
                 recorded: Some(TurnErrorType::ProgramApiError),
             },
             Case {
@@ -107,11 +107,11 @@ console.log("after the exit");
 /// **An uncaught `views.openFile` of a missing path is the program's fault, not a sandbox limit.**
 ///
 /// The owner's ruling: every API function returns a structured error, so an uncaught one is filed
-/// as [`ProgramApiError`](TurnErrorType::ProgramApiError) — the bucket Python, Ruby and C++ already
-/// file it under — and a `sandbox_*` type is recorded only for a real ceiling or a real trap. Before
-/// this, the ECMAScript guest wrote the throw to standard error and aborted, and the model read
-/// `wasm trap: unreachable` under four SDK frames (`sdk:gg/core.js:26:9`, `sdk:internal/errors.js`)
-/// that named files it cannot open.
+/// as [`ProgramApiError`](TurnErrorType::ProgramApiError) — the bucket every arm whose guest sees
+/// the throw files it under — and a `sandbox_*` type is recorded only for a real ceiling or a real
+/// trap. Before this, the ECMAScript guest wrote the throw to standard error and aborted, and the
+/// model read `wasm trap: unreachable` under four SDK frames (`sdk:gg/core.js:26:9`,
+/// `sdk:internal/errors.js`) that named files it cannot open.
 ///
 /// What is asserted is what the model reads, rendered by the loop's own renderer: the structured
 /// error's code and operation, the path, the program's own frame read back through `tsc`'s map,
