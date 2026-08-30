@@ -1,24 +1,64 @@
-// Deepcore — supplies.explosives-clear-stone. STUB: NOT YET AUTHORED.
+// Deepcore — supplies/explosives-clear-stone: a charge opens unbreakable stone.
 //
-// Explosives are the only way through unbreakable stone
+// `specs/items.md`: "Rock, ore, gemstone, lava, and unbreakable stone in the
+// block all clear to tunnel. This is the only way through unbreakable stone."
+// `specs/world.md` calls `stone` not minable, so nothing else in the game moves
+// it.
 //
-// Unbreakable stone inside an explosives block clears to open tunnel, which is
-// the only way past a boulder no drill can break.
+// A boulder is posed inside the `3x3` Dynamite block, beside the miner's own
+// cell, and read back as open tunnel after the charge. A second boulder is posed
+// one cell further out, outside the block, and read back as the stone it was:
+// what the charge cleared has to be the stone the block covered rather than every
+// boulder in the mine.
 //
-// Automated validation: pose a stone cell beside the miner, use Dynamite and
-// read the stone cell as tunnel.
-//
-// `test-case.toml` declares this suite as `supplies/explosives-clear-stone.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (boulder (replay)) around the drive.
+// The scene sits in the rockbed, which is where `specs/world.md` first places
+// unbreakable stone, so the boulders stand at a depth the mine really generates
+// them at.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { DYNAMITE_RADIUS } from "../../src/constants";
+import { captureReplay, createHarness, type Harness } from "../harness";
+import { AFTERMATH_FRAMES, openBlastScene, ROCKBED_ROW } from "./blast-scene";
 
-test("Explosives are the only way through unbreakable stone", () => {
-  throw new Error(
-    "Deepcore validator `supplies/explosives-clear-stone` is declared in test-case.toml but has not been authored yet.",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("clears unbreakable stone caught inside the block", async () => {
+  const centre = openBlastScene(h, ROCKBED_ROW);
+  const inside = { col: centre.col + DYNAMITE_RADIUS, row: centre.row };
+  const beyond = { col: centre.col + DYNAMITE_RADIUS + 1, row: centre.row };
+
+  h.debug.setTile(inside.col, inside.row, "stone");
+  h.debug.setTile(beyond.col, beyond.row, "stone");
+  h.debug.setItemCount("dynamite", 1);
+
+  assertEqual(
+    h.tileAt(inside.col, inside.row).kind,
+    "stone",
+    "the boulder posed inside the block",
+  );
+
+  await captureReplay(h, "boulder", async () => {
+    h.debug.useItem("dynamite");
+    await h.advance(AFTERMATH_FRAMES);
+  });
+
+  assertEqual(
+    h.tileAt(inside.col, inside.row).kind,
+    "tunnel",
+    "the boulder inside the block, after the charge",
+  );
+  assertEqual(
+    h.tileAt(beyond.col, beyond.row).kind,
+    "stone",
+    "the boulder outside the block, after the charge",
   );
 });

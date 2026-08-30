@@ -1,24 +1,70 @@
-// Deepcore — supplies.nanobots-repair. STUB: NOT YET AUTHORED.
+// Deepcore — supplies/nanobots-repair: nanobots mend a fixed amount, and never
+// more than the tank holds.
 //
-// Regenerative Nanobots repair a fixed amount of hull
+// `specs/items.md`: Regenerative Nanobots "Repairs `NANOBOT_HULL` (`20`) hull,
+// capped at the maximum." Two uses decide the one requirement in one direction:
+// one from a hull far enough below the maximum for the whole repair to fit, which
+// must add exactly `NANOBOT_HULL`, and one from a hull within `NANOBOT_HULL` of
+// the maximum, which must stop at the maximum rather than overfilling.
 //
-// Using Regenerative Nanobots repairs NANOBOT_HULL (20) hull, capped at the
-// maximum so it never overfills.
-//
-// Automated validation: use nanobots at a damaged hull and again within 20 of
-// the maximum, holding the repair and the cap at each.
-//
-// `test-case.toml` declares this suite as `supplies/nanobots-repair.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (repair (image)) around the drive.
+// The scene is the camp, above the ground line, and each reading is taken on the
+// call itself. `specs/character.md` gives hull no drain of its own and no
+// regeneration, so nothing else here can move the number either way.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { NANOBOT_HULL } from "../../src/constants";
+import {
+  captureStill,
+  createHarness,
+  standAtCamp,
+  type Harness,
+} from "../harness";
+import { openCampScene } from "./blast-scene";
 
-test("Regenerative Nanobots repair a fixed amount of hull", () => {
-  throw new Error(
-    "Deepcore validator `supplies/nanobots-repair` is declared in test-case.toml but has not been authored yet.",
+/** Comfortably more than `NANOBOT_HULL` short of the maximum. */
+const DEEP_DAMAGE = 3 * NANOBOT_HULL;
+
+/** Inside `NANOBOT_HULL` of the maximum, so the repair has to be capped. */
+const LIGHT_DAMAGE = NANOBOT_HULL / 4;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("repairs NANOBOT_HULL and stops at the maximum", async () => {
+  openCampScene(h);
+  standAtCamp(h);
+  h.debug.setItemCount("nanobots", 2);
+
+  const { miner } = h.snapshot();
+  const maxHull = miner.maxHull;
+
+  h.debug.setHull(maxHull - DEEP_DAMAGE);
+  h.debug.useItem("nanobots");
+  const repaired = h.snapshot();
+
+  h.debug.setHull(maxHull - LIGHT_DAMAGE);
+  h.debug.useItem("nanobots");
+  const capped = h.snapshot();
+
+  await h.advance(2);
+  captureStill(h, "repair");
+
+  assertEqual(
+    repaired.miner.hull,
+    maxHull - DEEP_DAMAGE + NANOBOT_HULL,
+    "hull after a repair with room for the whole of it",
+  );
+  assertEqual(
+    capped.miner.hull,
+    maxHull,
+    "hull after a repair inside NANOBOT_HULL of the maximum",
   );
 });

@@ -1,25 +1,95 @@
-// Deepcore — supplies.matter-transmitter-lands-clean. STUB: NOT YET AUTHORED.
+// Deepcore — supplies/matter-transmitter-lands-clean: the transmitter sets the
+// miner down without a scratch.
 //
-// The Matter Transmitter sets the miner down safely
+// `specs/items.md`: "The Matter Transmitter places the miner standing on the camp
+// ground at zero velocity, with no impact." That is the whole of what its price
+// buys over the Quantum Teleporter, so the three readings are one requirement:
+// the miner's feet on the camp ground line, both velocity components at zero, and
+// the hull exactly what it was.
 //
-// The Matter Transmitter places the miner standing on the camp ground at zero
-// velocity with no impact damage, so it is the safe extraction the price pays
-// for.
-//
-// Automated validation: use the transmitter from deep underground and read the
-// miner grounded on the camp at zero velocity with the hull unchanged.
-//
-// `test-case.toml` declares this suite as `supplies/matter-transmitter-lands-clean.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (home (replay)) around the drive.
+// It is used from deep underground and read on the call itself, before a frame
+// runs, so what is measured is where the item put the miner. The hull is posed
+// part-spent rather than full, because a hull already at its maximum could not
+// show a repair and could only show damage — and this check must be able to see
+// either. The scene is then run on for a moment and read again: a build that
+// placed the miner correctly and then let it drop through the camp, or billed a
+// landing a frame later, fails on the second reading.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertEqual } from "../assert";
+import { MINER_H, SURFACE_Y } from "../../src/constants";
+import {
+  captureReplay,
+  createHarness,
+  layFloor,
+  openScene,
+  pinDrill,
+  standOn,
+  type Harness,
+} from "../harness";
 
-test("The Matter Transmitter sets the miner down safely", () => {
-  throw new Error(
-    "Deepcore validator `supplies/matter-transmitter-lands-clean` is declared in test-case.toml but has not been authored yet.",
+/** The floor the miner is transmitted away from, well underground. */
+const DEEP_COL = 10;
+const DEEP_FLOOR_ROW = 30;
+
+/** A hull part spent, so a repair or a knock either way would show. */
+const POSED_HULL = 60;
+
+/** Frames the placement is watched settling. */
+const SETTLE_FRAMES = 60;
+
+/** A world unit of slack on the ground line. */
+const EPSILON = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("sets the miner on the camp ground at rest and costs no hull", async () => {
+  openScene(h);
+  layFloor(h, 1);
+  layFloor(h, DEEP_FLOOR_ROW);
+  pinDrill(h);
+  standOn(h, DEEP_COL, DEEP_FLOOR_ROW);
+  h.debug.setHull(POSED_HULL);
+  h.debug.setItemCount("matter-transmitter", 1);
+
+  const home = await captureReplay(h, "home", async () => {
+    const before = h.snapshot();
+    h.debug.useItem("matter-transmitter");
+    const placed = h.snapshot();
+    await h.advance(SETTLE_FRAMES);
+    return { before, placed, settled: h.snapshot() };
+  });
+
+  assertBetween(
+    home.placed.miner.y + MINER_H,
+    SURFACE_Y - EPSILON,
+    SURFACE_Y + EPSILON,
+    "the miner's feet on the camp ground line",
+  );
+  assertEqual(home.placed.miner.vx, 0, "sideways speed on arrival");
+  assertEqual(home.placed.miner.vy, 0, "downward speed on arrival");
+  assertEqual(
+    home.placed.miner.hull,
+    home.before.miner.hull,
+    "hull across the transmission",
+  );
+
+  assertEqual(
+    home.settled.miner.grounded,
+    true,
+    "grounded once it has settled",
+  );
+  assertEqual(
+    home.settled.miner.hull,
+    home.before.miner.hull,
+    "hull once it has settled",
   );
 });
