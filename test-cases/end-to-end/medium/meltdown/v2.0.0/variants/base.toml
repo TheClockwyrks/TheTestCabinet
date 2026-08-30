@@ -1,19 +1,61 @@
-# The default Meltdown variant: the standard Containment defense on the one fixed
-# reactor floor. Listed first in the case manifest's `variants`, so it is the
-# default. It supplies the `title` view's menu screenshot; `mode-select`,
-# `gameplay`, and `game-over` are common. Every path here resolves against the
+# The one and only Meltdown variant: the whole reactor floor, all five modes.
+# Listed as the single entry in the case manifest's `variants`, so it is the
+# default and every run is a run of it. Every path here resolves against the
 # version folder, exactly like the main manifest.
 slug = "base"
 name = "Base"
-description = "The standard Containment defense on the one fixed reactor floor."
-# This variant's own `title` reference, captured from its reference-impl build and
-# served as-is (see reference/README.md).
-reference = [{ view = "title", media = "reference/screenshots/base/title.png" }]
+description = "The reactor floor with all five modes: Containment over three difficulties, The Hundred, Deep Pockets, Bottleneck and Sudden Death."
 
-# The authored, *correct* static build of this variant — the case-variant
-# analogue of a run's playable build. A bare directory path (resolved against
-# the version folder) holding a buildable web project, built with this case's
-# `[build]` install/build commands and deployed like a published run build via
-# `tcab publish-reference`, then shown on the case's "Reference" tab. It is
-# **never seeded into a run**.
-reference_implementation = "reference-impl/base"
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# The five modes are not variants. They are what the player picks from the mode
+# menu, the way Carom's Solo and Versus are modes inside every variant, so
+# `specs/modes.md` is a COMMON spec declared in `test-case.toml` and seeded for
+# every run. A build ships all five.
+#
+# Nothing in the seeded set branches on the variant either: the specs branch only
+# on the selected engine (`{{#if (eq engine.slug "none")}}`). So there is no mode
+# spec, and no spec of any other kind, to put here. If you came to this file to
+# add one, it almost certainly belongs in `test-case.toml` as a common spec.
+
+# What the game looks like played correctly, shown before anyone runs it: a
+# sustained clip of a maze laid out tower by tower and a wave released against
+# it, the surge winding the long way round while the emitters climb their glow
+# ramp, one gun packed too tight tripping and strobing, and a Sink threaded in to
+# bring the core back into its plateau -- plus stills of a mid-wave floor, the
+# inspector open on a white-hot Lance, and the title screen. All captured from
+# `references/none` driven through its own `window.__meltdown` surface.
+# `showcase/base/showcase.toml` lists the media; `showcase/base/showcase.md`
+# carries the description.
+showcase = "showcase/base"
+
+# The authored correct build, one directory per supported engine, because the
+# build a reference demonstrates differs under each. This table must name EXACTLY
+# the engines the case supports (the resolver checks both directions), and the
+# case supports three: `references/none` carries its own runtime layer (frame
+# loop, canvas fit, keyboard and pointer input, audio, overlay, and the
+# `window.__meltdown` surface), `references/simple-2d` hands all of that to the
+# engine package resolved from the repository's `packages/simple-2d` and ships
+# the game as `src/game.ts` beside the seeded entry point, and
+# `references/structured-2d` writes the game inside the gameplay framework
+# resolved from `packages/structured-2d`, as the game definition, instance, mode,
+# state and actors `src/game.ts` exports. The game any of them implements is
+# identical, which is what makes a run on one engine comparable with a run on
+# another. No reference directory is ever seeded into a run: each is the authored
+# answer, built with the case's own `[build]` commands and held to the same four
+# toolchain gates a run is, and each is what `tcab capture-baselines` drives to
+# synthesize the baseline half of the validation media for its engine.
+#
+# With one variant, each reference carries its `src/` directly: there is no
+# per-variant level below the engine.
+[reference_implementation]
+none = "references/none"
+"simple-2d" = "references/simple-2d"
+"structured-2d" = "references/structured-2d"
+
+# No `[workspaces]` override either. The case's common per-engine table covers
+# every run and there is nothing variant-specific to replace it with.
+
+# No `[[review.categories]]` and no `[[domain]]`. With a single variant, every
+# item and every rated domain applies to every run, so they are all declared
+# commonly in `test-case.toml` rather than being split across two places.
