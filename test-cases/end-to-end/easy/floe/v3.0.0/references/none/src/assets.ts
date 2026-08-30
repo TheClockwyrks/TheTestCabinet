@@ -12,8 +12,11 @@ import {
   CROSSER_FRAMES,
   DOGSLED_FRAMES,
   PAN_FRAMES,
+  PAN_W,
   PLOW_FRAMES,
+  PLOW_W,
   RAFT_FRAMES,
+  RAFT_W,
 } from "./constants";
 import { loadFrames, type Frames } from "./images";
 import type { Facing, FloeKind, VehicleKind } from "./types";
@@ -90,9 +93,11 @@ export function floeArt(
   art: Art,
   kind: FloeKind,
 ): { image: CanvasImageSource; sourceW: number } {
-  if (kind === "pan") return { image: art.pan[0], sourceW: 32 };
-  if (kind === "raft3") return { image: art.raft[0], sourceW: 96 };
-  return { image: art.raft[1], sourceW: 128 };
+  if (kind === "pan") return { image: art.pan[0], sourceW: PAN_W };
+  // The three-tile raft is the LEFT `PLOW_W` (96) of `assets/raft/0.png`; the
+  // four-tile raft is the whole `RAFT_W` (128) of `assets/raft/1.png`.
+  if (kind === "raft3") return { image: art.raft[0], sourceW: PLOW_W };
+  return { image: art.raft[1], sourceW: RAFT_W };
 }
 
 /**

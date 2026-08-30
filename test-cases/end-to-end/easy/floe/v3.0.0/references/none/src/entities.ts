@@ -8,6 +8,7 @@
 import {
   ROW_NEAR,
   START_COL,
+  TILE,
   bearIceSpeed,
   bearSwimSpeed,
   colAt,
@@ -120,7 +121,7 @@ export function bearSpeed(state: FloeState, bear: Bear): number {
   const tiles = bearSwimming(state, bear)
     ? bearSwimSpeed(state.level)
     : bearIceSpeed(state.level);
-  return tiles * 32;
+  return tiles * TILE;
 }
 
 /** The bear with that id, or `null`. */

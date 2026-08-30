@@ -26,7 +26,7 @@ import {
 } from "./constants";
 import { DIRECTIONS, facingDX, facingDY, tileDistance } from "./grid";
 import { coversTile, laneAt } from "./lanes";
-import { bearSpeed, facingBetween, isSettled } from "./entities";
+import { bearSpeed, isSettled } from "./entities";
 import type { Bear, Facing, FloeState } from "./types";
 
 /** A tile grid of flags, indexed by `row * COLS + col`. */
@@ -213,10 +213,4 @@ export function settleBear(bear: Bear, col: number, row: number): void {
   bear.prevX = bear.x;
   bear.prevY = bear.y;
   bear.carry = 0;
-}
-
-/** The facing a bear travelling between two tiles is heading in. */
-export function stepFacing(bear: Bear): Facing {
-  if (isSettled(bear)) return bear.facing;
-  return facingBetween(bear.col, bear.row, bear.stepCol, bear.stepRow);
 }

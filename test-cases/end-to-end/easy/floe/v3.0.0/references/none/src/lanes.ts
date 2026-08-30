@@ -176,13 +176,6 @@ export function laneAt(state: FloeState, row: number): Lane | null {
   );
 }
 
-/** The roster the row's items belong to, or `null` where the row carries none. */
-export function rosterAt(state: FloeState, row: number): LaneItem[] | null {
-  if (state.iceLanes.some((lane) => lane.row === row)) return state.vehicles;
-  if (state.waterLanes.some((lane) => lane.row === row)) return state.floes;
-  return null;
-}
-
 /** Advance every lane by `dt`, wrapping each item around its lane's ring. */
 export function advanceLanes(state: FloeState, dt: number): void {
   moveBand(state.iceLanes, state.vehicles, dt);
@@ -255,15 +248,6 @@ export function floeAtPoint(
     if (item.row === row && coversPoint(item, x)) return item;
   }
   return null;
-}
-
-/** The floe covering a tile of a row, or `null`. */
-export function floeOnTile(
-  state: FloeState,
-  col: number,
-  row: number,
-): LaneItem | null {
-  return floeAtPoint(state, tileCX(col), row);
 }
 
 /**

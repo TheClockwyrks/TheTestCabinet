@@ -646,15 +646,23 @@ function stepCritter(
   critter.prevY = critter.y;
   critter.hopCooldown = Math.max(0, critter.hopCooldown - dt);
 
+  // The floe under it carries it BEFORE it may hop, so an accepted hop leaves
+  // the critter's centre exactly on the target tile's centre at the end of the
+  // tick (specs/hopping.md). The carry belongs to the tile the critter was
+  // standing on, not to the one it hopped to.
+  carryRider(state, dt);
+
   if (intents.held !== null && critter.hopCooldown <= 0) {
     tryHop(state, intents.held, bus);
-    if (!critter.present) return;
   }
+}
 
+/** The floe under the critter, carrying it along its lane (specs/water.md). */
+function carryRider(state: FloeState, dt: number): void {
+  const critter = state.critter;
   const row = critterRow(critter);
   if (!isWaterRow(row)) return;
-  const floe = floeAtPoint(state, critter.x, row);
-  if (floe === null) return;
+  if (floeAtPoint(state, critter.x, row) === null) return;
   const lane = laneAt(state, row);
   if (lane === null) return;
   critter.x += lane.dir * lane.speed * TILE * dt;
@@ -720,13 +728,20 @@ export function stepGame(
   dt: number,
   bus: Bus,
 ): void {
+  // A crossing advances only on a tick that BOTH began and ended on the
+  // `playing` screen. The tick a menu starts a run on is that menu's tick: the
+  // fresh crossing it laid down is left untouched, so its timer reads exactly
+  // `timerMax` and nothing on the strait has reached the critter yet. The tick
+  // that pauses is the crossing's last, so pausing freezes the strait where the
+  // player saw it (specs/progression.md, specs/ui.md).
+  const wasPlaying = state.screen === "playing";
   state.simTime += dt;
   stepScreen(state, intents, bus);
   if (state.screen === "paused") return;
 
   advanceLanes(state, dt);
   stepEffects(state, dt);
-  if (state.screen !== "playing") return;
+  if (!wasPlaying || state.screen !== "playing") return;
 
   stepFish(state, dt);
   stepHold(state, dt, bus);
