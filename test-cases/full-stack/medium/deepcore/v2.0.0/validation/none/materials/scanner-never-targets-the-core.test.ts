@@ -1,24 +1,66 @@
-// Deepcore — materials.scanner-never-targets-the-core. STUB: NOT YET AUTHORED.
+// materials/scanner-never-targets-the-core — the Core is not a material node.
 //
-// The scanner never targets the Core
+// `specs/mining.md` says it in one line: "The scanner never targets the Core."
+// The Core is the third source of an exotic material, and it is the one the
+// scanner is not for, so the world is posed with the two node materials already
+// banked, no material node anywhere, and the miner standing on the Core itself
+// at the tier that reaches 32 tiles. Nothing needed is in range, so
+// `specs/instrumentation.md`'s resting values are what the scanner must report.
 //
-// The scanner locates the two material nodes and nothing else: with both
-// materials held and the Core well within range, nothing locks on.
-//
-// Automated validation: pose both materials held with the miner beside the
-// Core at tier 3 and read the lock false and the target null.
-//
-// `test-case.toml` declares this suite as `materials/scanner-never-targets-the-core.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (core (image)) around the drive.
+// A build that swept the grid for anything that yields a material would lock on
+// here, at a distance of about one tile, which is why the miner is posed as
+// close to the Core as it can stand rather than merely within range.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNull } from "../assert";
+import { DEFAULT_WORLD_SIZE } from "../constants";
+import {
+  captureStill,
+  coreCell,
+  createHarness,
+  openScene,
+  pinDrill,
+  pinMiner,
+  standOn,
+  type Harness,
+} from "../harness";
+import { cellDistance, minerCell, settled } from "./scanner-scene";
 
-test("The scanner never targets the Core", () => {
-  throw new Error(
-    "Deepcore validator `materials/scanner-never-targets-the-core` is declared in test-case.toml but has not been authored yet.",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("locks onto nothing with both materials held and the Core underfoot", async () => {
+  await openScene(h);
+  await pinMiner(h);
+  await pinDrill(h);
+  await h.debug.setTier("scanner", 3);
+  await h.debug.setMaterial("resonite", 1);
+  await h.debug.setMaterial("cryenite", 1);
+
+  const core = coreCell(DEFAULT_WORLD_SIZE);
+  await standOn(h, core.col, core.row);
+
+  const after = await settled(h);
+  await captureStill(h, "core");
+
+  assertEqual(
+    (await h.tileAt(core.col, core.row)).kind,
+    "core",
+    "specs/world.md",
   );
+  assertEqual(
+    cellDistance(minerCell(after), core) < 3,
+    true,
+    "specs/mining.md, the miner is beside the Core",
+  );
+  assertEqual(after.scanner.locked, false, "specs/mining.md");
+  assertNull(after.scanner.target, "specs/instrumentation.md");
+  assertNull(after.scanner.distanceTiles, "specs/instrumentation.md");
 });

@@ -1,24 +1,63 @@
-// Deepcore — materials.material-not-sold. STUB: NOT YET AUTHORED.
+// materials/material-not-sold — the Ore Market does not take the satchel.
 //
-// Materials are never sold
+// `specs/mining.md` says exotic materials "are never sold", and
+// `specs/gameplay.md` fixes what a sale does take: "Selling the cargo at each
+// ore's value, which empties the bay." So the satchel is posed alongside a bay
+// with ore in it, the sale is driven, and the satchel is read back unchanged
+// while the bay empties.
 //
-// An Ore Market sale leaves the satchel untouched, so materials cannot be
-// converted to Credits by accident.
-//
-// Automated validation: pose materials and cargo, sell, and read the satchel
-// unchanged while the bay empties.
-//
-// `test-case.toml` declares this suite as `materials/material-not-sold.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (sale (image)) around the drive.
+// Both halves matter. The bay emptying is what proves the sale really happened,
+// so a build whose `sell` does nothing at all fails here rather than passing by
+// leaving everything alone.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  layCamp,
+  openScene,
+  pinDrill,
+  stageCargo,
+  standAtCamp,
+  type Harness,
+} from "../harness";
 
-test("Materials are never sold", () => {
-  throw new Error(
-    "Deepcore validator `materials/material-not-sold` is declared in test-case.toml but has not been authored yet.",
-  );
+/** A bay worth selling, and a satchel carrying both materials with a spare. */
+const CARGO = { ferron: 3, argenite: 1 } as const;
+const RESONITE = 2;
+const CRYENITE = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("leaves the satchel untouched while the sale empties the bay", async () => {
+  await openScene(h);
+  await layCamp(h);
+  await standAtCamp(h);
+  await pinDrill(h);
+  await stageCargo(h, CARGO);
+  await h.debug.setMaterial("resonite", RESONITE);
+  await h.debug.setMaterial("cryenite", CRYENITE);
+  await h.debug.setCredits(0);
+  await h.debug.setPanel("ore-market");
+
+  await h.debug.sell();
+  await h.advance(1);
+  await captureStill(h, "sale");
+
+  const after = await h.snapshot();
+  assertEqual(after.satchel.resonite, RESONITE, "specs/mining.md");
+  assertEqual(after.satchel.cryenite, CRYENITE, "specs/mining.md");
+  assertEqual(after.satchel.coreSample, false, "specs/instrumentation.md");
+  // The sale did happen, so the reading above is a satchel a sale passed over.
+  assertEqual(after.cargo.slotsUsed, 0, "specs/gameplay.md");
+  assertGreaterThan(after.credits, 0, "specs/gameplay.md");
 });
