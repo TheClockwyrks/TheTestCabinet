@@ -1,30 +1,68 @@
-/*
- * Coil validator: `hud.best-drawn`. PLACEHOLDER.
- *
- * The best score is drawn.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * After a best is posed, a frame of the live round draws that figure and the
- * BEST label above it.
- *
- * HOW:
- * pose a distinctive best above the live score, render a live frame, and find
- * the text draw.
- *
- * MEDIA IT MUST CAPTURE: best (image).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// hud/best-drawn — the HUD shows the session's best, under its label.
+//
+// specs/ui.md gives the HUD a `Best` readout: "`BEST_LABEL` — `BEST`, above the
+// session's best score". Both are read, and the figure as a NUMBER, for the same
+// reason the score is: a label over a blank is not a readout.
+//
+// The best is posed well above the live score, which specs/scoring.md requires of
+// any best that is to stay where it is put, and which also keeps the two HUD
+// figures distinct so neither readout can be mistaken for the other.
+//
+// The chain is held still and the board is left without a pellet, because what
+// this decides is the readout, not the round.
 
-test("hud.best-drawn", () => {
-  throw new Error("validator not implemented: hud/best-drawn.test.ts");
+import { afterEach, beforeEach, it } from "vitest";
+import { BEST_LABEL } from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
+import {
+  HOME_HEAD,
+  captureStill,
+  chainFrom,
+  createHarness,
+  poseScene,
+  type Harness,
+} from "../harness";
+import { numberRuns, runsOf } from "./band";
+
+/** A best no fresh session carries, above a live score it cannot be confused with. */
+const SCORE = 12;
+const BEST = 5678;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws the posed best with the BEST label above it", async () => {
+  const live = poseScene(h, {
+    snake: chainFrom(HOME_HEAD, "right", 4),
+    dir: "right",
+    pellet: null,
+    travel: false,
+    score: SCORE,
+    best: BEST,
+  });
+  assertEqual(live.best, BEST, "the best the HUD is asked to show");
+
+  const calls = await h.frameCalls();
+  captureStill(h, "best");
+
+  const figures = numberRuns(calls, BEST);
+  const labels = runsOf(calls, BEST_LABEL);
+  assertGreaterThan(figures.length, 0, `the HUD drawing the best ${BEST}`);
+  assertGreaterThan(labels.length, 0, `the HUD drawing ${BEST_LABEL}`);
+  assertLessThanOrEqual(
+    Math.min(...labels.map((run) => run.y)),
+    Math.min(...figures.map((run) => run.y)),
+    `${BEST_LABEL} anchored above the best`,
+  );
 });
