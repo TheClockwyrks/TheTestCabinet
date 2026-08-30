@@ -18,7 +18,7 @@ columns and their rows.
 A bear travels continuously along one grid axis at a time, never diagonally, and
 it changes the axis it travels on only at a tile center.
 
-A bear is always settled on one tile or travelling into a neighbouring one.
+A bear is always settled on one tile or travelling into a neighboring one.
 
 | Reported | Meaning |
 | --- | --- |
@@ -80,9 +80,9 @@ On settling on a tile, a bear commits to one step along the four grid directions
 
 1. The first step of a shortest route from its tile to its target made only of
    tiles open to it, choosing the step that most shortens that route.
-2. Where no such route exists, the step into whichever open neighbouring tile is
+2. Where no such route exists, the step into whichever open neighboring tile is
    least far from the target in tile distance.
-3. Where no neighbouring tile is open, no step: the bear holds the tile it is on
+3. Where no neighboring tile is open, no step: the bear holds the tile it is on
    and chooses again on the next tick.
 
 ## Emerging

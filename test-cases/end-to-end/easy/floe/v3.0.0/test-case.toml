@@ -286,7 +286,7 @@ handle = "__floe"
 # uniform fit, the centre convention for the critter and the bears against the
 # left-edge convention for a lane item, the fixed timestep, and the legibility
 # table that says what a player must be able to tell apart without fixing a single
-# colour. It branches on the engine for what the runtime supplies, which modules
+# color. It branches on the engine for what the runtime supplies, which modules
 # are seeded, where the figures come from, and how the fixed tick is driven.
 [[spec]]
 source = "specs/overview.md.hbs"
@@ -458,7 +458,7 @@ description = "What the game looks and sounds like: the seeded sprite art and ho
 # a numeric tolerance stated in the item.
 #
 # EVERY item on this checklist carries a validation script, and every item is one
-# observable behaviour, so a build fails exactly the rule it breaks (a bear that
+# observable behavior, so a build fails exactly the rule it breaks (a bear that
 # will not enter a covered tile and a bear that will not enter the far shore are
 # two items, not one). Each script is a vitest suite under
 # `validation/<engine>/<category>/<item id>.test.ts`. The `<engine>` level is the
@@ -501,7 +501,7 @@ description = "What the game looks and sounds like: the seeded sprite art and ho
 # here assert only what the specification fixes about what is drawn — the tile
 # geometry, the seeded frame a thing is drawn from, a legibility floor stated as an
 # RGB distance out of 441 — and capture the frame as evidence. Not one item names
-# a colour.
+# a color.
 #
 # EVERY item also carries `domains` and `failure_cap`, because this case is
 # validator-rated: an item's validator, not a reviewer, decides the functional
@@ -1478,8 +1478,8 @@ validation = { script = "bays/fish-cleared-when-bay-filled.test.ts", outputs = [
 # THE THREE ROUTING BRANCHES EACH CARRY AN ITEM. `routes-around-hazard`,
 # `avoids-imminent-tile` and `pursues` decide the normal step;
 # `no-route-steps-closer` decides the fallback where no open route exists and the
-# bear must still take whichever open neighbour most shortens the tile distance;
-# and `boxed-in-stands-still` decides the fallback where no neighbour is open at
+# bear must still take whichever open neighbor most shortens the tile distance;
+# and `boxed-in-stands-still` decides the fallback where no neighbor is open at
 # all. A build that implements only the happy path passes the first three and fails
 # the last two, which is the grading this category exists to produce.
 #
@@ -1514,7 +1514,7 @@ failure_cap = "scuffed"
 # at all, and a build that emerges a bear immediately fails here while passing
 # there.
 validation = { script = "hunter/no-emergence-on-near-shore.test.ts", outputs = [
-  { id = "wait", name = "Thirty seconds of an unhunted near shore", kind = "replay" },
+  { id = "wait", name = "Thirty seconds of a near shore with no bear", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "emerges-at-near-shore"
@@ -1639,11 +1639,11 @@ validation = { script = "hunter/avoids-imminent-tile.test.ts", outputs = [
 [[review.categories.items]]
 id = "no-route-steps-closer"
 title = "With no open route a bear still steps closer"
-description = "With a full row of parked vehicles sealing the target's row so no open route to it exists, the bear commits a step into whichever open neighbouring tile most shortens its tile distance to the target, rather than standing still."
+description = "With a full row of parked vehicles sealing the target's row so no open route to it exists, the bear commits a step into whichever open neighboring tile most shortens its tile distance to the target, rather than standing still."
 domains = ["hunter"]
 failure_cap = "passable"
 # The first of the routing rule's two fallbacks. A build that implements only the
-# happy path stands still here, which is the second fallback's behaviour in a
+# happy path stands still here, which is the second fallback's behavior in a
 # situation that does not call for it.
 validation = { script = "hunter/no-route-steps-closer.test.ts", outputs = [
   { id = "route", name = "A bear stepping closer with no route open", kind = "replay" },
@@ -2314,11 +2314,11 @@ validation = { script = "screens/title-contents.test.ts", outputs = [
 [[review.categories.items]]
 id = "title-highlight"
 title = "The highlighted menu item reads as highlighted"
-description = "The highlighted title item is drawn differently from the unhighlighted one, by at least 40 of 441 RGB distance over its glyph pixels."
+description = "The highlighted title item is drawn differently from the item that is not highlighted, by at least 40 of 441 RGB distance over its glyph pixels."
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "screens/title-highlight.test.ts", outputs = [
-  { id = "title", name = "The highlighted title item beside the unhighlighted one", kind = "image" },
+  { id = "title", name = "The highlighted title item beside the plain one", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "howto-opens"
@@ -2461,7 +2461,7 @@ validation = { script = "screens/gameover-menu.test.ts", outputs = [
 ] }
 
 # --- Presentation -------------------------------------------------------------
-# That the game draws from the seeded sprites, in colours a player can tell apart,
+# That the game draws from the seeded sprites, in colors a player can tell apart,
 # with the HUD it must show.
 #
 # ELEVEN of these items assert a SEEDED FRAME: the critter, the bear in three
@@ -2472,7 +2472,7 @@ validation = { script = "screens/gameover-menu.test.ts", outputs = [
 # `assets/raft/1.png` — which is why specs/assets.md states how a frame is drawn
 # and not merely which frame.
 #
-# THE FIVE LEGIBILITY ITEMS ASSERT A DISTANCE, NEVER A COLOUR. Floe fixes no
+# THE FIVE LEGIBILITY ITEMS ASSERT A DISTANCE, NEVER A COLOR. Floe fixes no
 # palette, so each of these reads the pixels the build rendered and holds them
 # against an RGB distance out of 441 that the item states. `submerged-bear-visible`
 # is the one that matters most: a bear over open water is drawn as a silhouette and
@@ -2605,7 +2605,7 @@ failure_cap = "scuffed"
 # The legibility requirement the case cares most about. A submerged bear is drawn
 # as something other than a full sprite, and a build that draws nothing at all
 # leaves the hunt invisible exactly where it is most dangerous. The threshold is an
-# RGB distance, never a colour.
+# RGB distance, never a color.
 validation = { script = "presentation/submerged-bear-visible.test.ts", outputs = [
   { id = "swim", name = "A submerged bear against the water around it", kind = "replay" },
 ] }
@@ -2692,7 +2692,7 @@ validation = { script = "presentation/text-legible.test.ts", outputs = [
 #
 # `controls.menu-up` and `controls.menu-down` decide the selection alone and say
 # nothing about a cue; `cue-menu` here decides the sound. An item asserting both
-# the highlight and the sound would be two behaviours in one point, and a silent
+# the highlight and the sound would be two behaviors in one point, and a silent
 # menu would lower `run` rather than the `presentation` domain that owns the cues.
 [[review.categories]]
 id = "audio"
@@ -2788,7 +2788,7 @@ description = "Moving the title menu's selection plays the menu cue exactly once
 domains = ["presentation"]
 failure_cap = "great"
 # The sound alone. `controls.menu-up` and `controls.menu-down` decide the
-# selection, and an item asserting both would be two behaviours in one point — and
+# selection, and an item asserting both would be two behaviors in one point — and
 # would lower `run` for a fault that belongs to `presentation`.
 validation = { script = "audio/cue-menu.test.ts", outputs = [
   { id = "menu", name = "The title menu's selection moving", kind = "image" },

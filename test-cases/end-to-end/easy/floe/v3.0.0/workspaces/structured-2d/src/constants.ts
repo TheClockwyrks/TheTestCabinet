@@ -12,7 +12,7 @@
 // stage's: the tile map below folds the strait's own offset in, so nothing in
 // the build ever measures from the top of the strait.
 //
-// The critter's and a bear's position is that entity's CENTRE. A lane item is a
+// The critter's and a bear's position is that entity's CENTER. A lane item is a
 // span rather than a point, so its `x` is its LEFT EDGE and it covers
 // `[x, x + TILE * len)`. `specs/overview.md` states the convention and
 // `specs/instrumentation.md` restates it beside the snapshot shape.
@@ -24,11 +24,11 @@
 //
 // THE LOOK IS NOT HERE, AND THAT IS DELIBERATE. Floe fixes no palette, no font,
 // no HUD layout, no animation rate and no background. There is not a single
-// colour or type face in this file, and there is not meant to be one.
+// color or type face in this file, and there is not meant to be one.
 // `specs/overview.md` states what a player has to be able to read at a glance —
 // the five bands apart, deep water apart from a floe, an open bay apart from the
 // shore, the critter and the bear apart from what they stand on — and how the
-// strait looks is the build's to design. The one colour value the project carries
+// strait looks is the build's to design. The one color value the project carries
 // is `BACKGROUND`, which the build exports from `src/game.ts` because the build
 // chooses it. The frame rate a sprite's frames alternate at is the build's for the
 // same reason: `specs/assets.md` says which frames alternate for which state and
@@ -58,9 +58,9 @@ export const ROWS = 20;
 /**
  * The tile-to-stage map, stated in `specs/strait.md` and named here so nothing in
  * the build derives it a second time. `tileLeft` and `tileTop` give a tile's
- * top-left corner; `tileCX` and `tileCY` give its centre, which is where an
+ * top-left corner; `tileCX` and `tileCY` give its center, which is where an
  * entity standing on it is reported. `colAt` and `rowAt` invert them, which is
- * how a drifting critter's column follows its centre.
+ * how a drifting critter's column follows its center.
  */
 export function tileLeft(c: number): number {
   return TILE * c;
@@ -246,7 +246,7 @@ export const BEAR_SECOND_ADVANCE = 3;
 export const BEAR_SECOND_DELAY = 1.4;
 
 /**
- * How close a bear's centre must come to the critter's to catch it, in stage
+ * How close a bear's center must come to the critter's to catch it, in stage
  * units, and the look-ahead a tile is treated as closed within: a bear will not
  * step into a tile a moving vehicle will cover inside `BEAR_AVOID_LEAD` seconds.
  */
