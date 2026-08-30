@@ -119,18 +119,26 @@ arguments and returns nothing; a reading takes nothing and returns plain data.
 ```ts
 interface Debug {
   startMatch(mode: Mode): void;
-  placeBall(patch: BallPatch): void;
+  setBallPosition(x: number, y: number): void;
+  setBallVelocity(vx: number, vy: number): void;
   snapshot(): Snapshot;
 }
 
 class Arcade extends GameInstance<Debug> {
   override initialize(api: InitApi): Debug {
     api.input.register("thrust", { keys: ["KeyW", "ArrowUp"] });
+    const ball = (): Ball => this.engine.world.byTag("ball")[0] as Ball;
     return {
       startMatch: (mode) => (this.engine.world.mode as Arena).start(mode),
-      placeBall: (patch) => {
-        const [ball] = this.engine.world.byTag("ball");
-        Object.assign(ball.transform, patch);
+      setBallPosition: (x, y) => {
+        const { transform } = ball();
+        transform.x = x;
+        transform.y = y;
+      },
+      setBallVelocity: (vx, vy) => {
+        const { velocity } = ball();
+        velocity.x = vx;
+        velocity.y = vy;
       },
       snapshot: () => ({ score: (this.engine.world.state as ArenaState).score }),
     };

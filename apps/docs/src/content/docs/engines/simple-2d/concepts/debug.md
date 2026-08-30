@@ -44,14 +44,22 @@ view, so the surface holds no state of its own and closes over nothing
 writable. Its operations take the state as an argument, in the shape `update`
 has:
 
-- A pose takes the current state and returns the next: `serve(state) => state`,
-  `setBall(state, index, patch) => state`. A pose is a `Transition<S>`, and a
-  caller drives it through `engine.apply((state) => engine.debug.serve(state))`.
+- A pose takes the current state and returns the next:
+  `setBallPosition(state, x, y) => state`,
+  `setBallVelocity(state, vx, vy) => state`. A pose is a `Transition<S>`, and a
+  caller drives it through
+  `engine.apply((state) => engine.debug.setBallPosition(state, 320, 180))`.
 - A reading takes the state and returns what it read:
   `snapshot(state) => CaromSnapshot`. A caller drives it as
   `engine.debug.snapshot(engine.state)`.
 
 Plain properties such as `version` stay plain properties.
+
+Each pose sets one element of the world and takes scalars or a small fixed
+tuple, so a caller arranges exactly the part its scenario is about and the game
+stays free to store that element however it likes. A sequence that arranges
+several elements at once, such as opening a match, is composed by the caller
+from these operations.
 
 A pose arranges the world; it does not decide what happens next. Every pose
 leaves the state the game's own `update` runs from on the next frame, so the

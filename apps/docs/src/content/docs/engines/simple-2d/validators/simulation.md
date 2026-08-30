@@ -25,10 +25,12 @@ it("a ball leaving the right edge scores for player one", async () => {
   const { engine } = createHarness(new ConstantClock(1000 / 60));
   await engine.initialize();
 
-  engine.apply((s) => engine.debug.startMatch(s, "versus"));
+  engine.apply((s) => engine.debug.setMode(s, "versus"));
+  engine.apply((s) => engine.debug.setScreen(s, "playing"));
   engine.apply((s) =>
-    engine.debug.setBall(s, { x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 }),
+    engine.debug.setBallPosition(s, FIELD_W - 40, FIELD_H / 2),
   );
+  engine.apply((s) => engine.debug.setBallVelocity(s, 600, 0));
   await engine.advance(30);
 
   const snapshot = engine.debug.snapshot(engine.state);
@@ -43,10 +45,13 @@ a check hands it to `engine.apply`, which replaces the state with what the pose
 returned and leaves the outcome to the frames that follow. What the assertions
 read is what the real update produced.
 
+Each operation sets one element of the world, so the sequence that opens a
+match is written once in the harness and every check that needs one calls it.
+
 A harness wraps the two routes so a check names the operation alone:
-`h.startMatch("versus")` for `engine.apply((s) => engine.debug.startMatch(s, "versus"))`,
-and `h.snapshot()` for `engine.debug.snapshot(engine.state)`. The pages below
-use both forms.
+`h.setMode("versus")` for
+`engine.apply((s) => engine.debug.setMode(s, "versus"))`, and `h.snapshot()`
+for `engine.debug.snapshot(engine.state)`. The pages below use both forms.
 
 ## Reading the state
 
@@ -98,8 +103,9 @@ for (const clock of clocks) {
   const h = createHarness(clock);
   await h.engine.initialize();
 
-  h.startMatch("versus");
-  h.setBall({ x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
+  startMatch(h, "versus");
+  h.setBallPosition(FIELD_W - 40, FIELD_H / 2);
+  h.setBallVelocity(600, 0);
   await advanceMs(h.engine, 500);
 
   expect(h.snapshot().score.p1).toBe(1);

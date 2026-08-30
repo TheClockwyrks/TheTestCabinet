@@ -47,7 +47,8 @@ it("credits the left player when the ball crosses the right edge", async () => {
   await engine.initialize();
 
   engine.debug.startMatch("versus");
-  engine.debug.placeBall({ x: 560, y: 180, vx: 240, vy: 0 });
+  engine.debug.setBallPosition(560, 180);
+  engine.debug.setBallVelocity(240, 0);
   await engine.advance(30);
 
   engine.startRecording();

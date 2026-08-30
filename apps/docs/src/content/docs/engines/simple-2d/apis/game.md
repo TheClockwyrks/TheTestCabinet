@@ -134,11 +134,11 @@ drives a pose through `engine.apply` and a reading against `engine.state`.
 ```ts
 interface CaromDebug {
   readonly version: number;
-  serve(state: DeepReadonly<State>): State;
+  setBallVelocity(state: DeepReadonly<State>, vx: number, vy: number): State;
   snapshot(state: DeepReadonly<State>): Snapshot;
 }
 
-engine.apply((state) => engine.debug.serve(state));
+engine.apply((state) => engine.debug.setBallVelocity(state, 240, 0));
 const snapshot = engine.debug.snapshot(engine.state);
 ```
 

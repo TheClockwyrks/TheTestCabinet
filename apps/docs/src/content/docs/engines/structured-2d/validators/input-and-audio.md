@@ -163,7 +163,8 @@ import { CUES } from "../../src/constants";
 const cues: string[] = [];
 const off = engine.events.on("cue:played", ({ cue }) => cues.push(cue));
 
-engine.debug.placeBall({ x: P1_X + BALL_R, y: paddle.transform.y, vx: -600, vy: 0 });
+engine.debug.setBallPosition(P1_X + BALL_R, paddle.transform.y);
+engine.debug.setBallVelocity(-600, 0);
 await engine.advance(10);
 off();
 

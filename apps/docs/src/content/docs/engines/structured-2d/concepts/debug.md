@@ -47,8 +47,8 @@ reads `this.engine.world` at the moment it is called and acts on the world that
 is open then. The surface holds no state of its own.
 
 - A pose takes only its own arguments and returns nothing:
-  `startMatch(mode: Mode): void`, `placeBall(patch: BallPatch): void`. A caller
-  drives it as `engine.debug.startMatch("versus")`.
+  `startMatch(mode: Mode): void`, `setBallPosition(x: number, y: number): void`.
+  A caller drives it as `engine.debug.startMatch("versus")`.
 - A reading takes no arguments and returns plain data: `snapshot(): Snapshot`.
   A caller drives it as `engine.debug.snapshot()`.
 

@@ -29,8 +29,9 @@ interface State {
 }
 
 interface Debug {
-  place(state: DeepReadonly<State>, x: number, y: number): State;
-  serve(state: DeepReadonly<State>, vx: number, vy: number): State;
+  setBallPosition(state: DeepReadonly<State>, x: number, y: number): State;
+  setBallVelocity(state: DeepReadonly<State>, vx: number, vy: number): State;
+  setPhase(state: DeepReadonly<State>, phase: State["phase"]): State;
   phase(state: DeepReadonly<State>): State["phase"];
   score(state: DeepReadonly<State>): { left: number; right: number };
 }
@@ -44,12 +45,9 @@ const game: Game<State, Debug> = {
     };
 
     const debug: Debug = {
-      place: (s, x, y) => ({ ...s, ball: { ...s.ball, x, y } }),
-      serve: (s, vx, vy) => ({
-        ...s,
-        phase: "rally",
-        ball: { ...s.ball, vx, vy },
-      }),
+      setBallPosition: (s, x, y) => ({ ...s, ball: { ...s.ball, x, y } }),
+      setBallVelocity: (s, vx, vy) => ({ ...s, ball: { ...s.ball, vx, vy } }),
+      setPhase: (s, phase) => ({ ...s, phase }),
       phase: (s) => s.phase,
       score: (s) => ({ ...s.score }),
     };
@@ -73,8 +71,9 @@ holds at that instant.
 ```ts
 await engine.initialize();
 
-engine.apply((s) => engine.debug.place(s, 600, 180));
-engine.apply((s) => engine.debug.serve(s, 200, 0));
+engine.apply((s) => engine.debug.setBallPosition(s, 600, 180));
+engine.apply((s) => engine.debug.setBallVelocity(s, 200, 0));
+engine.apply((s) => engine.debug.setPhase(s, "rally"));
 await engine.advance(60);
 
 const score = engine.debug.score(engine.state);
@@ -92,11 +91,17 @@ signatures, and the vocabulary they use are the game's own design.
 
 ## What belongs on it
 
-Offer the operations a scenario is written in rather than the fields of the
-state: placing a piece, serving the ball, spawning a wave, ending a round,
-reading the score. Each pose is a transition the game's own systems could have
-produced, so a scenario posed from code and the same scenario reached by playing
-leave the game in one state.
+Offer one operation for each element a scenario arranges: placing the ball,
+giving it a velocity, setting the phase, spawning one enemy, clearing the ones a
+scenario is not about, reading the score. Each pose takes scalars or a small
+fixed tuple rather than an object of fields, which keeps the game's own layout
+out of the surface and lets a caller arrange exactly the part its scenario
+concerns. A sequence that arranges several elements at once, such as opening a
+round, is composed by the caller from these operations.
+
+Each pose is a transition the game's own systems could have produced, so a
+scenario posed from code and the same scenario reached by playing leave the game
+in one state.
 
 A diagnostic source names a value for a human reading the overlay; the surface
 names the operations a caller drives from code, and the readings it needs to
@@ -109,6 +114,7 @@ const debug: Debug = {
     ...s,
     enemies: [...s.enemies, makeEnemy(kind, x)],
   }),
+  clearEnemies: (s) => ({ ...s, enemies: [] }),
   live: (s) => s.enemies.length,
   hud: (s) => ({ lives: s.lives, wave: s.wave }),
 };

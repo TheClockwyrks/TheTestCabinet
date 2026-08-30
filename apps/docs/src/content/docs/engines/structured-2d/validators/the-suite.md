@@ -198,13 +198,6 @@ the checks decide.
 // validation/debug.ts — the surface as the case specifies it
 export type Mode = "solo" | "versus";
 
-export interface BallPatch {
-  x?: number;
-  y?: number;
-  vx?: number;
-  vy?: number;
-}
-
 export interface Snapshot {
   level: string;
   phase: string;
@@ -216,7 +209,8 @@ export interface Snapshot {
 export interface Debug {
   version: number;
   startMatch(mode: Mode): void;
-  placeBall(patch: BallPatch): void;
+  setBallPosition(x: number, y: number): void;
+  setBallVelocity(vx: number, vy: number): void;
   snapshot(): Snapshot;
 }
 ```

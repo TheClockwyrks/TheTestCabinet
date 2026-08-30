@@ -112,7 +112,8 @@ const cues: string[] = [];
 const off = h.engine.events.on("cue:played", ({ cue }) => cues.push(cue));
 
 const { left } = h.snapshot().paddles;
-h.setBall({ x: P1_X1 + BALL_R, y: left.cy, vx: -600, vy: 0 });
+h.setBallPosition(P1_X1 + BALL_R, left.cy);
+h.setBallVelocity(-600, 0);
 await h.engine.advance(10);
 off();
 

@@ -158,7 +158,8 @@ and returns that state as `DeepReadonly<S>`. It is how a caller poses a game
 between frames: the next frame's `update` receives the state the transition
 left, so the collision, the serve, or the spawn a scenario is about is still
 computed by the game's own `update`. A debug surface's poses are transitions,
-and a caller drives one as `engine.apply((state) => engine.debug.serve(state))`.
+and a caller drives one as
+`engine.apply((state) => engine.debug.setBallVelocity(state, 240, 0))`.
 
 Calling it before `initialize` resolves throws, naming the ordering, exactly as
 reading `state` does. A transition that returns `undefined` is refused with an

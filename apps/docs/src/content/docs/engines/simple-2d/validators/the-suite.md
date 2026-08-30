@@ -92,14 +92,16 @@ import {
 } from "@test-cabinet/simple-2d";
 import { FIELD_H, FIELD_W } from "../src/constants";
 import { game, type State } from "../src/game";
-import type { BallPatch, Debug, Mode, Snapshot } from "./debug";
+import type { Debug, Mode, Screen, Snapshot } from "./debug";
 
 export interface Harness {
   readonly engine: Engine<State, Debug>;
   readonly canvas: Canvas;
   readonly keys: EventTarget;
-  startMatch(mode: Mode): void;
-  setBall(patch: BallPatch): void;
+  setScreen(screen: Screen): void;
+  setMode(mode: Mode): void;
+  setBallPosition(x: number, y: number): void;
+  setBallVelocity(vx: number, vy: number): void;
   snapshot(): Snapshot;
 }
 
@@ -129,10 +131,22 @@ export function createHarness(
     engine,
     canvas,
     keys,
-    startMatch: (mode) => engine.apply((s) => engine.debug.startMatch(s, mode)),
-    setBall: (patch) => engine.apply((s) => engine.debug.setBall(s, patch)),
+    setScreen: (screen) =>
+      engine.apply((s) => engine.debug.setScreen(s, screen)),
+    setMode: (mode) => engine.apply((s) => engine.debug.setMode(s, mode)),
+    setBallPosition: (x, y) =>
+      engine.apply((s) => engine.debug.setBallPosition(s, x, y)),
+    setBallVelocity: (vx, vy) =>
+      engine.apply((s) => engine.debug.setBallVelocity(s, vx, vy)),
     snapshot: () => engine.debug.snapshot(engine.state),
   };
+}
+
+export function startMatch(h: Harness, mode: Mode): void {
+  h.setMode(mode);
+  h.setScreen("playing");
+  h.setBallPosition(FIELD_W / 2, FIELD_H / 2);
+  h.setBallVelocity(0, 0);
 }
 ```
 
@@ -142,10 +156,16 @@ draws in a browser. The surface reports the logical design size at a device
 pixel ratio of `1` by default, which puts one device pixel on one logical unit
 and makes a sampled coordinate readable without arithmetic.
 
-The last three members wrap the debug surface over the engine. A pose on the
+The members after `keys` wrap the debug surface over the engine. A pose on the
 surface takes the current state and returns the next, so the harness hands it
 to `engine.apply`; a reading takes the state, so the harness hands it
 `engine.state`. A check then names the operation and nothing else.
+
+Every operation the surface carries sets one element of the world, so the
+sequences a scenario is opened with belong to the harness. `startMatch` is one
+of them: it is written once, from the atomic operations, and every check that
+needs a match under way calls it, while a check that needs only part of the
+arrangement calls the operations it needs.
 
 ## Initialization order
 
@@ -180,13 +200,14 @@ holds no state: a pose is a transition the check drives through `engine.apply`,
 and a reading is a function of `engine.state`.
 
 ```ts
-const { engine } = createHarness();
-await engine.initialize();
+const h = createHarness();
+await h.engine.initialize();
 
-engine.apply((s) => engine.debug.startMatch(s, "solo"));
-await engine.advance(90);
+startMatch(h, "solo");
+h.setBallVelocity(240, 0);
+await h.engine.advance(30);
 
-expect(engine.debug.snapshot(engine.state).screen).toBe("playing");
+expect(h.snapshot().ball.x).toBeCloseTo(FIELD_W / 2 + 120, 3);
 ```
 
 The case's instrumentation spec states the surface's operations, so a scenario
@@ -202,16 +223,11 @@ import type { DeepReadonly } from "ts-essentials";
 import type { State } from "../src/game";
 
 export type Mode = "solo" | "versus";
-
-export interface BallPatch {
-  x?: number;
-  y?: number;
-  vx?: number;
-  vy?: number;
-}
+export type Screen = "title" | "countdown" | "playing" | "over";
 
 export interface Snapshot {
-  screen: string;
+  screen: Screen;
+  mode: Mode;
   score: { p1: number; p2: number };
   paddles: { left: { cy: number; vy: number }; right: { cy: number; vy: number } };
   ball: { x: number; y: number; vx: number; vy: number };
@@ -219,11 +235,18 @@ export interface Snapshot {
 
 export interface Debug {
   version: number;
-  startMatch(state: DeepReadonly<State>, mode: Mode): State;
-  setBall(state: DeepReadonly<State>, patch: BallPatch): State;
+  setScreen(state: DeepReadonly<State>, screen: Screen): State;
+  setMode(state: DeepReadonly<State>, mode: Mode): State;
+  setBallPosition(state: DeepReadonly<State>, x: number, y: number): State;
+  setBallVelocity(state: DeepReadonly<State>, vx: number, vy: number): State;
   snapshot(state: DeepReadonly<State>): Snapshot;
 }
 ```
+
+Each operation sets one element of the world and takes scalars, so a check
+arranges only what its requirement concerns and the build keeps its own state
+layout. `snapshot` reports every field an operation sets, which is what lets a
+check verify an operation by setting a value and reading it back.
 
 ## An unmet precondition
 

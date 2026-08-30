@@ -210,7 +210,7 @@ type Transition<S> = (state: DeepReadonly<S>) => S;
 The next frame's `update` receives the state `apply` left, and a transition
 that returns `undefined` is refused exactly as `update` is. A debug surface's
 poses are written as transitions, so a caller drives one with
-`engine.apply((s) => engine.debug.serve(s))`. See `debug.md`.
+`engine.apply((s) => engine.debug.setPosition(s, 320))`. See `debug.md`.
 
 ## The shape of a build
 
@@ -226,7 +226,7 @@ interface State {
 }
 
 interface Debug {
-  place(state: DeepReadonly<State>, x: number): State;
+  setPosition(state: DeepReadonly<State>, x: number): State;
   x(state: DeepReadonly<State>): number;
 }
 
@@ -240,7 +240,7 @@ const game: Game<State, Debug> = {
     api.diagnostics.register("x", (s) => s.x);
 
     const debug: Debug = {
-      place: (s, x) => ({ ...s, x }),
+      setPosition: (s, x) => ({ ...s, x }),
       x: (s) => s.x,
     };
 

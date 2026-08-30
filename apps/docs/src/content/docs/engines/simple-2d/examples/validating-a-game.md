@@ -45,7 +45,8 @@ export interface Snapshot {
 }
 
 export interface Debug {
-  setBall(state: DeepReadonly<State>, ball: Partial<Ball>): State;
+  setBallPosition(state: DeepReadonly<State>, x: number, y: number): State;
+  setBallVelocity(state: DeepReadonly<State>, vx: number, vy: number): State;
   setPaddle(state: DeepReadonly<State>, y: number): State;
   snapshot(state: DeepReadonly<State>): Snapshot;
 }
@@ -53,14 +54,24 @@ export interface Debug {
 export declare const game: Game<State, Debug>;
 ```
 
-The build's own implementation of the surface is three pure functions.
+Each operation sets one element of the world and takes scalars, so a check
+arranges only what its requirement concerns and the build stays free to store
+that element however it likes. The build's own implementation of the surface is
+four pure functions.
 
 ```ts
 // src/debug.ts, as the build writes it
 import type { Debug } from "./game";
 
 export const debug: Debug = {
-  setBall: (state, ball) => ({ ...state, ball: { ...state.ball, ...ball } }),
+  setBallPosition: (state, x, y) => ({
+    ...state,
+    ball: { ...state.ball, x, y },
+  }),
+  setBallVelocity: (state, vx, vy) => ({
+    ...state,
+    ball: { ...state.ball, vx, vy },
+  }),
   setPaddle: (state, y) => ({ ...state, paddle: { y } }),
   snapshot: (state) => ({ ball: { ...state.ball }, paddle: { ...state.paddle } }),
 };
@@ -179,8 +190,9 @@ Every validator builds its engine through one helper. It creates a canvas with
 measurement from the harness instead of from a document, wraps the 2D context in
 a recording proxy, subscribes to `asset:failed` before any game code runs, and
 then initializes. It also wraps the build's pure surface over the engine, so a
-check writes `harness.setBall(…)` and `harness.snapshot()` and the harness
-routes the pose through `engine.apply` and the reading through `engine.state`.
+check writes `harness.setBallPosition(…)` and `harness.snapshot()` and the
+harness routes the pose through `engine.apply` and the reading through
+`engine.state`.
 
 ```ts
 // validation/harness.ts
@@ -193,7 +205,7 @@ import {
   type SurfaceMetrics,
   type Viewport,
 } from "@test-cabinet/simple-2d";
-import { game, type Ball, type Debug, type Snapshot, type State } from "../src/game";
+import { game, type Debug, type Snapshot, type State } from "../src/game";
 
 // The figures the case's specification fixes.
 export const FIELD_WIDTH = 640;
@@ -222,7 +234,8 @@ export interface Harness {
   readonly ctx: SKRSContext2D;
   readonly calls: DrawCall[];
   readonly assetFailures: string[];
-  setBall(ball: Partial<Ball>): void;
+  setBallPosition(x: number, y: number): void;
+  setBallVelocity(vx: number, vy: number): void;
   setPaddle(y: number): void;
   snapshot(): Snapshot;
   hold(code: string): void;
@@ -328,7 +341,10 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     ctx,
     calls,
     assetFailures,
-    setBall: (ball) => engine.apply((s) => engine.debug.setBall(s, ball)),
+    setBallPosition: (x, y) =>
+      engine.apply((s) => engine.debug.setBallPosition(s, x, y)),
+    setBallVelocity: (vx, vy) =>
+      engine.apply((s) => engine.debug.setBallVelocity(s, vx, vy)),
     setPaddle: (y) => engine.apply((s) => engine.debug.setPaddle(s, y)),
     snapshot: () => engine.debug.snapshot(engine.state),
     hold: (code) => dispatch("keydown", code),
@@ -365,8 +381,9 @@ recording proxy onto the canvas. The engine sizes the backing store and reads
 pixels through the real canvas, and every drawing operation lands in `calls` on
 its way to it.
 
-`setBall`, `setPaddle`, and `snapshot` are the surface wrapped over the engine.
-A pose is `engine.apply((s) => engine.debug.setBall(s, ball))`: the engine hands
+`setBallPosition`, `setBallVelocity`, `setPaddle`, and `snapshot` are the
+surface wrapped over the engine. A pose is
+`engine.apply((s) => engine.debug.setBallPosition(s, x, y))`: the engine hands
 the current state to the transition, keeps the state it returns, and the next
 frame's `update` receives it. A reading is
 `engine.debug.snapshot(engine.state)`, a plain value taken from the state the
@@ -405,7 +422,8 @@ afterEach(() => {
 
 it("carries the ball at 200 units per second", async () => {
   const { engine } = harness;
-  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(200, 0);
 
   await engine.advance(30);
 
@@ -418,7 +436,8 @@ it("carries the ball at 200 units per second", async () => {
 
 it("reflects the ball off the right wall", async () => {
   const { engine } = harness;
-  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(200, 0);
 
   await engine.advance(120);
 
@@ -464,7 +483,8 @@ it("plays the bounce cue when the ball meets a wall", async () => {
     if (cue === "bounce") bounces.push({ t, gain });
   });
 
-  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(200, 0);
   await engine.advance(120);
   off();
 
@@ -526,7 +546,8 @@ afterEach(() => {
 
 it("fills the ball and the paddle in their own colors", async () => {
   const { engine } = harness;
-  harness.setBall({ x: 320, y: 180, vx: 0, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(0, 0);
   harness.setPaddle(180);
 
   await engine.advance(1);
@@ -540,7 +561,8 @@ it("fills the ball and the paddle in their own colors", async () => {
 
 it("draws the paddle as one rect and the ball as one arc", async () => {
   const { engine, calls } = harness;
-  harness.setBall({ x: 320, y: 180, vx: 0, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(0, 0);
   harness.setPaddle(180);
 
   calls.length = 0;

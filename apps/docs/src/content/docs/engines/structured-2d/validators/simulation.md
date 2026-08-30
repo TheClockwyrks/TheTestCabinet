@@ -30,7 +30,8 @@ it("a ball leaving the right edge scores for player one", async () => {
   const world = engine.world;
 
   engine.debug.startMatch("versus");
-  engine.debug.placeBall({ x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
+  engine.debug.setBallPosition(FIELD_W - 40, FIELD_H / 2);
+  engine.debug.setBallVelocity(600, 0);
   await engine.advance(30);
 
   expect(world.state.players[0].score).toBe(1);
@@ -97,7 +98,8 @@ for (const clock of clocks) {
   const world = engine.world;
 
   engine.debug.startMatch("versus");
-  engine.debug.placeBall({ x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
+  engine.debug.setBallPosition(FIELD_W - 40, FIELD_H / 2);
+  engine.debug.setBallVelocity(600, 0);
   await advanceMs(engine, 500);
 
   expect(world.state.players[0].score).toBe(1);
