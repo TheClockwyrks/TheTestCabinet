@@ -1,0 +1,760 @@
+slug = "coil"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`;
+# see `docs/test-cases.md`.
+
+# Human-readable display name for this test case.
+name = "Coil"
+
+# Test type. Coil is a `full-stack` case: an end-to-end (playable-browser-game) case
+# with one addition — the model under test must PRODUCE some of the game's own assets
+# DURING the run, using the asset-generation binaries on the run image's `PATH`, and
+# then build a game that uses them. Here that produced set is the snake's full sprite
+# set and the game's sound and music; everything else (the board, walls, obstacles,
+# pellet, and HUD) is still drawn in code. The `full-stack` type schedules the run onto
+# the `test-cabinet-full-stack-2d` image, which carries six binaries on `PATH` —
+# `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — and no
+# others; `specs/assets.md` is the production contract. A root identity field, so it
+# sits above the first table.
+type = "full-stack"
+
+# Relative difficulty of this case, surfaced on the site. Coil's rules are simple: a
+# polished, playable build with a correct fixed-timestep loop, grid-locked turning, a
+# decaying combo, and several states. It also asks the model to PRODUCE the snake's
+# sprite set (an animated biting head plus body and corner sprites) and the game's sound
+# and music with the on-`PATH` tools, but that production pass sits over a small, simple
+# game, so the case belongs at the easy end of the full-stack scale.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "grid", "score-attack"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A neon grid serpent that grows with every pellet, where eating in quick \
+succession builds a decaying combo multiplier — so the real game is planning \
+the most efficient route, not just staying alive — and the build must produce \
+its own snake sprites and sound with the on-PATH asset tools."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected variant) and handed to the model as
+# the build instruction. It injects absolute in-container paths via template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run
+# is stopped. This is the per-case default; a run can override it (for example
+# `tcab run --max-runtime`). It exists so a stuck or runaway session cannot run
+# unbounded. The game itself is small, but producing the snake's sprite set and the
+# game's audio with the on-`PATH` tools is a real added pass, so Coil gets three
+# hours — comfortably more than a healthy build needs while still bounding a session
+# that never terminates.
+max_runtime_hours = 3
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project to build on: a `package.json` that pins
+# `playwright` as a dev dependency, so the in-container browser tooling is a
+# visible, project-local dependency rather than a global the model has to know is
+# preinstalled. A variant may override this with its own `workspace` directory;
+# none of Coil's variants need to. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order — the
+# first is the default. Neither variant seeds a mode spec of its own: what differs
+# between them — the mode's menu entry and, for maze, the interior obstacle course —
+# is branched by variant slug inside the common `specs/gameplay.md.hbs` template.
+# Each variant supplies its own `title` menu mockup; `gameplay` and `game-over`
+# references are common. Each variant is exactly one mode:
+#   - base — Classic mode: the grid-serpent run on the open board.
+#   - maze — Maze mode: the run on a board laced with fixed fatal interior obstacles to
+#            thread (declares its own `maze` domain).
+# This list is a root key, so it must precede the first table header (`[build]`).
+variants = [
+  "variants/base.toml",
+  "variants/maze.toml",
+]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root: dependencies are installed, then the static build is produced
+# into `dist/`, `build/`, or `out/`. `npm ci` is deliberate — it requires the
+# build to commit a `package-lock.json`, so the validated build installs exactly
+# what the deploy will. Both commands are required — there are no defaults, so
+# every case states exactly how its implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Instrumentation: the debug-and-automation surface every build installs, named
+# once here so a review item's `validation` driver (and the validator that runs it)
+# knows which `window` global to drive. The seeded specification documents the same
+# handle independently as an ordinary game debug feature (see
+# specs/instrumentation.md); this entry is reporter-side and never seeded. It is
+# required because the review items below declare `validation` scripts.
+[instrumentation]
+handle = "__coil"
+# The fixed simulation rate, in Hz. Coil's debug API advances time in whole
+# simulation ticks (`step(ticks)`) rather than in seconds, so there is no rounding
+# and no ambiguity about what a step means. This is the rate the validation runtime
+# uses to relate that exact stepping back to real time — one tick is the game's
+# 125 ms tick interval, so a second of game time is 8 ticks. It must match the
+# timestep the seeded `specs/movement.md` mandates.
+tick_hz = 8
+
+# Common specs: seeded for EVERY variant of this case, at the `dest` path within the
+# run workspace. The specification is decomposed by concern: the overview, the board
+# geometry, the movement simulation, the combo scoring, the gameplay (the mode and its
+# menu entry), the UI (game states, controls, audio, and the HUD), the produced-asset
+# contract, and the debugging/automation surface. The mode-varying material — the
+# mode's menu entry and, for maze, the interior obstacle course — is branched by
+# variant slug inside `specs/gameplay.md.hbs` rather than seeded from a separate
+# per-variant file, so each variant's rendered set describes exactly one mode and
+# reads as fully self-contained. Most common specs are plain Markdown, seeded
+# verbatim. Two are `.hbs` templates, rendered with the selected variant before
+# landing at their `dest`: `specs/gameplay.md.hbs`, which branches on the variant slug
+# for the mode, and `specs/instrumentation.md.hbs`, a little of whose wording (the
+# snapshot's `mode` value and whether the board carries interior obstacles) depends on
+# the variant. A spec's `dest` defaults to its `source` (with a trailing `.hbs`
+# stripped), so an `.md.hbs` source seeds to the same `.md` path and the plain-Markdown
+# ones need only name the source.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/board.md"
+
+[[spec]]
+source = "specs/movement.md"
+
+[[spec]]
+source = "specs/combo.md"
+
+[[spec]]
+source = "specs/gameplay.md.hbs"
+
+[[spec]]
+source = "specs/ui.md"
+
+# The asset-production contract: the assets the model must PRODUCE with the six on-PATH
+# binaries during the run — the snake's full sprite set and the game's sound and music —
+# where each lands in the workspace, and how it is wired into the build; and what stays
+# drawn in code. Seeded for every variant so the produced-asset review items and this
+# spec stay in lockstep. This is the defining spec of a full-stack case.
+[[spec]]
+source = "specs/assets.md"
+
+# The debugging and automation surface every variant must expose: a deterministic,
+# steppable core; a `window.__coil` API to drive and inspect the game from code; and
+# a read-only debug overlay. Seeded for every variant and framed as an ordinary
+# developer affordance of the game. Rendered from a `.hbs` template so its `mode`
+# value and obstacle wording match the selected variant; it seeds to
+# `specs/instrumentation.md`.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# Proof of implementation: instructs the build to capture evidence (screenshots
+# and a short clip) at the exact paths the `[[proof]]` entries below declare, so a
+# reviewer can see what the build actually produced. The paths in this spec and in
+# the `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Reference views. Each is a 1280x720 screenshot captured (with Playwright) from a
+# playable Coil build — the real game, not a hand-authored mockup — and served as-is:
+# seeded into the run as a visual target, never rendered at seed time. See
+# `reference/README.md` for how they are regenerated. References are not validated
+# unless a `[[check]]` below names them.
+#
+# There are NO common reference views: every view is declared per variant, in the
+# files under `variants/`. Each variant is exactly one mode, and the mode shows in
+# all three views — the menu lists that variant's single mode; the in-play board
+# differs, since Maze laces it with the fatal obstacle course a Classic board does
+# not have; and the game-over frame shows both the dimmed board (obstacles included)
+# behind the end panel and the HUD's mode tag. So each variant supplies its own
+# `title`, `gameplay`, and `game-over`.
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot
+# or `.webm` clip to as evidence the feature works; `specs/proof.md` instructs
+# the build to produce them at exactly these paths. Validation records whether
+# each turned up (informational — a missing proof does not fail the run), and a
+# reviewer pairs each with its expected reference (see the `review_item` links
+# below). The media kind is inferred from the extension: `.png` is an image,
+# `.webm` a video (the format Playwright records natively; the public gallery
+# transcodes it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "Gameplay"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Game over"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "combo"
+name = "Combo clip"
+dest = "proof/combo.webm"
+
+# Validation checks (opt-in). Only the checks declared here run. Each drives the
+# built implementation through `actions`, screenshots it, and compares against the
+# rendered screenshot of `reference`. Only the title screen is deterministic
+# enough to validate for Coil: it is whatever the game shows on load, so it needs
+# no actions. Gameplay and game-over depend on live state and input, so they are
+# seeded as references but not validated.
+[[check]]
+view = "title"
+name = "Title Screen"
+reference = "title"
+actions = []
+
+# Scoring domains. A reviewer rates each declared domain independently while playing
+# the build, and the run's overall rating is the WORST across them — a flawless snake
+# game cannot mask crude, un-produced art or silence, and a beautiful produced snake
+# cannot mask a game that does not play correctly; every case must declare at least one.
+# Domains are case-level; an individual review item rolls up to one through its optional
+# `domain`, while a general item (states, window fit) omits it. The Maze variant adds
+# its own `maze` domain (see `variants/maze.toml`).
+[[domain]]
+id = "gameplay"
+name = "Gameplay"
+description = "The single-player snake game itself: the fixed-tick movement, grid-locked turning, growth and collision, the decaying combo, scoring, and the states — how it plays."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Assets"
+description = "The genuinely tool-produced assets and how the build presents them: the snake's produced sprite set — an animated head that bites when it eats, and body and corner sprites that render the snake turning — rendered crisp on the board, and the produced sound effects and music bed the game plays."
+
+# Reviewer checklist, common to every variant, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare name
+# grouping the points a reviewer grades — and each `[[review.categories.items]]`
+# under it is one graded review item, worth one point (the default weight), so a
+# category is worth the number of items it holds (no fractional scoring). A category
+# carries no prose of its own; each review item states its own requirement in
+# `description`, and its verdict is recorded under the composite id
+# `<category id>.<item id>`. The taxonomy is narrow on purpose: one observable
+# behavior per item, so a build fails exactly the rule it breaks rather than an
+# averaged-away whole. Categories here are common to every variant; the points the
+# Maze mode adds live in that variant's own file (`variants/maze.toml`). The
+# checklist is reporter-side material — never seeded into a run, so the model never
+# sees it; each item restates a requirement the seeded specification already states.
+# An item with a `validation` script is decided automatically (the reviewer can
+# override); one without — the presentation and audio points, which are matters of
+# craft, art, and sound — is reviewed by a person against the paired reference/proof.
+[review]
+format = 2
+
+# --- Movement -----------------------------------------------------------------
+# The fixed-tick grid movement (specs/movement.md), split so a build that moves at
+# the wrong rate, or speeds up as it grows, fails exactly that point.
+[[review.categories]]
+id = "movement"
+title = "Movement"
+[[review.categories.items]]
+id = "one-cell-per-tick"
+title = "One cell per tick"
+description = "Each fixed tick advances the snake's head exactly one cell in the direction it faces, and every following segment takes the cell ahead of it — no more, no less."
+# Automated validation: pose the snake in a clear lane, step exactly one tick, and
+# read back that the head advanced one cell and the body followed. See
+# validation/movement/one-cell-per-tick.mjs.
+validation = { script = "validation/movement/one-cell-per-tick.mjs", outputs = [
+  { id = "move", name = "The snake advancing one cell per tick", kind = "video" },
+] }
+[[review.categories.items]]
+id = "constant-rate"
+title = "Constant 8 ticks per second"
+description = "The snake advances at a constant 8 ticks per second: one second of play is exactly eight ticks and eight cells of head travel."
+# Automated validation: step exactly one second of game time and confirm the head
+# advanced eight cells over eight ticks. See validation/movement/constant-rate.mjs.
+validation = { script = "validation/movement/constant-rate.mjs", outputs = [
+  { id = "rate", name = "Eight ticks in one second", kind = "video" },
+] }
+[[review.categories.items]]
+id = "no-speedup-when-long"
+title = "No speed-up as the snake grows"
+description = "A long snake advances at the same fixed rate as a short one — growth never speeds the tick up. Stepping one second still moves a 30-cell snake exactly eight cells."
+# Automated validation: pose a 30-cell snake in a clear lane, step one second, and
+# confirm it still advanced exactly eight cells. See
+# validation/movement/no-speedup-when-long.mjs.
+validation = { script = "validation/movement/no-speedup-when-long.mjs", outputs = [
+  { id = "speed", name = "A long snake at the same fixed rate", kind = "video" },
+] }
+
+# --- Turning ------------------------------------------------------------------
+# The grid-locked turning rules (specs/movement.md), one behavior per item so a
+# build that folds on a double-press, or turns on the wrong tick, fails just that.
+[[review.categories]]
+id = "turning"
+title = "Turning"
+[[review.categories.items]]
+id = "next-tick"
+title = "A turn takes effect on the next tick"
+description = "Requesting a turn does not move the snake immediately; the new direction is applied on the next tick, when the head then advances that way."
+# Automated validation: request a perpendicular turn, confirm the facing is unchanged
+# before a tick, then step one tick and confirm the head turned. See
+# validation/turning/next-tick.mjs.
+validation = { script = "validation/turning/next-tick.mjs", outputs = [
+  { id = "turn", name = "A buffered turn applied on the next tick", kind = "video" },
+] }
+[[review.categories.items]]
+id = "perpendicular-only"
+title = "Only perpendicular turns are accepted"
+description = "Only a turn perpendicular to the current direction is accepted; a request to keep going straight is a no-op and the snake keeps its heading."
+# Automated validation: while moving right, confirm the two perpendicular turns are
+# accepted and a straight request is a no-op. See validation/turning/perpendicular-only.mjs.
+validation = { script = "validation/turning/perpendicular-only.mjs", outputs = [
+  { id = "perp", name = "Perpendicular turns accepted, straight ignored", kind = "video" },
+] }
+[[review.categories.items]]
+id = "reversal-ignored"
+title = "A reversal into the neck is ignored"
+description = "A request to reverse straight back into the neck (the opposite of the current direction) is ignored; the snake keeps moving the way it was."
+# Automated validation: while moving right, request left (a reversal), step, and
+# confirm the snake kept moving right. See validation/turning/reversal-ignored.mjs.
+validation = { script = "validation/turning/reversal-ignored.mjs", outputs = [
+  { id = "reversal", name = "A reversal ignored", kind = "video" },
+] }
+[[review.categories.items]]
+id = "one-per-tick"
+title = "At most one turn per tick — no self-fold"
+description = "At most one buffered turn is applied per tick, so a rapid double-press (down then left while moving right) turns down on one tick and left on the next rather than folding the snake onto itself."
+# Automated validation: while moving right, request down then left within one tick,
+# step twice, and confirm down applied first and left next with no death. See
+# validation/turning/one-per-tick.mjs.
+validation = { script = "validation/turning/one-per-tick.mjs", outputs = [
+  { id = "double", name = "A double-press resolving one turn per tick", kind = "video" },
+] }
+
+# --- Growth & Pellets ---------------------------------------------------------
+# Eating and pellet spawning (specs/board.md), split so a build that grows by the
+# wrong amount, or spawns an invalid pellet, fails exactly that point.
+[[review.categories]]
+id = "growth"
+title = "Growth & Pellets"
+[[review.categories.items]]
+id = "grows-by-one"
+title = "Eating grows the snake by exactly one"
+description = "Eating a pellet grows the snake by exactly one cell (the tail does not retract that tick); a following normal tick keeps the length constant."
+# Automated validation: place a pellet a short run ahead, step up to it, step the eat
+# and confirm length +1, then park the pellet and step a normal tick to confirm the
+# length holds. See validation/growth/grows-by-one.mjs.
+validation = { script = "validation/growth/grows-by-one.mjs", outputs = [
+  { id = "grow", name = "The snake growing by one on an eat", kind = "video" },
+] }
+[[review.categories.items]]
+id = "pellet-respawn-valid"
+title = "A respawned pellet is always valid"
+description = "After every eat exactly one new pellet spawns at an interior cell that is never on the snake (and, in Maze, never on an obstacle) — so there is always exactly one valid pellet on the board."
+# Automated validation: force many eats and, after each auto-spawn, confirm the pellet
+# is interior and clear of the snake and obstacles. See validation/growth/pellet-respawn-valid.mjs.
+# Recorded rather than captured: the claim is about EVERY respawn, and one still shows
+# one pellet in one legal spot — which is what a build that spawns badly most of the
+# time also shows. The clip carries all eight spawns the assertions scored.
+validation = { script = "validation/growth/pellet-respawn-valid.mjs", outputs = [
+  { id = "pellet", name = "Pellets respawning validly across a run of eats", kind = "video" },
+] }
+[[review.categories.items]]
+id = "first-pellet-valid"
+title = "The first pellet is valid"
+description = "The first pellet of a round spawns after the snake is placed, at an interior cell that does not overlap the starting body."
+# Automated validation: start a seeded round and confirm the first pellet is interior
+# and clear of the start body. See validation/growth/first-pellet-valid.mjs.
+validation = { script = "validation/growth/first-pellet-valid.mjs", outputs = [
+  { id = "first", name = "A valid first pellet", kind = "image" },
+] }
+
+# --- Collision ----------------------------------------------------------------
+# The immediate-death and tail rules (specs/movement.md), one case per item so a
+# build that mishandles the growth-tick tail, or forgives a wall hit, fails just it.
+[[review.categories]]
+id = "collision"
+title = "Collision"
+[[review.categories.items]]
+id = "wall-fatal"
+title = "Hitting a wall is immediately fatal"
+description = "The head advancing into a wall cell ends the round immediately — that same tick, with no grace frame — on the game-over screen with the death reason."
+# Automated validation: pose the head one cell from a wall facing it, step one tick,
+# and confirm the round ended dead with no extra move. See validation/collision/wall-fatal.mjs.
+validation = { script = "validation/collision/wall-fatal.mjs", outputs = [
+  { id = "wall", name = "An immediately fatal wall hit", kind = "video" },
+] }
+[[review.categories.items]]
+id = "self-fatal"
+title = "Hitting the body is fatal"
+description = "The head advancing into a solid body cell ends the round immediately as a death."
+# Automated validation: pose the snake so its head advances into a body cell, step,
+# and confirm the round ended dead. See validation/collision/self-fatal.mjs.
+validation = { script = "validation/collision/self-fatal.mjs", outputs = [
+  { id = "self", name = "A fatal self-collision", kind = "video" },
+] }
+[[review.categories.items]]
+id = "tail-follow-safe"
+title = "Chasing the vacating tail is safe"
+description = "On a normal (non-growth) tick the head may safely enter the cell the tail is vacating that tick, so the snake can chase its own tail without dying."
+# Automated validation: pose a loop where the head follows the vacating tail on a
+# normal tick, step, and confirm no death and the head took the old tail cell. See
+# validation/collision/tail-follow-safe.mjs.
+validation = { script = "validation/collision/tail-follow-safe.mjs", outputs = [
+  { id = "tail", name = "The head safely chasing the vacating tail", kind = "video" },
+] }
+[[review.categories.items]]
+id = "growth-tail-fatal"
+title = "Entering the tail on a growth tick is fatal"
+description = "On a growth tick the tail does not retract, so the whole body — including the current tail cell — is solid: moving the head into the tail cell while eating there is fatal."
+# Automated validation: pose the head to advance into the tail cell with a pellet
+# there (a growth tick), step, and confirm the round ended dead. See
+# validation/collision/growth-tail-fatal.mjs.
+validation = { script = "validation/collision/growth-tail-fatal.mjs", outputs = [
+  { id = "growthtail", name = "A fatal tail entry on a growth tick", kind = "video" },
+] }
+
+# --- Combo --------------------------------------------------------------------
+# The decaying combo multiplier and its window (specs/combo.md), split so a build
+# that mis-caps, mis-scores, or mis-times the window fails exactly that point.
+[[review.categories]]
+id = "combo"
+title = "Combo"
+[[review.categories.items]]
+id = "rises"
+title = "The multiplier rises with each quick eat"
+description = "Eating pellets in quick succession, while the combo window is open, raises the multiplier by one per pellet."
+# Automated validation: eat several pellets within the window and confirm the
+# multiplier climbs by one per eat. See validation/combo/rises.mjs.
+validation = { script = "validation/combo/rises.mjs", outputs = [
+  { id = "rise", name = "The multiplier climbing per eat", kind = "video" },
+] }
+[[review.categories.items]]
+id = "caps"
+title = "The multiplier caps at x5"
+description = "The multiplier never exceeds x5: eating again while already at x5 with an open window leaves it at x5."
+# Automated validation: set the multiplier to x5 with an open window, eat, and confirm
+# it stays x5. See validation/combo/caps.mjs.
+validation = { script = "validation/combo/caps.mjs", outputs = [
+  { id = "cap", name = "The multiplier capped at x5", kind = "video" },
+] }
+[[review.categories.items]]
+id = "scoring"
+title = "Each pellet scores 10 x the updated multiplier"
+description = "Each pellet scores 10 x M using the multiplier AFTER this eat raises it: eating at x3 with an open window scores 40 (10 x the new x4)."
+# Automated validation: from score 0 at x3 with an open window, eat within the window
+# and confirm the multiplier is x4 and the score rose by 40. See validation/combo/scoring.mjs.
+validation = { script = "validation/combo/scoring.mjs", outputs = [
+  { id = "score", name = "A pellet scored at the updated multiplier", kind = "video" },
+] }
+[[review.categories.items]]
+id = "resets-on-lapse"
+title = "The multiplier resets when the window lapses"
+description = "Wandering without eating until the combo window lapses drops the multiplier back to x1 and closes the window."
+# Automated validation: raise the multiplier, then let more than the window elapse
+# without eating and confirm it reset to x1 with the window closed. See
+# validation/combo/resets-on-lapse.mjs.
+validation = { script = "validation/combo/resets-on-lapse.mjs", outputs = [
+  { id = "lapse", name = "The multiplier lapsing back to x1", kind = "video" },
+] }
+[[review.categories.items]]
+id = "window-duration"
+title = "The window lasts 3.5 seconds"
+description = "The combo window is 3.5 seconds of game time — 28 ticks: it is still open after 27 ticks and has closed (multiplier reset) after 28."
+# Automated validation: eat to open the window, step 27 ticks (still open), step one
+# more (closed), reading the window back each time. See validation/combo/window-duration.mjs.
+validation = { script = "validation/combo/window-duration.mjs", outputs = [
+  { id = "window", name = "The 3.5-second combo window", kind = "video" },
+] }
+
+# --- Scoring ------------------------------------------------------------------
+# The persistent high score (specs/ui.md). The live-update point is fully
+# automated; the cross-session persistence point is automated in part (BEST survives
+# a reset in the same session) and spot-checked across a real reload by the reviewer.
+[[review.categories]]
+id = "scoring"
+title = "Scoring"
+[[review.categories.items]]
+id = "high-score-live"
+title = "BEST updates live when passed"
+description = "The BEST score updates the instant the current score passes it during play, not only at the end of the round."
+# Automated validation: establish a BEST, start a new round just below it, and drive a
+# real eat that crosses it — confirming BEST updates that tick. See validation/scoring/high-score-live.mjs.
+validation = { script = "validation/scoring/high-score-live.mjs", outputs = [
+  { id = "best", name = "BEST rising live as the score passes it", kind = "video" },
+] }
+[[review.categories.items]]
+id = "high-score-persists"
+title = "BEST persists (localStorage)"
+description = "The BEST score persists across sessions via localStorage with no backend — it survives returning to the title and is restored on reload. Nothing else persists between sessions."
+# Automated validation: establish a BEST and confirm it survives a reset within the
+# session; the reviewer spot-checks that it survives a real page reload too. See
+# validation/scoring/high-score-persists.mjs. Two stills, in order: the round that
+# earned the BEST and the title reached from it, so the reviewer reads the same number
+# in both places rather than taking a lone menu figure on trust.
+validation = { script = "validation/scoring/high-score-persists.mjs", outputs = [
+  { id = "live", name = "The BEST earned in play", kind = "image" },
+  { id = "persist", name = "The same BEST carried over to the title", kind = "image" },
+] }
+
+# --- Game States --------------------------------------------------------------
+# The six states (specs/ui.md). Most items reach a state through the debug API
+# and CAPTURE it (the auto-verdict confirms the state is reachable; how the screen
+# reads and lays out is left to the reviewer). The pause-freezes-tick item
+# additionally asserts the tick is frozen while paused.
+[[review.categories]]
+id = "states"
+title = "Game States"
+[[review.categories.items]]
+id = "title"
+title = "Title / main menu is reachable"
+description = "The title / main menu is the initial screen, with the mode's play entry and How to Play, rendered cleanly and navigable."
+# Automated validation: reset to the title and capture it. See validation/states/title.mjs.
+validation = { script = "validation/states/title.mjs", outputs = [
+  { id = "title", name = "The title / main menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto"
+title = "How to play is reachable"
+description = "The how-to-play screen is reachable from the title menu and correct."
+# Automated validation: navigate the title menu to How to Play and capture it. See
+# validation/states/howto.mjs.
+validation = { script = "validation/states/howto.mjs", outputs = [
+  { id = "howto", name = "The how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause"
+title = "Pause is reachable"
+description = "The pause screen is reachable during a live round and offers resume, restart, and quit to menu."
+# Automated validation: start a round, pause it, and capture the pause menu. See
+# validation/states/pause.mjs.
+validation = { script = "validation/states/pause.mjs", outputs = [
+  { id = "pause", name = "The pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-freezes-tick"
+title = "The tick freezes while paused"
+description = "While the game is paused the simulation does not advance: the snake, its head cell, and the tick count do not change, and the screen stays paused."
+# Automated validation: pause a live round, let both simulation and real time pass,
+# and confirm nothing advanced. See validation/states/pause-freezes-tick.mjs.
+validation = { script = "validation/states/pause-freezes-tick.mjs", outputs = [
+  { id = "frozen", name = "The tick frozen while paused", kind = "video" },
+] }
+[[review.categories.items]]
+id = "gameover"
+title = "Game over is reachable"
+description = "A death ends the round on the game-over screen, showing the final score and BEST and offering play again and menu."
+# Automated validation: drive a real death and capture the game-over screen. See
+# validation/states/gameover.mjs.
+validation = { script = "validation/states/gameover.mjs", outputs = [
+  { id = "gameover", name = "The game-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "board-cleared"
+title = "Board-cleared win is reachable"
+description = "Filling the board so no new pellet can spawn ends the round cleanly on a BOARD CLEARED screen — the game-over screen with that heading and the same choices — with no crash or impossible placement."
+# Automated validation: pose the snake filling every free cell but one, place the
+# pellet on that cell, and step to eat it — driving the real clear. See
+# validation/states/board-cleared.mjs.
+validation = { script = "validation/states/board-cleared.mjs", outputs = [
+  { id = "cleared", name = "The board-cleared screen", kind = "image" },
+] }
+
+# --- Color (sampled from the rendered canvas) ---------------------------------
+# Each point samples the pixels the build actually RENDERS at a known cell (the head,
+# a body segment, the pellet) and confirms the element is drawn in a distinct, visible
+# color — reading what is painted, not any value the game reports, so a build cannot
+# pass by claiming a color it does not draw. The exact palette is the model's own;
+# only that the head, body, and pellet are told apart by color is scored.
+[[review.categories]]
+id = "color"
+title = "Color"
+[[review.categories.items]]
+id = "head"
+title = "The head is a distinct color"
+description = "The snake's head renders in a distinct, visible color — clearly different from the board background and from the body — so the head is not mistaken for a body segment."
+# Automated validation: sample the rendered head, a body segment, and the board, and
+# confirm the head stands apart from both. See validation/color/head.mjs.
+validation = { script = "validation/color/head.mjs", outputs = [
+  { id = "scene", name = "The posed scene showing the snake and pellet colors", kind = "image" },
+] }
+[[review.categories.items]]
+id = "body"
+title = "The body is a distinct color"
+description = "The snake's body renders in a distinct, visible color — clearly different from the board background and from the head."
+# Automated validation: sample the rendered body, the head, and the board, and confirm
+# the body stands apart from both. See validation/color/body.mjs.
+validation = { script = "validation/color/body.mjs", outputs = [
+  { id = "scene", name = "The posed scene showing the snake and pellet colors", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pellet"
+title = "The pellet is a distinct color"
+description = "The pellet renders in a distinct, visible color — clearly different from the board background and from the snake — so it stands out to eat."
+# Automated validation: sample the rendered pellet, the snake, and the board, and
+# confirm the pellet stands apart from both. See validation/color/pellet.mjs.
+validation = { script = "validation/color/pellet.mjs", outputs = [
+  { id = "scene", name = "The posed scene showing the snake and pellet colors", kind = "image" },
+] }
+
+# --- Controls (input injection) -----------------------------------------------
+# Each control is driven with injected keyboard input through the debug API (see
+# specs/instrumentation.md) and its effect read back, so the actual key bindings are
+# exercised rather than a parallel path.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "arrows"
+title = "Arrow keys steer"
+description = "The arrow keys steer the snake: each arrow, from a valid facing, turns the snake that way on the next tick."
+# Automated validation: start with keys, then confirm each arrow steers the snake from
+# a valid facing. See validation/controls/arrows.mjs.
+validation = { script = "validation/controls/arrows.mjs", outputs = [
+  { id = "arrows", name = "Steering with the arrow keys", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wasd"
+title = "WASD steers"
+description = "The W/A/S/D keys steer the snake identically to the arrow keys."
+# Automated validation: confirm each of W/A/S/D steers the snake from a valid facing.
+# See validation/controls/wasd.mjs.
+validation = { script = "validation/controls/wasd.mjs", outputs = [
+  { id = "wasd", name = "Steering with WASD", kind = "video" },
+] }
+[[review.categories.items]]
+id = "pause-key"
+title = "Esc and P pause"
+description = "Both Escape and P pause a live round (and toggle back)."
+# Automated validation: start with keys and confirm Escape pauses and P pauses. See
+# validation/controls/pause-key.mjs.
+validation = { script = "validation/controls/pause-key.mjs", outputs = [
+  { id = "pause", name = "Pausing with Esc and P", kind = "video" },
+] }
+[[review.categories.items]]
+id = "mute-key"
+title = "M toggles mute"
+description = "Pressing M toggles the mute state, and the HUD's mute indicator (specs/ui.md) shows it — the muted and unmuted board are tellable apart at a glance."
+# Automated validation: in a live round (mute off) confirm one M press toggles mute on,
+# capturing the board either side of the press. See validation/controls/mute-key.mjs.
+# The pair is shot in play, not on the title, because that is where the spec puts the
+# indicator — two title screens would be identical whatever the build drew, so the
+# reviewer would have been comparing nothing.
+validation = { script = "validation/controls/mute-key.mjs", outputs = [
+  { id = "unmuted", name = "The board with sound on", kind = "image" },
+  { id = "muted", name = "The same board after pressing M", kind = "image" },
+] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live round advances — simulation time accumulates and the snake crawls forward — without anything stepping it from outside."
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
+
+
+# --- Presentation -------------------------------------------------------------
+# Matters of craft and produced art that reading pixels cannot settle: they roll up
+# to the presentation domain and each pairs a reference view and the submitted proof
+# for the reviewer to judge. They carry no validation script.
+[[review.categories]]
+id = "presentation"
+title = "Presentation"
+[[review.categories.items]]
+id = "crisp-grid"
+title = "Crisp board and snake"
+description = "The board renders as a crisp, un-blurred grid of cells, and the snake's produced sprites are sampled crisply (nearest-neighbor, not smoothed) and stay pixel-aligned to the grid, so the look is sharp and blocky rather than soft."
+reference = "gameplay"
+proof = "gameplay"
+[[review.categories.items]]
+id = "window-fit"
+title = "Window fit"
+description = "The entire 1280x720 stage — the whole board, every wall, the full HUD, and every menu item — stays visible, fitted, and centered at any window size and pixel density, including on load before any input, letterboxed with the background color and never clipped."
+reference = "title"
+proof = "title"
+[[review.categories.items]]
+id = "produced-snake-sprites"
+title = "Produced snake sprites"
+description = "The snake is rendered from a sprite set the build produced with draw/draw-sheet — genuine pixel art: a head sprite, a straight-body sprite, and corner/turn sprites — not code-drawn rounded rectangles. The corner sprites are used where the snake bends, so the body reads as a continuous turning coil, and the head is always distinguishable from the body."
+reference = "gameplay"
+proof = "gameplay"
+[[review.categories.items]]
+id = "produced-head-bite"
+title = "Produced head-bite animation"
+description = "The head is an animated sprite sheet the build produced with draw-sheet — genuine per-frame pixel art — that plays a bite/chomp when the snake eats a pellet (the mouth opens and closes on the eat) and otherwise shows the resting head, advanced on a timer; not a single static head sprite and not an ad-hoc code-drawn mouth."
+proof = "combo"
+
+# --- Audio --------------------------------------------------------------------
+# The genuinely produced sound and music (specs/assets.md), each mandated cue its own
+# review item so a build fails exactly the cue it omits or never wires, rather than an
+# averaged-away "produced-sfx". Every check is a reporter-side Web Audio probe (see
+# `api.audio` and validation/_helpers.mjs `armAudio`/`audioCount`): the build must not
+# autoplay, so audio is armed FIRST with a genuine browser gesture (a real key press
+# AND a corner click — a debug `press` would leave a conformant build's AudioContext
+# uncreated, since it may unlock only from a real DOM event), and a cue is confirmed by
+# the Web Audio source log growing across the driven event. Only that a cue plays is
+# scored automatically; its DISTINCTNESS, timbre, and overall craft against the other
+# cues stays for the reviewer, from the proof clip.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "eat"
+title = "Eat cue"
+description = "A short cue, produced with the audio tools (sfx-synth and/or sfx-sample) and played via Web Audio, plays when a pellet is eaten."
+# Automated validation: pose a clear eat, arm audio, and confirm a Web Audio source
+# starts across the eat. See validation/audio/eat.mjs.
+validation = { script = "validation/audio/eat.mjs", outputs = [
+  { id = "eat", name = "The eat whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "combo-up"
+title = "Combo-up cue"
+description = "A brighter cue, produced with the audio tools and played via Web Audio, plays when the combo multiplier increases."
+# Automated validation: eat twice within the combo window, arm audio, and confirm a Web
+# Audio source starts on the second eat's rise (isolated from the first eat's own cue).
+# See validation/audio/combo-up.mjs.
+validation = { script = "validation/audio/combo-up.mjs", outputs = [
+  { id = "combo", name = "The combo rise whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "death"
+title = "Death cue"
+description = "A distinct tone, produced with the audio tools and played via Web Audio, plays when the snake dies."
+# Automated validation: pose a fatal wall hit, arm audio, and confirm a Web Audio
+# source starts across the death. See validation/audio/death.mjs.
+validation = { script = "validation/audio/death.mjs", outputs = [
+  { id = "death", name = "The death whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "produced-music"
+title = "Produced music bed"
+description = "The game plays a low-key looping music bed the build produced with the music tool, played via Web Audio under the round, respecting the mute toggle."
+# Automated validation: press Enter on the title as a real browser gesture — the one
+# keypress that both arms audio and begins the round, the only path a player has — and
+# confirm a Web Audio source starts (the looping bed) under that round. See
+# validation/audio/produced-music.mjs.
+validation = { script = "validation/audio/produced-music.mjs", outputs = [
+  { id = "music", name = "The music bed starting under a round", kind = "video" },
+] }

@@ -1,0 +1,21 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`, deployed separately.
+/dist/
+/build/
+/out/
+
+# Asset-production scratch — only the finished .png/.wav/.mid under assets/ are
+# committed; the tool op-logs, configs, and previews are throwaway.
+assets/**/*.config.json
+assets/**/*.actions.json
+assets/**/*.preview.png
+
+# Playwright verification scratch.
+scripts/.video/
+test-results/
+playwright-report/
+
+# Logs.
+*.log
