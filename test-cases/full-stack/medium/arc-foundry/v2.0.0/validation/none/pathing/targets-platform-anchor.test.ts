@@ -1,27 +1,99 @@
-// Arc Foundry — `pathing.targets-platform-anchor`. CASE-PROVIDED. NOT YET WRITTEN.
+// pathing/targets-platform-anchor — a unit heading for a waypoint walks to the
+// platform's ANCHOR tile, not to whichever of its four tiles it meets first.
 //
-// The manifest declares this point at `pathing/targets-platform-anchor.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// A platform is four tiles wide so that it can never be walled off
+// (`specs/yard.md`), and `specs/pathing.md` fixes the target inside it: the
+// anchor tile. The distinction is worth a point of its own because it changes the
+// route's shape and its length — a unit that turns at an arm cuts a tile or two
+// off every leg, so the maze the player built is quietly shorter than the figure
+// the status bar reports.
 //
-// THE REQUIREMENT. A unit heading for a waypoint reaches the anchor tile's
-// centre rather than an arm or the stem: as its waypointIndex advances, its
-// position is within half a tile of the anchor's centre.
-//
-// HOW IT IS DECIDED. Release a unit and sample its position on the frame each
-// waypointIndex advances. The evidence it hands back is `anchor` (replay): the
-// unit arriving on a platform anchor.
+// EACH WAYPOINT IS READ ON ITS OWN, and each on a unit posed two tiles short of
+// the anchor so the arrival is the only thing that happens: the frame its
+// `waypointIndex` advances is the frame it reached the checkpoint, and its
+// position on that frame has to be within half a tile of the anchor's centre.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertLessThanOrEqual, assertTrue } from "../assert";
+import { TILE, mapById, tileCenter } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  distance,
+  openYard,
+  releaseUnit,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** How far short of the anchor each unit is posed, in tiles. */
+const APPROACH_TILES = 2;
 
-describe("pathing.targets-platform-anchor", () => {
-  it("A unit walks to the platform's anchor tile", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `pathing.targets-platform-anchor` has not been written yet",
-    );
+/** How long one approach is given, in frames of the suite's 120 Hz clock. */
+const APPROACH_FRAMES = 400;
+
+/** The tolerance the item states: half a tile. */
+const TOLERANCE = TILE / 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("arrives within half a tile of each platform's anchor centre", async () => {
+  await openYard(h, { wave: 1 });
+  const map = mapById((await h.snapshot()).map);
+
+  const arrivals = await captureReplay(h, "anchor", async () => {
+    const reached: { waypoint: number; at: { x: number; y: number } | null }[] =
+      [];
+
+    for (const [index, anchor] of map.waypoints.entries()) {
+      const waypoint = index + 1;
+      // One unit at a time, posed a short walk west of the anchor, heading for
+      // the checkpoint under test and nothing else on the yard.
+      await h.debug.clearUnits();
+      const id = await releaseUnit(h, "mote", {
+        waypoint,
+        tile: { col: anchor.col - APPROACH_TILES, row: anchor.row },
+      });
+
+      let arrived: { x: number; y: number } | null = null;
+      for (
+        let frame = 0;
+        frame < APPROACH_FRAMES && arrived === null;
+        frame += 1
+      ) {
+        await h.advance(1);
+        const unit = (await h.snapshot()).units.find((live) => live.id === id);
+        if (unit === undefined) break;
+        if (unit.waypointIndex > waypoint) arrived = { x: unit.x, y: unit.y };
+      }
+      reached.push({ waypoint, at: arrived });
+    }
+
+    return reached;
   });
+
+  for (const arrival of arrivals) {
+    const anchor = map.waypoints[arrival.waypoint - 1]!;
+    const centre = tileCenter(anchor.col, anchor.row);
+    assertTrue(
+      arrival.at !== null,
+      `the unit heading for WP${arrival.waypoint} to reach it within ` +
+        `${APPROACH_FRAMES} frames of walking ${APPROACH_TILES} tiles`,
+    );
+    assertLessThanOrEqual(
+      distance(arrival.at!, centre),
+      TOLERANCE,
+      `WP${arrival.waypoint}: the distance from where the unit stood on the ` +
+        `frame it passed the checkpoint to the centre of its anchor tile ` +
+        `(${anchor.col}, ${anchor.row}), which specs/pathing.md makes the tile ` +
+        `a unit targets`,
+    );
+  }
 });
