@@ -1,26 +1,51 @@
-// Arc Foundry — `animation.combo-fire-frames-distinct`. CASE-PROVIDED. NOT YET WRITTEN.
+// Arc Foundry — animation/combo-fire-frames-distinct: within one tower's firing
+// cycle the four frames are four different pictures.
 //
-// The manifest declares this point at `animation/combo-fire-frames-distinct.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT, from `specs/assets.md`: a combination tower's cycle is "the
+// tower's discharge, played once per shot", and what a firing cycle must deliver
+// is "that a firing structure visibly charges and discharges". A cycle whose four
+// frames are one picture repeated shows no discharge, so the four frames of each
+// of the twelve cycles are pairwise different images.
 //
-// THE REQUIREMENT. Within each tower's firing cycle the four frames are
-// pairwise different images.
-//
-// HOW IT IS DECIDED. Decode each cycle's four frames and compare their pixels
-// pairwise. The evidence it hands back is `cycle` (image): one tower's firing
-// cycle.
+// COMPARED AS PIXELS AND IN ONE DIRECTION, exactly as the component cycles are:
+// each frame is decoded and the RGBA compared, and what is asked is that the
+// pictures differ at all rather than how much.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { COMBO_IDS } from "../../src/constants";
+import { assertDeepEqual } from "../assert";
+import { createHarness, openYard, standCombo, type Harness } from "../harness";
+import { cycleFrames, decodeAll, duplicatePairs, evidence } from "./images";
+import { serveProducedAssets } from "./produced";
 
-describe("animation.combo-fire-frames-distinct", () => {
-  it("A tower's firing cycle's four frames differ", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `animation.combo-fire-frames-distinct` has not been written yet",
-    );
+let h: Harness;
+
+beforeEach(async () => {
+  serveProducedAssets();
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws four different pictures in each tower's firing cycle", async () => {
+  await evidence(h, "cycle", async () => {
+    openYard(h);
+    standCombo(h, "nullcore", 24, 15);
+    await h.advance(1);
   });
+
+  const repeated: string[] = [];
+  for (const id of COMBO_IDS) {
+    const frames = await decodeAll(cycleFrames(`combos/${id}/fire`));
+    repeated.push(...duplicatePairs(frames));
+  }
+  assertDeepEqual(
+    repeated,
+    [],
+    "the four frames of each combination tower's firing cycle to be four " +
+      "different pictures (specs/assets.md)",
+  );
 });
