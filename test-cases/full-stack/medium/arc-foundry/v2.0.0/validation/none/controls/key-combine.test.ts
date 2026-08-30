@@ -1,26 +1,109 @@
-// Arc Foundry — `controls.key-combine`. CASE-PROVIDED. NOT YET WRITTEN.
+// controls/key-combine — `KeyC` commits a combine from the selection.
 //
-// The manifest declares this point at `controls/key-combine.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/controls.md` binds `combine` to `KeyC`: "Commits a
+// combine from the current selection", and makes it available on a base structure
+// "when a matching partner or a reachable recipe exists".
+// `specs/scrap-press.md` fixes what the matching-partner case produces: "Two base
+// structures of the same type and the same quality fold into one structure of
+// that type one tier higher", the result lands "at the footprint of the piece the
+// combine was initiated from", and the fold is wall-neutral, so "every footprint
+// a combine consumes hardens into a blocker rather than being freed".
 //
-// THE REQUIREMENT. Pressing KeyC with a base structure selected that has a
-// matching partner commits the fold.
+// HOW IT IS DECIDED. Two standing components of the same type at the same quality
+// are the only things on the yard, so the only combine reachable is the quality
+// fold between them, and one of them is selected. `KeyC` is pressed as a player
+// presses it, a real browser key event through the build's own keyboard layer.
+// Both footprints are then read: the one the fold was initiated from carries the
+// folded component a tier higher, and the one it consumed carries a blocker.
 //
-// HOW IT IS DECIDED. Stand a matching pair, select one, press KeyC, and read
-// the result. The evidence it hands back is `folded` (image): the fold the
-// combine key committed.
+// WHY STANDING COMPONENTS RATHER THAN CANDIDATES. A combine that consumes a
+// candidate is the level's harvest and starts the wave; a fold of standing
+// structures alone leaves the phase running (`specs/scrap-press.md`). This point
+// is the key, so the quieter of the two is what it is decided on.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertTruthy } from "../assert";
+import { keyFor } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  standComponent,
+  structureAt,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** The two footprints the pair is stood on, clear of the chain. */
+const INITIATOR = { col: 10, row: 0 };
+const PARTNER = { col: 13, row: 0 };
 
-describe("controls.key-combine", () => {
-  it("KeyC commits a combine from the selection", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `controls.key-combine` has not been written yet",
-    );
-  });
+const TYPE = "capacitor";
+const TIER = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("folds a matching pair when KeyC is pressed", async () => {
+  await openYard(h);
+  const initiator = await standComponent(
+    h,
+    TYPE,
+    TIER,
+    INITIATOR.col,
+    INITIATOR.row,
+  );
+  await standComponent(h, TYPE, TIER, PARTNER.col, PARTNER.row);
+  await h.debug.select(initiator);
+
+  await h.tap(keyFor("combine"));
+  await captureStill(h, "folded");
+
+  const after = await h.snapshot();
+
+  const folded = structureAt(after, INITIATOR.col, INITIATOR.row);
+  assertTruthy(
+    folded,
+    "a structure at the initiating footprint after the combine key " +
+      "(specs/scrap-press.md)",
+  );
+  assertEqual(
+    folded!.kind,
+    "component",
+    `pressing ${keyFor("combine")} on a base structure with a matching ` +
+      "partner to fold the pair (specs/controls.md)",
+  );
+  assertEqual(
+    folded!.type,
+    TYPE,
+    "the folded structure's type, which a quality fold never changes " +
+      "(specs/scrap-press.md)",
+  );
+  assertEqual(
+    folded!.quality,
+    TIER + 1,
+    `two ${TYPE}s at quality ${TIER} folding into one a tier higher ` +
+      "(specs/scrap-press.md)",
+  );
+
+  // Wall-neutral: the consumed footprint hardens into a blocker rather than
+  // opening a hole in the maze (specs/scrap-press.md).
+  const consumed = structureAt(after, PARTNER.col, PARTNER.row);
+  assertTruthy(
+    consumed,
+    "the consumed footprint to still hold a structure, because a combine is " +
+      "wall-neutral (specs/scrap-press.md)",
+  );
+  assertEqual(
+    consumed!.kind,
+    "blocker",
+    "the footprint the fold consumed, which hardens into a blocker " +
+      "(specs/scrap-press.md)",
+  );
 });

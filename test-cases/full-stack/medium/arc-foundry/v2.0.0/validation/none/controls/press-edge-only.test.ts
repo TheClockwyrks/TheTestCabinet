@@ -1,27 +1,71 @@
-// Arc Foundry — `controls.press-edge-only`. CASE-PROVIDED. NOT YET WRITTEN.
+// controls/press-edge-only — every action but `modify` is read as a press edge.
 //
-// The manifest declares this point at `controls/press-edge-only.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/controls.md` states it once, for the whole table:
+// "Every action but `modify` is read as a press edge, so holding its key fires it
+// once." A build that samples the key's held state each frame and acts on it fires
+// the action every frame the key is down, which turns one press of the speed key
+// into sixty steps of the multiplier and makes the game unusable with a keyboard.
 //
-// THE REQUIREMENT. Holding a bound key down fires its action exactly once:
-// with KeyF held for sixty frames the speed multiplier steps once, not sixty
-// times.
+// HOW IT IS DECIDED. `speed` is the action to decide it on, because it is the one
+// whose repeats are individually countable: the multiplier is a four-entry cycle,
+// so one activation moves it one place and any other number of activations lands
+// somewhere the single step does not. The key is HELD — a real browser key held
+// down on the page, never released between frames — across sixty frames of
+// simulation, and the multiplier is read afterwards. One step, whatever the frame
+// count.
 //
-// HOW IT IS DECIDED. Hold a bound key across many frames and count the times
-// its action fired. The evidence it hands back is `edge` (image): the single
-// step a held key produced.
+// WHY SIXTY FRAMES. Long enough that a per-frame reader would have gone round the
+// four-entry cycle fifteen times, and not a multiple of the cycle length either,
+// so a build firing on every frame cannot land back on the right answer by luck.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { SPEEDS, keyFor } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
 
-import { fail } from "../assert";
+/** Frames the key is held down for. */
+const HELD_FRAMES = 60;
 
-describe("controls.press-edge-only", () => {
-  it("Every action but modify is read as a press edge", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `controls.press-edge-only` has not been written yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("steps the multiplier once for a key held across sixty frames", async () => {
+  await openYard(h);
+
+  const start = (await h.snapshot()).speed;
+  const from = SPEEDS.indexOf(start);
+  assertGreaterThanOrEqual(
+    from,
+    0,
+    `the speed multiplier to be one of ${SPEEDS.join(", ")} ` +
+      "(specs/instrumentation.md)",
+  );
+
+  await h.hold(keyFor("speed"));
+  try {
+    await h.advance(HELD_FRAMES);
+    await captureStill(h, "edge");
+
+    assertEqual(
+      (await h.snapshot()).speed,
+      SPEEDS[(from + 1) % SPEEDS.length],
+      `the multiplier after ${keyFor("speed")} was held down across ` +
+        `${HELD_FRAMES} frames, which fires the action once because every ` +
+        "action but modify is read as a press edge (specs/controls.md)",
     );
-  });
+  } finally {
+    await h.release(keyFor("speed"));
+  }
 });
