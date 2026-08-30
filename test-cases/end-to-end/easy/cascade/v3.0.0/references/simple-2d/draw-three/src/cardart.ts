@@ -6,10 +6,12 @@
 // reads apart from a face and from the felt, and an empty slot reads apart from
 // the bare table.
 //
-// A suit is drawn twice on a face: as its glyph beside the rank in the two
-// corners, and as a shape filled in the suit's colour in the middle. The shape is
-// what makes the colour legible on any host, because a card drawn where no font
-// resolved its glyph still shows a red or a black pip.
+// A suit is drawn as a SHAPE rather than as a glyph, three times on a face: a
+// small pip under the rank in each of the two corners, and a large one in the
+// middle. A shape carries the suit and its colour identically on every host,
+// where a glyph carries them only where a font happened to have one, and a card
+// index that renders as a missing-glyph box on a headless canvas is a card that
+// does not say what it is.
 //
 // Everything here draws through `Ctx2D`, the surface the frame's canvas and the
 // painted layer share, so a card stamped onto the trail is the same drawing as a
@@ -20,14 +22,6 @@ import { cardColor, rankLabel } from "./cards";
 import { COLOR, font } from "./theme";
 import type { Suit } from "./game";
 import type { Ctx2D } from "./trail";
-
-/** The glyph each suit is drawn with beside its rank. */
-const SUIT_GLYPH: Readonly<Record<Suit, string>> = {
-  spades: "♠",
-  hearts: "♥",
-  diamonds: "♦",
-  clubs: "♣",
-};
 
 /** The colour a suit's rank, glyph and pip are drawn in. */
 export function suitColor(suit: Suit): string {
@@ -170,22 +164,18 @@ export function drawCardFace(
   drawPlate(ctx, x, y, COLOR.cardFace);
 
   const label = rankLabel(rank);
-  const glyph = SUIT_GLYPH[suit];
   ctx.fillStyle = suitColor(suit);
 
   ctx.font = font(22, "bold");
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.fillText(label, x + 9, y + 8);
-  ctx.font = font(16);
-  ctx.fillText(glyph, x + 9, y + 32);
+  ctx.fillText(label, x + 10, y + 8);
+  drawPip(ctx, suit, x + 18, y + 45, 17);
 
-  ctx.font = font(22, "bold");
   ctx.textAlign = "right";
   ctx.textBaseline = "bottom";
-  ctx.fillText(label, x + CARD_W - 9, y + CARD_H - 8);
-  ctx.font = font(16);
-  ctx.fillText(glyph, x + CARD_W - 9, y + CARD_H - 32);
+  ctx.fillText(label, x + CARD_W - 10, y + CARD_H - 8);
+  drawPip(ctx, suit, x + CARD_W - 18, y + CARD_H - 45, 17);
 
   drawPip(ctx, suit, x + CARD_W / 2, y + CARD_H / 2 + 4, 46);
 }
