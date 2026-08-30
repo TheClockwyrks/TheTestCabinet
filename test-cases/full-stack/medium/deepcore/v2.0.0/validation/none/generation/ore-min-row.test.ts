@@ -1,24 +1,45 @@
-// Deepcore — generation.ore-min-row. STUB: NOT YET AUTHORED.
+// generation/ore-min-row — the first three rows of ground hold no ore.
 //
-// No ore appears in the first three rows of ground
+// `specs/world.md`: "No ore appears above `ORE_MIN_ROW` (`4`), so the first three
+// rows of ground are plain rock." So rows `1`, `2` and `3` of the playable
+// columns carry no ore cell in any generated mine, and the first digs out of the
+// camp yield nothing.
 //
-// No ore cell exists above ORE_MIN_ROW (4), so rows 1 to 3 are plain rock and
-// the first digs out of the camp yield nothing.
-//
-// Automated validation: generate mines at several seeds and read every cell of
-// rows 1 to 3 across the playable columns, holding each kind against ore.
-//
-// `test-case.toml` declares this suite as `generation/ore-min-row.test.ts` and requires it
-// under every engine. Replace this stub with the real suite: pose an isolated
-// world through the debug surface `specs/instrumentation.md` fixes, give the
-// miner only the faculties this requirement exercises, drive the one behavior,
-// assert against the figure the specification states through `assert.ts`, and
-// capture the declared output (shallow (image)) around the drive.
+// Read across several seeds and every world size, because a rule that holds for
+// one mine and not the next is a rule the build does not have. Read on generated
+// mines rather than posed ones: `clearMine` opens the whole grid and would report
+// no ore wherever generation put it.
 
-import { test } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual } from "../assert";
+import { ORE_MIN_ROW, WORLD_SIZES, type WorldSize } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { generatedMine, look } from "./mine-scan";
 
-test("No ore appears in the first three rows of ground", () => {
-  throw new Error(
-    "Deepcore validator `generation/ore-min-row` is declared in test-case.toml but has not been authored yet.",
-  );
+const SEEDS = [1, 2, 3, 7, 19] as const;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("puts no ore vein above row 4", async () => {
+  for (const size of WORLD_SIZES) {
+    for (const seed of SEEDS) {
+      const scan = await generatedMine(h, seed, size as WorldSize);
+      const shallow = scan.ores
+        .filter((cell) => cell.row < ORE_MIN_ROW)
+        .map((cell) => `${cell.ore} at (${cell.col}, ${cell.row})`);
+      assertDeepEqual(shallow, [], `${size} mine on seed ${seed}`);
+    }
+  }
+
+  // The picture: the plain rock directly under the camp.
+  await look(h, 8, 3);
+  await captureStill(h, "shallow");
 });
