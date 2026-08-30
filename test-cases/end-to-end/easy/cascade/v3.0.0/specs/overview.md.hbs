@@ -167,8 +167,9 @@ does not name is yours to decide.
 
 Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured over
-`src/`. A test stands the engine up over its own canvas and clock and advances
-the game a counted number of frames, so it needs no browser.
+`src/`. A test stands the engine up over a canvas from `@napi-rs/canvas` and a
+clock of its own, then advances the game a counted number of frames with
+`engine.advance`, so it needs no browser.
 {{else}}
 ### What you implement
 

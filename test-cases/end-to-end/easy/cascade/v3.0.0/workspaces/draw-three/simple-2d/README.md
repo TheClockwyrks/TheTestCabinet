@@ -49,8 +49,11 @@ Cascade draws every card, the table, the HUD and every screen in code. There are
 no image assets, and none are seeded.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test` runs
-them in process, with coverage over `src/`. The engine's documentation carries a
-complete worked example of testing a game this way.
+them in process, with coverage over `src/`. `@napi-rs/canvas` is installed to
+supply the 2D context, so a test stands the engine up over a canvas and a clock of
+its own, steps it with `engine.advance`, and reads the result back through the
+debug surface. The engine's documentation carries a worked example of driving it
+that way.
 
 ## What you must not edit
 
