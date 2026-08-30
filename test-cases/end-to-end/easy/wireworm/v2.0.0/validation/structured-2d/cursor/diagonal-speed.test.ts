@@ -62,7 +62,11 @@ it("moves CURSOR_SPEED / sqrt(2) horizontally over a diagonal second", async () 
   const from = h.snapshot().cursor.x;
 
   await holdBothFor(h, BINDINGS.right[0], BINDINGS.up[0], HOLD_TICKS);
-  const travelled = h.snapshot().cursor.x - from;
+  // The MAGNITUDE of the horizontal travel: which way the pair of keys sent the
+  // cursor is `controls.right-arrow`'s and `controls.up-arrow`'s requirement, and
+  // reading the sign here would dock one defect twice. The `none` and `simple-2d`
+  // suites take the same magnitude.
+  const travelled = Math.abs(h.snapshot().cursor.x - from);
   captureStill(h, "diagonal");
 
   assertLessThanOrEqual(

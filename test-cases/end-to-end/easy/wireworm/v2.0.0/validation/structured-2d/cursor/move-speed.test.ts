@@ -14,6 +14,12 @@
 // inside [`CURSOR_X_MIN`, `CURSOR_X_MAX`] (16, 1264), so neither probe ever
 // touches a bound. That the cursor moves vertically at all is
 // `controls.up-arrow` and `controls.down-arrow`'s requirement.
+//
+// THE READING IS A MAGNITUDE, NOT A SIGNED DISPLACEMENT. Which WAY a key sends
+// the cursor is `controls.left-arrow`'s and `controls.right-arrow`'s
+// requirement; a build that moved the wrong way at exactly the right rate is
+// docked there and passes here, which is what keeps one defect from costing two
+// grades. The `none` and `simple-2d` suites take the same magnitude.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CURSOR_SPEED } from "../../src/constants";
@@ -72,12 +78,12 @@ it("travels CURSOR_SPEED units in a second, left and right", async () => {
   });
 
   assertLessThanOrEqual(
-    Math.abs(probes.right - CURSOR_SPEED),
+    Math.abs(Math.abs(probes.right) - CURSOR_SPEED),
     SPEED_TOLERANCE,
     `right for a second travelled ${probes.right}`,
   );
   assertLessThanOrEqual(
-    Math.abs(probes.left + CURSOR_SPEED),
+    Math.abs(Math.abs(probes.left) - CURSOR_SPEED),
     SPEED_TOLERANCE,
     `left for a second travelled ${probes.left}`,
   );
