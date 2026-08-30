@@ -9,9 +9,10 @@
  *
  * HOW:
  * read the WAV off the built workspace, parse its header, and measure its peak
- * amplitude.
+ * amplitude. The check reads a file and drives nothing, so its evidence is a
+ * still.
  *
- * MEDIA IT MUST CAPTURE: combo (replay).
+ * MEDIA IT MUST CAPTURE: combo (image).
  *
  * It is a COMMON point, decided for every variant.
  *

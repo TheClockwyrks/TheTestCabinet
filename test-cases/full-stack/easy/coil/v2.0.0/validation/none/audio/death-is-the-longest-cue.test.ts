@@ -8,9 +8,10 @@
  * end of a round is the one heavy sound in the game.
  *
  * HOW:
- * read the three WAV headers and compare their durations.
+ * read the three WAV headers and compare their durations. The check reads
+ * files and drives nothing, so its evidence is a still.
  *
- * MEDIA IT MUST CAPTURE: death (replay).
+ * MEDIA IT MUST CAPTURE: death (image).
  *
  * It is a COMMON point, decided for every variant.
  *

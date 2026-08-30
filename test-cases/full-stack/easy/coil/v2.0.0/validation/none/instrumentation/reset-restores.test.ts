@@ -4,10 +4,10 @@
  * reset restores the opening state.
  *
  * THE CLAIM THIS SUITE DECIDES:
- * reset() returns every field the snapshot reports to its opening value: the
- * title screen, menuIndex 0, score and best 0, combo 1 with a closed window,
- * ticks and simTime 0, the starting chain of specs/board.md facing right, an
- * empty turn buffer, no live pellet, and all three driver switches on.
+ * reset() returns the game to its opening values: the title screen, menuIndex
+ * 0, score and best 0, combo 1 with a closed window, ticks and simTime 0, the
+ * starting chain of specs/board.md facing right, an empty turn buffer, no live
+ * pellet, and all three driver switches on.
  *
  * HOW:
  * pose a thoroughly disturbed game (a moved snake, a score, a live combo, the

@@ -4,13 +4,15 @@
  * The last valid cell is still found.
  *
  * THE CLAIM THIS SUITE DECIDES:
- * With the chain posed so that exactly one interior cell is neither snake nor
- * pellet, the next eat places the pellet on that one cell rather than failing
- * or ending the round.
+ * With the chain posed so that exactly one cell of the valid set
+ * specs/board.md defines is left, the next eat places the pellet on that one
+ * cell rather than failing or ending the round.
  *
  * HOW:
- * pose a chain filling the interior but for one cell, eat the live pellet, and
- * read where the next one landed.
+ * pose a chain covering every valid cell but one, eat the live pellet, and
+ * read where the next one landed. The valid set excludes any obstacle the mode
+ * lays, so the chain the scenario poses is the mode's, and the suite reads the
+ * obstacle list back rather than assuming the interior is open.
  *
  * MEDIA IT MUST CAPTURE: last (image).
  *

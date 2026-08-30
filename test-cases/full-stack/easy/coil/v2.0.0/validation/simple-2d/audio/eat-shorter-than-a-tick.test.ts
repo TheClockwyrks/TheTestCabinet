@@ -9,9 +9,9 @@
  *
  * HOW:
  * read the WAV's header and compute its duration from its sample count and
- * rate.
+ * rate. The check reads a file and drives nothing, so its evidence is a still.
  *
- * MEDIA IT MUST CAPTURE: eat (replay).
+ * MEDIA IT MUST CAPTURE: eat (image).
  *
  * It is a COMMON point, decided for every variant.
  *
