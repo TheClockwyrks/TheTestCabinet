@@ -1,32 +1,70 @@
-/*
- * Coil validator: `growth.length-constant-on-normal-tick`. PLACEHOLDER.
- *
- * A tick that eats nothing leaves the length unchanged.
- *
- * THE CLAIM THIS SUITE DECIDES:
- * On a tick eating no pellet the chain's length is unchanged: one cell joins
- * at the head and the tail cell is dropped.
- *
- * HOW:
- * clear the pellet, run several ticks over open board, and confirm the chain's
- * length never moves and the old tail cell is released each tick.
- *
- * MEDIA IT MUST CAPTURE: steady (replay).
- *
- * It is a COMMON point, decided for every variant.
- *
- * The manifest declares this path, so the file must exist for the version to
- * resolve. It throws rather than passing, so a point whose suite has not been
- * written yet can never be mistaken for a point that passed. Replace the body:
- * pose the scenario through the debug surface alone, clearing everything the
- * claim is not about, run the real systems for a bounded span, assert the one
- * claim above through the shared assertion helpers, and capture the declared
- * media around the drive rather than around the arrangement.
- */
-import { test } from "vitest";
+// growth/length-constant-on-normal-tick — a tick that eats nothing leaves the
+// length alone.
+//
+// specs/movement.md: step 4, "Otherwise prepend the new head and drop the tail
+// cell", and the rule, "On every tick that eats nothing the length is unchanged:
+// one cell joins at the head and one leaves at the tail."
+//
+// The counterpart of `grows-by-one`, and it needs its own point because the two
+// halves of step 4 are two different branches of a build. A build that never drops
+// the tail grows without eating and fills the board on its own; a build that drops
+// it twice shrinks away to nothing.
+//
+// SEVERAL TICKS RATHER THAN ONE, because a length that is right for one tick and
+// drifts afterwards is the failure that is hard to see, and because the cell the
+// tail released is read each time: a chain that keeps its length by holding onto
+// its tail cell and dropping some other one is a chain with a gap in it.
 
-test("growth.length-constant-on-normal-tick", () => {
-  throw new Error(
-    "validator not implemented: growth/length-constant-on-normal-tick.test.ts",
-  );
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLength } from "../assert";
+import {
+  arrangeStep,
+  captureReplay,
+  createHarness,
+  holdsCell,
+  type Cell,
+  type Harness,
+} from "../harness";
+
+/** Where the chain is posed: a clear run of more than TICKS cells to its right. */
+const HEAD: Cell = { col: 5, row: 8 };
+
+/** The length posed, and the length every tick has to leave. */
+const LENGTH = 5;
+
+/** Ticks driven over open board with no pellet on it. */
+const TICKS = 6;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("holds the chain's length, and releases the tail cell, every tick", async () => {
+  const posed = arrangeStep(h, {
+    head: HEAD,
+    dir: "right",
+    length: LENGTH,
+    pellet: null,
+  });
+  assertEqual(posed.snapshot.pellet, null, "the board the ticks run over");
+
+  await captureReplay(h, "steady", async () => {
+    let snapshot = posed.snapshot;
+    for (let tick = 1; tick <= TICKS; tick += 1) {
+      const releasing = snapshot.snake[snapshot.snake.length - 1];
+      snapshot = await h.tick();
+      assertLength(snapshot.snake, LENGTH, `the chain after tick ${tick}`);
+      assertEqual(
+        holdsCell(snapshot.snake, releasing),
+        false,
+        `the cell the tail left on tick ${tick}`,
+      );
+    }
+  });
 });
