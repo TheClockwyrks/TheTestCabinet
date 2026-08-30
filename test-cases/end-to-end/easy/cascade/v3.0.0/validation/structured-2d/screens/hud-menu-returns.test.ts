@@ -1,23 +1,58 @@
-// SCAFFOLD PLACEHOLDER — validation/structured-2d/screens/hud-menu-returns.test.ts
+// screens/hud-menu-returns — the HUD's MENU returns to the title.
 //
-// The review item `screens.hud-menu-returns` declares this script in the case manifest, so
-// the file has to exist for `cascade@v3.0.0` to resolve. The validator stage of
-// the v3.0.0 rework replaces it with the real suite.
+// specs/screens.md gives the HUD's second control its job: "`MENU` — Returns to
+// `title`." specs/controls.md fixes the rectangle it answers, `HUD_MENU` at
+// `{ x: 420, y: 680, w: 120, h: 36 }`, and states that a click activates the
+// control whose hit rectangle contains its press point. specs/victory.md leans on
+// it too: a game with no legal move left is simply unwinnable, and "a player
+// leaves such a game through the controls `specs/screens.md` states".
 //
-// It THROWS rather than passing, deliberately. A stub that quietly passed would
-// score a build a point no validator had decided, and a stub the validator stage
-// forgot would never be noticed.
+// ONE DIRECTION, AND NOTHING ELSE. What this decides is that the control leaves
+// the table for the title. The HUD's other two controls are
+// `screens/hud-new-game-deals` and `screens/hud-sound-toggles`, so a build with
+// one working control and one broken one grades apart from one with both broken.
 //
-// What this item must decide, from the manifest:
-//
-//   The HUD's MENU returns to the title
-//
-//   A press inside HUD_MENU reaches title.
+// THE TABLE IS EMPTY: the control belongs to the `playing` screen and owes
+// nothing to what is on the table (specs/screens.md), so a deal would only put a
+// broken deal between this point and the transition it reads.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { HUD_MENU } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  clickControl,
+  createHarness,
+  openTable,
+  type Harness,
+} from "../harness";
 
-it("screens.hud-menu-returns — the validator is not written yet", () => {
-  throw new Error(
-    "Cascade v3.0.0: validation/structured-2d/screens/hud-menu-returns.test.ts is a scaffold stub, not a validator",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reaches the title screen when the HUD's MENU is clicked", async () => {
+  openTable(h);
+  assertEqual(
+    h.snapshot().screen,
+    "playing",
+    "posing: the live table, which is the screen the HUD's controls belong to " +
+      "(specs/screens.md)",
+  );
+
+  clickControl(h, HUD_MENU);
+  await h.advance(1);
+  captureStill(h, "title");
+
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "the screen a click inside HUD_MENU reaches (specs/screens.md)",
   );
 });
