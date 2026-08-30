@@ -205,7 +205,14 @@ export async function evidence(
   try {
     await pose();
   } catch (error) {
-    console.warn(
+    // A pose that throws must FAIL the item, not warn and carry on. Capturing
+    // the still anyway wrote a picture of an un-posed frame into the declared
+    // output, so the reviewer's evidence showed something the item was not
+    // about while the point passed on assertions that never read it. A missing
+    // still is recorded as absent; a wrong one is not, which makes it worse.
+    // `captureReplay` in the harness already works this way -- try/finally with
+    // no catch -- and this brings the still onto the same footing.
+    throw new Error(
       `arc foundry: could not pose the still for \`${outputId}\`: ${String(error)}`,
     );
   }
