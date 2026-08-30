@@ -2170,6 +2170,18 @@ validation = { script = "audio/music-restarts-on-play-again.test.ts", outputs = 
   { id = "again", name = "The bed starting again on a round played again", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "music-stops-when-the-round-ends"
+title = "The music bed stops when the round ends"
+description = "The music bed is no longer playing once the round it was under has ended, so no bed runs on under the game over screen."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: start a round from the title, let the chain run into the
+# wall, and read whether the bed is still looping a few ticks past the ending.
+# See validation/<engine>/audio/music-stops-when-the-round-ends.test.ts.
+validation = { script = "audio/music-stops-when-the-round-ends.test.ts", outputs = [
+  { id = "ended", name = "The bed going quiet as the round ends", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "music-not-played-by-a-posed-screen"
 title = "A posed playing screen sounds no music"
 description = "Setting the screen to playing runs the tick over the board as it stands rather than laying out a fresh round, so no music cue is asked for."
