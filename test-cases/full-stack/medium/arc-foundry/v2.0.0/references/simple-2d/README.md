@@ -84,6 +84,11 @@ it, and clear the selection by pressing on empty yard.
 | `public/assets` | A link to `assets/`, so the built site serves every produced file under the asset root the engine resolves against. |
 | `.tcab/packages/` | The prebuilt particle runtime the produced effects are played through. |
 
+The engine is resolved from this repository's own `packages/simple-2d` through a relative
+`file:` dependency rather than from the copy a run is seeded with, so the reference is
+always built against the engine as it now stands. That path is the one line of
+`package.json` that differs from the project a run receives.
+
 `src/main.ts` and `src/constants.ts` come with the project and are not edited: the first
 builds the engine over the page canvas, and the second holds every figure the
 specification fixes. Everything else is this build's.

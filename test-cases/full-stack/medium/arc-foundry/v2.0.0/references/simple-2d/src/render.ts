@@ -2898,7 +2898,7 @@ function drawDifficultySelect(
     const mid = c.x + c.w / 2;
     text(
       ctx,
-      d.name.toUpperCase(),
+      c.label,
       mid,
       DIFF_CARD_Y + 54,
       34,
