@@ -9,6 +9,15 @@
 // a colour. What it asserts is DISTANCE: whatever four colours the build paints
 // the four states in, no two of them may be the same colour.
 //
+// THE COLOUR OF A NODE IS THE COLOUR OF ITS LIT MARK. specs/overview.md fixes
+// only that "the board is dark", so everything the game shows is a lit figure on
+// a dark ground, and every seeded frame under `assets/` is a sparse mark on a
+// transparent field — the node art a lit core inside a dark casing. Averaging a
+// few points through the tile's centre would read that casing and the board
+// showing through, and would tell two states apart by however much their marks
+// happened to differ in AREA. So the reading is `litTile`: the mean of the
+// brightest twentieth of the tile, which is the mark a player's eye goes to.
+//
 // THE FOUR NODES ARE THE ONLY THINGS ON THE BOARD. `startPlaying` poses an
 // empty, quiet board — no worm, no foe, no bolt, and the three world gates off —
 // and the four nodes are then set one charge at a time, six tiles apart along
@@ -26,8 +35,8 @@ import {
   chargeAt,
   colorDistance,
   createHarness,
+  litTile,
   resetTo,
-  sampleTile,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -77,7 +86,7 @@ it("paints the four charge states in four colours a player tells apart", async (
       charge,
       `the node posed at (${column}, ${RAMP_ROW}) holds charge ${charge}`,
     );
-    return sampleTile(h, column, RAMP_ROW);
+    return litTile(h, column, RAMP_ROW);
   });
 
   for (let low = 0; low <= CHARGE_MAX; low += 1) {

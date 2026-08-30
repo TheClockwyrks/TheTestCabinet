@@ -7,6 +7,11 @@
 // whatever four colours the build chose, the brightness of the tile a node
 // paints must climb at every step from inert to critical.
 //
+// THE COLOUR READ IS THE NODE'S LIT MARK, as presentation/node-ramp-distinct
+// explains: the seeded node art is a lit core inside a dark casing, so the tile
+// is read through `litTile` — the mean of its brightest twentieth — rather than
+// through a few points at its centre, which can land wholly on the casing.
+//
 // BRIGHTNESS IS THE MEAN OF THE THREE CHANNELS, so the reading favours no hue.
 // A build whose ramp climbs in green and a build whose ramp climbs in white are
 // both read as climbing; a build that paints charge `2` darker than charge `1`
@@ -24,8 +29,8 @@ import {
   captureStill,
   chargeAt,
   createHarness,
+  litTile,
   resetTo,
-  sampleTile,
   startPlaying,
   type Harness,
   type Rgb,
@@ -69,7 +74,7 @@ it("brightens the node's tile at every step of the charge ramp", async () => {
       charge,
       `the node posed at (${column}, ${RAMP_ROW}) holds charge ${charge}`,
     );
-    return brightness(sampleTile(h, column, RAMP_ROW));
+    return brightness(litTile(h, column, RAMP_ROW));
   });
 
   for (let charge = 1; charge <= CHARGE_MAX; charge += 1) {
