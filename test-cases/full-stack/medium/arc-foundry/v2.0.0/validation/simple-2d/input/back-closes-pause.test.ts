@@ -1,26 +1,57 @@
-// Arc Foundry — `input.back-closes-pause`. CASE-PROVIDED. NOT YET WRITTEN.
+// input/back-closes-pause — `back` closes the pause menu.
 //
-// The manifest declares this point at `input/back-closes-pause.test.ts`, so the
-// declaration resolves and the point is named in every grade. The suite itself is
-// still to be written, and until it is this file fails loudly rather than passing
-// a build it never checked.
+// THE REQUIREMENT. `specs/controls.md` gives `back` one ordered list to resolve
+// against, and the pause menu's own exit is the FIFTH of the six: "on `paused` the
+// pause menu closes". `specs/ui.md` says where that lands — `paused` sits over the
+// run, and leaving it returns to `playing` — and states the general rule for menus
+// besides: "Every menu that this file gives a `BACK` entry can also be left with
+// the back action."
 //
-// THE REQUIREMENT. On the paused screen the back action closes the pause menu
-// and returns to playing.
-//
-// HOW IT IS DECIDED. Open the pause menu, take back, and read the screen. The
-// evidence it hands back is `back` (image): the pause menu the back action
-// closed.
+// HOW IT IS DECIDED. A run is opened and moved to the pause menu directly, through
+// the operation that reaches a screen "exactly as reaching it in play does", so a
+// build with a broken pause KEY still has this point decided on its own terms.
+// `back` is then pressed once as a player presses it, a real key event dispatched
+// at the engine's own surface, and the screen is read.
 
-import { describe, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 
-import { fail } from "../assert";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  keyFor,
+  openYard,
+  pressAction,
+  type Harness,
+} from "../harness";
 
-describe("input.back-closes-pause", () => {
-  it("back closes the pause menu", () => {
-    fail(
-      "a validator deciding this point",
-      "the suite for `input.back-closes-pause` has not been written yet",
-    );
-  });
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("returns to playing from the pause menu", async () => {
+  openYard(h);
+  h.debug.setScreen("paused");
+
+  assertEqual(
+    h.snapshot().screen,
+    "paused",
+    "the pause menu showing before back is pressed (specs/ui.md)",
+  );
+
+  await pressAction(h, "back");
+  captureStill(h, "back");
+
+  assertEqual(
+    h.snapshot().screen,
+    "playing",
+    `pressing ${keyFor("back")} on the paused screen to close the pause menu ` +
+      "(specs/controls.md, specs/ui.md)",
+  );
 });
