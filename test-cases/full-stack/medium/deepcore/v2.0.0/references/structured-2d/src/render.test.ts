@@ -268,6 +268,32 @@ describe("the drawing", () => {
     );
   });
 
+  it("puts an open panel over the Core Sample countdown", () => {
+    const canvas = createCanvas(STAGE_W, STAGE_H);
+    const ctx = canvas.getContext("2d") as unknown as CanvasRenderingContext2D;
+    // The countdown's card sits just under the status bar, where the two
+    // tallest panels also reach, so the panel has to cover it.
+    const at = (): string => {
+      const { data } = canvas
+        .getContext("2d")
+        .getImageData(STAGE_W / 2, HUD_H + 34, 1, 1);
+      return `${data[0]},${data[1]},${data[2]}`;
+    };
+    const scene = (timer: number | null): DeepcoreState =>
+      posing(onScreen("in-mine"), (d) => {
+        d.panel = "ore-market";
+        d.credits = 900;
+        d.cargo.ferron = 3;
+        d.satchel.coreSample = timer !== null;
+        d.coreTimer = timer;
+      });
+
+    paint(scene(20), ctx);
+    const withSample = at();
+    paint(scene(null), ctx);
+    expect(withSample).toBe(at());
+  });
+
   it("paints the whole stage, letterbox background included", () => {
     const canvas = createCanvas(STAGE_W, STAGE_H);
     const ctx = canvas.getContext("2d") as unknown as CanvasRenderingContext2D;

@@ -307,10 +307,13 @@ export function renderHud(
   ctx.imageSmoothingEnabled = false;
 
   if (showsMine(state)) {
+    // The countdown belongs over the mine rather than over the chrome, so it is
+    // drawn first and the status bar, an open panel, and the pause overlay all
+    // cover it.
+    drawCoreCountdown(ctx, state);
     drawStatusBar(ctx, state);
     if (state.screen === "in-mine" && state.panel) drawPanel(ctx, state);
     if (state.screen === "paused") drawPauseOverlay(ctx);
-    drawCoreCountdown(ctx, state);
     drawNotes(ctx, state);
     if (state.screen === "in-mine") drawNotice(ctx, state);
   } else {
