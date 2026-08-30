@@ -1,23 +1,4 @@
-# Deepcore — reference implementation (base variant)
-
-> **Status: carried forward from v1.0.0 and NOT yet ported.** This tree is
-> v1.0.0's build, byte for byte. It is the raw material for v2.0.0's engineless
-> reference, not that reference. It does not satisfy this version's
-> specification, and nothing should be captured from it or read as evidence
-> about it until the port lands.
->
-> What the port has to close, at least:
->
-> | Concern | This tree | What v2.0.0 fixes |
-> | --- | --- | --- |
-> | Debug surface | 40 compound operations (`teleport`, `addCargo`, `grantCredits`, `grantGear`, `startExpedition`, `openPanel`, `step`) | 52 atomic ones (`setMinerPosition`, `setCargo`, `setCredits`, `setTier`, `setScreen`, `setPanel`, `advance`), one field or one clock move each, per `specs/instrumentation.md` |
-> | Constant names and values | `TILE_SIZE = 80`, `ORE_DENSITY = 0.15` | `TILE` (`80`), `ORE_DENSITY` (`0.14`), and 37 further named figures the specification states |
-> | Specification | v1.0.0's fifteen specs | all fourteen rewritten; `specs/proof.md` gone |
-> | Camera | a lead-based follow with `CAMERA_LEAD_FRACTION` (`0.335`), separate release (`1.1`) and reverse (`0.6`) times, and a `45` still-speed | the same shape restated as `CAM_LEAD_MAX` (`212`), `CAM_LEAD_RAMP` (`2`), one `CAM_UNWIND_MULT` (`4`) for both directions, and `CAM_STILL_SPEED` (`40`), with exact clamps and rates `specs/world.md` states |
->
-> The two sibling directories, `references/simple-2d/` and
-> `references/structured-2d/`, hold nothing but a README of their own for the
-> same reason.
+# Deepcore
 
 A subterranean dig-and-build game that runs entirely in the browser. You are a lone
 prospector stranded on Vhera Deep: **drill down** through four depth bands, **sell ore**
@@ -34,7 +15,7 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
 
 ## What it is
 
-- **The mine** — a 32×97 grid of 80px tiles (`specs/world.md`), **wider than the
+- **The mine** — a 32-column grid of 80-unit tiles running down to the Core chamber, **wider than the
   viewport** so the camera scrolls both ways (only ~16 columns on screen at once): a
   surface camp, then four bands — **topsoil**, **rockbed**, **deepstone**, **coreshell** —
   of increasing hardness, with the glowing **Core** in its chamber at the bottom. **Ten
@@ -50,7 +31,8 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
 - **The miner** — a suited character animated across eight produced sprite-sheet cycles
   (idle, walk, drill-down, drill-side, jetpack, fall, hurt, fuel-out), driven by real
   physics: gravity, a fuel-burning jetpack (the only way up), and a drill that bites
-  **down / left / right, never up**.
+  **down / left / right, never up**. Its climb is throttled by the weight in the bay, and
+  past the jetpack tier's lift limit it cannot climb at all.
 - **The loop** — dig ore → jetpack home → **sell** at the Ore Market → **buy fuel and
   hull repair** at the Fuel Depot and **buy upgrades** (fuel, drill, cargo, hull, jetpack,
   radiator, scanner) → **save** at the Save Pad → dig deeper. Nothing refills for free —
@@ -86,8 +68,8 @@ Requires Node 20+. From this directory:
 npm ci
 ```
 
-The particle runtime is vendored (`vendor/particle-runtime`, a `file:` dependency), so a
-plain `npm ci` resolves everything offline — no monorepo or registry access needed.
+The particle runtime is vendored at `.tcab/packages/@test-cabinet/particle-runtime` as a
+`file:` dependency, so a plain `npm ci` resolves everything offline.
 
 ## Develop
 
@@ -127,12 +109,26 @@ mute.
 ## Layout
 
 ```
-src/            the engine — game state machine + fixed-timestep sim + Canvas 2D renderer
-assets/         the PRODUCED art, VFX, and audio (committed; see ASSET-LAYOUT.md)
+src/            the runtime layer, the simulation, and the Canvas 2D renderer
+assets/         the produced art, effects, and audio (committed; see ASSET-LAYOUT.md)
 scripts/        the asset-generation scripts (gen-*.sh)
-vendor/         the vendored @test-cabinet/particle-runtime (prebuilt)
+showcase/       the store-page description and its captured media
+.tcab/          the vendored @test-cabinet/particle-runtime (prebuilt)
 dist/           the production build (git-ignored)
 ```
 
-Balance/tuning constants (fuel rates, drill times, ore values, upgrade prices, rocket
-component costs) live in [`src/constants.ts`](src/constants.ts), each pinned to a spec.
+Every figure the specification fixes lives in [`src/constants.ts`](src/constants.ts) under
+the name the specification gives it, and every other module imports it from there.
+
+## Tests
+
+```
+npm test          # Vitest, in Node, with coverage over src/
+npm run typecheck # tsc --noEmit
+npm run lint      # eslint .
+npm run format    # prettier --check .
+```
+
+A test drives the game over a clock of its own for a counted number of frames, so it needs
+no browser: every rate is per second and integrated against the delta the update is handed,
+and the simulation reads nothing from the renderer.

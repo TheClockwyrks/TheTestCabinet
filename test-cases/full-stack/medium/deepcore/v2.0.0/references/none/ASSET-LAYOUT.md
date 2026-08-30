@@ -28,7 +28,7 @@ self-contained: it bundles these committed files and never invokes the tools. Re
 
 ## Tiles — `scripts/gen-world.sh` (all `80 x 80`)
 
-The mine's `TILE_SIZE` is **80px** (`src/constants.ts`). Author tiles at that native size;
+The mine's `TILE` is **80 units** (`src/constants.ts`). Author tiles at that native size;
 do not upscale a smaller sprite.
 
 | Files | Count | Loader key / accessor | Notes |

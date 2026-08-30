@@ -2487,9 +2487,10 @@ function drawHowTo(
       "DANGER",
       "Gas, lava, and hard falls hurt. The Core Sample's 90s timer detonates.",
     ],
+    ["SAVE", "Stand on the Save Pad and press E. There is no autosave."],
     [
-      "SAVE",
-      "Stand on the Save Pad and press E. Hardcore deaths are permanent.",
+      "MODES",
+      "Standard restores from your last save; Hardcore deletes it and ends the run.",
     ],
   ];
   const labelX = cx - 430;
