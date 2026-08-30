@@ -749,7 +749,7 @@ export function comboStats(c: ComboType, level = 0): CompStats {
     fires: true,
     range: d.range + COMBO_LEVEL_RANGE_ADD[lvl]!,
     fireRate: d.fireRate,
-    dmg: Math.round(d.dmg * COMBO_LEVEL_DMG_MULT[lvl]!),
+    dmg: d.dmg * COMBO_LEVEL_DMG_MULT[lvl]!,
     splash: d.splash,
     chainLeaps: d.chainLeaps,
     chainRange: d.chainRange,

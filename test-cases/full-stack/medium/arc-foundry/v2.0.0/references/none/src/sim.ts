@@ -536,7 +536,7 @@ export class Game {
     // Crit (combo-only): roll off the deterministic combat rng; a crit multiplies the shot.
     const isCrit =
       stats.critChance > 0 && this.combat.next() < stats.critChance;
-    const dmg = isCrit ? Math.round(stats.dmg * stats.critMult) : stats.dmg;
+    const dmg = isCrit ? stats.dmg * stats.critMult : stats.dmg;
     this.projectiles.push({
       id: this.nextId++,
       sourceId: c.id,

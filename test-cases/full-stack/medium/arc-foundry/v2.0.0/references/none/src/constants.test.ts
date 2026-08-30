@@ -159,7 +159,7 @@ describe("the combination towers", () => {
       const ref = COMBOS[id];
       for (let level = 0; level <= 3; level++) {
         const st = comboStats(id, level);
-        expect(st.dmg).toBe(Math.round(ref.dmg * COMBO_LEVEL_DMG_MULT[level]!));
+        expect(st.dmg).toBeCloseTo(ref.dmg * COMBO_LEVEL_DMG_MULT[level]!, 9);
         expect(st.range).toBe(ref.range + COMBO_LEVEL_RANGE_ADD[level]!);
         // Fire rate and every ability parameter are flat across level.
         expect(st.fireRate).toBe(ref.fireRate);
