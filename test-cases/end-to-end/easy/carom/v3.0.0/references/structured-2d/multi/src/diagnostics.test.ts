@@ -9,6 +9,7 @@ import { createCanvas } from "@napi-rs/canvas";
 import {
   ConstantClock,
   createEngine,
+  type DiagnosticValue,
   type Engine,
   type SurfaceMetrics,
 } from "@test-cabinet/structured-2d";
@@ -26,7 +27,7 @@ import { diagnosticSources } from "./diagnostics";
 import { BACKGROUND, CaromGame, game } from "./game";
 
 let engine: Engine<CaromDebug>;
-let sources: Record<string, () => unknown>;
+let sources: Record<string, () => DiagnosticValue>;
 
 beforeEach(async () => {
   const canvas = createCanvas(FIELD_W, FIELD_H);

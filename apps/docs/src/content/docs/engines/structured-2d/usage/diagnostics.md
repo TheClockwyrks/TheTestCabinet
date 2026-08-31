@@ -51,7 +51,9 @@ export class RallyMode extends GameMode {
     world.diagnostics.register("score", () => this.score());
     world.diagnostics.register("ball", () => {
       const ball = world.find(Ball);
-      return ball ? { x: ball.transform.x, y: ball.transform.y } : "none";
+      return ball === null
+        ? "none"
+        : `${ball.transform.x.toFixed(0)}, ${ball.transform.y.toFixed(0)}`;
     });
   }
 
@@ -71,9 +73,9 @@ costs a line and adds nothing.
 
 ## What makes a good source
 
-A source reads and returns, leaving the world exactly as it found it. It runs on
-every frame the overlay is visible, so keep it cheap: read a field, count a tag,
-build a small object.
+A source reads and returns a string, a number, or a boolean, leaving the world
+exactly as it found it. It runs on every frame the overlay is visible, so keep
+it cheap: read a field, count a tag, format a pair of coordinates.
 
 ```ts
 world.diagnostics.register("elapsed", () => this.state.elapsed);
@@ -89,9 +91,9 @@ the game never computed is a second implementation able to disagree with the
 first, and a figure the game keeps on its game state or its player states is one
 field read away.
 
-Guard a source against the object it reports being absent, so the game stays
-free of guards around the diagnostic. A source that throws shows its message in
-place of its value and leaves the rest of the panel intact.
+A source always returns a value, so a source whose subject can be absent returns
+a placeholder such as `"none"` or `"-"` in its place. The game therefore stays
+free of guards around the diagnostic.
 
 ```ts
 world.diagnostics.register(
@@ -100,18 +102,13 @@ world.diagnostics.register(
 );
 ```
 
-Keep each value to about a line. Return a string where the presentation matters,
-a number where the magnitude is the point, and a small object for a pair such as
-a position.
+Keep each value to about a line. Return a string where the presentation matters
+or where several figures belong together, a number where the magnitude is the
+point, and a boolean for a flag. A framework object such as an actor is reduced
+to one of the three inside the source, which reports its position as a formatted
+string, its tag, or its count.
 
 ## What a case's checks read
-
-A case's checks read the world and the build's
-[debug surface](/engines/structured-2d/usage/debug/), and the overlay is for a
-person watching the build play. A source still returns plain data, a string, a
-number, a boolean, or a small object of those, because the panel formats each
-value as one line. A framework object such as an actor is not plain data, so
-report its position, its tag, or its count in its place.
 
 Name a source after the vocabulary a case fixes. A count over a tag the case
 declares, the level names it declares, and the figures its specification states
@@ -122,6 +119,35 @@ pixels, and they read the same way in every build of the case.
 world.diagnostics.register("bricks", () => world.byTag(TAG_BRICK).length);
 world.diagnostics.register("phase-elapsed", () => this.state.elapsed);
 ```
+
+A check holds the engine and reads `engine.diagnostics()`, which returns one
+reading per registered source, the instance registry's first and then the
+world's, each in registration order, with the name the game registered and what
+that source reports for the world the engine currently holds.
+
+```ts
+const readings = engine.diagnostics();
+
+expect(readings.map((r) => r.name)).toEqual([
+  "high-score",
+  "levels-cleared",
+  "bricks",
+  "score",
+  "ball",
+]);
+expect(readings[2]).toEqual({ name: "bricks", value: 40 });
+```
+
+Registering the values a case names is the game's part; drawing them, toggling
+the panel and keeping it read-only are the engine's. A check therefore asserts
+what a build registered rather than what the panel drew, beside what it reads
+off the world and the build's
+[debug surface](/engines/structured-2d/usage/debug/).
+
+A source that throws shows its message in place of its value on the panel, and
+its reading carries an `error` and no `value`, so a check sees a failed source
+as a failure rather than as a reading. Reading changes nothing the engine holds,
+and a hidden overlay reads exactly as a visible one does.
 
 ## Showing the overlay
 

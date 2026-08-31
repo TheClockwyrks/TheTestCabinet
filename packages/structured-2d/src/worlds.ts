@@ -46,6 +46,7 @@ import type {
   ActorSpec,
   Camera,
   CollisionWorld,
+  DiagnosticValue,
   EngineEventMap,
   EngineEvents,
   FrameInfo,
@@ -98,7 +99,7 @@ export interface WorldDeps {
    * Registers a source in the *world* registry — the one `Diagnostics.
    * dropWorldSources` drops when this world closes.
    */
-  registerDiagnostic(name: string, source: () => unknown): void;
+  registerDiagnostic(name: string, source: () => DiagnosticValue): void;
   /** A fresh input reader, one per player controller added. */
   createInputReader(): InputReader;
   /** The engine's frame read, live. */
@@ -177,7 +178,7 @@ export class EngineWorld implements World {
 
   /** The one stable object `world.diagnostics` returns. */
   private readonly diagnosticsApi: {
-    register(name: string, source: () => unknown): void;
+    register(name: string, source: () => DiagnosticValue): void;
   };
 
   /** The next actor id, unique within the world, assigned from `1`. */
@@ -273,7 +274,9 @@ export class EngineWorld implements World {
    * The world's diagnostic registry: sources that live as long as the world
    * and are dropped when it closes.
    */
-  get diagnostics(): { register(name: string, source: () => unknown): void } {
+  get diagnostics(): {
+    register(name: string, source: () => DiagnosticValue): void;
+  } {
     return this.diagnosticsApi;
   }
 

@@ -171,7 +171,7 @@ interface InitApi {
     resolve(path: string): string;
   };
   readonly diagnostics: {
-    register(name: string, source: () => unknown): void;
+    register(name: string, source: () => DiagnosticValue): void;
   };
   readonly events: EngineEvents;
   viewport(): Viewport;

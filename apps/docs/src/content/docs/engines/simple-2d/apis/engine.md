@@ -113,6 +113,7 @@ interface Engine<S, D = unknown> {
   setClock(clock: Clock): void;
   frame(): FrameInfo;
   viewport(): Viewport;
+  diagnostics(): readonly DiagnosticReading[];
   recording(): boolean;
   startRecording(): void;
   stopRecording(): Recording;
@@ -136,6 +137,7 @@ interface RunOptions {
 | `setClock` | Replace the clock. The next frame takes its delta from the new one. |
 | `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
 | `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
+| `diagnostics` | Every registered [diagnostic](/engines/simple-2d/apis/diagnostics/) source and what it reports now, in registration order. |
 | `recording` | Whether draw-command [recording](/engines/simple-2d/apis/recording/) is currently capturing. |
 | `startRecording` | Arm the recorder. Capture begins at the next frame. |
 | `stopRecording` | Disarm the recorder and return everything captured since `startRecording`. |

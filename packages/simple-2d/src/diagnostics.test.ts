@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FrameMetrics } from "./contract";
+import type { DiagnosticValue, FrameMetrics } from "./contract";
 import { Diagnostics, type FrameTimings } from "./diagnostics";
 
 interface RecordedCall {
@@ -106,7 +106,7 @@ function timings(metrics: Partial<FrameMetrics>, series: readonly number[] = [])
 }
 
 /** An overlay showing `values`, with no frames timed. */
-function withSources(values: Record<string, unknown>): Diagnostics {
+function withSources(values: Record<string, DiagnosticValue>): Diagnostics {
   const diagnostics = new Diagnostics();
   for (const [name, value] of Object.entries(values)) diagnostics.register(name, () => value);
   diagnostics.setEnabled(true);
@@ -114,12 +114,28 @@ function withSources(values: Record<string, unknown>): Diagnostics {
 }
 
 describe("Diagnostics.read", () => {
-  it("round-trips registered sources by name", () => {
+  it("returns one reading per source, in registration order", () => {
     const diagnostics = new Diagnostics();
     diagnostics.register("score", () => 42);
     diagnostics.register("mode", () => "serve");
 
-    expect(diagnostics.read()).toEqual({ score: 42, mode: "serve" });
+    expect(diagnostics.read()).toEqual([
+      { name: "score", value: 42 },
+      { name: "mode", value: "serve" },
+    ]);
+  });
+
+  it("reports each of the three value types as itself", () => {
+    const diagnostics = new Diagnostics();
+    diagnostics.register("phase", () => "rally");
+    diagnostics.register("speed", () => 1 / 3);
+    diagnostics.register("paused", () => false);
+
+    expect(diagnostics.read()).toEqual([
+      { name: "phase", value: "rally" },
+      { name: "speed", value: 1 / 3 },
+      { name: "paused", value: false },
+    ]);
   });
 
   it("evaluates sources on every read rather than sampling at registration", () => {
@@ -127,8 +143,8 @@ describe("Diagnostics.read", () => {
     let frames = 0;
     diagnostics.register("frames", () => ++frames);
 
-    expect(diagnostics.read()["frames"]).toBe(1);
-    expect(diagnostics.read()["frames"]).toBe(2);
+    expect(diagnostics.read()).toEqual([{ name: "frames", value: 1 }]);
+    expect(diagnostics.read()).toEqual([{ name: "frames", value: 2 }]);
   });
 
   it("re-registering a name replaces the source and keeps its position", () => {
@@ -137,18 +153,20 @@ describe("Diagnostics.read", () => {
     diagnostics.register("b", () => 2);
     diagnostics.register("a", () => 99);
 
-    expect(Object.keys(diagnostics.read())).toEqual(["a", "b"]);
-    expect(diagnostics.read()["a"]).toBe(99);
+    expect(diagnostics.read()).toEqual([
+      { name: "a", value: 99 },
+      { name: "b", value: 2 },
+    ]);
   });
 
-  it("holds one entry per name however often a name is re-registered", () => {
+  it("holds one reading per name however often a name is re-registered", () => {
     const diagnostics = new Diagnostics();
     for (let i = 0; i < 5000; i++) diagnostics.register("frames", () => i);
 
-    expect(Object.keys(diagnostics.read())).toEqual(["frames"]);
+    expect(diagnostics.read().map((reading) => reading.name)).toEqual(["frames"]);
   });
 
-  it("contains a throwing source and still reads the others", () => {
+  it("reports a throwing source as an error with no value, and reads the others", () => {
     const diagnostics = new Diagnostics();
     diagnostics.register("ok", () => "fine");
     diagnostics.register("boom", () => {
@@ -156,7 +174,16 @@ describe("Diagnostics.read", () => {
     });
     diagnostics.register("after", () => 7);
 
-    expect(diagnostics.read()).toEqual({ ok: "fine", boom: "no ball yet", after: 7 });
+    const readings = diagnostics.read();
+
+    expect(readings).toEqual([
+      { name: "ok", value: "fine" },
+      { name: "boom", error: "no ball yet" },
+      { name: "after", value: 7 },
+    ]);
+    // A failure is not a reading of any type: nothing compares equal to the
+    // message the panel happens to draw in the value's place.
+    expect(readings[1]).not.toHaveProperty("value");
   });
 
   it("stringifies a non-Error throw", () => {
@@ -165,23 +192,43 @@ describe("Diagnostics.read", () => {
       throw "just a string";
     });
 
-    expect(diagnostics.read()["odd"]).toBe("just a string");
+    expect(diagnostics.read()).toEqual([{ name: "odd", error: "just a string" }]);
   });
 
   it("returns values unformatted", () => {
     const diagnostics = new Diagnostics();
     diagnostics.register("speed", () => 1 / 3);
-    diagnostics.register("ball", () => ({ x: 1 }));
+    diagnostics.register("spin", () => Number.POSITIVE_INFINITY);
 
-    expect(diagnostics.read()).toEqual({ speed: 1 / 3, ball: { x: 1 } });
+    expect(diagnostics.read()).toEqual([
+      { name: "speed", value: 1 / 3 },
+      { name: "spin", value: Number.POSITIVE_INFINITY },
+    ]);
   });
 
-  it("reads whether or not the overlay is visible", () => {
+  it("reads whether or not the overlay is visible, and leaves it as it found it", () => {
     const diagnostics = new Diagnostics();
     diagnostics.register("x", () => 1);
 
     expect(diagnostics.enabled()).toBe(false);
-    expect(diagnostics.read()).toEqual({ x: 1 });
+    expect(diagnostics.read()).toEqual([{ name: "x", value: 1 }]);
+    expect(diagnostics.enabled()).toBe(false);
+
+    diagnostics.setEnabled(true);
+    expect(diagnostics.read()).toEqual([{ name: "x", value: 1 }]);
+    expect(diagnostics.enabled()).toBe(true);
+  });
+
+  it("reads the same registry however often it is read", () => {
+    const diagnostics = new Diagnostics();
+    const state = { hits: 3 };
+    diagnostics.register("hits", () => state.hits);
+
+    const first = diagnostics.read();
+    const second = diagnostics.read();
+
+    expect(second).toEqual(first);
+    expect(state).toEqual({ hits: 3 });
   });
 });
 
@@ -315,11 +362,8 @@ describe("Diagnostics.draw", () => {
       phase: "rally",
       lives: 3,
       speed: 1 / 3,
-      target: null,
-      pick: undefined,
-      ball: { x: 1, y: 2 },
-      path: [1, 2],
       paused: false,
+      served: true,
     });
     const { calls, ctx } = fakeContext();
 
@@ -329,11 +373,8 @@ describe("Diagnostics.draw", () => {
       "phase: rally",
       "lives: 3",
       "speed: 0.333",
-      "target: null",
-      "pick: undefined",
-      'ball: {"x":1,"y":2}',
-      "path: [1,2]",
       "paused: false",
+      "served: true",
     ]);
   });
 
@@ -346,14 +387,21 @@ describe("Diagnostics.draw", () => {
     expect(drawnLines(calls)).toEqual(["speed: 12", "ratio: -0.500"]);
   });
 
-  it("survives a cyclic value", () => {
-    const cyclic: { self?: unknown } = {};
-    cyclic.self = cyclic;
-    const diagnostics = withSources({ cyclic });
+  it("draws a number that is not finite as itself", () => {
+    const diagnostics = withSources({
+      drift: Number.NaN,
+      ceiling: Number.POSITIVE_INFINITY,
+      floor: Number.NEGATIVE_INFINITY,
+    });
     const { calls, ctx } = fakeContext();
 
-    expect(() => diagnostics.draw(ctx, 640, 360)).not.toThrow();
-    expect(drawnLines(calls)).toHaveLength(1);
+    diagnostics.draw(ctx, 640, 360);
+
+    expect(drawnLines(calls)).toEqual([
+      "drift: NaN",
+      "ceiling: Infinity",
+      "floor: -Infinity",
+    ]);
   });
 
   it("clamps the panel to the surface", () => {

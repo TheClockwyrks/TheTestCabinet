@@ -256,6 +256,9 @@ class ArenaMode extends GameMode {
     this.addPlayer({ name: "runner" });
     this.setPhase("playing");
 
+    const world = this.world;
+    world.diagnostics.register("orbs", () => world.byTag(TAGS.orb).length);
+
     const events: EngineEvents = this.world.events;
     this.off.push(
       // Detection is the engine's; the response is the game's. A blocking
@@ -898,5 +901,42 @@ describe("asserting on actions and cues", () => {
 
     expect(world.audio.muted()).toBe(true);
     expect(gains).toEqual([0]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* validation/diagnostics.test.ts                                      */
+/* ------------------------------------------------------------------ */
+
+describe("asserting the diagnostics a build registered", () => {
+  let harness: Harness;
+
+  beforeEach(async () => {
+    harness = await createHarness({ clock: new ConstantClock(1000 / 60) });
+  });
+
+  afterEach(() => {
+    harness.dispose();
+  });
+
+  it("registers the diagnostics the case names", () => {
+    const { engine } = harness;
+    engine.debug.keepOrbs(2);
+
+    expect(engine.diagnostics()).toEqual([
+      { name: "best", value: 0 },
+      { name: "orbs", value: 2 },
+    ]);
+  });
+
+  it("drops the arena's source when the arena closes", async () => {
+    const { engine } = harness;
+    engine.debug.keepOrbs(0);
+    await engine.advance(1);
+
+    // The travel to `summary` closed the arena, so its source went with it and
+    // the instance's stayed.
+    expect(harness.world().level).toBe(LEVELS.summary);
+    expect(engine.diagnostics()).toEqual([{ name: "best", value: 0 }]);
   });
 });

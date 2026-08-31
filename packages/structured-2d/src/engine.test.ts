@@ -5,6 +5,7 @@ import { ConstantClock } from "./clocks";
 import { ColliderComponent } from "./collision";
 import { ShapeComponent } from "./components";
 import type {
+  DiagnosticValue,
   EndPlayReason,
   Engine,
   EngineEventMap,
@@ -173,6 +174,13 @@ function fakes(log: string[] = []): Fakes {
     },
     diagnostics: {
       registerInstance: (name, source) => registered.push([name, source]),
+      read: () =>
+        registered
+          .filter(([, source]) => typeof source === "function")
+          .map(([name, source]) => ({
+            name,
+            value: (source as () => DiagnosticValue)(),
+          })),
       toggle: () => {
         state.toggles += 1;
       },
@@ -1389,6 +1397,141 @@ describe("end to end over the real subsystems", () => {
     await engine.initialize();
     await engine.advance(3);
     expect(hits).toBe(3);
+    engine.destroy();
+  });
+});
+
+describe("engine.diagnostics over the real subsystems", () => {
+  /** An instance and a mode that register into both registries. */
+  class WatchedInstance extends GameInstance<null> {
+    opens = 0;
+
+    override initialize(api: InitApi): null {
+      api.diagnostics.register("build", () => "drift 1.0.0");
+      api.diagnostics.register("opens", () => this.opens);
+      return null;
+    }
+
+    override worldOpened(): void {
+      this.opens += 1;
+    }
+  }
+
+  class WatchedMode extends GameMode {
+    override beginPlay(): void {
+      const world = this.world;
+      world.diagnostics.register("actors", () => world.actors().length);
+      world.diagnostics.register("running", () => !world.paused);
+      world.diagnostics.register("lead", () => {
+        const [lead] = world.actors();
+        return lead === undefined ? "none" : lead.transform.x.toFixed(1);
+      });
+    }
+  }
+
+  function watched(): Engine<null> {
+    return real({
+      game: {
+        instance: WatchedInstance,
+        levels: {
+          a: { mode: WatchedMode, actors: [{ type: Drifter, transform: { x: 320, y: 180 } }] },
+          b: { mode: WatchedMode },
+        },
+        startLevel: "a",
+      },
+    }) as Engine<null>;
+  }
+
+  it("reports the instance registry first, then the world's, each in registration order", async () => {
+    const engine = watched();
+    await engine.initialize();
+
+    expect(engine.diagnostics()).toEqual([
+      { name: "build", value: "drift 1.0.0" },
+      { name: "opens", value: 1 },
+      { name: "actors", value: 1 },
+      { name: "running", value: true },
+      { name: "lead", value: "320.0" },
+    ]);
+    engine.destroy();
+  });
+
+  it("evaluates each source at the read, against what the world holds then", async () => {
+    const engine = watched();
+    await engine.initialize();
+    await engine.advance(60);
+
+    expect(engine.diagnostics()).toEqual([
+      { name: "build", value: "drift 1.0.0" },
+      { name: "opens", value: 1 },
+      { name: "actors", value: 1 },
+      { name: "running", value: true },
+      { name: "lead", value: (320 + SPEED).toFixed(1) },
+    ]);
+    engine.destroy();
+  });
+
+  it("keeps the instance's readings across a transition and rebuilds the world's", async () => {
+    const engine = watched();
+    await engine.initialize();
+    engine.world.open("b");
+    await engine.advance(1);
+
+    expect(engine.diagnostics()).toEqual([
+      { name: "build", value: "drift 1.0.0" },
+      { name: "opens", value: 2 },
+      { name: "actors", value: 0 },
+      { name: "running", value: true },
+      { name: "lead", value: "none" },
+    ]);
+    engine.destroy();
+  });
+
+  it("reads with the overlay hidden, and a read advances and draws nothing", async () => {
+    const engine = watched();
+    await engine.initialize();
+    await engine.advance(5);
+
+    const before = engine.frame();
+    const first = engine.diagnostics();
+    const second = engine.diagnostics();
+
+    expect(second).toEqual(first);
+    expect(engine.frame()).toEqual(before);
+    expect(engine.world.time).toBeCloseTo(5 / 60, 9);
+    engine.destroy();
+  });
+
+  it("reports a throwing source as an error with no value", async () => {
+    class BrokenMode extends GameMode {
+      override beginPlay(): void {
+        this.world.diagnostics.register("pawn", () => {
+          throw new Error("no pawn possessed");
+        });
+        this.world.diagnostics.register("after", () => 7);
+      }
+    }
+    const engine = real({
+      game: { levels: { main: { mode: BrokenMode } }, startLevel: "main" },
+    });
+    await engine.initialize();
+
+    const readings = engine.diagnostics();
+
+    expect(readings).toEqual([
+      { name: "pawn", error: "no pawn possessed" },
+      { name: "after", value: 7 },
+    ]);
+    expect(readings[0]).not.toHaveProperty("value");
+    engine.destroy();
+  });
+
+  it("reports nothing for a game that registered nothing", async () => {
+    const engine = real();
+    await engine.initialize();
+    await engine.advance(1);
+
+    expect(engine.diagnostics()).toEqual([]);
     engine.destroy();
   });
 });

@@ -121,7 +121,9 @@ interface World {
 
   readonly audio: WorldAudio;
   readonly assets: InitApi["assets"];
-  readonly diagnostics: { register(name: string, source: () => unknown): void };
+  readonly diagnostics: {
+    register(name: string, source: () => DiagnosticValue): void;
+  };
   readonly events: EngineEvents;
 
   spawn<A extends Actor>(type: ActorClass<A>, spec?: SpawnSpec<A>): A;

@@ -92,6 +92,40 @@ export interface FrameMetrics {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Diagnostics                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every value a diagnostic source may report.
+ *
+ * Three types, and the set is closed: the overlay draws one line per source, and a
+ * reader of that line wants the presentation a `string` fixes, the magnitude a
+ * `number` carries, or the flag a `boolean` states. A framework object such as an
+ * actor is reduced to one of the three inside the source, which is where the game's
+ * own vocabulary lives. Closing the set is also what lets a check compare a reading
+ * against an expected value without narrowing it first.
+ */
+export type DiagnosticValue = string | number | boolean;
+
+/**
+ * One registered diagnostic and what it reports right now.
+ *
+ * Exactly one of `value` and `error` is present. A source that throws yields
+ * `error` and no `value`, which keeps a failure distinguishable from every reading
+ * a working source could produce: were the message reported as the value, a defect
+ * in the game's source would arrive as a well-typed `string` that a check comparing
+ * values could accept.
+ */
+export interface DiagnosticReading {
+  /** The name the source was registered under. */
+  readonly name: string;
+  /** What the source reported, when it returned. */
+  readonly value?: DiagnosticValue;
+  /** Why the source failed, when it threw. */
+  readonly error?: string;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Geometry, camera, and viewport                                             */
 /* -------------------------------------------------------------------------- */
 
@@ -899,7 +933,9 @@ export interface World {
    * The world's diagnostic registry. A source registered here lives as long as
    * the world and is dropped when it closes; the instance's sources persist.
    */
-  readonly diagnostics: { register(name: string, source: () => unknown): void };
+  readonly diagnostics: {
+    register(name: string, source: () => DiagnosticValue): void;
+  };
   /** The engine's broadcaster. */
   readonly events: EngineEvents;
 
@@ -1023,7 +1059,7 @@ export interface InitApi {
      * Registers a source that lives as long as the engine, invoked on each
      * read. Re-registering a name replaces its source in place.
      */
-    register(name: string, source: () => unknown): void;
+    register(name: string, source: () => DiagnosticValue): void;
   };
   /** The engine's broadcaster. */
   readonly events: EngineEvents;
@@ -1118,6 +1154,15 @@ export interface Engine<D = unknown> {
   frame(): FrameInfo;
   /** The current logical-to-device fit, as a snapshot the caller owns. */
   viewport(): Viewport;
+  /**
+   * Every registered diagnostic and what it reports now, the instance
+   * registry's first and then the world's, each in registration order.
+   *
+   * Evaluates each source and changes nothing else, so a check reads the
+   * sources a build registered without posing the overlay: the reading is the
+   * same whether the panel is drawn or hidden.
+   */
+  diagnostics(): readonly DiagnosticReading[];
   /** Whether draw-command recording is currently capturing. */
   recording(): boolean;
   /**

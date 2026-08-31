@@ -16,7 +16,7 @@ The engine owns:
 - Pointer tracking, mapped into the game's own logical coordinates.
 - The Web Audio graph, cue synthesis, looping, mute, and the first-gesture unlock.
 - Asset URL resolution under the fixed `assets/` root.
-- The diagnostics overlay and its toggle key.
+- The diagnostics registry, the overlay it draws, and its toggle key.
 - The draw-command recorder over the drawing context.
 - The debug surface the game returned, held for a caller to read back.
 
@@ -102,7 +102,10 @@ interface InitApi<S> {
     resolve(path: string): string;
   };
   readonly diagnostics: {
-    register(name: string, source: (state: DeepReadonly<S>) => unknown): void;
+    register(
+      name: string,
+      source: (state: DeepReadonly<S>) => DiagnosticValue,
+    ): void;
   };
   readonly events: EngineEvents;
   viewport(): Viewport;
@@ -173,6 +176,7 @@ interface Engine<S, D = unknown> {
   setClock(clock: Clock): void;
   frame(): FrameInfo;
   viewport(): Viewport;
+  diagnostics(): readonly DiagnosticReading[];
   recording(): boolean;
   startRecording(): void;
   stopRecording(): Recording;
@@ -192,6 +196,7 @@ interface Engine<S, D = unknown> {
 | `setClock` | Replace the clock. The next frame takes its delta from the new one. |
 | `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
 | `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
+| `diagnostics` | Every registered diagnostic source and what it reports now, in registration order. See `diagnostics.md`. |
 | `recording` | Whether draw-command recording is currently capturing. See `recording.md`. |
 | `startRecording` | Arm the recorder. Capture begins at the next frame. |
 | `stopRecording` | Disarm and return everything captured since `startRecording`. |
@@ -318,6 +323,6 @@ draws, so scaling never appears in the game's own code.
 | `input.md` | Actions, key bindings, edges, the pointer, and the touch layout catalogue. |
 | `audio.md` | Cue definition, file-backed cues, playback, looping, mute, and the unlock. |
 | `assets.md` | The asset root, the loaders, the path rules, and the load events. |
-| `diagnostics.md` | The overlay, frame metrics, and the display formatting. |
+| `diagnostics.md` | Registering sources, reading them back, the overlay, and frame metrics. |
 | `debug.md` | Declaring a debug surface, returning it beside the state, and driving it through `apply` and `state`. |
 | `recording.md` | Arming the recorder, the recording format, and replaying a frame. |

@@ -85,6 +85,7 @@ export const debug: Debug = {
 | Paddle | `12 × 60` at `x = 24`, drawn in `#e8e8e8`, moving at `240` units per second and clamped to the field |
 | Actions | `up` bound to `KeyW` and `ArrowUp`, `down` bound to `KeyS` and `ArrowDown` |
 | Cues | `bounce`, played on the frame a wall reflects the ball |
+| Diagnostics | `ball`, reporting `` `${x}, ${y}` `` in whole units, and `paddle`, reporting the paddle's `y` |
 
 ## Layout
 
@@ -501,6 +502,46 @@ count exactly, which is the part a step size cannot move.
 
 `t` is the frame loop's simulated time, so the timestamp a check asserts against
 is the time the clock delivered rather than the real time the suite took to run.
+
+## Asserting the diagnostics a build registered
+
+Registering the values the case names is the build's part. Drawing the panel,
+toggling it, and keeping it read-only are the engine's, so a check reads
+`engine.diagnostics()` and asserts the names the build registered and what each
+one reports for a posed state.
+
+```ts
+// validation/diagnostics.test.ts
+import { ConstantClock } from "@test-cabinet/simple-2d";
+import { afterEach, beforeEach, expect, it } from "vitest";
+import { createHarness, type Harness } from "./harness";
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness({ clock: new ConstantClock(1000 / 60) });
+});
+
+afterEach(() => {
+  harness.dispose();
+});
+
+it("registers the diagnostics the case names", () => {
+  const { engine } = harness;
+  harness.setBall({ x: 320, y: 180, vx: 0, vy: 0 });
+  harness.setPaddle(120);
+
+  expect(engine.diagnostics()).toEqual([
+    { name: "ball", value: "320, 180" },
+    { name: "paddle", value: 120 },
+  ]);
+});
+```
+
+The readings arrive in registration order, so one comparison covers the names,
+their order, and what each source reports. Reading evaluates the sources and
+changes nothing else, so a check reads them at any point in a scenario, and the
+overlay stays hidden throughout.
 
 ## Asserting what was drawn
 

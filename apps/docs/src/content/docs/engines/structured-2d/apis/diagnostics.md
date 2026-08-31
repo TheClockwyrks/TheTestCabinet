@@ -12,8 +12,10 @@ around them.
 Both registries expose the same member.
 
 ```ts
+type DiagnosticValue = string | number | boolean;
+
 readonly diagnostics: {
-  register(name: string, source: () => unknown): void;
+  register(name: string, source: () => DiagnosticValue): void;
 };
 ```
 
@@ -21,13 +23,21 @@ readonly diagnostics: {
 invoked on each read, never sampled at registration, so it reports whatever the
 game holds at that instant.
 
+A source reports one of the three types `DiagnosticValue` names. A framework
+object such as an actor is reduced to one of the three inside the source, which
+reports its position as a formatted string, its tag as a string, or its count as
+a number. A source always returns a value, and where the thing it names is
+absent it returns a short placeholder string in the game's own vocabulary, such
+as `"none"` or `"-"`.
+
 | Registry | Registered through | Lifetime |
 | --- | --- | --- |
 | Instance | [`InitApi.diagnostics`](/engines/structured-2d/apis/game-instance/) | The life of the engine. Its sources survive every level transition. |
 | World | [`world.diagnostics`](/engines/structured-2d/apis/worlds/) | The life of the world. Its sources are dropped when the world closes. |
 
 Re-registering a name replaces its source and retains the name's original
-position in its registry.
+position in its registry. A name registered in both registries keeps a line in
+each.
 
 ## The registry
 
@@ -37,7 +47,7 @@ The engine holds both registries and drives the overlay over them.
 setEnabled(enabled: boolean): void;
 enabled(): boolean;
 toggle(): void;
-read(): Record<string, unknown>;
+read(): readonly DiagnosticReading[];
 metrics(): FrameMetrics;
 draw(ctx: CanvasRenderingContext2D, width: number, height: number): void;
 ```
@@ -47,7 +57,7 @@ draw(ctx: CanvasRenderingContext2D, width: number, height: number): void;
 | `setEnabled(enabled)` | `void` | Shows the overlay when `true`, hides it when `false`. |
 | `enabled()` | `boolean` | Whether the overlay is currently drawn. |
 | `toggle()` | `void` | Inverts the enabled state. |
-| `read()` | `Record<string, unknown>` | Evaluates every source in both registries and returns the values. |
+| `read()` | `readonly DiagnosticReading[]` | Evaluates every source in both registries and returns what each one reports. |
 | `metrics()` | `FrameMetrics` | The frame-time metrics over the current window. |
 | `draw(ctx, width, height)` | `void` | Draws the overlay onto `ctx`. Called by the engine after the pipeline renders. |
 
@@ -55,15 +65,31 @@ The overlay is hidden when the engine is created.
 
 ## `read`
 
-Returns a plain object keyed by registered name, the instance registry's sources
-first and then the world registry's, each in registration order. Values are
+```ts
+interface DiagnosticReading {
+  readonly name: string;
+  readonly value?: DiagnosticValue;
+  readonly error?: string;
+}
+```
+
+Returns one reading per source, the instance registry's first and then the world
+registry's, each in registration order, which is the order the panel draws them
+in. Exactly one of `value` and `error` is present on each reading. Values are
 returned unformatted; the formatting below applies to the overlay alone.
 
-A source that throws contributes its error message as a `string` value: the
+A source that throws yields a reading carrying `error` and no `value`: the
 `message` of a thrown `Error`, otherwise the `String` form of what was thrown.
-`read` itself never throws.
+A failure is therefore distinguishable from a reading of any type, and `read`
+itself always returns.
 
+`read` evaluates the sources and changes nothing else, so the world, the frame
+counter, and the overlay's visibility are the same after a read as before it.
 `read` is independent of `enabled()`, so a hidden overlay is still readable.
+
+[`engine.diagnostics()`](/engines/structured-2d/apis/engine/) is how a caller
+holding the engine reaches this, and is what a case's checks read to assert the
+sources a build registered.
 
 ## Frame metrics
 
@@ -141,17 +167,19 @@ registered [input](/engines/structured-2d/apis/input/) action.
 
 ## Display formatting
 
-One line per source, formatted `` `${name}: ${value}` ``.
+One line per reading, formatted `` `${name}: ${value}` ``.
 
-| Value | Displayed as |
+| Reading | Displayed as |
 | --- | --- |
-| `string` | The string itself. |
-| Integer `number` | `String(value)`. |
-| Non-integer `number` | `value.toFixed(3)`. |
-| `null`, `undefined` | `"null"`, `"undefined"`. |
-| `object`, array | `JSON.stringify(value)`, falling back to `String(value)` when it throws or yields `undefined`. |
-| Any other type | `String(value)`. |
+| `string` value | The string itself. |
+| Integer `number` value | `String(value)`. |
+| Non-integer `number` value | `value.toFixed(3)`. |
+| `boolean` value | `"true"` or `"false"`. |
+| A source that threw | The `error` message, in the value's place. |
+
+A number that is not finite displays as `NaN`, `Infinity`, or `-Infinity`.
 
 ## Exports
 
-`FrameMetrics` is exported as a type from `@test-cabinet/structured-2d`.
+`DiagnosticValue`, `DiagnosticReading`, and `FrameMetrics` are exported as types
+from `@test-cabinet/structured-2d`.

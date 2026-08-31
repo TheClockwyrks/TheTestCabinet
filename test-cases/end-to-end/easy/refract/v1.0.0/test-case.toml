@@ -552,16 +552,18 @@ validation = { script = "instrumentation/reset.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "overlay"
-title = "The debug overlay reports the game"
-description = "Toggling the debug overlay over a posed board draws the diagnostics specs/instrumentation.md asks for — the current screen and mode, the board's cols and rows, and each channel's beam length — and the snapshot is identical before and after, so watching the overlay leaves the game as it is."
+title = "The game names its diagnostics, and reading them changes nothing"
+description = "The game names the diagnostics specs/instrumentation.md asks for — the current screen and mode, the board's cols and rows, and each channel's beam length — and each reports the posed board. Reading them leaves the game exactly as it was."
 domains = ["campaign", "cascade", "tracing", "presentation"]
 failure_cap = "passable"
-# Automated validation: toggle the overlay (the Backquote key in Chromium under
-# `none`; the engine's overlay key through its input under an engine), read the
-# new text draws off the recorder, and compare snapshots across the toggle. See
-# validation/<engine>/instrumentation/overlay.test.ts.
+# Automated validation: pose a board, then read the diagnostics the game named and
+# hold each against what the pose implies. Under `none` the overlay is the runtime
+# layer the model wrote, so the check toggles it and reads the lines it draws.
+# Under an engine the panel is the engine's, so the check reads the sources back
+# off the engine instead: what the game is graded on is naming them, not the
+# drawing. See validation/<engine>/instrumentation/overlay.test.ts.
 validation = { script = "instrumentation/overlay.test.ts", outputs = [
-  { id = "overlay", name = "The overlay reporting the posed board", kind = "image" },
+  { id = "overlay", name = "The posed board the diagnostics report", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "deterministic-core"

@@ -12,7 +12,7 @@
 // runs, and the predator lines are one per den slot rather than one per live
 // hunter, so the panel keeps its shape as a deeper maze adds to the roster.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
 import { DEN_ORDER, ROSTER_CAP } from "./constants";
 import { sonarRange } from "./flow";
 import { bodyCell } from "./movement";
@@ -28,8 +28,8 @@ const PREDATOR_LINES = DEN_ORDER.length * ROSTER_CAP;
  */
 export function diagnosticSources(
   read: () => FathomState,
-): [string, () => unknown][] {
-  const sources: [string, () => unknown][] = [
+): [string, () => DiagnosticValue][] {
+  const sources: [string, () => DiagnosticValue][] = [
     ["screen", () => `${read().screen}  depth ${read().depth}`],
     ["score", () => `${read().score}  lives ${read().lives}`],
     [

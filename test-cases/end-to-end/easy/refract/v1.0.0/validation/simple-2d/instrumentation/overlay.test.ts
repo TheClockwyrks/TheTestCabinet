@@ -1,45 +1,50 @@
-// Refract — instrumentation/overlay: the debug overlay reports the game, and
-// watching it leaves the game as it is.
+// Refract — instrumentation/overlay: the game registers the diagnostics the
+// specification asks for, and reading them leaves the game as it is.
 //
 // specs/instrumentation.md "Diagnostics": the build registers its diagnostic
-// sources through InitApi.diagnostics — at least the current screen and mode,
-// the board's cols and rows, and each channel's beam length among them — and
-// the engine draws one line per source when the overlay is toggled. Every
-// source is a pure read, so watching the overlay leaves the game as it is.
-// The toggle itself is the engine's backtick key (Backquote), dispatched on
-// the engine's own input path.
+// sources through `InitApi.diagnostics` — the current `screen` and `mode`, the
+// board's `cols` and `rows`, and each channel's beam length among them — and
+// keeps every source a pure read. Registering those values is the whole of
+// Refract's part; drawing the panel, toggling it, and keeping it read-only are
+// the engine's. So nothing here toggles the overlay, presses a key, or reads a
+// drawn line: the check reads the registry itself, through
+// `engine.diagnostics()`, which evaluates every registered source against the
+// current state and reports what each one returned.
 //
-// HOW THE LINES ARE READ. The engine draws the overlay after `render` through
-// the same recorded context as everything else, so the check collects the
-// text a steady frame draws WITHOUT the overlay, then the text the toggle's
-// frame draws WITH it, and the difference is the overlay's lines. The board
-// is 7x6 — the one dimension pair no beam length or menu figure collides
-// with — carrying all three channels with beams of 2, 3, and 0 cells drawn.
-// A source's rendering is the build's (a length may be counted in cells or
-// in segments), so each length is accepted under either count.
+// WHAT IS ASSERTED, AND HOW LOOSELY. The specification fixes the FACTS a source
+// must report, not the wording a build names them with, so a reading is looked
+// up by the specification's own word for its fact — `screen`, `mode`, the
+// board's `cols` and `rows`, and each channel name from specs/board.md — and
+// its VALUE is held against what the posed state implies. A beam's length is
+// honestly counted in cells or in segments, so each length is accepted under
+// either count, and a value that carries other words around the figure (a unit,
+// a completeness flag) still reports it.
 //
-// PURITY is read off the snapshot: identical before and after the toggle,
-// apart from simTime, which must advance by exactly the toggle's one frame —
-// time passing is the spec's own requirement of every update, overlay or not.
+// THE POSED STATE. A 7x6 board carrying all three channels, on the `playing`
+// screen in `campaign` mode, with a 2-cell triangle beam, a 3-cell square beam,
+// and the diamond beam left empty.
+//
+// PURITY. Every source is a pure read, so a read leaves the snapshot exactly as
+// it was — no frame runs here, so simTime is held too — and a second read with
+// nothing in between reports the same values.
 
+import type { DiagnosticReading } from "@test-cabinet/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertDeepEqual, fail } from "../assert";
+import { assertDeepEqual, assertGreaterThan, fail } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnText,
   loadBoard,
   resetTo,
-  seconds,
-  toggleOverlay,
   traceRoute,
   type Harness,
+  type RoutePairs,
 } from "../harness";
+import { CHANNELS, type Channel } from "../notation";
 
 /**
- * A 7x6 board carrying all three channels: adjacent triangle emitters (a
- * 2-cell beam), a square emitter-lens-emitter run (a 3-cell beam), and
- * diamond emitters too far apart for any segment (a 0-cell beam).
+ * A 7x6 board carrying all three channels: adjacent triangle emitters, a square
+ * emitter-lens-emitter run, and diamond emitters too far apart for any segment.
  * Spec-derived, written in specs/board.md notation.
  */
 const OVERLAY_BOARD = `
@@ -51,31 +56,97 @@ D.....D
 .......
 `;
 
-/** The lines `after` drew beyond `before`, as a multiset difference. */
-function newLines(before: string[], after: string[]): string[] {
-  const counts = new Map<string, number>();
-  for (const line of before) {
-    counts.set(line, (counts.get(line) ?? 0) + 1);
-  }
-  return after.filter((line) => {
-    const held = counts.get(line) ?? 0;
-    if (held > 0) {
-      counts.set(line, held - 1);
-      return false;
-    }
-    return true;
+/** The posed board's dimensions, counted off the notation above. */
+const COLS = 7;
+const ROWS = 6;
+
+/** The routes drawn on it, one per channel that can carry a segment. */
+const TRIANGLE_ROUTE: RoutePairs = [
+  [0, 0],
+  [1, 0],
+];
+const SQUARE_ROUTE: RoutePairs = [
+  [0, 1],
+  [1, 1],
+  [2, 1],
+];
+
+/** Cells each channel's beam ends up joining; the diamonds carry no segment. */
+const BEAM_CELLS: Readonly<Record<Channel, number>> = {
+  triangle: TRIANGLE_ROUTE.length,
+  square: SQUARE_ROUTE.length,
+  diamond: 0,
+};
+
+/** One reading as a line, so a failure names what the build did register. */
+function lines(readings: readonly DiagnosticReading[]): string[] {
+  return readings.map((reading) =>
+    reading.error === undefined
+      ? `${reading.name} = ${String(reading.value)}`
+      : `${reading.name} threw: ${reading.error}`,
+  );
+}
+
+/** The readings whose name carries any of the specification's words for a fact. */
+function namedFor(
+  readings: readonly DiagnosticReading[],
+  words: readonly string[],
+): DiagnosticReading[] {
+  return readings.filter((reading) => {
+    const name = reading.name.toLowerCase();
+    return words.some((word) => name.includes(word));
   });
 }
 
-/** Some overlay line carries `token`, ignoring case; fails naming `what`. */
-function assertSomeLine(
-  lines: readonly string[],
+/** A reading's value as the text a reader of the panel sees. */
+function valueText(reading: DiagnosticReading): string {
+  return String(reading.value).toLowerCase();
+}
+
+/** Every whole number written in a reading's value. */
+function figuresIn(reading: DiagnosticReading): number[] {
+  return (String(reading.value).match(/\d+/g) ?? []).map(Number);
+}
+
+/** The readings named for `requirement`, or a failure naming the whole set. */
+function sourcesFor(
+  readings: readonly DiagnosticReading[],
+  words: readonly string[],
+  requirement: string,
+): DiagnosticReading[] {
+  const found = namedFor(readings, words);
+  if (found.length === 0) {
+    fail(`a registered diagnostic named for ${requirement}`, lines(readings));
+  }
+  return found;
+}
+
+/** Some source named for `requirement` reports a value carrying `token`. */
+function assertReportsText(
+  readings: readonly DiagnosticReading[],
+  words: readonly string[],
   token: string,
-  what: string,
+  requirement: string,
 ): void {
-  const wanted = token.toLowerCase();
-  if (!lines.some((line) => line.toLowerCase().includes(wanted))) {
-    fail(`an overlay line carrying ${what}`, lines);
+  const sources = sourcesFor(readings, words, requirement);
+  if (!sources.some((reading) => valueText(reading).includes(token))) {
+    fail(`${requirement} reported as ${JSON.stringify(token)}`, lines(sources));
+  }
+}
+
+/** Some source named for `requirement` reports one of `figures`. */
+function assertReportsFigure(
+  readings: readonly DiagnosticReading[],
+  words: readonly string[],
+  figures: readonly number[],
+  requirement: string,
+): void {
+  const sources = sourcesFor(readings, words, requirement);
+  const reported = sources.some((reading) =>
+    figuresIn(reading).some((figure) => figures.includes(figure)),
+  );
+  if (!reported) {
+    fail(`${requirement} reported as ${figures.join(" or ")}`, lines(sources));
   }
 }
 
@@ -89,71 +160,61 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws the registered diagnostics and changes nothing in the game", async () => {
+it("registers the diagnostics the specification asks for, and reading them changes nothing", async () => {
   await resetTo(h, 1);
   await loadBoard(h, OVERLAY_BOARD);
-  traceRoute(h, [
-    [0, 0],
-    [1, 0],
-  ]);
-  traceRoute(h, [
-    [0, 1],
-    [1, 1],
-    [2, 1],
-  ]);
+  traceRoute(h, TRIANGLE_ROUTE);
+  traceRoute(h, SQUARE_ROUTE);
   await h.advance(1);
 
-  // A steady frame without the overlay, for the baseline text…
-  h.calls.length = 0;
-  await h.advance(1);
-  const baseline = drawnText(h.calls);
-  const before = h.snapshot();
-
-  // …then the toggle's frame, with it.
-  h.calls.length = 0;
-  await toggleOverlay(h);
+  // Evidence: the posed board the diagnostics below are read from.
   captureStill(h, "overlay");
-  const overlay = newLines(baseline, drawnText(h.calls));
-  const after = h.snapshot();
 
-  // The diagnostics the item names: the current screen and mode (spec-fixed
-  // strings), the board's cols and rows (7 and 6, digits nothing else on
-  // this board produces), and each channel's beam length (2, 3, and 0 cells
-  // — or 1, 2, and 0 segments; either count is the value's honest reading).
-  assertSomeLine(overlay, "playing", "the current screen, 'playing'");
-  assertSomeLine(overlay, "campaign", "the current mode, 'campaign'");
-  assertSomeLine(overlay, "7", "the board's cols, 7");
-  assertSomeLine(overlay, "6", "the board's rows, 6");
-  const lengths: ReadonlyArray<readonly [string, string, string]> = [
-    ["triangle", "2", "1"],
-    ["square", "3", "2"],
-    ["diamond", "0", "0"],
-  ];
-  for (const [channel, cells, segments] of lengths) {
-    const found = overlay.some(
-      (line) => line.includes(cells) || line.includes(segments),
+  const before = h.snapshot();
+  const readings = h.engine.diagnostics();
+
+  // Something was registered, and every source returned rather than threw: a
+  // source that throws is neither a value the panel can show nor a pure read.
+  assertGreaterThan(
+    readings.length,
+    0,
+    "the build registers diagnostic sources with the engine",
+  );
+  const threw = readings.filter((reading) => reading.error !== undefined);
+  assertDeepEqual(lines(threw), [], "every registered source returns a value");
+
+  // The facts specs/instrumentation.md names, each held against what the posed
+  // state implies. The screen and the mode are spec-fixed strings; the board's
+  // cols and rows are the notation's own 7 and 6.
+  assertReportsText(readings, ["screen"], "playing", "the current screen");
+  assertReportsText(readings, ["mode"], "campaign", "the current mode");
+  const boardWords = ["board", "cols", "rows"];
+  assertReportsFigure(readings, boardWords, [COLS], "the board's cols");
+  assertReportsFigure(readings, boardWords, [ROWS], "the board's rows");
+
+  // Each channel's beam length, counted in cells or in segments.
+  for (const channel of CHANNELS) {
+    const cells = BEAM_CELLS[channel];
+    assertReportsFigure(
+      readings,
+      [channel],
+      [cells, Math.max(0, cells - 1)],
+      `the ${channel} beam's length`,
     );
-    if (!found) {
-      fail(
-        `an overlay line carrying the ${channel} beam's length ` +
-          `(${cells} cells or ${segments} segments)`,
-        overlay,
-      );
-    }
   }
 
-  // And the game is as it was: every source is a pure read, so the snapshot
-  // is identical across the toggle apart from simTime, which advanced by
-  // exactly the toggle's one frame.
+  // A pure read: the game is exactly as it was, down to simTime, since reading
+  // the sources runs no frame.
   assertDeepEqual(
-    { ...after, simTime: 0 },
-    { ...before, simTime: 0 },
-    "watching the overlay leaves the game as it is",
+    h.snapshot(),
+    before,
+    "reading the diagnostics leaves the game as it is",
   );
-  assertCloseTo(
-    after.simTime - before.simTime,
-    seconds(1),
-    6,
-    "simTime advances by exactly the toggle's one frame, nothing more",
+
+  // And it reports the same values again, with nothing between the two reads.
+  assertDeepEqual(
+    lines(h.engine.diagnostics()),
+    lines(readings),
+    "a second read of the same state reports the same values",
   );
 });

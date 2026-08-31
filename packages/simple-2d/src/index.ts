@@ -62,6 +62,7 @@ import { WallClock } from "./clocks";
 import type {
   Clock,
   DeepReadonly,
+  DiagnosticReading,
   Engine,
   EngineEventMap,
   EngineOptions,
@@ -634,6 +635,15 @@ export function createEngine<S, D = unknown>(
     frame: (): FrameInfo => loop.info(),
 
     viewport: snapshot,
+
+    /**
+     * Read the registered diagnostics, off the engine rather than off the panel.
+     *
+     * Registration is the game's part and drawing the overlay is the engine's, so
+     * a check that wants to know what the game named reads here instead of
+     * inspecting what the panel drew.
+     */
+    diagnostics: (): readonly DiagnosticReading[] => diagnostics.read(),
 
     recording: (): boolean => recorder.active,
 

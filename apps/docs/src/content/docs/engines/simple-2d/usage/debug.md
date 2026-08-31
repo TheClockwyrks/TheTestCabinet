@@ -103,7 +103,7 @@ Each pose is a transition the game's own systems could have produced, so a
 scenario posed from code and the same scenario reached by playing leave the game
 in one state.
 
-A diagnostic source names a value for a human reading the overlay; the surface
+A diagnostic source names one value, of the types the overlay draws; the surface
 names the operations a caller drives from code, and the readings it needs to
 decide what happened. A reading returns a new value, because the state it is
 handed is read-only and a plain object is what a caller compares and serializes.

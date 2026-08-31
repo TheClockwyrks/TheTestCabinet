@@ -107,8 +107,8 @@ export class PatrolMode extends GameMode {
     diagnostics.register("lead", () => {
       const lead = this.world.byTag(TAG)[0];
       return lead === undefined
-        ? null
-        : { x: lead.transform.x, y: lead.transform.y };
+        ? "none"
+        : `${lead.transform.x.toFixed(1)}, ${lead.transform.y.toFixed(1)}`;
     });
     diagnostics.register("pace", () => this.pace);
 
@@ -146,14 +146,41 @@ build: patrol 1.4.0
 opens: 1
 wave: 3
 drones: 6
-lead: {"x":217.375,"y":120}
+lead: 217.4, 120.0
 pace: 74.750
 frame: 3.417 / 5.208 / 6.125 ms
 ```
 
-The four shapes the sources return cover the formatting rules. A string prints
-as itself, an integer prints whole, a non-integer prints to three decimal
-places, and an object prints as JSON. The metrics line reads the mean, the 95th,
-and the 99th percentile of the wall time spent in the frame's ticks, its
-collision pass, its render, and the overlay, over a window of the last 10
-seconds of simulated time. The percentiles are nearest-rank.
+The shapes the sources return cover the formatting rules. A string prints as
+itself, an integer prints whole, and a non-integer prints to three decimal
+places. `lead` formats the position inside the source, since a source reports a
+string, a number, or a boolean.
+
+The metrics line reads the mean, the 95th, and the 99th percentile of the wall
+time spent in the frame's ticks, its collision pass, its render, and the
+overlay, over a window of the last 10 seconds of simulated time. The percentiles
+are nearest-rank.
+
+## Reading the values back
+
+A check reads the same values by holding the engine rather than the page, so it
+asserts what Patrol registered rather than what the panel drew.
+
+```ts
+const readings = engine.diagnostics();
+
+expect(readings.map((r) => r.name)).toEqual([
+  "build",
+  "opens",
+  "wave",
+  "drones",
+  "lead",
+  "pace",
+]);
+expect(readings[0]).toEqual({ name: "build", value: "patrol 1.4.0" });
+expect(readings[3]).toEqual({ name: "drones", value: 6 });
+```
+
+The instance's two sources come first and the world's four follow, each in
+registration order, which is the order the panel draws them in. Reading changes
+nothing the engine holds, and the overlay stays hidden throughout.

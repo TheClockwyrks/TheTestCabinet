@@ -14,7 +14,7 @@
 // The balls get one group of lines each, in play order, so the overlay shows
 // all three at once.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
 import { BALL_COUNT, TAGS } from "./constants";
 import { Ball, ballsOf } from "./ball";
 import type { CaromGame } from "./game";
@@ -42,13 +42,13 @@ function paddleLine(world: World, tag: string): string {
  */
 export function diagnosticSources(
   game: CaromGame,
-): Record<string, () => unknown> {
+): Record<string, () => DiagnosticValue> {
   const world = (): World => game.engine.world;
   const match = (): MatchState | null => {
     const state = world().state;
     return state instanceof MatchState ? state : null;
   };
-  const sources: Record<string, () => unknown> = {
+  const sources: Record<string, () => DiagnosticValue> = {
     screen: () => screenOf(world()),
     mode: () => game.mode,
     score: () => {

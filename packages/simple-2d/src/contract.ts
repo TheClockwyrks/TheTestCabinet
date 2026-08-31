@@ -79,6 +79,40 @@ export interface FrameMetrics {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Diagnostics                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every value a diagnostic source may report.
+ *
+ * Three types, and the set is closed: the overlay draws one line per source, and a
+ * reader of that line wants the presentation a `string` fixes, the magnitude a
+ * `number` carries, or the flag a `boolean` states. A value the game holds in some
+ * other shape is reduced to one of the three inside the source, which is where the
+ * game's own vocabulary lives. Closing the set is also what lets a check compare a
+ * reading against an expected value without narrowing it first.
+ */
+export type DiagnosticValue = string | number | boolean;
+
+/**
+ * One registered diagnostic and what it reports right now.
+ *
+ * Exactly one of `value` and `error` is present. A source that throws yields
+ * `error` and no `value`, which keeps a failure distinguishable from every reading
+ * a working source could produce: were the message reported as the value, a defect
+ * in the game's source would arrive as a well-typed `string` that a check comparing
+ * values could accept.
+ */
+export interface DiagnosticReading {
+  /** The name the source was registered under. */
+  readonly name: string;
+  /** What the source reported, when it returned. */
+  readonly value?: DiagnosticValue;
+  /** Why the source failed, when it threw. */
+  readonly error?: string;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Input                                                                      */
 /* -------------------------------------------------------------------------- */
 
@@ -438,7 +472,10 @@ export interface InitApi<S = unknown> {
      * Name a value for the overlay. The source is called on every read, with the
      * state current at that read.
      */
-    register(name: string, source: (state: DeepReadonly<S>) => unknown): void;
+    register(
+      name: string,
+      source: (state: DeepReadonly<S>) => DiagnosticValue,
+    ): void;
   };
   readonly events: EngineEvents;
   /** The current logical-to-device fit. */
@@ -896,6 +933,14 @@ export interface Engine<S, D = unknown> {
   frame(): FrameInfo;
   /** The current logical-to-device fit, as a snapshot the caller owns. */
   viewport(): Viewport;
+  /**
+   * Every registered diagnostic and what it reports now, in registration order.
+   *
+   * Evaluates each source against the current state and changes nothing else, so
+   * a check reads the sources a build registered without posing the overlay: the
+   * reading is the same whether the panel is drawn or hidden.
+   */
+  diagnostics(): readonly DiagnosticReading[];
   /** Whether draw-command recording is currently capturing. */
   recording(): boolean;
   /**

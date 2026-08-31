@@ -77,11 +77,35 @@ describe("Diagnostics.read", () => {
     diagnostics.registerInstance("opens", () => 1);
     diagnostics.registerWorld("drones", () => 6);
 
-    expect(Object.entries(diagnostics.read())).toEqual([
-      ["build", "patrol 1.4.0"],
-      ["opens", 1],
-      ["wave", 3],
-      ["drones", 6],
+    expect(diagnostics.read()).toEqual([
+      { name: "build", value: "patrol 1.4.0" },
+      { name: "opens", value: 1 },
+      { name: "wave", value: 3 },
+      { name: "drones", value: 6 },
+    ]);
+  });
+
+  it("reports each of the three value types as itself", () => {
+    const diagnostics = new Diagnostics();
+    diagnostics.registerInstance("title", () => "vault");
+    diagnostics.registerWorld("bricks", () => 12);
+    diagnostics.registerWorld("cleared", () => false);
+
+    expect(diagnostics.read()).toEqual([
+      { name: "title", value: "vault" },
+      { name: "bricks", value: 12 },
+      { name: "cleared", value: false },
+    ]);
+  });
+
+  it("keeps a reading in each registry for a name registered in both", () => {
+    const diagnostics = new Diagnostics();
+    diagnostics.registerInstance("score", () => 1);
+    diagnostics.registerWorld("score", () => 2);
+
+    expect(diagnostics.read()).toEqual([
+      { name: "score", value: 1 },
+      { name: "score", value: 2 },
     ]);
   });
 
@@ -90,9 +114,9 @@ describe("Diagnostics.read", () => {
     let score = 0;
     diagnostics.registerInstance("score", () => score);
 
-    expect(diagnostics.read()["score"]).toBe(0);
+    expect(diagnostics.read()).toEqual([{ name: "score", value: 0 }]);
     score = 42;
-    expect(diagnostics.read()["score"]).toBe(42);
+    expect(diagnostics.read()).toEqual([{ name: "score", value: 42 }]);
   });
 
   it("replaces a re-registered source and keeps its original position", () => {
@@ -102,13 +126,13 @@ describe("Diagnostics.read", () => {
 
     diagnostics.registerInstance("a", () => 10);
 
-    expect(Object.entries(diagnostics.read())).toEqual([
-      ["a", 10],
-      ["b", 2],
+    expect(diagnostics.read()).toEqual([
+      { name: "a", value: 10 },
+      { name: "b", value: 2 },
     ]);
   });
 
-  it("contains a throwing source as its message, and never itself throws", () => {
+  it("reports a throwing source as an error with no value, and never itself throws", () => {
     const diagnostics = new Diagnostics();
     diagnostics.registerInstance("bad", () => {
       throw new Error("no world open");
@@ -119,27 +143,53 @@ describe("Diagnostics.read", () => {
     });
     diagnostics.registerWorld("fine", () => 7);
 
-    expect(diagnostics.read()).toEqual({
-      bad: "no world open",
-      worse: "plain refusal",
-      fine: 7,
-    });
+    const readings = diagnostics.read();
+
+    expect(readings).toEqual([
+      { name: "bad", error: "no world open" },
+      { name: "worse", error: "plain refusal" },
+      { name: "fine", value: 7 },
+    ]);
+    // A failure is not a reading of any type: nothing compares equal to the
+    // message the panel happens to draw in the value's place.
+    expect(readings[0]).not.toHaveProperty("value");
+    expect(readings[1]).not.toHaveProperty("value");
   });
 
   it("returns values unformatted", () => {
     const diagnostics = new Diagnostics();
-    const position = { x: 1.25, y: 2 };
-    diagnostics.registerWorld("lead", () => position);
+    diagnostics.registerWorld("pace", () => 74.75);
+    diagnostics.registerWorld("drift", () => Number.NaN);
 
-    expect(diagnostics.read()["lead"]).toBe(position);
+    expect(diagnostics.read()).toEqual([
+      { name: "pace", value: 74.75 },
+      { name: "drift", value: Number.NaN },
+    ]);
   });
 
-  it("reads the same with the overlay hidden", () => {
+  it("reads the same with the overlay hidden, and leaves it as it found it", () => {
     const diagnostics = new Diagnostics();
     diagnostics.registerInstance("score", () => 5);
 
     expect(diagnostics.enabled()).toBe(false);
-    expect(diagnostics.read()).toEqual({ score: 5 });
+    expect(diagnostics.read()).toEqual([{ name: "score", value: 5 }]);
+    expect(diagnostics.enabled()).toBe(false);
+
+    diagnostics.setEnabled(true);
+    expect(diagnostics.read()).toEqual([{ name: "score", value: 5 }]);
+    expect(diagnostics.enabled()).toBe(true);
+  });
+
+  it("changes nothing the sources read, however often it is read", () => {
+    const diagnostics = new Diagnostics();
+    const world = { bricks: 12 };
+    diagnostics.registerWorld("bricks", () => world.bricks);
+
+    const first = diagnostics.read();
+    const second = diagnostics.read();
+
+    expect(second).toEqual(first);
+    expect(world).toEqual({ bricks: 12 });
   });
 
   it("drops world sources when the world closes, keeping the instance's", () => {
@@ -149,7 +199,7 @@ describe("Diagnostics.read", () => {
 
     diagnostics.dropWorldSources();
 
-    expect(diagnostics.read()).toEqual({ build: "v1" });
+    expect(diagnostics.read()).toEqual([{ name: "build", value: "v1" }]);
   });
 });
 
@@ -264,16 +314,11 @@ describe("Diagnostics.draw", () => {
     diagnostics.registerInstance("title", () => "vault");
     diagnostics.registerInstance("whole", () => 3);
     diagnostics.registerInstance("fraction", () => 217.375);
-    diagnostics.registerInstance("nothing", () => null);
-    diagnostics.registerInstance("unset", () => undefined);
-    diagnostics.registerInstance("lead", () => ({ x: 217.375, y: 120 }));
-    diagnostics.registerInstance("tags", () => ["a", "b"]);
+    diagnostics.registerInstance("lead", () => "217.4, 120.0");
     diagnostics.registerInstance("flag", () => true);
-    diagnostics.registerInstance("cyclic", () => {
-      const knot: Record<string, unknown> = {};
-      knot["self"] = knot;
-      return knot;
-    });
+    diagnostics.registerInstance("cleared", () => false);
+    diagnostics.registerInstance("drift", () => Number.NaN);
+    diagnostics.registerInstance("ceiling", () => Number.POSITIVE_INFINITY);
     diagnostics.setEnabled(true);
     const { ctx, texts } = stubContext();
 
@@ -283,12 +328,11 @@ describe("Diagnostics.draw", () => {
       "title: vault",
       "whole: 3",
       "fraction: 217.375",
-      "nothing: null",
-      "unset: undefined",
-      'lead: {"x":217.375,"y":120}',
-      'tags: ["a","b"]',
+      "lead: 217.4, 120.0",
       "flag: true",
-      "cyclic: [object Object]",
+      "cleared: false",
+      "drift: NaN",
+      "ceiling: Infinity",
       "frame: 0 / 0 / 0 ms",
     ]);
   });

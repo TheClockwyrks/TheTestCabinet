@@ -160,10 +160,10 @@ surface's own readings.
 
 ## A surface is not a diagnostic
 
-A diagnostic source names a value for a person reading the overlay; the surface
-names the operations a caller drives from code, and the readings it needs to
-decide what happened. The two are declared separately and neither replaces the
-other. See `diagnostics.md`.
+A diagnostic source names one value, of the types the overlay draws, for a
+person reading the panel; the surface names the operations a caller drives from
+code, and the readings it needs to decide what happened. The two are declared
+separately and neither replaces the other. See `diagnostics.md`.
 
 ## Errors
 

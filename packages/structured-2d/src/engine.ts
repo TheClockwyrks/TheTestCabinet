@@ -67,6 +67,8 @@ import type {
   ActionBinding,
   Clock,
   CueSpec,
+  DiagnosticReading,
+  DiagnosticValue,
   Engine,
   EngineEventMap,
   EngineEvents,
@@ -322,7 +324,9 @@ export interface AudioPort {
 /** The slice of the diagnostics subsystem the engine itself drives. */
 export interface DiagnosticsPort {
   /** `InitApi.diagnostics.register`, forwarded to the instance registry. */
-  registerInstance(name: string, source: () => unknown): void;
+  registerInstance(name: string, source: () => DiagnosticValue): void;
+  /** Every source in both registries and what each reports now. */
+  read(): readonly DiagnosticReading[];
   /** Inverts the overlay; bound to the `Backquote` key by the engine. */
   toggle(): void;
   /** Draws the overlay in device pixels, after the pipeline and the recorder's bracket. */
@@ -430,7 +434,7 @@ interface DriverPorts {
   /** A fresh input reader, one per player controller added. */
   createReader(): InputReader;
   /** Registers a source in the diagnostics *world* registry. */
-  registerWorldDiagnostic(name: string, source: () => unknown): void;
+  registerWorldDiagnostic(name: string, source: () => DiagnosticValue): void;
   /** Drops every world-registry source; step 3 of a level closing. */
   dropWorldDiagnostics(): void;
 }
@@ -1244,6 +1248,16 @@ export function assembleEngine<D = unknown>(
     frame: frameInfo,
 
     viewport: snapshot,
+
+    /**
+     * Read the registered diagnostics, off the engine rather than off the
+     * panel.
+     *
+     * Registration is the game's part and drawing the overlay is the
+     * engine's, so a check that wants to know what the game named reads here
+     * instead of inspecting what the panel drew.
+     */
+    diagnostics: (): readonly DiagnosticReading[] => subsystems.diagnostics.read(),
 
     recording: (): boolean => recorder.active,
 

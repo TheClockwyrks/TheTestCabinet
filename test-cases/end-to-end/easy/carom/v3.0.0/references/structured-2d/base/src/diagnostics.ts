@@ -12,7 +12,7 @@
 // title screen forever. Watching the overlay never changes what the simulation
 // does, and each line is short enough to read at a glance while the game runs.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
 import { TAGS } from "./constants";
 import { Ball } from "./ball";
 import type { CaromGame } from "./game";
@@ -41,7 +41,7 @@ function paddleLine(world: World, tag: string): string {
  */
 export function diagnosticSources(
   game: CaromGame,
-): Record<string, () => unknown> {
+): Record<string, () => DiagnosticValue> {
   const world = (): World => game.engine.world;
   const match = (): MatchState | null => {
     const state = world().state;

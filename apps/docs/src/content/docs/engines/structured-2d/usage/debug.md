@@ -122,7 +122,7 @@ could have produced, so a scenario posed from code and the same scenario reached
 by playing leave the world in one state. A pose decides nothing about the
 outcome; the frames that follow do.
 
-A diagnostic source names a value for a human reading the overlay; the surface
+A diagnostic source names one value, of the types the overlay draws; the surface
 names the operations a caller drives from code, and the readings it needs to
 decide what happened. A reading returns a plain object built at the call, so a
 caller compares and serializes it without holding a framework object.

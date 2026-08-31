@@ -98,7 +98,10 @@ interface InitApi<S = unknown> {
     resolve(path: string): string;
   };
   readonly diagnostics: {
-    register(name: string, source: (state: DeepReadonly<S>) => unknown): void;
+    register(
+      name: string,
+      source: (state: DeepReadonly<S>) => DiagnosticValue,
+    ): void;
   };
   readonly events: EngineEvents;
   viewport(): Viewport;

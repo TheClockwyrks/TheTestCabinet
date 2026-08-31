@@ -83,8 +83,8 @@ key presses. The [overlay](/engines/simple-2d/concepts/diagnostics/) is the
 engine's panel and toggle, so it draws nothing. What remains on the surface is
 exactly the part of driving the game that only the game can supply.
 
-The overlay and the surface face opposite directions: a diagnostic source names a
-value for a human watching the panel, and the surface names the operations and
+The overlay and the surface name different things: a diagnostic source names one
+value, of the types the panel draws, and the surface names the operations and
 readings a caller drives from code.
 
 ## Inert in play

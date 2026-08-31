@@ -27,6 +27,7 @@ once the last orb is gone.
 | Orbs | Six, radius `8`, worth `10` points each, destroyed on overlap |
 | Actions | `up`, `down`, `left`, `right`, `dash` |
 | Cues | `collect`, `dash`, `over` |
+| Diagnostics | `best` on the instance, `orbs` on the world |
 
 The case fixes the level names, the tag vocabulary, the action names with the
 keys they bind, and the cue names, so a check names things every build of the
@@ -276,7 +277,8 @@ export const game: GameDefinition<Debug> = {
 ```
 
 `ArenaMode` carries `pawnClass = Runner` and adds player 0 in its `beginPlay`,
-which is what spawns the runner and possesses it. The walls and the orbs are
+which is what spawns the runner and possesses it, and registers `orbs` on the
+world's registry there. The walls and the orbs are
 declared actors, so they are built before the mode begins play and their ids are
 lower than the runner's.
 
@@ -787,6 +789,49 @@ One frame is advanced after the orb is placed. The collision pass finds the
 overlap, the mode ticks after it and requests the transition, and the engine
 performs the request at the end of that same frame, before the next one begins.
 No frame has stepped the summary world by the time the check reads it.
+
+## Asserting the diagnostics a build registered
+
+Registering the values the case names is the build's part. Drawing the panel,
+toggling it, and keeping it read-only are the engine's, so a check reads
+`engine.diagnostics()` and asserts the names the build registered and what each
+one reports for a posed world.
+
+```ts
+// validation/diagnostics.test.ts
+import { ConstantClock } from "@test-cabinet/structured-2d";
+import { afterEach, beforeEach, expect, it } from "vitest";
+import { createHarness, type Harness } from "./harness";
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness({ clock: new ConstantClock(1000 / 60) });
+});
+
+afterEach(() => {
+  harness.dispose();
+});
+
+it("registers the diagnostics the case names", () => {
+  const { engine } = harness;
+  engine.debug.keepOrbs(2);
+
+  expect(engine.diagnostics()).toEqual([
+    { name: "best", value: 0 },
+    { name: "orbs", value: 2 },
+  ]);
+});
+```
+
+The instance's sources come first and the world's follow, each in registration
+order, so one comparison covers the names, their order, and what each source
+reports. Reading evaluates the sources and changes nothing else, so a check
+reads them at any point in a scenario, and the overlay stays hidden throughout.
+
+A source the arena registers is dropped when the arena closes, so the same read
+after the travel to `summary` returns the instance's sources and whatever the
+summary level registered.
 
 ## Asserting on pixels and on the draw stream
 
