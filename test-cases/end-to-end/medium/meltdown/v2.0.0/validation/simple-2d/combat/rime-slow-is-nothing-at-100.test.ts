@@ -26,12 +26,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import { SURGE_DEFS, TRIP_HEAT } from "../../src/constants";
-import {
-  captureStill,
-  createHarness,
-  unitOf,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, unitOf, type Harness } from "../harness";
 import {
   NEAR_UNITS,
   fireRateOf,

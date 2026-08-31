@@ -28,12 +28,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
 import { SURGE_DEFS } from "../../src/constants";
-import {
-  captureReplay,
-  createHarness,
-  unitOf,
-  type Harness,
-} from "../harness";
+import { captureReplay, createHarness, unitOf, type Harness } from "../harness";
 import {
   NEAR_UNITS,
   fireRateOf,
@@ -95,7 +90,11 @@ it("A cold Rime slows hardest", async () => {
     BASE_SPEED,
     `precondition: the ${MARK}'s baseSpeed, which specs/surge.md fixes`,
   );
-  assertEqual(slowed.slowed, true, `the ${MARK} carrying a slow after one shot`);
+  assertEqual(
+    slowed.slowed,
+    true,
+    `the ${MARK} carrying a slow after one shot`,
+  );
   assertCloseTo(
     slowed.slowFactor,
     EXPECTED_FACTOR,

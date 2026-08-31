@@ -25,12 +25,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { BLOOM_SPLASH, TILE } from "../../src/constants";
-import {
-  captureStill,
-  createHarness,
-  unitOf,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, unitOf, type Harness } from "../harness";
 import {
   eastOfGun,
   fireRateOf,

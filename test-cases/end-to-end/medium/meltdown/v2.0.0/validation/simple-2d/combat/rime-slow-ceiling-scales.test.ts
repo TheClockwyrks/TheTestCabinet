@@ -29,12 +29,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  unitOf,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, unitOf, type Harness } from "../harness";
 import {
   NEAR_UNITS,
   fireRateOf,

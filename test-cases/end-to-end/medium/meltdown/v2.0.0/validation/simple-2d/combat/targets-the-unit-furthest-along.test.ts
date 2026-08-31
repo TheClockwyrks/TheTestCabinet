@@ -32,12 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  unitOf,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, unitOf, type Harness } from "../harness";
 import {
   eastOfGun,
   fireRateOf,
