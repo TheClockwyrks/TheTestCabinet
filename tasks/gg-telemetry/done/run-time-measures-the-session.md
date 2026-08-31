@@ -40,8 +40,8 @@ receives the full budget. Correct the page.
 
 ## Done when
 
-- [ ] The session's duration is recorded as its own metric on the run document.
-- [ ] Setup and verification durations are recorded separately.
-- [ ] The console surfaces that describe a model read the session figure.
-- [ ] The analysis documentation states what the cap wraps.
-- [ ] Gates green.
+- [x] The session's duration is recorded as its own metric on the run document.
+- [x] Setup and verification durations are recorded separately.
+- [x] The console surfaces that describe a model read the session figure.
+- [x] The analysis documentation states what the cap wraps.
+- [x] Gates green.

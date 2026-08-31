@@ -39,7 +39,7 @@ then rewrite.
 
 ## Done when
 
-- [ ] Every arm's function and type documentation is audited against the policies.
-- [ ] Documentation that breaks a policy is rewritten.
-- [ ] `views.openFile` reads as a statement of what the function does.
-- [ ] Gates green.
+- [x] Every arm's function and type documentation is audited against the policies.
+- [x] Documentation that breaks a policy is rewritten.
+- [x] `views.openFile` reads as a statement of what the function does.
+- [x] Gates green.

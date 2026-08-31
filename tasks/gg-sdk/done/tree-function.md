@@ -27,8 +27,8 @@ workspace.
 
 ## Done when
 
-- [ ] The function exists on every arm and returns a depth-bounded tree.
-- [ ] Ignored paths are absent from the result.
-- [ ] The opening turn's inclusion of the call and its depth are configurable.
-- [ ] Documentation for the function follows the SDK documentation policies.
-- [ ] Gates green.
+- [x] The function exists on every arm and returns a depth-bounded tree.
+- [x] Ignored paths are absent from the result.
+- [x] The opening turn's inclusion of the call and its depth are configurable.
+- [x] Documentation for the function follows the SDK documentation policies.
+- [x] Gates green.
