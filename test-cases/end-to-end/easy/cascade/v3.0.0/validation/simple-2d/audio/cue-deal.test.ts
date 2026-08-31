@@ -38,18 +38,24 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { centerOf, playedBefore, playedOn } from "./cues";
+import { centerOf, playedAfter, playedBefore, playedOn } from "./cues";
 
 /**
- * Frames of silence driven on the empty table before the control is clicked.
+ * Frames of silence driven on the empty table, on each side of the click.
  *
  * A whole `DOUBLE_CLICK_WINDOW` (`0.30` s, specs/controls.md), which is the longest
  * span this case fixes anywhere — the launch interval, the only other duration in
  * the case, is `0.18` s (specs/victory.md). So a build that sounds a cue on any
  * period the case names has to cross a window longer than its own period without
  * sounding anything.
+ *
+ * The SAME window is driven again AFTER the event, and the cue read across it too.
+ * A cue belongs to the ONE frame its event happened on (specs/audio.md), so a check
+ * that read only the frames before and the event's own frame would pass a build that
+ * echoed the cue on the frame after it, or that started it repeating. Reading quiet
+ * on both sides closes that.
  */
-const QUIET_LEAD = framesFor(DOUBLE_CLICK_WINDOW);
+const QUIET_WINDOW = framesFor(DOUBLE_CLICK_WINDOW);
 
 /** A point inside the HUD's `NEW GAME` rectangle (specs/controls.md). */
 const NEW_GAME = centerOf(HUD_NEW_GAME);
@@ -64,10 +70,10 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.deal on the frame a fresh game is dealt, and not before", async () => {
+it("plays CUES.deal on the frame a fresh game is dealt, and on no frame either side", async () => {
   const cues = watchCues(h);
   openTable(h);
-  await h.advance(QUIET_LEAD);
+  await h.advance(QUIET_WINDOW);
 
   await tapPointer(h, NEW_GAME.x, NEW_GAME.y);
   const at = h.engine.frame().count;
@@ -82,7 +88,7 @@ it("plays CUES.deal on the frame a fresh game is dealt, and not before", async (
   assertEqual(
     playedBefore(cues, at, CUES.deal),
     0,
-    `times CUES.deal played over the ${String(QUIET_LEAD)} frames before the ` +
+    `times CUES.deal played over the ${String(QUIET_WINDOW)} frames before the ` +
       "click, on an empty table where nothing happened at all " +
       "(specs/audio.md: a cue is played on the frame its event happens)",
   );
@@ -91,5 +97,14 @@ it("plays CUES.deal on the frame a fresh game is dealt, and not before", async (
     1,
     "times CUES.deal played on the frame the fresh game was dealt, which is " +
       "its own frame and at most once on it (specs/audio.md)",
+  );
+
+  await h.advance(QUIET_WINDOW);
+  assertEqual(
+    playedAfter(cues, at, CUES.deal),
+    0,
+    `times CUES.deal played over the ${String(QUIET_WINDOW)} frames after the ` +
+      "deal, on a dealt table nothing is touching (specs/audio.md: a cue is " +
+      "played on the frame its event happens)",
   );
 });

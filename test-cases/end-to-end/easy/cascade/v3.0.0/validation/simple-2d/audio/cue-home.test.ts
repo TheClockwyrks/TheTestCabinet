@@ -45,10 +45,16 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { playedBefore, playedOn, pressFrame, releaseFrame } from "./cues";
+import {
+  playedAfter,
+  playedBefore,
+  playedOn,
+  pressFrame,
+  releaseFrame,
+} from "./cues";
 
 /**
- * Frames of silence driven on the posed table before the press.
+ * Frames of silence driven on the posed table, on each side of the gesture.
  *
  * A whole `DOUBLE_CLICK_WINDOW` (`0.30` s, specs/controls.md), which is the longest
  * span this case fixes anywhere — the launch interval, the only other duration in
@@ -56,8 +62,14 @@ import { playedBefore, playedOn, pressFrame, releaseFrame } from "./cues";
  * period the case names has to cross a window longer than its own period without
  * sounding anything. It is also longer than the double-click window itself, so the
  * press below is measured against no press before it.
+ *
+ * The SAME window is driven again AFTER the event, and the cue read across it too.
+ * A cue belongs to the ONE frame its event happened on (specs/audio.md), so a check
+ * that read only the frames before and the event's own frame would pass a build that
+ * echoed the cue on the frame after it, or that started it repeating. Reading quiet
+ * on both sides closes that.
  */
-const QUIET_LEAD = framesFor(DOUBLE_CLICK_WINDOW);
+const QUIET_WINDOW = framesFor(DOUBLE_CLICK_WINDOW);
 
 /** The card that is sent home, where it waits, and the foundation it lands on. */
 const CARD = "AS";
@@ -75,7 +87,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.home on the frame a foundation accepts a card, and not before", async () => {
+it("plays CUES.home on the frame a foundation accepts a card, and on no frame either side", async () => {
   const cues = watchCues(h);
   openTable(h);
   const [ace] = poseColumn(h, FROM_COLUMN, [CARD]);
@@ -85,7 +97,7 @@ it("plays CUES.home on the frame a foundation accepts a card, and not before", a
     `posing: foundation ${String(FOUNDATION)} is empty, which is what makes ` +
       `it accept the ${CARD} (specs/foundations.md)`,
   );
-  await h.advance(QUIET_LEAD);
+  await h.advance(QUIET_WINDOW);
 
   await pressFrame(
     h,
@@ -108,7 +120,7 @@ it("plays CUES.home on the frame a foundation accepts a card, and not before", a
   assertEqual(
     playedBefore(cues, at, CUES.home),
     0,
-    `times CUES.home played over the ${String(QUIET_LEAD)} quiet frames and ` +
+    `times CUES.home played over the ${String(QUIET_WINDOW)} quiet frames and ` +
       "the press frame before the release (specs/audio.md: a cue is played on " +
       "the frame its event happens)",
   );
@@ -117,5 +129,14 @@ it("plays CUES.home on the frame a foundation accepts a card, and not before", a
     1,
     "times CUES.home played on the frame the foundation accepted the card, " +
       "which is its own frame and at most once on it (specs/audio.md)",
+  );
+
+  await h.advance(QUIET_WINDOW);
+  assertEqual(
+    playedAfter(cues, at, CUES.home),
+    0,
+    `times CUES.home played over the ${String(QUIET_WINDOW)} frames after the ` +
+      "release, with nothing in hand and no card left to send home " +
+      "(specs/audio.md: a cue is played on the frame its event happens)",
   );
 });

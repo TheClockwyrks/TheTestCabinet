@@ -107,6 +107,23 @@ export function playedBefore(
   return cues.filter((one) => one.frame < frame && one.cue === cue).length;
 }
 
+/**
+ * How many times `cue` played on any frame after `frame`.
+ *
+ * The far half of {@link playedBefore}. A cue belongs to the ONE frame its event
+ * happened on (specs/audio.md), so a check that read only the frames before the
+ * event and the event's own frame would pass a build that echoed the cue on the
+ * frame after it, or that left it repeating once started. Every `audio/cue-*` point
+ * therefore reads a quiet window on BOTH sides of its event.
+ */
+export function playedAfter(
+  cues: readonly TimedCue[],
+  frame: number,
+  cue: string,
+): number {
+  return cues.filter((one) => one.frame > frame && one.cue === cue).length;
+}
+
 /** How many times `cue` played on frame `frame` at a gain anything could hear. */
 export function audibleOn(
   cues: readonly TimedCue[],

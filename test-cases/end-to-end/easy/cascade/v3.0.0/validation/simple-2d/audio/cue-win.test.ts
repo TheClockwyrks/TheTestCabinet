@@ -52,10 +52,16 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { playedBefore, playedOn, pressFrame, releaseFrame } from "./cues";
+import {
+  playedAfter,
+  playedBefore,
+  playedOn,
+  pressFrame,
+  releaseFrame,
+} from "./cues";
 
 /**
- * Frames of silence driven on the nearly-won table before the press.
+ * Frames of silence driven on the nearly-won table, on each side of the gesture.
  *
  * A whole `DOUBLE_CLICK_WINDOW` (`0.30` s, specs/controls.md), which is the longest
  * span this case fixes anywhere — the launch interval, the only other duration in
@@ -63,8 +69,14 @@ import { playedBefore, playedOn, pressFrame, releaseFrame } from "./cues";
  * period the case names has to cross a window longer than its own period without
  * sounding anything. It is also longer than the double-click window itself, so the
  * press below is measured against no press before it.
+ *
+ * The SAME window is driven again AFTER the event, and the cue read across it too.
+ * A cue belongs to the ONE frame its event happened on (specs/audio.md), so a check
+ * that read only the frames before and the event's own frame would pass a build that
+ * echoed the cue on the frame after it, or that started it repeating. Reading quiet
+ * on both sides closes that.
  */
-const QUIET_LEAD = framesFor(DOUBLE_CLICK_WINDOW);
+const QUIET_WINDOW = framesFor(DOUBLE_CLICK_WINDOW);
 
 let h: Harness;
 
@@ -76,7 +88,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.win on the frame the last card home wins the game, and not before", async () => {
+it("plays CUES.win on the frame the last card home wins the game, and on no frame either side", async () => {
   const cues = watchCues(h);
   openTable(h);
   h.debug.setLaunching(false);
@@ -88,7 +100,7 @@ it("plays CUES.win on the frame the last card home wins the game, and not before
     "posing: the game is still in live play with one card left to send home " +
       "(specs/victory.md)",
   );
-  await h.advance(QUIET_LEAD);
+  await h.advance(QUIET_WINDOW);
 
   await pressFrame(
     h,
@@ -114,7 +126,7 @@ it("plays CUES.win on the frame the last card home wins the game, and not before
   assertEqual(
     playedBefore(cues, at, CUES.win),
     0,
-    `times CUES.win played over the ${String(QUIET_LEAD)} quiet frames and ` +
+    `times CUES.win played over the ${String(QUIET_WINDOW)} quiet frames and ` +
       "the press frame before the release, with fifty-one cards home and the " +
       "game unwon (specs/audio.md: a cue is played on the frame its event " +
       "happens)",
@@ -124,5 +136,14 @@ it("plays CUES.win on the frame the last card home wins the game, and not before
     1,
     "times CUES.win played on the frame the game was won, which is its own " +
       "frame and at most once on it (specs/audio.md)",
+  );
+
+  await h.advance(QUIET_WINDOW);
+  assertEqual(
+    playedAfter(cues, at, CUES.win),
+    0,
+    `times CUES.win played over the ${String(QUIET_WINDOW)} frames after the ` +
+      "release, on a game that is won once (specs/audio.md: a cue is played " +
+      "on the frame its event happens)",
   );
 });

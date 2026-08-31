@@ -43,10 +43,10 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { playedBefore, playedOn, pressFrame } from "./cues";
+import { playedAfter, playedBefore, playedOn, pressFrame } from "./cues";
 
 /**
- * Frames of silence driven on the posed table before the press.
+ * Frames of silence driven on the posed table, on each side of the press.
  *
  * A whole `DOUBLE_CLICK_WINDOW` (`0.30` s, specs/controls.md), which is the longest
  * span this case fixes anywhere — the launch interval, the only other duration in
@@ -54,8 +54,14 @@ import { playedBefore, playedOn, pressFrame } from "./cues";
  * period the case names has to cross a window longer than its own period without
  * sounding anything. It is also longer than the double-click window itself, so the
  * press below is measured against no press before it.
+ *
+ * The SAME window is driven again AFTER the event, and the cue read across it too.
+ * A cue belongs to the ONE frame its event happened on (specs/audio.md), so a check
+ * that read only the frames before and the event's own frame would pass a build that
+ * echoed the cue on the frame after it, or that started it repeating. Reading quiet
+ * on both sides closes that.
  */
-const QUIET_LEAD = framesFor(DOUBLE_CLICK_WINDOW);
+const QUIET_WINDOW = framesFor(DOUBLE_CLICK_WINDOW);
 
 /** The one card on the table, and the column and row it stands at. */
 const CARD = "5H";
@@ -72,7 +78,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.lift on the frame a press lifts a run into the hand, and not before", async () => {
+it("plays CUES.lift on the frame a press lifts a run into the hand, and on no frame either side", async () => {
   const cues = watchCues(h);
   openTable(h);
   poseColumn(h, COLUMN, [CARD]);
@@ -81,7 +87,7 @@ it("plays CUES.lift on the frame a press lifts a run into the hand, and not befo
     null,
     "posing: nothing is in hand before the press (specs/instrumentation.md)",
   );
-  await h.advance(QUIET_LEAD);
+  await h.advance(QUIET_WINDOW);
 
   const at = await pressFrame(
     h,
@@ -98,7 +104,7 @@ it("plays CUES.lift on the frame a press lifts a run into the hand, and not befo
   assertEqual(
     playedBefore(cues, at, CUES.lift),
     0,
-    `times CUES.lift played over the ${String(QUIET_LEAD)} frames before the ` +
+    `times CUES.lift played over the ${String(QUIET_WINDOW)} frames before the ` +
       "press, on a table where nothing happened at all (specs/audio.md: a cue " +
       "is played on the frame its event happens)",
   );
@@ -107,5 +113,14 @@ it("plays CUES.lift on the frame a press lifts a run into the hand, and not befo
     1,
     "times CUES.lift played on the frame the press lifted the run, which is " +
       "its own frame and at most once on it (specs/audio.md)",
+  );
+
+  await h.advance(QUIET_WINDOW);
+  assertEqual(
+    playedAfter(cues, at, CUES.lift),
+    0,
+    `times CUES.lift played over the ${String(QUIET_WINDOW)} frames after the ` +
+      "press, while the run stayed in hand and nothing was lifted again " +
+      "(specs/audio.md: a cue is played on the frame its event happens)",
   );
 });

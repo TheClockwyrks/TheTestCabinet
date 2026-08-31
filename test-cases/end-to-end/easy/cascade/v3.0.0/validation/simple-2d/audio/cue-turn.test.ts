@@ -45,18 +45,24 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { playedBefore, playedOn } from "./cues";
+import { playedAfter, playedBefore, playedOn } from "./cues";
 
 /**
- * Frames of silence driven on the posed table before the stock is clicked.
+ * Frames of silence driven on the posed table, on each side of the click.
  *
  * A whole `DOUBLE_CLICK_WINDOW` (`0.30` s, specs/controls.md), which is the longest
  * span this case fixes anywhere — the launch interval, the only other duration in
  * the case, is `0.18` s (specs/victory.md). So a build that sounds a cue on any
  * period the case names has to cross a window longer than its own period without
  * sounding anything.
+ *
+ * The SAME window is driven again AFTER the event, and the cue read across it too.
+ * A cue belongs to the ONE frame its event happened on (specs/audio.md), so a check
+ * that read only the frames before and the event's own frame would pass a build that
+ * echoed the cue on the frame after it, or that started it repeating. Reading quiet
+ * on both sides closes that.
  */
-const QUIET_LEAD = framesFor(DOUBLE_CLICK_WINDOW);
+const QUIET_WINDOW = framesFor(DOUBLE_CLICK_WINDOW);
 
 /**
  * The stock this scenario stands on: seven face-down cards.
@@ -80,7 +86,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.turn on the frame a turn moves cards onto the waste, and not before", async () => {
+it("plays CUES.turn on the frame a turn moves cards onto the waste, and on no frame either side", async () => {
   const cues = watchCues(h);
   openTable(h);
   poseStock(h, STOCK);
@@ -90,7 +96,7 @@ it("plays CUES.turn on the frame a turn moves cards onto the waste, and not befo
     "posing: the waste holds nothing before the turn, so every card on it " +
       "afterwards is one the turn moved (specs/instrumentation.md)",
   );
-  await h.advance(QUIET_LEAD);
+  await h.advance(QUIET_WINDOW);
 
   await tapPointer(h, STOCK_POINT.x, STOCK_POINT.y);
   const at = h.engine.frame().count;
@@ -105,7 +111,7 @@ it("plays CUES.turn on the frame a turn moves cards onto the waste, and not befo
   assertEqual(
     playedBefore(cues, at, CUES.turn),
     0,
-    `times CUES.turn played over the ${String(QUIET_LEAD)} frames before the ` +
+    `times CUES.turn played over the ${String(QUIET_WINDOW)} frames before the ` +
       "click, on a table where nothing happened at all (specs/audio.md: a cue " +
       "is played on the frame its event happens)",
   );
@@ -114,5 +120,14 @@ it("plays CUES.turn on the frame a turn moves cards onto the waste, and not befo
     1,
     "times CUES.turn played on the frame the turn moved cards onto the waste, " +
       "which is its own frame and at most once on it (specs/audio.md)",
+  );
+
+  await h.advance(QUIET_WINDOW);
+  assertEqual(
+    playedAfter(cues, at, CUES.turn),
+    0,
+    `times CUES.turn played over the ${String(QUIET_WINDOW)} frames after the ` +
+      "turn, on a table nothing is touching (specs/audio.md: a cue is played " +
+      "on the frame its event happens)",
   );
 });

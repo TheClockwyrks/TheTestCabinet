@@ -54,18 +54,25 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { frameWith, playedBefore, playedOn } from "./cues";
+import { frameWith, playedAfter, playedBefore, playedOn } from "./cues";
 
 /**
- * Frames of silence driven on the won table while launching is held off.
+ * Frames of silence driven on the won table while launching is held off, on each
+ * side of the launch.
  *
  * A whole `DOUBLE_CLICK_WINDOW` (`0.30` s, specs/controls.md), which is the longest
  * span this case fixes anywhere and longer than `LAUNCH_INTERVAL` (`0.18` s,
  * specs/victory.md), the cadence the cascade launches at. So a build that sounds
  * `launch` on the cascade's own timer rather than on a launch has to cross more
  * than a whole period of that timer without sounding anything.
+ *
+ * The SAME window is driven again AFTER the event, and the cue read across it too.
+ * A cue belongs to the ONE frame its event happened on (specs/audio.md), so a check
+ * that read only the frames before and the event's own frame would pass a build that
+ * echoed the cue on the frame after it, or that started it repeating. Reading quiet
+ * on both sides closes that.
  */
-const QUIET_LEAD = framesFor(DOUBLE_CLICK_WINDOW);
+const QUIET_WINDOW = framesFor(DOUBLE_CLICK_WINDOW);
 
 /** Cards in flight before the gate reopens, and after the one frame that follows. */
 const NO_FLYERS = 0;
@@ -81,7 +88,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays CUES.launch on the frame the cascade launches a card, and not before", async () => {
+it("plays CUES.launch on the frame the cascade launches a card, and on no frame either side", async () => {
   const cues = watchCues(h);
   startCascade(h);
   h.debug.setLaunching(false);
@@ -92,7 +99,7 @@ it("plays CUES.launch on the frame the cascade launches a card, and not before",
     "posing: the last card home moved the game to the won screen, which is " +
       "where the cascade runs (specs/victory.md)",
   );
-  await h.advance(QUIET_LEAD);
+  await h.advance(QUIET_WINDOW);
   assertEqual(
     h.snapshot().flyers.length,
     NO_FLYERS,
@@ -115,7 +122,7 @@ it("plays CUES.launch on the frame the cascade launches a card, and not before",
   assertEqual(
     playedBefore(cues, at, CUES.launch),
     0,
-    `times CUES.launch played over the ${String(QUIET_LEAD)} frames of the ` +
+    `times CUES.launch played over the ${String(QUIET_WINDOW)} frames of the ` +
       "won screen before the gate reopened, while nothing could launch " +
       "(specs/audio.md: a cue is played on the frame its event happens)",
   );
@@ -124,5 +131,18 @@ it("plays CUES.launch on the frame the cascade launches a card, and not before",
     1,
     "times CUES.launch played on the frame the cascade launched its card, " +
       "which is its own frame and at most once on it (specs/audio.md)",
+  );
+
+  // Launching is held off again for the tail, exactly as it was for the lead, so
+  // the quiet after the launch is a cascade that CANNOT launch rather than one that
+  // merely has not reached its next interval (specs/instrumentation.md).
+  h.debug.setLaunching(false);
+  await h.advance(QUIET_WINDOW);
+  assertEqual(
+    playedAfter(cues, at, CUES.launch),
+    0,
+    `times CUES.launch played over the ${String(QUIET_WINDOW)} frames after ` +
+      "the launch, with the launching faculty held off again so nothing could " +
+      "launch (specs/audio.md: a cue is played on the frame its event happens)",
   );
 });
