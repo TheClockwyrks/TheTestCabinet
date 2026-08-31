@@ -66,7 +66,10 @@ it("removes one bullet of either kind and leaves the others in flight", async ()
   }
 
   /** Remove one bullet and hold every other entry of the roster to standing. */
-  const removes = async (id: number, what: string): Promise<SpectraSnapshot> => {
+  const removes = async (
+    id: number,
+    what: string,
+  ): Promise<SpectraSnapshot> => {
     const before = await h.snapshot();
     assertGreaterThan(
       before.bullets.length,

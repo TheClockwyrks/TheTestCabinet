@@ -36,7 +36,12 @@ import {
   assertUndefined,
   fail,
 } from "../assert";
-import { captureStill, createHarness, burstById, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  burstById,
+  type Harness,
+} from "../harness";
 import { poseCrowdedField, sortedById } from "./crowded-field";
 
 /** How many drones are popped, so one burst can be taken and one left playing. */

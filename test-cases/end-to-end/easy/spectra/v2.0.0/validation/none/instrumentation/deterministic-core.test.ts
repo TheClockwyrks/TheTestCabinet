@@ -156,7 +156,10 @@ async function spendTheSecond(frames: number): Promise<Run> {
     h,
     frames,
     snapshot,
-    diver: moved === undefined ? `no drone carrying id ${diver}` : `${moved.x},${moved.y}`,
+    diver:
+      moved === undefined
+        ? `no drone carrying id ${diver}`
+        : `${moved.x},${moved.y}`,
     fluxBand: held === undefined ? `no drone carrying id ${flux}` : held.band,
   };
 }

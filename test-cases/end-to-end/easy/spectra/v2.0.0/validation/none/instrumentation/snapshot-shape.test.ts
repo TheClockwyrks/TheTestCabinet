@@ -51,6 +51,7 @@ import {
   BINDINGS,
   RESONANCE_MAX,
   SPECTRA_DEBUG_VERSION,
+  type Mode,
 } from "../constants";
 import {
   captureStill,
@@ -62,7 +63,6 @@ import {
   type DroneKind,
   type DronePhase,
   type Harness,
-  type Mode,
   type Phase,
   type Screen,
 } from "../harness";

@@ -105,7 +105,11 @@ it("holds a gated drone at the centre it was posed at, while an ungated one flie
   });
 
   const posed = await h.snapshot();
-  const heldBefore = requireDrone(posed, held, "the drone with travel gated off");
+  const heldBefore = requireDrone(
+    posed,
+    held,
+    "the drone with travel gated off",
+  );
   const moverBefore = requireDrone(posed, mover, "the drone with travel on");
 
   await h.advance(framesFor(DRIVE_SECONDS));
@@ -114,7 +118,11 @@ it("holds a gated drone at the centre it was posed at, while an ungated one flie
   await captureStill(h, "held");
 
   const driven = await h.snapshot();
-  const heldAfter = requireDrone(driven, held, "the drone with travel gated off");
+  const heldAfter = requireDrone(
+    driven,
+    held,
+    "the drone with travel gated off",
+  );
   assertCloseTo(
     heldAfter.x,
     heldBefore.x,
