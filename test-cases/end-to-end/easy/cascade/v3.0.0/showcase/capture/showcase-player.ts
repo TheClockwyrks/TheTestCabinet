@@ -447,8 +447,6 @@ function landingTopLeft(
 /* -------------------------------------------------------------------------- */
 
 export interface TakeRequest {
-  /** The variant being captured, for the messages and the file names. */
-  variant: string;
   /** How many cards a turn of the stock moves: `1` or `3`. */
   turnCount: number;
   /** The deal to play. The whole take is a function of it. */
@@ -543,7 +541,8 @@ export async function captureTake(
       { timeout: SURFACE_TIMEOUT_MS },
     );
 
-    // The deal, chosen. This is the whole of what the surface is asked to do.
+    // The deal, chosen. This is the only thing the surface is ever asked to DO;
+    // every other crossing below reads it.
     await call(page, "reset", [{ seed: request.seed }]);
 
     const hand = new Hand(page);
@@ -683,14 +682,20 @@ export async function captureTake(
           `  ${String(index).padStart(3)} ${describe(move)} — ${cardsHome(model)} home\n`,
         );
       }
+      // The picture wanted is the stock still holding cards, the waste showing
+      // everything a turn of this deal mode shows, and the foundations under way.
+      // Past four fifths of the plan that becomes unlikely — the stock empties —
+      // so from there any settled table will do rather than none at all.
+      const wanted =
+        table.stock.length > 0 &&
+        table.wasteVisibleCount >= request.turnCount &&
+        cardsHome(model) >= 4;
       if (
         !midTaken &&
         index >= midFrom &&
         request.outDir !== undefined &&
         table.screen === "playing" &&
-        table.stock.length > 0 &&
-        table.wasteVisibleCount >= request.turnCount &&
-        cardsHome(model) >= 4
+        (wanted || index >= Math.round(plan.length * 0.8))
       ) {
         const name = "mid-play.png";
         await page.screenshot({ path: `${request.outDir}/${name}` });

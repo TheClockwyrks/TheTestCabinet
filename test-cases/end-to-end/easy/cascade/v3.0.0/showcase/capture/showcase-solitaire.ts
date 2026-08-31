@@ -223,14 +223,9 @@ function foundationTakes(top: number, code: Code): boolean {
 }
 
 /** Whether a column whose cards are `column` accepts a run led by `lead`. */
-function columnTakes(
-  position: Position,
-  index: number,
-  lead: Code,
-  extra = 0,
-): boolean {
+function columnTakes(position: Position, index: number, lead: Code): boolean {
   const column = position.columns[index];
-  const size = column.length - extra;
+  const size = column.length;
   if (size === 0) return rankOf(lead) === RANK_MAX;
   const lowest = column[size - 1];
   if (size <= position.down[index]) return false;
@@ -422,10 +417,11 @@ function remaining(position: Position, turnCount: number): number {
  * The candidate moves from this position, best first.
  *
  * The ordering is the whole of the search's cleverness, and it is the ordering a
- * good player uses: turn over a face-down card when you can, and prefer the
- * column that is hiding the most; get the waste's card onto the table before you
- * bury it; open a column only when a King is waiting for it; and turn the stock
- * last, because a turn buys nothing on its own.
+ * good player uses: turn over a face-down card when you can, and take it from the
+ * column with the fewest left to dig through, since that is the column that can
+ * be emptied; get the waste's card onto the table before the next turn buries it;
+ * strip a column bare only when a King is waiting for the space; and turn the
+ * stock last, because a turn buys nothing on its own.
  */
 function candidates(position: Position): Move[] {
   const scored: { move: Move; score: number }[] = [];
@@ -474,7 +470,7 @@ function candidates(position: Position): Move[] {
       if (empties && !wantsColumn) continue;
       for (let to = 0; to < COLUMNS; to += 1) {
         if (to === from) continue;
-        if (!columnTakes(position, to, lead, 0)) continue;
+        if (!columnTakes(position, to, lead)) continue;
         const score = uncovers ? 100 - down : empties ? 60 : 30;
         scored.push({
           move: { kind: "column-column", from, count, to },

@@ -29,7 +29,7 @@ import { captureTake, knob, DEFAULT_PACE } from "./showcase-player";
  * of nothing but stock turns is, and how much of it is cards moving between
  * columns rather than off the stock. See `showcase/capture/README.md`.
  */
-const SEED = knob("TCAB_SHOWCASE_SEED", 60);
+const SEED = knob("TCAB_SHOWCASE_SEED", 822);
 
 /** Three cards a turn, which is what makes this variant Draw Three. */
 const TURN_COUNT = 3;
@@ -50,15 +50,14 @@ it(
         inject("cascadeBrowserWs"),
         inject("cascadeUrl"),
         {
-          variant: "draw-three",
           turnCount: TURN_COUNT,
           seed,
           outDir: record ? outDir : undefined,
           record,
           search: {
-            maxMoves: knob("TCAB_SHOWCASE_MAX_MOVES", 110),
-            maxNodes: knob("TCAB_SHOWCASE_MAX_NODES", 400_000),
-            weight: knob("TCAB_SHOWCASE_WEIGHT", 4),
+            maxMoves: knob("TCAB_SHOWCASE_MAX_MOVES", 102),
+            maxNodes: knob("TCAB_SHOWCASE_MAX_NODES", 90_000),
+            weight: knob("TCAB_SHOWCASE_WEIGHT", 3),
           },
           pace: DEFAULT_PACE,
           bitrate: process.env.TCAB_SHOWCASE_BITRATE ?? "380k",
