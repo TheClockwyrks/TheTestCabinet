@@ -1,28 +1,48 @@
 # The one and only Wick variant: the whole night, every weapon, passive, and
 # enemy. Listed as the single entry in the case manifest's `variants`, so it is
-# the default and every run is a run of it.
+# the default and every run is a run of it. Every path here resolves against
+# the version folder, exactly like the main manifest.
 slug = "base"
 name = "Base"
 description = "The whole night: every weapon, passive, and enemy, through to dawn."
 
 # This variant declares NO `spec` of its own, and that is deliberate. The
-# roster is content inside every build, the way Refract's twenty-four boards
-# are, not variants; nothing in the seeded set branches on the variant at all —
-# the only axis the specs branch on is `engine.slug`.
+# roster is content inside every build, not variants; nothing in the seeded set
+# branches on the variant at all, and the only axis the specs branch on is
+# `engine.slug`.
 
-# No `reference_implementation` yet. The authored correct builds — one per
-# supported engine, by convention `references/none/` and
-# `references/simple-2d/` — are still to be written, and a declared path must
-# exist for the case to resolve. Declare the table here when they land:
+# No `reference_implementation` yet. The authored, correct builds of this
+# variant, one per supported engine because the build a reference demonstrates
+# differs under each, land beside the validator suites, and a declared path must
+# exist for the case to resolve. Declare the table then, naming EXACTLY the
+# engines the case supports:
 #
 #   [reference_implementation]
-#   none = "references/none"
-#   "simple-2d" = "references/simple-2d"
+#   none = "references/none/base"
+#   "simple-2d" = "references/simple-2d/base"
+#   "structured-2d" = "references/structured-2d/base"
+#
+# No reference directory is ever seeded into a run: each is the authored answer,
+# built with the case's own `[build]` commands and held to the same four
+# toolchain gates a run is, and each is what `tcab capture-baselines` drives to
+# synthesize the baseline half of the validation media for its engine. This is
+# a full-stack case, so each of those builds also PRODUCES its own sprites,
+# sheets, icons, and audio during authoring, committed beside it; the build
+# itself only loads them, so `npm ci && npm run build` is self-contained.
 
-# No workspace of its own either: the case's common `workspace` (the engine
-# manifest format, and with it the per-engine `[workspaces]` table, is parked
-# in `test-case.toml`) covers every run, and there is nothing variant-specific
-# to replace it with. No
-# `[[review.categories]]` and no `[[domain]]`: with a single variant, every
-# point and every rated domain applies to every run, so they are all declared
-# commonly in `test-case.toml`.
+# No `showcase` yet either. The curated catalog presentation, a player-facing
+# description and a carousel led by sustained real play captured from a
+# reference build, lands with `showcase/base/` and its capture driver once the
+# references exist.
+
+# No `[workspaces]` override. This is the only variant, so the case's own
+# `[workspaces]` names its starter projects directly, one per engine.
+
+# No `[[domain]]` of its own. The one variant is the whole game, so it is rated
+# on the case's own `survival`, `arsenal`, `progression`, and `presentation`
+# domains alone.
+
+# No `[[review.categories]]` of its own. Every review item is common: with a
+# single variant there is no point whose claim could differ between modes, so
+# the case manifest carries the entire checklist, every item already naming the
+# validator that decides it under each engine.
