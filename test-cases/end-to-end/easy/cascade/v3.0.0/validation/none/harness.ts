@@ -3039,11 +3039,30 @@ export function columnOfCards(count: number, downCount = 0): CardSpec[] {
  *
  * It leaves the mute bit exactly as it stands, because `reset` does
  * (`specs/instrumentation.md`) and muting is the player's.
+ *
+ * IT READS BACK WHAT IT POSED, and fails here rather than letting a check read a
+ * board it never reached. `specs/controls.md` has a control answer only on the
+ * screen it belongs to, so a build that never left the title would answer none of
+ * the HUD's controls — and a point asking whether the HUD's MENU RETURNS to the
+ * title would read `title` back off a game that had never left it and call that a
+ * pass. Every scenario in this project opens through here, so one reading buys
+ * that guarantee for all of them, and the failure names the pose rather than the
+ * requirement the check went on to read.
  */
 export async function openTable(h: Harness): Promise<void> {
   await h.debug.reset();
   await h.debug.setScreen("playing");
   await h.debug.clearTable();
+
+  const opened = await h.snapshot();
+  if (opened.screen !== "playing") {
+    fail(
+      'posing: setScreen("playing") to put the game on the live table, which ' +
+        "is the screen every scenario here is driven on " +
+        "(specs/instrumentation.md)",
+      `snapshot().screen reports ${JSON.stringify(opened.screen)}`,
+    );
+  }
 }
 
 /**
