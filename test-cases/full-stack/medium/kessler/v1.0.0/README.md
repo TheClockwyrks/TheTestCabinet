@@ -117,12 +117,12 @@ posing the scenario through the instrumentation surface and reading it back, and
 each carries the scoring domains its failure lowers and the failure cap it
 applies.
 
-The validator suites do not ship in this change. `validation/<engine>/` (one
-Vitest project per engine, a suite per item at `<category>/<id>.test.ts`),
-the reference implementations under `references/<engine>/base/`, the captured
-`validation-baseline/` media, and the `showcase/` land in a later change; each
-item's `validation` declaration is added with its suite. Until then the
-checklist is the authored statement the suites are written to.
+The validator suites ship under `validation/<engine>/` — one Vitest project
+per engine, a suite per item at `<category>/<id>.test.ts` — and every item on
+the checklist declares its suite and the media it writes in its `validation`
+key. The suites were written to the checklist and captured against the
+reference implementations under `references/<engine>/base/`; the same relative
+suite path runs under all three engines.
 
 ## Versioning
 
