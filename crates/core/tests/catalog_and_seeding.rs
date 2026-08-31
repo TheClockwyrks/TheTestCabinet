@@ -1147,26 +1147,46 @@ fn jam_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../game-jams")
 }
 
+/// Directory names under a version that hold build output rather than definitions:
+/// a reference implementation's installed dependencies and its bundle, the
+/// git-ignored screenshot cache, and the per-build scratch directory. Every one is
+/// git-ignored, holds no committed manifest, and is rewritten wholesale by any
+/// build running beside the suite, so the walk stops at them and reads the
+/// committed catalog alone.
+const BUILD_OUTPUT_DIRS: [&str; 4] = ["node_modules", "dist", ".rendered", ".tcab"];
+
 /// Every committed case manifest on disk: `test-case.toml` under `test-cases/`
 /// and `game-jam.toml` under `game-jams/`, one per version directory.
 ///
 /// Walked from the filesystem rather than from the catalog, so the two can be
 /// compared: if discovery ever stops reaching a folder, the counts diverge here
 /// instead of the catalog quietly shrinking.
+///
+/// Every filesystem error is a panic naming the path it happened on, and a
+/// directory entry is classified by its own type rather than by following it. A
+/// walk that skipped what it could not read would answer a short list, and the
+/// callers that compare a count against it would report a catalog disagreeing with
+/// itself while the read that actually failed went unnamed.
 fn on_disk_manifests() -> Vec<PathBuf> {
     fn walk(dir: &Path, found: &mut Vec<PathBuf>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.filter_map(Result::ok) {
+        let entries =
+            std::fs::read_dir(dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()));
+        for entry in entries {
+            let entry =
+                entry.unwrap_or_else(|err| panic!("read an entry of {}: {err}", dir.display()));
             let path = entry.path();
-            if path.is_dir() {
-                walk(&path, found);
-            } else if path
+            let file_type = entry
+                .file_type()
+                .unwrap_or_else(|err| panic!("type of {}: {err}", path.display()));
+            let name = path
                 .file_name()
                 .and_then(|name| name.to_str())
-                .is_some_and(|name| name == "test-case.toml" || name == "game-jam.toml")
-            {
+                .unwrap_or_default();
+            if file_type.is_dir() {
+                if !BUILD_OUTPUT_DIRS.contains(&name) {
+                    walk(&path, found);
+                }
+            } else if name == "test-case.toml" || name == "game-jam.toml" {
                 found.push(path);
             }
         }
