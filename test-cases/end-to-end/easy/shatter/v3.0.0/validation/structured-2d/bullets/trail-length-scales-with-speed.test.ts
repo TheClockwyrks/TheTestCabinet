@@ -40,9 +40,10 @@
 // THE LANE IS THE BOTTOM OF THE FIELD, `330` units below the star, so no part of
 // the star — nothing of which is drawn beyond `180` units (specs/field.md) —
 // reaches the band, and `startPlaying` leaves no rock and no saucer on it. Both
-// flights are stopped at the same TICK COUNT rather than at the same distance, so
-// each has exactly the same `TRAIL_TICKS` of history behind it and neither is
-// read mid-fill.
+// flights run for the same NUMBER OF TICKS, so each has exactly the same
+// `TRAIL_TICKS` of history behind it and neither is read mid-fill; and both are
+// flown TO the same point of that lane and walked back the same distance, so
+// neither reading is clipped where the other is not.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BULLET_R, TICK_DT, TRAIL_TICKS } from "../../src/constants";
@@ -92,9 +93,8 @@ const SLOW_SPAN = SLOW * TRAIL_TICKS * TICK_DT;
 const FAST_SPAN = FAST * TRAIL_TICKS * TICK_DT;
 
 /**
- * How far past the span the walk keeps looking, as a multiple of it.
- *
- * ONE distance for both readings, three times the longer of the two spans.
+ * How far back along the lane a reading of the streak walks: ONE distance for
+ * both, three times the longer of the two spans.
  *
  * It is ONE distance rather than each flight's own span because a per-flight
  * cap is a ratio of its own: a walk that stopped at each flight's span would

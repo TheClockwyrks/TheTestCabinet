@@ -60,7 +60,7 @@
 import { DEFAULT_SEED, FIELD_W } from "../../src/constants";
 import { fail } from "../assert";
 import { shortestDelta } from "../geometry";
-import { poseBullet, startPlaying, resetTo, type Harness } from "../harness";
+import { poseBullet, resetTo, startPlaying, type Harness } from "../harness";
 import type { BulletSnapshot } from "../surface";
 
 /**
