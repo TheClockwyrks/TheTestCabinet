@@ -79,7 +79,11 @@ it("destroys a drone carrying charge when the shot's band matches", async () => 
     charge: OVERLOAD_AT - 1,
   });
 
-  const posed = requireDrone(await harness.snapshot(), target, "the shot's target");
+  const posed = requireDrone(
+    await harness.snapshot(),
+    target,
+    "the shot's target",
+  );
   assertEqual(
     chargeOf(posed, "the Shard posed one charge short of an overload"),
     OVERLOAD_AT - 1,

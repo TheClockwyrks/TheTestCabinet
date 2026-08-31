@@ -98,7 +98,11 @@ it("leaves a shimmering Flux's charge alone and does not destroy it", async () =
     charge: POSED_CHARGE,
   });
 
-  const posed = requireDrone(await harness.snapshot(), target, "the posed Flux");
+  const posed = requireDrone(
+    await harness.snapshot(),
+    target,
+    "the posed Flux",
+  );
   assertEqual(
     posed.shimmer,
     true,

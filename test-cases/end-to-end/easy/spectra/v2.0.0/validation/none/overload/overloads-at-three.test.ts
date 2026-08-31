@@ -91,7 +91,11 @@ it("runs the drone's reaction on a wrong-band shot into it at OVERLOAD_AT minus 
     travel: true,
   });
 
-  const posed = requireDrone(await harness.snapshot(), target, "the posed Shard");
+  const posed = requireDrone(
+    await harness.snapshot(),
+    target,
+    "the posed Shard",
+  );
   assertEqual(
     posed.phase,
     "formation",

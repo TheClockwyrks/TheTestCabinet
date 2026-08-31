@@ -88,7 +88,11 @@ it("leaves a drone a wrong-band shot found alive at charge one", async () => {
     band: "cyan",
   });
 
-  const posed = requireDrone(await harness.snapshot(), target, "the shot's target");
+  const posed = requireDrone(
+    await harness.snapshot(),
+    target,
+    "the shot's target",
+  );
   assertEqual(
     chargeOf(posed, "the freshly added Shard"),
     0,

@@ -29,7 +29,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { FORM_CENTER_X, OVERLOAD_AT, OVERLOAD_PRISM_ESCORTS } from "../constants";
+import {
+  FORM_CENTER_X,
+  OVERLOAD_AT,
+  OVERLOAD_PRISM_ESCORTS,
+} from "../constants";
 import {
   captureStill,
   createHarness,

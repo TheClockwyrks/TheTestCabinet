@@ -92,7 +92,11 @@ export async function mismatchShot(
   id: number,
   shot: Shot,
 ): Promise<UntilResult & { id: number; band: Band }> {
-  const drone = requireDrone(await h.snapshot(), id, "the mismatched shot's target");
+  const drone = requireDrone(
+    await h.snapshot(),
+    id,
+    "the mismatched shot's target",
+  );
   const band = mismatchBand(drone);
   const swept = await shootDrone(h, id, band, shot);
   return { ...swept, band };

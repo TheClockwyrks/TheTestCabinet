@@ -78,10 +78,18 @@ it("carries a drone's charge 0 to 1 to 2 over two wrong-band shots", async () =>
     below: SHOT_BELOW,
     maxFrames: SHOT_FRAMES,
   });
-  assertEqual(first.hit, true, "the first mismatched shot resolving inside its flight");
+  assertEqual(
+    first.hit,
+    true,
+    "the first mismatched shot resolving inside its flight",
+  );
   assertEqual(
     chargeOf(
-      requireDrone(first.snapshot, target, "the drone after one mismatched shot"),
+      requireDrone(
+        first.snapshot,
+        target,
+        "the drone after one mismatched shot",
+      ),
       "the drone after one mismatched shot",
     ),
     1,
@@ -94,10 +102,18 @@ it("carries a drone's charge 0 to 1 to 2 over two wrong-band shots", async () =>
   });
   await captureStill(harness, "advanced");
 
-  assertEqual(second.hit, true, "the second mismatched shot resolving inside its flight");
+  assertEqual(
+    second.hit,
+    true,
+    "the second mismatched shot resolving inside its flight",
+  );
   assertEqual(
     chargeOf(
-      requireDrone(second.snapshot, target, "the drone after two mismatched shots"),
+      requireDrone(
+        second.snapshot,
+        target,
+        "the drone after two mismatched shots",
+      ),
       "the drone after two mismatched shots",
     ),
     OVERLOAD_AT - 1,

@@ -67,7 +67,11 @@ it("puts a drone's charge back to zero in the frame it overloads", async () => {
     charge: OVERLOAD_AT - 1,
   });
 
-  const posed = requireDrone(await harness.snapshot(), target, "the posed Shard");
+  const posed = requireDrone(
+    await harness.snapshot(),
+    target,
+    "the posed Shard",
+  );
   assertEqual(
     chargeOf(posed, "the Shard posed one charge short of an overload"),
     OVERLOAD_AT - 1,

@@ -96,7 +96,11 @@ it("leaves the resonance meter where it stood through a charge and an overload",
     below: SHOT_BELOW,
     maxFrames: SHOT_FRAMES,
   });
-  assertEqual(charging.hit, true, "the charging shot resolving inside its flight");
+  assertEqual(
+    charging.hit,
+    true,
+    "the charging shot resolving inside its flight",
+  );
   assertEqual(
     chargeOf(
       requireDrone(charging.snapshot, target, "the drone the first shot fed"),
@@ -119,10 +123,18 @@ it("leaves the resonance meter where it stood through a charge and an overload",
   });
   await captureStill(harness, "meter");
 
-  assertEqual(overloading.hit, true, "the overloading shot resolving inside its flight");
+  assertEqual(
+    overloading.hit,
+    true,
+    "the overloading shot resolving inside its flight",
+  );
   assertEqual(
     chargeOf(
-      requireDrone(overloading.snapshot, target, "the drone that has just overloaded"),
+      requireDrone(
+        overloading.snapshot,
+        target,
+        "the drone that has just overloaded",
+      ),
       "the drone that has just overloaded",
     ),
     0,

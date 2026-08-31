@@ -83,7 +83,11 @@ it("carries a drone that has just overloaded from zero back to one", async () =>
   );
   assertEqual(
     chargeOf(
-      requireDrone(overloading.snapshot, target, "the drone that has just overloaded"),
+      requireDrone(
+        overloading.snapshot,
+        target,
+        "the drone that has just overloaded",
+      ),
       "the drone that has just overloaded",
     ),
     0,
@@ -97,10 +101,18 @@ it("carries a drone that has just overloaded from zero back to one", async () =>
   });
   await captureStill(harness, "recharged");
 
-  assertEqual(again.hit, true, "the second mismatched shot resolving inside its flight");
+  assertEqual(
+    again.hit,
+    true,
+    "the second mismatched shot resolving inside its flight",
+  );
   assertEqual(
     chargeOf(
-      requireDrone(again.snapshot, target, "the drone charged again after its overload"),
+      requireDrone(
+        again.snapshot,
+        target,
+        "the drone charged again after its overload",
+      ),
       "the drone charged again after its overload",
     ),
     1,

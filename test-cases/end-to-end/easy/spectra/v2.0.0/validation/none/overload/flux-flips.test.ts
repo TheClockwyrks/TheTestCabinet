@@ -105,7 +105,11 @@ it("puts an overloaded Flux on the opposite band with its window restarted", asy
     charge: OVERLOAD_AT - 1,
   });
 
-  const posed = requireDrone(await harness.snapshot(), target, "the posed Flux");
+  const posed = requireDrone(
+    await harness.snapshot(),
+    target,
+    "the posed Flux",
+  );
   assertEqual(
     posed.shimmer,
     false,
