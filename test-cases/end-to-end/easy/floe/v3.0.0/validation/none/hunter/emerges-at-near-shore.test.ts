@@ -1,26 +1,58 @@
-// Floe — hunter/emerges-at-near-shore: SCAFFOLD STUB, NOT A VALIDATOR.
+// hunter/emerges-at-near-shore — the bear that emerges appears on the near shore.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `hunter.emerges-at-near-shore` review item, written
-// against the `none` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/hunter.md: an empty slot fills with "a bear settled on the near shore in
+// the critter's column, facing up". WHERE it appears is this item; WHEN it appears
+// is `emerges-after-advance`'s, so the conditions here are posed to be met and the
+// roster is then watched one tick at a time, so the reading is taken on the very
+// tick the bear joined rather than a fifth of a second into its travel.
 //
-// The item this file decides, from test-case.toml:
-//
-//   A bear emerges on the near shore
-//
-//   The bear that emerges reports row 19 on the tick it joins the roster.
-//
-// Its declared media: replay `emerge`.
+// A bear covers `BEAR_ICE_SPEED` (3) tiles a second, which is a fortieth of a tile
+// in the tick it emerged on, so the tile it last settled on is still the tile it
+// appeared on however fast it left. That is what makes a per-tick watch the right
+// grain and a coarser one wrong.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertTrue } from "../assert";
+import { BEAR_EMERGE_ADVANCE, ROW_NEAR, START_COL } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  lastBear,
+  startCrossing,
+  ticksFor,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The row three rows of advance puts the critter on. */
+const ADVANCED_ROW = ROW_NEAR - BEAR_EMERGE_ADVANCE;
 
-it("hunter/emerges-at-near-shore has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** How long the roster is watched: far past the delay any slot can ask for. */
+const WATCH_SECONDS = 5;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("puts the bear it emerges on the near shore", async () => {
+  await startCrossing(h);
+  await h.debug.setCritterTile(START_COL, ADVANCED_ROW);
+  await h.debug.setBestRow(ADVANCED_ROW);
+  await h.debug.setBearEmergence(true);
+
+  const sighting = await captureReplay(h, "emerge", () =>
+    h.until((snapshot) => snapshot.bears.length > 0, {
+      maxTicks: ticksFor(WATCH_SECONDS),
+      poll: 1,
+    }),
+  );
+
+  assertTrue(sighting.hit, `a bear within ${WATCH_SECONDS} s of the advance`);
+  const bear = lastBear(sighting.snapshot);
+  assertEqual(bear?.row, ROW_NEAR, "the row the bear emerged on");
 });

@@ -1,27 +1,111 @@
-// Floe — hunter/refuses-vehicle-tile: SCAFFOLD STUB, NOT A VALIDATOR.
+// hunter/refuses-vehicle-tile — a step into a tile a vehicle covers is refused,
+// and costs the bear nothing.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `hunter.refuses-vehicle-tile` review item, written
-// against the `none` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/hunter.md: a tile covered by a vehicle is CLOSED to a bear, and "A step
+// into a closed tile is refused: the bear stays settled where it is, on the strait
+// and unharmed, and chooses again on the next tick." The step is sent with
+// `setBearStep`, which `specs/instrumentation.md` says consults no route and meets
+// exactly the refusal a routed step meets — so this reads the REFUSAL itself
+// rather than a route that happened to avoid the tile.
 //
-// The item this file decides, from test-case.toml:
+// The vehicle is PARKED. A bear is taken off the strait by a vehicle in a lane
+// whose speed is above `0`, so a moving one would confuse "the step was refused"
+// with "the bear was removed"; parked, the two readings come apart and the item's
+// "on the strait and unharmed" is what is read.
 //
-//   A vehicle's tile is closed to a bear
-//
-//   A step sent into a tile a parked vehicle covers leaves the bear on the
-//   tile it was on, still on the roster and unharmed.
-//
-// Its declared media: replay `refuse`.
+// The bear's sense and routing are off, so the only step it ever has is the one
+// this check sent it. What is left after a second of game time is a bear settled
+// exactly where it was posed.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
+import { tileCX, tileCY } from "../constants";
+import {
+  bearStepTile,
+  bearTile,
+  captureReplay,
+  createHarness,
+  poseBear,
+  poseLane,
+  requireBear,
+  startCrossing,
+  ticksFor,
+  type Harness,
+} from "../harness";
+import { vehicleCoversTile } from "./harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The row the vehicle is parked on, the bear's tile, and the vehicle's. */
+const ROW = 15;
+const BEAR_COL = 20;
+/** A `car` is two tiles long, so parked here it covers the bear's right neighbour. */
+const CAR_COL = BEAR_COL + 1;
 
-it("hunter/refuses-vehicle-tile has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** The game time the refused step is left standing for. */
+const HOLD_SECONDS = 1;
+
+/**
+ * How far the bear's centre may be from its tile's centre, in stage units.
+ *
+ * A refused step leaves the bear settled, and a settled bear's centre IS its
+ * tile's centre, so the only allowance is arithmetic: a hundredth of a unit is
+ * three thousandths of a tile.
+ */
+const CENTRE_TOLERANCE = 0.01;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("refuses a step into a parked vehicle and leaves the bear where it stood", async () => {
+  await startCrossing(h);
+  await poseLane(h, ROW, "car", [CAR_COL]);
+  const id = await poseBear(h, BEAR_COL, ROW, {
+    sense: false,
+    routing: false,
+  });
+
+  // The scenario this check needs, read off the game itself: the tile the step is
+  // sent into really is covered, and the tile the bear stands on really is not. A
+  // bear left standing on an uncovered strait would be a refusal of nothing.
+  const posed = await h.snapshot();
+  assertEqual(
+    vehicleCoversTile(posed, BEAR_COL + 1, ROW),
+    true,
+    `a vehicle over the tile the step is sent into (${BEAR_COL + 1}, ${ROW}), ` +
+      `which is what closes it (specs/hunter.md)`,
+  );
+  assertEqual(
+    vehicleCoversTile(posed, BEAR_COL, ROW),
+    false,
+    `a vehicle over the tile the bear stands on (${BEAR_COL}, ${ROW})`,
+  );
+
+  const after = await captureReplay(h, "refuse", async () => {
+    await h.debug.setBearStep(id, "right");
+    await h.advance(ticksFor(HOLD_SECONDS));
+    return h.snapshot();
+  });
+
+  // Still on the strait: a refused step costs the bear nothing.
+  const bear = requireBear(after, id, "the bear whose step was refused");
+  assertDeepEqual(bearTile(bear), { col: BEAR_COL, row: ROW }, "its tile");
+  assertDeepEqual(
+    bearStepTile(bear),
+    { col: BEAR_COL, row: ROW },
+    "the tile it is travelling into, a refused step leaving it settled",
+  );
+  assertLessThanOrEqual(
+    Math.max(
+      Math.abs(bear.x - tileCX(BEAR_COL)),
+      Math.abs(bear.y - tileCY(ROW)),
+    ),
+    CENTRE_TOLERANCE,
+    "stage units between its centre and the centre of the tile it stood on",
+  );
 });

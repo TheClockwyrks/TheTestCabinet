@@ -1,27 +1,110 @@
-// Floe — hunter/floe-speed: SCAFFOLD STUB, NOT A VALIDATOR.
+// hunter/floe-speed — a bear crossing a floe travels at its ICE speed.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `hunter.floe-speed` review item, written
-// against the `none` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/hunter.md: "A bear's footing is the footing of the tile it is travelling
+// into. It is `swimming` when that tile is on the water band and NO FLOE COVERS
+// IT, and on ice otherwise: the near shore, the ice band, the median, the far
+// shore, and any water tile a floe covers are all ice footing." So the water band
+// is not itself the swim speed — the open water is — and a bear crossing a raft
+// reads `bearIceSpeed`, not `bearSwimSpeed`.
 //
-// The item this file decides, from test-case.toml:
+// The two figures are 96 and 64 units a second at level 1, half as far apart
+// again as the 2% allowance, so a build that reads the BAND rather than the
+// COVERING fails here by a third and names which of the two models it built.
 //
-//   A bear on a floe travels at its ice speed
-//
-//   A bear stepped across a water row whose tiles a parked raft covers travels
-//   at the ice speed rather than the swim speed.
-//
-// Its declared media: replay `swim`.
+// The raft is PARKED (`poseLane` stops the lane before laying it), so the reading
+// is the bear's rate and not the bear's rate plus the lane's drift, and the tiles
+// it is measured over stay covered for the whole measurement.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertEqual } from "../assert";
+import { ITEM_LEN, TILE, bearIceSpeed } from "../constants";
+import {
+  captureReplay,
+  coversTile,
+  createHarness,
+  itemsOnRow,
+  poseBear,
+  poseLane,
+  speedOverTicks,
+  startCrossing,
+  ticksFor,
+  type Harness,
+} from "../harness";
+import { stepAcross } from "./harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** A row of the water band, and where the run starts on it. */
+const WATER_ROW = 6;
+const FROM_COL = 5;
 
-it("hunter/floe-speed has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/**
+ * The rafts laid under the run, by the column each one's left edge sits on.
+ *
+ * Two `raft4`s laid end to end cover eight consecutive columns from `FROM_COL - 1`,
+ * which is four tiles of clear margin past the three a level-1 bear covers in the
+ * second measured — so a build up to twice too fast is still measured over floe.
+ */
+const RAFT_COLS = [FROM_COL - 1, FROM_COL - 1 + ITEM_LEN.raft4];
+
+/** The level the figure is stated at. */
+const LEVEL = 1;
+
+/** The game time measured over. */
+const MEASURE_SECONDS = 1;
+
+/** The allowance `ice-speed` states around the same figure. */
+const SPEED_TOLERANCE = 0.02;
+
+/**
+ * How many columns past `FROM_COL` the measurement is required to be over floe.
+ *
+ * A level-1 bear covers three tiles in the second measured, and the two rafts
+ * cover eight columns from `FROM_COL - 1`, so six is comfortably inside the span
+ * and comfortably past where a build twice too fast would get to.
+ */
+const MEASURED_COLS = 6;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("travels at the ice speed over a water row a raft covers", async () => {
+  await startCrossing(h, LEVEL);
+  await poseLane(h, WATER_ROW, "raft4", RAFT_COLS);
+  const id = await poseBear(h, FROM_COL, WATER_ROW, {
+    sense: false,
+    routing: false,
+  });
+
+  // The scenario this check needs, read off the game itself: every tile the run
+  // is measured over really is covered by a floe, so the footing under the whole
+  // measurement is the one the rule calls ice.
+  const posed = await h.snapshot();
+  const rafts = itemsOnRow(posed, WATER_ROW);
+  for (let col = FROM_COL; col <= FROM_COL + MEASURED_COLS; col += 1) {
+    assertEqual(
+      rafts.some((raft) => coversTile(raft, col)),
+      true,
+      `a floe over water tile (${col}, ${WATER_ROW}), which is what makes it ` +
+        `ice footing (specs/hunter.md)`,
+    );
+  }
+
+  const ticks = ticksFor(MEASURE_SECONDS);
+  const covered = await captureReplay(h, "swim", () =>
+    stepAcross(h, id, "right", ticks),
+  );
+
+  const expected = bearIceSpeed(LEVEL) * TILE;
+  assertBetween(
+    speedOverTicks(covered, ticks),
+    expected * (1 - SPEED_TOLERANCE),
+    expected * (1 + SPEED_TOLERANCE),
+    `stage units a second over a floe at level ${LEVEL}`,
+  );
 });

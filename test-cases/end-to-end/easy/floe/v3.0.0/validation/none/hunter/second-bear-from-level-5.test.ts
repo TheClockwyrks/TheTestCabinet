@@ -1,29 +1,85 @@
-// Floe — hunter/second-bear-from-level-5: SCAFFOLD STUB, NOT A VALIDATOR.
+// hunter/second-bear-from-level-5 — a second bear hunts from level 5.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `hunter.second-bear-from-level-5` review item, written
-// against the `none` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/hunter.md: "A level below `SECOND_BEAR_LEVEL` (`5`) has one slot, and a
+// level from `SECOND_BEAR_LEVEL` up has `MAX_BEARS` (`2`)". The second slot's two
+// conditions are the first's plus its stagger: `BEAR_EMERGE_ADVANCE +
+// BEAR_SECOND_ADVANCE` (6) rows of advance and `BEAR_EMERGE_DELAY +
+// BEAR_SECOND_DELAY` (2.0 s) since it fell empty.
 //
-// The item this file decides, from test-case.toml:
+// The advance is posed with `setBestRow` at six rows, so both slots' advance
+// conditions are met from the start and the DELAY is the only condition left: the
+// roster holds one bear a whisker before two seconds and two a whisker after.
+// A build that opened the second slot on the first slot's delay would already hold
+// two at the earlier reading; a build with one slot at every level holds one at
+// both.
 //
-//   A second bear hunts from level 5
-//
-//   At level SECOND_BEAR_LEVEL (5) with emergence on, two bears join the
-//   roster, the second once the critter has advanced BEAR_EMERGE_ADVANCE +
-//   BEAR_SECOND_ADVANCE (6) rows and BEAR_EMERGE_DELAY + BEAR_SECOND_DELAY
-//   (2.0 s) have passed.
-//
-// Its declared media: replay `two`.
+// The level is set by `startCrossing`, which sets it BEFORE it empties the strait,
+// because `setLevel` re-lays all sixteen lanes.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual, assertLength } from "../assert";
+import {
+  BEAR_EMERGE_ADVANCE,
+  BEAR_EMERGE_DELAY,
+  BEAR_SECOND_ADVANCE,
+  BEAR_SECOND_DELAY,
+  ROW_NEAR,
+  SECOND_BEAR_LEVEL,
+  START_COL,
+} from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  startCrossing,
+  ticksFor,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The row six rows of advance puts the critter on: `ROW_NEAR - 6` is 13. */
+const ADVANCED_ROW = ROW_NEAR - (BEAR_EMERGE_ADVANCE + BEAR_SECOND_ADVANCE);
 
-it("hunter/second-bear-from-level-5 has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** The seconds the second slot needs since it fell empty. */
+const SECOND_DELAY = BEAR_EMERGE_DELAY + BEAR_SECOND_DELAY;
+
+/** Ticks of slack allowed either side of that delay, as in emerges-after-advance. */
+const DELAY_SLACK_TICKS = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("opens the second slot on its own delay at SECOND_BEAR_LEVEL", async () => {
+  await startCrossing(h, SECOND_BEAR_LEVEL);
+  await h.debug.setCritterTile(START_COL, ADVANCED_ROW);
+  await h.debug.setBestRow(ADVANCED_ROW);
+  await h.debug.setBearEmergence(true);
+
+  const { before, after } = await captureReplay(h, "two", async () => {
+    await h.advance(ticksFor(SECOND_DELAY) - DELAY_SLACK_TICKS);
+    const early = await h.snapshot();
+    await h.advance(2 * DELAY_SLACK_TICKS);
+    return { before: early, after: await h.snapshot() };
+  });
+
+  assertLength(
+    before.bears,
+    1,
+    `the hunt a whisker before the second slot's ${SECOND_DELAY} s ran out`,
+  );
+  // AT LEAST two, rather than exactly two. What this item decides is that the
+  // second bear arrives, and arrives on its OWN delay rather than the first's —
+  // which the reading before the delay is what pins. How many bears the hunt may
+  // ever hold is `at-most-two-bears`, and a build whose ceiling is wrong should
+  // lose that item alone rather than this one as well.
+  assertGreaterThanOrEqual(
+    after.bears.length,
+    2,
+    `the hunt a whisker after the second slot's ${SECOND_DELAY} s ran out`,
+  );
 });
