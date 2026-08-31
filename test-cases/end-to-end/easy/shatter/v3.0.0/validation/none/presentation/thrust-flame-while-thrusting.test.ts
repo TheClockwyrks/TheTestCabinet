@@ -13,29 +13,32 @@
 // makes the hull roughly `34` long from nose to tail, so a hull centred anywhere
 // sensible on that length ends by about `17` behind the centre and the band begins
 // just inside that and runs well past it. The ship is posed pointing along `+x` and
-// the band is laid on its ACTUAL position each time it is read, so the two ticks of
+// the band is laid on its ACTUAL position each time it is read, so the ticks of
 // thrust that move it cannot slide the reading off it.
 //
-// THREE READINGS, AND WHY THE QUIET ONE IS THE BASELINE. A build is free to draw a
-// hull longer than the specification's rough figure, and any part of it that reaches
-// into the band would be counted as a flame by a reading taken against the field
-// alone. So the band is read three times — before any thrust, while it is held, and a
-// tick after it is released — and what is asserted is the CHANGE from the quiet
-// reading. Whatever a build draws there permanently sits in all three and decides
-// nothing.
+// THREE WINDOWS, AND EACH IS READ AS ITS OWN MAXIMUM. The band is sampled over a
+// stretch of ticks before any thrust, over a stretch with the key held, and over a
+// stretch after it is released, and what each contributes is the MOST ink it ever
+// held. Two things follow from that, and both are the point:
 //
-//   - THE FLAME APPEARS: the band gains at least `MIN_FLAME` drawn samples while
-//     thrust is held.
-//   - AND IT GOES: a tick after the key is released, the band is back within
-//     `MAX_RESIDUE` samples of where it was before any thrust.
+//   - A BUILD IS FREE TO DRAW A HULL LONGER THAN THE SPECIFICATION'S ROUGH FIGURE,
+//     and whatever part of it reaches into the band sits in all three windows, so the
+//     CHANGE between them is what decides the item and a long hull decides nothing.
+//   - AND A FLAME THAT IS ALWAYS DRAWN CANNOT PASS BY FLICKERING. A flame's drawn
+//     length is a build's own business and may vary tick to tick; a single reading
+//     before the key and a single one after it could differ by that alone. The most
+//     the band ever held with no thrust applied is not something a flicker can move,
+//     so a build drawing its flame whether or not the key is down reads the same
+//     maximum in all three windows and gains nothing when the key goes down.
 //
-// Two assertions, but one requirement in one direction each way round: a build with
-// no flame fails the first, and a build whose flame never goes out fails the second,
-// and they grade differently.
+// THE TWO ASSERTIONS ARE THE RULE'S TWO CLAUSES: the band gains at least `MIN_FLAME`
+// while thrust is held, and it is back within `MAX_RESIDUE` of where it was once the
+// key is released. A build with no flame fails the first, a build whose flame never
+// goes out fails the second, and they grade differently.
 //
 // THE POSE is `ship-is-drawn-and-distinct`'s emptied, gated field with the ship at
-// `SHIP_SPOT`, `376` from the star's centre. A few ticks of thrust move it a
-// fraction of a unit, so nothing of the star and no seam comes near the band.
+// `SHIP_SPOT`, `376` from the star's centre. The whole burn moves it a couple of
+// units, so nothing of the star and no seam comes near the band.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
@@ -73,8 +76,14 @@ const BAND_STEP = 1;
 /** How far a sample must be from the field to be drawn, of 441. */
 const APART = 60;
 
-/** Ticks the key is held before the band is read: enough for the build to see it. */
-const HOLD_TICKS = 4;
+/**
+ * How many ticks each of the three windows is read over.
+ *
+ * Eight, a fifteenth of a second. Long enough that a flame drawn with a flicker of
+ * any speed a player could see reaches its full length somewhere inside every one of
+ * the three, and short enough that the burn stays a couple of units of travel.
+ */
+const WINDOW_TICKS = 8;
 
 /**
  * How many samples the band must GAIN while thrust is held.
@@ -88,12 +97,12 @@ const HOLD_TICKS = 4;
 const MIN_FLAME = 20;
 
 /**
- * How many samples the band may still hold a tick after the key is released.
+ * How many samples the band may still gain once the key has been released.
  *
- * Not zero: the ship carries the velocity the burn built (`specs/ship.md` gives it
- * no brake), so the hull sits a fraction of a unit further on than it did at the
- * quiet reading and its own anti-aliased edge moves a few samples with it. Ten is
- * that and nothing more; a flame still burning is tens.
+ * Not zero: the ship carries the velocity the burn built (`specs/ship.md` gives it no
+ * brake), so the hull sits a couple of units further on than it did at the quiet
+ * window and its own anti-aliased edge moves a few samples with it. Ten is that and
+ * nothing more; a flame still burning is tens.
  */
 const MAX_RESIDUE = 10;
 
@@ -140,40 +149,51 @@ async function bandInk(h: Harness, field: Rgb): Promise<number> {
   return marked;
 }
 
-it("draws behind the tail while thrust is held and stops a tick after it is released", async () => {
+/** The most ink the band ever held over `WINDOW_TICKS`, sampled a tick at a time. */
+async function mostInk(h: Harness, field: Rgb, keep: boolean): Promise<number> {
+  let most = 0;
+  for (let tick = 0; tick < WINDOW_TICKS; tick += 1) {
+    await h.advance(1);
+    const ink = await bandInk(h, field);
+    if (ink > most) {
+      most = ink;
+      // Kept from the brightest instant of the burn, so the picture shows the flame
+      // the reading was taken from.
+      if (keep) await captureStill(h, "flame");
+    }
+  }
+  return most;
+}
+
+it("draws behind the tail while thrust is held and stops once it is released", async () => {
   await startPlaying(harness);
   await harness.debug.setShipPosition(SHIP_SPOT.x, SHIP_SPOT.y);
   await harness.debug.setShipAngle(FACING);
   await harness.advance(1);
 
   const field = await sampleField(harness);
-  const quiet = await bandInk(harness, field);
+  const quiet = await mostInk(harness, field, false);
 
   let burning = quiet;
   await harness.hold(KEYS_THRUST[0]);
   try {
-    await harness.advance(HOLD_TICKS);
-    burning = await bandInk(harness, field);
-    // Kept while the key is still down, so the picture shows the flame the reading
-    // was taken from rather than the field a tick after it went out.
-    await captureStill(harness, "flame");
+    burning = await mostInk(harness, field, true);
   } finally {
     await harness.release(KEYS_THRUST[0]);
   }
 
-  await harness.advance(1);
-  const released = await bandInk(harness, field);
+  const released = await mostInk(harness, field, false);
   const moving = shipVelocity(await harness.snapshot());
 
   assertGreaterThanOrEqual(
     burning - quiet,
     MIN_FLAME,
-    `how many samples of the band behind the tail the build painted while thrust was held that it had not painted before, of about 840 (specs/ship.md; the burn built a velocity of ${Math.hypot(moving.x, moving.y).toFixed(1)})`,
+    `how many more samples of the band behind the tail the build ever painted with thrust held than it ever painted with none, of about 840 (specs/ship.md; the burn built a velocity of ${Math.hypot(moving.x, moving.y).toFixed(1)})`,
   );
 
   assertLessThanOrEqual(
     released - quiet,
     MAX_RESIDUE,
-    "how many samples of that band the build was still painting a tick after the thrust key was released, above what it painted before any thrust (specs/ship.md)",
+    "how many more samples of that band the build was still painting after the thrust key was released than it painted before any thrust (specs/ship.md)",
   );
 });

@@ -11,10 +11,12 @@
 // there scores zero however the bar is set.
 //
 // THE ROUND IS POSED AT REST, and that is the isolation this item wants. A bullet is
-// only required to draw a TAIL while it is moving, and a tail is drawn along the
-// path behind it — so a round with a velocity would paint the disc being read with
-// its own trail and the reading would be of the tail rather than of the round. At
-// rest there is no recent path, so what is inside `BULLET_R` is the round.
+// only required to draw a TAIL while it is moving, and a tail is drawn along the path
+// behind it — so a round with a velocity would paint the disc being read with ink it
+// laid down over a stretch of field it had already crossed, and the reading would be
+// of the path rather than of the round. At rest there is no recent path: whatever the
+// build paints inside `BULLET_R` it paints at the round's own position, which is
+// exactly what "a bullet reads apart from the field" asks of it.
 //
 // AND WHY IT IS POSED FAR OUT. `BULLET_SPOT` is `453` from the star's centre, where
 // the well pulls at about `22` units per second squared, so over the one tick this
