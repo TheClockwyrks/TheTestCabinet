@@ -1,17 +1,154 @@
-// Spectra — overload/plays-its-cue: an overload plays its own cue
+// overload/plays-its-cue — an overload sounds a cue of its own.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `overload.plays-its-cue` on the
-// `none` configuration, and captures the media `test-case.toml` declares
-// for it.
+// specs/mode.md closes this mode's reactions with a sound: "Each overload plays the
+// `overload` cue in the frame it happens, a distinct short sound beside the nine
+// `specs/ui.md` states." specs/ui.md governs all of them with one sentence — "Each
+// is played on the frame its event happens and at most once on that frame" — and
+// says explicitly that this file is where a mode's own cue is fixed:
+// "`specs/mode.md` states whether the mode this build ships plays a cue of its own
+// beside these." So the tenth cue is graded here and cannot be graded by the
+// common `audio` group, which a base build shares and which has no such cue.
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// THE MEASUREMENT IS THE ONE EVERY CUE POINT TAKES, and it is deliberately the
+// same: `../audio/cues` steps ONE FRAME AT A TIME so a sound can be attributed to
+// the frame that produced it, and reads what sounded on the event's own frame
+// against what sounded over the frames before it. A batched drive would say only
+// that a sound happened somewhere in the window, which a build that blips every
+// frame satisfies. That helper is shared rather than copied so this cue is read
+// exactly as the nine are.
+//
+// WHAT THIS ENGINE CAN AND CANNOT SEE. Not the cue's NAME: an engineless build
+// writes its whole audio layer itself and there is no bus to ask, so what is
+// observable is that a sound was emitted and on which driven frame. `../audio/cues`
+// states that in full. NO CHECK MAY ASSERT A CUE NAME, so what is asserted here is
+// that the overload's frame SOUNDED and that the climb before it was silent.
+//
+// THE EVENT IS THE OVERLOAD ITSELF, read as the charge returning to 0, which
+// specs/mode.md says an overload does in the frame it happens. A build that charges
+// on and never overloads never reaches the event and fails on that, which is the
+// honest verdict: there was no overload for a cue to play on.
+//
+// THE CLIMB IS THE HALF A BUILD CANNOT FAKE. The bullet is placed 200 units under
+// the drone and takes a quarter of a second to arrive, on a field where every
+// faculty of the one drone is off and nothing else is happening — so a conforming
+// build is silent for every frame of it. A build that blips continuously sounds on
+// the overload's frame too, and fails on the quiet that should have come first.
+//
+// NOTHING IS DESTROYED, so no stage clears and no `stage-clear` cue can land on the
+// frame this check reads.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { FORM_CENTER_X, OVERLOAD_AT, PLAYER_BULLET_SPEED } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  droneById,
+  framesFor,
+  poseDrone,
+  requireDrone,
+  startPosed,
+  type Harness,
+} from "../harness";
+import {
+  poseShotBelow,
+  quietFrames,
+  soundsBeforeEvent,
+  soundsOnEvent,
+  watchForEvent,
+} from "../audio/cues";
+import { chargeOf, mismatchBand } from "./charge";
 
-it("An overload plays its own cue", () => {
-  throw new Error(
-    "Spectra: validation/none/overload/plays-its-cue.test.ts is a scaffold placeholder and has not been implemented",
+/** Where the target Shard stands: mid-field, with room under it for the climb. */
+const TARGET = { x: FORM_CENTER_X, y: 300 } as const;
+
+/**
+ * How far below the drone the bullet starts, in logical units.
+ *
+ * Far enough that the climb is a real window of quiet — at
+ * `PLAYER_BULLET_SPEED` (760) it is a quarter of a second — and ten times the
+ * 20-unit contact reach a Shard has against one of the player's bullets
+ * (`SHARD_HALF` 14 + `PLAYER_BULLET_HALF` 6).
+ */
+const SHOT_BELOW = 200;
+
+/**
+ * Frames the climb is given to reach the drone.
+ *
+ * The time to climb the whole `SHOT_BELOW` at `PLAYER_BULLET_SPEED` — geometry, not
+ * a tolerance — plus two frames for the frame the bullet is placed on. Contact
+ * lands sooner, since the drone's and the bullet's half-extents meet before their
+ * centres do.
+ */
+const CLIMB_FRAMES = framesFor(SHOT_BELOW / PLAYER_BULLET_SPEED) + 2;
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.dispose();
+});
+
+it("sounds on the frame a drone overloads, and not over the climb before it", async () => {
+  // A real, browser-trusted gesture first: an engineless build owns its whole audio
+  // layer and is entitled to open it on the player's first interaction alone
+  // (specs/ui.md). The key is bound to nothing, so this changes no state.
+  await harness.armAudio();
+  await startPosed(harness);
+  const id = await poseDrone(harness, "shard", TARGET.x, TARGET.y, {
+    band: "cyan",
+    charge: OVERLOAD_AT - 1,
+  });
+  const target = requireDrone(
+    await harness.snapshot(),
+    id,
+    "the shot's target",
+  );
+  await poseShotBelow(
+    harness,
+    target.x,
+    target.y,
+    mismatchBand(target),
+    SHOT_BELOW,
+  );
+
+  const watch = await watchForEvent(
+    harness,
+    (snapshot) => droneById(snapshot, id)?.charge === 0,
+    CLIMB_FRAMES,
+  );
+  await captureStill(harness, "overload");
+
+  assertEqual(
+    watch.hit,
+    true,
+    `the ${mismatchBand(target)} shot placed ${String(SHOT_BELOW)} units below a ` +
+      `drone at charge ${String(OVERLOAD_AT - 1)} overloaded it inside the ` +
+      `${String(CLIMB_FRAMES)} frames its climb takes (specs/mode.md)`,
+  );
+  assertEqual(
+    chargeOf(
+      requireDrone(watch.snapshot, id, "the drone that has just overloaded"),
+      "the drone that has just overloaded",
+    ),
+    0,
+    "the charge that says the frame this check read really was the overload's " +
+      "(specs/mode.md)",
+  );
+  assertEqual(
+    soundsBeforeEvent(watch),
+    0,
+    `sounds the build emitted over the ${String(quietFrames(watch))} frames the ` +
+      "bullet climbed, on a field where nothing else is happening — a cue is " +
+      "played on the frame its event happens (specs/ui.md)",
+  );
+  assertGreaterThanOrEqual(
+    soundsOnEvent(watch),
+    1,
+    "sounds the build emitted on the frame the drone overloaded, which is the " +
+      "frame the overload cue is played on (specs/mode.md)",
   );
 });
