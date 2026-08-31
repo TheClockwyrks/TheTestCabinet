@@ -112,7 +112,11 @@ it("The Forge never pushes past its setpoint", async () => {
   );
   await h.advance(1);
   await captureStill(h, "setpoint");
-  const closedAt = await readHeat(h, at.id, "the one at the setpoint, a frame on");
+  const closedAt = await readHeat(
+    h,
+    at.id,
+    "the one at the setpoint, a frame on",
+  );
   const closedAbove = await readHeat(
     h,
     above.id,

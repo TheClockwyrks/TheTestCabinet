@@ -113,7 +113,11 @@ it("opens both end screens with the highlight on PLAY AGAIN", async () => {
     await debug.setBuildTimer(0);
     await debug.setWavePending(0);
     const mote = await poseWalker(h, "mote", "left");
-    await debug.setUnitPosition(mote, tileCX(LEAK_TILE.col), tileCY(LEAK_TILE.row));
+    await debug.setUnitPosition(
+      mote,
+      tileCX(LEAK_TILE.col),
+      tileCY(LEAK_TILE.row),
+    );
     await debug.setMenuIndex(STALE_ROW);
 
     const posed = await h.snapshot();
@@ -125,7 +129,11 @@ it("opens both end screens with the highlight on PLAY AGAIN", async () => {
     await captureStill(h, "focused");
 
     assertEqual(ended.hit, true, `the Mote reached its exhaust, for ${where}`);
-    assertEqual(ended.snapshot.screen, screen, `the screen the last unit going opened, for ${where}`);
+    assertEqual(
+      ended.snapshot.screen,
+      screen,
+      `the screen the last unit going opened, for ${where}`,
+    );
     assertEqual(
       ended.snapshot.menuIndex,
       PLAY_AGAIN_ROW,

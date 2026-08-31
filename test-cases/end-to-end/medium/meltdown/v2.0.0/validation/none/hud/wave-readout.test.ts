@@ -22,7 +22,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
 import { HUD_WAVE_LABEL, modeFigures } from "../constants";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 import { readPanel, reads, saysWord } from "./panel";
 
 /** The run: Containment on Hard, whose wave count is a figure nothing else equals. */
@@ -61,7 +66,11 @@ it("reads the wave over the run's total and follows setWave", async () => {
   await h.debug.setWave(SECOND);
   const second = await readPanel(h);
 
-  assertEqual(TOTAL, 26, "the wave count specs/modes.md gives Containment on Hard");
+  assertEqual(
+    TOTAL,
+    26,
+    "the wave count specs/modes.md gives Containment on Hard",
+  );
   assertTrue(
     saysWord(first, HUD_WAVE_LABEL),
     `the panel to draw the ${HUD_WAVE_LABEL} label (specs/hud.md)`,

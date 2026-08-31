@@ -31,7 +31,12 @@
 // no second gun and no other death can reach either tally.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertEqual, assertGreaterThan, assertTrue } from "../assert";
+import {
+  assertCloseTo,
+  assertEqual,
+  assertGreaterThan,
+  assertTrue,
+} from "../assert";
 import {
   captureStill,
   createHarness,
@@ -98,7 +103,11 @@ it("A placed tower tallies what it did", async () => {
   const openedSurvivor = await readHp(h, survivor);
 
   await h.advance(framesForShots(SHOTS, fireRateOf(TOWER, LEVEL)));
-  const afterRun = await readGun(h, runGun, `the ${TOWER} after ${SHOTS} shots`);
+  const afterRun = await readGun(
+    h,
+    runGun,
+    `the ${TOWER} after ${SHOTS} shots`,
+  );
   const removed = openedSurvivor - (await readHp(h, survivor));
 
   // Scenario two: a killing blow on a mark with one hp.

@@ -80,7 +80,11 @@ it("opens the victory screen when the onslaught clears with lives left", async (
   await debug.setBuildTimer(0);
   await debug.setWavePending(0);
   const mote = await poseWalker(h, "mote", "left");
-  await debug.setUnitPosition(mote, tileCX(LEAK_TILE.col), tileCY(LEAK_TILE.row));
+  await debug.setUnitPosition(
+    mote,
+    tileCX(LEAK_TILE.col),
+    tileCY(LEAK_TILE.row),
+  );
 
   // The condition the rule attaches to victory, read before the clear rather
   // than after it: the run must be carrying at least one life into the last unit
@@ -97,7 +101,11 @@ it("opens the victory screen when the onslaught clears with lives left", async (
   });
   await captureStill(h, "victory");
 
-  assertEqual(cleared.hit, true, "the last unit of the onslaught left the floor");
+  assertEqual(
+    cleared.hit,
+    true,
+    "the last unit of the onslaught left the floor",
+  );
   assertEqual(
     cleared.snapshot.screen,
     "victory",

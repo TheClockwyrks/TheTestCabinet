@@ -60,7 +60,11 @@ it("highlights the first row when down is pressed on the last row of a menu", as
   await h.advance(1);
 
   const posed = await h.snapshot();
-  assertEqual(posed.screen, "modeselect", "the screen the scenario is posed on");
+  assertEqual(
+    posed.screen,
+    "modeselect",
+    "the screen the scenario is posed on",
+  );
   assertEqual(posed.menuIndex, LAST_ROW, "the row the scenario is posed on");
 
   await tapAction(h, "down");

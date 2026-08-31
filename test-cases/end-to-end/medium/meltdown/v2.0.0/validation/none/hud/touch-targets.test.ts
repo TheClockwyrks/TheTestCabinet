@@ -25,8 +25,18 @@
 // `MIN_TOUCH_TARGET` is about. What the build draws inside it is its own business.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual, assertLessThanOrEqual, assertNotNull } from "../assert";
-import { MIN_TOUCH_TARGET, PANEL_X, STAGE_H, STAGE_W, type Rect } from "../constants";
+import {
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+  assertNotNull,
+} from "../assert";
+import {
+  MIN_TOUCH_TARGET,
+  PANEL_X,
+  STAGE_H,
+  STAGE_W,
+  type Rect,
+} from "../constants";
 import { FREE_SITE } from "../fixtures";
 import {
   captureStill,
@@ -44,12 +54,32 @@ const PURSE = 1000;
 
 /** Every rectangle is held to both sides of `MIN_TOUCH_TARGET` and to the strip. */
 function assertTappable(rect: Rect, name: string): void {
-  assertGreaterThanOrEqual(rect.w, MIN_TOUCH_TARGET, `the width of the ${name} control`);
-  assertGreaterThanOrEqual(rect.h, MIN_TOUCH_TARGET, `the height of the ${name} control`);
-  assertGreaterThanOrEqual(rect.x, PANEL_X, `the left edge of the ${name} control, inside the panel's strip`);
-  assertLessThanOrEqual(rect.x + rect.w, STAGE_W, `the right edge of the ${name} control`);
+  assertGreaterThanOrEqual(
+    rect.w,
+    MIN_TOUCH_TARGET,
+    `the width of the ${name} control`,
+  );
+  assertGreaterThanOrEqual(
+    rect.h,
+    MIN_TOUCH_TARGET,
+    `the height of the ${name} control`,
+  );
+  assertGreaterThanOrEqual(
+    rect.x,
+    PANEL_X,
+    `the left edge of the ${name} control, inside the panel's strip`,
+  );
+  assertLessThanOrEqual(
+    rect.x + rect.w,
+    STAGE_W,
+    `the right edge of the ${name} control`,
+  );
   assertGreaterThanOrEqual(rect.y, 0, `the top edge of the ${name} control`);
-  assertLessThanOrEqual(rect.y + rect.h, STAGE_H, `the bottom edge of the ${name} control`);
+  assertLessThanOrEqual(
+    rect.y + rect.h,
+    STAGE_H,
+    `the bottom edge of the ${name} control`,
+  );
 }
 
 let h: Harness;
@@ -73,9 +103,16 @@ it("reports every control at least 32 by 32 and inside the panel's strip", async
   await captureStill(h, "targets");
   const armed = (await h.snapshot()).controls;
 
-  assertNotNull(armed.rotate, "the panel to report a Rotate control while a preview is held");
-  assertNotNull(armed.cancel, "the panel to report a Cancel control while a preview is held");
-  for (const entry of armed.shop) assertTappable(entry, `${entry.type} shop entry`);
+  assertNotNull(
+    armed.rotate,
+    "the panel to report a Rotate control while a preview is held",
+  );
+  assertNotNull(
+    armed.cancel,
+    "the panel to report a Cancel control while a preview is held",
+  );
+  for (const entry of armed.shop)
+    assertTappable(entry, `${entry.type} shop entry`);
   if (armed.rotate !== null) assertTappable(armed.rotate, "Rotate");
   if (armed.cancel !== null) assertTappable(armed.cancel, "Cancel");
   assertTappable(armed.send, "Send");
@@ -90,8 +127,14 @@ it("reports every control at least 32 by 32 and inside the panel's strip", async
   await h.advance(1);
   const selected = (await h.snapshot()).controls;
 
-  assertNotNull(selected.upgrade, "the panel to report an Upgrade control while a tower is selected");
-  assertNotNull(selected.sell, "the panel to report a Sell control while a tower is selected");
+  assertNotNull(
+    selected.upgrade,
+    "the panel to report an Upgrade control while a tower is selected",
+  );
+  assertNotNull(
+    selected.sell,
+    "the panel to report a Sell control while a tower is selected",
+  );
   if (selected.upgrade !== null) assertTappable(selected.upgrade, "Upgrade");
   if (selected.sell !== null) assertTappable(selected.sell, "Sell");
 });

@@ -77,20 +77,32 @@ it("opens no build phase when the onslaught clears", async () => {
   await debug.setBuildTimer(0);
   await debug.setWavePending(0);
   const mote = await poseWalker(h, "mote", "left");
-  await debug.setUnitPosition(mote, tileCX(LEAK_TILE.col), tileCY(LEAK_TILE.row));
+  await debug.setUnitPosition(
+    mote,
+    tileCX(LEAK_TILE.col),
+    tileCY(LEAK_TILE.row),
+  );
 
   const cleared = await h.until((snapshot) => snapshot.surge.length === 0, {
     maxFrames: framesFor(LEAK_WINDOW),
   });
   await captureStill(h, "nobuild");
 
-  assertEqual(cleared.hit, true, "the last unit of the onslaught left the floor");
+  assertEqual(
+    cleared.hit,
+    true,
+    "the last unit of the onslaught left the floor",
+  );
   assertNotEqual(
     cleared.snapshot.phase,
     "building",
     "the phase the cleared onslaught left the run in",
   );
-  assertEqual(cleared.snapshot.buildTimer, 0, "the build timer after the clear");
+  assertEqual(
+    cleared.snapshot.buildTimer,
+    0,
+    "the build timer after the clear",
+  );
   assertEqual(
     cleared.snapshot.wave,
     1,

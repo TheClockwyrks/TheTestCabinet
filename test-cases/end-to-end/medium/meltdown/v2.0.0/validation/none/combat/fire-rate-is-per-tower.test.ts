@@ -30,13 +30,7 @@ import {
   framesForShots,
   type Harness,
 } from "../harness";
-import {
-  NEAR_UNITS,
-  fireRateOf,
-  poseGun,
-  poseMarkEast,
-  readHp,
-} from "./duel";
+import { NEAR_UNITS, fireRateOf, poseGun, poseMarkEast, readHp } from "./duel";
 
 /** The two ends of the roster, and the shot count each is driven to. */
 const FAST = { type: "stutter", shots: 7 } as const;

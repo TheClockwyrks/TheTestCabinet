@@ -26,13 +26,7 @@ import {
   framesForShots,
   type Harness,
 } from "../harness";
-import {
-  NEAR_UNITS,
-  fireRateOf,
-  poseGun,
-  poseMarkEast,
-  readHp,
-} from "./duel";
+import { NEAR_UNITS, fireRateOf, poseGun, poseMarkEast, readHp } from "./duel";
 
 /** The emitter read, the heat it is pinned at, and the unit it fires on. */
 const TOWER = "arc";

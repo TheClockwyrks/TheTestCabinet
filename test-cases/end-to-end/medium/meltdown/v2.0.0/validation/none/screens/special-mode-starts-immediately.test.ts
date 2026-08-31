@@ -81,8 +81,16 @@ it("starts each of the four special modes in the opening phase from its own row"
     await captureStill(h, "started");
 
     const after = await h.snapshot();
-    assertEqual(after.screen, "playing", `the screen confirming ${where} leads to`);
-    assertEqual(after.phase, "opening", `the phase confirming ${where} opens in`);
+    assertEqual(
+      after.screen,
+      "playing",
+      `the screen confirming ${where} leads to`,
+    );
+    assertEqual(
+      after.phase,
+      "opening",
+      `the phase confirming ${where} opens in`,
+    );
     assertEqual(after.mode, mode, `the mode confirming ${where} starts`);
   }
 });

@@ -60,7 +60,8 @@ const COLD_SLOW = rimeSlowFactor(COLD, LEVEL);
 const HOT_SLOW = rimeSlowFactor(HOT, LEVEL);
 
 /** The level's ceiling, which a panel that ignored the heat would read instead. */
-const CEILING = isEmitter(DEF) && DEF.slowCeil !== undefined ? DEF.slowCeil[LEVEL - 1] : 0;
+const CEILING =
+  isEmitter(DEF) && DEF.slowCeil !== undefined ? DEF.slowCeil[LEVEL - 1] : 0;
 
 /**
  * How far a drawn percentage may sit from the one it must be: half a point.
@@ -110,9 +111,21 @@ it("reads 33% at heat 40 and 11% at heat 80, and stops reading 33%", async () =>
   const hot = await readPanel(h);
   const hotTower = requireTower(await h.snapshot(), id, "the Rime at heat 80");
 
-  assertEqual(coldTower.heat, COLD, "precondition: the Rime's heat is pinned at 40");
-  assertEqual(hotTower.heat, HOT, "precondition: the Rime's heat is pinned at 80");
-  assertEqual(coldTower.level, LEVEL, "precondition: the Rime stands at level I");
+  assertEqual(
+    coldTower.heat,
+    COLD,
+    "precondition: the Rime's heat is pinned at 40",
+  );
+  assertEqual(
+    hotTower.heat,
+    HOT,
+    "precondition: the Rime's heat is pinned at 80",
+  );
+  assertEqual(
+    coldTower.level,
+    LEVEL,
+    "precondition: the Rime stands at level I",
+  );
 
   assertTrue(
     readsSlow(cold, COLD_SLOW),

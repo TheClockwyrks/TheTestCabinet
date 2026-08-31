@@ -58,7 +58,11 @@ it("opens the difficulty list when Containment is confirmed on the mode list", a
   await h.advance(1);
 
   const posed = await h.snapshot();
-  assertEqual(posed.screen, "modeselect", "the screen the scenario is posed on");
+  assertEqual(
+    posed.screen,
+    "modeselect",
+    "the screen the scenario is posed on",
+  );
   assertEqual(
     posed.menuIndex,
     CONTAINMENT_ROW,

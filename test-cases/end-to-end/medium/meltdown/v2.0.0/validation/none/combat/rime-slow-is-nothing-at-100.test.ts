@@ -33,13 +33,7 @@ import {
   requireUnit,
   type Harness,
 } from "../harness";
-import {
-  NEAR_UNITS,
-  fireRateOf,
-  poseGun,
-  poseMarkEast,
-  readHp,
-} from "./duel";
+import { NEAR_UNITS, fireRateOf, poseGun, poseMarkEast, readHp } from "./duel";
 
 /** The one emitter that slows, at level I, pinned at the top of the scale. */
 const TOWER = "rime";

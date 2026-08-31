@@ -56,7 +56,11 @@ it("returns to the mode list when Escape is pressed on the difficulty list", asy
     "the screen the scenario is posed on",
   );
   assertEqual(posed.build, null, "nothing armed, so back leaves the screen");
-  assertEqual(posed.selected, null, "nothing selected, so back leaves the screen");
+  assertEqual(
+    posed.selected,
+    null,
+    "nothing selected, so back leaves the screen",
+  );
 
   await tapAction(h, "back");
   await h.advance(1);

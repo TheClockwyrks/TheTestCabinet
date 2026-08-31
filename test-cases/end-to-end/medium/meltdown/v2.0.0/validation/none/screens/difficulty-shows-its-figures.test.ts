@@ -54,11 +54,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import {
-  DIFFICULTIES,
-  DIFFICULTY_ITEMS,
-  DIFFICULTY_TABLE,
-} from "../constants";
+import { DIFFICULTIES, DIFFICULTY_ITEMS, DIFFICULTY_TABLE } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -105,8 +101,16 @@ it("draws every difficulty's starting money and wave count before one is chosen"
     "difficultyselect",
     "the screen the figures are read on, with nothing yet chosen",
   );
-  assertEqual(posed.money, SENTINEL_MONEY, "the live money while the list is read");
-  assertEqual(posed.lives, SENTINEL_LIVES, "the live lives while the list is read");
+  assertEqual(
+    posed.money,
+    SENTINEL_MONEY,
+    "the live money while the list is read",
+  );
+  assertEqual(
+    posed.lives,
+    SENTINEL_LIVES,
+    "the live lives while the list is read",
+  );
 
   const runs = drawnText(calls);
   for (const [row, difficulty] of DIFFICULTIES.entries()) {

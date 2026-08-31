@@ -27,7 +27,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertLength, assertTrue } from "../assert";
 import { TOWER_DEFS, TOWER_TYPES } from "../constants";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 import { readPanel, reads, runsIn, saysWord } from "./panel";
 
 /** Money well above the dearest tower, so no entry is drawn disabled. */

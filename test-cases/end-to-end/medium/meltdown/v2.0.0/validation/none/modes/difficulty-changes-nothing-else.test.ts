@@ -33,12 +33,7 @@
 // legal one on all three.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertCloseTo,
-  assertEqual,
-  assertNull,
-  assertTrue,
-} from "../assert";
+import { assertCloseTo, assertEqual, assertNull, assertTrue } from "../assert";
 import {
   DIFFICULTIES,
   START_LIVES,

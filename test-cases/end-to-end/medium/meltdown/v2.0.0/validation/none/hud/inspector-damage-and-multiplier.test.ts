@@ -120,12 +120,20 @@ it("reads the live damage and multiplier at four heats, holding flat past the re
     await h.debug.setTowerHeat(id, heat);
     const runs = await readPanel(h);
     if (heat === REDLINE) await captureStill(h, "damage");
-    const tower = requireTower(await h.snapshot(), id, `the Arc at heat ${heat}`);
+    const tower = requireTower(
+      await h.snapshot(),
+      id,
+      `the Arc at heat ${heat}`,
+    );
 
     const mult = heatMultiplier(heat, REDLINE);
     const damage = BASE * mult;
 
-    assertEqual(tower.heat, heat, `precondition: the Arc's heat is pinned at ${heat}`);
+    assertEqual(
+      tower.heat,
+      heat,
+      `precondition: the Arc's heat is pinned at ${heat}`,
+    );
     assertEqual(
       tower.tripped,
       false,

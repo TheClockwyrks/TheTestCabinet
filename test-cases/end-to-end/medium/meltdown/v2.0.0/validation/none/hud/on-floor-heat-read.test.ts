@@ -66,7 +66,13 @@ import {
   startRun,
   type Harness,
 } from "../harness";
-import { findSpanMark, marksAt, rectsOver, spanAt, type DrawnRect } from "./panel";
+import {
+  findSpanMark,
+  marksAt,
+  rectsOver,
+  spanAt,
+  type DrawnRect,
+} from "./panel";
 
 /** The tower read. Its redline of 60 puts a marker clear of either end. */
 const TYPE = "stutter" as const;
@@ -143,19 +149,37 @@ afterEach(async () => {
 
 it("lengthens the Stutter's heat read with its heat, and marks its redline", async () => {
   await startRun(h);
-  const id = await posePinnedTower(h, TYPE, FREE_SITE.col, FREE_SITE.row, HEATS[0]);
+  const id = await posePinnedTower(
+    h,
+    TYPE,
+    FREE_SITE.col,
+    FREE_SITE.row,
+    HEATS[0],
+  );
   const tower = requireTower(await h.snapshot(), id, "the posed Stutter");
   const region = footprint(tower.col, tower.row, tower.size);
 
-  assertEqual(tower.redline, REDLINE, "precondition: the Stutter's redline is 60");
+  assertEqual(
+    tower.redline,
+    REDLINE,
+    "precondition: the Stutter's redline is 60",
+  );
 
   const frames = new Map<number, DrawnRect[]>();
   for (const heat of [...HEATS, FULL_HEAT]) {
     await h.debug.setTowerHeat(id, heat);
     frames.set(heat, rectsOver(await h.frameCalls(), region));
     if (heat === HEATS[HEATS.length - 1]) await captureStill(h, "heat");
-    const posed = requireTower(await h.snapshot(), id, `the Stutter at heat ${heat}`);
-    assertEqual(posed.heat, heat, `precondition: the Stutter's heat is pinned at ${heat}`);
+    const posed = requireTower(
+      await h.snapshot(),
+      id,
+      `the Stutter at heat ${heat}`,
+    );
+    assertEqual(
+      posed.heat,
+      heat,
+      `precondition: the Stutter's heat is pinned at ${heat}`,
+    );
   }
 
   const lowest = frames.get(HEATS[0]) ?? [];
@@ -171,7 +195,10 @@ it("lengthens the Stutter's heat read with its heat, and marks its redline", asy
   let previous: number | null = null;
   for (const heat of HEATS) {
     const extent = spanAt(frames.get(heat) ?? [], read, SLACK);
-    assertTrue(extent !== null, `the heat read to still be drawn at heat ${heat}`);
+    assertTrue(
+      extent !== null,
+      `the heat read to still be drawn at heat ${heat}`,
+    );
     if (extent === null) return;
     if (previous !== null) {
       assertGreaterThanOrEqual(
@@ -203,7 +230,10 @@ it("lengthens the Stutter's heat read with its heat, and marks its redline", asy
     if (acrossSpan(mark, axis) > 3 * band) return false;
     if (Math.abs(acrossCentre(mark, axis) - bandCentre) > band) return false;
     // Neither the read's own fill nor its backing, which begin where the read does.
-    const ends = [along(mark, axis), along(mark, axis) + (axis === "x" ? mark.w : mark.h)];
+    const ends = [
+      along(mark, axis),
+      along(mark, axis) + (axis === "x" ? mark.w : mark.h),
+    ];
     return ends.some(
       (at) =>
         Math.abs(at - origin) > MARKER_SLACK &&

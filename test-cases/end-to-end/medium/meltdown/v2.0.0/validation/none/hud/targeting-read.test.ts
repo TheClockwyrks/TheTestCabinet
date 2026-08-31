@@ -40,7 +40,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
-import { EMITTER_TYPES, MOVER_TYPES, TOWER_TYPES, type TowerType } from "../constants";
+import {
+  EMITTER_TYPES,
+  MOVER_TYPES,
+  TOWER_TYPES,
+  type TowerType,
+} from "../constants";
 import { FREE_SITE } from "../fixtures";
 import {
   captureStill,
@@ -60,9 +65,7 @@ const GROUND_AND_AIR: readonly TowerType[] = EMITTER_TYPES.filter(
 const NOT_GROUND_AND_AIR: readonly TowerType[] = ["flak", ...MOVER_TYPES];
 
 /** The reads the five share and the other three lack. One is the targeting read. */
-function sharedByTheFive(
-  panels: Map<TowerType, Set<string>>,
-): string[] {
+function sharedByTheFive(panels: Map<TowerType, Set<string>>): string[] {
   const [first, ...rest] = GROUND_AND_AIR;
   const start = panels.get(first) ?? new Set<string>();
   return [...start].filter(

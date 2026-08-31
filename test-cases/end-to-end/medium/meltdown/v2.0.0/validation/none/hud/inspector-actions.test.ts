@@ -100,8 +100,16 @@ it("draws 270 on Upgrade and 105 on Sell, and no rotate action", async () => {
 
   assertEqual(posed.selected, id, "precondition: the posed tower is selected");
   assertNull(posed.build, "precondition: no placement is armed");
-  assertEqual(UPGRADE, 270, "the upgrade cost specs/building.md gives a level-II Lance");
-  assertEqual(REFUND, 105, "the refund specs/building.md gives an unfresh Lance");
+  assertEqual(
+    UPGRADE,
+    270,
+    "the upgrade cost specs/building.md gives a level-II Lance",
+  );
+  assertEqual(
+    REFUND,
+    105,
+    "the refund specs/building.md gives an unfresh Lance",
+  );
 
   assertNotNull(
     posed.controls.upgrade,

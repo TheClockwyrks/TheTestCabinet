@@ -128,7 +128,11 @@ it("The setpoint rises with the level", async () => {
   const openedGuns = [];
   for (const gun of guns) {
     openedGuns.push(
-      await readHeat(h, gun.boxed.id, `the ${GUN} beside a level-${gun.level} Forge`),
+      await readHeat(
+        h,
+        gun.boxed.id,
+        `the ${GUN} beside a level-${gun.level} Forge`,
+      ),
     );
   }
   await h.advance(1);

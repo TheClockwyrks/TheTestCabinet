@@ -92,13 +92,16 @@ it("A slow lasts a second and a half", async () => {
   const gunId = await poseGun(h, TOWER, HEAT, LEVEL);
   const mark = await poseMarkEast(h, TOWER, MARK, NEAR_UNITS);
 
-  const landed = await h.until((snapshot) => {
-    const unit = snapshot.surge.find((each) => each.id === mark);
-    return unit !== undefined && unit.slowed;
-  }, {
-    poll: 1,
-    maxFrames: framesForShots(SHOT_INTERVALS, fireRateOf(TOWER, LEVEL)),
-  });
+  const landed = await h.until(
+    (snapshot) => {
+      const unit = snapshot.surge.find((each) => each.id === mark);
+      return unit !== undefined && unit.slowed;
+    },
+    {
+      poll: 1,
+      maxFrames: framesForShots(SHOT_INTERVALS, fireRateOf(TOWER, LEVEL)),
+    },
+  );
   assertTrue(
     landed.hit,
     `precondition: a cold level-${LEVEL} ${TOWER} landed a slow within ` +

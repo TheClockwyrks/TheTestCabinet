@@ -108,9 +108,21 @@ it("shortens the Hulk's health bar as its hp falls from full to a tenth", async 
     h: 2 * REACH,
   };
 
-  assertEqual(unit.maxHp, MAX_HP, "precondition: the Hulk's maximum hp is posed at 100");
-  assertEqual(unit.x, tileCX(AT.col), "precondition: the Hulk stands on its tile's centre");
-  assertEqual(unit.y, tileCY(AT.row), "precondition: the Hulk stands on its tile's centre");
+  assertEqual(
+    unit.maxHp,
+    MAX_HP,
+    "precondition: the Hulk's maximum hp is posed at 100",
+  );
+  assertEqual(
+    unit.x,
+    tileCX(AT.col),
+    "precondition: the Hulk stands on its tile's centre",
+  );
+  assertEqual(
+    unit.y,
+    tileCY(AT.row),
+    "precondition: the Hulk stands on its tile's centre",
+  );
 
   const frames = new Map<number, DrawnRect[]>();
   for (const hp of LEVELS) {

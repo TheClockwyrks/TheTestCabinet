@@ -76,7 +76,11 @@ it("takes the lives to 0 and opens the game-over screen on one leak", async () =
   await debug.setBuildTimer(0);
   await debug.setWavePending(0);
   const mote = await poseWalker(h, "mote", "left");
-  await debug.setUnitPosition(mote, tileCX(LEAK_TILE.col), tileCY(LEAK_TILE.row));
+  await debug.setUnitPosition(
+    mote,
+    tileCX(LEAK_TILE.col),
+    tileCY(LEAK_TILE.row),
+  );
 
   const posed = await h.snapshot();
   assertEqual(
@@ -92,9 +96,5 @@ it("takes the lives to 0 and opens the game-over screen on one leak", async () =
 
   assertEqual(ended.hit, true, "the Mote reached its exhaust");
   assertEqual(ended.snapshot.lives, 0, "the lives after the one leak");
-  assertEqual(
-    ended.snapshot.screen,
-    "gameover",
-    "the screen the leak opened",
-  );
+  assertEqual(ended.snapshot.screen, "gameover", "the screen the leak opened");
 });

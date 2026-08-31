@@ -97,8 +97,16 @@ it("opens a fresh run of the same mode and difficulty when RESTART is confirmed"
   const after = await h.snapshot();
   const where = `${PAUSE_ITEMS[RESTART_ROW]}, row ${RESTART_ROW} of ${PAUSE_ITEMS.length} on the pause menu, on ${MODE} at ${DIFFICULTY}`;
   assertEqual(after.screen, "playing", `the screen after ${where}`);
-  assertEqual(after.phase, "opening", `the phase the replayed run opens in, after ${where}`);
-  assertEqual(after.wave, 1, `the wave the replayed run opens on, after ${where}`);
+  assertEqual(
+    after.phase,
+    "opening",
+    `the phase the replayed run opens in, after ${where}`,
+  );
+  assertEqual(
+    after.wave,
+    1,
+    `the wave the replayed run opens on, after ${where}`,
+  );
   assertEqual(after.mode, MODE, `the mode after ${where}`);
   assertEqual(after.difficulty, DIFFICULTY, `the difficulty after ${where}`);
   assertEqual(

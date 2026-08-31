@@ -134,8 +134,7 @@ it("The Bloom splashes its target's neighbours", async () => {
       "where the splash is measured from",
   );
 
-  const onTarget =
-    openedTarget - requireUnit(closing, target, "the target").hp;
+  const onTarget = openedTarget - requireUnit(closing, target, "the target").hp;
   assertGreaterThan(
     onTarget,
     0,

@@ -30,7 +30,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue } from "../assert";
 import { HUD_MONEY_LABEL } from "../constants";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 import { readPanel, reads, saysWord } from "./panel";
 
 /** The money posed first: a figure no other panel number equals. */

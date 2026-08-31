@@ -49,9 +49,17 @@ it("returns to the title when Escape is pressed on the mode list", async () => {
   await h.advance(1);
 
   const posed = await h.snapshot();
-  assertEqual(posed.screen, "modeselect", "the screen the scenario is posed on");
+  assertEqual(
+    posed.screen,
+    "modeselect",
+    "the screen the scenario is posed on",
+  );
   assertEqual(posed.build, null, "nothing armed, so back leaves the screen");
-  assertEqual(posed.selected, null, "nothing selected, so back leaves the screen");
+  assertEqual(
+    posed.selected,
+    null,
+    "nothing selected, so back leaves the screen",
+  );
 
   await tapAction(h, "back");
   await h.advance(1);

@@ -103,9 +103,7 @@ export function readsWithin(
   low: number,
   high: number,
 ): boolean {
-  return runs.some((run) =>
-    numbersIn(run).some((n) => n >= low && n <= high),
-  );
+  return runs.some((run) => numbersIn(run).some((n) => n >= low && n <= high));
 }
 
 /**
@@ -148,9 +146,7 @@ export function readsPair(
 ): boolean {
   return runs.some((run) => {
     const numbers = numbersIn(run);
-    return numbers.some(
-      (n, i) => n === first && numbers[i + 1] === second,
-    );
+    return numbers.some((n, i) => n === first && numbers[i + 1] === second);
   });
 }
 
@@ -172,8 +168,7 @@ export function runsIn(
   const y0 = rect.y - margin;
   const y1 = rect.y + rect.h + margin;
   return runs.filter(
-    (run) =>
-      run.y >= y0 && run.y <= y1 && run.right >= x0 && run.left <= x1,
+    (run) => run.y >= y0 && run.y <= y1 && run.right >= x0 && run.left <= x1,
   );
 }
 
@@ -232,7 +227,9 @@ export function rectsOver(
 export type AnchorKind = "near" | "far";
 
 /** A mark's two ends, as points. */
-function anchors(rect: DrawnRect): Record<AnchorKind, { x: number; y: number }> {
+function anchors(
+  rect: DrawnRect,
+): Record<AnchorKind, { x: number; y: number }> {
   return {
     near: { x: rect.x, y: rect.y },
     far: { x: rect.x + rect.w, y: rect.y + rect.h },
@@ -271,7 +268,9 @@ function sameEnd(
   if (a.method !== b.method) return false;
   const one = anchors(a)[kind];
   const other = anchors(b)[kind];
-  return Math.abs(one.x - other.x) <= slack && Math.abs(one.y - other.y) <= slack;
+  return (
+    Math.abs(one.x - other.x) <= slack && Math.abs(one.y - other.y) <= slack
+  );
 }
 
 /**
@@ -302,7 +301,8 @@ export function findSpanMark(
         // A near-anchored mark runs away from its anchor along the axis; a
         // far-anchored one runs back towards it.
         const outward = kind === "near" ? 1 : -1;
-        const direction: 1 | -1 = extent >= 0 ? (outward as 1 | -1) : ((-outward) as 1 | -1);
+        const direction: 1 | -1 =
+          extent >= 0 ? (outward as 1 | -1) : (-outward as 1 | -1);
         best = {
           moved,
           mark: {

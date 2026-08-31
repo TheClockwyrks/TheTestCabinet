@@ -86,7 +86,11 @@ it("opens Containment at Medium when the middle difficulty row is confirmed", as
 
   const after = await h.snapshot();
   const where = `${DIFFICULTY_ITEMS[MEDIUM_ROW]}, row ${MEDIUM_ROW} of ${DIFFICULTY_ITEMS.length} on the difficulty list`;
-  assertEqual(after.screen, "playing", `the screen confirming ${where} leads to`);
+  assertEqual(
+    after.screen,
+    "playing",
+    `the screen confirming ${where} leads to`,
+  );
   assertEqual(after.mode, "containment", `the mode confirming ${where} starts`);
   assertEqual(
     after.difficulty,

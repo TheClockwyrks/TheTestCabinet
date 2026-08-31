@@ -32,7 +32,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull, assertTrue } from "../assert";
 import { modeFigures, waveSize, waveType } from "../constants";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 import { readPanel, reads, saysWord } from "./panel";
 
 /** The run previewed against: Containment on Medium, twenty waves. */
@@ -57,15 +62,29 @@ afterEach(async () => {
 it("previews 17 Drifts on Wave 6 and 13 Hulks on Wave 8", async () => {
   await startRun(h, "containment", "medium");
 
-  const read = [] as { type: string; count: number; runs: Awaited<ReturnType<typeof readPanel>> }[];
+  const read = [] as {
+    type: string;
+    count: number;
+    runs: Awaited<ReturnType<typeof readPanel>>;
+  }[];
   for (const wave of WAVES) {
     await h.debug.setWave(wave);
     const runs = await readPanel(h);
     if (wave === WAVES[0]) await captureStill(h, "preview");
     const posed = await h.snapshot();
-    assertEqual(posed.phase, "building", `precondition: wave ${wave} is previewed from a build phase`);
-    assertNull(posed.selected, `precondition: nothing is selected on wave ${wave}`);
-    assertNull(posed.hoverShop, `precondition: no shop entry is hovered on wave ${wave}`);
+    assertEqual(
+      posed.phase,
+      "building",
+      `precondition: wave ${wave} is previewed from a build phase`,
+    );
+    assertNull(
+      posed.selected,
+      `precondition: nothing is selected on wave ${wave}`,
+    );
+    assertNull(
+      posed.hoverShop,
+      `precondition: no shop entry is hovered on wave ${wave}`,
+    );
     read.push({
       type: waveType(wave, TOTAL),
       count: waveSize(wave, TOTAL),
@@ -74,10 +93,26 @@ it("previews 17 Drifts on Wave 6 and 13 Hulks on Wave 8", async () => {
   }
 
   const [first, second] = read;
-  assertEqual(first.type, "drift", "the type specs/waves.md gives Wave 6 of a 20-wave run");
-  assertEqual(first.count, 17, "the count specs/waves.md gives Wave 6 of a 20-wave run");
-  assertEqual(second.type, "hulk", "the type specs/waves.md gives Wave 8 of a 20-wave run");
-  assertEqual(second.count, 13, "the count specs/waves.md gives Wave 8 of a 20-wave run");
+  assertEqual(
+    first.type,
+    "drift",
+    "the type specs/waves.md gives Wave 6 of a 20-wave run",
+  );
+  assertEqual(
+    first.count,
+    17,
+    "the count specs/waves.md gives Wave 6 of a 20-wave run",
+  );
+  assertEqual(
+    second.type,
+    "hulk",
+    "the type specs/waves.md gives Wave 8 of a 20-wave run",
+  );
+  assertEqual(
+    second.count,
+    13,
+    "the count specs/waves.md gives Wave 8 of a 20-wave run",
+  );
 
   assertTrue(
     saysWord(first.runs, first.type),

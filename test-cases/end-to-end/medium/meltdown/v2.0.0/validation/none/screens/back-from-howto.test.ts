@@ -52,7 +52,11 @@ it("returns to the title when Escape is pressed on the how-to screen", async () 
   const posed = await h.snapshot();
   assertEqual(posed.screen, "howto", "the screen the scenario is posed on");
   assertEqual(posed.build, null, "nothing armed, so back leaves the screen");
-  assertEqual(posed.selected, null, "nothing selected, so back leaves the screen");
+  assertEqual(
+    posed.selected,
+    null,
+    "nothing selected, so back leaves the screen",
+  );
 
   await tapAction(h, "back");
   await h.advance(1);

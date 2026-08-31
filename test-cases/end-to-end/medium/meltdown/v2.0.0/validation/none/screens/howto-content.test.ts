@@ -98,7 +98,16 @@ const SUBJECTS: readonly { subject: string; words: readonly string[] }[] = [
   // "flyers": the Drift is the one type that flies (`specs/surge.md`).
   {
     subject: "flyers",
-    words: ["DRIFT", "FLY", "FLIES", "FLYING", "FLYER", "FLYERS", "AIR", "AIRBORNE"],
+    words: [
+      "DRIFT",
+      "FLY",
+      "FLIES",
+      "FLYING",
+      "FLYER",
+      "FLYERS",
+      "AIR",
+      "AIRBORNE",
+    ],
   },
   // "that a Containment wave fields a single type" (`specs/waves.md`). The
   // weakest anchor of the ten, because any screen covering this game says `wave`
@@ -170,7 +179,11 @@ it("draws a body of text naming every subject the how-to screen covers", async (
   const calls = await h.frameCalls();
   await captureStill(h, "howto");
 
-  assertEqual((await h.snapshot()).screen, "howto", "the screen the copy is read on");
+  assertEqual(
+    (await h.snapshot()).screen,
+    "howto",
+    "the screen the copy is read on",
+  );
 
   assertGreaterThanOrEqual(
     lettersIn(drawnText(calls)),

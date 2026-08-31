@@ -106,7 +106,9 @@ afterEach(async () => {
 
 it("shows the Bloom's level-I figures on a hover, not the level-III tower's", async () => {
   if (LEVEL_I === null || LEVEL_III === null) {
-    throw new Error("hud/shop-hover-panel: the hovered type must be an emitter");
+    throw new Error(
+      "hud/shop-hover-panel: the hovered type must be an emitter",
+    );
   }
   await startRun(h);
   const live = await posePinnedTower(
@@ -123,15 +125,16 @@ it("shows the Bloom's level-I figures on a hover, not the level-III tower's", as
   await captureStill(h, "hover");
   const posed = await h.snapshot();
 
-  assertEqual(posed.hoverShop, TYPE, "precondition: the Bloom's entry is hovered");
+  assertEqual(
+    posed.hoverShop,
+    TYPE,
+    "precondition: the Bloom's entry is hovered",
+  );
   assertNull(posed.build, "precondition: hovering armed no placement");
   assertNull(posed.selected, "precondition: hovering selected no tower");
 
   // The seven fields both panels draw.
-  assertTrue(
-    saysWord(runs, TYPE),
-    "the hover panel to name the hovered tower",
-  );
+  assertTrue(saysWord(runs, TYPE), "the hover panel to name the hovered tower");
   assertTrue(
     reads(runs, DEF.size, ROUNDED),
     `the hover panel to draw the Bloom's footprint side of ${DEF.size}`,

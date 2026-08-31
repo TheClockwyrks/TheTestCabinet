@@ -58,7 +58,11 @@ it("The Flak is air-only", async () => {
   await h.skip(WATCH_SECONDS);
   await h.advance(1);
   await captureStill(h, "ground");
-  const gun = await readGun(h, gunId, "the Flak with only a ground unit in range");
+  const gun = await readGun(
+    h,
+    gunId,
+    "the Flak with only a ground unit in range",
+  );
 
   assertEqual(
     gun.firing,

@@ -64,7 +64,11 @@ it("returns to the title when MENU is confirmed on either end screen", async () 
     await h.advance(1);
 
     const posed = await h.snapshot();
-    assertEqual(posed.screen, screen, `the screen the scenario is posed on, for ${where}`);
+    assertEqual(
+      posed.screen,
+      screen,
+      `the screen the scenario is posed on, for ${where}`,
+    );
     assertEqual(posed.menuIndex, MENU_ROW, `the row posed for ${where}`);
 
     await tapAction(h, "confirm");
@@ -72,6 +76,10 @@ it("returns to the title when MENU is confirmed on either end screen", async () 
     await captureStill(h, "title");
 
     const after = await h.snapshot();
-    assertEqual(after.screen, "title", `the screen confirming ${where} leads to`);
+    assertEqual(
+      after.screen,
+      "title",
+      `the screen confirming ${where} leads to`,
+    );
   }
 });

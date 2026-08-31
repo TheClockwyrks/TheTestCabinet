@@ -49,7 +49,11 @@ it("draws all five mode names on the mode list", async () => {
   const calls = await h.frameCalls();
   await captureStill(h, "modes");
 
-  assertEqual((await h.snapshot()).screen, "modeselect", "the screen the list is read on");
+  assertEqual(
+    (await h.snapshot()).screen,
+    "modeselect",
+    "the screen the list is read on",
+  );
   for (const [row, item] of MODE_ITEMS.entries()) {
     assertEqual(
       drewText(calls, item),

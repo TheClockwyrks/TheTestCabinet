@@ -178,7 +178,11 @@ it("A mover conducts nothing", async () => {
       hot:
         arrangement.hot === null
           ? null
-          : await readHeat(h, arrangement.hot, `the hot Arc of ${arrangement.of}`),
+          : await readHeat(
+              h,
+              arrangement.hot,
+              `the hot Arc of ${arrangement.of}`,
+            ),
       cool:
         arrangement.cool === null
           ? null

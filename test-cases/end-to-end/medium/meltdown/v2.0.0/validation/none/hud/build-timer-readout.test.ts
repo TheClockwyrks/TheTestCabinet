@@ -30,7 +30,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 import { readPanel, readsWithin } from "./panel";
 
 /** The wave the build phase belongs to; see the header. */
@@ -77,14 +82,30 @@ it("draws the seconds left in a build phase, falling with the timer", async () =
   const second = await readPanel(h);
   const fallen = await h.snapshot();
 
-  assertEqual(opened.phase, "building", "precondition: the phase is a build phase");
-  assertEqual(fallen.phase, "building", "precondition: the phase is still a build phase");
+  assertEqual(
+    opened.phase,
+    "building",
+    "precondition: the phase is a build phase",
+  );
+  assertEqual(
+    fallen.phase,
+    "building",
+    "precondition: the phase is still a build phase",
+  );
   assertTrue(
-    readsWithin(first, opened.buildTimer - ROUNDING, opened.buildTimer + ROUNDING),
+    readsWithin(
+      first,
+      opened.buildTimer - ROUNDING,
+      opened.buildTimer + ROUNDING,
+    ),
     `the panel to draw the ${opened.buildTimer.toFixed(2)} seconds left on the build timer`,
   );
   assertTrue(
-    readsWithin(second, fallen.buildTimer - ROUNDING, fallen.buildTimer + ROUNDING),
+    readsWithin(
+      second,
+      fallen.buildTimer - ROUNDING,
+      fallen.buildTimer + ROUNDING,
+    ),
     `the panel to draw the ${fallen.buildTimer.toFixed(2)} seconds left after ${FALL} seconds of game time`,
   );
   assertTrue(

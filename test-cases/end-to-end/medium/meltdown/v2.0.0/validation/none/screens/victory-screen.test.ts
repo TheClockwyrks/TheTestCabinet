@@ -107,7 +107,11 @@ it("draws the score, the waves survived, the lives remaining and both rows", asy
 
   const posed = await h.snapshot();
   assertEqual(posed.screen, "victory", "the screen the report is read on");
-  assertEqual(posed.waveCount, WAVES, `the waves ${MODE} on ${DIFFICULTY} runs`);
+  assertEqual(
+    posed.waveCount,
+    WAVES,
+    `the waves ${MODE} on ${DIFFICULTY} runs`,
+  );
   assertEqual(posed.score, SCORE, "the score the won run is posed with");
   assertEqual(posed.lives, LIVES, "the lives the won run is posed with");
 

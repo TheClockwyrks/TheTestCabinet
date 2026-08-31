@@ -33,7 +33,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
-import { captureStill, createHarness, distance, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  distance,
+  type Harness,
+} from "../harness";
 import {
   gunAnchorCentre,
   gunCentre,
@@ -87,7 +92,11 @@ it("Range is measured from the footprint centre", async () => {
   const insideMark = await poseMarkAt(h, "mote", EAST.x, EAST.y);
   await h.advance(1);
   await captureStill(h, "centre");
-  const withInside = await readGun(h, insideGun, "the Lance with the east mark");
+  const withInside = await readGun(
+    h,
+    insideGun,
+    "the Lance with the east mark",
+  );
 
   const outsideGun = await poseGun(h, TOWER, HEAT);
   await poseMarkAt(h, "mote", WEST.x, WEST.y);

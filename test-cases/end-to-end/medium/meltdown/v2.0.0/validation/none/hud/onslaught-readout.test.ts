@@ -33,7 +33,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
 import { HUD_WAVE_LABEL, modeFigures } from "../constants";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 import { readPanel, readsPair, saysWord } from "./panel";
 
 /** The numbered run the contrast is drawn against. */
@@ -67,8 +72,16 @@ it("reads no wave over a total in The Hundred, where a numbered run reads one", 
   await captureStill(h, "onslaught");
   const posed = await h.snapshot();
 
-  assertEqual(NUMBERED_TOTAL, 20, "the wave count specs/modes.md gives Containment on Medium");
-  assertEqual(ONSLAUGHT_TOTAL, 1, "the wave count specs/modes.md gives The Hundred");
+  assertEqual(
+    NUMBERED_TOTAL,
+    20,
+    "the wave count specs/modes.md gives Containment on Medium",
+  );
+  assertEqual(
+    ONSLAUGHT_TOTAL,
+    1,
+    "the wave count specs/modes.md gives The Hundred",
+  );
   assertEqual(posed.mode, "hundred", "precondition: the run is The Hundred");
 
   assertTrue(

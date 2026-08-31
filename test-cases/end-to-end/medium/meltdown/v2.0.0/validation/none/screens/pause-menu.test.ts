@@ -152,7 +152,11 @@ it("draws all three pause entries with the floor still behind them", async () =>
 
   const posed = await h.snapshot();
   assertEqual(posed.screen, "paused", "the screen the pause menu is read on");
-  assertEqual(posed.towers.length, sites.length, "the towers on the paused floor");
+  assertEqual(
+    posed.towers.length,
+    sites.length,
+    "the towers on the paused floor",
+  );
 
   for (const [row, item] of PAUSE_ITEMS.entries()) {
     assertEqual(
@@ -165,7 +169,11 @@ it("draws all three pause entries with the floor still behind them", async () =>
   // Every probe inside the reactor, as a pair of colours the paused frame drew.
   const probes: { what: string; a: Rgb; b: Rgb }[] = [];
   for (const [index, id] of ids.entries()) {
-    const tower = requireTower(posed, id, `the ${PROBE_TOWER} at probe ${index}`);
+    const tower = requireTower(
+      posed,
+      id,
+      `the ${PROBE_TOWER} at probe ${index}`,
+    );
     const body = await sampleTower(h, tower);
     for (const [dc, dr] of [
       [BESIDE, 0],

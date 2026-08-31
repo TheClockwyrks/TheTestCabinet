@@ -269,13 +269,7 @@ export async function poseSurroundedMover(
   for (const [index, surge] of SURGE_TYPES.entries()) {
     const at = MARK_OFFSETS[index % MARK_OFFSETS.length];
     marks.push(
-      await poseTarget(
-        h,
-        surge,
-        site.col + at.col,
-        site.row + at.row,
-        MARK_HP,
-      ),
+      await poseTarget(h, surge, site.col + at.col, site.row + at.row, MARK_HP),
     );
   }
   return { id, marks };

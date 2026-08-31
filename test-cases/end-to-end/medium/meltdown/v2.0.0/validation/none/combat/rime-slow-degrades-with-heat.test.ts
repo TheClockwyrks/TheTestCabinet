@@ -79,7 +79,9 @@ it("The slow fades as the Rime heats", async () => {
   for (const heat of HEATS) {
     await h.debug.setTowerHeat(id, heat);
     await h.advance(1);
-    read.push((await readGun(h, id, `the ${TOWER} pinned at ${heat}`)).slowFactor);
+    read.push(
+      (await readGun(h, id, `the ${TOWER} pinned at ${heat}`)).slowFactor,
+    );
   }
   await captureStill(h, "degraded");
 

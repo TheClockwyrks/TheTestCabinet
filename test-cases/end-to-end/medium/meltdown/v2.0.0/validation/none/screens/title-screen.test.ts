@@ -94,15 +94,27 @@ it("draws the title, the tagline and both menu entries, with the highlighted row
   const highlighted = await h.frameCalls();
   await captureStill(h, "title");
 
-  assertEqual((await h.snapshot()).screen, "title", "the screen the copy is read on");
-  assertEqual(drewText(highlighted, TITLE_TEXT), true, `the title screen drew ${TITLE_TEXT}`);
+  assertEqual(
+    (await h.snapshot()).screen,
+    "title",
+    "the screen the copy is read on",
+  );
+  assertEqual(
+    drewText(highlighted, TITLE_TEXT),
+    true,
+    `the title screen drew ${TITLE_TEXT}`,
+  );
   assertEqual(
     drewText(highlighted, TAGLINE_TEXT),
     true,
     `the title screen drew ${TAGLINE_TEXT}`,
   );
   for (const item of TITLE_ITEMS) {
-    assertEqual(drewText(highlighted, item), true, `the title menu drew ${item}`);
+    assertEqual(
+      drewText(highlighted, item),
+      true,
+      `the title menu drew ${item}`,
+    );
   }
 
   // The band the second row's own text run fills, as the build drew it.
@@ -111,7 +123,10 @@ it("draws the title, the tagline and both menu entries, with the highlighted row
     draw.text.toLowerCase().includes(label.toLowerCase()),
   );
   if (run === undefined) {
-    fail(`a text run drawing ${label} on the title screen (specs/screens.md)`, null);
+    fail(
+      `a text run drawing ${label} on the title screen (specs/screens.md)`,
+      null,
+    );
   }
   const points: { x: number; y: number }[] = [];
   for (let i = 0; i < SPAN_SAMPLES; i += 1) {

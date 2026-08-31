@@ -107,7 +107,9 @@ afterEach(async () => {
 
 it("draws the selected Lance's type, level, stats, live heat and tallies", async () => {
   if (STATS === null) {
-    throw new Error("hud/inspector-fields: the selected type must be an emitter");
+    throw new Error(
+      "hud/inspector-fields: the selected type must be an emitter",
+    );
   }
   await startRun(h);
   const id = await posePinnedTower(h, TYPE, FREE_SITE.col, FREE_SITE.row, HEAT);
@@ -121,9 +123,21 @@ it("draws the selected Lance's type, level, stats, live heat and tallies", async
 
   assertEqual(posed.selected, id, "precondition: the posed tower is selected");
   assertEqual(tower.level, LEVEL, "precondition: the tower stands at level II");
-  assertEqual(tower.heat, HEAT, "precondition: the tower's heat is pinned at 66");
-  assertEqual(tower.kills, 0, "precondition: the posed tower has killed nothing");
-  assertEqual(tower.damageDealt, 0, "precondition: the posed tower has dealt no damage");
+  assertEqual(
+    tower.heat,
+    HEAT,
+    "precondition: the tower's heat is pinned at 66",
+  );
+  assertEqual(
+    tower.kills,
+    0,
+    "precondition: the posed tower has killed nothing",
+  );
+  assertEqual(
+    tower.damageDealt,
+    0,
+    "precondition: the posed tower has dealt no damage",
+  );
 
   assertTrue(saysWord(runs, TYPE), "the inspector to name the selected tower");
   assertTrue(

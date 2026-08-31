@@ -66,7 +66,11 @@ it("A gun moves on when its target goes", async () => {
   await h.debug.removeUnit(east);
   await h.advance(1);
   await captureStill(h, "retarget");
-  const moved = await readGun(h, gunId, "the emitter one frame after the removal");
+  const moved = await readGun(
+    h,
+    gunId,
+    "the emitter one frame after the removal",
+  );
 
   assertEqual(
     moved.targeting,

@@ -64,10 +64,6 @@ it("derives 600 money, 20 lives and no interest from The Hundred", async () => {
     HUNDRED_MONEY,
     "The Hundred's starting money",
   );
-  assertEqual(
-    snapshot.startLives,
-    START_LIVES,
-    "The Hundred's starting lives",
-  );
+  assertEqual(snapshot.startLives, START_LIVES, "The Hundred's starting lives");
   assertEqual(snapshot.interest, false, "The Hundred pays no interest");
 });

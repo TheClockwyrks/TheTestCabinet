@@ -71,7 +71,8 @@ const CLEAR_BONUS = WAVE_CLEAR_BASE + WAVE_CLEAR_PER_WAVE * WAVE;
 const MONEY_CEILING = START_MONEY + CLEAR_BONUS;
 /** What a mode that wrongly paid interest would read, for the record. */
 const IF_PAID =
-  MONEY_CEILING + Math.min(Math.floor(INTEREST_RATE * MONEY_CEILING), INTEREST_CAP);
+  MONEY_CEILING +
+  Math.min(Math.floor(INTEREST_RATE * MONEY_CEILING), INTEREST_CAP);
 
 /**
  * Where the last unit of the wave is posed: two tiles short of the right
@@ -110,7 +111,11 @@ it("pays nothing beyond the wave-clear bonus on entering a build phase", async (
   await debug.setWavePending(0);
   await debug.setMoney(START_MONEY);
   const mote = await poseWalker(h, "mote", "left");
-  await debug.setUnitPosition(mote, tileCX(LEAK_TILE.col), tileCY(LEAK_TILE.row));
+  await debug.setUnitPosition(
+    mote,
+    tileCX(LEAK_TILE.col),
+    tileCY(LEAK_TILE.row),
+  );
 
   const cleared = await h.until((snapshot) => snapshot.surge.length === 0, {
     maxFrames: framesFor(LEAK_WINDOW),

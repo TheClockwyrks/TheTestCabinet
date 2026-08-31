@@ -59,7 +59,11 @@ it("A unit outside the radius is not", async () => {
 
   await h.advance(framesFor(WATCH_SECONDS));
   await captureStill(h, "outside");
-  const gun = await readGun(h, gunId, "the emitter with a mark past its radius");
+  const gun = await readGun(
+    h,
+    gunId,
+    "the emitter with a mark past its radius",
+  );
 
   assertNull(
     gun.targeting,

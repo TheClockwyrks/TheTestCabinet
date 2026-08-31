@@ -26,7 +26,11 @@
 // would pass on a change that had nothing to do with affordability.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import { TOWER_DEFS } from "../constants";
 import {
   captureStill,
@@ -100,8 +104,16 @@ it("draws the Lance's entry apart at 149 money from the same entry at 150", asyn
   const dearExactly = await pixelsOver(h, shopControl(exactly, DEAR));
   const cheapExactly = await pixelsOver(h, shopControl(exactly, CHEAP));
 
-  assertEqual(short.money, SHORT, "precondition: the money one short of the Lance's cost");
-  assertEqual(exactly.money, EXACTLY, "precondition: the money exactly the Lance's cost");
+  assertEqual(
+    short.money,
+    SHORT,
+    "precondition: the money one short of the Lance's cost",
+  );
+  assertEqual(
+    exactly.money,
+    EXACTLY,
+    "precondition: the money exactly the Lance's cost",
+  );
 
   assertGreaterThanOrEqual(
     differing(dearShort, dearExactly, PLAINLY),
