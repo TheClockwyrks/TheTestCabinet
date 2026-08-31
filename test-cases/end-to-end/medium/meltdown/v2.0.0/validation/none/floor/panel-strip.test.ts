@@ -52,7 +52,6 @@ import {
   assertLessThanOrEqual,
 } from "../assert";
 import {
-  BUILD_PHASE_TIME,
   COLS,
   PANEL_W,
   PANEL_X,
