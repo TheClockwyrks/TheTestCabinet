@@ -1,0 +1,363 @@
+# Kessler
+
+## Overview
+
+Kessler is an orbital demolition arcade game played in the browser. A planet
+sits at the center of the field, circled by three rings of derelict satellites
+and junk clusters slated for demolition. The player rides the deflector around
+a low track above the planet, batting a demolition ball outward into the
+rings, and sweeping the derelicts from the sky is the cleanup itself. A
+breaking derelict may shed a salvage pod, and a caught pod grants the
+deflector a tool. A ball the deflector misses burns up against the planet.
+
+Play is a score attack over endless waves. Clearing every derelict refills the
+rings for the next wave, faster and worth more, and the run ends when the last
+ball is lost with no lives left. The strong player steers the bounce, because
+where the ball meets the deflector decides the angle it leaves at.
+
+Kessler ships the art and the sound it plays, and this build makes them. The
+planet and pod sprites, the ball's spin frames, the particle systems, and the
+game's cues and music are produced during the build with the asset-generation
+binaries on the `PATH`, committed to the repository, and bundled by the build.
+`specs/assets.md` is that contract.
+
+Kessler has its own name, look, and rules, and its assets, branding, and
+design are original to it.
+
+The specification spans several files under `specs/`.
+
+| File | What it fixes |
+| --- | --- |
+| `specs/overview.md` | The stage, the project, the build interface, and the tick. |
+| `specs/field.md` | The field's geometry, every contact radius, the order a tick resolves in, and the angular conventions. |
+| `specs/deflector-and-ball.md` | The deflector, serving and launching, ball motion, the deflector bounce, and every reflection. |
+| `specs/rings.md` | The three rings, their derelict targets, orbits, contacts, destruction, and waves. |
+| `specs/pods.md` | The salvage pods, the draw that sheds them, and the effects they grant. |
+| `specs/scoring.md` | The points, the lives, and the wave bonus. |
+| `specs/screens.md` | The screens, the menus, and the HUD. |
+| `specs/controls.md` | The actions a player drives the game with and the keys bound to them. |
+| `specs/assets.md` | The assets this build produces, how each is made, and how it is wired in. |
+| `specs/instrumentation.md` | The debugging and automation surface, and the snapshot it reports. |
+| `specs/showcase.md` | The showcase the finished game ships beside its source. |
+
+Read all of them and build the game they describe as one cohesive whole.
+
+## The screens
+
+The game moves between six screens. `specs/screens.md` fixes the transitions,
+the menus, and the screen copy.
+
+| Screen | What it shows |
+| --- | --- |
+| `title` | The game's title and the menu. |
+| `howto` | The controls and a summary of the rules. |
+| `playing` | The field and the HUD. |
+| `waveclear` | The wave-clear banner over the field. |
+| `paused` | The pause overlay and its menu over the field. |
+| `gameover` | GAME OVER, the final score, and the wave reached. |
+
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This game stands on no engine, so the runtime under it is yours to write: the
+frame loop and the delta time it measures, the canvas fit, keyboard input,
+image loading, audio cues and the music beds that loop, and the debug overlay.
+Where this specification speaks of the runtime it means that layer, and it
+states only what Kessler needs from it. How the layer is structured is yours
+to decide.
+{{else if (eq engine.slug "simple-2d")}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It owns the frame loop and
+the delta time the game is given, the input actions the menus and the
+deflector are driven by, audio cues and the music beds that loop, asset
+loading, the canvas fit, and the debug overlay. Read its documentation before
+you start. This specification states only what is specific to Kessler.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It is a gameplay framework
+as much as a runtime: the game is written as subclasses of its classes, a game
+instance, a game mode, actors and their components, and the controllers that
+drive them, and the engine constructs, ticks, and renders them in a fixed
+order. It owns the frame loop and the delta time the game is given, rendering
+and the camera, the canvas fit, the input actions the menus and the deflector
+are driven by, audio cues and the music beds that loop, asset loading, and the
+debug overlay. Read its documentation before you start. This specification
+states only what is specific to Kessler.
+
+The logical design field handed to the engine is the stage, and the game
+leaves the camera at rest, so world units and the stage's logical units
+coincide and every position in this specification is both. Every contact in
+Kessler is decided by the polar crossing rules this specification states,
+resolved in the simulation's own state.
+{{/if}}
+
+## The project you build in
+
+The project at the root of this repository is already wired up, and its
+`README.md` describes it. It is a TypeScript project built with Vite, tested
+with Vitest, linted with ESLint, and formatted with Prettier. That toolchain
+is fixed and supplied.
+
+{{#if (eq engine.slug "none")}}
+### What you implement
+
+Everything under `src/`, and the assets under `assets/`. Neither directory
+exists yet.
+
+`index.html` loads `/src/main.ts` as its entry point, so that module is where
+your build starts. Beyond that the structure is yours: the frame loop and the
+canvas fit, keyboard input, image loading, audio, the diagnostics overlay, the
+`window.__kessler` debug and automation surface, the figures this
+specification fixes, and the game itself.
+
+The game's state is yours to shape. `specs/instrumentation.md` states the one
+contract fixed over it, the snapshot every build reports.
+
+### What stays as it is
+
+- `index.html`, the page and the canvas the stage is fitted into.
+- `.tcab/`, holding the vendored particle playback library that
+  `package.json` resolves its dependency from.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need,
+added along with the updated `package-lock.json`. Its existing entries and
+scripts stay as they are.
+
+### Every figure comes from this specification
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is stated here, and the value stated here is
+authoritative. Anything this specification leaves open is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+### What you implement
+
+`src/game.ts`, any new modules you add beside it under `src/`, and the assets
+under `assets/`, which does not exist yet.
+
+`src/game.ts` exports `game`, a `Game<KesslerState, KesslerDebugApi>`:
+`initialize` builds the state and the debug surface once and returns them
+together as `[state, debug]`, `update` takes the current state as a read-only
+view (`DeepReadonly<KesslerState>`) and returns the next state, advanced
+against the frame's delta time in seconds, and `render` is handed that next
+state, read-only again, and draws it. The engine holds the state by value and
+replaces it with what each `update` returns, so a frame builds the next state
+from the current one rather than writing into it, and nothing but `update` and
+the debug surface's poses advances the game. As seeded, the module's functions
+throw `"not implemented"`. Implement them.
+
+`src/game.ts` also declares and exports `KesslerState`, the game's whole
+state, and `KesslerDebugApi`, the debug and automation surface
+`specs/instrumentation.md` fixes. What `KesslerState` carries is yours to
+shape, subject to the snapshot that same file fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the field.
+The seeded stub exports a placeholder; replace it with the color your game
+uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's
+  canvas, binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.tcab/`, holding the vendored engine and particle playback library that
+  `package.json` resolves its dependencies from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need,
+added along with the updated `package-lock.json`. Its existing entries and
+scripts stay as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, asset path, and piece of
+screen copy this specification fixes is exported from `src/constants.ts`.
+Import it and use it; the value it holds is authoritative. Anything this
+specification does not name is yours to decide.
+{{else}}
+### What you implement
+
+`src/game.ts`, any new modules you add beside it under `src/`, and the assets
+under `assets/`, which does not exist yet.
+
+`src/game.ts` exports `game`, the `GameDefinition` the engine drives: the
+level registry keyed by the level name `src/constants.ts` fixes, the level
+opened first, and your game instance class. The game runs in that single level
+for the whole session and never opens another; every screen is a value of the
+game state's screen field. Behind that definition you write the whole game,
+with the game mode that holds the rules and the screens, the actors that
+populate the field and the components that draw them, each actor carrying its
+tag from `src/constants.ts`, the controller that drives the deflector, and the
+debug and automation surface `specs/instrumentation.md` fixes, which your
+instance's `initialize` builds and returns. As seeded, the definition is a
+stub whose instance throws `"not implemented"`. Implement it.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the field.
+The seeded stub exports a placeholder; replace it with the color your game
+uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's
+  canvas, binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.tcab/`, holding the vendored engine and particle playback library that
+  `package.json` resolves its dependencies from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need,
+added along with the updated `package-lock.json`. Its existing entries and
+scripts stay as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, asset path, level name, actor
+tag, and piece of screen copy this specification fixes is exported from
+`src/constants.ts`. Import it and use it; the value it holds is authoritative.
+Anything this specification does not name is yours to decide.
+{{/if}}
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured
+over `src/`.
+{{#if (eq engine.slug "none")}}
+A test drives the game over its own clock for a counted number of ticks, so it
+needs no browser, and `@napi-rs/canvas` is installed for a test that wants a
+real 2D context.
+{{else if (eq engine.slug "simple-2d")}}
+A test stands the engine up over its own canvas and clock and advances the
+game a counted number of frames, so it needs no browser, and
+`@napi-rs/canvas` is installed to supply the 2D context.
+{{else}}
+A test stands the engine up over a canvas from `@napi-rs/canvas` and a surface
+and clock of its own, then advances the game a counted number of frames with
+`engine.advance`, so it needs no browser.
+{{/if}}
+
+### The checks the repository passes
+
+Four commands run over the finished repository before it is reviewed.
+
+| Command | Checks |
+| --- | --- |
+| `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
+| `npx eslint .` | The code is lint-clean. |
+| `npx prettier --check .` | The code is formatted. |
+| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
+
+They run on the repository as you leave it. `npm run typecheck`,
+`npm run lint`, `npm run format`, and `npm test` run the same four locally.
+
+### The build interface
+
+`npm ci` followed by `npm run build` produces the complete static site into
+`dist/` at the repository root, with an `index.html` at the root of that
+directory as the entry point. That directory runs correctly when served as-is,
+both at the root of a static file server and mounted under a sub-path, so
+every URL the build emits or constructs at runtime is page-relative rather
+than root-absolute. The scripts that do this are already in `package.json`.
+
+The build is self-contained. The asset tools on this machine's `PATH` are
+development tools for producing the files `specs/assets.md` lists and locates;
+the produced files are committed, the build bundles them, and neither `npm ci`
+nor `npm run build` invokes a tool.
+
+## Goal of this build
+
+Produce a complete, polished, playable game that runs entirely in a browser,
+and the art and sound it plays. This is a substantial build: a deflector
+orbiting a planet, three counter-rotating rings of derelicts, five kinds of
+salvage pod, endless waves, six screens, and a produced set of sprites,
+particle systems, and sounds. Aim for a game a person would enjoy playing,
+where a bounce goes where it was steered.
+
+### Hard requirements
+
+{{#if (eq engine.slug "none")}}
+- Write the runtime the game stands on: the frame loop and its delta time, the
+  canvas fit, keyboard input, image loading, audio with looping beds, and the
+  debug overlay.
+{{else if (eq engine.slug "simple-2d")}}
+- Build on the {{engine.name}} engine, taking the frame loop, the input
+  actions, audio with looping beds, asset loading, the canvas fit, and the
+  debug overlay from it.
+{{else}}
+- Build on the {{engine.name}} engine, taking the frame loop, rendering, the
+  input actions, audio with looping beds, asset loading, the canvas fit, and
+  the debug overlay from it, and writing the game inside its framework of game
+  modes, actors, components, and controllers.
+{{/if}}
+- Render real graphics on the canvas. A text-only or character-cell rendering
+  does not meet this.
+- Produce the sprites, particle systems, cues, and music during this build,
+  commit the produced files, and bundle them. `specs/assets.md` states what to
+  produce, how each file is made, and how it is wired in.
+- Run in the browser with no backend. Everything needed to play is
+  self-contained, and no API key or credential is needed to build, run, or
+  play.
+- Replace the starter `README.md` with one explaining what the game is, how to
+  install dependencies, how to run it in development, how to produce the
+  static production build, and the controls.
+
+## Code quality
+
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the simulation.
+
+## Coordinate system and presentation
+
+All positions and sizes in this specification are given in the game's own
+logical units on a fixed square stage of `1000 x 1000`. The origin `(0, 0)` is
+the top-left; `x` increases to the right and `y` increases downward. The stage
+center is `(500, 500)`, and the planet sits on it.
+
+The game is polar. A position is a radius `r`, the distance in logical units
+from the stage center, and an angle `theta` in degrees, and it maps onto the
+stage as `x = 500 + r * cos(theta * PI / 180)` and
+`y = 500 + r * sin(theta * PI / 180)`. Angles normalize to `[0, 360)`, with
+`0` along `+x` and angles increasing toward `+y`. `specs/field.md` fixes the
+angular conventions every rule uses.
+
+- The `1000 x 1000` stage is the game's logical design size. Fitting it to the
+  browser window is the runtime's: the uniform scale that preserves the aspect
+  ratio, the letterboxed centering, and the device pixel ratio. The complete
+  stage is therefore on screen at every window size, on load and at any pixel
+  density, filling the window's short side.
+- The letterbox bars around the stage carry the stage's background color.
+- Draw in logical units, and take the canvas element's own size from the
+  runtime alone.
+
+## The tick
+
+The simulation advances in whole ticks, `60` per second, each worth `1 / 60`
+seconds of game time.
+{{#if (eq engine.slug "none")}}
+The delta time your frame loop measures accumulates, whole ticks are consumed,
+and the remainder carries into the next frame.
+{{else}}
+The delta time the engine hands each update accumulates, whole ticks are
+consumed, and the remainder carries into the next update.
+{{/if}}
+A second of game time is sixty ticks however it was divided into frames, and
+drawing never advances the simulation.
+
+Every rate in this specification is per second, in logical units or degrees,
+and every gameplay duration is a whole count of ticks. `specs/field.md` fixes
+the order a tick resolves in.
