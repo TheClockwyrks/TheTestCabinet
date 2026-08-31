@@ -1,18 +1,61 @@
-// Meltdown — modes/deep-pockets-money: deep Pockets opens flush.
+// Meltdown — modes/deep-pockets-money: Deep Pockets opens on ten thousand.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// THE RULE. `specs/modes.md`'s derived-figures table gives the row "Deep Pockets"
+// a starting money of `10000`, and the file names the figure:
+// `DEEP_POCKETS_MONEY` (`10000`). The mode's own section says it again: "Deep
+// Pockets opens on `10000` money."
 //
-// What it must decide:
+// WHAT IS READ. `startMoney`, the derived field the surface has no setter for —
+// `specs/instrumentation.md` lists it among the figures that "follow" the mode
+// and difficulty. That a started run opens HOLDING `startMoney` is
+// `modes.run-opens-with-its-figures`, so a build could derive the right figure
+// and still open a run on the wrong purse, and the two grades stay separable.
 //
-//   startMoney is 10,000.
+// WHY DEEP POCKETS' PURSE IS DISTINGUISHING ON ITS OWN. It is the only figure in
+// the whole table above four digits, and it is more than sixteen times the next
+// largest (`600`). So a build that left the mode on the Containment row reads
+// `250`, one that gave it The Hundred's purse reads `600`, one that gave it
+// Bottleneck's or Sudden Death's reads `300`, and one that dropped a digit reads
+// `1000`. Money is a whole number of coins and `specs/modes.md` fixes it exactly,
+// so there is no tolerance and the assertion is equality.
+//
+// The mode's other figure, that it pays no interest, is
+// `modes.deep-pockets-no-interest`.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { DEEP_POCKETS_MONEY } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 
-it("Deep Pockets opens flush", () => {
-  throw new Error(
-    "Meltdown: validation/modes/deep-pockets-money.test.ts is not implemented yet",
+/** The mode this point reads. */
+const MODE = "deeppockets";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("derives ten thousand starting money for Deep Pockets", async () => {
+  startRun(h, MODE);
+
+  await h.advance(1);
+  captureStill(h, "flush");
+
+  const figures = h.snapshot();
+  assertEqual(figures.mode, MODE, "precondition: the mode the run is posed on");
+  assertEqual(
+    figures.startMoney,
+    DEEP_POCKETS_MONEY,
+    "the starting money Deep Pockets derives",
   );
 });
