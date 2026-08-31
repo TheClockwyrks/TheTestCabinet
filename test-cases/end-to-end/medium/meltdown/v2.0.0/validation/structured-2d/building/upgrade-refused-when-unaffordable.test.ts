@@ -1,20 +1,110 @@
-// Meltdown — building/upgrade-refused-when-unaffordable: an unaffordable
-// upgrade changes nothing.
+// building/upgrade-refused-when-unaffordable — an upgrade the money cannot cover
+// changes nothing at all.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// specs/building.md, Upgrading: "An upgrade takes effect only when the tower is
+// below level 3 and the current money is at least the cost. ... An upgrade that is
+// unaffordable, or one asked of a level III tower, changes nothing at all."
+// specs/economy.md says the same from the money's side: a purchase the money on
+// hand cannot cover does not happen at all, and nothing about the floor or the run
+// changes when one is refused.
 //
-// What it must decide:
+// THE MONEY IS THE ONLY THING WRONG. The tower is at level I, so the ceiling is
+// nowhere near — `building/upgrade-stops-at-three` is what decides that refusal —
+// and the purse is posed one coin below the reported cost, so the ONLY condition
+// that fails is affordability.
 //
-//   With money one below the cost, the level, the stats and the money are all
-//   unchanged.
+// THREE READINGS, ONE PER CLAUSE OF "NOTHING AT ALL". The level is the level it
+// was, the balance is the balance it was, and the stats are the stats they were.
+// The stat read is `damage`, which is `baseDamage(level) * heatMultiplier(H,
+// redline)` (specs/combat.md) — the figure an upgrade multiplies by 1.6 — read off
+// a tower whose thermal model is held, so the heat that decides it cannot drift
+// under the reading. A build that applied the upgrade and merely failed to charge
+// for it is caught by the level and by the damage; a build that charged for an
+// upgrade it did not apply is caught by the balance.
+//
+// AND THE PURSE IS READ BACK RATHER THAN ASSUMED, because a refusal that quietly
+// spent what it had is exactly as wrong as one that applied the level.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  posePinnedTower,
+  startRun,
+  type Harness,
+} from "../harness";
+import { towerOf } from "./preview";
+import { FREE_SITE } from "./sites";
 
-it("An unaffordable upgrade changes nothing", () => {
-  throw new Error(
-    "Meltdown: validation/building/upgrade-refused-when-unaffordable.test.ts is not implemented yet",
+/** The tower asked to upgrade, on a quiet anchor. */
+const HELD = "arc";
+const AT = FREE_SITE;
+
+/**
+ * The heat the tower is pinned at.
+ *
+ * Any heat above 0 would do; this one is well clear of both ends of the scale, so
+ * the multiplier it gives is neither the floor of the curve nor its plateau and
+ * `damage` is a figure that would visibly move if the level did.
+ */
+const PIN_HEAT = 40;
+
+/**
+ * How close the two damage readings must be.
+ *
+ * They are the same figure read twice, so any difference at all is a level that
+ * moved: an upgrade applied would multiply it by 1.6 (specs/towers.md), which on
+ * this tower is several whole points. `assertCloseTo(..., 6)` is a tolerance of
+ * `5e-7`, which exists for float noise and nothing else.
+ */
+const DAMAGE_DIGITS = 6;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("leaves the level, the stats and the money alone when the upgrade is a coin short", async () => {
+  startRun(h);
+  const id = posePinnedTower(h, HELD, AT.col, AT.row, PIN_HEAT);
+
+  const before = towerOf(h.snapshot(), id);
+  const cost = before.upgradeCost;
+  assertGreaterThan(
+    cost,
+    0,
+    `the upgradeCost a level-I ${HELD} reports, which this check is posed one coin below`,
+  );
+  const purse = cost - 1;
+  h.debug.setMoney(purse);
+
+  h.debug.upgradeTower(id);
+  const snapshot = h.snapshot();
+  const after = towerOf(snapshot, id);
+
+  await h.advance(1);
+  captureStill(h, "refused");
+
+  assertEqual(
+    after.level,
+    before.level,
+    `the level after an upgrade asked with ${purse}, one coin below its cost of ${cost}`,
+  );
+  assertEqual(
+    snapshot.money,
+    purse,
+    `the balance after an upgrade asked with ${purse}, one coin below its cost of ${cost}`,
+  );
+  assertCloseTo(
+    after.damage,
+    before.damage,
+    DAMAGE_DIGITS,
+    `the per-shot damage at heat ${PIN_HEAT} after the refused upgrade`,
   );
 });
