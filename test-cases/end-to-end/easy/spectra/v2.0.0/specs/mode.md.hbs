@@ -16,12 +16,14 @@ charging it toward an overload that makes it more dangerous.
 
 ## Charge
 
-Every drone carries a charge, a whole number from `0` to `OVERLOAD_AT` (`3`). A
-drone is created at charge `0`.
+Every drone carries a charge, a whole number from `0` to `OVERLOAD_AT` (`3`)
+counting the mismatched shots it has taken since it last overloaded. A drone is
+created at charge `0`, and play never carries it above `OVERLOAD_AT - 1` (`2`).
 
-- A mismatched shot adds `1` charge to the drone it hits.
-- When that addition would take the charge to `OVERLOAD_AT`, the drone overloads
+- A mismatched shot into a drone below `OVERLOAD_AT - 1` adds `1` charge to it.
+- A mismatched shot into a drone already at `OVERLOAD_AT - 1` or above overloads it
   instead: it runs the reaction for its kind, below, and its charge returns to `0`.
+  The third mismatched shot a drone takes therefore overloads it.
 - A drone that has overloaded takes charge again from `0`, so it can be overloaded
   more than once.
 - A shot whose effective band matches still destroys the drone's exposed layer,
