@@ -29,6 +29,6 @@ Teach `arguments`, `arrow` and `unqualified` both spellings of each operator.
 
 ## Done when
 
-- [ ] A signature spelled with `→` and `⇒` lists the parameters its ASCII twin lists.
-- [ ] Tests cover each operator in both spellings.
-- [ ] Gates green.
+- [x] A signature spelled with `→` and `⇒` lists the parameters its ASCII twin lists.
+- [x] Tests cover each operator in both spellings.
+- [x] Gates green.

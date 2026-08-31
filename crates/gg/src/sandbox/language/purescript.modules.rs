@@ -279,8 +279,9 @@ fn unqualified(signature: &str) -> &str {
     {
         rest = binder[end + 1..].trim_start();
     }
-    // The LAST top-level `=>`, so a signature carrying several constraints loses all of them.
-    match split_top_level(rest, "=>").pop() {
+    // The LAST top-level constraint arrow, so a signature carrying several constraints loses all
+    // of them.
+    match split_top_level(rest, &CONSTRAINTS).pop() {
         Some(typed) => typed,
         None => rest,
     }
@@ -289,17 +290,30 @@ fn unqualified(signature: &str) -> &str {
 /// The arrow-separated arguments of a type, outermost first — a type with no top-level arrow being
 /// one argument, which is the value it *is*.
 fn arguments(signature: &str) -> Vec<&str> {
-    split_top_level(signature, "->")
+    split_top_level(signature, &ARROWS)
 }
 
-/// `text` split on `separator` wherever it appears outside every bracket, with each piece trimmed.
+/// The spellings PureScript accepts for the arrow that separates a type's arguments.
 ///
-/// The walk is over bytes and every separator is ASCII, so the match is a byte comparison: a
-/// signature carrying a `∀` binder or a Unicode type name leaves the walk inside a character, where
+/// `purs` reads `→` wherever it reads `->`, so `a → String` and `a -> String` declare the same
+/// argument and the same result, and a scan that knew one spelling read the other as a value.
+const ARROWS: [&str; 2] = ["->", "\u{2192}"];
+
+/// The spellings PureScript accepts for the arrow that ends a class constraint, which
+/// [`unqualified`] cuts a signature at.
+///
+/// `⇒` is to `=>` what `→` is to `->`, and the `∀` binder [`unqualified`] already strips is the
+/// third of the same set: a signature is written in one spelling or the other throughout.
+const CONSTRAINTS: [&str; 2] = ["=>", "\u{21D2}"];
+
+/// `text` split wherever any of `separators` appears outside every bracket, with each piece trimmed.
+///
+/// The walk is over bytes and each separator is matched as its own bytes. A separator never opens
+/// with a UTF-8 continuation byte, so a match can only begin on a character boundary: a signature
+/// carrying a `∀` binder or a Unicode type name leaves the walk inside a character, where
 /// re-slicing `text` would panic.
-fn split_top_level<'a>(text: &'a str, separator: &str) -> Vec<&'a str> {
+fn split_top_level<'a>(text: &'a str, separators: &[&str]) -> Vec<&'a str> {
     let bytes = text.as_bytes();
-    let separator = separator.as_bytes();
     let mut out = Vec::new();
     let mut depth = 0usize;
     let mut start = 0;
@@ -308,11 +322,16 @@ fn split_top_level<'a>(text: &'a str, separator: &str) -> Vec<&'a str> {
         match bytes[at] {
             b'(' | b'[' | b'{' => depth += 1,
             b')' | b']' | b'}' => depth = depth.saturating_sub(1),
-            _ if depth == 0 && bytes[at..].starts_with(separator) => {
-                out.push(text[start..at].trim());
-                at += separator.len();
-                start = at;
-                continue;
+            _ if depth == 0 => {
+                if let Some(separator) = separators
+                    .iter()
+                    .find(|separator| bytes[at..].starts_with(separator.as_bytes()))
+                {
+                    out.push(text[start..at].trim());
+                    at += separator.len();
+                    start = at;
+                    continue;
+                }
             }
             _ => {}
         }
@@ -383,22 +402,16 @@ fn kind(line: &str) -> ModuleExportKind {
     }
 }
 
-/// Whether `signature` writes a `->` outside any bracket of its own — the arrow that makes a type a
-/// function, rather than one inside a parameter's own type or a constraint's.
+/// Whether `signature` writes an arrow outside any bracket of its own — the arrow that makes a type
+/// a function, rather than one inside a parameter's own type or a constraint's.
+///
+/// The reading is [the argument split](arguments) itself, so a type gg calls a function is exactly
+/// one it reads more than one argument out of, in either spelling of the arrow.
 fn arrow(signature: &str) -> ModuleExportKind {
-    let bytes = signature.as_bytes();
-    let mut depth = 0usize;
-    for (at, byte) in bytes.iter().enumerate() {
-        match byte {
-            b'(' | b'[' | b'{' => depth += 1,
-            b')' | b']' | b'}' => depth = depth.saturating_sub(1),
-            b'-' if depth == 0 && bytes.get(at + 1) == Some(&b'>') => {
-                return ModuleExportKind::Function;
-            }
-            _ => {}
-        }
+    match arguments(signature).len() > 1 {
+        true => ModuleExportKind::Function,
+        false => ModuleExportKind::Value,
     }
-    ModuleExportKind::Value
 }
 
 /// `line` without the body it opens — what a documentation view quotes.
