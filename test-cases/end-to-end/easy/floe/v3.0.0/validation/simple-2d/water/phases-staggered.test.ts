@@ -1,27 +1,110 @@
-// Floe — water/phases-staggered: SCAFFOLD STUB, NOT A VALIDATOR.
+// water/phases-staggered — the eight water lanes never line up into a raft the
+// whole way across.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `water.phases-staggered` review item, written
-// against the `simple-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/water.md leaves WHERE each lane's pattern sits along its row to the
+// game's own seeded randomness, and then constrains the draw: "The phases drawn
+// leave the band staggered: no column of the strait carries a floe in all eight
+// water rows at once." It is the one property of the phases the specification
+// fixes.
 //
-// The item this file decides, from test-case.toml:
+// THE READING IS THE COVERING RULE, NOTHING ELSE. specs/ice.md fixes it and
+// specs/water.md reads it: an item covers a tile of its row when that tile's
+// center lies in `[x, x + TILE * len)`, which `coversTile` is. So for each of
+// the forty columns the eight rows are counted, and no column may reach eight.
 //
-//   The floes do not line up into columns
+// EIGHT SEEDS, NOT ONE. The phases are drawn from the generator `reset` seeds,
+// so a single draw grades one draw. The rule is a property of the DRAW, so this
+// takes eight of them — a build that stated the rule and never enforced it lands
+// a lined-up column on some seeds and not others, and a build that enforces it
+// lands none on any. Nothing else varies between the eight: level 1, laid out
+// the same way each time.
 //
-//   On a freshly laid-out level, no column carries a floe in all eight water
-//   rows at once.
-//
-// Its declared media: image `scene`.
+// A LANE HAS TO CARRY SOMETHING for the count to mean anything: a band with no
+// floes at all carries no column in eight rows, and would pass a reading that
+// only counted. specs/water.md requires each lane to carry enough floes to reach
+// both edges of the strait, so an empty lane fails here.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { COLS, WATER_LANES } from "../../src/constants";
+import { assertGreaterThanOrEqual, assertLessThan } from "../assert";
+import {
+  captureStill,
+  coversTile,
+  createHarness,
+  itemsInRow,
+  type Harness,
+} from "../harness";
+import { layOutLevel } from "./harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The level laid out. The staggering rule holds at every level. */
+const LEVEL = 1;
 
-it("water/phases-staggered has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** The seeds the phases are drawn from, one fresh draw of the band each. */
+const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
+
+/** How many water rows a column may carry a floe in: fewer than all eight. */
+const ROWS_COVERED_LIMIT = WATER_LANES.length;
+
+/** One column of one draw: how many of the eight water rows carried a floe. */
+interface ColumnReading {
+  seed: number;
+  col: number;
+  covered: number;
+}
+
+/** How many floes one lane carried on one draw. */
+interface LaneReading {
+  seed: number;
+  row: number;
+  count: number;
+}
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("leaves no column carrying a floe in all eight water rows, on every draw of the phases", async () => {
+  const columns: ColumnReading[] = [];
+  const lanes: LaneReading[] = [];
+
+  for (const seed of SEEDS) {
+    const laid = await layOutLevel(h, LEVEL, { seed });
+    const rows = WATER_LANES.map((lane) => itemsInRow(laid.floes, lane.row));
+    rows.forEach((carried, index) => {
+      lanes.push({ seed, row: WATER_LANES[index].row, count: carried.length });
+    });
+    for (let col = 0; col < COLS; col += 1) {
+      columns.push({
+        seed,
+        col,
+        covered: rows.filter((carried) =>
+          carried.some((floe) => coversTile(floe, col)),
+        ).length,
+      });
+    }
+  }
+  captureStill(h, "scene");
+
+  for (const lane of lanes) {
+    assertGreaterThanOrEqual(
+      lane.count,
+      1,
+      `seed ${lane.seed}, row ${lane.row}: a lane carries floes at all ` +
+        "(specs/water.md)",
+    );
+  }
+  for (const reading of columns) {
+    assertLessThan(
+      reading.covered,
+      ROWS_COVERED_LIMIT,
+      `seed ${reading.seed}, column ${reading.col}: the water rows carrying a ` +
+        `floe over it, of ${ROWS_COVERED_LIMIT}`,
+    );
+  }
 });

@@ -1,27 +1,53 @@
-// Floe — water/lane-rows: SCAFFOLD STUB, NOT A VALIDATOR.
+// water/lane-rows — a freshly laid-out level carries eight water lanes, one on
+// each row of the water band.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `water.lane-rows` review item, written
-// against the `simple-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/strait.md puts the water band on rows `WATER_TOP` (`2`) to
+// `WATER_BOTTOM` (`9`), and specs/water.md says each row of that band is one
+// lane and that `WATER_LANES` names the eight "in ascending row order".
+// specs/instrumentation.md reports them as `waterLanes`, "the eight water lanes,
+// rows 2..9 ascending", so the whole of this reading is the array's length and
+// the row each entry carries, in the order they arrive.
 //
-// The item this file decides, from test-case.toml:
-//
-//   Eight water lanes at rows 2 to 9
-//
-//   A freshly laid-out level reports exactly eight water lanes, one per row
-//   from 2 to 9.
-//
-// Its declared media: image `scene`.
+// NOTHING IS POSED BUT THE LEVEL. The lanes are not something a scenario puts on
+// the strait; they are what laying a level out produces — `setLevel(n)` "lays
+// the sixteen lanes out for it" (specs/instrumentation.md) — so this check lays
+// one out and reads what it got. It is read at the moment the layout happened,
+// before a tick of lane motion has run.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { WATER_LANES } from "../../src/constants";
+import { assertDeepEqual, assertLength } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { layOutLevel } from "./harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The level laid out. Level 1 is the level a run opens on (specs/progression.md). */
+const LEVEL = 1;
 
-it("water/lane-rows has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** The eight rows the water band occupies, ascending (specs/water.md's table). */
+const WATER_ROWS = WATER_LANES.map((lane) => lane.row);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reports one water lane on each of rows 2 to 9, in ascending order", async () => {
+  const laid = await layOutLevel(h, LEVEL);
+  captureStill(h, "scene");
+
+  assertLength(
+    laid.waterLanes,
+    WATER_ROWS.length,
+    "the water band is eight lanes, one per row (specs/water.md)",
+  );
+  assertDeepEqual(
+    laid.waterLanes.map((lane) => lane.row),
+    WATER_ROWS,
+    "the rows the eight water lanes occupy, in the order they are reported",
+  );
 });
