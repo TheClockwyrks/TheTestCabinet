@@ -31,6 +31,13 @@
 // they walk it down, and a build that clears the wave on any kill but the last one
 // is caught by the BEFORE reading rather than passing on the after.
 //
+// AND THE EMPTY FIELD IS NOT READ HERE. Whether a rock is on the field once the
+// banner is up is `no-rock-during-the-banner`'s requirement, and it reads the very
+// tick the banner rose, so asserting it again here would cost a build that spawns
+// its wave early two points for one defect. What this item needs of the roster it
+// has already: the field held exactly one Small before the kill, and `destroyRock`
+// does not return until that rock is gone.
+//
 // ONE TICK OF LATITUDE, AND ONLY ONE. `specs/simulation.md` puts collision
 // resolution last in a tick, so a build that notices the destroyed rock inside that
 // step raises the banner on the same tick and one that notices it at the top of the
@@ -105,12 +112,12 @@ it("raises the banner on the tick the last rock is destroyed, and not before", a
       `${before.wave})`,
   );
 
-  const cleared = await captureReplay(h, "clear", async () => {
+  const raised = await captureReplay(h, "clear", async () => {
     const kill = await destroyRock(h, before.rocks[0].id);
     // The one tick of latitude the stated tick order leaves, taken here rather
     // than in a helper because this is the item that owns the requirement: what
     // it reads has to be what it grades.
-    const raised =
+    const up =
       kill.result.snapshot.waveBanner > 0
         ? kill.result.snapshot
         : (
@@ -121,16 +128,11 @@ it("raises the banner on the tick the last rock is destroyed, and not before", a
           ).snapshot;
     // The banner going up, and a moment of it running, for a reviewer to watch.
     await h.advance(WITNESS_TICKS);
-    return { kill: kill.result.snapshot, raised };
+    return up;
   });
 
-  assertLength(
-    cleared.kill.rocks,
-    0,
-    "rocks left on the field on the tick the last Small was destroyed",
-  );
   assertGreaterThan(
-    cleared.raised.waveBanner,
+    raised.waveBanner,
     0,
     `the seconds left on the WAVE N banner within ${CLEAR_GRACE_TICKS} tick of ` +
       `the last rock being destroyed, which specs/progression.md raises on the ` +

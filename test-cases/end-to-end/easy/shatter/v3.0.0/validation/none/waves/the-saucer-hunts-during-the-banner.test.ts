@@ -144,7 +144,15 @@ it("keeps the saucer travelling and firing while the banner shows", async () => 
   await poseRock(h, "small", LAST_ROCK.x, LAST_ROCK.y);
   await h.debug.setWaveSpawning(true);
   const cleared = await shootTheFieldClear(h);
-  const raised = await bannerUp(h, cleared);
+  await bannerUp(h, cleared);
+  // The banner the clear EARNED is what `bannerUp` above insisted on; how long it
+  // runs for is `banner-runs-for-1p5s`'s point, not this one, so the window is
+  // levelled to WAVE_BANNER_TIME before it is watched. Without this a build whose
+  // banner is half the stated length would fail here too — its banner would be
+  // over before the shot falling due at SAUCER_FIRE_INTERVAL landed — and one
+  // defect would cost two points.
+  await h.debug.setWaveBanner(WAVE_BANNER_TIME);
+  const raised = await h.snapshot();
 
   const visit = requireSaucer(raised, "a saucer up when the last rock died");
   const knownShots = new Set(raised.enemyBullets.map((bullet) => bullet.id));
