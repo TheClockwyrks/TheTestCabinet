@@ -86,7 +86,11 @@ it("wins the run on the hop that fills the last open bay of level eight", async 
   poseLevelEight(CONTROL_FILLED);
   await hop(h, "up");
   const control = h.snapshot();
-  assertEqual(control.bays[OPEN_BAY], true, `bay ${OPEN_BAY} filled by that hop`);
+  assertEqual(
+    control.bays[OPEN_BAY],
+    true,
+    `bay ${OPEN_BAY} filled by that hop`,
+  );
   assertEqual(
     control.bays[SPARE_BAY],
     false,

@@ -86,7 +86,11 @@ it("puts the crossing that follows a filled bay back on a full clock", async () 
   h.debug.setTimer(POSED_TIMER);
 
   const before = h.snapshot();
-  assertEqual(before.timer, POSED_TIMER, "the clock the crossing was posed with");
+  assertEqual(
+    before.timer,
+    POSED_TIMER,
+    "the clock the crossing was posed with",
+  );
   assertNotEqual(
     before.timerMax,
     POSED_TIMER,

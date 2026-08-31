@@ -99,7 +99,11 @@ it("takes one life and starts the dying hold when a floe carries the critter off
 
   const before = h.snapshot();
   assertEqual(before.phase, "crossing", "a live crossing before the ride");
-  assertEqual(before.critter.footing, "floe", "a critter riding the posed floe");
+  assertEqual(
+    before.critter.footing,
+    "floe",
+    "a critter riding the posed floe",
+  );
 
   const { riding, swept } = await captureReplay(h, "death", async () => {
     await h.advance(MID);

@@ -114,7 +114,11 @@ it("keeps both bands advancing at their speeds through the death hold", async ()
     return { opened: start, closed: end };
   });
 
-  assertEqual(closed.phase, "dying", "the whole span read from inside the hold");
+  assertEqual(
+    closed.phase,
+    "dying",
+    "the whole span read from inside the hold",
+  );
 
   const iceLane = "the ice lane being measured";
   const iceFrom = edgeOf(vehicleById(opened, vehicle), iceLane);

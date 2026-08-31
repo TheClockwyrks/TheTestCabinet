@@ -97,7 +97,11 @@ it("takes one life and starts the dying hold on the tick the crossing timer reac
     "crossing",
     "a live crossing before the clock runs out",
   );
-  assertEqual(before.timer, POSED_TIMER, "the clock the crossing was posed with");
+  assertEqual(
+    before.timer,
+    POSED_TIMER,
+    "the clock the crossing was posed with",
+  );
 
   const { running, expired } = await captureReplay(h, "expire", async () => {
     await h.advance(MID);
@@ -115,7 +119,11 @@ it("takes one life and starts the dying hold on the tick the crossing timer reac
     "crossing",
     "still crossing while the clock still reads",
   );
-  assertGreaterThan(running.timer, 0, "a clock still above zero four fifths in");
+  assertGreaterThan(
+    running.timer,
+    0,
+    "a clock still above zero four fifths in",
+  );
   assertEqual(running.lives, before.lives, "a running clock costs no life");
 
   assertLessThanOrEqual(

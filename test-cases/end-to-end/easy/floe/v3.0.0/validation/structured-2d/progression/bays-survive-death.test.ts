@@ -87,7 +87,11 @@ it("leaves exactly the bays that were filled filled across a death", async () =>
   h.debug.setCritterTile(DEATH_COL, DEATH_ROW);
 
   const posed = h.snapshot();
-  assertDeepEqual(posed.bays, POSED, `bays ${FILLED_BAYS.join(" and ")} filled`);
+  assertDeepEqual(
+    posed.bays,
+    POSED,
+    `bays ${FILLED_BAYS.join(" and ")} filled`,
+  );
 
   const { dying, fresh } = await captureReplay(h, "respawn", async () => {
     await h.advance(FALL_FRAMES);

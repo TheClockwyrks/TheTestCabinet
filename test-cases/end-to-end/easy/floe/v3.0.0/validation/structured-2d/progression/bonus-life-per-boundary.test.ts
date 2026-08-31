@@ -98,7 +98,9 @@ const AFTER_FRAMES = ticksFor(0.25);
 
 /** How many `BONUS_LIFE_EVERY` boundaries a score passed on its way from `from` to `to`. */
 function boundariesCrossed(from: number, to: number): number {
-  return Math.floor(to / BONUS_LIFE_EVERY) - Math.floor(from / BONUS_LIFE_EVERY);
+  return (
+    Math.floor(to / BONUS_LIFE_EVERY) - Math.floor(from / BONUS_LIFE_EVERY)
+  );
 }
 
 let h: Harness;
@@ -118,8 +120,17 @@ it("pays a life for each of the two boundaries one gain carried the score throug
   poseAtBayMouth(h, BAY);
 
   const posed = h.snapshot();
-  assertEqual(posed.score, POSED_SCORE, "the score posed short of the boundary");
-  assertCloseTo(posed.timer, POSED_TIMER, TIMER_DIGITS, "the posed crossing timer");
+  assertEqual(
+    posed.score,
+    POSED_SCORE,
+    "the score posed short of the boundary",
+  );
+  assertCloseTo(
+    posed.timer,
+    POSED_TIMER,
+    TIMER_DIGITS,
+    "the posed crossing timer",
+  );
   assertEqual(posed.timerRunning, false, "the timer held where it was posed");
 
   const landed = await captureReplay(h, "bonus", async () => {

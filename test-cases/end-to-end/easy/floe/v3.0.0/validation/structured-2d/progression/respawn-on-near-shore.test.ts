@@ -84,7 +84,11 @@ it("puts a fresh critter on the near shore, facing up, with bestRow back at the 
   h.debug.setBestRow(POSED_BEST_ROW);
 
   const posed = h.snapshot();
-  assertEqual(posed.critter.col, DEATH_COL, "a column a crossing never begins from");
+  assertEqual(
+    posed.critter.col,
+    DEATH_COL,
+    "a column a crossing never begins from",
+  );
   assertEqual(
     posed.critter.facing,
     POSED_FACING,
@@ -103,7 +107,11 @@ it("puts a fresh critter on the near shore, facing up, with bestRow back at the 
   });
 
   assertEqual(fresh.critter.present, true, "a critter back on the strait");
-  assertEqual(fresh.critter.row, ROW_NEAR, "the near shore a crossing begins on");
+  assertEqual(
+    fresh.critter.row,
+    ROW_NEAR,
+    "the near shore a crossing begins on",
+  );
   assertEqual(fresh.critter.col, START_COL, "the column a crossing begins on");
   assertEqual(fresh.critter.facing, "up", "the facing a fresh critter has");
   assertEqual(

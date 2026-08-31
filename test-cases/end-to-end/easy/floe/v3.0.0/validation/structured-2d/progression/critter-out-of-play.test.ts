@@ -96,7 +96,11 @@ it("keeps the critter out of play for the whole hold, at the cost of one life", 
   // The situation both readings were taken in: a life was lost, and a second
   // vehicle later arrived on the tile the critter died on.
   assertEqual(struck.phase, "dying", "a life lost to the first car");
-  assertEqual(held.phase, "dying", "still inside the hold at the second reading");
+  assertEqual(
+    held.phase,
+    "dying",
+    "still inside the hold at the second reading",
+  );
   assertTrue(
     vehicleCovering(held, ROW, tileCX(CRITTER_COL)) !== undefined,
     `a second vehicle covering column ${CRITTER_COL} during the hold`,

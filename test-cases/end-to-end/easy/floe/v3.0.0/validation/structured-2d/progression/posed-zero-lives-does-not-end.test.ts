@@ -65,8 +65,16 @@ it("keeps playing a crossing whose counter was posed empty", async () => {
 
   const posed = h.snapshot();
   assertEqual(posed.lives, POSED_LIVES, "the counter posed empty");
-  assertEqual(posed.screen, "playing", "still playing at the moment of the pose");
-  assertEqual(posed.phase, "crossing", "still crossing at the moment of the pose");
+  assertEqual(
+    posed.screen,
+    "playing",
+    "still playing at the moment of the pose",
+  );
+  assertEqual(
+    posed.phase,
+    "crossing",
+    "still crossing at the moment of the pose",
+  );
   assertEqual(
     posed.critter.row,
     ROW_NEAR,

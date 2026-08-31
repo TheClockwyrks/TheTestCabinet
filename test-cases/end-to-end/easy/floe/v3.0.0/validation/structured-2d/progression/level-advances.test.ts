@@ -90,18 +90,26 @@ it("opens the next level a second and six tenths after the level's last bay is f
   assertEqual(posed.level, LEVEL, "the level the clear is taken on");
   assertEqual(posed.phase, "crossing", "four posed bays clear nothing");
 
-  const { cleared, held, opened } = await captureReplay(h, "advance", async () => {
-    await hop(h, "up");
-    const landed = h.snapshot();
-    await h.advance(EARLY);
-    const inside = h.snapshot();
-    await h.advance(LATE);
-    return { cleared: landed, held: inside, opened: h.snapshot() };
-  });
+  const { cleared, held, opened } = await captureReplay(
+    h,
+    "advance",
+    async () => {
+      await hop(h, "up");
+      const landed = h.snapshot();
+      await h.advance(EARLY);
+      const inside = h.snapshot();
+      await h.advance(LATE);
+      return { cleared: landed, held: inside, opened: h.snapshot() };
+    },
+  );
 
   // The situation the two readings were taken in: that hop really did fill the
   // level's last open bay and really did start a clearing hold.
-  assertDeepEqual(cleared.bays, ALL_FILLED, "the last open bay filled by that hop");
+  assertDeepEqual(
+    cleared.bays,
+    ALL_FILLED,
+    "the last open bay filled by that hop",
+  );
   assertEqual(cleared.phase, "clearing", "the clearing hold that hop began");
 
   assertEqual(

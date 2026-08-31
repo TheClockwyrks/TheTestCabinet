@@ -80,16 +80,24 @@ it("ends the run on the death that empties the lives, once the hold expires", as
 
   const posed = h.snapshot();
   assertEqual(posed.lives, POSED_LIVES, "the last life, posed");
-  assertEqual(posed.screen, "playing", "a run still under way before the death");
+  assertEqual(
+    posed.screen,
+    "playing",
+    "a run still under way before the death",
+  );
 
-  const { struck, held, over } = await captureReplay(h, "gameover", async () => {
-    await h.advance(FALL_FRAMES);
-    const lost = h.snapshot();
-    await h.advance(EARLY);
-    const inside = h.snapshot();
-    await h.advance(LATE);
-    return { struck: lost, held: inside, over: h.snapshot() };
-  });
+  const { struck, held, over } = await captureReplay(
+    h,
+    "gameover",
+    async () => {
+      await h.advance(FALL_FRAMES);
+      const lost = h.snapshot();
+      await h.advance(EARLY);
+      const inside = h.snapshot();
+      await h.advance(LATE);
+      return { struck: lost, held: inside, over: h.snapshot() };
+    },
+  );
 
   // The situation both readings were taken in: the death really did spend the last
   // life, and the hold it began really was running at the first reading.
