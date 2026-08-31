@@ -23,10 +23,14 @@
 // one whose confirm works but whose PLAY row leads somewhere odd fails only this
 // one.
 //
-// "RATHER THAN STARTING A GAME" IS READ IN THE SAME NUMBER. The screen is one
-// value, so a build that started a run instead of opening the list reads
-// `playing` here and fails, and one that jumped straight to the difficulty list
-// reads `difficultyselect`. Every wrong destination is a different reading.
+// "RATHER THAN STARTING A GAME" IS READ TWICE. The screen is one value, so a
+// build that started a run INSTEAD of opening the list reads `playing` here and
+// fails, and one that jumped straight to the difficulty list reads
+// `difficultyselect`. Every wrong destination is a different reading. But a build
+// that opened the list AND started a run behind it reads `modeselect` all the
+// same, and the screen alone would call that a pass — so the floor is read as
+// well: `reset` leaves the surge roster empty (`specs/instrumentation.md`), and
+// a PLAY that starts no game of its own leaves it empty.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -71,5 +75,10 @@ it("opens mode select when PLAY is confirmed on the title screen", async () => {
     after.screen,
     "modeselect",
     `the screen confirming ${TITLE_ITEMS[PLAY_ROW]}, row ${PLAY_ROW} of the title menu, leads to`,
+  );
+  assertEqual(
+    after.surge.length,
+    0,
+    `the units on the floor after confirming ${TITLE_ITEMS[PLAY_ROW]}, which specs/screens.md says starts no game of its own`,
   );
 });
