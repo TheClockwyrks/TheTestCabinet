@@ -1,18 +1,63 @@
-// Meltdown — combat/flak-hits-air: the Flak hits flyers.
+// Meltdown — combat/flak-hits-air: the Flak fires on a flyer.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// `specs/combat.md`: the Flak "targets flying units alone". `specs/surge.md` gives
+// the Drift `Flies: yes`, so the one kind of unit the Flak may fire on is in range
+// here, and it must fire.
 //
-// What it must decide:
+// THE POSITIVE HALF OF THE FLAK'S CLAUSE, and it needs a point of its own because
+// the negative half alone is passed by a Flak that fires at nothing whatsoever. A
+// build that read `airOnly` as "cannot target" rather than "targets only air"
+// removes nothing here and everything from `combat/flak-ignores-ground`, so the
+// pair names which way round a build got it.
 //
-//   A Flak damages a Drift in range.
+// THE MARK IS THREE TILES OUT, inside the Flak's `8.0` several times over and off
+// its footprint, with motion off so its flight line cannot carry it away while an
+// interval is waited out. What the shot removes is `combat/damage-per-shot`'s
+// figure; what this point claims is that hp fell.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  framesForShots,
+  type Harness,
+} from "../harness";
+import {
+  NEAR_UNITS,
+  fireRateOf,
+  poseGun,
+  poseMarkEast,
+  readHp,
+} from "./duel";
 
-it("The Flak hits flyers", () => {
-  throw new Error(
-    "Meltdown: validation/combat/flak-hits-air.test.ts is not implemented yet",
+/** The emitter read, the heat it is pinned at, and the flyer it fires on. */
+const TOWER = "flak";
+const HEAT = 0;
+const MARK = "drift";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("The Flak hits flyers", async () => {
+  await poseGun(h, TOWER, HEAT);
+  const mark = await poseMarkEast(h, TOWER, MARK, NEAR_UNITS);
+  const opened = await readHp(h, mark);
+
+  await h.advance(framesForShots(1, fireRateOf(TOWER)));
+  await captureStill(h, "air");
+
+  assertGreaterThan(
+    opened - (await readHp(h, mark)),
+    0,
+    `hp a ${TOWER} removed from a flying ${MARK} in range, after one ` +
+      `${(1 / fireRateOf(TOWER)).toFixed(4)}s interval`,
   );
 });
