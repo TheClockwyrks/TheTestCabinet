@@ -1,19 +1,110 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// lives/respawns-at-rest — the next ship starts still, whatever the last one was
+// doing.
 //
-// lives/respawns-at-rest — The next ship appears at rest
+// THE RULE. `specs/progression.md`: "the next ship appears AT REST at the safe
+// point". `specs/ship.md` says the same of a life beginning. The position and the
+// facing are their own items; this one reads the SPEED alone.
 //
-// Its speed after the respawn is 0 within 1 unit per second.
+// THE SHIP DIES CARRYING REAL MOMENTUM, which is the whole of what makes this
+// decidable. The ship flies up the field at `CARRIED_SPEED` into a Small posed at
+// rest above it, so it is destroyed at some `283` units per second — the drag
+// `specs/ship.md` fixes has bled a little off it by then, and the well never pulls
+// the ship at all. Every wrong model then reads as a different number: a build
+// that carries the wreck's velocity onto the next ship reads `283`, a build that
+// halves it reads `142`, and a build that places the next ship at rest, as the
+// specification requires, reads `0`.
 //
-// Declared by test-case.toml as validation.script "lives/respawns-at-
-// rest.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the none harness in validation/none/harness.ts and the spec-
-// derived oracle in validation/none/geometry.ts — never against a reference
-// build.
+// A CHECK THAT KILLED A MOTIONLESS SHIP WOULD GRADE NOTHING. It would read `0`
+// from a build that copied the wreck's velocity and `0` from a build that cleared
+// it, which is the shape of a check whose setup smuggles the answer in. The pose
+// is read back before the scenario runs (`./scene.ts`), so a build that ignored
+// `setShipVelocity` fails with that named rather than passing on a ship that was
+// never moving.
 //
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// WHY ONE UNIT PER SECOND. `at rest` is exactly zero, and the next ship is PLACED
+// rather than flown, so the tolerance is float slack on a placement. It is a
+// four-hundredth of the momentum the dying ship carried and a six-hundredth of
+// `SHIP_MAX`, so no build that keeps any part of the wreck's motion survives it.
+//
+// WHY THE FIELD IS EMPTIED BEFORE THE READING. `settleRespawn` clears the rock
+// through `clearRocks`, which destroys nothing and scores nothing
+// (`specs/instrumentation.md`), so the ship this reads is standing on an empty
+// field and nothing but the respawn decided its velocity.
 
-throw new Error(
-  "Shatter v3.0.0: validation/none/lives/respawns-at-rest.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
+import { SHIP_MAX } from "../constants";
+import { magnitude } from "../geometry";
+import {
+  captureStill,
+  createHarness,
+  shipVelocity,
+  startPlaying,
+  type Harness,
+} from "../harness";
+import {
+  APPROACH_GAP,
+  SHIP_TOUCHES_SMALL,
+  arrangeDoomedShip,
+  contactNeeded,
+  settleRespawn,
+  untilLifeLost,
+} from "./scene";
+
+/**
+ * The speed the dying ship carries, in units per second.
+ *
+ * Well inside `SHIP_MAX` (`680`), so the speed cap `specs/ship.md` fixes never
+ * enters, and far enough above zero that a build carrying any fraction of it onto
+ * the next ship reads a number nothing like `0`.
+ */
+const CARRIED_SPEED = 300;
+
+/** How fast the next ship may be moving and still be "at rest", in units/second. */
+const REST_TOLERANCE = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("puts the next ship up at rest, though the last one died at speed", async () => {
+  await startPlaying(h);
+  const before = (await h.snapshot()).lives;
+  // The ship flies up into a Small standing still, so the closing is the SHIP's.
+  await arrangeDoomedShip(h, { shipSpeed: CARRIED_SPEED, rockDrift: 0 });
+
+  const lost = await untilLifeLost(h, before);
+  assertEqual(
+    lost.hit,
+    true,
+    contactNeeded(
+      "a ship flying into a standing Small",
+      APPROACH_GAP,
+      SHIP_TOUCHES_SMALL,
+      CARRIED_SPEED,
+    ),
+  );
+  assertEqual(
+    lost.snapshot.lives,
+    before - 1,
+    "the ships left after the contact, so a ship remains for the respawn this " +
+      "item reads (specs/progression.md)",
+  );
+
+  const settled = await settleRespawn(h);
+  await captureStill(h, "respawn");
+
+  assertLessThanOrEqual(
+    magnitude(shipVelocity(settled)),
+    REST_TOLERANCE,
+    `the speed of the next ship, which appears at rest — the one it replaced was ` +
+      `destroyed flying at some ${CARRIED_SPEED} units per second, a ` +
+      `${(CARRIED_SPEED / SHIP_MAX).toFixed(2)} of the cap (specs/progression.md)`,
+  );
+});
