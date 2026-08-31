@@ -88,7 +88,11 @@ it("takes the critter off the strait and leaves nothing on it able to reach it",
     true,
     "the critter standing on the strait before it is taken off",
   );
-  assertLength(before.bears, BEAR_TILES.length, "the bears this scenario posed");
+  assertLength(
+    before.bears,
+    BEAR_TILES.length,
+    "the bears this scenario posed",
+  );
 
   h.debug.removeCritter();
   const after = h.snapshot();

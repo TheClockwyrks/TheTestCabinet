@@ -29,7 +29,12 @@ import {
   assertLength,
 } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { BEAR_TILES, FLOES, VEHICLES, poseCrowdedStrait } from "./crowded-strait";
+import {
+  BEAR_TILES,
+  FLOES,
+  VEHICLES,
+  poseCrowdedStrait,
+} from "./crowded-strait";
 
 let h: Harness;
 
@@ -55,7 +60,11 @@ it("removes every vehicle and leaves the rest of the strait standing", async () 
     FLOES.length,
     "the floes this scenario posed, one per water lane it used",
   );
-  assertLength(before.bears, BEAR_TILES.length, "the bears this scenario posed");
+  assertLength(
+    before.bears,
+    BEAR_TILES.length,
+    "the bears this scenario posed",
+  );
   assertGreaterThan(
     before.bays.filter(Boolean).length,
     0,

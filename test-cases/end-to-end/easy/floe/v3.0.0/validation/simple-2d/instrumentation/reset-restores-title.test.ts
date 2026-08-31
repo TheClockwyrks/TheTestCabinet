@@ -257,7 +257,11 @@ it("restores every declared field to its title value and leaves muted alone", as
   );
   assertEqual(title.catchTest, true, "snapshot().catchTest after reset()");
   assertEqual(title.fishCadence, true, "snapshot().fishCadence after reset()");
-  assertEqual(title.timerRunning, true, "snapshot().timerRunning after reset()");
+  assertEqual(
+    title.timerRunning,
+    true,
+    "snapshot().timerRunning after reset()",
+  );
 
   // And the one field reset must not touch.
   assertEqual(

@@ -106,7 +106,7 @@ function assertLane(
 
 /** Every field of one reported lane item is of its documented kind. */
 function assertItem(
-  item: FloeSnapshot["vehicles"][number],
+  item: FloeSnapshot["vehicles"][number] | FloeSnapshot["floes"][number],
   kinds: readonly string[],
   what: string,
 ): void {

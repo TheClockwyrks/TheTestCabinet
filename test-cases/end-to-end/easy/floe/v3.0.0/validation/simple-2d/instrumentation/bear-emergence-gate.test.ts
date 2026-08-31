@@ -110,7 +110,11 @@ it("keeps the hunt away while emergence is gated, and lets one arrive when it is
       `reads as ROW_NEAR - bestRow and asks to be at least ` +
       `BEAR_EMERGE_ADVANCE (${BEAR_EMERGE_ADVANCE}) for the first slot`,
   );
-  assertEqual(posed.bears.length, 0, "the bears on the strait before the watch");
+  assertEqual(
+    posed.bears.length,
+    0,
+    "the bears on the strait before the watch",
+  );
 
   const gated = await h.until((s) => s.bears.length > 0, {
     maxFrames: ticksFor(WATCH_SECONDS),

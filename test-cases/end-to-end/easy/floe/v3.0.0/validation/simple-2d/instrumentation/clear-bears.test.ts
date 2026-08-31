@@ -30,7 +30,12 @@ import {
   assertLength,
 } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { BEAR_TILES, FLOES, VEHICLES, poseCrowdedStrait } from "./crowded-strait";
+import {
+  BEAR_TILES,
+  FLOES,
+  VEHICLES,
+  poseCrowdedStrait,
+} from "./crowded-strait";
 
 let h: Harness;
 
