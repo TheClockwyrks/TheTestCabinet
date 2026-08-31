@@ -1,26 +1,63 @@
-// Floe — ice/lane-kinds: SCAFFOLD STUB, NOT A VALIDATOR.
+// ice/lane-kinds — every vehicle in a lane is the one kind that lane carries.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `ice.lane-kinds` review item, written
-// against the `none` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/ice.md's lane table gives each of the eight rows one vehicle kind, and
+// the population rule states it directly: "Every vehicle in a lane is the lane's
+// own kind." So a freshly laid-out level is read row by row and every vehicle on
+// the row is required to report that row's kind.
 //
-// The item this file decides, from test-case.toml:
+// A LANE HAS TO CARRY SOMETHING for the reading to mean anything, and
+// specs/ice.md requires that too — "a lane always carries enough vehicles to
+// reach both edges of the strait" — so an empty lane fails here rather than
+// passing vacuously.
 //
-//   Each ice lane carries its stated vehicle
-//
-//   Every vehicle in each row is the kind the lane table gives that row.
-//
-// Its declared media: image `scene`.
+// The kinds are what tell the eight lanes apart: three rows carry a `plow`,
+// three a `car` and two a `dogsled`, in that arrangement and no other, so a
+// build that gave every lane the same vehicle fails on five rows and a build
+// that shifted the table by one fails on six.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThanOrEqual,
+} from "../assert";
+import { ICE_LANES } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { layOutLevel, vehiclesAlong } from "./harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The level laid out. The table this reads is the same at every level. */
+const LEVEL = 1;
 
-it("ice/lane-kinds has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.dispose();
+});
+
+it("fills each ice lane with the vehicle kind the lane table gives its row", async () => {
+  const laid = await layOutLevel(harness, LEVEL);
+  await captureStill(harness, "scene");
+
+  for (const lane of ICE_LANES) {
+    const carried = vehiclesAlong(laid, lane.row);
+    assertGreaterThanOrEqual(
+      carried.length,
+      1,
+      `row ${lane.row}: a lane carries vehicles at all (specs/ice.md)`,
+    );
+    for (const [index, vehicle] of carried.entries()) {
+      assertEqual(
+        vehicle.kind,
+        lane.kind,
+        `row ${lane.row}, vehicle ${index} at x ${vehicle.x}: kind`,
+      );
+    }
+  }
+
+  // Nothing the page threw or logged as an error while this harness drove it.
+  assertDeepEqual(harness.pageErrors, []);
 });
