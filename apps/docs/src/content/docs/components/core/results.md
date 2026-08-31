@@ -197,8 +197,9 @@ the run's [terminal state](/components/core/run-records/#status):
   configuration armed, which is the model's outcome against that ceiling.
 - An `infrastructure` failure is the Test Cabinet's own fault and is never
   publishable (`422`), whatever reviews it carries.
-- A `canceled` run is likewise never publishable (`422`). It is retained for
-  inspection only: a run a human stopped is not an outcome, so there is nothing
+- A `canceled` run is likewise never publishable (`422`). A killed gg run is
+  retained for inspection only, and a killed run of any other harness leaves no
+  record at all: a run a human stopped is not an outcome, so there is nothing
   about the model to release or report.
 
 Publishing is asynchronous. The backend gates the run and enqueues a per-publish

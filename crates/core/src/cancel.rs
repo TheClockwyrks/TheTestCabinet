@@ -1,30 +1,36 @@
 //! **Run cancellation** — the signal an operator's kill travels on, from the driver
-//! that observes it down to the harness session that has to wind down for it.
+//! that observes it down to the gg session that has to wind down for it.
 //!
-//! # Why a signal rather than dropping the future
+//! # What the signal is for
 //!
-//! The obvious way to stop a run is to drop the future driving it, and that is what the
-//! driver used to do. It is wrong here for two independent reasons.
+//! Cancellation is **cooperative for a [gg](crate::gg) run**, and the latch is the
+//! request. gg checks an in-container sentinel at every turn boundary, so the signal is
+//! raised, the session is asked to stop and given a bounded chance to do so, and the run
+//! then finishes through its ordinary post-session path — [collecting the produced
+//! tree](crate::ArtifactCollector), folding the accumulated usage into
+//! [metrics](crate::metrics::RunMetrics), writing the record. That is the reason to ask
+//! rather than to drop: a run's *result* is assembled after the session returns, so a
+//! dropped future skips every one of those stages and costs the operator the very thing
+//! a kill is issued to look at — everything the run had done up to that point. This is
+//! the same shape gg's own run-wide ceilings already use, for the same reason (see
+//! `crate::gg` and gg's `limits` module): a turn is the loop's atomic unit, so the
+//! wind-down bound is one turn, and nothing is abandoned half-applied.
 //!
-//! The first is that **dropping the run future does not stop the run**. A harness — gg
+//! A **third-party harness** run is destroyed instead. It is a CLI driven through an
+//! `exec` — there is no boundary at which it can be told to stop and no epilogue to wait
+//! for — so nothing on that path ever observes this latch, and the driver does not raise
+//! one it knows will not be read. Waiting would produce no earlier record; it would only
+//! hold the run's driver, and with it a dispatcher scheduling slot, open until the
+//! session ended on its own. So the driver drops the run and tears the sandbox down at
+//! once (see the driver's `cancel` module).
+//!
+//! # Dropping never stops a harness
+//!
+//! True of both paths: **dropping the run future does not stop the run**. A harness — gg
 //! included — executes as its own process inside the run container, and the future the
 //! host holds is only reading that process's output stream. Dropping it closes the
 //! stream; the harness carries on, and keeps spending, until the sandbox is torn out
-//! from under it.
-//!
-//! The second is that a run's *result* is assembled after the session returns —
-//! [collecting the produced tree](crate::ArtifactCollector), folding the accumulated
-//! usage into [metrics](crate::metrics::RunMetrics), writing the record. A dropped
-//! future skips every one of those stages, so a killed run lost the very thing an
-//! operator kills a run to look at: everything it had done up to that point.
-//!
-//! So cancellation is **cooperative**. The signal is raised; the session is asked to
-//! stop and given a bounded chance to do so; and then the run finishes through its
-//! ordinary post-session path, producing a complete record of a run that stopped early
-//! rather than an empty record of a run that vanished. This is the same shape gg's own
-//! run-wide ceilings already use, for the same reason (see `crate::gg` and gg's
-//! `limits` module): a turn is the loop's atomic unit, so the wind-down bound is one
-//! turn, and nothing is abandoned half-applied.
+//! from under it. Deleting the sandbox, not dropping the future, is what ends a run.
 //!
 //! # Shape
 //!

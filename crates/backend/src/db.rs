@@ -5532,12 +5532,18 @@ impl Db {
     /// when the job is unknown or is not canceled.
     ///
     /// The one sanctioned write to a canceled job, and the reason it is not
-    /// [`set_job_state`](Db::set_job_state): a killed run's driver stops the harness,
-    /// builds the partial record for what it got, and posts it a moment after the
-    /// cancel landed. Without this the record would be discarded and the killed run
-    /// would vanish from the run list. It cannot resurrect the job — `state` is never
-    /// written — and an already-attached record is not overwritten, so a duplicate
-    /// report from a winding-down driver is a no-op.
+    /// [`set_job_state`](Db::set_job_state): a killed gg run's driver winds the session
+    /// down, builds the record for what it got, and posts it after the cancel landed.
+    /// Without this the record would be discarded and the killed run would vanish from
+    /// the run list. It cannot resurrect the job — `state` is never written — and an
+    /// already-attached record is not overwritten, so a duplicate report from a
+    /// winding-down driver is a no-op.
+    ///
+    /// A killed run of any other harness never reaches here: its driver destroys the run
+    /// and posts no record, so the job stays canceled with nothing attached. Nor does a
+    /// third-party run that reached its own ending before its driver noticed the kill:
+    /// it posts an ordinary terminal status, which the canceled-job guard in
+    /// `update_status` turns away before any record is attached.
     pub async fn attach_canceled_job_record(
         &self,
         id: &str,

@@ -1637,7 +1637,7 @@
         },
         {
           "const": "canceled",
-          "description": "An operator killed the run before it finished — a deliberate stop, not an\noutcome. Retained (with everything it streamed before the kill) so a killed\nrun stays visible and inspectable in the run list rather than vanishing, but\n**never** publishable and excluded from every model statistic: nothing about\nthe model can be concluded from a run a human ended.\n\nDistinct from [`TimedOut`](RunState::TimedOut) and [`Hung`](RunState::Hung),\nthe two terminations the Test Cabinet itself decides on a timer; this one has\nno timer and no fault, only an operator.",
+          "description": "An operator killed the run before it finished — a deliberate stop, not an\noutcome. **Never** publishable and excluded from every model statistic: nothing\nabout the model can be concluded from a run a human ended.\n\nOnly a killed [gg](crate::gg) run reaches this state, and reaching it is the\npoint of gg's cooperative wind-down: gg observes the kill at a turn boundary and\nstops, so the run still finishes through its ordinary post-session path and is\nretained — with everything it streamed before the kill — visible and inspectable\nin the run list rather than vanishing. Killing a run of any other harness\nproduces no record at all: such a harness has no wind-down to be asked for, so\nits driver destroys the run outright (see the driver's `cancel` module) and there\nis nothing to record this state on.\n\nDistinct from [`TimedOut`](RunState::TimedOut) and [`Hung`](RunState::Hung),\nthe two terminations the Test Cabinet itself decides on a timer; this one has\nno timer and no fault, only an operator.",
           "type": "string"
         }
       ]

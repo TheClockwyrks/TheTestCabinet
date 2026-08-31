@@ -502,10 +502,17 @@ pub enum RunState {
     /// [`HarnessError`](RunState::HarnessError), not this.
     Infrastructure,
     /// An operator killed the run before it finished — a deliberate stop, not an
-    /// outcome. Retained (with everything it streamed before the kill) so a killed
-    /// run stays visible and inspectable in the run list rather than vanishing, but
-    /// **never** publishable and excluded from every model statistic: nothing about
-    /// the model can be concluded from a run a human ended.
+    /// outcome. **Never** publishable and excluded from every model statistic: nothing
+    /// about the model can be concluded from a run a human ended.
+    ///
+    /// Only a killed [gg](crate::gg) run reaches this state, and reaching it is the
+    /// point of gg's cooperative wind-down: gg observes the kill at a turn boundary and
+    /// stops, so the run still finishes through its ordinary post-session path and is
+    /// retained — with everything it streamed before the kill — visible and inspectable
+    /// in the run list rather than vanishing. Killing a run of any other harness
+    /// produces no record at all: such a harness has no wind-down to be asked for, so
+    /// its driver destroys the run outright (see the driver's `cancel` module) and there
+    /// is nothing to record this state on.
     ///
     /// Distinct from [`TimedOut`](RunState::TimedOut) and [`Hung`](RunState::Hung),
     /// the two terminations the Test Cabinet itself decides on a timer; this one has

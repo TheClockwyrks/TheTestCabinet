@@ -39,7 +39,7 @@ answers what a run cost in machine time. Both depend heavily on which provider
 served the requests, so each is presented as a secondary figure.
 
 Each stage duration is optional. `null` means the run recorded no figure for
-that stage, which is distinct from `0`. A canceled run records no validation
+that stage, which is distinct from `0`. A canceled gg run records no validation
 duration, because a cancellation skips validation.
 
 ## Tokens

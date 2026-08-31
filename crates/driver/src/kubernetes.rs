@@ -228,11 +228,17 @@ impl KubernetesContainerRuntime {
     }
 
     /// Tear down this run's sandbox pod(s) — the teardown path used when a run is
-    /// **canceled** mid-flight. Dropping the run future cancels the in-flight
-    /// harness `exec`, but the sandbox pod the run created outlives it, so it is
-    /// removed here: every pod carrying this job's `JOB_ID_LABEL` is deleted with
-    /// a zero grace period (the run is over; there is nothing to drain), matching
-    /// what [`ContainerRuntime::stop`] does at a normal end of run.
+    /// **canceled** mid-flight, on every disposition the driver takes.
+    ///
+    /// The harness is its own process inside the sandbox, so neither dropping the run
+    /// future nor a session returning ends it; the host only ever held the `exec`
+    /// stream. For a destroyed run — a canceled third-party harness, abandoned rather
+    /// than asked to wind down — this call *is* what stops it running and spending, and
+    /// what lets the driver Job go terminal so its dispatcher slot frees. For a
+    /// wound-down gg run it reclaims the pod the finished session left behind. Either
+    /// way every pod carrying this job's `JOB_ID_LABEL` is deleted with a zero grace
+    /// period (the run is over; there is nothing to drain), matching what
+    /// [`ContainerRuntime::stop`] does at a normal end of run.
     ///
     /// Listing-then-deleting (rather than a single `delete_collection`) keeps to the
     /// `pods` `list`/`delete` verbs the driver already holds — no extra RBAC. A pod

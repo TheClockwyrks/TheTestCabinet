@@ -162,13 +162,18 @@ pub enum DriverState {
     Succeeded,
     /// The run could not be driven to a record (reason in `detail`).
     Failed,
-    /// The driver observed that the run was **canceled** by an operator, stopped the
-    /// harness, and is handing back the partial record it built for it (carried in
-    /// the same update, with
-    /// [`RunState::Canceled`](crate::RunState::Canceled)). The job is already
-    /// terminal — the backend moved it to `canceled` when the operator asked — so
-    /// this update only attaches the record, keeping the killed run visible and
+    /// The driver observed that the run was **canceled** by an operator, wound the
+    /// session down, and is handing back the record it built for it (carried in the
+    /// same update, with [`RunState::Canceled`](crate::RunState::Canceled)). The job is
+    /// already terminal — the backend moved it to `canceled` when the operator asked —
+    /// so this update only attaches the record, keeping the killed run visible and
     /// inspectable instead of vanishing.
+    ///
+    /// Only a canceled [gg](crate::gg) run's driver reports this, because gg is the one
+    /// harness that can be asked to wind down. A canceled run of any other harness is
+    /// destroyed by its driver, which posts no terminal status at all: the job stays
+    /// `canceled` with no record attached, and the run deliberately never reaches the
+    /// run list.
     Canceled,
 }
 
@@ -181,8 +186,8 @@ pub struct StatusUpdate {
     /// The state the driver is reporting.
     pub state: DriverState,
     /// The produced run record, required when `state` is `succeeded` and carried on
-    /// a `canceled` report too (the partial record for the killed run). Its `links`
-    /// are authoritative and stored with it.
+    /// a `canceled` report too (the record a killed gg run wound down to produce). Its
+    /// `links` are authoritative and stored with it.
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub record: Option<RunRecord>,

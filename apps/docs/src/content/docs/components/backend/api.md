@@ -463,13 +463,17 @@ that record, also accepts a `canceled` status, and it is the only status
 accepted on a job already in the terminal `canceled` state. Every other late
 report from a winding-down driver is discarded. A `canceled` status must carry a
 run record (`422` without one), and that record is normally a complete partial
-record: the driver [winds the run down
-cooperatively](/components/driver/overview/#cancellation) and posts what the
-ordinary post-session path produced, including metrics, the collected tree and
-the session summary. The backend persists it with the events its relay
-accumulated and attaches the record id to the already-canceled job. The job
-keeps its `canceled` state and its cancellation detail, no completion
-notification fires, and no retry is enqueued.
+record: the driver [winds a gg run
+down](/components/driver/overview/#cancellation) and posts what the ordinary
+post-session path produced, including metrics, the collected tree and the
+session summary. The backend persists it with the events its relay accumulated
+and attaches the record id to the already-canceled job. The job keeps its
+`canceled` state and its cancellation detail, no completion notification fires,
+and no retry is enqueued.
+
+Only a killed gg run's driver posts this status. A killed run of any other
+harness is destroyed by its driver, which posts nothing further, so the job stays
+`canceled` with no record attached.
 
 ### `POST /runs/{id}/reviews`
 
@@ -601,9 +605,9 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   has reviewed yet. The automatically graded test types are excluded, since no
   reviewer can clear them from the list.
 - `state=unpublished` — every unpublished run whatever its terminal state,
-  including infrastructure failures and operator-canceled runs, ordered by
-  finish time. This is the console's produced worklist, disjoint from the
-  default published listing.
+  including infrastructure failures and the canceled gg runs that were recorded,
+  ordered by finish time. This is the console's produced worklist, disjoint from
+  the default published listing.
 - `state=publishable` — the publish worklist: the subset of `state=unpublished`
   the publish gate accepts right now, which is a validator-rated completed run,
   a reviewed legacy completed run, or one of the publishable failure tiers. This
@@ -619,9 +623,10 @@ List stored runs, newest first. A `state` query parameter selects which runs:
 `any` and `publishable` are offered only on the summary-plus-offset path below,
 since the cursor listings walk one lifecycle slice at a time.
 
-A `canceled` run, one an operator killed mid-flight, reaches `state=unpublished`
-and `state=any`. It can never be published, carries no review checklist, and is
-not a publishable failure, so the other selectors omit it.
+A `canceled` run, a gg run an operator killed mid-flight, reaches
+`state=unpublished` and `state=any`. It can never be published, carries no review
+checklist, and is not a publishable failure, so the other selectors omit it. A
+killed run of any other harness leaves no record, so it is listed by no selector.
 
 #### Two projections
 

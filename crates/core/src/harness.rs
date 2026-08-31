@@ -608,6 +608,10 @@ pub struct HarnessOutcome {
     /// of unwinding and losing all of it. The engine reads it to mark the run
     /// [`RunState::Canceled`](crate::run_record::RunState::Canceled) and to skip
     /// validation, which would be new work on a run that was told to stop.
+    ///
+    /// A [gg](crate::gg) session is the only one that ever sets it: gg is the one harness
+    /// that can be asked to stop, and a canceled run of any other is destroyed by the
+    /// driver without an outcome ever being produced.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub canceled: bool,
 }
