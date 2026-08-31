@@ -1,27 +1,90 @@
-// Floe — bays/filled-stays-filled: SCAFFOLD STUB, NOT A VALIDATOR.
+// bays/filled-stays-filled — a bay filled by one crossing is still filled when
+// the next crossing fills a different one.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `bays.filled-stays-filled` review item, written
-// against the `none` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/bays.md: "A bay filled this way stays filled through every later crossing
+// of the level, and through a death." This point is the LATER CROSSING half of
+// that rule; `progression/bays-survive-death` is the death half.
 //
-// The item this file decides, from test-case.toml:
+// Two bays are filled by two real hops, in two separate crossings, with the
+// bay-fill hold run out between them so the second hop really is taken by the
+// fresh critter the first fill produced. The pair is bay `0` and bay `4`, the two
+// ends of the far shore, so a build that keeps only the most recent fill, or that
+// shifts what it keeps by a bay, reads a different array from the one below.
 //
-//   A filled bay stays filled
-//
-//   A bay filled by a hop is still filled after a second crossing fills a
-//   different bay.
-//
-// Its declared media: replay `fill`.
+// Nothing between the two hops touches a bay: the second crossing is arranged
+// with the same operations the first was, and neither `setBay` nor `clearBays` is
+// called anywhere in this file.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
+import { BAYFILL_PAUSE, BAY_COUNT, HOP_KEY } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  startCrossing,
+  ticksPast,
+  type Harness,
+} from "../harness";
+import { poseAtBayMouth } from "./bay-mouth";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The bay the first crossing fills, and the bay the second one fills. */
+const FIRST_BAY = 0;
+const SECOND_BAY = 4;
 
-it("bays/filled-stays-filled has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** Both filled and the middle three still open. */
+const EXPECTED: boolean[] = Array.from(
+  { length: BAY_COUNT },
+  (_, index) => index === FIRST_BAY || index === SECOND_BAY,
+);
+
+/** The bay-fill hold, plus the one tick of room `fill-starts-fresh-crossing` derives. */
+const HOLD_TICKS = ticksPast(BAYFILL_PAUSE) + 1;
+
+/** Ticks of the second hold recorded after the second hop, for the replay alone. */
+const AFTER_TICKS = 30;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("keeps the first bay filled when a second crossing fills another", async () => {
+  await startCrossing(h);
+
+  // The first crossing, and the hold it opens, so the second hop is taken by the
+  // fresh critter rather than by a critter posed back onto the strait.
+  await poseAtBayMouth(h, FIRST_BAY);
+  await h.tap(HOP_KEY.up);
+  await h.advance(HOLD_TICKS);
+  const between = await h.snapshot();
+  assertEqual(between.bays[FIRST_BAY], true, `bay ${FIRST_BAY} filled`);
+  assertEqual(
+    between.critter.present,
+    true,
+    "a critter for the second crossing",
+  );
+
+  // The second crossing. The first crossing's floe goes with it: the arrangement
+  // this one needs is a floe at the OTHER bay's mouth, and leaving the old one
+  // lying on the row would put a platform on the strait nothing asked for.
+  await h.debug.clearFloes();
+  await poseAtBayMouth(h, SECOND_BAY);
+
+  const both = await captureReplay(h, "fill", async () => {
+    await h.tap(HOP_KEY.up);
+    const landed = await h.snapshot();
+    await h.advance(AFTER_TICKS);
+    return landed;
+  });
+
+  assertDeepEqual(
+    both.bays,
+    EXPECTED,
+    "both ends filled, the middle three open",
+  );
 });
