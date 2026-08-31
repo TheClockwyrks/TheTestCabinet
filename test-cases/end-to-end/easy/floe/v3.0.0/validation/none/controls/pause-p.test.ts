@@ -1,26 +1,78 @@
-// Floe — controls/pause-p: SCAFFOLD STUB, NOT A VALIDATOR.
+// Floe — controls/pause-p: `KeyP` pauses a live crossing.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `controls.pause-p` review item, written
-// against the `none` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// `specs/controls.md` binds `KeyP` and `Escape` to Pause, reads Pause as a press
+// edge, and fixes what it does: "Open the pause menu from the `playing`
+// screen". `specs/ui.md` states the same transition as `playing` + Pause moving
+// the screen to `paused`.
 //
-// The item this file decides, from test-case.toml:
+// ONE BINDING OF ONE ACTION. `KeyP` and `Escape` are two keys bound to the same
+// action and each carries its own point, so a build that wired one and left the
+// other dead is graded differently from one that wired neither.
 //
-//   P pauses a live crossing
+// THE CROSSING IS LIVE AND EMPTY. `startCrossing` opens `playing`/`crossing` with
+// the strait cleared of vehicles, floes and bears and the four world gates shut,
+// so nothing on the strait can end the crossing under the check and the only
+// thing that can move the screen is the key. The key is pressed through
+// Chromium's own input pipeline, so what reaches the build is a browser-trusted
+// DOM key event on the real page; under this engine the whole keyboard layer is
+// the build's own (`specs/instrumentation.md` gives the surface no keyboard
+// operation at all), so the path from a physical key to a paused crossing
+// belongs entirely to the build.
 //
-//   KeyP during a crossing moves the screen to paused.
-//
-// Its declared media: replay `pause`.
+// WHAT IS NOT GRADED HERE. Which items the pause menu shows is
+// `screens.pause-menu`, that the strait freezes behind it is
+// `screens.pause-freezes`, and that resuming returns the crossing as it stood is
+// `screens.pause-resume`. This point asks only whether `KeyP` moved the screen.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  startCrossing,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/**
+ * Ticks recorded either side of the press, so the clip reads as a crossing that
+ * was live and then was not.
+ *
+ * Neither is measured: the screen is read on the tick the press was delivered,
+ * before the trailing stretch runs.
+ */
+const LIVE_TICKS = 24; // 0.2 s of a live crossing before the key goes down
+const PAUSED_TICKS = 24; // 0.2 s of the paused screen after it comes up
 
-it("controls/pause-p has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("moves a live crossing to the paused screen when KeyP is pressed", async () => {
+  await startCrossing(h);
+
+  const live = await h.snapshot();
+  assertEqual(live.screen, "playing", "the pose opened a live crossing");
+  assertEqual(live.phase, "crossing", "with the crossing running");
+
+  const paused = await captureReplay(h, "pause", async () => {
+    await h.advance(LIVE_TICKS);
+    // Down, one tick, up: a press edge a build can see however it reads its
+    // keyboard.
+    await h.tap("KeyP");
+    const screen = (await h.snapshot()).screen;
+    await h.advance(PAUSED_TICKS);
+    return screen;
+  });
+
+  assertEqual(
+    paused,
+    "paused",
+    "KeyP pauses a live crossing (specs/controls.md, specs/ui.md)",
+  );
 });
