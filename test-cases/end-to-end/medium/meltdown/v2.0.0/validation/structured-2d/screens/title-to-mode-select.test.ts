@@ -1,19 +1,77 @@
-// Meltdown — screens/title-to-mode-select: pLAY opens mode select.
+// Meltdown — screens/title-to-mode-select: confirming PLAY opens the mode list.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// THE RULE. specs/screens.md, `title`: of the two rows of `TITLE_ITEMS`, `PLAY`
+// leads to `modeselect`, and "It starts no game of its own." specs/controls.md
+// gives `confirm` the effect "Takes the highlighted row".
 //
-// What it must decide:
+// THE DESTINATION IS THE POINT, and it is read twice over: the screen must be
+// `modeselect`, and it must NOT be `playing`. The second reading is the half the
+// specification puts in a sentence of its own — a build that treats PLAY as
+// "start a game" reaches a live run rather than the list, and the mode it starts
+// is one the player never chose. Both readings come off the one snapshot after
+// the press.
 //
-//   Confirming PLAY moves the screen to modeselect rather than starting a
-//   game.
+// WHY THE CAP IS `broken` AND EVERY DOMAIN IS NAMED. Every route into a run passes
+// through this row: a build that cannot leave its title screen has no reachable
+// heat model, defence or run at all, and a run's functional rating is the worst
+// across the domains in play.
+//
+// THE ROW IS POSED, NOT WALKED. `setMenuIndex` sets the highlighted row outright
+// (specs/instrumentation.md), so a build whose arrow keys are broken still gets a
+// fair reading of where its first row leads — those keys are `controls.menu-down`
+// and `controls.menu-up`. That the confirm KEY reaches the action at all is
+// `controls.confirm-key`; this item reads where the row goes.
+//
+// THE ACTION, NOT THE KEY. The press is made through the `confirm` action's own
+// binding out of the case-fixed `BINDINGS` table, so this check names a
+// destination rather than a keyboard.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TITLE_ITEMS } from "../../src/constants";
+import { assertEqual, assertNotEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  resetTo,
+  tapAction,
+  type Harness,
+} from "../harness";
 
-it("PLAY opens mode select", () => {
-  throw new Error(
-    "Meltdown: validation/screens/title-to-mode-select.test.ts is not implemented yet",
+/** The row confirmed: `PLAY`, the first of the two `TITLE_ITEMS`. */
+const PLAY_ROW = TITLE_ITEMS.indexOf("PLAY");
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("opens mode select, and starts no game, when PLAY is confirmed", async () => {
+  resetTo(h);
+  h.debug.setScreen("title");
+  h.debug.setMenuIndex(PLAY_ROW);
+  await h.advance(1);
+
+  const before = h.snapshot();
+  assertEqual(before.screen, "title", "the screen the scenario is posed on");
+  assertEqual(before.menuIndex, PLAY_ROW, "the row the scenario is posed on");
+
+  await tapAction(h, "confirm");
+  captureStill(h, "modeselect");
+
+  const after = h.snapshot();
+  assertNotEqual(
+    after.screen,
+    "playing",
+    "PLAY starts no game of its own (specs/screens.md, `title`)",
+  );
+  assertEqual(
+    after.screen,
+    "modeselect",
+    `the screen confirming row ${PLAY_ROW} of the title menu leads to`,
   );
 });
