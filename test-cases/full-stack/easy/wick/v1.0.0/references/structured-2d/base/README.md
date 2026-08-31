@@ -97,7 +97,7 @@ half.
   and puff, the ground, the HUD and screen actors pinned to the camera target,
   and the reconciler that keeps the population mirroring the state.
 - `src/render/`: the palette and layer table, the drawing helpers, the world's
-  pictures, the effects over their hitboxes, the HUD, and the screens.
+  pictures, the effects over the live shapes, the HUD, and the screens.
 - `src/audio.ts`: the fifteen cues bound to the produced files, each with a
   synthesized fallback beneath it, and the two loops reconciled every frame.
 - `src/assets.ts`: loads the committed produced sprites; every load failure
@@ -125,8 +125,8 @@ regenerate them, with the tools on the `PATH` (or built under
 `$CARGO_TARGET_DIR`):
 
 ```sh
-node scripts/gen-sprites.mjs   # the lamplighter, enemies, effects, icons, ground (draw, draw-sheet)
-bash scripts/gen-audio.sh      # the fourteen cues, the hum, and the music bed (sfx-synth, music)
+node scripts/gen-sprites.mjs   # every sprite, sheet, and icon (draw, draw-sheet)
+bash scripts/gen-audio.sh      # the cues, the hum, and the bed (sfx-synth, music)
 ```
 
 The sprite script composes each sprite as a pixel raster under

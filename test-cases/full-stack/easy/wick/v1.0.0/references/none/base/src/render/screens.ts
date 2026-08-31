@@ -30,7 +30,6 @@ import { formatClock } from "../diagnostics";
 import type { RunState, WickState } from "../state";
 import { runTime } from "../sim/enemies";
 import { isHeld, isPassiveId } from "../sim/progression";
-import { isBaseWeapon } from "../sim/weapons";
 import { text } from "./draw";
 import { drawIcon } from "./hud";
 import { COLORS } from "./theme";
@@ -155,8 +154,8 @@ export function drawHowto(ctx: CanvasRenderingContext2D): void {
 
 function offerName(id: OfferId): string {
   if (id === LAMP_OIL_ID) return LAMP_OIL_NAME;
-  if (isBaseWeapon(id)) return WEAPON_NAMES[id];
-  return PASSIVES[id].name;
+  if (isPassiveId(id)) return PASSIVES[id].name;
+  return WEAPON_NAMES[id];
 }
 
 function offerTag(run: RunState, id: OfferId): string {

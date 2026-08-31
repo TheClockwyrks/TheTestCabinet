@@ -15,6 +15,8 @@ export const STAGE_CY = 360;
 
 export const TICK_HZ = 60;
 export const TICK_DT = 1 / TICK_HZ;
+/** A tick is consumed while the accumulator is within this of TICK_DT. */
+export const TICK_EPSILON = 1e-9;
 export const DAWN_TIME = 600;
 /** The tick on which the night ends: `DAWN_TIME × TICK_HZ`. */
 export const DAWN_TICK = DAWN_TIME * TICK_HZ;
@@ -429,7 +431,12 @@ export const LAMP_OIL_ID = "lamp-oil";
 export const LAMP_OIL_NAME = "Lamp Oil";
 export const LAMP_OIL_HEAL = 30;
 
-export type OfferId = BaseWeaponId | PassiveId | typeof LAMP_OIL_ID;
+/**
+ * Everything `setNextOffers` takes: every weapon, base or evolved, every
+ * passive, and lamp oil. An evolved id is never a candidate, so a list naming
+ * one is discarded when the overlay opens.
+ */
+export type OfferId = WeaponId | PassiveId | typeof LAMP_OIL_ID;
 
 // ---- Enemies ---------------------------------------------------------------
 

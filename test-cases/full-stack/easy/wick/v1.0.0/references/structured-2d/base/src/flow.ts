@@ -14,6 +14,7 @@ import {
   CUES,
   END_ITEMS,
   TICK_DT,
+  TICK_EPSILON,
   TITLE_ITEMS,
   type ActionName,
   type CueName,
@@ -35,14 +36,6 @@ export type CueSink = (cue: CueName) => void;
 
 /** A sink that sounds nothing: what a pose of the debug surface uses. */
 export const SILENT: CueSink = () => undefined;
-
-/**
- * The slack the accumulator allows a tick boundary. A second delivered as
- * sixty frames of a sixtieth each sums to a hair under a second in binary
- * floating point, and it must resolve the same sixty ticks a second
- * delivered whole does. Far smaller than any interval a caller can mean.
- */
-const TICK_EPSILON = 1e-9;
 
 /** The actions each screen answers as press edges. */
 export const SCREEN_ACTIONS: Readonly<Record<Screen, readonly ActionName[]>> = {

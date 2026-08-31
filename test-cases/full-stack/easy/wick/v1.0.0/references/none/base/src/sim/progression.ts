@@ -25,14 +25,14 @@ import type { ChestResult, RunState, WickState } from "../state";
 import { passiveLevel, xpToNext } from "../stats";
 import type { TickContext } from "./context";
 import { heal } from "./lamplighter";
-import { evolutionOf, isBaseWeapon } from "./weapons";
+import { evolutionOf, isBaseWeapon, isWeaponId } from "./weapons";
 
 export function isPassiveId(id: string): id is PassiveId {
   return (PASSIVE_IDS as readonly string[]).includes(id);
 }
 
 export function isOfferId(id: string): id is OfferId {
-  return isBaseWeapon(id) || isPassiveId(id) || id === LAMP_OIL_ID;
+  return isWeaponId(id) || isPassiveId(id) || id === LAMP_OIL_ID;
 }
 
 /** Add experience and queue every level-up it crosses. */
@@ -135,11 +135,13 @@ export function applyOffer(ctx: TickContext, id: OfferId): void {
   } else if (isBaseWeapon(id)) {
     if (isHeld(run, id)) levelWeapon(ctx, id);
     else run.weapons.push({ id, level: 1, cooldown: 0, cooldownSet: 0 });
-  } else if (isHeld(run, id)) {
-    levelPassive(ctx, id);
-  } else {
-    run.passives.push({ id, level: 1 });
-    if (id === "tallow") heal(ctx, TALLOW_HP_PER_LEVEL);
+  } else if (isPassiveId(id)) {
+    if (isHeld(run, id)) {
+      levelPassive(ctx, id);
+    } else {
+      run.passives.push({ id, level: 1 });
+      if (id === "tallow") heal(ctx, TALLOW_HP_PER_LEVEL);
+    }
   }
 }
 

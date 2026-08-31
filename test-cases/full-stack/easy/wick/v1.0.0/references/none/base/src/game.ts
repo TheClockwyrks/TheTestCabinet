@@ -11,6 +11,7 @@ import {
   DEFAULT_SEED,
   END_ITEMS,
   TICK_DT,
+  TICK_EPSILON,
   TITLE_ITEMS,
   type Action,
   type Cue,
@@ -26,9 +27,6 @@ import {
 } from "./sim/context";
 import { acceptOffer, openLevelUp } from "./sim/progression";
 import { tick } from "./sim/tick";
-
-/** A count-down that would leave the accumulator this close to a tick runs it. */
-const TICK_EPSILON = 1e-9;
 
 /** The actions each screen answers as press edges. */
 export const SCREEN_ACTIONS: Readonly<Record<Screen, readonly Action[]>> = {

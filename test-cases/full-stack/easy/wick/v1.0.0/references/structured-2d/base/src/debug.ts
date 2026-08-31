@@ -451,7 +451,8 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
         if (typeof options !== "object") {
           invalid(`reset options must be an object, got ${String(options)}`);
         }
-        if (options.seed !== undefined) seed = real(options.seed, "seed");
+        if (options.seed !== undefined)
+          seed = whole(options.seed, "seed", 0, 2 ** 32 - 1);
       }
       resetState(state(), seed);
       settle();

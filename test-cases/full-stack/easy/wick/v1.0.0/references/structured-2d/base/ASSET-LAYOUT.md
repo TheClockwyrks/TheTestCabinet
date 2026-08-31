@@ -88,8 +88,9 @@ over its circle. A sheet's frame comes from the ticks since the shape appeared.
 
 Twenty-seven 24 x 24 plates at `icons/<id>.png`, drawn by `src/render/hud.ts`
 in the slots and by `src/render/screens.ts` in the level-up and chest
-overlays, both through the pinned HUD and screen actors. The rim says what a thing is: slate for a base weapon, gold for an
-evolved one, brown for a passive, green for lamp oil. An evolved weapon's
+overlays, both through the pinned HUD and screen actors. The rim says what a
+thing is: slate for a base weapon, gold for an evolved one, brown for a
+passive, green for lamp oil. An evolved weapon's
 symbol is its base's burning hotter.
 
 | Ids | Symbols |

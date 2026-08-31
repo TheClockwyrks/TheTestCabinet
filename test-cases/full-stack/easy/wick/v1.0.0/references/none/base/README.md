@@ -56,8 +56,8 @@ code that draws or plays it. To regenerate them, with the tools on the `PATH`
 (or built under `$CARGO_TARGET_DIR`):
 
 ```sh
-node scripts/gen-sprites.mjs   # the lamplighter, enemies, effects, icons, ground (draw, draw-sheet)
-bash scripts/gen-audio.sh      # the fourteen cues, the hum, and the music bed (sfx-synth, music)
+node scripts/gen-sprites.mjs   # every sprite, sheet, and icon (draw, draw-sheet)
+bash scripts/gen-audio.sh      # the cues, the hum, and the bed (sfx-synth, music)
 ```
 
 The sprite script composes each sprite as a pixel raster under
@@ -76,7 +76,7 @@ on the loop bus, from the frame that starts it to the frame that stops it.
 The frame loop reconciles the loops from the state every frame, so the bed
 runs exactly while the screen is `playing`, `levelup`, `chest`, or `paused`,
 and the hum exactly while Halo or Corona is held on `playing`. `M` drives the
-master gain to silence without stopping a loop, so muting and unmuting leave
+master gain to silence without stopping a loop, so a mute and an unmute leave
 a loop in place. Browsers hold audio until the first gesture, so the context
 is resumed on the first key press or pointer press.
 

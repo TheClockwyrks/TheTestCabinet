@@ -117,8 +117,8 @@ code that draws or plays it. To regenerate them, with the tools on the `PATH`
 (or built under `$CARGO_TARGET_DIR`):
 
 ```sh
-node scripts/gen-sprites.mjs   # the lamplighter, enemies, effects, icons, ground (draw, draw-sheet)
-bash scripts/gen-audio.sh      # the fourteen cues, the hum, and the music bed (sfx-synth, music)
+node scripts/gen-sprites.mjs   # every sprite, sheet, and icon (draw, draw-sheet)
+bash scripts/gen-audio.sh      # the cues, the hum, and the bed (sfx-synth, music)
 ```
 
 ## Debugging and automation

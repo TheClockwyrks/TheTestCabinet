@@ -458,7 +458,7 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
     reset(options) {
       const seed =
         options && options.seed !== undefined
-          ? real(options.seed, "seed")
+          ? whole(options.seed, "seed", 0, 2 ** 32 - 1)
           : DEFAULT_SEED;
       game.reset(seed);
     },

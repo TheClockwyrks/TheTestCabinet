@@ -310,7 +310,7 @@ describe("the lamplighter and progression poses", () => {
     expect(() => api.setPendingLevelUps(state, -1)).toThrow();
     expect(() => api.setNextOffers(state, [])).toThrow();
     expect(() => api.setNextOffers(state, ["ember", "ember"])).toThrow();
-    expect(() => api.setNextOffers(state, ["pyre"])).toThrow();
+    expect(() => api.setNextOffers(state, ["sword"] as never)).toThrow();
     expect(() =>
       api.setNextOffers(state, ["a", "b", "c", "d"] as never),
     ).toThrow();
@@ -329,6 +329,28 @@ describe("the lamplighter and progression poses", () => {
     expect(d.snap().run.level).toBe(1);
     expect(d.snap().run.enemies).toEqual([]);
     expect(d.snap().run.gems).toEqual([]);
+  });
+
+  it("takes a whole seed from 0 to 2^32 - 1 and nothing else", () => {
+    const d = build();
+    d.pose((s) => d.api.reset(s, { seed: 0 }));
+    expect(d.snap().rngState).toBe(0);
+    d.pose((s) => d.api.reset(s, { seed: 2 ** 32 - 1 }));
+    expect(d.snap().rngState).toBe(2 ** 32 - 1);
+    for (const seed of [-1, 1.5, 2 ** 32, Number.NaN]) {
+      expect(() => d.api.reset(d.state, { seed })).toThrow();
+    }
+  });
+
+  it("takes an evolved id in nextOffers and discards the list at the open", () => {
+    const d = playing();
+    d.pose((s) => d.api.setNextOffers(s, ["pyre"]));
+    expect(d.snap().run.nextOffers).toEqual(["pyre"]);
+    d.pose((s) => d.api.setPendingLevelUps(s, 1));
+    d.pose((s) => d.api.setScreen(s, "levelup"));
+    expect(d.snap().run.offers).not.toContain("pyre");
+    expect(d.snap().run.offers).toHaveLength(3);
+    expect(d.snap().run.nextOffers).toBeNull();
   });
 
   it("accepts nextOffers on levelup for the queued overlay", () => {

@@ -130,6 +130,13 @@ describe("reset", () => {
     debug.reset();
     expect(debug.snapshot().rngState).toBe(1);
     expect(() => debug.reset({ seed: Number.NaN })).toThrow();
+    for (const seed of [-1, 1.5, 2 ** 32]) {
+      expect(() => debug.reset({ seed })).toThrow();
+    }
+    debug.reset({ seed: 0 });
+    expect(debug.snapshot().rngState).toBe(0);
+    debug.reset({ seed: 2 ** 32 - 1 });
+    expect(debug.snapshot().rngState).toBe(2 ** 32 - 1);
   });
 
   it("stops the music on the next tick of the mode", async () => {
@@ -312,6 +319,17 @@ describe("the lamplighter and progression poses", () => {
     expect(debug.snapshot().screen).toBe("levelup");
     expect(() => debug.choose(-1)).toThrow();
     expect(h.cues).toEqual([]);
+  });
+
+  it("takes an evolved id in nextOffers and discards the list at the open", () => {
+    const { debug } = playing();
+    debug.setNextOffers(["pyre"]);
+    expect(debug.snapshot().run.nextOffers).toEqual(["pyre"]);
+    debug.setPendingLevelUps(1);
+    debug.setScreen("levelup");
+    expect(debug.snapshot().run.offers).not.toContain("pyre");
+    expect(debug.snapshot().run.offers).toHaveLength(3);
+    expect(debug.snapshot().run.nextOffers).toBeNull();
   });
 
   it("discards a queued list that is no longer in the pool", () => {
