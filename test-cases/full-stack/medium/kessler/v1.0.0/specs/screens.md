@@ -116,7 +116,8 @@ wrapping past the end to the other, and each move plays the `menu-move` cue.
 Pausing freezes the whole simulation: the ring orbits, the effect and
 interstitial timers, the falling pods, the balls in flight, and the ball
 sprite's animation all hold exactly as the pausing tick left them, and
-resuming carries on from there.
+resuming carries on from there. Particle effects are presentation, not
+simulation: one already playing keeps playing over a frozen field.
 
 ## The HUD
 

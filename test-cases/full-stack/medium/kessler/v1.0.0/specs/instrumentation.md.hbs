@@ -417,7 +417,8 @@ by default and a `reset` restores both.
 ```js
 {
   screen: "title" | "howto" | "playing" | "waveclear" | "paused" | "gameover",
-  ticks: <number>,          // ticks resolved since the last reset
+  ticks: <number>,          // ticks resolved since the last reset, on
+                            // every screen; frozen screens still count them
   wave: <number>,
   score: <number>,
   lives: <number>,

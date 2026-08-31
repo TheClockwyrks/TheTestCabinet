@@ -46,7 +46,9 @@ bindings hold whatever keyboard layout the player types on.
 
 The two keys bound to each rotation action are interchangeable: `KeyA` does
 exactly what `ArrowLeft` does wherever `left` is read. `Space` carries both
-`launch` and `confirm`, and the two never answer on the same screen. The
+`launch` and `confirm`, and the two never answer on the same screen. All
+of a frame's edges are read against the screen the frame began on, so a
+press that changes screens never also acts on the screen it lands in. The
 debug overlay's backtick toggle is in `specs/instrumentation.md` and sits
 outside the table.
 
