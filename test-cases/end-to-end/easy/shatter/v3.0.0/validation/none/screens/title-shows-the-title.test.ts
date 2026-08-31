@@ -1,19 +1,65 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// Shatter — screens/title-shows-the-title: the screen the game opens on draws its
+// name and its tagline.
 //
-// screens/title-shows-the-title — The title screen shows the title and tagline
+// THE RULE. `specs/ui.md` gives the `title` screen a table of elements and fixes the
+// copy of two of them: `TITLE_TEXT` (`SHATTER`) and `TAGLINE_TEXT`
+// (`GRAVITY WELL SHOOTER`). `title` is also "where the game opens", and
+// `specs/instrumentation.md` has `reset()` restore `screen` to `"title"`, so the
+// arrangement this reads is the one every player sees first.
 //
-// On load, drawn text is present for TITLE_TEXT and TAGLINE_TEXT.
+// TWO READINGS OF ONE FRAME. The game's own state says which screen it is on, and
+// the frame's draw calls say what it put on the canvas, so a build that reports a
+// title it never draws — or draws one it does not report — fails here rather than
+// passing on either half alone.
 //
-// Declared by test-case.toml as validation.script "screens/title-shows-the-
-// title.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the none harness in validation/none/harness.ts and the spec-
-// derived oracle in validation/none/geometry.ts — never against a reference
-// build.
+// THE FRAME IS PRESENTED, NOT STEPPED. `presentCalls` redraws the state as it stands
+// without running a tick, which is what a check about a SCREEN wants: advancing
+// would run the screen's own timers and grade something the item is not about.
 //
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// MATCHING IS BY SUBSTRING, because how the copy is presented is the build's:
+// `specs/ui.md` fixes the words and leaves the palette, the type and the layout
+// alone, so a build drawing `SHATTER` inside a longer run has drawn the title the
+// specification named. What is NOT allowed to vary is the words themselves.
+//
+// WHAT THIS ITEM DOES NOT DECIDE. The menu under them — `screens/title-menu-entries`
+// — nor which entry is highlighted (`screens/title-menu-highlight`), nor where
+// either entry leads.
 
-throw new Error(
-  "Shatter v3.0.0: validation/none/screens/title-shows-the-title.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { TAGLINE_TEXT, TITLE_TEXT } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  type Harness,
+} from "../harness";
+import { reachTitle } from "./screens";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("draws the title and the tagline on the screen the game opens on", async () => {
+  await reachTitle(h);
+
+  const calls = await h.presentCalls();
+  await captureStill(h, "title");
+
+  assertEqual(
+    drewText(calls, TITLE_TEXT),
+    true,
+    `the title screen draws "${TITLE_TEXT}" (specs/ui.md)`,
+  );
+  assertEqual(
+    drewText(calls, TAGLINE_TEXT),
+    true,
+    `the title screen draws "${TAGLINE_TEXT}" (specs/ui.md)`,
+  );
+});
