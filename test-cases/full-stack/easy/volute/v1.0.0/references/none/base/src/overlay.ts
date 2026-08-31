@@ -24,14 +24,6 @@ const PANEL = {
   color: "#ffcd8c",
 } as const;
 
-/** What the heading line reports about the frame the panel is drawn over. */
-export interface FramePosition {
-  /** Ticks the simulation has run. */
-  ticks: number;
-  /** The delta the most recent frame was measured at, in seconds. */
-  dt: number;
-}
-
 /** The named, read-only sources the panel shows. */
 export class Diagnostics {
   /** Insertion-ordered, so the panel's lines keep the order they were named in. */
@@ -53,12 +45,9 @@ export class Diagnostics {
     this.shown = !this.shown;
   }
 
-  /** Every line the panel would draw, heading first. A pure read. */
-  lines(frame: FramePosition): string[] {
-    return [
-      `volute  tick ${frame.ticks}  dt ${(frame.dt * 1000).toFixed(2)}ms`,
-      ...[...this.sources].map(([name, source]) => `${name} ${read(source)}`),
-    ];
+  /** One line per named source, in naming order. A pure read. */
+  lines(): string[] {
+    return [...this.sources].map(([name, source]) => `${name} ${read(source)}`);
   }
 
   /**
@@ -68,9 +57,12 @@ export class Diagnostics {
    * hands over a context carrying the game's logical transform and gets it back
    * exactly as it was.
    */
-  draw(ctx: CanvasRenderingContext2D, frame: FramePosition): void {
+  draw(ctx: CanvasRenderingContext2D): void {
     if (!this.shown) return;
-    const lines = this.lines(frame);
+    const lines = this.lines();
+    // Nothing named is nothing to show: the panel is sized from its widest line,
+    // and an empty list has no widest line to size it from.
+    if (lines.length === 0) return;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.font = `${PANEL.fontPx}px monospace`;

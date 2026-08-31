@@ -132,7 +132,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
   let viewport = fit();
   let context: CanvasRenderingContext2D | null = null;
   let ticks = 0;
-  let lastDt = 0;
   let bed: CueName | null = null;
   const pending = new Set<CueName>();
   let running = false;
@@ -280,12 +279,11 @@ export function createRuntime(options: RuntimeOptions): Runtime {
     effects.update(dt);
     const ctx = openFrame();
     if (viewport.scale > 0) renderFrame(ctx, state, assets, effects, dt);
-    diagnostics.draw(ctx, { ticks, dt: lastDt });
+    diagnostics.draw(ctx);
   }
 
   /** One frame: the whole ticks the accumulator holds, then a draw. */
   function runFrame(seconds: number): void {
-    lastDt = seconds;
     state.simTime += seconds;
 
     let ran = 0;
@@ -445,7 +443,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
     step(count: number): void {
       const whole = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
       for (let i = 0; i < whole; i += 1) {
-        lastDt = TICK_DT;
         state.simTime += TICK_DT;
         runTick(TICK_DT);
         draw(TICK_DT);

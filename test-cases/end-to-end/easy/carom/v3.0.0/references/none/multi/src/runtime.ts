@@ -277,7 +277,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       game.render(state.value, { ctx });
       // Drawn after the game and through the same context, with the transform
       // reset: the panel is chrome over the finished picture, not part of it.
-      diagnostics.draw(ctx, { count, dt });
+      diagnostics.draw(ctx);
     } finally {
       // An edge nothing consumed is discarded even when the frame threw, so one
       // bad frame cannot leave a press to surface later, out of order.
@@ -298,7 +298,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
     if (live === null) return;
     const ctx = openFrame();
     game.render(live.value, { ctx });
-    diagnostics.draw(ctx, { count, dt });
+    diagnostics.draw(ctx);
   }
 
   /** This tick's delta in seconds: never negative, never longer than the clamp. */

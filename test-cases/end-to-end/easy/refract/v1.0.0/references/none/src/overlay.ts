@@ -29,14 +29,6 @@ const PANEL = {
   color: "#9ef0d6",
 } as const;
 
-/** What the heading line reports about the frame the panel is drawn over. */
-export interface FramePosition {
-  /** Frames the simulation has run. */
-  count: number;
-  /** The delta the most recent frame was stepped by, in seconds. */
-  dt: number;
-}
-
 export class Diagnostics<S> {
   /** Insertion-ordered, so the panel's lines keep the order they were named in. */
   private readonly sources = new Map<string, (state: S) => unknown>();
@@ -57,14 +49,18 @@ export class Diagnostics<S> {
     this.shown = !this.shown;
   }
 
-  /** Every line the panel would draw, heading first. A pure read. */
-  lines(frame: FramePosition, state: S): string[] {
-    return [
-      `frame ${frame.count}  dt ${(frame.dt * 1000).toFixed(2)}ms`,
-      ...[...this.sources].map(
-        ([name, source]) => `${name} ${read(source, state)}`,
-      ),
-    ];
+  /**
+   * Every line the panel would draw: one per registered source, in the order
+   * they were named. A pure read.
+   *
+   * The panel reports what the game registered and nothing else. It carries no
+   * heading of its own — a frame counter or a delta would be a value the game
+   * never named, and one that differs between two runs of the same scenario.
+   */
+  lines(state: S): string[] {
+    return [...this.sources].map(
+      ([name, source]) => `${name} ${read(source, state)}`,
+    );
   }
 
   /**
@@ -74,9 +70,12 @@ export class Diagnostics<S> {
    * hands over a context carrying the game's logical transform and gets it
    * back exactly as it was.
    */
-  draw(ctx: CanvasRenderingContext2D, frame: FramePosition, state: S): void {
+  draw(ctx: CanvasRenderingContext2D, state: S): void {
     if (!this.shown) return;
-    const lines = this.lines(frame, state);
+    const lines = this.lines(state);
+    // Nothing registered is nothing to show: a shown panel with no sources
+    // draws no box rather than an empty one.
+    if (lines.length === 0) return;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.font = `${PANEL.fontPx}px monospace`;
