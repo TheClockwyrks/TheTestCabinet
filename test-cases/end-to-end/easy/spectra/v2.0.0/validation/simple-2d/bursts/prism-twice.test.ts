@@ -1,17 +1,106 @@
-// Spectra — bursts/prism-twice: a Prism detonates twice
+// Spectra — bursts/prism-twice: a Prism detonates twice.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `bursts.prism-twice` on the
-// `simple-2d` configuration, and captures the media `test-case.toml` declares
-// for it.
+// `specs/assets.md`, the drone-burst's "When" rule, states the Prism's case
+// outright: "A Prism struck by bullets starts one when its shell breaks and a
+// second when its core is destroyed". `specs/drones.md` fixes what the two shots
+// have to be: a Prism wears an outer shell of one band around an inner core of
+// the other, exactly one layer is exposed at a time, and each layer falls to a
+// single matching shot — so the shell goes to a shot of the shell's band and the
+// core, once exposed, to a shot of the opposite one.
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// THE READING IS THE ROSTER, COUNTED TWICE. One burst after the shell falls, two
+// after the core does. Counting at both moments rather than only at the end is
+// what tells the three wrong models apart: a build that pops only when the drone
+// leaves the field reports `0` then `1`, one that pops only the shell reports
+// `1` then `1`, and one that pops the whole Prism on the first shot reports `1`
+// then `1` with no Prism left to shoot. Each fails on a different reading, so a
+// failure names which model the build implemented.
+//
+// THE TWO SHOTS ARE THE ONLY THINGS THAT HAPPEN. The Prism is posed with every
+// faculty off, holding its centre, so the second shot is aimed where the first
+// left it; `BURST_DURATION` (`0.7`) seconds is many times the fifth of a second
+// the two shots take together, so the shell's burst is still playing when the
+// core's starts and the count of `2` is a count of two LIVE bursts. The
+// bystander in the far corner keeps the wave open once the Prism is gone (see
+// `poseBystander`).
+//
+// WHAT THIS DOES NOT DECIDE. That a shot of the shell's band breaks the shell
+// and one of the core's destroys the core is `bands/`'s and the Prism's own
+// items', and it is read here as the precondition of each pop. What each burst
+// is scaled to is `bursts/scaled-to-drone`.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLength, assertNull } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  droneOf,
+  findDrone,
+  fireAt,
+  poseDrone,
+  startPosed,
+  type Harness,
+} from "../harness";
+import { poseBystander } from "./scene";
 
-it("A Prism detonates twice", () => {
-  throw new Error(
-    "Spectra: validation/simple-2d/bursts/prism-twice.test.ts is a scaffold placeholder and has not been implemented",
+/**
+ * Where the Prism is posed: a clear stretch of the play field, below the
+ * formation grid and its full sway, above the ship's lane, clear of the corner
+ * the bystander holds.
+ */
+const PRISM_AT = { x: 900, y: 460 } as const;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("starts one burst when the shell breaks and a second when the core dies", async () => {
+  startPosed(h);
+  poseBystander(h);
+  // Cyan shell, so its core is magenta (specs/drones.md: the core's band is
+  // always the opposite of the shell's).
+  const prism = poseDrone(h, "prism", PRISM_AT.x, PRISM_AT.y, {
+    band: "cyan",
+    shell: true,
+  });
+  assertLength(h.snapshot().bursts, 0, "precondition: no burst is playing yet");
+
+  await fireAt(h, PRISM_AT.x, PRISM_AT.y, "cyan");
+
+  const afterShell = h.snapshot();
+  assertEqual(
+    droneOf(afterShell, prism).shellAlive,
+    false,
+    "precondition: the cyan shot broke the cyan shell (specs/drones.md)",
+  );
+  assertLength(
+    afterShell.bursts,
+    1,
+    "the bursts playing once the shell broke (specs/assets.md: a Prism struck " +
+      "by bullets starts one when its shell breaks)",
+  );
+
+  await fireAt(h, PRISM_AT.x, PRISM_AT.y, "magenta");
+
+  // The second burst, beside the first the shell left.
+  captureStill(h, "twice");
+
+  const afterCore = h.snapshot();
+  assertNull(
+    findDrone(afterCore, prism),
+    "precondition: the magenta shot destroyed the exposed magenta core " +
+      "(specs/drones.md)",
+  );
+  assertLength(
+    afterCore.bursts,
+    2,
+    "the bursts playing once the core was destroyed (specs/assets.md: and a " +
+      "second when its core is destroyed)",
   );
 });
