@@ -1,0 +1,463 @@
+// Shatter — the routes the `saucer` checks reach the saucer's own clocks by.
+// CASE-PROVIDED.
+//
+// The saucer is the one entity in this case whose scenarios are mostly WAITS: it
+// arrives on a clock (`SAUCER_FIRST_DELAY`, then a gap), it leaves on a clock
+// (`SAUCER_LIFETIME`), and it fires on a clock (`SAUCER_FIRE_INTERVAL`). Most of
+// this group therefore wants the same three things — open a game with the game's
+// own arrival running, catch the next arrival, catch the next shot — and each of
+// them is a compound the debug surface deliberately does not carry, so it is built
+// once here. The last section holds what a WAIT costs when it is measured in tens
+// of thousands of ticks, which two of these checks are.
+//
+// IT LIVES IN THE GROUP RATHER THAN IN `../harness.ts` because nothing outside
+// `saucer` waits on the saucer's cadence: every other group that wants a saucer
+// poses one with `poseSaucer` and reads it standing still.
+//
+// NOT ONE FIGURE BELOW IS A BOUND. Everything here is a sampling stride, a ceiling
+// on a wait, or a route; every tolerance stays in the check that asserts it,
+// derived there from the figure `specs/saucer.md` fixes for it.
+
+import { fail } from "../assert";
+import { FIELD_W } from "../constants";
+import {
+  HANDLE,
+  failSurface,
+  secondsFor,
+  startPlaying,
+  ticksFor,
+  type Harness,
+  type SaucerView,
+  type ShatterSnapshot,
+  type ShotView,
+} from "../harness";
+
+/* -------------------------------------------------------------------------- */
+/* Opening a game the saucer arrives into                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Pose a quiet, live field with the game's OWN saucer arrival running, from a
+ * `reset` at `seed`.
+ *
+ * `reset` is what puts the arrival clock back to the start of a game's cadence
+ * (`specs/instrumentation.md`), which is the whole precondition of
+ * `first-arrives-at-18s`: an arrival "18 seconds of game time after the game
+ * begins" needs a game that has just begun. `startPlaying` then empties the field,
+ * shuts the wave loop and the ship's contact test, and puts the screen on
+ * `playing`, which is where `specs/saucer.md` says arrivals happen — and it shuts
+ * the arrival gate too, which is why it is turned back on last. The gate is this
+ * handful of checks' own requirement, so turning it on here is not a widening of
+ * the isolation: it is the faculty under test.
+ *
+ * The field it leaves holds no rock, no bullet and no saucer, so the only thing
+ * that can put a saucer on it is the build's own spawner.
+ */
+export async function openSaucerGame(h: Harness, seed?: number): Promise<void> {
+  await h.debug.reset(seed === undefined ? undefined : { seed });
+  await startPlaying(h);
+  await h.debug.setSaucerSpawning(true);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Catching an arrival                                                         */
+/* -------------------------------------------------------------------------- */
+
+/** How long a wait for an arrival runs before the scenario is declared unreachable. */
+const ARRIVAL_CEILING_TICKS = ticksFor(90);
+
+/** What a caught arrival is: the saucer as first seen, and when it was seen. */
+export interface Arrival {
+  saucer: SaucerView;
+  /** Ticks of game time from the start of the wait to the sample that caught it. */
+  ticks: number;
+  snapshot: ShatterSnapshot;
+}
+
+/**
+ * Run until a saucer is on the field whose id is not `afterId`, and report it.
+ *
+ * The id rather than the presence, because a wait that began while the PREVIOUS
+ * visit was still up would otherwise return that one: `specs/saucer.md` gives every
+ * arrival a fresh id "distinct among every entity live at that moment", so a
+ * different id is what makes this a different visit. `afterId` is `null` for the
+ * first wait of a game, where any saucer at all is the arrival.
+ *
+ * `stride` is the caller's, because what a stride costs a reading differs by check:
+ * the entry ROW is fixed for the first `SAUCER_WEAVE_INTERVAL` of a visit and a
+ * coarse stride reads it exactly, while the entry COLUMN moves at `SAUCER_SPEED`
+ * from the first tick and wants {@link closeUpFirstArrival}.
+ */
+export async function nextArrival(
+  h: Harness,
+  afterId: number | null,
+  options: { stride?: number; maxTicks?: number } = {},
+): Promise<Arrival> {
+  const stride = options.stride ?? 1;
+  const maxTicks = options.maxTicks ?? ARRIVAL_CEILING_TICKS;
+  const found = await h.skipUntil(
+    (snapshot) =>
+      snapshot.saucer !== null &&
+      snapshot.saucer !== undefined &&
+      snapshot.saucer.id !== afterId,
+    { poll: stride, maxTicks },
+  );
+  if (!found.hit) {
+    fail(
+      `a saucer arriving within ${secondsFor(maxTicks)} seconds of game time (specs/saucer.md)`,
+      afterId === null
+        ? "no saucer ever appeared on the field"
+        : `the saucer on the field was still visit ${afterId}`,
+    );
+  }
+  const saucer = found.snapshot.saucer;
+  if (saucer === null || saucer === undefined) {
+    fail("the arrival the sweep stopped on", "saucer was null");
+  }
+  return { saucer, ticks: found.ticks, snapshot: found.snapshot };
+}
+
+/**
+ * Catch a game's FIRST arrival on the tick it is first reported, whenever it comes.
+ *
+ * TWO PASSES, AND THE REASON IS A READING THAT MOVES. A saucer crosses at
+ * `SAUCER_SPEED` from the moment it enters, so a sweep that samples every `stride`
+ * ticks reports an entry column up to `stride / TICK_HZ` seconds of travel inside
+ * the edge it entered at — 14 units at a tenth of a second — and
+ * `enters-at-an-edge` is a check on exactly that column. Sampling every tick for
+ * the whole wait would cost eighteen seconds of game time in single-tick crossings
+ * into the page, per seed.
+ *
+ * So the wait is run twice. The first pass strides coarsely and learns WHEN the
+ * arrival happened; the second re-opens the same game at the same seed, skips in
+ * one call to a stride short of that moment, and then samples every tick.
+ * `specs/instrumentation.md` fixes that the same seed and the same elapsed game
+ * time reach the same state every time, so the second pass replays the first, and
+ * `snapshot` is a pure read that no number of extra calls can move.
+ *
+ * Nothing here assumes WHEN the arrival comes: the coarse pass finds it wherever it
+ * is, and a build whose first saucer is late is caught just as exactly as one whose
+ * first saucer is on time. That is `first-arrives-at-18s`'s requirement, not this
+ * route's.
+ */
+export async function closeUpFirstArrival(
+  h: Harness,
+  seed: number,
+  options: { stride?: number } = {},
+): Promise<Arrival> {
+  const stride = options.stride ?? 30;
+
+  await openSaucerGame(h, seed);
+  const coarse = await nextArrival(h, null, { stride });
+
+  await openSaucerGame(h, seed);
+  const lead = Math.max(0, coarse.ticks - stride);
+  await h.skip(lead);
+  const fine = await nextArrival(h, null, {
+    stride: 1,
+    maxTicks: stride * 2,
+  });
+  return { ...fine, ticks: lead + fine.ticks };
+}
+
+/** How near an edge a centre stands, across the seam, in logical units. */
+export function edgeDistance(x: number): number {
+  return Math.min(x, FIELD_W - x);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Catching a shot                                                             */
+/* -------------------------------------------------------------------------- */
+
+/** How long a wait for a shot runs before the scenario is declared unreachable. */
+const SHOT_CEILING_TICKS = ticksFor(6);
+
+/** What a caught volley is: the rounds that appeared, and the tick they appeared on. */
+export interface Volley {
+  /** Every enemy bullet on the field this tick that was not there the tick before. */
+  fired: ShotView[];
+  /** The saucer as it stood on that tick, or `null` if it had gone. */
+  saucer: SaucerView | null;
+  /** Ticks of game time from the start of the wait to the tick they appeared on. */
+  ticks: number;
+  /** Every enemy-bullet id on the field on that tick, for the next wait to compare. */
+  ids: number[];
+  snapshot: ShatterSnapshot;
+}
+
+/**
+ * Run one tick at a time until the enemy-bullet roster gains a round it did not
+ * hold the tick before, and report that tick.
+ *
+ * A ROUND IS NEW WHEN IT WAS NOT THERE LAST TICK, never when its id has not been
+ * seen before. `specs/instrumentation.md` forbids reusing an id only "while any
+ * live entity holds it", so a build whose ids come from a small pool may hand a
+ * fresh round the id of one that has just expired, and a cumulative set of ids
+ * would then never see it arrive.
+ *
+ * `leadIn` skips whole ticks before the sampling starts, for a check that wants
+ * sixty shots and does not read the gaps between them: every tick it skips is
+ * counted in `ticks` just the same, and a build that fires FASTER than the lead-in
+ * simply has some of its rounds passed over, which changes which shots are read and
+ * not what any of them is. A check whose requirement IS the gap passes no lead-in.
+ */
+export async function nextVolley(
+  h: Harness,
+  previous: readonly number[],
+  options: { leadIn?: number; maxTicks?: number } = {},
+): Promise<Volley> {
+  const leadIn = options.leadIn ?? 0;
+  const maxTicks = options.maxTicks ?? SHOT_CEILING_TICKS;
+
+  if (leadIn > 0) await h.skip(leadIn);
+
+  let held: readonly number[] = previous;
+  let ticks = -1;
+  let caught: Volley | null = null;
+  await sampleEvery(h, { stride: 1, maxTicks }, (snapshot) => {
+    ticks += 1;
+    const rounds = snapshot.enemyBullets;
+    const ids = rounds.map((round) => round.id);
+    // The sweep's first sample is the state it starts FROM, and after a lead-in
+    // that state may already hold a round fired several ticks ago, whose velocity
+    // the well has had time to bend. So it seeds the comparison and is never read
+    // as a shot: what this returns is always a round that appeared on a tick the
+    // sweep itself ran.
+    if (ticks === 0) {
+      held = ids;
+      return false;
+    }
+    const fired = rounds.filter((round) => !held.includes(round.id));
+    if (fired.length > 0) {
+      caught = {
+        fired,
+        saucer: snapshot.saucer ?? null,
+        ticks: leadIn + ticks,
+        ids,
+        snapshot,
+      };
+      return true;
+    }
+    held = ids;
+    return false;
+  });
+
+  if (caught === null) {
+    fail(
+      `a saucer firing within ${secondsFor(maxTicks)} seconds of game time (specs/saucer.md)`,
+      "no saucer bullet appeared on the field",
+    );
+  }
+  return caught;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reading every sample of a sweep                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Run up to `maxTicks` in strides of `stride`, handing EVERY sample to `read`, and
+ * stop as soon as it says it has what it needs.
+ *
+ * WHY THIS AND NOT A LOOP OF `skip` AND `snapshot`. {@link Harness.skipUntil} runs
+ * its strides and reads the state back in ONE crossing into the page, and it calls
+ * its predicate on every sample it takes — the state it starts from included. A
+ * check that wants each of those samples therefore gets them for the price of the
+ * sweep by reading them there, where a loop that skipped and then asked for a
+ * snapshot would pay twice for the same tick. Two checks in this group sweep tens
+ * of thousands of ticks and it is the difference between them being affordable and
+ * not.
+ *
+ * `read` returns `true` when the sweep has what it needs and `false` to carry on.
+ * The result says whether it ever did.
+ */
+export async function sampleEvery(
+  h: Harness,
+  options: { stride: number; maxTicks: number },
+  read: (snapshot: ShatterSnapshot) => boolean,
+): Promise<boolean> {
+  const swept = await h.skipUntil(read, {
+    poll: options.stride,
+    maxTicks: options.maxTicks,
+  });
+  return swept.hit;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sampling that runs inside the page                                          */
+/* -------------------------------------------------------------------------- */
+//
+// TWO CHECKS IN THIS GROUP READ A LOT OF TICKS AND ALMOST NOTHING OFF EACH ONE.
+// `at-most-one-at-a-time` needs the reported saucer id on EVERY tick of two minutes
+// of game time — 14 400 of them — because what it is looking for is the tick
+// reporting no saucer between two visits, and a stride that stepped over that tick
+// would fail a conformant build. `avoids-the-core` needs the saucer's centre every
+// eight ticks of fifty-four crossings. Neither reads anything else, and both are
+// measured in tens of thousands of ticks.
+//
+// A CROSSING INTO THE PAGE PER SAMPLE IS WHAT COSTS, NOT THE TICKS. The simulation
+// runs twelve thousand ticks in a handful of milliseconds; a round trip to ask for
+// the state after each one costs a few milliseconds each, and on a host running a
+// model's build under the suite it costs several times that. Sampled that way,
+// those two checks run for minutes and are decided by how loaded the machine was,
+// which is not a verdict about a build.
+//
+// SO THE LOOP GOES WHERE THE STATE IS. Both helpers below call the BUILD'S OWN
+// `advance(1)` and the BUILD'S OWN `snapshot()` — the same two operations
+// {@link Harness.skip} and {@link Harness.snapshot} call, in the same order — and
+// return only the handful of numbers the check reads. Nothing is simulated here,
+// nothing is posed here, and no tick is fabricated: what is saved is the round
+// trip and nothing else. Every other check in this group drives through the
+// harness, because every other check reads few enough samples to pay for them.
+//
+// A build whose surface cannot answer is reported as the surface fault it is,
+// rather than as an exception thrown out of the page.
+
+/** What a page-side sweep hands back: what it read, or why it could not read. */
+interface Traced<T> {
+  fault?: string;
+  read?: T;
+}
+
+/** Fail with what the specification requires when a page-side sweep could not run. */
+function requireTrace<T>(traced: Traced<T>): T {
+  if (traced.fault !== undefined || traced.read === undefined) {
+    failSurface(traced.fault ?? "the surface answered a sweep with nothing");
+  }
+  return traced.read;
+}
+
+/** Every moment the reported saucer id changed, and what it changed to. */
+export interface VisitTrace {
+  tick: number;
+  id: number | null;
+}
+
+/**
+ * Sample the reported `saucer.id` on EVERY tick of `ticks`, and report the moments
+ * it changed. The state the sweep starts from is the first entry.
+ */
+export async function traceSaucerVisits(
+  h: Harness,
+  ticks: number,
+): Promise<VisitTrace[]> {
+  if (h.surfaceFault !== null) failSurface(h.surfaceFault);
+  const traced = (await h.page.evaluate(
+    ([handle, count]) => {
+      const api = (window as unknown as Record<string, unknown>)[handle] as
+        | {
+            advance(n: number): void;
+            snapshot(): { saucer: { id: number } | null };
+          }
+        | undefined;
+      if (
+        api === undefined ||
+        typeof api.advance !== "function" ||
+        typeof api.snapshot !== "function"
+      ) {
+        return { fault: "advance and snapshot on the debug surface" };
+      }
+      const read = (): number | null => {
+        const saucer = api.snapshot().saucer;
+        return saucer === null || saucer === undefined ? null : saucer.id;
+      };
+      try {
+        const changes: { tick: number; id: number | null }[] = [];
+        let held = read();
+        changes.push({ tick: 0, id: held });
+        for (let tick = 1; tick <= count; tick += 1) {
+          api.advance(1);
+          const id = read();
+          if (id !== held) {
+            changes.push({ tick, id });
+            held = id;
+          }
+        }
+        return { read: changes };
+      } catch (error) {
+        return { fault: String(error) };
+      }
+    },
+    [HANDLE, ticks] as [string, number],
+  )) as Traced<VisitTrace[]>;
+  return requireTrace(traced);
+}
+
+/** How a crossing is followed past the star. */
+export interface PathOptions {
+  /** Ticks between two samples once the saucer is inside the window. */
+  stride: number;
+  /** Ticks run in one step while it is still outside it. */
+  approach: number;
+  /** How near the star's column, in units of `x`, sampling happens at all. */
+  window: number;
+  /** How long the whole crossing may run before the sweep gives up on it. */
+  maxTicks: number;
+  /** The field's width, for the wrapped column separation. */
+  fieldWidth: number;
+  /** The star's column. */
+  starX: number;
+}
+
+/**
+ * Follow one crossing and report the saucer's centre at every `stride` ticks it
+ * spent within `window` units of the star's column.
+ *
+ * The ground before the window is covered in `approach`-tick steps and sampled not
+ * at all, because a centre more than `window` units from the star's COLUMN is at
+ * least that far from the star's CENTRE — several times any bound this case
+ * asserts — so nothing out there can be a closest approach. The sweep stops when
+ * the saucer leaves the window on the far side, when it leaves the field, or at
+ * the ceiling.
+ */
+export async function traceSaucerPath(
+  h: Harness,
+  options: PathOptions,
+): Promise<{ x: number; y: number }[]> {
+  if (h.surfaceFault !== null) failSurface(h.surfaceFault);
+  const traced = (await h.page.evaluate(
+    ([handle, spec]) => {
+      const api = (window as unknown as Record<string, unknown>)[handle] as
+        | {
+            advance(n: number): void;
+            snapshot(): { saucer: { x: number; y: number } | null };
+          }
+        | undefined;
+      if (
+        api === undefined ||
+        typeof api.advance !== "function" ||
+        typeof api.snapshot !== "function"
+      ) {
+        return { fault: "advance and snapshot on the debug surface" };
+      }
+      try {
+        const samples: { x: number; y: number }[] = [];
+        let ran = 0;
+        let entered = false;
+        while (ran < spec.maxTicks) {
+          const saucer = api.snapshot().saucer;
+          if (saucer === null || saucer === undefined) break;
+          const half = spec.fieldWidth / 2;
+          let gap = (spec.starX - saucer.x) % spec.fieldWidth;
+          if (gap >= half) gap -= spec.fieldWidth;
+          if (gap < -half) gap += spec.fieldWidth;
+          const inside = Math.abs(gap) <= spec.window;
+          if (inside) {
+            samples.push({ x: saucer.x, y: saucer.y });
+            entered = true;
+          } else if (entered) {
+            break;
+          }
+          const step = inside ? spec.stride : spec.approach;
+          api.advance(step);
+          ran += step;
+        }
+        return { read: samples };
+      } catch (error) {
+        return { fault: String(error) };
+      }
+    },
+    [HANDLE, options] as [string, PathOptions],
+  )) as Traced<{ x: number; y: number }[]>;
+  return requireTrace(traced);
+}
