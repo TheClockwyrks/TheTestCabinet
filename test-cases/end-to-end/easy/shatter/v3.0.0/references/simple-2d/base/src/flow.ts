@@ -150,9 +150,8 @@ export function loseShip(sim: Sim, ev: TickEvents): void {
   sim.lives -= 1;
   ev.cues.add(CUES.death);
 
-  placeShipAtSafePoint(sim.ship);
-
   if (sim.lives > 0) {
+    placeShipAtSafePoint(sim.ship);
     sim.ship.invuln = INVULN_TIME;
     return;
   }
