@@ -12,15 +12,17 @@
 // separately: a build can put its readouts below the bar, and a build can draw
 // the strait up through it.
 //
-// THE READOUT IS READ BY THE ONE PIECE OF COPY THE SPECIFICATION NAMES.
-// specs/ui.md fixes the level readout as `HUD_LEVEL_LABEL` (`LEVEL`), the
-// current level and `TOTAL_LEVELS`, and that label is the only readout whose
-// text the case states — the other four are numbers a build is free to letter,
-// pad and abbreviate as it likes, and which of them a run of digits belongs to
-// is not decidable from the picture. Its anchor is read, which is the position
-// the build asked for the run of text at, against the bar the specification
-// gives it. What each readout SHOWS is the `presentation` category's question;
-// this point asks only where the bar is.
+// THE READOUTS ARE READ BY THE TWO THAT CANNOT BE ANYTHING BUT TEXT. specs/ui.md
+// leaves the HUD's "arrangement and styling" to the build, and three of its five
+// readouts are things a build may legitimately draw without text at all — the
+// lives as a row of marks, the bays as "one mark per bay", a timer as a bar. So
+// two are read: the LEVEL readout, whose copy `HUD_LEVEL_LABEL` (`LEVEL`) the
+// specification fixes, and the SCORE, posed at a figure no other readout on this
+// screen can produce, so the run of text carrying it is found by what it says
+// rather than by where it is. Each one's ANCHOR is read — the position the build
+// asked for the run of text at — against the bar the specification gives it.
+// What each readout SHOWS is the `presentation` category's question; this point
+// asks only where the bar is.
 //
 // NOTHING DRAWN ON THE STRAIT IS READ AS A DIFFERENCE, not as an inventory. The
 // four bodies specs/strait.md names — critter, bear, vehicle, floe — are all
@@ -44,7 +46,11 @@
 // would have moved before the frame was taken.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertBetween, assertEqual, assertTruthy } from "../assert";
+import {
+  assertBetween,
+  assertEqual,
+  assertGreaterThanOrEqual,
+} from "../assert";
 import {
   HUD_H,
   HUD_LEVEL_LABEL,
@@ -62,6 +68,19 @@ import {
   startCrossing,
   type Harness,
 } from "../harness";
+
+/**
+ * The score this scenario poses.
+ *
+ * A run of digits that appears nowhere else the HUD can put one: not the `3`
+ * lives, not level `1` of `8`, and not the crossing timer, which
+ * specs/progression.md starts at `30` seconds for level `1`. So the one run of
+ * text containing it is the score readout, whatever else the build wrote around
+ * it — and EVERY run carrying it is held inside the bar rather than exactly one,
+ * because a build is free to draw a readout twice: a fill over a stroke is one
+ * outlined score, not two.
+ */
+const POSED_SCORE = 12345;
 
 /** Where the critter is posed: the cap, the highest row the strait has. */
 const CRITTER = { col: 10, row: ROW_CAP };
@@ -93,26 +112,48 @@ function blitsInBar(h: Harness): number {
   return drawnImages(h).filter((image) => image.y - image.h / 2 < HUD_H).length;
 }
 
-it("draws the level readout inside the HUD bar", async () => {
+it("draws the level and score readouts inside the HUD bar", async () => {
   startCrossing(populated);
+  populated.debug.setScore(POSED_SCORE);
   populated.calls.length = 0;
   await populated.advance(1);
 
-  const label = drawnTextSpans(populated).find((span) =>
-    span.text.toUpperCase().includes(HUD_LEVEL_LABEL),
+  // The situation: the run really holds the score the readout is read for.
+  assertEqual(
+    populated.snapshot().score,
+    POSED_SCORE,
+    "the posed score, read back (specs/instrumentation.md)",
   );
-  assertTruthy(
-    label,
-    `a run of text carrying ${JSON.stringify(HUD_LEVEL_LABEL)}, the level ` +
-      `readout's own label (specs/ui.md)`,
-  );
-  assertBetween(
-    label?.y ?? Number.NaN,
-    0,
-    HUD_H,
-    `the level readout's anchor, inside the HUD bar y in [0, ${HUD_H}] ` +
-      `(specs/strait.md)`,
-  );
+
+  const runs = drawnTextSpans(populated);
+  const readouts = [
+    {
+      what: `the ${HUD_LEVEL_LABEL} readout, whose label specs/ui.md fixes`,
+      found: runs.filter((span) =>
+        span.text.toUpperCase().includes(HUD_LEVEL_LABEL),
+      ),
+    },
+    {
+      what: `the score readout, posed at ${POSED_SCORE}`,
+      found: runs.filter((span) => span.text.includes(String(POSED_SCORE))),
+    },
+  ];
+  for (const { what, found } of readouts) {
+    assertGreaterThanOrEqual(
+      found.length,
+      1,
+      `runs of text carrying ${what} (specs/ui.md)`,
+    );
+    for (const run of found) {
+      assertBetween(
+        run.y,
+        0,
+        HUD_H,
+        `the anchor of ${JSON.stringify(run.text)}, carrying ${what}, inside ` +
+          `the HUD bar y in [0, ${HUD_H}] (specs/strait.md)`,
+      );
+    }
+  }
 });
 
 it("draws no critter, bear, vehicle or floe inside the HUD bar", async () => {
