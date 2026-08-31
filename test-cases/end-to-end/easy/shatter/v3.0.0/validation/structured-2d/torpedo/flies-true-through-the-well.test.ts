@@ -22,9 +22,9 @@
 // THE LANE IS `100` UNITS ABOVE THE STAR'S ROW, NOT ON IT. A torpedo whose centre
 // reached the star's own row would pass through the core, and `specs/collision.md`
 // has the core absorb a torpedo that reaches it — there would be nothing left to
-// read. `y = 260` is the closest lane that both clears the core comfortably (the
-// absorption radius is `CORE_R + TORPEDO_R` = `36`, so the flight passes with `64`
-// units to spare) and stays outside the softening radius `SOFTEN` (`90`), where
+// read. `y = 260` clears the core comfortably — the absorption radius is
+// `CORE_R + TORPEDO_R` = `36`, so the flight passes with `64` units to spare — and
+// still stands outside the softening radius `SOFTEN` (`90`), where
 // `specs/gravity.md`'s law is the plain inverse square rather than its cap. At
 // `100` units the well pulls at `MU / 100^2` = `450` units per second squared, so
 // a build that pulled the torpedo would be bent by hundreds of units over this

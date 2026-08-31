@@ -75,7 +75,8 @@ const RANGE = 400;
  * `TORPEDO_LIFE` (`3.5` s), so the spared rock is spared rather than merely
  * outliving a torpedo that expired. Over that span the straight-flying torpedo of
  * the second scenario covers `630` units, from `x = 100` to `x = 730`, crossing no
- * seam and coming no nearer the star's centre than `294` units.
+ * seam and coming no nearer the star's centre than `280` units — eight times the
+ * `36` at which the core would absorb it.
  */
 const FLIGHT_TICKS = ticksFor(1.5);
 

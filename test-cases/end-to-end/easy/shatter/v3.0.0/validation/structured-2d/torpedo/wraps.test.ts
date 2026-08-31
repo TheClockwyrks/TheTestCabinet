@@ -15,10 +15,12 @@
 // the wrong speed.
 //
 // THE SEAM IS THE HARNESS'S OWN. `SEAM.right` is `(1279, 620)`: one unit inside
-// the right edge and `100` units off the star's row, so it is `561` units from the
-// star's centre, where the well pulls at under `15` units per second squared — and
-// a torpedo is not pulled at all (`specs/gravity.md`). What carries it across the
-// seam is the velocity `addTorpedo` gave it and nothing else.
+// the right edge and `100` units up from the bottom one, which puts it `690` units
+// from the star's centre, where the well pulls at about `9` units per second
+// squared — and a torpedo is not pulled at all (`specs/gravity.md`). What carries
+// it across the seam is the velocity `addTorpedo` gave it and nothing else. It is
+// deliberately off both midlines through the star, so nothing about this crossing
+// is a special case of the star's own geometry.
 //
 // THE GUIDANCE IS HELD OFF so the crossing is a straight one. The field is empty,
 // so nothing conforming could turn it; the gate is what stops a build that treats

@@ -26,7 +26,7 @@
 // `torpedo/picks-the-nearest-in-the-cone`'s business, but a torpedo that did not
 // turn cannot decide THIS item either way.
 //
-// THE SPAN IS HALF A SECOND, which is a third of the way to the rock — the
+// THE SPAN IS HALF A SECOND, which is under half the way to the rock — the
 // torpedo needs about `1.1` s to reach it — so nothing is destroyed under the
 // reading and the whole span is turning and closing. The pair stands in the bottom
 // of the field; the torpedo's own path never comes within `330` units of the

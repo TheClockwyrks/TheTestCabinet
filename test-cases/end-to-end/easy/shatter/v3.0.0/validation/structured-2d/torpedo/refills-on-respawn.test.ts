@@ -25,8 +25,8 @@
 // THE ROCK COMES IN FROM THE SIDE FACING AWAY FROM THE STAR, so its whole approach
 // is a fall inward: the well adds a fraction of a unit per second along the line
 // it is already travelling and never bends it off the ship. The duel is fought at
-// `(300, 180)`, `385` units from the star, half a field from the safe point — so
-// the ship the respawn puts up is somewhere the dying ship was not.
+// `(300, 180)`, `385` units from the star and `510` from the safe point — so the
+// ship the respawn puts up is somewhere the dying ship was not.
 //
 // WHAT IS READ. `torpedoCharge` a quarter of a second after the life fell, by
 // which time every build has put its next ship up. That the ship itself is at the
