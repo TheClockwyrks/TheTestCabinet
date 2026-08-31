@@ -41,7 +41,9 @@ import {
  * the definition of a frame having happened, and the press cannot be delivered
  * without one.
  */
-function apartFromTheClock(snapshot: MeltdownSnapshot): Record<string, unknown> {
+function apartFromTheClock(
+  snapshot: MeltdownSnapshot,
+): Record<string, unknown> {
   const fields: Record<string, unknown> = { ...snapshot };
   delete fields.simTime;
   return fields;

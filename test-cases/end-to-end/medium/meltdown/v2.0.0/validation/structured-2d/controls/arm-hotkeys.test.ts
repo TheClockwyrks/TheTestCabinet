@@ -26,13 +26,19 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { TOWER_DEFS, TOWER_TYPES } from "../../src/constants";
 import { assertEqual, assertNotNull } from "../assert";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 
 /**
  * Money above the dearest build cost specs/towers.md gives a tower, so no shop
  * entry is disabled while this runs. It is a pose, not a tolerance.
  */
-const PLENTY = Math.max(...TOWER_TYPES.map((type) => TOWER_DEFS[type].cost)) + 1;
+const PLENTY =
+  Math.max(...TOWER_TYPES.map((type) => TOWER_DEFS[type].cost)) + 1;
 
 let h: Harness;
 

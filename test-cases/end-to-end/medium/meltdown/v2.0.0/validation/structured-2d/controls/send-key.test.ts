@@ -20,7 +20,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -34,12 +39,20 @@ afterEach(() => {
 
 it("moves a build phase into its wave phase", async () => {
   startRun(h);
-  assertEqual(h.snapshot().phase, "building", "the phase the press starts from");
+  assertEqual(
+    h.snapshot().phase,
+    "building",
+    "the phase the press starts from",
+  );
 
   await h.tap("Space");
   captureStill(h, "sent");
 
   const sent = h.snapshot();
   assertEqual(sent.phase, "wave", "the phase Space left the run in");
-  assertEqual(sent.screen, "playing", "the screen, which a send does not leave");
+  assertEqual(
+    sent.screen,
+    "playing",
+    "the screen, which a send does not leave",
+  );
 });

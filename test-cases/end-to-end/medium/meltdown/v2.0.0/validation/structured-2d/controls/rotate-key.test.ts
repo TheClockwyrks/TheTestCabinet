@@ -18,7 +18,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 
 /** The four steps `KeyR` walks from a held rotation of `0` (specs/building.md). */
 const CYCLE = [1, 2, 3, 0] as const;

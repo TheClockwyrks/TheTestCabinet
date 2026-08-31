@@ -17,7 +17,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -31,7 +36,11 @@ afterEach(() => {
 
 it("opens the pause screen from live play, and returns to it", async () => {
   startRun(h);
-  assertEqual(h.snapshot().screen, "playing", "the screen the press starts from");
+  assertEqual(
+    h.snapshot().screen,
+    "playing",
+    "the screen the press starts from",
+  );
 
   await h.tap("KeyP");
   captureStill(h, "paused");
