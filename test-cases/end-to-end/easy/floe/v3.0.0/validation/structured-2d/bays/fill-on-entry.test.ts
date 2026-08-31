@@ -1,26 +1,77 @@
-// Floe — bays/fill-on-entry: SCAFFOLD STUB, NOT A VALIDATOR.
+// bays/fill-on-entry — the hop that lands in an open bay fills that bay, and
+// leaves every other bay exactly as it was.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `bays.fill-on-entry` review item, written
-// against the `structured-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/bays.md: "A crossing ends on the hop that lands the critter in an open
+// bay, which is a hop up from row `2`. On that hop: that bay becomes filled, and
+// no other bay changes."
 //
-// The item this file decides, from test-case.toml:
+// The bay under test is bay `3`, whose columns are `27` and `28`
+// (specs/strait.md). Its index is neither `0` nor the middle, and it is neither
+// of the columns it is reached from, so a build that fills the first bay, or the
+// bay whose index it read off the column, or every bay at once, reads a different
+// array from the one below rather than the same one.
 //
-//   A hop into an open bay fills it
+// The whole five-entry array is read rather than the one bay, because "and no
+// other bay changes" is half of what this point decides.
 //
-//   A hop up from row 2 into an open bay reports that bay filled and no other.
-//
-// Its declared media: replay `fill`.
+// The hop is a HELD direction for one frame rather than a tap, because
+// specs/controls.md has the playing screen read the four movement actions as
+// held: `hop` is the harness helper that drives that path.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual } from "../assert";
+import { BAY_COUNT } from "../../src/constants";
+import {
+  captureReplay,
+  createHarness,
+  hop,
+  startCrossing,
+  type Harness,
+} from "../harness";
+import { poseAtBayMouth } from "./bay-mouth";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The bay this point fills. */
+const BAY = 3;
 
-it("bays/fill-on-entry has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** The five bays afterwards: that one filled, the other four untouched. */
+const EXPECTED: boolean[] = Array.from(
+  { length: BAY_COUNT },
+  (_, index) => index === BAY,
+);
+
+/**
+ * Frames of the bay-fill hold recorded after the hop, for the replay alone.
+ *
+ * A quarter of a second, so the evidence shows the critter arriving in the bay
+ * and the strait carrying on rather than a single frozen frame. Every reading is
+ * taken before it runs.
+ */
+const AFTER_FRAMES = 30;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("fills the bay the hop landed in, and no other", async () => {
+  startCrossing(h);
+  poseAtBayMouth(h, BAY);
+
+  const filled = await captureReplay(h, "fill", async () => {
+    await hop(h, "up");
+    const landed = h.snapshot();
+    await h.advance(AFTER_FRAMES);
+    return landed;
+  });
+
+  // The array alone is the whole verdict: a hop that was refused leaves all five
+  // open, a hop that filled the wrong bay reads a different index, and a build
+  // that filled more than one reads more than one. Nothing is read off the
+  // critter, which `specs/bays.md` has left the strait by now.
+  assertDeepEqual(filled.bays, EXPECTED, `only bay ${BAY} filled`);
 });
