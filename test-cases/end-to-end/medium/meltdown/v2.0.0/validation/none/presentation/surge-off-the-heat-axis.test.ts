@@ -39,12 +39,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
-import {
-  EMITTER_TYPES,
-  SURGE_TYPES,
-  TRIP_HEAT,
-  TRIP_TIME,
-} from "../constants";
+import { EMITTER_TYPES, SURGE_TYPES, TRIP_HEAT, TRIP_TIME } from "../constants";
 import type { SurgeType, TowerType } from "../constants";
 import {
   captureStill,
