@@ -1,19 +1,135 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// field/wrap-bullet — a bullet posed to leave each of the four edges re-enters at
+// the opposite one.
 //
-// field/wrap-bullet — A bullet wraps at every edge
+// THE RULE. `specs/field.md` makes the field a torus with no outer walls, and
+// keeps a coordinate in range by taking it modulo the field size on that axis:
+// "the wrap applies to every body on the field". `specs/weapons.md` says it again
+// for the gun's round — a bullet "is pulled by the well, wraps at the edges, and
+// is removed when it is spent" — so leaving an edge is not what removes one. This
+// item decides the wrap for that body alone.
 //
-// A bullet posed to leave each of the four edges re-enters at the opposite
-// one.
+// WHAT IS READ. The pair of ticks the wrap lies between (see `seams.ts`): the
+// tick's own motion says how far past the seam the round went and the rule says
+// where that lands. A build that snaps the coordinate to the far edge, one that
+// reflects it, one that re-enters a radius late, and one that treats the edge as
+// the end of the round's life each read as a different number.
 //
-// Declared by test-case.toml as validation.script "field/wrap-bullet.test.ts",
-// so the manifest resolves only while this file exists. The Validators stage
-// of the v3.0.0 rework replaces it with the real suite, written against the
-// none harness in validation/none/harness.ts and the spec-derived oracle in
-// validation/none/geometry.ts — never against a reference build.
+// WHY THE CROSSINGS ARE FLOWN ON THE STAR'S OWN ROW AND COLUMN. A wrap moves a
+// coordinate the whole width of the field in one step, so a build that resolves
+// the core against the SEGMENT between two consecutive positions — which
+// `specs/collision.md` demands, requiring a swept test and forbidding a body
+// passing through another in a tick — sees a line straight across the field on
+// the tick the round crosses the seam, unless it is written to understand the
+// seam. On the star's row that false line runs through the core and the round is
+// absorbed (`specs/collision.md`: a bullet that reaches the core is absorbed and
+// removed). Off the row it misses, and the fault is invisible. Nothing touches a
+// conformant build: the shortest wrapped separation from the seam to the star's
+// centre is 637 units against the `CORE_R + BULLET_R` (`33`) at which a round is
+// taken.
 //
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// WHY THE ROUND IS PLACED RATHER THAN FIRED. `addBullet` is the one operation the
+// requirement needs; what the gun does when a key is pressed is the `bullets` and
+// `controls` items. `startPlaying` has emptied the field and shut both world
+// gates, so the crossing is the only thing happening, and thirteen ticks is a
+// twelfth of `BULLET_LIFE` (`1.5` s), so nothing expires mid-crossing.
 
-throw new Error(
-  "Shatter v3.0.0: validation/none/field/wrap-bullet.test.ts is a scaffold stub and has not been written yet",
+import { afterEach, beforeEach, it } from "vitest";
+import { assertLessThanOrEqual } from "../assert";
+import { MUZZLE_SPEED, STAR_X, STAR_Y } from "../constants";
+import {
+  bulletById,
+  captureStill,
+  createHarness,
+  poseBullet,
+  startPlaying,
+  ticksFor,
+  type Harness,
+} from "../harness";
+import {
+  approachTo,
+  coordinateOn,
+  crossSeam,
+  otherAxis,
+  posedAt,
+  type Seam,
+} from "./seams";
+
+/**
+ * The speed the round is flown at: `MUZZLE_SPEED`, the figure
+ * `specs/weapons.md` fixes for a shot leaving a still ship.
+ */
+const CROSS_SPEED = MUZZLE_SPEED;
+
+/** The run-up driven before the crossing: a tenth of a second of approach. */
+const APPROACH_TICKS = ticksFor(0.1);
+
+/**
+ * How far the wrapped centre may sit from where the modulus puts it, in units.
+ *
+ * The rule is arithmetic and the reading is taken one tick after the position and
+ * velocity it is predicted from, so the only thing a conformant build can be off
+ * by over that tick is the well's own contribution to the tick's displacement: at
+ * the 637 units the seam stands from the star the pull is 11 units per second
+ * squared, which moves the round by 8 thousandths of a unit in one tick. This
+ * bound is six hundred times that, still under a quarter of the 2.17 units of
+ * overshoot the pose builds in — which is what a build that snaps the coordinate
+ * to the edge misses by — and well under `BULLET_R` (`3`), so a build that wraps
+ * on the round's edge rather than its centre fails.
+ */
+const WRAP_TOLERANCE = 0.5;
+
+/** The crossing whose picture is kept as the item's still. */
+const RECORDED: Seam = "right";
+
+/** The four crossings, each flown along the star's own row or column. */
+const CROSSINGS: readonly { seam: Seam; to: Seam; line: number }[] = [
+  { seam: "right", to: "left", line: STAR_Y },
+  { seam: "left", to: "right", line: STAR_Y },
+  { seam: "bottom", to: "top", line: STAR_X },
+  { seam: "top", to: "bottom", line: STAR_X },
+];
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.dispose();
+});
+
+it.each(CROSSINGS)(
+  "wraps a bullet leaving the $seam edge round to the $to edge",
+  async ({ seam, line }) => {
+    await startPlaying(harness);
+
+    const run = approachTo(seam, CROSS_SPEED, APPROACH_TICKS);
+    const pose = posedAt(run, line);
+    const id = await poseBullet(harness, pose.x, pose.y, pose.vx, pose.vy);
+
+    const crossing = await crossSeam(
+      harness,
+      run,
+      (snapshot) => bulletById(snapshot, id),
+      APPROACH_TICKS,
+      `bullet leaving the ${seam} edge`,
+    );
+    if (seam === RECORDED) await captureStill(harness, "wrap");
+
+    const across = otherAxis(run.axis);
+    assertLessThanOrEqual(
+      Math.abs(coordinateOn(crossing.after, run.axis) - crossing.expected),
+      WRAP_TOLERANCE,
+      `the bullet's centre ${run.axis} one tick after leaving the ${seam} edge, which the tick's own motion carried to ${crossing.unwrapped.toFixed(3)}`,
+    );
+    assertLessThanOrEqual(
+      Math.abs(
+        coordinateOn(crossing.after, across) -
+          coordinateOn(crossing.before, across),
+      ),
+      WRAP_TOLERANCE,
+      `the bullet's centre ${across}, which the crossing leaves alone`,
+    );
+  },
 );
