@@ -150,12 +150,15 @@ and changes nothing.
 `reset` restores `screen` to `"title"`, `phase` to `"live"`, `phaseTimer` to `0`,
 `menuIndex` to `0`, `score` to `0`, `lives` to `START_LIVES` (`3`), `stage` to `1`,
 `resonance` to `0`, and `inversion` to `0`; it empties the drone, bullet, and burst
-rosters and the live discharge; it places the ship at the center of its lane
-(`640`) on the cyan band with `0` seconds of fire lockout and `0` seconds of fire
-cooldown; it turns the three world gates `waveEntry`, `diveLaunching`, and
-`ship.contact` back on; it returns the wave's entry, sway, and dive clocks to their
-fresh-wave values, `diveClock` among them at `0`; it sets `extraLifeAwarded` to
-`false` and the challenge-stage hit count to `0`; and it sets `simTime` to `0`.
+rosters and the live discharge; it places the ship at the center of its lane (`640`)
+on the cyan band with `0` seconds of fire lockout and `0` seconds of fire cooldown;
+it turns the three world gates `waveEntry`, `diveLaunching`, and `ship.contact` back
+on; it returns the wave's entry, sway, and dive clocks, and the gap the next dive
+waits for, to their fresh-wave values, `diveClock` at `0` and the gap at
+`DIVE_FIRST_DELAY`; it sets `extraLifeAwarded` to `false` and the challenge-stage hit
+count to `0`; and it sets `simTime` to `0` and the counter the next entity's id is
+taken from back to the first id, so two runs reset with the same seed report the same
+ids for the same scenario.
 
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's
 randomness. `muted` is left exactly as it stands, because muting is a player
