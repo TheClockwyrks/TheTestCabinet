@@ -59,7 +59,7 @@ fn both_env_channels_reach_the_container() {
     spec.secrets
         .insert("ANTHROPIC_API_KEY".to_string(), "sk-test".to_string());
 
-    let args = run_args(&spec);
+    let args = run_args(&spec, None);
     assert_eq!(
         env_args(&args),
         vec![
@@ -83,14 +83,14 @@ fn a_telemetry_variable_cannot_shadow_the_api_key() {
         .insert("ANTHROPIC_API_KEY".to_string(), "sk-real".to_string());
 
     assert_eq!(
-        env_args(&run_args(&spec)).last().unwrap(),
+        env_args(&run_args(&spec, None)).last().unwrap(),
         "ANTHROPIC_API_KEY=sk-real",
     );
 }
 
 #[test]
 fn a_run_without_env_or_host_mappings_passes_neither() {
-    let args = run_args(&spec());
+    let args = run_args(&spec(), None);
     assert!(env_args(&args).is_empty());
     assert!(!args.iter().any(|arg| arg == "--add-host"));
     // Network is enabled, so no isolation flag is added.
@@ -98,11 +98,30 @@ fn a_run_without_env_or_host_mappings_passes_neither() {
 }
 
 #[test]
+fn a_job_driven_run_labels_its_container_with_the_job_id() {
+    // The label is the only handle the driver has left on the container once it drops a
+    // canceled run's future: the container is detached and not `--rm`, so the harness
+    // inside it keeps running until something removes it by this label.
+    let args = run_args(&spec(), Some("vud0d2ok4is2c870pqcls2h0"));
+    let index = args.iter().position(|arg| arg == "--label").unwrap();
+    assert_eq!(args[index + 1], "dev.tcab.job-id=vud0d2ok4is2c870pqcls2h0");
+    // Flags precede the image, which stays last.
+    assert_eq!(args.last().unwrap(), "tcab-run:latest");
+}
+
+#[test]
+fn a_run_outside_a_job_is_labelled_with_nothing() {
+    // The CLI and desktop paths hold the container handle for the whole run and stop it
+    // themselves, so they have nothing to look a container up by later.
+    assert!(!run_args(&spec(), None).iter().any(|arg| arg == "--label"));
+}
+
+#[test]
 fn host_mappings_become_add_host_flags() {
     let mut spec = spec();
     spec.add_hosts
         .push(crate::preview::HOST_GATEWAY_ADD_HOST.to_string());
-    let args = run_args(&spec);
+    let args = run_args(&spec, None);
     let index = args.iter().position(|arg| arg == "--add-host").unwrap();
     assert_eq!(args[index + 1], "host.docker.internal:host-gateway");
 }

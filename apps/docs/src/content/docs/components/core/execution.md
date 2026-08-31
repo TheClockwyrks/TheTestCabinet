@@ -239,24 +239,29 @@ exit code `-1` and the run is misattributed. Because the watchdog always fires
 first, a hang is attributed accurately and promptly, and a case's maximum
 runtime is reachable however long it is set.
 
-These two are the only terminations the Test Cabinet decides on a timer. A run
-an operator kills from the live monitor is recorded as
-[`canceled`](/components/core/run-records/#status). A canceled run crossed no
-bound and carries no fault to attribute, so it is retained for inspection only
-and stays unpublishable.
+These two are the only terminations the Test Cabinet decides on a timer. An
+operator can also kill a run from the live monitor, and what the
+[driver](/components/driver/overview/#cancellation) does with it then depends on
+the harness.
 
-A kill also winds the run down cooperatively. The
-[driver](/components/driver/overview/#cancellation) raises a cancellation latch
-and keeps awaiting the run rather than dropping it. A [gg](/gg/overview/)
+A kill winds a [gg](/gg/overview/) run down cooperatively. The driver raises a
+cancellation latch and keeps awaiting the run rather than dropping it. The
 session sees the latch at its next turn boundary, finishes the turn in flight,
 runs its epilogue, and hands back everything it accumulated, so the run
 completes tree collection, metrics, and the record, and skips only validation.
 The wait is bounded at every layer: a grace on the session's wind-down and a
 longer one on the driver's. A run that overruns those graces falls back to a
-bare record.
+bare record. Either way the run is recorded as
+[`canceled`](/components/core/run-records/#status): it crossed no bound and
+carries no fault to attribute, so it is retained for inspection only and stays
+unpublishable.
+
+A kill destroys a run of any other harness. It has no wind-down protocol to be
+asked for, so the driver abandons the run and records it nowhere.
 
 `timed_out` and `hung` unwind the run instead of asking it to stop, so both are
-recorded without a collected tree or folded metrics.
+recorded without a collected tree or folded metrics. A destroyed run is the
+sharper case: the run leaves no record at all.
 
 ## Model authored tests
 

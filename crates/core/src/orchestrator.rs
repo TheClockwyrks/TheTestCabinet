@@ -763,9 +763,12 @@ pub(crate) async fn drive_orchestrator(
         // The tool-call tally is accumulated across the whole (possibly
         // multi-session) runner stream by the one parser that translated it.
         tool_calls: streamed.tool_calls,
-        // Cooperative cancellation is a gg path today: a third-party harness is driven
-        // through its own runner and has no wind-down protocol to ask it for, so a
-        // canceled run of one still unwinds and is recorded from what the host holds.
+        // Cooperative cancellation is a gg path: a third-party harness is driven through
+        // its own runner and has no wind-down protocol to ask it for, so nothing here
+        // ever observes the run's cancellation latch. The driver knows this and does not
+        // wait on one — it destroys a canceled third-party run outright rather than
+        // asking it to unwind (see the driver's `cancel` module) — so a session that
+        // reaches this point was never canceled.
         canceled: false,
     })
 }

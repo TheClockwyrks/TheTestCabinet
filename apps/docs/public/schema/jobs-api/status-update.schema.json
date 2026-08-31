@@ -25,7 +25,7 @@
         },
         {
           "const": "canceled",
-          "description": "The driver observed that the run was **canceled** by an operator, stopped the\nharness, and is handing back the partial record it built for it (carried in\nthe same update, with\n[`RunState::Canceled`](crate::RunState::Canceled)). The job is already\nterminal — the backend moved it to `canceled` when the operator asked — so\nthis update only attaches the record, keeping the killed run visible and\ninspectable instead of vanishing.",
+          "description": "The driver observed that the run was **canceled** by an operator, wound the\nsession down, and is handing back the record it built for it (carried in the\nsame update, with [`RunState::Canceled`](crate::RunState::Canceled)). The job is\nalready terminal — the backend moved it to `canceled` when the operator asked —\nso this update only attaches the record, keeping the killed run visible and\ninspectable instead of vanishing.\n\nOnly a canceled [gg](crate::gg) run's driver reports this, because gg is the one\nharness that can be asked to wind down. A canceled run of any other harness is\ndestroyed by its driver, which posts no terminal status at all: the job stays\n`canceled` with no record attached, and the run deliberately never reaches the\nrun list.",
           "type": "string"
         }
       ]
@@ -345,7 +345,7 @@
         }
       ],
       "default": null,
-      "description": "The produced run record, required when `state` is `succeeded` and carried on\na `canceled` report too (the partial record for the killed run). Its `links`\nare authoritative and stored with it."
+      "description": "The produced run record, required when `state` is `succeeded` and carried on\na `canceled` report too (the record a killed gg run wound down to produce). Its\n`links` are authoritative and stored with it."
     },
     "state": {
       "$ref": "#/$defs/DriverState",

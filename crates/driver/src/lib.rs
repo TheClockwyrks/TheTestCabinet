@@ -21,6 +21,7 @@
 //! dispatcher passed in (see [`client`]).
 
 pub mod artifacts;
+pub mod cancel;
 pub mod client;
 pub mod config;
 pub mod creds;

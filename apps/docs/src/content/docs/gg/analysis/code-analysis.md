@@ -202,13 +202,15 @@ that vary with how far validation got. Running before it is what makes
 `treeBasis: preValidation` literally true, and the ordering is asserted end to
 end.
 
-A canceled run is analysed like any other. Validation is skipped for a
+A canceled gg run is analysed like any other. Validation is skipped for a
 cancellation because it is fresh work that judges output; analysis reads bytes
-that already exist and renders no verdict.
+that already exist and renders no verdict. A killed run of another harness is
+destroyed by the [driver](/components/driver/overview/#cancellation) and reaches
+no post-session stage.
 
-The stage runs for every harness, since analysing a directory involves no
-harness-specific work. A run whose tree never reached the host is not analysed
-at all, and its record carries no summary.
+The stage runs for every completed run whatever its harness, since analysing a
+directory involves no harness-specific work. A run whose tree never reached the
+host is not analysed at all, and its record carries no summary.
 
 ## Offline analysis
 

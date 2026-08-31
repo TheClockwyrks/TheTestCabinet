@@ -215,8 +215,8 @@ export type StatusUpdate = {
   state: DriverState;
   /**
    * The produced run record, required when `state` is `succeeded` and carried on
-   * a `canceled` report too (the partial record for the killed run). Its `links`
-   * are authoritative and stored with it.
+   * a `canceled` report too (the record a killed gg run wound down to produce). Its
+   * `links` are authoritative and stored with it.
    */
   record?: RunRecord;
   /**

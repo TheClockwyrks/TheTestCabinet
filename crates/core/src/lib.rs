@@ -1499,10 +1499,12 @@ where
     /// live drawing [frames](crate::preview) to `preview` when one is supplied;
     /// pass `None` to ignore them.
     ///
-    /// `cancel` is the run's [cancellation latch](RunCancellation): raise it and the
-    /// harness session is asked to wind down, after which the run still finishes through
-    /// its ordinary post-session path and produces a complete record of what it got
-    /// through. Pass a [`RunCancellation::default`] for a run nothing can cancel.
+    /// `cancel` is the run's [cancellation latch](RunCancellation): raise it and a
+    /// [gg] session is asked to wind down, after which the run still finishes
+    /// through its ordinary post-session path and produces a complete record of what it
+    /// got through. Only gg observes it — a third-party harness has no wind-down protocol
+    /// to ask for — so raising it is no way to stop one of those; that takes tearing the
+    /// sandbox down. Pass a [`RunCancellation::default`] for a run nothing can cancel.
     pub async fn run(
         &self,
         request: &RunRequest,

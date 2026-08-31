@@ -33,9 +33,9 @@ follow from the placement:
   install and build commands in the produced tree itself, so a stage placed
   after it would measure build output, a rewritten lockfile and toolchain caches
   too.
-- A canceled run is analysed exactly as a completed one is. A stage reads bytes
-  that already exist and renders no verdict, which is the same posture that
-  keeps a killed run's metrics.
+- A canceled gg run is analysed exactly as a completed one is. A stage reads
+  bytes that already exist and renders no verdict, which is the same posture
+  that keeps a killed run's metrics.
 
 A stage reads the produced tree. Building or executing it belongs to validation.
 
