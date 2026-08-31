@@ -18,18 +18,14 @@ namespace gg {
 
 /// Decompose the work into epics and dispatchable issues.
 ///
-/// An issue is the heavyweight unit of work: its scope, non-scope and completion criteria are
-/// exactly what a delegated child agent is briefed from, which is why creating one asks for more
-/// than adding a task does.
+/// An issue's scope, non-scope and completion criteria are what a delegated child is briefed from.
 ///
 /// <ggmodule>board</ggmodule>
 namespace board {
 
 /// How an issue's epic grouping changes: leave it, detach it, or regroup it.
 ///
-/// The same three-way shape `gg::tasks::text_edit` has, for a field whose value is an epic id. A
-/// default-constructed value keeps the grouping, so detaching an issue and saying nothing about
-/// its epic cannot be confused.
+/// A default-constructed value keeps the grouping.
 class epic_assignment {
  public:
   /// Leave the grouping alone, which is what a default-constructed `gg::board::epic_assignment` does.
@@ -89,7 +85,7 @@ struct issue_created {
   /// How much of the board budget is used.
   board::board_usage board;
 
-  /// Register a wait on this issue, which suspends the agent between turns until it is terminal.
+  /// Register a wait on this issue, suspending this session between turns until it is terminal.
   ///
   /// <ggop-alias>board.wait_for_issue</ggop-alias>
   ///
@@ -100,7 +96,7 @@ struct issue_created {
 
 /// The parts of a new issue that may be left out; `{}` leaves out every one of them.
 struct issue_options {
-  /// What the work is, written for a child agent with no other context.
+  /// What the work is, written for a reader with no other context.
   std::optional<std::string> description;
   /// The ids of every issue that must be done before this one.
   std::vector<std::string> blocked_by;
@@ -149,23 +145,20 @@ board::epic_created create_epic(std::string_view prefix, std::string_view title,
 /// Create a self-contained, dispatchable issue, and hand back the id the board assigned it.
 ///
 /// The id is numbered under its epic's prefix (`AUTH-1`), or under `ISSUE` when the issue has no
-/// epic, and the board rather than the caller chooses it — so the returned one is what blocks a
-/// later issue on this one or waits for it. The scope, non-scope and completion criteria are what
-/// a child agent is briefed from, so they are written for a reader with no other context.
+/// epic, and the board rather than the caller chooses it. The scope, non-scope and completion
+/// criteria are what a delegated child is briefed from.
 ///
 /// <ggop>board.create_issue</ggop>
 ///
 /// \param title A short line naming the work.
-/// \param in_scope What the issue covers, precisely. Part of the brief a child agent is given.
-/// \param out_of_scope What the issue deliberately does not cover, so the work stops where it was
-///   meant to.
-/// \param completion_criteria What must be true for the issue to be done, which is what a reviewer
-///   checks the work against.
-/// \param agent The agent the issue is dispatched to. It must be one this agent may spawn.
+/// \param in_scope What the issue covers, precisely.
+/// \param out_of_scope What the issue deliberately does not cover.
+/// \param completion_criteria What must be true for the issue to be done.
+/// \param agent The agent profile the issue is dispatched to, from the ones this run permits.
 /// \param options The parts that may be left out: a description, blockers, an epic, reviewers.
 /// \returns the id the board assigned, and the board budget.
-/// \throws gg::core::api_error `invalid_argument` when the agent or a reviewer is not one this agent
-///   may assign, and `conflict` on a blocker edge that would close a cycle.
+/// \throws gg::core::api_error `invalid_argument` when the agent or a reviewer is not one this run
+///   permits, and `conflict` on a blocker edge that would close a cycle.
 board::issue_created create_issue(std::string_view title, std::string_view in_scope,
                                   std::string_view out_of_scope,
                                   std::string_view completion_criteria, std::string_view agent,
@@ -173,8 +166,7 @@ board::issue_created create_issue(std::string_view title, std::string_view in_sc
 
 /// Revise an issue; at least one field of the patch is required.
 ///
-/// A field left at its default is left alone, `gg::tasks::text_edit::clear()` empties the description,
-/// and `gg::board::epic_assignment::ungroup()` detaches the issue from its epic.
+/// A field left at its default is left alone.
 ///
 /// <ggop>board.update_issue</ggop>
 ///
@@ -214,15 +206,13 @@ board::board_usage remove_issue(std::string_view id);
 
 /// Register a wait on an issue and hand back an acknowledgement.
 ///
-/// It does not block inside the program: it records the wait and returns at once, so the rest of
-/// the program still runs and the suspension happens after the program ends, between turns. The
-/// run then frees this agent's slot for others until the issue is terminal — done, or failed
-/// because its assigned agent could not complete it — and resumes on the next turn. The issue this
-/// agent was assigned to implement cannot be waited on.
+/// It does not block inside the program: the wait is recorded and the call returns, the rest of the
+/// program runs, and the suspension happens after the program ends, between turns. The session
+/// resumes on the next turn, once the issue is terminal — done, or failed.
 ///
 /// <ggop>board.wait_for_issue</ggop>
 ///
-/// \param id The issue to wait on. It may not be the issue this agent was assigned.
+/// \param id The issue to wait on. It may not be the issue this session was assigned.
 /// \returns gg's acknowledgement of the registered wait.
 /// \throws gg::core::api_error `not_found` for an unknown id.
 std::string wait_for_issue(std::string_view id);

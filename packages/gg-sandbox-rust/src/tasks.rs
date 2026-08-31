@@ -3,8 +3,7 @@
 //! Every task may name the tasks that must finish before it, and an edge that would close a cycle is
 //! refused.
 //!
-//! One spelling here is worth reading twice. [`TaskPatch`]'s description is a three-way edit, and
-//! [`TextEdit`] says all three without a sentinel: [`Keep`](TextEdit::Keep) keeps the description
+//! [`TaskPatch`]'s description is a three-way edit: [`Keep`](TextEdit::Keep) keeps the description
 //! that is there, [`Clear`](TextEdit::Clear) empties it, [`Set`](TextEdit::Set) replaces it.
 
 use crate::bindings::test_cabinet::gg::tasks;
@@ -167,11 +166,8 @@ pub struct TaskPatch<'a> {
 
 /// A three-way edit of an optional text field: leave it, empty it, or replace it.
 ///
-/// It is an `enum` because the field really has three states: an `Option<&str>` could say only two,
-/// and would make "clear it" and "set it to the empty string" one request.
-///
 /// [`Keep`](Self::Keep) is the [`Default`], so a patch built with `..Default::default()` leaves the
-/// field alone — which is what leaving a field out of a patch has to mean.
+/// field alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TextEdit<'a> {
     /// Leave the field as it is.

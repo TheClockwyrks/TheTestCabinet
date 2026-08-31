@@ -1,14 +1,11 @@
 //! Durable memories, which survive a context compaction.
 //!
-//! A run picks one of three memory strategies and binds only that strategy's functions, so what
-//! this module offers is the honest answer to what memory can do here. The scratchpad keeps every
-//! memory in the context window ([`write_memory`], [`update_memory`]); the two file-shaped strategies
-//! keep the contents outside it ([`create_memory`], [`read_memory`], [`edit_memory`]), one behind an
-//! index that is always in context and one behind [`search_memories`]. [`delete_memory`] is bound
-//! under all three.
+//! A run picks one of three memory strategies and binds only that strategy's functions. The
+//! scratchpad strategy keeps every memory in the context window; the two file-shaped strategies keep
+//! the contents outside it until a memory is read, one behind an index that is always in context and
+//! one behind a keyword search.
 //!
-//! Every mutation hands back the budget after it, so a program can decide whether to write another
-//! memory by reading numbers rather than by parsing a sentence about them.
+//! Every mutation returns the budget after it.
 
 use crate::bindings::test_cabinet::gg::memories;
 use crate::core::ApiError;
@@ -27,29 +24,27 @@ pub(crate) const OPERATIONS: &[&str] = &[
 
 /// Record a durable memory that survives a context compaction.
 ///
-/// A memory may also carry **code**. `options.code` is a Rust module every later program this session
-/// writes reaches as `<name>::<item>`, so a helper got right once is never written again;
-/// `options.on_use` is a program gg runs on every use of the memory, whose views arrive on the next
-/// turn. Neither is context: they cost no window, are never shown back, and count against no body
-/// limit.
+/// A memory may also carry code. `options.code` is a Rust module every later program this session
+/// writes reaches as `<name>::<item>`; `options.on_use` is a program gg runs on every use of the
+/// memory, whose views arrive on the next turn. Neither is context: they cost no window, are never
+/// shown back, and count against no body limit.
 ///
 /// # Arguments
 ///
 /// * `name` — The memory's slug: letters, digits, `-`, `_` and `.`. Every other memory call takes it,
 ///   and no two memories may share one.
 /// * `description` — A one-line description of what the memory holds. Where the run keeps a memory
-///   index this is the memory's line in it, and so all that is visible until it is read.
+///   index this is the memory's line in it.
 /// * `body` — The memory's contents.
 /// * `options` — The code halves, which may be left out.
 ///
 /// # Returns
 ///
-/// The budget after the write, so the room left for the next one is read rather than guessed at.
+/// The budget after the write.
 ///
 /// # Errors
 ///
-/// `Conflict` on a duplicate name, and `LimitExceeded` when the body would breach the run's caps —
-/// revising or deleting a memory is the way out, rather than accruing more.
+/// `Conflict` on a duplicate name, and `LimitExceeded` when the body would breach the run's caps.
 #[doc(alias = "ggop:memories.write_memory")]
 pub fn write_memory(
     name: &str,
@@ -115,8 +110,7 @@ pub fn update_memory(
 ///
 /// # Returns
 ///
-/// The budget after the creation, index included, so the room left for the next one is read rather
-/// than guessed at.
+/// The budget after the creation, index included.
 ///
 /// # Errors
 ///
@@ -162,8 +156,6 @@ pub fn read_memory(name: &str) -> Result<String, ApiError> {
 
 /// Revise a memory in place, replacing the one exact occurrence of `search` with `replace`.
 ///
-/// Appending is done by quoting the last line and replacing it with itself plus what is being added.
-///
 /// # Arguments
 ///
 /// * `name` — The slug of the memory to revise.
@@ -177,8 +169,8 @@ pub fn read_memory(name: &str) -> Result<String, ApiError> {
 /// # Errors
 ///
 /// `NotFound` when the text does not appear, `Conflict` when it appears more than once,
-/// `LimitExceeded` when the result would be too long, and `InvalidArgument` when the edit would leave
-/// the memory empty — deleting it is the way to do that.
+/// `LimitExceeded` when the result would be too long, and `InvalidArgument` when the edit would
+/// leave the memory empty.
 #[doc(alias = "ggop:memories.edit_memory")]
 pub fn edit_memory(name: &str, search: &str, replace: &str) -> Result<MemoryUsage, ApiError> {
     wire::lift(memories::edit_memory(&memories::MemoryEdit {
@@ -192,14 +184,12 @@ pub fn edit_memory(name: &str, search: &str, replace: &str) -> Result<MemoryUsag
 /// Find the memories mentioning any of `keywords`, best first.
 ///
 /// Plain case-insensitive substring matching over each memory's slug, description and contents,
-/// ranked by how many distinct keywords a memory mentions and then by how often. Several specific
-/// words rank better than one sentence; [`read_memory`] is what fetches a hit worth having in full. A
-/// search that matches nothing is an empty `Vec`.
+/// ranked by how many distinct keywords a memory mentions and then by how often. A search that
+/// matches nothing is an empty `Vec`.
 ///
 /// # Arguments
 ///
-/// * `keywords` — The words to look for. Several specific words rank better than one sentence,
-///   because a memory is ranked by how many of them it mentions.
+/// * `keywords` — The words to look for.
 ///
 /// # Returns
 ///
@@ -223,7 +213,7 @@ pub fn search_memories(keywords: &[&str]) -> Result<Vec<MemoryHit>, ApiError> {
 ///
 /// # Returns
 ///
-/// The budget after the eviction, which is what says whether there is now room to write.
+/// The budget after the eviction.
 ///
 /// # Errors
 ///
@@ -252,8 +242,7 @@ fn input(
 /// How much of the run's durable-memory budget is used, after the call that returned it.
 ///
 /// Every maximum is an [`Option`]: each limit can be turned off, and a run's memory strategy applies
-/// only some of them, so `None` means nothing bounds that axis — which is worth checking before
-/// subtracting.
+/// only some of them, so `None` means nothing bounds that axis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MemoryUsage {
     /// Memories currently held.
@@ -288,8 +277,7 @@ pub struct MemoryHit {
 impl MemoryHit {
     /// Read this memory's full contents, which is what brings them into context.
     ///
-    /// [`read_memory`] with the slug already supplied, for the common case where the hit worth having
-    /// in full is in hand. The excerpt a hit carries is a window around one match, not the memory.
+    /// The same call as [`read_memory`], with the slug already supplied.
     ///
     /// # Returns
     ///

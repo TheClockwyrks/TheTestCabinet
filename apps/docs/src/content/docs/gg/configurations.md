@@ -233,29 +233,40 @@ agent, so a document without it is refused:
 "openingTurn": {
   "modules":   ["files", "shell"],
   "functions": ["docs.search", "views.open_docs_view", "views.open_text",
-                "views.open_file", "files.search"]
+                "views.open_file", "files.search"],
+  "tree":      { "include": true, "depth": 2 }
 }
 ```
 
 `modules` names gg modules by id, the namespace half of an operation id, and
 the listed modules are searched together in one listing view keyed by the
 modules in the listed order. `functions` names operation ids, and each listed function's documentation
-is opened in the listed order. The value above is the default a new profile is
-seeded with, and the two lists are independent of each other.
+is opened in the listed order. `tree` decides whether the program opens a
+[tree](/gg/filesystem/#trees) of the workspace, and at what depth. The value
+above is the default a new profile is seeded with, and the three are independent
+of each other.
+
+`tree` is optional in a document: one written without it reads as
+`{ "include": false, "depth": 2 }`, so a configuration authored before the tree
+existed opens the window it always opened.
 
 The lists are checked against the operation vocabulary the way `operations` is.
 A module id that is no gg module, a function id that is no gg operation, or a
 function held by role or placement rather than by configuration, refuses the
-launch and names the entry. An entry the agent's capabilities and allowlist do
-not hold is dropped when the window is seeded, with a warning per entry. An
-opening turn left empty seeds no program. The seeding rules are stated in full
-under [views](/gg/responses-as-code/views/#the-opening-turn).
+launch and names the entry. A `tree.depth` outside the range trees accept
+refuses the launch whether or not `include` is set. An entry the agent's
+capabilities and allowlist do not hold is dropped when the window is seeded,
+with a warning per entry; the tree is dropped for an agent that does not hold
+`files.tree`. An opening turn left empty seeds no program. The seeding rules are
+stated in full under [views](/gg/responses-as-code/views/#the-opening-turn).
 
-The editor's Opening Turn tab, shown for a RaC agent, carries one block per gg
+The editor's Opening Turn tab, shown for a RaC agent, carries a Workspace tree
+switch with a depth field beside it, then one block per gg
 module: a List module switch, enabled when the agent holds at least one of the
 module's functions, and beneath it an Open documentation checkbox per held
 function, each toggled independently of the switch. Each function row names its
-operation id and the capability that offers it. A reset restores the default.
+operation id and the capability that offers it. The depth is kept when the tree
+switch is off. A reset restores the default.
 The tab keeps every entry the agent has ever chosen; the saved configuration
 carries only the ones the agent currently holds, so switching a capability off
 and on loses nothing.

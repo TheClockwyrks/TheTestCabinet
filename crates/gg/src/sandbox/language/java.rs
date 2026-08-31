@@ -75,10 +75,12 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, spell,
+    ProgramLanguage, WORKSPACE_TREE_VIEW, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "java.compile.rs"]
 pub(super) mod compile;
@@ -279,12 +281,15 @@ impl ProgramLanguage for Java {
     /// [One search over every module at once, then a `List.of(…)` and an enhanced `for` opening a
     /// documentation view of each name](self::bootstrap_program), with both calls resolved from this
     /// language's own catalogue and the search's arguments built with the SDK's own builder.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            &spell(self, FILES_TREE),
+            &spell(self, VIEWS_OPEN_TEXT),
             modules,
             docs,
+            tree,
         )
     }
 
@@ -567,15 +572,25 @@ fn listed(names: &[&str]) -> String {
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
+    tree_call: &str,
+    open_text: &str,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
     let views = views_loop(open_docs_view, docs);
     let filters = format!("{}.SearchFilters", class_of(search));
+    let walked = match tree {
+        None => String::new(),
+        Some(depth) => format!(
+            "        {open_text}({}, {tree_call}({depth}));\n\n",
+            serde_json::Value::String(WORKSPACE_TREE_VIEW.to_string())
+        ),
+    };
     let body = match modules.is_empty() {
-        true => views,
+        true => format!("{walked}{views}"),
         false => format!(
-            "        {search}(new {filters}()\n\
+            "{walked}        {search}(new {filters}()\n\
              \x20               .modules({})\n\
              \x20               .limit({MAX_SEARCH_LIMIT}));\n\
              \n\

@@ -14,7 +14,7 @@ namespace detail {
 
 const std::vector<std::string>& files_operations() {
   static const std::vector<std::string> names{"read_file", "write_file", "edit_file", "list_dir",
-                                              "search"};
+                                              "tree",      "search"};
   return names;
 }
 
@@ -70,6 +70,22 @@ std::vector<files::dir_entry> list_dir(std::optional<std::string_view> path) {
       detail::lift_each(ret.ptr, ret.len, detail::lift_dir_entry);
   test_cabinet_gg_files_list_dir_entry_free(&ret);
   return entries;
+}
+
+std::string tree(files::tree_options options) {
+  detail::scratch scratch;
+  sandbox_string_t lowered{};
+  if (options.path.has_value()) lowered = scratch.str(*options.path);
+  detail::window levels(std::nullopt, options.depth);
+  sandbox_string_t ret{};
+  test_cabinet_gg_types_api_error_t err{};
+  if (!test_cabinet_gg_files_tree(options.path.has_value() ? &lowered : nullptr, levels.limit(),
+                                  &ret, &err)) {
+    detail::fail(err);
+  }
+  std::string rendered = detail::lift(ret);
+  sandbox_string_free(&ret);
+  return rendered;
 }
 
 std::vector<files::search_match> search(std::string_view query, files::search_options options) {

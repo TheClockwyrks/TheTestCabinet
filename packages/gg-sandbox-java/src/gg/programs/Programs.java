@@ -11,12 +11,11 @@ import java.util.Optional;
 /**
  * Fetch a program this session already ran, and hand a patched copy back to be run.
  *
- * <p>Under responses as code a reply is a whole program, so a one-character mistake in a sixty-line
- * program costs the sixty lines again. The library makes the fix proportional to the mistake: fetch
- * what ran, patch it with ordinary string work, hand it back.
+ * <p>A program is fetched by the id its acknowledgement carried, patched with ordinary string
+ * work, and handed back to run in place of the one that fetched it.
  *
  * <pre>{@code
- * Programs.rerun(Programs.get("k3p9").replace("Views.opentext", "Views.openText"));
+ * Programs.rerun(Programs.get("k3p9").replace("parseAll(", "parseOne("));
  * }</pre>
  *
  * @ggmodule programs
@@ -28,10 +27,8 @@ public final class Programs {
     /**
      * Every program this session has run, oldest first.
      *
-     * <p>It lists shapes rather than sources, so a directory of forty programs costs a few lines
-     * each. The list survives a compaction, which makes it the way back to a program whose text has
-     * left the context window. A session that has run nothing yet gets an empty list rather than a
-     * failure.
+     * <p>It lists each program's shape rather than its source. The list survives a context
+     * compaction. A session that has run nothing yet gets an empty list rather than a failure.
      *
      * @return every program this session has run, oldest first
      * @ggop programs.history
@@ -43,18 +40,15 @@ public final class Programs {
     /**
      * Fetch the exact source of one program that ran, by the id its acknowledgement carried.
      *
-     * <p>The source comes back as a string. The first half of fixing a program without rewriting it: get what ran, patch it with
-     * ordinary string work, hand the result to {@link #rerun}. What comes back is the program that
-     * executed — so where a submission's program was itself handed over by {@link #rerun}, this is
-     * the program that ran rather than the few lines that asked for it, and fetch-patch-run
-     * composes turn after turn. A rerun keeps the id of the submission it replaced.
+     * <p>The source comes back as a string. Where a submission's program was itself handed over,
+     * this is the program that ran rather than the few lines that asked for it. A rerun keeps the
+     * id of the submission it replaced.
      *
      * @param id The program's id, as its acknowledgement carried it and as {@link #history}
      *     reports it.
      * @return the source of the program that ran under that id
      * @throws ApiError {@link ApiErrorCode#NOT_FOUND}, naming the ids that are held, for an id this
-     *     agent was never issued or one whose program is old enough that the library has dropped
-     *     it.
+     *     session was never issued or one whose program the library has dropped.
      * @ggop programs.get
      */
     public static String get(String id) {
@@ -65,14 +59,12 @@ public final class Programs {
      * Hand gg a program to run in place of this one.
      *
      * <p>This program finishes, then gg compiles and runs {@code source} as this submission's
-     * program, under the same id.
-     * Nothing is undone: every call already made stands, and the program that runs next sees the
-     * world this one left behind — so a hand-over belongs before work that should not happen twice.
+     * program, under the same id. Nothing is undone: every call already made stands, and the
+     * program that runs next sees the world this one left behind.
      *
-     * <p>The first call stands, because a silently replaced program is a change nobody can see. A
-     * program that then fails cancels its hand-over along with everything else it decided, and the
-     * turn is an ordinary error turn instead. Chains are bounded: a submission runs at most four
-     * programs, this one plus three handed over, and the program handed over does the work.
+     * <p>The first call in a program stands. A program that then fails cancels its hand-over along
+     * with everything else it decided, and the turn is an ordinary error turn instead. A submission
+     * runs at most four programs: this one plus three handed over.
      *
      * @param source The program to run in place of this one, as Java statements. It may not be
      *     blank.
@@ -91,9 +83,7 @@ public final class Programs {
     /**
      * One program this session already ran, as the history lists it.
      *
-     * <p>It describes the program's shape, never its source: a directory that inlined every program
-     * would put the whole session back in the context window, which is the one thing the library
-     * exists to avoid.
+     * <p>It describes the program's shape, never its source.
      *
      * @param id The id its {@code submit_program} acknowledgement carried — what
      *     {@link Programs#get(String)} takes.

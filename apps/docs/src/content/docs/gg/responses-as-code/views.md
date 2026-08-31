@@ -21,6 +21,10 @@ that opened it.
 | Documentation | the name of the function or type it documents | `DocsView` |
 | Search | the constant `search results` for an agent's own search, the module path for an opening-turn listing | `SearchResults` |
 
+The opening turn's workspace tree is a text view under the constant selector
+`workspace tree`, so a program that opens that label again supersedes it rather
+than stacking a second copy beside it.
+
 Everything on disk is a file and everything a program computes is a string, so a
 directory listing, a `shell` result, a subagent's answer, a computed diff and an
 assembled table are all text views. gg picks the kind from the call the program
@@ -376,14 +380,15 @@ the example a model opens on has the shape of a reply it has to send. It carries
 its own import line and its own entry point, on the terms in
 [invariants](/gg/responses-as-code/invariants/).
 
-The program makes two kinds of call, and the agent's `openingTurn`
-configuration names the targets of both:
+The program makes three kinds of call, and the agent's `openingTurn`
+configuration names the targets of all three:
 
 ```json
 "openingTurn": {
   "modules":   ["files", "shell"],
   "functions": ["docs.search", "views.open_docs_view", "views.open_text",
-                "views.open_file", "files.search"]
+                "views.open_file", "files.search"],
+  "tree":      { "include": true, "depth": 2 }
 }
 ```
 
@@ -399,6 +404,15 @@ signature in the window. The two lists are independent: a function's
 documentation is opened whether or not its module is listed, and a listed module
 opens no documentation of its own.
 
+`tree` decides whether the program opens on the shape of the workspace.
+`include` says whether the call is made at all, and `depth` is the depth the
+call uses, on the terms [trees](/gg/filesystem/#trees) states. The tree is the
+program's first statement, and it lands as a text view under the constant
+selector `workspace tree`, so the transcript opens with where the agent is and
+then with how it looks things up. A document written without a `tree` key opens
+without one, and `depth` is kept when `include` is off, so switching the tree
+back on restores the depth that was chosen for it.
+
 The value above is the default a new profile is seeded with. It lists the
 filesystem and shell modules, and it opens the documentation of the calls
 discovery and showing are made of: `docs.search`, every view-opening function,
@@ -412,23 +426,26 @@ An entry is honoured only when the agent holds it. A function is held on the
 terms the [reference](/gg/reference/) states for it: an always-available call is
 held by every agent, and any other needs its capability enabled and its
 operation in the agent's `operations` allowlist. A module is held when at least
-one of its functions is. An entry in the right vocabulary that this agent does
-not hold is dropped when the window is seeded, with a `warn` line per dropped
-entry naming it and why, on the same footing as an allowlist entry the agent's
-capabilities do not offer: a shared configuration naming a call only some of its
-profiles enable is ordinary. A duplicate entry is opened once.
+one of its functions is. The tree is held when the agent holds `files.tree`. An
+entry in the right vocabulary that this agent does not hold is dropped when the
+window is seeded, with a `warn` line per dropped entry naming it and why, on the
+same footing as an allowlist entry the agent's capabilities do not offer: a
+shared configuration naming a call only some of its profiles enable is ordinary.
+A duplicate entry is opened once.
 
-Three kinds of entry refuse the launch, each reported against its own locus
-(`openingTurn.modules[i]`, `openingTurn.functions[i]`): a module id that is no
-gg module, a function id that is no gg operation (the refusal names the list a
-tool name belongs in, when it is one), and a function held by role or placement
-rather than by configuration, which is the [ending calls](/gg/ending-a-session/)
-and `delegation.transition_state`, since an opening turn cannot promise them.
+Four kinds of entry refuse the launch, each reported against its own locus
+(`openingTurn.modules[i]`, `openingTurn.functions[i]`, `openingTurn.tree.depth`):
+a module id that is no gg module, a function id that is no gg operation (the
+refusal names the list a tool name belongs in, when it is one), a function held
+by role or placement rather than by configuration, which is the
+[ending calls](/gg/ending-a-session/) and `delegation.transition_state`, since an
+opening turn cannot promise them, and a tree depth outside the range trees
+accept, whether or not `include` is set.
 
-An opening turn whose two lists are empty once the unheld entries are dropped
-seeds no program at all: the window opens on the build prompt alone, the agent
-starts normally, and one `debug` line records that the opening turn is empty.
-An empty opening turn is an operator's choice, so it is not a defect.
+An opening turn whose two lists and tree are all empty once the unheld entries
+are dropped seeds no program at all: the window opens on the build prompt alone,
+the agent starts normally, and one `debug` line records that the opening turn is
+empty. An empty opening turn is an operator's choice, so it is not a defect.
 
 The listing is one view keyed under the paths of the modules it lists, so only a
 re-listing of exactly those supersedes it. The agent's own searches keep the

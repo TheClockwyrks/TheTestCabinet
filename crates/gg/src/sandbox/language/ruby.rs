@@ -103,10 +103,12 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, spell,
+    ProgramLanguage, WORKSPACE_TREE_VIEW, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "ruby.compile.rs"]
 pub(super) mod compile;
@@ -315,12 +317,15 @@ impl ProgramLanguage for Ruby {
 
     /// [One search, then an array and an `each` block](self::bootstrap_program), with both calls
     /// resolved from this language's own catalogue and the filter written as a keyword argument.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            &spell(self, FILES_TREE),
+            &spell(self, VIEWS_OPEN_TEXT),
             modules,
             docs,
+            tree,
         )
     }
 }
@@ -439,10 +444,20 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
+    tree_call: &str,
+    open_text: &str,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
     let quoted = |name: &str| serde_json::Value::String(name.to_string()).to_string();
+    let walked = match tree {
+        None => String::new(),
+        Some(depth) => format!(
+            "{open_text}({}, {tree_call}(depth: {depth}))\n\n",
+            quoted(WORKSPACE_TREE_VIEW)
+        ),
+    };
     let listing = if modules.is_empty() {
         String::new()
     } else {
@@ -459,7 +474,7 @@ pub(super) fn bootstrap_program(
     format!(
         "{SURFACE_IMPORT}\n\
          \n\
-         {listing}\
+         {walked}{listing}\
          functions = [\n{functions}]\nfunctions.each {{ |name| {open_docs_view}(name) }}\n"
     )
 }

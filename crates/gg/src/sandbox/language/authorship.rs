@@ -673,6 +673,7 @@ fn handed(language: &'static dyn ProgramLanguage, half: Half) -> String {
             language.bootstrap_program(
                 &modules.iter().map(String::as_str).collect::<Vec<_>>(),
                 &docs.iter().map(String::as_str).collect::<Vec<_>>(),
+                None,
             )
         }
         Half::Module => language.gate_module(MODULE_NAME),

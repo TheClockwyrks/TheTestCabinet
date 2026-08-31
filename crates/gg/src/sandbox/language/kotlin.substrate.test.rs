@@ -1190,7 +1190,7 @@ fn the_programs_gg_writes_for_this_arm_run() {
     let language = kotlin_language();
 
     let (outcome, _log) = evaluate(
-        &prepare(&language.bootstrap_program(&["files", "views"], &["gg.files.readFile"])),
+        &prepare(&language.bootstrap_program(&["files", "views"], &["gg.files.readFile"], None)),
         &all_operations(),
         &[],
         canned_outcome,

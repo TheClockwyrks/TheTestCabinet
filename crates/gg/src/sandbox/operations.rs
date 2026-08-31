@@ -121,6 +121,9 @@ pub const FILES_EDIT_FILE: OperationId = OperationId::new("files", "edit_file");
 /// List a workspace directory.
 pub const FILES_LIST_DIR: OperationId = OperationId::new("files", "list_dir");
 
+/// Render the tree beneath a workspace directory, under the ignore files.
+pub const FILES_TREE: OperationId = OperationId::new("files", "tree");
+
 /// Search the workspace's files for a pattern, under the ignore files.
 pub const FILES_SEARCH: OperationId = OperationId::new("files", "search");
 
@@ -508,6 +511,12 @@ pub const OPERATIONS: &[Operation] = &[
     ),
     operation!(
         FILES_LIST_DIR,
+        FAMILY_FILESYSTEM,
+        Binding::Capability(CAPABILITY_LIST_DIR),
+        TAKES_INPUT
+    ),
+    operation!(
+        FILES_TREE,
         FAMILY_FILESYSTEM,
         Binding::Capability(CAPABILITY_LIST_DIR),
         TAKES_INPUT

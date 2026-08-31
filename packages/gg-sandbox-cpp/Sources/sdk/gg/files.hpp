@@ -16,18 +16,16 @@
 
 namespace gg {
 
-/// Read, write, edit, list and search the files of the workspace.
+/// Read, write, edit, list, walk and search the files of the workspace.
 ///
-/// Nothing here places anything in the agent's context window: showing something is what the
-/// `gg::views` module is for.
+/// Nothing here places anything in the context window.
 ///
 /// <ggmodule>files</ggmodule>
 namespace files {
 
 /// The window of lines a read covers; `{}` reads the whole file.
 ///
-/// Both fields are honoured under every read policy. The policy decides only what an empty `limit`
-/// means: its default cap under a capped policy, the end of the file under the unlimited one.
+/// An empty `limit` reads to the end of the file, or to the run's default cap where one applies.
 struct read_window {
   /// The 1-based line to start at; empty starts at the first line.
   std::optional<std::uint32_t> offset;
@@ -35,7 +33,7 @@ struct read_window {
   std::optional<std::uint32_t> limit;
 };
 
-/// A text file's window, as the `gg::files::text_file` alternative of a read carries it.
+/// A text file's window: the text, the lines it covers, and whether a byte ceiling cut it.
 struct text_file {
   /// The file's text, or just the requested window where the read named one.
   std::string contents;
@@ -49,10 +47,7 @@ struct text_file {
   bool byte_truncated{};
 };
 
-/// A picture's description, as the `gg::files::image_file` alternative of a read carries it.
-///
-/// The pixels are not here and never enter the program: gg attaches the picture to the turn
-/// instead, which is what `shown` reports.
+/// A picture's description; the pixels are not in the value.
 struct image_file {
   /// The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`).
   std::string media_type;
@@ -68,19 +63,12 @@ struct image_file {
 
 /// What a read returned: a text file's window, or a picture's description.
 ///
-/// A picture is a different kind of thing from text, so it is a different alternative rather than
-/// a string that happens to be binary — a program that treats an image as text is caught by the
-/// `std::get_if` instead of silently writing an empty string somewhere. It is a `std::variant`,
-/// which is what C++ has for a value that is exactly one of two things, so it narrows the way any
-/// other does:
+/// A `std::variant`, narrowed with `std::get_if` or `std::get`:
 ///
 /// ```cpp
 /// const auto read = gg::files::read_file("logo.png");
-/// if (const auto* text = std::get_if<gg::files::text_file>(&read)) {
-///   gg::views::open_text("logo", text->contents);
-/// } else {
-///   gg::views::open_text("logo", std::get<gg::files::image_file>(read).label);
-/// }
+/// const auto* text = std::get_if<gg::files::text_file>(&read);
+/// const std::string body = text ? text->contents : std::get<gg::files::image_file>(read).label;
 /// ```
 using file_read = std::variant<files::text_file, files::image_file>;
 
@@ -96,8 +84,8 @@ enum class entry_kind {
 
 /// Where a search looks and how many matches it returns; `{}` is the whole workspace, 50 matches.
 ///
-/// An aggregate filled in with designated initialisers, which is what C++ offers in place of named
-/// arguments: `gg::files::search("(?i)todo", {.path = "src", .limit = 100})`.
+/// An aggregate filled in with designated initialisers:
+/// `gg::files::search("(?i)todo", {.path = "src", .limit = 100})`.
 struct search_options {
   /// The directory or file to search, relative to the workspace or absolute.
   ///
@@ -107,6 +95,21 @@ struct search_options {
   ///
   /// The ceiling is 200, and a larger limit is clamped to it rather than refused.
   std::optional<std::uint32_t> limit;
+};
+
+/// Where a tree is rooted and how deep it is walked; `{}` is the workspace root, two levels.
+///
+/// An aggregate filled in with designated initialisers:
+/// `gg::files::tree({.path = "src", .depth = 3})`.
+struct tree_options {
+  /// The directory to walk, relative to the workspace or absolute.
+  ///
+  /// Empty walks the workspace root.
+  std::optional<std::string_view> path;
+  /// How many levels of children below the root to render; empty takes gg's default of 2.
+  ///
+  /// The ceiling is 10, and a larger depth is clamped to it rather than refused.
+  std::optional<std::uint32_t> depth;
 };
 
 /// One line a search matched.
@@ -134,16 +137,14 @@ struct dir_entry {
   files::entry_kind kind{};
 };
 
-/// Read a file, as either a `gg::files::text_file` or a `gg::files::image_file`.
+/// Read a file, as either a text window or a picture's description.
 ///
-/// Which of the two comes back is detected from the file's bytes, never from the extension, so a
-/// mislabelled picture is still a picture. A relative path resolves against the workspace; an
-/// absolute one is read as given, so anything else in this container — an offloaded command's
-/// output under `/tmp/gg-shell`, say — is readable.
+/// Which of the two comes back is detected from the file's bytes, never from the extension. A
+/// relative path resolves against the workspace; an absolute one is read as given, so anything
+/// else in this container is readable.
 ///
-/// This call hands bytes to the program and places nothing in the context window. Reading a
-/// picture describes it and shows nothing, so a file only read here is a file nobody has looked
-/// at; `gg::views::open_file` is the one call that shows one.
+/// The value goes to the program and nothing is placed in the context window; a picture is
+/// described rather than shown.
 ///
 /// <ggop>files.read_file</ggop>
 ///
@@ -166,9 +167,6 @@ files::file_read read_file(std::string_view path, files::read_window window = {}
 std::uint64_t write_file(std::string_view path, std::string_view contents);
 
 /// Replace the one exact occurrence of `old_string` in a file with `new_string`.
-///
-/// Widening the surrounding text until the match is unique is the way to reach a repeated line,
-/// rather than counting occurrences.
 ///
 /// <ggop>files.edit_file</ggop>
 ///
@@ -193,22 +191,45 @@ void edit_file(std::string_view path, std::string_view old_string, std::string_v
 ///   for a path that is given but empty.
 std::vector<files::dir_entry> list_dir(std::optional<std::string_view> path = std::nullopt);
 
+/// Render the tree beneath a directory, skipping everything the ignore files exclude.
+///
+/// One block of text: the root itself unnamed, each level indented two further spaces than its
+/// parent, every level in path order, and directories suffixed `/`. A root with nothing beneath it
+/// renders as `(empty directory)`.
+///
+/// `depth` counts levels of children below the root, so `1` is the root's own entries. A directory
+/// sitting at the bound is suffixed with how many entries it holds that were not walked, as
+/// `assets/ (12 entries not shown)`.
+///
+/// Whatever `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file exclude —
+/// nested files and negations included — is never walked and never rendered, `.git` itself is
+/// skipped, dotfiles are rendered, symbolic links are not followed, and none of it needs a
+/// repository to be there.
+///
+/// The rendering is bounded at 1000 lines and 16 KiB, whichever binds first, and a result cut by
+/// either ends with a line saying so.
+///
+/// <ggop>files.tree</ggop>
+///
+/// \param options Where to root the tree and how deep to walk it; `{}` walks the workspace root two
+///   levels deep.
+/// \returns the rendered tree.
+/// \throws gg::core::api_error `not_found` for a path that is not there, and `invalid_argument` for
+///   a path that is not a directory or a depth of `0`.
+std::string tree(files::tree_options options = {});
+
 /// Search the workspace's files for a regular expression, and hand back every line that matches.
 ///
-/// `query` is a regular expression in Rust's syntax — `foo|bar`, `fn [a-z_]+`, `(?i)todo` for a
-/// case-insensitive match — matched against each line on its own, and every line it matches comes
-/// back as a `gg::files::search_match` carrying the file's path, the 1-based line number and the
-/// line itself, in path order and then line order. It is this sandbox's grep, and it honours ignore
-/// files: whatever `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file exclude
-/// — nested files and negations included — is never scanned and never returned, `.git` itself is
-/// skipped, dotfiles are searched, and none of it needs a repository to be there. A file that is
-/// not text (one carrying a NUL byte) is skipped too.
+/// The workspace's grep. `query` is a regular expression in Rust's syntax — `foo|bar`,
+/// `fn [a-z_]+`, `(?i)todo` — matched against each line on its own, and every match carries the
+/// file's path, the 1-based line number and the line itself. Whatever `.gitignore`, `.ignore`,
+/// `.git/info/exclude` and the global ignore file exclude — nested files and negations included —
+/// is never scanned and never returned, `.git` itself is skipped, dotfiles are searched, and none
+/// of it needs a repository to be there. A file carrying a NUL byte is skipped.
 ///
 /// A matching line longer than 200 characters is cut there and annotated in place as
-/// `foo (123 more chars...)`. The result is a value for the program and places nothing in the
-/// context window. A vector exactly `limit` long may have been cut — there is no offset to page
-/// with, so narrowing the query or the path is what shows the rest: a search says where to point a
-/// read, and is not a way of reading a file.
+/// `foo (123 more chars...)`. The result is a value and places nothing in the context window. There
+/// is no offset: a vector exactly `limit` long may have been cut.
 ///
 /// <ggop>files.search</ggop>
 ///

@@ -10,7 +10,7 @@ public static partial class Context
     /// <param name="Items">Context items dropped from the live window.</param>
     /// <param name="ReclaimedTokens">Approximately how many tokens that freed.</param>
     /// <param name="Paths">The workspace paths whose views were evicted. Empty for an archive.</param>
-    /// <param name="Detail">The same prose the tool-calling path would have shown.</param>
+    /// <param name="Detail">A readable account of what was freed.</param>
     public sealed record ReclaimReport(
         uint Items,
         uint ReclaimedTokens,
@@ -23,10 +23,10 @@ public static partial class Context
         /// <summary>The system prompt.</summary>
         System,
 
-        /// <summary>Something the agent was told — a prompt, a tool result, a view.</summary>
+        /// <summary>A prompt, a tool result, or a view.</summary>
         User,
 
-        /// <summary>Something the agent said.</summary>
+        /// <summary>An assistant message.</summary>
         Assistant,
 
         /// <summary>A tool result.</summary>
@@ -40,10 +40,6 @@ public static partial class Context
     public sealed record ArchiveHit(uint Seq, MessageRole Role, string Text);
 
     /// <summary>What a search of the archive found.</summary>
-    /// <remarks>
-    /// An empty archive and a search that matched nothing are separate facts, deliberately:
-    /// collapsing the two would make a program archive again in the belief its first archive failed.
-    /// </remarks>
     /// <param name="ArchiveEmpty">Nothing has been archived yet, so there was nothing to search.</param>
     /// <param name="Hits">The matches, most recent first, capped at gg's eight-hit ceiling.</param>
     public sealed record ArchiveSearch(bool ArchiveEmpty, IReadOnlyList<ArchiveHit> Hits);

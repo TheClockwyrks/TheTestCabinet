@@ -125,6 +125,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "tree",
+            statement: r#"_ = try files.tree(path: "src", depth: 3)"#,
+            expected: || json!({ "path": "src", "depth": 3 }),
+        },
+        Crossing {
             tool: "search",
             statement: r#"_ = try files.search("answer", path: "src", limit: 10)"#,
             expected: || json!({ "query": "answer", "path": "src", "limit": 10 }),
@@ -642,6 +647,45 @@ gg.log("after")
         "what ran before it still stands: {:?}",
         outcome.logs
     );
+
+    // AND THE ONE FAILURE THIS ARM'S SDK RAISES ITSELF, BEFORE THE MEMBRANE.
+    // `depth` is a signed `Int` here — Swift has no unsigned integer a model would write by hand —
+    // so a negative one has to be refused in the SDK: lowered instead, `-1` becomes 4294967295 and
+    // the host answers a nonsensical request with a tree clamped to the ceiling. Both `0` and `-1`
+    // come back as `invalid-argument` under the call's own gg name, neither reaches gg's dispatch,
+    // and the well-formed depth beside them still does.
+    let (outcome, log) = run_with(
+        r####"
+import gg
+
+for depth in [0, -1] {
+    do {
+        _ = try files.tree(depth: depth)
+        gg.log("walked at \(depth)")
+    } catch let failure as core.ApiError {
+        gg.log("\(failure.code) on \(failure.operation)")
+    }
+}
+gg.log(try files.tree(path: "src", depth: 3))
+"####,
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "invalidArgument on tree",
+            "invalidArgument on tree",
+            "a.ts\nb.test.ts\nsub/\n  c.ts"
+        ]
+    );
+    assert_eq!(
+        log.names(),
+        ["tree"],
+        "only the well-formed depth reached gg's dispatch: {:?}",
+        log.names()
+    );
+    assert_eq!(log.args("tree"), Some(json!({ "path": "src", "depth": 3 })));
 }
 
 #[test]

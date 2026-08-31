@@ -155,6 +155,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "tree",
+            statement: r#"files::tree(files::TreeOptions { path: Some("src"), depth: Some(3) });"#,
+            expected: || json!({ "path": "src", "depth": 3 }),
+        },
+        Crossing {
             tool: "search",
             statement: r#"files::search("answer", files::SearchOptions { path: Some("src"), limit: Some(10) });"#,
             expected: || json!({ "query": "answer", "path": "src", "limit": 10 }),

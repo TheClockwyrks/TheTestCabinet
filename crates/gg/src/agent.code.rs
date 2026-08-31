@@ -61,7 +61,7 @@ use crate::sandbox::{
     CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW, CONTEXT_SEARCH_ARCHIVE, DELEGATION_EXEC,
     DELEGATION_FORK, DELEGATION_SEND_MESSAGE, DELEGATION_SPAWN_SUBAGENT,
     DELEGATION_TRANSITION_STATE, DELEGATION_WAIT_FOR_SUBAGENTS, DocSearchQuery, DocSearchResult,
-    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_SEARCH, FILES_WRITE_FILE,
+    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_SEARCH, FILES_TREE, FILES_WRITE_FILE,
     MEMORIES_CREATE_MEMORY, MEMORIES_DELETE_MEMORY, MEMORIES_EDIT_MEMORY, MEMORIES_READ_MEMORY,
     MEMORIES_SEARCH_MEMORIES, MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY, OperationApi,
     OperationId, PreparedProgram, ProgramError, ProgramLanguage, ProgramScope, RunEnding,
@@ -75,8 +75,8 @@ use crate::tools::{
     CreateMemoryTool, DeleteMemoryTool, EditFileTool, EditMemoryTool, EvictFileViewTool,
     ListDirTool, OffloadPolicy, OwnedStructured, ReadMemoryTool, ReadSkillTool, RemoveEpicTool,
     RemoveIssueTool, RemoveTaskTool, SearchArchiveTool, SearchMemoriesTool, SearchTool,
-    SetBlockedByTool, SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool, UpdateTaskTool,
-    WriteFileTool, WriteMemoryTool, clip_line, read_only_refusal, run_command,
+    SetBlockedByTool, SetIssueBlockedByTool, TreeTool, UpdateIssueTool, UpdateMemoryTool,
+    UpdateTaskTool, WriteFileTool, WriteMemoryTool, clip_line, read_only_refusal, run_command,
 };
 
 // ---------------------------------------------------------------------------
@@ -3248,6 +3248,11 @@ impl OperationApi for LoopOperationApi {
     fn list_dir(&mut self, path: Option<String>) -> ToolOutcome {
         self.serviced(FILES_LIST_DIR, json!({ "path": path }), |api| {
             ListDirTool.list(&api.tool_ctx, path.clone())
+        })
+    }
+    fn tree(&mut self, path: Option<String>, depth: Option<u32>) -> ToolOutcome {
+        self.serviced(FILES_TREE, json!({ "path": path, "depth": depth }), |api| {
+            TreeTool.tree(&api.tool_ctx, path.clone(), depth)
         })
     }
     fn search(&mut self, query: String, path: Option<String>, limit: Option<u32>) -> ToolOutcome {

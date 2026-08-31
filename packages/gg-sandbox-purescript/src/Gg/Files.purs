@@ -1,12 +1,12 @@
--- | Read, write, edit, search and list the files of the workspace.
+-- | Read, write, edit, search, list and walk the files of the workspace.
 -- |
--- | Nothing here places anything in the agent's context window: a value a program gets back from
--- | this module is the program's alone until a view shows it.
+-- | No call in this module places anything in the context window.
 module Gg.Files
   ( readFile
   , writeFile
   , editFile
   , listDir
+  , tree
   , search
   , FileRead(..)
   , TextFile
@@ -16,6 +16,7 @@ module Gg.Files
   , SearchMatch
   , ReadOptions
   , ListDirOptions
+  , TreeOptions
   , SearchOptions
   ) where
 
@@ -35,16 +36,17 @@ type ReadOptions = (offset :: Int, limit :: Int)
 -- | Which directory to list. Optional; `{}` lists the workspace root.
 type ListDirOptions = (path :: String)
 
+-- | Where a tree is rooted and how deep it is walked. Every field is optional; `{}` walks the
+-- | workspace root two levels deep.
+type TreeOptions = (path :: String, depth :: Int)
+
 -- | Where a search looks and how many matches it takes. Every field is optional; `{}` searches the
 -- | whole workspace for the first 50.
 type SearchOptions = (path :: String, limit :: Int)
 
 -- | The result of a read: a text file's window, or a picture's description.
 -- |
--- | A picture is a different kind of thing from text, so it is a different arm rather than a string
--- | that happens to be binary — a program that treats an image as text is caught by the `case`
--- | instead of quietly writing an empty string somewhere. Image bytes never enter the program: gg
--- | attaches the picture to the turn instead, which is worth more than base64 in a variable.
+-- | Image bytes never enter the program: gg attaches the picture to the turn instead.
 data FileRead
   -- | The file is text.
   = TextFile TextFile
@@ -89,9 +91,8 @@ type ImageFile =
 -- |
 -- | # Fields
 -- |
--- | - `name` — The entry's bare name, with no directory part.
--- |
--- |   Joining it with the directory that was listed is what produces a path another call accepts.
+-- | - `name` — The entry's bare name, with no directory part. A path is the listed directory joined
+-- |   with it.
 -- | - `kind` — What the entry is.
 type DirEntry =
   { name :: String
@@ -117,14 +118,11 @@ instance Show EntryKind where
 -- | # Fields
 -- |
 -- | - `path` — The file the line is in, relative to the workspace.
--- |
--- |   It is a path every other call accepts as it stands, so a match is already an argument for a
--- |   windowed read of the lines around it.
 -- | - `line` — The 1-based number of the line within that file.
 -- | - `text` — The line, without its ending.
 -- |
 -- |   One longer than 200 characters is cut there and annotated in place as `foo (123 more
--- |   chars...)`, so a minified bundle cannot put a page into one match.
+-- |   chars...)`.
 type SearchMatch =
   { path :: String
   , line :: Int
@@ -138,21 +136,20 @@ instance Show FileRead where
 
 -- | Read a file, as either the `TextFile` or the `ImageFile` arm of a `Gg.Files.FileRead`.
 -- |
--- | Which of the two comes back is detected from the file's bytes, never from the extension, so a
--- | mislabelled picture is still a picture. The sum is closed, so an ordinary `case` needs no
--- | catch-all:
+-- | Which of the two comes back is detected from the file's bytes, never from the extension. The sum
+-- | is closed, so an ordinary `case` needs no catch-all:
 -- |
 -- | ```
 -- | read <- Gg.Files.readFile "logo.png" {}
 -- | case read of
--- |   Gg.Files.TextFile text -> Gg.Views.openText "logo" text.contents
--- |   Gg.Files.ImageFile picture -> Gg.Views.openText "logo" picture.label
+-- |   Gg.Files.TextFile text -> text.contents
+-- |   Gg.Files.ImageFile picture -> picture.label
 -- | ```
 -- |
--- | A relative path resolves against the workspace; an absolute one is read as given, so anything
--- | else in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable.
--- | This call hands bytes to the program and places nothing in the context window, and reading a
--- | picture describes it without showing it, so a file only read here is a file nobody has looked at.
+-- | A relative path resolves against the workspace; an absolute one is read as given, so any path in
+-- | this container is readable, an offloaded command's output under `/tmp/gg-shell` among them. The
+-- | contents go to the program and nothing is placed in the context window; a picture is described
+-- | rather than displayed.
 -- |
 -- | # Operation
 -- |
@@ -209,9 +206,6 @@ writeFile path contents =
 
 -- | Replace the one exact occurrence of some text in a file with something else.
 -- |
--- | Widening the surrounding context until the match is unique is the way to disambiguate; counting
--- | occurrences is not.
--- |
 -- | # Operation
 -- |
 -- | files.edit_file
@@ -245,8 +239,7 @@ editFile path oldString newString =
 -- | # Returns
 -- |
 -- | One entry per name, sorted by name, and an empty array for an empty directory rather than a
--- | failure. Each `name` is bare, so joining it with the directory that was listed is what makes a
--- | path.
+-- | failure. Each `name` is bare, with no directory part.
 -- |
 -- | # Throws
 -- |
@@ -260,25 +253,66 @@ listDir
 listDir options =
   Wire.callMap (map dirEntry) "list_dir" "files" "Gg.Files.listDir" [ Wire.pick "path" options ]
 
+-- | Render the tree beneath a directory, skipping everything the ignore files exclude.
+-- |
+-- | One block of text: the root itself unnamed, each level indented two further spaces than its
+-- | parent, every level in path order, and directories suffixed `/`. A root with nothing beneath it
+-- | renders as `(empty directory)`.
+-- |
+-- | `depth` counts levels of children below the root, so `1` is the root's own entries. A directory
+-- | sitting at the bound is suffixed with how many entries it holds that were not walked, as
+-- | `assets/ (12 entries not shown)`.
+-- |
+-- | What `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file exclude — nested
+-- | files and negations included — is never walked and never rendered, `.git` itself is skipped, and
+-- | none of it needs a repository to be there or can be turned off. Dotfiles are otherwise rendered
+-- | like any other entry, and symbolic links are not followed.
+-- |
+-- | The rendering is bounded at 1000 lines and 16 KiB, whichever binds first, and a result cut by
+-- | either ends with a line saying so.
+-- |
+-- | # Operation
+-- |
+-- | files.tree
+-- |
+-- | # Arguments
+-- |
+-- | - `options` — Where to root the tree and how deep to walk it; `{}` walks the workspace root two
+-- |   levels deep.
+-- | - `options.path` — The directory to walk, relative to the workspace or absolute.
+-- | - `options.depth` — How many levels of children below the root to render. Left out it is 2, the
+-- |   ceiling is 10, and a larger depth is answered at 10.
+-- |
+-- | # Returns
+-- |
+-- | The rendered tree.
+-- |
+-- | # Throws
+-- |
+-- | `NotFound` for a `path` that is not there, and `InvalidArgument` for a `path` that is not a
+-- | directory or a `depth` of zero.
+tree
+  :: forall given rest
+   . Union given rest TreeOptions
+  => Record given
+  -> Effect String
+tree options =
+  Wire.call "tree" "files" "Gg.Files.tree" [ Wire.lower {} options ]
+
 -- | Search the workspace's files for a regular expression, honouring the ignore files.
 -- |
--- | A search answers *where* rather than *what*: each match is a path, a 1-based line number and
--- | the line, which is what points a windowed read or a view at the right lines of the right file.
--- | The query is the pattern a `grep` would take — a regular expression in Rust syntax: `foo|bar`,
--- | `fn\s+update`, `(?i)todo` for a case-insensitive match — tried against each line on its own.
+-- | A `grep` over the workspace's files: each match is a path, a 1-based line number and the line
+-- | itself. The pattern is a regular expression in Rust syntax — `foo|bar`, `fn\s+update`,
+-- | `(?i)todo` for a case-insensitive match — tried against each line on its own.
 -- |
--- | Ignoring is the search's own rule rather than an option. What `.gitignore`, `.ignore` and
--- | `.git/info/exclude` exclude — nested files and negations included, and `.git` itself — is never
--- | scanned and never returned, in a workspace that is a repository and in one that is not yet.
--- | Dotfiles are otherwise searched like any other file, and a file that is not text (one carrying
--- | a NUL byte) is skipped rather than matched byte by byte. A match list therefore holds the
--- | project's sources rather than `node_modules`, build output and the run's own bookkeeping; a file
--- | under an ignored path is still reachable by path through every other call.
+-- | What `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file exclude — nested
+-- | files and negations included — is never scanned and never returned, `.git` itself is skipped, and
+-- | none of it needs a repository to be there or can be turned off. Dotfiles are otherwise searched
+-- | like any other file, and a file carrying a NUL byte is skipped. A file under an ignored path is
+-- | still reachable by path through every other call.
 -- |
--- | The result is bounded so one search cannot flood a turn: `limit` is 50 when left out and never
--- | more than 200, and a list exactly `limit` long may have been cut. There is no offset, because a
--- | search is a question about where to look rather than a way of reading a file, so the answer to
--- | a cut list is a narrower query or a narrower `path`.
+-- | `limit` is 50 when left out and never more than 200, and a list exactly `limit` long may have
+-- | been cut. There is no offset.
 -- |
 -- | # Operation
 -- |

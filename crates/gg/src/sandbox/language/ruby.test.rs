@@ -169,6 +169,7 @@ fn the_opening_program_is_ruby() {
         ruby().bootstrap_program(
             &["GG::Files", "GG::Shell"],
             &["GG::Docs.search", "GG::Views.open_docs_view"],
+            None,
         ),
         format!(
             "{}\n\n\
@@ -190,7 +191,7 @@ fn the_opening_program_is_ruby() {
 /// left out and the documentation views stand alone.
 #[test]
 fn the_opening_program_omits_a_search_that_would_ask_for_nothing() {
-    let program = ruby().bootstrap_program(&[], &["GG::Docs.search"]);
+    let program = ruby().bootstrap_program(&[], &["GG::Docs.search"], None);
     assert_eq!(
         program,
         format!(

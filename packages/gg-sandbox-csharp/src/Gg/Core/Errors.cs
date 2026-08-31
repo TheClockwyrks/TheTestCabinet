@@ -3,11 +3,7 @@ using System;
 namespace Gg;
 
 /// <summary>Why a gg call failed, in the vocabulary a <c>catch</c> branches on.</summary>
-/// <remarks>
-/// A code is never derived from the wording of a message: every gg tool classifies its own failures
-/// where it raises them, and this is that classification. Branching on it is stable in a way that
-/// branching on <see cref="Exception.Message"/> is not.
-/// </remarks>
+/// <remarks>Every gg tool classifies its own failures where it raises them.</remarks>
 /// <ggmodule>core</ggmodule>
 public enum ApiErrorCode
 {
@@ -24,7 +20,7 @@ public enum ApiErrorCode
     /// </remarks>
     Conflict,
 
-    /// <summary>gg refused the call because of a rule about the agent's own state.</summary>
+    /// <summary>gg refused the call because of a rule about the session's own state.</summary>
     /// <remarks>
     /// A read-only memory, a call a pending compaction does not admit, a second succession in one
     /// turn, or a hook that blocked it. A ceiling that was reached is
@@ -32,10 +28,10 @@ public enum ApiErrorCode
     /// </remarks>
     Refused,
 
-    /// <summary>The call exists and this run does not offer it to this agent.</summary>
+    /// <summary>The call exists and this run does not offer it.</summary>
     /// <remarks>
-    /// A tool outside the run's capability set, an ending the agent's role does not declare, or a
-    /// program library this agent does not keep. The recovery is to stop asking for it.
+    /// A tool outside the run's capability set, an ending this role does not declare, or a program
+    /// library this run does not keep.
     /// </remarks>
     Unavailable,
 
@@ -56,33 +52,16 @@ public enum ApiErrorCode
 
 /// <summary>The exception every gg call throws when it fails.</summary>
 /// <remarks>
-/// <para>
-/// A failure is thrown rather than returned because C# is an exception language: the common path
-/// reads as a straight line, and only the calls expected to fail are wrapped.
-/// </para>
-/// <code>
-/// var name = "Gg.Docs.Search";
-/// try
-/// {
-///     Views.OpenDocsView(name);
-/// }
-/// catch (ApiException failure) when (failure.Code == ApiErrorCode.NotFound)
-/// {
-///     Views.OpenText("docs", $"nothing on this surface is called {name}");
-/// }
-/// </code>
-/// <para>
-/// An unexpected one is best left to escape: gg reports which call failed, with the managed stack,
-/// and the turn is recoverable.
-/// </para>
+/// An uncaught one is reported by gg with the call that failed and the managed stack, and the turn
+/// is recoverable.
 /// </remarks>
 /// <ggmodule>core</ggmodule>
 public sealed class ApiException : Exception
 {
-    /// <summary>Build a failure, which gg raises and a program has no reason to.</summary>
+    /// <summary>Build a failure.</summary>
     /// <param name="code">The failure class.</param>
     /// <param name="operation">The call that failed, by the operation's key.</param>
-    /// <param name="message">The model-facing guidance.</param>
+    /// <param name="message">The failure message.</param>
     public ApiException(ApiErrorCode code, string operation, string message)
         : base(message)
     {
@@ -90,7 +69,7 @@ public sealed class ApiException : Exception
         Operation = operation;
     }
 
-    /// <summary>The failure class, so a catch site branches on a value rather than on prose.</summary>
+    /// <summary>The failure class.</summary>
     public ApiErrorCode Code { get; }
 
     /// <summary>The call that failed, by the key of the operation this program reached for.</summary>

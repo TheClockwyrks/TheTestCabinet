@@ -4,9 +4,8 @@ namespace Gg;
 
 /// <summary>Delegate work to child agents, and hand this session on to another agent.</summary>
 /// <remarks>
-/// A child runs in parallel with its own window and its own model. It sees the brief it was given
-/// and nothing of the conversation that produced it, so a brief has to be self-contained — which is
-/// also why an issue, whose scope is written down, makes a better one than a sentence.
+/// A child runs in parallel with its own context window and its own model. It sees the brief it was
+/// given and nothing of the conversation that produced it.
 /// </remarks>
 /// <ggmodule>delegation</ggmodule>
 public static partial class Delegation
@@ -49,8 +48,7 @@ public static partial class Delegation
 
     /// <summary>Wait for every outstanding child, and collect their results.</summary>
     /// <remarks>
-    /// This blocks while it waits, and the run's wall-clock budget keeps running while it does, so
-    /// one wait for many children costs far less than one wait per child.
+    /// It blocks while it waits, and the run's wall-clock budget keeps running while it does.
     /// </remarks>
     /// <returns>one result per child, in the order they were collected.</returns>
     /// <ggop>delegation.wait_for_subagents</ggop>
@@ -60,7 +58,7 @@ public static partial class Delegation
     /// <param name="ids">The child ids to wait for, as <see cref="SpawnSubagent"/> handed them back.</param>
     /// <returns>one result per named child, in the order they were collected.</returns>
     /// <exception cref="ApiException">
-    /// <see cref="ApiErrorCode.NotFound"/> for an id this agent never spawned.
+    /// <see cref="ApiErrorCode.NotFound"/> for an id this session never spawned.
     /// </exception>
     /// <ggop>delegation.wait_for_subagents</ggop>
     public static IReadOnlyList<SubagentResult> WaitForSubagents(params string[] ids) => Collect(ids);
@@ -76,18 +74,16 @@ public static partial class Delegation
     public static void SendMessage(string agentId, string message) =>
         Internal.Wire.Check(Internal.Native.SendMessage(agentId, message));
 
-    /// <summary>Move the process this agent runs inside on to another of its states.</summary>
+    /// <summary>Move the process this session runs inside on to another of its states.</summary>
     /// <remarks>
     /// <para>
-    /// It is registered rather than performed: the call validates the target against the reachable
-    /// states, returns, and the program carries on to its end; the transition happens after that.
-    /// Replacing the agent, and its window, while its own program is still running would pull every
-    /// remaining call out from under it.
+    /// The transition is registered rather than performed: the call validates the target against the
+    /// reachable states and returns, the program runs on to its end, and the transition happens
+    /// after that.
     /// </para>
     /// <para>
-    /// The first declaration stands and a second is refused, because a silently replaced successor
-    /// is a change nobody can see. It is bound only where a state machine is driving the agent and
-    /// the current state has somewhere to go.
+    /// The first declaration stands and a second is refused. It is bound only where a state machine
+    /// is driving this session and the current state has somewhere to go.
     /// </para>
     /// </remarks>
     /// <param name="state">The state to move to, named the way an agent to spawn is named.</param>
@@ -95,7 +91,7 @@ public static partial class Delegation
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.InvalidArgument"/> names an unreachable state,
     /// <see cref="ApiErrorCode.Refused"/> means a succession was already declared this turn, and
-    /// <see cref="ApiErrorCode.Unavailable"/> means no machine is driving this agent.
+    /// <see cref="ApiErrorCode.Unavailable"/> means no machine is driving this session.
     /// </exception>
     /// <ggop>delegation.transition_state</ggop>
     public static void TransitionState(string state, string? note = null) =>
@@ -105,38 +101,32 @@ public static partial class Delegation
     /// <remarks>
     /// <para>
     /// The successor takes over from the next turn with its own model, tools and instructions,
-    /// keeping every capability the two share — the whole conversation above all. Registered rather
-    /// than performed, exactly as a state transition is and for the same reason: the call validates
-    /// the successor and returns, the program runs on to its end, and the succession happens after
-    /// that.
+    /// keeping every capability the two share, the whole conversation included. It is registered
+    /// rather than performed: the call validates the successor and returns, the program runs on to
+    /// its end, and the succession happens after that.
     /// </para>
-    /// <para>
-    /// The first declaration of a succession in a turn stands, so a second <c>Exec</c> — or one
-    /// after a state transition — is refused.
-    /// </para>
+    /// <para>The first succession declared in a turn stands, and a second is refused.</para>
     /// </remarks>
-    /// <param name="agent">The agent to become, drawn from the set this agent may become.</param>
+    /// <param name="agent">The agent to become, drawn from the set this session may become.</param>
     /// <param name="prompt">The opening message it sees.</param>
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.InvalidArgument"/> names an agent outside that set,
     /// <see cref="ApiErrorCode.Refused"/> means a succession was already declared this turn, and
-    /// <see cref="ApiErrorCode.Unavailable"/> means this agent is running inside a state machine,
+    /// <see cref="ApiErrorCode.Unavailable"/> means this session is running inside a state machine,
     /// which leaves by a transition instead.
     /// </exception>
     /// <ggop>delegation.exec</ggop>
     public static void Exec(string agent, string? prompt = null) =>
         Internal.Wire.Check(Internal.Native.Exec(agent, prompt));
 
-    /// <summary>Run a copy of this agent, in parallel, on something it will not do itself.</summary>
+    /// <summary>Run a copy of this session, in parallel, on something it will not do itself.</summary>
     /// <remarks>
     /// <para>
-    /// The copy has this agent's model, its tools and a private copy of its whole conversation, so
-    /// the prompt is the difference rather than a briefing.
+    /// The copy has this session's model, its tools and a private copy of its whole conversation.
     /// </para>
     /// <para>
-    /// Its handle comes back immediately, and the copy itself starts once this turn's results are
-    /// recorded — the conversation it inherits has to be a complete one — so a wait can only collect
-    /// it on a later turn.
+    /// Its handle comes back immediately, and the copy starts once this turn's results are recorded,
+    /// so a wait can only collect it on a later turn.
     /// </para>
     /// </remarks>
     /// <param name="prompt">What this copy is to do differently.</param>

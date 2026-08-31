@@ -1,13 +1,9 @@
-"""Find what the agent can call, and take a documentation view back out of the window.
+"""Find what this session can call, and take a documentation view back out of the window.
 
-The system prompt names modules and no function at all, so this module is the way into every other
-one: `search` turns a keyword or a module id into fully-qualified names, and `views.open_docs_view`
-reads one of those names in full.
-
-Searching is bound in every program whatever a run enables, because an agent must always be able to
-find the functions it does hold. Closing a documentation view is the exception and is bought by a
-capability: opening one only ever appends to the prompt, while closing one rewrites its middle, and
-a run that did not enable it gets `ApiErrorCode.UNAVAILABLE`.
+The system prompt names modules and no function. `search` turns a keyword or a module id into
+fully-qualified names, and a documentation view reads one of those names in full. Searching is always
+bound; closing a documentation view is bought by a capability, and a run that did not enable it gets
+`ApiErrorCode.UNAVAILABLE`.
 """
 
 from __future__ import annotations
@@ -48,7 +44,7 @@ class DocHit:
     """One entry a search matched: enough to choose from, and no more."""
 
     key: str
-    """The fully-qualified name `views.open_docs_view` takes to read the whole entry."""
+    """The fully-qualified name a documentation view is opened by."""
 
     kind: DocKind
     """Whether it is a module, a function or a type."""
@@ -56,9 +52,7 @@ class DocHit:
     module: str
     """The module it lives in: the one that publishes a function, or the one that declares a type.
 
-    One module, always, and it is the module's own path rather than a description of where the entry
-    is reachable from — so it goes straight back into `modules` as an entry of the filter, and the
-    module a hit reports is the module the filter would have found it under.
+    It is the module's own path, which is what `modules` filters on.
     """
 
     name: str
@@ -110,21 +104,19 @@ def search(
     offset: int | None = None,
     limit: int | None = None,
 ) -> DocSearch:
-    """Search every module, function and type the agent can call, by keyword and by filter.
+    """Search every module, function and type this session can call, by keyword and by filter.
 
-    This is how a name is found. Matching is a case-insensitive substring over names, signatures,
-    briefs and detailed descriptions, so `docs` finds `open_docs_view`. Ranking is by the kind of evidence
-    that matched — an entry whose own name matched outranks one that merely mentions the word in a
-    paragraph — and a weaker kind never overtakes a stronger one however often it occurs.
+    Matching is a case-insensitive substring over names, signatures, briefs and detailed
+    descriptions, so `docs` finds `open_docs_view`. Ranking is by the kind of evidence that matched —
+    an entry whose own name matched outranks one that merely mentions the word in a paragraph — and a
+    weaker kind never overtakes a stronger one however often it occurs.
 
-    Only entries this run bound are returned, so nothing a search finds is something the run
-    withheld. Every argument is optional and they compose with each other: a query alone ranks the
-    whole surface, a filter alone is a directory of what it names, and the two together search
-    inside the filter.
+    Only entries this run bound are returned. Every argument is optional and they compose: a query
+    alone ranks the whole surface, a filter alone is a directory of what it names, and the two
+    together search inside the filter.
 
-    The page comes back as a value and is also opened as a view, under the selector `search results`,
-    so it can be read on the next turn without a program showing it to itself. The next search
-    replaces that view: it names what is being worked from rather than keeping a record.
+    The page comes back as a value and is also opened as a view, under the selector `search results`.
+    The next search replaces that view.
 
     Args:
         query: The words to match, as a case-insensitive substring. The default is no query at all,
@@ -141,18 +133,16 @@ def search(
         offset: How many hits to skip, for reading past the first page. The default starts at the
             best hit.
         limit: The most hits to return. The default is gg's own page size and there is a ceiling
-            above it, so comparing `len(hits)` against `total` is the only way to see a capped page.
-            Zero is refused rather than read as "no cap".
+            above it. Zero is refused.
 
     Returns:
         The page that matched, best first. `total` counts every entry that matched before paging, so
             a page shorter than `total` is a page there is more of.
 
     Raises:
-        ApiError: `invalid-argument` for a call with no query and no filter at all — nothing matched
-            and nothing was asked for are different answers — and for a `limit` of zero, which would
-            ask for a page that answers nothing. A `modules` entry or a `type` that names something
-            gg does not hold is not among them: it matches nothing.
+        ApiError: `invalid-argument` for a call with no query and no filter at all, and for a
+            `limit` of zero. A `modules` entry or a `type` that names something gg does not hold
+            matches nothing rather than failing.
     """
     found = _call(
         wire.search,

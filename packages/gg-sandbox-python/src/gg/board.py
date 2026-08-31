@@ -1,9 +1,7 @@
 """The epic and issue board, on which work is decomposed into dispatchable units.
 
-An issue is heavyweight and self-contained: its scope, non-scope and completion criteria are exactly
-what a delegated child agent is briefed from, which is why `create_issue` asks for more than a task
-does. Its five required arguments are positional, and Python lets a program pass any of them by name,
-which is what a call with this many strings in it should do.
+An issue is self-contained: its scope, non-scope and completion criteria are what a delegated child
+is briefed from.
 
 Two of an issue's patch fields are three-way, and both take the same shape: leaving the argument out
 keeps what is there, `None` clears or detaches, and a value replaces or regroups.
@@ -94,10 +92,7 @@ class IssueCreated:
 
     @alias("board.wait_for_issue")
     def wait(self) -> str:
-        """Register a wait on this issue, which suspends the agent between turns until it is terminal.
-
-        `wait_for_issue` with the id already supplied, for the common case where the issue was just
-        created and the next turn's work is sequenced behind it.
+        """Register a wait on this issue, which suspends this session between turns until it is terminal.
 
         Returns:
             gg's acknowledgement that the wait is registered, which says what happens once the
@@ -185,8 +180,7 @@ def create_issue(
 ) -> IssueCreated:
     """Create a self-contained, dispatchable issue, which a child agent can be briefed from.
 
-    `in_scope`, `out_of_scope` and `completion_criteria` are what a child agent is briefed from,
-    so they are written for a reader with no other context.
+    `in_scope`, `out_of_scope` and `completion_criteria` are what a child agent is briefed from.
 
     Args:
         title: A short line naming the work.
@@ -195,22 +189,21 @@ def create_issue(
             meant to.
         completion_criteria: What must be true for the issue to be done. It is what a reviewer checks
             the work against.
-        agent: The agent the issue is dispatched to. It must be one this agent may spawn.
+        agent: The agent the issue is dispatched to. It must be one this session may spawn.
         description: What the work is. Written for a child agent with no other context.
         blocked_by: The ids of every issue that must be done before this one. The default is none.
         epic_id: The id of an existing epic to group it under. The default leaves it ungrouped and
             numbered under `ISSUE`.
-        reviewers: The agents that must approve the work, from the set this agent may spawn. Required
-            when this run's reviewers feature is on.
+        reviewers: The agents that must approve the work, from the set this session may spawn.
+            Required when this run's reviewers feature is on.
 
     Returns:
-        The id the board **assigned**, and the board budget the issue left behind. It is numbered
-            under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic,
-            and keeping it is what blocks a later issue on this one or waits for it.
+        The id the board assigned, and the board budget the issue left behind. It is numbered under
+            its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic.
 
     Raises:
         ApiError: `invalid-argument` when a required field is blank or `agent` or a reviewer is not
-            one this agent may assign, `not-found` for an unknown epic or blocker, and
+            one this session may assign, `not-found` for an unknown epic or blocker, and
             `limit-exceeded` at the board's issue cap.
     """
     created = _call(
@@ -329,23 +322,22 @@ def remove_issue(id: str) -> BoardUsage:
 
 @operation("board.wait_for_issue")
 def wait_for_issue(id: str) -> str:
-    """Register a wait on an issue, which suspends the agent between turns until it is terminal.
+    """Register a wait on an issue, which suspends this session between turns until it is terminal.
 
     Nothing blocks inside the program: the wait is recorded and the call returns at once, so the rest
     of the program still runs. The suspension happens after the program ends, between turns — the run
-    frees this agent's slot until the issue is terminal, done or failed, then resumes on the next
-    turn. It is how a turn's work is sequenced behind an issue it depends on. The issue this agent
-    was assigned to implement is the one issue it may not wait on.
+    frees this session's slot until the issue is terminal, done or failed, then resumes on the next
+    turn. This session's own assigned issue is the one issue it may not wait on.
 
     Args:
-        id: The issue to wait on. It may not be the issue this agent was assigned.
+        id: The issue to wait on. It may not be the issue this session was assigned.
 
     Returns:
         gg's acknowledgement that the wait is registered, which says what happens once the program
             ends.
 
     Raises:
-        ApiError: `invalid-argument` for a blank id, or for this agent's own assigned issue,
+        ApiError: `invalid-argument` for a blank id, or for this session's own assigned issue,
             `not-found` for an id the board does not hold, and `unavailable` when the run has no
             board.
     """

@@ -1,15 +1,9 @@
 //! Find the modules, functions and types this run bound, and take their documentation out of context.
 //!
-//! Discovery is two steps. [`search`] answers with one-line briefs, each carrying the
-//! fully-qualified name it is keyed by, and
-//! [`views::open_docs_view`](crate::views::open_docs_view) reads one of those names in full. Nothing
-//! else names a function: the system prompt lists the modules and stops there, so a search is how a
-//! call is found and a documentation view is how it is understood.
+//! [`search`] answers with one-line briefs, each carrying the fully-qualified name it is keyed by; a
+//! documentation view reads one of those names in full.
 //!
-//! [`search`] is bound to every program whatever a run enables, because an agent that cannot find
-//! its own surface does not have one. Closing is the exception and is bought by a capability:
-//! opening documentation only ever adds to the end of the prompt, while closing it rewrites the
-//! middle.
+//! [`search`] is bound to every program whatever a run enables. Closing is bought by a capability.
 
 use crate::bindings::test_cabinet::gg::docs;
 use crate::core::ApiError;
@@ -20,31 +14,25 @@ use crate::wire;
 /// Matching is case-insensitive substring over names, signatures, briefs and detailed descriptions,
 /// so `docs` finds `open_docs_view` and `view` finds every call that mentions one. Ranking is by the
 /// kind of evidence that matched: an entry whose own name matched outranks one that merely mentions
-/// the word in a paragraph, however often it mentions it. Only what this run bound is ever returned,
-/// so nothing a search finds is something the program cannot call.
+/// the word in a paragraph. Only what this run bound is ever returned.
 ///
-/// Nothing about the call is required and every part of it composes.
-/// [`modules`](SearchOptions::modules) is a **union** — naming several returns the entries of any of
-/// them — and naming them with no [`query`](SearchOptions::query) at all is those modules' whole
-/// directory rather than a search through them. The combination that is refused is the empty one:
-/// no query and no filter at all is `InvalidArgument`, because *nothing to look for* and *nothing
-/// matched* are answers a program must not have to tell apart.
+/// Every part of the call is optional and composes. [`modules`](SearchOptions::modules) is a union —
+/// naming several returns the entries of any of them — and naming them with no
+/// [`query`](SearchOptions::query) at all returns those modules' whole directory. No query and no
+/// filter at all is `InvalidArgument`.
 ///
-/// The result is a value **and** a view. The value is readable in the turn that asked for it; the
-/// view puts the same page in the next prompt under the selector `search results`, replaced by the
-/// next search rather than accumulating. A hit carries a brief and no more — reading one in full is
-/// [`views::open_docs_view`](crate::views::open_docs_view) on its [`key`](DocHit::key).
+/// The result is a value and a view. The value is readable in the turn that asked for it; the view
+/// puts the same page in the next prompt under the selector `search results`, replaced by the next
+/// search rather than accumulating. A hit carries a brief and its [`key`](DocHit::key).
 ///
 /// Paging is [`offset`](SearchOptions::offset) and [`limit`](SearchOptions::limit), and
-/// [`total`](DocSearch::total) counts the matches behind the page, so a capped page is legible as
-/// one rather than guessed at. The default page is 20 hits and the largest is 100; a larger `limit`
-/// clamps rather than fails.
+/// [`total`](DocSearch::total) counts the matches behind the page. The default page is 20 hits and
+/// the largest is 100; a larger `limit` clamps rather than fails.
 ///
 /// # Arguments
 ///
-/// * `options` — The words to look for, the filters that narrow them, and the page. Every field of it
-///   is optional, so what a call says is only what it wants narrowed — and
-///   `docs::SearchOptions::default()`, which narrows nothing at all, is the one form refused.
+/// * `options` — The words to look for, the filters that narrow them, and the page. Every field is
+///   optional, and `docs::SearchOptions::default()`, which narrows nothing at all, is refused.
 ///
 /// # Returns
 ///
@@ -53,9 +41,8 @@ use crate::wire;
 ///
 /// # Errors
 ///
-/// `InvalidArgument` when [`options`](SearchOptions) carries neither a query nor a filter — *nothing
-/// to look for* and *nothing matched* are different answers — and when
-/// [`limit`](SearchOptions::limit) is `Some(0)`, which is a page that could never answer anything.
+/// `InvalidArgument` when [`options`](SearchOptions) carries neither a query nor a filter, and when
+/// [`limit`](SearchOptions::limit) is `Some(0)`.
 #[doc(alias = "ggop:docs.search")]
 pub fn search(options: SearchOptions<'_>) -> Result<DocSearch, ApiError> {
     wire::lift(docs::search(
@@ -71,9 +58,8 @@ pub fn search(options: SearchOptions<'_>) -> Result<DocSearch, ApiError> {
 
 /// Take one documentation view out of the context window, by the key it was opened under.
 ///
-/// The removal does not cascade — closing a function's view leaves the views of the types it named,
-/// and closing a type's leaves every function beside it — because nothing records why a view was
-/// opened, and a type closed here is opened again by the next function that mentions it.
+/// The removal does not cascade: closing a function's view leaves the views of the types it named,
+/// and closing a type's leaves every function beside it.
 ///
 /// # Arguments
 ///
@@ -81,12 +67,11 @@ pub fn search(options: SearchOptions<'_>) -> Result<DocSearch, ApiError> {
 ///
 /// # Returns
 ///
-/// How many views closed, which is `0` for a key that is not open — not a failure, so a program that
-/// tidies up unconditionally needs no guard.
+/// How many views closed, which is `0` for a key that is not open. Not a failure.
 ///
 /// # Errors
 ///
-/// `Unavailable` when this agent was not given the capability that buys closing documentation.
+/// `Unavailable` when the run did not enable the capability that buys closing documentation.
 #[doc(alias = "ggop:docs.close")]
 pub fn close(key: &str) -> Result<u32, ApiError> {
     wire::lift(docs::close_doc_view(key))
@@ -103,7 +88,7 @@ pub fn close(key: &str) -> Result<u32, ApiError> {
 ///
 /// # Errors
 ///
-/// `Unavailable` when this agent was not given the capability that buys closing documentation.
+/// `Unavailable` when the run did not enable the capability that buys closing documentation.
 #[doc(alias = "ggop:docs.close_all")]
 pub fn close_all() -> Result<u32, ApiError> {
     wire::lift(docs::close_doc_views())
@@ -112,31 +97,27 @@ pub fn close_all() -> Result<u32, ApiError> {
 /// The query, the filters and the page a [`search`] runs under. [`Default`] asks for nothing, which
 /// is what [`search`] refuses.
 ///
-/// Every field composes with every other. Rust has no default arguments, and the idiom it reaches
-/// for instead is a struct with a [`Default`] filled in by functional-update syntax:
+/// Every field composes with every other. Fields left out are taken from [`Default`]:
 /// `docs::SearchOptions { modules: &["files"], ..Default::default() }`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SearchOptions<'a> {
     /// The words to look for, matched as case-insensitive substrings.
     ///
-    /// `None` looks for no word at all and leaves the filters below to say what the page is.
-    /// Several specific words rank an entry above one vague word, because each of them is another
-    /// piece of evidence the entry is the one meant.
+    /// `None` looks for no word at all and leaves the filters below to say what the page is. An
+    /// entry is ranked by how many of the words it matches.
     pub query: Option<&'a str>,
     /// The modules to look in, each by gg's id (`files`) or by this arm's path (`gg::files`).
     ///
     /// An empty slice looks in all of them.
     ///
-    /// Exact and case-insensitive, because a module filter is a lookup rather than a search, and a
-    /// **union** rather than a narrowing: several modules answer with the entries of any of them,
-    /// and naming them with no query is those modules' whole directory. Every hit reports the one
-    /// [module](DocHit::module) it belongs to, and that is a value this filter takes back
-    /// unchanged.
+    /// Matching is exact and case-insensitive, and several modules are a union: the answer is the
+    /// entries of any of them. Naming them with no query returns those modules' whole directory.
+    /// [`DocHit::module`] is a value this filter takes back unchanged.
     pub modules: &'a [&'a str],
     /// One type's own name (`FileRead`), narrowing to that type and to the functions that name it.
     ///
-    /// What a value of this shape can be used for, in other words: every bound function whose
-    /// signature mentions the type comes back beside the type's own entry.
+    /// Every bound function whose signature mentions the type comes back beside the type's own
+    /// entry.
     pub declared_type: Option<&'a str>,
     /// One kind of entry to return — only modules, only functions or only types; `None` returns all
     /// three.
@@ -183,18 +164,15 @@ pub struct DocSearch {
 /// One entry a [`search`] matched: enough to choose from, and no more.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocHit {
-    /// The fully-qualified name this entry is keyed by, and the handle a view is opened and closed
-    /// under.
-    ///
-    /// [`views::open_docs_view`](crate::views::open_docs_view) takes it to read the entry in full.
+    /// The fully-qualified name this entry is keyed by, and the handle a documentation view is
+    /// opened and closed under.
     pub key: String,
     /// Whether this is a module, a function or a type.
     pub kind: DocKind,
     /// The module it lives in: the one that publishes a function, or the one that declares a type.
     ///
-    /// Always exactly one, whichever of the three kinds the hit is, which is what makes it a value
-    /// rather than a description — hand it straight back as a [`SearchOptions::modules`] filter and
-    /// the answer is the rest of what that module holds.
+    /// Always exactly one, whichever of the three kinds the hit is, and accepted as a
+    /// [`SearchOptions::modules`] filter unchanged.
     pub module: String,
     /// The name a program calls it by, or the module's or the type's own name.
     pub name: String,

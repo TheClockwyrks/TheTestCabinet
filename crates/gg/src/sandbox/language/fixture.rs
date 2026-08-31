@@ -76,7 +76,9 @@ use super::{
     PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 /// **The surface the fixture's own is reshaped out of** — a registered arm's catalogue, embedded
 /// straight from the build's `OUT_DIR` rather than reached for through
@@ -386,9 +388,18 @@ impl ProgramLanguage for FixtureLanguage {
     /// `invalid-argument` — "you asked for nothing" rather than "nothing matched" — and the one
     /// program every model reads before writing its own is the last place to demonstrate a call gg
     /// would refuse.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
         let search = spell(self, DOCS_SEARCH);
         let open_docs_view = spell(self, VIEWS_OPEN_DOCS_VIEW);
+        let walked = match tree {
+            None => String::new(),
+            Some(depth) => format!(
+                "{}({}, {}(depth={depth}))\n",
+                spell(self, VIEWS_OPEN_TEXT),
+                Value::String(super::WORKSPACE_TREE_VIEW.to_string()),
+                spell(self, FILES_TREE),
+            ),
+        };
         let searched = match modules.is_empty() {
             true => String::new(),
             false => {
@@ -406,7 +417,7 @@ impl ProgramLanguage for FixtureLanguage {
             .iter()
             .map(|name| format!("{open_docs_view}({})\n", Value::String((*name).to_string())))
             .collect();
-        format!("{searched}{opened}")
+        format!("{walked}{searched}{opened}")
     }
 }
 

@@ -13,42 +13,32 @@
 
 namespace gg {
 
-/// End this session, in the shape the agent's own role ends one.
+/// End this session, in the shape this session's role ends one.
 ///
-/// Under responses as code every reply is a program, so there is no prose turn that could mean "I
-/// am done": a model that answers "task complete" has written a reply that failed to be a program
-/// rather than an ending. These are the calls that mean it, and an agent is bound the one its role
-/// uses — an agent doing work ends by reporting what it did, and a reviewer ends with a verdict.
-///
-/// None of them stops the program: whatever follows still runs, so an ending belongs last, once
-/// the work is confirmed done. A program that then fails cancels the ending and earns another
-/// turn.
+/// Each role is bound one of these calls. None of them stops the program: whatever follows still
+/// runs, and a program that then fails cancels the ending.
 ///
 /// <ggmodule>session</ggmodule>
 namespace session {
 
 /// End this session, reporting what was done in a sentence or two.
 ///
-/// It is the only thing that ends a working agent's session, and it does not stop the program:
-/// whatever follows it still runs, so it belongs last, once the tools have confirmed the work is
-/// really done.
+/// It does not stop the program: whatever follows it still runs.
 ///
 /// <ggop>session.finish</ggop>
 ///
 /// \param summary What was done, in a sentence or two.
-/// \throws gg::core::api_error `unavailable` when this agent's role does not end this way, and
+/// \throws gg::core::api_error `unavailable` when this session's role does not end this way, and
 ///   `invalid_argument` for an empty summary.
 void finish(std::string_view summary);
 
 /// Accept the work under review: it meets every completion criterion and stays in scope.
 ///
-/// It ends the reviewing session and takes nothing, because an approval carries no obligation
-/// beyond itself. It does not stop the program, so it belongs after the change has actually been
-/// read.
+/// It ends the reviewing session, takes nothing, and does not stop the program.
 ///
 /// <ggop>session.approve</ggop>
 ///
-/// \throws gg::core::api_error `unavailable` when this agent's role is not to review.
+/// \throws gg::core::api_error `unavailable` when this session's role is not to review.
 void approve();
 
 /// Reject the work under review, listing every change that must be made before it can stand.
@@ -60,7 +50,7 @@ void approve();
 ///
 /// \param items Every change that must be made before the work can be accepted, one per entry. It
 ///   may not be empty.
-/// \throws gg::core::api_error `unavailable` when this agent's role is not to review, and
+/// \throws gg::core::api_error `unavailable` when this session's role is not to review, and
 ///   `invalid_argument` when the list is empty.
 void request_changes(std::vector<std::string> items);
 

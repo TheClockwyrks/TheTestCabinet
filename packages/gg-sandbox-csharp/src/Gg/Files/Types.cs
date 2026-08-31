@@ -6,18 +6,13 @@ namespace Gg;
 public static partial class Files
 {
     /// <summary>What a read returned — either a <see cref="TextFile"/> or a <see cref="ImageFile"/>.</summary>
-    /// <remarks>
-    /// A picture is a different kind of thing from text, so it is a different case: a program that
-    /// treated an image as text is caught by the type system rather than silently writing an empty
-    /// string somewhere.
-    /// </remarks>
     public abstract record FileRead;
 
     /// <summary>A file that turned out to be text, and the window of it the read policy returned.</summary>
     /// <param name="Contents">The file's text, or under a capped policy the requested window alone.</param>
     /// <param name="FirstLine">The 1-based first line returned.</param>
     /// <param name="LastLine">The 1-based last line returned.</param>
-    /// <param name="TotalLines">The file's total line count, which says whether to page again.</param>
+    /// <param name="TotalLines">The file's total line count.</param>
     /// <param name="ByteTruncated">Whether gg's 256 KiB byte ceiling cut the returned text.</param>
     public sealed record TextFile(
         string Contents,
@@ -28,8 +23,7 @@ public static partial class Files
 
     /// <summary>A file that turned out to be a picture, described rather than decoded.</summary>
     /// <remarks>
-    /// The pixels never enter the program. Reading a picture says what it is; <c>Views.OpenFile</c>
-    /// is what attaches it to the next prompt. A picture that is not attached names its reason: a
+    /// The pixels never enter the program. A picture that is not attached names its reason: a
     /// text-only model, a provider refusal, gg's 8 MiB attach cap, or the program's per-turn image
     /// budget.
     /// </remarks>

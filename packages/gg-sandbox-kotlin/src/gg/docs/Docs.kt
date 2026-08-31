@@ -1,14 +1,9 @@
 /**
  * Search this surface for a module, function or type, and take a documentation view back out of the window.
  *
- * This is where a session starts. Nothing names the functions of this surface up front, so [search]
- * is what turns "what do I have" into a list of one-line briefs and the fully-qualified names
- * `gg.views.openDocsView` takes to read one of them in full.
- *
- * A search only ever returns what this agent may actually call. The compiler is less careful — the
- * SDK is one jar and every package on it compiles — so a program can write a call a search would
- * never have shown it, and what happens then is an `UNAVAILABLE` failure naming the capability this
- * run withheld.
+ * A search returns only what this run's capability set offers. Every package on the SDK compiles
+ * regardless, so a call no search returned still compiles and fails as `UNAVAILABLE`, naming the
+ * capability this run withheld.
  *
  * @ggmodule docs
  */
@@ -23,41 +18,34 @@ import gg.internal.ggText
 import gg.internal.ggTexts
 
 /**
- * Find what this agent can call, by keyword or by module, and read the briefs that come back.
+ * Find the modules, functions and types this run offers, by keyword or by filter.
  *
  * Matching is case-insensitive substring matching over names, signatures, briefs and detailed
- * descriptions, so `"docs"` finds `openDocsView`. A hit whose own name matched ranks above one
- * that merely mentions the word in a paragraph, and the query is split on whitespace, so several
- * specific words work better than a sentence.
+ * descriptions, so `"docs"` finds `openDocsView`. A hit whose own name matched ranks above one that
+ * merely mentions the word in a paragraph, and the query is split on whitespace.
  *
  * The filters compose with the query and with each other, and each is an exact lookup rather than
- * another thing to rank: [modules] with no query beside it is those modules' whole directory, all of
- * them at once, which is the first hop worth making.
+ * another thing to rank. [modules] with no query beside it is those modules' whole directory.
  *
- * The page comes back as a value *and* opens as a view, so the results can be read on the next turn
- * without being shown deliberately. The next search replaces that view: it names what is being
- * worked from rather than keeping a record.
+ * The page comes back as a value and opens as a view. The next search replaces that view.
  *
  * @ggop docs.search
- * @param query The words to look for, as one string. Several specific words beat a sentence; it is
- *   left out only when a filter says what to look at instead.
+ * @param query The words to look for, as one string. It is left out only when a filter says what to
+ *   look at instead.
  * @param modules The modules to look in, each named either the way a program writes it (`gg.files`)
  *   or by gg's own id (`files`). Exact and case-insensitive: a module filter is a lookup, so a name
- *   no module has matches nothing rather than failing. Several are a **union** — an entry in any one
- *   of them is a hit — and naming none looks in every module this agent holds.
+ *   no module has matches nothing rather than failing. Several are a union — an entry in any one of
+ *   them is a hit — and naming none looks in every module this run offers.
  * @param type One type's own name — `"FileRead"`, not the key it is documented under — narrowing
  *   to that type and to the functions whose signatures mention it. Like [modules] a lookup, so a
  *   name nothing declares matches nothing rather than failing.
  * @param kind Narrow to modules, to functions or to types. Left out, all three are searched.
  * @param offset How many hits to skip, for reading past the first page. Left out, the page starts at
  *   the first hit.
- * @param limit How many hits to return: 20 by default, 100 at most, and zero is refused. Compare it
- *   against [DocSearch.total] to see how much of the answer this page is.
+ * @param limit How many hits to return: 20 by default, 100 at most, and zero is refused.
  * @return one page of matches, best first, and the total behind it
- * @throws ApiError `INVALID_ARGUMENT` for a call carrying neither a query nor a filter — a search
- *   that asked for nothing and a search that found nothing are different answers, and this is the
- *   one way asking for nothing is refused — and for a [limit] of zero, which is a page that could
- *   answer nothing.
+ * @throws ApiError `INVALID_ARGUMENT` for a call carrying neither a query nor a filter, and for a
+ *   [limit] of zero.
  */
 public fun search(
     query: String? = null,
@@ -84,30 +72,24 @@ public fun search(
  *
  * A plain removal with no cascade: closing a function's view leaves the views of the types it named
  * exactly where they were, and closing a type's leaves the functions. A key that is not open closes
- * `0` rather than failing, so a program that tidies up unconditionally needs no guard, and a type
- * closed here is opened again by the next function that mentions it.
+ * `0` rather than failing, and a type closed here is opened again by the next function that mentions
+ * it.
  *
  * @ggop docs.close
  * @param key The fully-qualified name the view was opened under, as [DocHit.key] reports it.
  * @return how many views were closed, which is one unless it had already gone
- * @throws ApiError `UNAVAILABLE` for an agent this run did not give the closing of documentation
- *   views. Opening one only ever appends to the end of the prompt, while closing one rewrites its
- *   middle, which is why opening is always available and closing is bought.
+ * @throws ApiError `UNAVAILABLE` when this run does not offer the closing of documentation views.
  */
 public fun close(key: String): Int = ggCall("docs.close", ggText(key)).integer()
 
 /**
  * Take every documentation view out of the context window at once.
  *
- * The blanket form of [close], on the same terms and behind the same capability: no cascade to worry
- * about because nothing is left, and `0` rather than a failure when none was open. It is the call
- * for reclaiming the window between one piece of work and the next, where naming each key would be a
- * list to keep.
+ * `0` rather than a failure when none was open.
  *
  * @ggop docs.close_all
  * @return how many views went
- * @throws ApiError `UNAVAILABLE` for an agent this run did not give the closing of documentation
- *   views.
+ * @throws ApiError `UNAVAILABLE` when this run does not offer the closing of documentation views.
  */
 public fun closeAll(): Int = ggCall("docs.close_all").integer()
 
@@ -131,10 +113,9 @@ public enum class DocKind(public val wireName: String) {
 }
 
 /**
- * One entry a search matched: enough to choose from, and no more.
+ * One entry a search matched.
  *
- * @property key The fully-qualified name it is documented under, and what `gg.views.openDocsView`
- *   takes to read the whole of it.
+ * @property key The fully-qualified name it is documented under.
  * @property kind Whether this entry is a module, a function or a type.
  * @property module The module it lives in: the one publishing a function or declaring a type.
  *   Exactly one, and a [search] filter takes it.

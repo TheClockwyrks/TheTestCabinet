@@ -3,9 +3,8 @@
 Every task may name the tasks that must finish before it, and an edge that would close a cycle is
 refused.
 
-One spelling here is worth reading twice. A task's description is a three-way edit, and Python
-already spells two of the three: leaving the argument out keeps what is there, `None` clears it, and
-a string replaces it. `gg.core.UNCHANGED` is the name of the first, for a program that spells it out.
+A task's description is a three-way edit: leaving the argument out (or passing `gg.core.UNCHANGED`)
+keeps what is there, `None` clears it, and a string replaces it.
 """
 
 from __future__ import annotations

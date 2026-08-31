@@ -1,7 +1,6 @@
-//! Read, write, edit, list and search the files of the workspace.
+//! Read, write, edit, list, walk and search the files of the workspace.
 //!
-//! Nothing here places anything in the agent's context window: showing something is what the
-//! `gg::views` module is for.
+//! Nothing here places anything in the context window.
 
 use crate::bindings::test_cabinet::gg::files;
 use crate::core::ApiError;
@@ -10,26 +9,30 @@ use crate::wire;
 /// The gg tools this module dispatches, which is part of what the component answers
 /// `bound-operations` with. Declared beside the functions that call them, so a tool added here is a
 /// tool the artifact reports.
-pub(crate) const OPERATIONS: &[&str] =
-    &["read_file", "write_file", "edit_file", "list_dir", "search"];
+pub(crate) const OPERATIONS: &[&str] = &[
+    "read_file",
+    "write_file",
+    "edit_file",
+    "list_dir",
+    "tree",
+    "search",
+];
 
 /// Read a file, as either a [`FileRead::Text`] or a [`FileRead::Image`].
 ///
-/// Which of the two comes back is detected from the file's bytes, never from the extension, so a
-/// mislabelled picture is still a picture. The enum is closed, so an ordinary `match` needs no
-/// catch-all:
+/// Which of the two comes back is detected from the file's bytes, never from the extension. The
+/// enum is closed, so a `match` needs no catch-all:
 ///
 /// ```ignore
 /// match files::read_file("logo.png", files::ReadOptions::default())? {
-///     files::FileRead::Text(text) => views::open_text("logo", &text.contents)?,
-///     files::FileRead::Image(picture) => views::open_text("logo", &picture.label)?,
-/// }
+///     files::FileRead::Text(text) => text.contents,
+///     files::FileRead::Image(picture) => picture.label,
+/// };
 /// ```
 ///
-/// A relative path resolves against the workspace; an absolute one is read as given, so anything else
-/// in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. This
-/// call hands bytes to the program and places nothing in the context window; reading a picture
-/// describes it and shows nothing, so a file only read here is a file nobody has looked at.
+/// A relative path resolves against the workspace; an absolute one is read as given. The result is
+/// returned to the program and nothing is placed in the context window; a picture is described
+/// rather than shown.
 ///
 /// # Arguments
 ///
@@ -38,8 +41,8 @@ pub(crate) const OPERATIONS: &[&str] =
 ///
 /// # Returns
 ///
-/// The window of lines `options` asked for, or — when the bytes turn out to be a picture — the
-/// description gg made of it instead.
+/// The window of lines `options` asked for, or — when the bytes are a picture — gg's description of
+/// it.
 ///
 /// # Errors
 ///
@@ -72,9 +75,6 @@ pub fn write_file(path: &str, contents: &str) -> Result<u64, ApiError> {
 
 /// Replace the one exact occurrence of some text in a file with something else.
 ///
-/// Widening the surrounding context until the match is unique is the way to disambiguate; counting
-/// occurrences is not.
-///
 /// # Arguments
 ///
 /// * `path` — The file to edit.
@@ -103,7 +103,7 @@ pub fn edit_file(path: &str, old_string: &str, new_string: &str) -> Result<(), A
 /// # Returns
 ///
 /// One entry per name directly in the directory, files and directories alike. Nothing is recursed
-/// into, so walking a tree is a call per level.
+/// into.
 ///
 /// # Errors
 ///
@@ -115,22 +115,57 @@ pub fn list_dir(path: Option<&str>) -> Result<Vec<DirEntry>, ApiError> {
         .map(|entries| entries.into_iter().map(wire::dir_entry).collect())
 }
 
+/// Render the tree beneath a directory, skipping everything the ignore files exclude.
+///
+/// One block of text: the root itself unnamed, each level indented two further spaces than its
+/// parent, every level in path order, and directories suffixed `/`. A root with nothing beneath it
+/// renders as `(empty directory)`.
+///
+/// [`depth`](TreeOptions::depth) counts levels of children below the root, so `1` is the root's own
+/// entries. A directory sitting at the bound is suffixed with how many entries it holds that were
+/// not walked, as `assets/ (12 entries not shown)`.
+///
+/// What `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file exclude — nested
+/// files and negations included — is never walked and never rendered, `.git` itself is skipped,
+/// dotfiles are rendered, symbolic links are not followed, and none of it needs a repository to be
+/// there.
+///
+/// The rendering is bounded at 1000 lines and 16 KiB, whichever binds first, and a result cut by
+/// either ends with a line saying so.
+///
+/// # Arguments
+///
+/// * `options` — Where to root the tree and how deep to walk it; `files::TreeOptions::default()`
+///   walks the workspace root two levels deep.
+///
+/// # Returns
+///
+/// The rendered tree.
+///
+/// # Errors
+///
+/// `NotFound` for a path that is not there, and `InvalidArgument` for a path that is not a directory
+/// or a depth of `Some(0)`.
+#[doc(alias = "ggop:files.tree")]
+pub fn tree(options: TreeOptions<'_>) -> Result<String, ApiError> {
+    wire::lift(files::tree(options.path, options.depth))
+}
+
 /// Search the workspace's files for a regular expression, and hand back every line that matches.
 ///
-/// `query` is a regular expression in Rust's syntax — `foo|bar`, `fn [a-z_]+`, `(?i)todo` for a
-/// case-insensitive match — matched against each line on its own, and every line it matches comes
-/// back as a [`SearchMatch`] carrying the file's path, the 1-based line number and the line itself,
-/// in path order and then line order. It is this sandbox's grep, and it honours ignore files:
-/// whatever `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file exclude — nested
-/// files and negations included — is never scanned and never returned, `.git` itself is skipped,
-/// dotfiles are searched, and none of it needs a repository to be there. A file that is not text
-/// (one carrying a NUL byte) is skipped too.
+/// A `grep` over the workspace. `query` is a regular expression in Rust's syntax — `foo|bar`,
+/// `fn [a-z_]+`, `(?i)todo` for a case-insensitive match — matched against each line on its own.
+/// Every line it matches comes back as a [`SearchMatch`] carrying the file's path, the 1-based line
+/// number and the line itself, in path order and then line order.
+///
+/// What `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file exclude — nested
+/// files and negations included — is never scanned, `.git` itself is skipped, dotfiles are searched,
+/// and none of it needs a repository to be there. A file carrying a NUL byte is skipped.
 ///
 /// A matching line longer than 200 characters is cut there and annotated in place as
-/// `foo (123 more chars...)`. The result is a value for the program and places nothing in the
-/// context window. A `Vec` exactly [`limit`](SearchOptions::limit) long may have been cut — there is
-/// no offset to page with, so narrowing the query or the [`path`](SearchOptions::path) is what shows
-/// the rest: a search says where to point a read, and is not a way of reading a file.
+/// `foo (123 more chars...)`. The result is returned to the program and places nothing in the
+/// context window. There is no offset: a `Vec` exactly [`limit`](SearchOptions::limit) long may have
+/// been cut.
 ///
 /// # Arguments
 ///
@@ -156,10 +191,7 @@ pub fn search(query: &str, options: SearchOptions<'_>) -> Result<Vec<SearchMatch
 
 /// What a read returned: a text file's window, or a picture's description.
 ///
-/// A picture is a different kind of thing from text, so it is a different variant rather than a
-/// string that happens to be binary — a program that treats an image as text is caught by the `match`
-/// instead of silently writing an empty string somewhere. Image bytes never enter the program: gg
-/// attaches the picture to the turn instead, which is worth far more than base64 in a variable.
+/// Image bytes never enter the program; gg attaches the picture to the turn instead.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileRead {
     /// This file is text.
@@ -236,8 +268,7 @@ pub struct SearchMatch {
 
 /// Where a [`search`] looks and how many matches it returns; [`Default`] is the whole workspace, 50 matches.
 ///
-/// Rust has no default arguments, and the idiom it reaches for instead is a struct with a [`Default`]
-/// filled in by functional-update syntax:
+/// Fields left out are taken from [`Default`]:
 /// `files::SearchOptions { path: Some("src"), ..Default::default() }`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SearchOptions<'a> {
@@ -251,14 +282,30 @@ pub struct SearchOptions<'a> {
     pub limit: Option<u32>,
 }
 
+/// Where a [`tree`] is rooted and how deep it is walked; [`Default`] is the workspace root, two
+/// levels.
+///
+/// Fields left out are taken from [`Default`]:
+/// `files::TreeOptions { depth: Some(3), ..Default::default() }`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TreeOptions<'a> {
+    /// The directory to walk, relative to the workspace or absolute.
+    ///
+    /// `None` walks the workspace root.
+    pub path: Option<&'a str>,
+    /// How many levels of children below the root to render; `None` takes gg's default of 2.
+    ///
+    /// The ceiling is 10, and a larger depth is clamped to it rather than refused.
+    pub depth: Option<u32>,
+}
+
 /// The window of lines a read covers. [`Default`] reads the whole file.
 ///
 /// Both fields are honoured under every read policy. The policy decides only what an absent `limit`
 /// means: its default cap under a capped policy, the end of the file under the unlimited one. An
 /// absent `offset` starts at the first line.
 ///
-/// Rust has no default arguments, and the idiom it reaches for instead is a struct with a [`Default`]
-/// filled in by functional-update syntax:
+/// Fields left out are taken from [`Default`]:
 /// `files::ReadOptions { limit: Some(40), ..Default::default() }`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ReadOptions {

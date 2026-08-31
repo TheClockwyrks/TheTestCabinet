@@ -232,6 +232,7 @@ fn the_opening_program_is_python() {
     let program = python().bootstrap_program(
         &["gg.files", "gg.shell"],
         &["gg.docs.search", "gg.views.open_docs_view"],
+        None,
     );
     assert_eq!(
         program,
@@ -257,7 +258,7 @@ fn the_opening_program_is_python() {
 /// left out and the documentation views stand alone.
 #[test]
 fn the_opening_program_omits_a_search_that_would_ask_for_nothing() {
-    let program = python().bootstrap_program(&[], &["gg.docs.search"]);
+    let program = python().bootstrap_program(&[], &["gg.docs.search"], None);
     assert_eq!(
         program,
         "import gg\n\n\

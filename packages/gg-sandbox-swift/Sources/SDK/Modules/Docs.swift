@@ -1,13 +1,9 @@
 /// Find the modules, functions and types this run bound, and take their documentation back out of
 /// context.
 ///
-/// Discovery is two steps: `docs.search` answers with one-line briefs, each carrying the
-/// fully-qualified name it is keyed by, and `views.openDocsView` reads one of those names in full.
-/// Nothing else names a function — the system prompt lists the modules and stops there.
-///
-/// Searching is bound to every program whatever a run enables, because an agent that cannot find its
-/// own surface does not have one. Closing is the exception and is bought by a capability: opening
-/// documentation only ever adds to the end of the prompt, while closing it rewrites the middle.
+/// A search answers with one-line briefs, each carrying the fully-qualified name its full
+/// documentation is keyed by. Nothing else names a function — the system prompt lists the modules
+/// and stops there.
 ///
 /// - ggmodule: docs
 public enum docs {
@@ -15,29 +11,23 @@ public enum docs {
     /// first.
     ///
     /// Matching is case-insensitive substring over names, signatures, briefs and detailed
-    /// descriptions, so `docs` finds `openDocsView` and `view` finds every call that mentions one.
-    /// Ranking is by the kind of evidence that matched: an entry whose own name matched outranks one
-    /// that merely mentions the word in a paragraph, however often it mentions it. Only what this run
-    /// bound is ever returned, so nothing a search finds is something the program cannot call.
+    /// descriptions. Ranking is by the kind of evidence that matched: an entry whose own name
+    /// matched outranks one that merely mentions the word in a paragraph. Only what this run bound
+    /// is ever returned.
     ///
     /// The result is a value and a view. The value is readable in the turn that asked for it; the
     /// view puts the same page in the next prompt under the selector `search results`, replaced by
-    /// the next search rather than accumulating. A hit carries a brief and no more — reading one in
-    /// full is `views.openDocsView` on its `key`.
+    /// the next search rather than accumulating. A hit carries a brief and no more.
     ///
-    /// Every argument has a default, so a call may be words alone, filters alone, or both. The one
-    /// shape it refuses is the empty one: no query and no filter is a call that asked for nothing,
-    /// which is a different answer from a call that matched nothing.
+    /// Every argument has a default. A call with no query and no filter is refused.
     ///
     /// - Parameters:
     ///   - query: The words to look for, matched as case-insensitive substrings. Several specific
     ///     words rank an entry above one vague word. Left out, the filters are the whole of the
     ///     search.
     ///   - modules: The modules to look in, each by gg's id (`files`) or by this arm's path
-    ///     (`gg.files`). Exact and case-insensitive, because a module filter is a lookup rather
-    ///     than a search, and several are a **union**: an entry in any one of them is a hit, and
-    ///     modules with no query at all are those modules' whole directory. Empty, which is the
-    ///     default, is no module filter and every module searched.
+    ///     (`gg.files`). Exact and case-insensitive, and several are a union: an entry in any one
+    ///     of them is a hit. Empty, which is the default, searches every module.
     ///   - type: One type's own name (`FileRead`), narrowing to it and to every function whose
     ///     signature mentions it — what a value of this shape can be used for. Left out, nothing is
     ///     narrowed.
@@ -49,8 +39,7 @@ public enum docs {
     ///     larger one clamps rather than failing.
     /// - Returns: the page that matched, best first, and how many matched behind it.
     /// - Throws: `core.ApiError` with `.invalidArgument` when there is no query and no filter at
-    ///   all — asking for nothing and matching nothing are different answers — and when `limit` is
-    ///   `0`, which is a page that could never answer anything.
+    ///   all, and when `limit` is `0`.
     /// - ggop: docs.search
     public static func search(
         query: String? = nil, modules: [String] = [], type: String? = nil, kind: DocKind? = nil,
@@ -80,15 +69,14 @@ public enum docs {
     /// Take one documentation view out of the context window, by the key it was opened under.
     ///
     /// The removal does not cascade: closing a function's view leaves the views of the types it
-    /// named, and closing a type's leaves every function beside it, because nothing records why a
-    /// view was opened. A type closed here is opened again by the next function that mentions it.
+    /// named, and closing a type's leaves every function beside it. A type closed here is opened
+    /// again by the next function that mentions it.
     ///
     /// - Parameter key: The fully-qualified name the view was opened under, as a hit's `key` reports
     ///   it.
-    /// - Returns: how many views were closed, which is `0` when that key is not open — not a
-    ///   failure, so a program that tidies up unconditionally needs no guard.
-    /// - Throws: `core.ApiError` with `.unavailable` when this agent was not given the capability
-    ///   that buys closing documentation.
+    /// - Returns: how many views were closed, which is `0` when that key is not open.
+    /// - Throws: `core.ApiError` with `.unavailable` when this run did not buy the capability that
+    ///   closes documentation.
     /// - ggop: docs.close
     @discardableResult
     public static func close(_ key: String) throws -> Int {
@@ -110,8 +98,8 @@ public enum docs {
     /// beside them.
     ///
     /// - Returns: how many views were closed.
-    /// - Throws: `core.ApiError` with `.unavailable` when this agent was not given the capability
-    ///   that buys closing documentation.
+    /// - Throws: `core.ApiError` with `.unavailable` when this run did not buy the capability that
+    ///   closes documentation.
     /// - ggop: docs.close_all
     @discardableResult
     public static func closeAll() throws -> Int {
@@ -176,9 +164,8 @@ public enum docs {
         /// The module it lives in.
         ///
         /// The module that publishes a function, itself for a module, and for a type the module
-        /// that **declares** it — one module in every case, never a list. It is exactly what the
-        /// `modules` filter compares whole, so a hit worth more of is that module's own directory,
-        /// one search away.
+        /// that declares it — one module in every case, never a list. It is what the `modules`
+        /// filter compares whole.
         public let module: String
         /// The name a program calls it by, the type's own name, or the module's own path.
         public let name: String

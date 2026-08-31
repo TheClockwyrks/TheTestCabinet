@@ -1,8 +1,7 @@
--- | The library of programs this agent has already run.
+-- | The library of programs this session has already run.
 -- |
--- | Under responses as code a reply is a whole program, so a one-character mistake in a sixty-line
--- | program costs the sixty lines again. The library makes the fix proportional to the mistake: fetch
--- | what ran, patch it with ordinary string work, hand it back.
+-- | A program that ran can be fetched by its id, patched with ordinary string work, and handed back
+-- | to run in place of the current one.
 -- |
 -- | ```
 -- | source <- Gg.Programs.get "k3p9"
@@ -24,9 +23,7 @@ import Gg.Internal.Wire as Wire
 
 -- | One program that has already run, as the library's directory lists it.
 -- |
--- | It describes the program's **shape**, never its source: a directory that inlined every program
--- | would put the whole session back in the context window, which is the one thing the library exists
--- | to avoid.
+-- | It describes the program's shape, never its source.
 -- |
 -- | # Fields
 -- |
@@ -47,9 +44,7 @@ type ProgramSummary =
 
 -- | The programs already run this session, oldest first.
 -- |
--- | It lists shapes rather than sources, so the one worth having is then fetched. The list survives
--- | a compaction, which makes it the way to find a program whose text has left the context
--- | window.
+-- | It lists shapes rather than sources. The list survives a compaction.
 -- |
 -- | # Operation
 -- |
@@ -68,12 +63,8 @@ history = Wire.callMap (map programSummary) "history" "programs" "Gg.Programs.hi
 
 -- | Fetch the exact source of one program that ran, by the id its acknowledgement carried.
 -- |
--- | This is the first half of fixing a program without rewriting it: get what ran, patch it with
--- | ordinary string work, and hand the result back to be run. What comes back is the program that
--- | **executed**, so when a submission's program was itself handed over, the answer is the program
--- | that ran rather than the few lines that asked for it — and fetch, patch and run compose turn
--- | after turn. A rerun runs under the id of the submission that handed it over, so what that id
--- | holds afterwards is the program that executed.
+-- | What comes back is the program that executed. Where a submission handed its program over, its id
+-- | holds the program that ran rather than the few lines that asked for it.
 -- |
 -- | # Operation
 -- |
@@ -89,16 +80,15 @@ history = Wire.callMap (map programSummary) "history" "programs" "Gg.Programs.hi
 -- |
 -- | # Throws
 -- |
--- | `NotFound`, naming the ids that are held, for an id this agent was never issued or one whose
+-- | `NotFound`, naming the ids that are held, for an id this session was never issued or one whose
 -- | program is old enough that the library has dropped it.
 get :: String -> Effect String
 get id = Wire.call "get" "programs" "Gg.Programs.get" [ Wire.wire id ]
 
 -- | Fetch the source of one program the history listed.
 -- |
--- | `Gg.Programs.get` with the id already taken out of the summary, for the common case where the
--- | directory entry that named the program is the thing in hand. A summary describes a program's
--- | shape and never its text, so this is how the one worth patching is read.
+-- | `Gg.Programs.get` with the id taken out of the summary, which describes a program's shape and
+-- | never its text.
 -- |
 -- | # Alias
 -- |
@@ -121,14 +111,12 @@ sourceOf program = get program.id
 -- | Hand gg a program to run in place of this one.
 -- |
 -- | This program finishes, then gg compiles and runs the given source as this submission's program,
--- | under the same id. Paired with a fetch it fixes a program without re-emitting it. Nothing is
--- | undone: every call this program already made stands, and the program that runs next sees the
--- | world this one left behind, so handing over comes before work that should not be done twice.
+-- | under the same id. Nothing is undone: every call this program already made stands, and the
+-- | program that runs next sees the world this one left behind.
 -- |
--- | The first call stands, because a silently replaced program is a change nobody can see. A program
--- | that then fails cancels the hand-over along with everything else it decided, and the turn ends as
--- | an ordinary error. Chains are bounded: a submission runs at most four programs, this one plus
--- | three handed over, and the fixed program does the work.
+-- | The first call in a program is the one that stands. A program that then fails cancels the
+-- | hand-over along with everything else it decided, and the turn ends as an ordinary error. A
+-- | submission runs at most four programs: this one plus three handed over.
 -- |
 -- | # Operation
 -- |

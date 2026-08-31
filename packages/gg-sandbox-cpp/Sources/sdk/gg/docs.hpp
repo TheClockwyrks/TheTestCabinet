@@ -17,14 +17,8 @@ namespace gg {
 
 /// Find the modules, functions and types this run bound, and take documentation back out of context.
 ///
-/// Discovery is two steps: `gg::docs::search` answers with one-line briefs, each carrying the
-/// fully-qualified name it is keyed by, and `gg::views::open_docs_view` reads one of those names in
-/// full. Nothing else names a function — the system prompt lists the modules and stops there.
-///
-/// Searching is bound to every program whatever a run enables, because an agent that cannot find
-/// its own surface does not have one. Closing is the exception and is bought by a capability:
-/// opening documentation only ever adds to the end of the prompt, while closing it rewrites the
-/// middle.
+/// A search answers with one-line briefs, each carrying the fully-qualified name it is keyed by.
+/// Searching is bound to every program whatever a run enables; closing is bought by a capability.
 ///
 /// <ggmodule>docs</ggmodule>
 namespace docs {
@@ -41,27 +35,24 @@ enum class doc_kind {
 
 /// Everything one search runs under: the words to look for, the filters, and the page.
 ///
-/// An aggregate filled in with designated initialisers, which is what C++ offers in place of named
-/// arguments: `gg::docs::search({.query = "read", .modules = {"files"}, .limit = 5})`. Every field
-/// may be left out and every field composes with the others — but `{}` asks for nothing at all,
-/// which the call refuses.
+/// An aggregate filled in with designated initialisers:
+/// `gg::docs::search({.query = "read", .modules = {"files"}, .limit = 5})`. Every field may be left
+/// out and the fields given compose; `{}` is refused.
 struct search_filters {
   /// The words to look for, matched as case-insensitive substrings.
   ///
   /// Several specific words rank an entry above one vague word. Empty searches on the filters
-  /// alone, which is what makes a `modules` filter a directory rather than a question.
+  /// alone.
   std::optional<std::string_view> query;
   /// The modules to look in, each by gg's id (`files`) or by this arm's path (`gg::files`).
   ///
-  /// A union rather than a narrowing: naming several returns the entries of any of them, and an
-  /// empty vector looks in all of them. Exact and case-insensitive, because a module filter is a
-  /// lookup rather than a search — so these modules with no query at all are their whole directory,
-  /// and a hit's own `module` goes straight back in here.
+  /// A union: naming several returns the entries of any of them, and an empty vector looks in all
+  /// of them. Matching is exact and case-insensitive, and a hit's own `module` goes straight back
+  /// in here.
   std::vector<std::string> modules;
   /// One type's own name (`file_read`), narrowing to it and to the functions that mention it.
   ///
-  /// What a value of this shape can be used for, in other words: every function whose signature
-  /// takes or returns it, beside the type's own declaration.
+  /// Every function whose signature takes or returns it, beside the type's own declaration.
   std::optional<std::string_view> type;
   /// Whether to return only modules, only functions or only types; empty returns every kind.
   std::optional<docs::doc_kind> kind;
@@ -79,8 +70,8 @@ struct doc_hit {
   docs::doc_kind kind{};
   /// The module it lives in: the one that publishes a function, or the one that declares a type.
   ///
-  /// One module, always, and itself for a module — so it is a value rather than a description, and
-  /// the `modules` filter of the next search takes it exactly as it reads here.
+  /// One module, always, and itself for a module. The `modules` filter takes it exactly as it
+  /// reads here.
   std::string module;
   /// The name a program calls it by, the type's own name, or the module's own path.
   std::string name;
@@ -100,21 +91,17 @@ struct doc_search {
 
 /// Search the bound modules, functions and types by keyword, by module, or both — best match first.
 ///
-/// Matching is case-insensitive substring over names, signatures, briefs and detailed descriptions,
-/// so `docs` finds `open_docs_view` and `view` finds every call that mentions one. Ranking is by the
-/// kind of evidence that matched: an entry whose own name matched outranks one that merely mentions
-/// the word in a paragraph, however often it mentions it. Only what this run bound is ever
-/// returned, so nothing a search finds is something the program cannot reach.
+/// Matching is case-insensitive substring over names, signatures, briefs and detailed descriptions.
+/// An entry whose own name matched outranks one that only mentions the word in a paragraph. Only
+/// what this run bound is returned.
 ///
 /// Every part of a search may be left out and the parts given compose. `modules` is a union —
-/// naming several returns the entries of any of them — and `modules` with no query at all is those
-/// modules' whole directory, which is how a program reads a module rather than looking through one.
-/// Asking for nothing whatever is the one call this refuses.
+/// naming several returns the entries of any of them — and `modules` with no query is those
+/// modules' whole directory. Asking for nothing at all is refused.
 ///
-/// The result is a value and a view. The value is readable in the turn that asked for it; the view
-/// puts the same page in the next prompt under the selector `search results`, replaced by the next
-/// search rather than accumulating. A hit carries a brief and no more — reading one in full is
-/// `gg::views::open_docs_view` on its `key`.
+/// The page is returned as a value, readable in the turn that asked for it, and is also opened as a
+/// view under the selector `search results`, replaced by the next search rather than accumulating.
+/// A hit carries a brief and no more.
 ///
 /// <ggop>docs.search</ggop>
 ///
@@ -122,35 +109,31 @@ struct doc_search {
 ///   field may be left out; all of them at once may not, which is why this argument has no default.
 /// \returns the page that matched, best first, and how many matched behind it.
 /// \throws gg::core::api_error `invalid_argument` when `filters` names neither a query nor anything
-///   to narrow by — asking for nothing and matching nothing are different answers — and when
-///   `limit` is `0`, which is a page that could never answer anything.
+///   to narrow by, and when `limit` is `0`.
 docs::doc_search search(docs::search_filters filters);
 
 /// Take one documentation view out of the context window, by the key it was opened under.
 ///
 /// The removal does not cascade: closing a function's view leaves the views of the types it named,
-/// and closing a type's leaves every function beside it, because nothing records why a view was
-/// opened. A type closed here is opened again by the next function that mentions it.
+/// and closing a type's leaves every function beside it. A type closed here is opened again by the
+/// next function that mentions it.
 ///
 /// <ggop>docs.close</ggop>
 ///
 /// \param key The fully-qualified name the view was opened under, as a hit's `key` reports it.
-/// \returns how many views were closed, which is `0` when that key is not open — not a failure, so
-///   a program that tidies up unconditionally needs no guard.
-/// \throws gg::core::api_error `unavailable` when this agent was not given the capability that buys
+/// \returns how many views were closed; `0` when that key is not open.
+/// \throws gg::core::api_error `unavailable` when this run did not bind the capability that buys
 ///   closing documentation.
 std::uint32_t close(std::string_view key);
 
 /// Take every documentation view out of the context window, and report how many went.
 ///
-/// The blanket form of `gg::docs::close`, on the same terms and behind the same capability: what it
-/// frees is every documentation view the session has opened, and none of the file or text views
-/// beside them.
+/// It frees every documentation view this session has opened, and no file or text view beside them.
 ///
 /// <ggop>docs.close_all</ggop>
 ///
 /// \returns how many views were closed.
-/// \throws gg::core::api_error `unavailable` when this agent was not given the capability that buys
+/// \throws gg::core::api_error `unavailable` when this run did not bind the capability that buys
 ///   closing documentation.
 std::uint32_t close_all();
 

@@ -52,6 +52,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "tree",
+            program: "import * as gg from \"gg\";\ngg.files.tree({ path: \"src\", depth: 3 });",
+            expected: || json!({ "path": "src", "depth": 3 }),
+        },
+        Crossing {
             tool: "search",
             program: "import * as gg from \"gg\";\ngg.files.search(\"answer\", { path: \"src\", limit: 10 });",
             expected: || json!({ "query": "answer", "path": "src", "limit": 10 }),

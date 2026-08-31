@@ -140,10 +140,12 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, LIB_ACCESS_NAME, PrepareContext, PrepareFailure, PreparedModule,
-    PreparedProgram, ProgramLanguage, spell,
+    PreparedProgram, ProgramLanguage, WORKSPACE_TREE_VIEW, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "swift.compile.rs"]
 pub(super) mod compile;
@@ -330,12 +332,15 @@ impl ProgramLanguage for Swift {
     /// [One search, one array and one `for` loop, every call written with
     /// `try`](self::bootstrap_program), with both calls resolved from this language's own
     /// catalogue.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            &spell(self, FILES_TREE),
+            &spell(self, VIEWS_OPEN_TEXT),
             modules,
             docs,
+            tree,
         )
     }
 
@@ -517,9 +522,19 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
+    tree_call: &str,
+    open_text: &str,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
+    let walked = match tree {
+        None => String::new(),
+        Some(depth) => format!(
+            "try {open_text}({}, body: {tree_call}(depth: {depth}))\n\n",
+            serde_json::Value::String(WORKSPACE_TREE_VIEW.to_string())
+        ),
+    };
     let paths: Vec<String> = modules
         .iter()
         .map(|path| serde_json::Value::String((*path).to_string()).to_string())
@@ -542,7 +557,7 @@ pub(super) fn bootstrap_program(
     format!(
         "{SURFACE_IMPORT}\n\
          \n\
-         {lookup}{functions}for name in functions {{\n    try {open_docs_view}(name)\n}}\n"
+         {walked}{lookup}{functions}for name in functions {{\n    try {open_docs_view}(name)\n}}\n"
     )
 }
 

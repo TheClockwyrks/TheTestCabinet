@@ -1,14 +1,7 @@
 /**
  * Durable notes that survive a compaction of the context window.
  *
- * A run picks one of three memory strategies and binds only that strategy's functions. The scratchpad
- * keeps every memory in the window with `writeMemory` and `updateMemory`; the two file-shaped
- * strategies keep the contents outside it with `createMemory`, `readMemory` and `editMemory`, one
- * behind an index that is always in context and one behind `searchMemories`. `deleteMemory` is bound
- * under all three.
- *
- * Every mutation hands back the budget after it, so a program decides whether to write another memory
- * by reading numbers rather than by parsing a sentence about them.
+ * Every mutation returns how much of the run's memory budget is used after it.
  */
 
 import * as raw from "test-cabinet:gg/memories";
@@ -17,9 +10,7 @@ import { call } from "../internal/errors.js";
 /**
  * How much of the run's memory budget is used, after the call that returned it.
  *
- * Every maximum is optional, because each limit can be turned off and a run's memory strategy applies
- * only some of them. `undefined` means nothing bounds that axis, so it is worth checking before
- * subtracting.
+ * Every maximum is optional; `undefined` means nothing bounds that axis.
  */
 export interface MemoryUsage {
   /** Memories currently held. */
@@ -113,11 +104,10 @@ export interface MemoryWrite {
   body: string;
 
   /**
-   * A module every later program may import.
+   * A module every later program may import, written in the same language a program is.
    *
-   * It is written in the same language a program is. A helper got right once is then never written
-   * again. Omit it, or pass an empty string, for a memory that is only prose. It occupies no context
-   * window and counts against no body limit.
+   * Omit it, or pass an empty string, for a memory that is only prose. It occupies no context window
+   * and counts against no body limit.
    */
   code?: string;
 
@@ -155,16 +145,16 @@ function written(memory: MemoryWrite): raw.MemoryInput {
 /**
  * Record a durable memory that survives a compaction.
  *
- * A memory may carry **code** as well as prose. `code` is a module in the same language a program is,
- * importable by every later program, so a helper got right once is never written again; `onUse` is a
- * script gg runs every time the memory comes into use, whose views arrive on the next turn. Neither
- * is context: they occupy no window, are never shown back, and count against no body limit.
+ * A memory may carry code as well as prose. `code` is a module in the same language a program is,
+ * importable by every later program; `onUse` is a script gg runs every time the memory comes into
+ * use, whose views arrive on the next turn. Neither occupies the context window, neither is shown
+ * back, and neither counts against a body limit.
  *
  * @ggop memories.write_memory
  * @param memory The memory to record. Its name must not already be taken.
  * @returns how much of the run's memory budget is used now that the memory is held.
  * @throws `ApiError` with `conflict` on a duplicate name, and `limit-exceeded` when the body would
- * breach the run's caps — revising or deleting a memory beats accruing more.
+ * breach the run's caps.
  */
 export function writeMemory(memory: MemoryWrite): MemoryUsage {
   return call(() => raw.writeMemory(written(memory)));
@@ -189,8 +179,8 @@ export function updateMemory(memory: MemoryWrite): MemoryUsage {
 /**
  * Record a memory whose contents stay out of the context window until they are read.
  *
- * The description is required where the run keeps an index, since that is the memory's line in it. A
- * memory created here may carry `code` and `onUse` exactly as one written to the scratchpad may.
+ * The description is required where the run keeps a memory index, since that is the memory's line
+ * in it. The memory may carry `code` and `onUse`.
  *
  * @ggop memories.create_memory
  * @param memory The memory to record. Its body stays out of the context window until it is read, and
@@ -221,8 +211,6 @@ export function readMemory(name: string): string {
 /**
  * Revise a memory in place, replacing the one exact occurrence of some text with something else.
  *
- * Appending is done by quoting the last line and replacing it with itself plus what is being added.
- *
  * @ggop memories.edit_memory
  * @param edit The revision to make.
  * @param edit.name The slug of the memory to revise.
@@ -231,7 +219,7 @@ export function readMemory(name: string): string {
  * @returns how much of the run's memory budget is used after the revision.
  * @throws `ApiError` with `not-found` when the text does not appear, `conflict` when it appears
  * more than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when
- * the edit would leave the memory empty — deleting it is the way to empty it.
+ * the edit would leave the memory empty.
  */
 export function editMemory(edit: { name: string; search: string; replace: string }): MemoryUsage {
   return call(() => raw.editMemory(edit));
@@ -241,12 +229,10 @@ export function editMemory(edit: { name: string; search: string; replace: string
  * Find the memories mentioning any of some keywords, best first.
  *
  * Matching is plain case-insensitive substring matching over each memory's slug, description and
- * contents, ranked by how many distinct keywords a memory mentions and then by how often. Several
- * specific words rank better than one sentence; `readMemory` then reads the hits worth having whole.
+ * contents, ranked by how many distinct keywords a memory mentions and then by how often.
  *
  * @ggop memories.search_memories
- * @param keywords The words to look for. Several specific words rank better than one sentence,
- * because a memory is ranked by how many of them it mentions.
+ * @param keywords The words to look for. A memory is ranked by how many of them it mentions.
  * @returns the memories that matched, best first, each with the numbers it was ranked by; empty
  * where nothing matched.
  * @throws `ApiError` with `invalid-argument` when every keyword is empty.

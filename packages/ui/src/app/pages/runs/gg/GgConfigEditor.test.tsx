@@ -2045,6 +2045,72 @@ describe("the Opening Turn tab", () => {
     expect(functionBox("Files", "files.search").checked).toBe(true);
   });
 
+  // The workspace tree's own block, which sits above the modules and is not one of them.
+  function treeBlock(): HTMLElement {
+    return screen.getByRole("group", { name: "Workspace tree" });
+  }
+  function treeSwitch(): HTMLInputElement {
+    return within(treeBlock()).getAllByRole("checkbox")[0] as HTMLInputElement;
+  }
+  function treeDepth(): HTMLInputElement {
+    return within(treeBlock()).getByRole("spinbutton") as HTMLInputElement;
+  }
+
+  it("cannot open a workspace tree the agent may not walk, and can once it holds the call", () => {
+    render(<Harness initial={codeDraft()} />);
+    openTab("Opening Turn");
+    // The fixture grants `files.search` alone, so the tree is offered and disabled.
+    expect(treeSwitch()).toBeDisabled();
+    expect(
+      within(treeBlock()).getByText(/does not hold files\.tree/),
+    ).toBeInTheDocument();
+
+    openTab("APIs");
+    fireEvent.click(
+      within(capabilityRow("list-dir")).getAllByRole("checkbox")[0]!,
+    );
+    openTab("Opening Turn");
+    expect(treeSwitch()).not.toBeDisabled();
+    expect(treeSwitch().checked).toBe(true);
+    expect(treeDepth().value).toBe("2");
+  });
+
+  // The form with the capability that buys the tree switched on, which is what the editor's
+  // own switch writes.
+  function renderWithTree() {
+    render(<Harness initial={codeDraft()} />);
+    openTab("APIs");
+    fireEvent.click(
+      within(capabilityRow("list-dir")).getAllByRole("checkbox")[0]!,
+    );
+    openTab("Opening Turn");
+  }
+
+  it("keeps the tree's depth when its switch goes off, and resets both together", () => {
+    renderWithTree();
+
+    fireEvent.change(treeDepth(), { target: { value: "4" } });
+    expect(treeDepth().value).toBe("4");
+    fireEvent.click(treeSwitch());
+    expect(treeSwitch().checked).toBe(false);
+    // The depth field survives the switch, so turning the tree back on restores it.
+    fireEvent.click(treeSwitch());
+    expect(treeSwitch().checked).toBe(true);
+    expect(treeDepth().value).toBe("4");
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset Opening turn" }));
+    expect(treeSwitch().checked).toBe(true);
+    expect(treeDepth().value).toBe("2");
+  });
+
+  it("writes no tree depth gg would refuse", () => {
+    renderWithTree();
+    fireEvent.change(treeDepth(), { target: { value: "40" } });
+    expect(treeDepth().value).toBe("10");
+    fireEvent.change(treeDepth(), { target: { value: "0" } });
+    expect(treeDepth().value).toBe("1");
+  });
+
   it("says which capability offers each function, or that every agent holds it", () => {
     render(<Harness initial={codeDraft()} />);
     openTab("Opening Turn");

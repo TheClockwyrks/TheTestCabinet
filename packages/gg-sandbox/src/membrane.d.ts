@@ -156,6 +156,12 @@ declare module "test-cabinet:gg/files" {
   /** List a workspace directory, sorted by name. `undefined` lists the workspace root. */
   export function listDir(path: string | undefined): DirEntry[];
 
+  /**
+   * Render the tree beneath a workspace directory, honouring ignore files. An `undefined` path is
+   * the workspace root; an `undefined` depth is gg's default of 2, and 10 is the ceiling.
+   */
+  export function tree(path: string | undefined, depth: number | undefined): string;
+
   /** One line `search` matched: its file, its 1-based line number, and the line, clipped at 200 characters. */
   export interface SearchMatch {
     /** The file's path, relative to the workspace root, or absolute for a search rooted outside it. */

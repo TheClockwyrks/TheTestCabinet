@@ -1,12 +1,10 @@
 -- | The epic and issue board: work decomposed into dispatchable units.
 -- |
--- | An issue is the heavyweight unit of work — its scope, non-scope and completion criteria are
--- | exactly what a delegated child agent is briefed from — which is why creating one asks for more
--- | than adding a task does.
+-- | An issue carries a scope, a non-scope and completion criteria, which are what a delegated child
+-- | agent is briefed from.
 -- |
--- | Two patch fields are **three-way**, and a record with optional fields says all three without a
--- | sentinel: leaving `description` out keeps it and `Nothing` clears it; leaving `epicId` out leaves
--- | the grouping alone and `Nothing` detaches the issue from its epic.
+-- | Two patch fields are three-way: leaving `description` out keeps it and `Nothing` clears it;
+-- | leaving `epicId` out leaves the grouping alone and `Nothing` detaches the issue from its epic.
 module Gg.Board
   ( createEpic
   , createIssue
@@ -142,8 +140,7 @@ createEpic epic = Wire.call "create_epic" "board" "Gg.Board.createEpic" [ Wire.w
 
 -- | Create a self-contained, dispatchable issue.
 -- |
--- | `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so they
--- | are written for a reader with no other context.
+-- | `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from.
 -- |
 -- | # Operation
 -- |
@@ -162,20 +159,20 @@ createEpic epic = Wire.call "create_epic" "board" "Gg.Board.createEpic" [ Wire.w
 -- | - `issue.blockedBy` — The ids of every issue that must be done before this one. Defaults to none.
 -- | - `issue.epicId` — The id of an existing epic to group it under. Left out, the issue stays
 -- |   ungrouped and is numbered under `ISSUE`.
--- | - `issue.agent` — The agent the issue is dispatched to. It must be one this agent may spawn.
+-- | - `issue.agent` — The agent the issue is dispatched to. It must be one this session may spawn.
 -- | - `issue.reviewers` — The agents that must approve the work, from that same set. Required when
 -- |   this run's reviewers feature is on.
 -- |
 -- | # Returns
 -- |
--- | The id the board **assigned**, and the board budget the issue left behind. It is numbered under
--- | its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic, and the caller
--- | does not choose it — so keeping it is what blocks a later issue on this one or waits for it.
+-- | The id the board assigned, and the board budget the issue left behind. It is numbered under its
+-- | epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic, and the caller does
+-- | not choose it.
 -- |
 -- | # Throws
 -- |
--- | `InvalidArgument` when `agent` or a reviewer is not one this agent may assign, and `Conflict` on
--- | a blocker edge that would close a cycle.
+-- | `InvalidArgument` when `agent` or a reviewer is not one this session may assign, and `Conflict`
+-- | on a blocker edge that would close a cycle.
 createIssue
   :: forall given rest
    . Union given rest CreateIssueOptions
@@ -291,11 +288,10 @@ removeIssue id = Wire.call "remove_issue" "board" "Gg.Board.removeIssue" [ Wire.
 
 -- | Register a wait on an issue and hand back an acknowledgement.
 -- |
--- | Nothing blocks inside the program: the wait is recorded and the call returns at once, so the rest
--- | of the program still runs. Once it ends the run suspends, freeing this agent's slot for others,
--- | until the issue is terminal — done, or failed if its assigned agent could not complete it — and
--- | then resumes on the next turn. It is how the next turn's work is sequenced behind an issue this
--- | one depends on. The issue this agent was assigned to implement is not one it may wait on.
+-- | Nothing blocks inside the program: the wait is recorded and the call returns at once. Once the
+-- | program ends the run suspends until the issue is terminal — done, or failed if its assigned
+-- | agent could not complete it — and then resumes on the next turn. The issue this session was
+-- | assigned to implement may not be waited on.
 -- |
 -- | # Operation
 -- |
@@ -303,7 +299,7 @@ removeIssue id = Wire.call "remove_issue" "board" "Gg.Board.removeIssue" [ Wire.
 -- |
 -- | # Arguments
 -- |
--- | - `id` — The issue to wait on. It may not be the issue this agent was assigned.
+-- | - `id` — The issue to wait on. It may not be the issue this session was assigned.
 -- |
 -- | # Returns
 -- |
@@ -318,9 +314,7 @@ waitForIssue id = Wire.call "wait_for_issue" "board" "Gg.Board.waitForIssue" [ W
 
 -- | Register a wait on an issue that was just created.
 -- |
--- | `Gg.Board.waitForIssue` with the id already taken out of what created the issue, for the common
--- | case where the two are written one after the other and the board's own id never has to be
--- | spelled out.
+-- | `Gg.Board.waitForIssue` with the id taken out of the record that created the issue.
 -- |
 -- | # Alias
 -- |

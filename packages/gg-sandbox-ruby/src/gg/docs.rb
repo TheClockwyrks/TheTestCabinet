@@ -1,36 +1,26 @@
 # frozen_string_literal: true
 
 module GG
-  # Find what the agent can call, and take a documentation view back out of the window.
+  # Find what this run can call, and take a documentation view back out of the window.
   #
-  # The system prompt names modules and no function at all, so this is the module every other one is
-  # reached through: `GG::Docs.search` turns a keyword or a module id into fully-qualified names, and
-  # `GG::Views.open_docs_view` reads one of those names in full.
-  #
-  # Searching is bound in every program whatever a run enables, because an agent must always be able
-  # to find the functions it does hold. Closing a documentation view is the exception and is bought
-  # by a capability: opening one only ever appends to the prompt, while closing one rewrites its
-  # middle, and those are different enough trades to be different decisions.
+  # `GG::Docs.search` turns a keyword or a module id into fully-qualified names. Searching is bound
+  # in every program whatever a run enables; closing a documentation view is bought by a capability.
   module Docs
     extend Surface::Operations
 
-    # Search every module, function and type the agent holds, by keyword and by filter.
+    # Search every module, function and type this run holds, by keyword and by filter.
     #
-    # This is how a name is found. Matching is a case-insensitive substring over names, signatures,
-    # briefs and detailed descriptions, so `docs` finds `open_docs_view`. Ranking is by the kind of
-    # evidence that matched — an entry whose own name matched outranks one that merely mentions the
-    # word in a paragraph — and a weaker kind never overtakes a stronger one however often it
-    # occurs.
+    # Matching is a case-insensitive substring over names, signatures, briefs and detailed
+    # descriptions, so `docs` finds `open_docs_view`. Ranking is by the kind of evidence that
+    # matched — an entry whose own name matched outranks one that merely mentions the word in a
+    # paragraph — and a weaker kind never overtakes a stronger one however often it occurs.
     #
-    # Only entries this run bound are returned, so nothing a search finds is something the run
-    # withheld. Every argument is optional and they compose with each other: a query alone ranks the
-    # whole surface, a filter alone is a directory of what it names, and the two together search
-    # inside the filter. What no call may do is ask for nothing at all.
+    # Only entries this run bound are returned. Every argument is optional and they compose: a query
+    # alone ranks the whole surface, a filter alone is a directory of what it names, and the two
+    # together search inside the filter. A call with neither is refused.
     #
     # The page comes back as a value and is also opened as a view, under the selector
-    # `search results`, so it can be read on the next turn without a program showing it to itself.
-    # The next search replaces that view: it names what is being worked from rather than keeping a
-    # record.
+    # `search results`. The next search replaces that view.
     #
     # @param query [String, nil] The words to match, as a case-insensitive substring. The default is
     #   no query at all, which is what turns a filter into a directory rather than a search.
@@ -48,14 +38,12 @@ module GG
     # @param offset [Integer, nil] How many hits to skip, for reading past the first page. The
     #   default starts at the best hit.
     # @param limit [Integer, nil] The most hits to return. The default is gg's own page size and
-    #   there is a ceiling above it, so comparing the hits against `total` is the only way to see a
-    #   capped page. Zero is refused rather than read as "no cap".
+    #   there is a ceiling above it. Zero is refused.
     # @return [GG::Docs::DocSearch] the page that matched, best first, with the total behind it
-    # @raise [GG::Core::ApiError] `:invalid_argument` for a call with no query and no filter at all
-    #   — nothing matched and nothing was asked for are different answers — for a `kind` that is
-    #   none of `:module`, `:function` and `:type`, and for a `limit` of zero, which asks for a page
-    #   that answers nothing. A `modules` entry or a `type` naming something gg does not hold is not
-    #   among them: it matches nothing.
+    # @raise [GG::Core::ApiError] `:invalid_argument` for a call with no query and no filter, for a
+    #   `kind` that is none of `:module`, `:function` and `:type`, and for a `limit` of zero. A
+    #   `modules` entry or a `type` naming something gg does not hold matches nothing rather than
+    #   failing.
     def self.search(query: nil, modules: [], type: nil, kind: nil, offset: nil, limit: nil)
       found = Wire.call("search", "docs", "search", [
                           Wire.js(query),
@@ -136,8 +124,7 @@ module GG
     class DocHit
       include Value
 
-      # @return [String] The fully-qualified name `GG::Views.open_docs_view` takes to read the whole
-      #   entry.
+      # @return [String] The entry's fully-qualified name.
       attr_reader :key
 
       # @return [GG::Docs::DocKind] Whether it is a `:module`, a `:function` or a `:type`.
@@ -146,9 +133,7 @@ module GG
       # The module it lives in: the one that publishes a function, or the one that declares a type.
       #
       # One module, always, and a module's own hit reports itself. It is the module's path as a
-      # program writes it — `GG::Files` — rather than a description of where the entry is reachable
-      # from, so it goes straight back into `GG::Docs.search`'s `modules` as an entry of the filter,
-      # and the module a hit reports is the module that filter would have found it under.
+      # program writes it, which is also what a search's `modules` filter takes.
       #
       # @return [String] the module's path, as a program writes it
       attr_reader :module
@@ -156,8 +141,7 @@ module GG
       # @return [String] The name a program calls it by, or the type's or the module's own name.
       attr_reader :name
 
-      # @return [String] Its one-line brief, and only that. The rest is what a documentation view is
-      #   for.
+      # @return [String] Its one-line brief.
       attr_reader :summary
 
       # `in_module` rather than `module`, which Ruby reserves: the reader is `module` because that is
@@ -178,8 +162,7 @@ module GG
     class DocSearch
       include Value
 
-      # @return [Integer] How many entries matched before paging, which tells a capped page from a
-      #   complete answer.
+      # @return [Integer] How many entries matched before paging.
       attr_reader :total
 
       # @return [Integer] The offset this page starts at, echoed back.

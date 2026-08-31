@@ -1,10 +1,8 @@
 -- | Run shell commands in the workspace.
 -- |
--- | One function, and the way a program reaches everything gg has no tool for: a build, a test run,
--- | `git`, `curl`, a package manager. The workspace is the working directory.
--- |
--- | A non-zero exit is a *result* rather than a failure, because deciding whether a build or a test
--- | run passed is the single most common thing a program does with one.
+-- | One function, reaching everything gg has no call of its own for: a build, a test run, `git`,
+-- | `curl`, a package manager. The workspace is the working directory, and a non-zero exit is a
+-- | result rather than a failure.
 module Gg.Shell
   ( shell
   , ShellOutput
@@ -44,13 +42,10 @@ type ShellOutput =
 -- | A non-zero exit is not a failure: it arrives as `exitCode` on the result, and only a process that
 -- | could not be launched, or one the timeout killed, throws.
 -- |
--- | This run may **offload** shell output, and the `shell` tool's own description says which mode is
--- | in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the
--- | two files the command's full stdout and stderr were written to, each with the shape of what it
--- | holds — the line count, the 50th, 95th and 99th-percentile line lengths, and the five longest
--- | lines by length and line number — so a window can be aimed at the right region of a file nobody
--- | has seen. Those files are readable by absolute path, so reading a window of one, or grepping it,
--- | beats re-running the command.
+-- | A run may offload shell output. Under `offload`, `output` holds only the tail that fits and ends
+-- | with a note naming the two files the command's full stdout and stderr were written to, each with
+-- | the shape of what it holds: the line count, the 50th, 95th and 99th-percentile line lengths, and
+-- | the five longest lines by length and line number. Those files are readable by absolute path.
 -- |
 -- | # Operation
 -- |

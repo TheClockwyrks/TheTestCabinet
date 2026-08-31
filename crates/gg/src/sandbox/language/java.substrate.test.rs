@@ -1055,7 +1055,11 @@ fn the_programs_gg_writes_for_this_arm_run() {
     let language = java_language();
 
     let (outcome, _log) = evaluate(
-        &prepare(&language.bootstrap_program(&["files", "views"], &["gg.files.Files.readFile"])),
+        &prepare(&language.bootstrap_program(
+            &["files", "views"],
+            &["gg.files.Files.readFile"],
+            None,
+        )),
         &all_operations(),
         &[],
         canned_outcome,

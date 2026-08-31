@@ -133,6 +133,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "tree",
+            statement: "gg.files.tree(path = \"src\", depth = 3)",
+            expected: || json!({ "path": "src", "depth": 3 }),
+        },
+        Crossing {
             tool: "search",
             statement: "gg.files.search(\"answer\", path = \"src\", limit = 5)",
             expected: || json!({ "query": "answer", "path": "src", "limit": 5 }),

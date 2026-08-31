@@ -1,18 +1,13 @@
 /**
- * Find a module, function or type by searching, and take a documentation view back out of the window.
+ * Find a module, function or type by searching, and close a documentation view.
  *
- * This is where a session starts. The system prompt names the modules and no function inside them,
- * so searching — by keyword, or by naming modules, which is an exact lookup of everything in them —
- * is how a program learns what this agent actually holds. A search answers with one-line briefs;
- * reading one of them in full means opening a documentation view of its `key`, which
- * `gg.views.openDocsView` does.
+ * The system prompt names the modules and no function inside them; searching by keyword, or by
+ * naming modules, lists what this session holds. A search answers with one-line briefs, and an
+ * entry's full text is what a documentation view of its `key` holds.
  *
- * Nothing a search returns is something this agent cannot call. gg filters every hit through the
- * same permission the call itself is checked against, so what is findable here and what is usable
- * are one set — while the type checker, which reads the whole catalogue, will accept a call to a
- * function this run withheld.
- *
- * Closing a documentation view is bought by a capability; searching and opening never are.
+ * Every hit is a call this session can make: gg filters hits through the same permission the call
+ * itself is checked against. The type checker reads the whole catalogue instead, and accepts a call
+ * to a function this run withheld.
  */
 
 import * as raw from "test-cabinet:gg/docs";
@@ -29,7 +24,9 @@ export type DocKind =
 
 /** One entry a search matched: enough to choose from, and no more. */
 export interface DocHit {
-  /** The fully-qualified name it is documented under, and what `gg.views.openDocsView` takes. */
+  /**
+   * The fully-qualified name it is documented under, and the key a documentation view is opened by.
+   */
   key: string;
 
   /** Whether this entry is a module, a function or a type. */
@@ -38,11 +35,9 @@ export interface DocHit {
   /**
    * The module it lives in, written the way a program writes it.
    *
-   * One module, always: the module that **publishes** a function, the module that **declares** a
-   * type, and, for a module, itself. A type mentioned by half the surface still reports the one
-   * place it is defined, so this is never a list and never a description — it is a value to hand
-   * straight back to the `modules` filter, which is how one interesting hit becomes everything
-   * filed beside it.
+   * One module, always: the module that publishes a function, the module that declares a type,
+   * and, for a module, itself. A type mentioned by several modules still reports the one place it is
+   * defined. The value is accepted by the `modules` filter as written.
    */
   module: string;
 
@@ -66,48 +61,41 @@ export interface DocSearch {
 }
 
 /**
- * Search the modules this agent holds, everything it can call, and every type their signatures name.
+ * Search the modules this session holds, every function it can call, and every type their signatures name.
  *
- * Best match first, and a hit is one of three things: a **module** a program imports, a function it
- * calls, or a type a signature names. The module is what a search wants first — nothing gg offers is
- * in scope until the program has imported the module the function lives in.
+ * Best match first. A hit is a module a program imports, a function it calls, or a type a signature
+ * names. Nothing gg offers is in scope until the program has imported the module the function lives
+ * in.
  *
  * Matching is case-insensitive substring matching over names, signatures, briefs and detailed
- * descriptions, so `docs` finds `openDocsView`. A hit whose own name matched is ranked above one
- * that merely mentions the word in a paragraph, and the query is split on whitespace, so several
- * specific words work better than a sentence.
+ * descriptions. A hit whose own name matched ranks above one that mentions the word in a paragraph,
+ * and the query is split on whitespace into separate terms.
  *
- * Nothing here is required, the filters compose with the query and with each other, and each filter
- * is an exact lookup rather than another thing to rank: `modules` on its own, with no query, is
- * those modules' whole directory, which is the first hop worth making. What is refused is asking
- * for nothing at all — no query and no filter — because a search that found nothing and a search
- * that was never given anything to look for are different answers.
+ * Every field is optional, and the filters compose with the query and with each other. Each filter
+ * is an exact lookup rather than a ranking term, so `modules` with no query is those modules' whole
+ * directory. A call carrying neither a query nor a filter is refused.
  *
- * The page comes back as a value **and** opens as a view labelled `search results`, so the results
- * can be read next turn without being shown deliberately. That view is replaced by the next search
- * rather than accumulating.
+ * The page comes back as a value and opens as a view labelled `search results`, which the next
+ * search replaces.
  *
  * @ggop docs.search
- * @param options The words to look for, the filters, and the page. Every field is optional, and
- * omitting the object entirely asks for nothing, which is the one way this call is refused.
- * @param options.query The words to look for, as one string. Several specific words beat a sentence;
- * it may be left out only when a filter says what to look at instead.
+ * @param options The words to look for, the filters, and the page. Every field is optional;
+ * omitting the object entirely is refused.
+ * @param options.query The words to look for, as one string. It may be left out when a filter says
+ * what to look at instead.
  * @param options.modules The modules to look in, each named either the way a program writes it
- * (`gg.files`) or by gg's own id (`files`). Exact and case-insensitive, and several are a **union**
- * — an entry in any one of them is a hit — so one call reads the whole of the surface this agent
- * was given. An empty list is no module filter at all.
+ * (`gg.files`) or by gg's own id (`files`). Exact and case-insensitive, and several are a union: an
+ * entry in any one of them is a hit. An empty list is no module filter at all.
  * @param options.type One type's own name, narrowing to that type and the functions whose signatures
- * mention it — what can be done with a value of this shape.
+ * mention it.
  * @param options.kind `"module"`, `"function"` or `"type"`, to see only one of them. Any other word
  * is refused.
- * @param options.offset How many hits to skip, for reading past the first page. Defaults to none.
+ * @param options.offset How many hits to skip. Defaults to none.
  * @param options.limit How many hits to return: 20 by default, 100 at most, and zero is refused.
- * Compare it against `total` to see how much of the answer this page is.
- * @returns one page of hits, best first, beside the `total` that says how much of the answer it is.
- * @throws `ApiError` with `invalid-argument` for a search carrying neither a query nor a filter — a
- * search that asked for nothing and a search that found nothing are different answers — for an
- * unrecognised `kind`, which would otherwise silently widen a search believed to be narrow, and for
- * a `limit` of zero, which is a page that could answer nothing.
+ * @returns one page of hits, best first, beside the `total` that says how many matched before
+ * paging.
+ * @throws `ApiError` with `invalid-argument` for a search carrying neither a query nor a filter, for
+ * an unrecognised `kind`, and for a `limit` of zero.
  */
 export function search(options?: {
   query?: string;
@@ -144,20 +132,15 @@ export function search(options?: {
 /**
  * Close the documentation view opened under `key`.
  *
- * A key that is not open is not a failure, so tidying up unconditionally needs no guard. There is no
- * cascade: closing a function's view leaves the views of the types it named exactly where they were,
- * and closing a type's leaves the functions. Nothing remembers why a view was opened, so a type
- * closed here is opened again by the next function that mentions it.
- *
- * Opening a view only ever appends to the end of the prompt, while closing one rewrites its middle
- * and costs the run every cached token after it — which is why opening is always available and
- * closing is bought.
+ * A key that is not open is not a failure. There is no cascade: closing a function's view leaves the
+ * views of the types it named open, and closing a type's leaves the functions. A type closed here is
+ * opened again by the next function that mentions it.
  *
  * @ggop docs.close
  * @param key The fully-qualified name the view was opened under, as a search hit reports it.
  * @returns how many views were closed, which is zero when that key was not open.
- * @throws `ApiError` with `unavailable` for an agent this run did not give the closing of
- * documentation views.
+ * @throws `ApiError` with `unavailable` when this run did not enable the closing of documentation
+ * views.
  */
 export function close(key: string): number {
   // A `u32`, so already a `number` — nothing to widen on the way back.
@@ -167,14 +150,10 @@ export function close(key: string): number {
 /**
  * Close every documentation view at once.
  *
- * The blanket form of `close`, on the same terms and behind the same capability, with no cascade to
- * worry about because nothing is left. It is the call for reclaiming the window between one piece of
- * work and the next, where naming each key would be a list to keep.
- *
  * @ggop docs.close_all
  * @returns how many views went, which is zero when none was open.
- * @throws `ApiError` with `unavailable` for an agent this run did not give the closing of
- * documentation views.
+ * @throws `ApiError` with `unavailable` when this run did not enable the closing of documentation
+ * views.
  */
 export function closeAll(): number {
   return call(() => raw.closeDocViews());

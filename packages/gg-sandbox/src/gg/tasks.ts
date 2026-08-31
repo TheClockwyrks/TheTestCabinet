@@ -1,14 +1,10 @@
 /**
- * The task list: a directed acyclic graph of work this agent is tracking for itself.
+ * The task list: a directed acyclic graph of tracked work.
  *
- * A task is lightweight — a title, a description and its blockers — and it is the agent's own note to
- * itself rather than something another agent can be dispatched onto. `gg.board` is the heavyweight
- * unit that can be.
+ * A task is a title, a description and its blockers, and nothing can be dispatched onto one.
  *
- * Two lowerings live here so a program writes an ordinary object instead of a tagged union. A
- * patch's `description` is a three-way edit: omit it to leave the description alone, pass `null` to
- * clear it, pass a string to replace it. And a status is `in_progress` on this side and `in-progress`
- * across the membrane, because a WIT identifier cannot carry an underscore.
+ * A patch's `description` is a three-way edit: omit it to leave the description alone, pass `null`
+ * to clear it, pass a string to replace it.
  */
 
 import * as raw from "test-cabinet:gg/tasks";

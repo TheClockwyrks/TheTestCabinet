@@ -29,7 +29,9 @@
 //! independent budgets; one loop would be a single test carrying the sum of them, which is the shape
 //! this suite has repeatedly measured being terminated for doing exactly what it says.
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
+
+use tempfile::TempDir;
 
 use super::*;
 use crate::context::{ContextItem, ContextModel, HeuristicTokenEstimator};
@@ -43,8 +45,8 @@ use crate::sandbox::{
 };
 use test_cabinet_core::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, DEFAULT_OPENING_FUNCTIONS,
-    DEFAULT_OPENING_MODULES, GgAgentConfig, GgCapabilitySet, GgContextSource, GgOpeningTurn,
-    GgProgramLanguage,
+    DEFAULT_OPENING_MODULES, DEFAULT_OPENING_TREE_DEPTH, GgAgentConfig, GgCapabilitySet,
+    GgContextSource, GgOpeningTree, GgOpeningTurn, GgProgramLanguage, MAX_OPENING_TREE_DEPTH,
 };
 
 /// A window in [code mode](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) — the only mode the
@@ -79,6 +81,19 @@ fn opening(modules: &[&str], functions: &[&str]) -> GgOpeningTurn {
     GgOpeningTurn {
         modules: modules.iter().map(|id| id.to_string()).collect(),
         functions: functions.iter().map(|id| id.to_string()).collect(),
+        tree: GgOpeningTree::default(),
+    }
+}
+
+/// An opening turn that opens on a workspace tree of `depth` and nothing else.
+fn opening_tree(depth: u32) -> GgOpeningTurn {
+    GgOpeningTurn {
+        modules: Vec::new(),
+        functions: Vec::new(),
+        tree: GgOpeningTree {
+            include: true,
+            depth,
+        },
     }
 }
 
@@ -91,12 +106,27 @@ fn agent<'a>(
 ) -> BootstrapAgent<'a> {
     BootstrapAgent {
         opening_turn: opening,
+        tool_ctx: tool_ctx(),
         capabilities,
         operations,
         role: EndingRole::Standard,
         limits: SandboxLimits::AMPLE,
         doc_view_types: DocViewTypes::RETURN_AND_ERRORS,
     }
+}
+
+/// The workspace gg's own program walks, shared by every test here: one tree, created once, so a
+/// bootstrap that opens a tree opens the same one in every arm's test.
+fn tool_ctx() -> &'static ToolContext {
+    static WORKSPACE: LazyLock<(TempDir, ToolContext)> = LazyLock::new(|| {
+        let dir = TempDir::new().expect("a temp workspace");
+        std::fs::create_dir_all(dir.path().join("engine")).expect("a directory in it");
+        std::fs::write(dir.path().join("engine/game.md"), "the engine\n").expect("a file in it");
+        std::fs::write(dir.path().join("README.md"), "the workspace\n").expect("a file in it");
+        let ctx = ToolContext::new(dir.path());
+        (dir, ctx)
+    });
+    &WORKSPACE.1
 }
 
 /// How many of the [default functions](DEFAULT_OPENING_FUNCTIONS) `language`'s catalogue carries at
@@ -306,9 +336,17 @@ macro_rules! bootstrap_runs {
                          to read a brief in full: {docviews:?}"
                     );
                 }
+                // The workspace tree, under the one label every arm's program writes.
+                assert_eq!(
+                    labels(&ctx, GgContextSource::TextView),
+                    vec![crate::sandbox::WORKSPACE_TREE_VIEW.to_string()],
+                    "{arm}: the default opening turn opens the workspace tree"
+                );
                 assert_eq!(
                     placed,
-                    search_keys(&ctx).len() + docviews.len(),
+                    search_keys(&ctx).len()
+                        + docviews.len()
+                        + labels(&ctx, GgContextSource::TextView).len(),
                     "{arm}: what was reported placed is what is in the window"
                 );
 
@@ -323,6 +361,7 @@ macro_rules! bootstrap_runs {
                     language.bootstrap_program(
                         &modules.iter().map(String::as_str).collect::<Vec<_>>(),
                         &resolved.keys.iter().map(String::as_str).collect::<Vec<_>>(),
+                        resolved.tree,
                     ),
                     "{arm}: the window holds the source that ran, which is what a model copies"
                 );
@@ -397,6 +436,7 @@ fn every_language_writes_a_program_naming_every_module_and_key() {
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
             &resolved.keys.iter().map(String::as_str).collect::<Vec<_>>(),
+            resolved.tree,
         );
         for named in resolved.modules.iter().chain(resolved.keys.iter()) {
             assert!(
@@ -504,7 +544,8 @@ async fn a_bootstrap_that_cannot_run_fails_the_run() {
 /// of them is normally a bootstrap key; the restore folds into what is already open because opening
 /// a key that is open is a no-op. The search band is the deliberate other half: the listing is keyed
 /// by the modules it covers, so a re-listing of exactly those supersedes it and a second run leaves
-/// one listing rather than two.
+/// one listing rather than two. The workspace tree behaves the same way under its own constant
+/// label.
 #[tokio::test]
 async fn seeding_twice_re_places_no_documentation_and_no_second_listing() {
     let (capabilities, operations) = grant();
@@ -545,9 +586,14 @@ async fn seeding_twice_re_places_no_documentation_and_no_second_listing() {
         "and the listing replaced itself rather than piling up beside itself"
     );
     assert_eq!(
+        labels(&ctx, GgContextSource::TextView),
+        vec![crate::sandbox::WORKSPACE_TREE_VIEW.to_string()],
+        "and the tree replaced itself under its own constant label"
+    );
+    assert_eq!(
         placed,
-        listings.len(),
-        "so what the second run placed is the listings alone"
+        listings.len() + 1,
+        "so what the second run placed is the listing and the tree, both superseding themselves"
     );
 }
 
@@ -804,7 +850,11 @@ async fn a_function_is_opened_without_its_module_listed() {
     assert_eq!(placed, docviews.len());
     assert_eq!(
         programs(&ctx),
-        vec![crate::sandbox::language(id).bootstrap_program(&[], &[&key_of(id, FILES_READ_FILE)])],
+        vec![crate::sandbox::language(id).bootstrap_program(
+            &[],
+            &[&key_of(id, FILES_READ_FILE)],
+            None
+        )],
         "the program opens the one function and searches nothing"
     );
 }
@@ -826,6 +876,233 @@ async fn a_module_is_listed_without_any_function_opened() {
         docview_keys(&ctx)
     );
     assert_eq!(placed, 1);
+}
+
+// ---------------------------------------------------------------------------
+// The workspace tree
+// ---------------------------------------------------------------------------
+
+/// **The tree is the opening program's first statement, and it lands as a text view under the one
+/// constant label**, so the transcript reads as *here is where I am* before *here is how I look
+/// things up*.
+#[tokio::test]
+async fn the_opening_tree_is_placed_under_the_constant_label() {
+    let id = GgProgramLanguage::TypeScript;
+    let (capabilities, operations) = grant();
+    let opening = GgOpeningTurn {
+        modules: Vec::new(),
+        functions: vec![DOCS_SEARCH.to_string()],
+        tree: GgOpeningTree {
+            include: true,
+            depth: 2,
+        },
+    };
+    let (ctx, placed) = seed_granted(id, &opening, &capabilities, &operations).await;
+    let (placed, dropped) = seeded_views(placed.expect("a tree and a docview are a program"));
+    assert!(dropped.is_empty(), "{dropped:?}");
+    assert_eq!(
+        labels(&ctx, GgContextSource::TextView),
+        vec![crate::sandbox::WORKSPACE_TREE_VIEW.to_string()],
+        "the tree opens under the one label a later view of the workspace supersedes"
+    );
+    // The walked tree, not a promise of one: the workspace the api was rooted at holds these.
+    let body = ctx
+        .items()
+        .iter()
+        .find(|item| item.source() == GgContextSource::TextView)
+        .and_then(|item| item.message().content.clone())
+        .unwrap_or_default();
+    assert!(body.contains("engine/"), "{body}");
+    assert!(body.contains("game.md"), "{body}");
+    // The tree, plus the documentation view of `docs.search` and the type views its own
+    // signature references, which is what an `openDocsView` of it places.
+    assert_eq!(placed, 1 + docview_keys(&ctx).len());
+
+    let program = programs(&ctx).remove(0);
+    let tree_at = program.find("tree").expect("the program calls the tree");
+    let docs_at = program
+        .find("openDocsView")
+        .expect("the program opens documentation");
+    assert!(tree_at < docs_at, "the tree comes first:\n{program}");
+}
+
+/// **A tree is the whole of an opening turn.** Neither list has to be written for a window to open
+/// on the shape of the workspace, so the tree counts towards *is there anything to seed*.
+#[tokio::test]
+async fn a_tree_alone_seeds_a_program() {
+    let (capabilities, operations) = grant();
+    let (ctx, placed) = seed_granted(
+        GgProgramLanguage::TypeScript,
+        &opening_tree(1),
+        &capabilities,
+        &operations,
+    )
+    .await;
+    let (placed, dropped) = seeded_views(placed.expect("a tree alone is a program"));
+    assert!(dropped.is_empty(), "{dropped:?}");
+    assert_eq!(placed, 1);
+    assert_eq!(
+        labels(&ctx, GgContextSource::TextView),
+        vec![crate::sandbox::WORKSPACE_TREE_VIEW.to_string()]
+    );
+    assert!(
+        docview_keys(&ctx).is_empty() && search_keys(&ctx).is_empty(),
+        "nothing else was asked for"
+    );
+}
+
+/// **An agent that may not walk the workspace is seeded without the tree**, with one `warn` line
+/// naming what went unhonoured — the same treatment a listed module it does not hold gets.
+#[tokio::test]
+async fn a_tree_is_dropped_for_an_agent_that_does_not_hold_it() {
+    let id = GgProgramLanguage::TypeScript;
+    // Everything except the call that walks the workspace.
+    let (capabilities, operations) = grant();
+    let narrowed: Vec<OperationId> = operations
+        .iter()
+        .copied()
+        .filter(|operation| *operation != crate::sandbox::FILES_TREE)
+        .collect();
+    let opening = GgOpeningTurn {
+        modules: Vec::new(),
+        functions: vec![DOCS_SEARCH.to_string()],
+        tree: GgOpeningTree {
+            include: true,
+            depth: 2,
+        },
+    };
+    let (ctx, placed) = seed_granted(id, &opening, &capabilities, &narrowed).await;
+    let (placed, dropped) = seeded_views(placed.expect("the docview still seeds a program"));
+    assert_eq!(dropped, vec![Dropped::Tree]);
+    assert!(
+        dropped[0].to_string().contains("files.tree"),
+        "the warn line names the call: {}",
+        dropped[0]
+    );
+    assert_eq!(placed, docview_keys(&ctx).len());
+    assert!(
+        labels(&ctx, GgContextSource::TextView).is_empty(),
+        "no tree was opened"
+    );
+}
+
+/// **An opening turn whose only entry is a tree the agent may not walk seeds nothing**, on the same
+/// terms two empty lists do: the tree counts towards emptiness only while it survives resolution.
+#[tokio::test]
+async fn a_dropped_tree_alone_seeds_no_program() {
+    let (capabilities, operations) = grant();
+    let narrowed: Vec<OperationId> = operations
+        .iter()
+        .copied()
+        .filter(|operation| *operation != crate::sandbox::FILES_TREE)
+        .collect();
+    let (ctx, placed) = seed_granted(
+        GgProgramLanguage::TypeScript,
+        &opening_tree(2),
+        &capabilities,
+        &narrowed,
+    )
+    .await;
+    assert_eq!(
+        placed,
+        Ok(Bootstrap::Empty {
+            dropped: vec![Dropped::Tree]
+        })
+    );
+    assert!(ctx.items().is_empty(), "nothing was pushed");
+}
+
+/// **The configured depth is the depth the call is written with**, so an operator who asks for a
+/// deeper window gets one.
+#[tokio::test]
+async fn the_configured_depth_reaches_the_call() {
+    let (capabilities, operations) = grant();
+    let (ctx, placed) = seed_granted(
+        GgProgramLanguage::TypeScript,
+        &opening_tree(4),
+        &capabilities,
+        &operations,
+    )
+    .await;
+    seeded_views(placed.expect("a tree alone is a program"));
+    assert!(
+        programs(&ctx).remove(0).contains("depth: 4"),
+        "the program carries the configured depth"
+    );
+}
+
+/// **Every arm writes the configured depth into its own opening call**, rather than the seeded
+/// default it is usually generated with.
+///
+/// The cross-arm half of the test above, and the reason it exists: that one pins TypeScript, so a
+/// generator on any other arm that hard-coded `2` into its opening program would satisfy every
+/// other gate in the tree — `bootstrap_runs!` only ever exercises the seeded default. This starts
+/// no compiler, so it names the arm in milliseconds.
+///
+/// The claim is made without knowing any arm's syntax: for each of the ten depths a launch accepts,
+/// the generated program must differ from the one generated at depth 2, and every line that differs
+/// must carry the requested depth written out. An arm that ignored the argument writes an identical
+/// program; an arm that lowered it wrongly writes a differing line that does not name it.
+#[test]
+fn every_arm_writes_the_configured_depth_into_its_opening_call() {
+    let (capabilities, operations) = grant();
+    for language in all_languages() {
+        let arm = language.display_name();
+        let id = language.id();
+        let docs = DocsRuntime::new(capabilities.clone(), EndingRole::Standard, &operations, id);
+        let program = |depth: u32| {
+            let opening = opening_tree(depth);
+            let resolved = resolve_opening_turn(
+                &docs,
+                &opening,
+                &capabilities,
+                &operations,
+                EndingRole::Standard,
+            );
+            assert_eq!(
+                resolved.tree,
+                Some(depth),
+                "{arm}: a fully-granted agent keeps the configured depth through resolution"
+            );
+            language.bootstrap_program(
+                &resolved
+                    .modules
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
+                &resolved.keys.iter().map(String::as_str).collect::<Vec<_>>(),
+                resolved.tree,
+            )
+        };
+
+        let base = program(DEFAULT_OPENING_TREE_DEPTH);
+        for depth in 1..=MAX_OPENING_TREE_DEPTH {
+            let source = program(depth);
+            if depth == DEFAULT_OPENING_TREE_DEPTH {
+                assert_eq!(
+                    source, base,
+                    "{arm}: the same depth writes the same program"
+                );
+                continue;
+            }
+            assert_ne!(
+                source, base,
+                "{arm}: depth {depth} writes the program depth {DEFAULT_OPENING_TREE_DEPTH} \
+                 writes, so the opening call ignores what was configured:\n{source}"
+            );
+            let differing: Vec<&str> = source
+                .lines()
+                .filter(|line| !base.lines().any(|was| was == *line))
+                .collect();
+            assert!(
+                !differing.is_empty()
+                    && differing
+                        .iter()
+                        .all(|line| line.contains(&depth.to_string())),
+                "{arm}: depth {depth} is not what the changed lines carry: {differing:?}"
+            );
+        }
+    }
 }
 
 /// **Both lists empty seeds nothing at all** — no program, no acknowledgement, no view — and that is
@@ -1032,6 +1309,43 @@ fn an_entry_outside_ggs_vocabulary_refuses_the_launch() {
         message("openingTurn.functions[2]")
     );
     assert!(message("openingTurn.functions[3]").contains("is not a gg operation"));
+}
+
+/// **A tree depth gg would not honour refuses the launch**, whether or not the tree is switched on,
+/// because a document holding such a number is wrong where it is written rather than on the day
+/// somebody flips the switch.
+#[test]
+fn a_tree_depth_outside_the_range_refuses_the_launch() {
+    for (include, depth) in [(true, 0), (false, 0), (true, MAX_OPENING_TREE_DEPTH + 1)] {
+        let defects = refused(GgOpeningTurn {
+            tree: GgOpeningTree { include, depth },
+            ..GgOpeningTurn::seeded()
+        });
+        assert_eq!(
+            defects
+                .iter()
+                .map(|(locus, _)| locus.as_str())
+                .collect::<Vec<_>>(),
+            vec!["openingTurn.tree.depth"],
+            "include={include} depth={depth}: {defects:?}"
+        );
+        assert!(
+            defects[0].1.contains("is not a depth gg would honour"),
+            "{}",
+            defects[0].1
+        );
+    }
+    assert!(
+        refused(GgOpeningTurn {
+            tree: GgOpeningTree {
+                include: true,
+                depth: MAX_OPENING_TREE_DEPTH,
+            },
+            ..GgOpeningTurn::seeded()
+        })
+        .is_empty(),
+        "the ceiling itself is a depth gg honours"
+    );
 }
 
 /// **A function held by role or placement refuses the launch**: an ending call is the dispatched

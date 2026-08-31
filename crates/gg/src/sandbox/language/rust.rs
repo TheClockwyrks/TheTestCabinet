@@ -108,10 +108,12 @@ use crate::sandbox::signatures::SignatureCatalogue;
 use self::source::SDK_CRATE;
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, spell,
+    ProgramLanguage, WORKSPACE_TREE_VIEW, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "rust.compile.rs"]
 pub(super) mod compile;
@@ -296,14 +298,18 @@ impl ProgramLanguage for Rust {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 
-    /// [One `fn main` holding one search, one array and one `for` loop, each call composed with
-    /// `?`](self::bootstrap_program), with both paths resolved from this language's own catalogue.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+    /// [One `fn main` holding the workspace tree, one search, one array and one `for` loop, each
+    /// call composed with `?`](self::bootstrap_program), with every path resolved from this
+    /// language's own catalogue.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            &spell(self, FILES_TREE),
+            &spell(self, VIEWS_OPEN_TEXT),
             modules,
             docs,
+            tree,
         )
     }
 
@@ -539,12 +545,31 @@ fn main_program(body: &str) -> String {
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
+    tree_call: &str,
+    open_text: &str,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
     let views = open_docs_views_body(open_docs_view, docs);
+    let walked = match tree {
+        None => String::new(),
+        Some(depth) => {
+            let options = format!("{}::TreeOptions", module_of(tree_call));
+            format!(
+                "    {open_text}(\n\
+                 \x20       {},\n\
+                 \x20       &{tree_call}({options} {{\n\
+                 \x20           depth: Some({depth}),\n\
+                 \x20           ..Default::default()\n\
+                 \x20       }})?,\n\
+                 \x20   )?;\n\n",
+                serde_json::Value::String(WORKSPACE_TREE_VIEW.to_string())
+            )
+        }
+    };
     if modules.is_empty() {
-        return main_program(&views);
+        return main_program(&format!("{walked}{views}"));
     }
     let listed: Vec<String> = modules
         .iter()
@@ -559,7 +584,7 @@ pub(super) fn bootstrap_program(
          \x20   }})?;\n",
         listed.join(", ")
     );
-    main_program(&format!("{listing}\n{views}"))
+    main_program(&format!("{walked}{listing}\n{views}"))
 }
 
 /// The module a fully-qualified call is filed under, taken off the front of the call itself.

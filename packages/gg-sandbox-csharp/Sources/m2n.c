@@ -21,7 +21,7 @@
 //
 // # Why four, and why they are written here rather than generated
 //
-// The bridge is *designed* to need almost none. Forty-four of its fifty functions already fit a
+// The bridge is *designed* to need almost none. Forty-five of its fifty-one functions already fit a
 // shape the class library uses; two of those were made to fit by narrowing a `long` argument to an
 // `int` where the value is a `u32` anyway, and two by handing a record's numbers back as one array
 // rather than as an `out` parameter each — which the interpreter forces regardless, since it refuses

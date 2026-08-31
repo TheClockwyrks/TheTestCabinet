@@ -191,7 +191,7 @@ fn the_generated_documentation_program_is_a_whole_java_program() {
 fn the_opening_program_is_a_whole_java_program() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
     assert_eq!(
-        java().bootstrap_program(&["gg.files.Files", "gg.shell.Shell"], &["readFile"]),
+        java().bootstrap_program(&["gg.files.Files", "gg.shell.Shell"], &["readFile"], None),
         format!(
             "import java.util.List;\n\
              \n\
@@ -215,7 +215,7 @@ fn the_opening_program_is_a_whole_java_program() {
     // An agent holding neither of the two modules: no module and no query is the one question the
     // search refuses, so the program that would have asked it does not make the call at all rather
     // than making one that fails in the window the model reads first.
-    let bare = java().bootstrap_program(&[], &["readFile"]);
+    let bare = java().bootstrap_program(&[], &["readFile"], None);
     assert!(
         !bare.contains("gg.docs.Docs.search"),
         "the opening program searched for nothing:\n{bare}"

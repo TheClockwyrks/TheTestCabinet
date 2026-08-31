@@ -1,12 +1,9 @@
 -- | Handing scoped work to child agents, and handing this session to another agent.
 -- |
--- | Waiting can dominate a turn's wall clock — it blocks while real agents run — and the run's budget
--- | keeps ticking while it does. A program is therefore best shaped to spawn broadly and wait once,
--- | rather than to spawn and wait in a loop.
+-- | A wait blocks while the children run, and the run's wall-clock budget keeps ticking while it
+-- | does.
 -- |
--- | The brief is where this arm's types earn their keep: a child is briefed either with a
--- | self-contained `Prompt` or with a board `Issue`, and because that choice is a sum type rather than
--- | two optional fields, "both" and "neither" are programs that do not compile.
+-- | A child is briefed either with a self-contained `Prompt` or with a board `Issue`.
 module Gg.Delegation
   ( spawnSubagent
   , waitForSubagents
@@ -42,10 +39,7 @@ type TransitionOptions = (note :: String)
 -- | What the agent this session becomes is told. Optional.
 type ExecOptions = (prompt :: String)
 
--- | What a child agent is briefed with.
--- |
--- | The choice is a type rather than a pair of optional fields, so "both" and "neither" are programs
--- | that do not compile instead of calls that fail at run time.
+-- | What a child agent is briefed with: exactly one of the two arms.
 data Brief
   -- | Self-contained instructions for a child that needs no other context.
   = Prompt String
@@ -70,7 +64,7 @@ type SubagentHandle =
   , modelId :: String
   }
 
--- | How a child agent's loop ended — gg's own six words, as the tool-calling path also reports them.
+-- | How a child agent's loop ended.
 data AgentEnding
   -- | It finished normally, and its summary is what it returned.
   = AgentCompleted
@@ -105,10 +99,10 @@ type SubagentResult =
 
 -- | Delegate scoped work to a child agent, which runs in parallel while this program continues.
 -- |
--- | The `agent` names the profile to run it as — one of the agents this one may spawn, which the
+-- | The `agent` names the profile to run it as — one of the agents this session may spawn, which the
 -- | system prompt lists — and it selects the child's model, tools and instructions. The brief is
 -- | either `Gg.Delegation.Prompt "self-contained instructions"` or `Gg.Delegation.Issue "AUTH-1"`.
--- | The child shares this agent's workspace.
+-- | The child shares this session's workspace.
 -- |
 -- | # Operation
 -- |
@@ -116,8 +110,8 @@ type SubagentResult =
 -- |
 -- | # Arguments
 -- |
--- | - `agent` — The agent profile to run the child as, from the ones this agent may spawn. It selects
--- |   the child's model, tools and instructions.
+-- | - `agent` — The agent profile to run the child as, from the ones this session may spawn. It
+-- |   selects the child's model, tools and instructions.
 -- | - `brief` — What the child is to do: `Gg.Delegation.Prompt` with self-contained instructions, or
 -- |   `Gg.Delegation.Issue` with the id of a board issue to brief it from.
 -- |
@@ -129,7 +123,7 @@ type SubagentResult =
 -- | # Throws
 -- |
 -- | `LimitExceeded` at the delegation depth cap, and `InvalidArgument` when `agent` is not one this
--- | agent may spawn.
+-- | session may spawn.
 spawnSubagent :: String -> Brief -> Effect SubagentHandle
 spawnSubagent agent brief =
   Wire.call "spawn_subagent" "delegation" "Gg.Delegation.spawnSubagent"
@@ -141,7 +135,7 @@ spawnSubagent agent brief =
 -- | Block until the named children have finished, and collect their results in dispatch order.
 -- |
 -- | With `{}` it waits for every outstanding child. The run's wall-clock budget keeps running while
--- | it waits, so one wait for many children costs far less than one wait per child.
+-- | it waits.
 -- |
 -- | # Operation
 -- |
@@ -189,8 +183,7 @@ sendMessage agentId message =
 
 -- | Deliver a message to a running child agent's inbox, which it reads at its next turn.
 -- |
--- | `Gg.Delegation.sendMessage` with the id already taken out of the handle, for the common case
--- | where the child was spawned by this program or by a recent one and its handle is still in hand.
+-- | `Gg.Delegation.sendMessage` with the id taken out of the handle.
 -- |
 -- | # Alias
 -- |
@@ -210,11 +203,11 @@ send child message = sendMessage child.id message
 -- | Move the process this session runs inside on to another of its states.
 -- |
 -- | The state is named the way an agent to spawn is named. It is bound only when a state machine is
--- | driving the session and the current state has somewhere to go. Like a compaction it is registered
--- | rather than performed: the call validates the target, returns, and the program runs on to its end
--- | — the transition happens after that, because replacing the agent and its window mid-program would
--- | pull every remaining call out from under it. The first declaration in a turn is the one that
--- | stands.
+-- | driving the session and the current state has somewhere to go.
+-- |
+-- | The call is registered rather than performed: it validates the target and returns, the program
+-- | runs on to its end, and the transition happens after that. The first declaration in a turn is
+-- | the one that stands.
 -- |
 -- | # Operation
 -- |
@@ -243,11 +236,12 @@ transitionState state options =
 -- | Continue this session as a different agent, from the next turn.
 -- |
 -- | The named agent takes over with its own model, tools and instructions, keeping every capability
--- | the two of them share — and the whole conversation above all, so it needs no catching up.
--- | Registered rather than performed, exactly as a state transition is and for the same reason: the
--- | window would otherwise be pulled out from under the program still composing into it. A session
--- | makes one succession per turn. It is bound only when this agent may make agent transitions and
--- | has agents it may become, and never while a state machine is driving the session.
+-- | the two share and the whole conversation.
+-- |
+-- | The call is registered rather than performed: it returns, the program runs on to its end, and
+-- | the succession happens after that. A session makes one succession per turn. It is bound only
+-- | when this session may make agent transitions and has agents it may become, and never while a
+-- | state machine is driving the session.
 -- |
 -- | # Operation
 -- |
@@ -255,15 +249,15 @@ transitionState state options =
 -- |
 -- | # Arguments
 -- |
--- | - `agent` — The agent to become, from the ones this agent may become.
+-- | - `agent` — The agent to become, from the ones this session may become.
 -- | - `options` — What to tell it; `{}` tells it nothing.
 -- | - `options.prompt` — Its opening message. It already has the whole conversation, so this is the
 -- |   instruction rather than a briefing.
 -- |
 -- | # Throws
 -- |
--- | `InvalidArgument` for an agent this agent may not become, and `Refused` for a second succession
--- | in one turn.
+-- | `InvalidArgument` for an agent this session may not become, and `Refused` for a second
+-- | succession in one turn.
 exec
   :: forall given rest
    . Union given rest ExecOptions
@@ -273,14 +267,13 @@ exec
 exec agent options =
   Wire.call_ "exec" "delegation" "Gg.Delegation.exec" [ Wire.wire agent, Wire.pick "prompt" options ]
 
--- | Run a copy of this agent, in parallel, on something it will not do itself.
+-- | Run a copy of this session, in parallel, on something it will not do itself.
 -- |
 -- | The copy has the same model, the same tools and a private copy of the whole conversation, so the
--- | prompt is the *difference* rather than a briefing — everything already worked out is there.
+-- | prompt is the difference rather than a briefing.
 -- |
--- | The copy starts once this turn's results are recorded, because the conversation it inherits has
--- | to be a complete one. A wait can therefore collect it only on a later turn, never in the
--- | program that made it.
+-- | The copy starts once this turn's results are recorded, so a wait collects it on a later turn,
+-- | never in the program that made it.
 -- |
 -- | # Operation
 -- |

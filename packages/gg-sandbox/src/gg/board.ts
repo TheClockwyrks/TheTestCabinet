@@ -2,12 +2,11 @@
  * The epic and issue board, shared by every agent in the run.
  *
  * An issue is the heavyweight unit of work: its scope, its non-scope and its completion criteria are
- * exactly what a delegated child agent is briefed from, which is why creating one asks for more than
- * adding a task does. Each issue is worked in its own copy of the workspace and merged back once it
- * is accepted.
+ * what a child agent dispatched onto it is briefed from. Each issue is worked in its own copy of the
+ * workspace and merged back once it is accepted.
  *
- * Three lowerings live here, all of the same shape: a program writes `undefined`, `null` or a value,
- * and the wrapper turns that into the membrane's tagged variant.
+ * Where a field accepts `undefined`, `null` or a value, `undefined` leaves it alone and `null`
+ * clears it.
  */
 
 import * as raw from "test-cabinet:gg/board";
@@ -72,7 +71,7 @@ export interface IssueCreated {
    * @ggop board.wait_for_issue
    * @returns gg's acknowledgement that the wait is registered.
    * @throws `ApiError` with `not-found` when the board no longer holds the issue, and
-   * `invalid-argument` where it is the issue this agent was itself assigned.
+   * `invalid-argument` where it is the issue this session was assigned.
    */
   wait(): string;
 }
@@ -154,7 +153,7 @@ export function createEpic(epic: { prefix: string; title: string; description: s
  * The id is the board's rather than the caller's: it is numbered under its epic's prefix, or under
  * `ISSUE` when it has no epic. `inScope`, `outOfScope` and `completionCriteria` are what a child
  * agent is briefed from, so they are worth writing for a reader with no other context. `agent` names
- * the agent the issue is dispatched to and must be one this agent may spawn; `reviewers` names the
+ * the agent the issue is dispatched to and must be one this session may spawn; `reviewers` names the
  * agents that must approve the work, from that same set, and is required where this run's reviewers
  * feature is on.
  *
@@ -171,7 +170,7 @@ export function createEpic(epic: { prefix: string; title: string; description: s
  * none.
  * @param issue.epicId The id of an existing epic to group it under. Omitting it leaves the issue
  * ungrouped and numbered under `ISSUE`.
- * @param issue.agent The agent the issue is dispatched to. It must be one this agent may spawn.
+ * @param issue.agent The agent the issue is dispatched to. It must be one this session may spawn.
  * @param issue.reviewers The agents that must approve the work, from that same set. Required where
  * this run's reviewers feature is on.
  * @returns the id the board assigned, and how much of the board budget is now used.
@@ -290,16 +289,15 @@ export function removeIssue(id: string): BoardUsage {
 /**
  * Register a wait on an issue, to be served after the program ends, and acknowledge it at once.
  *
- * Nothing blocks inside the program: the wait is recorded and the rest of the program still runs. The
- * suspension happens between turns, freeing this agent's slot for others until the issue is terminal
- * — done, or failed if its assigned agent could not complete it — and the session resumes on the next
- * turn. It is how the next turn's work is sequenced behind an issue it depends on.
+ * Nothing blocks inside the program: the wait is recorded and the rest of the program still runs.
+ * The session suspends between turns until the issue is terminal — done, or failed if it could not
+ * be completed — and resumes on the next turn.
  *
  * @ggop board.wait_for_issue
- * @param id The issue to wait on. It may not be the issue this agent was assigned.
+ * @param id The issue to wait on. It may not be the issue this session was assigned.
  * @returns gg's acknowledgement that the wait is registered.
  * @throws `ApiError` with `not-found` for an unknown id, and `invalid-argument` for the issue this
- * agent was itself assigned.
+ * session was assigned.
  */
 export function waitForIssue(id: string): string {
   return call(() => raw.waitForIssue(id));

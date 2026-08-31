@@ -76,6 +76,17 @@ pub(super) fn list_dir<A: OperationApi>(
     ))
 }
 
+/// `files.tree` — render the tree beneath a directory under the ignore files.
+pub(super) fn tree<A: OperationApi>(
+    state: &mut MembraneState<A>,
+    op: &str,
+    arguments: &[Value],
+) -> Answer {
+    let path = argument(arguments, op, 0)?.optional_text("the path")?;
+    let depth = argument(arguments, op, 1)?.optional_integer("the depth")?;
+    Ok(Value::Text(FilesHost::tree(state, path, depth)?))
+}
+
 /// `files.search` — search the workspace under the ignore files.
 pub(super) fn search<A: OperationApi>(
     state: &mut MembraneState<A>,

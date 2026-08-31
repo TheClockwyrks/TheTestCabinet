@@ -3,11 +3,7 @@
 module GG
   # Run shell commands in the workspace.
   #
-  # One function, and the way a program reaches everything gg has no tool for: a build, a test run,
-  # `git`, `curl`, a package manager. The workspace is the working directory.
-  #
-  # A non-zero exit is a *result* rather than a failure, because deciding whether a build or a test
-  # run passed is the single most common thing a program does with one.
+  # The workspace is the working directory. A non-zero exit is a result rather than a failure.
   module Shell
     extend Surface::Operations
 
@@ -16,10 +12,9 @@ module GG
     # A non-zero exit is not a failure: read `exit_code` on the result. Only a process that could
     # not be launched, or one the timeout killed, raises.
     #
-    # This run may **offload** shell output — the `shell` tool's own description says which mode is
-    # in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming
-    # the two files the command's full stdout and stderr were written to. Those files are readable
-    # by absolute path, so reading one, or grepping it, is cheaper than re-running the command.
+    # This run may offload shell output. Under `offload`, `output` holds only the tail that fits
+    # and ends with a note naming the two files the command's full stdout and stderr were written
+    # to. Those files are readable by absolute path.
     #
     # @param command [String] The command line, run by `sh -c` with the workspace as its working
     #   directory.

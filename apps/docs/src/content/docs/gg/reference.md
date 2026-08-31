@@ -44,7 +44,7 @@ ruby
 
 The reference is therefore an index plus one document per arm:
 
-- `index.json` — the twelve families the surface is grouped by, all 35 tools
+- `index.json` — the twelve families the surface is grouped by, all 37 tools
   with their real descriptions and schemas, and a line per registered program
   language carrying that arm's module, function and type counts.
 - `<language>.json`, one per arm — that arm's whole responses-as-code surface:

@@ -1,10 +1,9 @@
 //! Run shell commands in the workspace.
 //!
-//! One function, and the way a program reaches everything gg has no tool for: a build, a test run,
-//! `git`, `curl`, a package manager. The workspace is the working directory.
+//! One function, reaching a build, a test run, `git`, `curl`, or a package manager. The workspace is
+//! the working directory.
 //!
-//! A non-zero exit is a *result* rather than a failure, because deciding whether a build or a test
-//! run passed is the single most common thing a program does with one.
+//! A non-zero exit is a result rather than a failure.
 
 use crate::bindings::test_cabinet::gg::shell;
 use crate::core::ApiError;
@@ -18,11 +17,10 @@ pub(crate) const OPERATIONS: &[&str] = &["shell"];
 /// A non-zero exit is not a failure: read [`exit_code`](ShellOutput::exit_code) on the result. Only a
 /// process that could not be launched, or one the timeout killed, is an `Err`.
 ///
-/// This run may **offload** shell output — the `shell` tool's own description says which mode is in
+/// This run may offload shell output — the `shell` tool's own description says which mode is in
 /// force. Under `offload`, [`output`](ShellOutput::output) holds only the tail that fits and ends
 /// with a note naming the two files the command's full stdout and stderr were written to. Those
-/// files are readable by absolute path, so reading one, or a grep, is cheaper than re-running the
-/// command.
+/// files are readable by absolute path.
 ///
 /// # Arguments
 ///

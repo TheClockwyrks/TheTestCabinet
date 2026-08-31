@@ -1,6 +1,6 @@
-"""Read, write, edit and list the files of the workspace.
+"""Read, write, edit, list and walk the files of the workspace.
 
-Nothing here places anything in the agent's context window; a view is what does that.
+Nothing here places anything in the context window.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ __all__ = [
     "list_dir",
     "read_file",
     "search",
+    "tree",
     "write_file",
 ]
 
@@ -42,7 +43,7 @@ class TextFile:
     """The 1-based last line returned."""
 
     total_lines: int
-    """The file's total line count, which says whether to page again."""
+    """The file's total line count."""
 
     byte_truncated: bool
     """Whether a 256 KiB byte ceiling cut the returned text."""
@@ -52,8 +53,7 @@ class TextFile:
 class ImageFile:
     """A picture's description, as the image arm of a `FileRead` carries it.
 
-    The pixels never enter the program. `views.open_file` is what attaches the picture to the turn
-    for the agent to look at, which is worth far more than base64 in a variable.
+    The pixels never enter the program.
     """
 
     media_type: str
@@ -75,10 +75,7 @@ class ImageFile:
 FileRead = TextFile | ImageFile
 """What a read returned: a text file's window, or a picture's description.
 
-A picture is a different kind of thing from text, so it is a different class rather than a string
-that happens to be binary. `isinstance(read, TextFile)`, or a `match` on the two, is what narrows it,
-and a program that treats an image as text is caught by that check instead of silently writing an
-empty string somewhere.
+`isinstance(read, TextFile)`, or a `match` on the two, narrows it.
 """
 
 
@@ -136,8 +133,7 @@ def _as_file_read(read: wire.FileRead) -> FileRead:
     """The membrane's tagged read, lowered to the model-facing union.
 
     Not catalogued and not bound: nothing in a program's scope names it, and no line of any prompt
-    describes it. It is exported only so `views.open_file` — which performs the identical host read —
-    shares this one lowering rather than keeping a second copy of it.
+    describes it.
     """
     if isinstance(read, wire.FileRead_Text):
         text = read.value
@@ -168,21 +164,19 @@ def read_file(path: str, *, offset: int | None = None, limit: int | None = None)
     """Read a file, as either a `TextFile` or an `ImageFile`.
 
     Which of the two comes back is detected from the file's bytes, never from the extension, so a
-    mislabelled picture is still a picture. The two are ordinary classes, so an ordinary `match`
-    narrows them:
+    mislabelled picture is still a picture. A `match` narrows them:
 
     ```python
     match gg.files.read_file("logo.png"):
         case gg.files.TextFile(contents=text):
-            gg.views.open_text("logo", text)
+            ...
         case gg.files.ImageFile(label=label):
-            gg.views.open_text("logo", label)
+            ...
     ```
 
-    A relative path resolves against the workspace; an absolute one is read as given, so anything
-    else in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable.
-    This call hands bytes to the program and places nothing in the context window; reading a picture
-    describes it and shows nothing, so a file only read here is a file nobody has looked at.
+    A relative path resolves against the workspace; an absolute one is read as given. This call
+    hands bytes to the program and places nothing in the context window; reading a picture describes
+    it and shows nothing.
 
     Args:
         path: The file to read, relative to the workspace or absolute.
@@ -229,9 +223,6 @@ def write_file(path: str, contents: str) -> int:
 def edit_file(path: str, old_string: str, new_string: str) -> None:
     """Replace the one exact occurrence of some text in a file with something else.
 
-    Widening the surrounding context until the match is unique is the way to disambiguate; counting
-    occurrences is not.
-
     Args:
         path: The file to edit.
         old_string: The exact text to find, whitespace included. It must appear exactly once.
@@ -264,29 +255,67 @@ def list_dir(path: str | None = None) -> list[DirEntry]:
     return [_as_dir_entry(entry) for entry in _call(wire.list_dir, path)]
 
 
+@operation("files.tree")
+def tree(*, path: str | None = None, depth: int | None = None) -> str:
+    """Render the tree beneath a directory, skipping everything the ignore files exclude.
+
+    One block of text: the root itself unnamed, each level indented two further spaces than its
+    parent, every level in path order, and directories suffixed `/`. A root with nothing beneath it
+    renders as `(empty directory)`.
+
+    `depth` counts levels of children below the root, so `1` is the root's own entries. A directory
+    sitting at the bound is suffixed with how many entries it holds that were not walked, as
+    `assets/ (12 entries not shown)`.
+
+    What `.gitignore`, `.ignore` and their kin exclude — nested files, negations and
+    `.git/info/exclude` included, and `.git` itself — is never walked and never rendered, whether or
+    not the workspace is a repository yet. Dotfiles are otherwise rendered like any other entry, and
+    symbolic links are not followed.
+
+    The rendering is bounded at 1000 lines and 16 KiB, whichever binds first, and a result cut by
+    either ends with a line saying so.
+
+    Args:
+        path: The directory to walk, relative to the workspace or absolute. The default walks the
+            workspace root.
+        depth: How many levels of children below the root to render, at least 1. The default is 2
+            and the ceiling 10, so a larger request is answered at 10.
+
+    Returns:
+        The rendered tree.
+
+    Raises:
+        ApiError: `not-found` for a `path` that does not exist, and `invalid-argument` for a `path`
+            that is not a directory or a `depth` of zero.
+    """
+    bound = _uint("tree", "depth", depth)
+    if bound == 0:
+        raise ApiError(
+            "tree",
+            ApiErrorCode.INVALID_ARGUMENT,
+            "`depth` must be at least 1, got 0; leave it out for gg's default of 2",
+        )
+    return _call(wire.tree, path, bound)
+
+
 @operation("files.search")
 def search(query: str, *, path: str | None = None, limit: int | None = None) -> list[SearchMatch]:
     r"""Search the workspace's files for a regular expression and hand back every matching line.
 
-    `query` is a regular expression — Rust syntax, so `foo|bar`, `fn\s+update`, and `(?i)todo` for
-    a case-insensitive match — tried against each line on its own, and every line it matches comes
-    back with its path and 1-based line number, in path order and then line order. `path` roots the
-    search at one directory or one file; the default is the workspace root.
+    A grep over the project rather than over the disk. `query` is a regular expression in Rust
+    syntax — `foo|bar`, `fn\s+update`, `(?i)todo` — matched against each line on its own. Every line
+    it matches comes back with its path and 1-based line number, in path order and then line order.
+    `path` roots the search at one directory or one file; the default is the workspace root.
 
-    The search honours ignore files: what `.gitignore`, `.ignore` and their kin exclude — nested
-    files, negations and `.git/info/exclude` included, and `.git` itself — is never scanned and
-    never returned, whether or not the workspace is a repository yet, and a file that is not text
-    (one carrying a NUL byte) is skipped rather than matched byte by byte. Dotfiles are otherwise
-    searched like any other file. So a match list holds the project's own sources rather than
-    `node_modules`, build output and the run's own bookkeeping, and a file under an ignored path is
-    still reachable by its path through every other call in this module.
+    What `.gitignore`, `.ignore` and their kin exclude — nested files, negations and
+    `.git/info/exclude` included, and `.git` itself — is never scanned and never returned, whether or
+    not the workspace is a repository yet. A file carrying a NUL byte is skipped. Dotfiles are
+    otherwise searched like any other file, and a file under an ignored path is still readable by its
+    path.
 
-    The result is bounded so one search cannot flood a turn, which is where it differs from a shell
-    `grep`: at most `limit` matches come back — 50 by default, and never more than 200 — and a list
-    exactly `limit` long may have been cut. There is no offset, because a search is a question about
-    where to point the other calls rather than a way of reading a file, so the answer to a cut list
-    is a narrower query or path. A matching line longer than 200 characters is cut there and
-    annotated in place as `foo (123 more chars...)`.
+    At most `limit` matches come back — 50 by default, never more than 200 — and a list exactly
+    `limit` long may have been cut. There is no offset. A matching line longer than 200 characters is
+    cut there and annotated in place as `foo (123 more chars...)`.
 
     Args:
         query: The regular expression to match each line against, in Rust syntax; `(?i)` at the

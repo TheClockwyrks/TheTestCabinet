@@ -244,7 +244,7 @@ fn every_language_writes_the_program_that_opens_the_session() {
     const DOCS: [&str; 1] = ["gg.docs.search"];
 
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.bootstrap_program(&MODULES, &DOCS);
+        let program = language.bootstrap_program(&MODULES, &DOCS, None);
         let search = written(language, DOCS_SEARCH);
         let open_docs_view = written(language, VIEWS_OPEN_DOCS_VIEW);
         for call in [&search, &open_docs_view] {
@@ -293,7 +293,7 @@ fn every_language_writes_the_program_that_opens_the_session() {
     // does not make.
     const UNSEARCHED: [&str; 1] = ["gg.views.openDocsView"];
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.bootstrap_program(&[], &UNSEARCHED);
+        let program = language.bootstrap_program(&[], &UNSEARCHED, None);
         let search = written(language, DOCS_SEARCH);
         let open_docs_view = written(language, VIEWS_OPEN_DOCS_VIEW);
         assert!(
@@ -316,7 +316,7 @@ fn every_language_writes_the_program_that_opens_the_session() {
     // every arm's compiler over this shape, since an empty collection is where a typed arm has to
     // spell an element type it could otherwise infer.
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.bootstrap_program(&MODULES, &[]);
+        let program = language.bootstrap_program(&MODULES, &[], None);
         let search = written(language, DOCS_SEARCH);
         assert!(
             program.contains(&search),
@@ -336,7 +336,7 @@ fn every_language_writes_the_program_that_opens_the_session() {
     // the two calls is each language's own: a trailing options object and a `for…of` here, keyword
     // arguments and no loop at all there.
     assert_eq!(
-        typescript().bootstrap_program(&MODULES, &DOCS),
+        typescript().bootstrap_program(&MODULES, &DOCS, None),
         format!(
             "import {{ docs, views }} from \"gg\";\n\
              \n\
@@ -346,20 +346,20 @@ fn every_language_writes_the_program_that_opens_the_session() {
         )
     );
     assert_eq!(
-        typescript().bootstrap_program(&[], &DOCS),
+        typescript().bootstrap_program(&[], &DOCS, None),
         "import { views } from \"gg\";\n\nfor (const name of [\"gg.docs.search\"]) {\n  \
          views.openDocsView(name);\n}\n",
         "the search gg would have to refuse is left out, and `docs` goes out of the import with it"
     );
     assert_eq!(
-        fixture_language().bootstrap_program(&MODULES, &DOCS),
+        fixture_language().bootstrap_program(&MODULES, &DOCS, None),
         format!(
             "docs.search(modules=[\"gg.files\", \"gg.views\"], limit={MAX_SEARCH_LIMIT})\n\
              views.open_docs_view(\"gg.docs.search\")\n"
         )
     );
     assert_eq!(
-        fixture_language().bootstrap_program(&[], &DOCS),
+        fixture_language().bootstrap_program(&[], &DOCS, None),
         "views.open_docs_view(\"gg.docs.search\")\n",
         "the search gg would have to refuse is left out, and nothing else moves with it"
     );
@@ -377,7 +377,7 @@ fn every_language_writes_the_program_that_opens_the_session() {
 fn every_language_prepares_an_opening_program_that_opens_nothing() {
     const MODULES: [&str; 2] = ["gg.files", "gg.views"];
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.bootstrap_program(&MODULES, &[]);
+        let program = language.bootstrap_program(&MODULES, &[], None);
         language
             .prepare_program(&program, &[], &PrepareContext::detached())
             .unwrap_or_else(|failure| {
@@ -470,7 +470,7 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
     let mut lines_asserted = 0usize;
     for language in all_languages() {
         let name = language.display_name();
-        let program = language.bootstrap_program(&MODULES, &DOCS);
+        let program = language.bootstrap_program(&MODULES, &DOCS, None);
         // The two modules the opening program actually calls into. Resolved through the operation
         // rather than by reading a path out of the call, because the operation is gg's identity for
         // a call and the module id is what the catalogue files it under.
@@ -946,8 +946,8 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
     );
     assert_eq!(ts.lib_import("csvTools"), js.lib_import("csvTools"));
     assert_eq!(
-        ts.bootstrap_program(&["gg.docs"], &["gg.docs.search"]),
-        js.bootstrap_program(&["gg.docs"], &["gg.docs.search"]),
+        ts.bootstrap_program(&["gg.docs"], &["gg.docs.search"], None),
+        js.bootstrap_program(&["gg.docs"], &["gg.docs.search"], None),
         "gg synthesizes one opening program for the pair"
     );
 

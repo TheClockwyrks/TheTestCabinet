@@ -1,8 +1,7 @@
 /// Read the skills this run authored.
 ///
-/// A skill name is a plain `String` rather than a case of an `enum`, because the catalogue is per
-/// run while this SDK is compiled once. The names available are listed in the system prompt, and an
-/// unknown one comes back as `.notFound` carrying the full list.
+/// The names available are listed in the system prompt, and an unknown one comes back as
+/// `.notFound` carrying the full list.
 ///
 /// - ggmodule: skills
 public enum skills {
@@ -11,8 +10,7 @@ public enum skills {
 
     /// Read a skill by name and hand back its body with the front matter stripped.
     ///
-    /// Reading it also pins that body permanently into context, so a skill that has been read stays
-    /// read.
+    /// The body is pinned permanently into context.
     ///
     /// A skill may be code rather than prose, or as well as it. Code is compiled as a module of its
     /// own, which every later program reaches by writing its `import` line, and using it opens a

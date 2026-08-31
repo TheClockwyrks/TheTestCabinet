@@ -25,11 +25,9 @@ public final class Shell {
      * <p>A non-zero exit is not a failure: it arrives as {@code exitCode} on the result. Only a
      * process that could not be launched, or one the timeout killed, throws.
      *
-     * <p>This run may offload shell output, and the {@code shell} tool's own description says which
-     * mode is in force. Under {@code offload}, {@code output} holds the tail that fits and ends with
-     * a note naming the two files the whole of stdout and stderr went to, with the shape of what
-     * went there — how many lines, how long they run. Those files are readable by absolute path, so
-     * reading a window of one, or a grep, beats running the command again.
+     * <p>Where this run offloads shell output, {@code output} holds the tail that fits and ends
+     * with a note naming the two files the whole of stdout and stderr went to, with how many lines
+     * they hold and how long those lines run. Those files are readable by absolute path.
      *
      * @param command The command line, run by {@code sh -c} with the workspace as its working
      *     directory.

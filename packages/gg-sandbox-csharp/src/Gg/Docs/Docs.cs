@@ -2,60 +2,34 @@ namespace Gg;
 
 /// <summary>Search this surface's own documentation, and take a documentation view back out.</summary>
 /// <remarks>
-/// <para>
-/// Nothing names the functions of this surface up front, so <see cref="Search"/> is where a program
-/// starts: it answers with briefs and with the fully-qualified names
-/// <c>Views.OpenDocsView</c> takes, which is the whole of the loop from "what do I have" to reading
-/// one entry in full.
-/// </para>
-/// <para>
-/// A search only ever returns what this agent may actually call. The compiler is less careful — the
-/// SDK is one library and every module of it compiles — so a program can write a call that a search
-/// would never have shown it, and what happens then is a
-/// <see cref="ApiErrorCode.Unavailable"/> naming the capability the run withheld.
-/// </para>
+/// A search returns only the calls this run offers. The SDK compiles as one library, so a call the
+/// search did not return still compiles and fails at run time with
+/// <see cref="ApiErrorCode.Unavailable"/>, naming the capability the run withheld.
 /// </remarks>
 /// <ggmodule>docs</ggmodule>
 public static partial class Docs
 {
-    /// <summary>Find what this agent can call, by keyword or by module, and read the briefs.</summary>
+    /// <summary>Find the calls this run offers, by keyword or by module, and read the briefs.</summary>
     /// <remarks>
     /// <para>
     /// Matching is case-insensitive substring over names, signatures, briefs and detailed
     /// descriptions, so <c>"foobar"</c> finds <c>GetFoobar</c>. Hits are ranked by what matched: an
-    /// entry whose own name carries the word comes before one that merely mentions it in a
-    /// paragraph.
+    /// entry whose own name carries the word comes before one that merely mentions it.
     /// </para>
     /// <para>
     /// The filters compose with the query and with each other, and <paramref name="modules"/> is a
-    /// lookup rather than a search — naming several returns the entries of any one of them, and a
-    /// <paramref name="modules"/> filter with no query is those modules' whole directory. A call
-    /// with no query and no filter at all is refused, because a search that asked for nothing and a
-    /// search that found nothing are different answers.
+    /// lookup rather than a search. A call with no query and no filter at all is refused. The page
+    /// is returned as a value and is also opened as a view, and the next search replaces that view.
     /// </para>
-    /// <para>
-    /// The page comes back as a value <em>and</em> is opened as a view, so the next turn can read it
-    /// without the program showing it to itself. The next search replaces that view: it names what
-    /// is being worked from rather than keeping a record.
-    /// </para>
-    /// <code>
-    /// var found = Docs.Search("memory", limit: 5);
-    /// foreach (var hit in found.Hits)
-    /// {
-    ///     Views.OpenDocsView(hit.Key);
-    /// }
-    /// </code>
     /// </remarks>
     /// <param name="query">
-    /// The words to look for. Left out, the filters beside it are the whole of the search, which is
-    /// how a module's whole directory is listed.
+    /// The words to look for. Left out, the filters beside it are the whole of the search.
     /// </param>
     /// <param name="modules">
     /// The modules to look in, each by gg's own id (<c>"views"</c>) or by the path this arm writes
-    /// it as (<c>"Gg.Views"</c>). Several of them are a union — an entry in any one of them is a
-    /// hit, which is the only reading a list has when an entry belongs to one module. Exact and
-    /// case-insensitive: a module filter is a lookup, so a name no module has matches nothing
-    /// rather than failing. Left out, or empty, no module filter at all.
+    /// it as (<c>"Gg.Views"</c>). Several are a union: an entry in any one of them is a hit. Exact
+    /// and case-insensitive; a name no module has matches nothing rather than failing. Left out, or
+    /// empty, no module filter at all.
     /// </param>
     /// <param name="type">
     /// One type's name, which narrows to that type and to the functions taking or returning it.
@@ -65,13 +39,12 @@ public static partial class Docs
     /// </param>
     /// <param name="offset">How many hits to skip. Left out, the page starts at the first.</param>
     /// <param name="limit">
-    /// How many hits to return: 20 where it is left out, 100 at most, and zero refused. Compare it
-    /// against <see cref="DocPage.Total"/> to see how much of the answer this page is.
+    /// How many hits to return: 20 where it is left out, 100 at most, and zero refused.
     /// </param>
     /// <returns>one page of matches, best first, and the total behind it.</returns>
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.InvalidArgument"/> for a call with no query and no filter beside it,
-    /// and for a <paramref name="limit"/> of zero, which is a page that could answer nothing.
+    /// and for a <paramref name="limit"/> of zero.
     /// </exception>
     /// <ggop>docs.search</ggop>
     public static DocPage Search(
@@ -111,16 +84,14 @@ public static partial class Docs
     /// <summary>Take one documentation view back out of the context window, by its key.</summary>
     /// <remarks>
     /// A plain removal with no cascade: closing a function's view leaves the views of the types it
-    /// mentions exactly where they are, and closing a type's leaves the functions. A key that is not
-    /// open closes zero rather than failing, so a program that tidies up unconditionally needs no
-    /// guard, and a type closed here is opened again by the next function that mentions it.
+    /// mentions open, and closing a type's leaves the functions. A key that is not open closes zero
+    /// rather than failing. A type closed here is opened again by the next function that mentions
+    /// it.
     /// </remarks>
-    /// <param name="key">
-    /// The fully-qualified name the view was opened under, as <see cref="DocHit.Key"/> reports it.
-    /// </param>
+    /// <param name="key">The fully-qualified name the view was opened under.</param>
     /// <returns>how many views were closed, which is one unless it had already gone.</returns>
     /// <exception cref="ApiException">
-    /// <see cref="ApiErrorCode.Unavailable"/> when this agent may not close documentation views.
+    /// <see cref="ApiErrorCode.Unavailable"/> where this run does not offer the call.
     /// </exception>
     /// <ggop>docs.close</ggop>
     public static uint Close(string key)
@@ -131,12 +102,11 @@ public static partial class Docs
 
     /// <summary>Take every documentation view out of the context window at once.</summary>
     /// <remarks>
-    /// The blanket form of <see cref="Close"/>, on the same terms: no cascade to worry about, and
-    /// nothing open is not a failure.
+    /// Only documentation views go, and having none open returns zero rather than failing.
     /// </remarks>
     /// <returns>how many views went.</returns>
     /// <exception cref="ApiException">
-    /// <see cref="ApiErrorCode.Unavailable"/> when this agent may not close documentation views.
+    /// <see cref="ApiErrorCode.Unavailable"/> where this run does not offer the call.
     /// </exception>
     /// <ggop>docs.close_all</ggop>
     public static uint CloseAll()

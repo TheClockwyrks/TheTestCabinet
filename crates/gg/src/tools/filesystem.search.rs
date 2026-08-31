@@ -9,7 +9,7 @@
 //! # Ignoring is the search's own rule
 //!
 //! What `.gitignore`, `.ignore` and their kin exclude is never scanned and never returned, `.git`
-//! itself included, with the nested and negated semantics the [`ignore`] crate gives them. That is
+//! itself included, under the [one workspace walk](super::walk) this and the tree share. That is
 //! deliberately unlike every other tool on this surface, which reach any path they are handed: a
 //! search is a question about the *project* rather than about the disk, and a match list that
 //! carried `node_modules`, build output and the run's own bookkeeping would answer a question nobody
@@ -34,11 +34,12 @@
 //! argument errors: *you asked for nothing* and *nothing matched* are different answers.
 
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+use super::walk::{display_path, workspace_walk};
 use super::{
     ApiData, Tool, ToolContext, ToolDefinition, ToolFailure, ToolOutcome, invalid_argument,
     path_param, resolve_path,
@@ -182,7 +183,7 @@ impl SearchTool {
 
         let mut matches: Vec<SearchMatchData> = Vec::new();
         let mut cut = false;
-        for entry in walk(&root) {
+        for entry in workspace_walk(&root).build() {
             let entry = match entry {
                 Ok(entry) => entry,
                 // An entry the walk could not read — a permission it lacks, a link that dangles —
@@ -227,38 +228,6 @@ impl SearchTool {
         };
         ToolOutcome::ok(output, summary).with_data(ApiData::SearchMatches(matches))
     }
-}
-
-/// The files under `root`, in a deterministic order, under the ignore files.
-///
-/// `.git` is skipped by name: the ignore crate reads a repository's ignore files but does not
-/// exclude its object store, and hidden files are otherwise searched — a `.github/workflows`
-/// definition is a source file like any other. `require_git(false)` honours a `.gitignore` in a
-/// workspace that is not (yet) a repository, which is what an ignore file means to the person who
-/// wrote it.
-fn walk(root: &Path) -> ignore::Walk {
-    ignore::WalkBuilder::new(root)
-        .hidden(false)
-        .require_git(false)
-        .git_ignore(true)
-        .git_global(true)
-        .git_exclude(true)
-        .ignore(true)
-        .parents(true)
-        .sort_by_file_path(Path::cmp)
-        .filter_entry(|entry| entry.file_name() != ".git")
-        .build()
-}
-
-/// `path` as a match reports it: relative to the workspace with `/` separators, or as given when
-/// it lies outside it.
-fn display_path(workspace: &Path, path: &Path) -> String {
-    let shown: PathBuf = path.strip_prefix(workspace).unwrap_or(path).to_path_buf();
-    shown
-        .components()
-        .map(|component| component.as_os_str().to_string_lossy().into_owned())
-        .collect::<Vec<_>>()
-        .join("/")
 }
 
 /// Scan one file line by line, pushing at most `remaining` matches, and report whether the file

@@ -1,27 +1,15 @@
 namespace Gg;
 
 /// <summary>Run shell commands in the workspace.</summary>
-/// <remarks>
-/// One call, and the way a program reaches everything gg has no API for: a build, a test run,
-/// <c>git</c>, <c>curl</c>, a package manager. The workspace is the working directory.
-/// </remarks>
+/// <remarks>Commands run with the workspace as the working directory.</remarks>
 /// <ggmodule>shell</ggmodule>
 public static partial class Shell
 {
     /// <summary>Run a command with <c>sh -c</c> and hand back its merged output and exit status.</summary>
     /// <remarks>
-    /// <para>
     /// A non-zero exit is an ordinary result rather than a failure of the call: the output and the
     /// code both come back, so a program branches on them. Only a failure to launch the process, or
     /// the timeout killing it, throws.
-    /// </para>
-    /// <code>
-    /// var built = Shell.Run("cargo build --release");
-    /// if (built.ExitCode != 0)
-    /// {
-    ///     Views.OpenText("build", built.Output);
-    /// }
-    /// </code>
     /// </remarks>
     /// <param name="command">The command line, run with the workspace as its working directory.</param>
     /// <param name="timeoutSeconds">

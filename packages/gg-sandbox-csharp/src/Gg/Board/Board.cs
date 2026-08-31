@@ -2,9 +2,8 @@ namespace Gg;
 
 /// <summary>The epic and issue board, on which work is decomposed into dispatchable units.</summary>
 /// <remarks>
-/// An issue is heavyweight and self-contained: it says what is in scope, what is not, and how it
-/// will be judged done, and gg dispatches it to the agent it names. That is what makes it different
-/// from a task, which is a note an agent keeps for itself.
+/// An issue is self-contained: it states what is in scope, what is not, and how it will be judged
+/// done, and gg dispatches it to the agent it names.
 /// </remarks>
 /// <ggmodule>board</ggmodule>
 public static partial class Board
@@ -40,9 +39,8 @@ public static partial class Board
     /// <summary>Create a self-contained, dispatchable issue, and get back the id the board gave it.</summary>
     /// <remarks>
     /// <para>
-    /// The three scope arguments are what makes an issue dispatchable: the agent that picks it up
-    /// sees them and nothing of the conversation that produced them, so anything it needs has to be
-    /// in them.
+    /// The agent that picks the issue up sees the three scope arguments and nothing of the
+    /// conversation that produced them.
     /// </para>
     /// <code>
     /// var created = Board.CreateIssue(
@@ -173,16 +171,16 @@ public static partial class Board
     /// <summary>Register a wait on an issue, and get back an acknowledgement.</summary>
     /// <remarks>
     /// <para>
-    /// It does not block inside the program: it records the wait and returns at once, so the rest of
-    /// the program still runs. Once the program has ended the run suspends — freeing this agent's
-    /// slot for others — until the issue is terminal, and then resumes with which way it went.
+    /// The wait is recorded and the call returns at once, so the rest of the program still runs.
+    /// Once the program has ended the run suspends until the issue is terminal, then resumes with
+    /// how it went.
     /// </para>
-    /// <para>The issue an agent was assigned to implement is not one it may wait on.</para>
+    /// <para>The issue this run was assigned to implement is not one it may wait on.</para>
     /// </remarks>
     /// <param name="id">The issue to wait on.</param>
     /// <returns>an acknowledgement that the wait is registered.</returns>
     /// <exception cref="ApiException">
-    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank id, or for the issue this agent was
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank id, or for the issue this run was
     /// itself assigned, <see cref="ApiErrorCode.NotFound"/> for an id the board does not hold, and
     /// <see cref="ApiErrorCode.Unavailable"/> when the run has no board.
     /// </exception>

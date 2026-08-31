@@ -40,7 +40,9 @@
 //! `edit-file` and `list-dir` — the surface a small build task actually reaches for — dispatched as
 //! a standard worker with every documentation-view type flag on. The bootstrap's opening program
 //! lists the `files` and `shell` modules and opens the base documentation views exactly as a real
-//! session's does; a baseline case's target views are appended to that same program's open list.
+//! session's does; a baseline case's target views are appended to that same program's open list. It
+//! opens no workspace tree: a fixture is a request shape rather than a session, and there is no
+//! workspace for one to walk.
 
 use std::path::{Path, PathBuf};
 
@@ -48,7 +50,8 @@ use serde::Serialize;
 use serde_json::json;
 use test_cabinet_core::gg::{
     CAPABILITY_EDIT_FILE, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE,
-    CAPABILITY_SHELL, CAPABILITY_WRITE_FILE, GgContextSource, GgOpeningTurn, GgProgramLanguage,
+    CAPABILITY_SHELL, CAPABILITY_WRITE_FILE, GgContextSource, GgOpeningTree, GgOpeningTurn,
+    GgProgramLanguage,
 };
 
 use crate::agent::{code_heading_views, ending_view, module_views};
@@ -325,13 +328,16 @@ pub(crate) fn fixture_for(id: GgProgramLanguage) -> Result<ProbeFixture, String>
     // fresh profile is seeded with, resolved exactly as the bootstrap resolves an agent's own for a
     // real session — so an entry the probe agent does not hold (the workspace search, which its
     // grant does not buy) is dropped here exactly as a run would drop it.
-    let resolved = resolve_opening_turn(
-        &docs,
-        &GgOpeningTurn::seeded(),
-        &capabilities,
-        &operations,
-        role,
-    );
+    //
+    // The one departure is the opening tree: a fixture is a request shape rather than a session, so
+    // there is no workspace to walk and nothing a tree of one could render. It is switched off here
+    // rather than dropped inside the resolution, so what the fixture records is a configuration a
+    // run could hold rather than a call gg quietly skipped.
+    let opening = GgOpeningTurn {
+        tree: GgOpeningTree::default(),
+        ..GgOpeningTurn::seeded()
+    };
+    let resolved = resolve_opening_turn(&docs, &opening, &capabilities, &operations, role);
     let modules = resolved.modules;
     let base_keys = resolved.keys;
 
@@ -435,6 +441,7 @@ fn build_case(
     let program = arm.bootstrap_program(
         &modules.iter().map(String::as_str).collect::<Vec<_>>(),
         &keys.iter().map(String::as_str).collect::<Vec<_>>(),
+        None,
     );
 
     // The module listing, rendered by the loop's own renderer over the same search the bootstrap

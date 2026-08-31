@@ -17,24 +17,12 @@ namespace gg {
 
 /// Fetch a program that already ran, and hand a patched copy back to be run.
 ///
-/// Under responses as code a reply is a whole program, so a one-character mistake in a sixty-line
-/// program costs the sixty lines again. The library makes the fix proportional to the mistake:
-/// fetch what ran, patch it with ordinary string work, hand it back.
-///
-/// ```cpp
-/// auto source = gg::programs::get("k3p9");
-/// source.replace(source.find("gg::views::open_tex("), 20, "gg::views::open_text(");
-/// gg::programs::rerun(source);
-/// ```
-///
 /// <ggmodule>programs</ggmodule>
 namespace programs {
 
 /// One program that has already run this session, as the history lists it.
 ///
-/// It describes the program's shape rather than its source: a directory that inlined every program
-/// would put the whole session back in the context window, which is the one thing the library
-/// exists to avoid.
+/// It carries the program's shape rather than its source.
 struct program_summary {
   /// The id its `submit_program` acknowledgement carried, which is what fetching its source takes.
   std::string id;
@@ -60,41 +48,35 @@ struct program_summary {
 
 /// List the programs this session has already run, oldest first.
 ///
-/// It lists shapes rather than sources, so fetching the one worth having is a second call. The
-/// list survives a compaction, which is what makes it the way to find a program whose text has
-/// left the context window, and it is empty rather than an error for a session that has run
-/// nothing yet.
+/// It lists shapes rather than sources. The list survives a compaction, and is empty rather than an
+/// error for a session that has run nothing yet.
 ///
 /// <ggop>programs.history</ggop>
 ///
 /// \returns one summary per program this session has run, oldest first.
-/// \throws gg::core::api_error `unavailable` when this agent keeps no program library at all — a
-///   different fact from a library that is empty, and the reason this can fail.
+/// \throws gg::core::api_error `unavailable` when this run keeps no program library.
 std::vector<programs::program_summary> history();
 
 /// Fetch the exact source of one program that ran, by the id its acknowledgement carried.
 ///
-/// This is the first half of fixing a program without rewriting it: fetch what ran, patch it with
-/// ordinary string work, and hand the result back to be run. What comes back is the program that
-/// executed — so where a submission's program was itself handed over, this is the program that ran
-/// rather than the few lines that asked for it, and fetch-patch-run composes turn after turn. A
-/// rerun keeps the id of the submission it replaced.
+/// What comes back is the program that executed, so where a submission handed a program over, this
+/// is the program that ran rather than the lines that asked for it. A rerun keeps the id of the
+/// submission it replaced.
 ///
 /// <ggop>programs.get</ggop>
 ///
 /// \param id The program's id, as its acknowledgement carried it and as the history reports it.
 /// \returns that program's exact source.
-/// \throws gg::core::api_error `not_found`, naming the ids that are held, for an id this agent was
-///   never issued or one whose program is old enough that the library has dropped it.
+/// \throws gg::core::api_error `not_found`, naming the ids that are held, for an id this session
+///   was never issued or one whose program the library has since dropped.
 std::string get(std::string_view id);
 
 /// Hand gg a program to run in place of this one, once this one has finished.
 ///
 /// It runs under this submission's id, so a later fetch of that id returns it. Nothing is undone:
 /// every call this program already made stands, and the program that runs next sees the world this
-/// one left behind — so the hand-over belongs before work that should not happen twice. The first
-/// call in a turn stands, because a silently replaced program is a change nobody can see, and a
-/// program that then fails cancels the hand-over along with everything else it decided.
+/// one left behind. The first call in a turn stands, and a program that then fails cancels the
+/// hand-over.
 ///
 /// <ggop>programs.rerun</ggop>
 ///

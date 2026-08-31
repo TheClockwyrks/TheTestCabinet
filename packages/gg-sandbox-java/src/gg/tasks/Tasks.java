@@ -10,9 +10,8 @@ import java.util.List;
 /**
  * A private task list, held as a graph with blocker edges.
  *
- * <p>Small units of one agent's own work. Nobody dispatches from it — the board is where other
- * agents pick work up — and a task blocked on others becomes actionable when the last of them is
- * done.
+ * <p>Small units of this session's own work; nothing is dispatched from it. A task blocked on
+ * others becomes actionable when the last of them is done.
  *
  * @ggmodule tasks
  */
@@ -159,7 +158,7 @@ public final class Tasks {
         }
 
         /**
-         * gg's own word for this status, which is what both execution modes report.
+         * gg's own word for this status.
          *
          * @return the name gg uses on the wire
          */

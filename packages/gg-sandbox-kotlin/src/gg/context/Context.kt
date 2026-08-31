@@ -1,9 +1,7 @@
 /**
- * Managing the agent's own context window.
+ * Managing the context window.
  *
- * These are the only calls whose effect is on the conversation rather than on the workspace, and they
- * are worth making from a program precisely because a program can decide when to: read a set of
- * files, extract what matters, then evict the views in the same turn.
+ * These calls act on the conversation rather than on the workspace.
  *
  * @ggmodule context
  */
@@ -40,10 +38,10 @@ public fun evictFileView(path: String? = null): ReclaimReport =
 /**
  * Move whole turns out of the context window and report what that reclaimed.
  *
- * Every result carries a header with its turn number and roughly what holding it costs, so the turns
- * worth dropping are named as ranges — which is what a span of integers is in this language.
+ * Every result carries a header with its turn number and roughly what holding it costs.
  * `gg.context.archiveThread(4..19)` archives turns 4 through 19, and `4..<20` means the same span.
- * The agent's own messages in an archived turn are dropped; the results are kept and stay searchable.
+ * This session's own messages in an archived turn are dropped; the results are kept and stay
+ * searchable.
  *
  * @ggop context.archive_thread
  * @param ranges The spans of turn numbers to move out of the window.
@@ -67,9 +65,8 @@ public fun archiveThread(vararg ranges: IntRange): ReclaimReport {
 /**
  * Search archived history for a case-insensitive substring, most recent first, up to 8 hits.
  *
- * [ArchiveSearch.archiveEmpty] is worth reading before the hits: it distinguishes "nothing has been
- * archived yet" from "the search ran and matched nothing", so a program does not archive again
- * believing the first archive failed.
+ * [ArchiveSearch.archiveEmpty] distinguishes nothing having been archived yet from a search that ran
+ * and matched nothing.
  *
  * @ggop context.search_archive
  * @param query The substring to look for. Matching is case-insensitive.
@@ -86,11 +83,10 @@ public fun searchArchive(query: String): ArchiveSearch =
  * full, and every other call is refused until it is made.
  *
  * It does not stop the program: it registers the request and returns, and the rewrite happens once
- * the program has ended. Everything not in the summary and not named in `files` is gone, so the
- * summary is written for the agent that resumes and the file list is what it will need in hand.
+ * the program has ended. Everything not in the summary and not named in `files` is gone.
  *
  * @ggop context.compact
- * @param summary What the restarted window opens with, written for the agent that resumes.
+ * @param summary What the restarted window opens with.
  * @param files The paths to read afresh into the restarted window. Naming none reads nothing back.
  * @throws ApiError `INVALID_ARGUMENT` for a blank summary. This is the one call gg does not refuse
  *   while a compaction is in flight, since nothing else can clear the window.
@@ -136,10 +132,10 @@ public enum class MessageRole {
     /** The system prompt. */
     SYSTEM,
 
-    /** A turn's input to the agent: a result, a view, or an operator's instruction. */
+    /** A turn's input: a result, a view, or an operator's instruction. */
     USER,
 
-    /** Something the agent said. */
+    /** Something this session said. */
     ASSISTANT,
 
     /** A tool result, on a session that made tool calls rather than writing programs. */

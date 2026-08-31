@@ -38,6 +38,7 @@ import {
   launchModelSlots,
   loopDetectionWarning,
   moduleHeld,
+  openingTurnIsDefault,
   operationHeld,
   renameAgentSlug,
   renameStateDraft,
@@ -3240,7 +3241,13 @@ describe("an agent's opening turn", () => {
       "views.open_file",
       "files.search",
     ],
+    tree: { include: true, depth: 2 },
   };
+
+  // The tree an agent that never asked for one carries: switched off, at the depth gg
+  // would have walked. It rides through every write, because the depth survives the
+  // switch.
+  const OFF_TREE = { include: false, depth: 2 };
 
   // `agent` with the capability switched on and its whole offering granted — what the
   // editor's switch writes. A blank draft has every capability present and off, so a test
@@ -3297,6 +3304,7 @@ describe("an agent's opening turn", () => {
               "views.open_docs_view",
               "files.read_file",
             ],
+            tree: { include: true, depth: 3 },
           },
         }),
       ],
@@ -3308,6 +3316,7 @@ describe("an agent's opening turn", () => {
     expect(back.agents[0]!.openingTurn).toEqual({
       modules: ["shell", "files"],
       functions: ["shell.shell", "views.open_docs_view", "files.read_file"],
+      tree: { include: true, depth: 3 },
     });
   });
 
@@ -3358,11 +3367,13 @@ describe("an agent's opening turn", () => {
       openingTurn: {
         modules: ["files", "context", "not-a-module"],
         functions: ["files.search", "context.compact", "docs.search", "nope"],
+        tree: OFF_TREE,
       },
     };
     expect(heldOpeningTurn(held)).toEqual({
       modules: ["files"],
       functions: ["files.search", "docs.search"],
+      tree: OFF_TREE,
     });
 
     // Switching the capability that sells `files.search` off prunes it from what is
@@ -3380,6 +3391,7 @@ describe("an agent's opening turn", () => {
       // `files` is still held: `read-file` sells `files.read_file`.
       modules: ["files"],
       functions: ["docs.search"],
+      tree: OFF_TREE,
     });
     // …and not from the draft, so switching it on again lists it once more.
     expect(off.openingTurn.functions).toContain("files.search");
@@ -3392,11 +3404,12 @@ describe("an agent's opening turn", () => {
   it("opens a function's documentation without its module being listed", () => {
     const held: GgAgentDraft = {
       ...code(),
-      openingTurn: { modules: [], functions: ["files.search"] },
+      openingTurn: { modules: [], functions: ["files.search"], tree: OFF_TREE },
     };
     expect(heldOpeningTurn(held)).toEqual({
       modules: [],
       functions: ["files.search"],
+      tree: OFF_TREE,
     });
   });
 
@@ -3406,12 +3419,49 @@ describe("an agent's opening turn", () => {
       openingTurn: {
         modules: ["files", "files"],
         functions: ["docs.search", "docs.search"],
+        tree: OFF_TREE,
       },
     };
     expect(heldOpeningTurn(held)).toEqual({
       modules: ["files"],
       functions: ["docs.search"],
+      tree: OFF_TREE,
     });
+  });
+
+  it("keeps the tree's depth while its switch is off, and writes both", () => {
+    const chosen: GgAgentDraft = {
+      ...code(),
+      openingTurn: {
+        modules: [],
+        functions: [],
+        tree: { include: false, depth: 5 },
+      },
+    };
+    // The depth survives the switch, so turning the tree back on restores the window the
+    // operator chose rather than gg's default.
+    expect(heldOpeningTurn(chosen).tree).toEqual({ include: false, depth: 5 });
+    expect(openingTurnIsDefault(chosen.openingTurn)).toBe(false);
+  });
+
+  it("reads a document written before gg had a tree as one that opens without one", () => {
+    const stored = set({
+      agents: [
+        agent({
+          capabilities: [
+            {
+              id: CODE,
+              enabled: true,
+              params: authoredParams(CODE, { language: LANG }),
+            },
+          ],
+          openingTurn: { modules: [], functions: [] },
+        }),
+      ],
+    });
+    expect(draftFromCapabilitySet(stored).agents[0]!.openingTurn.tree).toEqual(
+      OFF_TREE,
+    );
   });
 
   it("is written for every type, since the wire field is required", () => {
@@ -3437,6 +3487,7 @@ describe("an agent's opening turn", () => {
     expect(machine.openingTurn).toEqual({
       modules: [],
       functions: ["docs.search", "views.open_docs_view", "views.open_text"],
+      tree: DEFAULT_OPENING_TURN.tree,
     });
   });
 });

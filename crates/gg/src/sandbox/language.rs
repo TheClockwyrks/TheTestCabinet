@@ -315,6 +315,14 @@ pub(crate) use fixture::fixture_languages;
 /// spelled the placeholder some other way would produce a member line with no name in it.
 pub const LIB_ACCESS_NAME: &str = "<name>";
 
+/// The label the [opening program](ProgramLanguage::bootstrap_program) opens the workspace tree
+/// under.
+///
+/// A constant rather than the walked path, for the reason the opening listing's selector is one:
+/// what the window opens holding is superseded by a later view of the same subject rather than
+/// stacked beside it, and every arm has to write the same label for that to hold.
+pub const WORKSPACE_TREE_VIEW: &str = "workspace tree";
+
 /// One program language gg can drive a responses-as-code agent in.
 ///
 /// Object-safe on purpose: the registry hands out `&'static dyn ProgramLanguage`, so nothing that
@@ -847,8 +855,9 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// writing it out, for the same reason nothing else does.
     fn open_docs_views_statement(&self, names: &[&str]) -> String;
 
-    /// A whole **program** that lists each module in `modules` and opens a documentation view of
-    /// each name in `docs`, as this language spells and structures it.
+    /// A whole **program** that opens a `tree` of the workspace where `tree` names a depth, lists
+    /// each module in `modules`, and opens a documentation view of each name in `docs`, as this
+    /// language spells and structures it.
     ///
     /// It is gg's [opening turn](crate::bootstrap): the program is pushed into the agent's window as
     /// the assistant message the session opens on, and *then* prepared and run. That order is the
@@ -858,8 +867,16 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// documentation beside it was placed by that program's own calls rather than by gg reaching
     /// around it.
     ///
-    /// Two groups, in the order the model reads them: one search first, then every documentation
-    /// view. That search is a **whole-directory lookup** rather than a query — no query at all,
+    /// Three groups, in the order the model reads them: the workspace tree first, then one search,
+    /// then every documentation view — so the transcript reads as *here is where I am, here is what
+    /// I can call, here is how each call is spelled*.
+    ///
+    /// `tree` is `Some(depth)` when this agent's opening turn asks for a tree and holds the call.
+    /// The tree is opened as a text view under [`WORKSPACE_TREE_VIEW`], a constant rather than a
+    /// path, so a later program re-opening that label supersedes gg's rather than stacking a second
+    /// copy beside it. `None` emits no tree statement at all.
+    ///
+    /// Then the search. That search is a **whole-directory lookup** rather than a query — no query at all,
     /// every module in `modules` named at once as the filter, and an explicit limit of
     /// [`MAX_SEARCH_LIMIT`](crate::docs::MAX_SEARCH_LIMIT), because the default page would silently
     /// truncate the listing of a large module and a truncated listing is a function the agent never
@@ -887,7 +904,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     ///
     /// Not a concatenation of two generated statements: on several arms a program is one module,
     /// one `main` or one translation unit, so two programs do not add up to one.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String;
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String;
 
     /// A **code module** in this language's own syntax, carrying `name` somewhere its prepared
     /// artifact will still hold it — the subject the gates over this seam drive this language's

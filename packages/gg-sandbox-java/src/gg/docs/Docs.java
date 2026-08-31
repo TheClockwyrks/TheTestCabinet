@@ -10,14 +10,11 @@ import java.util.List;
 /**
  * Search this surface, and take a documentation view back out of the window.
  *
- * <p>This is where a session starts. Nothing names the functions of this surface up front, so
- * {@link #search} is what turns "what do I have" into a list of one-line briefs and the
- * fully-qualified names {@code gg.views.Views.openDocsView} takes to read one of them in full.
+ * <p>A search returns one-line briefs and the fully-qualified name each entry is documented under,
+ * and only entries this run may call.
  *
- * <p>A search only ever returns what this agent may actually call. The compiler is less careful —
- * the SDK is one jar and every class on it compiles — so a program can write a call a search would
- * never have shown it, and what happens then is a {@link ApiErrorCode#UNAVAILABLE} naming the
- * capability this run withheld.
+ * <p>The SDK is one jar and every class on it compiles, so a call this run does not offer still
+ * compiles and fails with {@link ApiErrorCode#UNAVAILABLE} naming the capability withheld.
  *
  * @ggmodule docs
  */
@@ -26,32 +23,23 @@ public final class Docs {
     }
 
     /**
-     * Find what this agent can call, by words or by module, and read the briefs that come back.
+     * Find what this run can call, by words or by module, and read the briefs that come back.
      *
      * <p>Matching is case-insensitive substring matching over names, signatures, briefs and detailed
      * descriptions, so {@code "docs"} finds {@code openDocsView}. A hit whose own name matched
-     * ranks above one that merely mentions the word in a paragraph, and the query is split on
-     * whitespace, so several specific words work better than a sentence.
+     * ranks above one that merely mentions the word, and the query is split on whitespace.
      *
-     * <p>Every part of the question is optional and every one of them is named on
-     * {@link SearchFilters}, because none of them is the part a search has to carry. The words
-     * rank; the filters are exact lookups that compose with the words and with each other; and
-     * {@link SearchFilters#modules(String...)} with no query beside it is those modules' whole
-     * directory, which is the first hop worth making. Being a lookup, a module or type name gg does
-     * not hold matches nothing rather than failing — an empty page there means the filter found
-     * nothing, not that it was rejected.
+     * <p>The words rank; the filters are exact lookups that compose with the words and with each
+     * other. {@link SearchFilters#modules(String...)} with no query beside it is those modules'
+     * whole directory. A module or type name gg does not hold matches nothing rather than failing.
      *
-     * <p>The page comes back as a value <em>and</em> opens as a view, so the results can be read on
-     * the next turn without being shown deliberately. The next search replaces that view: it names
-     * what is being worked from rather than keeping a record.
+     * <p>The page comes back as a value and opens as a view, which the next search replaces.
      *
      * @param filters What to look for, what to narrow to, and which page to read. It has to carry
      *     one of the two ways of asking — words, or a filter — and may carry both.
      * @return one page of matches, best first, and the total behind it
-     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for filters that named nothing at all,
-     *     no words and no filter — a search that asked for nothing and a search that found nothing
-     *     are different answers — and for a {@link SearchFilters#limit(int)} of zero, which is a
-     *     page that could answer nothing.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for filters carrying no words and no
+     *     filter, and for a {@link SearchFilters#limit(int)} of zero.
      * @ggop docs.search
      */
     public static DocSearch search(SearchFilters filters) {
@@ -63,17 +51,15 @@ public final class Docs {
      * Take one documentation view back out of the context window, by the key it was opened under.
      *
      * <p>A plain removal with no cascade: closing a function's view leaves the views of the types it
-     * named exactly where they were, and closing a type's leaves the functions. A key that is not
-     * open closes zero rather than failing, so a program that tidies up unconditionally needs no
-     * guard, and a type closed here is opened again by the next function that mentions it.
+     * named where they were, and closing a type's leaves the functions. A key that is not open
+     * closes zero rather than failing, and a type closed here is opened again by the next function
+     * that mentions it.
      *
      * @param key The fully-qualified name the view was opened under, as {@link DocHit#key()}
      *     reports it.
      * @return how many views were closed, which is one unless it had already gone
-     * @throws ApiError {@link ApiErrorCode#UNAVAILABLE} for an agent this run did not give the
-     *     closing of documentation views. Opening one only ever appends to the end of the prompt,
-     *     while closing one rewrites its middle, which is why opening is always available and
-     *     closing is bought.
+     * @throws ApiError {@link ApiErrorCode#UNAVAILABLE} where this run did not enable the closing
+     *     of documentation views.
      * @ggop docs.close
      */
     public static int close(String key) {
@@ -83,14 +69,11 @@ public final class Docs {
     /**
      * Take every documentation view out of the context window at once.
      *
-     * <p>The blanket form of {@link #close}, on the same terms and behind the same capability: no
-     * cascade to worry about because nothing is left, and zero rather than a failure when none was
-     * open. It is the call for reclaiming the window between one piece of work and the next, where
-     * naming each key would be a list to keep.
+     * <p>Closes zero rather than failing when none was open.
      *
      * @return how many views went
-     * @throws ApiError {@link ApiErrorCode#UNAVAILABLE} for an agent this run did not give the
-     *     closing of documentation views.
+     * @throws ApiError {@link ApiErrorCode#UNAVAILABLE} where this run did not enable the closing
+     *     of documentation views.
      * @ggop docs.close_all
      */
     public static int closeAll() {
@@ -104,10 +87,8 @@ public final class Docs {
     /**
      * What a search asks, what it is narrowed to, and which page to read, built a call at a time.
      *
-     * <p>Java has no keyword arguments and six optional parts would be an overload per subset, so
-     * they are named the way this SDK names every other optional group — one method each, chained.
-     * A part never named asks for nothing and narrows nothing, and filters that named none of the
-     * six are the one question {@link Docs#search} refuses.
+     * <p>A part never named asks for nothing and narrows nothing. Filters naming none of the six
+     * are refused.
      *
      * <pre>{@code
      * Docs.DocSearch found = Docs.search(new Docs.SearchFilters().modules("memories"));
@@ -247,8 +228,7 @@ public final class Docs {
     /**
      * One entry a search matched: enough to choose from, and no more.
      *
-     * @param key The fully-qualified name it is documented under, and what
-     *     {@code gg.views.Views.openDocsView} takes to read the whole of it.
+     * @param key The fully-qualified name it is documented under.
      * @param kind Whether this entry is a module, a function or a type.
      * @param module The one module it belongs to: the module a function is published by, or the
      *     module a type is declared in.

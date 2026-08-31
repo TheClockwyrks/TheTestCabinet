@@ -9,10 +9,9 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Read, write, edit and list the files of the workspace.
+ * Read, write, edit, list and walk the files of the workspace.
  *
- * <p>Nothing here places anything in the context window: a read hands bytes to the program, and a
- * view — the {@code gg.views.Views} module — is what puts something in front of the model.
+ * <p>Nothing here places anything in the context window: a read hands bytes to the program.
  *
  * @ggmodule files
  */
@@ -28,10 +27,10 @@ public final class Files {
      * {@code switch} over them needs no {@code default}:
      *
      * <pre>{@code
-     * switch (Files.readFile("logo.png")) {
-     *     case Files.TextFile text -> Views.openText("logo", text.contents());
-     *     case Files.ImageFile picture -> Views.openText("logo", picture.label());
-     * }
+     * String described = switch (Files.readFile("logo.png")) {
+     *     case Files.TextFile text -> text.contents();
+     *     case Files.ImageFile picture -> picture.label();
+     * };
      * }</pre>
      *
      * <p>A relative path resolves against the workspace; an absolute one is read as given, so
@@ -85,9 +84,6 @@ public final class Files {
     /**
      * Replace the one exact occurrence of some text in a file with something else.
      *
-     * <p>Widening the surrounding context until the match is unique is the way to disambiguate;
-     * counting occurrences is not.
-     *
      * @param path The file to edit.
      * @param oldString The exact text to find, whitespace included. It must appear once.
      * @param newString The text to put in its place. An empty string deletes the match.
@@ -128,12 +124,91 @@ public final class Files {
     }
 
     /**
+     * Render the tree beneath the workspace root, skipping everything the ignore files exclude.
+     *
+     * <p>One block of text: the root itself unnamed, each level indented two further spaces than its
+     * parent, every level in path order, and directories suffixed {@code /}. A root with nothing
+     * beneath it renders as {@code (empty directory)}. This overload walks two levels of children.
+     *
+     * <p>What {@code .gitignore}, {@code .ignore}, {@code .git/info/exclude} and the global ignore
+     * file exclude is never walked and never rendered, nested ignore files and negations included,
+     * and {@code .git} itself is skipped. No repository is needed for that to hold. Dotfiles are
+     * otherwise rendered like any other entry, and symbolic links are not followed.
+     *
+     * <p>The rendering is bounded at 1000 lines and 16 KiB, whichever binds first, and a result cut
+     * by either ends with a line saying so.
+     *
+     * @return the rendered tree of the workspace root
+     * @ggop files.tree
+     */
+    public static String tree() {
+        return Coding.call("files.tree", Value.none(), Value.none()).text();
+    }
+
+    /**
+     * Render the tree beneath one directory, two levels deep.
+     *
+     * @param path The directory to walk, relative to the workspace or absolute.
+     * @return the rendered tree
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a path that is not there, and
+     *     {@link ApiErrorCode#INVALID_ARGUMENT} for a path that is not a directory.
+     * @ggop files.tree
+     */
+    public static String tree(String path) {
+        return Coding.call("files.tree", Value.of(path), Value.none()).text();
+    }
+
+    /**
+     * Render the tree beneath the workspace root, to a depth of the program's own.
+     *
+     * <p>{@code depth} counts levels of children below the root, so {@code 1} is the root's own
+     * entries. A directory sitting at the bound is suffixed with how many entries it holds that
+     * were not walked, as {@code assets/ (12 entries not shown)}.
+     *
+     * @param depth How many levels of children below the root to render: 10 at most — a larger
+     *     request is answered at 10 — and anything below 1 is refused.
+     * @return the rendered tree of the workspace root
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a depth below 1.
+     * @ggop files.tree
+     */
+    public static String tree(int depth) {
+        return tree(null, depth);
+    }
+
+    /**
+     * Render the tree beneath one directory, to a depth of the program's own.
+     *
+     * <p>{@code depth} counts levels of children below the root, so {@code 1} is the root's own
+     * entries. A directory sitting at the bound is suffixed with how many entries it holds that
+     * were not walked, as {@code assets/ (12 entries not shown)}.
+     *
+     * @param path The directory to walk, relative to the workspace or absolute. {@code null} walks
+     *     the workspace root.
+     * @param depth How many levels of children below the root to render: 10 at most — a larger
+     *     request is answered at 10 — and anything below 1 is refused.
+     * @return the rendered tree
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a path that is not there, and
+     *     {@link ApiErrorCode#INVALID_ARGUMENT} for a path that is not a directory or a depth below
+     *     1.
+     * @ggop files.tree
+     */
+    public static String tree(String path, int depth) {
+        if (depth < 1) {
+            throw new ApiError("tree", ApiErrorCode.INVALID_ARGUMENT,
+                    "depth must be at least 1 (" + depth + " given); leave it out for gg's default");
+        }
+        return Coding.call("files.tree", Value.of(path), Value.of(depth)).text();
+    }
+
+    /**
      * Search the workspace's files for a pattern, and hand back every line that matched it.
      *
-     * <p>The query is a regular expression in Rust syntax — {@code "foo|bar"}, {@code "fn\\s+update"},
-     * {@code "(?i)todo"} for a case-insensitive match — matched against each line on its own. Each
-     * hit carries the file's path, the 1-based line number and the line itself, in path order and
-     * then line order, so a program can point a read or a view at exactly the right window.
+     * <p>A {@code grep} over the workspace. The query is a regular expression in Rust syntax —
+     * {@code "foo|bar"}, {@code "fn\\s+update"}, {@code "(?i)todo"} for a case-insensitive
+     * match — matched against each line on its own.
+     *
+     * <p>Each hit carries the file's path, the 1-based line number and the line itself, in path
+     * order and then line order.
      *
      * <p>The search honours ignore files: what {@code .gitignore}, {@code .ignore},
      * {@code .git/info/exclude} and the global ignore file exclude is never scanned and never
@@ -142,9 +217,8 @@ public final class Files {
      * is not text — one carrying a NUL byte — is skipped, and a matching line longer than 200
      * characters is cut there and annotated in place as {@code foo (123 more chars...)}.
      *
-     * <p>A search is this surface's grep: it says where to look rather than reading a file. This
-     * overload hands back at most 50 matches, a list exactly that long may have been cut, and there
-     * is no offset to page with — the answer to a full page is a narrower query or path.
+     * <p>This overload returns at most 50 matches; a list exactly that long may have been cut, and
+     * there is no offset to page with.
      *
      * @param query The regular expression to look for, in Rust syntax, matched line by line.
      * @return every matching line, each with its path and 1-based line number
@@ -160,8 +234,7 @@ public final class Files {
     /**
      * Search one directory, or one file, rather than the whole workspace.
      *
-     * <p>Rooting the search is the way to a smaller answer; ignore files are still honoured from the
-     * workspace root down.
+     * <p>Ignore files are honoured from the workspace root down.
      *
      * @param query The regular expression to look for, in Rust syntax, matched line by line.
      * @param path The directory or file to search, relative to the workspace or absolute. A file
@@ -207,10 +280,7 @@ public final class Files {
     /**
      * What a read returned — either a {@code Files.TextFile} or a {@code Files.ImageFile}.
      *
-     * <p>A picture is a different kind of thing from text, so it is a different arm rather than a
-     * string that happens to be binary: a program that treated an image as text is caught by the
-     * compiler rather than silently writing an empty string somewhere. Being sealed is what lets a
-     * {@code switch} over the two need no {@code default}.
+     * <p>Sealed, so a {@code switch} over the two arms needs no {@code default}.
      */
     public sealed interface FileRead permits TextFile, ImageFile {
     }

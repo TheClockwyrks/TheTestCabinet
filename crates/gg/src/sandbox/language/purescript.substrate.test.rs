@@ -906,6 +906,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "tree",
+            statement: "_ <- Gg.Files.tree { path: \"src\", depth: 3 }",
+            expected: || json!({ "path": "src", "depth": 3 }),
+        },
+        Crossing {
             tool: "search",
             statement: "_ <- Gg.Files.search \"answer\" { path: \"src\", limit: 10 }",
             expected: || json!({ "query": "answer", "path": "src", "limit": 10 }),
@@ -1584,7 +1589,7 @@ fn every_optional_argument_is_a_field_of_a_record() {
         .filter(|field| field["optional"] == json!(true))
         .count();
     assert_eq!(
-        optional, 42,
+        optional, 44,
         "the optional record fields the surface declares"
     );
 }

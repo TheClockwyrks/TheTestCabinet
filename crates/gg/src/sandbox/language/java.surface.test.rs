@@ -204,6 +204,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "tree",
+            statement: "Files.tree(\"src\", 3);",
+            expected: || json!({ "path": "src", "depth": 3 }),
+        },
+        Crossing {
             tool: "search",
             statement: "Files.search(\"answer\", \"src\", 5);",
             expected: || json!({ "query": "answer", "path": "src", "limit": 5 }),
@@ -951,6 +956,13 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
     // only Ruby's block-or-argument pair had produced. What is asserted is that the shape is really
     // there and really carries different argument lists, because an overload group whose signatures
     // were identical would be a reflector bug that reads as a feature.
+    //
+    // The discriminator is the argument TYPES rather than the argument count, because on this arm
+    // the count is not always what separates two overloads: `files.tree` offers `tree(String path)`
+    // and `tree(int depth)` side by side, so that walking the root at a chosen depth does not have
+    // to be written `tree(null, 3)`. Two one-argument signatures are what Java's own overload
+    // resolution reads, and the catalogue has to carry both; two signatures of the same types are
+    // what nothing could choose between.
     let document: Value =
         serde_json::from_str(SIGNATURES).expect("the generated Java catalogue is valid JSON");
 
@@ -961,9 +973,16 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
             continue;
         }
         groups += 1;
-        let lists: Vec<usize> = shapes
+        let lists: Vec<Vec<&str>> = shapes
             .iter()
-            .map(|shape| shape["parameters"].as_array().expect("an array").len())
+            .map(|shape| {
+                shape["parameters"]
+                    .as_array()
+                    .expect("an array")
+                    .iter()
+                    .map(|parameter| parameter["type"].as_str().expect("a type"))
+                    .collect()
+            })
             .collect();
         let mut distinct = lists.clone();
         distinct.sort_unstable();
@@ -971,12 +990,12 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
         assert_eq!(
             distinct.len(),
             lists.len(),
-            "`{}` carries two signatures taking the same number of arguments",
+            "`{}` carries two signatures taking the same argument types: {lists:?}",
             entry["name"]
         );
     }
     assert_eq!(
-        groups, 13,
+        groups, 14,
         "the entries this arm expresses as an overload group rather than as a default argument"
     );
 

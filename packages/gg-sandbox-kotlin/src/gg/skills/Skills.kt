@@ -1,9 +1,8 @@
 /**
  * The authored skill library, read by name.
  *
- * A skill name is a plain [String] rather than an enum entry, because the catalogue is per run while
- * this SDK is compiled once. The system prompt lists the names available, and an unknown one comes
- * back as a failure carrying the full list.
+ * The system prompt lists the names available, and an unknown one comes back as a failure carrying
+ * the full list.
  *
  * @ggmodule skills
  */
@@ -19,7 +18,7 @@ import gg.internal.ggText
  *
  * The body comes back with its front matter stripped, and a skill that has been read stays read.
  *
- * A skill may be code rather than prose, or as well as it. Code is bound at `lib.<key>` for every
+ * A skill may be code rather than prose, or as well as it. Code is bound at `lib.<name>` for every
  * later program this session writes, and the read opens a documentation view of each function the
  * module declares, which is where its names, its signatures and the line a program writes to reach it
  * are read. An on-use script runs on every read, once the turn's own program has ended, and whatever

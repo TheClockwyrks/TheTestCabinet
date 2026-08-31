@@ -144,7 +144,7 @@ fn the_documentation_program_is_an_array_and_a_loop() {
 fn the_opening_program_writes_every_call_with_try() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
     assert_eq!(
-        swift().bootstrap_program(&["files", "views"], &["openText"]),
+        swift().bootstrap_program(&["files", "views"], &["openText"], None),
         format!(
             "import gg\n\
              \n\
@@ -155,7 +155,7 @@ fn the_opening_program_writes_every_call_with_try() {
         )
     );
     assert_eq!(
-        swift().bootstrap_program(&[], &["openText"]),
+        swift().bootstrap_program(&[], &["openText"], None),
         "import gg\n\
          \n\
          let functions = [\n    \"openText\",\n]\n\

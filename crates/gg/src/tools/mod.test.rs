@@ -105,14 +105,15 @@ fn offers(registry: &ToolRegistry, name: &str) -> bool {
 fn registry_offers_all_phase0_tools_when_both_capabilities_enabled() {
     let registry = ToolRegistry::from_capabilities(&root());
 
-    // shell + read_file + write_file + edit_file + list_dir + search
-    assert_eq!(registry.len(), 6);
+    // shell + read_file + write_file + edit_file + list_dir + tree + search
+    assert_eq!(registry.len(), 7);
     for name in [
         "shell",
         "read_file",
         "write_file",
         "edit_file",
         "list_dir",
+        "tree",
         "search",
     ] {
         assert!(offers(&registry, name), "expected `{name}` to be offered");
@@ -123,7 +124,7 @@ fn registry_offers_all_phase0_tools_when_both_capabilities_enabled() {
         .into_iter()
         .map(|def| def.name)
         .collect();
-    assert_eq!(names.len(), 6);
+    assert_eq!(names.len(), 7);
 }
 
 /// Disabling the shell capability withholds *only* the shell tool — the filesystem tools remain.
@@ -137,11 +138,11 @@ fn registry_excludes_shell_tool_when_shell_capability_disabled() {
     assert!(!offers(&registry, "shell"));
     assert!(offers(&registry, "read_file"));
     assert!(offers(&registry, "write_file"));
-    assert_eq!(registry.len(), 5);
+    assert_eq!(registry.len(), 6);
 }
 
-/// Disabling every filesystem capability withholds all five filesystem tools while the
-/// shell tool remains.
+/// Disabling every filesystem capability withholds every filesystem tool while the shell tool
+/// remains.
 #[test]
 fn registry_excludes_filesystem_tools_when_their_capabilities_are_disabled() {
     let mut capabilities = vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)];
@@ -153,22 +154,34 @@ fn registry_excludes_filesystem_tools_when_their_capabilities_are_disabled() {
     let registry = ToolRegistry::from_capabilities(&set_with(capabilities));
 
     assert!(offers(&registry, "shell"));
-    for name in ["read_file", "write_file", "edit_file", "list_dir"] {
+    for name in [
+        "read_file",
+        "write_file",
+        "edit_file",
+        "list_dir",
+        "tree",
+        "search",
+    ] {
         assert!(!offers(&registry, name), "expected `{name}` to be withheld");
     }
     assert_eq!(registry.len(), 1);
 }
 
-/// Each filesystem primitive is its own capability, so turning one off leaves the other
-/// three offered — the coarse lever now cuts per tool, not per bundle.
+/// Each filesystem primitive is its own capability, so turning one off leaves the others
+/// offered — the coarse lever now cuts per capability, not per bundle.
+///
+/// `list-dir` is the one capability that buys two tools — a directory's entries and the tree
+/// beneath one — so switching it off withholds both and the surviving count is two lower.
 #[test]
 fn registry_gates_each_filesystem_tool_on_its_own_capability() {
+    // Every filesystem tool a maximal filesystem grant offers.
+    const OFFERED: usize = 6;
     for (capability, withheld) in [
-        (CAPABILITY_READ_FILE, "read_file"),
-        (CAPABILITY_WRITE_FILE, "write_file"),
-        (CAPABILITY_EDIT_FILE, "edit_file"),
-        (CAPABILITY_LIST_DIR, "list_dir"),
-        (CAPABILITY_SEARCH, "search"),
+        (CAPABILITY_READ_FILE, &["read_file"][..]),
+        (CAPABILITY_WRITE_FILE, &["write_file"]),
+        (CAPABILITY_EDIT_FILE, &["edit_file"]),
+        (CAPABILITY_LIST_DIR, &["list_dir", "tree"]),
+        (CAPABILITY_SEARCH, &["search"]),
     ] {
         let capabilities = FILESYSTEM_CAPABILITIES
             .iter()
@@ -182,14 +195,16 @@ fn registry_gates_each_filesystem_tool_on_its_own_capability() {
             .collect();
         let registry = ToolRegistry::from_capabilities(&set_with(capabilities));
 
-        assert!(
-            !offers(&registry, withheld),
-            "`{capability}` off should withhold `{withheld}`"
-        );
+        for name in withheld {
+            assert!(
+                !offers(&registry, name),
+                "`{capability}` off should withhold `{name}`"
+            );
+        }
         assert_eq!(
             registry.len(),
-            4,
-            "`{capability}` off should leave the other four filesystem tools"
+            OFFERED - withheld.len(),
+            "`{capability}` off should leave every filesystem tool it does not buy"
         );
     }
 }
@@ -664,7 +679,14 @@ fn an_allowlist_that_omits_one_tool_offers_the_rest() {
         "the tool the allowlist does not name is withheld"
     );
     // Its capability stays on, so the rest of the filesystem tools (and shell) remain.
-    for name in ["shell", "read_file", "write_file", "list_dir", "search"] {
+    for name in [
+        "shell",
+        "read_file",
+        "write_file",
+        "list_dir",
+        "tree",
+        "search",
+    ] {
         assert!(
             offers(&registry, name),
             "expected `{name}` to remain offered"
@@ -672,7 +694,7 @@ fn an_allowlist_that_omits_one_tool_offers_the_rest() {
     }
     // It is absent from the recorded effective toolset too.
     assert!(!registry.tool_names().contains(&"edit_file".to_string()));
-    assert_eq!(registry.len(), 5);
+    assert_eq!(registry.len(), 6);
 }
 
 /// A tool the allowlist does not name is genuinely undispatchable — a model that calls it anyway
@@ -765,6 +787,7 @@ fn tool_names_reports_the_effective_toolset() {
             "read_file".to_string(),
             "edit_file".to_string(),
             "list_dir".to_string(),
+            "tree".to_string(),
             "search".to_string(),
         ]
     );
