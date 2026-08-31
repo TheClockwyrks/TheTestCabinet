@@ -28,9 +28,18 @@
 // `stock/turn-starts-a-set`, that playing the top card shrinks its set is
 // `stock/set-shrinks-on-play`, and that a recycle empties the memory is
 // `stock/recycle-clears-sets`.
+//
+// THE FIGURE IS WRITTEN OUT RATHER THAN IMPORTED. `src/constants.ts` is supplied
+// with the project and carries this figure already, but the figure IS this item's
+// requirement, so reading it back out of the build's own module would decide the
+// point against whatever the build says rather than against the specification: a
+// build that edited the file it was told not to edit would report its own figure
+// to a check sized by that same figure and pass. The literal is written here for
+// the same reason `draw-three` writes its own, and for the reason the engineless
+// suite keeps a `constants.ts` of its own. Checks that merely SIZE a scenario to
+// the deal mode still read `snapshot().turnCount`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TURN_COUNT } from "../../src/constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   cardSpec,
@@ -60,6 +69,9 @@ const NEWER = "AS";
 
 /** The empty foundation the Ace is sent to. Any suit may start any slot. */
 const FOUNDATION = 0;
+
+/** The turn count specs/stock.md fixes for this variant, as `TURN_COUNT`. */
+const TURN_COUNT = 1;
 
 let h: Harness;
 

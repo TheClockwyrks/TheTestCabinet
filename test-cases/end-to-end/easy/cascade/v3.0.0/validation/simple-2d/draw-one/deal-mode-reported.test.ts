@@ -11,18 +11,22 @@
 // every common check that trusted the reading and fail here, which is exactly
 // where the fault belongs.
 //
-// THE FIGURES ARE THE SEEDED ONES. `src/constants.ts` is supplied with the
-// project and not edited by the build, and it carries specs/stock.md's table
-// verbatim, so importing `DEAL_MODE` and `TURN_COUNT` from it reads back the
-// figure the build was handed rather than a literal restated here.
-//
 // The two readings are the two halves of one fact — which deal this build plays —
 // and a build cannot get one right by accident while the other is wrong. What the
 // build DRAWS for its deal mode is `draw-one/mode-label-title` and
 // `draw-one/mode-label-hud`.
+//
+// THE FIGURE IS WRITTEN OUT RATHER THAN IMPORTED. `src/constants.ts` is supplied
+// with the project and carries this figure already, but the figure IS this item's
+// requirement, so reading it back out of the build's own module would decide the
+// point against whatever the build says rather than against the specification: a
+// build that edited the file it was told not to edit would report its own figure
+// to a check sized by that same figure and pass. The literal is written here for
+// the same reason `draw-three` writes its own, and for the reason the engineless
+// suite keeps a `constants.ts` of its own. Checks that merely SIZE a scenario to
+// the deal mode still read `snapshot().turnCount`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEAL_MODE, TURN_COUNT } from "../../src/constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
@@ -30,6 +34,12 @@ import {
   openTable,
   type Harness,
 } from "../harness";
+
+/** The deal-mode id specs/stock.md fixes for this variant, as `DEAL_MODE`. */
+const DEAL_MODE = "draw-one";
+
+/** The turn count specs/stock.md fixes for this variant, as `TURN_COUNT`. */
+const TURN_COUNT = 1;
 
 let h: Harness;
 

@@ -19,9 +19,18 @@
 // `stock/turned-cards-face-up`, which card of the stock is taken first is
 // `stock/turn-order`, and the set the turn appends to the waste's memory is
 // `stock/turn-starts-a-set`. None of the three is decided here.
+//
+// THE FIGURE IS WRITTEN OUT RATHER THAN IMPORTED. `src/constants.ts` is supplied
+// with the project and carries this figure already, but the figure IS this item's
+// requirement, so reading it back out of the build's own module would decide the
+// point against whatever the build says rather than against the specification: a
+// build that edited the file it was told not to edit would report its own figure
+// to a check sized by that same figure and pass. The literal is written here for
+// the same reason `draw-three` writes its own, and for the reason the engineless
+// suite keeps a `constants.ts` of its own. Checks that merely SIZE a scenario to
+// the deal mode still read `snapshot().turnCount`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TURN_COUNT } from "../../src/constants";
 import { assertLength } from "../assert";
 import {
   captureStill,
@@ -39,6 +48,9 @@ import {
  * because that is how a deal leaves the stock (specs/deal.md).
  */
 const STOCK = ["#2C", "#5D", "#9H", "#JS", "#7D"];
+
+/** The turn count specs/stock.md fixes for this variant, as `TURN_COUNT`. */
+const TURN_COUNT = 1;
 
 let h: Harness;
 

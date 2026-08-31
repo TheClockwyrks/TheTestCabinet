@@ -27,9 +27,18 @@
 // whatever `reset` restored, and all thirteen piles are cleared, so the world
 // holds only the screen the requirement is about (specs/instrumentation.md). The
 // label concerns no card, so no card is posed.
+//
+// THE FIGURE IS WRITTEN OUT RATHER THAN IMPORTED. `src/constants.ts` is supplied
+// with the project and carries this figure already, but the figure IS this item's
+// requirement, so reading it back out of the build's own module would decide the
+// point against whatever the build says rather than against the specification: a
+// build that edited the file it was told not to edit would report its own figure
+// to a check sized by that same figure and pass. The literal is written here for
+// the same reason `draw-three` writes its own, and for the reason the engineless
+// suite keeps a `constants.ts` of its own. Checks that merely SIZE a scenario to
+// the deal mode still read `snapshot().turnCount`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEAL_MODE_LABEL } from "../../src/constants";
 import { assertEqual, assertMatches } from "../assert";
 import {
   captureStill,
@@ -38,6 +47,9 @@ import {
   drawnText,
   type Harness,
 } from "../harness";
+
+/** The deal-mode label specs/stock.md fixes for this variant, as `DEAL_MODE_LABEL`. */
+const DEAL_MODE_LABEL = "DRAW ONE";
 
 /**
  * `DEAL_MODE_LABEL`'s words, in order, however the build spaces or splits them.
