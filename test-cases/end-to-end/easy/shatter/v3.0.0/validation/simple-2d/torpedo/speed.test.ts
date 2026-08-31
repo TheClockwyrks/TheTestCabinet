@@ -36,7 +36,13 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { HEADING_RIGHT, LANE_X, LANE_Y, flyTorpedo, poseStraight } from "./scene";
+import {
+  HEADING_RIGHT,
+  LANE_X,
+  LANE_Y,
+  flyTorpedo,
+  poseStraight,
+} from "./scene";
 
 /** How long the flight is sampled for: one second, as the manifest states. */
 const FLIGHT_TICKS = ticksFor(1);

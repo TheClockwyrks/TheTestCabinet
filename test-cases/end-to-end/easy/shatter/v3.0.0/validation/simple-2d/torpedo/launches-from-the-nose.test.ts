@@ -76,7 +76,10 @@ it("puts a launched torpedo at the ship's nose, ahead of it along its facing", a
   // The torpedo at the instant it left the ship.
   captureStill(h, "launch");
 
-  const torpedo = theTorpedo(launched, "the launch whose nose position is read");
+  const torpedo = theTorpedo(
+    launched,
+    "the launch whose nose position is read",
+  );
   const facing = unitAt(LAUNCH_FACING);
 
   // Where the torpedo stands, and where it stood one and two ticks of its own

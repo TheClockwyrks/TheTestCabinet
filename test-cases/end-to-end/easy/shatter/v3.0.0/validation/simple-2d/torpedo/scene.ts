@@ -25,12 +25,7 @@
 import { DEG, TICK_DT } from "../../src/constants";
 import { fail } from "../assert";
 import { separation, wrap, type Point, type Velocity } from "../geometry";
-import {
-  poseTorpedo,
-  tapAction,
-  torpedoesOf,
-  type Harness,
-} from "../harness";
+import { poseTorpedo, tapAction, torpedoesOf, type Harness } from "../harness";
 import type { ShatterSnapshot, TorpedoSnapshot } from "../surface";
 
 /* -------------------------------------------------------------------------- */
@@ -188,11 +183,6 @@ export function readyOf(snapshot: ShatterSnapshot, scenario: string): boolean {
     );
   }
   return ready;
-}
-
-/** Whether the torpedo with that id is still in the roster. */
-export function inFlight(snapshot: ShatterSnapshot, id: number): boolean {
-  return torpedoesOf(snapshot).some((torpedo) => torpedo.id === id);
 }
 
 /** Whether the rock with that id is still on the field. */

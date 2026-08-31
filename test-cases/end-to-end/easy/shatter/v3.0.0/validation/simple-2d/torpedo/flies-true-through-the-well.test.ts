@@ -180,7 +180,8 @@ it("holds its line and its heading across the well, out past the star's column",
 
   const opening = flight.velocities[0];
   const shifted = flight.velocities.reduce(
-    (most, v) => Math.max(most, Math.hypot(v.vx - opening.vx, v.vy - opening.vy)),
+    (most, v) =>
+      Math.max(most, Math.hypot(v.vx - opening.vx, v.vy - opening.vy)),
     0,
   );
   assertLessThanOrEqual(

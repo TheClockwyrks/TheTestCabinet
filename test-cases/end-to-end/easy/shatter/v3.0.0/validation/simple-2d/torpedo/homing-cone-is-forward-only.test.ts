@@ -41,7 +41,13 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { HEADING_RIGHT, LANE_X, LANE_Y, flyTorpedo, rockStanding } from "./scene";
+import {
+  HEADING_RIGHT,
+  LANE_X,
+  LANE_Y,
+  flyTorpedo,
+  rockStanding,
+} from "./scene";
 
 /** How far astern the rock is posed, in units: the nearest body on the field. */
 const ASTERN = 80;

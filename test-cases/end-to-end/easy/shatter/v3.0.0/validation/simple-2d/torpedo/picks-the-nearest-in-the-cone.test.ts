@@ -93,7 +93,11 @@ it("turns toward the nearer of two rocks in its cone, not the one it found first
   startPlaying(h);
 
   // The far rock FIRST, so roster order and range disagree.
-  const farAt = pointAt(TOP_LANE, HEADING_RIGHT - OFF_AXIS_DEG * DEG, FAR_RANGE);
+  const farAt = pointAt(
+    TOP_LANE,
+    HEADING_RIGHT - OFF_AXIS_DEG * DEG,
+    FAR_RANGE,
+  );
   poseRock(h, "small", farAt.x, farAt.y);
   const nearAt = pointAt(
     TOP_LANE,
