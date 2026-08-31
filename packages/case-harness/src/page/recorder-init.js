@@ -862,6 +862,17 @@
       this.pendingState = null;
       this.pendingStack = null;
 
+      /**
+       * The state as the last driven frame left it, or null while none is held.
+       *
+       * Written by {@link carry} at the first operation issued outside a frame,
+       * spent by the next {@link beginFrame}, and thrown away by a wipe. Held
+       * UNENCODED, exactly as a save-stack entry is: this outlives any one
+       * recording, and encoding it here would intern into the pools of whichever
+       * recording happened to be running.
+       */
+      this.carried = null;
+
       /** The frames kept so far while armed, or null while idle. */
       this.frames = null;
       /** How many frames have been closed while armed, before decimation. */
@@ -1157,13 +1168,21 @@
      * frame's operation list is what `frameCalls` reads, and a check that asks
      * what one frame drew is not recording a section. The state snapshots are
      * taken only while armed, because nothing but the recording reads them.
+     *
+     * What it inherits is the state the PREVIOUS DRIVEN FRAME left rather than the
+     * state the context holds now, wherever the two differ — see {@link carry}.
      */
     beginFrame() {
-      // Before the snapshot, because a resize between the last operation and this
-      // frame threw away the clip, the path and the save stack, and a snapshot
-      // taken over the shadows of a context that no longer holds them describes a
-      // frame that never happened.
+      // Before the state is settled on, because a resize between the last
+      // operation and this frame threw away the clip, the path and the save stack,
+      // and a state — carried or live — over shadows the context no longer holds
+      // describes a frame that never happened.
       this.checkSurface();
+      // Spent here whether or not this frame is armed to use it: a frame that runs
+      // leaves the live context as what the frame after it inherits, so a state
+      // carried from before this one is answered by the context from now on.
+      const carried = this.carried;
+      this.carried = null;
       this.calls = [];
       if (this.frames === null) {
         this.pending = null;
@@ -1173,7 +1192,50 @@
       }
       this.pending = [];
       this.frameUses = new Set();
-      this.snapshot();
+      this.snapshot(carried);
+    }
+
+    /** Whether a driven frame is open: what {@link carry} is the outside of. */
+    get insideFrame() {
+      return this.calls !== null;
+    }
+
+    /**
+     * Put the state the last driven frame left aside, before something outside a
+     * frame changes it.
+     *
+     * The page's own animation-frame loop goes on painting between two driven
+     * frames — an engineless build is required to keep rendering while it is off
+     * the clock — and every operation of that background render moves the very
+     * shadows and properties a frame's inherited state is read from. Whether a
+     * present lands in any given gap is wall-clock dependent, so a state read live
+     * at {@link beginFrame} makes the recording differ from one run of a suite to
+     * the next while describing the same drawing.
+     *
+     * The first operation issued outside a frame therefore puts the state aside
+     * here, and the next frame inherits THAT. Copy-on-write: a gap in which
+     * nothing is issued copies nothing, which is every gap of a suite whose build
+     * is not painting behind it, and a gap in which something is copies once
+     * however long the background render turns out to be.
+     *
+     * The path shadow and the save stack are copied, because both go on being
+     * mutated in place after the copy is taken. The clip is not: a clip region is
+     * REPLACED rather than mutated wherever a saved state may be holding it, which
+     * is the same reason a `save()` may hold the one in force by reference.
+     */
+    carry() {
+      if (this.insideFrame || this.carried !== null) return;
+      this.carried = {
+        state: this.readState(),
+        clip: this.clip,
+        path: {
+          segments: this.copySegments(this.path.segments),
+          ops: this.path.ops,
+          truncated: this.path.truncated,
+        },
+        saved: this.saved.slice(),
+        stackTruncated: this.stackTruncated,
+      };
     }
 
     /**
@@ -1191,22 +1253,35 @@
      * outside the saved state, so a stack entry carries none: what a `restore()`
      * returns to is the state, and the path in force belongs to the state the frame
      * opened with.
+     *
+     * `carried` is the state the previous driven frame left, where something
+     * outside a frame has moved the context since — see {@link carry}. Live is the
+     * fallback, and it is the right answer in exactly two places: the first frame
+     * after the recorder attached to the context, and a frame after a wipe, which
+     * threw away the clip, the path and the save stack a carried state describes.
      */
-    snapshot() {
-      this.pendingStack = this.saved.map((entry) =>
+    snapshot(carried) {
+      const from = carried ?? {
+        state: this.readState(),
+        clip: this.clip,
+        path: this.path,
+        saved: this.saved,
+        stackTruncated: this.stackTruncated,
+      };
+      this.pendingStack = from.saved.map((entry) =>
         this.encodeState(entry.state, entry.clip, NO_PATH),
       );
-      const raw = this.readState();
-      this.pendingState = this.encodeState(raw, this.clip, this.path);
+      const raw = from.state;
+      this.pendingState = this.encodeState(raw, from.clip, from.path);
       // Everything the frame inherits, against the bound each of the three shadows
       // carries. A frame that inherits a state the recorder could only keep part of
       // replays under a state close to the build's rather than equal to it, and a
       // reviewer has to be told that rather than left to compare pixels.
       this.pendingTruncated =
-        this.stackTruncated ||
-        this.path.truncated ||
-        this.clip.truncated ||
-        this.saved.some((entry) => entry.clip.truncated);
+        from.stackTruncated ||
+        from.path.truncated ||
+        from.clip.truncated ||
+        from.saved.some((entry) => entry.clip.truncated);
       // The snapshot is itself an encoding of every produced value the state
       // holds, so it is what this frame's first paint is measured against.
       this.emitted = this.emissions(raw.properties);
@@ -1370,6 +1445,10 @@
       this.clip = emptyShadow();
       this.path = emptyShadow();
       this.emitted = new Map();
+      // The state put aside for the next frame described the clip, the path and
+      // the save stack this wipe has just discarded, so it describes a frame that
+      // never happened. The next frame reads the context instead.
+      this.carried = null;
       // The size comparison is the fallback for a canvas the accessors could not be
       // installed on. A reset that announced itself is dealt with here, so the size
       // last seen is forgotten rather than compared against and dealt with twice.
@@ -2150,6 +2229,9 @@
 
     /** Record one assignment to the context, in both forms. */
     recordSet(property, raw) {
+      // Before the early return: an assignment made outside a driven frame moves
+      // the state the next frame inherits, whether or not anything records it.
+      this.carry();
       if (this.calls === null) return;
       this.calls.push({ op: "set", property, value: this.describeArg(raw) });
       if (this.pending !== null) {
@@ -2214,6 +2296,9 @@
           this.clip = emptyShadow();
           this.path = emptyShadow();
           this.emitted = new Map();
+          // As for a canvas resize: what was put aside for the next frame names
+          // shadows this reset threw away, so the next frame reads the context.
+          this.carried = null;
           break;
         case "beginPath":
           // The `beginPath` itself is kept, so a segment replays against whatever
@@ -2289,6 +2374,9 @@
       if (resource || PRODUCERS.has(name)) {
         return { steps: args.map((arg) => this.portableArg(arg)) };
       }
+      // Taken before the call, which is what makes the state put aside the one the
+      // last driven frame left rather than the one this call is about to leave.
+      this.carry();
       return {
         described: this.describeCall(name, args),
         // Nothing is pooled with no recording running: interning is the expensive
