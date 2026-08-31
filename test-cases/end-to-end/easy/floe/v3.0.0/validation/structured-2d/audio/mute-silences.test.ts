@@ -1,27 +1,156 @@
-// Floe — audio/mute-silences: SCAFFOLD STUB, NOT A VALIDATOR.
+// Floe — audio/mute-silences: with the mute bit on, an accepted hop and a filled
+// bay put out no audible sound, and the crossing carries on around them.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `audio.mute-silences` review item, written
-// against the `structured-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// THE OTHER HALF IS ELSEWHERE. That the two events play their cues in the first
+// place is `audio/cue-hop` and `audio/cue-bay`; this point holds the rule
+// `specs/ui.md` states beside them — "the game stays fully playable with sound
+// muted" — which is two claims about one stretch of play: nothing audible came
+// out, and the game went on. Both are read from the same muted stretch.
 //
-// The item this file decides, from test-case.toml:
+// WHAT SILENCE IS, UNDER AN ENGINE. `engine/audio.md` fixes the reading exactly:
+// "a muted cue still emits its event, at `gain: 0`". So a muted stretch is one in
+// which NO cue is announced at a gain above zero — which holds both for a build
+// that keeps playing its cues into a muted bus, and for one that stops asking for
+// them at all. Neither is required by `specs/ui.md`, so neither is demanded here;
+// what is demanded is that nothing audible comes out.
 //
-//   Mute silences the cues
-//
-//   With muted on, an accepted hop and a filled bay produce no audible output,
-//   and the game keeps running.
-//
-// Its declared media: image `muted`.
+// MUTE IS REACHED THE WAY A PLAYER REACHES IT. `specs/instrumentation.md` gives
+// the surface no operation for muting on purpose — "muting is reached the same way
+// a player reaches it, through the mute action `specs/controls.md` fixes" — so the
+// action is really pressed and the snapshot's `muted` is read back.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import {
+  BAYFILL_PAUSE,
+  BAYS,
+  ROW_NEAR,
+  START_COL,
+  WATER_TOP,
+} from "../../src/constants";
+import {
+  captureStill,
+  createHarness,
+  critterTile,
+  hop,
+  poseLane,
+  startCrossing,
+  tapAction,
+  ticksFor,
+  watchCues,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The bay the crossing is ended in. Any of the five decides the same rule. */
+const BAY_INDEX = 2;
 
-it("audio/mute-silences has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** Its left column, one of the two `specs/strait.md` gives that bay. */
+const BAY_COL = BAYS[BAY_INDEX][0];
+
+/** The floe the approach is taken from — `3` tiles by `specs/water.md`. */
+const APPROACH_KIND = "raft3";
+
+/** A quarter second of held strait after muting, before anything is pressed. */
+const QUIET_TICKS = ticksFor(0.25);
+
+/**
+ * A quarter second of held strait between the two hops.
+ *
+ * Twice `HOP_COOLDOWN` (`0.12` s), so the second hop is offered a critter whose
+ * cooldown has reached `0` (`specs/hopping.md`) rather than one the cadence would
+ * refuse — which would leave this point reading silence about a hop that never
+ * happened.
+ */
+const GAP_TICKS = ticksFor(0.25);
+
+/**
+ * Ticks driven after the bay is filled.
+ *
+ * Past `BAYFILL_PAUSE` (`0.5` s) by a tenth of a second, so the hold
+ * `specs/progression.md` runs after a bay is filled expires inside the window and
+ * the fresh crossing it leads to is inside it too — which is the "the game keeps
+ * running" half of this point, read rather than assumed. A build that plays a cue
+ * late is also still inside it.
+ */
+const SETTLE_TICKS = ticksFor(BAYFILL_PAUSE + 0.1);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("puts out nothing audible while muted, and keeps the crossing running", async () => {
+  // An empty strait, all five bays open, and one stationary raft under the bay's
+  // two columns, so a hop along the row and a hop into the bay are both there to
+  // take.
+  startCrossing(h);
+  poseLane(h, WATER_TOP, APPROACH_KIND, [BAY_COL]);
+  h.debug.addCritter(BAY_COL, WATER_TOP);
+
+  // Mute, the way a player mutes: the mute action's own key, read as a press
+  // edge on every screen (specs/controls.md).
+  await tapAction(h, "mute");
+  const muted = h.snapshot();
+
+  const played = watchCues(h);
+
+  await h.advance(QUIET_TICKS);
+
+  // An accepted hop along the raft.
+  await hop(h, "right");
+  const hopped = h.snapshot();
+
+  await h.advance(GAP_TICKS);
+
+  // And a hop up into the open bay, which ends the crossing.
+  await hop(h, "up");
+  const filled = h.snapshot();
+
+  await h.advance(SETTLE_TICKS);
+  const running = h.snapshot();
+
+  captureStill(h, "muted");
+
+  // The mute bit really is on (specs/ui.md, specs/instrumentation.md).
+  assertEqual(
+    muted.muted,
+    true,
+    "one press of the mute key leaves the runtime's mute bit on",
+  );
+
+  // The game really kept running: the hop was accepted, the bay filled, the
+  // crossing was scored, and a fresh crossing began from the near shore.
+  assertDeepEqual(
+    critterTile(hopped),
+    { col: BAY_COL + 1, row: WATER_TOP },
+    "the muted hop moved the critter one tile along the raft",
+  );
+  assertDeepEqual(
+    filled.bays,
+    BAYS.map((_, index) => index === BAY_INDEX),
+    "the muted hop into the bay filled it, and no other",
+  );
+  assertGreaterThan(filled.score, 0, "the muted crossing was scored");
+  assertEqual(
+    running.critter.present,
+    true,
+    "a fresh crossing began after the hold",
+  );
+  assertDeepEqual(
+    critterTile(running),
+    { col: START_COL, row: ROW_NEAR },
+    "the fresh crossing began from the near shore",
+  );
+
+  // And nothing audible came out of any of it.
+  assertDeepEqual(
+    played.filter((entry) => entry.gain > 0).map((entry) => entry.cue),
+    [],
+    "cues sounded at a gain above zero over the muted stretch",
+  );
 });
