@@ -2096,8 +2096,11 @@ export function drawnImages(
       h: height,
       left: x - w / 2,
       top: y - height / 2,
-      // A negative determinant is a flip, whichever axis the build wrote it on.
-      mirrored: m.a * m.d - m.b * m.c < 0,
+      // A flip, whichever of the two ways the build wrote it: a negative
+      // determinant in the transform it drew under, or a negative destination
+      // extent in the call itself. Both reverse the mapped box, and a build is
+      // free to mirror a leftward vehicle either way (specs/assets.md).
+      mirrored: (m.a * m.d - m.b * m.c) * Math.sign(dw) * Math.sign(dh) < 0,
       sourceRect,
     });
   }
