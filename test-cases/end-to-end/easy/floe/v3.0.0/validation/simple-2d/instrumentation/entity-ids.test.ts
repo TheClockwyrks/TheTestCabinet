@@ -43,7 +43,13 @@
 // the bears the second reading finds are the bears the first one did.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_MEDIAN, TILE, tileLeft } from "../../src/constants";
+import {
+  ITEM_LEN,
+  ROW_MEDIAN,
+  TILE,
+  laneGap,
+  tileLeft,
+} from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -104,6 +110,7 @@ const LEVEL = 1;
  * it.
  */
 const WRAP_ROW = 12;
+const WRAP_KIND = "car";
 const ADDED_VEHICLE_ROW = 14;
 const ADDED_VEHICLE_COL = 4;
 const ADDED_FLOE_ROW = 5;
@@ -290,11 +297,15 @@ it("gives every entity a distinct id, at the end of its roster, and keeps it", a
 
   // How long a wrap can take, measured off the lane the build actually laid out:
   // consecutive left edges are one period apart and the run repeats, so a cycle
-  // is the period times the number of items in the lane.
+  // is the period times the number of items in the lane. The period is floored at
+  // the figure specs/ice.md fixes — `(len + gap) * TILE` — so a build that packed
+  // its lane tighter than the specification allows is still given the whole time a
+  // conforming lane would take, and loses `ice/lane-gaps` rather than this point.
   const watched = itemsInRow(h.snapshot().vehicles, WRAP_ROW);
   const edges = watched.map((item) => item.x).sort((a, b) => a - b);
-  const period = Math.min(
+  const period = Math.max(
     ...edges.slice(1).map((x, index) => x - edges[index]),
+    (ITEM_LEN[WRAP_KIND] + laneGap(WRAP_ROW, LEVEL)) * TILE,
   );
   const cycleSeconds = (period * watched.length) / (WRAP_SPEED * TILE);
   const dir = laneAt(h.snapshot(), WRAP_ROW).dir;
