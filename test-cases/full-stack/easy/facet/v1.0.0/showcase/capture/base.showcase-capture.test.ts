@@ -4,26 +4,43 @@
 // (re)record `showcase/base/`'s replay and stills from the reference
 // implementation. It opens the build on its title screen, chooses `PLAY` with a
 // real key press, and then plays the round out with a real mouse — press a gem,
-// drag onto its neighbor, release — letting the build's own chain resolution,
-// strain, cuts and refill produce everything on screen. Nothing is posed mid-play:
-// `loadBoard` and `setGem` are never called, and the only surface operations the
-// take uses are the clock (`setAutoStep`/`advance`, which nothing outside an
-// engineless build owns), `reset` for the seed, and `snapshot` for reading.
+// drag onto its neighbor, release — letting the build's own swap animation,
+// chain resolution, strain, cuts, shattering and refill produce everything on
+// screen. Nothing is posed mid-play: `loadBoard` and `setGem` are never called,
+// and the only surface operations the take uses are the clock
+// (`setAutoStep`/`advance`, which nothing outside an engineless build owns),
+// `reset` for the seed, and `snapshot` for reading.
 //
 // The player has two layers, and the split is the same one carom's driver uses.
 // EXECUTION is a real pointer through `press`/`moveTo`/`lift`, the input path a
-// human uses, so selection, the drag rule and the acceptance path behave exactly
-// as under hand play. PLANNING is done through the CASE's own rule helpers in
-// `board.ts` — `legalSwaps`, `swapped`, `runSeed`, `expandClearSet` — so each
-// candidate swap is played forward under R1, R3, R4, R5 and R6 before it is made,
-// and the player takes the move that clears the most. That is how a good player
-// reads this board: ordinary matches prime the stones around them with strain,
-// and once a corner is flawed through, the biggest move on the board is the one
-// that tears it open. The escalation in the clip is the ruleset's, not a script's.
+// human uses, so the selection, the offer under the hand and the release that
+// commits it behave exactly as under hand play. PLANNING is done through the
+// CASE's own rule helpers in `board.ts` — `legalSwaps`, `swapped`, `runSeed`,
+// `expandClearSet` — so each candidate swap is played forward under R1, R3, R4,
+// R5 and R6 before it is made, and the player takes the move that clears the
+// most. That is how a good player reads this board: ordinary matches prime the
+// stones around them with strain, and once a corner is flawed through, the
+// biggest move on the board is the one that tears it open. The escalation in the
+// clip is the ruleset's, not a script's.
 //
-// The take is deterministic — the same seed replays the identical session — which
-// is what lets several takes be auditioned with the recorder off and the winner
-// re-run with it on.
+// THE TAKE WAITS ON THE BUILD'S OWN CLOCK, NEVER ON A WRITTEN-DOWN COUNT OF
+// FRAMES. A step's hold is the step's own figure — `lastWaves * WAVE_SECONDS +
+// lastFall * FALL_SECONDS_PER_ROW + STEP_SECONDS`, which the snapshot reports as
+// `stepHold` — so the chain is polled to its end on `phase` rather than driven
+// for a fixed span, and the two stills that frame a step in motion are timed off
+// that step's own `lastWaves` and `lastFall` through `board.ts`'s `shatterEnd`
+// and `landAt`. One is taken while the clear set is coming apart in waves, the
+// other while the stones above it are still falling into the hole.
+//
+// A LEVEL CLEAR IS PART OF THE CLIP. Reaching the level's target opens the
+// `levelclear` screen with the level's longest chain and best move on it, and
+// the round waits there. The driver reads that screen, takes `CONTINUE` from it
+// with the pointer — the menus answer the same mouse the board does — and plays
+// on into the next level, whose board pours in from above.
+//
+// The take is deterministic — the same seed replays the identical session —
+// which is what lets several takes be auditioned with the recorder off and the
+// winner re-run with it on.
 //
 // Run from the reference workspace root:
 //   TCAB_VALIDATION_MEDIA_DIR=<out> TCAB_SHOWCASE_MAX_REPLAY_FRAMES=1500 \
@@ -44,11 +61,14 @@ import {
   cellCenter,
   expandClearSet,
   isPrism,
+  landAt,
   legalSwaps,
   parseRows,
   parseToken,
   runSeed,
+  shatterEnd,
   swapped,
+  targetCenter,
   tokenAt,
   type BoardRows,
   type CellRef,
@@ -85,16 +105,41 @@ const MAX_FRAMES = Math.round(MAX_SECONDS * TICK_HZ);
 
 /** The opening beat on the title screen, before `PLAY` is confirmed. */
 const TITLE_FRAMES = 48;
-/** The beat after the deal, before the first gem is touched. */
-const DEAL_FRAMES = 40;
+/** The beat a dealt board is given to pour in and stand before it is played. */
+const DEAL_FRAMES = 44;
+/**
+ * How far into a deal's pour the fresh-board still is taken.
+ *
+ * A dealt gem carries a `fell` of at least `row + 1`, so the deepest row is in
+ * the air for `8 * FALL_SECONDS_PER_ROW` — four tenths of a second — and a
+ * picture taken a little under half way through it catches the board arriving.
+ */
+const POUR_STILL_FRAMES = 12;
 /** The pointer resting on a gem before it presses: a player reading the board. */
 const HOVER_FRAMES = 14;
 /** The press held so the selection reads before the drag leaves the cell. */
 const PRESS_FRAMES = 10;
-/** Frames between two readings while a chain is resolving. */
-const RESOLVE_POLL = 4;
+/** Frames between two readings while a swap or a chain is in motion. */
+const RESOLVE_POLL = 2;
 /** A guard on one chain, well past the longest a settled board can run. */
-const RESOLVE_CAP = 1200;
+const RESOLVE_CAP = 1600;
+/** The beat the level-clear screen is held for, long enough to read its figures. */
+const LEVELCLEAR_FRAMES = 72;
+/** The pointer resting on a menu item before it presses it. */
+const MENU_HOVER_FRAMES = 12;
+/** The closing beat on the settled board the take ends on. */
+const CLOSING_FRAMES = 24;
+
+/**
+ * How far into the shattering the tear still is taken, past half of it.
+ *
+ * A cell at wave `w` comes apart `w * WAVE_SECONDS` into the step and its sheet
+ * runs for rather longer than one wave, so a picture taken here catches the
+ * early waves in pieces, a middle one just breaking, and the last still whole.
+ */
+const SHATTER_STILL_LEAD = 0.06;
+/** How far through a step's fall the deep-chain still is taken. */
+const FALL_STILL_FRACTION = 0.5;
 
 /* -------------------------------------------------------------------------- */
 /* Planning, through the case's own rules                                     */
@@ -178,6 +223,14 @@ function flawedCount(rows: BoardRows): number {
   );
 }
 
+/** Cut stones standing on a board, each of which carries a running aura. */
+function cutCount(rows: BoardRows): number {
+  return parseRows(rows).reduce(
+    (total, row) => total + row.filter((gem) => gem.cut !== "plain").length,
+    0,
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /* One take                                                                   */
 /* -------------------------------------------------------------------------- */
@@ -195,8 +248,12 @@ interface Take {
   biggest: number;
   /** The deepest `chainStep` the take reached. */
   deepest: number;
+  /** The most points one move of the take scored. */
+  richest: number;
   /** The most flawed gems standing on the board at once. */
   flawedPeak: number;
+  /** Levels the take cleared, each of which it took `CONTINUE` from. */
+  levels: number;
   score: number;
   /** The longest stretch with nothing clearing, in seconds. */
   maxLull: number;
@@ -231,7 +288,9 @@ async function runTake(
     cleared: 0,
     biggest: 0,
     deepest: 0,
+    richest: 0,
     flawedPeak: 0,
+    levels: 0,
     score: 0,
     maxLull: 0,
     endedPlaying: false,
@@ -244,6 +303,7 @@ async function runTake(
   let qaStills = 0;
 
   const advance = async (frames: number): Promise<void> => {
+    if (frames <= 0) return;
     await h.advance(frames);
     take.frames += frames;
     take.maxLull = Math.max(
@@ -259,57 +319,134 @@ async function runTake(
     }
   };
 
+  /**
+   * Hold the step now resolving until `target` seconds into it.
+   *
+   * Never past the step's own `stepHold`: the board is read again there and the
+   * next step begins, which is a different picture from the one being framed.
+   */
+  const intoStep = async (target: number): Promise<void> => {
+    const now = await h.snapshot();
+    if (now.phase !== "resolving") return;
+    const limit = Math.min(target, now.stepHold - 2 / TICK_HZ);
+    await advance(Math.round((limit - now.stepTimer) * TICK_HZ));
+  };
+
   // The title screen, held long enough to read, then `PLAY` taken with a real
   // key through the registered `confirm` action.
   await advance(TITLE_FRAMES);
-  if (record) await captureStill(h, "title");
   await h.tapAction("confirm");
   take.frames += 1;
 
-  // The deal the seed made, standing before anything is touched.
-  await advance(DEAL_FRAMES);
+  // The board the seed dealt, caught pouring in from above it, and then standing.
+  await advance(POUR_STILL_FRAMES);
   if (record) await captureStill(h, "fresh-board");
+  await advance(DEAL_FRAMES - POUR_STILL_FRAMES);
 
   let snapshot: FacetSnapshot = await h.snapshot();
   let previousStep = snapshot.chainStep;
 
-  /** Read the chain as it runs, keeping the take's figures and its stills. */
-  const observe = async (next: FacetSnapshot): Promise<void> => {
-    if (next.chainStep > 0 && next.chainStep !== previousStep) {
-      take.steps += 1;
-      take.cleared += next.lastCleared;
-      take.biggest = Math.max(take.biggest, next.lastCleared);
-      take.deepest = Math.max(take.deepest, next.chainStep);
-      lastClearFrame = take.frames;
-      // The deepest step of the take, kept rather than the first deep one, so
-      // the still carries the highest multiplier the session actually reached.
-      if (record && next.chainStep > deepestChainStill && next.chainStep >= 3) {
-        deepestChainStill = next.chainStep;
-        await captureStill(h, "deep-chain");
-      }
-      if (record && next.lastCleared > bestTearStill && next.lastCleared >= 8) {
-        bestTearStill = next.lastCleared;
-        await captureStill(h, "a-corner-goes");
-      }
-    }
+  /** Keep the running figures a reading carries, and where the chain stands. */
+  const observe = (next: FacetSnapshot): void => {
     previousStep = next.chainStep;
     take.score = next.score;
+    take.richest = Math.max(take.richest, next.bestMove, next.moveScore);
+  };
+
+  /** What a freshly resolved step did, and the two pictures it may be worth. */
+  const stepResolved = async (next: FacetSnapshot): Promise<void> => {
+    take.steps += 1;
+    take.cleared += next.lastCleared;
+    take.biggest = Math.max(take.biggest, next.lastCleared);
+    take.deepest = Math.max(take.deepest, next.chainStep);
+    lastClearFrame = take.frames;
+
+    // The biggest step of the take, framed while its clear set is still coming
+    // apart: the early waves in pieces and the last of them not yet gone.
+    if (record && next.lastCleared > bestTearStill && next.lastCleared >= 8) {
+      bestTearStill = next.lastCleared;
+      await intoStep(shatterEnd(next.lastWaves) * 0.5 + SHATTER_STILL_LEAD);
+      await captureStill(h, "a-corner-goes");
+    }
+    // The deepest step of the take, kept rather than the first deep one so the
+    // still carries the highest multiplier the session reached, and framed part
+    // way through the fall that follows the shattering.
+    if (record && next.chainStep > deepestChainStill && next.chainStep >= 3) {
+      deepestChainStill = next.chainStep;
+      const shattered = shatterEnd(next.lastWaves);
+      const landed = landAt(next.lastWaves, next.lastFall);
+      await intoStep(shattered + (landed - shattered) * FALL_STILL_FRACTION);
+      await captureStill(h, "deep-chain");
+    }
+  };
+
+  /** Poll a swap and the chain it started to their end, at the game's cadence. */
+  const resolve = async (): Promise<void> => {
+    let driven = 0;
+    while (driven < RESOLVE_CAP) {
+      const next = await h.snapshot();
+      if (next.screen !== "playing" || next.phase === "idle") break;
+      await advance(RESOLVE_POLL);
+      driven += RESOLVE_POLL;
+      const after = await h.snapshot();
+      const stepped = after.chainStep > 0 && after.chainStep !== previousStep;
+      observe(after);
+      if (stepped) await stepResolved(after);
+      if (take.frames >= MAX_FRAMES + RESOLVE_CAP) break;
+    }
+  };
+
+  /**
+   * The level-clear screen: read it, and take `CONTINUE` from it with the
+   * pointer, which is the same mouse the board is played with.
+   */
+  const clearLevel = async (): Promise<void> => {
+    await advance(LEVELCLEAR_FRAMES);
+    if (record) await captureStill(h, "level-clear");
+
+    const screen = await h.snapshot();
+    const cont = screen.targets.find((target) => target.id === "menu-0");
+    if (cont === undefined) {
+      throw new Error(
+        "facet: the level-clear screen reported no menu-0 target",
+      );
+    }
+    const spot = targetCenter(cont);
+    await h.moveTo(spot.x, spot.y);
+    await advance(MENU_HOVER_FRAMES);
+    await h.press(spot.x, spot.y);
+    await advance(PRESS_FRAMES);
+    await h.lift();
+    await advance(1);
+    take.levels += 1;
+    lastClearFrame = take.frames;
+
+    // The next level's board pours in from above; give it the beat that takes.
+    await advance(DEAL_FRAMES);
   };
 
   while (take.frames < MAX_FRAMES) {
     snapshot = await h.snapshot();
+    if (snapshot.screen === "levelclear") {
+      await clearLevel();
+      if (take.frames >= MIN_FRAMES) break;
+      continue;
+    }
     if (snapshot.screen !== "playing") break;
 
     const rows = await h.board();
     const standing = flawedCount(rows);
     take.flawedPeak = Math.max(take.flawedPeak, standing);
+    // The most primed board of the take, and — where two boards are equally
+    // primed — the one carrying more cut stones, each of which stands under a
+    // running aura.
     if (
       record &&
-      standing > bestStrainStill &&
+      snapshot.phase === "idle" &&
       standing >= 6 &&
-      snapshot.phase === "idle"
+      standing * 100 + cutCount(rows) > bestStrainStill
     ) {
-      bestStrainStill = standing;
+      bestStrainStill = standing * 100 + cutCount(rows);
       await captureStill(h, "strained-board");
     }
 
@@ -328,7 +465,8 @@ async function runTake(
     const from = cellCenter(chosen.a.col, chosen.a.row);
     const onto = cellCenter(chosen.b.col, chosen.b.row);
 
-    // The gesture: rest on the gem, press it, drag onto its neighbor, release.
+    // The gesture: rest on the gem, press it, carry it onto its neighbor, and
+    // let go — the release with the offer standing is what plays the move.
     await h.moveTo(from.x, from.y);
     await advance(HOVER_FRAMES);
     await h.press(from.x, from.y);
@@ -339,27 +477,25 @@ async function runTake(
     await advance(1);
     take.moves += 1;
 
-    await observe(await h.snapshot());
+    observe(await h.snapshot());
 
-    // The chain the swap started, run to its end at the game's own step cadence.
-    let driven = 0;
-    while (driven < RESOLVE_CAP) {
-      const next = await h.snapshot();
-      if (next.screen !== "playing" || next.phase === "idle") break;
-      await advance(RESOLVE_POLL);
-      driven += RESOLVE_POLL;
-      await observe(await h.snapshot());
-      if (take.frames >= MAX_FRAMES + RESOLVE_CAP) break;
+    // The swap's own animation, and then the chain it started.
+    await resolve();
+
+    // Past the minimum, end on a settled board rather than mid-chain. A chain
+    // that ended by clearing the level is not one: the screen it left standing
+    // is taken first, at the top of the loop.
+    if (take.frames >= MIN_FRAMES) {
+      const now = await h.snapshot();
+      if (now.screen === "playing") break;
     }
-
-    // Past the minimum, end on a settled board rather than mid-chain.
-    if (take.frames >= MIN_FRAMES) break;
   }
 
   // A beat of the settled board to close on.
-  await advance(24);
+  await advance(CLOSING_FRAMES);
   const last = await h.snapshot();
   take.score = last.score;
+  take.richest = Math.max(take.richest, last.bestMove);
   take.endedPlaying = last.screen === "playing" && last.phase === "idle";
   return take;
 }
@@ -370,7 +506,8 @@ function judge(take: Take): number {
     take.cleared * 1.5 +
     take.biggest * 4 +
     take.deepest * 6 +
-    take.flawedPeak * 2 -
+    take.flawedPeak * 2 +
+    take.levels * 14 -
     take.maxLull * 8 +
     (take.endedPlaying ? 15 : -25)
   );
@@ -381,7 +518,8 @@ function describe(take: Take): string {
     `seed=${take.seed} phase=${take.phase}: ` +
     `${(take.frames / TICK_HZ).toFixed(1)}s, ${take.moves} moves, ` +
     `${take.steps} steps, ${take.cleared} cleared, biggest ${take.biggest}, ` +
-    `deepest chain ${take.deepest}, flawed peak ${take.flawedPeak}, ` +
+    `deepest chain ${take.deepest}, best move ${take.richest}, ` +
+    `flawed peak ${take.flawedPeak}, levels ${take.levels}, ` +
     `score ${take.score}, lull ${take.maxLull.toFixed(1)}s, ` +
     `${take.endedPlaying ? "settled" : "unsettled"} -> ${judge(take).toFixed(0)}`
   );
