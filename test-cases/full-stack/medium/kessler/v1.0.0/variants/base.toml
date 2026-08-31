@@ -1,0 +1,25 @@
+# The single Kessler variant: the endless orbital score attack. Listed first (and
+# alone) in the manifest's `variants`, so it is the default. Every path resolves
+# against the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The orbital demolition run: ride the deflector, bat the ball through three rings of derelicts, catch the salvage pods they shed, and survive waves that orbit faster and pay more."
+
+# No `showcase` yet. The curated catalog presentation — a player-facing description
+# and a carousel led by sustained real play captured from a reference build — lands
+# in the change that adds `showcase/base/` and its capture driver.
+
+# No `reference_implementation` yet. The authored, correct builds — one per
+# supported engine under `references/<engine>/base/`, each passing the case's four
+# toolchain gates with its produced assets committed beside it — land in the change
+# that adds `references/`, and the validation baselines are captured from them.
+
+# No `[workspaces]` override. This is the only variant, so the case's own
+# `[workspaces]` names its starter projects directly, one per engine.
+
+# No `[[domain]]` of its own. The one variant is the whole game, so it is rated on
+# the case's own `gameplay` and `presentation` domains alone.
+
+# No `[[review.categories]]` of its own. Every review item is common: with a single
+# variant there is no point whose claim could differ between modes, so the case
+# manifest carries the entire checklist.

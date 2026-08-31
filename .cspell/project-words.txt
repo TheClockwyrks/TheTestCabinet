@@ -76,6 +76,7 @@
 # Generic asset-pack test-case prose (2D / particle / music briefs) and the
 # Includes graphics/particle jargon and bold-prefix markup fragments the tokenizer
 # Junction reference-impl DESIGN/README (Rust→wasm city builder).
+# Kessler (kessler) orbital-demolition full-stack case: the screen id, pod kinds, and asset names.
 # Klondike solitaire (Cascade) test case vocabulary.
 # Lattice (lattice) renderer asset sprites.
 # Lattice (lattice) simulation & spec vocabulary.
@@ -178,6 +179,7 @@ buildables
 buildkit
 Bulwark
 burnhit
+burnup
 bylight
 camo
 Capturable
@@ -325,6 +327,7 @@ ironward
 jetpack
 jetpacking
 jetpacks
+kessler
 keybinds
 keyframing
 keypress
@@ -375,6 +378,7 @@ mothwing
 mothwings
 mouselook
 mult
+multiball
 multiplicatively
 multiset
 multishot
@@ -573,6 +577,7 @@ unmined
 unmute
 unmuted
 unoccluded
+unparked
 unpossessed
 unpowered
 unpremultiplied
@@ -597,6 +602,7 @@ WASD
 wasi
 wasip
 wasmtime
+waveclear
 wavefronts
 wgpu
 worley
