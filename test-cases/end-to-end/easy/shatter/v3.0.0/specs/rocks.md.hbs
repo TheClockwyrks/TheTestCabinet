@@ -43,8 +43,9 @@ Destroying a rock produces the size below it:
 | `small` | Nothing |
 
 Both fragments appear at the destroyed rock's position. The velocity each takes is
-in `specs/collision.md`. Splitting is the only thing that reduces the number of
-rocks on the field.
+in `specs/collision.md`. Destroying a rock is the only thing that takes one off
+the field, and since a `large` and a `medium` each leave two behind, the number
+of rocks on the field falls only when a `small` is destroyed.
 
 The two fragments are appended to the rock roster in order, each taking a fresh
 id, and the destroyed rock's id is not reused while any live entity holds it.
