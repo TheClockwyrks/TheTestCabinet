@@ -8,16 +8,18 @@
 // says which figure this is, the level says where the run stands, and the total is
 // what makes the level mean anything.
 //
-// THE LEVEL IS POSED AWAY FROM THE DEFAULT. `setLevel` is what a level is
-// (specs/instrumentation.md), and posing `5` rather than reading the `1` a fresh
-// run opens on is what tells a readout that follows `level` from one that draws
-// the opening level, or the label alone, forever.
+// TWO LEVELS ARE READ, BOTH AWAY FROM THE DEFAULT. `setLevel` is what a level is
+// (specs/instrumentation.md), and reading the bar at `5` and then at `6` — rather
+// than at the `1` a fresh run opens on — is what tells a readout that FOLLOWS
+// `level` from one that draws the opening level forever, from one that draws the
+// label alone, and from one that draws some other level's figure and never moves.
 //
-// NO OTHER READOUT OF THIS CROSSING CAN SUPPLY THOSE FIGURES. `startCrossing`
-// poses the score at `0` and the lives at `3`, and the level-5 crossing timer is
-// `22` seconds (`crossingTimer`), so `5` and `8` appear in the bar only if the
-// level readout drew them. The lanes `setLevel` lays out are cleared straight
-// after by `startCrossing`, so nothing is moving while the frame is read.
+// NO OTHER READOUT OF EITHER CROSSING CAN SUPPLY THOSE FIGURES. `startCrossing`
+// poses the score at `0` and the lives at `3`, and the crossing timer is `22`
+// seconds at level 5 and `20` at level 6 (`crossingTimer`), so `5`, `6` and `8`
+// appear in the bar only if the level readout drew them. The lanes `setLevel` lays
+// out are cleared straight after by `startCrossing`, so nothing is moving while
+// either frame is read.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { HUD_LEVEL_LABEL, TOTAL_LEVELS } from "../../src/constants";
@@ -31,8 +33,9 @@ import {
 } from "../harness";
 import { describeRuns, hudRuns, runsShowing } from "./readout";
 
-/** The level posed: not the one a fresh run opens on, and not the total. */
-const LEVEL = 5;
+/** The two levels posed: neither the one a fresh run opens on, nor the total. */
+const FIRST_LEVEL = 5;
+const SECOND_LEVEL = 6;
 
 let h: Harness;
 
@@ -45,31 +48,39 @@ afterEach(() => {
 });
 
 it("draws the label, the current level and the total in the HUD bar", async () => {
-  startCrossing(h, LEVEL);
+  /** The bar read on a fresh crossing posed at `level`, with all three parts. */
+  const readBarAt = async (level: number, capture: boolean): Promise<void> => {
+    startCrossing(h, level);
+    const runs = hudRuns(h, await drawFrame(h));
+    // Taken from the first of the two frames, and before any assertion, so a
+    // failing verdict still leaves the readout that produced it.
+    if (capture) captureStill(h, "hud");
 
-  const runs = hudRuns(h, await drawFrame(h));
-  captureStill(h, "hud");
+    // The situation: the crossing really is at the level this reading is about.
+    assertEqual(h.snapshot().level, level, "the posed level (specs/state.md)");
 
-  // The situation: the crossing really is at the level this reading is about.
-  assertEqual(h.snapshot().level, LEVEL, "the posed level (specs/state.md)");
+    const label = HUD_LEVEL_LABEL.toLowerCase();
+    assertGreaterThanOrEqual(
+      runs.filter((run) => run.text.toLowerCase().includes(label)).length,
+      1,
+      `a run inside the HUD bar carrying HUD_LEVEL_LABEL (${HUD_LEVEL_LABEL}) ` +
+        `at level ${level} (specs/ui.md) — the bar drew ${describeRuns(runs)}`,
+    );
+    assertGreaterThanOrEqual(
+      runsShowing(runs, level).length,
+      1,
+      `a run inside the HUD bar reading ${level}, the level being played ` +
+        `(specs/ui.md) — the bar drew ${describeRuns(runs)}`,
+    );
+    assertGreaterThanOrEqual(
+      runsShowing(runs, TOTAL_LEVELS).length,
+      1,
+      `a run inside the HUD bar reading TOTAL_LEVELS (${TOTAL_LEVELS}), the ` +
+        `levels a run is (specs/ui.md), at level ${level} — the bar drew ` +
+        `${describeRuns(runs)}`,
+    );
+  };
 
-  const label = HUD_LEVEL_LABEL.toLowerCase();
-  assertGreaterThanOrEqual(
-    runs.filter((run) => run.text.toLowerCase().includes(label)).length,
-    1,
-    `a run inside the HUD bar carrying HUD_LEVEL_LABEL (${HUD_LEVEL_LABEL}) ` +
-      `(specs/ui.md) — the bar drew ${describeRuns(runs)}`,
-  );
-  assertGreaterThanOrEqual(
-    runsShowing(runs, LEVEL).length,
-    1,
-    `a run inside the HUD bar reading ${LEVEL}, the level being played ` +
-      `(specs/ui.md) — the bar drew ${describeRuns(runs)}`,
-  );
-  assertGreaterThanOrEqual(
-    runsShowing(runs, TOTAL_LEVELS).length,
-    1,
-    `a run inside the HUD bar reading TOTAL_LEVELS (${TOTAL_LEVELS}), the ` +
-      `levels a run is (specs/ui.md) — the bar drew ${describeRuns(runs)}`,
-  );
+  await readBarAt(FIRST_LEVEL, true);
+  await readBarAt(SECOND_LEVEL, false);
 });

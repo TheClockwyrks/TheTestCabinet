@@ -40,7 +40,7 @@
 // acceptance to read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual } from "../assert";
+import { assertDeepEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -49,7 +49,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { BAY_COLUMNS, poseHopUpFromWater } from "./harness";
+import { BAY_COLUMNS, BAY_PAIRS, poseHopUpFromWater } from "./harness";
 
 /**
  * Game time held after each hop, in seconds, for the replay alone.
@@ -96,12 +96,15 @@ it("accepts a hop up from row 2 at every one of the ten bay columns", async () =
   });
 
   for (const { col, bay, after } of landings) {
-    assertEqual(
-      after[bay],
-      true,
-      `bay ${bay} filled by a hop up from row 2 at column ${col}, which ` +
-        `specs/strait.md makes one of its two columns and specs/bays.md makes ` +
-        `a tile of the far shore a hop may land on`,
+    // The whole board rather than the one bay: a hop up from a bay's own column
+    // fills THAT bay and no other, so a build that filled the wrong one — or
+    // filled several — is named here as well as one that filled none.
+    assertDeepEqual(
+      after,
+      BAY_PAIRS.map((_unused, index) => index === bay),
+      `the five bays after a hop up from row 2 at column ${col}, which ` +
+        `specs/strait.md makes one of bay ${bay}'s two columns and specs/bays.md ` +
+        `makes a tile of the far shore a hop may land on`,
     );
   }
 });

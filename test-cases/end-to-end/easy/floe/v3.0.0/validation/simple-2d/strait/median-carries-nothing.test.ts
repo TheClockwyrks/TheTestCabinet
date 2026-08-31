@@ -8,7 +8,13 @@
 // footing table says the same of what standing there gives: footing is `solid`
 // when the row is `10`.
 //
-// WHY THIS IS READ OVER LIVE LANES RATHER THAN ON A FRESH LAYOUT. A build that
+// THE ITEM'S TWO HALVES ARE TWO CHECKS. The first reads the LAYOUT — the eight
+// levels laid out in turn, each asked for a median carrying nothing — because the
+// rule is stated "at any level" and a lane table that put a populated lane on row
+// `10` puts it there at every one of them. The second reads a SECTION OF PLAY,
+// for the reason below.
+//
+// WHY THE SECOND IS READ OVER LIVE LANES RATHER THAN ON A FRESH LAYOUT. A build that
 // laid a lane onto the median would be caught by a single reading, but that is
 // not the failure worth catching: it is a lane whose items WRAP through the
 // median as they run — a wrap that carries a floe off row `9` and back on at row
@@ -35,6 +41,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
+import { TOTAL_LEVELS } from "../../src/constants";
 import {
   captureReplay,
   createHarness,
@@ -102,6 +109,29 @@ beforeEach(async () => {
 
 afterEach(() => {
   h?.dispose();
+});
+
+it("lays no vehicle and no floe on the median, at every level", () => {
+  // The first half of the item, read on the layout itself rather than on a
+  // section of play: the rule holds "at any level", and a lane table that put a
+  // populated lane on row 10 would be laying it there at every one of the eight.
+  for (let level = 1; level <= TOTAL_LEVELS; level += 1) {
+    poseLiveLanes(h, START_COL, ROW_MEDIAN, level);
+
+    const laid = h.snapshot();
+    assertLength(
+      itemsInRow(laid.vehicles, ROW_MEDIAN),
+      0,
+      `level ${level}: vehicles laid out on the median, row ${ROW_MEDIAN} ` +
+        `(specs/strait.md)`,
+    );
+    assertLength(
+      itemsInRow(laid.floes, ROW_MEDIAN),
+      0,
+      `level ${level}: floes laid out on the median, row ${ROW_MEDIAN} ` +
+        `(specs/strait.md)`,
+    );
+  }
 });
 
 it("keeps every vehicle and every floe off the median across ten seconds of live lanes", async () => {
