@@ -185,10 +185,7 @@ it("draws the ship lopsided about its centre along its facing, at four facings",
     }
 
     assertGreaterThan(
-      Math.max(
-        lopsided(forward, backward),
-        lopsided(area.ahead, area.behind),
-      ),
+      Math.max(lopsided(forward, backward), lopsided(area.ahead, area.behind)),
       MIN_ASYMMETRY,
       `${at}: how lopsided the drawn ship is about its centre along its facing — the larger of its reach (${forward.toFixed(1)} ahead against ${backward.toFixed(1)} behind) and its area (${area.ahead} samples ahead against ${area.behind} behind) — as a fraction of the whole (specs/overview.md)`,
     );

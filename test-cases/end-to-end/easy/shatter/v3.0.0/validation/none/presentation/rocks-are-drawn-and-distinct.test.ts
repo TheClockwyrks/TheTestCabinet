@@ -91,7 +91,9 @@ it("paints a rock apart from the field and apart from the ship", async () => {
   if (rockColor === null || shipColor === null) {
     fail(
       "both a rock and a ship drawn apart from the field, so their colours can be compared (specs/overview.md)",
-      rockColor === null ? "nothing was drawn inside the rock" : "nothing was drawn inside the ship",
+      rockColor === null
+        ? "nothing was drawn inside the rock"
+        : "nothing was drawn inside the ship",
     );
   }
 

@@ -24,12 +24,7 @@
 
 import { TAU } from "../constants";
 import { wrap, type Vec } from "../geometry";
-import {
-  colorDistance,
-  luminance,
-  type Harness,
-  type Rgb,
-} from "../harness";
+import { colorDistance, luminance, type Harness, type Rgb } from "../harness";
 
 /* ---- A disc of samples over a body --------------------------------------- */
 
@@ -149,10 +144,7 @@ export function changedSamples(
 }
 
 /** The mean distance of a set of readings from one colour, out of 441. */
-export function meanDistance(
-  look: readonly Rgb[],
-  background: Rgb,
-): number {
+export function meanDistance(look: readonly Rgb[], background: Rgb): number {
   if (look.length === 0) return 0;
   let total = 0;
   for (const sample of look) total += colorDistance(sample, background);
@@ -216,8 +208,11 @@ export function ringPoints(
 // A check that has to find WHERE a build drew something reads tens of thousands of
 // pixels rather than a handful, and `Harness.pixels` costs one `getImageData` per
 // point. This takes ONE `getImageData` over the whole rectangle inside the page and
-// reduces it to a grid of cell means there, so the crossing carries a few thousand
-// numbers instead of a few million. `Harness.page` is exposed for exactly this.
+// reduces it there to a grid of square cells, each carrying the FURTHEST any pixel
+// in it fell from a colour the caller supplies — so the crossing carries a few tens
+// of thousands of numbers rather than a few million, and a cell holding one thin
+// stroke reads as strongly as a cell filled solid. `Harness.page` is exposed for
+// exactly this kind of check.
 
 /** A rectangle of the field, in logical units. */
 export interface Rect {
@@ -227,8 +222,14 @@ export interface Rect {
   h: number;
 }
 
-/** A rectangle of the canvas reduced to square cells, each the mean of its pixels. */
-export interface CellGrid {
+/**
+ * A rectangle of the canvas reduced to square cells.
+ *
+ * Each cell holds the largest RGB distance, out of 441, between any pixel inside it
+ * and the reference colour the read was taken against — the field the build drew,
+ * for a read that is looking for ink.
+ */
+export interface InkGrid {
   /** The rectangle's top-left, in logical units. */
   x: number;
   y: number;
@@ -236,8 +237,8 @@ export interface CellGrid {
   cell: number;
   cols: number;
   rows: number;
-  /** `r, g, b` for each cell, row by row: `3 * cols * rows` values. */
-  rgb: number[];
+  /** The furthest reading in each cell, row by row: `cols * rows` values. */
+  ink: number[];
 }
 
 /** One animation frame, so a read sees the picture the last tick left behind. */
@@ -250,20 +251,21 @@ async function settle(h: Harness): Promise<void> {
   );
 }
 
-/** Read a rectangle of the field as a grid of `cell`-sized means. */
-export async function readCells(
+/** Read a rectangle of the field as a grid of cells, each the furthest from `against`. */
+export async function readInk(
   h: Harness,
   rect: Rect,
   cell: number,
-): Promise<CellGrid> {
+  against: Rgb,
+): Promise<InkGrid> {
   await settle(h);
   const view = h.viewport();
   const origin = h.device(rect.x, rect.y);
   const step = Math.max(1, Math.round(cell * view.scale));
   const cols = Math.max(1, Math.floor((rect.w * view.scale) / step));
   const rows = Math.max(1, Math.floor((rect.h * view.scale) / step));
-  const rgb = (await h.page.evaluate(
-    ([left, top, side, wide, high]) => {
+  const ink = (await h.page.evaluate(
+    ([left, top, side, wide, high, red, green, blue]) => {
       const canvases = Array.from(document.querySelectorAll("canvas"));
       if (canvases.length === 0) {
         throw new Error("shatter: the page has no <canvas>");
@@ -280,16 +282,13 @@ export async function readCells(
       }
       const x0 = Math.min(Math.max(left, 0), Math.max(canvas.width - 1, 0));
       const y0 = Math.min(Math.max(top, 0), Math.max(canvas.height - 1, 0));
-      const width = Math.min(wide * side, canvas.width - x0);
-      const height = Math.min(high * side, canvas.height - y0);
+      const width = Math.max(1, Math.min(wide * side, canvas.width - x0));
+      const height = Math.max(1, Math.min(high * side, canvas.height - y0));
       const { data } = ctx2d.getImageData(x0, y0, width, height);
       const out: number[] = [];
       for (let row = 0; row < high; row += 1) {
         for (let col = 0; col < wide; col += 1) {
-          let r = 0;
-          let g = 0;
-          let b = 0;
-          let seen = 0;
+          let furthest = 0;
           for (let dy = 0; dy < side; dy += 1) {
             const y = row * side + dy;
             if (y >= height) break;
@@ -297,55 +296,85 @@ export async function readCells(
               const x = col * side + dx;
               if (x >= width) break;
               const at = (y * width + x) * 4;
-              r += data[at];
-              g += data[at + 1];
-              b += data[at + 2];
-              seen += 1;
+              const dr = data[at] - red;
+              const dg = data[at + 1] - green;
+              const db = data[at + 2] - blue;
+              const away = Math.sqrt(dr * dr + dg * dg + db * db);
+              if (away > furthest) furthest = away;
             }
           }
-          const by = Math.max(1, seen);
-          out.push(r / by, g / by, b / by);
+          out.push(furthest);
         }
       }
       return out;
     },
-    [origin.x, origin.y, step, cols, rows] as const,
+    [
+      origin.x,
+      origin.y,
+      step,
+      cols,
+      rows,
+      against.r,
+      against.g,
+      against.b,
+    ] as const,
   )) as number[];
-  return { x: rect.x, y: rect.y, cell: step / view.scale, cols, rows, rgb };
+  return { x: rect.x, y: rect.y, cell: step / view.scale, cols, rows, ink };
 }
 
-/** One cell's mean colour. */
-export function cellColor(grid: CellGrid, col: number, row: number): Rgb {
-  const at = (row * grid.cols + col) * 3;
-  return { r: grid.rgb[at], g: grid.rgb[at + 1], b: grid.rgb[at + 2] };
+/** The furthest reading in one cell, out of 441. */
+export function inkAt(grid: InkGrid, col: number, row: number): number {
+  return grid.ink[row * grid.cols + col];
 }
 
 /** Where a cell's centre falls, in logical field units. */
-export function cellCentre(grid: CellGrid, col: number, row: number): Vec {
+export function cellCentre(grid: InkGrid, col: number, row: number): Vec {
   return {
     x: grid.x + (col + 0.5) * grid.cell,
     y: grid.y + (row + 0.5) * grid.cell,
   };
 }
 
-/**
- * The cells of two grids of the same shape that differ by more than `threshold`,
- * as `[col, row]` pairs, keeping only those a caller's filter accepts.
- */
-export function differingCells(
-  before: CellGrid,
-  after: CellGrid,
+/** One cell of a grid, by its column and row. */
+export interface Cell {
+  col: number;
+  row: number;
+}
+
+/** The cells of a grid whose reading is beyond `threshold` and that `keep` accepts. */
+export function inkedCells(
+  grid: InkGrid,
   threshold: number,
   keep: (at: Vec) => boolean = () => true,
-): { col: number; row: number }[] {
-  const found: { col: number; row: number }[] = [];
+): Cell[] {
+  const found: Cell[] = [];
+  for (let row = 0; row < grid.rows; row += 1) {
+    for (let col = 0; col < grid.cols; col += 1) {
+      if (inkAt(grid, col, row) <= threshold) continue;
+      if (!keep(cellCentre(grid, col, row))) continue;
+      found.push({ col, row });
+    }
+  }
+  return found;
+}
+
+/**
+ * The cells of two grids of the same shape whose readings differ by more than
+ * `threshold` and that `keep` accepts.
+ */
+export function changedCells(
+  before: InkGrid,
+  after: InkGrid,
+  threshold: number,
+  keep: (at: Vec) => boolean = () => true,
+): Cell[] {
+  const found: Cell[] = [];
   const cols = Math.min(before.cols, after.cols);
   const rows = Math.min(before.rows, after.rows);
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
       if (
-        colorDistance(cellColor(before, col, row), cellColor(after, col, row)) <=
-        threshold
+        Math.abs(inkAt(after, col, row) - inkAt(before, col, row)) <= threshold
       ) {
         continue;
       }
@@ -354,4 +383,40 @@ export function differingCells(
     }
   }
   return found;
+}
+
+/**
+ * How many separated marks a band of cells holds, reading left to right.
+ *
+ * A column counts as inked when any row of the band inside it is; a run of inked
+ * columns is one mark, and two marks are separated when at least `gap` bare columns
+ * lie between them. What `hud-lives-are-drawn` counts glyphs with, since the glyphs
+ * `specs/ui.md` puts "in a row" are separated marks by construction.
+ */
+export function marksInBand(
+  grid: InkGrid,
+  band: { fromRow: number; toRow: number; fromCol: number; toCol: number },
+  threshold: number,
+  gap: number,
+): number {
+  let marks = 0;
+  let bare = gap;
+  for (let col = band.fromCol; col <= band.toCol; col += 1) {
+    if (col < 0 || col >= grid.cols) continue;
+    let inked = false;
+    for (let row = band.fromRow; row <= band.toRow; row += 1) {
+      if (row < 0 || row >= grid.rows) continue;
+      if (inkAt(grid, col, row) > threshold) {
+        inked = true;
+        break;
+      }
+    }
+    if (inked) {
+      if (bare >= gap) marks += 1;
+      bare = 0;
+    } else {
+      bare += 1;
+    }
+  }
+  return marks;
 }

@@ -54,6 +54,20 @@ export const SAUCER_SPOT = { x: 640, y: 640 } as const;
 export const BULLET_SPOT = { x: 300, y: 660 } as const;
 
 /**
+ * Where the saucer is posed when a check has to SHOOT IT DOWN and then read the
+ * whole field for what the kill announced: out toward the lower-right corner, `511`
+ * from the star's centre and `511` from the middle of the field.
+ *
+ * Far from the centre on purpose. A check that must ignore whatever the build drew
+ * where the kill happened blanks a disc around it, and a kill posed near the middle
+ * of the field would blank the very place an announcement drawn "on the field"
+ * (`specs/scoring.md`) is most likely to land. Its whole drawn extent and the round's
+ * short flight are inside the field, and the nearest of {@link BARE_POINTS} is `98`
+ * away, so the background reading is still of bare field.
+ */
+export const KILL_SPOT = { x: 1080, y: 620 } as const;
+
+/**
  * Where the ship is parked when a check reads the field AROUND the star: the far
  * upper-left corner, `573` from the star's centre.
  *
