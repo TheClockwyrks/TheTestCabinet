@@ -12,7 +12,7 @@ as a circle of radius `SAUCER_R` (`18`).
 It is a powered craft. The well never pulls it (`specs/gravity.md`), and it steers
 clear of the star's core: at no moment does the saucer's circle overlap the core,
 so its centre is never closer to `(STAR_X, STAR_Y)` than `CORE_R + SAUCER_R`
-(`48`). How far outside that it chooses to steer is the build's.
+(`48`). How far outside that it chooses to steer is the build's own.
 
 ## Identity
 
@@ -45,6 +45,12 @@ enters, it sets its vertical velocity to `SAUCER_WEAVE_SPEED` (`90`) directed
 opposite the vertical direction it is travelling in at that moment, so its
 vertical direction reverses at every reroll. The direction of the first reroll is
 drawn at random. It wraps at the top and bottom edges like any body.
+
+Keeping clear of the core takes precedence over the weave. Entry rows are
+drawn across the whole field, so a crossing lined up on the star's row is an
+ordinary one: where holding the weave's vertical velocity would carry the
+saucer's circle into the core, the saucer steers around the core instead, and
+takes the weave up again once it is past.
 
 A saucer leaves the field `SAUCER_LIFETIME` (`12` seconds) after it enters.
 
