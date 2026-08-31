@@ -1,19 +1,65 @@
-// Meltdown — building/preview-invalid-when-unaffordable: an unaffordable
-// footprint reads invalid.
+// building/preview-invalid-when-unaffordable — one coin short of the build cost
+// makes the footprint invalid.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// specs/building.md, Valid and invalid, condition 4: "The current money is at
+// least the held type's build cost." AT LEAST, so exactly the cost buys it and one
+// below it does not.
 //
-// What it must decide:
-//
-//   With money one below the tower's cost the footprint reads invalid.
+// THE MONEY IS THE ONLY THING THAT MOVES. The same footprint is read twice: once
+// with the purse at exactly the Arc's cost, where every one of the six conditions
+// holds and it must read valid, and once with the purse one coin lower, where only
+// condition 4 has changed. That pair is what tells a build with the boundary on
+// the wrong side of `>=` from a build that reports invalid whatever it is asked,
+// and it names which of the two it is.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TOWER_DEFS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
+import { probeValid } from "./preview";
+import { FREE_SITE } from "./sites";
 
-it("An unaffordable footprint reads invalid", () => {
-  throw new Error(
-    "Meltdown: validation/building/preview-invalid-when-unaffordable.test.ts is not implemented yet",
+/** The type read, and the cost specs/towers.md gives the Arc. */
+const HELD = "arc";
+const COST = TOWER_DEFS[HELD].cost;
+
+/** A quiet anchor, so only the money can fail the footprint. */
+const AT = FREE_SITE;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reads the footprint invalid with the money one coin below the cost", async () => {
+  startRun(h);
+
+  h.debug.setMoney(COST);
+  assertEqual(
+    probeValid(h, HELD, AT.col, AT.row),
+    true,
+    `the ${HELD} footprint with the money at its cost, ${COST}`,
+  );
+
+  h.debug.setMoney(COST - 1);
+  const short = probeValid(h, HELD, AT.col, AT.row);
+
+  await h.advance(1);
+  captureStill(h, "invalid");
+
+  assertEqual(
+    short,
+    false,
+    `the ${HELD} footprint with the money at ${COST - 1}, one below its cost`,
   );
 });
