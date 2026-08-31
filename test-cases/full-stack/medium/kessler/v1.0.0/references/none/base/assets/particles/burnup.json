@@ -1,0 +1,199 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 900,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "flare",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 16,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 300.0,
+      "lifetimeSpread": 70.0,
+      "speed": 24.0,
+      "speedSpread": 12.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 7,
+      "forces": {
+        "drag": 4.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 4.6,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ffd9a0",
+            "at": 0.4
+          },
+          {
+            "color": "#ff9d4a",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "embers",
+      "shape": "disc",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 5.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 34,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 760.0,
+      "lifetimeSpread": 220.0,
+      "speed": 62.0,
+      "speedSpread": 30.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 29,
+      "forces": {
+        "drag": 1.7,
+        "radial": 34.0,
+        "vortex": 95.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.6,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffd9a0",
+            "at": 0.0
+          },
+          {
+            "color": "#ff9d4a",
+            "at": 0.45
+          },
+          {
+            "color": "#c9662a",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.07
+      }
+    },
+    {
+      "name": "ash",
+      "shape": "disc",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 8.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 14,
+        "atMs": 120.0
+      },
+      "lifetimeMs": 720.0,
+      "lifetimeSpread": 200.0,
+      "speed": 20.0,
+      "speedSpread": 10.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 41,
+      "forces": {
+        "drag": 2.6
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.6,
+          "to": 2.6
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 0.55,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#8a5a3a",
+            "at": 0.0
+          },
+          {
+            "color": "#5a4a44",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}
