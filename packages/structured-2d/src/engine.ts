@@ -714,6 +714,7 @@ export function assembleEngine<D = unknown>(
   const bus = new EngineEventBus();
 
   const background = options.background ?? null;
+  const imageSmoothing = options.imageSmoothing ?? true;
 
   let clock: Clock = options.clock ?? new WallClock();
 
@@ -835,6 +836,7 @@ export function assembleEngine<D = unknown>(
       viewport,
       frame: frameInfo(),
       background,
+      imageSmoothing,
       width,
       height,
     });

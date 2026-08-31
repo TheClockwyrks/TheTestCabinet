@@ -769,6 +769,46 @@ describe("run", () => {
 /* Recording, viewport, destroy, listeners                                     */
 /* -------------------------------------------------------------------------- */
 
+describe("image smoothing", () => {
+  /** The property as the raw context holds it after a frame. */
+  const smoothingOf = (canvas: HTMLCanvasElement): unknown =>
+    (canvas.getContext("2d") as unknown as Record<string, unknown>)[
+      "imageSmoothingEnabled"
+    ];
+
+  it("leaves smoothing on when the option is absent", async () => {
+    const canvas = fakeCanvas();
+    const { engine } = build({ canvas });
+    await engine.initialize();
+    await engine.advance(1);
+    expect(smoothingOf(canvas)).toBe(true);
+  });
+
+  it("turns smoothing off for the whole picture when the option is false", async () => {
+    const canvas = fakeCanvas();
+    const { engine } = build({ canvas, imageSmoothing: false });
+    await engine.initialize();
+    await engine.advance(1);
+    expect(smoothingOf(canvas)).toBe(false);
+  });
+
+  it("records the setting as a set inside every frame", async () => {
+    const { engine } = build({ imageSmoothing: false });
+    await engine.initialize();
+    engine.startRecording();
+    await engine.advance(2);
+    const recording = engine.stopRecording();
+    for (const frame of recording.frames) {
+      const ops = frame.ops.map((at) => recording.ops[at]);
+      expect(ops).toContainEqual({
+        op: "set",
+        property: "imageSmoothingEnabled",
+        value: false,
+      });
+    }
+  });
+});
+
 describe("recording through the engine", () => {
   it("refuses the unbalanced calls by name", async () => {
     const { engine } = build();

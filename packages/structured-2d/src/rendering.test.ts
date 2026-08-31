@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Actor } from "./actors";
 import { WorldCamera } from "./camera";
 import { ColliderComponent } from "./collision";
@@ -116,6 +116,7 @@ function scene(
       viewport,
       frame,
       background: null,
+      imageSmoothing: true,
       width: 640,
       height: 360,
       ...overrides,
@@ -195,6 +196,77 @@ describe("the clear", () => {
     expect(stub.log.indexOf("clearRect(0,0,800,450)")).toBeLessThan(
       stub.log.indexOf("fill()"),
     );
+  });
+});
+
+describe("image smoothing", () => {
+  const image = { width: 16, height: 24 } as unknown as ImageBitmap;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sets the context's smoothing from the scene after the clear and before any component draws", () => {
+    const { scene: frame, stub } = scene(
+      [actorWith([new SpriteComponent({ image })])],
+      { imageSmoothing: false },
+    );
+    new RenderPipeline().render(frame);
+    const set = stub.log.indexOf("set:imageSmoothingEnabled=false");
+    expect(set).toBeGreaterThan(stub.log.indexOf("clearRect(0,0,800,450)"));
+    expect(set).toBeLessThan(
+      stub.log.findIndex((entry) => entry.startsWith("drawImage(")),
+    );
+  });
+
+  it("sets it every frame, whatever the frame draws", () => {
+    const { scene: frame, stub } = scene([]);
+    const pipeline = new RenderPipeline();
+    pipeline.render(frame);
+    pipeline.render(frame);
+    expect(
+      stub.log.filter((entry) => entry === "set:imageSmoothingEnabled=true"),
+    ).toHaveLength(2);
+  });
+
+  it("hands a DrawComponent the context already carrying the setting", () => {
+    let seen: boolean | null = null;
+    class Probe extends DrawComponent {
+      draw(api: DrawApi): void {
+        seen = api.ctx.imageSmoothingEnabled;
+      }
+    }
+    const { scene: frame } = scene([actorWith([new Probe()])], {
+      imageSmoothing: false,
+    });
+    new RenderPipeline().render(frame);
+    expect(seen).toBe(false);
+  });
+
+  it("samples the tint scratch the way the frame does", () => {
+    // A host with a second canvas: the scratch is a recording context of its
+    // own, so what the tint prepared on it is observable.
+    const scratch = contextStub(1, 1);
+    vi.spyOn(document, "createElement").mockReturnValue(
+      scratch.ctx.canvas as unknown as HTMLElement,
+    );
+    (scratch.ctx.canvas as unknown as Record<string, unknown>)["getContext"] =
+      (): CanvasRenderingContext2D => scratch.ctx;
+
+    const sprite = new SpriteComponent({ image, tint: "#ff0000" });
+    const { scene: frame, stub } = scene([actorWith([sprite])], {
+      imageSmoothing: false,
+    });
+    new RenderPipeline().render(frame);
+
+    const set = scratch.log.indexOf("set:imageSmoothingEnabled=false");
+    expect(set).toBeGreaterThanOrEqual(0);
+    expect(set).toBeLessThan(
+      scratch.log.findIndex((entry) => entry.startsWith("drawImage(")),
+    );
+    // The main context blits the flattened scratch, under its own setting.
+    expect(stub.log).toContain("set:imageSmoothingEnabled=false");
+    expect(stub.log).toContain("drawImage([object Object],-8,-12,16,24)");
   });
 });
 

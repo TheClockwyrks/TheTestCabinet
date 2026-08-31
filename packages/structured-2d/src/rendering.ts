@@ -9,7 +9,8 @@
  *    target's world transform and zoom, then the result is clamped to
  *    `camera.bounds`.
  * 2. The canvas is cleared to `background`, or to transparency when none was
- *    given.
+ *    given, and the context's image smoothing is set from `imageSmoothing`, so
+ *    every image this frame draws samples the way the option states.
  * 3. Every enabled, visible `RenderComponent` on every live actor is
  *    collected — a destroyed actor stops rendering immediately, before the
  *    end-of-frame flush removes it from the world.
@@ -129,6 +130,11 @@ export interface RenderScene {
   frame: FrameInfo;
   /** The color the canvas clears to, or `null` for transparency. */
   background: string | null;
+  /**
+   * Whether an image the fit scales is resampled bilinearly, or sampled
+   * nearest-neighbor when `false`.
+   */
+  imageSmoothing: boolean;
   /** The logical design width, for the camera's projection center. */
   width: number;
   /** The logical design height, for the camera's projection center. */
@@ -225,6 +231,7 @@ export class RenderPipeline implements Renderer {
   render(scene: RenderScene): void {
     this.updateCamera(scene);
     this.clear(scene);
+    this.applySampling(scene);
 
     const collected = this.collect(scene.world);
     // A stable sort by layer alone: the collection is already in spawn order
@@ -309,6 +316,19 @@ export class RenderPipeline implements Renderer {
       ctx.fillStyle = background;
       ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     }
+  }
+
+  /**
+   * Step 2, second half: the context's image smoothing, set from the option
+   * once per frame and before any component draws.
+   *
+   * Once rather than per blit, so a frame records one `set` for it: the
+   * pipeline never `save`/`restore`s, so the value holds for every component
+   * of the frame, and a `DrawComponent` that changes it is expected to restore
+   * it, as it is every other style the pipeline handed over.
+   */
+  private applySampling(scene: RenderScene): void {
+    scene.ctx.imageSmoothingEnabled = scene.imageSmoothing;
   }
 
   /**
@@ -402,7 +422,7 @@ export class RenderPipeline implements Renderer {
     this.applyLocalTransform(ctx, at);
 
     if (component instanceof SpriteComponent) {
-      this.drawSprite(ctx, component, at, mode);
+      this.drawSprite(ctx, component, at, mode, scene.imageSmoothing);
     } else if (component instanceof ShapeComponent) {
       this.drawShape(ctx, component, at, mode);
     } else if (component instanceof TextComponent) {
@@ -485,12 +505,13 @@ export class RenderPipeline implements Renderer {
     }
   }
 
-  /** A sprite, under the frame's mode. */
+  /** A sprite, under the frame's mode and the frame's sampling. */
   private drawSprite(
     ctx: CanvasRenderingContext2D,
     component: SpriteComponent,
     at: Transform,
     mode: RenderMode,
+    smoothing: boolean,
   ): void {
     const width = component.width;
     const height = component.height;
@@ -500,7 +521,16 @@ export class RenderPipeline implements Renderer {
     switch (mode) {
       case "shaded": {
         ctx.globalAlpha = clampOpacity(component.opacity);
-        this.blitSprite(ctx, component, dx, dy, width, height, component.tint);
+        this.blitSprite(
+          ctx,
+          component,
+          dx,
+          dy,
+          width,
+          height,
+          component.tint,
+          smoothing,
+        );
         return;
       }
       case "wireframe": {
@@ -513,7 +543,7 @@ export class RenderPipeline implements Renderer {
       }
       case "unlit": {
         ctx.globalAlpha = 1;
-        this.blitSprite(ctx, component, dx, dy, width, height, null);
+        this.blitSprite(ctx, component, dx, dy, width, height, null, smoothing);
         return;
       }
       case "silhouette": {
@@ -534,9 +564,10 @@ export class RenderPipeline implements Renderer {
     width: number,
     height: number,
     tint: string | null,
+    smoothing: boolean,
   ): void {
     const source = component.source;
-    const tinted = tint === null ? null : this.tint(component, tint);
+    const tinted = tint === null ? null : this.tint(component, tint, smoothing);
     if (tinted !== null) {
       // The scratch holds the selected region already flattened to the tint,
       // so it blits whole.
@@ -566,11 +597,14 @@ export class RenderPipeline implements Renderer {
    *
    * The scratch is a canvas of its own, so its preparation stays outside the
    * recording; the recorded operation is the `drawImage` that blits it, whose
-   * source is a mutable canvas the recorder captures by content.
+   * source is a mutable canvas the recorder captures by content. The scratch
+   * samples as the frame does, so a tinted sprite and an untinted one are
+   * drawn the same way.
    */
   private tint(
     component: SpriteComponent,
     tint: string,
+    smoothing: boolean,
   ): HTMLCanvasElement | null {
     this.tintScratch ??= this.buildTintScratch();
     const scratch = this.tintScratch;
@@ -583,6 +617,7 @@ export class RenderPipeline implements Renderer {
     // needs.
     scratch.canvas.width = sw;
     scratch.canvas.height = sh;
+    scratch.imageSmoothingEnabled = smoothing;
     if (source === null) {
       scratch.drawImage(component.image, 0, 0);
     } else {

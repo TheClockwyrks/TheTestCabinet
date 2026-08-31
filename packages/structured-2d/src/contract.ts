@@ -1083,6 +1083,11 @@ export interface EngineOptions<D = unknown> {
   game: GameDefinition<D>;
   /** A CSS color cleared to before every frame. Absent, transparency. */
   background?: string;
+  /**
+   * Whether an image the viewport fit scales is resampled bilinearly. `false`
+   * samples nearest-neighbor, which keeps pixel art crisp. Defaults to `true`.
+   */
+  imageSmoothing?: boolean;
   /** A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. */
   layout?: string;
   /** The clock supplying each frame's delta. Defaults to `new WallClock()`. */
