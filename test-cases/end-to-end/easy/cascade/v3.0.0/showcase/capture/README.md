@@ -1,23 +1,22 @@
 # Showcase capture drivers
 
 `draw-one.showcase-capture.test.ts` and `draw-three.showcase-capture.test.ts`
-(re)record the three files in `showcase/draw-one/` and `showcase/draw-three/`
-from the case's **engineless** reference implementations, by playing a real game
-of Cascade: the title screen's NEW GAME control is clicked with the mouse, the
+(re)record the four media files in `showcase/draw-one/` and
+`showcase/draw-three/` from the case's **engineless** reference implementations,
+by playing a real game of Cascade: the title screen's NEW GAME control is clicked with the mouse, the
 deal the game deals is read, a solve is planned through it, and that plan is then
 performed one ordinary gesture at a time — a click on the stock, a drag of a run
 between columns, a double-click that sends a card home — until the game declares
 itself won and the victory cascade runs.
 
-Nothing on screen is posed. Two operations of the debug surface are used and both
-are used before play begins: `reset({ seed })`, which chooses the deal, and
-`snapshot()`, which is read. `snapshot()` is read again after every gesture, but
-only to **check** — the driver compares what the game did against what the plan
-expected, and a divergence fails the capture rather than being papered over.
-Nothing calls `move`, `autoMove`, `turnStock`, `deal`, `addCard`, `setScreen`, or
-any pose operation, and nothing touches the clock: the game runs on its own
-animation frame, in real time, which is what makes the recording a recording of
-the game.
+Nothing on screen is posed. The debug surface is reached for exactly twice over.
+`reset({ seed })` is called once, before the first gesture, and it is what chooses
+the deal. `snapshot()` is read throughout — but a read changes nothing: it is how
+the driver **checks** that the game did what the plan expected, and a divergence
+fails the capture rather than being papered over. Nothing calls `move`,
+`autoMove`, `turnStock`, `deal`, `addCard`, `setScreen`, or any pose operation,
+and nothing touches the clock: the game runs on its own animation frame, in real
+time, which is what makes the recording a recording of the game.
 
 The plan is made with perfect knowledge — the search reads the face-down cards
 too, which `snapshot()` reports and a player cannot see. That is what makes a
@@ -72,22 +71,23 @@ Nothing in `validation/none/` is patched, and no validator is touched: the
 capture brings its own harness and reuses only `chromium.ts` (finding a browser),
 `globalSetup.ts` (serving `dist/` and starting one), `constants.ts` (the figures
 the specification fixes) and the pure geometry helpers of `harness.ts`. Copy the
-three outputs into `showcase/<variant>/`, then delete the staged `validation/`
+four outputs into `showcase/<variant>/`, then delete the staged `validation/`
 directory from the reference workspace.
 
 ## The knobs
 
-| Variable | What it does |
-| --- | --- |
-| `TCAB_SHOWCASE_OUT` | Where the clip and the stills are written. **Unset, the driver plays and reports but writes nothing**, which is how a take is auditioned. |
-| `TCAB_SHOWCASE_SEED` | The deal to play. Recording one take is what this file does by default; the committed seed is the default. |
-| `TCAB_SHOWCASE_SEEDS` | Several seeds, comma-separated, played in turn with the recorder off. Naming more than one is an audition and writes nothing. |
-| `TCAB_SHOWCASE_MAX_MOVES` | The longest plan the search will accept, in gestures. It is also the search's main prune, so lowering it makes the search both quicker and pickier. |
-| `TCAB_SHOWCASE_MAX_NODES` / `TCAB_SHOWCASE_WEIGHT` | How hard the search looks, and how greedily. |
-| `TCAB_SHOWCASE_MID_STILL` | How far into the plan to start looking for the mid-play still, as a share of its gestures. |
-| `TCAB_SHOWCASE_BITRATE` | What the recording is re-encoded at. `0` is not accepted; pass a large figure to keep Chromium's own quality. |
-| `TCAB_SHOWCASE_FFMPEG` | An ffmpeg to re-encode with. Unset, the one Playwright installed is used; with none on the host the recording is kept exactly as Chromium wrote it. |
-| `TCAB_SHOWCASE_VERBOSE` | `1` prints each gesture and the running count of cards home. |
+| Variable                                           | What it does                                                                                                                                        |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_SHOWCASE_OUT`                                | Where the clip and the stills are written. **Unset, the driver plays and reports but writes nothing**, which is how a take is auditioned.           |
+| `TCAB_SHOWCASE_SEED`                               | The deal to play. Recording one take is what this file does by default; the committed seed is the default.                                          |
+| `TCAB_SHOWCASE_SEEDS`                              | Several seeds, comma-separated, played in turn with the recorder off. Naming more than one is an audition and writes nothing.                       |
+| `TCAB_SHOWCASE_SWEEP`                              | A seed range (`1-250`). Solves every deal in it and prints the plan figures, without opening a browser or playing anything.                         |
+| `TCAB_SHOWCASE_MAX_MOVES`                          | The longest plan the search will accept, in gestures. It is also the search's main prune, so lowering it makes the search both quicker and pickier. |
+| `TCAB_SHOWCASE_MAX_NODES` / `TCAB_SHOWCASE_WEIGHT` | How hard the search looks, and how greedily.                                                                                                        |
+| `TCAB_SHOWCASE_MID_STILL`                          | How far into the plan to start looking for the mid-play still, as a share of its gestures.                                                          |
+| `TCAB_SHOWCASE_BITRATE`                            | What the recording is re-encoded at. `0` is not accepted; pass a large figure to keep Chromium's own quality.                                       |
+| `TCAB_SHOWCASE_FFMPEG`                             | An ffmpeg to re-encode with. Unset, the one Playwright installed is used; with none on the host the recording is kept exactly as Chromium wrote it. |
+| `TCAB_SHOWCASE_VERBOSE`                            | `1` prints each gesture and the running count of cards home.                                                                                        |
 
 The re-encode is a compression pass and nothing more — same frames, same order,
 same timing. Chromium's screencast writes about 750 kb/s, which for a clip of
@@ -103,16 +103,94 @@ The capture is deterministic: the same seed deals the same game, the plan is a
 function of the deal alone, and the pace is fixed, so a take can be auditioned
 with the recorder off and then re-run under it and be the same game.
 
-Auditioning happens in two passes. The first is over the PLANS, which needs no
-browser: every seed in a range is solved inside the move budget and scored on the
-things that decide whether a clip is worth watching — how many gestures it takes
-(which is how long the clip runs), how long its longest unbroken stretch of stock
-turns is (which is its longest lull), how much of it is cards moving between
-columns rather than off the stock, and how many times the stock has to be
-recycled. The second pass plays the short list against the real build with
-`TCAB_SHOWCASE_OUT` unset, which is what says how long a take actually runs and
-proves the build accepts every gesture in it. The winner is then recorded.
+Auditioning happens in two passes. The first is over the PLANS, and needs no
+browser at all — a take is half a minute of Chromium and a plan is a second of
+arithmetic, so the seeds worth playing are found on paper and only the short list
+is ever played:
+
+```sh
+TCAB_SHOWCASE_SWEEP=1-250 npx vitest run --config validation/vitest.config.ts \
+  validation/showcase-capture.test.ts
+```
+
+Each seed that can be won inside the move budget is printed with the figures that
+decide whether its clip is worth watching: how many gestures it takes (which is
+very nearly how long the clip runs), how long its longest unbroken stretch of
+stock turns is (which is its longest lull), how much of it is cards carried
+between piles rather than clicked off the stock, and how many times the stock has
+to come back around. A wide range is worth sharding across processes — seeds
+1-2000 take about a quarter of an hour split eight ways.
+
+The second pass plays the short list against the real build, with
+`TCAB_SHOWCASE_OUT` unset so nothing is written:
+
+```sh
+TCAB_SHOWCASE_SEEDS=13,411,479,548,795,1130,1474,1757 \
+  npx vitest run --config validation/vitest.config.ts \
+  validation/showcase-capture.test.ts
+```
+
+That is what says how long a take actually runs, and it proves the build accepts
+every gesture in the plan. The winner is then recorded.
 
 ## What is committed
 
-<!-- FILLED IN BY THE FINAL CAPTURE -->
+Both takes were chosen that way, over seeds 1-2000.
+
+### Draw One — seed 13
+
+Eight of the two thousand deals could be won inside the hundred-gesture budget
+(13, 411, 479, 548, 795, 1130, 1474 and 1757). All eight were played; seed 13 was
+the shortest take of them and tied for the fewest stock turns in a row.
+
+Its game is 95 gestures: 24 turns of the stock with no recycle at all, so the
+deck is played out in a single pass; 19 runs carried between piles (11 between
+columns, 8 off the waste); and 52 cards sent home by double-click, 36 of them off
+the columns and 16 off the waste. Its longest unbroken stretch of stock turns is
+six. The take runs 30.3 s from the title screen to the end of the cascade.
+
+- `cascade-solved.webm` — 32.2 s, `1280 x 720` at 25 fps, 0.96 MB after the
+  re-encode from Chromium's 2.80 MB. The title screen, NEW GAME, the deal, the
+  whole game, and three seconds of the victory cascade.
+- `mid-play.png` — the table a third of the way through: the stock still deep,
+  the waste showing its single turned card, all four foundations open and four
+  columns still holding face-down cards.
+- `the-cascade.png` — the cascade three seconds in, the felt already buried.
+- `title.png` — the title screen the take opened on, with its DRAW ONE label.
+
+### Draw Three — seed 822
+
+Two hundred and eighty-six of the two thousand deals came in inside a
+hundred-and-two gestures, and the eight best on the plan figures were played
+(1016, 1102, 822, 75, 865, 1427, 549 and 1474). Seed 822 was taken over the two
+shorter takes because it is the least stock-bound game of the eight: no two stock
+turns in a row anywhere in it.
+
+Its game is 90 gestures: 12 turns of the stock, one of them the recycle that
+brings the waste back around; 26 runs carried between piles (12 between columns,
+14 off the waste); and 52 cards sent home by double-click, 42 of them off the
+columns. The take runs 28.9 s.
+
+- `cascade-solved.webm` — 30.8 s, `1280 x 720` at 25 fps, 1.00 MB after the
+  re-encode from Chromium's 3.11 MB.
+- `mid-play.png` — the table a third of the way through, with a full three-card
+  fan on the waste, all four foundations open, and one column already emptied.
+- `the-cascade.png` — the cascade three seconds in.
+- `title.png` — the title screen, with its DRAW THREE label.
+
+### Reproducing either
+
+The seed is the driver's default, so the command is the plain one:
+
+```sh
+TCAB_SHOWCASE_OUT=/tmp/showcase-out \
+  npx vitest run --config validation/vitest.config.ts \
+  validation/showcase-capture.test.ts
+```
+
+The game that is played is fixed by the seed and by the search — `MAX_MOVES`,
+`MAX_NODES` and `WEIGHT` at the top of the driver — so changing any of those
+changes the plan and therefore the clip, and the stills with it. What does move
+between hosts is the clip's exact length, by a few tenths of a second: the pace
+figures are floors under the browser's own round trips, and a slower host spends
+a little more than the floor.

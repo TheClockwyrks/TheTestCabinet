@@ -19,7 +19,13 @@
 // takes it was chosen over.
 
 import { inject, it } from "vitest";
-import { captureTake, knob, DEFAULT_PACE } from "./showcase-player";
+import {
+  captureTake,
+  knob,
+  sweepPlans,
+  sweepRange,
+  DEFAULT_PACE,
+} from "./showcase-player";
 
 /**
  * The deal the committed clip plays.
@@ -34,9 +40,40 @@ const SEED = knob("TCAB_SHOWCASE_SEED", 13);
 /** One card a turn, which is what makes this variant Draw One. */
 const TURN_COUNT = 1;
 
+/**
+ * How the plan is looked for.
+ *
+ * `MAX_MOVES` is the ceiling on a plan's length in gestures, and it is the
+ * search's main prune as well as the clip's budget: at this pace a gesture is
+ * about a third of a second, so a hundred of them is a little over half a
+ * minute of play once the title screen, the deal and the cascade are added.
+ * Lowering it makes the search quicker AND pickier, and finds fewer deals.
+ */
+const MAX_MOVES = 100;
+const MAX_NODES = 70_000;
+const WEIGHT = 3;
+
 it(
   "plays a whole game of Draw One and records it",
   async () => {
+    const search = {
+      maxMoves: knob("TCAB_SHOWCASE_MAX_MOVES", MAX_MOVES),
+      maxNodes: knob("TCAB_SHOWCASE_MAX_NODES", MAX_NODES),
+      weight: knob("TCAB_SHOWCASE_WEIGHT", WEIGHT),
+    };
+
+    // The first pass of an audition: score the plans over a range of seeds and
+    // stop. No browser is opened and nothing is played.
+    const sweep = process.env.TCAB_SHOWCASE_SWEEP;
+    if (sweep !== undefined && sweep !== "") {
+      const { from, to } = sweepRange(sweep);
+      const scored = sweepPlans(from, to, TURN_COUNT, search);
+      process.stdout.write(
+        `${scored.length} of ${to - from + 1} seeds solved inside ${search.maxMoves} gestures\n`,
+      );
+      return;
+    }
+
     const seeds = (process.env.TCAB_SHOWCASE_SEEDS ?? String(SEED))
       .split(",")
       .map((entry) => Number(entry.trim()))
@@ -54,11 +91,7 @@ it(
           seed,
           outDir: record ? outDir : undefined,
           record,
-          search: {
-            maxMoves: knob("TCAB_SHOWCASE_MAX_MOVES", 100),
-            maxNodes: knob("TCAB_SHOWCASE_MAX_NODES", 70_000),
-            weight: knob("TCAB_SHOWCASE_WEIGHT", 3),
-          },
+          search,
           pace: DEFAULT_PACE,
           bitrate: process.env.TCAB_SHOWCASE_BITRATE ?? "380k",
           midStillAt: knob("TCAB_SHOWCASE_MID_STILL", 0.3),
@@ -75,5 +108,5 @@ it(
       );
     }
   },
-  10 * 60_000,
+  60 * 60_000,
 );

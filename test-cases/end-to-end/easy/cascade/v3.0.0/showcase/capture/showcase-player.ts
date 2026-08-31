@@ -9,16 +9,16 @@
 // sends a card home. Chromium records the page while it does, and the `.webm` it
 // writes is the showcase's leading entry.
 //
-// NOTHING ON SCREEN IS POSED. Two operations of the debug surface are used and
-// they are both used BEFORE play starts: `reset({ seed })`, which chooses the
-// deal, and `snapshot()`, which is read. `snapshot()` is then read after every
-// gesture, but only to CHECK — the driver compares what the game did against what
-// the plan expected and fails the capture when they differ. Every card that moves
-// on screen moved because the build's own rules accepted a mouse gesture. In
-// particular nothing here calls `move`, `autoMove`, `turnStock`, `deal`,
-// `addCard`, `setScreen`, or any of the pose operations, and nothing here touches
-// the clock: the game runs on its own animation frame, in real time, which is
-// what makes the recording a recording of the game rather than of the harness.
+// NOTHING ON SCREEN IS POSED. The surface is reached for exactly twice over.
+// `reset({ seed })` is called once, before the first gesture, and it is what
+// chooses the deal. `snapshot()` is read throughout — but a read changes nothing:
+// it is how the driver CHECKS that the game did what the plan expected, and a
+// divergence fails the capture rather than being papered over. Every card that
+// moves on screen moved because the build's own rules accepted a mouse gesture.
+// Nothing here calls `move`, `autoMove`, `turnStock`, `deal`, `addCard`,
+// `setScreen`, or any of the pose operations, and nothing here touches the clock:
+// the game runs on its own animation frame, in real time, which is what makes the
+// recording a recording of the game rather than of the harness.
 //
 // WHY THE MOUSE AND NOT `pointerDown`. `specs/controls.md` gives the surface's
 // pointer operations the same path a real event takes, so either would drive the
@@ -982,6 +982,89 @@ async function drop(
   }
   await hand.glide(to, pace.carryMs, pace.carrySteps);
   await hand.up();
+}
+
+/* -------------------------------------------------------------------------- */
+/* The first pass of an audition, which needs no browser                       */
+/* -------------------------------------------------------------------------- */
+
+/** What a plan promises about the take it would make. */
+export interface PlanScore {
+  seed: number;
+  /** Gestures, which is very nearly how long the clip runs. */
+  moves: number;
+  turns: number;
+  /** Turns made on an empty stock, each of which brings the waste back around. */
+  recycles: number;
+  /** Consecutive stock turns at their longest, which is the take's longest lull. */
+  longestTurnRun: number;
+  /** Cards carried between piles, which is what the clip is worth watching for. */
+  drags: number;
+}
+
+/**
+ * Solve every deal in a range of seeds and score the plans, best first.
+ *
+ * This is the cheap half of an audition. A take is thirty seconds of browser and
+ * a plan is a second of arithmetic, so the seeds worth playing are found here and
+ * only the short list is ever played. Nothing about the ordering is a judgement
+ * the driver makes for you — it is printed, and a person picks.
+ */
+export function sweepPlans(
+  from: number,
+  to: number,
+  turnCount: number,
+  search: SearchLimits,
+): PlanScore[] {
+  const scored: PlanScore[] = [];
+  for (let seed = from; seed <= to; seed += 1) {
+    const deal = dealFor(seed);
+    const { plan } = solve(deal, turnCount, search);
+    if (plan === null) continue;
+
+    const position = positionFor(deal);
+    let recycles = 0;
+    let run = 0;
+    let longestTurnRun = 0;
+    for (const move of plan) {
+      if (move.kind === "turn" && position.stock.length === 0) recycles += 1;
+      run = move.kind === "turn" ? run + 1 : 0;
+      if (run > longestTurnRun) longestTurnRun = run;
+      apply(position, move, turnCount);
+    }
+    const score: PlanScore = {
+      seed,
+      moves: plan.length,
+      turns: plan.filter((move) => move.kind === "turn").length,
+      recycles,
+      longestTurnRun,
+      drags: plan.filter(
+        (move) => move.kind === "column-column" || move.kind === "waste-column",
+      ).length,
+    };
+    scored.push(score);
+    process.stdout.write(
+      `seed ${score.seed}: ${score.moves} gestures, ${score.turns} turns ` +
+        `(longest run ${score.longestTurnRun}, ${score.recycles} recycles), ` +
+        `${score.drags} drags\n`,
+    );
+  }
+  scored.sort(
+    (a, b) => a.moves - b.moves || a.longestTurnRun - b.longestTurnRun,
+  );
+  return scored;
+}
+
+/** `TCAB_SHOWCASE_SWEEP` as a seed range: `1-2000`, or `7` for one seed. */
+export function sweepRange(raw: string): { from: number; to: number } {
+  const match = /^(\d+)(?:-(\d+))?$/.exec(raw.trim());
+  if (match === null) {
+    throw new Error(
+      `cascade: TCAB_SHOWCASE_SWEEP wants a seed range like 1-2000, got ${raw}`,
+    );
+  }
+  const from = Number(match[1]);
+  return { from, to: match[2] === undefined ? from : Number(match[2]) };
 }
 
 /* -------------------------------------------------------------------------- */
