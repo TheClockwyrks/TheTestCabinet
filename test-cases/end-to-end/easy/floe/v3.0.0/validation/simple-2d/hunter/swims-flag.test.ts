@@ -1,27 +1,92 @@
-// Floe — hunter/swims-flag: SCAFFOLD STUB, NOT A VALIDATOR.
+// hunter/swims-flag — a bear reports swimming over open water, and only there.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `hunter.swims-flag` review item, written
-// against the `simple-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/hunter.md: "A bear's footing is the footing of the tile it is travelling
+// into. It is `swimming` when that tile is on the water band and no floe covers
+// it, and on ice otherwise: the near shore, the ice band, the median, the far
+// shore, and any water tile a floe covers are all ice footing."
 //
-// The item this file decides, from test-case.toml:
+// So the flag is not "is this the water band" and not "is this a lane row": it is
+// the water band AND nothing covering it. Four bears are settled at once, on the
+// four readings that separate every wrong model from the right one — open water,
+// the ice band, the median, and a water tile a parked raft covers. A build that
+// reads the band alone gets the raft wrong; a build that reads the roster alone
+// gets the median or the ice band wrong; a build that never sets the flag gets
+// open water wrong.
 //
-//   A bear over open water reports swimming
-//
-//   A bear whose entering tile is a water tile no floe covers reports swimming
-//   true; over ice, over the median and on a floe it reports false.
-//
-// Its declared media: replay `swim`.
+// Each bear is settled with its travel and its routing off, so the tile it is
+// travelling into is its own tile and the reading is the one the pose asked for.
+// The raft is parked, so the tile under the fourth bear stays covered while the
+// reading is taken. One tick is run before the flag is read, because
+// `specs/instrumentation.md` reports it as a derived value: what is graded is what
+// the build's own update makes of the pose, not the instant between them.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { ITEM_LEN, ROW_MEDIAN } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  bearOf,
+  captureReplay,
+  createHarness,
+  poseBear,
+  poseLane,
+  startCrossing,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The water row the raft is laid on, and the column its left edge sits on. */
+const WATER_ROW = 6;
+const RAFT_COL = 12;
 
-it("hunter/swims-flag has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** A bear on each of the four footings the rule separates. */
+const OPEN_WATER = { col: 20, row: WATER_ROW };
+const ON_ICE = { col: 20, row: 15 };
+const ON_MEDIAN = { col: 20, row: ROW_MEDIAN };
+const ON_RAFT = { col: RAFT_COL + 1, row: WATER_ROW };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reports swimming over open water and ice footing everywhere else", async () => {
+  startCrossing(h);
+  poseLane(h, WATER_ROW, "raft4", [RAFT_COL]);
+
+  const settled = { sense: false, routing: false, travel: false } as const;
+  const water = poseBear(h, OPEN_WATER.col, OPEN_WATER.row, settled);
+  const ice = poseBear(h, ON_ICE.col, ON_ICE.row, settled);
+  const median = poseBear(h, ON_MEDIAN.col, ON_MEDIAN.row, settled);
+  const raft = poseBear(h, ON_RAFT.col, ON_RAFT.row, settled);
+
+  const after = await captureReplay(h, "swim", async () => {
+    await h.advance(1);
+    return h.snapshot();
+  });
+
+  assertEqual(
+    bearOf(after, water).swimming,
+    true,
+    `swimming, for a bear on water row ${WATER_ROW} no floe covers`,
+  );
+  assertEqual(
+    bearOf(after, ice).swimming,
+    false,
+    `swimming, for a bear on ice row ${ON_ICE.row}`,
+  );
+  assertEqual(
+    bearOf(after, median).swimming,
+    false,
+    `swimming, for a bear on the median (row ${ROW_MEDIAN})`,
+  );
+  assertEqual(
+    bearOf(after, raft).swimming,
+    false,
+    `swimming, for a bear on water row ${WATER_ROW} under a ` +
+      `${ITEM_LEN.raft4}-tile raft`,
+  );
 });
