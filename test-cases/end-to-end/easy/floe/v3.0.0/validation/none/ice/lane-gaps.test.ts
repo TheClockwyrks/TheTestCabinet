@@ -1,27 +1,82 @@
-// Floe — ice/lane-gaps: SCAFFOLD STUB, NOT A VALIDATOR.
+// ice/lane-gaps — consecutive vehicles in a lane leave exactly the clear ice the
+// lane table gives that row.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `ice.lane-gaps` review item, written
-// against the `none` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/ice.md fixes both the figure and how it is measured: gap "is the whole
+// tiles of clear ice a lane leaves between consecutive vehicles", and the
+// population rule says "consecutive vehicles leave exactly the lane's gap in
+// tiles of clear ice between one vehicle's right edge and the next vehicle's
+// left edge". The eight figures are `8, 7, 7, 8, 7, 7, 8, 7` from row 11 down to
+// row 18 — the three plow lanes leave `8` and the five two-tile lanes leave `7`.
 //
-// The item this file decides, from test-case.toml:
+// So the reading is `next.x - (vehicle.x + TILE * vehicle.len)` taken over the
+// vehicles of a row in order along it, and every one of those runs must be the
+// row's gap. That is what makes the run of vehicle and gap uniform, which is the
+// property `ice/lane-wraps` then requires to survive the edges.
 //
-//   Consecutive vehicles leave the stated gap
+// ONLY CONSECUTIVE PAIRS ARE MEASURED. The distance from a row's rightmost
+// vehicle back round to its leftmost is not a run of clear ice on the strait,
+// and `clearIceRuns` leaves it out.
 //
-//   In each lane, the clear ice between one vehicle's right edge and the next
-//   vehicle's left edge is the table's gap in tiles, within a tenth of a tile.
-//
-// Its declared media: image `scene`.
+// A lane has to carry at least two vehicles for a run to exist at all, and
+// specs/ice.md requires far more than two — "a lane always carries enough
+// vehicles to reach both edges of the strait" — so a lane carrying one fails
+// here rather than passing with nothing measured.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertDeepEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
+import { ICE_LANES, TILE, laneGap } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { clearIceRuns, layOutLevel, vehiclesAlong } from "./harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The level laid out: the table's gaps are its level-1 ones. */
+const LEVEL = 1;
 
-it("ice/lane-gaps has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/**
+ * How far a run of clear ice may sit from the table's figure, in stage units.
+ *
+ * The tenth of a tile the item is stated at, `0.1 * TILE`. A lane's gap is a
+ * WHOLE number of tiles, so the nearest wrong figure a build could be spacing at
+ * is a whole tile — `32` units — away, which this bound is a tenth of.
+ */
+const GAP_TOLERANCE = 0.1 * TILE;
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.dispose();
+});
+
+it("leaves each ice lane's stated gap of clear ice between consecutive vehicles", async () => {
+  const laid = await layOutLevel(harness, LEVEL);
+  await captureStill(harness, "scene");
+
+  for (const lane of ICE_LANES) {
+    assertGreaterThanOrEqual(
+      vehiclesAlong(laid, lane.row).length,
+      2,
+      `row ${lane.row}: vehicles enough to leave a run of clear ice between ` +
+        `two of them (specs/ice.md)`,
+    );
+    const expected = laneGap(lane.row, LEVEL) * TILE;
+    for (const [index, run] of clearIceRuns(laid, lane.row).entries()) {
+      assertLessThanOrEqual(
+        Math.abs(run - expected),
+        GAP_TOLERANCE,
+        `row ${lane.row}, between vehicles ${index} and ${index + 1}: the ` +
+          `clear ice away from ${expected} units ` +
+          `(${laneGap(lane.row, LEVEL)} tiles), was ${run}`,
+      );
+    }
+  }
+
+  // Nothing the page threw or logged as an error while this harness drove it.
+  assertDeepEqual(harness.pageErrors, []);
 });
