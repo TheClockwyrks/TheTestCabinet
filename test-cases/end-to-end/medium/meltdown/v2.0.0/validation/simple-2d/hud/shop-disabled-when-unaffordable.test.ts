@@ -20,9 +20,20 @@
 //   Flak is affordable and at 59 it is not; a build that disables an entry it can
 //   exactly afford reads the two frames alike and fails, and so does one that
 //   never disables anything. Every other entry's affordability is the same at
-//   both purses — the four cheaper than 59 stay affordable and the two dearer
+//   both purses — the five cheaper than 59 stay affordable and the two dearer
 //   than 60 stay unaffordable — so the Flak's row is the only thing on the panel
 //   that changed.
+//
+// AND A SECOND ROW IS READ AS THE CONTROL, WHICH IS WHAT MAKES THE FIRST READING
+// MEAN "DISABLED" RATHER THAN "REPAINTED". A build that answers a change of money
+// by repainting the whole shop strip — dimming every row while the purse is
+// short, or redrawing the panel in a different key — moves the Flak's paint as
+// far as a disabled state would and would otherwise pass without ever marking one
+// entry apart from another. So the Rime's row is sampled across the same two
+// frames and must be drawn the SAME: it costs 45, which both purses afford, so
+// specs/hud.md asks for no change in it at all. The Rime rather than the Arc
+// because it is the dearest row still affordable at both, so a build that shades
+// its rows by how near the purse is to their cost is caught here too.
 //
 // THE READING IS PIXELS, BECAUSE THE PALETTE IS THE BUILD'S. specs/overview.md
 // fixes no colour and asks only that things read apart, so the check samples the
@@ -39,7 +50,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TOWER_DEFS } from "../../src/constants";
-import { assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -53,6 +64,10 @@ import { largestChange, sampleRect } from "./read";
 /** The entry read, and the cost specs/towers.md gives it: 60. */
 const TYPE = "flak";
 const COST = TOWER_DEFS[TYPE].cost;
+
+/** The control entry, and its cost: 45, which both purses below afford. */
+const CONTROL_TYPE = "rime";
+const CONTROL_COST = TOWER_DEFS[CONTROL_TYPE].cost;
 
 /**
  * The two purses: exactly the cost, and one below it.
@@ -75,6 +90,18 @@ const CANNOT = COST - 1;
  * same one.
  */
 const APART_MIN = 60;
+
+/**
+ * How far the control entry's painting may move, out of the same 441.
+ *
+ * A third of {@link APART_MIN}, so one painting cannot satisfy both bounds: what
+ * clears this one is a row a reviewer would call unchanged, and what clears the
+ * other is a row they would call a different state. It is not zero because a
+ * build is free to anti-alias its rows against whatever it drew behind them, and
+ * a shade of movement is not a state; it is well under the bound the disabled row
+ * has to clear because anything that far is.
+ */
+const STILL_MAX = 20;
 
 /**
  * How finely the entry is sampled: a grid over its interior.
@@ -110,12 +137,15 @@ it("draws an entry it cannot afford apart from the same entry it can", async () 
   h.debug.setMoney(AFFORDS);
   await drawFrame(h);
   const entry = shopEntry(h.snapshot().controls, TYPE);
+  const control = shopEntry(h.snapshot().controls, CONTROL_TYPE);
   const affordable = sampleRect(h, entry, SAMPLE_COLS, SAMPLE_ROWS);
+  const controlAffordable = sampleRect(h, control, SAMPLE_COLS, SAMPLE_ROWS);
 
   h.debug.setMoney(CANNOT);
   await drawFrame(h);
   captureStill(h, "disabled");
   const disabled = sampleRect(h, entry, SAMPLE_COLS, SAMPLE_ROWS);
+  const controlShort = sampleRect(h, control, SAMPLE_COLS, SAMPLE_ROWS);
 
   assertGreaterThanOrEqual(
     largestChange(affordable, disabled),
@@ -124,5 +154,13 @@ it("draws an entry it cannot afford apart from the same entry it can", async () 
       `${AFFORDS} that affords its cost of ${COST} and one of ${CANNOT} that ` +
       `does not — specs/hud.md draws the second "disabled, plainly apart from ` +
       `an affordable entry"`,
+  );
+  assertLessThanOrEqual(
+    largestChange(controlAffordable, controlShort),
+    STILL_MAX,
+    `how far the ${CONTROL_TYPE} entry's paint moved, out of 441, across the ` +
+      `same two purses — it costs ${CONTROL_COST}, which both ${AFFORDS} and ` +
+      `${CANNOT} afford, so specs/hud.md leaves it affordable in both and the ` +
+      `disabled state above has to be this entry's rather than the strip's`,
   );
 });
