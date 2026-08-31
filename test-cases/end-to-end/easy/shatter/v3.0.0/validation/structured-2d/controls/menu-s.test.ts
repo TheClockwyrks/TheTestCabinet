@@ -1,19 +1,110 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// controls/menu-s — `KeyS` moves a menu selection down.
 //
-// controls/menu-s — KeyS moves a menu selection down
+// `specs/controls.md` binds `KeyS` to the `down` action and gives `down` its
+// meaning on a menu — "Move the selection down" — and the same file's Menus
+// section says what that move is: "The up and down inputs move the highlight
+// by one entry and wrap at both ends."
 //
-// KeyS pressed on a menu raises menuIndex by one.
+// THE KEY IS DRIVEN, NOT THE ACTION. `specs/instrumentation.md` carries no
+// operation that moves a highlight, and this point is about one BINDING, so
+// the literal `KeyboardEvent.code` the specification's table names is what
+// goes down. `harness.ts`'s `tapAction` drives an action's FIRST bound key,
+// which would grade the two keys bound to `down` as one thing; the whole point
+// of this item and of `controls/menu-down-arrow` is that they are two.
 //
-// Declared by test-case.toml as validation.script "controls/menu-s.test.ts",
-// so the manifest resolves only while this file exists. The Validators stage
-// of the v3.0.0 rework replaces it with the real suite, written against the
-// structured-2d harness in validation/structured-2d/harness.ts and the spec-
-// derived oracle in validation/structured-2d/geometry.ts — never against a
-// reference build.
+// THE PAUSE MENU, POSED IN THE MIDDLE. `specs/ui.md` fixes `PAUSE_ITEMS` at
+// THREE entries, and the highlight is posed on the middle one. That is what
+// makes the reading unambiguous: from entry `1` of three, up gives `0` and
+// down gives `2`, so a build that wired the two directions the wrong way round
+// reads as a DIFFERENT NUMBER rather than as the right one. On either two-
+// entry menu — the title's or the game-over's — a move up and a move down from
+// the same entry land on the same place, and a check posed there would pass a
+// build with its directions crossed.
 //
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// THE FIELD IS EMPTY, QUIET AND FROZEN. `startPlaying` clears the field and
+// holds the wave loop, the saucer's arrival and the ship's lethal contact off,
+// and `specs/ui.md` fixes that a paused game advances nothing — so nothing but
+// the key can reach the highlight. The index is read before the press as well,
+// so a build whose highlight drifts on its own fails naming that rather than
+// the binding.
+//
+// ONE MOVE, NOT A WRAP. The press is a single edge and the entry it lands on
+// is an interior one, so nothing here depends on what happens at the ends of
+// the menu: that is `screens/menu-selection-stays-in-range`'s.
+//
+// WHAT THIS DOES NOT DECIDE. That the highlight is DRAWN distinctly
+// (`screens/title-menu-highlight`), that it stays inside the entries
+// (`screens/menu-selection-stays-in-range`), where a confirmed entry leads
+// (`screens/*`), what `KeyS` does while the game is being played, which is
+// nothing (`specs/controls.md` binds `down` to no play action), and the other
+// key bound to `down`.
 
-throw new Error(
-  "Shatter v3.0.0: validation/structured-2d/controls/menu-s.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { PAUSE_ITEMS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startPlaying,
+  ticksFor,
+  type Harness,
+} from "../harness";
+
+/** The key this point is about, as `specs/controls.md`'s table names it. */
+const KEY = "KeyS";
+
+/**
+ * The entry the highlight is posed on: the middle of the pause menu's three.
+ *
+ * `specs/ui.md` fixes `PAUSE_ITEMS` as `RESUME`, `RESTART`, `QUIT TO MENU`, so
+ * entry `1` has an entry either side of it and the two directions land on two
+ * different numbers.
+ */
+const POSED_AT = 1;
+
+/** Where one move down from `POSED_AT` lands: by one entry, without wrapping. */
+const LANDS_ON = POSED_AT + 1;
+
+/** The quiet stretch driven before the key goes down, in ticks. */
+const QUIET_TICKS = ticksFor(0.25);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("moves the highlight down by one entry when KeyS is pressed on a menu", async () => {
+  // The pause menu over the empty, quiet field `startPlaying` leaves, with the
+  // highlight posed on the middle of its three entries.
+  startPlaying(h);
+  h.debug.setScreen("paused");
+  h.debug.setMenuIndex(POSED_AT);
+
+  await h.advance(QUIET_TICKS);
+  const before = h.snapshot().menuIndex;
+
+  await h.tap(KEY);
+  const after = h.snapshot().menuIndex;
+  captureStill(h, "menu");
+
+  assertEqual(
+    before,
+    POSED_AT,
+    `the highlighted entry after ${String(QUIET_TICKS)} ticks on the paused ` +
+      "screen with no key down — the highlight moves only on a menu input " +
+      "(specs/controls.md), and a paused game advances nothing (specs/ui.md)",
+  );
+  assertEqual(
+    after,
+    LANDS_ON,
+    `the highlighted entry after one press of ${KEY} from entry ` +
+      `${String(POSED_AT)} of the pause menu's ` +
+      `${String(PAUSE_ITEMS.length)} — the down input moves the ` +
+      "highlight down by ONE entry (specs/controls.md)",
+  );
+});
