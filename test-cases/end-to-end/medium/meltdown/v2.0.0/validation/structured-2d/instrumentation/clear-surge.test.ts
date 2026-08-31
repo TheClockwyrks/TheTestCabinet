@@ -136,6 +136,11 @@ it("removes every unit and leaves the towers' heat, levels and tallies where the
   const after = h.snapshot();
 
   assertLength(after.surge, 0, "the surge roster after clearSurge");
+  assertLength(
+    after.towers,
+    1,
+    "the towers still standing after clearSurge, which clears the surge alone",
+  );
   const left = readTower(after, gun, "the gun after clearSurge");
   assertEqual(left.heat, standing.heat, "the tower's heat after clearSurge");
   assertEqual(left.level, standing.level, "the tower's level after clearSurge");
@@ -144,5 +149,10 @@ it("removes every unit and leaves the towers' heat, levels and tallies where the
     left.damageDealt,
     standing.damageDealt,
     "the tower's damage tally after clearSurge",
+  );
+  assertEqual(
+    left.spent,
+    standing.spent,
+    "the tower's spent tally after clearSurge",
   );
 });
