@@ -1,27 +1,81 @@
-// Floe — hunter/removed-on-death: SCAFFOLD STUB, NOT A VALIDATOR.
+// hunter/removed-on-death — a life lost clears the hunt.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `hunter.removed-on-death` review item, written
-// against the `simple-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/hunter.md: "A crossing ends | The critter loses a life, or a crossing ends
+// in a bay, and every bear on the strait leaves." specs/progression.md says the
+// same from the run's side: on the tick a life is lost the phase becomes `dying`,
+// the critter leaves the strait, and every bear leaves with it.
 //
-// The item this file decides, from test-case.toml:
+// So the reading is taken on the very tick the phase becomes `dying`, one tick at
+// a time, and what it requires is an EMPTY roster — not a roster that empties
+// somewhere in the hold, and not one bear left standing.
 //
-//   A death clears the hunt
+// TWO BEARS, because the rule is "every bear" and a build that clears one slot
+// rather than the roster passes with one. They are posed with `addBear` and the
+// emergence gate is left SHUT: what a crossing's end clears is the strait, and
+// nothing about that is the emergence faculty, so opening that gate would put a
+// bear into the scenario the item never asked for.
 //
-//   A life lost with two bears on the strait leaves the roster empty on the
-//   tick the phase becomes dying.
-//
-// Its declared media: replay `reset`.
+// THE DEATH IS A DROWNING, which is the cheapest one to reach: `specs/water.md`
+// takes a life on any tick the critter's footing is `water`, and an emptied water
+// row is what `startCrossing` already leaves. No gate is opened to get it, and the
+// timer, the traffic and the catch all stay out of the scenario.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertLength, assertTrue } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  poseBear,
+  startCrossing,
+  ticksFor,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** Two bears, well apart, on rows an emptied strait leaves bare. */
+const BEARS = [
+  { col: 8, row: 15 },
+  { col: 30, row: 12 },
+] as const;
 
-it("hunter/removed-on-death has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** Where the critter is put to drown: a water row with no floe under it. */
+const DROWN_COL = 20;
+const DROWN_ROW = 6;
+
+/** How long the death is waited on: it is due on the very next tick. */
+const WATCH_SECONDS = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("leaves the roster empty on the tick a lost life turns the phase to dying", async () => {
+  startCrossing(h);
+  const frozen = { sense: false, routing: false, travel: false } as const;
+  for (const at of BEARS) poseBear(h, at.col, at.row, frozen);
+
+  const dying = await captureReplay(h, "reset", async () => {
+    h.debug.setCritterTile(DROWN_COL, DROWN_ROW);
+    return h.until((snapshot) => snapshot.phase === "dying", {
+      maxFrames: ticksFor(WATCH_SECONDS),
+      poll: 1,
+    });
+  });
+
+  assertTrue(
+    dying.hit,
+    `the phase dying within ${WATCH_SECONDS} s of the critter standing on ` +
+      `open water, so there is a lost life for the hunt to be cleared by`,
+  );
+  assertLength(
+    dying.snapshot.bears,
+    0,
+    `the hunt on the tick the phase became dying, ${BEARS.length} bears ` +
+      `having been on the strait`,
+  );
 });
