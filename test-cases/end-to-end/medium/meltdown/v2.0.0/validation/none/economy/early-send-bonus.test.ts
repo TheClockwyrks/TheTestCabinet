@@ -1,18 +1,87 @@
-// Meltdown — economy/early-send-bonus: sending early pays for the time left.
+// economy/early-send-bonus — sending pays one for every whole second left on the
+// build timer.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// `specs/economy.md`'s income table: the Early-send bonus line pays
+// `EARLY_SEND_PER_SECOND` (`1`) "per whole second left on the build timer, which
+// is `floor(buildTimer)`", "On sending a wave from a build phase". So a timer
+// reading `9.4` pays `9`.
 //
-// What it must decide:
+// `9.4` IS THE DISTINGUISHING VALUE. It sits four tenths past a whole second, so
+// a build that pays the timer itself reads `9.4`, one that rounds up reads `10`,
+// one that pays the seconds ALREADY SPENT rather than the seconds left reads `5`
+// (the timer opens at `BUILD_PHASE_TIME`, `15`, per `specs/waves.md`), and one
+// that pays nothing reads `0`. A whole-numbered timer would have hidden the first
+// three of those.
 //
-//   Sending with 9.4 seconds on the timer adds 9 to money.
+// THE SEND IS THE PLAYER'S SEND. There is no operation on the debug surface that
+// sends a wave — `specs/instrumentation.md` carries none, because the send is one
+// of the actions `specs/controls.md` binds — so this point presses the key that
+// action is bound to, and the bonus is paid by the build's own send code.
+//
+// THE PURSE IS POSED EMPTY, so the balance after the send is the payment itself
+// and the reviewer reads the figure rather than a difference of two numbers.
+//
+// THE WORLD GATE STAYS SHUT, which `startRun` leaves it. `specs/instrumentation.md`
+// puts "the build timer's automatic start of the next wave" and "the spawner's
+// release of the units counted by `wavePending`" behind that gate and nothing
+// else, so a MANUAL send still begins the wave and pays its bonus while no unit
+// arrives to be killed or leaked and move the money underneath the reading.
+//
+// A SECOND FRAME IS RUN AFTER THE PRESS, and it is geometry rather than slack: a
+// build may answer the press inside the frame it was delivered in or on the one
+// after it, and both are conformant readings of a press edge
+// (`specs/controls.md`). Two frames of the suite's clock are a sixtieth of a
+// second of game time, so the timer the send reads is between `9.383` and `9.4`
+// either way — the same whole second, and the same payment.
+//
+// WHAT EVERY WRONG MODEL READS is above. The distinguishing figure is `9`.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { EARLY_SEND_PER_SECOND } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  tapAction,
+  type Harness,
+} from "../harness";
 
-it("Sending early pays for the time left", () => {
-  throw new Error(
-    "Meltdown: validation/economy/early-send-bonus.test.ts is not implemented yet",
-  );
+/** The seconds posed on the build timer: four tenths past a whole second. */
+const TIMER = 9.4;
+
+/** The money the run holds going into the send: nothing at all. */
+const PURSE = 0;
+
+/**
+ * What the send must pay, to the point.
+ *
+ * There is no tolerance on it and there cannot be one: money is a whole number
+ * and `specs/economy.md` fixes the figure exactly, so the assertion is equality.
+ */
+const EXPECTED = EARLY_SEND_PER_SECOND * Math.floor(TIMER);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("pays 9 for a send with 9.4 seconds left on the build timer", async () => {
+  await startRun(h);
+  await h.debug.setBuildTimer(TIMER);
+  await h.debug.setMoney(PURSE);
+
+  const before = (await h.snapshot()).money;
+  await tapAction(h, "send");
+  await h.advance(1);
+
+  await captureStill(h, "bonus");
+  const after = (await h.snapshot()).money;
+
+  assertEqual(after - before, EXPECTED, "the money a send at 9.4 seconds paid");
 });
