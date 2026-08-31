@@ -1,18 +1,70 @@
-// Meltdown — controls/pause-control: the Pause control pauses.
+// Meltdown — controls/pause-control: the panel's Pause control opens the pause
+// screen.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// specs/hud.md gives the control: "The panel carries... a Pause control".
+// specs/controls.md answers a press and release inside a panel control as "That
+// control is operated", and gives `pause` the effect "Opens the pause screen from
+// live play". specs/screens.md names the screen: `paused`, "The pause menu, over the
+// frozen floor."
 //
-// What it must decide:
+// THE CONTROL AND THE KEY ARE SEPARATE POINTS, because a build can wire one and not
+// the other, and specs/controls.md requires that "Every interaction and every menu
+// is reachable with the pointer alone". `controls.pause-key` reads the key, and
+// reads the return from the pause screen with it.
 //
-//   A tap inside the reported pause rect opens the pause screen.
+// ONLY THE OPENING IS READ HERE, which is what the item names. specs/hud.md's panel
+// is drawn during a run; what a player taps to leave the pause screen is one of the
+// three rows specs/screens.md gives it — `RESUME` — and that is
+// `screens.pause-resume`'s requirement. So this point stops at the transition the
+// control is for and does not assume the panel is still tappable behind the menu, a
+// thing no specification states.
+//
+// THE FREEZE IS NOT READ HERE. That the floor actually stops while the screen is
+// `paused` is `waves.pause-freezes-the-floor`, and it is measured there ON THE
+// BUILD'S OWN CLOCK, because "the simulation does not advance" (specs/waves.md) is a
+// claim about the clock the player's game runs on rather than about where a build
+// put its gate. `screen` is a field, and a field reads the same however the clock is
+// driven.
+//
+// THE RECTANGLE IS THE BUILD'S OWN, read off the snapshot, and specs/hud.md carries
+// Pause at all times during a run, so this one is never null.
+//
+// THE WORLD IS AN EMPTY, QUIET, LIVE RUN, so no leak, no wave clear and no arriving
+// unit can move the screen on its own while the tap is read.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  tapControl,
+  type Harness,
+} from "../harness";
 
-it("The Pause control pauses", () => {
-  throw new Error(
-    "Meltdown: validation/controls/pause-control.test.ts is not implemented yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("opens the pause screen when the reported Pause rectangle is tapped", async () => {
+  await startRun(h);
+  await h.advance(1);
+  const before = await h.snapshot();
+  assertEqual(before.screen, "playing", "the screen the scenario is posed on");
+
+  await tapControl(h, before.controls.pause);
+  const after = await h.snapshot();
+  await captureStill(h, "paused");
+
+  assertEqual(
+    after.screen,
+    "paused",
+    "the screen a press and release inside the reported pause rectangle leaves live play on",
   );
 });
