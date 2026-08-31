@@ -1,17 +1,116 @@
-// Spectra — resonance/discharge-clears-entering: a discharge destroys every entering drone
+// resonance/discharge-clears-entering — every drone in phase `entering` is gone
+// once the wave has run.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `resonance.discharge-clears-entering` on the
-// `none` configuration, and captures the media `test-case.toml` declares
-// for it.
+// THE RULE. `specs/resonance.md`'s wave table names three phases in one row: "A
+// drone in phase `entering`, `diving`, or `returning` | It is destroyed." This
+// point takes the `entering` row on its own, because a build that reads the row
+// as "anything that is diving" leaves a wave flying in untouched and must fail
+// here while passing `resonance/discharge-clears-divers`.
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// WHERE AN ENTERING DRONE IS POSED. `specs/swarm.md` has an entering drone
+// "Flying in from above the play field toward its formation slot", crossing
+// `FIELD_TOP` into the field within a second of its release and reaching its slot
+// within six, so a drone part-way down the upper field is exactly what the phase
+// describes. The three are posed inside the play field, above the formation
+// grid's top row (`FORM_ROW0_Y` 140) or beside it, where an entrance that has
+// just crossed the edge really passes.
+//
+// EVERY FACULTY IS OFF, so each holds the place it was put: `specs/resonance.md`
+// keys what the wave takes on the phase alone, and a drone that flew on down its
+// entrance would be judged somewhere the check did not choose. Their slots are
+// wherever `poseDrone` left them, which the phase's own rules never reach in the
+// half-second this scenario runs.
+//
+// WHAT THIS DOES NOT DECIDE. What the wave does to the other three phases is the
+// three sibling points; how an entrance is actually flown is `swarm`'s.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLength, assertUndefined } from "../assert";
+import { DISCHARGE_MAX_R, DISCHARGE_TIME } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  droneById,
+  framesFor,
+  poseBystander,
+  poseDrone,
+  startPosed,
+  type Harness,
+} from "../harness";
+import { release } from "./wave";
 
-it("A discharge destroys every entering drone", () => {
-  throw new Error(
-    "Spectra: validation/none/resonance/discharge-clears-entering.test.ts is a scaffold placeholder and has not been implemented",
+/**
+ * Where the three entering drones stand.
+ *
+ * Just inside the play field below `FIELD_TOP` (64), spread across its width, at
+ * 484, 460 and 484 units from the ship at `(640, 600)` — every one a third of
+ * `DISCHARGE_MAX_R` (1500) or less, so the wave reaches all three inside its
+ * life. Clear of the corner the bystander holds.
+ */
+const ENTERING_AT = [
+  { x: 340, y: 220 },
+  { x: 640, y: 140 },
+  { x: 940, y: 220 },
+] as const;
+
+/**
+ * Frames the wave is given: its whole life.
+ *
+ * `DISCHARGE_TIME` (0.5 s) at the harness's 100 Hz clock. The wave grows from `0`
+ * to `DISCHARGE_MAX_R` (1500) over that span, so a drone 484 units out is reached
+ * a third of the way through and the reading is taken well past that.
+ */
+const WAVE_FRAMES = framesFor(DISCHARGE_TIME);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("destroys every drone in phase entering", async () => {
+  await startPosed(h);
+  // In the formation, which specs/resonance.md's own table spares, so a drone is
+  // still standing when the three are taken (specs/stages.md clears a stage on
+  // the moment the last drone of its wave is destroyed).
+  await poseBystander(h);
+  const entering: number[] = [];
+  for (const at of ENTERING_AT) {
+    entering.push(await poseDrone(h, "shard", at.x, at.y, {
+      phase: "entering",
+    }));
+  }
+
+  const posed = await h.snapshot();
+  assertLength(
+    posed.drones,
+    ENTERING_AT.length + 1,
+    "precondition: the three entering drones and the bystander are on the field",
   );
+  for (const id of entering) {
+    assertEqual(
+      droneById(posed, id)?.phase,
+      "entering",
+      "precondition: the posed drone stands in phase entering",
+    );
+  }
+
+  await release(h);
+  await h.advance(WAVE_FRAMES);
+  await captureStill(h, "cleared");
+  const after = await h.snapshot();
+
+  for (const [index, id] of entering.entries()) {
+    assertUndefined(
+      droneById(after, id),
+      `the drone posed in phase entering at ` +
+        `(${ENTERING_AT[index].x}, ${ENTERING_AT[index].y}), ` +
+        `well inside DISCHARGE_MAX_R (${DISCHARGE_MAX_R}) of the ship: ` +
+        `destroyed by the wave (specs/resonance.md)`,
+    );
+  }
 });
