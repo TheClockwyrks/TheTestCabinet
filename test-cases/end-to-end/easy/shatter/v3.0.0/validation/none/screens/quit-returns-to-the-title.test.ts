@@ -1,19 +1,63 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// Shatter — screens/quit-returns-to-the-title: confirming the pause menu's third entry
+// leaves the game for the title screen.
 //
-// screens/quit-returns-to-the-title — QUIT TO MENU returns to the title
+// THE RULE. `specs/ui.md` puts `QUIT TO MENU` third in `PAUSE_ITEMS` and says it
+// "returns to `title`".
 //
-// Confirming entry 2 gives screen title.
+// THE ENTRY IS ADDRESSED, NOT COUNTED. `setMenuIndex(2)` places the highlight on the
+// last entry directly; counting presses onto it would grade `controls/menu-down-arrow`
+// a second time, and would also lean on the WRAP that `screens/menu-selection-stays-in-
+// range` decides. The confirm key is a real one through Chromium's own input pipeline,
+// because `specs/instrumentation.md` carries no operation that takes a menu entry.
+// Which index `QUIT TO MENU` is, is `screens/pause-menu-entries`' requirement.
 //
-// Declared by test-case.toml as validation.script "screens/quit-returns-to-
-// the-title.test.ts", so the manifest resolves only while this file exists.
-// The Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the none harness in validation/none/harness.ts and the spec-
-// derived oracle in validation/none/geometry.ts — never against a reference
-// build.
+// THE GAME BEHIND IT IS A REAL ONE, opened through the harness's own `startPlaying` and
+// paused, so what this entry is asked to leave is a live run rather than a posed screen
+// with nothing behind it.
 //
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// WHAT THIS ITEM DOES NOT DECIDE. That the title's highlight comes back to its first
+// entry — `specs/ui.md` states it, and no item in this case reads it — nor what the
+// other two pause entries do, nor that `Escape` on the pause menu resumes.
 
-throw new Error(
-  "Shatter v3.0.0: validation/none/screens/quit-returns-to-the-title.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { PAUSE_ITEMS } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  startPlaying,
+  type Harness,
+} from "../harness";
+import { confirmEntry, reachPaused } from "./screens";
+
+/** The pause menu's third entry, `QUIT TO MENU` (`specs/ui.md`). */
+const QUIT_ENTRY = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("returns to the title when QUIT TO MENU is confirmed", async () => {
+  assertEqual(
+    PAUSE_ITEMS[QUIT_ENTRY],
+    "QUIT TO MENU",
+    "the pause menu's third entry, which specs/ui.md fixes",
+  );
+
+  await startPlaying(h);
+  await reachPaused(h);
+  await confirmEntry(h, QUIT_ENTRY);
+  await captureStill(h, "title");
+
+  assertEqual(
+    (await h.snapshot()).screen,
+    "title",
+    "the screen QUIT TO MENU returned to (specs/ui.md)",
+  );
+});
