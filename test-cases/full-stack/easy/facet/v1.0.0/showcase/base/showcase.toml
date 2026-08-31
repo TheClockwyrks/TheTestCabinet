@@ -1,0 +1,23 @@
+[[media]]
+file = "gameplay.json.gz"
+name = "A round played on the bench, from the deal to a primed corner going"
+
+[[media]]
+file = "a-corner-goes.png"
+name = "Twenty-two stones off the board in one step"
+
+[[media]]
+file = "deep-chain.png"
+name = "A chain five steps deep, still running after the hand has left"
+
+[[media]]
+file = "strained-board.png"
+name = "The board primed: stones cracked through, waiting to be spent"
+
+[[media]]
+file = "fresh-board.png"
+name = "A fresh deal, with no run standing on it"
+
+[[media]]
+file = "title.png"
+name = "The title screen"

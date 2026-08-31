@@ -1,0 +1,2474 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# The case's stable identity: the definition-store key, recorded in every run.
+slug = "facet"
+
+# Human-readable display name for this test case.
+name = "Facet"
+
+# The test type: a playable game whose art, effects, and sound the model also
+# PRODUCES during the run, with the six 2D asset-generation binaries on the run
+# image's `PATH`. The type is the only declaration needed to select that image —
+# there is no manifest key naming it — and it is what makes `packages` below and
+# `specs/assets.md` load-bearing rather than decorative.
+type = "full-stack"
+
+# Relative difficulty of this case, surfaced on the site. Facet is a lot of
+# separate *work* — nine numbered rules, a chain resolver, seven gem kinds across
+# four cuts and four strain states, five screens, and a full production pass over
+# its own art and audio — but none of it is hard to reason about: the board is
+# `8x8`, there is no physics, no opponent, and no clock to tune, and every figure
+# is stated exactly. Difficulty rates how demanding the *thinking* is, not how
+# long the build takes; `max_runtime_hours` below is where the size of the job is
+# accounted for. So easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["puzzle", "match-3", "grid", "2d"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A gem-matching puzzle on a lapidary's bench, where every clear cracks the stones \
+left standing and a stone cracked through goes with whatever goes beside it."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Required per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected engine) and handed to the model as
+# the build instruction. It injects absolute in-container paths through template
+# variables rather than hardcoding them. The harness prepends the standing
+# full-stack asset-quality directive to whatever this renders to, so the prompt
+# never restates it.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. It exists so a stuck or runaway session cannot run unbounded, not to
+# make the job tight. Facet asks for a rules engine that resolves a chain step in
+# one fixed order, a seeded deal that owes the player an opening board with a
+# legal swap on it, a legal-swap search, pointer and keyboard input over one
+# selection model, five screens, and — under the engineless run — the whole
+# runtime layer beneath all of that. On top of the game sits a full production
+# pass: the seven kinds at four strain states, a break sheet each, the cut
+# treatments, the particle bursts, the cue set, and the music. Four hours is
+# comfortably more than a healthy build of that size needs while still catching a
+# session that never terminates.
+max_runtime_hours = 4
+
+# Init command, run in the run container once the workspaces and specs are seeded
+# and before the harness starts. `npm install` rather than `npm ci`, because
+# `packages` below injects the `@test-cabinet/particle-runtime` `file:` dependency
+# and the lockfile is completed at seed time. The same command installs the
+# seeded project's dependencies — the TypeScript toolchain the `[toolchain]`
+# commands invoke, the headless canvas the model's own vitest tests can draw
+# through, and, on an engine run, the vendored engine — and downloads the
+# Playwright Chromium build (the base image ships the OS libraries Chromium links
+# against, but not the browser binary), so the model can build the game and look
+# at it in a browser without any further setup.
+init = "npm install && npx playwright install chromium"
+
+# NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the
+# whole point of a full-stack case: the model PRODUCES the gems, the break sheets,
+# the bursts, the cues, and the music itself, during the run, with the six
+# binaries on the run image's `PATH` (see `type` above and `specs/assets.md`).
+
+# Test Cabinet runtime libraries installed into the run so the build can play the
+# particle systems it produces. `@test-cabinet/particle-runtime` is the same
+# library the review UI plays a produced effect with; core bakes it into the run
+# image and each seeded workspace `package.json` depends on it via its baked-in
+# `file:` path, so the build imports it (its `/canvas` binding) like any other
+# dependency and plays each produced `system.json` by simulating it live. The
+# clear burst, the flawed detonation, and the cut-gem flash are all produced
+# `particle-2d` systems played this way; `specs/assets.md` carries the consumption
+# contract. (A root key, so it must sit above the first `[table]` header.)
+packages = ["@test-cabinet/particle-runtime"]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Facet declares exactly ONE, so every run of this case is the same game.
+#
+# There is one board, one rule set, one selection model and one round shape here,
+# and nothing in the seeded spec set branches on the variant at all — the only
+# axis the specs branch on is `engine.slug`, which changes what the build is
+# handed rather than what it is asked to make.
+#
+# This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the
+# input actions a player drives it with, the audio bus, asset loading, and the
+# on-screen diagnostics; one of them also owns rendering and the gameplay
+# framework the game is written inside. It is a *run dimension*, chosen per run
+# alongside the model, the harness, and the variant, and recorded on the run; it
+# is not a property of the game.
+#
+# Facet supports three, and the game is the same under all of them. What differs
+# is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build
+#                     writes the frame loop, the canvas fit, the keyboard and
+#                     pointer input, the audio, the overlay and the
+#                     `window.__facet` surface itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules
+#                     around it (`src/constants.ts`, `src/main.ts`, and the
+#                     `src/game.ts` the build writes, debug surface included).
+#   - `structured-2d` vendors its framework engine the same way and seeds
+#                     `src/constants.ts` and `src/main.ts`; the build writes its
+#                     game module — the game definition, its mode, its state and
+#                     its actors — and the debug surface its instance's
+#                     `initialize` returns.
+# The game they describe is the same one, so the review items are the same for
+# every engine and a score recorded under one is comparable with a score recorded
+# under another; the specs and the validators branch where the deliverable
+# differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` and `structured-2d` each carry a range and
+# are named in `[[engine]]` tables. A range is pinned because a specification is
+# written against a runtime contract: `min_version` is the 1.0.0 API the specs and
+# the validators are written against, and there is deliberately no `max_version`,
+# so a later 1.x or 2.x from the host package store is accepted as it lands.
+# Widening or moving a range means a new case version, so the pin is the statement
+# that THIS spec set matches THIS contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
+# engine's API and never fall out of date when it changes. Where a spec speaks of
+# the runtime it does so only to state what is specific to *this game* under it —
+# which surfaces the build still supplies, Facet's action list, and Facet's cue
+# names — never to teach the runtime.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, an `index.html`
+# holding the canvas, and the `@test-cabinet/particle-runtime` dependency the
+# produced effects are played through. What differs is how much of the build is
+# supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own frame loop, canvas fit,
+#                     keyboard and pointer input, audio, diagnostics overlay and
+#                     `window.__facet` surface, and every figure the specification
+#                     fixes, from the specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored
+#                     in at seed time so the build imports it by its bare package
+#                     name, and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them) and
+#                     `src/main.ts` (the browser entry). The build writes
+#                     `src/game.ts`: the `FacetState`, the debug surface its
+#                     `initialize` returns beside that state, and the game's
+#                     update and render.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds the same two case-owned modules. The build writes
+#                     `src/game.ts`: the game definition the engine drives — its
+#                     mode, its live `FacetState`, and its actors — and the debug
+#                     surface its instance's `initialize` returns.
+#
+# The seeded files land at the run root (`workspaces/none/package.json` seeds to
+# `package.json`). There is deliberately NO single `workspace` key beside this
+# table: `workspace` is the engineless spelling, one directory standing for a
+# whole case that names no engine, and the two are exclusive. A case that seeds
+# a different project per engine states them here instead.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/simple-2d"
+"structured-2d" = "workspaces/structured-2d"
+
+# How validation (and the per-run static deploy) turns a produced implementation
+# into a served site. These run verbatim from the build's repository root:
+# dependencies are installed, then the static build is produced into `dist/`,
+# `build/`, or `out/`. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`, so the validated build installs exactly what the deploy
+# will. It also means the produced art, effects, and audio must be COMMITTED
+# files the build copies into the site, because no asset tool runs here. Both
+# commands are required; there are no defaults, so every case states exactly how
+# its implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. A full-stack build is written in TypeScript, and the
+# seeded workspace ships the configuration each of these commands reads
+# (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so
+# what is checked here is the code the model wrote against configuration the case
+# fixed. The commands run host-side over the collected tree after the run's
+# container is gone, so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does
+# not compile is not reviewable. The other three are recorded and gate nothing —
+# `test` additionally records the count and coverage the build's own suite reports,
+# which is how a build that ships tests is told apart from one that ships none.
+# Each is spelled `npx` rather than `npm run <script>` so the check is the case's
+# own statement of what is run and does not depend on the model leaving the seeded
+# scripts intact. These four are exactly the commands `specs/overview.md` tells the
+# build will be run over the finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. It is reporter-side and never seeded; the seeded specification documents
+# the surface independently, as an ordinary debugging feature the game needs (see
+# `specs/instrumentation.md`). It is what every validation script this case gains
+# poses its scenario through.
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface
+# itself and installs it on `window.__facet` once the game has initialized, so the
+# handle is what a person opening the console of such a build finds. An engine run
+# has NO global at all: the build writes the surface, its `initialize` returns it —
+# beside the state as `[state, debug]` under `simple-2d`, alone under
+# `structured-2d` — and a caller reads it back off `engine.debug`. Because
+# `simple-2d` holds the state by value and hands every reader a read-only view, its
+# surface is written in the shape of `update` — a pose takes the current state and
+# returns the next, applied through `engine.apply`, and a reading takes the state
+# and returns what it read, called with `engine.state`. `structured-2d` holds the
+# world live, so its poses take only their own arguments and act on it at the call,
+# and its readings return plain data. One handle, three ways to reach the same
+# operations.
+#
+# There is deliberately no `tick_hz`. Facet mandates no fixed timestep: the one
+# cadence it has, the chain step, is stated in seconds of game time and integrated
+# against the delta time the frame hands it, and the surface's poses and pointer
+# operations take effect the moment they are called rather than being sampled once
+# per tick, so there is no case-wide step size to state. The key is optional
+# precisely so a case clocked this way omits it.
+[instrumentation]
+handle = "__facet"
+
+# The specs. Every one of these is a COMMON spec, seeded for EVERY run of this
+# case, at the `dest` path within the run workspace. The single variant declares
+# none of its own: there is one game here, so there is one spec set.
+#
+# The specification is decomposed by concern, and each file is self-contained
+# enough to be read on its own while naming its siblings where a fact lives
+# elsewhere: `overview.md` the game and the project it is built in, `board.md` the
+# grid geometry, the gem kinds, the cuts, strain, and the notation boards are
+# written in, `rules.md` the nine numbered rules and the chain step they resolve
+# in, `controls.md` the selection model and the key actions, `state.md` what the
+# game's state carries, `instrumentation.md` the debug and automation surface,
+# `ui.md` the five screens and the audio cues, `assets.md` the production contract
+# for the art, the effects, and the sound, and `showcase.md` the store-page
+# presentation the finished game ships.
+#
+# Every `.hbs` source is rendered before it lands, and ONE axis is branched on:
+# `engine.slug`, which selects what the build is handed and what it must write.
+# `overview.md.hbs` (the runtime, what is implemented, where the figures come
+# from), `controls.md.hbs` (where the pointer and the actions come from),
+# `state.md.hbs` (the build's own shape versus the exact `FacetState` declaration
+# each engine run writes), `instrumentation.md.hbs` (the global versus
+# `engine.debug`, and the clock operations only an engineless build needs),
+# `ui.md.hbs` (where cues are played) and `showcase.md.hbs` (how motion is
+# captured for the carousel) all branch on it. `board.md`, `rules.md` and
+# `assets.md` carry no engine-dependent sentence and are seeded verbatim.
+# Nothing branches on the variant. A spec's `dest` defaults to its `source` with a
+# trailing `.hbs` stripped, so an `.md.hbs` source seeds to the same `.md` path and
+# a plain `.md` source is seeded verbatim.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+# The board: the grid, the cell center formula every position in the game derives
+# from, the seven gem kinds, the four cuts, strain, and the notation `rules.md` and
+# the debug surface's `loadBoard` both speak. Seeded verbatim: nothing in it
+# differs by engine.
+[[spec]]
+source = "specs/board.md"
+
+# The ruleset: R1 through R3, the move rules checked when a swap is requested, and
+# R4 through R9, the resolution rules a chain step evaluates over the board, plus
+# the order a step resolves them in, the scoring, and the level and end
+# conditions. It is the heart of the case and is seeded verbatim.
+[[spec]]
+source = "specs/rules.md"
+
+# How a player operates the game: the pointer table that selects, deselects, moves
+# the selection and requests a swap, the drag gesture, the cursor, and the
+# registered key actions. It branches on the engine only to say which layer
+# delivers the pointer and the actions: the engine on an engine run, the runtime
+# layer the build writes on an engineless one.
+[[spec]]
+source = "specs/controls.md.hbs"
+
+# The shape of the game's state. Under `simple-2d` this is the `FacetState`
+# declaration the build writes into `src/game.ts` verbatim, stated by the case
+# rather than by the seeded stub, and under `structured-2d` it is the equivalent
+# declaration in that engine's idiom, a live `FacetState` class the world holds as
+# its game state, written into `src/game.ts` verbatim as well. Under `none` the
+# build owns the shape and the file lists only what the state must carry, because
+# the rest of the specification is written against those facts.
+[[spec]]
+source = "specs/state.md.hbs"
+
+# The debugging and automation surface every build must expose: a deterministic,
+# render-free core; an API to pose a board, drive the game through its own real
+# input path, and read it back; and a read-only debug overlay. Framed as an
+# ordinary developer affordance of the game. It branches on the engine for how the
+# surface is reached and for the clock operations only an engineless build owns.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The five screens (`title`, `howto`, `playing`, `paused`, `gameover`), the menus
+# and their items, the readouts the playing screen carries, and the eight audio
+# cues.
+[[spec]]
+source = "specs/ui.md.hbs"
+
+# The production contract for everything the game plays: which tool produces which
+# file, what is drawn in code instead, and how the produced files are wired into
+# the build. Seeded verbatim — the tools on `PATH` are the same under every engine.
+[[spec]]
+source = "specs/assets.md"
+
+# The showcase the finished game ships beside its source: a player-facing
+# description and a short ordered carousel of captured media under `showcase/`,
+# framed as the game's store-page presentation. It branches on the engine for how
+# motion is captured (a gzipped recording from the engine's own draw-command
+# recorder on an engine run, screenshots and a short clip under `none`); it seeds
+# to `specs/showcase.md`.
+[[spec]]
+source = "specs/showcase.md.hbs"
+
+# No `[[reference]]`, no `[[check]]`, and no `[[proof]]`.
+#
+# Facet deliberately fixes no palette, no font, no gem artwork and no background:
+# the look of the bench is the build's own design, and it is the build that DRAWS
+# the gems as produced files rather than receiving them. A reference view is a
+# picture a build is compared AGAINST, so there is no honest one to seed here —
+# every build is expected to look different, and a screenshot diff would score the
+# build that copied the mockup best rather than the build that produced the best
+# bench. What the specification fixes about appearance is stated as legibility a
+# player depends on: seven kinds told apart by hue and by silhouette, the four
+# strain states readable at a glance, a cut readable from its plain stone, and the
+# readouts clear of the board's extent.
+#
+# `[[proof]]` is likewise empty: no proof media is asked of the build. Every piece
+# of media a reviewer sees beside a verdict is captured by this case's own
+# validation suites, from scenarios the case controls. The showcase spec above does
+# ask for media, but as the game's own store-page presentation rather than as
+# evidence any point is judged on. The automated load check still runs.
+
+# Scoring domains. A domain carries the validator-decided FUNCTIONAL rating, and
+# the run's overall functional rating is the WORST across the domains.
+#
+# Facet declares exactly ONE, and that is deliberate. Everything a validator can
+# decide here is one game: the board, the nine rules, the strain that spreads
+# through it, the three cuts, the chain that resolves them, the scoring and the
+# levels it feeds, and the screens the round is played across. They are not
+# separable — a build whose strain is wrong has a wrong chain, a wrong score and a
+# wrong end condition — so splitting them would only spread one failure across
+# several ratings. The case's PRESENTATION is not a domain either: the look, the
+# polish, the feel of the bench, and the produced art, effects and sound are judged
+# by the run-wide AESTHETIC rating rather than through a domain of their own.
+[[domain]]
+id = "gameplay"
+name = "Gameplay"
+description = "The whole game the rules describe: the 8x8 board and its geometry, the swap rules and the runs they seed, strain spreading to the survivors of every clear, the brilliant, star and prism cuts, the chain that resolves them step by step, the score and the levels it fills, and the five screens a round is played across."
+
+# Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
+# `[[review.categories]]` is a CATEGORY — a bare name grouping the points a
+# reviewer grades — and each `[[review.categories.items]]` under it is one
+# graded review item, worth one point (the default weight), so a category is
+# worth the number of items it holds. A category carries no prose of its own;
+# each item states in `description` the claim its validator checks. The
+# checklist is reporter-side material — never seeded into a run, so the model
+# never sees it; each item restates a rule the seeded specification already
+# states, and every threshold a validator asserts is derived from a figure or a
+# rule in the specs plus an honest tolerance.
+#
+# EVERY item carries a validation script, and every item is ONE observable
+# behavior, so a build fails exactly the rule it breaks: R4 horizontal and R4
+# vertical are two points, not one, and a build that gets the cursor's four
+# directions right and its clamp wrong loses one point rather than five. Every
+# item names `gameplay`, because this case declares exactly one domain.
+#
+# Each script is a vitest suite under `validation/<engine>/<category>/`, named
+# for the item. The `<engine>` level is the ENGINE the suite is written against
+# — a validator speaks one engine's vocabulary — so this case ships one
+# directory per supported engine: `validation/none/` drives the built site in
+# Chromium through the `__facet` handle, and `validation/simple-2d/` and
+# `validation/structured-2d/` each stand their engine up in process against the
+# build's own game module. The three hold the same scenarios; only how they
+# reach the build differs, and where an architecture makes one of them decide
+# less, the item's comment says so. The directory for the run's engine is what
+# gets staged into the built workspace at `validation/`.
+#
+# THE MEDIA an item declares is produced by its own suite, from the scenario the
+# case controls: an `image` is a still of the posed or driven game, a `replay` a
+# recording across the frames the point is about.
+#
+# Three things the specification leaves open bound this checklist, and each is
+# recorded above the category it touches rather than worked around: R7's cap is
+# unreachable, because R6 removes every flawed gem before R7 runs;
+# MAX_MULTIPLIER's clamp is unreachable, because it first bites at chain step 9
+# and no nine-step chain can be posed; and which of a refused swap's two cells
+# is reported as `a` is not fixed, so the pair is compared as a set.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+# Every other point on this checklist reaches the build through the debug
+# surface, so the surface itself is checked first and a missing one caps the run
+# at `broken`: a build that never installs it is not merely unrated on this
+# category, it is unreadable on all eighteen. What `debug-api` decides is
+# presence and shape only — reflection can report a `typeof` and nothing more —
+# and what each operation DOES is the subject of the item that owns that
+# behavior (`loadBoard` is `board/load-board`, `requestSwap` is the `moves`
+# items, and so on).
+#
+# The clock is checked here too, as two separate points, because the two claims
+# come apart. `delta-time-independent` asks that one interval of game time reach
+# one outcome however it is divided; `advances-in-real-time` asks that the game
+# carry itself forward when nothing outside it is stepping. Under `none` the
+# loop is the build's own, so the second point reads a real wall clock; under an
+# engine the loop is the engine's, so what is the build's there — that the
+# simulation and the chain ride that loop — is what the engine copies decide.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "debug-api"
+title = "Debug and automation API present"
+description = "Every operation specs/instrumentation.md names is present as a function on the debug surface, version reports FACET_DEBUG_VERSION (1), each operation poses or reads the running game, and snapshot() reports the full documented shape with current values."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: reflect over the surface for every operation
+# specs/instrumentation.md names, read the version's value in both places that
+# file fixes it, then pose a board exercising all seven kinds, a prism, both cut
+# letters and all four strain digits and assert a snapshot carries every
+# documented field at the documented type with all 64 cells in reading order.
+# See validation/<engine>/instrumentation/debug-api.test.ts.
+validation = { script = "instrumentation/debug-api.test.ts", outputs = [
+  { id = "state", name = "The driven board the surface was inspected against", kind = "image" },
+] }
+[[review.categories.items]]
+id = "snapshot-resting-values"
+title = "Snapshot resting values with no board in play"
+description = "With no board in play the snapshot reports board {cols: 0, rows: 0, cells: []}, selection and refusal null, phase idle with chainStep and stepTimer 0, and menuIndex 0."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: reset and read a snapshot on the title screen, asserting
+# every resting value field by field — the point is that a field with nothing to
+# report holds its resting value rather than going missing. See
+# validation/<engine>/instrumentation/snapshot-resting-values.test.ts.
+validation = { script = "instrumentation/snapshot-resting-values.test.ts", outputs = [
+  { id = "title", name = "The title screen the resting snapshot was read on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cell-geometry"
+title = "Cell centers follow the board formulas"
+description = "Every cell the snapshot reports carries the x and y the cellX/cellY formulas give for its column and row, so cell centers run x 388..892 and y 144..648."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a full board and compare all 64 reported cell
+# centers against the cellX/cellY formulas within 0.001. The geometry is what
+# every pointer point aims at, so it is decided once here rather than assumed
+# there. See validation/<engine>/instrumentation/cell-geometry.test.ts.
+validation = { script = "instrumentation/cell-geometry.test.ts", outputs = [
+  { id = "board", name = "The posed board whose geometry was read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-restores"
+title = "reset restores the title-screen state"
+description = "reset() puts the game on title with menuIndex 0, no board in play, phase idle, chainStep, stepTimer, score, levelScore, lastCleared, lastPoints and simTime 0, level 1, cursor (0,0), no selection, no refusal and the pointer up, and options.seed seeds rngState, defaulting to DEFAULT_SEED (1)."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: drive a round dirty — a posed board, an accepted swap, a
+# posed score and level, a standing selection — then reset and assert every
+# field the operation lists is back at its stated value. No figure is required of
+# `lastCleared` or `lastPoints` before the reset: what they report of a step is
+# `scoring/last-step-reported`'s point. Also assert that a bare reset and
+# reset({ seed: 1 }) reach the same rngState, and that a second seed reaches a
+# different one. See validation/<engine>/instrumentation/reset-restores.test.ts.
+validation = { script = "instrumentation/reset-restores.test.ts", outputs = [
+  { id = "reset", name = "The title screen after reset", kind = "image" },
+] }
+[[review.categories.items]]
+id = "seeded-determinism"
+title = "The same seed reproduces the same deal"
+description = "reset({seed}) followed by start() deals the identical opening board and reaches the identical rngState every time, and a different seed deals a different board."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: deal from one seed twice, from a fresh instance each
+# time, and assert the 64 cells and rngState match exactly; then deal from an
+# adjacent seed and assert the board differs. The two seeds are adjacent on
+# purpose — a build that quantized its seed, or read only its high bits,
+# reproduces its own deal perfectly and would answer a widely separated pair.
+# See validation/<engine>/instrumentation/seeded-determinism.test.ts.
+validation = { script = "instrumentation/seeded-determinism.test.ts", outputs = [
+  { id = "deal", name = "The board dealt from the recorded seed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "delta-time-independent"
+title = "The simulation advances on elapsed time, not on frames"
+description = "One chain driven over the same interval of game time in one frame and in sixty frames reaches the same board, the same chainStep, the same phase, the same score and the same simTime."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: from the same seed and the same posed board, cover one
+# interval of game time as a single frame in one drive and as sixty in the
+# other, and compare the board, the chain step, the phase and the score. The
+# interval is chosen to carry exactly one STEP_SECONDS boundary however it is
+# divided. `stepTimer` is deliberately not compared: specs/rules.md says the
+# timer returns to 0 when it reaches STEP_SECONDS and does not say what becomes
+# of the overrun, so two compliant builds legitimately hold different remainders
+# after a boundary. See
+# validation/<engine>/instrumentation/delta-time-independent.test.ts.
+validation = { script = "instrumentation/delta-time-independent.test.ts", outputs = [
+  { id = "drive", name = "The chain driven under a coarse clock", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "On a real wall clock, with nothing stepping the game from outside, a resolving chain's simTime and stepTimer advance over a stretch of real time."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: pose a board, accept a swap so a chain is resolving,
+# then let real time pass with nothing advancing the game and assert simTime
+# grew and the chain moved on. Under `none` this is a real wall clock the build
+# measures itself; under an engine the loop belongs to the engine, so what the
+# check decides there is that the simulation and the chain ride that loop rather
+# than only a poke from outside. See
+# validation/<engine>/instrumentation/advances-in-real-time.test.ts.
+validation = { script = "instrumentation/advances-in-real-time.test.ts", outputs = [
+  { id = "before", name = "The instant the chain begins", kind = "image" },
+  { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
+] }
+
+# --- The Board ----------------------------------------------------------------
+# `loadBoard` is the operation every rule point poses its scenario through, so
+# it is checked head-on and capped at `broken`: a build that poses a board
+# approximately makes every R1-R9 point read a fiction. `board-rests` is its
+# companion — a posed board that started resolving itself would silently rewrite
+# the fixture out from under the check that posed it.
+#
+# The opening board's three stated properties are three points, not one, so a
+# deal that carries a run fails exactly that and not the two beside it. Each
+# sweeps twelve seeds and asserts nothing about any particular one; every seed
+# swept is positive, because specs/instrumentation.md fixes what `options.seed`
+# DOES and not what values it may take, and a build over a shift-register
+# generator is entitled to be stuck at zero.
+[[review.categories]]
+id = "board"
+title = "The Board"
+[[review.categories.items]]
+id = "load-board"
+title = "loadBoard poses the written board exactly"
+description = "loadBoard(rows) moves to playing with phase idle, chainStep and stepTimer 0, no selection and no refusal, and every one of the 64 cells carries exactly the kind, cut and strain its token named, a prism reporting kind null."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: pose a board using all seven kind letters, X, both cut
+# letters and all four strain digits, compare the reported cells token by token,
+# and assert the screen, phase, chain step, timer, selection and refusal are as
+# the operation states. The clearing half is posed from a dirty game — mid-step,
+# with a selection standing and a refusal raised — because every one of those
+# fields already rests at its stated value on a title screen, so a pose from
+# rest could not decide them. See validation/<engine>/board/load-board.test.ts.
+validation = { script = "board/load-board.test.ts", outputs = [
+  { id = "posed", name = "The posed board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "board-rests"
+title = "A posed board rests until a swap is accepted"
+description = "A board posed with a maximal run already standing on it stays exactly as written across a stretch of game time, with phase idle, chainStep 0 and score unchanged."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a board that already carries a maximal run, let
+# several seconds of game time pass, and assert every cell, the phase, the chain
+# step and the score are untouched. A run is only read when a swap is accepted
+# on the board, never because it was written there. See
+# validation/<engine>/board/board-rests.test.ts.
+validation = { script = "board/board-rests.test.ts", outputs = [
+  { id = "resting", name = "The posed board resting with a run on it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "opening-no-runs"
+title = "The opening board holds no run"
+description = "The board start() deals holds no maximal run under R4."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: deal over twelve seeds and scan every row and column for
+# three or more consecutive cells of one kind. See
+# validation/<engine>/board/opening-no-runs.test.ts.
+validation = { script = "board/opening-no-runs.test.ts", outputs = [
+  { id = "deal", name = "A freshly dealt opening board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "opening-legal-swap"
+title = "The opening board carries a legal swap"
+description = "The board start() deals carries at least one legal swap, and the snapshot reports legalSwap true."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: deal over twelve seeds, search every orthogonally
+# adjacent pair for an exchange R1 and R3 both accept, and read `legalSwap`
+# back. The search is the half that discriminates; the reported flag is weak on
+# an opening board, where a compliant deal carries many legal swaps, and its own
+# derivation is `levels/legal-swap-derived`'s point. Both are asserted because
+# the item states both. See
+# validation/<engine>/board/opening-legal-swap.test.ts.
+validation = { script = "board/opening-legal-swap.test.ts", outputs = [
+  { id = "deal", name = "A freshly dealt opening board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "opening-plain-and-clean"
+title = "The opening board is all plain gems at strain 0"
+description = "Every gem on the board start() deals carries cut plain and strain 0, with a kind drawn from GEM_KINDS."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: deal over twelve seeds and assert every cell reports cut
+# `plain`, strain 0 and a kind among the seven. See
+# validation/<engine>/board/opening-plain-and-clean.test.ts.
+validation = { script = "board/opening-plain-and-clean.test.ts", outputs = [
+  { id = "deal", name = "A freshly dealt opening board", kind = "image" },
+] }
+
+# --- Move Rules (R1-R3) -------------------------------------------------------
+# The three move rules are split by clause rather than by rule, so a build that
+# enforces adjacency and forgets productivity fails one point instead of the
+# category. R1 contributes two — the accepted shape and the refused one — R2
+# one, and R3 two, because the prism exemption is a separate sentence from the
+# run requirement and a build can get either wrong on its own.
+#
+# The refusal itself is two more points, its mark and its lifetime.
+# `refusal-marked` compares the reported pair as a SET: specs/rules.md fixes
+# that a refused swap names its two cells and specs/instrumentation.md fixes the
+# reported shape, but neither says which of the two is reported as `a`, so a
+# build that reports them in the other order is conformant on every word that
+# was written.
+[[review.categories]]
+id = "moves"
+title = "Move Rules (R1-R3)"
+[[review.categories.items]]
+id = "r1-adjacent-accepted"
+title = "R1 accepts an orthogonally adjacent swap"
+description = "A productive swap of two cells differing by 1 in column and 0 in row is accepted, and so is one differing by 0 in column and 1 in row: phase becomes resolving with chainStep 1 and no refusal stands."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose one board on which a horizontal neighbor exchange
+# makes a run and one on which a vertical exchange does, request each, and
+# assert the phase is resolving at chain step 1 with no refusal. Both admissible
+# offsets are one point because R1 states them as one rule. See
+# validation/<engine>/moves/r1-adjacent-accepted.test.ts.
+validation = { script = "moves/r1-adjacent-accepted.test.ts", outputs = [
+  { id = "swap", name = "An accepted adjacent swap", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r1-non-adjacent-refused"
+title = "R1 refuses a swap of cells that are not orthogonally adjacent"
+description = "A swap of two diagonally neighboring cells, and a swap of two cells two columns apart, are both refused and leave the board unchanged, even when the exchange would have produced a maximal run."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose boards on which a diagonal exchange and a
+# two-columns-apart exchange would each make a run, request each, and assert all
+# 64 cells stand, the phase is idle and the score is unchanged. Making both
+# exchanges productive is the point: only adjacency can be doing the refusing.
+# See validation/<engine>/moves/r1-non-adjacent-refused.test.ts.
+validation = { script = "moves/r1-non-adjacent-refused.test.ts", outputs = [
+  { id = "refused", name = "The board unchanged after a diagonal request", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r2-refused-while-resolving"
+title = "R2 refuses a swap while the board is resolving"
+description = "A swap requested while phase is resolving is refused and leaves the board unchanged."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: accept a swap, then request a second productive adjacent
+# pair on the settled board while the chain is still resolving, and assert the
+# board is unchanged, the chain step still 1 and the step timer not restarted.
+# See validation/<engine>/moves/r2-refused-while-resolving.test.ts.
+validation = { script = "moves/r2-refused-while-resolving.test.ts", outputs = [
+  { id = "refused", name = "A swap requested mid-chain", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r3-unproductive-refused"
+title = "R3 refuses a swap that makes no run"
+description = "A swap whose resulting board carries no maximal run, and neither of whose cells holds a prism, is refused and leaves the board unchanged."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: pose an adjacent exchange that makes no run anywhere and
+# touches no prism, request it, and assert both cells still hold what they held,
+# the phase is idle at chain step 0 and the score is unchanged. See
+# validation/<engine>/moves/r3-unproductive-refused.test.ts.
+validation = { script = "moves/r3-unproductive-refused.test.ts", outputs = [
+  { id = "refused", name = "The board unchanged after an unproductive request", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r3-prism-accepted"
+title = "R3 accepts a swap that moves a prism"
+description = "A swap where at least one of the two cells holds a prism is accepted even though the board it produces carries no maximal run."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a prism beside a gem so that the exchange makes no
+# run anywhere, request it, and assert the phase is resolving at chain step 1
+# with no refusal — the prism door opens on its own, without a run. See
+# validation/<engine>/moves/r3-prism-accepted.test.ts.
+validation = { script = "moves/r3-prism-accepted.test.ts", outputs = [
+  { id = "swap", name = "A prism swap accepted with no run made", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "refusal-marked"
+title = "A refused swap marks its two cells"
+description = "A refused swap sets refusal to the two cells it named, reported in the documented {a, b} shape."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: request an unproductive adjacent swap and assert `a` and
+# `b` are both present and together are exactly the two cells the request named,
+# compared as a sorted pair. Which cell is reported as which is not fixed by the
+# specification, so it is not asserted. See
+# validation/<engine>/moves/refusal-marked.test.ts.
+validation = { script = "moves/refusal-marked.test.ts", outputs = [
+  { id = "refusal", name = "The refusal standing on its two cells", kind = "image" },
+] }
+[[review.categories.items]]
+id = "refusal-expires"
+title = "A refusal clears after REFUSAL_SECONDS"
+description = "A standing refusal is still reported before REFUSAL_SECONDS (0.3) of game time has passed and is null once it has."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: raise a refusal, advance to just short of
+# REFUSAL_SECONDS and assert it still stands, then past it and assert it is
+# null. The build's own `simTime` is read back on both sides, so the check does
+# not depend on the harness clock being what it claims. See
+# validation/<engine>/moves/refusal-expires.test.ts.
+validation = { script = "moves/refusal-expires.test.ts", outputs = [
+  { id = "refusal", name = "The refusal mark standing and then gone", kind = "replay" },
+] }
+
+# --- Runs and Seeding (R4, R5) ------------------------------------------------
+# R4 decides what a run IS and R5 what a step is seeded with, so they share a
+# category and split into seven points: the two orientations, a run that is
+# maximal at four, the prism that joins nothing, the union of every run on the
+# board, and R5's two prism seedings, which are separate sentences and
+# separately breakable.
+#
+# Nothing on the surface exposes the clear set itself, or the board between the
+# removal of a step's clear set and the settling that ends the step, so "exactly
+# those cells were emptied" is evidenced through where R9's fall left the
+# survivors. Two consequences, both honest: a build with a correct R4/R5 and a
+# broken R9 fails these points as well, and a cell whose post-step occupant is a
+# gem R7 strained is left unread here rather than annexing `strain`'s behavior
+# into a `runs` point.
+[[review.categories]]
+id = "runs"
+title = "Runs and Seeding (R4, R5)"
+[[review.categories.items]]
+id = "r4-horizontal-run"
+title = "A horizontal run of three clears"
+description = "A swap that puts MATCH_MIN (3) gems of one kind on consecutive cells of a single row clears exactly those three cells."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: pose a board whose only maximal run after the swap is a
+# horizontal three, with nothing flawed and no cut gem beside it so R6 adds
+# nothing, and assert three cells cleared, each of the three columns shifted
+# down by one, and every other column untouched. See
+# validation/<engine>/runs/r4-horizontal-run.test.ts.
+validation = { script = "runs/r4-horizontal-run.test.ts", outputs = [
+  { id = "clear", name = "A horizontal three clearing", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r4-vertical-run"
+title = "A vertical run of three clears"
+description = "A swap that puts MATCH_MIN (3) gems of one kind on consecutive cells of a single column clears exactly those three cells."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: the same scenario turned through ninety degrees — a
+# vertical three with nothing flawed or cut adjacent — asserting three cells
+# cleared and that column's survivors fell by three. The two orientations are
+# two points because a build can index rows and columns wrongly in one and not
+# the other. See validation/<engine>/runs/r4-vertical-run.test.ts.
+validation = { script = "runs/r4-vertical-run.test.ts", outputs = [
+  { id = "clear", name = "A vertical three clearing", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r4-maximal-run-of-four"
+title = "A maximal run of four clears all four cells"
+description = "A swap that puts four gems of one kind on consecutive cells clears all four, not a three-cell subset of them."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: complete a run of exactly four bounded at both ends by
+# other kinds and assert all four cells were emptied — a build that clears the
+# first MATCH_MIN cells it finds leaves the fourth standing. See
+# validation/<engine>/runs/r4-maximal-run-of-four.test.ts.
+validation = { script = "runs/r4-maximal-run-of-four.test.ts", outputs = [
+  { id = "clear", name = "A maximal run of four clearing", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r4-prism-joins-no-run"
+title = "A prism joins no run"
+description = "A prism sitting between gems of one kind neither joins nor extends a run, so a line reading R0 R0 X0 R0 R0 clears nothing."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the line R0 R0 X0 R0 R0 in one row and a productive
+# swap elsewhere on the board, request the far swap, and assert the step cleared
+# only the far run and that all five cells of the line stand as written. Driving
+# a step somewhere else is what makes the negative legible: the board really was
+# read, and the line still contributed nothing. See
+# validation/<engine>/runs/r4-prism-joins-no-run.test.ts.
+validation = { script = "runs/r4-prism-joins-no-run.test.ts", outputs = [
+  { id = "line", name = "The prism-broken line left standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r5-union-of-runs"
+title = "A step clears every maximal run on the board"
+description = "A step whose board carries two disjoint maximal runs removes both in the same step."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a board already carrying one maximal run in a
+# region the swap does not touch and complete a second, disjoint run; assert six
+# cells cleared and both sets emptied in the one step. See
+# validation/<engine>/runs/r5-union-of-runs.test.ts.
+validation = { script = "runs/r5-union-of-runs.test.ts", outputs = [
+  { id = "clear", name = "Two runs clearing in one step", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r5-prism-against-gem"
+title = "A prism swapped with a gem clears every gem of that kind"
+description = "Step 1 of a chain begun by a swap that traded a prism against a gem is seeded with that prism together with every gem on the board of that gem's kind, wherever it sits."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a prism beside a ruby with a counted number of
+# rubies scattered elsewhere and no maximal run anywhere, trade the two, and
+# assert the step cleared the prism plus every one of those rubies. Posing no
+# run anywhere is what isolates the rule: nothing but R5's prism sentence can be
+# seeding the step. See validation/<engine>/runs/r5-prism-against-gem.test.ts.
+validation = { script = "runs/r5-prism-against-gem.test.ts", outputs = [
+  { id = "clear", name = "A prism taking every gem of one kind", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r5-prism-against-prism"
+title = "A prism swapped with a prism clears the whole board"
+description = "Step 1 of a chain begun by a swap that traded a prism against a prism is seeded with every cell on the board."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: trade two adjacent prisms and assert all 64 cells were
+# taken and the settled board is a fresh refill, every gem plain at strain 0.
+# See validation/<engine>/runs/r5-prism-against-prism.test.ts.
+validation = { script = "runs/r5-prism-against-prism.test.ts", outputs = [
+  { id = "clear", name = "The whole board taken by a prism pair", kind = "replay" },
+] }
+
+# --- Expansion (R6) -----------------------------------------------------------
+# R6's three additions are three points, plus the clause that clips the
+# brilliant's ring at a board edge and the least-fixed-point sentence that
+# closes the set. The closure is checked as a point of its own because a build
+# can implement all three additions correctly and still apply them in one pass,
+# which is a different rule.
+#
+# Every scenario here is read through R9's fall, for the reason given above the
+# `runs` category: the snapshot carries the SIZE of the last clear set and
+# nothing about its membership. The brilliant scenarios are therefore posed at
+# the BOTTOM of the board — a clear at the top of a column moves no survivor, so
+# the settled board would say nothing about which cells were emptied.
+[[review.categories]]
+id = "expansion"
+title = "Expansion (R6)"
+[[review.categories.items]]
+id = "r6-brilliant-ring"
+title = "A brilliant takes the eight cells around it"
+description = "A brilliant in the clear set adds each of the eight cells surrounding it that lies on the board."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a brilliant well inside the board sitting in the
+# run the swap completes, its eight neighbors ordinary, unflawed and uncut, and
+# assert the run's cells plus all eight ring cells were taken, counting the
+# overlap once. See validation/<engine>/expansion/r6-brilliant-ring.test.ts.
+validation = { script = "expansion/r6-brilliant-ring.test.ts", outputs = [
+  { id = "clear", name = "A brilliant taking its ring", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r6-brilliant-edge"
+title = "A brilliant on an edge takes only the cells on the board"
+description = "A brilliant cleared at a board edge adds only those of its eight surrounding cells that lie on the board."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: run the same scenario with the brilliant on a left edge
+# (five neighbors on the board) and again at a bottom corner (three), asserting
+# the count matches the on-board neighbors each time. Both are posed mid-column
+# or lower so the emptying is legible through the fall. See
+# validation/<engine>/expansion/r6-brilliant-edge.test.ts.
+validation = { script = "expansion/r6-brilliant-edge.test.ts", outputs = [
+  { id = "clear", name = "A brilliant clipped by the board edge", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r6-star-row-and-column"
+title = "A star takes its whole row and its whole column"
+description = "A star in the clear set adds every cell in that star's row and every cell in its column."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a star at a known cell sitting in the run the swap
+# completes, the rest of its row and column ordinary, and assert every one of
+# the fifteen cells of that row and column was emptied along with the run's
+# cells outside them. See
+# validation/<engine>/expansion/r6-star-row-and-column.test.ts.
+validation = { script = "expansion/r6-star-row-and-column.test.ts", outputs = [
+  { id = "clear", name = "A star taking its row and column", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r6-flawed-adjacent"
+title = "A flawed gem beside the clear set is taken with it"
+description = "A gem at MAX_STRAIN (3) orthogonally adjacent to a cell in the clear set is cleared with it, while one only diagonally adjacent is not."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a run of three with one flawed gem orthogonally
+# beside it and one flawed gem only diagonally beside it, and assert the
+# orthogonal one went and the diagonal one still stands, flawed. The negative
+# half is what makes the point about ORTHOGONAL adjacency rather than about
+# proximity. See validation/<engine>/expansion/r6-flawed-adjacent.test.ts.
+validation = { script = "expansion/r6-flawed-adjacent.test.ts", outputs = [
+  { id = "clear", name = "A flawed neighbor going with the clear", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r6-closure"
+title = "The clear set is closed under the three additions"
+description = "The clear set is the smallest set containing the seed and closed under all three additions, so a line of flawed gems is taken end to end and a brilliant drawn in by that line contributes its own eight neighbors in the same step."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a run of three with a line of flawed gems running
+# away from one end and a brilliant at the far end of that line, itself carrying
+# MAX_STRAIN so the third addition can reach it at all, and assert the line, the
+# brilliant and the brilliant's on-board neighbors all went in the one step. A
+# build that applies the additions once, to the seed alone, stops at the first
+# flawed gem. See validation/<engine>/expansion/r6-closure.test.ts.
+validation = { script = "expansion/r6-closure.test.ts", outputs = [
+  { id = "clear", name = "A closure running the length of a flawed line", kind = "replay" },
+] }
+
+# --- Strain (R7) --------------------------------------------------------------
+# R7 is one sentence with four separable claims — who gains, the two ways a gem
+# falls outside that, and how much — so it is four points plus the accumulation
+# that reaches MAX_STRAIN. The rule's subject is "every gem outside the clear set
+# that is orthogonally adjacent to" it, and the two qualifiers rule out different
+# gems: a diagonal neighbor is outside the set but out of reach, and a cleared
+# gem is in reach but inside the set.
+#
+# R7's "capped at MAX_STRAIN" clause is deliberately not a point of its own,
+# because it is not observable: R6 runs first and draws every flawed gem
+# orthogonally adjacent to the clear set INTO it, so a gem already at MAX_STRAIN
+# is never a gem R7 sees. Combined with the at-most-one-per-step bound, the
+# largest strain R7 can ever be caught producing is MAX_STRAIN whether the build
+# clamps or not. `r7-reaches-flawed` therefore asserts the half that has an
+# answer.
+[[review.categories]]
+id = "strain"
+title = "Strain (R7)"
+[[review.categories.items]]
+id = "r7-neighbors-gain"
+title = "Gems beside a clear gain one strain"
+description = "Every gem outside the clear set that is orthogonally adjacent to at least one cell in it gains 1 strain."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a horizontal run of three at strain 0 with distinct
+# unflawed gems above it, below it and at each end, then follow each marked gem
+# to where R9 left it and assert it carries strain 1. See
+# validation/<engine>/strain/r7-neighbors-gain.test.ts.
+validation = { script = "strain/r7-neighbors-gain.test.ts", outputs = [
+  { id = "strain", name = "The stones around a clear taking strain", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r7-diagonal-no-gain"
+title = "A gem only diagonally beside a clear gains nothing"
+description = "A gem diagonally adjacent to the clear set and not orthogonally adjacent to it keeps the strain it had."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: on the same board, mark a gem diagonally off the run's
+# end with no orthogonal contact with the clear set and assert it still reports
+# strain 0 after the step. See
+# validation/<engine>/strain/r7-diagonal-no-gain.test.ts.
+validation = { script = "strain/r7-diagonal-no-gain.test.ts", outputs = [
+  { id = "strain", name = "A diagonal neighbor left clean", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r7-clear-set-exempt"
+title = "A gem inside the clear set gains no strain"
+description = "R7 raises the strain of the gems outside the clear set only, so a step that clears a gem at strain 2 leaves nothing flawed and sounds no flaw."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: drive the same run of three from the keyboard twice, once
+# with every gem at strain 0 and once with the run's left cell — a cell the step
+# clears — posed at MAX_STRAIN - 1, and assert the second frame sounded no more
+# than the first. The step order is what leaves that the only reading: the clear
+# set scores at step 3, R7 raises at step 4 and the removal follows at step 5, so
+# a cleared gem's strain reaches neither the score nor the board, and a raise it
+# should not have had shows only as the flaw specs/ui.md's cue table plays when a
+# gem reaches MAX_STRAIN. Under an engine the cue is read by name. See
+# validation/<engine>/strain/r7-clear-set-exempt.test.ts.
+validation = { script = "strain/r7-clear-set-exempt.test.ts", outputs = [
+  { id = "strain", name = "A clear leaving the stones it takes unstrained", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r7-once-per-step"
+title = "A gem beside two cleared cells gains only one strain"
+description = "A gem orthogonally adjacent to two or more cells of the clear set gains exactly 1 strain in the step, not one per neighbor."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose an L of a horizontal and a vertical run sharing a
+# corner so one marked gem is orthogonally adjacent to two cells of the clear
+# set, and assert it reports strain 1, not 2. See
+# validation/<engine>/strain/r7-once-per-step.test.ts.
+validation = { script = "strain/r7-once-per-step.test.ts", outputs = [
+  { id = "strain", name = "A gem cornered by two arms of one clear", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r7-reaches-flawed"
+title = "Strain accumulates to flawed"
+description = "A gem at strain 2 orthogonally adjacent to the clear set reaches MAX_STRAIN (3) and is thereafter flawed."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a gem at MAX_STRAIN - 1 orthogonally beside a run
+# of three and assert it comes out of the step at exactly MAX_STRAIN and answers
+# specs/board.md's own definition of flawed. What a flawed gem then DOES is
+# other points' — that it is drawn into the next clear set is
+# `expansion/r6-flawed-adjacent`, that it scores FLAWED_SCORE is
+# `scoring/score-flawed-rate` — so none of it is asserted here. See
+# validation/<engine>/strain/r7-reaches-flawed.test.ts.
+validation = { script = "strain/r7-reaches-flawed.test.ts", outputs = [
+  { id = "flaw", name = "A stone cracking through to flawed", kind = "replay" },
+] }
+
+# --- Cuts (R8) ----------------------------------------------------------------
+# Seven points: one per creation row, the priority between them, the run
+# placement rule, the star's intersection, and the sentence that a prism-seeded
+# step creates nothing at all. Priority and placement are separate points from
+# creation because a build can make the right gem and put it in the wrong cell,
+# or make the wrong one of two that both apply.
+#
+# R8 (step 6) and R9 (step 7) both fall inside the step a swap resolves on, and
+# the snapshot is the only reading the surface offers, so there is no
+# observation of the board between placement and the fall. Every placement
+# scenario is therefore posed on a HORIZONTAL run, where each of the run's
+# columns loses exactly one cell and the created gem provably cannot be moved by
+# R9 — which means a vertical-run placement is not observable under this surface
+# at all.
+[[review.categories]]
+id = "cuts"
+title = "Cuts (R8)"
+[[review.categories.items]]
+id = "r8-brilliant-from-four"
+title = "A run of four leaves a brilliant"
+description = "A maximal run of exactly 4 creates one brilliant carrying that run's kind at strain 0."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: complete a maximal run of exactly four, bounded by other
+# kinds, with no crossing run and nothing for R6 to expand, and assert the
+# settled board holds exactly one more brilliant than before, of the run's kind,
+# at strain 0. See validation/<engine>/cuts/r8-brilliant-from-four.test.ts.
+validation = { script = "cuts/r8-brilliant-from-four.test.ts", outputs = [
+  { id = "cut", name = "A brilliant cut from a run of four", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r8-prism-from-five"
+title = "A run of five leaves a prism"
+description = "A maximal run of 5 or more creates one prism, which carries no kind (reported as kind null) at strain 0."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: complete a maximal run of exactly five with no crossing
+# run and assert exactly one more prism, reporting kind null at strain 0. See
+# validation/<engine>/cuts/r8-prism-from-five.test.ts.
+validation = { script = "cuts/r8-prism-from-five.test.ts", outputs = [
+  { id = "cut", name = "A prism cut from a run of five", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r8-star-from-intersection"
+title = "Crossing runs leave a star"
+description = "A cell lying in two intersecting maximal runs, one horizontal and one vertical, creates one star carrying those runs' kind at strain 0."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: complete a horizontal and a vertical run of three
+# sharing one cell and assert exactly one more star, of that kind, at strain 0.
+# See validation/<engine>/cuts/r8-star-from-intersection.test.ts.
+validation = { script = "cuts/r8-star-from-intersection.test.ts", outputs = [
+  { id = "cut", name = "A star cut where two runs cross", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r8-priority"
+title = "Priority among created cuts"
+description = "Where more than one R8 row applies to one cell, prism wins over star and star wins over brilliant, and that cell takes exactly one created gem."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a cell lying in a run of five and a run of three
+# and assert a prism rather than a star; pose one lying in a run of four and a
+# run of three and assert a star rather than a brilliant. Both boundaries of the
+# ordering are exercised, and each asserts that exactly one gem was created. See
+# validation/<engine>/cuts/r8-priority.test.ts.
+validation = { script = "cuts/r8-priority.test.ts", outputs = [
+  { id = "cut", name = "The higher cut winning a contested cell", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r8-run-placement"
+title = "Where a run's created gem is placed"
+description = "A run's created gem is placed at whichever of the chain's two swapped cells lies in that run, at the one of lower index when both do, and at the run's cell at index floor((n - 1) / 2) when neither does, indexing from the lowest-column end for a horizontal run and the lowest-row end for a vertical one."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: three posed runs of four, one per clause — one swapped
+# cell in the run, both swapped cells in it (exchanging two gems of the run's
+# own kind at differing strain, at indices 2 and 3, so an answer of 3 or of the
+# middle index both fail), and neither in it, cleared through R5's union. All
+# three are horizontal, so the created gem's column holds nothing empty at or
+# below it and R9 cannot move it. See
+# validation/<engine>/cuts/r8-run-placement.test.ts.
+validation = { script = "cuts/r8-run-placement.test.ts", outputs = [
+  { id = "placement", name = "A created brilliant landing at its indexed cell", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r8-star-placement"
+title = "A star is placed where its two runs cross"
+description = "A created star occupies the cell at which its horizontal and vertical maximal runs intersect."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: cross two runs at a cell that is neither of the swapped
+# cells and is the lowest cell of its column's run, so the fall cannot move it,
+# and assert the star is found at the intersection. See
+# validation/<engine>/cuts/r8-star-placement.test.ts.
+validation = { script = "cuts/r8-star-placement.test.ts", outputs = [
+  { id = "placement", name = "A star landing on the crossing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r8-prism-swap-creates-nothing"
+title = "A prism-seeded step creates no cut"
+description = "A step seeded from a prism swap creates no brilliant, star or prism, however many gems it clears."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: run a prism-against-gem swap that clears a line of five
+# among eight or more gems and assert step 1's settled board carries no
+# brilliant, no star and zero cut gems. Step 1 alone is read, because every step
+# after it is an ordinary step seeded from the maximal runs on its own board and
+# is entitled to create cuts of its own out of the refill. See
+# validation/<engine>/cuts/r8-prism-swap-creates-nothing.test.ts.
+validation = { script = "cuts/r8-prism-swap-creates-nothing.test.ts", outputs = [
+  { id = "clear", name = "A prism clear leaving no cut behind", kind = "replay" },
+] }
+
+# --- Settling and Refill (R9) -------------------------------------------------
+# R9 is the rule every other rule's evidence passes through, which is why the
+# fall itself is capped at `broken` — a build that settles wrongly cannot be
+# read correctly on R4 through R8 either. Four points: where a survivor lands,
+# what it carries with it, what fills the cells nothing landed in, and that the
+# board is whole again by the time the step ends.
+#
+# What the refill's kind is drawn FROM is asserted (one of GEM_KINDS, plain, at
+# strain 0); that the draw is UNIFORM is not, because deciding a distribution
+# off a settled board would take either the build's own generator or a
+# statistical test, and this case ships neither an opinionated validator nor one
+# tuned to a reference.
+[[review.categories]]
+id = "settling"
+title = "Settling and Refill (R9)"
+[[review.categories.items]]
+id = "r9-gems-fall"
+title = "Surviving gems fall into the gap"
+description = "Within each column every surviving gem falls to the lowest empty cell below it, keeping the order its column held it in."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: pose one column with distinct kinds stacked above a
+# vertical run of three, clear it, and assert the survivors appear at the
+# column's bottom in the same top-to-bottom order, shifted down by exactly
+# three. A column holding no empty cell is read whole and asserted unchanged,
+# which is what "falls to the lowest empty cell below it" says when there is
+# none. See validation/<engine>/settling/r9-gems-fall.test.ts.
+validation = { script = "settling/r9-gems-fall.test.ts", outputs = [
+  { id = "fall", name = "A column falling into its gap", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r9-carries-strain-and-cut"
+title = "A falling gem keeps its strain and its cut"
+description = "A gem that falls under R9 arrives carrying the same strain and the same cut it had before the step."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose gems at strain 1 and 2 and a brilliant two or more
+# rows above the clearing run, so none of them is orthogonally adjacent to the
+# clear set and R7 adds nothing to confuse the reading, then find each at its
+# new cell and assert its strain and its cut are what they were. See
+# validation/<engine>/settling/r9-carries-strain-and-cut.test.ts.
+validation = { script = "settling/r9-carries-strain-and-cut.test.ts", outputs = [
+  { id = "fall", name = "Marked stones falling with their strain and cut", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r9-refill-plain-zero"
+title = "Refilled cells hold plain gems at strain 0"
+description = "Every cell still empty after the fall is filled from the top of its column with a plain gem at strain 0 whose kind is one of GEM_KINDS."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: drive a step that empties a counted number of cells from
+# several columns and assert the topmost cells of each report cut `plain`,
+# strain 0 and a kind among the seven. Every survivor in those columns is posed
+# at strain 2, so a refill and a survivor can never be mistaken for one another
+# and the "from the top of its column" clause is decidable. See
+# validation/<engine>/settling/r9-refill-plain-zero.test.ts.
+validation = { script = "settling/r9-refill-plain-zero.test.ts", outputs = [
+  { id = "refill", name = "Fresh stones dropping in from the top", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r9-board-full"
+title = "The board is full once a step settles"
+description = "Every one of the GRID_COLS x GRID_ROWS (64) cells holds exactly one gem once a chain step has settled."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: after each step of a driven multi-step chain, assert all
+# 64 cells are present and occupied, one per (col, row). The chain's second step
+# is guaranteed by the survivors of the first rather than by the refill, so the
+# scenario does not depend on what a build's seeded generator dealt. See
+# validation/<engine>/settling/r9-board-full.test.ts.
+validation = { script = "settling/r9-board-full.test.ts", outputs = [
+  { id = "settled", name = "The board full again after a chain", kind = "image" },
+] }
+
+# --- The Chain Step -----------------------------------------------------------
+# The chain is checked as its three outcomes — it runs on, it holds the board
+# for STEP_SECONDS between steps, and it ends — plus the one consequence of the
+# step's ORDER that is separately observable: R8 creates before R9 settles, so a
+# created gem falls in the same step it was made in.
+#
+# `chain-second-step` and `score-multiplier` both compute their expectation from
+# the board the first step actually settled, read back out of the snapshot,
+# rather than from a prediction. That is what keeps R9's random refill out of
+# the assertion: the check derives the clear set the spec gives for exactly the
+# board in front of it, whatever the build's generator dealt into it.
+[[review.categories]]
+id = "chain"
+title = "The Chain Step"
+[[review.categories.items]]
+id = "chain-second-step"
+title = "A chain runs on into a second step"
+description = "When the board a step settles carries a maximal run, chainStep rises to 2 and that board's clear set is removed."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: pose a board where clearing a run drops survivors into a
+# fresh run, read the settled board out of the snapshot, compute the R5/R6 clear
+# set the specification gives for that exact board, advance past STEP_SECONDS,
+# and assert the chain step rose to 2 and that set's size was taken. See
+# validation/<engine>/chain/chain-second-step.test.ts.
+validation = { script = "chain/chain-second-step.test.ts", outputs = [
+  { id = "chain", name = "A chain running on into its second step", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "chain-cadence"
+title = "A step holds the board for STEP_SECONDS"
+description = "After a step resolves, the board and chainStep are unchanged until stepTimer reaches STEP_SECONDS (0.25) of game time, and the next step resolves once it does."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: set up a two-step chain, advance to just inside
+# STEP_SECONDS and assert the chain step is still 1 with every cell unchanged,
+# then past it and assert the step resolved. The frame schedule stays clear of
+# the exact boundary tick, which "reaches" leaves open, and the reading after
+# the boundary is that the timer is below STEP_SECONDS rather than at a value,
+# because what becomes of the overrun is not fixed either. See
+# validation/<engine>/chain/chain-cadence.test.ts.
+validation = { script = "chain/chain-cadence.test.ts", outputs = [
+  { id = "cadence", name = "The board held for one step's length", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "chain-ends-idle"
+title = "A chain ends when nothing more clears"
+description = "When the board a step settles seeds no clear set, phase returns to idle with chainStep 0 and stepTimer 0."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: drive a single-step chain, advance past STEP_SECONDS and
+# assert the phase is idle with the chain step and the timer at 0, then advance
+# further and assert nothing more moves. See
+# validation/<engine>/chain/chain-ends-idle.test.ts.
+validation = { script = "chain/chain-ends-idle.test.ts", outputs = [
+  { id = "settled", name = "The board settling back to idle", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "created-gem-settles"
+title = "A created gem settles with the board"
+description = "A gem R8 creates is placed at the cell the removal left empty and then falls under R9 in the same step, coming to rest at the lowest empty cell below that placement."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a vertical run of four so R8 places the created
+# brilliant with emptied cells beneath it, and assert it comes to rest at the
+# lowest of them rather than at the placement cell — the step's order, read from
+# the outside. See validation/<engine>/chain/created-gem-settles.test.ts.
+validation = { script = "chain/created-gem-settles.test.ts", outputs = [
+  { id = "settle", name = "A new brilliant falling with the column", kind = "replay" },
+] }
+
+# --- Scoring ------------------------------------------------------------------
+# The two per-gem rates are two points, the multiplier a third, and where the
+# points land a fourth, because a build can compute the sum correctly and add it
+# to one figure only. `last-step-reported` covers the two readouts the HUD and
+# the reviewer both read the step through.
+#
+# MAX_MULTIPLIER's clamp is NOT covered here, and deliberately: M only stops
+# rising at chain step 9, `chainStep` is not writable, and every step past the
+# first depends on R9's refill, so a nine-step chain can only be reached by
+# hunting a seed that works on one particular build — which would be a validator
+# derived from a reference. `score-multiplier` stays inside the unclamped range
+# and says so.
+[[review.categories]]
+id = "scoring"
+title = "Scoring"
+[[review.categories.items]]
+id = "score-base-rate"
+title = "A clean gem scores BASE_SCORE"
+description = "On chain step 1, each cleared gem carrying strain 0, 1 or 2 adds BASE_SCORE (10) times the step's multiplier of 1."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: clear a run of three carrying strains 0, 1 and 2 with
+# nothing for R6 to expand and no flawed gem in the set, reading `score` either
+# side of the swap, and assert the step added MATCH_MIN x BASE_SCORE at a
+# multiplier of 1. The reading is the score the step moved rather than the
+# `lastPoints` it reported, which is `last-step-reported`'s point. See
+# validation/<engine>/scoring/score-base-rate.test.ts.
+validation = { script = "scoring/score-base-rate.test.ts", outputs = [
+  { id = "score", name = "A clean three scoring thirty", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "score-flawed-rate"
+title = "A flawed gem scores FLAWED_SCORE"
+description = "On chain step 1, each cleared gem at strain 3 adds FLAWED_SCORE (20) times the step's multiplier."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: clear the same run of three twice, the second time with
+# one flawed gem of another kind drawn in beside it by R6, and assert the
+# difference between what the two steps added to `score` is FLAWED_SCORE — one
+# flawed gem's own share, measured rather than reckoned from the other rate. The
+# two rates are separate points because a build that scores every gem at one rate
+# fails the one it got wrong. See
+# validation/<engine>/scoring/score-flawed-rate.test.ts.
+validation = { script = "scoring/score-flawed-rate.test.ts", outputs = [
+  { id = "score", name = "A flawed stone paying double", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "score-multiplier"
+title = "A later chain step scores by its multiplier"
+description = "A step's points are its clear set's points times M = min(chainStep, MAX_MULTIPLIER), so a step 2 clear scores twice what the same set would score at step 1, and multiplier reports 2."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: drive a two-step chain, compute each step's clear set
+# from the board that step actually reads — both of them made of gems below
+# MAX_STRAIN, so one rate covers every cell — and assert step 2 added twice per
+# cleared cell what step 1 added, with the multiplier reporting 2. The rates
+# themselves are the two points above; this one compares the steps with each
+# other. Step 2 is inside the unclamped range on purpose; the clamp itself is not
+# this point's. See validation/<engine>/scoring/score-multiplier.test.ts.
+validation = { script = "scoring/score-multiplier.test.ts", outputs = [
+  { id = "chain", name = "A second step paying double", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "score-adds-to-both"
+title = "A step's points add to score and levelScore"
+description = "A step's points are added to both score and levelScore."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a non-zero score and level score, both short of the
+# target the round reports, drive one step, and assert both figures rose by the
+# SAME amount and that the amount is not zero. What the step was worth is the
+# rate points' business, so no rate is named here. See
+# validation/<engine>/scoring/score-adds-to-both.test.ts.
+validation = { script = "scoring/score-adds-to-both.test.ts", outputs = [
+  { id = "score", name = "Both figures rising by the step's points", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "last-step-reported"
+title = "The last step's clear count and points are reported"
+description = "lastCleared reports how many cells the most recent chain step removed and lastPoints what it scored."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: drive a step of a counted size and value and read both
+# readouts, then drive a larger, differently valued step and assert both moved
+# to that step's figures. What the two fields hold BETWEEN boards is never read:
+# the specification puts them at 0 under `reset` and does not name them among
+# what a fresh round or a posed board restores. See
+# validation/<engine>/scoring/last-step-reported.test.ts.
+validation = { script = "scoring/last-step-reported.test.ts", outputs = [
+  { id = "report", name = "The last step's figures reported", kind = "replay" },
+] }
+
+# --- Levels and the End of a Round --------------------------------------------
+# The round's arc is six points: the derived target, the advance, what the
+# advance keeps, the derived legal-swap flag, the end condition, and the
+# priority between the last two — a board that is both complete and dead
+# resolves as a level, not as a game over, and a build that tests them in the
+# other order fails exactly that point.
+#
+# `gameover-no-legal-swap` and the two points that share its route reach a dead
+# board the only way the specification allows: a chain is opened, the board is
+# rewritten underneath the holding step with `setGem` (which leaves the phase
+# and the screen standing), and the step then reads a board that seeds nothing.
+# A board posed with `loadBoard` cannot be relied on to still be dead after a
+# chain has resolved on it, because R9's refill is the build's own draw.
+[[review.categories]]
+id = "levels"
+title = "Levels and the End of a Round"
+[[review.categories.items]]
+id = "level-target-derived"
+title = "The level target is 2000 times the level"
+description = "levelTarget reports LEVEL_TARGET_STEP (2000) times level, so level 1 asks 2000 and level 4 asks 8000."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose several levels in turn and read the target back
+# against LEVEL_TARGET_STEP x level. See
+# validation/<engine>/levels/level-target-derived.test.ts.
+validation = { script = "levels/level-target-derived.test.ts", outputs = [
+  { id = "hud", name = "The level readout at a posed level", kind = "image" },
+] }
+[[review.categories.items]]
+id = "level-advances"
+title = "Reaching the target opens the next level"
+description = "When phase returns to idle with levelScore at or past levelTarget, level rises by 1, levelScore returns to 0, and a fresh opening board is dealt that holds no run and carries a legal swap."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the level score at the target the round REPORTS —
+# what that figure ought to be is `level-target-derived`'s point — accept a swap,
+# advance until the phase returns to idle, and assert the level rose, the level
+# score returned to 0, the screen is still playing, and the fresh board carries
+# no maximal run and a legal swap. That the dealt board is FRESH is read through
+# the opening board's own definition — R7 guarantees the settled board carries
+# strain and an opening board carries none. See
+# validation/<engine>/levels/level-advances.test.ts.
+validation = { script = "levels/level-advances.test.ts", outputs = [
+  { id = "levelup", name = "The next level's fresh board", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "level-score-carries"
+title = "The score carries across a level"
+description = "score keeps what the round earned when the level rises."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a score, pose the level score at the target the
+# round reports, drive one scoring step, READ the score that step left, and
+# assert that same figure is still standing after the level rose and the level
+# score returned to 0. The board is rewritten under the running step so the chain
+# ends after its one scoring step and no refill draw can move the figure between
+# the two readings; what the step was worth is not named here. See
+# validation/<engine>/levels/level-score-carries.test.ts.
+validation = { script = "levels/level-score-carries.test.ts", outputs = [
+  { id = "levelup", name = "The score standing through a level change", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "legal-swap-derived"
+title = "legalSwap answers to the board as it stands"
+description = "legalSwap is true on a board carrying an adjacent exchange that R1 and R3 both accept, and false on a board carrying none."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a board with a known legal swap, assert the flag is
+# true and that the swap is in fact accepted; pose a board on which the check's
+# own R1/R3 search finds no accepted exchange and assert it is false. Both
+# directions are one point because the flag is one derivation. See
+# validation/<engine>/levels/legal-swap-derived.test.ts.
+validation = { script = "levels/legal-swap-derived.test.ts", outputs = [
+  { id = "dead", name = "A board with no legal swap on it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-no-legal-swap"
+title = "A round ends when no legal swap is left"
+description = "When phase returns to idle and the board carries no legal swap, screen becomes gameover."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: open a chain, write a dead board underneath the holding
+# step, and advance past STEP_SECONDS so the step reads a board that seeds
+# nothing; assert the screen is gameover with the level score below the target.
+# The posed board is proved dead on the case's own side — zero maximal runs,
+# zero legal swaps — before it is written. See
+# validation/<engine>/levels/gameover-no-legal-swap.test.ts.
+validation = { script = "levels/gameover-no-legal-swap.test.ts", outputs = [
+  { id = "gameover", name = "The round ending on a dead board", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "level-before-gameover"
+title = "A completed level takes priority over the end of the round"
+description = "When phase returns to idle with levelScore at or past the target on a board carrying no legal swap, the level rises and a fresh board is dealt rather than the round ending."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: the same dead board with the level score posed at the
+# target the round reports, asserting the level rose and a fresh board with a
+# legal swap was dealt rather than the round ending. See
+# validation/<engine>/levels/level-before-gameover.test.ts.
+validation = { script = "levels/level-before-gameover.test.ts", outputs = [
+  { id = "levelup", name = "A level opening off a dead board", kind = "replay" },
+] }
+
+# --- Keyboard Controls --------------------------------------------------------
+# Every one of these drives a real key through the input path rather than posing
+# the action, because specs/controls.md fixes the whole binding table for a
+# build of EVERY engine — the keys are the game's, not the runtime's — so one
+# key is the route under all three. The four movement directions are four
+# points, since a build can invert one axis and not the other, and the four rows
+# of the press table that `confirm` acts through are four more, since they are
+# four distinct outcomes evaluated in order.
+#
+# `cursor-stays-on-board` poses the cursor at each corner rather than walking it
+# there. Walking would make the clamp point also assert that the movement
+# actions work at all, which is precisely the four points above it, and would
+# charge one build two points for one fault. The consequence is stated plainly:
+# a build with a dead keyboard passes this one point and fails the five around
+# it.
+[[review.categories]]
+id = "keyboard"
+title = "Keyboard Controls"
+[[review.categories.items]]
+id = "cursor-up"
+title = "up moves the cursor one row toward row 0"
+description = "The up action moves the cursor one row toward row 0 and leaves its column alone."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the cursor mid-board, press ArrowUp as one edge,
+# and assert the row fell by one with the column unmoved. See
+# validation/<engine>/keyboard/cursor-up.test.ts.
+validation = { script = "keyboard/cursor-up.test.ts", outputs = [
+  { id = "cursor", name = "The cursor stepping up a row", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cursor-down"
+title = "down moves the cursor one row toward the last row"
+description = "The down action moves the cursor one row toward row GRID_ROWS - 1 and leaves its column alone."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the cursor mid-board, press ArrowDown, and assert
+# the row rose by one with the column unmoved. See
+# validation/<engine>/keyboard/cursor-down.test.ts.
+validation = { script = "keyboard/cursor-down.test.ts", outputs = [
+  { id = "cursor", name = "The cursor stepping down a row", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cursor-left"
+title = "left moves the cursor one column toward column 0"
+description = "The left action moves the cursor one column toward column 0 and leaves its row alone."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the cursor mid-board, press ArrowLeft, and assert
+# the column fell by one with the row unmoved. See
+# validation/<engine>/keyboard/cursor-left.test.ts.
+validation = { script = "keyboard/cursor-left.test.ts", outputs = [
+  { id = "cursor", name = "The cursor stepping left a column", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cursor-right"
+title = "right moves the cursor one column toward the last column"
+description = "The right action moves the cursor one column toward column GRID_COLS - 1 and leaves its row alone."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the cursor mid-board, press ArrowRight, and assert
+# the column rose by one with the row unmoved. See
+# validation/<engine>/keyboard/cursor-right.test.ts.
+validation = { script = "keyboard/cursor-right.test.ts", outputs = [
+  { id = "cursor", name = "The cursor stepping right a column", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cursor-stays-on-board"
+title = "The cursor stops at every edge"
+description = "A cursor movement that would carry the cursor off an edge of the board leaves it where it is, at each of the four edges."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: from (0, 0) press up and then left, and from (7, 7)
+# press down and then right, asserting the cursor did not move in any of the
+# four. All four edges are one point because the specification states the clamp
+# as one rule. See validation/<engine>/keyboard/cursor-stays-on-board.test.ts.
+validation = { script = "keyboard/cursor-stays-on-board.test.ts", outputs = [
+  { id = "cursor", name = "The cursor pinned in a corner", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "confirm-selects"
+title = "confirm selects the cursor's cell"
+description = "With nothing selected, the confirm action selects the cell the cursor is on."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a board with nothing selected and the cursor on a
+# cell, press Enter, and assert that cell is selected — the first row of the
+# press table, reached through the cursor. See
+# validation/<engine>/keyboard/confirm-selects.test.ts.
+validation = { script = "keyboard/confirm-selects.test.ts", outputs = [
+  { id = "select", name = "A cell selected from the keyboard", kind = "image" },
+] }
+[[review.categories.items]]
+id = "confirm-deselects"
+title = "confirm on the selected cell clears the selection"
+description = "With the cursor on the selected cell, the confirm action clears the selection."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose the selection and the cursor on one cell, press
+# Enter, and assert the selection is cleared with the board unchanged. See
+# validation/<engine>/keyboard/confirm-deselects.test.ts.
+validation = { script = "keyboard/confirm-deselects.test.ts", outputs = [
+  { id = "deselect", name = "The selection cleared from the keyboard", kind = "image" },
+] }
+[[review.categories.items]]
+id = "confirm-swaps"
+title = "confirm on a neighbor of the selection requests that swap"
+description = "With the cursor on a cell orthogonally adjacent to the selected cell, the confirm action requests that swap and clears the selection."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: pose a productive exchange with the selection on one
+# cell and the cursor on its neighbor, press Enter, and assert the selection
+# cleared and the phase is resolving at chain step 1. See
+# validation/<engine>/keyboard/confirm-swaps.test.ts.
+validation = { script = "keyboard/confirm-swaps.test.ts", outputs = [
+  { id = "swap", name = "A swap made from the keyboard", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "confirm-moves-selection"
+title = "confirm on any other cell moves the selection"
+description = "With a cell selected and the cursor on a cell that is neither the selection nor orthogonally adjacent to it, the confirm action moves the selection to the cursor's cell."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose the selection and put the cursor on a cell that is
+# neither it nor adjacent to it, press Enter, and assert the selection moved
+# there with the board unchanged — the table's last row, which only applies
+# because the three above it did not. See
+# validation/<engine>/keyboard/confirm-moves-selection.test.ts.
+validation = { script = "keyboard/confirm-moves-selection.test.ts", outputs = [
+  { id = "select", name = "The selection moved across the board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-key"
+title = "KeyP pauses a live board"
+description = "Pressing KeyP while the screen is playing sets screen to paused with menuIndex 0."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a live board, press KeyP through the input path,
+# advance one frame and assert the screen is paused with the menu at its first
+# item. See validation/<engine>/keyboard/pause-key.test.ts.
+validation = { script = "keyboard/pause-key.test.ts", outputs = [
+  { id = "paused", name = "The pause menu opened by KeyP", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-key"
+title = "KeyM toggles mute"
+description = "Pressing KeyM flips the snapshot's muted flag, and pressing it again flips it back."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: read the flag, press KeyM and assert it flipped, press
+# it again and assert it flipped back. The resting value is read rather than
+# assumed, because the specification does not fix which way the bit rests when a
+# build opens. What is asserted is the MIRROR the specification asks the game
+# for; the bit itself belongs to the runtime, and whether sound actually stops
+# is `audio/mute-preserves-play`'s. See
+# validation/<engine>/keyboard/mute-key.test.ts.
+validation = { script = "keyboard/mute-key.test.ts", outputs = [
+  { id = "mute", name = "The board after toggling mute", kind = "image" },
+] }
+
+# --- Pointer Controls ---------------------------------------------------------
+# The press table's four rows are four points here as well, since a pointer
+# press and a `confirm` reach them by different paths and a build can wire one
+# and not the other. `press-miss` covers the GEM_HIT_R door itself, and the drag
+# is two points: that it requests the swap, and that it requests at most one.
+#
+# `press-miss` reads the sentence as specs/instrumentation.md spells it out —
+# the board and the selection stand as they were — rather than as "changes
+# nothing" literally, because the snapshot's `pointer` field mirrors every press
+# on every screen by design, and is `pointer-mirrored`'s subject. That last
+# point is the one here driven through the REAL pointer verbs: a build whose
+# update ends by reading the runtime's pointer, which is exactly what "refreshed
+# in every update" asks for, discards a posed position on the next frame.
+[[review.categories]]
+id = "pointer"
+title = "Pointer Controls"
+[[review.categories.items]]
+id = "press-selects"
+title = "A press selects the cell it targets"
+description = "A press within GEM_HIT_R (36) of a cell's center, with nothing selected, selects that cell."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: with nothing selected, press at a cell's exact center
+# and again at a point inside GEM_HIT_R of it and outside every other cell's,
+# and assert that cell is selected each time. Every point is posed at an exact
+# stage coordinate, so there is no sampling noise to tolerate. See
+# validation/<engine>/pointer/press-selects.test.ts.
+validation = { script = "pointer/press-selects.test.ts", outputs = [
+  { id = "select", name = "A cell selected by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "press-miss"
+title = "A press outside GEM_HIT_R targets no cell"
+description = "A press farther than GEM_HIT_R (36) from every cell center targets no cell: the board and the selection stand as they were."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: press at stage points more than GEM_HIT_R from all 64
+# cell centers — off the board, and in the gap beyond a corner cell — and assert
+# the selection and the board stand, first with nothing selected and again with
+# a selection standing. See validation/<engine>/pointer/press-miss.test.ts.
+validation = { script = "pointer/press-miss.test.ts", outputs = [
+  { id = "miss", name = "A press landing off every cell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "press-deselects"
+title = "A press on the selected cell clears the selection"
+description = "A press targeting the cell that is already selected clears the selection."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: press on the cell that is already selected and assert
+# the selection is cleared with the board unchanged. See
+# validation/<engine>/pointer/press-deselects.test.ts.
+validation = { script = "pointer/press-deselects.test.ts", outputs = [
+  { id = "deselect", name = "The selection cleared by a second press", kind = "image" },
+] }
+[[review.categories.items]]
+id = "press-swaps"
+title = "A press on a neighbor of the selection requests that swap"
+description = "A press targeting a cell orthogonally adjacent to the selected cell requests that swap and clears the selection."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: pose a productive exchange, press on the neighbor of the
+# selected cell, and assert the selection cleared and the phase is resolving at
+# chain step 1. Only the accepted case is read: a refused request leaves the
+# same observables as a press that fell through to the last row, and what a
+# refusal does is the `moves` points'. See
+# validation/<engine>/pointer/press-swaps.test.ts.
+validation = { script = "pointer/press-swaps.test.ts", outputs = [
+  { id = "swap", name = "A swap made with the pointer", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "press-moves-selection"
+title = "A press elsewhere moves the selection"
+description = "A press targeting a cell that is neither the selection nor orthogonally adjacent to it moves the selection to that cell."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: press on a cell that is neither the selection nor
+# adjacent to it and assert the selection moved there with the board unchanged.
+# See validation/<engine>/pointer/press-moves-selection.test.ts.
+validation = { script = "pointer/press-moves-selection.test.ts", outputs = [
+  { id = "select", name = "The selection moved by a press", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drag-swaps"
+title = "A drag onto a neighbor requests that swap"
+description = "While the pointer is held down from a press that targeted a cell, the pointer moving within GEM_HIT_R (36) of the center of an orthogonally adjacent cell requests that swap and clears the selection."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: press on a cell, move within GEM_HIT_R of an adjacent
+# cell's center without releasing and without a frame between the two, and
+# assert the swap was requested and the selection cleared. See
+# validation/<engine>/pointer/drag-swaps.test.ts.
+validation = { script = "pointer/drag-swaps.test.ts", outputs = [
+  { id = "drag", name = "A swap dragged from one gem to the next", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "drag-single-swap"
+title = "A drag requests at most one swap"
+description = "After a drag has requested its swap, the rest of that hold changes nothing, and the release edge ends the drag."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: drive the drag that requests its swap, then move across
+# two further cell centers still held and assert no second swap was requested —
+# which is observable because the accepted swap leaves the phase resolving, so
+# any second request R2 refuses would raise a refusal mark. Release and assert
+# nothing further moved. See
+# validation/<engine>/pointer/drag-single-swap.test.ts.
+validation = { script = "pointer/drag-single-swap.test.ts", outputs = [
+  { id = "drag", name = "A hold continuing past its one swap", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pointer-mirrored"
+title = "The snapshot mirrors the pointer"
+description = "The snapshot's pointer reports the position the pointer input last reported, in the stage's logical units, and whether the pointer is currently pressed."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: press, move and release through the real pointer verbs,
+# advancing a frame after each, and assert the reported position followed and
+# the pressed flag rose and fell. The position after the release is asserted to
+# be the last one reported, which is the item's own reading of an edge that is
+# not a movement. See validation/<engine>/pointer/pointer-mirrored.test.ts.
+validation = { script = "pointer/pointer-mirrored.test.ts", outputs = [
+  { id = "pointer", name = "The pointer reported where it was posed", kind = "replay" },
+] }
+
+# --- Screens and Navigation ---------------------------------------------------
+# Five screens and the ways between them. A transition whose point is the SCREEN
+# it reaches — PLAY, HOW TO PLAY, RESUME, QUIT — is driven through the pose
+# specs/instrumentation.md gives for that choice, so no menu's ordering enters a
+# check that is not about the menu; the two points that ARE about the menu drive
+# real keys. PLAY and PLAY AGAIN are one point, and QUIT from both menus is one,
+# because the specification says each pair is the same choice.
+#
+# The frame readings here decide only that a piece of copy is on screen, which
+# is all specs/ui.md fixes — it fixes the words and no font, layout or call
+# count. A text search cannot tell a menu ENTRY from the same word in prose, so
+# a build that dropped an entry whose word appears elsewhere on the screen would
+# answer; localizing a draw by position is the only way to separate them, and
+# this case does not assert layout.
+[[review.categories]]
+id = "screens"
+title = "Screens and Navigation"
+[[review.categories.items]]
+id = "title-screen"
+title = "Title / main menu"
+description = "After reset() the screen is title with menuIndex 0, and the frame draws TITLE_TEXT (FACET), TAGLINE_TEXT (PRESSURE FINDS THE FLAW) and every item of TITLE_ITEMS."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: reset, render, and search the frame's text for the
+# title, the tagline and both menu items, asserting the screen and the menu
+# index. See validation/<engine>/screens/title-screen.test.ts.
+validation = { script = "screens/title-screen.test.ts", outputs = [
+  { id = "title", name = "The title screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-highlight-moves"
+title = "up and down move the menu highlight"
+description = "On a screen carrying a vertical menu, up and down move menuIndex by one item."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: on the title, press ArrowDown and assert the highlight
+# moved by one item, then ArrowUp and assert it moved back. The title menu has
+# exactly two entries, so a step-size error trips this point and the wrap point
+# alike; the converse does not hold, which is what keeps them two points. See
+# validation/<engine>/screens/menu-highlight-moves.test.ts.
+validation = { script = "screens/menu-highlight-moves.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the second item highlighted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-highlight-wraps"
+title = "The menu highlight wraps at both ends"
+description = "up from the first menu item highlights the last, and down from the last highlights the first."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: on the title, press ArrowUp from the first item and
+# assert the last is highlighted, then ArrowDown and assert it wrapped back. A
+# build that clamps instead of wrapping fails here and passes the point above.
+# See validation/<engine>/screens/menu-highlight-wraps.test.ts.
+validation = { script = "screens/menu-highlight-wraps.test.ts", outputs = [
+  { id = "menu", name = "The title menu wrapped to its last item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "start-round"
+title = "PLAY and PLAY AGAIN start a fresh round"
+description = "Choosing PLAY from the title, and PLAY AGAIN from gameover, each begin a fresh round: screen playing, score 0, level 1, levelScore 0, phase idle with chainStep 0, menuIndex 0, the cursor at (0, 0), no selection, no refusal, and a freshly dealt opening board."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: pose the choice of PLAY from the title and assert every
+# listed field of a fresh round, then drive the round to its end and pose the
+# same choice from gameover, asserting the same set. One pose covers both menus
+# because the specification says they are the same choice. See
+# validation/<engine>/screens/start-round.test.ts.
+validation = { script = "screens/start-round.test.ts", outputs = [
+  { id = "round", name = "A fresh round opening on its board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-screen"
+title = "How to play"
+description = "Choosing HOW TO PLAY from the title sets screen to howto with menuIndex 0, and the frame draws text naming the keys bound to the pause, mute and back actions."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: reach the screen and assert the frame names the key
+# bound to each of pause, mute and back, matched on a word boundary so that PLAY
+# does not answer for P. Both spellings answer — the key's own letter and its
+# full event code — because specs/ui.md fixes that the screen names those keys
+# and fixes no spelling for how one is written. See
+# validation/<engine>/screens/howto-screen.test.ts.
+validation = { script = "screens/howto-screen.test.ts", outputs = [
+  { id = "howto", name = "The how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "back-leaves-howto"
+title = "back leaves the how-to screen"
+description = "Pressing Escape on howto sets screen to title with menuIndex 0."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: reach the how-to screen, press Escape through the input
+# path, and assert the screen returned to the title with the menu at its first
+# item. See validation/<engine>/screens/back-leaves-howto.test.ts.
+validation = { script = "screens/back-leaves-howto.test.ts", outputs = [
+  { id = "title", name = "The title after leaving how-to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "paused-screen"
+title = "Pause menu"
+description = "The pause action on playing sets screen to paused with menuIndex 0, and the frame draws PAUSED_TITLE_TEXT (PAUSED) and every item of PAUSED_ITEMS."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: pause a posed board with KeyP, render, and assert the
+# screen, the menu index, and the pause title and both menu items among the
+# frame's text. See validation/<engine>/screens/paused-screen.test.ts.
+validation = { script = "screens/paused-screen.test.ts", outputs = [
+  { id = "paused", name = "The pause menu over a held board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "paused-freezes"
+title = "Nothing advances while paused"
+description = "While paused, the board, chainStep and stepTimer do not change across a long stretch of game time."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pause a resolving chain, let many multiples of
+# STEP_SECONDS of game time pass, and assert every cell, the chain step, the
+# timer, the score and the level score are exactly where the pause left them.
+# See validation/<engine>/screens/paused-freezes.test.ts.
+validation = { script = "screens/paused-freezes.test.ts", outputs = [
+  { id = "frozen", name = "A chain held still while paused", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "paused-resume"
+title = "RESUME resumes from exactly where the pause left off"
+description = "Choosing RESUME returns screen to playing with the board, the chain and every timer carrying on from where the pause left them."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pause a chain at a recorded step timer, wait out a long
+# paused stretch, resume, and assert the board, the chain step and the timer
+# match what was recorded and that the chain then proceeds from there. See
+# validation/<engine>/screens/paused-resume.test.ts.
+validation = { script = "screens/paused-resume.test.ts", outputs = [
+  { id = "resumed", name = "The chain carrying on after a resume", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "paused-back"
+title = "back and pause both leave the pause menu"
+description = "Pressing Escape on paused returns to playing, and so does pressing KeyP again."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pause and press Escape, asserting the screen returned to
+# playing with the board unchanged; pause again and press KeyP, asserting the
+# same. Both keys are one point because the specification states them as one
+# sentence. See validation/<engine>/screens/paused-back.test.ts.
+validation = { script = "screens/paused-back.test.ts", outputs = [
+  { id = "resumed", name = "The board back in play", kind = "image" },
+] }
+[[review.categories.items]]
+id = "quit-to-title"
+title = "QUIT returns to the title"
+description = "Choosing QUIT, from the pause menu and from the game-over menu, sets screen to title with menuIndex 0 and leaves no board in play, phase idle with chainStep and stepTimer 0 and no selection or refusal."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose the choice of QUIT from a paused round and assert
+# the title with the menu at its first item and the resting board, phase and
+# timer values; then drive a round to gameover and pose the same choice,
+# asserting the same. See validation/<engine>/screens/quit-to-title.test.ts.
+validation = { script = "screens/quit-to-title.test.ts", outputs = [
+  { id = "title", name = "The title after quitting a round", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-screen"
+title = "Game over"
+description = "A round driven to its end sets screen to gameover with menuIndex 0, and the frame draws GAMEOVER_TITLE_TEXT (NO MOVES LEFT), every item of GAMEOVER_ITEMS, and the round's final score and level."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: drive the round to its end with a posed score and level,
+# render, and search the frame's text for the title, both menu items and the two
+# figures. The figures are posed to be unmistakable — a score under a thousand,
+# so no build could be writing a grouped figure, and a two-digit level, so the
+# needle is not a lone digit another readout could answer for. That the figures
+# are drawn by the game-over PANEL rather than by a HUD still on screen behind
+# it cannot be told apart without asserting position, which this case does not
+# do. See validation/<engine>/screens/gameover-screen.test.ts.
+validation = { script = "screens/gameover-screen.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "back-leaves-gameover"
+title = "back leaves the game-over screen"
+description = "Pressing Escape on gameover sets screen to title with menuIndex 0."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: drive the round to its end, press Escape through the
+# input path, and assert the screen returned to the title with the menu at its
+# first item. See validation/<engine>/screens/back-leaves-gameover.test.ts.
+validation = { script = "screens/back-leaves-gameover.test.ts", outputs = [
+  { id = "title", name = "The title after leaving game over", kind = "image" },
+] }
+
+# --- HUD ----------------------------------------------------------------------
+# Three readouts and one absence. specs/ui.md fixes each readout's label and the
+# state field it shows, and fixes no numeric format, so every scenario poses the
+# surrounding figures such that the digits under test are the only ones of their
+# value that can be on the frame — a level whose target carries no digit of the
+# score, a zeroed level score, and so on. A build free to draw a numeral the
+# specification never mentions could still answer such a reading spuriously,
+# which is a false pass and never a false failure.
+#
+# `hud-chain-shown` requires the frame to carry the multiplier the build's own
+# state reports at that moment, because that is what the readout is defined as
+# showing. Whether that value is the min(chainStep, MAX_MULTIPLIER) the rules
+# derive is `scoring/score-multiplier`'s point, not this one's.
+[[review.categories]]
+id = "hud"
+title = "HUD"
+[[review.categories.items]]
+id = "hud-score"
+title = "The score is drawn"
+description = "A frame of the playing screen draws HUD_SCORE_LABEL (SCORE) and the current score, and the figure changes with it."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a three-digit score, render, and find the label and
+# the figure among the frame's text; pose a second three-digit score and assert
+# the drawn figure followed. Three digits keep any thousands separator a build
+# might use out of the figure. See validation/<engine>/hud/hud-score.test.ts.
+validation = { script = "hud/hud-score.test.ts", outputs = [
+  { id = "hud", name = "The score readout at a posed score", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-level"
+title = "The level is drawn"
+description = "A frame of the playing screen draws HUD_LEVEL_LABEL (LEVEL) and the current level."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a level, render, and find the label and the figure
+# among the frame's text. See validation/<engine>/hud/hud-level.test.ts.
+validation = { script = "hud/hud-level.test.ts", outputs = [
+  { id = "hud", name = "The level readout at a posed level", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-chain-shown"
+title = "The chain multiplier is shown while a chain resolves"
+description = "While phase is resolving, a frame of the playing screen draws HUD_CHAIN_LABEL (CHAIN) and the current multiplier."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: accept a swap so the phase is resolving, render, and
+# find the chain label and the multiplier the snapshot reports at that moment
+# among the frame's text. See validation/<engine>/hud/hud-chain-shown.test.ts.
+validation = { script = "hud/hud-chain-shown.test.ts", outputs = [
+  { id = "hud", name = "The chain readout during a chain", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-chain-hidden"
+title = "The chain multiplier is absent while the board is idle"
+description = "While phase is idle, a frame of the playing screen draws no HUD_CHAIN_LABEL."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose an idle board, render, and assert no text on the
+# frame carries the chain label. Under `none` the reading walks the document's
+# text nodes, which cannot separate a hidden element from an absent one, so a
+# build that keeps a chain readout in the DOM and hides it with CSS while idle
+# fails this point; the two engine copies read canvas draws and are unaffected.
+# See validation/<engine>/hud/hud-chain-hidden.test.ts.
+validation = { script = "hud/hud-chain-hidden.test.ts", outputs = [
+  { id = "hud", name = "The readouts on a settled board", kind = "image" },
+] }
+
+# --- Visibility ---------------------------------------------------------------
+# These points check PRESENCE and TELLING APART only. Palette, font, layout and
+# style are never asserted: specs/board.md hands the presentation to the build
+# and states what it fixes as legibility a player depends on, so what is decided
+# here is that no two things a player must tell apart are drawn the same.
+#
+# Every gem reading poses the two gems under test in the SAME cell of the same
+# otherwise quiet board, one after the other, so the measured patch differs by
+# the gem and by nothing else — same neighbors, same surroundings, same box of
+# pixels. The cell-mark points read each cell through two boxes, the gem's own
+# and the whole cell's, and take the larger distance, because specs/board.md
+# confines a GEM's form to GEM_R of the center while specs/ui.md marks the CELL
+# and says nothing about where the mark may lie.
+[[review.categories]]
+id = "appearance"
+title = "Visibility"
+[[review.categories.items]]
+id = "kinds-distinguishable"
+title = "The seven kinds are told apart"
+description = "Each of the seven kinds, posed in turn as a plain gem at strain 0 in one cell, draws that cell differently from every other kind: all twenty-one pairs read more than PATCH_DISTINCT_MIN apart, against a control in which one kind posed twice at that cell reads within PATCH_SAME_MAX."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose each of the seven kinds in turn in one cell, plain
+# at strain 0, and assert all twenty-one pairs read more than PATCH_DISTINCT_MIN
+# apart, against a control of one gem posed twice reading within PATCH_SAME_MAX.
+# See validation/<engine>/appearance/kinds-distinguishable.test.ts.
+validation = { script = "appearance/kinds-distinguishable.test.ts", outputs = [
+  { id = "kinds", name = "A row holding one gem of each kind", kind = "image" },
+] }
+[[review.categories.items]]
+id = "strain-distinguishable"
+title = "The four strain states are told apart"
+description = "The four strain states of one kind, posed in turn in one cell, draw that cell pairwise differently — all six pairs more than PATCH_DISTINCT_MIN apart — so a flawed gem stands apart from every unflawed one."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose one kind at each of the four strain states in one
+# cell and assert all six pairs read more than PATCH_DISTINCT_MIN apart, with
+# the same control. The kind is arbitrary and nothing about the point depends on
+# which one it is. See
+# validation/<engine>/appearance/strain-distinguishable.test.ts.
+validation = { script = "appearance/strain-distinguishable.test.ts", outputs = [
+  { id = "strain", name = "One kind at all four strain states", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cuts-distinguishable"
+title = "The cuts are told apart"
+description = "A plain, a brilliant and a star of one kind, posed in turn in one cell, draw that cell pairwise differently: all three pairs more than PATCH_DISTINCT_MIN apart."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose one kind as a plain, a brilliant and a star in one
+# cell and assert all three pairs read more than PATCH_DISTINCT_MIN apart, with
+# the same control. See
+# validation/<engine>/appearance/cuts-distinguishable.test.ts.
+validation = { script = "appearance/cuts-distinguishable.test.ts", outputs = [
+  { id = "cuts", name = "One kind under three cuts", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-distinct"
+title = "A prism reads as carrying no kind"
+description = "A prism, posed in one cell, draws that cell differently from a plain gem of each of the seven kinds posed in the same cell: all seven readings more than PATCH_DISTINCT_MIN apart."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: alternate a prism and each of the seven kinds through
+# one cell across a sweep of frames, and assert all forty-nine
+# prism-against-kind readings exceed PATCH_DISTINCT_MIN. The sweep is what makes
+# the point decidable whatever a build's prism is doing: the specification
+# entitles a prism to an idle turn, so a control comparing one prism against
+# itself measures the animation rather than the gem, and the control is taken on
+# a plain gem instead. See
+# validation/<engine>/appearance/prism-distinct.test.ts.
+validation = { script = "appearance/prism-distinct.test.ts", outputs = [
+  { id = "prism", name = "A prism among the seven kinds", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cursor-marked"
+title = "The cursor's cell is marked"
+description = "The cell the cursor is on renders differently from the same cell with the cursor elsewhere."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: render one posed board with the cursor on a cell and
+# again with the cursor far away, and assert that cell's pixels differ by more
+# than PATCH_DISTINCT_MIN. That figure is the case's own tolerance for two
+# things a player must tell apart; the specification says "marked" and fixes no
+# strength. See validation/<engine>/appearance/cursor-marked.test.ts.
+validation = { script = "appearance/cursor-marked.test.ts", outputs = [
+  { id = "cursor", name = "The cursor marking its cell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "selection-marked"
+title = "The selected cell is marked distinctly from the cursor"
+description = "The selected cell renders differently from the same cell unselected, and differently again from the same cell carrying the cursor alone."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: render one cell three ways on one posed board — plain,
+# carrying the cursor alone, and selected with the cursor elsewhere — and assert
+# the three readings differ pairwise. The third comparison is what makes this a
+# different point from the one above: a build that marked a selection exactly as
+# it marks the cursor passes that point and fails this one. See
+# validation/<engine>/appearance/selection-marked.test.ts.
+validation = { script = "appearance/selection-marked.test.ts", outputs = [
+  { id = "selection", name = "A cell selected and a cell under the cursor", kind = "image" },
+] }
+
+# --- Produced Assets ----------------------------------------------------------
+# This is the full-stack half of the case: the build DRAWS its own gem sprites,
+# break sheets, particle systems and sound during the run rather than receiving
+# them. Six points read the built tree, and three read the running game, because
+# a produced file that never loads is not a produced asset.
+#
+# No spec sentence fixes a file or directory NAME anywhere under `assets/`,
+# which bounds what a script can decide and is worth a reviewer knowing. A
+# single sprite and one frame of a sheet are indistinguishable on disk, so the
+# sprite count is taken per directory and the largest is read, which counts a
+# build that keeps its sprites together and not its sequences' frames; a build
+# that split its sprites across several directories would be failed although it
+# is compliant. For the same reason the prism's idle turn cannot be told from a
+# break sheet on disk, so the seven-sequence floor is met by six break sheets
+# plus the turn.
+[[review.categories]]
+id = "assets"
+title = "Produced Assets"
+[[review.categories.items]]
+id = "gem-sprites-produced"
+title = "The produced gem sprites ship"
+description = "The built site carries at least 35 distinct PNG sprites under assets/gems/ — the seven kinds at four strain states, the brilliant and star overlays, the prism at four strain states, and the board frame — each decoding to an RGBA image carrying opaque pixels."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: walk the built tree under assets/gems/, hash every PNG
+# for distinctness, decode each, and assert non-zero dimensions and at least one
+# fully opaque pixel — which is what separates a sprite that was drawn from a
+# file that was emitted and never drawn into. Sprite dimensions are not
+# asserted: the 64x64 figure the specification gives is true of the gem sprites
+# and false of the board frame it asks for in the same list. See
+# validation/<engine>/assets/gem-sprites-produced.test.ts.
+validation = { script = "assets/gem-sprites-produced.test.ts", outputs = [
+  { id = "sprites", name = "A contact sheet of the produced gem sprites", kind = "image" },
+] }
+[[review.categories.items]]
+id = "break-sheets-produced"
+title = "The produced break sheets ship"
+description = "The built site carries at least seven multi-frame PNG sequences, each in its own directory and each holding at least two frames that differ from one another, for the seven kinds' break animations."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: find the directories holding two or more PNGs, hash
+# their frames, and assert at least seven whose frames are not all identical —
+# frames as separate files, which is what the specification asks for, and a
+# sequence that actually moves. See
+# validation/<engine>/assets/break-sheets-produced.test.ts.
+validation = { script = "assets/break-sheets-produced.test.ts", outputs = [
+  { id = "sheet", name = "The frames of one produced break sheet", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-turn-animates"
+title = "The prism's idle turn plays"
+description = "With a prism standing on a settled, idle board, the pixels rendered at the prism's cell change from frame to frame, so its idle turn is looping."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a prism on a settled, idle board and assert its
+# cell's pixels are not identical across a second of consecutive frames. Idle is
+# the point: nothing else on the board is moving, so the turn is the only thing
+# that can be. See validation/<engine>/assets/prism-turn-animates.test.ts.
+validation = { script = "assets/prism-turn-animates.test.ts", outputs = [
+  { id = "turn", name = "A prism turning on a settled board", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "fx-systems-produced"
+title = "The three produced particle systems ship"
+description = "The built site carries at least three distinct particle-system JSON files under assets/fx/, each of which @test-cabinet/particle-runtime parses and which emits at least one particle over a short simulated interval."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: read every JSON under assets/fx/ from the built tree,
+# hash for distinctness, construct each through the particle runtime the case
+# ships, advance it a short interval, and assert particles were emitted — a
+# system that parses but emits nothing is not an effect. See
+# validation/<engine>/assets/fx-systems-produced.test.ts.
+validation = { script = "assets/fx-systems-produced.test.ts", outputs = [
+  { id = "systems", name = "The three produced systems simulated", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fx-systems-loaded"
+title = "The produced particle systems are loaded at runtime"
+description = "The running build fetches all three particle-system files from its own assets/fx/ directory."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: drive a chain that throws all three effects — a run of
+# four for the clear burst, a gem reaching MAX_STRAIN for the detonation, and
+# R8's brilliant for the cut flash — and assert three distinct fx files were
+# fetched from the build's own directory. Driving the effects rather than
+# reading the opening frames is fair to an eager loader and a lazy one alike,
+# since nothing fixes WHEN a produced system is loaded. See
+# validation/<engine>/assets/fx-systems-loaded.test.ts.
+validation = { script = "assets/fx-systems-loaded.test.ts", outputs = [
+  { id = "loaded", name = "The board a chain was driven on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "audio-produced"
+title = "The produced sounds and music ship"
+description = "The built site carries at least 18 distinct WAV files under assets/audio/ — the seven synth cues, the eight-tone chain ladder, the sampled shatter body and the two music pieces — each decoding to PCM carrying a non-silent region."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: walk assets/audio/, hash every WAV for distinctness,
+# parse each RIFF header and its PCM, and assert at least eighteen files each
+# carrying a window whose amplitude clears a silence floor. The floor is three
+# orders of magnitude below a rendered cue and far above dither, so it separates
+# sound from no sound and reviews no mixing decision; no filename is read,
+# because the specification fixes none. See
+# validation/<engine>/assets/audio-produced.test.ts.
+validation = { script = "assets/audio-produced.test.ts", outputs = [
+  { id = "waveforms", name = "The produced cue waveforms", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprites-drawn"
+title = "The board is drawn from sprites"
+description = "A frame of the playing screen issues image draws, so the board is not drawn entirely from code-drawn shapes."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: render a full board and assert the frame's recorded
+# operations include at least one image draw. Presence only: a build may
+# composite its board however it likes, and a tighter reading — an image draw
+# landing on a cell center — would fail a build that translates the context
+# first, which is entirely legitimate. Whether the GEMS specifically are sprites
+# is the appearance points' and gem-sprites-produced's. See
+# validation/<engine>/assets/sprites-drawn.test.ts.
+validation = { script = "assets/sprites-drawn.test.ts", outputs = [
+  { id = "frame", name = "The drawn playing frame", kind = "image" },
+] }
+[[review.categories.items]]
+id = "assets-load-page-relative"
+title = "Every asset loads under a sub-path"
+description = "Served from a non-root sub-path, the built site loads with no failed request: every asset the build fetches resolves page-relative rather than against the origin root."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: under `none`, serve dist/ from a non-root sub-path,
+# load, drive a chain and assert no request failed and no path began at the
+# origin root; under an engine there is no document to give a base, so the same
+# rule is read in its engine-shaped form — no path is rooted at `/` and no asset
+# load failed under the mount. See
+# validation/<engine>/assets/assets-load-page-relative.test.ts.
+validation = { script = "assets/assets-load-page-relative.test.ts", outputs = [
+  { id = "subpath", name = "The game running from a sub-path", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-external-fetch"
+title = "The build fetches nothing from outside its own site"
+description = "The running build makes no request to a host or scheme outside the directory it was served from."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: drive a round and assert every request resolves under
+# the served directory. Under `none` every request the page makes is observed,
+# so a CDN font, an image element and a style sheet URL are all caught; under an
+# engine there is no document, so what is observed is every path the loader was
+# asked for, including the scheme-bearing ones it refuses before they reach the
+# transport. See validation/<engine>/assets/no-external-fetch.test.ts.
+validation = { script = "assets/no-external-fetch.test.ts", outputs = [
+  { id = "requests", name = "The game running self-contained", kind = "image" },
+] }
+
+# --- Audio --------------------------------------------------------------------
+# specs/ui.md names eight cues and the event each answers, so there are eight
+# cue points, plus the music bed and the one thing muting must not change. Every
+# cue event is driven through a real key rather than posed, because the
+# specification says a cue is played by a frame and never by a pose of the debug
+# surface — a posed event is entitled to raise nothing, while a key is read once
+# by the frame as a press edge.
+#
+# Under `none` the cue NAMES live inside the build's own code, so no reading
+# there can say which cue sounded, only that a sound went out on a frame. That
+# is enough for the events whose frame the specification entitles to nothing
+# else, and it is NOT enough for `cue-swap`: R3 accepts a swap only when the
+# board it produces carries a run or touches a prism, and R5 then always seeds a
+# non-empty clear set, so an accepted swap always shares its frame with a clear.
+# Under `none` that point therefore decides only that the accepting frame sounds
+# and that nothing sounded before it; the two engine copies decide it by name.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "cue-select"
+title = "Select cue"
+description = "The select cue sounds on the frame a cell is selected, and on no frame before it."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: arm audio with a real gesture, put the cursor on a cell
+# with nothing selected, press Enter so the selection happens inside the frame
+# that reads the action, and assert a sound on that frame and none before it.
+# Selecting exchanges nothing and opens no chain, so it is the only cue that
+# frame is entitled to. See validation/<engine>/audio/cue-select.test.ts.
+validation = { script = "audio/cue-select.test.ts", outputs = [
+  { id = "select", name = "The selection whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-swap"
+title = "Swap cue"
+description = "The swap cue sounds on the frame a swap is accepted, and on no frame before it."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: arm audio, pose a productive swap through the selection
+# and the cursor, press Enter, and assert a sound on the accepting frame and
+# none before it. Under an engine the cue is read by name; under `none` no name
+# exists and the acceptance always shares its frame with a clear, so the reading
+# there is the weaker one described above the category. See
+# validation/<engine>/audio/cue-swap.test.ts.
+validation = { script = "audio/cue-swap.test.ts", outputs = [
+  { id = "swap", name = "The accepted swap whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-refuse"
+title = "Refuse cue"
+description = "The refuse cue sounds on the frame a swap is refused, and on no frame before it."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: arm audio, put the selection and the cursor on neighbors
+# whose exchange makes no run, press Enter, and assert a sound on the refusing
+# frame and none before it. A refusal clears nothing, so that frame too is
+# entitled to one cue. See validation/<engine>/audio/cue-refuse.test.ts.
+validation = { script = "audio/cue-refuse.test.ts", outputs = [
+  { id = "refuse", name = "The refused swap whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-clear"
+title = "Clear cue"
+description = "The clear cue sounds on the frame a chain step clears its set, and on no frame before it."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: arm audio, drive a two-step chain, and read the frame
+# step 2 resolves on — a frame carrying no swap, no refusal and no level change,
+# so a sound there is the clear — asserting one sounded and that the frames
+# between the two steps were silent. See
+# validation/<engine>/audio/cue-clear.test.ts.
+validation = { script = "audio/cue-clear.test.ts", outputs = [
+  { id = "clear", name = "The second step whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-flaw"
+title = "Flaw cue"
+description = "The flaw cue sounds on the frame a gem reaches MAX_STRAIN, over and above the clear cue that frame also raises."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: drive two scenarios of identical clear-set size, one in
+# which a gem beside the clear reaches MAX_STRAIN and one in which every
+# neighbor is at strain 0, and assert the flawing frame sounded more than the
+# control. Matching the sizes is what makes the difference attributable to the
+# flaw rather than to the clear. Under an engine the cue is read by name
+# instead. See validation/<engine>/audio/cue-flaw.test.ts.
+validation = { script = "audio/cue-flaw.test.ts", outputs = [
+  { id = "flaw", name = "The stone cracking through whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-cut"
+title = "Cut cue"
+description = "The cut cue sounds on the frame a cut gem is created, over and above the clear cue that frame also raises."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: drive two scenarios clearing the same number of cells at
+# the same chain step, one of them a maximal run of four that creates a
+# brilliant, and assert the creating frame sounded more than the control. Under
+# an engine the cue is read by name. See
+# validation/<engine>/audio/cue-cut.test.ts.
+validation = { script = "audio/cue-cut.test.ts", outputs = [
+  { id = "cut", name = "The cut being made whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-levelup"
+title = "Level-up cue"
+description = "The levelup cue sounds on the frame a level is completed, and on no frame before it."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: arm audio, pose the level score at the target the round
+# reports, and drive the chain to its settling frame, which raises no clear;
+# assert a sound on the frame the level rose and none between the last clear and
+# it. See
+# validation/<engine>/audio/cue-levelup.test.ts.
+validation = { script = "audio/cue-levelup.test.ts", outputs = [
+  { id = "levelup", name = "The level completing whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-gameover"
+title = "Game-over cue"
+description = "The gameover cue sounds on the frame the round ends, and on no frame before it."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: arm audio and drive the round to its end through the
+# dead board written under a holding step; assert a sound on the settling frame
+# that set the screen to gameover and none between the last clear and it. See
+# validation/<engine>/audio/cue-gameover.test.ts.
+validation = { script = "audio/cue-gameover.test.ts", outputs = [
+  { id = "gameover", name = "The round ending whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "mute-preserves-play"
+title = "Muting does not change play"
+description = "With the mute bit set from the mute key, a drive reaches the same board, the same score, the same phase and the same elapsed game time as the same drive unmuted, and the events on the way still land."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: drive one scenario twice from one seed, once muted from
+# the bound key and once not, and assert the two agree on the board written back
+# in the board notation, the screen, the phase, the chain step, both scores, the
+# level, the last step's figures, the legal-swap flag, the cursor and the
+# selection, and on the frames taken and the game time covered since the board
+# was posed — with the mute flag the one field that differs. Silence itself is
+# not read: the specification puts muting on the runtime, so a muted frame is
+# entitled to raise its cue and let the runtime zero it. See
+# validation/<engine>/audio/mute-preserves-play.test.ts.
+validation = { script = "audio/mute-preserves-play.test.ts", outputs = [
+  { id = "muted", name = "A chain driven with sound muted", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "music-plays"
+title = "Music plays under the game"
+description = "A produced music piece is playing on the title screen, and a further piece starts when the round begins, so one of the two is under every screen."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: arm audio on the title, where no cue event can fire, and
+# assert a sound goes out there — which answers that a piece is playing — then
+# pose the round beginning and assert a further looping start on the frames that
+# follow. Under `none` a bed started from an asynchronous decode begins between
+# frames and is attributable to none of them, which is why the title half reads
+# that a sound went out at all rather than reading the looping channel. See
+# validation/<engine>/audio/music-plays.test.ts.
+validation = { script = "audio/music-plays.test.ts", outputs = [
+  { id = "music", name = "The title screen the theme was heard on", kind = "image" },
+] }

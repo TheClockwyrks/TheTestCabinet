@@ -41,6 +41,18 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 #     thing it runs on. Declared here for the reason iproute2 is: it was present by
 #     accident for a while, and an undeclared tool disappears silently on a
 #     base-image change.
+#   - ffmpeg: the normalizer `scripts/build-sample-pack.mjs` shells out to when it
+#     bakes an audio palette — `sfx-sample`'s sample library and `music`'s
+#     instrument bank — from its committed manifest. It resamples, downmixes,
+#     loudness-normalizes and trims each fetched CC0 source into the PCM-16 `.wav`
+#     `crates/audio-core/src/sample.rs` decodes. Declared here because the script
+#     DEGRADES rather than fails without it: it falls back to a documented raw-copy
+#     skeleton that still writes a correct layout and a stable digest, so a pack
+#     built on a machine with no ffmpeg is structurally valid and silent. That is
+#     the worst possible failure mode for an audio palette — every `add-sample`
+#     records fine and renders nothing — and it is invisible until someone listens.
+#     A full-stack or audio case authored against a silently-stubbed pack produces
+#     assets that are wrong in a way no gate catches.
 #   - libicu-dev: ICU, which gg's C# program-language arm needs to run one compiler.
 #     The .NET runtime does not link it: `libSystem.Globalization.Native.so` `dlopen`s
 #     `libicuuc` and `libicui18n` by name while the CLR is still starting, and calls
@@ -67,6 +79,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	build-essential \
 	cmake \
 	curl \
+	ffmpeg \
 	git \
 	iproute2 \
 	jq \

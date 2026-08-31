@@ -1,0 +1,231 @@
+# Facet — Screens, menus, and audio
+
+This file defines the screens Facet opens on and plays on, how a player moves
+between them, and audio. The rules those screens present are in
+`specs/rules.md`, the board's geometry and its gems are in `specs/board.md`, and
+the keyboard and pointer input the screens read are in `specs/controls.md`.
+Every figure and every piece of screen copy below carries the name this
+specification gives it.
+
+## Presentation
+
+Facet fixes no palette, no font, no gem artwork, no effect, and no background.
+The look of the board and the screens around it is yours. `specs/overview.md`
+states the visual design, `specs/board.md` states the few things about a gem a
+player has to read at a glance, and `specs/assets.md` states the produced files
+that carry them. One requirement is this file's own: every piece of text a
+screen shows is legible against whatever sits behind it at the logical stage
+size `STAGE_W x STAGE_H` (`1280 x 720`).
+
+## Screens
+
+`state.screen` names the screen the game is in, and it is one of `title`,
+`howto`, `playing`, `paused`, and `gameover`.
+
+### `title`
+
+The main menu, and where the game opens.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Title | `TITLE_TEXT` | `FACET` |
+| Tagline | `TAGLINE_TEXT` | `PRESSURE FINDS THE FLAW` |
+| Menu | `TITLE_ITEMS` | `PLAY`, `HOW TO PLAY`, in that order |
+
+The menu's items are stacked one above the next under the title and tagline. The
+item at `state.menuIndex` is highlighted and drawn distinctly from the others,
+so a player always sees which item `confirm` would accept. `menuIndex` is `0` on
+arriving at the title. `up` and `down` move the highlight by one item and wrap
+at both ends. `back` does nothing.
+
+`confirm` takes the highlighted item:
+
+| Item | Does |
+| --- | --- |
+| `PLAY` | Starts a fresh round, as `specs/rules.md` describes, and sets `screen = playing`. |
+| `HOW TO PLAY` | Sets `screen = howto`. |
+
+A round started from here is always fresh, whatever was played before it, so the
+score, the level, and the board a player is handed carry nothing over from an
+earlier round. No board is in play on this screen, so the title screen shows the
+title, the tagline, and the menu over whatever field the look puts behind them.
+
+### `howto`
+
+How to play, written in a player's words rather than as rules of a system. It
+covers:
+
+- that the board is a grid of gems of seven kinds, and that a swap exchanges a
+  gem with the one beside it;
+- that three or more of one kind in a line shatter, and that a swap which
+  shatters nothing is refused and leaves the board as it was;
+- that every gem beside a shattering line takes strain, that enough strain
+  leaves a gem flawed, and that a flawed gem shatters along with any clear it
+  touches and is worth double;
+- that a line of four leaves a brilliant, a line of five or more leaves a prism,
+  and a line crossing another leaves a star;
+- that a brilliant takes the ring of gems around it, a star takes its whole row
+  and column, and a prism swapped with a gem takes every gem of that kind;
+- that what falls into the gap can shatter again, and that each step of a chain
+  is worth more than the one before it;
+- that reaching the level's target opens the next level, and that a round ends
+  when no swap is left that would shatter anything;
+- the controls, naming the keys bound to the `pause`, `mute`, and `back`
+  actions, and that a gem is played with the pointer as well as the keys.
+
+`back` returns to `title` with `menuIndex = 0`.
+
+### `playing`
+
+The live board, and the only screen a swap is made on. It shows:
+
+| Element | What the player sees |
+| --- | --- |
+| The board | Every cell of the board, each gem drawn at its cell center with its kind, its cut, and its strain readable. |
+| The cursor | The cell at `state.cursor`, marked. |
+| The selection | The cell at `state.selection` when there is one, marked distinctly from the cursor. |
+| A refusal | The two cells of `state.refusal` while it stands, marked as a swap that did not take. |
+
+The readouts sit clear of the board's extent, which `specs/board.md` gives:
+
+| Readout | Constant | What it shows |
+| --- | --- | --- |
+| Score | `HUD_SCORE_LABEL` (`SCORE`) | `state.score`. |
+| Level | `HUD_LEVEL_LABEL` (`LEVEL`) | `state.level`. |
+| Level meter | | `state.levelScore` against the level's target, as a meter a player reads without arithmetic. |
+| Chain | `HUD_CHAIN_LABEL` (`CHAIN`) | `state.multiplier`, shown while `state.phase` is `resolving` and absent while it is `idle`. |
+
+`specs/rules.md` gives the level's target and the multiplier.
+
+### `paused`
+
+Play held where it stands, reached from `playing` with the `pause` action.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Title | `PAUSED_TITLE_TEXT` | `PAUSED` |
+| Menu | `PAUSED_ITEMS` | `RESUME`, `QUIT`, in that order |
+
+`menuIndex` is `0` on arriving. `up` and `down` move the highlight by one item
+and wrap at both ends. `pause` and `back` both return to `playing` with the
+board exactly as it was left.
+
+| Item | Does |
+| --- | --- |
+| `RESUME` | Sets `screen = playing`, with the board exactly as it was left. |
+| `QUIT` | Sets `screen = title` and `menuIndex = 0`, abandoning the round. |
+
+The board shows behind the menu, quieted, so a player reads the position while
+paused.
+
+### `gameover`
+
+The end of a round, reached when the board settles with no legal swap on it.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Title | `GAMEOVER_TITLE_TEXT` | `NO MOVES LEFT` |
+| Menu | `GAMEOVER_ITEMS` | `PLAY AGAIN`, `QUIT`, in that order |
+
+The screen also shows the round's final `state.score` and the `state.level` it
+reached. `menuIndex` is `0` on arriving. `up` and `down` move the highlight by
+one item and wrap at both ends. `back` sets `screen = title` and
+`menuIndex = 0`.
+
+| Item | Does |
+| --- | --- |
+| `PLAY AGAIN` | Starts a fresh round, as `specs/rules.md` describes, and sets `screen = playing`. |
+| `QUIT` | Sets `screen = title` and `menuIndex = 0`. |
+
+The final board shows behind the menu, quieted.
+
+## What advances on each screen
+
+`state.simTime` accumulates the frame's delta time on every update, whatever the
+screen, and input is read on every screen. Beyond that:
+
+| Screen | What advances |
+| --- | --- |
+| `title`, `howto`, `paused`, `gameover` | Nothing. |
+| `playing` | The board and the chain resolving over it, the chain step timer, and the refusal mark. |
+
+Every duration in this specification is counted against the delta time the
+runtime hands each update, so the chain step timer and the refusal mark advance
+only while `screen` is `playing`.
+
+## Menu navigation
+
+Menus are keyboard only, through the registered actions in `specs/controls.md`:
+`up` and `down` move the highlight, `confirm` accepts the highlighted item, and
+`back` returns. `menuIndex` is `0` on entering every screen, and on a screen
+with no menu it stays `0`. The pointer plays the board and does not operate
+menus. `mute` is read on every screen.
+
+## Audio
+
+{{#if (eq engine.slug "none")}}
+The audio layer is part of the runtime you write, and what it plays are the
+produced files `specs/assets.md` lists. Define and play the eight cues in
+`CUES`, under exactly these names, one per event:
+{{else if (eq engine.slug "simple-2d")}}
+Audio plays through the engine's cue bus, each cue bound to the produced file
+`specs/assets.md` lists. Define and play the eight cues in `CUES`, under exactly
+these names, one per event:
+{{else}}
+Audio plays through the engine's cue bus: define the eight cues in `CUES` from
+the game instance's `initialize`, each bound to the produced file
+`specs/assets.md` lists, and play them from the world's audio inside a tick,
+under exactly these names, one per event:
+{{/if}}
+
+| Cue | Constant | Played when |
+| --- | --- | --- |
+| `select` | `CUES.select` | A cell is selected. |
+| `swap` | `CUES.swap` | A swap is accepted. |
+| `refuse` | `CUES.refuse` | A swap is refused. |
+| `clear` | `CUES.clear` | A chain step clears its set. |
+| `flaw` | `CUES.flaw` | A gem reaches `MAX_STRAIN`. |
+| `cut` | `CUES.cut` | A cut gem is created. |
+| `levelup` | `CUES.levelUp` | A level is completed. |
+| `gameover` | `CUES.gameOver` | The round ends. |
+
+{{#if (eq engine.slug "none")}}
+Each is a distinct short sound, so the eight events are told apart by ear. Each
+is played on the frame its event happens, from `update`, and at most once on
+that frame; a frame that raises more than one of them plays each of those once,
+and a frame on which four gems reach `MAX_STRAIN` plays `flaw` once.
+{{else if (eq engine.slug "simple-2d")}}
+Each is a distinct short sound, so the eight events are told apart by ear. Each
+is played on the frame its event happens, from `update`, and at most once on
+that frame; a frame that raises more than one of them plays each of those once,
+and a frame on which four gems reach `MAX_STRAIN` plays `flaw` once.
+{{else}}
+Each is a distinct short sound, so the eight events are told apart by ear. Each
+is played on the frame its event happens, by the code that raised it, and at
+most once on that frame; a frame that raises more than one of them plays each of
+those once, and a frame on which four gems reach `MAX_STRAIN` plays `flaw` once.
+{{/if}}
+
+`clear` sounds the chain ladder, so the tone it plays is the rung
+`specs/assets.md` gives for the step's multiplier. The rungs are that one cue's
+sources rather than events of their own.
+
+A cue is played by a frame, never by a pose of the debug surface.
+
+Two produced pieces of music play under the game, and `specs/assets.md` states
+what they are. The title theme loops on `title` and `howto`, and the play bed
+loops on `playing`, `paused`, and `gameover`. One of the two is playing on every
+screen, and the runtime's mute bit silences them along with the cues.
+
+Muting and the first-interaction unlock belong to the runtime. The game binds
+the `mute` action to the runtime's mute bit and toggles it from any screen, then
+mirrors that bit into `state.muted` every frame. The game stays fully playable
+with sound muted.
+
+## Out of scope
+
+- Network or online play.
+- Touch and gamepad input. The board is played with the pointer and the
+  keyboard, and the menus are driven from the keyboard.
+- Persistence of progress or settings between sessions. Each session starts
+  fresh.
