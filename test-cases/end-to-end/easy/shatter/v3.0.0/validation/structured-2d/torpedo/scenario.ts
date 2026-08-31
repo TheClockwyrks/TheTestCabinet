@@ -96,6 +96,48 @@ export function holdItsHeading(h: Harness, id: number): void {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Standing the ship clear                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Where a check that FLIES a torpedo stands the ship: `(40, 360)`, against the
+ * left edge on the star's row.
+ *
+ * `startPlaying` leaves the ship at the safe point `(640, 560)`, which is in the
+ * middle of the lower half of the field — squarely among the lanes the flight and
+ * guidance checks in this group fly along. Two things go wrong when a torpedo or
+ * its target is posed on top of it.
+ *
+ * THE READING IS NO LONGER ISOLATED. `specs/collision.md` gives a torpedo and the
+ * ship no interaction at all — "the torpedo passes through the ship, which is
+ * unharmed, and stays in flight" — so on a conforming build the ship is scenery.
+ * A build that got that row wrong loses `detonation/harmless-to-the-ship`, and a
+ * scenario that flew its torpedo through the ship would make that one fault lower
+ * the verdict on the cone, the turn rate and the lifetime as well.
+ *
+ * AND THE PICTURE IS UNREADABLE. A still that shows a rock drawn on top of the
+ * ship tells a reviewer nothing about which body the torpedo turned toward.
+ *
+ * `(40, 360)` is at least `200` units from every lane and every body these checks
+ * pose, by the shortest wrapped separation — including across the seams, which is
+ * why it is not simply a corner. The ship is left at rest, and `specs/gravity.md`
+ * never pulls it, so it stays there for the whole of any scenario.
+ */
+export const SHIP_CLEAR: Vec = { x: 40, y: 360 };
+
+/**
+ * The ship stood at {@link SHIP_CLEAR}, at rest.
+ *
+ * Called after `startPlaying` by every check in this group that flies a torpedo.
+ * It changes nothing else about the ship: the facing and the charge are as
+ * `startPlaying` left them, because no check that calls this reads either.
+ */
+export function standTheShipClear(h: Harness): void {
+  h.debug.setShipPosition(SHIP_CLEAR.x, SHIP_CLEAR.y);
+  h.debug.setShipVelocity(0, 0);
+}
+
+/* -------------------------------------------------------------------------- */
 /* Reading the charge                                                         */
 /* -------------------------------------------------------------------------- */
 

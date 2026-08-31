@@ -1,20 +1,146 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// torpedo/cone-half-angle — the cone reaches TORPEDO_CONE off the heading and no
+// further.
 //
-// torpedo/cone-half-angle — The cone reaches 15 degrees off the heading
+// THE RULE. `specs/weapons.md`, "The torpedo", The guidance: "A body is a
+// candidate when it is a rock or the saucer and its bearing from the torpedo lies
+// within `TORPEDO_CONE` (`15` degrees) of the torpedo's current heading, on either
+// side". This item decides that FIGURE, and it is the only item that does: a rock
+// one degree inside the edge must be taken, and a rock one degree outside it must
+// be left alone.
 //
-// A rock 14 degrees off the launch centre line is acquired and destroyed; one
-// 16 degrees off is not.
+// BOTH SIDES OF THE EDGE, BECAUSE EITHER ALONE PASSES A DIFFERENT WRONG BUILD. A
+// check that only asked whether the `14`-degree rock was taken passes a build with
+// no cone at all, which simply homes on the nearest body; a check that only asked
+// whether the `16`-degree rock was spared passes a build whose cone is a degree
+// wide, or one that never acquires anything. The pair pins `15` and nothing else:
+// a build at `10` degrees fails the first reading, a build at `30` fails the
+// second, and the two readings name which.
 //
-// Declared by variants/warhead.toml as validation.script "torpedo/cone-half-
-// angle.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the structured-2d harness in
-// validation/structured-2d/harness.ts and the spec-derived oracle in
-// validation/structured-2d/geometry.ts — never against a reference build.
+// ONE DEGREE EITHER SIDE IS THE TIGHTEST HONEST PAIR. The bearing is set by the
+// pose, exactly, and neither body is anywhere the environment can move it far
+// before the question is settled: `specs/gravity.md` never pulls the torpedo, the
+// acquisition is decided on the first tick, and the rock's own fall over that tick
+// is under a hundredth of a unit.
 //
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// THE LANE IS FLAT AND THE RANGE IS SHORT ENOUGH TO STAY ON ONE SIDE OF EVERY
+// SEAM. `specs/field.md` measures every bearing along the SHORTEST WRAPPED
+// separation, and the field is only `720` units tall — so a rock posed more than
+// `360` units above or below a torpedo is nearer the OTHER way round, and its
+// bearing is the opposite one. Posing both rocks `400` units out along a nearly
+// horizontal line keeps the separations at `388` across and `97` up, well inside
+// half the field on both axes, so the bearing the specification means is the
+// bearing this check posed.
+//
+// THE ACQUIRED ROCK IS READ AS DESTROYED rather than as turned toward, because
+// destruction is unambiguous: `specs/collision.md` has a torpedo destroy the rock
+// it strikes outright, and a torpedo that acquired the rock and flew at it is the
+// only way a rock that started `97` units off the torpedo's line ends up gone. The
+// spared rock is read BY ID, because a torpedo that destroyed it would leave two
+// fragments with fresh ids in its place (`specs/rocks.md`).
+//
+// THE PAIR IS FLOWN AS TWO SCENARIOS, one after the other, each on ground
+// `startPlaying` lays fresh — an empty field with both world gates shut, so the
+// only rock in either is the one the check posed.
 
-throw new Error(
-  "Shatter v3.0.0: validation/structured-2d/torpedo/cone-half-angle.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { DEG } from "../../src/constants";
+import { assertTrue } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  poseRock,
+  rockById,
+  startPlaying,
+  ticksFor,
+  type Harness,
+} from "../harness";
+import { poseTorpedo, standTheShipClear } from "./scenario";
+
+/** Where the torpedo starts in both scenarios, and which way it is going. */
+const TORPEDO_X = 100;
+const TORPEDO_Y = 640;
+const HEADING = 0;
+
+/** How far off the launch centre line each rock is posed, in radians. */
+const INSIDE_OFF = -14 * DEG;
+const OUTSIDE_OFF = -16 * DEG;
+/** How far out along that bearing, in units: short enough to cross no seam. */
+const RANGE = 400;
+
+/**
+ * How long each scenario is flown for: `1.5` seconds.
+ *
+ * A torpedo that turns onto the inside rock covers the `348` units to contact in
+ * about `0.83` s, so this is nearly twice the time it needs; and it is well inside
+ * `TORPEDO_LIFE` (`3.5` s), so the spared rock is spared rather than merely
+ * outliving a torpedo that expired. Over that span the straight-flying torpedo of
+ * the second scenario covers `630` units, from `x = 100` to `x = 730`, crossing no
+ * seam and coming no nearer the star's centre than `294` units.
+ */
+const FLIGHT_TICKS = ticksFor(1.5);
+
+/** How long the fragments are let come apart before the still is kept. */
+const AFTERMATH_TICKS = ticksFor(0.2);
+
+/** Where a rock posed `off` radians off the launch line stands. */
+function rockAt(off: number): { x: number; y: number } {
+  return {
+    x: TORPEDO_X + Math.cos(HEADING + off) * RANGE,
+    y: TORPEDO_Y + Math.sin(HEADING + off) * RANGE,
+  };
+}
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("takes a rock 14 degrees off its heading and leaves one 16 degrees off", async () => {
+  // Inside the cone: acquired, and destroyed.
+  startPlaying(h);
+  standTheShipClear(h);
+  const inside = rockAt(INSIDE_OFF);
+  const insideId = poseRock(h, "large", inside.x, inside.y);
+  poseTorpedo(h, TORPEDO_X, TORPEDO_Y, HEADING);
+
+  const taken = await h.until((s) => rockById(s, insideId) === undefined, {
+    maxFrames: FLIGHT_TICKS,
+  });
+  // A fifth of a second of the fragments coming apart before the picture is
+  // kept: on the tick of the kill the two Mediums stand on top of each other at
+  // the destroyed rock's position (specs/rocks.md), so a still taken there shows
+  // one circle and says nothing. The reading above is already taken.
+  await h.advance(AFTERMATH_TICKS);
+  // The rock just inside the cone, taken.
+  captureStill(h, "cone");
+
+  assertTrue(
+    taken.hit,
+    `the rock posed ${Math.abs(INSIDE_OFF / DEG).toFixed(0)} degrees off the ` +
+      "torpedo's heading — inside TORPEDO_CONE (15 degrees) — to be acquired " +
+      "and destroyed within 1.5 seconds of flight (specs/weapons.md, " +
+      `specs/collision.md); it was still on the field after ${FLIGHT_TICKS} ticks`,
+  );
+
+  // Outside the cone: never acquired, and left standing.
+  startPlaying(h);
+  standTheShipClear(h);
+  const outside = rockAt(OUTSIDE_OFF);
+  const outsideId = poseRock(h, "large", outside.x, outside.y);
+  poseTorpedo(h, TORPEDO_X, TORPEDO_Y, HEADING);
+
+  await h.advance(FLIGHT_TICKS);
+
+  assertTrue(
+    rockById(h.snapshot(), outsideId) !== undefined,
+    `the rock posed ${Math.abs(OUTSIDE_OFF / DEG).toFixed(0)} degrees off the ` +
+      "torpedo's heading — outside TORPEDO_CONE (15 degrees) — still on the " +
+      "field after 1.5 seconds: a body outside the cone is never a candidate, " +
+      "so nothing turns toward it (specs/weapons.md)",
+  );
+});
