@@ -22,12 +22,20 @@
 // to reach `0` and start a wave inside this window, and one that starts Wave 1 on
 // a timer of its own has had a minute to do it.
 //
+// AND THE FLOOR IS READ AS WELL AS THE CLOCK, because the phase table's other
+// column says the surge released in the `opening` phase is "None". A build that
+// held the phase and the timer where they were while its spawner let units out
+// has broken the same sentence — "never starts a wave on its own however long it
+// runs" — and would be invisible to a reading of `phase` and `buildTimer` alone.
+// So the roster is watched over the same minute and must stay empty.
+//
 // WHAT EVERY WRONG MODEL READS. A build that opens the phase with a
 // `BUILD_PHASE_TIME` countdown reads a falling `buildTimer` and then a `wave`
 // phase; one that counts down from `0` reads a negative `buildTimer`; one that
 // starts Wave 1 after a fixed delay reads a `wave` phase with the timer still at
-// `0`. Each is a different reading from a phase that sits at `0` and stays where
-// it is.
+// `0`; one whose spawner runs in the opening phase reads a unit on the floor.
+// Each is a different reading from a phase that sits at `0`, stays where it is,
+// and releases nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
@@ -75,7 +83,8 @@ it("holds the opening phase at a zero timer for a minute of game time", async ()
   const swept = await h.skipUntil(
     (snapshot) =>
       snapshot.phase !== "opening" ||
-      Math.abs(snapshot.buildTimer) > TIMER_TOLERANCE,
+      Math.abs(snapshot.buildTimer) > TIMER_TOLERANCE ||
+      snapshot.surge.length > 0,
     { maxSeconds: WATCH_SECONDS, pollSeconds: SAMPLE_SECONDS },
   );
 
@@ -90,5 +99,10 @@ it("holds the opening phase at a zero timer for a minute of game time", async ()
     Math.abs(swept.snapshot.buildTimer),
     TIMER_TOLERANCE,
     `the buildTimer the opening phase reports after ${swept.elapsed} seconds, against the ${BUILD_PHASE_TIME}-second countdown a build phase carries`,
+  );
+  assertEqual(
+    swept.snapshot.surge.length,
+    0,
+    `the units standing on the floor after ${swept.elapsed} seconds of the opening phase, whose released surge specs/waves.md gives as None`,
   );
 });

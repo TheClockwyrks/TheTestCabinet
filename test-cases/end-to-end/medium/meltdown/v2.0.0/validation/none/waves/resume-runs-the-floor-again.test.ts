@@ -32,6 +32,12 @@
 // the one taken at the end of the resumed one, so the leg measured begins where
 // the freeze ended.
 //
+// AND THE SCREEN THE SECOND PRESS LANDED ON IS READ TOO. `specs/screens.md` makes
+// the resume's destination `playing` by name, so a build that moved the floor
+// again while leaving the pause screen standing over it — or that sent the second
+// press to the title — has not resumed the run even though the Mote walked. The
+// travel says the simulation runs; the screen says the player is back in it.
+//
 // THE FLOOR HOLDS ONE MOTE AND NOTHING ELSE, and three windows carry it about
 // fourteen tiles down a forty-nine-tile corridor (`specs/floor.md`), so it never
 // reaches its exhaust and no leak interrupts the reading.
@@ -102,6 +108,11 @@ it("walks the same Mote again once the pause is lifted", async () => {
     legs.held.screen,
     "paused",
     "precondition: the first press paused the game, so the second one resumes it",
+  );
+  assertEqual(
+    legs.resumed.screen,
+    "playing",
+    "the screen the second press returned to (specs/screens.md: RESUME goes to `playing`, with the floor exactly as it was left)",
   );
   assertGreaterThan(
     distance(
