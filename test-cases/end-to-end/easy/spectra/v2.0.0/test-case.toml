@@ -2595,7 +2595,7 @@ validation = { script = "screens/howto-reachable.test.ts", outputs = [
 [[review.categories.items]]
 id = "howto-content"
 title = "The how-to screen names the keys and the bands"
-description = "Among the how-to-play screen's draws, a standalone token — matched at word boundaries — names the movement keys and the fire key from the BINDINGS table, and each of the two BAND_LABELS (CYAN, MAGENTA)."
+description = "Among the how-to-play screen's draws, a standalone token — matched at word boundaries — names the movement keys and the fire key by the words specs/ui.md fixes for them (ARROWS, AD and SPACE), and each of the two BAND_LABELS (CYAN, MAGENTA)."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/howto-content.test.ts", outputs = [
