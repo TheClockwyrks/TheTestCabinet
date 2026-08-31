@@ -82,7 +82,7 @@ Each tick a chasing enemy recomputes its heading as the unit vector from its
 center to the lamplighter's center and advances one step along it. The heading
 is recomputed every tick, so a chaser turns with the lamplighter as it moves.
 A chaser whose center coincides with the lamplighter's keeps its heading and
-stays where it is that tick.
+stays where it is that tick; its age still counts.
 
 ### Drift
 
@@ -119,7 +119,8 @@ position = anchor + perp(heading) * offset(age)
 At spawn the offset is `0`, so the anchor is the spawn position and the heading
 is the unit vector from it to the lamplighter's center. A weaver whose anchor
 coincides with the lamplighter's center keeps its heading and stays where it
-is that tick.
+is that tick; its age still counts, so on the next tick its anchor is
+recovered from the new age as on any tick.
 
 ## Health scaling
 
@@ -175,8 +176,9 @@ y = player.y + sin(angle) * SPAWN_DISTANCE
 
 Each tick `despawning` is on, every common enemy whose center is farther than
 `DESPAWN_DISTANCE` (`1200`) units from the lamplighter's center is removed: no
-gem, no kill, no cue. Gnats are common and despawn the same way. Elites and the
-Dark are outside this rule and stay on the field at any distance.
+gem, no kill, no cue, and every re-hit entry naming it dropped. Gnats are
+common and despawn the same way. Elites and the Dark are outside this rule and
+stay on the field at any distance.
 
 ### Windows
 
@@ -249,8 +251,8 @@ run, on exactly the tick the run clock equals its time
 (`tick == time * TICK_HZ`, read after the tick's clock has risen), and only
 while `events` is on; an
 event whose tick passes while `events` is off, or which the debug surface's
-`setTick` skips over, never fires. `firedEvents` records the times that have
-fired.
+`setTick` skips over, never fires. `firedEvents` lists the times that have
+fired, in ascending order whatever order they fired in.
 
 | Time | Seconds | Event |
 | --- | --- | --- |

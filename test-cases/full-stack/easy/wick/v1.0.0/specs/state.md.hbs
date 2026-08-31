@@ -68,14 +68,16 @@ result, the spawn timer at `0`, no events fired, and the next id `0`. The
 `fallen` and `dawn` screens keep the run that just ended, since they report its
 time, level, and kills.
 {{else if (eq engine.slug "simple-2d")}}
-`src/game.ts` declares and exports the state the game is written against. This
-section is that declaration: write it into `src/game.ts` exactly as it stands
-here. The six id and tier aliases `src/constants.ts` already exports are
-imported and re-exported rather than declared a second time. The state is a
-value the engine holds and every frame replaces, so every field and every array
-is declared `readonly`: a frame builds the next state from the current one
-rather than writing into it, and every reader is handed the state as
-`DeepReadonly<WickState>` in any case.
+`src/game.ts` exports the state the game is written against. This section is
+that declaration: every name below is exported from `src/game.ts`, declared
+there or in a module of your own that `src/game.ts` re-exports, with every
+field under the name, type, and meaning stated here, and the fields you add
+under The contract below. The six id and tier aliases `src/constants.ts`
+already exports are imported and re-exported rather than declared a second
+time. The state is a value the engine holds and every frame replaces, so every
+field and every array is declared `readonly`: a frame builds the next state
+from the current one rather than writing into it, and every reader is handed
+the state as `DeepReadonly<WickState>` in any case.
 
 ```ts
 import type {
@@ -238,11 +240,14 @@ export interface WickState {
 }
 ```
 {{else}}
-`src/game.ts` declares and exports the state the game is written against. This
-section is that declaration: write it into `src/game.ts` exactly as it stands
-here, with initializers of your own that give every field of `WickState` its
-title-screen value. The six id and tier aliases `src/constants.ts` already
-exports are imported and re-exported rather than declared a second time.
+`src/game.ts` exports the state the game is written against. This section is
+that declaration: every name below is exported from `src/game.ts`, declared
+there or in a module of your own that `src/game.ts` re-exports, with every
+field under the name, type, and meaning stated here, the fields you add under
+The contract below, and initializers of your own that give every field of
+`WickState` its title-screen value. The six id and tier aliases
+`src/constants.ts` already exports are imported and re-exported rather than
+declared a second time.
 `WickState` is a class extending the engine's `GameState`: the game mode names
 it as `gameStateClass`, the engine constructs it with no arguments when the
 world is built, and the instance lives for the whole session. The framework's
@@ -550,12 +555,14 @@ One effect that is not a projectile, in `zones`.
   pulse over every enemy they overlap and a slash, a strike, and a burst hit on
   the tick they appear.
 
-A lantern's angle around the lamplighter is derived from its position relative
-to the lamplighter, so the next tick's position is that angle advanced by
-`LANTERN_ANGULAR_SPEED` (`180`) `× TICK_DT` degrees and placed at the orbit
-radius around the lamplighter's new position. A Chandelier lantern's orbit
-radius is recomputed every tick, and when Chandelier's amount changes its
-lanterns are replaced by new zones, as `specs/evolutions.md` states.
+A lantern's angle around the lamplighter is fixed by its index in its set and
+the ticks since the set was created, as `specs/weapons.md` states, so each
+tick places it at that angle, advanced by `LANTERN_ANGULAR_SPEED` (`180`)
+`× TICK_DT` degrees, at the orbit radius around the lamplighter's position of
+that tick; a lamplighter pose moves the lantern with it and changes its angle
+not at all. A Chandelier lantern's orbit radius is recomputed every tick, and
+when Chandelier's amount changes its lanterns are replaced by new zones, as
+`specs/evolutions.md` states.
 
 ## `GemState` and `PickupState`
 
@@ -604,7 +611,8 @@ The run in progress or just ended.
   screen except an end screen reached by the tick that collected the chest,
   which keeps it.
 - `spawnTimer`: the seconds until the director's next window spawn. It is `0`
-  when a run starts and on every window change.
+  when a run starts and on a tick that crosses into a new window while
+  `spawning` is on.
 - `firedEvents`: the run-clock times, in seconds, of the scripted events that
   have fired this run, ascending.
 - `nextId`: the next id to assign, one counter shared by enemies,
@@ -681,11 +689,12 @@ The declaration above is what the debug surface reads and poses.
 - `initialize` builds the whole state in one go, so every field is present by
   the time a frame can observe it. `ZoneState.width` and `height` are the one
   optional pair, present on a slash alone.
-- Fields you add carry nothing a rule of this specification reads: derived
-  data rebuilt from the declared fields, or presentation such as an
-  animation's timer. A `reset` restores the declared fields to their
-  title-screen values and clears the rest, so the declared fields are the whole
-  of the authoritative state.
+- The declared fields are the whole of what the debug surface reads and
+  poses. Fields you add are the build's own, such as the tick a shape was
+  created on or an animation's timer: the snapshot reports none of them, a
+  pose leaves each one consistent with the declared fields, and a `reset`
+  restores the declared fields to their title-screen values and clears the
+  rest.
 - The state handed to `update` is the whole of the game, and the state `update`
   returns is the whole of the next frame. Every value the game carries from one
   frame to the next lives in it. Loaded images and decoded audio are the one
@@ -703,11 +712,12 @@ The declaration above is what the debug surface reads and poses.
   world is built, so every field is present, at its title-screen value, by the
   time a frame can observe it. `ZoneState.width` and `height` are the one
   optional pair, present on a slash alone.
-- Fields you add carry nothing a rule of this specification reads: derived
-  data rebuilt from the declared fields, or presentation such as an
-  animation's timer. A `reset` restores the declared fields to their
-  title-screen values and clears the rest, so the declared fields are the whole
-  of the authoritative state.
+- The declared fields are the whole of what the debug surface reads and
+  poses. Fields you add are the build's own, such as the tick a shape was
+  created on or an animation's timer: the snapshot reports none of them, a
+  pose leaves each one consistent with the declared fields, and a `reset`
+  restores the declared fields to their title-screen values and clears the
+  rest.
 - The state the mode holds is the whole of the game. Every value the game
   carries from one frame to the next lives in it; the actors, components, and
   controllers you write draw that state and drive it, and hold nothing

@@ -89,7 +89,7 @@ The HUD is drawn over the world and reads against it:
 
 | Element | What the player sees |
 | --- | --- |
-| Health | A bar whose filled width scales with `hp / maxHp`, with both numbers beside it. |
+| Health | A bar whose filled width scales with `hp / maxHp`, with both numbers beside it, `hp` rounded up to a whole number. |
 | Experience | A bar whose filled width scales with `xp / xpToNext`, labeled with `LEVEL_LABEL` (`LEVEL`) and the current level, as `LEVEL 4`. |
 | Clock | The run clock as `m:ss`, counting up from `0:00` in whole seconds, the seconds always two digits. |
 | Kills | The kill count. |
@@ -128,8 +128,9 @@ shows `CHEST_TEXT` (`A CHEST OPENS`) and the result in `chestResult`:
 | `level` | The item's icon and name, and `LEVEL_LABEL` with the level it became. |
 | `heal` | That the lamplighter was healed `CHEST_HEAL` (`30`), in words of your own. |
 
-`confirm` closes the overlay: `screen = playing`, and the simulation resumes on
-the next tick. `up`, `down`, `back`, and `pause` do nothing here.
+`confirm` closes the overlay, sounding no cue: `screen = playing`, and the
+simulation resumes on the next tick. `up`, `down`, `back`, and `pause` do
+nothing here.
 
 ### `paused`
 
@@ -187,8 +188,10 @@ every screen but `playing` by every route.
 Menus are keyboard only, through the registered actions in `specs/controls.md`:
 `up` and `down` move the highlight, `confirm` accepts the highlighted item, and
 `back` returns. `menuIndex` is `0` on entering every screen, and on a screen
-with no menu it stays `0`. Every move of a highlight plays `menu-move`,
-and every accepted item plays `menu-confirm`. `pause` is read on `playing` and
+with no menu it stays `0`. Every move of a highlight plays `menu-move`, on the
+level-up overlay included. `menu-confirm` plays when an item of `TITLE_ITEMS`
+or `END_ITEMS` is confirmed; an accepted offer plays `choose` alone, and
+closing the chest overlay plays nothing. `pause` is read on `playing` and
 `paused` alone, the movement actions are read as held values on `playing`
 alone, and `mute` is read on every screen.
 
@@ -216,14 +219,14 @@ the fifteen cues in `CUES`, under exactly these names, one per event:
 | `gem` | `CUES.gem` | A gem is collected. At most once per tick. |
 | `hurt` | `CUES.hurt` | The lamplighter takes damage. At most once per tick. |
 | `level-up` | `CUES.levelUp` | A level-up overlay opens. |
-| `choose` | `CUES.choose` | An offer is accepted. |
+| `choose` | `CUES.choose` | An offer is accepted, with no `menu-confirm` beside it. |
 | `chest` | `CUES.chest` | A chest overlay opens. |
 | `evolve` | `CUES.evolve` | A weapon evolves. |
 | `pickup` | `CUES.pickup` | Bread or a draft is collected. |
 | `fallen` | `CUES.fallen` | The run ends fallen. |
 | `dawn` | `CUES.dawn` | The run ends at dawn. |
 | `menu-move` | `CUES.menuMove` | A menu highlight moves. |
-| `menu-confirm` | `CUES.menuConfirm` | A menu item is confirmed. |
+| `menu-confirm` | `CUES.menuConfirm` | An item of `TITLE_ITEMS` or `END_ITEMS` is confirmed. |
 | `music` | `CUES.music` | Loops from the start of a run to its end. |
 | `hum` | `CUES.hum` | Loops while Halo or Corona is held on `playing`. |
 

@@ -68,10 +68,16 @@ shape's damage per hit is fixed when the shape is created, from the level and
 Corona and each Chandelier lantern have their damage recomputed on every tick,
 with their radius. A Wick level gained later leaves every other live shape's
 damage as it was.
-On any tick an enemy's `hp` is at or below `0` the enemy dies on that tick: the
-kill count rises by one, the enemy drops what `specs/enemies.md` lists for it,
-and the bread and draft draws of `specs/world.md` are made. Hits and deaths
-play the `hit` and `kill` cues as `specs/ui.md` states.
+
+On a tick the projectiles hit first, in ascending `id`, then the zones in
+ascending `id`, and an enemy stays live until every shape has hit: a shape
+hits an enemy whose `hp` an earlier shape of the same tick already took to `0`
+or below, spending its pierce, recording its entry, and healing as its weapon
+states. On any tick an enemy's `hp` is at or below `0` after the hits the
+enemy dies on that tick: the kill count rises by one, the enemy drops what
+`specs/enemies.md` lists for it, the bread and draft draws of `specs/world.md`
+are made, and every re-hit entry naming it is dropped. Hits and deaths play
+the `hit` and `kill` cues as `specs/ui.md` states.
 
 ### Projectiles and pierce
 
@@ -86,11 +92,13 @@ lowered and never removed by a hit. A projectile's `ttl` is set to its
 `duration` when it is fired, and it is removed on the tick `ttl` is due,
 whether or not it hit anything.
 
-A projectile with finite pierce hits a given enemy at most once. When one such
-projectile overlaps several enemies on the same tick, they are hit in ascending
-enemy `id` until the projectile is removed. A projectile with infinite pierce
-hits a given enemy at most once per its weapon's re-hit interval, timed per
-projectile and per enemy from the tick of the previous hit.
+A projectile with finite pierce hits a given enemy at most once: its re-hit
+entry for that enemy carries the projectile's remaining `ttl` at the hit, so
+the entry outlives the projectile. When one such projectile overlaps several
+enemies on the same tick, they are hit in ascending enemy `id` until the
+projectile is removed. A projectile with infinite pierce hits a given enemy at
+most once per its weapon's re-hit interval, timed per projectile and per enemy
+from the tick of the previous hit.
 
 ### Persistent effects
 
@@ -100,6 +108,9 @@ Halo aura and Oil Splash puddles) damages every enemy overlapping it on each
 pulse tick, and the interval is the time between pulses. A touching effect
 (each Lantern lantern, each Shard, and each Sconce) damages an enemy on any
 tick the two overlap, at most once per re-hit interval per effect per enemy.
+A re-hit entry names a live enemy: when the enemy it names is removed, by
+death, by despawning, or by a pose of the debug surface, the entry is dropped
+with it.
 
 ### Amount
 
@@ -329,10 +340,11 @@ removed after `duration` seconds.
 
 While alive a shard stays inside the view: the `STAGE_W × STAGE_H`
 (`1280 × 720`) rectangle centered on the player's center on that tick, after
-the lamplighter has moved. When a tick's movement would carry the shard's
-center past an edge of that rectangle, the velocity component across that edge
-reverses and the center is clamped to the edge; a corner reverses both
-components.
+the lamplighter has moved. After the shard's move on a tick, a center past an
+edge of that rectangle is clamped to that edge, and the velocity component
+across that edge reverses when it points outward and is left as it is when it
+already points inward; a center past a corner is clamped on both axes, each
+component treated the same way.
 
 Amount `n` fires `n` shards on the same tick, shard `i` counted from `0` with
 its direction rotated by `(i − (n − 1) / 2) × SHARD_SPREAD` degrees, with

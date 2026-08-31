@@ -73,7 +73,11 @@ properties make it so.
   whole ticks of `TICK_DT` (`1 / 60`) seconds, `TICK_HZ` (`60`) of them per
   second of game time. On `playing`, each frame's delta time joins the
   accumulator, every whole `TICK_DT` in it is consumed as a tick, and the
-  remainder waits for the next frame. A tick that leaves `playing`, by opening
+  remainder waits for the next frame. A tick is consumed while the accumulator
+  is at least `TICK_DT − TICK_EPSILON`, with `TICK_EPSILON` (`1e-9`) seconds,
+  and a remainder whose magnitude is below `TICK_EPSILON` is `0`, so a frame of
+  `0.5` seconds runs exactly `30` ticks and sixty frames of `1 / 60` seconds
+  run exactly `60`. A tick that leaves `playing`, by opening
   an overlay or ending the run, is the last tick its frame runs, and the
   remainder is discarded; so is the remainder on any other frame or pose that
   leaves `playing`. On every other screen a frame ticks nothing and the
@@ -255,8 +259,9 @@ that poses a partial frame.
 Restores every declared field of the game's state to its title-screen value:
 the `title` screen with `menuIndex` `0`, the idle run of `specs/state.md`, the
 accumulator and `simTime` at `0`, and every driver switch on. `options` is
-optional, and `options.seed` seeds `rngState`, defaulting to `DEFAULT_SEED`
-(`1`). `muted` stays as it is.
+optional, and `options.seed` seeds the generator, defaulting to `DEFAULT_SEED`
+(`1`): a whole number from `0` to `2^32 − 1`, which `rngState` equals once the
+call returns; any other value is invalid. `muted` stays as it is.
 {{#if (eq engine.slug "none")}}
 `autoStep` stays as it is: it belongs to the caller driving the game rather than
 to the session being played, so a `reset` inside a stepped scenario leaves the
@@ -444,15 +449,17 @@ Applies on a run screen.
 #### `setNextOffers(ids)`
 {{/if}}
 
-Sets `nextOffers` to `ids`, a list of `1` to `OFFER_COUNT` (`3`) distinct
-`OfferId`s; a length outside that range, a repeated id, or a string that is no
-`OfferId` is invalid. The list is checked against the candidate pool at the
-moment the next level-up overlay opens: it is accepted when every id is a
-candidate of the pool at that moment, or when it holds `LAMP_OIL_ID` alone
-while the pool is empty, and the overlay then presents exactly that list in
-that order. Otherwise it is discarded whole and the overlay draws at random. One
-overlay consumes it, and a later overlay draws at random again. Applies on a
-run screen and on `levelup`, where the next overlay is the queued one.
+Sets `nextOffers` to `ids`, a list of `1` to `OFFER_COUNT` (`3`) distinct ids,
+each a weapon id, base or evolved, a passive id, or `LAMP_OIL_ID`; a length
+outside that range, a repeated id, or any other string is invalid. The list is
+checked against the candidate pool at the moment the next level-up overlay
+opens: it is accepted when every id is a candidate of the pool at that moment,
+or when it holds `LAMP_OIL_ID` alone while the pool is empty, and the overlay
+then presents exactly that list in that order. Otherwise it is discarded whole
+and the overlay draws at random; an evolved weapon's id is never in a pool, so
+a list naming one is always discarded. One overlay consumes it, and a later
+overlay draws at random again. Applies on a run screen and on `levelup`, where
+the next overlay is the queued one.
 
 ### The loadout
 

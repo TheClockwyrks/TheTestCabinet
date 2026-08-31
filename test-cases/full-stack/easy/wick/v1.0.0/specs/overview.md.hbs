@@ -141,9 +141,10 @@ current one rather than writing into it, and nothing but `update` and the debug
 surface's poses advances the game. As seeded, the module's functions throw
 `"not implemented"`. Implement them.
 
-`src/game.ts` also declares and exports `WickState` and the types it is built
-from, exactly as `specs/state.md` states them, and `WickDebugApi`, the debug
-and automation surface `specs/instrumentation.md` fixes.
+`src/game.ts` also exports `WickState` and the types it is built from, with
+every field `specs/state.md` declares under its name, type, and meaning and
+the fields you add under the contract stated there, and `WickDebugApi`, the
+debug and automation surface `specs/instrumentation.md` fixes.
 
 `src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
 background. `src/main.ts` hands it to the engine as the color the canvas is
@@ -193,8 +194,10 @@ definition is a stub whose instance throws `"not implemented"`. Implement it.
 
 The module contract the engine's framework needs from Wick:
 
-- The mode's `gameStateClass` is `WickState`, declared exactly as
-  `specs/state.md` states, and that state is the whole authoritative game.
+- The mode's `gameStateClass` is `WickState`, with every field
+  `specs/state.md` declares under its name, type, and meaning and the fields
+  you add under the contract stated there, and that state is the whole
+  authoritative game.
   The mode's `tick` accumulates the frame's seconds, resolves each whole
   `TICK_DT` in the order `specs/world.md` fixes, and carries the remainder.
 - The mode adds a single player, whose controller is the one place the actions
@@ -208,10 +211,11 @@ The module contract the engine's framework needs from Wick:
   `specs/world.md` puts it. The facing mirror lives on the lamplighter's own
   sprite component rather than on the followed actor's transform.
 - The HUD, the menus, and the overlays draw at fixed logical stage positions
-  whatever the camera shows: ordinary components on an actor the mode keeps at
-  the camera target's position, each component's `offset` in stage units from
-  the stage center, so they take their place in the layer order like any other
-  picture.
+  whatever the camera shows: ordinary components on two actors the mode keeps
+  at the camera target's position, one carrying `TAGS.hud` with the HUD and
+  one carrying `TAGS.screen` with the menus, the overlays, and the end
+  screens, each component's `offset` in stage units from the stage center, so
+  they take their place in the layer order like any other picture.
 
 `src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
 background. `src/main.ts` hands it to the engine as the color the canvas is
@@ -290,6 +294,14 @@ The build is self-contained. The asset tools on this machine's `PATH` are
 development tools for producing the files `specs/assets.md` lists and locates;
 the produced files are committed, the build bundles them, and neither `npm ci`
 nor `npm run build` invokes a tool.
+{{#if (eq engine.slug "none")}}
+Every produced file the game loads is served from `dist/` at the URL the build
+requests for it, so the built site plays the same night as `npm run dev`.
+{{else}}
+Every produced file the game loads is served from `dist/` at `assets/<path>`
+relative to its `index.html`, the URL the engine's loader resolves it to, so
+the built site plays the same night as `npm run dev`.
+{{/if}}
 
 ## Goal of this build
 

@@ -67,17 +67,24 @@ which is how the game is played, and holds while it is off.
    a projectile's position advances by its velocity times `TICK_DT`, then its
    velocity changes by its acceleration times `TICK_DT`. Then every projectile
    and zone hits, this tick's new ones included, a new one hitting at the
-   position it was created at and first moving on the next tick. An enemy
-   whose `hp` is at or below `0` dies: its drop and its bread or draft land at
-   its center, at rest for this tick.
+   position it was created at and first moving on the next tick: the
+   projectiles first, in ascending `id`, then the zones in ascending `id`.
+   Every enemy is live until the hits are done, so a shape hits an enemy whose
+   `hp` an earlier shape of this tick already took to `0` or below. Then an
+   enemy whose `hp` is at or below `0` dies: its drop and its bread or draft
+   land at its center, at rest for this tick, and every re-hit entry naming it
+   is dropped.
 7. Contact. Every live enemy's `contactCooldown` counts down, and, while
    `enemyContact` is on, an overlapping enemy whose cooldown is due hits, as
    Contact damage states.
 8. Pickups. Every pickup meeting the collection condition is collected, this
    tick's drops included.
 9. Gems. Every gem within `pickupRadius` becomes attracted, every attracted
-   gem moves, and every gem within `COLLECT_RADIUS` is collected, this tick's
-   drops and the gems a draft attracted on this tick included.
+   gem that existed before this tick moves, and every gem within
+   `COLLECT_RADIUS` is collected, this tick's drops and the gems a draft
+   attracted on this tick included. A gem dropped on this tick is attracted
+   and collected by the same tests as any other and takes its first flight
+   step on the next tick.
 10. The spawn director, as `specs/enemies.md` states: despawning while
     `despawning` is on, then the scripted events while `events` is on, then
     the spawn timer while `spawning` is on. An enemy spawned on this tick sits

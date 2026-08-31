@@ -38,6 +38,13 @@ export const TICK_HZ = 60;
 /** The length of one tick, in seconds. */
 export const TICK_DT = 1 / TICK_HZ;
 
+/**
+ * The slack a tick boundary allows: a tick is consumed while the accumulator
+ * is at least TICK_DT − TICK_EPSILON, and a remainder whose magnitude is below
+ * TICK_EPSILON is 0, so a frame of 0.5 seconds runs exactly 30 ticks.
+ */
+export const TICK_EPSILON = 1e-9;
+
 /** The run clock at which dawn arrives and the run is won, in seconds. */
 export const DAWN_TIME = 600;
 
@@ -1354,6 +1361,9 @@ export const MUSIC_SCORE_PATH = "audio/music.mid";
 
 /** The least the music bed runs, in seconds. */
 export const MUSIC_MIN_SECONDS = 30;
+
+/** The least the hum loop runs, in seconds. */
+export const HUM_MIN_SECONDS = 2;
 
 /**
  * A file authored to loop, `hum` and `music`, has its last and first samples

@@ -72,6 +72,28 @@ under its name in `CUES`, awaited in the instance's `initialize`, so every
 asset is decoded before the first frame.
 {{/if}}
 
+{{#if (ne engine.slug "none")}}
+### The names in `src/constants.ts`
+
+Every path and canvas this file fixes is exported from `src/constants.ts`, each
+path relative to the `assets/` root the loader resolves against.
+
+| Constant | Holds |
+| --- | --- |
+| `LAMPLIGHTER_IDLE_PATH`, `LAMPLIGHTER_WALK_SHEET` | The idle sprite's path, and the walk sheet's directory with its frame count. |
+| `LAMPLIGHTER_SPRITE_WIDTH`, `LAMPLIGHTER_SPRITE_HEIGHT` | The lamplighter's canvas. |
+| `ENEMY_SHEET_DIR`, `ENEMY_FRAMES` | The directory each enemy's sheet sits under, by id, and the frames each holds. |
+| `PUFF_SHEET`, `PUFF_SPRITE_SIZE` | The death puff's directory with its frame count, and its square canvas. |
+| `GEM_PATHS`, `GEM_SPRITE_SIZES` | Each gem tier's path and square canvas. |
+| `PICKUP_PATHS`, `PICKUP_SPRITE_SIZE` | Each pickup kind's path, and their square canvas. |
+| `GROUND_TILE_PATH`, `GROUND_TILE_SIZE` | The ground tile's path and square canvas. |
+| `EFFECT_SPRITES` | Each weapon's effect by id: its path, a file for one sprite or a directory for a sheet, its frame count, and its canvas. |
+| `ICON_PATHS`, `ICON_SIZE` | Each icon's path by id, and their square canvas. |
+| `CUE_PATHS`, `MUSIC_SCORE_PATH` | Each cue's file by name, the music bed's included, and the bed's score. |
+| `MUSIC_MIN_SECONDS`, `HUM_MIN_SECONDS`, `LOOP_SEAM_TOLERANCE` | The least the bed and the hum run, and the loop seam's tolerance. |
+| `WALK_FRAME_TIME`, `PUFF_TIME` | The animation figures under Animation below. |
+
+{{/if}}
 The simulation reads no image: a sprite's size in the world is the figure this
 file states, and every hitbox is the shape `specs/weapons.md` and
 `specs/enemies.md` give it, whatever the file decoded to. A load that fails
@@ -103,9 +125,11 @@ numbered from `0`, each on a canvas of the sheet's size.
 
 Every enemy is told from every other at a glance, by silhouette and not by hue
 alone, and the two elites and the Dark read as larger and heavier than the
-commons. The three gem tiers are told apart by size and form. The ground tile
-sits flush against itself on all four sides, since the ground is that tile
-repeated across the world.
+commons. An enemy's sprite may be mirrored across its vertical axis to face
+the sign of its heading's `x`; nothing else about its orientation is fixed.
+The three gem tiers are told apart by size and form. The ground tile sits
+flush against itself on all four sides, since the ground is that tile repeated
+across the world.
 
 ### The weapon effects
 
@@ -121,12 +145,18 @@ hitbox's extent on every tick it is drawn.
 | bolt | Ember | `assets/sprites/effects/ember.png` | one sprite | `16 x 16` | the bolt's circle, for its life |
 | dart | Pin | `assets/sprites/effects/pin.png` | one sprite | `12 x 12` | the dart's circle, for its life |
 | lantern | Lantern | `assets/sprites/effects/lantern.png` | one sprite | `28 x 28` | each lantern's circle, for its life |
-| aura ring | Halo | `assets/sprites/effects/halo.png` | one sprite, a ring | `160 x 160` | the aura's circle, always, with its pulse readable |
+| aura ring | Halo | `assets/sprites/effects/halo.png` | one sprite, a ring | `160 x 160` | the aura's circle, always |
 | puddle | Oil Splash | `assets/sprites/effects/oil-splash.png` | one sprite | `100 x 100` | the puddle's circle, for its life |
 | strike | Spark | `assets/sprites/effects/spark/0.png` to `3.png` | a sheet of `4`, played once | `80 x 80` | the strike's `area` circle, for `SPARK_FLASH` (`0.2`) seconds |
 | shard | Shard | `assets/sprites/effects/shard.png` | one sprite | `16 x 16` | the shard's circle, for its life |
 | sconce | Sconce | `assets/sprites/effects/sconce/0.png` to `3.png` | a sheet of `4`, spinning | `24 x 24` | the sconce's circle, for its life |
 | flare burst | Flare | `assets/sprites/effects/flare/0.png` to `5.png` | a sheet of `6`, played once | `128 x 128` | the burst's circle, for `FLARE_FLASH` (`0.4`) seconds |
+
+A projectile's sprite is drawn centered on its circle, upright or turned to
+its velocity as you choose. The aura's picture on the tick it pulses differs
+from its picture on the tick before, and so does a puddle's. The burst is
+drawn at the full diameter of its circle, past the edges of the view where
+the circle reaches past them.
 
 Each of the six evolved weapons has an effect of the same form, frame count,
 and canvas as its base's, at the path below, visibly distinct from its base's
@@ -177,7 +207,8 @@ weapons, base and evolved, the ten passives, and lamp oil. Each is one `24 x
 `LAMP_OIL_ID`. Each is told from every other at a glance, and an evolved
 weapon's icon reads as a transformed version of its base's. The HUD's slots and
 the level-up and chest overlays draw them beside the names `specs/ui.md`
-states.
+states; an evolved weapon's icon is shown in its slot and on the chest
+overlay's evolve result, and never in an offer.
 
 ## The sound
 
@@ -208,13 +239,14 @@ Produce the `music` cue with `music`, which may sequence the baked instrument
 bank, synth waveforms, or both: `assets/audio/music.wav`, with its
 `assets/audio/music.mid` committed beside it. The `.wav` is what the game
 plays, for the length of a run as `specs/ui.md` states, and it runs at least
-`30` seconds.
+`MUSIC_MIN_SECONDS` (`30`) seconds.
 
 ### Loops
 
 `hum` and `music` are each authored to loop cleanly: the file's end runs into
 its start with no click, no gap, and no jump in level, so in every channel the
-last sample and the first sample differ by at most `1%` of full scale.
+last sample and the first sample differ by at most `LOOP_SEAM_TOLERANCE`
+(`0.01`) of full scale. `hum` runs at least `HUM_MIN_SECONDS` (`2`) seconds.
 
 ### The sound bar
 

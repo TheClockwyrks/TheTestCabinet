@@ -58,7 +58,11 @@ to the `KeyboardEvent.code` values that fire it.
 The two keys bound to an action are interchangeable: `KeyW` does exactly what
 `ArrowUp` does wherever `up` is read. All of a frame's edges are read against
 the screen the frame began on, so a press that changes screens never also acts
-on the screen it lands in.
+on the screen it lands in. The frame's update then runs on the screen the
+edges left: a frame whose press enters `playing`, from the title, an end
+screen, `paused`, or an overlay, runs that frame's ticks, so a frame of
+`TICK_DT` whose press lights the lamp leaves the run at tick `1`; a frame
+whose press leaves `playing` ticks nothing and discards the accumulator.
 
 ## Moving the lamplighter
 

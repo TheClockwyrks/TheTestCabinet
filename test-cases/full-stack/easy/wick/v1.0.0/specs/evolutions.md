@@ -35,7 +35,9 @@ that applies:
 
 1. Evolution. The held weapons are checked in slot order, first slot first,
    and the first base weapon at `MAX_WEAPON_LEVEL` whose recipe passive is
-   held at any level evolves. One chest evolves at most one weapon. The
+   held at any level evolves. A base weapon with no recipe never evolves: at
+   `MAX_WEAPON_LEVEL` a chest passes it over, and it is neither evolved nor
+   leveled. One chest evolves at most one weapon. The
    evolved weapon replaces its base in the same slot with a single level, its
    cooldown timer is set to `0` so it fires on the first `playing` tick it is
    held, the passive stays held, and the `evolve` cue plays. The result is
@@ -50,8 +52,10 @@ that applies:
 
 ## What an evolution is
 
-An evolved weapon has a single level and no level table: its figures are one
-fixed row, named below, and it is never leveled further. It is never a
+Six of the ten base weapons have an evolved form; Spark, Shard, Sconce, and
+Flare have none and top out at `MAX_WEAPON_LEVEL`. An evolved weapon has a
+single level and no level table: its figures are one fixed row, named below,
+and it is never leveled further. It is never a
 level-up offer, and it is never the item a chest levels. The base weapon it
 replaced is gone from the loadout, and while the evolved weapon is held that
 base weapon is not a level-up candidate either. On the HUD the slot shows the
@@ -153,9 +157,11 @@ its first tick and on every tick its cooldown timer is due; each pulse deals
 `damage` to every enemy whose circle overlaps the aura, and amount is ignored.
 Corona keeps the `hum` loop that Halo carried, as `specs/ui.md` states.
 
-Each enemy a pulse kills heals the player `CORONA_HEAL` (`1`) health on that
-tick, capped at `maxHp`. The fixed row is `CORONA_STATS`, where the cooldown is
-the pulse interval.
+Each enemy a pulse kills, one whose `hp` the pulse's own hit takes from above
+`0` to `0` or below, heals the player `CORONA_HEAL` (`1`) health on that tick,
+capped at `maxHp`; an enemy another shape of the same tick already took to
+`0` or below heals nothing. The fixed row is `CORONA_STATS`, where the cooldown
+is the pulse interval.
 
 | Damage | Cooldown | Radius |
 | --- | --- | --- |
