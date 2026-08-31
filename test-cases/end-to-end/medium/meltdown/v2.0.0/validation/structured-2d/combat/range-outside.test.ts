@@ -1,111 +1,79 @@
-// combat/range-outside — a unit outside the radius is not targeted.
+// Meltdown — combat/range-outside: a unit past the radius is not targeted.
 //
-// specs/combat.md, Range: a unit is in range at a distance of AT MOST
-// `range * TILE` from the footprint's centre, and "a unit one logical unit
-// further out is not in range". This is the far half of the bracket
-// `range-inside` opens: one logical unit past the Arc's `6.0 * 19` is outside,
-// so the tower must take no target and its shots must never reach the unit.
+// specs/combat.md closes the range rule with the other side of the boundary: "A
+// unit one logical unit further out is not in range." specs/towers.md gives the
+// Arc `6.0` tiles and specs/floor.md gives `TILE` `19`, so `114` units is in and
+// `115` is out, and this point poses the mark at `115`.
 //
-// The reading is taken over three of the Arc's intervals rather than one frame,
-// because a build whose radius is a hair too generous would fire — and the hp of
-// a unit that took no damage over three intervals says so with no room for
-// argument, where a single frame's `targeting` could be read as an acquisition
-// that had not happened yet.
+// ONE UNIT OUT RATHER THAN A COMFORTABLE MILE, BECAUSE THAT IS THE FIGURE THE
+// SPECIFICATION FIXES. A mark parked far away would pass on a build whose radius
+// is half the floor. Posed one unit past the edge, the point fails any build that
+// rounds the radius up to a whole tile, adds a fudge to it, measures in squared
+// units against an unsquared bound, or reads the comparison the wrong way round.
+// `combat/range-inside` holds the inclusive side, so the pair pins the radius to a
+// single logical unit.
 //
-// The unit is the only one on the floor and the tower is pinned, so nothing but
-// the distance decides the outcome.
+// TWO READINGS OF THE SAME REFUSAL, both in the same direction: the emitter
+// reports no target, and the mark's hp is untouched after a full second — two fire
+// intervals at the Arc's `2.0` a second. The second is what catches a build that
+// reports `targeting` null while shooting anyway.
+//
+// DUE EAST, so the distance is one exact subtraction; and the mark's motion is off,
+// so it cannot drift into range while the second is spent.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, TOWER_DEFS, type EmitterDef } from "../../src/constants";
-import { assertEqual, assertNull, assertTruthy } from "../assert";
+import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,
   createHarness,
-  footprintCenter,
-  posePinnedTower,
-  poseTargetAt,
-  startRun,
   ticksFor,
-  towerById,
-  unitById,
   type Harness,
-  type TowerSnapshot,
-  type UnitSnapshot,
 } from "../harness";
+import { poseGun, poseMarkEast, rangeUnitsOf, readGun, readHp } from "./duel";
 
-const ARC = TOWER_DEFS.arc as EmitterDef;
+/** The emitter read, and the heat it is pinned at. */
+const TOWER = "arc";
+const HEAT = 0;
 
-/**
- * A quiet footprint anchor: clear of the left corridor (rows 16..19) and of the
- * top one (columns 22..29) (specs/floor.md).
- */
-const SITE = { col: 4, row: 4 };
+/** specs/combat.md: one logical unit past `range * TILE` is not in range. */
+const RADIUS_UNITS = rangeUnitsOf(TOWER);
+const OUTSIDE_UNITS = RADIUS_UNITS + 1;
 
-/** The point range is measured from (specs/combat.md, Range). */
-const CENTRE = footprintCenter("arc", SITE.col, SITE.row);
+/** How long the refusal is held for, in seconds of game time. */
+const WATCH_SECONDS = 1;
 
-/** specs/towers.md: the Arc's level-I radius is 6.0 tiles. */
-const REACH = ARC.range * TILE;
-
-/** specs/combat.md: one logical unit beyond the radius is out of range. */
-const BEYOND = 1;
-
-/** The heat the tower is pinned at, so nothing in its thermal model moves. */
-const PINNED_HEAT = 0;
-
-/** Three of the Arc's intervals: three chances to fire, all of which must fail. */
-const WATCH_SECONDS = 3 / ARC.fireRate;
-
-/** More hp than three shots remove, so a hit would show as a subtraction. */
-const TARGET_HP = 10_000;
-
-let harness: Harness;
+let h: Harness;
 
 beforeEach(async () => {
-  harness = await createHarness();
+  h = await createHarness();
 });
 
 afterEach(() => {
-  harness?.dispose();
+  h?.dispose();
 });
 
-/** The tower as the snapshot reports it; a tower that has gone fails here. */
-function towerNow(id: number): TowerSnapshot {
-  const tower = towerById(harness.snapshot(), id);
-  assertTruthy(tower, `the tower ${id} still on the floor`);
-  return tower as TowerSnapshot;
-}
+it("A unit outside the radius is not", async () => {
+  const gunId = poseGun(h, TOWER, HEAT);
+  const mark = poseMarkEast(h, TOWER, "mote", OUTSIDE_UNITS);
+  const opened = readHp(h, mark);
 
-/** The unit as the snapshot reports it; a unit that has gone fails here. */
-function unitNow(id: number): UnitSnapshot {
-  const unit = unitById(harness.snapshot(), id);
-  assertTruthy(unit, `the unit ${id} still on the floor`);
-  return unit as UnitSnapshot;
-}
+  await h.advance(ticksFor(WATCH_SECONDS));
+  captureStill(h, "outside");
+  const gun = readGun(h, gunId);
 
-it("takes no target and lands no shot a unit past the radius", async () => {
-  startRun(harness);
-  const arc = posePinnedTower(harness, "arc", SITE.col, SITE.row, PINNED_HEAT);
-  const target = poseTargetAt(
-    harness,
-    "mote",
-    CENTRE.x + REACH + BEYOND,
-    CENTRE.y,
-    TARGET_HP,
-  );
-
-  await harness.advance(ticksFor(WATCH_SECONDS));
-  captureStill(harness, "outside");
-
-  const tower = towerNow(arc);
   assertNull(
-    tower.targeting,
-    `targeting a unit ${BEYOND} unit past ${ARC.range} tiles`,
+    gun.targeting,
+    `targeting with one mark ${OUTSIDE_UNITS} units from the footprint centre, ` +
+      `one unit past the ${TOWER}'s ${RADIUS_UNITS}`,
   );
-  assertEqual(tower.firing, false, "firing with nothing inside the radius");
   assertEqual(
-    unitNow(target).hp,
-    TARGET_HP,
-    `the unit's hp after ${WATCH_SECONDS}s a unit past the radius`,
+    gun.firing,
+    false,
+    `firing with nothing inside the ${TOWER}'s ${RADIUS_UNITS}`,
+  );
+  assertEqual(
+    opened - readHp(h, mark),
+    0,
+    `hp removed from a mark one unit past the radius over ${WATCH_SECONDS}s`,
   );
 });

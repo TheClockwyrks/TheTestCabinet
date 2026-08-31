@@ -1,94 +1,62 @@
-// combat/range-inside — a unit inside the radius is targeted.
+// Meltdown — combat/range-inside: a unit at the radius is targeted.
 //
-// specs/combat.md, Range: "a surge unit is in range when the distance from that
-// centre to the unit's centre is AT MOST `range * TILE` logical units". The
-// boundary is IN, so the unit this check poses stands at exactly that distance
-// from the footprint's centre — the last position the rule admits — and the
-// tower must report it as `targeting`.
+// specs/combat.md: "A surge unit is in range when the distance from that centre to
+// the unit's centre is AT MOST `range * TILE` logical units". The boundary is
+// inclusive, so a mark whose centre lies exactly `range * TILE` from the footprint
+// centre is a legal target and must be reported as one.
 //
-// Posing the extreme rather than a unit comfortably inside is what makes the
-// pair with `range-outside` decide the radius: one unit at `range * TILE` and
-// one a single logical unit further out bracket the figure to within a unit,
-// where two units either side of a rough guess would not.
+// EXACTLY AT THE BOUNDARY, BECAUSE THAT IS THE FIGURE THE SPECIFICATION FIXES. A
+// mark posed comfortably inside would pass on any build whose radius is within a
+// tile of the right one, so the reading is taken where the rule is sharp:
+// specs/towers.md gives the Arc `6.0` tiles and specs/floor.md gives `TILE` `19`,
+// so the mark stands `114` logical units due east of the footprint's centre. A
+// build that measures in whole tiles and rounds down, one that shortens the radius
+// by any amount at all, and one that reads the bound as exclusive each report no
+// target here. `combat/range-outside` takes the other side of the same figure.
 //
-// The unit is placed straight out along +x from the footprint's centre, so the
-// distance the rule speaks of is a subtraction and nothing about the placement
-// depends on a diagonal. It is the only unit on the floor, so which unit gets
-// picked is not in question here — `targets-the-unit-furthest-along` decides
-// that — and the tower is pinned so nothing in its thermal model moves.
+// DUE EAST, so the distance is one exact subtraction rather than a hypotenuse, and
+// the reading cannot turn on how a build accumulated a square root.
+//
+// ONE MARK ON AN EMPTY FLOOR. There is no second unit for the target rule to
+// prefer, so `targeting` names this mark or it names nothing, and what is graded is
+// the range rule alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, TOWER_DEFS, type EmitterDef } from "../../src/constants";
-import { assertEqual, assertTruthy } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  footprintCenter,
-  posePinnedTower,
-  poseTargetAt,
-  startRun,
-  towerById,
-  type Harness,
-  type TowerSnapshot,
-} from "../harness";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { poseGun, poseMarkEast, rangeUnitsOf, readGun } from "./duel";
 
-const ARC = TOWER_DEFS.arc as EmitterDef;
+/** The emitter read, and the heat it is pinned at. */
+const TOWER = "arc";
+const HEAT = 0;
 
-/**
- * A quiet footprint anchor: clear of the left corridor (rows 16..19) and of the
- * top one (columns 22..29) (specs/floor.md), and far enough from the right wall
- * that a unit a full radius out still stands on the floor.
- */
-const SITE = { col: 4, row: 4 };
+/** specs/towers.md and specs/floor.md: 6.0 tiles of 19 units, so 114. */
+const RADIUS_UNITS = rangeUnitsOf(TOWER);
 
-/** The point range is measured from (specs/combat.md, Range). */
-const CENTRE = footprintCenter("arc", SITE.col, SITE.row);
-
-/** specs/towers.md: the Arc's level-I radius is 6.0 tiles. */
-const REACH = ARC.range * TILE;
-
-/** The heat the tower is pinned at, so nothing in its thermal model moves. */
-const PINNED_HEAT = 0;
-
-/** More hp than a shot removes, so the unit cannot leave before it is read. */
-const TARGET_HP = 10_000;
-
-let harness: Harness;
+let h: Harness;
 
 beforeEach(async () => {
-  harness = await createHarness();
+  h = await createHarness();
 });
 
 afterEach(() => {
-  harness?.dispose();
+  h?.dispose();
 });
 
-/** The tower as the snapshot reports it; a tower that has gone fails here. */
-function towerNow(id: number): TowerSnapshot {
-  const tower = towerById(harness.snapshot(), id);
-  assertTruthy(tower, `the tower ${id} still on the floor`);
-  return tower as TowerSnapshot;
-}
-
-it("targets a unit standing exactly a radius from the footprint centre", async () => {
-  startRun(harness);
-  const arc = posePinnedTower(harness, "arc", SITE.col, SITE.row, PINNED_HEAT);
-  const target = poseTargetAt(
-    harness,
-    "mote",
-    CENTRE.x + REACH,
-    CENTRE.y,
-    TARGET_HP,
-  );
+it("A unit inside the radius is targeted", async () => {
+  const gunId = poseGun(h, TOWER, HEAT);
+  const mark = poseMarkEast(h, TOWER, "mote", RADIUS_UNITS);
 
   // One frame, which is what acquires a target: the tower reports `targeting`
-  // for the frame it ran, not for the moment the unit was posed.
-  await harness.advance(1);
-  captureStill(harness, "inside");
+  // for the frame it ran, not for the moment the mark was posed.
+  await h.advance(1);
+  captureStill(h, "inside");
+  const gun = readGun(h, gunId);
 
   assertEqual(
-    towerNow(arc).targeting,
-    target,
-    `the unit at ${REACH} units, exactly ${ARC.range} tiles from the centre`,
+    gun.targeting,
+    mark,
+    `the unit targeted with one mark ${RADIUS_UNITS} units from the footprint ` +
+      `centre, exactly the ${TOWER}'s radius`,
   );
 });
