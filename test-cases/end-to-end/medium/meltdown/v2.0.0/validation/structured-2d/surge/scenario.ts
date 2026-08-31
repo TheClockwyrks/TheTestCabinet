@@ -3,7 +3,7 @@
 //
 // `specs/surge.md` gives each type a row of figures and `specs/waves.md` gives
 // the progression that releases them, and between them the items in this group
-// need exactly four arrangements:
+// need exactly five arrangements:
 //
 //   - A UNIT STANDING STILL, so the figures it carries at the moment it enters —
 //     its maximum hp, its base speed, whether it flies — are read off the frame it
@@ -16,6 +16,12 @@
 //     tile its centre occupies is an opening tile of its assigned exhaust
 //     (`specs/mazing.md`), so a leaker is stood one tile short of that opening and
 //     walks the last tile under its own power.
+//   - A SLOW ARRIVING, which is the sixth column of the roster table and no field
+//     at all: `specs/surge.md` says only whether a type is slowable, and
+//     `specs/combat.md` owns what applies one. So the column is read the way the
+//     game reaches it — a cold Rime fires on a mark of the type and the `slowed`
+//     flag is read off the mark afterwards, with the Rime's own damage tally
+//     standing as the precondition that the shot landed at all.
 //   - A WAVE BEING RELEASED, which is the world gate `setWaveSpawning` turned back
 //     on. Two ways in are needed and both are here: {@link poseWavePhase}, which
 //     poses the wave phase and hands the spawner a stated number of units to
@@ -43,12 +49,14 @@ import {
   startRun,
   ticksFor,
   tileCenter,
+  towerById,
   unitById,
   type DifficultyName,
   type Harness,
   type MeltdownSnapshot,
   type ModeName,
   type Phase,
+  type TowerSnapshot,
   type UnitSnapshot,
   type VentName,
 } from "../harness";
@@ -214,6 +222,85 @@ export async function runUntilLeaked(h: Harness): Promise<boolean> {
     poll: 2,
   });
   return swept.hit;
+}
+
+/* -------------------------------------------------------------------------- */
+/* A slow arriving                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The hp a mark is given while a slow is read: a million, far past anything a
+ * window of a Rime's shots removes.
+ *
+ * Slowability is read off a unit that is still standing, so the mark must outlive
+ * the window whatever its row of `specs/surge.md` says: a Swarm carries `12` hp
+ * and a Rime's `4` a shot would take it off the floor long before the reading.
+ * The ceiling is posed rather than the damage suppressed because
+ * `specs/instrumentation.md` gives no gate for a shot's damage, and because what
+ * the reading is about — whether a slow touched the unit — is untouched by how
+ * much hp it has.
+ */
+export const SLOW_MARK_HP = 1e6;
+
+/**
+ * How long the Rime is left firing before the slow is read: two and a half
+ * seconds of game time.
+ *
+ * Geometry rather than a tolerance. A Rime at its specified `2.4` shots a second
+ * (`specs/combat.md`) lands its first inside half a second and another every
+ * `0.42`, and a slow lasts `SLOW_TIME` (`1.5`) seconds from the shot that applied
+ * it, so the window carries several shots and ends with one of them still live.
+ * A build whose fire rate is off by a factor of four still lands one.
+ */
+export const SLOW_TICKS = ticksFor(2.5);
+
+/**
+ * A `type` at {@link MARK} under a cold Rime's fire, and what the two of them read
+ * afterwards.
+ *
+ * The slowable column of `specs/surge.md`'s table, reached on the real path. The
+ * Rime is posed at heat `0`, which `specs/combat.md` makes the STRONGEST slow in
+ * the game — `slowFactor(0)` is the full `slowCeil` — so a build that applies any
+ * slow at all applies one here, and `setTowerThermal(id, false)` holds it there:
+ * the tower goes on acquiring and firing while its heat cannot climb, so the slow
+ * cannot fade as it heats and no trip can silence it mid-window
+ * (`specs/instrumentation.md`).
+ *
+ * Nothing about the slow's STRENGTH is read — that is `combat/`'s, which decides
+ * the ceiling, its fall with heat and its stacking. What is read back is the
+ * `slowed` flag, which is the specification's own word for the column.
+ *
+ * `struck` comes back with it so a point can state, as its precondition, that the
+ * Rime's shot actually landed: without it, "carried no slow" is the reading a
+ * silent tower gives exactly as readily as an immune unit does.
+ */
+export async function slowTouches(
+  h: Harness,
+  type: SurgeType,
+): Promise<{ slowed: boolean; struck: boolean }> {
+  startRun(h);
+  const rime = posePinnedTower(h, "rime", GUN.col, GUN.row, 0);
+  const mark = poseTarget(h, type, MARK.col, MARK.row, SLOW_MARK_HP);
+
+  await h.advance(SLOW_TICKS);
+
+  const settled = h.snapshot();
+  return {
+    slowed: unitOf(settled, mark).slowed,
+    struck: towerOf(settled, rime).damageDealt > 0,
+  };
+}
+
+/** The tower carrying `id`, or a failure saying the roster no longer holds it. */
+export function towerOf(snapshot: MeltdownSnapshot, id: number): TowerSnapshot {
+  const tower = towerById(snapshot, id);
+  if (tower === undefined) {
+    return fail(
+      `a tower with id ${id} on the floor (specs/instrumentation.md, Identity)`,
+      snapshot.towers.map((entry) => entry.id),
+    );
+  }
+  return tower;
 }
 
 /* -------------------------------------------------------------------------- */

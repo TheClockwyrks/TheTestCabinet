@@ -42,7 +42,7 @@
 // the wave number reads `60`. None of them is inside an exact comparison.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../../src/constants";
+import { SURGE_DEFS, hpScale } from "../../src/constants";
 import { assertCloseTo, assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
@@ -76,6 +76,19 @@ const DEEP_WAVE = 20;
  */
 const EXACT_DIGITS = 6;
 
+/**
+ * Decimal places the scaled hp is held to in the precondition: three, so the
+ * allowance is `0.0005`.
+ *
+ * Looser than the identities this point asserts, and deliberately: `40 * 12.78`
+ * is a product a build computes rather than a figure it was handed, so the
+ * reading carries whatever a build's own arithmetic leaves behind. Three places
+ * is far below the `471.2` the product is and far below any neighbouring wave's,
+ * which are `446.4` and `496.0`. What the exact figure is belongs to
+ * `surge/hp-scales-with-the-wave`; here it only has to have moved.
+ */
+const HP_DIGITS = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -106,12 +119,30 @@ it("leaves a wave-20 Mote's speed, bounty and leak at their wave-1 figures", asy
     DEEP_WAVE,
     "precondition: the run is on the wave this point reads",
   );
+  // The scaling this point is the negative of, standing as its precondition: if
+  // the hp did not move either, there is nothing for the other three columns to
+  // have been left out of, and a build that ignores the wave entirely would read
+  // three unscaled figures for the wrong reason.
+  assertCloseTo(
+    unit.maxHp,
+    ROW.hp * hpScale(DEEP_WAVE),
+    HP_DIGITS,
+    `precondition: a wave-${DEEP_WAVE} Mote's maximum hp, which specs/waves.md ` +
+      `does move off the base ${ROW.hp}`,
+  );
   assertCloseTo(
     unit.baseSpeed,
     ROW.speed,
     EXACT_DIGITS,
     `a wave-${DEEP_WAVE} Mote's base speed, which specs/waves.md leaves at ` +
       `the ${ROW.speed} specs/surge.md states`,
+  );
+  assertCloseTo(
+    unit.speed,
+    ROW.speed,
+    EXACT_DIGITS,
+    `a wave-${DEEP_WAVE} Mote's current speed, carrying no slow, which ` +
+      `specs/waves.md leaves at the ${ROW.speed} specs/surge.md states`,
   );
 
   // ---- What killing one deep into a run pays -------------------------------

@@ -25,13 +25,19 @@
 // The floor holds one gun and one mark, or one leaker and nothing at all, so the
 // only event that can move the money or the lives is the one this point drove.
 //
-// WHAT THIS DOES NOT DECIDE. Slowability, the sixth column of the row, is not
-// readable as a field: the snapshot reports a unit's LIVE slow, not whether one
-// could be applied to it, and `specs/combat.md` — not `specs/surge.md` — owns the
-// rule that decides it. `combat/rime-slows-when-cold` and
-// `combat/core-is-immune-to-slowing` decide that column on the real path, a Rime's
-// shot. Per-wave scaling of the hp belongs to `surge/hp-scales-with-the-wave`,
-// which is why this reading is taken on wave 1, where `hpScale` is exactly `1`.
+// AND THE SIXTH COLUMN IS DRIVEN TOO. Slowability is not readable as a field —
+// the snapshot reports a unit's LIVE slow, not whether one could ever be applied
+// to it — so it is reached the way the game reaches it, a cold Rime firing on a
+// mark of this type, and read off the `slowed` flag afterwards. It belongs here
+// rather than to `combat/` alone because the column is this type's row: `combat/`
+// decides what a slow IS — its ceiling, its fall with heat, how two of them
+// resolve — on the one or two types it needs to say that, and every row of the
+// table needs its own answer to whether a slow touches it at all.
+//
+// WHAT THIS DOES NOT DECIDE. How STRONG the slow is, which is `specs/combat.md`'s
+// and `combat/rime-slow-ceiling-scales`'s. Per-wave scaling of the hp belongs to
+// `surge/hp-scales-with-the-wave`, which is why this reading is taken on wave 1,
+// where `hpScale` is exactly `1`.
 //
 // WHAT EVERY WRONG MODEL READS. A build that gave every type one hp pool reads
 // the same number here as it does for the Hulk; one that scaled the Mote for a
@@ -56,6 +62,7 @@ import {
   poseStill,
   runUntilGone,
   runUntilLeaked,
+  slowTouches,
   unitOf,
 } from "./scenario";
 
@@ -84,7 +91,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("carries the Mote's hp, speed, flight, bounty and leak", async () => {
+it("carries the Mote's hp, speed, slowability, flight, bounty and leak", async () => {
   // ---- The figures the unit itself reports ---------------------------------
   startRun(h);
   const id = poseStill(h, "mote");
@@ -145,5 +152,18 @@ it("carries the Mote's hp, speed, flight, bounty and leak", async () => {
     livesBefore - livesAfter,
     ROW.leak,
     "the lives a leaked Mote cost (specs/surge.md)",
+  );
+
+  // ---- Whether a slow touches one ------------------------------------------
+  const slow = await slowTouches(h, "mote");
+
+  assertTrue(
+    slow.struck,
+    "precondition: the cold Rime's shot landed on the Mote",
+  );
+  assertEqual(
+    slow.slowed,
+    ROW.slowable,
+    "whether the Mote carried the slow a cold Rime applied (specs/surge.md, specs/combat.md)",
   );
 });
