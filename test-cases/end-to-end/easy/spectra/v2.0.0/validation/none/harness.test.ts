@@ -315,22 +315,24 @@ it("shootDrone drives a real shot to its real outcome", async () => {
   );
 });
 
-it("poseBystander keeps a posed wave from clearing under a kill", async () => {
-  // Without one: destroying the only drone clears the stage, and a standard
-  // stage pays its bonus. This is the game's rule, and the reason the helper
-  // exists.
+it("poseBystander keeps a posed wave running under a kill", async () => {
+  // The wave carries on across a kill because a drone is still standing, which
+  // is what makes the helper right under either reading of "the last drone of
+  // its wave" (see poseBystander). Nothing here asserts which reading the build
+  // took: that is `stages/clears-on-last-drone`'s, over the game's own wave.
   await startPosed(h);
-  const alone = await poseDrone(h, "shard", 400, 300, { band: "cyan" });
-  const cleared = await shootDrone(h, alone, "cyan", { below: 120 });
-  assertEqual(cleared.snapshot.screen, "stageCleared", "the stage cleared");
+  const bystander = await poseBystander(h);
+  const target = await poseDrone(h, "shard", 400, 300, { band: "cyan" });
+  const kept = await shootDrone(h, target, "cyan", { below: 120 });
 
-  // With one, the wave carries on.
-  await startPosed(h);
-  await poseBystander(h);
-  const watched = await poseDrone(h, "shard", 400, 300, { band: "cyan" });
-  const kept = await shootDrone(h, watched, "cyan", { below: 120 });
+  assertEqual(
+    droneById(kept.snapshot, target),
+    undefined,
+    "the drone the shot destroyed",
+  );
   assertEqual(kept.snapshot.screen, "inWave", "the wave still running");
   assertLength(kept.snapshot.drones, 1, "the bystander alone");
+  assertEqual(kept.snapshot.drones[0].id, bystander, "and it is the bystander");
 });
 
 it("fireAtShip drives an enemy bullet into the ship", async () => {

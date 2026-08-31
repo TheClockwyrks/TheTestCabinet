@@ -2990,12 +2990,17 @@ export function distance(
  * requirement concerns.
  *
  * ONE CONSEQUENCE EVERY CHECK THAT DESTROYS A DRONE HAS TO KNOW. `specs/stages.md`
- * clears a stage on the moment the LAST drone of its wave is destroyed, so a
- * scenario that poses one drone and destroys it clears the stage in that frame:
+ * clears a stage in the moment the LAST drone of its wave is destroyed, and it
+ * leaves a build free to read "its wave" either way: as the drones the stage
+ * itself built, or as the drones on the field. Under the second reading a
+ * scenario that poses one drone and destroys it clears the stage in that frame —
  * the screen leaves `inWave`, the field stops resolving contacts, and a standard
  * stage pays `SCORE_STAGE_CLEAR` into the score a scoring check was about to
- * read. A check whose scenario destroys a drone and then needs play to carry on
- * poses {@link poseBystander} first.
+ * read. So a check whose scenario destroys a drone and then needs play to carry
+ * on poses {@link poseBystander} first, which is right under either reading, and
+ * it does not assert the screen either way. The one item that grades the rule
+ * itself, `stages/clears-on-last-drone`, opens the game's OWN wave with
+ * {@link startStage}, where the two readings agree.
  */
 export async function startPosed(
   h: Harness,
@@ -3161,13 +3166,14 @@ export const BYSTANDER_AT = { x: FIELD_LEFT + 40, y: FIELD_TOP + 40 } as const;
 /**
  * Pose one inert Shard out of the way, so the wave still holds a drone.
  *
- * WHAT IT IS FOR. A stage clears on the moment the last drone of its wave is
- * destroyed (`specs/stages.md`), so a scenario that poses one drone and destroys
- * it ends the live wave in that frame — and on a standard stage pays
- * `SCORE_STAGE_CLEAR` into the score. That is the correct behaviour of the game
- * and the thing `stages/clears-on-last-drone` grades; it is simply not what a
- * check about a shot, a score, a burst or the meter is asking about. A bystander
- * keeps the wave alive so the scenario under test runs to its end.
+ * WHAT IT IS FOR. A stage clears in the moment the last drone of its wave is
+ * destroyed (`specs/stages.md`). A build that reads "its wave" as the drones on
+ * the field therefore ends the live wave the moment a scenario destroys the only
+ * drone it posed — and on a standard stage pays `SCORE_STAGE_CLEAR` into the
+ * score a scoring check was about to read. That is conformant behaviour, and it
+ * is simply not what a check about a shot, a score, a burst or the meter is
+ * asking about. A bystander leaves a drone standing, so the wave carries on
+ * whichever reading the build took and the scenario under test runs to its end.
  *
  * It is a prop like any other {@link poseDrone}: every faculty off, so it holds
  * its corner and takes no part. A check that poses one accounts for it when it
