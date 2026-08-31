@@ -1,20 +1,96 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// Shatter — saucer/wraps-top-and-bottom: a saucer driven off the top edge comes
+// back at the bottom.
 //
-// saucer/wraps-top-and-bottom — A saucer wraps vertically
+// THE RULE. `specs/saucer.md`: the saucer "wraps at the top and bottom edges like
+// any body", and `specs/field.md` fixes what that means for every body — "`y`
+// modulo `FIELD_H`", with "a body leaving the bottom re-entering at the top, and
+// the reverse", carrying its velocity across unchanged. So a saucer posed near the
+// top, driven upward for a whole second, must be found the same distance BELOW the
+// bottom edge that a build without the wrap would have found it above the top one.
 //
-// With its mind off and a vertical velocity posed, a saucer driven off the top
-// edge re-enters at the bottom.
+// THE READING IS THE POSITION THE WRAP PREDICTS, not merely "it is somewhere near
+// the bottom". A build that clamps at the edge reads `0` against an expected `660`;
+// a build that removes a saucer for leaving the field has no saucer to read at all,
+// which `specs/field.md` forbids in as many words ("nothing is ever removed for
+// leaving it"); and a build that reflects reads `60`. Each of the three is a
+// different number, so a failure names which of them the build implemented.
 //
-// Declared by test-case.toml as validation.script "saucer/wraps-top-and-
-// bottom.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the none harness in validation/none/harness.ts and the spec-
-// derived oracle in validation/none/geometry.ts — never against a reference
-// build.
+// ITS MIND IS OFF, WHICH IS WHAT MAKES THE PREDICTION POSSIBLE. With the weave
+// running, the vertical velocity this check poses would be replaced a second in and
+// the arithmetic would be the build's rather than the specification's. The gun is
+// off for the usual reason. Its travel is on, because the travel is the requirement.
 //
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// WHERE IT IS FLOWN. Down the column `x = 200`, `440` units from the star and with
+// no horizontal velocity at all, so the crossing stays in its own column and the
+// core — which `specs/saucer.md` has the saucer steer clear of, through the mind
+// this check has switched off — is never anywhere near it.
+//
+// WHY TWO UNITS. A tick of this drift is `0.75` units, so a build that closes its
+// wrap a tick either side of where this one counts it is inside the bound and every
+// wrong model above is outside it by hundreds.
 
-throw new Error(
-  "Shatter v3.0.0: validation/none/saucer/wraps-top-and-bottom.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertLessThanOrEqual } from "../assert";
+import { FIELD_H, SAUCER_WEAVE_SPEED } from "../constants";
+import { shortestAxis, wrapY } from "../geometry";
+import {
+  captureStill,
+  createHarness,
+  poseSaucer,
+  requireSaucer,
+  startPlaying,
+  ticksFor,
+  type Harness,
+} from "../harness";
+
+/** Where the drift begins: near the top edge, in a column far from the star. */
+const START = { x: 200, y: 30 };
+
+/**
+ * The velocity it is driven off the top at: `90` units per second, upward.
+ *
+ * The one vertical figure `specs/saucer.md` puts on the saucer, borrowed as a
+ * plausible pose rather than asserted: `setSaucerVelocity` takes any velocity, and
+ * what this check needs from it is only that a second of it carries the craft past
+ * an edge.
+ */
+const DRIFT = -SAUCER_WEAVE_SPEED;
+
+/** The second of game time the drift is run for. */
+const DRIFT_TICKS = ticksFor(1);
+
+/** Where `specs/field.md`'s wrap puts it: `wrapY(30 - 90)` = `660`. */
+const EXPECTED_Y = wrapY(START.y + DRIFT);
+
+/** Two units, which is under three ticks of this drift. See the header. */
+const WRAP_TOLERANCE = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("re-enters at the bottom edge when it is driven off the top", async () => {
+  await startPlaying(h);
+  await poseSaucer(h, START.x, START.y, {
+    vx: 0,
+    vy: DRIFT,
+    mind: false,
+    gun: false,
+  });
+
+  await h.advance(DRIFT_TICKS);
+  const wrapped = requireSaucer(await h.snapshot(), "wraps-top-and-bottom");
+  await captureStill(h, "wrap");
+
+  assertLessThanOrEqual(
+    Math.abs(shortestAxis(wrapped.y, EXPECTED_Y, FIELD_H)),
+    WRAP_TOLERANCE,
+    `how far the saucer stood from ${EXPECTED_Y}, the row specs/field.md's wrap puts it on`,
+  );
+});
