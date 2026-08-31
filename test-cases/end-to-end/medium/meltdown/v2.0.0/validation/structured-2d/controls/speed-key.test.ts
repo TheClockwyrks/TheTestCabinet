@@ -1,18 +1,41 @@
-// Meltdown — controls/speed-key: f toggles the game speed.
+// Meltdown — controls/speed-key: F toggles the game speed.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// THE RULE. `speed` "toggles the game speed between `1` and `2`"
+// (specs/controls.md, The actions), bound to `KeyF` (The bindings), and
+// specs/waves.md, Pause and speed states the same pair: "The game-speed toggle
+// sets `speed` to `1` or `2`".
 //
-// What it must decide:
+// BOTH DIRECTIONS, BECAUSE A TOGGLE IS TWO OF THEM. A build whose F only ever
+// raises the speed is a different fault from one whose F does nothing, and the
+// item is the toggle rather than either half — so the second press is read as
+// well as the first, and each names which press it was.
 //
-//   KeyF moves speed between 1 and 2 and back.
+// WHAT IS NOT DECIDED HERE. That the game actually runs twice as fast at `2` is
+// `waves.speed-doubles-the-game-time`'s requirement, measured on the build's own
+// clock. This item reads the setting the control sets.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, startRun, type Harness } from "../harness";
 
-it("F toggles the game speed", () => {
-  throw new Error(
-    "Meltdown: validation/controls/speed-key.test.ts is not implemented yet",
-  );
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("moves the speed to 2 and back to 1", async () => {
+  startRun(h);
+  assertEqual(h.snapshot().speed, 1, "the speed the run opens at");
+
+  await h.tap("KeyF");
+  captureStill(h, "speed");
+  assertEqual(h.snapshot().speed, 2, "the speed after the first F");
+
+  await h.tap("KeyF");
+  assertEqual(h.snapshot().speed, 1, "the speed after the second F");
 });
