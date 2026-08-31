@@ -1,19 +1,81 @@
-// Meltdown — building/arming-holds-a-preview: arming holds a preview.
+// building/arming-holds-a-preview — arming a type holds a preview, and
+// disarming clears it.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// specs/building.md, Arming a type: "Arming a type holds a build preview. A held
+// preview carries four things: the type held, the footprint's top-left tile, the
+// rotation it is held at, and whether that footprint could be placed right now.
+// Disarming clears the preview entirely."
 //
-// What it must decide:
-//
-//   setArmed("arc") reports build carrying that type, a footprint, a rotation
-//   and a validity, and setArmed(null) clears it.
+// What is decided here is the SHAPE of what arming holds, and nothing about
+// where it sits: the specification fixes the footprint's position relative to the
+// POINTER, which `building/preview-follows-the-pointer` decides, so this check
+// requires only that the footprint reported is a real footprint — a whole-number
+// top-left with every tile of the held type's block on the grid — that the
+// rotation is one of the four steps, and that the validity is a boolean. A build
+// that reports its own idea of a starting footprint is conformant, and passes.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { COLS, ROWS } from "../../src/constants";
+import {
+  assertBetween,
+  assertContains,
+  assertEqual,
+  assertHasProperty,
+  assertNull,
+  assertTrue,
+} from "../assert";
+import {
+  captureStill,
+  createHarness,
+  sizeOf,
+  startRun,
+  type Harness,
+} from "../harness";
+import { heldPreview } from "./preview";
 
-it("Arming holds a preview", () => {
-  throw new Error(
-    "Meltdown: validation/building/arming-holds-a-preview.test.ts is not implemented yet",
-  );
+/** The type armed. An Arc is 2x2 and costs 15, so a run opens able to afford it. */
+const HELD = "arc";
+
+/** The four rotation steps specs/towers.md fixes, and the only ones. */
+const ROTATIONS = [0, 1, 2, 3];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("holds a preview while a type is armed and clears it when disarmed", async () => {
+  startRun(h);
+
+  h.debug.setArmed(HELD);
+  const build = heldPreview(h);
+
+  // The frame that draws the held preview, kept as the item's evidence.
+  await h.advance(1);
+  captureStill(h, "armed");
+
+  assertHasProperty(build, "type", "the held preview's members");
+  assertHasProperty(build, "col", "the held preview's members");
+  assertHasProperty(build, "row", "the held preview's members");
+  assertHasProperty(build, "rotation", "the held preview's members");
+  assertHasProperty(build, "valid", "the held preview's members");
+
+  assertEqual(build.type, HELD, "the type held");
+
+  const size = sizeOf(HELD);
+  assertTrue(Number.isInteger(build.col), "the footprint's top-left column");
+  assertTrue(Number.isInteger(build.row), "the footprint's top-left row");
+  assertBetween(build.col, 0, COLS - size, "the footprint's top-left column");
+  assertBetween(build.row, 0, ROWS - size, "the footprint's top-left row");
+
+  assertContains(ROTATIONS, build.rotation, "the rotation it is held at");
+  assertContains([true, false], build.valid, "whether it could be placed");
+
+  h.debug.setArmed(null);
+  assertNull(h.snapshot().build, "the preview after disarming");
 });

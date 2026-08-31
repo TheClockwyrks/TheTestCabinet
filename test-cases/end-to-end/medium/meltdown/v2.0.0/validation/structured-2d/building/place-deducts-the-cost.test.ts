@@ -1,18 +1,59 @@
-// Meltdown — building/place-deducts-the-cost: placing costs its price.
+// building/place-deducts-the-cost — a placement costs exactly the type's build
+// cost.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// specs/building.md, Placing: on the frame the preview is committed, "the money
+// falls by exactly the type's build cost, and by nothing else".
 //
-// What it must decide:
+// A Flak is placed rather than an Arc because 60 is the figure specs/towers.md
+// gives it and nothing else in this reading is 60: a build charging the upgrade
+// price, a refund-adjusted price, or a flat price reads a different balance, and
+// the failure names the balance it left.
 //
-//   Money falls by exactly the tower's cost and by nothing else.
+// The purse is posed at a round figure so the arithmetic in a failure is legible,
+// and the balance is read on the frame the tower lands, before any frame runs.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TOWER_DEFS } from "../../src/constants";
+import { assertEqual, assertNotNull } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  placeAt,
+  startRun,
+  type Harness,
+} from "../harness";
 
-it("Placing costs its price", () => {
-  throw new Error(
-    "Meltdown: validation/building/place-deducts-the-cost.test.ts is not implemented yet",
-  );
+/** The type placed and the cost specs/towers.md gives it. */
+const HELD = "flak";
+const COST = TOWER_DEFS[HELD].cost;
+
+/** The purse the placement is paid out of. */
+const PURSE = 500;
+
+/** Open floor clear of the four openings. */
+const COL = 10;
+const ROW = 8;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("takes exactly the build cost out of the money", async () => {
+  startRun(h);
+  h.debug.setMoney(PURSE);
+
+  const id = placeAt(h, HELD, COL, ROW);
+  const after = h.snapshot().money;
+
+  await h.advance(1);
+  captureStill(h, "cost");
+
+  assertNotNull(id, "the tower a valid placement built");
+  assertEqual(after, PURSE - COST, `the balance after placing a ${HELD}`);
 });
