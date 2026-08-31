@@ -47,7 +47,7 @@
     "react-dom": "^19"
   },
   "devDependencies": {
-    "@napi-rs/canvas": "^0.1",
+    "@napi-rs/canvas": "^1",
     "@test-cabinet/simple-2d": "*",
     "@test-cabinet/structured-2d": "*",
     "@testing-library/dom": "^10",
