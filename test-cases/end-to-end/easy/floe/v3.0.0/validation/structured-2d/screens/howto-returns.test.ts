@@ -1,26 +1,68 @@
-// Floe — screens/howto-returns: SCAFFOLD STUB, NOT A VALIDATOR.
+// Floe — screens/howto-returns: the back action leaves the how-to screen for the
+// title.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `screens.howto-returns` review item, written
-// against the `structured-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// `specs/ui.md`, the `howto` row of the transitions table: "Confirm, back —
+// Returns to `title` with `menuIndex` at `0`." `specs/controls.md` binds back to
+// `Escape` and reads it as a press edge on every screen, and settles the one
+// ambiguity that key carries: "`Escape` drives both pause and back. On the
+// `playing` screen it pauses; on every other screen it goes back." The how-to
+// screen is every other screen, so one back action there must land on the title.
 //
-// The item this file decides, from test-case.toml:
+// THE SCREEN IS POSED, NOT NAVIGATED TO. `setScreen("howto")` puts the game on
+// the screen this point is about in one operation, so a build whose title menu
+// never reaches the how-to screen still has the way OUT of it graded here and
+// loses `screens.howto-opens` instead. A longer route through the title menu
+// would make one defect cost two points and would tell a reviewer less about
+// which of the two the build got wrong.
 //
-//   Back returns from the how-to screen
-//
-//   The back action on the how-to screen returns to title.
-//
-// Its declared media: image `title`.
+// THE BACK ACTION, AND ONLY IT. `specs/ui.md` gives the how-to screen two ways
+// out, confirm and back, and this point is the back one; there is no separate
+// `controls/back-escape`, because `Escape` is the only key `BINDINGS` gives
+// `back` and grading it twice would cap the same defect twice.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  resetTo,
+  tapAction,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/**
+ * One frame after the press, so the still shows the screen the back action
+ * returned to. Nothing is measured across it.
+ */
+const SETTLE_FRAMES = 1;
 
-it("screens/howto-returns has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("returns to the title when the back action is taken on the how-to screen", async () => {
+  resetTo(h);
+  h.debug.setScreen("howto");
+
+  assertEqual(
+    h.snapshot().screen,
+    "howto",
+    "the pose opened the how-to screen",
+  );
+
+  await tapAction(h, "back");
+  await h.advance(SETTLE_FRAMES);
+  captureStill(h, "title");
+
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "the back action on the how-to screen returns to the title (specs/ui.md)",
+  );
 });
