@@ -13,9 +13,9 @@ are in `specs/enemies.md`.
 
 Each held weapon carries its own cooldown timer, a timer as `specs/world.md`
 defines one, independent of every other weapon's. On acquisition the timer is
-`0`, so a weapon fires on the first `playing` tick it is held; Lantern, Halo,
-Oil Splash, Pin, Shard, and Flare need no target and fire the same way, Halo
-by pulsing. After firing, the timer is set to the weapon's current cooldown,
+`0`, so a weapon fires on the first `playing` tick it is held; Taper, Lantern,
+Halo, Oil Splash, Pin, Shard, and Flare need no target and fire the same way,
+Halo by pulsing. After firing, the timer is set to the weapon's current cooldown,
 and the weapon fires again on the tick the timer is due. The current cooldown
 is the table cooldown times `cooldownMul`, floored at `MIN_COOLDOWN` (`0.2`).
 Lantern sets its timer differently, as its section states. The timers count
@@ -112,8 +112,9 @@ produces. Halo and Flare ignore amount.
 Each column of a level table passes through the derived stats of
 `specs/passives.md` as follows, read on the tick the weapon fires. A shape's
 lengths and its damage are fixed when it is created, with one exception: the
-Halo aura's radius and damage are recomputed on every tick from the level,
-`areaMul`, and `damageMul` in force on that tick.
+aura's radius and damage, and each Chandelier lantern's orbit, radius, and
+damage, are recomputed on every tick from the level, `areaMul`, and
+`damageMul` in force on that tick.
 
 | Column | Used as |
 | --- | --- |

@@ -366,10 +366,12 @@ Every length in this specification is in units, every rate is per second, and
 every duration is in seconds. The simulation advances on a fixed tick of
 `TICK_HZ` (`60`) ticks per second, each `TICK_DT` (`1/60`) seconds long: each
 frame's delta time accumulates, whole ticks are consumed from the accumulation,
-and a remainder shorter than a tick waits for the next frame. Only the
-`playing` screen ticks; the level-up and chest overlays and every other screen
-tick nothing. The run clock is `time = tick / TICK_HZ`, starting at `0` when a
-run starts, and dawn arrives on the tick `time` reaches `DAWN_TIME`.
+and a remainder shorter than a tick waits for the next frame while the screen
+stays `playing`. Only the `playing` screen ticks; the level-up and chest
+overlays and every other screen tick nothing, and `specs/instrumentation.md`
+states what becomes of the remainder when the screen leaves `playing`. The run
+clock is `time = tick / TICK_HZ`, starting at `0` when a run starts, and dawn
+arrives on the tick `time` reaches `DAWN_TIME`.
 
 The game holds one seeded pseudo-random generator, and every random choice
 this specification names draws from it. `specs/instrumentation.md` states how

@@ -164,14 +164,10 @@ catching up for the ticks it missed.
 | `setWeaponFire(on)` | `weaponFire` | Cooldown timers count down and due weapons fire or pulse. | Every cooldown timer holds where it stands and nothing fires or pulses. |
 | `setEffectMotion(on)` | `effectMotion` | Projectiles integrate, lanterns revolve, shards bounce, and sconces decelerate. | Every projectile holds its position and velocity, and every lantern holds its angle. `ttl` and every re-hit entry still count, and hits still resolve. |
 
-Placement is gated by neither `weaponFire` nor `effectMotion`. On every
-`playing` tick, whatever the two hold, phase 5 of `specs/world.md` places the
-permanent shapes: the aura's center and each lantern's center about the
-lamplighter's position of this tick, the aura's radius and each Chandelier
-lantern's orbit and radius recomputed from the level and `areaMul` in force,
-their damage recomputed the same way, an aura or lantern set created when its
-weapon is held and none exists, and one removed when its weapon is no longer
-held.
+Placement is gated by neither `weaponFire` nor `effectMotion`: on every
+`playing` tick, whatever the two hold, the placement part of phase 5 of
+`specs/world.md` runs, so an aura or a lantern set is created, removed,
+re-centered, and resized exactly as that phase states.
 
 ## The operations
 

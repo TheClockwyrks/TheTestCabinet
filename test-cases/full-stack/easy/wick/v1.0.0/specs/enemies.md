@@ -60,11 +60,10 @@ and each is used once per run. It spawns at full health, with `age` `0`,
 vector from its spawn point to the lamplighter's center, or the facing
 direction of `specs/weapons.md` when the two coincide, except for a swarm gnat,
 which takes the swarm's heading. `age` is
-the seconds since it spawned: every tick adds `TICK_DT` (`1 / 60`) to it. Each
-tick the enemy moves as its behavior states, then the weapons hit it, then
-its contact with the lamplighter is resolved as `specs/world.md` states. An
-enemy spawned on a tick sits at its spawn point for that tick and first moves
-on the next.
+the seconds since it spawned: every tick adds `TICK_DT` (`1 / 60`) to it. Where
+in a tick the enemy moves, is hit, and touches the lamplighter is the order
+`specs/world.md` fixes, and an enemy spawned on a tick sits at its spawn point
+for that tick and first moves on the next.
 
 A hit removes the weapon's damage from `hp`. On any tick that leaves `hp` at or
 below `0` the enemy dies on that tick: it is removed, the kill count rises by
@@ -82,8 +81,8 @@ position its circle is tested at are the same `(x, y)`.
 Each tick a chasing enemy recomputes its heading as the unit vector from its
 center to the lamplighter's center and advances one step along it. The heading
 is recomputed every tick, so a chaser turns with the lamplighter as it moves.
-An enemy whose center coincides with the lamplighter's stays where it is that
-tick.
+A chaser whose center coincides with the lamplighter's keeps its heading and
+stays where it is that tick.
 
 ### Drift
 
@@ -217,12 +216,11 @@ A window's row applies from its start until the next window starts; window
 ### The spawn timer
 
 `spawnTimer` is a timer as `specs/world.md` defines one. It is set to `0` when
-a run starts and to `0` on every tick whose window index differs from the
-previous tick's, the window of `tick − 1`, so a clock the debug surface poses
-changes the timer on no tick of its own. On every tick `spawning` is on, in
-this order:
+a run starts. On every tick `spawning` is on, in this order:
 
 ```
+if the window index differs from the previous tick's, the window of tick − 1:
+  spawnTimer = 0
 spawnTimer counts down
 if spawnTimer is due and aliveCommons < cap:
   spawn one enemy of a type chosen uniformly from the window's types,
@@ -232,9 +230,10 @@ if spawnTimer is due and aliveCommons < cap:
 
 `interval` and `cap` are the current window's. A spawn therefore lands on the
 first tick of a run, on the first tick of every window, and every `interval`
-seconds between. When the cap is full the timer rests at `0`, and the next
+seconds between, and a clock the debug surface poses changes the timer on no
+tick of its own. When the cap is full the timer rests at `0`, and the next
 spawn lands on the first tick that has room. While `spawning` is off the timer
-holds where it stands and no window spawn lands.
+holds where it stands, a window change included, and no window spawn lands.
 
 ### The cap
 
@@ -246,8 +245,9 @@ the timer's spawns alone; a scripted event spawns regardless of it.
 ### Scripted events
 
 `EVENTS` lists the night's scripted spawns in time order. Each fires once per
-run, on exactly the tick the run clock equals its time (`tick == time * 60`,
-read after the tick's clock has risen), and only while `events` is on; an
+run, on exactly the tick the run clock equals its time
+(`tick == time * TICK_HZ`, read after the tick's clock has risen), and only
+while `events` is on; an
 event whose tick passes while `events` is off, or which the debug surface's
 `setTick` skips over, never fires. `firedEvents` records the times that have
 fired.

@@ -239,10 +239,11 @@ a pose of the debug surface.
 `LOOPING_CUES` holds the two cues that loop until stopped rather than playing
 once.
 
-- `music` starts on the tick a fresh run starts and keeps playing through
-  `levelup`, `chest`, and `paused`. It stops on the tick the run ends, fallen
-  or at dawn, and when `back` on `paused` abandons the run. `title` and `howto`
-  carry no music.
+- `music` is looping on every frame exactly when `screen` is `playing`,
+  `levelup`, `chest`, or `paused`. It starts on the frame a fresh run starts
+  and keeps playing through the overlays and the pause, and it stops on the
+  frame the run ends, fallen or at dawn, or `back` on `paused` abandons it.
+  `title` and `howto` carry no music.
 - `hum` is looping on every frame exactly when `screen` is `playing` and a
   held weapon is `halo` or `corona`. It starts on the frame that first makes
   both true, whether Halo was just acquired or play just resumed from an
