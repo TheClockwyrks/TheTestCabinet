@@ -1,19 +1,89 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// detonation/scores-like-a-bullet-kill — a torpedo kill pays the rock's own figure.
 //
-// detonation/scores-like-a-bullet-kill — A torpedo kill scores the same as a gun kill
+// specs/scoring.md fixes what a destroyed Large pays and who pays it: `SCORE_LARGE`
+// (20), and "Each figure is paid once, on the destruction itself, WHATEVER
+// DESTROYED THE BODY." specs/collision.md says the same thing from the other side —
+// a torpedoed rock "splits and scores exactly as a gun kill of the same rock
+// would". So the score a torpedo kill raises is not a figure of its own: it is the
+// gun's figure, and this check reads it exactly.
 //
-// A torpedo into a Large raises the score by exactly SCORE_LARGE.
+// A LARGE RATHER THAN A SMALL, because a Large is where the two plausible wrong
+// models are furthest apart. A build that pays per HIT rather than per destruction
+// would have paid three times for a gun kill and once here; a build that invented
+// a torpedo bonus reads above 20; a build that pays the fragment sizes reads 100.
+// Every one of them lands on a different number from `SCORE_LARGE`.
 //
-// Declared by variants/warhead.toml as validation.script "detonation/scores-
-// like-a-bullet-kill.test.ts", so the manifest resolves only while this file
-// exists. The Validators stage of the v3.0.0 rework replaces it with the real
-// suite, written against the none harness in validation/none/harness.ts and
-// the spec-derived oracle in validation/none/geometry.ts — never against a
-// reference build.
-//
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// EXACT, with no tolerance: specs/scoring.md fixes a whole number, and
+// `startPlaying` opens the run at a score of `0`, so the reading IS the award. The
+// score is read on the tick of the detonation, before anything else on an
+// otherwise empty field could add to it.
 
-throw new Error(
-  "Shatter v3.0.0: validation/none/detonation/scores-like-a-bullet-kill.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertTrue } from "../assert";
+import { SCORE_LARGE } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  poseRock,
+  requireRock,
+  startPlaying,
+  ticksFor,
+  type Harness,
+} from "../harness";
+import {
+  QUIET_GROUND,
+  driveTorpedo,
+  inwardHeading,
+  launchAt,
+} from "./scenario";
+
+/** Ticks run after the reading, so the still shows the score standing on the HUD. */
+const AFTERMATH_TICKS = ticksFor(0.4);
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.dispose();
+});
+
+it("raises the score by exactly SCORE_LARGE when a torpedo takes a Large", async () => {
+  await startPlaying(harness);
+  const opening = await harness.snapshot();
+  assertEqual(
+    opening.score,
+    0,
+    "a run opening at a score of 0 (specs/scoring.md)",
+  );
+
+  const parentId = await poseRock(
+    harness,
+    "large",
+    QUIET_GROUND.x,
+    QUIET_GROUND.y,
+  );
+  const parent = requireRock(
+    await harness.snapshot(),
+    parentId,
+    "scores-like-a-bullet-kill",
+  );
+
+  const torpedo = await launchAt(harness, parent, inwardHeading(parent));
+  const run = await driveTorpedo(harness, torpedo);
+
+  await harness.advance(AFTERMATH_TICKS);
+  await captureStill(harness, "score");
+
+  assertTrue(
+    run.hit,
+    "the torpedo spent on the Large it was flown into (specs/collision.md)",
+  );
+  assertEqual(
+    run.at.score,
+    SCORE_LARGE,
+    "the figure a destroyed Large pays, whatever destroyed it (specs/scoring.md)",
+  );
+});
