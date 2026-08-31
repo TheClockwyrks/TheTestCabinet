@@ -5,36 +5,50 @@
 //
 // THE ARRIVAL IS THE GAME'S OWN, NOT A POSED ONE. `addSaucer(x, y)` brings a
 // saucer on as a POSE — a precondition a check arranges — and posing one is not
-// the game deciding a saucer has arrived. So the world gate this point is really
-// about is opened instead: `setSaucerSpawning(true)` leaves the game's own arrival
-// running, and the tick the build's own cadence puts a saucer in the slot is the
-// tick the cue must sound on.
+// the game deciding a saucer has arrived. So the game's own arrival is what runs:
+// `reset` leaves `saucerSpawning` on, this check leaves it on, and the tick the
+// build's own cadence puts a saucer in the slot is the tick the cue must sound on.
 //
-// THE CLOCK IS MARCHED, THE ARRIVAL IS WATCHED. `specs/saucer.md` puts the first
-// arrival of a game `SAUCER_FIRST_DELAY` (`18` seconds) of game time in, which is
-// two thousand ticks of nothing. Sixteen and a half seconds of them are marched in
-// one crossing — the same real ticks, with the bus read as a whole rather than tick
-// by tick, and asserted to have raised no `saucer` cue and put up no saucer — and
-// the three seconds around the arrival are then driven one tick at a time, so the
-// cue can be attributed to the tick that produced it.
+// THE GAME IS REALLY OPENED FIRST. `specs/saucer.md` times the first arrival
+// "`SAUCER_FIRST_DELAY` (`18` seconds) of game time after the game begins", so the
+// scenario begins a game the way a player does — `reset` to the title, then
+// `confirm` on `PLAY` — rather than posing the `playing` screen onto a title-screen
+// state. A build that arms its cadence when a game OPENS and one that carries it
+// from `reset` are then both measured from the moment the specification names,
+// which a posed screen would not do for the first of those two.
 //
-// THE FIELD IS EMPTY AND STAYS EMPTY. `startPlaying` shuts the wave loop, so
-// nothing spawns over the eighteen seconds and no rock can reach the star, the
-// ship, or a wave clear; the ship sits at rest at the safe point with its contact
-// gate shut. The saucer's own arrival is the only thing left that can happen, which
-// is what makes "nothing sounded before it" a reading rather than a hope.
+// THE FIELD IS THEN EMPTIED AND HELD EMPTY. The opening wave is taken off with
+// `clearRocks` — which destroys nothing and clears no wave (`specs/instrumentation.md`)
+// — the wave loop is shut so nothing replaces it, the banner is run out, and the
+// ship is put back at the safe point at rest with its contact gate shut. Nothing
+// can then reach the star, the ship, or a wave clear, and the saucer's own arrival
+// is the only thing left that can happen: that is what makes "nothing sounded
+// before it" a reading rather than a hope.
+//
+// THE CLOCK IS MARCHED, THE ARRIVAL IS WATCHED. Sixteen and a half seconds are
+// marched in one crossing — the same real ticks, with the bus read as a whole
+// rather than tick by tick, and asserted to have raised no `saucer` cue and put up
+// no saucer — and the three seconds around the arrival are then driven one tick at
+// a time, so the cue can be attributed to the tick that produced it.
 //
 // WHAT THIS DOES NOT DECIDE. When the saucer arrives, which is
 // `saucer/first-arrives-at-18s`'s; and where it enters, which is
 // `saucer/enters-at-an-edge`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, SAUCER_FIRST_DELAY } from "../../src/constants";
+import {
+  CUES,
+  FACE_UP,
+  SAFE_X,
+  SAFE_Y,
+  SAUCER_FIRST_DELAY,
+} from "../../src/constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,
+  clearWorld,
   createHarness,
-  startPlaying,
+  startRun,
   ticksFor,
   type Harness,
 } from "../harness";
@@ -83,10 +97,20 @@ afterEach(() => {
 });
 
 it("plays CUES.saucer on the tick a saucer joins the field, once, and not on the run-up", async () => {
-  startPlaying(h);
-  // The one faculty this point is about, back on. Everything else `startPlaying`
-  // shut stays shut.
-  h.debug.setSaucerSpawning(true);
+  // A game really begun, which is what specs/saucer.md times the first arrival
+  // from, and the one frame the menu's key costs.
+  await startRun(h);
+
+  // Everything the point is NOT about, taken off and held off. The saucer's own
+  // arrival — the one faculty this point is about — is left running, exactly as
+  // `reset` left it.
+  clearWorld(h);
+  h.debug.setWaveSpawning(false);
+  h.debug.setWaveBanner(0);
+  h.debug.setShipCollision(false);
+  h.debug.setShipPosition(SAFE_X, SAFE_Y);
+  h.debug.setShipVelocity(0, 0);
+  h.debug.setShipAngle(FACE_UP);
 
   const opening = markOf(h);
   await h.advance(MARCH_TICKS);
@@ -115,8 +139,8 @@ it("plays CUES.saucer on the tick a saucer joins the field, once, and not on the
     arrival.hit,
     true,
     `a saucer arrived inside the ${String(WATCH_TICKS)} ticks around ` +
-      `${String(SAUCER_FIRST_DELAY)}s, with the game's own arrival running ` +
-      "(specs/saucer.md)",
+      `${String(SAUCER_FIRST_DELAY)}s of a game that was really opened, with ` +
+      "the game's own arrival running (specs/saucer.md)",
   );
   assertEqual(
     playedBeforeEvent(arrival, CUES.saucer),
