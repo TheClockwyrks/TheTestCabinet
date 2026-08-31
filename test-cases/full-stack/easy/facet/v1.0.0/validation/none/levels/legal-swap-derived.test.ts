@@ -56,7 +56,7 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  swap,
+  requestSwap,
   type Harness,
 } from "../harness";
 
@@ -236,12 +236,14 @@ it("reports whether a legal swap stands on the board it is asked about", async (
   assertEqual(posed.legalSwap, true, "legalSwap on a board carrying swaps");
 
   // And what the flag calls legal, the game's own acceptance path takes: the
-  // exchange R1 and R3 accept is requested and opens a chain rather than being
-  // refused.
-  const accepted = await swap(h, ESCAPE_SWAP.a, ESCAPE_SWAP.b);
+  // exchange R1 and R3 accept is requested and is set in motion rather than
+  // refused. specs/rules.md puts an accepted swap into `swapping` at the request
+  // itself, its first chain step resolving SWAP_SECONDS later, so the request's
+  // own reading is what says the exchange was taken.
+  const accepted = await requestSwap(h, ESCAPE_SWAP.a, ESCAPE_SWAP.b);
   assertEqual(
     accepted.phase,
-    "resolving",
+    "swapping",
     "the phase after requesting the swap the flag reported",
   );
 

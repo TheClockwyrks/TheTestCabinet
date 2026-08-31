@@ -1,31 +1,39 @@
-// levels/level-advances — reaching the level target opens the next level on a
-// board dealt fresh for it.
+// levels/level-advances — reaching the level's target ends the level, and ends
+// it on the board it was won on.
 //
 // specs/rules.md: "When `phase` returns to `idle` and `levelScore` is at or past
-// the target, `level` rises by `1`, `levelScore` returns to `0`, and a fresh
-// opening board is dealt." Four things at one moment, and this check reads all
-// four off the settled state.
+// the target, the level is over: `screen` becomes `levelclear` with `menuIndex`
+// at `0`. The board stands as the chain left it, and `level`, `levelScore`,
+// `bestChain`, and `bestMove` hold what the level left them at, which is what
+// that screen reports." Five readings at one moment, and this check takes all
+// five off the settled state.
 //
 // THE MOMENT IS THE END OF A CHAIN, NOT THE SCORING. `levelScore` is posed at the
 // target BEFORE the swap, so it is already there while the chain runs; nothing
 // may happen until `phase` returns to `idle`, and what this check reads is the
-// state that return left behind. `specs/instrumentation.md` says as much of
+// state that return left behind. specs/instrumentation.md says as much of
 // `setLevelScore`: "a level score posed at or past the target advances the level
 // as the next chain settles."
 //
-// HOW A FRESHLY DEALT BOARD IS TOLD FROM THE ONE THE CHAIN LEFT. specs/rules.md
-// gives an opening board two properties — no run under R4, and at least one legal
-// swap — and says "Every gem on it is `plain` at strain `0`". The board a chain
-// leaves cannot be that: R7 raises the strain of every gem outside the clear set
-// that is orthogonally adjacent to it, those gems are by definition survivors, and
-// no later step clears them because the step that ends the chain seeds nothing at
-// all. So a settled board with no strain anywhere on it is a board that was dealt
-// again, and one carrying strain is the board the chain left standing.
+// WHAT REACHING THE TARGET DOES NOT DO. It does not raise `level` and it does not
+// deal a board. specs/rules.md gives both of those to `CONTINUE`, which is
+// `levels/continue-opens-next-level`'s point. So the level standing where it was
+// is as much the rule as the screen is, and a build that ran the whole level
+// transition on the settle fails here rather than passing on the screen alone.
 //
-// The three properties are read with this project's own predicates over the
-// notation the board came back in, not off the build's derived `legalSwap` — what
-// that field reports is `levels/legal-swap-derived`'s question, and this point
-// must not rest on the build's answer to it.
+// HOW THE BOARD THE CHAIN LEFT IS TOLD FROM A FRESH DEAL. specs/rules.md gives an
+// opening board two properties — no run under R4, and at least one legal swap —
+// and says "Every gem on it is `plain` at strain `0`". The board a chain leaves
+// cannot be that: R7 raises the strain of every gem outside the clear set that is
+// orthogonally adjacent to it, those gems are by definition survivors, and no
+// later step clears them because the step that ends the chain seeds nothing at
+// all. So a settled board with strain somewhere on it is the board the chain
+// left, and one with none anywhere was dealt again.
+//
+// That property is read with this project's own predicate over the notation the
+// board came back in, never off the build's derived `legalSwap` — what that field
+// reports is `levels/legal-swap-derived`'s question, and this point must not rest
+// on the build's answer to it.
 //
 // WHERE THE TARGET COMES FROM. Off the round, not out of `LEVEL_TARGET_STEP`.
 // specs/rules.md states the rule against "the target", and `levelTarget` is the
@@ -35,11 +43,15 @@
 // derives its target wrongly owes that point and not this one as well.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+  assertTrue,
+} from "../assert";
 import {
   allPlainAndClean,
   hasAnyRun,
-  legalSwapExists,
   quietRowsWithEscape,
   swapIsLegal,
   type CellRef,
@@ -50,7 +62,7 @@ import {
   createHarness,
   loadBoard,
   resolveChain,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -59,7 +71,9 @@ import {
  *
  * The scenario is planted in the middle of the board and clear of the bottom-left
  * corner the filler's spare legal swap sits in, so the chain it starts neither
- * takes that swap away nor depends on it.
+ * takes that swap away nor depends on it. The clear it makes is surrounded by
+ * filler gems, which is what puts R7 strain on the settled board and lets the
+ * reading below tell that board from a fresh deal.
  */
 const RUN_CELLS: readonly PlacedToken[] = [
   { col: 2, row: 4, token: "R0" },
@@ -83,7 +97,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("raises the level, zeroes the level score and deals a fresh board", async () => {
+it("opens the level-clear screen on the board the level was won on", async () => {
   const posed = quietRowsWithEscape(RUN_CELLS);
   // The fixture is what it claims before the build is asked anything: a board
   // resting with no run on it, carrying the one exchange the scenario drives.
@@ -111,35 +125,33 @@ it("raises the level, zeroes the level score and deals a fresh board", async () 
   assertEqual(before.screen, "playing", "the screen before the chain");
 
   const settled = await captureReplay(h, "levelup", async () => {
-    const first = await swap(h, RUN_SWAP.a, RUN_SWAP.b);
-    assertEqual(first.phase, "resolving", "the phase the accepted swap opened");
+    // Through the swap animation to step 1's result, and then to rest: the
+    // level condition is evaluated at the return to `idle` and at no earlier
+    // moment, so the chain is driven all the way before anything is read.
+    const first = await swapAndStep(h, RUN_SWAP.a, RUN_SWAP.b);
+    assertEqual(first.phase, "resolving", "the phase step 1 resolved into");
     return resolveChain(h);
   });
 
   assertTrue(settled.settled, "the chain returned to idle within the cap");
   const after = settled.snapshot;
 
-  assertEqual(after.level, 2, "the level after the chain settled");
-  assertEqual(after.levelScore, 0, "the level score after the level rose");
-  assertEqual(after.screen, "playing", "the screen a completed level leaves");
+  assertEqual(after.screen, "levelclear", "the screen the met target opened");
+  assertEqual(after.menuIndex, 0, "the highlighted item on arriving");
 
-  // And the board that was dealt for the new level is an opening board: no run
-  // stands on it, a legal swap exists on it, and every gem on it is plain at
-  // strain 0 — which the board the chain left behind cannot be.
-  const board = await h.board();
+  // The level stands where it was: raising it is CONTINUE's, not the settle's.
+  assertEqual(after.level, 1, "the level the met target left standing");
+  assertGreaterThanOrEqual(
+    after.levelScore,
+    opened.levelTarget,
+    "the level score, which the met target does not zero",
+  );
+
+  // And the board is the one the chain left: R7 put strain on the survivors
+  // around the clear, which an opening board carries nowhere.
   assertEqual(
-    hasAnyRun(board),
+    allPlainAndClean(await h.board()),
     false,
-    "a maximal run on the new level's board",
-  );
-  assertEqual(
-    legalSwapExists(board),
-    true,
-    "a legal swap on the new level's board",
-  );
-  assertEqual(
-    allPlainAndClean(board),
-    true,
-    "every gem plain at strain 0, as an opening board's are",
+    "every gem plain at strain 0, which only a freshly dealt board is",
   );
 });

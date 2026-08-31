@@ -115,12 +115,27 @@ describe("the installed surface", () => {
     expect(api.snapshot().levelTarget).toBe(8000);
   });
 
-  it("poses the board, one cell of it, the cursor, and the selection", () => {
+  it("poses the level's own figures, and opens the next level", () => {
+    const { api, bench } = surface();
+    api.start();
+    api.setLevel(2);
+    api.setBestChain(6);
+    api.setBestMove(940);
+    expect(api.snapshot().bestChain).toBe(6);
+    expect(api.snapshot().bestMove).toBe(940);
+    api.continueLevel();
+    expect(bench.state.level).toBe(3);
+    expect(bench.state.bestChain).toBe(0);
+    expect(bench.state.bestMove).toBe(0);
+    expect(bench.state.screen).toBe("playing");
+  });
+
+  it("poses the board, one cell of it, the selection, and the offer", () => {
     const { api, bench } = surface();
     api.loadBoard(quietRows());
     api.setGem(2, 3, "S1b");
-    api.setCursor(5, 6);
     api.setSelection(1, 1);
+    api.setOffer(2, 1);
     const cell = api
       .snapshot()
       .board.cells.find((each) => each.col === 2 && each.row === 3);
@@ -128,9 +143,14 @@ describe("the installed surface", () => {
       kind: "sapphire",
       cut: "brilliant",
       strain: 1,
+      fell: 0,
     });
-    expect(bench.state.cursor).toEqual({ col: 5, row: 6 });
     expect(bench.state.selection).toEqual({ col: 1, row: 1 });
+    expect(bench.state.offer).toEqual({ col: 2, row: 1 });
+    // An offer is a proposal: no swap is requested until a release plays it.
+    expect(bench.state.phase).toBe("idle");
+    api.clearOffer();
+    expect(bench.state.offer).toBeNull();
     api.clearSelection();
     expect(bench.state.selection).toBeNull();
   });
@@ -143,15 +163,16 @@ describe("the installed surface", () => {
     expect(bench.state.phase).toBe("idle");
   });
 
-  it("accepts a productive swap and resolves its first step on the spot", () => {
+  it("accepts a productive swap and puts it into motion, unresolved", () => {
     const { api, bench } = surface();
     api.loadBoard(
       quietRowsWith({ "2,4": "R0", "3,4": "R0", "4,5": "R0", "4,4": "J0" }),
     );
     api.requestSwap(4, 5, 4, 4);
-    expect(bench.state.phase).toBe("resolving");
-    expect(bench.state.chainStep).toBe(1);
-    expect(bench.state.score).toBeGreaterThan(0);
+    // The two stones travel between their cells before anything shatters.
+    expect(bench.state.phase).toBe("swapping");
+    expect(bench.state.chainStep).toBe(0);
+    expect(bench.state.score).toBe(0);
   });
 
   it("feeds the pointer through the very path a player's pointer takes", () => {
@@ -164,9 +185,55 @@ describe("the installed surface", () => {
     expect(bench.state.selection).toEqual({ col: 4, row: 5 });
     const [bx, by] = cellCenter({ col: 4, row: 4 });
     api.pointerMove(bx, by);
-    expect(bench.state.phase).toBe("resolving");
+    // The move only offers: the board is untouched until the release.
+    expect(bench.state.offer).toEqual({ col: 4, row: 4 });
+    expect(bench.state.phase).toBe("idle");
     api.pointerUp();
+    expect(bench.state.phase).toBe("swapping");
     expect(bench.state.pointer.down).toBe(false);
+  });
+
+  it("carries the device, and defaults it to the mouse", () => {
+    const { api, bench } = surface();
+    api.loadBoard(quietRows());
+    const [x, y] = cellCenter({ col: 3, row: 3 });
+    api.pointerDown(x, y, "touch");
+    expect(bench.state.pointer.device).toBe("touch");
+    expect(api.snapshot().pointer.device).toBe("touch");
+    api.pointerUp("touch");
+    api.pointerDown(x, y);
+    expect(bench.state.pointer.device).toBe("mouse");
+    api.pointerUp();
+  });
+
+  it("takes a screen's pointer target where the snapshot reports it", () => {
+    const { api, bench } = surface();
+    api.openHowTo();
+    const [back] = api.snapshot().targets;
+    expect(back.id).toBe("back");
+    const x = back.x + back.w / 2;
+    const y = back.y + back.h / 2;
+    api.pointerDown(x, y, "touch");
+    expect(bench.state.armedTarget).toBe("back");
+    api.pointerUp("touch");
+    expect(bench.state.screen).toBe("title");
+  });
+
+  it("carries a withdrawn offer back, so the release plays nothing", () => {
+    const { api, bench } = surface();
+    api.loadBoard(
+      quietRowsWith({ "2,4": "R0", "3,4": "R0", "4,5": "R0", "4,4": "J0" }),
+    );
+    const [x, y] = cellCenter({ col: 4, row: 5 });
+    const [bx, by] = cellCenter({ col: 4, row: 4 });
+    api.pointerDown(x, y);
+    api.pointerMove(bx, by);
+    api.pointerMove(x, y);
+    expect(bench.state.offer).toBeNull();
+    const board = bench.state.board;
+    api.pointerUp();
+    expect(bench.state.phase).toBe("idle");
+    expect(bench.state.board).toBe(board);
   });
 
   it("leaves the board alone on a press far from every cell", () => {

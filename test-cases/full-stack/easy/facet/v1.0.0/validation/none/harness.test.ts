@@ -40,12 +40,14 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   BASE_SCORE,
   CELL_PITCH,
-  CURSOR_START_COL,
-  CURSOR_START_ROW,
   GAMEOVER_TITLE_TEXT,
   HUD_LEVEL_LABEL,
   HUD_SCORE_LABEL,
   PAUSED_TITLE_TEXT,
+  REFUSAL_FRAMES_BEFORE,
+  REFUSAL_SECONDS,
+  STEP_SECONDS,
+  SWAP_DRIVE_FRAMES,
   TAGLINE_TEXT,
   TITLE_ITEMS,
   TITLE_TEXT,
@@ -57,6 +59,7 @@ import {
   STAGE_H,
   STAGE_W,
   TICK_MS,
+  TICK_S,
 } from "./constants";
 import {
   assertBoardEquals,
@@ -85,9 +88,12 @@ import {
   captureReplay,
   createHarness,
   cuesOnFrame,
+  dragGem,
   drawOps,
   drawnText,
   drewText,
+  framesPast,
+  framesShortOf,
   loadBoard,
   meanColor,
   patchDistance,
@@ -95,18 +101,26 @@ import {
   PROJECT_ROOT,
   REPLAY_BACKGROUND,
   REQUIRED_OPS,
+  requestSwap,
+  resolveChain,
   retable,
   showsText,
   siteRoot,
   STAGED_PROJECT_DIR,
   startRound,
+  stepDriveFrames,
   swapAndResolve,
+  swapAndStep,
+  takeTarget,
+  targetById,
   thinReplay,
   watchCues,
   WORKSPACE_ROOT,
   type DrawCall,
+  type FacetSnapshot,
   type Harness,
   type Patch,
+  type Phase,
   type RecordedFrame,
   type Recording,
 } from "./harness";
@@ -159,13 +173,45 @@ it("reads the whole example board of specs/board.md", () => {
   const gems = parseRows(example);
   expect(gems).toHaveLength(GRID_ROWS);
   expect(gems[0]).toHaveLength(GRID_COLS);
-  // The cells the example puts a non-default value on, read back by hand.
-  expect(gems[1][1]).toEqual({ kind: "jade", cut: "plain", strain: 1 });
-  expect(gems[2][2]).toEqual({ kind: "amethyst", cut: "plain", strain: 2 });
-  expect(gems[3][5]).toEqual({ kind: "beryl", cut: "brilliant", strain: 0 });
-  expect(gems[4][6]).toEqual({ kind: "ruby", cut: "plain", strain: 3 });
-  expect(gems[5][2]).toEqual({ kind: "sapphire", cut: "star", strain: 2 });
-  expect(gems[6][4]).toEqual({ kind: null, cut: "prism", strain: 0 });
+  // The cells the example puts a non-default value on, read back by hand. Every
+  // one of them carries a `fell` of `0`: the notation writes a board standing
+  // still, so a gem read out of a token has traveled nowhere.
+  expect(gems[1][1]).toEqual({
+    kind: "jade",
+    cut: "plain",
+    strain: 1,
+    fell: 0,
+  });
+  expect(gems[2][2]).toEqual({
+    kind: "amethyst",
+    cut: "plain",
+    strain: 2,
+    fell: 0,
+  });
+  expect(gems[3][5]).toEqual({
+    kind: "beryl",
+    cut: "brilliant",
+    strain: 0,
+    fell: 0,
+  });
+  expect(gems[4][6]).toEqual({
+    kind: "ruby",
+    cut: "plain",
+    strain: 3,
+    fell: 0,
+  });
+  expect(gems[5][2]).toEqual({
+    kind: "sapphire",
+    cut: "star",
+    strain: 2,
+    fell: 0,
+  });
+  expect(gems[6][4]).toEqual({
+    kind: null,
+    cut: "prism",
+    strain: 0,
+    fell: 0,
+  });
   // And written back as it came in.
   expect(gems.map((row) => row.map(formatToken).join(" "))).toEqual(example);
   expect(tokenAt(example, 5, 3)).toBe("B0b");
@@ -267,35 +313,47 @@ it("reads a maximal run only where R4 puts one", () => {
   expect(runs[0].cells).toHaveLength(4);
 
   // Two of a kind is not a run.
-  expect(maximalRuns(quietRowsWith([
-    { col: 1, row: 2, token: "S0" },
-    { col: 2, row: 2, token: "S0" },
-  ]))).toEqual([]);
+  expect(
+    maximalRuns(
+      quietRowsWith([
+        { col: 1, row: 2, token: "S0" },
+        { col: 2, row: 2, token: "S0" },
+      ]),
+    ),
+  ).toEqual([]);
 
   // A prism belongs to no kind and joins no run: three sapphires with a prism in
   // the middle is nothing at all.
-  expect(maximalRuns(quietRowsWith([
-    { col: 1, row: 5, token: "S0" },
-    { col: 2, row: 5, token: "X0" },
-    { col: 3, row: 5, token: "S0" },
-    { col: 4, row: 5, token: "S0" },
-  ]))).toEqual([]);
+  expect(
+    maximalRuns(
+      quietRowsWith([
+        { col: 1, row: 5, token: "S0" },
+        { col: 2, row: 5, token: "X0" },
+        { col: 3, row: 5, token: "S0" },
+        { col: 4, row: 5, token: "S0" },
+      ]),
+    ),
+  ).toEqual([]);
 
   // A run is read down a column as well as along a row.
-  const down = maximalRuns(quietRowsWith([
-    { col: 6, row: 1, token: "M0" },
-    { col: 6, row: 2, token: "M0" },
-    { col: 6, row: 3, token: "M0" },
-  ]));
+  const down = maximalRuns(
+    quietRowsWith([
+      { col: 6, row: 1, token: "M0" },
+      { col: 6, row: 2, token: "M0" },
+      { col: 6, row: 3, token: "M0" },
+    ]),
+  );
   expect(down).toHaveLength(1);
   expect(down[0].horizontal).toBe(false);
 
   // Kind alone decides a run: strain and cut do not break one.
-  const mixed = maximalRuns(quietRowsWith([
-    { col: 1, row: 6, token: "J0" },
-    { col: 2, row: 6, token: "J3" },
-    { col: 3, row: 6, token: "J1b" },
-  ]));
+  const mixed = maximalRuns(
+    quietRowsWith([
+      { col: 1, row: 6, token: "J0" },
+      { col: 2, row: 6, token: "J3" },
+      { col: 3, row: 6, token: "J1b" },
+    ]),
+  );
   expect(mixed).toHaveLength(1);
   expect(mixed[0].kind).toBe("jade");
 });
@@ -384,10 +442,17 @@ it("puts the tie point exactly GEM_HIT_R from both centers", () => {
   // centers in favor of the lower row, and within one row the lower column. This
   // is the only position that poses that tie, so a check about it has to be
   // handed exactly this point and not a number of its own.
-  const pairs: [{ col: number; row: number }, { col: number; row: number }][] = [
-    [{ col: 2, row: 3 }, { col: 3, row: 3 }],
-    [{ col: 2, row: 3 }, { col: 2, row: 4 }],
-  ];
+  const pairs: [{ col: number; row: number }, { col: number; row: number }][] =
+    [
+      [
+        { col: 2, row: 3 },
+        { col: 3, row: 3 },
+      ],
+      [
+        { col: 2, row: 3 },
+        { col: 2, row: 4 },
+      ],
+    ];
   for (const [a, b] of pairs) {
     const mid = betweenCells(a, b);
     const first = cellCenter(a.col, a.row);
@@ -493,7 +558,12 @@ it("finds copy a frame drew, in every shape the specification permits", () => {
   const whole = ["FACET", "PRESSURE FINDS THE FLAW", "PLAY", "HOW TO PLAY"];
   const perWord = "FACET PRESSURE FINDS THE FLAW PLAY HOW TO PLAY".split(" ");
   const perGlyph = "FACETPRESSUREFINDSTHEFLAWPLAYHOWTOPLAY".split("");
-  const decorated = ["FACET", "PRESSURE FINDS THE FLAW", "> PLAY <", "HOW TO PLAY"];
+  const decorated = [
+    "FACET",
+    "PRESSURE FINDS THE FLAW",
+    "> PLAY <",
+    "HOW TO PLAY",
+  ];
   for (const drawn of [whole, perWord, perGlyph, decorated]) {
     expect(showsText(drawn, TITLE_TEXT)).toBe(true);
     expect(showsText(drawn, TAGLINE_TEXT)).toBe(true);
@@ -761,7 +831,7 @@ it("drives a swap into a chain and carries it to the end", async () => {
     { col: 3, row: 4 },
   );
 
-  // Step 1, resolved at the call, with no frame advanced.
+  // Step 1, reached by carrying the accepted swap through its animation.
   expect(first.phase).toBe("resolving");
   expect(first.chainStep).toBe(1);
   expect(first.multiplier).toBe(1);
@@ -893,39 +963,147 @@ it("keeps a live log of everything the render and the network did", async () => 
   expect(h.calls).toEqual(one);
 });
 
-it("drives the cursor and the selection from the keyboard", async () => {
-  // `specs/controls.md` fixes all eight bindings for a build of every engine, so
-  // an engineless build is driven by the same keys as one standing on an engine
-  // and every action is pressable here. `tapAction` presses the action's first
-  // binding, which is what a review item written as "fire the `up` action" means.
-  await poseBoardWithEscape(h, []);
-  expect((await h.snapshot()).cursor).toEqual({
-    col: CURSOR_START_COL,
-    row: CURSOR_START_ROW,
-  });
+it("drives the menu from the keyboard, through the real input path", async () => {
+  // `specs/controls.md` fixes the whole binding table for a build of every
+  // engine, so an engineless build is driven by the same keys as one standing on
+  // an engine and every action is pressable here. `tapAction` presses the
+  // action's first binding, which is what a review item written as "fire the
+  // `down` action" means. The keyboard drives the MENUS: the board is played
+  // with the pointer alone.
+  const opened = await h.snapshot();
+  expect(opened.screen).toBe("title");
+  expect(opened.menuIndex).toBe(0);
 
-  // The cursor stays on the board, so `up` and `left` at the opening corner
-  // leave it where it is.
-  await h.tapAction("up");
-  await h.tapAction("left");
-  expect((await h.snapshot()).cursor).toEqual({ col: 0, row: 0 });
-
-  // One row toward GRID_ROWS - 1, one column toward GRID_COLS - 1, and back.
-  await h.tapAction("right");
-  await h.tapAction("right");
   await h.tapAction("down");
-  expect((await h.snapshot()).cursor).toEqual({ col: 2, row: 1 });
-  await h.tapAction("up");
-  await h.tapAction("left");
-  expect((await h.snapshot()).cursor).toEqual({ col: 1, row: 0 });
+  expect((await h.snapshot()).menuIndex).toBe(1);
 
-  // `confirm` acts on the cursor's cell exactly as a press on that cell does, so
-  // with nothing selected it selects it.
-  const before = await h.snapshot();
-  expect(before.screen).toBe("playing");
-  expect(before.selection).toBeNull();
+  // The highlight wraps, so `down` on the last item comes back to the first.
+  await h.tapAction("down");
+  expect((await h.snapshot()).menuIndex).toBe(0);
+
+  // And `confirm` takes the highlighted item, which at index 0 is `PLAY`.
   await h.tapAction("confirm");
-  expect((await h.snapshot()).selection).toEqual({ col: 1, row: 0 });
+  expect((await h.snapshot()).screen).toBe("playing");
+});
+
+it("counts the frames that stop short of a duration, and that carry past it", () => {
+  // A step's hold is the step's own figure rather than a constant, so a drive
+  // across one is counted from a duration. The one duration the suite also
+  // writes down by hand is what the arithmetic is held against.
+  expect(framesShortOf(REFUSAL_SECONDS)).toBe(REFUSAL_FRAMES_BEFORE);
+  expect(framesShortOf(REFUSAL_SECONDS) * TICK_S).toBeLessThan(REFUSAL_SECONDS);
+  expect(framesShortOf(16 * TICK_S)).toBe(15);
+
+  // Past the duration by a whole frame, so a build comparing `>` has fired as
+  // surely as one comparing `>=`, and by at most two, so the drive is nowhere
+  // near a second threshold of the same length.
+  for (const duration of [0.18, 0.25, 0.3, 0.42, 16 * TICK_S]) {
+    const covered = framesPast(duration) * TICK_S;
+    expect(covered).toBeGreaterThan(duration + TICK_S - 1e-9);
+    expect(covered).toBeLessThan(duration + 2 * TICK_S + 1e-9);
+  }
+});
+
+it("sizes a step's drive from the hold that step reports", () => {
+  // The three fields the drive is computed from, as a snapshot. A cast rather
+  // than a whole snapshot because the function reads exactly these three, and a
+  // fabricated board would say nothing about which.
+  const timing = (
+    phase: Phase,
+    stepHold: number,
+    stepTimer: number,
+  ): FacetSnapshot =>
+    ({ phase, stepHold, stepTimer }) as unknown as FacetSnapshot;
+
+  expect(stepDriveFrames(timing("resolving", STEP_SECONDS, 0))).toBe(
+    framesPast(STEP_SECONDS),
+  );
+  // What has already run comes off the drive, so the overshoot past the boundary
+  // stays inside two frames however deep into the hold this is asked.
+  expect(
+    stepDriveFrames(timing("resolving", STEP_SECONDS, STEP_SECONDS / 2)),
+  ).toBe(framesPast(STEP_SECONDS / 2));
+  // A swap in motion is timed by SWAP_SECONDS instead, and is the one case the
+  // hold has nothing to say about.
+  expect(stepDriveFrames(timing("swapping", STEP_SECONDS, 0))).toBe(
+    SWAP_DRIVE_FRAMES,
+  );
+});
+
+it("holds an accepted swap in motion before step 1 resolves", async () => {
+  // `specs/rules.md` exchanges the two cells at once, sets `phase` to
+  // `swapping`, and clears nothing until `SWAP_SECONDS` of game time has passed
+  // — so the request helper and the stepping helper read two different moments,
+  // and a check that reached for the wrong one would be reading a board no step
+  // has touched.
+  const posed = quietRowsWith([
+    { col: 2, row: 4, token: "R0" },
+    { col: 4, row: 4, token: "R0" },
+    { col: 3, row: 3, token: "R0" },
+  ]);
+  await loadBoard(h, posed);
+
+  const requested = await requestSwap(
+    h,
+    { col: 3, row: 3 },
+    { col: 3, row: 4 },
+  );
+  expect(requested.phase).toBe("swapping");
+  expect(requested.chainStep).toBe(0);
+  expect(requested.lastCleared).toBe(0);
+  // The exchange itself happened at the request: the ruby is standing at (3,4).
+  expect(tokenAt(await h.board(), 3, 4)).toBe("R0");
+
+  // The same request, posed again from the same board and carried through the
+  // animation, comes back as step 1 already resolved.
+  await loadBoard(h, posed);
+  const first = await swapAndStep(h, { col: 3, row: 3 }, { col: 3, row: 4 });
+  expect(first.phase).toBe("resolving");
+  expect(first.chainStep).toBe(1);
+  expect(first.lastCleared).toBe(3);
+});
+
+it("plays a move as the whole gesture, and never as a shortcut", async () => {
+  // `specs/controls.md` plays a move by taking hold of a gem, carrying it onto a
+  // neighbor, and letting go: the RELEASE is what requests the swap. The gesture
+  // helper goes through `pointerDown`, `pointerMove` and `pointerUp` and through
+  // nothing else, so what decides the outcome is the build's own press, move and
+  // release rules.
+  await loadBoard(
+    h,
+    quietRowsWith([
+      { col: 2, row: 4, token: "R0" },
+      { col: 4, row: 4, token: "R0" },
+      { col: 3, row: 3, token: "R0" },
+    ]),
+  );
+  const played = await dragGem(h, { col: 3, row: 3 }, { col: 3, row: 4 });
+
+  // The release requested the swap and let the gem go.
+  expect(played.phase).toBe("swapping");
+  expect(played.offer).toBeNull();
+  expect(played.selection).toBeNull();
+
+  // And it is the same move: the chain the gesture began scores the run of
+  // three the arrangement planted.
+  const settled = await resolveChain(h);
+  expect(settled.settled).toBe(true);
+  expect(settled.snapshot.score).toBeGreaterThanOrEqual(3 * BASE_SCORE);
+});
+
+it("takes a reported pointer target, by mouse and by touch", async () => {
+  // A target's rectangle is the BUILD's, so a check reads the one it is going to
+  // press off the snapshot. `specs/instrumentation.md` fixes that pressing and
+  // releasing at a listed target's center takes that target.
+  const play = targetById(await h.snapshot(), "menu-0");
+  expect(play.w).toBeGreaterThan(0);
+  const opened = await takeTarget(h, play, "touch");
+  expect(opened.screen).toBe("playing");
+  expect(opened.pointer.device).toBe("touch");
+
+  // And a target the screen does not carry fails as the fixture error it is,
+  // naming the ids that were reported.
+  expect(() => targetById(opened, "menu-1")).toThrow(/Expected:/);
 });
 
 it("refuses a frame count that is not a whole number of frames", async () => {
@@ -967,12 +1145,13 @@ it("presses a real mouse where a logical point is", async () => {
   expect((await h.snapshot()).selection).toEqual({ col: 4, row: 2 });
   await h.lift();
 
-  // A real press outside every cell's reach targets nothing, so the selection the
-  // press before it made is still standing.
+  // A real press outside every cell's reach targets no cell, and
+  // `specs/controls.md` has such a press clear the selection and any offer while
+  // leaving the board exactly as it stands.
   const off = offBoardPoint();
   await h.press(off.x, off.y);
   await h.advance(1);
-  expect((await h.snapshot()).selection).toEqual({ col: 4, row: 2 });
+  expect((await h.snapshot()).selection).toBeNull();
   await h.lift();
 
   // And the pointer the build reads is at the point the check named, so a drag
@@ -1054,7 +1233,9 @@ it("mounts the build under a sub-path, and 404s what reaches past it", async () 
     expect(new URL(mounted.page.url()).pathname).toBe("/runs/7/build/");
     expect(mounted.requests.length).toBeGreaterThan(0);
     for (const url of mounted.requests) {
-      expect(new URL(url).pathname.startsWith("/runs/7/build/"), url).toBe(true);
+      expect(new URL(url).pathname.startsWith("/runs/7/build/"), url).toBe(
+        true,
+      );
     }
     expect(mounted.failedRequests).toEqual([]);
 

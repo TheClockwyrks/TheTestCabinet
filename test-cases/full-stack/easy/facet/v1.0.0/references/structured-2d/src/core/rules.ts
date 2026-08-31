@@ -170,35 +170,62 @@ export function prismSeed(board: BoardState, swap: CellPair): StepSeed | null {
 // ---- R6 Expansion --------------------------------------------------------
 
 /**
+ * The clear set and the wave every cell of it carries.
+ *
+ * `cells` is the set the rest of the step reads, `waveOf` is the wave each cell
+ * came in at, and `waves` is the greatest of them, which is `0` when the set is
+ * its seed alone. A wave changes nothing about which cells the set holds, what
+ * the set scores, or what the step removes: it is what times the shattering.
+ */
+export interface ClearSet {
+  readonly cells: CellSet;
+  readonly waveOf: ReadonlyMap<string, number>;
+  readonly waves: number;
+}
+
+/**
  * The clear set: the smallest set of cells containing the seed and closed
  * under R6's three additions — a brilliant adds the eight cells around it, a
  * star adds its whole row and column, and a flawed gem orthogonally adjacent
  * to the set joins it.
  *
- * The closure is taken with a work list, so a brilliant reached through a star
- * reached through a flawed gem contributes its own ring in the same pass. Each
- * addition is applied to cells as they are added, and the loop ends when a
- * sweep adds nothing.
+ * The closure is taken breadth-first from the seed, so a brilliant reached
+ * through a star reached through a flawed gem contributes its own ring in the
+ * same pass and, because a cell is reached the first time any addition reaches
+ * it, every cell carries the LOWEST wave that reaches it. Each cell of the seed
+ * is at wave `0`, and a cell an addition brings in from a cell at wave `k` is
+ * at wave `k + 1`.
  */
-export function expandClearSet(board: BoardState, seed: CellSet): CellSet {
-  const cleared = new Set(seed);
-  const pending = [...seed];
+export function expandClearSet(board: BoardState, seed: CellSet): ClearSet {
+  const cells = new Set(seed);
+  const waveOf = new Map<string, number>();
+  for (const key of seed) waveOf.set(key, 0);
 
-  const add = (cell: Cell): void => {
-    const key = cellKey(cell);
-    if (cleared.has(key)) return;
-    cleared.add(key);
-    pending.push(key);
-  };
+  // A queue rather than a stack, because a stack would reach a cell down one
+  // long branch before a short one reaches it and give it too high a wave.
+  const pending = [...seed];
+  let waves = 0;
 
   const cellOf = (key: string): Cell => {
     const [col, row] = key.split(",").map(Number);
     return { col, row };
   };
 
-  for (let key = pending.pop(); key !== undefined; key = pending.pop()) {
+  for (let head = 0; head < pending.length; head++) {
+    const key = pending[head];
     const cell = cellOf(key);
     if (!inBounds(board, cell)) continue;
+    const wave = (waveOf.get(key) ?? 0) + 1;
+
+    const add = (next: Cell): void => {
+      const nextKey = cellKey(next);
+      if (cells.has(nextKey)) return;
+      cells.add(nextKey);
+      waveOf.set(nextKey, wave);
+      waves = Math.max(waves, wave);
+      pending.push(nextKey);
+    };
+
     const gem = gemAt(board, cell);
     if (gem?.cut === "brilliant") {
       for (const around of surroundingCells(board, cell)) add(around);
@@ -215,7 +242,7 @@ export function expandClearSet(board: BoardState, seed: CellSet): CellSet {
       if (beside && isFlawed(beside)) add(neighbor);
     }
   }
-  return cleared;
+  return { cells, waveOf, waves };
 }
 
 // ---- R7 Strain -----------------------------------------------------------
@@ -332,7 +359,9 @@ export function placementFor(run: Run, swap: CellPair | null): Cell {
  * horizontal and a vertical run offers a star there — and the candidates on
  * one cell are then settled by rank, `prism` over `star` over `brilliant`, so
  * that cell takes exactly one created gem. A created gem carries strain `0`
- * and the kind of the run that created it, a prism carrying none.
+ * and the kind of the run that created it, a prism carrying none. It is placed
+ * into a cell the removal just emptied rather than dropped into one, so it
+ * arrives at `fell` `0` and R9 gives it the fall it then takes.
  */
 export function creationsFor(
   runs: readonly Run[],
@@ -344,12 +373,12 @@ export function creationsFor(
     if (run.cells.length === 4) {
       candidates.push({
         cell: placementFor(run, swap),
-        gem: { kind: run.kind, cut: "brilliant", strain: 0 },
+        gem: { kind: run.kind, cut: "brilliant", strain: 0, fell: 0 },
       });
     } else if (run.cells.length >= 5) {
       candidates.push({
         cell: placementFor(run, swap),
-        gem: { kind: null, cut: "prism", strain: 0 },
+        gem: { kind: null, cut: "prism", strain: 0, fell: 0 },
       });
     }
   }
@@ -366,7 +395,7 @@ export function creationsFor(
           cell: crossing,
           // The star belongs to the crossing, and the crossing cell holds one
           // kind, so the two runs necessarily agree on it.
-          gem: { kind: row.kind, cut: "star", strain: 0 },
+          gem: { kind: row.kind, cut: "star", strain: 0, fell: 0 },
         });
       }
     }
@@ -404,6 +433,12 @@ export function placeCreations(
  * column with a plain gem at strain `0` whose kind is drawn uniformly from
  * `GEM_KINDS`.
  *
+ * Every gem the step leaves behind takes its `fell`: `0` for one the rule did
+ * not move, its new row less its old row for a survivor that dropped, and
+ * `row + 1` for a refilled gem, which is the LEAST the rule allows because a
+ * refilled gem comes from just above the board's top row. That is the shape a
+ * column fills in, one gem entering per row of the gap.
+ *
  * The columns are settled left to right and each is filled from its top down,
  * so the sequence of draws — and therefore the board — is a function of the
  * generator state alone.
@@ -411,20 +446,39 @@ export function placeCreations(
 export function settleAndRefill(board: BoardState, rng: RngCursor): BoardState {
   const gems = [...board.gems];
   for (let col = 0; col < board.cols; col++) {
-    const survivors: Gem[] = [];
+    const survivors: { gem: Gem; row: number }[] = [];
     for (let row = 0; row < board.rows; row++) {
       const gem = gems[row * board.cols + col];
-      if (gem) survivors.push(gem);
+      if (gem) survivors.push({ gem, row });
     }
     const missing = board.rows - survivors.length;
     for (let row = 0; row < board.rows; row++) {
-      gems[row * board.cols + col] =
-        row < missing
-          ? plainGem(rng.pick(GEM_KINDS))
-          : survivors[row - missing];
+      if (row < missing) {
+        gems[row * board.cols + col] = plainGem(rng.pick(GEM_KINDS), row + 1);
+        continue;
+      }
+      const survivor = survivors[row - missing];
+      gems[row * board.cols + col] = {
+        ...survivor.gem,
+        fell: row - survivor.row,
+      };
     }
   }
   return { ...board, gems };
+}
+
+/**
+ * The greatest `fell` on a board, which `specs/rules.md` calls the step's
+ * `fall` and the snapshot reports as `lastFall`. It is derived rather than
+ * stored, so it answers to the board as it stands, and it is half of what the
+ * step in progress holds for.
+ */
+export function lastFall(board: BoardState): number {
+  let fall = 0;
+  for (const gem of board.gems) {
+    if (gem && gem.fell > fall) fall = gem.fell;
+  }
+  return fall;
 }
 
 // ---- R1, R2, R3: the move rules -----------------------------------------
@@ -432,13 +486,18 @@ export function settleAndRefill(board: BoardState, rng: RngCursor): BoardState {
 /** Why a swap was refused, or `"accepted"`. Useful in tests and diagnostics. */
 export type SwapVerdict = "accepted" | "adjacency" | "resolving" | "barren";
 
-/** The board a swap would produce: the two cells exchanged, at once. */
+/**
+ * The board a swap would produce: the two cells exchanged, at once. A swap
+ * carries each gem sideways or one row, which is not a fall, so both of them
+ * arrive at `fell` `0` and the swap animation `specs/rules.md` times is what
+ * draws the journey.
+ */
 export function applySwap(board: BoardState, swap: CellPair): BoardState {
   const a = gemAt(board, swap.a);
   const b = gemAt(board, swap.b);
   const gems = [...board.gems];
-  gems[swap.a.row * board.cols + swap.a.col] = b;
-  gems[swap.b.row * board.cols + swap.b.col] = a;
+  gems[swap.a.row * board.cols + swap.a.col] = b && { ...b, fell: 0 };
+  gems[swap.b.row * board.cols + swap.b.col] = a && { ...a, fell: 0 };
   return { ...board, gems };
 }
 

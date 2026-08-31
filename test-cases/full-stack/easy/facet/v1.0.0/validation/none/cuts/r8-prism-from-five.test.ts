@@ -14,9 +14,14 @@
 // the run's five cells, and the posed board carries no cut gem at all — so any
 // gem that is not `plain` afterwards is one R8 created.
 //
-// The reading is taken at step 1, which specs/rules.md resolves at the swap, R8
-// and R9 included. A later step is seeded from whatever R9's refill dealt and may
-// create cuts of its own, so the settled board would answer a different question.
+// THE READING IS TAKEN AT STEP 1. specs/rules.md has an accepted swap exchange
+// its two cells at once, set `phase` to `swapping` with `chainStep` at `0`, and
+// clear nothing until `SWAP_SECONDS` (`0.18`) of game time has passed; step 1
+// then resolves, R8 and R9 both inside it. `swapAndResolve` carries the game
+// through that animation and hands back `first`, the reading of step 1's result,
+// which is what this check reads. A later step is seeded from whatever R9's
+// refill dealt and may create cuts of its own, so the settled board would answer
+// a different question.
 //
 // WHERE the prism lands is `cuts/r8-run-placement`'s point; this check finds the
 // created gem wherever on the board it stands.
@@ -101,8 +106,9 @@ it("leaves one prism, carrying no kind, at strain 0", async () => {
     swapAndResolve(h, FROM, TO),
   );
 
-  // Step 1 resolved at the swap, and it cleared the run and nothing besides it.
-  assertEqual(first.chainStep, 1, "the chain step the swap opened");
+  // The reading is step 1's, and that step cleared the run and nothing besides
+  // it.
+  assertEqual(first.chainStep, 1, "the chain step the accepted swap resolved");
   assertEqual(first.lastCleared, RUN_LENGTH, "cells the step cleared");
 
   // R8's second row: the run of five creates one gem, that gem is a prism, and a

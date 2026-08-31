@@ -120,7 +120,9 @@ it("resolves every file it loads inside the sub-path it is mounted at", async ()
     // Nothing 404'd: every URL the build resolved names a file this mount holds.
     assertDeepEqual(
       reported(
-        h.failedRequests.filter((failure) => isOnSite(urlOf(failure), page.origin)),
+        h.failedRequests.filter((failure) =>
+          isOnSite(urlOf(failure), page.origin),
+        ),
       ),
       [],
       "requests the mounted site did not answer",

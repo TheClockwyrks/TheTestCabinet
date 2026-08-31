@@ -83,13 +83,37 @@ function recordingGame(log: Recorded): Game<number, { tag: string }> {
   };
 }
 
+/**
+ * A canvas that also carries the style and the listener surface the gesture
+ * claim reads, so a test can watch the claim being made and given back.
+ */
+function gesturedCanvas(): HTMLCanvasElement & { listeners: string[] } {
+  const listeners: string[] = [];
+  return Object.assign(canvasElement(), {
+    listeners,
+    style: {
+      touchAction: "auto",
+      userSelect: "auto",
+      webkitUserSelect: "auto",
+      webkitTapHighlightColor: "",
+    },
+    addEventListener: (name: string) => listeners.push(name),
+    removeEventListener: (name: string) => {
+      const index = listeners.indexOf(name);
+      if (index >= 0) listeners.splice(index, 1);
+    },
+  }) as unknown as HTMLCanvasElement & { listeners: string[] };
+}
+
 /** A runtime over a recording game, already built but not initialized. */
-function bench(options: { cssWidth?: number; dpr?: number } = {}) {
+function bench(
+  options: { cssWidth?: number; dpr?: number; canvas?: HTMLCanvasElement } = {},
+) {
   const log: Recorded = { updates: [], renders: 0 };
   const events = new EventTarget();
   const assets = countingAssets();
   const runtime: Runtime<number, { tag: string }> = createRuntime({
-    canvas: canvasElement(),
+    canvas: options.canvas ?? canvasElement(),
     width: 1280,
     height: 720,
     game: recordingGame(log),
@@ -289,6 +313,19 @@ describe("createRuntime", () => {
     runtime.advance(1);
     expect(log.updates).toEqual([]);
     expect(() => runtime.initialize()).toThrow(/destroyed/);
+  });
+
+  it("takes the browser's own gestures on the canvas, and gives them back", () => {
+    const canvas = gesturedCanvas();
+    const { runtime } = bench({ canvas });
+    // Without the claim a touch drag onto a neighboring gem is taken for a
+    // pan and cancelled part way through (specs/controls.md).
+    expect(canvas.style.touchAction).toBe("none");
+    expect(canvas.listeners).toContain("contextmenu");
+    runtime.initialize();
+    runtime.destroy();
+    expect(canvas.style.touchAction).toBe("auto");
+    expect(canvas.listeners).not.toContain("contextmenu");
   });
 
   it("will not start once destroyed", () => {

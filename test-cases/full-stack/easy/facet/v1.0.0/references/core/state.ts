@@ -12,13 +12,7 @@
 // posed scenario reproduce exactly. The core is written that way for all three
 // builds so there is one implementation, not three.
 
-import {
-  CURSOR_START_COL,
-  CURSOR_START_ROW,
-  CUTS,
-  DEFAULT_SEED,
-  GEM_KINDS,
-} from "../constants";
+import { CUTS, DEFAULT_SEED, GEM_KINDS } from "../constants";
 
 /** One of the seven kinds in `GEM_KINDS` (specs/board.md). */
 export type GemKind = (typeof GEM_KINDS)[number];
@@ -27,10 +21,18 @@ export type GemKind = (typeof GEM_KINDS)[number];
 export type Cut = (typeof CUTS)[number];
 
 /** The screens in `specs/ui.md`. */
-export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
+export type Screen =
+  "title" | "howto" | "playing" | "paused" | "levelclear" | "gameover";
 
-/** Where resolution stands (specs/rules.md, `## A chain step`). */
-export type Phase = "idle" | "resolving";
+/**
+ * Where resolution stands (specs/rules.md, `## A chain step`): the board is
+ * settled, an accepted swap is travelling between its two cells, or a chain is
+ * running over the board.
+ */
+export type Phase = "idle" | "swapping" | "resolving";
+
+/** What drove the pointer. A mouse, a pen, and a finger all reach one path. */
+export type PointerDevice = "mouse" | "pen" | "touch";
 
 /**
  * One gem. `kind` is `null` exactly when `cut` is `"prism"`, because a prism
@@ -41,6 +43,14 @@ export interface Gem {
   readonly cut: Cut;
   /** A whole number `0..MAX_STRAIN`; `MAX_STRAIN` is flawed. */
   readonly strain: number;
+  /**
+   * How many rows the gem traveled to reach the cell it holds, as R9 fixes
+   * it: `0` for a gem that was already standing here, the rows it dropped for
+   * a survivor, and at least `row + 1` for a gem dealt in from above. It is
+   * what times the fall a renderer draws, and it is read back as the board's
+   * `lastFall`.
+   */
+  readonly fell: number;
 }
 
 /** A cell address, zero-indexed from the top-left (specs/board.md). */
@@ -71,16 +81,18 @@ export interface PointerState {
   readonly x: number;
   readonly y: number;
   readonly down: boolean;
+  readonly device: PointerDevice;
 }
 
 /**
  * The whole of the game's state.
  *
- * Beyond the fields `specs/state.md` names, three are bookkeeping the rules
- * need and the snapshot does not report: `chainSwap`, which R8 reads to place
- * a created gem at the cell the chain's swap exchanged; and `pressedCell` with
- * `dragSwapped`, which carry the drag `specs/controls.md` describes across the
- * frames of one hold.
+ * Beyond the fields `specs/state.md` names, one is bookkeeping the rules need
+ * and the snapshot does not report: `chainSwap`, which R5 reads to seed a prism
+ * chain and R8 reads to place a created gem at the cell the chain's swap
+ * exchanged. The hold a pointer is being read from needs no field of its own,
+ * because `selection` is the gem being held and `offer` is where it is being
+ * offered, and both of those the player can see.
  */
 export interface FacetState {
   /** The screen being shown, and the menu item highlighted on it, from `0`. */
@@ -95,28 +107,36 @@ export interface FacetState {
   readonly level: number;
   readonly levelScore: number;
 
-  /** Where resolution stands. `chainStep` is `0` while `phase` is `idle`. */
+  /** Where resolution stands. `chainStep` is `0` while `phase` is not `resolving`. */
   readonly phase: Phase;
   readonly chainStep: number;
+  /** The game time in the swap in motion; `0` while `phase` is not `swapping`. */
+  readonly swapTimer: number;
+  /** The game time in the step in progress; `0` while `phase` is not `resolving`. */
   readonly stepTimer: number;
   /** The swap that began the running chain; `null` while `phase` is `idle`. */
   readonly chainSwap: CellPair | null;
 
-  /** What the most recent chain step did. */
+  /** What the most recent chain step did. `lastFall` is read off the board. */
   readonly lastCleared: number;
   readonly lastPoints: number;
+  readonly lastWaves: number;
 
-  /** The keyboard cursor, the selection, and a standing refusal. */
-  readonly cursor: Cell;
+  /** What the current level has been worth (specs/rules.md). */
+  readonly moveScore: number;
+  readonly bestMove: number;
+  readonly bestChain: number;
+
+  /** The gem being held, the cell it is offered into, and a refusal. */
   readonly selection: Cell | null;
+  readonly offer: Cell | null;
   readonly refusal: CellPair | null;
   /** The game time the standing refusal has stood for. */
   readonly refusalTimer: number;
 
-  /** The pointer, and the hold a drag is being read from. */
+  /** The pointer, and the id of the target the held press armed. */
   readonly pointer: PointerState;
-  readonly pressedCell: Cell | null;
-  readonly dragSwapped: boolean;
+  readonly armedTarget: string | null;
 
   /** The runtime's mute bit, mirrored, and the accumulated simulation time. */
   readonly muted: boolean;
@@ -130,7 +150,7 @@ export interface FacetState {
 export const EMPTY_BOARD: BoardState = { cols: 0, rows: 0, gems: [] };
 
 /**
- * The eight events one frame can raise, which `specs/ui.md` maps to the eight
+ * The nine events one frame can raise, which `specs/ui.md` maps to the nine
  * cues in `CUES`. The core reports them rather than playing them, because
  * audio belongs to the runtime layer and because "a cue is played by a frame,
  * never by a pose of the debug surface" — a pose discards this record.
@@ -143,6 +163,7 @@ export interface FacetEvents {
   readonly swap: boolean;
   readonly refuse: boolean;
   readonly clear: boolean;
+  readonly land: boolean;
   readonly flaw: boolean;
   readonly cut: boolean;
   readonly levelUp: boolean;
@@ -155,6 +176,7 @@ export const NO_EVENTS: FacetEvents = {
   swap: false,
   refuse: false,
   clear: false,
+  land: false,
   flaw: false,
   cut: false,
   levelUp: false,
@@ -174,6 +196,7 @@ export function mergeEvents(a: FacetEvents, b: FacetEvents): FacetEvents {
     swap: a.swap || b.swap,
     refuse: a.refuse || b.refuse,
     clear: a.clear || b.clear,
+    land: a.land || b.land,
     flaw: a.flaw || b.flaw,
     cut: a.cut || b.cut,
     levelUp: a.levelUp || b.levelUp,
@@ -201,17 +224,21 @@ export function createInitialState(seed: number = DEFAULT_SEED): FacetState {
     levelScore: 0,
     phase: "idle",
     chainStep: 0,
+    swapTimer: 0,
     stepTimer: 0,
     chainSwap: null,
     lastCleared: 0,
     lastPoints: 0,
-    cursor: { col: CURSOR_START_COL, row: CURSOR_START_ROW },
+    lastWaves: 0,
+    moveScore: 0,
+    bestMove: 0,
+    bestChain: 0,
     selection: null,
+    offer: null,
     refusal: null,
     refusalTimer: 0,
-    pointer: { x: 0, y: 0, down: false },
-    pressedCell: null,
-    dragSwapped: false,
+    pointer: { x: 0, y: 0, down: false, device: "mouse" },
+    armedTarget: null,
     muted: false,
     simTime: 0,
     rngState: seed,

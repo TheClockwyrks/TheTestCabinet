@@ -7,6 +7,7 @@ import {
   CUT_BRILLIANT_KEY,
   CUT_STAR_KEY,
   FRAME_KEY,
+  FX_AURA,
   FX_CLEAR,
   FX_CUT,
   FX_FLAWED,
@@ -65,11 +66,12 @@ describe("the manifest", () => {
     }
   });
 
-  it("names the three particle systems", () => {
+  it("names the four particle systems", () => {
     const { systems } = assetManifest();
     expect(systems[FX_CLEAR]).toBe("fx/clear-burst.system.json");
     expect(systems[FX_FLAWED]).toBe("fx/flawed-burst.system.json");
     expect(systems[FX_CUT]).toBe("fx/cut-flash.system.json");
+    expect(systems[FX_AURA]).toBe("fx/cut-aura.system.json");
   });
 
   it("asks for nothing that is not committed", () => {
@@ -136,8 +138,8 @@ describe("the store", () => {
     expect(store.image(FRAME_KEY)).not.toBeNull();
     expect(store.image(gemKey("ruby", 0))).toBeNull();
     expect(progress.loaded).toBe(1);
-    expect(progress.total).toBe(88);
-    expect(progress.failed).toHaveLength(87);
+    expect(progress.total).toBe(89);
+    expect(progress.failed).toHaveLength(88);
   });
 
   it("loads once however often it is asked", async () => {

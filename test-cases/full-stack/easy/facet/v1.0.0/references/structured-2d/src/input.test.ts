@@ -25,10 +25,25 @@ describe("registerActions", () => {
     }
   });
 
-  it("binds the three keys specs/controls.md fixes", () => {
-    expect(BINDINGS.pause).toEqual(["KeyP"]);
+  it("binds the keys specs/controls.md fixes", () => {
+    expect(BINDINGS.up).toEqual(["ArrowUp"]);
+    expect(BINDINGS.down).toEqual(["ArrowDown"]);
+    expect(BINDINGS.confirm).toEqual(["Enter", "Space"]);
+    expect(BINDINGS.pause).toEqual(["Escape", "KeyP"]);
     expect(BINDINGS.mute).toEqual(["KeyM"]);
     expect(BINDINGS.back).toEqual(["Escape"]);
+  });
+
+  it("registers the layout's own vocabulary and nothing else", () => {
+    expect(LAYOUT).toBe("single-vertical");
+    expect([...ACTIONS]).toEqual([
+      "up",
+      "down",
+      "confirm",
+      "back",
+      "pause",
+      "mute",
+    ]);
   });
 
   it("leaves the overlay's own key free of bindings", () => {
@@ -38,9 +53,9 @@ describe("registerActions", () => {
   });
 
   it("refuses an engine built without the layout it is written against", () => {
-    expect(() => registerActions(api(null))).toThrow(/dpad-4 layout/);
-    expect(() =>
-      registerActions(api({ name: "single-vertical", actions: [] })),
-    ).toThrow(/not single-vertical/);
+    expect(() => registerActions(api(null))).toThrow(/single-vertical layout/);
+    expect(() => registerActions(api({ name: "dpad-4", actions: [] }))).toThrow(
+      /not dpad-4/,
+    );
   });
 });

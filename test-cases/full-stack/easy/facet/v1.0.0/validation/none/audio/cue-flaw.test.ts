@@ -13,17 +13,14 @@
 // `MAX_STRAIN` is flawed." So a gem already at `MAX_STRAIN - 1` beside a
 // clearing set reaches it in that step, and one at `0` does not.
 //
-// WHY TWO SCENARIOS RATHER THAN ONE, AND WHY THAT IS WHAT MAKES THIS READABLE
-// HERE. A flaw never happens alone: R7 runs inside a chain step, so the flawing
-// frame is also a clearing frame and would sound `clear` whatever the build did
-// about `flaw`. This build stands on no engine, so specs/ui.md fixes the cue
-// NAMES inside its own code and the harness can report only that one-shots went
-// out and on which frame — a single scenario would therefore prove nothing. The
-// pair fixes that. The two boards are the SAME board but for one strain digit at
-// one cell, so the swap, the run, the clear set, the multiplier and every other
-// cue the frame raises are identical; the one thing that differs is whether a
-// gem reached `MAX_STRAIN`, and so a flawing frame that sounds no more than its
-// control's did is a build with no `flaw` cue.
+// WHY TWO SCENARIOS RATHER THAN ONE. A flaw never happens alone: R7 runs inside
+// a chain step, so the flawing frame is also a clearing frame and would sound
+// `clear` whatever the build did about `flaw`. The pair isolates it. The two
+// boards are the SAME board but for one strain digit at one cell, so the swap,
+// the run, the clear set, the multiplier and every other cue the frame raises
+// are identical, and the one thing that differs between the two frames is
+// whether a gem reached `MAX_STRAIN`. The check asserts that difference and
+// nothing else.
 //
 // R6 IS NOT DISTURBED BY THE STRESSED CELL. R6 pulls in "every flawed gem
 // orthogonally adjacent to a cell in the set", and the stressed gem is at
@@ -31,11 +28,16 @@
 // which is after R6 and after the scoring. So both scenarios clear the same set,
 // and the check asserts that too rather than assuming it.
 //
-// WHY THE KEYBOARD IS THE ROUTE. specs/ui.md says "A cue is played by a frame,
-// never by a pose of the debug surface", so a swap posed through `requestSwap`
-// is entitled to raise nothing. specs/controls.md fixes `confirm` to `Enter` and
-// `Space` for a build of every engine, so one press puts the step inside a frame
-// under all three.
+// WHICH FRAME IS READ, AND WHY THE SWAP IS POSED. The event is raised by the
+// frame the STEP resolves on, which specs/rules.md puts `SWAP_SECONDS` after the
+// swap was accepted: "Nothing is cleared yet ... When `swapTimer` reaches
+// `SWAP_SECONDS` ... `chainStep` becomes `1`, and step `1` resolves." That frame
+// is a frame of the simulation rather than an input edge, so how the move was
+// asked for cannot change it, and `requestSwap` — which
+// specs/instrumentation.md sends "through the same acceptance path a player's
+// release takes" — puts no pointer surface between this point and the thing it
+// decides. The chain is then walked ONE FRAME AT A TIME so the frame the step
+// resolved on is the frame the cues are read against.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -44,6 +46,7 @@ import {
   assertGreaterThan,
   assertLength,
   assertTrue,
+  fail,
 } from "../assert";
 import {
   areAdjacent,
@@ -69,19 +72,22 @@ import {
   createHarness,
   cuesOnFrame,
   loadBoard,
+  requestSwap,
+  stepDriveFrames,
   watchCues,
   type Harness,
 } from "../harness";
+import type { FacetSnapshot } from "../surface";
 
-/** The selected cell: the jade the swap carries down into row 3. */
-const SELECTED: CellRef = { col: 3, row: 2 };
+/** The cell the swap carries the jade down from. */
+const FROM: CellRef = { col: 3, row: 2 };
 
-/** The cursor's cell, orthogonally adjacent to it and one row below. */
-const NEIGHBOR: CellRef = { col: 3, row: 3 };
+/** The cell it carries the jade into, one row below and orthogonally adjacent. */
+const TO: CellRef = { col: 3, row: 3 };
 
 /**
- * Three jades over the run-free filler, so that exchanging {@link SELECTED} with
- * {@link NEIGHBOR} completes a horizontal run of jade across `(2,3)`, `(3,3)`,
+ * Three jades over the run-free filler, so that exchanging {@link FROM} with
+ * {@link TO} completes a horizontal run of jade across `(2,3)`, `(3,3)`,
  * `(4,3)` and R3 accepts the swap.
  */
 const SCENARIO: readonly PlacedToken[] = [
@@ -96,6 +102,16 @@ const SCENARIO: readonly PlacedToken[] = [
  */
 const STRESSED: CellRef = { col: 4, row: 2 };
 
+/**
+ * Frames allowed beyond the drive the swap animation needs.
+ *
+ * NOT a specification figure. `stepDriveFrames` is the harness's own count of the
+ * frames that carry a swapping board past `SWAP_SECONDS` into the step that
+ * follows, sized so a build comparing `>=` and one comparing `>` both read alike;
+ * two frames beyond it is room for a build that resolves on the next frame.
+ */
+const SEARCH_MARGIN = 2;
+
 /** How many gems on a written board are flawed, which specs/board.md is MAX_STRAIN. */
 function flawedGems(rows: BoardRows): number {
   return parseRows(rows)
@@ -105,6 +121,23 @@ function flawedGems(rows: BoardRows): number {
 
 let h: Harness;
 
+/** Walk the swap one frame at a time to the frame step 1 resolves on. */
+async function stepOneFrame(): Promise<{
+  frame: number;
+  snapshot: FacetSnapshot;
+}> {
+  const cap = stepDriveFrames(await h.snapshot()) + SEARCH_MARGIN;
+  for (let driven = 0; driven < cap; driven += 1) {
+    await h.advance(1);
+    const snapshot = await h.snapshot();
+    if (snapshot.chainStep >= 1) return { frame: h.frame(), snapshot };
+  }
+  return fail(
+    `step 1 to resolve within ${cap} frames of the accepted swap`,
+    `phase ${(await h.snapshot()).phase} at chain step ${(await h.snapshot()).chainStep}`,
+  );
+}
+
 beforeEach(async () => {
   h = await createHarness();
 });
@@ -113,7 +146,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("makes more sound on the frame a gem reaches MAX_STRAIN than on the same step without one", async () => {
+it("sounds more on the frame a gem reaches MAX_STRAIN than on the frame none does", async () => {
   // specs/assets.md decodes the produced `.wav`s asynchronously and specs/ui.md
   // opens audio only after an interaction, so a build's first frames are
   // legitimately silent. Warming waits that out.
@@ -144,7 +177,7 @@ it("makes more sound on the frame a gem reaches MAX_STRAIN than on the same step
   ] as const) {
     assertLength(maximalRuns(rows), 0, `maximal runs on the ${name} board`);
     assertTrue(
-      swapIsLegal(rows, SELECTED, NEIGHBOR),
+      swapIsLegal(rows, FROM, TO),
       `R1 and R3 accept the swap on the ${name} board`,
     );
   }
@@ -172,7 +205,7 @@ it("makes more sound on the frame a gem reaches MAX_STRAIN than on the same step
 
   // And the stressed cell is where R7 will reach it: outside the clear set the
   // swap seeds, and orthogonally adjacent to a cell inside it.
-  const cleared = clearSetFromRuns(swapped(control, SELECTED, NEIGHBOR));
+  const cleared = clearSetFromRuns(swapped(control, FROM, TO));
   assertTrue(
     !cleared.some((c) => c.col === STRESSED.col && c.row === STRESSED.row),
     "the stressed cell is outside the clear set",
@@ -182,18 +215,13 @@ it("makes more sound on the frame a gem reaches MAX_STRAIN than on the same step
     "the stressed cell borders the clear set",
   );
 
-  /** Pose one of the two boards and make the swap from the keyboard. */
+  /** Pose one of the two boards, ask for the swap, and walk to step 1's frame. */
   const play = async (rows: BoardRows, outputId: string) => {
     await loadBoard(h, rows);
-    await h.debug.setSelection(SELECTED.col, SELECTED.row);
-    await h.debug.setCursor(NEIGHBOR.col, NEIGHBOR.row);
+    await requestSwap(h, FROM, TO);
     return captureReplay(h, outputId, async () => {
-      await h.tapAction("confirm");
-      return {
-        frame: h.frame(),
-        snapshot: await h.snapshot(),
-        board: await h.board(),
-      };
+      const resolved = await stepOneFrame();
+      return { ...resolved, board: await h.board() };
     });
   };
 
@@ -220,11 +248,16 @@ it("makes more sound on the frame a gem reaches MAX_STRAIN than on the same step
     "flawed gems after the stressed step",
   );
 
-  // So the flawing frame sounded everything the control frame did, and the
-  // `flaw` cue over and above it.
+  // The cue itself, as the difference between the two frames. Nothing outside an
+  // engineless build publishes a cue's NAME — specs/ui.md fixes the nine inside
+  // the build's own code — so what is read is that the flawing frame sounded MORE
+  // than its control did. The pair is what makes that enough: the two frames are
+  // the same frame but for the one strain digit, so they raise the same `clear`
+  // at the same rung and differ only in whether a gem reached MAX_STRAIN.
   assertGreaterThan(
     cuesOnFrame(cues, flawing.frame).length,
     cuesOnFrame(cues, quiet.frame).length,
-    "one-shot cues on the flawing frame, against the control frame's",
+    "one-shot cues on the frame a gem reached MAX_STRAIN, against the frame " +
+      "on which none did",
   );
 });

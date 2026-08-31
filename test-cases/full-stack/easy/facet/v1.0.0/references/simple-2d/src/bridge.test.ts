@@ -45,9 +45,15 @@ describe("a cell that holds no gem", () => {
       kind: null,
       cut: "prism",
       strain: 2,
+      fell: 3,
     } as const;
     expect(isEmptyCell(prism)).toBe(false);
-    expect(toCoreGem(prism)).toEqual({ kind: null, cut: "prism", strain: 2 });
+    expect(toCoreGem(prism)).toEqual({
+      kind: null,
+      cut: "prism",
+      strain: 2,
+      fell: 3,
+    });
   });
 
   it("round-trips through the board in both directions", () => {
@@ -92,7 +98,7 @@ describe("the whole state", () => {
 
   it("round-trips a round in progress unchanged", () => {
     const core = busy();
-    expect(core.phase).toBe("resolving");
+    expect(core.phase).toBe("swapping");
     expect(toCore(fromCore(core))).toEqual(core);
   });
 
@@ -117,19 +123,37 @@ describe("the whole state", () => {
     expect(toCore(declared).refusalTimer).toBe(0);
   });
 
-  it("carries the three fields the rules need past the declaration", () => {
-    const core = busy();
-    const declared = fromCore({
-      ...core,
-      pressedCell: { col: 4, row: 4 },
-      dragSwapped: true,
-    });
+  it("carries the one field the rules need past the declaration", () => {
+    const declared = fromCore(busy());
     expect(declared.chainSwap).toEqual({
       a: { col: 3, row: 1 },
       b: { col: 3, row: 2 },
     });
-    expect(declared.pressedCell).toEqual({ col: 4, row: 4 });
-    expect(declared.dragSwapped).toBe(true);
+  });
+
+  it("carries the rows a gem fell, which is what times the fall", () => {
+    const dealt = startRound(createInitialState(5));
+    const declared = fromCore(dealt);
+    // Every gem of an opening board came in from above its own row.
+    declared.board.cells.forEach((cell) => {
+      expect(cell.fell).toBeGreaterThanOrEqual(cell.row + 1);
+    });
+    expect(toCore(declared)).toEqual(dealt);
+  });
+
+  it("carries the offer, the armed target, and the pointer's device", () => {
+    const core: CoreState = {
+      ...createInitialState(),
+      selection: { col: 2, row: 2 },
+      offer: { col: 2, row: 3 },
+      armedTarget: "menu-1",
+      pointer: { x: 12, y: 34, down: true, device: "touch" },
+    };
+    const declared = fromCore(core);
+    expect(declared.offer).toEqual({ col: 2, row: 3 });
+    expect(declared.armedTarget).toBe("menu-1");
+    expect(declared.pointer.device).toBe("touch");
+    expect(toCore(declared)).toEqual(core);
   });
 
   it("copies the cells rather than sharing them with the core's board", () => {

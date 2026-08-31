@@ -1,32 +1,46 @@
-// Facet — scoring/score-adds-to-both: a step's points land on `score` and on
-// `levelScore`, both, and by the same amount.
+// Facet — scoring/score-adds-to-both: a step's points land on `score`, on
+// `levelScore` and on `moveScore`, all three, and by the same amount.
 //
 // specs/rules.md states it in one sentence: "A step's points are the sum over its
-// clear set, and they are added to both `score` and `levelScore`". The two
-// figures answer different questions — `score` is the round's running total and
-// carries across a level, `levelScore` is what is banked toward this level's
-// target and returns to 0 when the level turns over — so a build can easily keep
-// one and forget the other, or bank the level score and forget the total.
+// clear set, and they are added to `score`, to `levelScore`, and to `moveScore`".
+// The three figures answer three different questions — `score` is the round's
+// running total and carries across a level, `levelScore` is what is banked toward
+// this level's target and returns to 0 when the level turns over, and `moveScore`
+// is what the one move currently running has scored and returns to 0 at the next
+// accepted swap — so a build can easily keep one and forget another, or bank the
+// level score and forget the total.
 //
-// WHAT MAKES THE TWO SEPARABLE. They are posed APART before the step: `score` at
-// 500 and `levelScore` at 100, figures no arithmetic relates. A build that keeps
-// one figure and reports it twice, or that assigns the step's points rather than
-// adding them, moves the two by different amounts and fails.
+// WHAT MAKES THE FIRST TWO SEPARABLE. They are posed APART before the step:
+// `score` at 500 and `levelScore` at 100, figures no arithmetic relates. A build
+// that keeps one figure and reports it twice, or that assigns the step's points
+// rather than adding them, moves the two by different amounts and fails.
+//
+// AND WHY THE THIRD NEEDS NO POSE. specs/rules.md returns `moveScore` to `0` when
+// a swap is accepted, so the move this step belongs to starts at nothing and what
+// `moveScore` holds after one step IS that step's points. That is what makes it
+// comparable with the two figures that were posed: the same amount that was added
+// to each of them is the whole of what it holds.
 //
 // WHAT THE STEP IS WORTH IS NOT DECIDED HERE. That is `scoring/score-base-rate`'s
 // claim and `scoring/score-flawed-rate`'s, and this point never names a rate: it
-// reads both standings before the step and both after, and requires the two
-// figures to have moved by the SAME amount — an amount only the build's own step
-// supplies. A build that priced the clear set wrongly and banked its own figure
-// on both moves them alike and passes here, owing the point that owns the rate.
-// A step that banked nothing at all would satisfy any equality between two
-// unmoved figures, so the reading requires the score to have moved.
+// reads the standings before the step and after, and requires the three figures to
+// have moved by the SAME amount — an amount only the build's own step supplies. A
+// build that priced the clear set wrongly and banked its own figure on all three
+// moves them alike and passes here, owing the point that owns the rate. A step
+// that banked nothing at all would satisfy any equality between unmoved figures,
+// so the reading requires the score to have moved.
 //
-// The level must not turn over while the reading is taken: specs/rules.md returns
-// `levelScore` to 0 when it does, and the figure the step added to would be gone
-// before it could be read. The level score is posed far below the target the
-// round reports and the step is a plain three, and the level is read after the
-// step to show it did not turn over.
+// THE LEVEL MUST NOT TURN OVER while the reading is taken: specs/rules.md returns
+// `levelScore`, `bestMove` and `bestChain` to 0 when a level is opened, and the
+// figure the step added to would be gone before it could be read. The level score
+// is posed far below the target the round reports and the step is a plain three,
+// and the level is read after the step to show it did not turn over.
+//
+// THE SWAP IS NOT THE STEP. An accepted swap exchanges the two cells at once,
+// sets `phase` to `swapping` with `chainStep` at `0`, and clears nothing; step 1
+// resolves once `SWAP_SECONDS` (`0.18`) of game time has passed. `swapAndStep`
+// carries the board through that animation and hands back the reading of step 1's
+// result, which is where the three figures are read.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
@@ -41,10 +55,12 @@ import {
 import {
   captureReplay,
   createHarness,
+  framesShortOf,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
+import type { FacetSnapshot } from "../surface";
 
 /** A ruby three at strain 0 that the swap completes across row 4. */
 const RUN_CELLS: readonly PlacedToken[] = [
@@ -65,8 +81,20 @@ const SWAP_B: CellRef = { col: 3, row: 4 };
 const SCORE_BEFORE = 500;
 const LEVEL_SCORE_BEFORE = 100;
 
-/** Frames recorded after the step, so the replay shows both readouts move. */
-const AFTERMATH_FRAMES = 24; // 0.375 s
+/**
+ * Frames that carry the recording to just short of the end of the step the
+ * reading was taken in.
+ *
+ * A step's hold is the step's OWN figure — `lastWaves * WAVE_SECONDS` plus
+ * `lastFall * FALL_SECONDS_PER_ROW` plus `STEP_SECONDS`, which the snapshot
+ * reports as `stepHold` — so the frames that fill it are read off the snapshot
+ * rather than written down. `framesShortOf` keeps the drive strictly inside what
+ * is left of the hold, so the board is never read a second time and the three
+ * figures above still describe one step.
+ */
+function restOfStep(reading: FacetSnapshot): number {
+  return framesShortOf(Math.max(0, reading.stepHold - reading.stepTimer));
+}
 
 let h: Harness;
 
@@ -78,7 +106,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("adds a step's points to both score and levelScore", async () => {
+it("adds a step's points to score, levelScore and moveScore alike", async () => {
   const posed = quietRowsWith(RUN_CELLS);
   const resolved = swapped(posed, SWAP_A, SWAP_B);
   const cleared = clearSetFromRuns(resolved);
@@ -87,7 +115,11 @@ it("adds a step's points to both score and levelScore", async () => {
   // exactly one, and nothing in R6 grows it — so the step under test is one small
   // clear rather than whatever a cascade happened to do.
   assertEqual(maximalRuns(posed).length, 0, "maximal runs on the posed board");
-  assertEqual(maximalRuns(resolved).length, 1, "maximal runs the swap produces");
+  assertEqual(
+    maximalRuns(resolved).length,
+    1,
+    "maximal runs the swap produces",
+  );
   assertEqual(cleared.length, 3, "cells the step clears");
 
   await loadBoard(h, posed);
@@ -101,6 +133,13 @@ it("adds a step's points to both score and levelScore", async () => {
     LEVEL_SCORE_BEFORE,
     "the level score the step is added to",
   );
+  // No move has scored on this board: `reset` puts `moveScore` at 0 and
+  // `loadBoard` leaves it standing, so the move the swap opens starts at nothing.
+  assertEqual(
+    before.moveScore,
+    0,
+    "the move score standing before any move has been played",
+  );
   // The standing the step is added to is short of the target the round is playing
   // to, so a small clear cannot complete the level under the reading.
   assertLessThan(
@@ -110,11 +149,11 @@ it("adds a step's points to both score and levelScore", async () => {
   );
 
   const first = await captureReplay(h, "score", async () => {
-    // One frame of the two standings before the step, so the replay shows both
+    // One frame of the standings before the step, so the replay shows the
     // readouts moving rather than only where they ended.
     await h.advance(1);
-    const step = await swap(h, SWAP_A, SWAP_B);
-    await h.advance(AFTERMATH_FRAMES);
+    const step = await swapAndStep(h, SWAP_A, SWAP_B);
+    await h.advance(restOfStep(step));
     return step;
   });
 
@@ -128,7 +167,7 @@ it("adds a step's points to both score and levelScore", async () => {
   );
 
   const banked = first.score - before.score;
-  // The step banked something. Two figures that never moved would satisfy any
+  // The step banked something. Figures that never moved would satisfy any
   // equality between them.
   assertGreaterThan(banked, 0, "the points the step added to the score");
   assertEqual(
@@ -136,5 +175,13 @@ it("adds a step's points to both score and levelScore", async () => {
     banked,
     `what the step added to the level score standing at ${LEVEL_SCORE_BEFORE}, ` +
       `against the ${banked} it added to the score standing at ${SCORE_BEFORE}`,
+  );
+  // The move opened at 0, so what the move score holds is what this one step
+  // added to it.
+  assertEqual(
+    first.moveScore,
+    banked,
+    `what the step added to the move score, which the accepted swap returned ` +
+      `to 0, against the ${banked} it added to the score`,
   );
 });

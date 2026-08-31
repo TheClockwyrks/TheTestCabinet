@@ -1,19 +1,24 @@
-// Selecting, swapping, dragging, and the cursor (specs/controls.md).
+// Taking hold of a gem, offering it, and letting go, and working a screen's
+// pointer targets (specs/controls.md).
 
 import { describe, expect, it } from "vitest";
-import { GEM_HIT_R, GRID_COLS, GRID_ROWS } from "../constants";
+import { GEM_HIT_R, TITLE_ITEMS } from "../constants";
 import { cellX, cellY, formatBoard } from "./board";
 import {
-  actOnCell,
-  confirmCell,
-  moveCursor,
+  offerCell,
   pointerDown,
   pointerMove,
   pointerUp,
+  pressCell,
+  releaseBoard,
 } from "./controls";
 import { loadBoard } from "./debug";
 import { quietRowsWith } from "./fixtures";
-import { createInitialState, type FacetState } from "./state";
+import { goBack } from "./flow";
+import { targetsFor } from "./targets";
+import { createInitialState, type FacetState, type Screen } from "./state";
+
+const title = () => createInitialState(1);
 
 const play = (edits: Readonly<Record<string, string>> = {}): FacetState =>
   loadBoard(createInitialState(1), quietRowsWith(edits));
@@ -24,131 +29,215 @@ const ROW_RUN = { "3,3": "R0", "4,4": "R0" };
 const press = (state: FacetState, col: number, row: number) =>
   pointerDown(state, cellX(col), cellY(row));
 
-describe("the four rows of the selection table", () => {
+const drag = (state: FacetState, col: number, row: number) =>
+  pointerMove(state, cellX(col), cellY(row));
+
+/** The center of one of a screen's targets, which is where a player aims. */
+const centerOf = (screen: Screen, id: string) => {
+  const target = targetsFor(screen).find((one) => one.id === id);
+  if (!target) throw new Error(`no ${id} target on ${screen}`);
+  return { x: target.x + target.w / 2, y: target.y + target.h / 2 };
+};
+
+describe("the five rows of the press table", () => {
   it("selects a cell while nothing is selected", () => {
-    const acted = actOnCell(play(), { col: 3, row: 3 });
+    const acted = pressCell(play(), { col: 3, row: 3 });
     expect(acted.state.selection).toEqual({ col: 3, row: 3 });
+    expect(acted.state.offer).toBeNull();
     expect(acted.events.select).toBe(true);
-    expect(acted.requested).toBe(false);
   });
 
-  it("clears the selection when the selected cell is acted on again", () => {
-    const selected = actOnCell(play(), { col: 3, row: 3 }).state;
-    const acted = actOnCell(selected, { col: 3, row: 3 });
-    expect(acted.state.selection).toBeNull();
+  it("takes hold of the selected cell again, withdrawing any offer", () => {
+    const held = { ...play(), selection: { col: 3, row: 3 } };
+    const offered = pressCell(held, { col: 3, row: 4 }).state;
+    expect(offered.offer).toEqual({ col: 3, row: 4 });
+    const back = pressCell(offered, { col: 3, row: 3 });
+    expect(back.state.selection).toEqual({ col: 3, row: 3 });
+    expect(back.state.offer).toBeNull();
+    expect(back.events.select).toBe(false);
+  });
+
+  it("offers the held gem into an orthogonally adjacent cell", () => {
+    const held = pressCell(play(ROW_RUN), { col: 3, row: 3 }).state;
+    const acted = pressCell(held, { col: 3, row: 4 });
+    // Nothing reaches the move rules: the release is what plays a move.
+    expect(acted.state.selection).toEqual({ col: 3, row: 3 });
+    expect(acted.state.offer).toEqual({ col: 3, row: 4 });
+    expect(acted.state.phase).toBe("idle");
+    expect(acted.events.swap).toBe(false);
     expect(acted.events.select).toBe(false);
   });
 
-  it("requests the swap of an orthogonally adjacent cell, and deselects", () => {
-    const selected = actOnCell(play(ROW_RUN), { col: 3, row: 3 }).state;
-    const acted = actOnCell(selected, { col: 3, row: 4 });
-    expect(acted.requested).toBe(true);
-    expect(acted.state.selection).toBeNull();
-    expect(acted.state.phase).toBe("resolving");
-    expect(acted.events.swap).toBe(true);
-  });
-
-  it("moves the selection to any other cell", () => {
-    const selected = actOnCell(play(), { col: 0, row: 0 }).state;
-    const acted = actOnCell(selected, { col: 5, row: 5 });
+  it("moves the selection to any other cell, with no offer standing", () => {
+    const held = pressCell(play(), { col: 0, row: 0 }).state;
+    const acted = pressCell(held, { col: 5, row: 5 });
     expect(acted.state.selection).toEqual({ col: 5, row: 5 });
+    expect(acted.state.offer).toBeNull();
     expect(acted.events.select).toBe(true);
-    expect(acted.requested).toBe(false);
   });
 
   it("does not treat a diagonal neighbor as adjacent", () => {
-    const selected = actOnCell(play(), { col: 3, row: 3 }).state;
-    const acted = actOnCell(selected, { col: 4, row: 4 });
-    expect(acted.requested).toBe(false);
+    const held = pressCell(play(), { col: 3, row: 3 }).state;
+    const acted = pressCell(held, { col: 4, row: 4 });
     expect(acted.state.selection).toEqual({ col: 4, row: 4 });
+    expect(acted.state.offer).toBeNull();
   });
 
-  it("marks a refusal when the swap it requests is refused", () => {
-    const selected = actOnCell(play(), { col: 3, row: 3 }).state;
-    const acted = actOnCell(selected, { col: 3, row: 4 });
-    expect(acted.state.refusal).toEqual({
-      a: { col: 3, row: 3 },
-      b: { col: 3, row: 4 },
-    });
-    expect(acted.events.refuse).toBe(true);
+  it("clears the selection and the offer on a press targeting no cell", () => {
+    const offered = {
+      ...play(),
+      selection: { col: 3, row: 3 },
+      offer: { col: 3, row: 4 },
+    };
+    const acted = pressCell(offered, null);
+    expect(acted.state.selection).toBeNull();
+    expect(acted.state.offer).toBeNull();
+    expect(formatBoard(acted.state.board)).toEqual(formatBoard(offered.board));
   });
 });
 
-describe("the pointer", () => {
-  it("records the pointer whatever the screen", () => {
-    const title = pointerDown(createInitialState(1), 100, 200).state;
-    expect(title.pointer).toEqual({ x: 100, y: 200, down: true });
-    expect(title.selection).toBeNull();
-    expect(pointerUp(title).pointer.down).toBe(false);
+describe("the move table, read against the cell being held", () => {
+  const held = () => pressCell(play(ROW_RUN), { col: 3, row: 3 }).state;
+
+  it("offers the held gem into a neighbor the pointer reaches", () => {
+    expect(offerCell(held(), { col: 3, row: 4 }).offer).toEqual({
+      col: 3,
+      row: 4,
+    });
   });
 
-  it("selects the cell a press lands on", () => {
-    const pressed = press(play(), 2, 6).state;
-    expect(pressed.selection).toEqual({ col: 2, row: 6 });
-    expect(pressed.pressedCell).toEqual({ col: 2, row: 6 });
+  it("withdraws the offer when the pointer comes back to the held cell", () => {
+    const offered = offerCell(held(), { col: 3, row: 4 });
+    expect(offerCell(offered, { col: 3, row: 3 }).offer).toBeNull();
+  });
+
+  it("replaces one offer with another rather than keeping both", () => {
+    const offered = offerCell(held(), { col: 3, row: 4 });
+    expect(offerCell(offered, { col: 2, row: 3 }).offer).toEqual({
+      col: 2,
+      row: 3,
+    });
+  });
+
+  it("changes nothing over a farther cell, or over no cell at all", () => {
+    const offered = offerCell(held(), { col: 3, row: 4 });
+    expect(offerCell(offered, { col: 6, row: 6 })).toBe(offered);
+    expect(offerCell(offered, null)).toBe(offered);
+    // With nothing held there is nothing to offer.
+    expect(offerCell(play(), { col: 3, row: 4 }).offer).toBeNull();
+  });
+});
+
+describe("the release, which is what plays a move", () => {
+  it("requests the swap of the held cell with the offered one", () => {
+    const held = pressCell(play(ROW_RUN), { col: 3, row: 3 }).state;
+    const offered = offerCell(held, { col: 3, row: 4 });
+    const released = releaseBoard(offered);
+    expect(released.state.phase).toBe("swapping");
+    expect(released.state.selection).toBeNull();
+    expect(released.state.offer).toBeNull();
+    expect(released.events.swap).toBe(true);
+  });
+
+  it("plays nothing at all when no offer stands", () => {
+    const held = pressCell(play(ROW_RUN), { col: 3, row: 3 }).state;
+    const released = releaseBoard(held);
+    expect(released.state).toBe(held);
+    expect(released.state.selection).toEqual({ col: 3, row: 3 });
+  });
+
+  it("plays nothing for a gem carried onto a neighbor and back again", () => {
+    const held = pressCell(play(ROW_RUN), { col: 3, row: 3 }).state;
+    const carried = offerCell(offerCell(held, { col: 3, row: 4 }), {
+      col: 3,
+      row: 3,
+    });
+    const released = releaseBoard(carried);
+    expect(released.state.phase).toBe("idle");
+    expect(formatBoard(released.state.board)).toEqual(formatBoard(held.board));
+    expect(released.events.swap).toBe(false);
+  });
+
+  it("marks a refusal when the swap the release requests is refused", () => {
+    const held = pressCell(play(), { col: 3, row: 3 }).state;
+    const released = releaseBoard(offerCell(held, { col: 3, row: 4 }));
+    expect(released.state.refusal).toEqual({
+      a: { col: 3, row: 3 },
+      b: { col: 3, row: 4 },
+    });
+    expect(released.events.refuse).toBe(true);
+  });
+});
+
+describe("the pointer over the board", () => {
+  it("records the pointer, and the device that drove it, on every screen", () => {
+    const touched = pointerDown(title(), 100, 200, "touch").state;
+    expect(touched.pointer).toEqual({
+      x: 100,
+      y: 200,
+      down: true,
+      device: "touch",
+    });
+    expect(touched.selection).toBeNull();
+    const moved = pointerMove(touched, 110, 210, "pen").state;
+    expect(moved.pointer).toEqual({
+      x: 110,
+      y: 210,
+      down: true,
+      device: "pen",
+    });
+    const lifted = pointerUp(moved, "pen").state;
+    expect(lifted.pointer.down).toBe(false);
+    // A mouse is what the three assume when no device is named.
+    expect(pointerDown(title(), 0, 0).state.pointer.device).toBe("mouse");
+  });
+
+  it("plays a whole move from a press, a drag, and a release", () => {
+    const pressed = press(play(ROW_RUN), 3, 3).state;
+    expect(pressed.selection).toEqual({ col: 3, row: 3 });
+    const dragged = drag(pressed, 3, 4).state;
+    expect(dragged.offer).toEqual({ col: 3, row: 4 });
+    expect(dragged.phase).toBe("idle");
+    const released = pointerUp(dragged);
+    expect(released.state.phase).toBe("swapping");
+    expect(released.state.selection).toBeNull();
+    expect(released.events.swap).toBe(true);
+  });
+
+  it("plays a whole move from two presses and a release", () => {
+    const first = press(play(ROW_RUN), 3, 3).state;
+    const second = press(first, 3, 4).state;
+    expect(second.offer).toEqual({ col: 3, row: 4 });
+    expect(pointerUp(second).state.phase).toBe("swapping");
+  });
+
+  it("undoes a move by carrying the gem back before letting go", () => {
+    const pressed = press(play(ROW_RUN), 3, 3).state;
+    const out = drag(pressed, 3, 4).state;
+    const back = drag(out, 3, 3).state;
+    expect(back.offer).toBeNull();
+    const released = pointerUp(back);
+    expect(released.state.phase).toBe("idle");
+    expect(formatBoard(released.state.board)).toEqual(
+      formatBoard(pressed.board),
+    );
   });
 
   it("changes nothing when the press is farther than GEM_HIT_R away", () => {
     const before = play();
     const pressed = pointerDown(before, 20, 20);
     expect(pressed.state.selection).toBeNull();
-    expect(pressed.state.pressedCell).toBeNull();
+    expect(pressed.state.offer).toBeNull();
     expect(pressed.state.pointer.down).toBe(true);
     expect(formatBoard(pressed.state.board)).toEqual(formatBoard(before.board));
   });
 
-  it("presses a neighbor to swap, exactly as the table says", () => {
-    const first = press(play(ROW_RUN), 3, 3).state;
-    const second = press(first, 3, 4);
-    expect(second.state.phase).toBe("resolving");
-    expect(second.state.selection).toBeNull();
-  });
-
-  it("requests a swap by dragging onto an adjacent cell", () => {
-    const pressed = press(play(ROW_RUN), 3, 3).state;
-    const dragged = pointerMove(pressed, cellX(3), cellY(4));
-    expect(dragged.state.phase).toBe("resolving");
-    expect(dragged.state.selection).toBeNull();
-    expect(dragged.state.dragSwapped).toBe(true);
-    expect(dragged.events.swap).toBe(true);
-  });
-
-  it("requests at most one swap from one hold", () => {
-    const pressed = press(play(ROW_RUN), 3, 3).state;
-    const dragged = pointerMove(pressed, cellX(3), cellY(4)).state;
-    const further = pointerMove(dragged, cellX(3), cellY(3));
-    expect(formatBoard(further.state.board)).toEqual(
-      formatBoard(dragged.board),
-    );
-    expect(further.events.swap).toBe(false);
-  });
-
-  it("does not drag from a press that targeted no cell", () => {
-    const pressed = pointerDown(play(ROW_RUN), 20, 20).state;
-    const dragged = pointerMove(pressed, cellX(3), cellY(4));
-    expect(dragged.state.phase).toBe("idle");
-    expect(dragged.state.pointer.x).toBe(cellX(3));
-  });
-
-  it("does not drag onto a cell that is not orthogonally adjacent", () => {
-    const pressed = press(play(ROW_RUN), 3, 3).state;
-    const dragged = pointerMove(pressed, cellX(5), cellY(5));
-    expect(dragged.state.phase).toBe("idle");
-    expect(dragged.state.dragSwapped).toBe(false);
-  });
-
-  it("does not drag while the pointer is up", () => {
-    const released = pointerUp(press(play(ROW_RUN), 3, 3).state);
+  it("does not offer while the pointer is up", () => {
+    const released = pointerUp(press(play(ROW_RUN), 3, 3).state).state;
     const moved = pointerMove(released, cellX(3), cellY(4));
+    expect(moved.state.offer).toBeNull();
     expect(moved.state.phase).toBe("idle");
-  });
-
-  it("ends the drag on release", () => {
-    const pressed = press(play(ROW_RUN), 3, 3).state;
-    const released = pointerUp(pointerMove(pressed, cellX(3), cellY(4)).state);
-    expect(released.pressedCell).toBeNull();
-    expect(released.dragSwapped).toBe(false);
-    expect(released.pointer.down).toBe(false);
+    expect(moved.state.pointer.x).toBe(cellX(3));
   });
 
   it("targets the nearest center, and nothing beyond GEM_HIT_R", () => {
@@ -163,31 +252,92 @@ describe("the pointer", () => {
   });
 });
 
-describe("the cursor", () => {
-  it("moves one cell at a time and stays on the board", () => {
-    const state = play();
-    expect(moveCursor(state, 1, 0).cursor).toEqual({ col: 1, row: 0 });
-    expect(moveCursor(state, 0, 1).cursor).toEqual({ col: 0, row: 1 });
-    expect(moveCursor(state, -1, 0).cursor).toEqual({ col: 0, row: 0 });
-    expect(moveCursor(state, 0, -1).cursor).toEqual({ col: 0, row: 0 });
+describe("the pointer over a screen's targets", () => {
+  it("highlights the menu item a hover crosses", () => {
+    const second = centerOf("title", "menu-1");
+    const hovered = pointerMove(title(), second.x, second.y).state;
+    expect(hovered.menuIndex).toBe(1);
+    expect(hovered.armedTarget).toBeNull();
   });
 
-  it("stops at the far edges", () => {
-    let state = play();
-    for (let i = 0; i < 20; i++) state = moveCursor(state, 1, 1);
-    expect(state.cursor).toEqual({
-      col: GRID_COLS - 1,
-      row: GRID_ROWS - 1,
-    });
+  it("highlights and arms on a press, so a finger sees what it will take", () => {
+    const second = centerOf("title", "menu-1");
+    const pressed = pointerDown(title(), second.x, second.y, "touch").state;
+    expect(pressed.menuIndex).toBe(1);
+    expect(pressed.armedTarget).toBe("menu-1");
+    expect(pressed.screen).toBe("title");
   });
 
-  it("acts on the cursor's cell exactly as a press on it does", () => {
-    const state = { ...play(ROW_RUN), cursor: { col: 3, row: 3 } };
-    const selected = confirmCell(state).state;
-    expect(selected.selection).toEqual({ col: 3, row: 3 });
-    const moved = moveCursor(selected, 0, 1);
-    const swapped = confirmCell(moved);
-    expect(swapped.state.phase).toBe("resolving");
-    expect(swapped.state.selection).toBeNull();
+  it("takes the target a release lands back inside", () => {
+    const second = centerOf("title", "menu-1");
+    const pressed = pointerDown(title(), second.x, second.y).state;
+    const taken = pointerUp(pressed).state;
+    expect(TITLE_ITEMS[1]).toBe("HOW TO PLAY");
+    expect(taken.screen).toBe("howto");
+    expect(taken.armedTarget).toBeNull();
+  });
+
+  it("takes nothing from a release that wandered off the armed target", () => {
+    const second = centerOf("title", "menu-1");
+    const pressed = pointerDown(title(), second.x, second.y).state;
+    const away = pointerMove(pressed, 40, 40).state;
+    const released = pointerUp(away).state;
+    expect(released.screen).toBe("title");
+    expect(released.armedTarget).toBeNull();
+  });
+
+  it("leaves the highlight alone while a press is held elsewhere", () => {
+    const first = centerOf("title", "menu-0");
+    const second = centerOf("title", "menu-1");
+    const pressed = pointerDown(title(), first.x, first.y).state;
+    const dragged = pointerMove(pressed, second.x, second.y).state;
+    // The press armed menu-0, so only the release decides, and the highlight
+    // stays on the item that release would take.
+    expect(dragged.menuIndex).toBe(0);
+    expect(dragged.armedTarget).toBe("menu-0");
+  });
+
+  it("takes nothing from a press carried across a screen change", () => {
+    const over = { ...play(), screen: "gameover" } as FacetState;
+    const item = centerOf("gameover", "menu-0");
+    const pressed = pointerDown(over, item.x, item.y).state;
+    expect(pressed.armedTarget).toBe("menu-0");
+    // Leaving the screen disarms, even though the title's own menu-0 covers
+    // the position the release lands at.
+    const left = goBack(pressed);
+    expect(left.screen).toBe("title");
+    expect(left.armedTarget).toBeNull();
+    expect(pointerUp(left).state.screen).toBe("title");
+  });
+
+  it("works the board's pause control without touching a gem", () => {
+    const pause = centerOf("playing", "pause");
+    const pressed = pointerDown(play(), pause.x, pause.y, "touch").state;
+    expect(pressed.armedTarget).toBe("pause");
+    expect(pressed.selection).toBeNull();
+    const paused = pointerUp(pressed, "touch").state;
+    expect(paused.screen).toBe("paused");
+    expect(paused.menuIndex).toBe(0);
+  });
+
+  it("works how to play's back control", () => {
+    const howto = { ...title(), screen: "howto" } as FacetState;
+    const back = centerOf("howto", "back");
+    const pressed = pointerDown(howto, back.x, back.y).state;
+    expect(pressed.armedTarget).toBe("back");
+    const left = pointerUp(pressed).state;
+    expect(left.screen).toBe("title");
+    expect(left.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
+  });
+
+  it("takes the level-clear menu's CONTINUE by pointer alone", () => {
+    const cleared = { ...play(), screen: "levelclear" } as FacetState;
+    const item = centerOf("levelclear", "menu-0");
+    const taken = pointerUp(
+      pointerDown(cleared, item.x, item.y, "touch").state,
+      "touch",
+    ).state;
+    expect(taken.screen).toBe("playing");
+    expect(taken.level).toBe(2);
   });
 });

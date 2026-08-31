@@ -2,10 +2,11 @@
 
 A match game of cut stones, played on a lit gem board in the browser.
 
-The board is an eight-by-eight field of faceted stones in seven kinds. Swap a
-stone with the one beside it, and any line of three or more of one kind
-shatters; the stones above fall into the gap and fresh ones drop in from the
-top.
+The board is an eight-by-eight field of faceted stones in seven kinds. Take
+hold of a stone, carry it onto the one beside it, and let go: any line of three
+or more of one kind shatters, the stones above fall into the gap, and fresh ones
+drop in from the top. A hold carried back where it started plays nothing, so a
+move can be seen before it is committed to.
 
 Facet's defining idea is **strain**. Every clear presses on the stones around
 it, and a stone that has taken enough of that pressure is **flawed**: it
@@ -19,20 +20,27 @@ which takes the ring of stones around it. A line of five or more leaves a
 the board. A line crossing another leaves a **star**, which takes its whole row
 and its whole column.
 
-Reach a level's target and the next level opens, asking for more. A round ends
-when no swap is left that would shatter anything.
+Reach a level's target and the level is over, totted up on its own screen before
+the next one is dealt. A round ends when no move is left that would shatter
+anything.
 
 ## Controls
 
-| Input                        | Does                                                                           |
-| ---------------------------- | ------------------------------------------------------------------------------ |
-| Pointer                      | Press a stone to select it, then press or drag onto the one beside it to swap. |
-| Arrow keys / `W` `A` `S` `D` | Move the cursor over the board, and the highlight through a menu.              |
-| `Enter` / `Space`            | Select the cursor's stone, then swap with it. Chooses a menu item.             |
-| `P`                          | Pause and resume.                                                              |
-| `M`                          | Sound on and off.                                                              |
-| `Escape`                     | Leave how-to-play, the pause menu, and the end of a round.                     |
-| `` ` ``                      | The engine's debug overlay.                                                    |
+The board is played with the pointer alone — a mouse, a pen, or a finger, all
+reaching the same path. Every screen carries pointer targets besides, so a
+player with nothing but a touchscreen reaches all of them; the keyboard drives
+the menus from the other side.
+
+| Input             | Does                                                                                   |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| Pointer           | Press a stone to take hold of it, carry it onto the one beside it, and let go to play. |
+| Pointer           | Press and release inside a menu row, the `PAUSE` control, or the `BACK` control.       |
+| Arrow keys        | Move the highlight through a menu.                                                     |
+| `Enter` / `Space` | Choose the highlighted menu item.                                                      |
+| `Escape` / `P`    | Raise the pause menu from the board, and drop it again.                                |
+| `Escape`          | Leave how-to-play and the end of a round.                                              |
+| `M`               | Sound on and off.                                                                      |
+| `` ` ``           | The engine's debug overlay.                                                            |
 
 ## Running it
 
@@ -80,14 +88,32 @@ wiring.
 | `src/bridge.ts`                  | The one seam between the engine's live state and the core's.                                                                     |
 | `src/controller.ts`              | The one seat input is read from: the actions, and the pointer's ordered samples.                                                 |
 | `src/frame.ts`, `src/steps.ts`   | One frame of simulation, the per-step reports, and the cues it plays.                                                            |
-| `src/bench.ts`, `src/render*.ts` | The actor, its two draw layers, and everything drawn on them.                                                                    |
-| `src/effects.ts`                 | The break sheets and the particle bursts a chain throws.                                                                         |
+| `src/bench.ts`, `src/render*.ts` | The actor, its two draw layers, and everything drawn on them — including where a stone is at this instant.                       |
+| `src/effects.ts`                 | The break sheets, the bursts a chain throws, the aura every cut stone carries, and the clock a fresh deal pours on.              |
 | `src/assets.ts`, `src/audio.ts`  | The produced files, and the cues declared over them.                                                                             |
 | `src/debug.ts`                   | The debug and automation surface the engine returns from `engine.debug`.                                                         |
 | `src/theme.ts`                   | The look: the palette, the type, and where the produced bench sits.                                                              |
 
+## The board in motion
+
+Nothing on the board teleports, and `specs/rules.md` fixes every span of it. An
+accepted swap exchanges its two cells at once and then carries the two stones
+between them over `SWAP_SECONDS`. A chain step's clear set shatters in waves, a
+cell at wave `w` going `w * WAVE_SECONDS` into the step, and the stones that
+fill the gap fall from where they came from at `FALL_SECONDS_PER_ROW` a row.
+Every gem carries `fell`, how far it traveled to reach its cell, so the
+renderer needs nothing the state does not already hold — and a freshly dealt
+board, whose every gem carries a `fell` of at least `row + 1`, pours in from
+above the top row on the same arithmetic.
+
+`src/render.board.ts` is where that lives: one function says where a stone is,
+and the stones are drawn clipped to the felt field so a falling one rises out of
+the bench's own edge.
+
 Everything the game shows other than its chrome is a file produced with the
 asset tools and committed under `public/assets/`: the gem sprites at every
 strain state, the two cut overlays, the board frame, a break sheet per kind, the
-prism's idle turn, three particle systems, eight cues, an eight-rung chain
-ladder, and two pieces of music. The build bundles them and invokes no tool.
+prism's idle turn, four particle systems — three one-shots a chain throws and
+the aura that runs continuously at every brilliant, star, and prism standing on
+the board — nine cues, an eight-rung chain ladder, and two pieces of music. The
+build bundles them and invokes no tool.

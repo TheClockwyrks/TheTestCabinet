@@ -19,6 +19,14 @@
 // each kind at a cell of its own would instead be measuring whatever else differs
 // between those cells.
 //
+// EVERY GEM READ HERE IS PLAIN, AT STRAIN 0, AND THAT IS WHY IT CAN BE A STILL
+// COMPARISON. specs/board.md runs a continuous effect at a `brilliant`, a `star`
+// and a `prism` and none at a plain gem, and puts a gem's damage on the stone
+// rather than in an effect of its own, so a plain gem at strain 0 is a stone
+// entitled to stand still. The cuts are read by `appearance/cuts-distinguishable`
+// and the prism by `appearance/prism-distinct`, each of which sweeps frames
+// instead for exactly that reason.
+//
 // THE CONTROL THAT MAKES THE READING MEAN SOMETHING. A build is entitled to an
 // idle animation, so two readings of one cell taken frames apart need not be
 // identical. The sweep therefore ends by writing the FIRST kind back into that
@@ -28,10 +36,10 @@
 // PATCH_SAME_MAX. A build whose cell reads further than that from itself has told
 // this check nothing, and it fails here rather than passing pairs on movement.
 //
-// THE CURSOR IS PARKED OFF THE PROBE CELL. specs/ui.md marks the cell at
-// `state.cursor`, and a mark standing on the probe cell would sit over every
-// reading alike, hiding gem from gem. It is moved to the far corner so what the
-// box holds is the gem.
+// NOTHING IS SELECTED THROUGH ANY OF IT. specs/ui.md marks the cell at
+// `state.selection`, and a mark standing on the probe cell would sit over every
+// reading alike, hiding gem from gem. `loadBoard` leaves nothing selected and the
+// selection is cleared again here, so what the box holds is the gem.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { quietRowsWithEscape, tokenOf, withCells } from "../board";
@@ -58,10 +66,6 @@ import {
  */
 const PROBE_COL = 3;
 const PROBE_ROW = 3;
-
-/** Where the cursor is sent, so its mark never sits on the probe cell. */
-const PARKED_COL = 0;
-const PARKED_ROW = 0;
 
 /** The board every reading is taken over: the run-free filler, with its escape. */
 const BOARD = quietRowsWithEscape([]);
@@ -98,7 +102,6 @@ afterEach(() => {
 
 it("draws each of the seven kinds apart from the other six in one cell", async () => {
   loadBoard(h, BOARD);
-  h.debug.setCursor(PARKED_COL, PARKED_ROW);
   h.debug.clearSelection();
   await h.settle(ART_SETTLE_MS);
   await h.advance(1);

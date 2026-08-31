@@ -45,7 +45,7 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  requestSwap,
   type Harness,
 } from "../harness";
 
@@ -78,7 +78,7 @@ it("holds the refusal until REFUSAL_SECONDS of game time has passed", async () =
   );
 
   loadBoard(h, ROWS);
-  const opened = swap(h, PAIR.a, PAIR.b);
+  const opened = requestSwap(h, PAIR.a, PAIR.b);
   assertNotNull(opened.refusal, "refusal at the moment of the request");
 
   const readings = await captureReplay(h, "refusal", async () => {

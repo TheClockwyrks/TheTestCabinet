@@ -19,7 +19,8 @@ The specification spans several files under `specs/`. `specs/board.md` gives the
 board, its cell geometry, the gem kinds and cuts, strain, and the notation
 boards are written in; `specs/rules.md` the rules a swap is accepted under and
 the rules a chain step resolves by, together with scoring, levels, and the end
-of a round; `specs/controls.md` the keyboard and pointer input; `specs/state.md`
+of a round; `specs/controls.md` the pointer that plays the board and works every
+screen, and the keys the menus answer; `specs/state.md`
 what the game's state carries; `specs/instrumentation.md` the debug and
 automation surface; `specs/ui.md` the screens, the menus, and the audio cues;
 `specs/assets.md` the art, effects, and sounds the build produces and ships; and
@@ -34,9 +35,9 @@ each file lands, and what stays drawn in code.
 ## The runtime
 
 This game stands on no engine, so the runtime under it is yours to write: the
-frame loop and the delta time it measures, the canvas fit, input from both the
-keyboard and the pointer, audio cues, loading the produced art and sounds, and
-the debug overlay. Where this specification speaks of the runtime it means that
+frame loop and the delta time it measures, the canvas fit, the keyboard and a
+pointer a mouse, a pen, and a finger all drive, audio cues, loading the produced
+art and sounds, and the debug overlay. Where this specification speaks of the runtime it means that
 layer, and it states only what Facet needs from it. How the layer is structured
 is yours to decide.
 {{else if (eq engine.slug "simple-2d")}}
@@ -44,9 +45,9 @@ is yours to decide.
 
 The game is built on the {{engine.name}} engine, which documents itself in the
 `engine/` directory at the root of this repository. It owns the frame loop and
-the delta time the game is given, the input actions the menus and the cursor are
-driven by, the pointer the board is played with, audio cues, asset loading, the
-canvas fit, and the debug overlay. Read its documentation before you start.
+the delta time the game is given, the input actions the menus are driven by,
+the pointer the board is played with, audio cues, asset loading, the canvas fit,
+and the debug overlay. Read its documentation before you start.
 This specification states only what is specific to Facet.
 
 The pointer reaches the game from the engine already in the stage's logical
@@ -61,9 +62,9 @@ as much as a runtime: the game is written as subclasses of its classes, a game
 instance, a game mode, actors and their components, and the controllers that
 drive them, and the engine constructs, ticks, and renders them in a fixed
 order. It owns the frame loop and the delta time the game is given, rendering
-and the camera, the canvas fit, the input actions the menus and the cursor are
-driven by, the pointer the board is played with, audio cues, asset loading, and
-the debug overlay. Read its documentation before you start. This specification
+and the camera, the canvas fit, the input actions the menus are driven by, the
+pointer the board is played with, audio cues, asset loading, and the debug
+overlay. Read its documentation before you start. This specification
 states only what is specific to Facet.
 
 The logical design field handed to the engine is the stage, and the game leaves
@@ -271,8 +272,8 @@ Produce a complete, polished, playable game that runs entirely in a browser.
 Aim for a game a person would enjoy playing.
 
 The build ships one way to play. A round runs level after level, each level
-asking for more points than the one before it, and it ends when the board holds
-no legal swap. `specs/rules.md` states the swap rules, the chain a swap sets
+asking for more points than the one before it and totting up what it was worth
+before the next is dealt, and it ends when the board holds no legal swap. `specs/rules.md` states the swap rules, the chain a swap sets
 off, strain, scoring, the levels, and that ending, and `specs/board.md` states
 the board every level is dealt on.
 
@@ -280,7 +281,8 @@ the board every level is dealt on.
 
 {{#if (eq engine.slug "none")}}
 - Write the runtime the game stands on: the frame loop and its delta time, the
-  canvas fit, keyboard and pointer input, audio, and the debug overlay.
+  canvas fit, keyboard and pointer input over mouse, pen, and touch, audio, and
+  the debug overlay.
 {{else if (eq engine.slug "simple-2d")}}
 - Build on the {{engine.name}} engine, taking the frame loop, the input
   actions, the pointer, audio, asset loading, and the debug overlay from it.
@@ -354,7 +356,9 @@ Whatever look you choose, a player reads all of the following at a glance.
 | Cut | A `brilliant`, a `star`, and a `prism` each read as distinct from a plain gem and from one another. |
 | Prism | A `prism` reads as carrying no kind, distinct at a glance from every gem that carries one. |
 | Gem size | Every gem's drawn form fits inside `GEM_R` (`30`) of its cell center. |
-| Cursor and selection | The cursor's cell and the selected cell each read distinctly, and both read against a board of gems. |
+| Selection and offer | The selected cell reads distinctly against a board of gems, and while an offer stands the two gems it names are drawn exchanged, so a player sees the move a release would play. |
+| Motion | A swap, a shattering set, and falling gems are each drawn moving over the spans `specs/rules.md` gives them, and a `brilliant`, a `star`, and a `prism` each carry the running effect `specs/assets.md` produces for them. |
+| Controls | Every pointer target `specs/controls.md` names is drawn where it is reported, large enough to be worked by a fingertip, so a player with only a touchscreen reaches every screen. |
 | Readouts | The score, the level, the level meter, and the chain multiplier are legible at the logical stage size and sit clear of the board's extent, which `specs/board.md` gives. |
 
 The produced art and sounds carry the rest of the look, and `specs/assets.md`

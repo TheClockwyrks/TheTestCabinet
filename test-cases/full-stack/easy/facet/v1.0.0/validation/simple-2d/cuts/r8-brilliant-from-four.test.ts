@@ -14,10 +14,14 @@
 // afterwards is one R8 created, and there is no counting of "before" against
 // "after" to get wrong.
 //
-// WHY THE READING IS TAKEN AT STEP 1. specs/rules.md resolves step 1 at the swap,
-// R8 and R9 included, so the created brilliant is on the board the moment the swap
-// returns. A later step is seeded by whatever R9's seeded refill dropped in, and
-// is entitled to create cuts of its own — reading the settled board would be
+// WHY THE READING IS TAKEN AT STEP 1. specs/rules.md has an accepted swap
+// exchange its two cells at once, set `phase` to `swapping` with `chainStep` at
+// `0`, and clear nothing until `SWAP_SECONDS` (`0.18`) of game time has passed;
+// step 1 then resolves, R8 and R9 both inside it. `swapAndResolve` carries the
+// game through that animation and hands back `first`, the reading of step 1's
+// result, beside `settled`, where the chain came to rest. `first` is what this
+// check reads. A later step is seeded by whatever R9's seeded refill dropped in
+// and is entitled to create cuts of its own — reading the settled board would be
 // reading a different question, and one whose answer the build's random source
 // decides.
 //
@@ -108,8 +112,9 @@ it("leaves one brilliant of the run's kind at strain 0", async () => {
     swapAndResolve(h, FROM, TO),
   );
 
-  // Step 1 resolved at the swap, and it cleared the run and nothing besides it.
-  assertEqual(first.chainStep, 1, "the chain step the swap opened");
+  // The reading is step 1's, and that step cleared the run and nothing besides
+  // it.
+  assertEqual(first.chainStep, 1, "the chain step the accepted swap resolved");
   assertEqual(first.lastCleared, RUN_LENGTH, "cells the step cleared");
 
   // R8's first row: the run of four creates one gem, that gem is a brilliant, and

@@ -48,12 +48,20 @@ it("wraps up from the first item to the last, and down from the last to the firs
   const wrapped = await h.snapshot();
   await captureStill(h, "menu");
   assertEqual(wrapped.screen, "title", "the screen a menu press leaves");
-  assertEqual(wrapped.menuIndex, LAST_ITEM, "the highlight after up from item 0");
+  assertEqual(
+    wrapped.menuIndex,
+    LAST_ITEM,
+    "the highlight after up from item 0",
+  );
 
   // And down off the bottom end comes back to the top, which is the other half
   // of "wrap at both ends" and the half a build clamping downward fails.
   await h.tapAction("down");
   const around = await h.snapshot();
   assertEqual(around.screen, "title", "the screen a menu press leaves");
-  assertEqual(around.menuIndex, 0, "the highlight after down from the last item");
+  assertEqual(
+    around.menuIndex,
+    0,
+    "the highlight after down from the last item",
+  );
 });

@@ -344,6 +344,7 @@ Lattice
 lerp
 letterboxed
 letterboxing
+levelclear
 levelup
 levelups
 loadouts

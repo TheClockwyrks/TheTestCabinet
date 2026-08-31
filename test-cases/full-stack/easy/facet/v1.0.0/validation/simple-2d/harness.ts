@@ -41,13 +41,18 @@
 // harnesses with clocks of its own, or uses `advanceSeconds`.
 //
 // POSES DO NOT ADVANCE. No helper here runs a frame implicitly except
-// `advanceStep`, `resolveChain`, `swapAndResolve`, `frameCalls`, `frameText`
-// and `tap`; `warmAudio` and `runFor` run frames too, and each says so where it
-// is declared. A pose takes effect at the call, so `simTime`, `stepTimer` and the
-// refusal timer stay readable exactly as the specs state them, and a check that
-// needs the frame DRAWN calls `h.advance(1)` itself. A cue, by contrast, is
-// played by a frame and never by a pose (specs/ui.md), so a check about a cue
-// advances one.
+// `swapAndStep`, `advanceStep`, `resolveChain`, `swapAndResolve`, `frameCalls`,
+// `frameText` and `tap`; `warmAudio` and `runFor` run frames too, and each says
+// so where it is declared. A pose takes effect at the call, so `simTime`,
+// `stepTimer` and the refusal timer stay readable exactly as the specs state
+// them, and a check that needs the frame DRAWN calls `h.advance(1)` itself. A
+// cue, by contrast, is played by a frame and never by a pose (specs/ui.md), so a
+// check about a cue advances one.
+//
+// A WHOLE POINTER GESTURE IS A POSE. A press, the moves that carry it, and the
+// release all take effect at their calls, so `dragGem` poses the whole of a move
+// without a frame passing — which is what lets a check read the offer standing
+// between two of them.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -86,10 +91,12 @@ import {
   PATCH_HALF,
   STAGE_H,
   STAGE_W,
-  STEP_DRIVE_FRAMES,
+  SWAP_DRIVE_FRAMES,
   TICK_HZ,
   TICK_MS,
+  TICK_S,
   type ActionName,
+  type PointerDevice,
 } from "./constants";
 import {
   cellCenter,
@@ -97,9 +104,11 @@ import {
   renderBoard,
   quietRowsWith,
   quietRowsWithEscape,
+  targetCenter,
   type BoardRows,
   type CellRef,
   type PlacedToken,
+  type TargetRect,
 } from "./board";
 import {
   DEFAULT_SEED,
@@ -563,7 +572,7 @@ export interface Harness {
    * item is actually written at ("fire the `up` action").
    *
    * It taps the action's FIRST binding in `BINDINGS`. specs/controls.md fixes
-   * that whole table for a build of every engine, so all eight actions can be
+   * that whole table for a build of every engine, so all six actions can be
    * pressed here whatever the build was stood up on, and the alternate key
    * listed beside an action is there for a check that wants to prove the second
    * key fires it as well.
@@ -1189,6 +1198,49 @@ export async function createHarness(
 }
 
 /* -------------------------------------------------------------------------- */
+/* Counting frames for a duration                                             */
+/* -------------------------------------------------------------------------- */
+//
+// A step's hold is the STEP's own figure rather than a constant: it is
+// `board.ts`'s `stepHold` over the `lastWaves` R6 gave that step's clear set and
+// the `lastFall` R9 left on the board, and the snapshot reports it. So the
+// frames that carry a scenario across a hold cannot be a constant either. These
+// two turn a duration into a whole number of the suite's frames, and every drive
+// below counts through them.
+
+/**
+ * The most frames of the suite's clock that fit STRICTLY INSIDE `seconds`.
+ *
+ * `ceil(seconds / TICK_S) - 1`, so the frames sum to less than `seconds` even
+ * where `seconds` is an exact multiple of `TICK_S`. At `REFUSAL_SECONDS`
+ * (`0.3` s) it is 19 frames, `0.296875` s, which is the figure
+ * `REFUSAL_FRAMES_BEFORE` writes down for that one duration.
+ *
+ * What a check reaches for to stop SHORT of a threshold and read the state a
+ * build is holding just before it.
+ */
+export function framesShortOf(seconds: number): number {
+  return Math.max(0, Math.ceil(seconds / TICK_S) - 1);
+}
+
+/**
+ * The fewest frames of the suite's clock that carry the game PAST `seconds`,
+ * with a whole frame to spare.
+ *
+ * `ceil(seconds / TICK_S) + 1`. The `ceil` alone only REACHES `seconds`, which a
+ * build comparing `>=` acts on and one comparing `>` does not; the extra frame
+ * puts a full `TICK_S` (`0.015625` s) of game time beyond it, so both
+ * comparisons have fired and no reading taken afterwards depends on which one
+ * the build wrote.
+ *
+ * The overshoot is therefore at most two frames, `0.03125` s, which is what
+ * keeps a drive sized this way clear of a SECOND threshold of the same length.
+ */
+export function framesPast(seconds: number): number {
+  return Math.ceil(seconds / TICK_S) + 1;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Scenario helpers                                                           */
 /* -------------------------------------------------------------------------- */
 //
@@ -1253,36 +1305,108 @@ export function poseBoardWithEscape(
 }
 
 /**
- * Request a swap and read the result back with no frame advanced.
+ * Request a swap and read the state THE REQUEST ITSELF left, with no frame
+ * advanced.
  *
- * An accepted swap resolves step 1 on the spot (specs/rules.md), so the reading
- * is either that first step already resolved or the standing refusal.
+ * WHAT IT RETURNS. Either the standing refusal, or the swap in motion:
+ * specs/rules.md has an accepted swap exchange the two cells at once, set
+ * `phase` to `swapping`, set `swapTimer` to `0` and leave `chainStep` at `0`,
+ * and step 1 does not resolve until `SWAP_SECONDS` (`0.18`) of game time has
+ * passed. NOTHING IS CLEARED in the reading this hands back, and a check that
+ * reads `lastCleared`, `lastPoints` or a settled board off it is reading the
+ * board as it stood before the chain.
+ *
+ * SO REACH FOR IT ONLY when the check is about the REQUEST — a refusal under R1,
+ * R2 or R3, or the swapping phase itself. Every other check wants
+ * {@link swapAndStep}, which carries the game through the animation to step 1's
+ * result, or {@link swapAndResolve}, which carries it to the end of the chain.
  */
-export function swap(h: Harness, a: CellRef, b: CellRef): FacetSnapshot {
+export function requestSwap(h: Harness, a: CellRef, b: CellRef): FacetSnapshot {
   h.debug.requestSwap(a.col, a.row, b.col, b.row);
   return h.snapshot();
 }
 
 /**
- * Carry the board past exactly one chain step.
+ * Request a swap and carry it through the swap animation to the result of step
+ * 1. THE ONE most checks about a move want.
  *
- * STEP_DRIVE_FRAMES (17 frames, 0.265625 s) is past STEP_SECONDS (0.25)
- * whether the build compares `>=` or `>`, and short of two steps, so exactly
- * one further board read happens. A build that reads the board more than once
- * per STEP_SECONDS is nonconformant, and this shows it as an extra step rather
- * than hiding it.
+ * `SWAP_DRIVE_FRAMES` is sized in `constants.ts` for exactly this drive: 14
+ * frames, `0.21875` s. `swapTimer` reaches `SWAP_SECONDS` (`0.18`) on the
+ * twelfth frame, at `0.1875` s, so the swap is over whether the build compares
+ * `>=` or `>` and step 1 has resolved; the `0.0075` s of overrun carries into
+ * `stepTimer`, the two remaining frames add `0.03125` s, and the step is left
+ * `0.03875` s into a hold of at least `0.3` s. Exactly one step has resolved
+ * when this returns, on every board.
+ *
+ * A REFUSED swap is carried through the same frames and comes back refused. The
+ * board never left `idle`, and `0.21875` s is inside `REFUSAL_SECONDS` (`0.3`),
+ * so the refusal is still standing to be read — which is why a check may use
+ * this even where it does not know in advance whether the swap will be taken.
  */
-export async function advanceStep(h: Harness): Promise<FacetSnapshot> {
-  await h.advance(STEP_DRIVE_FRAMES);
+export async function swapAndStep(
+  h: Harness,
+  a: CellRef,
+  b: CellRef,
+): Promise<FacetSnapshot> {
+  requestSwap(h, a, b);
+  await h.advance(SWAP_DRIVE_FRAMES);
   return h.snapshot();
 }
 
 /**
- * Drive chain steps until the board is idle again, or until the cap.
+ * The frames one {@link advanceStep} drives from the state `snapshot` reports.
  *
- * It ALWAYS returns: a build whose chain never ends is reported as
- * `settled: false` and fails its own item, rather than hanging and costing the
- * run its whole suite budget.
+ * TWO CASES, because a move in motion is in one of two phases and the two are
+ * timed by different figures.
+ *
+ * While `phase` is `swapping` it is `SWAP_DRIVE_FRAMES`, the drive above: past
+ * `SWAP_SECONDS` into step 1, and far short of that step's own end.
+ *
+ * Otherwise it is `framesPast(stepHold - stepTimer)`. The hold is the step's own
+ * figure — the snapshot reports it, derived from the `lastWaves` and `lastFall`
+ * that step left — and `stepTimer` is how much of it has already run, so what is
+ * driven is the REMAINDER plus the frame or two that carries the boundary. Since
+ * the boundary is crossed with at most `0.03125` s to spare and the SHORTEST
+ * hold any step can have is `0.3` s (`lastWaves` is `0` when the clear set is
+ * its seed alone, and `lastFall` is at least `1` because a step that cleared
+ * anything refills at least one cell from above row `0`), a drive sized this way
+ * never reaches a second board read. A build that reads the board twice inside
+ * one hold therefore shows up as an extra chain step rather than being hidden.
+ *
+ * Exported because a check about the cadence itself needs the same arithmetic
+ * from the other side: `framesShortOf(stepHold)` stops before the boundary, this
+ * carries past it.
+ */
+export function stepDriveFrames(snapshot: FacetSnapshot): number {
+  if (snapshot.phase === "swapping") return SWAP_DRIVE_FRAMES;
+  return framesPast(Math.max(0, snapshot.stepHold - snapshot.stepTimer));
+}
+
+/**
+ * Carry the board past exactly one boundary of the move in motion: the end of
+ * the swap animation, or the end of the step in progress.
+ *
+ * The count is {@link stepDriveFrames} read off the state AS IT STANDS rather
+ * than a constant, because a step's hold is the step's own figure and two steps
+ * of one chain rarely hold for the same time.
+ */
+export async function advanceStep(h: Harness): Promise<FacetSnapshot> {
+  await h.advance(stepDriveFrames(h.snapshot()));
+  return h.snapshot();
+}
+
+/**
+ * Drive a move to its end, or report that it never ended.
+ *
+ * It ALWAYS RETURNS. `maxSteps` is a cap rather than a wait: a build whose chain
+ * never settles comes back as `settled: false` and fails its own item, instead
+ * of hanging and costing the whole run the suite's wall-clock budget.
+ *
+ * A board still `swapping` is driven too, so this may be called straight after
+ * {@link requestSwap} as readily as after {@link swapAndStep}. `steps` is
+ * therefore a count of the BOUNDARIES driven past rather than of the chain steps
+ * that resolved, and a check that wants the depth a chain reached reads
+ * `bestChain` off the settled snapshot.
  */
 export async function resolveChain(
   h: Harness,
@@ -1293,22 +1417,216 @@ export async function resolveChain(
   let steps = 0;
   let frames = 0;
   while (snapshot.phase !== "idle" && steps < maxSteps) {
+    frames += stepDriveFrames(snapshot);
     snapshot = await advanceStep(h);
-    steps++;
-    frames += STEP_DRIVE_FRAMES;
+    steps += 1;
   }
   return { settled: snapshot.phase === "idle", steps, frames, snapshot };
 }
 
-/** A swap, its first step's reading, and the settled outcome after it. */
+/**
+ * Play a swap and carry it all the way, keeping BOTH readings.
+ *
+ * `first` is step 1 as {@link swapAndStep} left it — its `lastCleared`,
+ * `lastPoints`, `chainStep` and `multiplier` all describe that one step — and
+ * `settled` is where the chain came to rest.
+ */
 export async function swapAndResolve(
   h: Harness,
   a: CellRef,
   b: CellRef,
 ): Promise<{ first: FacetSnapshot; settled: SettleResult }> {
-  const first = swap(h, a, b);
+  const first = await swapAndStep(h, a, b);
   const settled = await resolveChain(h);
   return { first, settled };
+}
+
+/* -------------------------------------------------------------------------- */
+/* The pointer, gesture by gesture                                            */
+/* -------------------------------------------------------------------------- */
+//
+// specs/controls.md plays the whole board with the pointer. A press takes hold
+// of a gem, a move while held offers it into an orthogonal neighbor or withdraws
+// the offer, and the RELEASE with an offer standing is what requests the swap —
+// so a move is a GESTURE rather than a call, and a player who carries a gem onto
+// its neighbor and back again has played nothing. These break that gesture into
+// the three operations the surface carries, and compose the whole of it.
+//
+// BUILT FROM THE ATOMS ALONE. Every helper below goes through `pointerDown`,
+// `pointerMove` and `pointerUp` and through nothing else. The point of a pointer
+// check is that the BUILD's own press, move and release rules produced the
+// outcome; a helper that reached for `setSelection`, `setOffer` or `requestSwap`
+// to arrive there would be posing the very answer the check is about to read.
+//
+// EACH TAKES AN OPTIONAL `device`. specs/controls.md reads a mouse, a pen and a
+// finger the same way, so the same gesture is posed as a touch by naming one.
+// The argument is OMITTED rather than passed as `undefined` when the caller
+// named none, so a mouse gesture poses exactly the call a check writing it out
+// by hand would make and the specification's own default is what supplies
+// `mouse`.
+//
+// NO FRAME IS RUN. Each of the three operations takes effect at the call
+// (specs/instrumentation.md), so a whole gesture is posed without the game
+// advancing at all, and `simTime`, `stepTimer` and the refusal timer stay
+// readable exactly as the specification states them. A check that needs the
+// gesture DRAWN, or that is about the cue an event plays, advances a frame
+// itself.
+
+/** Press the pointer at a logical stage point. */
+export function pressPoint(
+  h: Harness,
+  x: number,
+  y: number,
+  device?: PointerDevice,
+): FacetSnapshot {
+  if (device === undefined) h.debug.pointerDown(x, y);
+  else h.debug.pointerDown(x, y, device);
+  return h.snapshot();
+}
+
+/**
+ * Move the pointer to a logical stage point. While it is held down that is a
+ * DRAG, which is the only kind of move the board reads.
+ */
+export function movePointer(
+  h: Harness,
+  x: number,
+  y: number,
+  device?: PointerDevice,
+): FacetSnapshot {
+  if (device === undefined) h.debug.pointerMove(x, y);
+  else h.debug.pointerMove(x, y, device);
+  return h.snapshot();
+}
+
+/** Release the pointer where it stands: the edge that plays a standing offer. */
+export function releasePointer(
+  h: Harness,
+  device?: PointerDevice,
+): FacetSnapshot {
+  if (device === undefined) h.debug.pointerUp();
+  else h.debug.pointerUp(device);
+  return h.snapshot();
+}
+
+/**
+ * Press on a cell, at its center.
+ *
+ * The center rather than an offset, because specs/controls.md targets "the cell
+ * whose center is nearest the pointer position, when that center lies within
+ * `GEM_HIT_R` of it" — and a press at the center is the only position that
+ * targets one cell under every reading of that sentence. A check that is about
+ * the RADIUS poses its own point through {@link pressPoint}, with
+ * `board.ts`'s `insideCell`, `betweenCells` or `offBoardPoint`.
+ */
+export function pressCell(
+  h: Harness,
+  cell: CellRef,
+  device?: PointerDevice,
+): FacetSnapshot {
+  const at = cellCenter(cell.col, cell.row);
+  return pressPoint(h, at.x, at.y, device);
+}
+
+/** Carry a held pointer onto a cell, at its center: the drag that offers. */
+export function dragOntoCell(
+  h: Harness,
+  cell: CellRef,
+  device?: PointerDevice,
+): FacetSnapshot {
+  const at = cellCenter(cell.col, cell.row);
+  return movePointer(h, at.x, at.y, device);
+}
+
+/**
+ * The whole gesture that plays a move: press on `from`, carry the pointer onto
+ * `to`, release there.
+ *
+ * Three operations and no shortcut, so what decides the outcome is the build's
+ * own press, move and release rules. The reading handed back is the one the
+ * RELEASE left — the swap requested and in motion, or refused, or nothing at all
+ * when the build withdrew the offer — so a check about what the move DID drives
+ * on from here with {@link advanceStep} or {@link resolveChain}.
+ *
+ * `to` need not be a neighbor of `from`: a gesture that ends over a cell the
+ * rules offer nothing into is exactly the gesture several checks pose, and this
+ * poses it faithfully rather than refusing it.
+ */
+export function dragGem(
+  h: Harness,
+  from: CellRef,
+  to: CellRef,
+  device?: PointerDevice,
+): FacetSnapshot {
+  pressCell(h, from, device);
+  dragOntoCell(h, to, device);
+  return releasePointer(h, device);
+}
+
+/**
+ * The target the screen `snapshot` reports carries under `id`.
+ *
+ * A target's rectangle is the BUILD's — specs/controls.md fixes each screen's
+ * ids and four requirements over every rectangle, and leaves the design of them
+ * to the build — so a check reads the rectangle it is going to press off the
+ * snapshot rather than writing one down. This is that lookup, in one place, so a
+ * dozen checks do not each repeat it and a screen missing a target it owes fails
+ * with the ids it did report rather than with a `TypeError`.
+ */
+export function targetById(snapshot: FacetSnapshot, id: string): TargetRect {
+  const found = snapshot.targets.find((target) => target.id === id);
+  if (found === undefined) {
+    fail(
+      `a pointer target ${JSON.stringify(id)} on the ${snapshot.screen} screen`,
+      snapshot.targets.map((target) => target.id),
+    );
+  }
+  return found;
+}
+
+/**
+ * Move the pointer within a target, at its center: the hover that moves the
+ * highlight.
+ *
+ * The center is where specs/instrumentation.md guarantees a hit — "a target's
+ * rectangle is the one the game actually hit-tests against, so pressing and
+ * releasing at a listed target's center takes that target" — so it is the one
+ * position a check may press without asserting anything about the build's
+ * layout.
+ */
+export function moveOverTarget(
+  h: Harness,
+  target: TargetRect,
+  device?: PointerDevice,
+): FacetSnapshot {
+  const at = targetCenter(target);
+  return movePointer(h, at.x, at.y, device);
+}
+
+/** Press inside a target, at its center: the press that highlights and arms. */
+export function pressTarget(
+  h: Harness,
+  target: TargetRect,
+  device?: PointerDevice,
+): FacetSnapshot {
+  const at = targetCenter(target);
+  return pressPoint(h, at.x, at.y, device);
+}
+
+/**
+ * Press and release inside a target, at its center: the gesture that TAKES it.
+ *
+ * Both edges at the same point, which is the only gesture specs/controls.md
+ * makes take a target — "releases within the armed target" — so a check that
+ * releases anywhere else composes the atoms itself and reads what was not taken.
+ */
+export function takeTarget(
+  h: Harness,
+  target: TargetRect,
+  device?: PointerDevice,
+): FacetSnapshot {
+  pressTarget(h, target, device);
+  return releasePointer(h, device);
 }
 
 /* -------------------------------------------------------------------------- */

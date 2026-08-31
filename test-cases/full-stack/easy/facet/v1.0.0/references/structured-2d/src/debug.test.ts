@@ -13,11 +13,17 @@ import {
   LEVEL_TARGET_STEP,
   MAX_MULTIPLIER,
   REFUSAL_SECONDS,
+  SWAP_SECONDS,
+  TARGET_MIN_H,
+  TARGET_MIN_W,
 } from "./constants";
 import { cellCenter } from "./core";
 import { quietRows, quietRowsWith } from "./core/fixtures";
 
 const ONE_RUN = quietRowsWith({ "2,0": "R0", "1,1": "R0" });
+
+/** Frames enough to carry an accepted swap into its first chain step. */
+const SWAP_FRAMES = Math.ceil(SWAP_SECONDS * 60) + 1;
 
 let harness: Harness;
 
@@ -47,16 +53,23 @@ describe("version and snapshot", () => {
       phase: "idle",
       chainStep: 0,
       multiplier: 0,
+      swapTimer: 0,
       stepTimer: 0,
       board: { cols: 0, rows: 0, cells: [] },
-      cursor: { col: 0, row: 0 },
       selection: null,
+      offer: null,
       refusal: null,
       lastCleared: 0,
       lastPoints: 0,
+      lastWaves: 0,
+      lastFall: 0,
+      moveScore: 0,
+      bestMove: 0,
+      bestChain: 0,
       legalSwap: false,
       rngState: DEFAULT_SEED,
-      pointer: { x: 0, y: 0, down: false },
+      pointer: { x: 0, y: 0, down: false, device: "mouse" },
+      armedTarget: null,
       muted: false,
       simTime: 0,
     });
@@ -69,6 +82,8 @@ describe("version and snapshot", () => {
     for (const cell of shot.board.cells) {
       const [x, y] = cellCenter(cell);
       expect([cell.x, cell.y]).toEqual([x, y]);
+      // Every gem of a posed board is standing still where it was written.
+      expect(cell.fell).toBe(0);
     }
   });
 
@@ -82,12 +97,31 @@ describe("version and snapshot", () => {
     expect(harness.debug.snapshot().legalSwap).toBe(true);
   });
 
-  it("caps the multiplier it reports at MAX_MULTIPLIER", () => {
-    harness.debug.loadBoard(quietRowsWith({ "2,0": "R0", "1,1": "R0" }));
+  it("caps the multiplier it reports at MAX_MULTIPLIER", async () => {
+    harness.debug.loadBoard(ONE_RUN);
     harness.debug.requestSwap(1, 1, 1, 0);
+    await harness.advance(SWAP_FRAMES);
     expect(harness.debug.snapshot().multiplier).toBe(1);
     // The core caps it, so a step past the cap still reports the top rung.
     expect(Math.min(99, MAX_MULTIPLIER)).toBe(MAX_MULTIPLIER);
+  });
+
+  it("reports the screen's own pointer targets, and nothing else", () => {
+    expect(harness.debug.snapshot().targets.map((t) => t.id)).toEqual([
+      "menu-0",
+      "menu-1",
+    ]);
+
+    harness.debug.openHowTo();
+    expect(harness.debug.snapshot().targets.map((t) => t.id)).toEqual(["back"]);
+
+    harness.debug.loadBoard(quietRows());
+    const playing = harness.debug.snapshot().targets;
+    expect(playing.map((t) => t.id)).toEqual(["pause"]);
+    for (const target of playing) {
+      expect(target.w).toBeGreaterThanOrEqual(TARGET_MIN_W);
+      expect(target.h).toBeGreaterThanOrEqual(TARGET_MIN_H);
+    }
   });
 
   it("changes nothing at all", () => {
@@ -102,8 +136,10 @@ describe("reset", () => {
   it("restores every declared field to its title-screen value", async () => {
     harness.debug.start();
     harness.debug.setScore(900);
-    harness.debug.setCursor(5, 5);
+    harness.debug.setBestMove(400);
+    harness.debug.setBestChain(6);
     harness.debug.setSelection(1, 1);
+    harness.debug.setOffer(1, 0);
     await harness.advance(30);
 
     harness.debug.reset();
@@ -116,10 +152,17 @@ describe("reset", () => {
     expect(shot.levelScore).toBe(0);
     expect(shot.lastCleared).toBe(0);
     expect(shot.lastPoints).toBe(0);
-    expect(shot.cursor).toEqual({ col: 0, row: 0 });
+    expect(shot.lastWaves).toBe(0);
+    expect(shot.moveScore).toBe(0);
+    expect(shot.bestMove).toBe(0);
+    expect(shot.bestChain).toBe(0);
     expect(shot.selection).toBeNull();
+    expect(shot.offer).toBeNull();
     expect(shot.refusal).toBeNull();
-    expect(shot.pointer.down).toBe(false);
+    expect(shot.armedTarget).toBeNull();
+    expect(shot.pointer).toEqual({ x: 0, y: 0, down: false, device: "mouse" });
+    expect(shot.swapTimer).toBe(0);
+    expect(shot.stepTimer).toBe(0);
     expect(shot.simTime).toBe(0);
     expect(shot.rngState).toBe(DEFAULT_SEED);
   });
@@ -145,24 +188,32 @@ describe("reset", () => {
 });
 
 describe("the screen poses", () => {
-  it("starts a round on an opening board", () => {
+  it("starts a round on an opening board dealt in from above", () => {
     harness.debug.setScore(500);
     harness.debug.setLevel(4);
+    harness.debug.setBestChain(7);
     harness.debug.start();
     const shot = harness.debug.snapshot();
     expect(shot.screen).toBe("playing");
     expect(shot.score).toBe(0);
     expect(shot.level).toBe(1);
     expect(shot.levelScore).toBe(0);
+    expect(shot.moveScore).toBe(0);
+    expect(shot.bestMove).toBe(0);
+    expect(shot.bestChain).toBe(0);
     expect(shot.phase).toBe("idle");
     expect(shot.chainStep).toBe(0);
     expect(shot.menuIndex).toBe(0);
-    expect(shot.cursor).toEqual({ col: 0, row: 0 });
     expect(shot.selection).toBeNull();
+    expect(shot.offer).toBeNull();
     expect(shot.legalSwap).toBe(true);
     // No run stands on an opening board, so nothing is resolving on it.
     expect(shot.board.cells.every((cell) => cell.cut === "plain")).toBe(true);
     expect(shot.board.cells.every((cell) => cell.strain === 0)).toBe(true);
+    // Every gem of a deal comes in from above the board's top row.
+    expect(shot.board.cells.every((cell) => cell.fell >= cell.row + 1)).toBe(
+      true,
+    );
   });
 
   it("opens how-to-play, and quits back to the title", () => {
@@ -184,10 +235,12 @@ describe("the screen poses", () => {
   it("holds every timer while paused and carries on where it left off", async () => {
     harness.debug.loadBoard(ONE_RUN);
     harness.debug.requestSwap(1, 1, 1, 0);
+    await harness.advance(SWAP_FRAMES);
     harness.debug.pause();
     expect(harness.debug.snapshot().screen).toBe("paused");
 
     const held = harness.debug.snapshot();
+    expect(held.phase).toBe("resolving");
     await harness.advance(60);
     const later = harness.debug.snapshot();
     expect(later.phase).toBe(held.phase);
@@ -200,6 +253,32 @@ describe("the screen poses", () => {
     expect(harness.debug.snapshot().screen).toBe("playing");
     await harness.advance(60);
     expect(harness.debug.snapshot().phase).toBe("idle");
+  });
+
+  it("opens the next level from the level-clear menu", async () => {
+    harness.debug.loadBoard(ONE_RUN);
+    harness.debug.setScore(4000);
+    harness.debug.setLevelScore(LEVEL_TARGET_STEP);
+    harness.debug.requestSwap(1, 1, 1, 0);
+    await harness.advance(120);
+
+    const cleared = harness.debug.snapshot();
+    expect(cleared.screen).toBe("levelclear");
+    expect(cleared.menuIndex).toBe(0);
+    expect(cleared.level).toBe(1);
+    expect(cleared.bestChain).toBeGreaterThanOrEqual(1);
+
+    harness.debug.continueLevel();
+    const opened = harness.debug.snapshot();
+    expect(opened.screen).toBe("playing");
+    expect(opened.level).toBe(2);
+    expect(opened.levelScore).toBe(0);
+    expect(opened.bestChain).toBe(0);
+    expect(opened.bestMove).toBe(0);
+    expect(opened.moveScore).toBe(0);
+    expect(opened.legalSwap).toBe(true);
+    // `score` is the round's rather than the level's, so it carries across.
+    expect(opened.score).toBeGreaterThanOrEqual(4000);
   });
 });
 
@@ -214,12 +293,15 @@ describe("the board poses", () => {
     expect(shot.screen).toBe("playing");
     expect(shot.phase).toBe("idle");
     expect(shot.chainStep).toBe(0);
+    expect(shot.swapTimer).toBe(0);
     expect(shot.stepTimer).toBe(0);
     expect(shot.selection).toBeNull();
+    expect(shot.offer).toBeNull();
     expect(shot.refusal).toBeNull();
     expect(shot.score).toBe(300);
     expect(shot.level).toBe(2);
     expect(shot.levelScore).toBe(150);
+    expect(shot.lastFall).toBe(0);
 
     // A board with no run rests untouched however long it is left.
     const written = shot.board.cells.map(
@@ -242,7 +324,6 @@ describe("the board poses", () => {
 
   it("writes one cell and leaves the rest standing", () => {
     harness.debug.loadBoard(quietRows());
-    harness.debug.setCursor(3, 3);
     harness.debug.setSelection(2, 2);
     const before = harness.debug.snapshot();
 
@@ -252,8 +333,8 @@ describe("the board poses", () => {
       kind: "sapphire",
       cut: "brilliant",
       strain: 2,
+      fell: 0,
     });
-    expect(after.cursor).toEqual(before.cursor);
     expect(after.selection).toEqual(before.selection);
     expect(after.screen).toBe(before.screen);
     expect(
@@ -282,6 +363,7 @@ describe("the board poses", () => {
     expect(() => harness.debug.setSelection(0, GRID_ROWS)).toThrow(
       /not a cell/,
     );
+    expect(() => harness.debug.setOffer(GRID_COLS, 0)).toThrow(/not a cell/);
   });
 });
 
@@ -304,41 +386,37 @@ describe("the figure poses", () => {
     expect(harness.debug.snapshot().level).toBe(3);
   });
 
-  it("advances the level as the next chain settles past the target", async () => {
+  it("sets the two figures the level is measured by, on their own", () => {
+    harness.debug.setBestMove(880);
+    harness.debug.setBestChain(4);
+    let shot = harness.debug.snapshot();
+    expect(shot.bestMove).toBe(880);
+    expect(shot.bestChain).toBe(4);
+    // `moveScore` is its own figure, and neither pose touches it.
+    expect(shot.moveScore).toBe(0);
+
+    harness.debug.setBestChain(-3);
+    shot = harness.debug.snapshot();
+    expect(shot.bestChain).toBe(0);
+  });
+
+  it("carries a move's points into the level's best as the chain settles", async () => {
     harness.debug.loadBoard(ONE_RUN);
-    harness.debug.setLevelScore(LEVEL_TARGET_STEP);
     harness.debug.requestSwap(1, 1, 1, 0);
+    await harness.advance(SWAP_FRAMES);
+    const during = harness.debug.snapshot();
+    expect(during.moveScore).toBe(30);
+    expect(during.bestChain).toBe(1);
+    expect(during.bestMove).toBe(0);
+
     await harness.advance(120);
-    const shot = harness.debug.snapshot();
-    expect(shot.level).toBe(2);
-    expect(shot.levelScore).toBe(0);
-    expect(shot.legalSwap).toBe(true);
-    expect(harness.cues.map((play) => play.cue)).toContain("levelup");
+    const settled = harness.debug.snapshot();
+    expect(settled.phase).toBe("idle");
+    expect(settled.bestMove).toBeGreaterThanOrEqual(30);
   });
 });
 
-describe("the cursor and the selection", () => {
-  it("moves the cursor and leaves the selection and the board standing", () => {
-    harness.debug.loadBoard(quietRows());
-    harness.debug.setSelection(2, 2);
-    const board = JSON.stringify(harness.debug.snapshot().board);
-
-    harness.debug.setCursor(6, 7);
-    const shot = harness.debug.snapshot();
-    expect(shot.cursor).toEqual({ col: 6, row: 7 });
-    expect(shot.selection).toEqual({ col: 2, row: 2 });
-    expect(JSON.stringify(shot.board)).toBe(board);
-  });
-
-  it("keeps the cursor within the board's dimensions", () => {
-    harness.debug.loadBoard(quietRows());
-    harness.debug.setCursor(99, -4);
-    expect(harness.debug.snapshot().cursor).toEqual({
-      col: GRID_COLS - 1,
-      row: 0,
-    });
-  });
-
+describe("the selection and the offer", () => {
   it("selects a cell without requesting a swap, and clears it", () => {
     harness.debug.loadBoard(ONE_RUN);
     harness.debug.setSelection(1, 1);
@@ -351,23 +429,53 @@ describe("the cursor and the selection", () => {
     harness.debug.clearSelection();
     expect(harness.debug.snapshot().selection).toBeNull();
   });
+
+  it("offers a cell without requesting a swap, and withdraws it", () => {
+    harness.debug.loadBoard(ONE_RUN);
+    const board = JSON.stringify(harness.debug.snapshot().board);
+    harness.debug.setSelection(1, 1);
+    harness.debug.setOffer(1, 0);
+
+    const shot = harness.debug.snapshot();
+    expect(shot.selection).toEqual({ col: 1, row: 1 });
+    expect(shot.offer).toEqual({ col: 1, row: 0 });
+    expect(shot.phase).toBe("idle");
+    // A release is what plays an offer, so the board stands untouched.
+    expect(JSON.stringify(shot.board)).toBe(board);
+
+    harness.debug.clearOffer();
+    const withdrawn = harness.debug.snapshot();
+    expect(withdrawn.offer).toBeNull();
+    expect(withdrawn.selection).toEqual({ col: 1, row: 1 });
+  });
 });
 
 describe("requestSwap", () => {
-  it("resolves an accepted swap's first step on the spot", () => {
+  it("puts an accepted swap in motion before its first step resolves", async () => {
     harness.debug.loadBoard(ONE_RUN);
     harness.debug.setSelection(4, 4);
     harness.debug.requestSwap(1, 1, 1, 0);
 
+    const moving = harness.debug.snapshot();
+    expect(moving.phase).toBe("swapping");
+    expect(moving.chainStep).toBe(0);
+    expect(moving.swapTimer).toBe(0);
+    expect(moving.lastCleared).toBe(0);
+    // The two cells are exchanged at once, so the ruby is already in row 0.
+    expect(moving.board.cells[1]).toMatchObject({ kind: "ruby" });
+    // It names both cells itself, so the selection stands either way.
+    expect(moving.selection).toEqual({ col: 4, row: 4 });
+
+    await harness.advance(SWAP_FRAMES);
     const shot = harness.debug.snapshot();
     expect(shot.phase).toBe("resolving");
     expect(shot.chainStep).toBe(1);
+    expect(shot.swapTimer).toBe(0);
     expect(shot.lastCleared).toBe(3);
     expect(shot.lastPoints).toBe(30);
     expect(shot.score).toBe(30);
     expect(shot.levelScore).toBe(30);
-    // It names both cells itself, so the selection stands either way.
-    expect(shot.selection).toEqual({ col: 4, row: 4 });
+    expect(shot.moveScore).toBe(30);
   });
 
   it("refuses a swap R1, R2, or R3 rejects, and marks the two cells", async () => {
@@ -393,18 +501,19 @@ describe("requestSwap", () => {
     expect(harness.debug.snapshot().refusal).toBeNull();
   });
 
-  it("refuses every swap while a chain is resolving (R2)", () => {
+  it("refuses every swap while one is already in motion (R2)", () => {
     harness.debug.loadBoard(ONE_RUN);
     harness.debug.requestSwap(1, 1, 1, 0);
     const during = harness.debug.snapshot();
     harness.debug.requestSwap(5, 5, 6, 5);
+    expect(harness.debug.snapshot().phase).toBe(during.phase);
     expect(harness.debug.snapshot().chainStep).toBe(during.chainStep);
     expect(harness.debug.snapshot().refusal).not.toBeNull();
   });
 });
 
 describe("the pointer poses", () => {
-  it("takes effect at the call, with no frame between them", () => {
+  it("takes effect at the call, with no frame between them", async () => {
     harness.debug.loadBoard(ONE_RUN);
     const [ax, ay] = cellCenter({ col: 1, row: 1 });
     const [bx, by] = cellCenter({ col: 1, row: 0 });
@@ -415,34 +524,83 @@ describe("the pointer poses", () => {
       x: ax,
       y: ay,
       down: true,
+      device: "mouse",
     });
 
+    // A move offers, and nothing reaches the move rules until the release.
     harness.debug.pointerMove(bx, by);
-    expect(harness.debug.snapshot().lastCleared).toBe(3);
-    expect(harness.debug.snapshot().selection).toBeNull();
+    expect(harness.debug.snapshot().offer).toEqual({ col: 1, row: 0 });
+    expect(harness.debug.snapshot().phase).toBe("idle");
 
     harness.debug.pointerUp();
-    expect(harness.debug.snapshot().pointer.down).toBe(false);
+    const released = harness.debug.snapshot();
+    expect(released.pointer.down).toBe(false);
+    expect(released.phase).toBe("swapping");
+    expect(released.selection).toBeNull();
+    expect(released.offer).toBeNull();
+
+    await harness.advance(SWAP_FRAMES);
+    expect(harness.debug.snapshot().lastCleared).toBe(3);
   });
 
-  it("leaves the board and the selection alone for a press off every cell", () => {
+  it("reports the device that drove it, and drives the same path", () => {
+    harness.debug.loadBoard(ONE_RUN);
+    const [ax, ay] = cellCenter({ col: 1, row: 1 });
+    harness.debug.pointerDown(ax, ay, "touch");
+    const shot = harness.debug.snapshot();
+    expect(shot.pointer.device).toBe("touch");
+    expect(shot.selection).toEqual({ col: 1, row: 1 });
+
+    harness.debug.pointerUp("pen");
+    expect(harness.debug.snapshot().pointer.device).toBe("pen");
+  });
+
+  it("clears the hold for a press off every cell", () => {
     harness.debug.loadBoard(ONE_RUN);
     harness.debug.setSelection(3, 3);
+    harness.debug.setOffer(3, 4);
     harness.debug.pointerDown(20, 700);
     const shot = harness.debug.snapshot();
-    expect(shot.selection).toEqual({ col: 3, row: 3 });
-    expect(shot.pointer).toEqual({ x: 20, y: 700, down: true });
+    expect(shot.selection).toBeNull();
+    expect(shot.offer).toBeNull();
+    expect(shot.pointer).toEqual({
+      x: 20,
+      y: 700,
+      down: true,
+      device: "mouse",
+    });
     expect(shot.phase).toBe("idle");
   });
 
-  it("requests at most one swap per hold", () => {
+  it("withdraws the offer when the hold is carried back where it started", () => {
     harness.debug.loadBoard(ONE_RUN);
     const [ax, ay] = cellCenter({ col: 1, row: 1 });
     const [bx, by] = cellCenter({ col: 1, row: 0 });
     harness.debug.pointerDown(ax, ay);
     harness.debug.pointerMove(bx, by);
-    const after = harness.debug.snapshot();
+    expect(harness.debug.snapshot().offer).toEqual({ col: 1, row: 0 });
+
     harness.debug.pointerMove(ax, ay);
-    expect(harness.debug.snapshot().chainStep).toBe(after.chainStep);
+    expect(harness.debug.snapshot().offer).toBeNull();
+
+    harness.debug.pointerUp();
+    const shot = harness.debug.snapshot();
+    expect(shot.phase).toBe("idle");
+    expect(shot.lastCleared).toBe(0);
+  });
+
+  it("works a screen's targets, arming on the press and taking on release", () => {
+    const [item] = harness.debug.snapshot().targets;
+    const cx = item.x + item.w / 2;
+    const cy = item.y + item.h / 2;
+
+    harness.debug.pointerDown(cx, cy);
+    expect(harness.debug.snapshot().armedTarget).toBe("menu-0");
+
+    harness.debug.pointerUp();
+    const shot = harness.debug.snapshot();
+    expect(shot.armedTarget).toBeNull();
+    expect(shot.screen).toBe("playing");
+    expect(shot.legalSwap).toBe(true);
   });
 });

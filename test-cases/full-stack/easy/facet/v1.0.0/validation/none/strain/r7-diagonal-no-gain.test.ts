@@ -23,9 +23,20 @@
 // not merely reporting a resting value.
 //
 // Both stand in columns the clear never empties, so R9 leaves them where they
-// were posed and the cell read is the cell written. The reading is taken from
-// the step-1 snapshot, before any further step of the chain could raise them
-// for a reason of its own.
+// were posed and the cell read is the cell written.
+//
+// WHEN THE READING IS TAKEN. specs/rules.md holds an accepted swap in
+// `swapping` for SWAP_SECONDS (0.18) of game time and resolves step 1 when that
+// time is spent. `swapAndStep` carries the game exactly that far and hands back
+// the reading step 1 left; the step then holds the board for its own STEP_HOLD
+// — `lastWaves x WAVE_SECONDS` plus `lastFall x FALL_SECONDS_PER_ROW` plus
+// STEP_SECONDS — before it is read again, so no further step of the chain could
+// have raised either gem for a reason of its own.
+//
+// THE STILL IS TAKEN WHERE THE DRIVE STOPPED. `swapAndStep` runs whole frames,
+// so the canvas already holds the frame that drew the settled step, and the
+// evidence is written from it rather than from a frame advanced for the picture
+// alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -50,7 +61,7 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -133,13 +144,13 @@ it("leaves a gem that touches the clear set only at a corner", async () => {
 
   await loadBoard(h, posed);
 
-  // Step 1 resolves at the call (specs/rules.md), so this is R7's own answer,
-  // read before any later step of the chain could raise a strain for a reason
-  // of its own.
-  const stepOne = await swap(h, SWAP.a, SWAP.b);
+  // Through the swap animation to the result of step 1, taken inside that
+  // step's own hold, so what it reports is R7's own answer.
+  const stepOne = await swapAndStep(h, SWAP.a, SWAP.b);
   const rows = renderBoard(stepOne);
-  await h.advance(1);
   await captureStill(h, "strain");
+
+  assertEqual(stepOne.chainStep, 1, "the chain step the accepted swap opened");
 
   for (const mark of DIAGONAL) {
     assertEqual(

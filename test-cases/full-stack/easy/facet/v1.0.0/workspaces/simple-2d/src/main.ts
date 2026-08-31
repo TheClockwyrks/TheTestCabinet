@@ -32,9 +32,9 @@ const engine = createEngine({
   // The stage background, which the engine clears the canvas to each frame so
   // the letterbox bars match the board's surround. The game owns the color.
   background: BACKGROUND,
-  // The board is played with the pointer and with a cursor the keyboard moves,
-  // and the menus take the same four directions: a four-way pad and the menu
-  // vocabulary that comes with it.
+  // The board is played with the pointer alone, so the keyboard's whole job is
+  // the menus: one vertical highlight and the menu vocabulary that comes with
+  // it.
   layout: LAYOUT,
 });
 

@@ -22,6 +22,15 @@
 // time the game is stood up. So the replay is driven in a second, independently
 // initialized instance, and the two deals are compared cell for cell.
 //
+// WHAT A CELL IS COMPARED BY, AND WHY `fell` IS NOT AMONG IT. A deal is compared
+// through the notation, which writes a cell's kind, its cut and its strain — the
+// three the seeded draw decides. It writes no `fell`, and deliberately:
+// specs/rules.md hands a dealt gem's figure to the build, at or above the floor
+// of `row + 1`, so two deals from one seed are entitled to agree on it and
+// nothing requires them to. A build that staggered its deal off a source of its
+// own would be conformant, and comparing the figure would fail it for a freedom
+// the specification granted. The floor itself is `board/opening-falls-in`'s.
+//
 // WHAT IT DELIBERATELY DOES NOT DECIDE. What an opening board must LOOK like —
 // that it holds no run under R4 and carries a legal swap is `board/opening-*` —
 // and what `reset` restores, which is `instrumentation/reset-restores`. Only

@@ -13,9 +13,9 @@
 // condition describes: no run stands on it, no prism sits on it, and exchanging
 // any two orthogonally adjacent cells leaves every line still short of three of
 // one kind, so R3 refuses every swap R1 would allow. specs/instrumentation.md
-// says `setGem` leaves "the screen, the phase, the cursor, and the selection"
-// where they were, so the step keeps holding and reads this board when its
-// STEP_SECONDS is up.
+// says `setGem` leaves "every other cell, the screen, the phase, and the
+// selection" where they were, so the step keeps holding and reads this board
+// when its hold is up.
 //
 // That is what makes the check decide THIS point rather than the seeded refill.
 // Letting a chain run itself out on a board that happens to go dead leaves the
@@ -49,7 +49,7 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -108,8 +108,8 @@ it("turns the screen to gameover when the settled board carries no legal swap", 
   await loadBoard(h, posed);
 
   const ended = await captureReplay(h, "gameover", async () => {
-    const first = await swap(h, RUN_SWAP.a, RUN_SWAP.b);
-    assertEqual(first.phase, "resolving", "the phase the accepted swap opened");
+    const first = await swapAndStep(h, RUN_SWAP.a, RUN_SWAP.b);
+    assertEqual(first.phase, "resolving", "the phase step 1 resolved into");
     assertEqual(first.screen, "playing", "the screen while the chain runs");
 
     // The board goes dead under the running step.

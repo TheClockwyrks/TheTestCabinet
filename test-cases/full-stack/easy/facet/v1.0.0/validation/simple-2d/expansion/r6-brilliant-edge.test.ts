@@ -38,7 +38,7 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 import type { FacetSnapshot } from "../surface";
@@ -92,8 +92,17 @@ function restingKinds(
   return resting;
 }
 
-/** Frames recorded after the swap, so the replay shows the step it resolved. */
-const REPLAY_FRAMES = 16;
+/**
+ * Frames recorded after the step has resolved, so the replay shows the clear set
+ * shattering and the board falling in behind it.
+ *
+ * `swapAndStep` leaves the step `0.03875` s into its own hold; twelve more frames
+ * of the suite's 64 Hz clock add `0.1875` s, for `0.22625` s in all. That is
+ * short of `0.3` s, the SHORTEST hold any step can have, so the board is never
+ * read a second time and every assertion is made against the reading the drive
+ * returned.
+ */
+const REPLAY_FRAMES = 12;
 
 /**
  * Pose `posed`, exchange `from` with `to`, and hold the step that resolves to
@@ -125,7 +134,7 @@ async function clearsExactly(
     reading: FacetSnapshot;
     settled: string[];
   }> => {
-    const reading = swap(h, from, to);
+    const reading = await swapAndStep(h, from, to);
     const board = h.board();
     await h.advance(REPLAY_FRAMES);
     return { reading, settled: board };
@@ -133,7 +142,11 @@ async function clearsExactly(
   const step =
     outputId === null ? await drive() : await captureReplay(h, outputId, drive);
 
-  assertEqual(step.reading.phase, "resolving", "phase after the swap");
+  assertEqual(
+    step.reading.phase,
+    "resolving",
+    "phase after the swap animation",
+  );
   assertEqual(step.reading.chainStep, 1, "the step the reading describes");
   assertEqual(step.reading.lastCleared, cleared.length, "cells the step took");
 

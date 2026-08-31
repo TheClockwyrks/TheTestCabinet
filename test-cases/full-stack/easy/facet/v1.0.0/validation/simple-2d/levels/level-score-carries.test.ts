@@ -1,11 +1,11 @@
-// levels/level-score-carries — a level change zeroes `levelScore` and leaves
-// `score` alone.
+// levels/level-score-carries — opening the next level zeroes `levelScore` and
+// leaves `score` alone.
 //
 // specs/rules.md ends the level rule with three words this point is entirely
 // about: "`score` carries across." `levelScore` is the figure banked toward one
-// level's target and it goes back to `0` when that level is done; `score` is what
-// the round has earned since it began, and a level change is not allowed to touch
-// it.
+// level's target and it goes back to `0` when the next level is opened; `score`
+// is what the round has earned since it began, and a level change is not allowed
+// to touch it.
 //
 // THE SCENARIO NEEDS THE ROUND TO HAVE EARNED SOMETHING, AND THEN READS IT. The
 // round is posed carrying a score already, the level score is posed at the target
@@ -13,19 +13,21 @@
 // was worth is `scoring/score-base-rate`'s claim and no part of this one, so the
 // figure is not reckoned from a rate: the score the step LEFT is read off the
 // running chain, and the requirement is that the same figure is still standing
-// after the level has turned over. A build that priced the step wrongly carries
-// its own figure across and passes here, owing the point that owns the rate; a
-// build that zeroes the round's score with the level's fails, whatever the step
-// was worth.
+// after `CONTINUE` has dealt the next level's board.
 //
 // ONLY ONE STEP MAY SCORE, or the figure read on the running chain would not be
 // the figure the level change was handed. The board is rewritten under the
-// running step to one carrying no run at all, so the read that follows
-// STEP_SECONDS seeds nothing, the chain ends there, and no cascade off R9's
-// seeded refill can add points between the two readings. `setGem` is what
-// rewrites it: specs/instrumentation.md says it writes one cell and leaves "the
-// screen, the phase, the cursor, and the selection" standing, so the step keeps
-// holding and reads the rewritten board when its time is up.
+// running step to one carrying no run at all, so the read at the end of the
+// step's hold seeds nothing, the chain ends there, and no cascade off R9's seeded
+// refill can add points between the two readings. `setGem` is what rewrites it:
+// specs/instrumentation.md says it writes one cell and leaves "every other cell,
+// the screen, the phase, and the selection" standing, so the step keeps holding
+// and reads the rewritten board when its time is up.
+//
+// THE LEVEL TURNS OVER ON `CONTINUE`, NOT ON THE SETTLE. Reaching the target
+// raises the `levelclear` screen and nothing else — `levels/level-advances` is
+// that point — so the figure is read at the screen, `CONTINUE` is posed, and the
+// reading is taken again once the next level's board is standing.
 //
 // WHERE THE TARGET COMES FROM. Off the round, not out of `LEVEL_TARGET_STEP`:
 // what the target ought to be is `levels/level-target-derived`'s point, and this
@@ -49,7 +51,7 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -113,17 +115,17 @@ it("keeps the round's score through the level change that zeroes the level score
   h.debug.setLevelScore(opened.levelTarget);
 
   const driven = await captureReplay(h, "levelup", async () => {
-    const first = swap(h, RUN_SWAP.a, RUN_SWAP.b);
-    assertEqual(first.phase, "resolving", "the phase the accepted swap opened");
+    const first = await swapAndStep(h, RUN_SWAP.a, RUN_SWAP.b);
+    assertEqual(first.phase, "resolving", "the phase step 1 resolved into");
 
     // Nothing more may score: the step now holds a board with no run on it, so
-    // the read at STEP_SECONDS seeds nothing and the chain ends.
+    // the read at the end of its hold seeds nothing and the chain ends.
     writeBoard(quiet);
-    await advanceStep(h);
-    return { earned: first.score, settled: h.snapshot() };
+    const cleared = await advanceStep(h);
+    return { earned: first.score, cleared };
   });
 
-  const { earned, settled: after } = driven;
+  const { earned, cleared } = driven;
 
   // The round really did earn something on the step, so what crosses the level
   // change is a figure the round moved rather than the one it was posed with.
@@ -133,11 +135,22 @@ it("keeps the round's score through the level change that zeroes the level score
     `the score the step left, against the ${POSED_SCORE} the round was posed at`,
   );
 
-  assertEqual(after.phase, "idle", "the phase the chain ended in");
-  assertEqual(after.level, 2, "the level the completed target opened");
-  assertEqual(after.levelScore, 0, "the level score after the level rose");
+  assertEqual(cleared.phase, "idle", "the phase the chain ended in");
+  assertEqual(cleared.screen, "levelclear", "the screen the met target opened");
   assertEqual(
-    after.score,
+    cleared.score,
+    earned,
+    "the score at the level-clear screen, against the score the step left",
+  );
+
+  // CONTINUE is what turns the level over, and the figure has to survive it.
+  h.debug.continueLevel();
+  const next = h.snapshot();
+  assertEqual(next.screen, "playing", "the screen CONTINUE returns to");
+  assertEqual(next.level, 2, "the level CONTINUE opened");
+  assertEqual(next.levelScore, 0, "the level score the new level opens at");
+  assertEqual(
+    next.score,
     earned,
     "the score carried across the level change, against the score the step left",
   );

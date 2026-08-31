@@ -18,13 +18,21 @@
 // is checked apart from the rest, because specs/board.md gives it no kind and
 // the snapshot shape reports its `kind` as `null`.
 //
+// EVERY CELL REPORTS A `fell` OF `0`. specs/instrumentation.md says so of this
+// operation outright — "Every gem of a posed board is standing still where it was
+// written, so every cell reports a `fell` of `0`" — and it follows from the
+// notation itself, which records where every gem STANDS and nothing about how it
+// got there. A build that carried the figure over from whatever the board held
+// before, or that gave a posed board the fall a dealt one gets, hands every check
+// that reads the fall a board nobody wrote.
+//
 // THE STATE IS POSED FROM ONE THAT CONTRADICTS IT. specs/instrumentation.md
-// requires the operation to leave `phase` `idle`, `chainStep` and `stepTimer` at
-// `0`, no selection and no refusal — and every one of those already holds on a
-// title screen, so posing from rest would read nothing. The second check below
-// therefore sets a chain running, gives it a selection and a standing refusal,
-// and poses the board over THAT, where each of the six fields has something to
-// clear.
+// requires the operation to leave `phase` `idle`, `chainStep`, `swapTimer` and
+// `stepTimer` at `0`, no selection, no offer and no refusal — and every one of
+// those already holds on a title screen, so posing from rest would read nothing.
+// The second check below therefore sets a move running, gives it a selection, an
+// offer and a standing refusal, and poses the board over THAT, where each of the
+// seven fields has something to clear.
 //
 // THE POSE IS READ AT THE CALL. specs/instrumentation.md says `loadBoard` takes
 // effect when it is called, so every reading below is the one it returned, with
@@ -51,12 +59,12 @@ import {
   assertNull,
   fail,
 } from "../assert";
-import { FRAMES_PER_STEP, GRID_COLS, GRID_ROWS } from "../constants";
+import { GRID_COLS, GRID_ROWS } from "../constants";
 import {
   captureStill,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -97,13 +105,9 @@ const CHARGED_CELLS: readonly PlacedToken[] = [
 /** The board that chain is started on. */
 const CHARGED = quietRowsWithEscape(CHARGED_CELLS);
 
-/**
- * Frames run inside step 1, four short of the whole step.
- *
- * Enough that `stepTimer` has something in it, and short of `STEP_SECONDS` so
- * the chain is still resolving when the board is posed over it.
- */
-const PART_STEP_FRAMES = FRAMES_PER_STEP - 4;
+/** The cell held, and the neighbor it is offered into, when the board is posed. */
+const HELD = { col: 2, row: 6 };
+const OFFERED = { col: 3, row: 6 };
 
 let h: Harness;
 
@@ -132,16 +136,17 @@ it("moves to playing from the screen the game was on", async () => {
   assertLength(posed.board.cells, GRID_COLS * GRID_ROWS, "board.cells");
 });
 
-it("leaves no chain, no selection and no refusal standing behind it", async () => {
-  // Arrange the contradiction. A chain is set running so `phase` is `resolving`
-  // with `chainStep` at 1, part of a step is run so `stepTimer` carries
-  // something, a cell is selected, and a swap R1 refuses — the two cells are
-  // four apart — leaves a refusal standing. Every field the operation is
-  // required to clear now holds something to clear.
+it("leaves no move, no selection, no offer and no refusal behind it", async () => {
+  // Arrange the contradiction. A swap is accepted and carried through its own
+  // animation, so `phase` is `resolving` with `chainStep` at 1 and `stepTimer`
+  // carrying the game time the step has already run; a cell is selected and a
+  // neighbor offered into; and a swap R1 refuses — the two cells are four apart
+  // — leaves a refusal standing. Every field the operation is required to clear
+  // now holds something to clear.
   loadBoard(h, CHARGED);
-  swap(h, { col: 3, row: 3 }, { col: 3, row: 4 });
-  await h.advance(PART_STEP_FRAMES);
-  h.debug.setSelection(2, 6);
+  await swapAndStep(h, { col: 3, row: 3 }, { col: 3, row: 4 });
+  h.debug.setSelection(HELD.col, HELD.row);
+  h.debug.setOffer(OFFERED.col, OFFERED.row);
   h.debug.requestSwap(0, 0, 4, 0);
 
   const busy = h.snapshot();
@@ -149,17 +154,20 @@ it("leaves no chain, no selection and no refusal standing behind it", async () =
   assertGreaterThan(busy.chainStep, 0, "chainStep before the board is posed");
   assertGreaterThan(busy.stepTimer, 0, "stepTimer before the board is posed");
   assertNotNull(busy.selection, "selection before the board is posed");
+  assertNotNull(busy.offer, "offer before the board is posed");
   assertNotNull(busy.refusal, "refusal before the board is posed");
 
-  // Every field specs/instrumentation.md names for `loadBoard`. `chainStep` and
-  // `stepTimer` are the pair that says no chain is running; `selection` and
-  // `refusal` are the two that say the operation posed a board and left nothing
-  // of the situation it interrupted.
+  // Every field specs/instrumentation.md names for `loadBoard`. `chainStep`,
+  // `swapTimer` and `stepTimer` are the three that say no move is in motion;
+  // `selection`, `offer` and `refusal` are the three that say the operation
+  // posed a board and left nothing of the situation it interrupted.
   const posed = loadBoard(h, POSED);
   assertEqual(posed.phase, "idle", "phase");
   assertEqual(posed.chainStep, 0, "chainStep");
+  assertEqual(posed.swapTimer, 0, "swapTimer");
   assertEqual(posed.stepTimer, 0, "stepTimer");
   assertNull(posed.selection, "selection");
+  assertNull(posed.offer, "offer");
   assertNull(posed.refusal, "refusal");
 });
 
@@ -189,11 +197,15 @@ it("carries the kind, the cut and the strain every one of the 64 tokens named", 
       const cell = posed.board.cells.find(
         (candidate) => candidate.col === col && candidate.row === row,
       );
-      if (cell === undefined) fail(`a cell reported at (${col},${row})`, "none");
+      if (cell === undefined)
+        fail(`a cell reported at (${col},${row})`, "none");
       const where = `(${col},${row}), written ${tokenAt(POSED, col, row)}`;
       assertEqual(cell.kind, want.kind, `${where}: kind`);
       assertEqual(cell.cut, want.cut, `${where}: cut`);
       assertEqual(cell.strain, want.strain, `${where}: strain`);
+      // The fourth field, which the notation does not write and the operation
+      // fixes outright: a gem written at a cell is standing still in it.
+      assertEqual(cell.fell, 0, `${where}: fell`);
     }
   }
 });

@@ -27,34 +27,39 @@
 // frame loop. Under an engine "the clock, the keyboard, the pointer, and the
 // overlay belong to the Structured 2D engine ... and the surface carries no
 // operation for any of them", so the suite drives frames with `engine.advance`
-// and the surface carries nineteen operations rather than twenty-one.
+// and the surface carries twenty-three operations rather than twenty-five.
 
-import type { CellRef } from "./board";
 import {
   DEFAULT_SEED,
   FACET_DEBUG_VERSION,
   type Cut,
   type GemKind,
+  type PointerDevice,
   type Screen,
 } from "./constants";
+import type { CellRef, TargetRect } from "./board";
 
 /**
  * The figures and the unions this file describes the surface in terms of have
  * ONE home each, and it is not here.
  *
- * `constants.ts` derives `GemKind`, `Cut` and `Screen` from the literal tables
- * specs/board.md and specs/ui.md fix, and holds the version and the default seed
- * beside every other figure the specification states; `board.ts` declares the
- * cell address every fixture and every geometry helper already speaks in. They
- * are re-exported rather than restated because a second declaration of a union
- * drifts from the first in silence, and this file and those two are read
- * together on every check.
+ * `constants.ts` derives `GemKind`, `Cut`, `Screen` and `PointerDevice` from the
+ * literal tables specs/board.md, specs/ui.md and specs/controls.md fix, and
+ * holds the version and the default seed beside every other figure the
+ * specification states; `board.ts` declares the cell address every fixture and
+ * every geometry helper already speaks in, and the target rectangle its four
+ * requirements are asked of. They are re-exported rather than restated because a
+ * second declaration of a union drifts from the first in silence, and this file
+ * and those two are read together on every check.
  */
 export { DEFAULT_SEED, FACET_DEBUG_VERSION };
-export type { CellRef, Cut, GemKind, Screen };
+export type { CellRef, Cut, GemKind, PointerDevice, Screen, TargetRect };
 
-/** Where resolution stands: `idle` while settled, `resolving` while chaining. */
-export type Phase = "idle" | "resolving";
+/**
+ * Where resolution stands: `idle` while settled, `swapping` while an accepted
+ * swap is in motion, `resolving` while chaining.
+ */
+export type Phase = "idle" | "swapping" | "resolving";
 
 /** One cell of the board, as the snapshot reports it. */
 export interface CellSnapshot {
@@ -67,6 +72,12 @@ export interface CellSnapshot {
   kind: GemKind | null;
   cut: Cut;
   strain: number;
+  /**
+   * How many rows the gem traveled to reach this cell, under R9. Exact for a
+   * gem that survived a step, and at least `row + 1` for one the refill dealt,
+   * which is why `board.ts` expresses the second as a floor.
+   */
+  fell: number;
 }
 
 /** The board, `{ cols: 0, rows: 0, cells: [] }` while none is in play. */
@@ -100,20 +111,50 @@ export interface FacetSnapshot {
   chainStep: number;
   /** `min(chainStep, MAX_MULTIPLIER)`, derived. */
   multiplier: number;
-  /** Game time accumulated toward the next step, in seconds. */
+  /** Game time accumulated into the swap in motion. 0 while not swapping. */
+  swapTimer: number;
+  /** Game time accumulated into the step in progress. 0 while not resolving. */
   stepTimer: number;
+  /**
+   * How long the step in progress holds, derived:
+   * `lastWaves * WAVE_SECONDS + lastFall * FALL_SECONDS_PER_ROW + STEP_SECONDS`,
+   * which is `board.ts`'s `stepHold`.
+   */
+  stepHold: number;
   board: BoardSnapshot;
-  cursor: CellRef;
+  /** The gem the player has hold of. */
   selection: CellRef | null;
+  /** The neighbor the selected gem is offered into; a release plays it. */
+  offer: CellRef | null;
   refusal: { a: CellRef; b: CellRef } | null;
   /** Cells cleared by the most recent chain step. */
   lastCleared: number;
   /** Points the most recent chain step scored. */
   lastPoints: number;
+  /** The greatest wave R6 gave that step's clear set. */
+  lastWaves: number;
+  /** The greatest `fell` on the board, derived. */
+  lastFall: number;
+  /** Points the move currently running has scored. */
+  moveScore: number;
+  /** The most points one move has scored in the current level. */
+  bestMove: number;
+  /** The deepest chain step the current level has reached. */
+  bestChain: number;
   /** Whether any legal swap exists, derived from R1 and R3 over the board. */
   legalSwap: boolean;
   rngState: number;
-  pointer: { x: number; y: number; down: boolean };
+  pointer: { x: number; y: number; down: boolean; device: PointerDevice };
+  /** The id of the target the held press armed, or `null`. */
+  armedTarget: string | null;
+  /**
+   * The current screen's pointer targets, under the ids and in the order
+   * specs/controls.md fixes for that screen. A target's rectangle is the one the
+   * game hit-tests against, so pressing at a listed target's center takes it,
+   * and `board.ts`'s `targetFault` is what holds the set to the four
+   * requirements that file states.
+   */
+  targets: TargetRect[];
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
@@ -152,18 +193,30 @@ export interface FacetDebugApi {
   setScore(points: number): void;
   setLevel(level: number): void;
   setLevelScore(points: number): void;
+  setBestChain(chainStep: number): void;
+  setBestMove(points: number): void;
 
-  setCursor(col: number, row: number): void;
+  /** Poses the choice of `CONTINUE` from the level-clear menu. */
+  continueLevel(): void;
+
   setSelection(col: number, row: number): void;
   clearSelection(): void;
+  /** Offers the selected gem into `(col, row)`. No swap is requested. */
+  setOffer(col: number, row: number): void;
+  clearOffer(): void;
 
   /** Requests a swap through the same acceptance path a player's swap takes. */
   requestSwap(colA: number, rowA: number, colB: number, rowB: number): void;
 
-  /** Report a press, a move, and a release at a logical stage position. */
-  pointerDown(x: number, y: number): void;
-  pointerMove(x: number, y: number): void;
-  pointerUp(): void;
+  /**
+   * Report a press, a move, and a release at a logical stage position, from
+   * `device`, which defaults to `"mouse"`. Each is resolved against the live
+   * state before the call returns, so a selection and the swap it leads to are
+   * both posed without a frame passing between them.
+   */
+  pointerDown(x: number, y: number, device?: PointerDevice): void;
+  pointerMove(x: number, y: number, device?: PointerDevice): void;
+  pointerUp(device?: PointerDevice): void;
 }
 
 /**
@@ -178,8 +231,8 @@ export const READINGS = ["snapshot"] as const;
 /**
  * Every operation the surface must carry under this engine.
  *
- * Nineteen, not twenty-one: `setAutoStep` and `advance` exist under `none` alone,
- * because here the clock is the engine's.
+ * Twenty-three, not twenty-five: `setAutoStep` and `advance` exist under `none`
+ * alone, because here the clock is the engine's.
  */
 export const REQUIRED_OPS = [
   "reset",
@@ -194,9 +247,13 @@ export const REQUIRED_OPS = [
   "setScore",
   "setLevel",
   "setLevelScore",
-  "setCursor",
+  "setBestChain",
+  "setBestMove",
+  "continueLevel",
   "setSelection",
   "clearSelection",
+  "setOffer",
+  "clearOffer",
   "requestSwap",
   "pointerDown",
   "pointerMove",

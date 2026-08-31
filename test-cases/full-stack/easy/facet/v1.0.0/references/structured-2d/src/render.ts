@@ -6,13 +6,14 @@
 // the effects a chain throws; the SCREEN LAYER draws the readouts and whichever
 // screen's chrome is showing over them. `src/bench.ts` attaches one of each.
 //
-// The drawing itself is split by what it draws: the bench and the stones in
-// `src/render.board.ts`, one gem in `src/render.gems.ts`, the readouts in
-// `src/render.hud.ts`, and the four screens around the board in
+// The drawing itself is split by what it draws: the bench, the stones and where
+// this instant puts them in `src/render.board.ts`, one gem in
+// `src/render.gems.ts`, the readouts and the pause control in
+// `src/render.hud.ts`, and the five screens around the board in
 // `src/render.screens.ts`.
 //
 // The renderer is a PURE FUNCTION OF THE STATE it is handed, plus the produced
-// files and the presentation layer's own decorative clock. It reads nothing
+// files and the presentation layer's own decorative clocks. It reads nothing
 // back and writes nothing anywhere, which is the direction
 // `specs/instrumentation.md` fixes: "the simulation reads nothing from the
 // renderer".
@@ -27,6 +28,7 @@ import { drawHud } from "./render.hud";
 import {
   drawGameOverScreen,
   drawHowToScreen,
+  drawLevelClearScreen,
   drawPausedScreen,
   drawTitleScreen,
 } from "./render.screens";
@@ -39,6 +41,7 @@ export function showsBoard(state: FacetState): boolean {
   return (
     state.screen === "playing" ||
     state.screen === "paused" ||
+    state.screen === "levelclear" ||
     state.screen === "gameover"
   );
 }
@@ -73,6 +76,10 @@ export function renderUiLayer(
     case "paused":
       drawHud(ctx, state);
       drawPausedScreen(ctx, state);
+      return;
+    case "levelclear":
+      drawHud(ctx, state);
+      drawLevelClearScreen(ctx, state);
       return;
     case "gameover":
       drawHud(ctx, state);

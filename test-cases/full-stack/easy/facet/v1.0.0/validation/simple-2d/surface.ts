@@ -32,20 +32,24 @@
 
 import type { DeepReadonly } from "ts-essentials";
 import { DEFAULT_SEED, FACET_DEBUG_VERSION } from "./constants";
-import type { Cut, GemKind, Screen } from "./constants";
-import type { CellRef } from "./board";
+import type { Cut, GemKind, PointerDevice, Screen } from "./constants";
+import type { CellRef, TargetRect } from "./board";
 
 // Every one of these has ONE home — `constants.ts` derives each union from the
-// literal table specs/ fixes it by, and `board.ts` owns the cell reference —
-// and this module re-exports rather than redeclaring. Two independent
-// declarations of one union drift silently, and a check reaching for a type
-// through the surface must be reaching for the same type a check reaching for
-// it through the board gets.
+// literal table specs/ fixes it by, and `board.ts` owns the cell reference and
+// the target rectangle the four requirements are asked of — and this module
+// re-exports rather than redeclaring. Two independent declarations of one union
+// drift silently, and a check reaching for a type through the surface must be
+// reaching for the same type a check reaching for it through the board gets.
 export { DEFAULT_SEED, FACET_DEBUG_VERSION };
-export type { CellRef, Cut, GemKind, Screen };
+export type { CellRef, Cut, GemKind, PointerDevice, Screen, TargetRect };
 
-/** Whether a chain is running, from specs/rules.md. */
-export type Phase = "idle" | "resolving";
+/**
+ * Where resolution stands, from specs/rules.md: `idle` while the board is
+ * settled, `swapping` while an accepted swap is in motion, `resolving` while a
+ * chain is running.
+ */
+export type Phase = "idle" | "swapping" | "resolving";
 
 /** One cell of the board, as a snapshot reports it. */
 export interface CellSnapshot {
@@ -58,6 +62,12 @@ export interface CellSnapshot {
   kind: GemKind | null;
   cut: Cut;
   strain: number;
+  /**
+   * How many rows the gem traveled to reach this cell, under R9. Exact for a
+   * gem that survived a step, and at least `row + 1` for one the refill dealt,
+   * which is why `board.ts` expresses the second as a floor.
+   */
+  fell: number;
 }
 
 /** The board a snapshot reports. Empty while no board is in play. */
@@ -91,23 +101,50 @@ export interface FacetSnapshot {
   chainStep: number;
   /** `min(chainStep, MAX_MULTIPLIER)`, derived. */
   multiplier: number;
-  /** Game time accumulated toward the next step. */
+  /** Game time accumulated into the swap in motion. 0 while not swapping. */
+  swapTimer: number;
+  /** Game time accumulated into the step in progress. 0 while not resolving. */
   stepTimer: number;
+  /**
+   * How long the step in progress holds, derived:
+   * `lastWaves * WAVE_SECONDS + lastFall * FALL_SECONDS_PER_ROW + STEP_SECONDS`,
+   * which is `board.ts`'s `stepHold`.
+   */
+  stepHold: number;
   board: BoardSnapshot;
-  cursor: { col: number; row: number };
-  selection: { col: number; row: number } | null;
-  refusal: {
-    a: { col: number; row: number };
-    b: { col: number; row: number };
-  } | null;
+  /** The gem the player has hold of. */
+  selection: CellRef | null;
+  /** The neighbor the selected gem is offered into; a release plays it. */
+  offer: CellRef | null;
+  refusal: { a: CellRef; b: CellRef } | null;
   /** Cells cleared by the most recent chain step. */
   lastCleared: number;
   /** Points the most recent chain step scored. */
   lastPoints: number;
+  /** The greatest wave R6 gave that step's clear set. */
+  lastWaves: number;
+  /** The greatest `fell` on the board, derived. */
+  lastFall: number;
+  /** Points the move currently running has scored. */
+  moveScore: number;
+  /** The most points one move has scored in the current level. */
+  bestMove: number;
+  /** The deepest chain step the current level has reached. */
+  bestChain: number;
   /** Whether any legal swap exists, derived from R1 and R3. */
   legalSwap: boolean;
   rngState: number;
-  pointer: { x: number; y: number; down: boolean };
+  pointer: { x: number; y: number; down: boolean; device: PointerDevice };
+  /** The id of the target the held press armed, or `null`. */
+  armedTarget: string | null;
+  /**
+   * The current screen's pointer targets, under the ids and in the order
+   * specs/controls.md fixes for that screen. A target's rectangle is the one the
+   * game hit-tests against, so pressing at a listed target's center takes it,
+   * and `board.ts`'s `targetFault` is what holds the set to the four
+   * requirements that file states.
+   */
+  targets: TargetRect[];
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
@@ -136,9 +173,13 @@ export interface FacetDebugApi<S = unknown> {
   setScore(state: DeepReadonly<S>, points: number): S;
   setLevel(state: DeepReadonly<S>, level: number): S;
   setLevelScore(state: DeepReadonly<S>, points: number): S;
-  setCursor(state: DeepReadonly<S>, col: number, row: number): S;
+  setBestChain(state: DeepReadonly<S>, chainStep: number): S;
+  setBestMove(state: DeepReadonly<S>, points: number): S;
+  continueLevel(state: DeepReadonly<S>): S;
   setSelection(state: DeepReadonly<S>, col: number, row: number): S;
   clearSelection(state: DeepReadonly<S>): S;
+  setOffer(state: DeepReadonly<S>, col: number, row: number): S;
+  clearOffer(state: DeepReadonly<S>): S;
   requestSwap(
     state: DeepReadonly<S>,
     colA: number,
@@ -146,9 +187,19 @@ export interface FacetDebugApi<S = unknown> {
     colB: number,
     rowB: number,
   ): S;
-  pointerDown(state: DeepReadonly<S>, x: number, y: number): S;
-  pointerMove(state: DeepReadonly<S>, x: number, y: number): S;
-  pointerUp(state: DeepReadonly<S>): S;
+  pointerDown(
+    state: DeepReadonly<S>,
+    x: number,
+    y: number,
+    device?: PointerDevice,
+  ): S;
+  pointerMove(
+    state: DeepReadonly<S>,
+    x: number,
+    y: number,
+    device?: PointerDevice,
+  ): S;
+  pointerUp(state: DeepReadonly<S>, device?: PointerDevice): S;
 }
 
 /**
@@ -163,8 +214,8 @@ export const READINGS = ["snapshot"] as const;
 /**
  * Every operation the surface must carry under this engine.
  *
- * Nineteen: the twenty-one of specs/instrumentation.md less `setAutoStep` and
- * `advance`, which are the runtime's here and are not on the surface at all.
+ * Twenty-three: the twenty-five of specs/instrumentation.md less `setAutoStep`
+ * and `advance`, which are the runtime's here and are not on the surface at all.
  */
 export const REQUIRED_OPS = [
   "reset",
@@ -179,9 +230,13 @@ export const REQUIRED_OPS = [
   "setScore",
   "setLevel",
   "setLevelScore",
-  "setCursor",
+  "setBestChain",
+  "setBestMove",
+  "continueLevel",
   "setSelection",
   "clearSelection",
+  "setOffer",
+  "clearOffer",
   "requestSwap",
   "pointerDown",
   "pointerMove",

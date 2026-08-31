@@ -15,12 +15,21 @@
 // filled the gap from the FOOT instead would leave a marked survivor at the top
 // of the column, and a marked gem is not at strain 0.
 //
+// HOW FAR a refilled gem traveled to get there is
+// `settling/r9-refill-falls-from-above`'s point, so nothing here reads `fell`.
+//
 // TWO ARRANGEMENTS, BECAUSE THE RULE IS PER COLUMN AND PER CELL. The first
 // empties three cells out of ONE column — the whole foot of column 4 — so the top
 // three cells of that column are all refills and a build that filled only the
 // topmost one is caught. The second empties ONE cell out of each of THREE columns
 // — a run along the foot of the board — so the rule is read where several columns
 // need a single cell each.
+//
+// WHEN EACH READING IS TAKEN. An accepted swap exchanges the two cells at once
+// and then holds them in motion: specs/rules.md sets `phase` to `swapping` with
+// `chainStep` at 0, and step 1 resolves once `SWAP_SECONDS` (0.18) of game time
+// has passed. `swapAndStep` carries the board through exactly that and hands back
+// the reading step 1 left behind, refill included.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength, fail } from "../assert";
@@ -36,8 +45,9 @@ import {
 import {
   captureReplay,
   createHarness,
+  framesShortOf,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 import type { CellSnapshot, FacetSnapshot } from "../surface";
@@ -104,12 +114,20 @@ const WIDE_CLEAR_SET: readonly CellRef[] = WIDE_COLS.map((col) => ({
 }));
 
 /**
- * Frames driven after the swap purely so the replay carries the refill.
+ * Frames that carry the recording to just short of the end of the step the
+ * reading was taken in, so the replay holds the refill rather than stopping on
+ * the frame the step resolved.
  *
- * Short of `STEP_SECONDS` (0.25 s, 16 frames of this clock), so the board is
- * never read a second time and the readings below still describe step 1.
+ * A step's hold is the STEP's OWN figure — `lastWaves * WAVE_SECONDS` plus
+ * `lastFall * FALL_SECONDS_PER_ROW` plus `STEP_SECONDS` — which the snapshot
+ * reports as `stepHold`, so the frames that fill it are read off the reading
+ * rather than written down. `framesShortOf` keeps the drive strictly inside what
+ * is left of that hold, so the board is never read a second time and the
+ * readings below still describe step 1.
  */
-const REPLAY_FRAMES = 12;
+function restOfStep(reading: FacetSnapshot): number {
+  return framesShortOf(Math.max(0, reading.stepHold - reading.stepTimer));
+}
 
 let h: Harness;
 
@@ -168,8 +186,8 @@ it("fills every cell the fall left empty from the top, plain and at strain 0", a
 
   loadBoard(h, deep);
   const afterDeep = await captureReplay(h, "refill", async () => {
-    const first = swap(h, DEEP_A, DEEP_B);
-    await h.advance(REPLAY_FRAMES);
+    const first = await swapAndStep(h, DEEP_A, DEEP_B);
+    await h.advance(restOfStep(first));
     return first;
   });
   assertEqual(afterDeep.chainStep, 1, "the chain step the deep swap opened");
@@ -191,7 +209,7 @@ it("fills every cell the fall left empty from the top, plain and at strain 0", a
   );
 
   loadBoard(h, wide);
-  const afterWide = swap(h, WIDE_A, WIDE_B);
+  const afterWide = await swapAndStep(h, WIDE_A, WIDE_B);
   assertEqual(afterWide.chainStep, 1, "the chain step the wide swap opened");
   for (const col of WIDE_COLS) {
     assertRefill(afterWide, col, 0);

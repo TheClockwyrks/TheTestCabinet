@@ -23,9 +23,19 @@
 // that arrives at MAX_STRAIN during the step itself. That is what is posed
 // here.
 //
-// Column 1 loses no cell, so R9 leaves the amber where it was posed, and the
-// reading is taken from the step-1 snapshot an accepted swap resolves at the
-// call.
+// Column 1 loses no cell, so R9 leaves the amber where it was posed.
+//
+// WHEN THE READING IS TAKEN. specs/rules.md holds an accepted swap in
+// `swapping` for SWAP_SECONDS (0.18) of game time, clearing nothing, and
+// resolves step 1 when that time is spent. `swapAndStep` carries the game
+// exactly that far and hands back the reading step 1 left; the step then holds
+// the board for its own STEP_HOLD — `lastWaves x WAVE_SECONDS` plus `lastFall x
+// FALL_SECONDS_PER_ROW` plus STEP_SECONDS — before it is read again, so the
+// strain read is the one step's, not a chain's.
+//
+// What a flawed gem then DOES is other points': that it is drawn into the next
+// clear set is `expansion/r6-flawed-adjacent`, that it scores FLAWED_SCORE is
+// `scoring/score-flawed-rate`. None of it is asserted here.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -34,6 +44,7 @@ import {
   assertLength,
   assertTrue,
 } from "../assert";
+import { MAX_STRAIN } from "../constants";
 import {
   clearSetFromRuns,
   isFlawed,
@@ -48,13 +59,12 @@ import {
   type CellRef,
   type PlacedToken,
 } from "../board";
-import { MAX_STRAIN } from "../constants";
 import {
   captureReplay,
   createHarness,
   loadBoard,
   resolveChain,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -127,17 +137,21 @@ it("carries a gem one short of flawed the rest of the way", async () => {
 
   loadBoard(h, posed);
 
-  const rows = await captureReplay(h, "flaw", async () => {
-    const stepOne = swap(h, SWAP.a, SWAP.b);
-    // Read at the resolution of step 1, before any frame runs.
-    const read = renderBoard(stepOne);
+  const taken = await captureReplay(h, "flaw", async () => {
+    // Through the swap animation to the result of step 1, read inside that
+    // step's own hold. The chain is driven on afterwards only so the replay
+    // carries the whole move.
+    const stepOne = await swapAndStep(h, SWAP.a, SWAP.b);
+    const read = { rows: renderBoard(stepOne), chainStep: stepOne.chainStep };
     await resolveChain(h);
     return read;
   });
 
-  const strain = strainAt(rows, MARKED.col, MARKED.row);
+  assertEqual(taken.chainStep, 1, "the chain step the accepted swap opened");
+
+  const strain = strainAt(taken.rows, MARKED.col, MARKED.row);
   assertEqual(
-    tokenAt(rows, MARKED.col, MARKED.row),
+    tokenAt(taken.rows, MARKED.col, MARKED.row),
     tokenOf("amber", MAX_STRAIN),
     `the amber at (${MARKED.col},${MARKED.row}) after the step beside it`,
   );

@@ -17,14 +17,17 @@ import {
 } from "./assets";
 import {
   CELL_PITCH,
+  FALL_SECONDS_PER_ROW,
   GEM_R,
   GRID_COLS,
   GRID_ROWS,
   STAGE_H,
   STAGE_W,
+  SWAP_SECONDS,
+  WAVE_SECONDS,
 } from "./constants";
 import { boardFromCore } from "./bridge";
-import { cellCenter, parseBoard } from "./core";
+import { cellCenter, cellY, parseBoard, targetsFor } from "./core";
 import { quietRows, quietRowsWith } from "./core/fixtures";
 import { domScratch, Presentation, PRISM_TURN_FRAME_SECONDS } from "./effects";
 import { FacetState } from "./game";
@@ -34,6 +37,7 @@ import {
   overlayKeyFor,
   spriteKeyFor,
 } from "./render.gems";
+import { drawnGem, gemPosition } from "./render.board";
 import { renderBoardLayer, renderUiLayer, showsBoard } from "./render";
 import {
   FIELD_SIZE,
@@ -81,6 +85,50 @@ function posedState(rows: readonly string[] = quietRows()): FacetState {
   state.screen = "playing";
   state.board = boardFromCore(parseBoard(rows));
   return state;
+}
+
+/** How many pixels inside a rectangle are painted. */
+function paintedIn(
+  target: CanvasRenderingContext2D,
+  rect: { x: number; y: number; w: number; h: number },
+): number {
+  const { data } = target.getImageData(rect.x, rect.y, rect.w, rect.h);
+  let count = 0;
+  for (let index = 3; index < data.length; index += 4) {
+    if (data[index] > 8) count += 1;
+  }
+  return count;
+}
+
+/** The box every pixel that differs between two pictures falls inside. */
+function differenceBox(
+  a: CanvasRenderingContext2D,
+  b: CanvasRenderingContext2D,
+): { left: number; top: number; right: number; bottom: number } | null {
+  const one = a.getImageData(0, 0, STAGE_W, STAGE_H).data;
+  const two = b.getImageData(0, 0, STAGE_W, STAGE_H).data;
+  let left = STAGE_W;
+  let top = STAGE_H;
+  let right = -1;
+  let bottom = -1;
+  for (let index = 0; index < one.length; index += 4) {
+    if (
+      one[index] === two[index] &&
+      one[index + 1] === two[index + 1] &&
+      one[index + 2] === two[index + 2] &&
+      one[index + 3] === two[index + 3]
+    ) {
+      continue;
+    }
+    const pixel = index / 4;
+    const x = pixel % STAGE_W;
+    const y = Math.floor(pixel / STAGE_W);
+    left = Math.min(left, x);
+    right = Math.max(right, x);
+    top = Math.min(top, y);
+    bottom = Math.max(bottom, y);
+  }
+  return right < 0 ? null : { left, top, right, bottom };
 }
 
 describe("the produced bench", () => {
@@ -178,9 +226,14 @@ describe("which sprite a gem is drawn from", () => {
 });
 
 describe("the two layers", () => {
-  it("puts a board behind the three screens that have one", () => {
+  it("puts a board behind the four screens that have one", () => {
     const state = posedState();
-    for (const screen of ["playing", "paused", "gameover"] as const) {
+    for (const screen of [
+      "playing",
+      "paused",
+      "levelclear",
+      "gameover",
+    ] as const) {
       state.screen = screen;
       expect(showsBoard(state)).toBe(true);
     }
@@ -232,6 +285,7 @@ describe("the two layers", () => {
       "howto",
       "playing",
       "paused",
+      "levelclear",
       "gameover",
     ] as const) {
       state.screen = screen;
@@ -269,5 +323,172 @@ describe("the two layers", () => {
     const muted = ctx2d();
     renderUiLayer(state, muted, store);
     expect(painted(muted)).toBeGreaterThan(painted(quiet));
+  });
+});
+
+describe("the pointer targets are drawn where the game hit-tests them", () => {
+  it("draws each menu row on its own menu-<i> rectangle", async () => {
+    const store = await buildStore(io);
+    const state = posedState();
+    state.screen = "title";
+
+    state.menuIndex = 0;
+    const first = ctx2d();
+    renderUiLayer(state, first, store);
+
+    state.menuIndex = 1;
+    const second = ctx2d();
+    renderUiLayer(state, second, store);
+
+    // Moving the highlight changes the two menu rows and nothing else, so the
+    // whole of the difference falls inside the two rectangles the game
+    // hit-tests a press against.
+    const box = differenceBox(first, second);
+    const rects = targetsFor("title");
+    expect(rects.map((rect) => rect.id)).toEqual(["menu-0", "menu-1"]);
+    const left = Math.min(...rects.map((rect) => rect.x));
+    const right = Math.max(...rects.map((rect) => rect.x + rect.w));
+    const top = Math.min(...rects.map((rect) => rect.y));
+    const bottom = Math.max(...rects.map((rect) => rect.y + rect.h));
+    expect(box).not.toBeNull();
+    expect(box!.left).toBeGreaterThanOrEqual(left);
+    expect(box!.right).toBeLessThanOrEqual(right);
+    expect(box!.top).toBeGreaterThanOrEqual(top);
+    expect(box!.bottom).toBeLessThanOrEqual(bottom);
+
+    // And each row is drawn on, rather than left as bare ground.
+    for (const rect of rects) expect(paintedIn(first, rect)).toBeGreaterThan(0);
+  });
+
+  it("draws the PAUSE control on its target, clear of the board", async () => {
+    const store = await buildStore(io);
+    const state = posedState();
+    const target = ctx2d();
+    renderUiLayer(state, target, store);
+
+    const [pause] = targetsFor("playing");
+    expect(pause.id).toBe("pause");
+    expect(pause.x).toBeGreaterThan(FRAME_X + FRAME_SIZE);
+    expect(paintedIn(target, pause)).toBeGreaterThan(pause.w);
+  });
+
+  it("draws the BACK control on its target", async () => {
+    const store = await buildStore(io);
+    const state = posedState();
+    state.screen = "howto";
+    const target = ctx2d();
+    renderUiLayer(state, target, store);
+
+    const [back] = targetsFor("howto");
+    expect(back.id).toBe("back");
+    expect(paintedIn(target, back)).toBeGreaterThan(back.w);
+  });
+});
+
+describe("where a stone is drawn", () => {
+  it("rests a stone that traveled nowhere on its own cell center", () => {
+    const state = posedState();
+    const presentation = new Presentation(() => null);
+    expect(gemPosition(state, presentation, 3, 4)).toEqual(
+      cellCenter({ col: 3, row: 4 }),
+    );
+  });
+
+  it("carries the two swapped stones between their cells over SWAP_SECONDS", () => {
+    const state = posedState();
+    const presentation = new Presentation(() => null);
+    state.phase = "swapping";
+    state.chainSwap = { a: { col: 2, row: 2 }, b: { col: 3, row: 2 } };
+
+    state.swapTimer = 0;
+    expect(gemPosition(state, presentation, 2, 2)).toEqual(
+      cellCenter({ col: 3, row: 2 }),
+    );
+    expect(gemPosition(state, presentation, 3, 2)).toEqual(
+      cellCenter({ col: 2, row: 2 }),
+    );
+
+    state.swapTimer = SWAP_SECONDS / 2;
+    const [midX] = gemPosition(state, presentation, 2, 2);
+    expect(midX).toBeCloseTo(
+      (cellCenter({ col: 2, row: 2 })[0] + cellCenter({ col: 3, row: 2 })[0]) /
+        2,
+      6,
+    );
+
+    state.swapTimer = SWAP_SECONDS;
+    expect(gemPosition(state, presentation, 2, 2)).toEqual(
+      cellCenter({ col: 2, row: 2 }),
+    );
+    // A stone the swap did not name stands still throughout.
+    expect(gemPosition(state, presentation, 6, 6)).toEqual(
+      cellCenter({ col: 6, row: 6 }),
+    );
+  });
+
+  it("holds a falling stone above its cell until the shattering is over", () => {
+    const state = posedState();
+    const presentation = new Presentation(() => null);
+    state.phase = "resolving";
+    state.lastWaves = 2;
+    state.board.cells[3 * GRID_COLS + 1] = {
+      ...state.board.cells[3 * GRID_COLS + 1],
+      fell: 2,
+    };
+    const shatterEnd = 2 * WAVE_SECONDS;
+
+    state.stepTimer = 0;
+    expect(gemPosition(state, presentation, 1, 3)[1]).toBe(cellY(1));
+    state.stepTimer = shatterEnd;
+    expect(gemPosition(state, presentation, 1, 3)[1]).toBe(cellY(1));
+
+    state.stepTimer = shatterEnd + FALL_SECONDS_PER_ROW;
+    expect(gemPosition(state, presentation, 1, 3)[1]).toBeCloseTo(cellY(2), 6);
+
+    state.stepTimer = shatterEnd + 2 * FALL_SECONDS_PER_ROW;
+    expect(gemPosition(state, presentation, 1, 3)[1]).toBe(cellY(3));
+    // A stone that did not move is at rest the whole way through.
+    expect(gemPosition(state, presentation, 5, 5)[1]).toBe(cellY(5));
+  });
+
+  it("pours a freshly dealt board in from above the top row", () => {
+    const state = posedState();
+    const presentation = new Presentation(() => null);
+    state.board.cells = state.board.cells.map((cell) => ({
+      ...cell,
+      fell: cell.row + 1,
+    }));
+
+    // A settled board's timers all read zero, so the pour is what places it.
+    expect(gemPosition(state, presentation, 0, 0)[1]).toBe(cellY(0));
+
+    presentation.pour();
+    expect(gemPosition(state, presentation, 0, 0)[1]).toBe(cellY(-1));
+    expect(gemPosition(state, presentation, 0, 7)[1]).toBe(cellY(-1));
+
+    presentation.advance(FALL_SECONDS_PER_ROW);
+    expect(gemPosition(state, presentation, 0, 0)[1]).toBeCloseTo(cellY(0), 6);
+    expect(gemPosition(state, presentation, 0, 7)[1]).toBeCloseTo(cellY(0), 6);
+  });
+});
+
+describe("an offer standing", () => {
+  it("draws the two stones exchanged, so the move can be seen", () => {
+    const state = posedState();
+    state.selection = { col: 0, row: 0 };
+    state.offer = { col: 1, row: 0 };
+    const held = state.board.cells[0];
+    const beside = state.board.cells[1];
+    expect(held.kind).not.toBe(beside.kind);
+
+    expect(drawnGem(state, { col: 0, row: 0 })?.kind).toBe(beside.kind);
+    expect(drawnGem(state, { col: 1, row: 0 })?.kind).toBe(held.kind);
+    // Every other cell is drawn from the board itself.
+    expect(drawnGem(state, { col: 2, row: 0 })?.kind).toBe(
+      state.board.cells[2].kind,
+    );
+
+    state.offer = null;
+    expect(drawnGem(state, { col: 0, row: 0 })?.kind).toBe(held.kind);
   });
 });

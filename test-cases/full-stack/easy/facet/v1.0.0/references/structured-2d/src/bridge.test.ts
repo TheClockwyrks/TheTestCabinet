@@ -31,6 +31,7 @@ describe("boards cross the seam unchanged", () => {
       kind: "ruby",
       cut: "plain",
       strain: 0,
+      fell: 0,
     });
     expect(boardToCore(live)).toEqual(core);
   });
@@ -97,18 +98,66 @@ describe("the state crosses the seam unchanged", () => {
     });
   });
 
-  it("carries the three bookkeeping fields the rules need", () => {
+  it("carries the one bookkeeping field the rules need", () => {
     const live = liveState();
     applyCore(live, {
       ...createInitialState(),
       chainSwap: { a: { col: 0, row: 0 }, b: { col: 1, row: 0 } },
-      pressedCell: { col: 4, row: 5 },
-      dragSwapped: true,
     });
     expect(live.chainSwap?.b).toEqual({ col: 1, row: 0 });
-    expect(live.pressedCell).toEqual({ col: 4, row: 5 });
-    expect(live.dragSwapped).toBe(true);
     expect(toCore(live).chainSwap?.a).toEqual({ col: 0, row: 0 });
+  });
+
+  it("carries the hold, the armed target, and the pointer's device", () => {
+    const live = liveState();
+    applyCore(live, {
+      ...createInitialState(),
+      selection: { col: 2, row: 3 },
+      offer: { col: 3, row: 3 },
+      armedTarget: "menu-1",
+      pointer: { x: 12, y: 34, down: true, device: "touch" },
+    });
+    expect(live.selection).toEqual({ col: 2, row: 3 });
+    expect(live.offer).toEqual({ col: 3, row: 3 });
+    expect(live.armedTarget).toBe("menu-1");
+    expect(live.pointer).toEqual({ x: 12, y: 34, down: true, device: "touch" });
+    const core = toCore(live);
+    expect(core.offer).toEqual({ col: 3, row: 3 });
+    expect(core.armedTarget).toBe("menu-1");
+    expect(core.pointer.device).toBe("touch");
+  });
+
+  it("carries the figures a level is measured by, and the step it left", () => {
+    const live = liveState();
+    applyCore(live, {
+      ...createInitialState(),
+      swapTimer: 0.07,
+      lastWaves: 2,
+      moveScore: 320,
+      bestMove: 640,
+      bestChain: 5,
+    });
+    expect(live.swapTimer).toBeCloseTo(0.07, 6);
+    expect(live.lastWaves).toBe(2);
+    expect(live.moveScore).toBe(320);
+    expect(live.bestMove).toBe(640);
+    expect(live.bestChain).toBe(5);
+    expect(toCore(live).bestChain).toBe(5);
+  });
+
+  it("carries how far every gem fell to reach its cell", () => {
+    const core = parseBoard(quietRows());
+    const dropped = {
+      ...core,
+      gems: core.gems.map((gem, index) =>
+        gem === null ? gem : { ...gem, fell: index % 4 },
+      ),
+    };
+    const live = boardFromCore(dropped);
+    expect(live.cells.map((cell) => cell.fell).slice(0, 5)).toEqual([
+      0, 1, 2, 3, 0,
+    ]);
+    expect(boardToCore(live)).toEqual(dropped);
   });
 
   it("leaves the mute bit alone, because the engine owns it", () => {
@@ -128,9 +177,10 @@ describe("the state crosses the seam unchanged", () => {
 
   it("copies cells rather than aliasing the core's objects", () => {
     const core = createInitialState();
+    const selection = { col: 3, row: 4 };
     const live = liveState();
-    applyCore(live, { ...core, cursor: { col: 3, row: 4 } });
-    live.cursor.col = 7;
-    expect(toCore(live).cursor).toEqual({ col: 7, row: 4 });
+    applyCore(live, { ...core, selection });
+    selection.col = 7;
+    expect(toCore(live).selection).toEqual({ col: 3, row: 4 });
   });
 });

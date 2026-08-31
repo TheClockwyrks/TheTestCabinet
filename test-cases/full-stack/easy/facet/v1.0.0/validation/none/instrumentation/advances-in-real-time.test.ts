@@ -18,26 +18,31 @@
 // and a stretch of REAL time passes with nothing advancing anything. Then the
 // game is asked where it got to.
 //
+// THE CHAIN IS ALREADY RUNNING WHEN THE ENGINE IS TURNED LOOSE. specs/rules.md
+// has an accepted swap hold in `swapping` for `SWAP_SECONDS` (`0.18`) of game
+// time before step 1 resolves, so a request alone leaves nothing resolving to
+// watch. The swap is therefore carried through its own animation first, and what
+// real time is asked to move is a chain that is already under way.
+//
 // WHAT IS READ, AND WHY NOT `stepTimer` DIRECTLY. `simTime` "accumulates the
 // delta time of every update, whatever the screen" (specs/instrumentation.md),
 // so a game that ran at all has moved it. And the chain has to have moved WITH
 // it, or a build that merely counts time while nothing responds to it would
-// pass: the stretch is far longer than `STEP_SECONDS` (0.25), so specs/rules.md
-// requires the board to have been read again and the step the swap resolved to
-// be behind the game. `stepTimer` itself is not read as a figure, because where
-// it stands afterwards depends on how many boundaries went by — which is the
-// wall clock's business rather than the build's.
+// pass: the stretch is far longer than this step's own hold, so specs/rules.md
+// requires the board to have been read again and the step the swap opened onto
+// to be behind the game. `stepTimer` itself is not read as a figure, because
+// where it stands afterwards depends on how many boundaries went by — which is
+// the wall clock's business rather than the build's.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotEqual } from "../assert";
 import { quietRowsWithEscape } from "../board";
-import { STEP_SECONDS } from "../constants";
 import {
   captureStill,
   createHarness,
   failSurface,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -46,9 +51,13 @@ let h: Harness;
 /**
  * The stretch of real time the game is left to itself for.
  *
- * Comfortably longer than `STEP_SECONDS` (0.25), so even a loop that renders far
- * below the rate it would like still carries the chain past a step boundary
- * within it.
+ * A step's hold is its own figure — `lastWaves * WAVE_SECONDS + lastFall *
+ * FALL_SECONDS_PER_ROW + STEP_SECONDS` — and this scenario's is a short one: the
+ * clear set is a plain run of three with nothing cut or flawed beside it, so
+ * `lastWaves` is `0`, and the three columns it empties each refill one cell of
+ * row `0`, so `lastFall` is small. A second of real time is comfortably longer
+ * than that hold, so even a loop that renders far below the rate it would like
+ * still carries the chain past a step boundary within it.
  */
 const REAL_MS = 1000;
 
@@ -71,21 +80,20 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await h?.dispose();
+  await h.dispose();
 });
 
 it("carries a resolving chain forward over real time on its own", async () => {
   requireSurface();
   await loadBoard(h, POSED);
-  await swap(h, SWAP.a, SWAP.b);
-  // One frame, so the board the chain is running on has been drawn for the
-  // still below.
-  await h.advance(1);
+  // The swap, carried through its own animation to the step it opens onto. The
+  // drive draws frames as it goes, so the board the chain is running on is on
+  // the canvas for the still below.
+  const before = await swapAndStep(h, SWAP.a, SWAP.b);
   await captureStill(h, "before");
 
-  const before = await h.snapshot();
-  assertEqual(before.phase, "resolving", "the phase the accepted swap left");
-  assertEqual(before.chainStep, 1, "the chain step the accepted swap resolved");
+  assertEqual(before.phase, "resolving", "the phase the swap animation left");
+  assertEqual(before.chainStep, 1, "the chain step the swap animation opened");
 
   // The harness lets go here: for the next stretch nothing outside the build
   // advances anything, and whatever happens is the build's own loop.
@@ -101,12 +109,12 @@ it("carries a resolving chain forward over real time on its own", async () => {
     `the simTime after ${REAL_MS}ms of real time`,
   );
 
-  // And the chain went with it: more than `STEP_SECONDS` of game time passed, so
-  // the board was read again and the step the swap resolved is behind the game —
-  // either a further step is running or the chain has settled.
+  // And the chain went with it: more game time passed than this step holds the
+  // board for, so the board was read again and the step the swap opened onto is
+  // behind the game — either a further step is running or the chain has settled.
   assertNotEqual(
     after.chainStep,
     before.chainStep,
-    `the chain step after ${REAL_MS}ms, which is past STEP_SECONDS (${STEP_SECONDS})`,
+    `the chain step after ${REAL_MS}ms, which is past this step's own hold`,
   );
 });

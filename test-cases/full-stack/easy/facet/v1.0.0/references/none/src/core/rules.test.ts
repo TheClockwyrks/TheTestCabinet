@@ -17,6 +17,7 @@ import {
   creationsFor,
   expandClearSet,
   judgeSwap,
+  lastFall,
   legalSwapExists,
   legalSwaps,
   maximalRuns,
@@ -174,12 +175,12 @@ describe("R6 expansion", () => {
   it("leaves a seed of plain gems exactly as it found it", () => {
     const posed = board();
     const seed = setOf({ col: 2, row: 4 }, { col: 3, row: 4 });
-    expect(expandClearSet(posed, seed).size).toBe(2);
+    expect(expandClearSet(posed, seed).cells.size).toBe(2);
   });
 
   it("adds the eight cells around a brilliant in the set", () => {
     const posed = board({ "3,3": "R0b" });
-    const cleared = expandClearSet(posed, setOf({ col: 3, row: 3 }));
+    const cleared = expandClearSet(posed, setOf({ col: 3, row: 3 })).cells;
     expect(cleared.size).toBe(9);
     expect(cleared.has(cellKey({ col: 2, row: 2 }))).toBe(true);
     expect(cleared.has(cellKey({ col: 4, row: 4 }))).toBe(true);
@@ -187,7 +188,7 @@ describe("R6 expansion", () => {
 
   it("clips a brilliant's ring at the board's edge", () => {
     const posed = board({ "0,0": "R0b" });
-    const cleared = expandClearSet(posed, setOf({ col: 0, row: 0 }));
+    const cleared = expandClearSet(posed, setOf({ col: 0, row: 0 })).cells;
     expect(keys(cellsIn(posed, cleared))).toEqual(
       keys([
         { col: 0, row: 0 },
@@ -200,7 +201,7 @@ describe("R6 expansion", () => {
 
   it("adds a star's whole row and column", () => {
     const posed = board({ "3,3": "R0s" });
-    const cleared = expandClearSet(posed, setOf({ col: 3, row: 3 }));
+    const cleared = expandClearSet(posed, setOf({ col: 3, row: 3 })).cells;
     expect(cleared.size).toBe(15);
     expect(cleared.has(cellKey({ col: 0, row: 3 }))).toBe(true);
     expect(cleared.has(cellKey({ col: 3, row: 7 }))).toBe(true);
@@ -209,7 +210,7 @@ describe("R6 expansion", () => {
 
   it("adds a flawed gem beside the set, and travels on through more", () => {
     const posed = board({ "3,4": "J3", "4,4": "B3", "5,4": "S3" });
-    const cleared = expandClearSet(posed, setOf({ col: 2, row: 4 }));
+    const cleared = expandClearSet(posed, setOf({ col: 2, row: 4 })).cells;
     expect(keys(cellsIn(posed, cleared))).toEqual(
       keys([
         { col: 2, row: 4 },
@@ -223,18 +224,17 @@ describe("R6 expansion", () => {
   it("ignores a seed cell that is not on the board at all", () => {
     const posed = board();
     const seed = setOf({ col: 2, row: 4 }, { col: 99, row: 99 });
-    expect(expandClearSet(posed, seed).size).toBe(2);
+    expect(expandClearSet(posed, seed).cells.size).toBe(2);
   });
 
   it("does not reach a flawed gem that is only diagonally beside the set", () => {
     const posed = board({ "3,5": "B3" });
-    const cleared = expandClearSet(posed, setOf({ col: 2, row: 4 }));
-    expect(cleared.size).toBe(1);
+    expect(expandClearSet(posed, setOf({ col: 2, row: 4 })).cells.size).toBe(1);
   });
 
   it("closes over a brilliant reached through a flawed gem", () => {
     const posed = board({ "3,4": "J3", "4,4": "B0b" });
-    const cleared = expandClearSet(posed, setOf({ col: 2, row: 4 }));
+    const cleared = expandClearSet(posed, setOf({ col: 2, row: 4 })).cells;
     // The flawed jade joins, its brilliant neighbor is not flawed and does
     // not, so the ring is not opened: the set is the seed and the flaw.
     expect(cleared.size).toBe(2);
@@ -243,9 +243,65 @@ describe("R6 expansion", () => {
     const opened = expandClearSet(
       withFlawedBrilliant,
       setOf({ col: 2, row: 4 }),
-    );
+    ).cells;
     expect(opened.has(cellKey({ col: 5, row: 5 }))).toBe(true);
     expect(opened.size).toBe(10);
+  });
+});
+
+describe("R6 waves", () => {
+  it("gives a set that is its seed alone no wave beyond 0", () => {
+    const seeded = expandClearSet(
+      board(),
+      setOf({ col: 2, row: 4 }, { col: 3, row: 4 }),
+    );
+    expect(seeded.waves).toBe(0);
+    expect(seeded.waveOf.get(cellKey({ col: 2, row: 4 }))).toBe(0);
+  });
+
+  it("puts a cell an addition brings in one wave behind the cell that did", () => {
+    const posed = board({ "3,3": "R0b" });
+    const expanded = expandClearSet(posed, setOf({ col: 3, row: 3 }));
+    expect(expanded.waves).toBe(1);
+    expect(expanded.waveOf.get(cellKey({ col: 3, row: 3 }))).toBe(0);
+    for (const around of [
+      { col: 2, row: 2 },
+      { col: 4, row: 4 },
+      { col: 3, row: 2 },
+    ]) {
+      expect(expanded.waveOf.get(cellKey(around))).toBe(1);
+    }
+  });
+
+  it("counts a wave per addition down a chain of flawed gems", () => {
+    const posed = board({ "3,4": "J3", "4,4": "B3", "5,4": "S3" });
+    const expanded = expandClearSet(posed, setOf({ col: 2, row: 4 }));
+    expect(expanded.waves).toBe(3);
+    expect(expanded.waveOf.get(cellKey({ col: 3, row: 4 }))).toBe(1);
+    expect(expanded.waveOf.get(cellKey({ col: 4, row: 4 }))).toBe(2);
+    expect(expanded.waveOf.get(cellKey({ col: 5, row: 4 }))).toBe(3);
+  });
+
+  it("takes the lowest wave any addition reaches a cell at", () => {
+    // (4, 4) lies in the star's row and is also one of the ring around the
+    // brilliant, and both reach it from a seed cell, so it is at wave 1
+    // whichever addition got there first.
+    const posed = board({ "3,4": "R0s", "3,3": "R0b" });
+    const expanded = expandClearSet(
+      posed,
+      setOf({ col: 3, row: 4 }, { col: 3, row: 3 }),
+    );
+    expect(expanded.waveOf.get(cellKey({ col: 4, row: 4 }))).toBe(1);
+    expect(expanded.waveOf.get(cellKey({ col: 4, row: 3 }))).toBe(1);
+  });
+
+  it("changes nothing about which cells the set holds", () => {
+    const posed = board({ "3,4": "J3", "4,4": "B3", "5,4": "S3" });
+    const expanded = expandClearSet(posed, setOf({ col: 2, row: 4 }));
+    expect(expanded.cells.size).toBe(4);
+    expect([...expanded.waveOf.keys()].sort()).toEqual(
+      [...expanded.cells].sort(),
+    );
   });
 });
 
@@ -365,7 +421,7 @@ describe("R8 cuts", () => {
     expect(created).toEqual([
       {
         cell: { col: 3, row: 4 },
-        gem: { kind: "ruby", cut: "brilliant", strain: 0 },
+        gem: { kind: "ruby", cut: "brilliant", strain: 0, fell: 0 },
       },
     ]);
   });
@@ -378,7 +434,7 @@ describe("R8 cuts", () => {
     expect(created).toEqual([
       {
         cell: { col: 4, row: 4 },
-        gem: { kind: null, cut: "prism", strain: 0 },
+        gem: { kind: null, cut: "prism", strain: 0, fell: 0 },
       },
     ]);
   });
@@ -391,7 +447,7 @@ describe("R8 cuts", () => {
     expect(created).toEqual([
       {
         cell: { col: 4, row: 4 },
-        gem: { kind: "ruby", cut: "star", strain: 0 },
+        gem: { kind: "ruby", cut: "star", strain: 0, fell: 0 },
       },
     ]);
   });
@@ -404,7 +460,7 @@ describe("R8 cuts", () => {
     expect(created).toHaveLength(1);
     expect(created[0]).toEqual({
       cell: { col: 3, row: 4 },
-      gem: { kind: "ruby", cut: "star", strain: 0 },
+      gem: { kind: "ruby", cut: "star", strain: 0, fell: 0 },
     });
   });
 
@@ -474,13 +530,14 @@ describe("R8 cuts", () => {
     const placed = placeCreations(emptied, [
       {
         cell: { col: 3, row: 4 },
-        gem: { kind: "ruby", cut: "brilliant", strain: 0 },
+        gem: { kind: "ruby", cut: "brilliant", strain: 0, fell: 0 },
       },
     ]);
     expect(gemAt(placed, { col: 3, row: 4 })).toEqual({
       kind: "ruby",
       cut: "brilliant",
       strain: 0,
+      fell: 0,
     });
   });
 });
@@ -500,6 +557,7 @@ describe("R9 settling", () => {
       kind: "beryl",
       cut: "brilliant",
       strain: 2,
+      fell: 2,
     });
     expect(gemAt(settled, { col: 2, row: 2 })?.kind).toBe("citrine");
     expect(gemAt(settled, { col: 2, row: 7 })?.kind).toBe("citrine");
@@ -511,6 +569,54 @@ describe("R9 settling", () => {
       expect(fresh?.strain).toBe(0);
       expect(fresh?.kind).not.toBeNull();
     }
+  });
+
+  it("gives every gem the rows it traveled, and nothing to one that stood", () => {
+    const emptied = removeCells(
+      board(),
+      setOf({ col: 2, row: 4 }, { col: 2, row: 5 }),
+    );
+    const settled = settleAndRefill(emptied, cursor(1));
+    // Two cells went from column 2, so its four survivors above them each
+    // dropped two rows and the two below them did not move at all.
+    for (const row of [2, 3, 4, 5]) {
+      expect(gemAt(settled, { col: 2, row })?.fell).toBe(2);
+    }
+    expect(gemAt(settled, { col: 2, row: 6 })?.fell).toBe(0);
+    expect(gemAt(settled, { col: 2, row: 7 })?.fell).toBe(0);
+    // A refilled gem comes from above the top row, so row `r` is `r + 1`.
+    expect(gemAt(settled, { col: 2, row: 0 })?.fell).toBe(1);
+    expect(gemAt(settled, { col: 2, row: 1 })?.fell).toBe(2);
+    // Every column the step did not touch is left standing still.
+    for (const col of [0, 1, 3, 4, 5, 6, 7]) {
+      for (let row = 0; row < 8; row++) {
+        expect(gemAt(settled, { col, row })?.fell).toBe(0);
+      }
+    }
+  });
+
+  it("gives a wholly emptied column one row of travel per row of gap", () => {
+    const column = new Set(
+      Array.from({ length: 8 }, (_v, row) => cellKey({ col: 5, row })),
+    );
+    const settled = settleAndRefill(removeCells(board(), column), cursor(3));
+    for (let row = 0; row < 8; row++) {
+      expect(gemAt(settled, { col: 5, row })?.fell).toBe(row + 1);
+    }
+  });
+
+  it("reads the longest fall on the board back off the gems", () => {
+    expect(lastFall(board())).toBe(0);
+    const emptied = removeCells(
+      board(),
+      setOf({ col: 2, row: 4 }, { col: 2, row: 5 }),
+    );
+    expect(lastFall(settleAndRefill(emptied, cursor(1)))).toBe(2);
+    const column = new Set(
+      Array.from({ length: 8 }, (_v, row) => cellKey({ col: 5, row })),
+    );
+    const emptyColumn = removeCells(board(), column);
+    expect(lastFall(settleAndRefill(emptyColumn, cursor(3)))).toBe(8);
   });
 
   it("leaves every other column exactly as it was", () => {
@@ -618,6 +724,20 @@ describe("R1, R2 and R3, the move rules", () => {
     expect(gemAt(swapped, { col: 3, row: 4 })?.kind).toBe("ruby");
     expect(gemAt(swapped, { col: 3, row: 5 })?.kind).toBe("amber");
     expect(gemAt(posed, { col: 3, row: 4 })?.kind).toBe("amber");
+  });
+
+  it("leaves both exchanged gems standing still in their new cells", () => {
+    const fallen = settleAndRefill(
+      removeCells(board(), setOf({ col: 3, row: 4 })),
+      cursor(1),
+    );
+    expect(gemAt(fallen, { col: 3, row: 4 })?.fell).toBe(1);
+    const swapped = applySwap(fallen, {
+      a: { col: 3, row: 4 },
+      b: { col: 4, row: 4 },
+    });
+    expect(gemAt(swapped, { col: 3, row: 4 })?.fell).toBe(0);
+    expect(gemAt(swapped, { col: 4, row: 4 })?.fell).toBe(0);
   });
 
   it("reads productivity off the board rather than off the phase", () => {

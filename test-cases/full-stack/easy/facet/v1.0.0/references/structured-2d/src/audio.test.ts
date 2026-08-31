@@ -36,11 +36,13 @@ function fakeBus(): WorldAudio & { played: string[]; looping_: Set<string> } {
 }
 
 describe("the cue table", () => {
-  it("declares the eight names specs/ui.md fixes, over produced files", () => {
+  it("declares the nine names specs/ui.md fixes, over produced files", () => {
     const files = cueFiles();
+    expect(Object.values(CUES)).toHaveLength(9);
     for (const cue of Object.values(CUES)) {
       expect(files[cue]).toMatch(/^audio\/.+\.wav$/);
     }
+    expect(files[CUES.land]).toBe("audio/land.wav");
   });
 
   it("declares every ladder rung and both beds", () => {
@@ -119,14 +121,22 @@ describe("playing a frame", () => {
     expect(bus.played).toEqual([CUES.clear, `chain-${MAX_MULTIPLIER}`]);
   });
 
-  it("plays the remaining four events under their own names", () => {
+  it("plays the remaining five events under their own names", () => {
     const bus = fakeBus();
     playFrameEvents(
       bus,
-      { ...NO_EVENTS, flaw: true, cut: true, levelUp: true, gameOver: true },
+      {
+        ...NO_EVENTS,
+        land: true,
+        flaw: true,
+        cut: true,
+        levelUp: true,
+        gameOver: true,
+      },
       0,
     );
     expect(bus.played).toEqual([
+      CUES.land,
       CUES.flaw,
       CUES.cut,
       CUES.levelUp,
@@ -141,6 +151,7 @@ describe("the beds", () => {
     expect(musicForScreen("howto")).toBe(MUSIC_TITLE);
     expect(musicForScreen("playing")).toBe(MUSIC_PLAY);
     expect(musicForScreen("paused")).toBe(MUSIC_PLAY);
+    expect(musicForScreen("levelclear")).toBe(MUSIC_PLAY);
     expect(musicForScreen("gameover")).toBe(MUSIC_PLAY);
   });
 

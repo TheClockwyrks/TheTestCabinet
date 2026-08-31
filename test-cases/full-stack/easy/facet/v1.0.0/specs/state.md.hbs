@@ -16,23 +16,32 @@ Whatever its shape, the state carries the following:
   menu that screen shows, counted from `0`. The snapshot reports it as
   `menuIndex`.
 - The board being played: its `cols` and `rows`, and every cell of it with the
-  kind, the cut, and the strain of the gem it holds. A cell's center on the
-  stage comes from the cell center formulas in `specs/board.md` rather than from
-  the state.
+  kind, the cut, the strain, and the `fell` of the gem it holds. A cell's center
+  on the stage comes from the cell center formulas in `specs/board.md` rather
+  than from the state.
 - The round's figures: the score, the level counted from `1`, and the score
   banked toward the current level. The level's target is `LEVEL_TARGET_STEP`
   (`2000`) times the level rather than a stored figure.
-- Where resolution stands: the phase, `idle` or `resolving`; the chain step,
-  which is `0` while the phase is `idle`; and the game time accumulated toward
-  the next step. The chain multiplier is `min(chainStep, MAX_MULTIPLIER)`,
+- What the current level has been worth: the points the move currently running
+  has scored, the most points one move has scored in the level, and the deepest
+  chain step the level has reached, as `specs/rules.md` defines the three.
+- Where resolution stands: the phase, `idle`, `swapping`, or `resolving`; the
+  chain step, which is `0` unless the phase is `resolving`; the game time
+  accumulated into the swap in motion; and the game time accumulated into the
+  step in progress. The chain multiplier is `min(chainStep, MAX_MULTIPLIER)`,
   `MAX_MULTIPLIER` (`8`), rather than a stored figure.
-- What the most recent chain step did: how many cells it cleared and how many
-  points it scored.
-- The cell the keyboard cursor is on, the selected cell when one is selected,
-  and the refused pair when a swap has just been refused, together with the game
-  time that refusal has stood for.
-- The pointer position, in the stage's logical units, and whether the pointer is
-  currently pressed, both refreshed from the runtime layer in every update.
+- What the most recent chain step did: how many cells it cleared, how many
+  points it scored, and the greatest wave R6 gave its clear set. How far the
+  step's longest fall was comes from the `fell` on the board rather than from a
+  stored figure.
+- The selected cell when one is selected, the cell the selected gem is currently
+  offered into when one is offered, and the refused pair when a swap has just
+  been refused, together with the game time that refusal has stood for.
+- The id of the pointer target armed by the press being held, and nothing when
+  no press has armed one.
+- The pointer position, in the stage's logical units, whether the pointer is
+  currently pressed, and which of `mouse`, `pen`, and `touch` drove it, all
+  refreshed from the runtime layer in every update.
 - The simulation time, in seconds, which every update adds its `dt` to whatever
   the screen, the menus included. The snapshot reports it as `simTime`.
 - The runtime's mute bit, as the game's readable copy of it.
@@ -41,6 +50,8 @@ Whatever its shape, the state carries the following:
 
 Whether a legal swap exists on the board is derived from R1 and R3 in
 `specs/rules.md` rather than stored, so it answers to the board as it stands.
+The current screen's pointer targets are likewise derived from the screen rather
+than stored.
 {{else if (eq engine.slug "simple-2d")}}
 `src/game.ts` declares and exports the state the game is written against. This
 section is that declaration: write it into `src/game.ts` exactly as it stands
@@ -61,9 +72,17 @@ export type GemKind =
 
 export type Cut = "plain" | "brilliant" | "star" | "prism";
 
-export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
+export type Screen =
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "levelclear"
+  | "gameover";
 
-export type Phase = "idle" | "resolving";
+export type Phase = "idle" | "swapping" | "resolving";
+
+export type PointerDevice = "mouse" | "pen" | "touch";
 
 export interface CellRef {
   readonly col: number;
@@ -76,6 +95,7 @@ export interface GemState {
   readonly kind: GemKind | null;
   readonly cut: Cut;
   readonly strain: number;
+  readonly fell: number;
 }
 
 export interface BoardState {
@@ -94,6 +114,7 @@ export interface PointerState {
   readonly x: number;
   readonly y: number;
   readonly down: boolean;
+  readonly device: PointerDevice;
 }
 
 export interface FacetState {
@@ -103,6 +124,7 @@ export interface FacetState {
   readonly board: BoardState;
   readonly phase: Phase;
   readonly chainStep: number;
+  readonly swapTimer: number;
   readonly stepTimer: number;
 
   readonly score: number;
@@ -110,10 +132,16 @@ export interface FacetState {
   readonly levelScore: number;
   readonly lastCleared: number;
   readonly lastPoints: number;
+  readonly lastWaves: number;
 
-  readonly cursor: CellRef;
+  readonly moveScore: number;
+  readonly bestMove: number;
+  readonly bestChain: number;
+
   readonly selection: CellRef | null;
+  readonly offer: CellRef | null;
   readonly refusal: RefusalState | null;
+  readonly armedTarget: string | null;
 
   readonly pointer: PointerState;
   readonly simTime: number;
@@ -129,10 +157,11 @@ in that order, as `specs/board.md` defines them. `Cut` names the four cuts a gem
 can carry, `plain` being the cut a dealt gem arrives with and the other three
 being the cuts a run creates under R8 in `specs/rules.md`. `Screen` is the
 top-level state machine, and `screen` names the screen the game is showing;
-every build carries all five. `Phase` names where resolution stands on the
-`playing` screen: `idle` while the board is settled and `resolving` while a
-chain is running. `CellRef` addresses one cell of the board, `col` and `row`
-both zero-indexed from the top-left.
+every build carries all six. `Phase` names where resolution stands on the
+`playing` screen: `idle` while the board is settled, `swapping` while an
+accepted swap is in motion, and `resolving` while a chain is running.
+`PointerDevice` names what drove the pointer. `CellRef` addresses one cell of
+the board, `col` and `row` both zero-indexed from the top-left.
 
 ## `GemState`
 
@@ -144,11 +173,13 @@ reading order from the top-left cell to the bottom-right.
 - `cut` — `"plain"`, `"brilliant"`, `"star"`, or `"prism"`.
 - `strain` — the gem's strain, a whole number from `0` to `MAX_STRAIN` (`3`). A
   gem at `MAX_STRAIN` is flawed.
+- `fell` — how many rows the gem traveled to reach this cell, as R9 in
+  `specs/rules.md` fixes it. A gem that was already standing here carries `0`.
 
 A gem's center on the stage is `cellX(col)` and `cellY(row)` from
 `specs/board.md`, so the state carries no coordinates. Strain and cut travel
 with the gem when R9 drops it into a lower cell, because they are the gem's
-rather than the cell's.
+rather than the cell's, and `fell` is what that drop was worth.
 
 ## `BoardState`
 
@@ -173,15 +204,14 @@ standing.
 
 ## `PointerState`
 
-Where the pointer is and whether it is pressed, as the game read it in the
-current frame.
+Where the pointer is, whether it is pressed, and what drove it, as the game read
+it in the current frame.
 
 - `x`, `y` — the pointer position in the stage's logical units, the same units
   the cell centers are in, so a hit test against a cell center needs no
   conversion.
-- `down` — whether the pointer is currently pressed. A press farther than
-  `GEM_HIT_R` (`36`) from every cell center leaves `down` `true` and both
-  `selection` and `board` as they stand.
+- `down` — whether the pointer is currently pressed.
+- `device` — `"mouse"`, `"pen"`, or `"touch"`, whichever drove the pointer last.
 
 ## `FacetState`
 
@@ -194,25 +224,36 @@ posed and read back by reading them.
 - `menuIndex` — the highlighted item on whichever vertical menu `screen` is
   showing.
 - `board` — the board being played.
-- `phase` — `"idle"` while the board is settled, `"resolving"` while a chain is
-  running.
-- `chainStep` — the chain step being resolved, counted from `1`, and `0` while
-  `phase` is `"idle"`.
-- `stepTimer` — the game time accumulated toward the next chain step, in
-  seconds, which returns to `0` at `STEP_SECONDS` (`0.25`) as `specs/rules.md`
-  describes.
+- `phase` — `"idle"` while the board is settled, `"swapping"` while an accepted
+  swap is in motion, `"resolving"` while a chain is running.
+- `chainStep` — the chain step being resolved, counted from `1`, and `0` unless
+  `phase` is `"resolving"`.
+- `swapTimer` — the game time accumulated into the swap in motion, in seconds,
+  which returns to `0` at `SWAP_SECONDS` (`0.18`) as `specs/rules.md`
+  describes, and holds `0` while `phase` is not `"swapping"`.
+- `stepTimer` — the game time accumulated into the chain step in progress, in
+  seconds, which returns to `0` at that step's `STEP_HOLD` as `specs/rules.md`
+  describes, and holds `0` while `phase` is not `"resolving"`.
 - `score` — the round's score.
 - `level` — the level being played, counted from `1`.
 - `levelScore` — the score banked toward the current level, which returns to `0`
-  when the level advances.
+  when the next level is opened.
 - `lastCleared` — how many cells the most recent chain step cleared. Each step
   replaces it, and it holds `0` until a step has run.
 - `lastPoints` — how many points the most recent chain step scored. Each step
   replaces it, and it holds `0` until a step has run.
-- `cursor` — the cell the keyboard cursor is on, both coordinates within the
-  board's dimensions.
+- `lastWaves` — the greatest wave R6 gave the most recent chain step's clear
+  set. Each step replaces it, and it holds `0` until a step has run.
+- `moveScore` — the points the move currently running has scored, which returns
+  to `0` when a swap is accepted.
+- `bestMove` — the most points one move has scored in the current level.
+- `bestChain` — the deepest `chainStep` any chain has reached in the current
+  level.
 - `selection` — the selected cell, or `null` when nothing is selected.
+- `offer` — the cell the selected gem is currently offered into, or `null` when
+  nothing is offered.
 - `refusal` — the refusal currently standing, or `null`.
+- `armedTarget` — the id of the pointer target the held press armed, or `null`.
 - `pointer` — the pointer as of this frame.
 - `simTime` — accumulated simulation time, in seconds. Every `update` adds its
   `dt`, whatever the screen, the menus included.
@@ -223,12 +264,13 @@ posed and read back by reading them.
   seed sets it, so reseeding and replaying the same calls reproduces the same
   result. The deal of an opening board and the refill in R9 draw from it.
 
-Four facts the game shows are derived rather than stored. A cell's center comes
+Six facts the game shows are derived rather than stored. A cell's center comes
 from the cell center formulas in `specs/board.md`. The level's target is
 `LEVEL_TARGET_STEP` (`2000`) times `level`. The chain multiplier is
-`min(chainStep, MAX_MULTIPLIER)`, `MAX_MULTIPLIER` (`8`). Whether a legal swap
-exists comes from R1 and R3 in `specs/rules.md`, read over the board as it
-stands.
+`min(chainStep, MAX_MULTIPLIER)`, `MAX_MULTIPLIER` (`8`). The most recent step's
+longest fall is the greatest `fell` on the board. Whether a legal swap exists
+comes from R1 and R3 in `specs/rules.md`, read over the board as it stands. The
+current screen's pointer targets come from `specs/controls.md`.
 
 ## The contract
 
@@ -279,9 +321,17 @@ export type GemKind =
 
 export type Cut = "plain" | "brilliant" | "star" | "prism";
 
-export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
+export type Screen =
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "levelclear"
+  | "gameover";
 
-export type Phase = "idle" | "resolving";
+export type Phase = "idle" | "swapping" | "resolving";
+
+export type PointerDevice = "mouse" | "pen" | "touch";
 
 export interface CellRef {
   col: number;
@@ -294,6 +344,7 @@ export interface GemState {
   kind: GemKind | null;
   cut: Cut;
   strain: number;
+  fell: number;
 }
 
 export interface BoardState {
@@ -312,6 +363,7 @@ export interface PointerState {
   x: number;
   y: number;
   down: boolean;
+  device: PointerDevice;
 }
 
 export class FacetState extends GameState {
@@ -321,6 +373,7 @@ export class FacetState extends GameState {
   board: BoardState = { cols: 0, rows: 0, cells: [] };
   phase: Phase = "idle";
   chainStep = 0;
+  swapTimer = 0;
   stepTimer = 0;
 
   score = 0;
@@ -328,12 +381,18 @@ export class FacetState extends GameState {
   levelScore = 0;
   lastCleared = 0;
   lastPoints = 0;
+  lastWaves = 0;
 
-  cursor: CellRef = { col: 0, row: 0 };
+  moveScore = 0;
+  bestMove = 0;
+  bestChain = 0;
+
   selection: CellRef | null = null;
+  offer: CellRef | null = null;
   refusal: RefusalState | null = null;
+  armedTarget: string | null = null;
 
-  pointer: PointerState = { x: 0, y: 0, down: false };
+  pointer: PointerState = { x: 0, y: 0, down: false, device: "mouse" };
   simTime = 0;
   muted = false;
   rngState = DEFAULT_SEED;
@@ -347,10 +406,11 @@ in that order, as `specs/board.md` defines them. `Cut` names the four cuts a gem
 can carry, `plain` being the cut a dealt gem arrives with and the other three
 being the cuts a run creates under R8 in `specs/rules.md`. `Screen` is the
 top-level state machine, and `screen` names the screen the game is showing;
-every build carries all five. `Phase` names where resolution stands on the
-`playing` screen: `idle` while the board is settled and `resolving` while a
-chain is running. `CellRef` addresses one cell of the board, `col` and `row`
-both zero-indexed from the top-left.
+every build carries all six. `Phase` names where resolution stands on the
+`playing` screen: `idle` while the board is settled, `swapping` while an
+accepted swap is in motion, and `resolving` while a chain is running.
+`PointerDevice` names what drove the pointer. `CellRef` addresses one cell of
+the board, `col` and `row` both zero-indexed from the top-left.
 
 ## `GemState`
 
@@ -362,11 +422,13 @@ reading order from the top-left cell to the bottom-right.
 - `cut` — `"plain"`, `"brilliant"`, `"star"`, or `"prism"`.
 - `strain` — the gem's strain, a whole number from `0` to `MAX_STRAIN` (`3`). A
   gem at `MAX_STRAIN` is flawed.
+- `fell` — how many rows the gem traveled to reach this cell, as R9 in
+  `specs/rules.md` fixes it. A gem that was already standing here carries `0`.
 
 A gem's center on the stage is `cellX(col)` and `cellY(row)` from
 `specs/board.md`, so the state carries no coordinates. Strain and cut travel
 with the gem when R9 drops it into a lower cell, because they are the gem's
-rather than the cell's.
+rather than the cell's, and `fell` is what that drop was worth.
 
 ## `BoardState`
 
@@ -391,15 +453,14 @@ standing.
 
 ## `PointerState`
 
-Where the pointer is and whether it is pressed, as the player controller read it
-from the engine in the current frame.
+Where the pointer is, whether it is pressed, and what drove it, as the player
+controller read it from the engine in the current frame.
 
 - `x`, `y` — the pointer position in the stage's logical units, the same units
   the cell centers are in, so a hit test against a cell center needs no
   conversion.
-- `down` — whether the pointer is currently pressed. A press farther than
-  `GEM_HIT_R` (`36`) from every cell center leaves `down` `true` and both
-  `selection` and `board` as they stand.
+- `down` — whether the pointer is currently pressed.
+- `device` — `"mouse"`, `"pen"`, or `"touch"`, whichever drove the pointer last.
 
 ## `FacetState`
 
@@ -412,25 +473,36 @@ reading them.
 - `menuIndex` — the highlighted item on whichever vertical menu `screen` is
   showing.
 - `board` — the board being played.
-- `phase` — `"idle"` while the board is settled, `"resolving"` while a chain is
-  running.
-- `chainStep` — the chain step being resolved, counted from `1`, and `0` while
-  `phase` is `"idle"`.
-- `stepTimer` — the game time accumulated toward the next chain step, in
-  seconds, which returns to `0` at `STEP_SECONDS` (`0.25`) as `specs/rules.md`
-  describes.
+- `phase` — `"idle"` while the board is settled, `"swapping"` while an accepted
+  swap is in motion, `"resolving"` while a chain is running.
+- `chainStep` — the chain step being resolved, counted from `1`, and `0` unless
+  `phase` is `"resolving"`.
+- `swapTimer` — the game time accumulated into the swap in motion, in seconds,
+  which returns to `0` at `SWAP_SECONDS` (`0.18`) as `specs/rules.md`
+  describes, and holds `0` while `phase` is not `"swapping"`.
+- `stepTimer` — the game time accumulated into the chain step in progress, in
+  seconds, which returns to `0` at that step's `STEP_HOLD` as `specs/rules.md`
+  describes, and holds `0` while `phase` is not `"resolving"`.
 - `score` — the round's score.
 - `level` — the level being played, counted from `1`.
 - `levelScore` — the score banked toward the current level, which returns to `0`
-  when the level advances.
+  when the next level is opened.
 - `lastCleared` — how many cells the most recent chain step cleared. Each step
   replaces it, and it holds `0` until a step has run.
 - `lastPoints` — how many points the most recent chain step scored. Each step
   replaces it, and it holds `0` until a step has run.
-- `cursor` — the cell the keyboard cursor is on, both coordinates within the
-  board's dimensions.
+- `lastWaves` — the greatest wave R6 gave the most recent chain step's clear
+  set. Each step replaces it, and it holds `0` until a step has run.
+- `moveScore` — the points the move currently running has scored, which returns
+  to `0` when a swap is accepted.
+- `bestMove` — the most points one move has scored in the current level.
+- `bestChain` — the deepest `chainStep` any chain has reached in the current
+  level.
 - `selection` — the selected cell, or `null` when nothing is selected.
+- `offer` — the cell the selected gem is currently offered into, or `null` when
+  nothing is offered.
 - `refusal` — the refusal currently standing, or `null`.
+- `armedTarget` — the id of the pointer target the held press armed, or `null`.
 - `pointer` — the pointer as of this frame, refreshed by the player controller
   every tick.
 - `simTime` — accumulated simulation time, in seconds. Every frame adds its
@@ -442,12 +514,13 @@ reading them.
   seed sets it, so reseeding and replaying the same calls reproduces the same
   result. The deal of an opening board and the refill in R9 draw from it.
 
-Four facts the game shows are derived rather than stored. A cell's center comes
+Six facts the game shows are derived rather than stored. A cell's center comes
 from the cell center formulas in `specs/board.md`. The level's target is
 `LEVEL_TARGET_STEP` (`2000`) times `level`. The chain multiplier is
-`min(chainStep, MAX_MULTIPLIER)`, `MAX_MULTIPLIER` (`8`). Whether a legal swap
-exists comes from R1 and R3 in `specs/rules.md`, read over the board as it
-stands.
+`min(chainStep, MAX_MULTIPLIER)`, `MAX_MULTIPLIER` (`8`). The most recent step's
+longest fall is the greatest `fell` on the board. Whether a legal swap exists
+comes from R1 and R3 in `specs/rules.md`, read over the board as it stands. The
+current screen's pointer targets come from `specs/controls.md`.
 
 `FacetState` extends the engine's `GameState`, so an instance also carries the
 framework's own `world`, `players`, `phase`, and `elapsed`. Facet declares its

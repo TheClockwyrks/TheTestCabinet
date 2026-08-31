@@ -161,7 +161,8 @@ async function writeContactSheet(
       context.drawImage(
         image,
         (index % columns) * CONTACT_CELL + (CONTACT_CELL - width) / 2,
-        Math.floor(index / columns) * CONTACT_CELL + (CONTACT_CELL - height) / 2,
+        Math.floor(index / columns) * CONTACT_CELL +
+          (CONTACT_CELL - height) / 2,
         width,
         height,
       );

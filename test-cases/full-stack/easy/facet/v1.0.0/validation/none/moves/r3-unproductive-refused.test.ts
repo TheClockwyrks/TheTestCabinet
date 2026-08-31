@@ -36,7 +36,7 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  swap,
+  requestSwap,
   type Harness,
 } from "../harness";
 
@@ -80,7 +80,7 @@ it("refuses an exchange that leaves the board without a run", async () => {
   assertTrue(!isPrism(ROWS, PAIR.b), "the second cell holds no prism");
 
   const posed = await loadBoard(h, ROWS);
-  const refused = await swap(h, PAIR.a, PAIR.b);
+  const refused = await requestSwap(h, PAIR.a, PAIR.b);
   const after = await h.board();
 
   // One frame, so the picture kept as this item's evidence was really drawn. The
@@ -91,5 +91,9 @@ it("refuses an exchange that leaves the board without a run", async () => {
   assertBoardEquals(after, ROWS, "after the unproductive request");
   assertEqual(refused.phase, "idle", "phase after the unproductive request");
   assertEqual(refused.chainStep, 0, "chainStep after the unproductive request");
-  assertEqual(refused.score, posed.score, "score after the unproductive request");
+  assertEqual(
+    refused.score,
+    posed.score,
+    "score after the unproductive request",
+  );
 });

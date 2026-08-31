@@ -26,8 +26,8 @@ Exactly these six binaries are on your `PATH`, and no others (there is no `ui`,
 | --- | --- | --- |
 | `draw` | one sprite to a PNG | the seven kinds at each of four strain states, the three cut treatments, the board frame |
 | `draw-sheet` | a sprite sheet, one PNG per frame | each kind's break animation, and the prism's idle turn |
-| `particle-2d` | a particle system to a `system.json` | the clear burst, the flawed detonation, the cut-gem flash |
-| `sfx-synth` | a procedural sound to a `.wav` | select, swap, refuse, flaw, cut, level-up, game-over, and the chain ladder |
+| `particle-2d` | a particle system to a `system.json` | the clear burst, the flawed detonation, the cut-gem flash, the cut aura |
+| `sfx-synth` | a procedural sound to a `.wav` | select, swap, refuse, land, flaw, cut, level-up, game-over, and the chain ladder |
 | `sfx-sample` | a sampled sound over a baked pack to a `.wav` | the shatter body layered under the clear cue |
 | `music` | sequenced music over a baked bank to a `.wav` (+ `.mid`) | the title theme and the play bed |
 
@@ -112,8 +112,9 @@ frame. Land each sequence under its own directory, for example
 
 - A break animation for each of the seven kinds, a short sequence in which the
   stone fractures and flies apart. Play a cleared gem's sheet at its cell when a
-  chain step removes it, advancing the frames on a timer, and the cell is empty
-  once the sheet has run.
+  chain step removes it, starting at the moment `specs/rules.md` gives that
+  cell's wave and advancing the frames on a timer, and the cell is empty once the
+  sheet has run.
 - The prism's idle turn, a short looping sequence in which the cut rotates and
   catches the light. Loop it for every prism standing on the board, so a prism
   is picked out from the stones around it by its motion as well as its art.
@@ -124,7 +125,7 @@ The bursts a clearing board throws are particle systems you author with
 `particle-2d` and play live rather than flat flashes drawn in code.
 `particle-2d` authors a system of emitters, forces, and per-particle size,
 opacity, and color curves whose render step writes a `system.json`; land them
-under `public/assets/fx/`. Produce these three:
+under `public/assets/fx/`. Produce these four:
 
 - The clear burst, a short one-shot thrown at each cell a chain step clears. It
   is small enough that a set of a dozen cells reads as a dozen bursts rather
@@ -134,6 +135,13 @@ under `public/assets/fx/`. Produce these three:
   burst, so a chain tearing through a primed corner looks like the payoff it is.
 - The cut-gem flash, a one-shot thrown where a `brilliant`, a `star`, or a
   `prism` is created, marking the new stone on the frame it arrives.
+- The cut aura, a continuous system played at the cell of every `brilliant`,
+  every `star`, and every `prism` standing on the board, for as long as that gem
+  stands there. It runs on rather than firing once, so a cut stone is never
+  still, and it is quiet enough that several on one board read as several auras
+  rather than as a haze over the field. Strain raises no effect of its own: a
+  cracked stone is read off the stone, and this is what makes the three cuts a
+  chain earns feel like the prize they are.
 
 Play them with the provided runtime. `@test-cabinet/particle-runtime` is already
 a dependency of your project, so import it like any other dependency. For this
@@ -158,10 +166,12 @@ and more) and no tuned material. So the pitched cues are synthesized with
 `sfx-synth`, and `sfx-sample` layers a shatter body underneath the clear cue,
 where its glass and impact material belongs.
 
-- `sfx-synth` produces the `select`, `swap`, `refuse`, `flaw`, `cut`,
+- `sfx-synth` produces the `select`, `swap`, `refuse`, `land`, `flaw`, `cut`,
   `levelup`, and `gameover` cues, each a short sound with its own character:
-  select and swap are light and mechanical, refuse is a flat dead stop, flaw is
-  a dry crack, cut is bright and metallic, level-up rises, and game-over falls.
+  select and swap are light and mechanical, refuse is a flat dead stop, land is a
+  low settling knock for a column of stone arriving at the bottom of a long fall,
+  flaw is a dry crack, cut is bright and metallic, level-up rises, and game-over
+  falls.
 - `sfx-synth` also produces the chain ladder: `MAX_MULTIPLIER` (`8`) tones of
   one timbre, ascending in pitch in order. Chain step `1` plays the lowest tone
   and each further step the next one up, so a long chain climbs the ladder and
@@ -190,19 +200,22 @@ chrome is drawn in code (canvas or DOM):
 - The level meter, the bar that fills as the current level's score climbs
   toward its target.
 - The menus, the overlays, and the state screens: title, how to play, paused,
-  and game over.
-- The cursor mark and the selection mark, and the refusal mark a rejected swap
-  shows on its two cells.
+  level clear, and game over.
+- The pointer targets `specs/controls.md` names, including the `PAUSE` and
+  `BACK` controls.
+- The selection mark, and the refusal mark a rejected swap shows on its two
+  cells.
 - The debug overlay.
 
 ## Genuinely produce the assets
 
 A build that draws its gems as code-drawn rounded rectangles, ships one sprite
 per kind with the strain states tinted in code, drops a cleared gem with no
-break animation, paints a flat colored flash in place of the produced particle
-systems, bundles downloaded art or a downloaded sound, or plays silence or a
-hand-oscillated Web Audio stand-in in place of produced audio has not met this
-contract, however exactly the rules are implemented.
+break animation, teleports a falling gem into its cell rather than dropping it,
+paints a flat colored flash in place of the produced particle systems, leaves a
+cut stone standing still, bundles downloaded art or a downloaded sound, or plays
+silence or a hand-oscillated Web Audio stand-in in place of produced audio has
+not met this contract, however exactly the rules are implemented.
 
 Produce a real set of faceted gem sprites across all four strain states, real
 break sheets and a real prism turn, real simulated particle systems, and real

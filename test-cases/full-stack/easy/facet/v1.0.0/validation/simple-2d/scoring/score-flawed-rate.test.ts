@@ -35,6 +35,13 @@
 // `scoring/last-step-reported`'s claim. Both steps run at chain step 1, where `M`
 // is 1, so each reading is one step's worth at the bare rate.
 //
+// THE SWAP IS NOT THE STEP. An accepted swap exchanges the two cells at once,
+// sets `phase` to `swapping` with `chainStep` at `0`, and clears nothing; step 1
+// resolves once `SWAP_SECONDS` (`0.18`) of game time has passed. `swapAndStep`
+// carries each board through that animation and hands back the reading of its
+// step 1, which is where each difference is taken. The second board is posed only
+// once the first drive has finished, so neither reading can reach into the other.
+//
 // The clear sets and their strains are computed here from R4, R5 and R6 as
 // `board.ts` restates them, over the boards these swaps produce. Nothing is read
 // off the build to decide what it owes.
@@ -55,10 +62,12 @@ import {
 import {
   captureReplay,
   createHarness,
+  framesShortOf,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
+import type { FacetSnapshot } from "../surface";
 
 /** A ruby three at strain 0 that the swap completes across row 4. */
 const RUN_CELLS: readonly PlacedToken[] = [
@@ -82,11 +91,19 @@ const SWAP_A: CellRef = { col: 3, row: 3 };
 const SWAP_B: CellRef = { col: 3, row: 4 };
 
 /**
- * Frames recorded after each step, so the replay shows the flawed gem going with
- * the run. The figures are read before these run: a second step would overwrite
- * them.
+ * Frames that carry the recording to just short of the end of the step the
+ * reading was taken in.
+ *
+ * A step's hold is the step's OWN figure — `lastWaves * WAVE_SECONDS` plus
+ * `lastFall * FALL_SECONDS_PER_ROW` plus `STEP_SECONDS`, which the snapshot
+ * reports as `stepHold` — so the frames that fill it are read off the snapshot
+ * rather than written down. `framesShortOf` keeps the drive strictly inside what
+ * is left of the hold, so neither board is read a second time and each figure
+ * above still describes the one step it was measured over.
  */
-const AFTERMATH_FRAMES = 24; // 0.375 s
+function restOfStep(reading: FacetSnapshot): number {
+  return framesShortOf(Math.max(0, reading.stepHold - reading.stepTimer));
+}
 
 let h: Harness;
 
@@ -171,14 +188,16 @@ it("pays FLAWED_SCORE for a cleared gem at MAX_STRAIN", async () => {
     // The standing score, read on the settled board the swap is about to be made
     // on. What the step paid is what it moves this figure by.
     const beforeBare = h.snapshot();
-    const bareStep = swap(h, SWAP_A, SWAP_B);
-    await h.advance(AFTERMATH_FRAMES);
-    // The same run again, with the flawed gem standing beside it this time.
+    const bareStep = await swapAndStep(h, SWAP_A, SWAP_B);
+    await h.advance(restOfStep(bareStep));
+    // The same run again, with the flawed gem standing beside it this time. The
+    // board is posed only here, once the first step's own hold has run out, so
+    // the second reading is of a board the first drive never touched.
     loadBoard(h, grown);
     await h.advance(1);
     const beforeGrown = h.snapshot();
-    const grownStep = swap(h, SWAP_A, SWAP_B);
-    await h.advance(AFTERMATH_FRAMES);
+    const grownStep = await swapAndStep(h, SWAP_A, SWAP_B);
+    await h.advance(restOfStep(grownStep));
     return { beforeBare, bareStep, beforeGrown, grownStep };
   });
 

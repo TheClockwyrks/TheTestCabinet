@@ -62,9 +62,12 @@ export type GemKind =
 
 export type Cut = "plain" | "brilliant" | "star" | "prism";
 
-export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
+export type Screen =
+  "title" | "howto" | "playing" | "paused" | "levelclear" | "gameover";
 
-export type Phase = "idle" | "resolving";
+export type Phase = "idle" | "swapping" | "resolving";
+
+export type PointerDevice = "mouse" | "pen" | "touch";
 
 export interface CellRef {
   readonly col: number;
@@ -77,6 +80,7 @@ export interface GemState {
   readonly kind: GemKind | null;
   readonly cut: Cut;
   readonly strain: number;
+  readonly fell: number;
 }
 
 export interface BoardState {
@@ -95,11 +99,12 @@ export interface PointerState {
   readonly x: number;
   readonly y: number;
   readonly down: boolean;
+  readonly device: PointerDevice;
 }
 
 /**
  * The two cells one swap named, which is not a type `specs/state.md` declares
- * but is the shape the three fields under `FacetState`'s own heading below need.
+ * but is the shape the field under `FacetState`'s own heading below needs.
  */
 export interface SwapRef {
   readonly a: CellRef;
@@ -113,6 +118,7 @@ export interface FacetState {
   readonly board: BoardState;
   readonly phase: Phase;
   readonly chainStep: number;
+  readonly swapTimer: number;
   readonly stepTimer: number;
 
   readonly score: number;
@@ -120,10 +126,16 @@ export interface FacetState {
   readonly levelScore: number;
   readonly lastCleared: number;
   readonly lastPoints: number;
+  readonly lastWaves: number;
 
-  readonly cursor: CellRef;
+  readonly moveScore: number;
+  readonly bestMove: number;
+  readonly bestChain: number;
+
   readonly selection: CellRef | null;
+  readonly offer: CellRef | null;
   readonly refusal: RefusalState | null;
+  readonly armedTarget: string | null;
 
   readonly pointer: PointerState;
   readonly simTime: number;
@@ -132,28 +144,22 @@ export interface FacetState {
 
   // ---- Beyond the declaration ------------------------------------------
   //
-  // Three fields the rules `specs/rules.md` fixes cannot be written without,
-  // and which no declared field can be made to yield. They are authoritative
-  // rather than derived, which is the one point at which this build's state
-  // goes past `specs/state.md`'s "fields you add hold derived data"; the
-  // alternative is a rule that cannot be implemented. `reset` restores all
-  // three along with the declared ones, and none of them is reported by the
-  // snapshot, so nothing outside the game can see them.
+  // One field the rules `specs/rules.md` fixes cannot be written without, and
+  // which no declared field can be made to yield. It is authoritative rather
+  // than derived, which is the one point at which this build's state goes past
+  // `specs/state.md`'s "fields you add hold derived data"; the alternative is a
+  // rule that cannot be implemented. `reset` restores it along with the
+  // declared ones, and the snapshot does not report it, so nothing outside the
+  // game can see it.
 
   /**
-   * The swap the running chain began with, which R8 reads to decide where a
-   * created gem is placed, and `null` while `phase` is `idle`. R8 governs
-   * every step of a chain rather than only the first, so the pair outlives the
-   * frame that made the swap.
+   * The swap the running chain began with, which R5 reads to seed a prism
+   * chain and R8 reads to decide where a created gem is placed, and `null`
+   * while `phase` is `idle`. R8 governs every step of a chain rather than only
+   * the first, so the pair outlives the frame that made the swap. It is also
+   * the pair the renderer draws in motion while `phase` is `swapping`.
    */
   readonly chainSwap: SwapRef | null;
-  /**
-   * The cell a held pointer pressed on, and whether that hold has already had
-   * its one swap. Together they are the drag `specs/controls.md` describes,
-   * which spans the frames of one hold.
-   */
-  readonly pressedCell: CellRef | null;
-  readonly dragSwapped: boolean;
 }
 
 // ---- What `initialize` loads, and what a frame reads ---------------------
@@ -206,8 +212,15 @@ export const game: Game<FacetState, FacetDebugApi> = {
     assets = await loadAssets(api);
     await installCues(api);
     presentation = new Presentation(createScratchCanvas);
-    seen = null;
-    return [fromCore(createInitialState()), createDebugApi()];
+    // The state the "last frame" left, standing in for a frame that has not run
+    // yet. It is the opening state rather than nothing, because a pose can put a
+    // board in play BEFORE the first frame: left empty, that frame would compare
+    // the posed board against itself, see no change, and hand the presentation a
+    // board it thinks was always there — so a round begun from code would arrive
+    // with none of the motion a round begun from the menu arrives with.
+    const opening = createInitialState();
+    seen = opening;
+    return [fromCore(opening), createDebugApi()];
   },
 
   /**
@@ -233,9 +246,15 @@ export const game: Game<FacetState, FacetDebugApi> = {
       presentation,
     );
     seen = outcome;
+    const pointer = api.input.pointer();
     return {
       ...fromCore(outcome),
-      pointer: api.input.pointer(),
+      pointer: {
+        x: pointer.x,
+        y: pointer.y,
+        down: pointer.down,
+        device: pointer.device,
+      },
       muted: api.audio.muted(),
     };
   },

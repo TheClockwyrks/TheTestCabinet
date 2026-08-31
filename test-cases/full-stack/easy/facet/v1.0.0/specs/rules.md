@@ -6,7 +6,7 @@ rules below fall into two groups: the move rules, which decide whether a
 requested swap is accepted, and the resolution rules, which decide what a chain
 step does to the board. The board these rules run on, along with the seven
 kinds, the four cuts, and strain, is defined in `specs/board.md`; how a player
-selects a cell and requests a swap is in `specs/controls.md`.
+takes hold of a gem and plays a move is in `specs/controls.md`.
 
 ## Move rules
 
@@ -20,7 +20,8 @@ differ by `1` in column and `0` in row, or by `0` in column and `1` in row.
 
 ### R2 Settled board
 
-A swap is accepted only while `phase` is `idle`.
+A swap is accepted only while `phase` is `idle`, so a swap requested while one
+is already in motion or while a chain is running is refused.
 
 ### R3 Productive
 
@@ -64,6 +65,15 @@ The clear set grows from its seed by three additions:
 The clear set is the smallest set of cells that contains the seed and is closed
 under all three additions. It is what the rest of the step reads.
 
+Every cell of the clear set carries a **wave**. Each cell of the seed is at wave
+`0`, and a cell an addition brings in from a cell at wave `k` is at wave `k + 1`,
+taking the lowest wave any addition reaches it at. `waves` is the greatest wave
+in the set, and it is `0` when the set is its seed alone.
+
+A cell's wave changes nothing about which cells the set holds, what the set
+scores, or what the step removes. It is what times the shattering, under
+`## A chain step` below.
+
 ### R7 Strain
 
 Every gem outside the clear set that is orthogonally adjacent to at least one
@@ -102,6 +112,21 @@ Each cell still empty is then filled from the top of its column with a `plain`
 gem at strain `0`, whose kind is drawn uniformly from `GEM_KINDS` off the game's
 seeded random source.
 
+Every gem the step leaves on the board carries `fell`, how far it traveled to
+reach the cell it now holds, as a whole number of rows:
+
+| Gem | `fell` |
+| --- | --- |
+| One R9 did not move | `0` |
+| A surviving gem R9 moved down | Its new row less its old row |
+| A gem the refill dealt into row `r` | At least `r + 1` |
+
+A refilled gem comes from above the board's top row, so `r + 1` rows is the
+least it can have traveled. Which figure at or above that each refilled gem
+carries is the build's, and it is what decides the shape a column fills in.
+
+`fall` is the greatest `fell` on the board R9 left.
+
 ## Enforcement
 
 The two groups do different jobs, and neither does the other's.
@@ -113,31 +138,61 @@ The two groups do different jobs, and neither does the other's.
 
 ## A chain step
 
-`phase` is `idle` or `resolving`, and `STEP_SECONDS` (`0.25`) is how long a step
-holds the board before the next one is read.
+`phase` is `idle`, `swapping`, or `resolving`.
 
-An accepted swap exchanges the two cells at once, sets `chainStep` to `1`, sets
-`phase` to `resolving`, and resolves step `1` immediately. A step resolves in
-this order:
+### The swap
+
+An accepted swap exchanges the two cells at once, sets `phase` to `swapping`,
+sets `swapTimer` to `0`, and leaves `chainStep` at `0`. Nothing is cleared yet:
+the two gems are in motion between their cells for `SWAP_SECONDS` (`0.18`) of
+game time.
+
+`swapTimer` holds `0` while `phase` is not `swapping`, and accumulates game time
+while it is. When `swapTimer` reaches `SWAP_SECONDS` it returns to `0`, `phase`
+becomes `resolving`, `chainStep` becomes `1`, and step `1` resolves.
+
+A refused swap changes nothing on the board and leaves `phase` `idle`. It sets
+`refusal` to the two cells it named, which stands for `REFUSAL_SECONDS` (`0.3`)
+of game time and then clears.
+
+### The step
+
+A step resolves in this order:
 
 1. R5 seeds the clear set.
-2. R6 grows the seed to the clear set.
+2. R6 grows the seed to the clear set, and gives every cell of it a wave.
 3. The clear set scores, as `## Scoring` below sets out.
 4. R7 raises the strain of the gems around the clear set.
 5. The clear set is removed, leaving its cells empty.
 6. R8 creates the cut gems.
-7. R9 settles each column and refills it.
+7. R9 settles each column, refills it, and gives every gem its `fell`.
 
-A refused swap changes nothing on the board. It sets `refusal` to the two cells
-it named, which stands for `REFUSAL_SECONDS` (`0.3`) of game time and then
-clears.
+The step then leaves two figures behind, and they are what its own timing runs
+off:
 
-`stepTimer` holds `0` while `phase` is `idle`, and accumulates game time while
-`phase` is `resolving`. When `stepTimer` reaches `STEP_SECONDS` it returns to
-`0` and the board is read again. When that board seeds a non-empty clear set
-under R5, `chainStep` rises by `1` and that step resolves in the same order.
-Otherwise `phase` returns to `idle`, `chainStep` returns to `0`, and the level
-and end conditions below are evaluated.
+| Figure | What it is |
+| --- | --- |
+| `lastWaves` | The `waves` R6 gave the step's clear set. |
+| `lastFall` | The `fall` R9 left on the board. |
+
+### The step's timing
+
+`stepTimer` holds `0` while `phase` is not `resolving`, and accumulates game
+time while it is, counting from `0` at the moment a step resolves. Three spans
+run off it, with `WAVE_SECONDS` (`0.08`), `FALL_SECONDS_PER_ROW` (`0.05`), and
+`STEP_SECONDS` (`0.25`):
+
+| From | To | What runs |
+| --- | --- | --- |
+| `0` | `SHATTER_END = lastWaves * WAVE_SECONDS` | The clear set shatters, a cell at wave `w` shattering at `w * WAVE_SECONDS`. |
+| `SHATTER_END` | `LAND_AT = SHATTER_END + lastFall * FALL_SECONDS_PER_ROW` | The gems fall, a gem that fell `n` rows taking `n * FALL_SECONDS_PER_ROW` to arrive. |
+| `LAND_AT` | `STEP_HOLD = LAND_AT + STEP_SECONDS` | The board rests. |
+
+When `stepTimer` reaches `STEP_HOLD` it returns to `0` and the board is read
+again. When that board seeds a non-empty clear set under R5, `chainStep` rises
+by `1` and that step resolves in the same order. Otherwise `phase` returns to
+`idle`, `chainStep` returns to `0`, and the level and end conditions below are
+evaluated.
 
 ## Scoring
 
@@ -150,17 +205,36 @@ carried when the step scored it.
 | Strain `0` to `2` | `BASE_SCORE` (`10`) x `M` |
 | Strain `3` | `FLAWED_SCORE` (`20`) x `M` |
 
-A step's points are the sum over its clear set, and they are added to both
-`score` and `levelScore`.
+A step's points are the sum over its clear set, and they are added to `score`,
+to `levelScore`, and to `moveScore`.
+
+## What a level is measured by
+
+A move is one accepted swap together with the whole chain it sets off. Three
+figures follow it:
+
+| Figure | What it holds |
+| --- | --- |
+| `moveScore` | The points every step of the move currently running has scored. It returns to `0` when a swap is accepted. |
+| `bestMove` | The most points one move has scored in the current level, and `0` until a move has scored. When `phase` returns to `idle`, `bestMove` becomes the greater of itself and `moveScore`. |
+| `bestChain` | The deepest `chainStep` any chain has reached in the current level, and `0` until a chain has run. Each step sets it to the greater of itself and `chainStep`. |
+
+`bestMove` and `bestChain` return to `0` when a level is opened and when a round
+starts, so each level is measured on its own.
 
 ## Levels and the end of a round
 
 `level` counts from `1`. The level target is `LEVEL_TARGET_STEP` (`2000`) x
 `level`, so level `1` asks for `2000` points and level `4` asks for `8000`.
 
-When `phase` returns to `idle` and `levelScore` is at or past the target,
-`level` rises by `1`, `levelScore` returns to `0`, and a fresh opening board is
-dealt. `score` carries across.
+When `phase` returns to `idle` and `levelScore` is at or past the target, the
+level is over: `screen` becomes `levelclear` with `menuIndex` at `0`. The board
+stands as the chain left it, and `level`, `levelScore`, `bestChain`, and
+`bestMove` hold what the level left them at, which is what that screen reports.
+
+Choosing `CONTINUE` there opens the next level: `level` rises by `1`,
+`levelScore`, `bestChain`, and `bestMove` return to `0`, a fresh opening board is
+dealt, and `screen` returns to `playing`. `score` carries across.
 
 Otherwise, when `phase` returns to `idle` and no legal swap exists on the board,
 `screen` becomes `gameover`. A legal swap is a pair of orthogonally adjacent
@@ -171,3 +245,7 @@ cells whose exchange R1 and R3 both accept.
 An opening board has two properties: it holds no run under R4, and at least one
 legal swap exists on it. Every gem on it is `plain` at strain `0`, with its kind
 drawn from `GEM_KINDS` off the game's seeded random source.
+
+The whole board is dealt in from above, so a gem dealt into row `r` carries a
+`fell` of at least `r + 1`, exactly as a refilled gem does under R9. Which figure
+at or above that each dealt gem carries is the build's.

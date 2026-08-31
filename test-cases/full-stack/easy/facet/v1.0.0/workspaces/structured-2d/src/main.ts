@@ -34,9 +34,9 @@ const engine = createEngine({
   // the letterbox bars match the field the board sits on. The game owns the
   // color.
   background: BACKGROUND,
-  // The board is played with the pointer, so the keyboard moves a cursor over
-  // it and a highlight through the menus: a four-way pad and the menu
-  // vocabulary that comes with it.
+  // The board is played with the pointer alone, so the keyboard's whole job is
+  // the menus: one vertical highlight and the menu vocabulary that comes with
+  // it.
   layout: LAYOUT,
 });
 

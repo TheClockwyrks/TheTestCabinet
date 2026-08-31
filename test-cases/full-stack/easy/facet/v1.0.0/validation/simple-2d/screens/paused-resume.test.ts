@@ -16,14 +16,22 @@
 // their own.
 //
 // TWO HALVES, AND THE SECOND IS THE ONE A REREAD CANNOT FAKE. First the reading
-// itself: the chain step, the step timer and every cell come back as the pause
-// left them, after a paused stretch four times longer than a step. Then the
-// round is driven on, and the timer is measured by what it DOES rather than by
-// what it reports — `FRAMES_BEFORE_PAUSE` and `FRAMES_AFTER_RESUME` sum to
-// `STEP_DRIVE_FRAMES`, so a build that carried the timer across the pause reads
-// the board on the far side and the chain reaches step 2, while a build that
-// restarted it at `0` on resuming is still short of `STEP_SECONDS` and still on
-// step 1.
+// itself: the chain step, both timers and every cell come back as the pause left
+// them, after a paused stretch four times longer than the step's own hold. Then
+// the round is driven on, and the timer is measured by what it DOES rather than
+// by what it reports.
+//
+// HOW THE SECOND HALF IS SIZED. The drive after the resume is
+// `framesPast(stepHold - stepTimer)` taken from the reading the PAUSE recorded —
+// the remainder of that step, plus the frame or two that carries the boundary
+// with a whole frame to spare either side of a `>=` and a `>` build. A build
+// that carried the timer across the pause therefore spends the step, reads the
+// board, and reaches step 2. A build that restarted the timer at `0` on resuming
+// has that same drive to spend and is still short of the hold by everything the
+// pause had already banked — about `0.1325` s, better than eight frames of the
+// suite's clock, against the two frames of overshoot the drive carries — so it
+// is still on step 1. The two answers are different, and that is the whole
+// reading.
 //
 // The chain is posed with a second step waiting so there is a step 2 to reach at
 // all, over the filler that carries a spare legal swap so the round is not
@@ -36,7 +44,6 @@ import {
   assertLength,
   assertTrue,
 } from "../assert";
-import { FRAMES_PER_STEP, STEP_DRIVE_FRAMES, TICK_S } from "../constants";
 import {
   assertBoardEquals,
   maximalRuns,
@@ -48,8 +55,9 @@ import {
 import {
   captureReplay,
   createHarness,
+  framesPast,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -75,22 +83,15 @@ const STEP_TWO: PlacedToken[] = [
 const SWAP_A: CellRef = { col: 5, row: 4 };
 const SWAP_B: CellRef = { col: 6, row: 4 };
 
-/** Frames of the step spent before the pause, so the timer is caught mid-step. */
-const FRAMES_BEFORE_PAUSE = 5;
-
-/** The paused stretch: four whole multiples of `STEP_SECONDS` of game time. */
-const PAUSED_FRAMES = 4 * FRAMES_PER_STEP;
-
 /**
- * Frames driven after the resume, which with the five spent before the pause
- * carry the step past `STEP_SECONDS`.
- *
- * `STEP_DRIVE_FRAMES` is 17 frames, 0.265625 s: past `STEP_SECONDS` (0.25)
- * whether the build fires at `>=` or at `>`, and short of two steps. Twelve of
- * them are left, so a timer that carried across the pause reads the board and a
- * timer that restarted at `0` is still 0.1875 s short of doing so.
+ * Frames of the step spent before the pause, so the timer is caught mid-step
+ * with enough banked that a build which restarted it cannot still finish the
+ * step on the drive that follows the resume.
  */
-const FRAMES_AFTER_RESUME = STEP_DRIVE_FRAMES - FRAMES_BEFORE_PAUSE;
+const FRAMES_BEFORE_PAUSE = 6;
+
+/** How many of the paused step's own holds the game is left standing for. */
+const HOLDS_PAUSED = 4;
 
 let h: Harness;
 
@@ -102,30 +103,33 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("returns to playing with the board, the chain and the timer where the pause left them", async () => {
+it("returns to playing with the board, the chain and both timers where the pause left them", async () => {
   const posed = quietRowsWithEscape([...STEP_ONE, ...STEP_TWO]);
   assertLength(maximalRuns(posed), 0, "maximal runs on the posed board");
   assertTrue(swapIsLegal(posed, SWAP_A, SWAP_B), "R1 and R3 accept the swap");
 
   loadBoard(h, posed);
-  swap(h, SWAP_A, SWAP_B);
+  const first = await swapAndStep(h, SWAP_A, SWAP_B);
+  assertEqual(first.phase, "resolving", "the phase the accepted swap opened");
   await h.advance(FRAMES_BEFORE_PAUSE);
 
   const held = h.snapshot();
   const heldBoard = h.board();
   assertEqual(held.phase, "resolving", "the phase the pause catches");
   assertEqual(held.chainStep, 1, "the chain step the pause catches");
-  assertCloseTo(
-    held.stepTimer,
-    FRAMES_BEFORE_PAUSE * TICK_S,
-    6,
-    "the step timer the pause catches",
-  );
+  assertTrue(held.stepTimer > 0, "the step timer the pause catches is running");
+  assertTrue(held.stepHold > held.stepTimer, "the step still has hold left");
 
-  // Paused, and left paused for four steps' worth of game time, so a build that
+  // The remainder of THIS step, reckoned from the reading the pause recorded
+  // rather than from anything read after it — which is what makes the drive
+  // below decide whether the timer survived the pause.
+  const remainingFrames = framesPast(held.stepHold - held.stepTimer);
+
+  // Paused, and left paused for four of that step's own holds, so a build that
   // rebuilt the position on resuming has had every chance to lose it.
   h.debug.pause();
-  await h.advance(PAUSED_FRAMES);
+  assertEqual(h.snapshot().screen, "paused", "the screen RESUME is taken from");
+  await h.advance(HOLDS_PAUSED * framesPast(held.stepHold));
 
   await captureReplay(h, "resumed", async () => {
     h.debug.resume();
@@ -135,6 +139,12 @@ it("returns to playing with the board, the chain and the timer where the pause l
     assertEqual(resumed.phase, "resolving", "the phase the resume hands back");
     assertEqual(resumed.chainStep, held.chainStep, "chainStep after resuming");
     assertCloseTo(
+      resumed.swapTimer,
+      held.swapTimer,
+      6,
+      "swapTimer after resuming",
+    );
+    assertCloseTo(
       resumed.stepTimer,
       held.stepTimer,
       6,
@@ -142,11 +152,11 @@ it("returns to playing with the board, the chain and the timer where the pause l
     );
     assertBoardEquals(h.board(), heldBoard, "the board after resuming");
 
-    await h.advance(FRAMES_AFTER_RESUME);
+    await h.advance(remainingFrames);
   });
 
-  // The timer carried on from where the pause left it, so the frames left in
-  // the step were enough to spend it and the chain read the board again.
+  // The timer carried on from where the pause left it, so what remained of the
+  // step was enough to spend it and the chain read the board again.
   const carried = h.snapshot();
   assertEqual(carried.chainStep, 2, "the chain step the resumed timer reached");
 });

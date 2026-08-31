@@ -33,6 +33,15 @@ export const FRAME_MARGIN = (FRAME_SIZE - FIELD_SIZE) / 2;
 export const FRAME_X = BOARD_CX - (GRID_COLS * CELL_PITCH) / 2 - FRAME_MARGIN;
 export const FRAME_Y = BOARD_CY - (GRID_ROWS * CELL_PITCH) / 2 - FRAME_MARGIN;
 
+/**
+ * The felt field's own top-left corner, inside the bench surround. It is what
+ * the board is drawn through: a stone still falling in from above the top row
+ * is hidden behind the bench until it crosses this edge, so it arrives ONTO the
+ * field rather than over the frame around it.
+ */
+export const FIELD_X = FRAME_X + FRAME_MARGIN;
+export const FIELD_Y = FRAME_Y + FRAME_MARGIN;
+
 /** The colors the chrome is drawn in. */
 export const COLOR = {
   /** The stage ground, which the letterbox bars also carry. */
@@ -46,9 +55,10 @@ export const COLOR = {
   /** Headings, the highlighted menu item, and the brass rules. */
   gold: "#f6c66a",
   goldDim: "#8d6f36",
-  /** The cursor mark and the selection mark. */
-  cursor: "#fff4d2",
+  /** The mark on the held gem, and the lighter one on the cell it is offered
+   * into. */
   selection: "#7ff0d8",
+  offer: "#fff4d2",
   /** The mark a refused swap leaves on its two cells. */
   refusal: "#ff6a6a",
   /** The level meter. */
@@ -59,6 +69,14 @@ export const COLOR = {
   /** A panel behind menu copy. */
   panel: "rgba(24, 17, 30, 0.92)",
   panelEdge: "rgba(246, 198, 106, 0.5)",
+  /**
+   * A pointer target's own plate: the fill and edge that make its rectangle
+   * visible, and the brighter pair the highlighted one takes.
+   */
+  control: "rgba(48, 34, 60, 0.72)",
+  controlEdge: "rgba(246, 198, 106, 0.32)",
+  controlLit: "rgba(246, 198, 106, 0.16)",
+  controlLitEdge: "#f6c66a",
 } as const;
 
 /**
@@ -135,4 +153,54 @@ export function roundedRect(
   ctx.arcTo(x, y + height, x, y, r);
   ctx.arcTo(x, y, x + width, y, r);
   ctx.closePath();
+}
+
+/** A rectangle in logical stage units, which is the shape a pointer target has. */
+export interface Plate {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+/**
+ * A control drawn to fill a pointer target exactly, with its label centered in
+ * it.
+ *
+ * `specs/controls.md` requires the drawn thing and the rectangle the game
+ * hit-tests to be one and the same — "a `menu-<i>` target covers the drawn menu
+ * item that `state.menuIndex` `i` highlights", and the `back` and `pause`
+ * targets each cover a drawn control carrying their label — so every caller
+ * hands this function the rectangle `src/core/targets.ts` reported rather than
+ * a rectangle of its own. `highlighted` is what tells a player which item a
+ * `confirm`, or a release, would take.
+ */
+export function drawControl(
+  ctx: CanvasRenderingContext2D,
+  plate: Plate,
+  label: string,
+  highlighted: boolean,
+  size = 26,
+  tracking = 5,
+): void {
+  ctx.save();
+  ctx.fillStyle = highlighted ? COLOR.controlLit : COLOR.control;
+  roundedRect(ctx, plate.x, plate.y, plate.w, plate.h, 12);
+  ctx.fill();
+  ctx.strokeStyle = highlighted ? COLOR.controlLitEdge : COLOR.controlEdge;
+  ctx.lineWidth = highlighted ? 3 : 1.5;
+  roundedRect(ctx, plate.x, plate.y, plate.w, plate.h, 12);
+  ctx.stroke();
+
+  ctx.font = font(size, highlighted ? 700 : 500, FONT_DISPLAY);
+  ctx.fillStyle = highlighted ? COLOR.gold : COLOR.text;
+  ctx.textBaseline = "middle";
+  drawTracked(
+    ctx,
+    label,
+    plate.x + plate.w / 2,
+    plate.y + plate.h / 2,
+    tracking,
+  );
+  ctx.restore();
 }

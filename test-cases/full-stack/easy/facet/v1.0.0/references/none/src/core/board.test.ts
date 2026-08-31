@@ -96,6 +96,16 @@ describe("cells", () => {
     expect(inBounds(board, { col: 7, row: 8 })).toBe(false);
   });
 
+  it("deals a plain gem at strain 0, with the fall it is given", () => {
+    expect(plainGem("ruby")).toEqual({
+      kind: "ruby",
+      cut: "plain",
+      strain: 0,
+      fell: 0,
+    });
+    expect(plainGem("jade", 5).fell).toBe(5);
+  });
+
   it("replaces one cell without touching the board it was handed", () => {
     const written = withGem(board, { col: 3, row: 3 }, plainGem("ruby"));
     expect(gemAt(written, { col: 3, row: 3 })?.kind).toBe("ruby");
@@ -148,21 +158,51 @@ describe("the fixture boards the tests are posed on", () => {
 });
 
 describe("the notation", () => {
+  it("gives every gem it reads a fell of 0, since a written gem is still", () => {
+    expect(parseToken("R0").fell).toBe(0);
+    expect(parseToken("S1b").fell).toBe(0);
+    expect(parseBoard(SPEC_ROWS).gems.every((gem) => gem?.fell === 0)).toBe(
+      true,
+    );
+  });
+
   it("reads every token shape the specification names", () => {
-    expect(parseToken("R0")).toEqual({ kind: "ruby", cut: "plain", strain: 0 });
-    expect(parseToken("J3")).toEqual({ kind: "jade", cut: "plain", strain: 3 });
+    expect(parseToken("R0")).toEqual({
+      kind: "ruby",
+      cut: "plain",
+      strain: 0,
+      fell: 0,
+    });
+    expect(parseToken("J3")).toEqual({
+      kind: "jade",
+      cut: "plain",
+      strain: 3,
+      fell: 0,
+    });
     expect(parseToken("S1b")).toEqual({
       kind: "sapphire",
       cut: "brilliant",
       strain: 1,
+      fell: 0,
     });
     expect(parseToken("C0s")).toEqual({
       kind: "citrine",
       cut: "star",
       strain: 0,
+      fell: 0,
     });
-    expect(parseToken("X0")).toEqual({ kind: null, cut: "prism", strain: 0 });
-    expect(parseToken("X2")).toEqual({ kind: null, cut: "prism", strain: 2 });
+    expect(parseToken("X0")).toEqual({
+      kind: null,
+      cut: "prism",
+      strain: 0,
+      fell: 0,
+    });
+    expect(parseToken("X2")).toEqual({
+      kind: null,
+      cut: "prism",
+      strain: 2,
+      fell: 0,
+    });
   });
 
   it("maps every kind letter to its kind, in the order of GEM_KINDS", () => {
@@ -200,7 +240,7 @@ describe("the notation", () => {
 
   it("refuses to write a cut that should carry a kind and has none", () => {
     expect(() =>
-      formatToken({ kind: null, cut: "brilliant", strain: 0 }),
+      formatToken({ kind: null, cut: "brilliant", strain: 0, fell: 0 }),
     ).toThrow(/carries a kind/);
   });
 
@@ -214,21 +254,25 @@ describe("the notation", () => {
       kind: "jade",
       cut: "plain",
       strain: 1,
+      fell: 0,
     });
     expect(gemAt(board, { col: 5, row: 3 })).toEqual({
       kind: "beryl",
       cut: "brilliant",
       strain: 0,
+      fell: 0,
     });
     expect(gemAt(board, { col: 2, row: 5 })).toEqual({
       kind: "sapphire",
       cut: "star",
       strain: 2,
+      fell: 0,
     });
     expect(gemAt(board, { col: 4, row: 6 })).toEqual({
       kind: null,
       cut: "prism",
       strain: 0,
+      fell: 0,
     });
     expect(isFlawed(gemAt(board, { col: 6, row: 4 })!)).toBe(true);
     expect(isFlawed(gemAt(board, { col: 0, row: 0 })!)).toBe(false);

@@ -21,8 +21,10 @@ describe("the diagnostic sources", () => {
       "level",
       "chain",
       "last step",
-      "cursor",
+      "waves / fall",
       "selection",
+      "offer",
+      "best",
       "legal swap",
       "pointer",
     ]);
@@ -55,17 +57,29 @@ describe("the diagnostic sources", () => {
     expect(sources().get("last step")?.(state)).toBe("6 cells  90 pts");
   });
 
-  it("reports the cursor, and a dash for no selection", () => {
+  it("reports the selection and the offer, and a dash for neither", () => {
     const registered = sources();
     const state = createInitialState();
-    expect(registered.get("cursor")?.(state)).toBe("0,0");
     expect(registered.get("selection")?.(state)).toBe("-");
-    expect(
-      registered.get("selection")?.({
-        ...state,
-        selection: { col: 3, row: 5 },
-      }),
-    ).toBe("3,5");
+    expect(registered.get("offer")?.(state)).toBe("-");
+    const holding = {
+      ...state,
+      selection: { col: 3, row: 5 },
+      offer: { col: 4, row: 5 },
+    };
+    expect(registered.get("selection")?.(holding)).toBe("3,5");
+    expect(registered.get("offer")?.(holding)).toBe("4,5");
+  });
+
+  it("reports the step's waves against the board's longest fall", () => {
+    const posed = loadBoard(createInitialState(), quietRows());
+    const state = { ...posed, lastWaves: 2 };
+    expect(sources().get("waves / fall")?.(state)).toBe("2  0");
+  });
+
+  it("reports the level's best move and longest chain", () => {
+    const state = { ...createInitialState(), bestMove: 640, bestChain: 5 };
+    expect(sources().get("best")?.(state)).toBe("move 640  chain 5");
   });
 
   it("derives whether a legal swap exists from the board as it stands", () => {
@@ -75,16 +89,16 @@ describe("the diagnostic sources", () => {
     expect(registered.get("legal swap")?.(posed)).toBe(false);
   });
 
-  it("reports the pointer, and marks it while it is down", () => {
+  it("reports the pointer with its device, and marks it while it is down", () => {
     const registered = sources();
     const state = createInitialState();
-    expect(registered.get("pointer")?.(state)).toBe("0, 0");
+    expect(registered.get("pointer")?.(state)).toBe("0, 0 mouse");
     expect(
       registered.get("pointer")?.({
         ...state,
-        pointer: { x: 12.4, y: 300.6, down: true },
+        pointer: { x: 12.4, y: 300.6, down: true, device: "touch" },
       }),
-    ).toBe("12, 301 down");
+    ).toBe("12, 301 touch down");
   });
 
   it("changes nothing about the state it reads", () => {

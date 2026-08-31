@@ -15,12 +15,13 @@
 // (specs/assets.md, Sprites).
 //
 // The actor holds no authoritative state. What it does hold is the
-// PRESENTATION: the break sheets and particle bursts a chain throws, which are
-// decoration deliberately kept out of the state (`src/effects.ts`). It ages
-// them in its own tick — actors tick before the game mode, so a burst the mode
-// spawns this frame is drawn at age zero and first aged on the next — and
-// `FacetMode.tick` reaches it through `world.find(Bench)` to hand it the chain
-// steps the frame resolved.
+// PRESENTATION: the break sheets and particle bursts a chain throws, the aura
+// every cut stone carries, and the clock a freshly dealt board pours on, all of
+// which are decoration deliberately kept out of the state (`src/effects.ts`).
+// It ages them in its own tick — actors tick before the game mode, so a burst
+// the mode spawns this frame is drawn at age zero and first aged on the next —
+// and `FacetMode.tick` reaches it through `world.find(Bench)` to hand it what
+// the frame's transitions threw and to bring its auras level with the board.
 
 import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
 import type { DrawApi } from "@test-cabinet/structured-2d";
@@ -73,7 +74,7 @@ class ScreenLayer extends DrawComponent {
  * two layers draw every screen of the game.
  */
 export class Bench extends Actor {
-  /** The break sheets and bursts a chain throws; see `src/effects.ts`. */
+  /** Everything decoration puts in motion; see `src/effects.ts`. */
   readonly presentation = new Presentation(domScratch());
 
   constructor() {
@@ -83,7 +84,7 @@ export class Bench extends Actor {
   }
 
   /**
-   * Age everything still flying by the frame's delta. Actors tick before the
+   * Age everything still running by the frame's delta. Actors tick before the
    * game mode, so what this frame's chain spawns is drawn at age zero and is
    * first aged on the next frame.
    */

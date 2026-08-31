@@ -17,7 +17,7 @@
 // at `startLevel`, and the game never opens another — every screen is a value
 // of the state's `screen` field. The instance's `initialize` runs once, before
 // that level opens: register every action in ACTIONS against its BINDINGS,
-// define the eight CUES against the sounds this build produces, and return the
+// define the nine CUES against the sounds this build produces, and return the
 // debug surface, which the engine holds and returns from `engine.debug`
 // (`specs/instrumentation.md`). The level's game mode runs the screens and the
 // rules: its `gameStateClass` is `FacetState`, so the engine builds the state
@@ -34,10 +34,13 @@
 // at `engine/`, defines all of this and the classes below; read it before you
 // start.
 //
-// The POINTER comes from the engine as well. A gem is selected by pressing on
-// it and swapped by pressing or dragging onto the one beside it, and the player
-// controller reads the pointer from its input reader already in logical stage
-// units, as the frame's ordered samples carrying the press and release edges —
+// The POINTER comes from the engine as well, and it is what the whole game is
+// worked with: a gem is taken hold of by pressing on it, offered onto its
+// neighbor by pressing or dragging there, and the move is played by the release.
+// Every screen carries pointer targets besides, so a player with nothing but a
+// touchscreen reaches all of them. The player controller reads the pointer from
+// its input reader already in logical stage units, as the frame's ordered
+// samples carrying the press and release edges and the device that drove them —
 // the engine's input documentation, seeded at `engine/`, defines the API, and
 // `specs/controls.md` states what Facet does with them.
 //

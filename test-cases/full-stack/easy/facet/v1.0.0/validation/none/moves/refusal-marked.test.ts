@@ -38,7 +38,7 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  swap,
+  requestSwap,
   type Harness,
 } from "../harness";
 
@@ -77,7 +77,7 @@ it("reports the two cells the refused request named", async () => {
   );
 
   await loadBoard(h, ROWS);
-  const refused = await swap(h, PAIR.a, PAIR.b);
+  const refused = await requestSwap(h, PAIR.a, PAIR.b);
 
   // One frame, so the picture kept as evidence shows the mark as the build drew
   // it. Far short of REFUSAL_SECONDS, so the mark is still standing.

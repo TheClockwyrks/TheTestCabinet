@@ -4,11 +4,16 @@
 // TWO SPEC SENTENCES MEET HERE, and the point is worth having because either
 // one can be honored without the other. specs/controls.md's effect table says
 // `pause` "Enters and leaves `paused` from `playing`" and its binding table
-// binds `pause` to `KeyP` — so a build that implemented the screen but never
-// bound the key, or bound the key but sent it somewhere else, has a pause menu a
-// player cannot reach mid-round. specs/ui.md then fixes what arriving looks
-// like: `paused` is "reached from `playing` with the `pause` action", and
-// "`menuIndex` is `0` on arriving."
+// gives `pause` two keys, of which `KeyP` is one — so a build that implemented
+// the screen but never bound the key, or bound the key but sent it somewhere
+// else, has a pause menu a player cannot reach mid-round. specs/ui.md then fixes
+// what arriving looks like: `paused` is "reached from `playing` with the `pause`
+// action", and "`menuIndex` is `0` on arriving."
+//
+// ONE OF THE TWO KEYS, AND THE OTHER IS ITS OWN POINT. "Each key listed for an
+// action fires that action on its own", so `KeyP` has to raise the menu with no
+// help from the key beside it in the table. `Escape` is `keyboard/pause-escape`'s,
+// and a build that bound one and missed the other owes exactly one of the two.
 //
 // SO THE CHECK IS THE PLAYER'S OWN GESTURE, not a pose. specs/instrumentation.md
 // carries a `pause()` operation that arranges the same screen, and driving that
@@ -16,7 +21,7 @@
 // half the point. The key is pressed through the real input path instead, and
 // the frame that press runs is what the screen is read after.
 //
-// WHAT IT DOES NOT DECIDE. That `pause` and `back` LEAVE the menu again is
+// WHAT IT DOES NOT DECIDE. That `pause` LEAVES the menu again is
 // `screens/paused-back`, that nothing advances while it is up is
 // `screens/paused-freezes`, and the menu's copy and items are
 // `screens/paused-screen`. This point is the arrival: the screen, and the
@@ -35,8 +40,15 @@ import {
 
 let h: Harness;
 
-/** The one key specs/controls.md binds the `pause` action to. */
-const PAUSE_KEY = BINDINGS.pause[0];
+/**
+ * `KeyP`, the second of the two keys specs/controls.md binds `pause` to.
+ *
+ * Read out of the table rather than written down, so the key this check presses
+ * is the key the case states. The first entry is `Escape`, which
+ * `keyboard/pause-escape` presses; the two are separate points because either
+ * key fires the action on its own.
+ */
+const PAUSE_KEY = BINDINGS.pause[1];
 
 beforeEach(async () => {
   h = await createHarness();

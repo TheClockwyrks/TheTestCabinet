@@ -12,6 +12,7 @@ import {
   emptyStore,
   FRAME_KEY,
   FX_CLEAR,
+  FX_AURA,
   FX_CUT,
   FX_FLAWED,
   gemKey,
@@ -54,7 +55,7 @@ describe("the manifest", () => {
     }
   });
 
-  it("names the frame, the two cut overlays, and the three systems", () => {
+  it("names the frame, the two cut overlays, and the four systems", () => {
     const manifest = assetManifest();
     expect(manifest.images[FRAME_KEY]).toBe("gems/frame.png");
     expect(manifest.images[CUT_BRILLIANT_KEY]).toBe("gems/cut-brilliant.png");
@@ -62,6 +63,8 @@ describe("the manifest", () => {
     expect(manifest.systems[FX_CLEAR]).toBe("fx/clear-burst.system.json");
     expect(manifest.systems[FX_FLAWED]).toBe("fx/flawed-burst.system.json");
     expect(manifest.systems[FX_CUT]).toBe("fx/cut-flash.system.json");
+    expect(manifest.systems[FX_AURA]).toBe("fx/cut-aura.system.json");
+    expect(Object.keys(manifest.systems)).toHaveLength(4);
   });
 
   it("names every path relative to the engine's own asset root", () => {

@@ -1,13 +1,19 @@
 // Facet — pointer/press-selects: a press within GEM_HIT_R of a cell's center,
-// with nothing selected, selects that cell.
+// with nothing selected, takes hold of that cell.
 //
 // specs/controls.md fixes two things this point reads together, and they are one
 // behavior rather than two. The first is WHICH cell a press targets: "the cell
 // whose center is nearest the pointer position, when that center lies within
 // `GEM_HIT_R` (`36`) of it". The second is what the press then does, from the
 // first row of the press table: "Any cell, while nothing is selected — Selects
-// that cell." A press with nothing selected has no other row it can match, so
-// the whole of what the press does is the targeting.
+// that cell, with no offer standing." A press with nothing selected has no other
+// row it can match, so the whole of what the press does is the targeting.
+//
+// THE OFFER IS HALF THE ROW. A move is offered and then played on a release, so a
+// build that treated the first press as the beginning of a swap — offering the
+// gem into whichever neighbor it guessed at — would have a release play a move a
+// player never asked for. The row says "with no offer standing", and that is read
+// after every press here.
 //
 // WHY THREE PRESSES RATHER THAN ONE. A build that answered only the exact center
 // would pass a single press at a center and fail a player, and a build that hard
@@ -18,17 +24,17 @@
 // one that reads against none.
 //
 // THE PRESS IS POSED THROUGH THE SURFACE rather than driven with a real pointer.
-// specs/instrumentation.md makes `pointerDown` feed "the same input path a real
-// pointer feeds" and resolve "in the state the call returns", so a point about
+// specs/instrumentation.md makes `pointerDown` drive "the same input path a real
+// pointer drives" and resolve "in the state the call returns", so a point about
 // the press RULES gets the rule and nothing of the engine's frame scheduling.
 // The surface is written in the shape of `update` here — a pose is handed the
 // state and returns the next one — and the harness applies each one through the
 // engine, so what the check reads back is the state the press itself left.
 //
 // WHAT THIS DOES NOT ASSERT. Where a press farther than `GEM_HIT_R` from every
-// center lands is `pointer/press-miss`, what a press on the selected cell does is
-// `pointer/press-deselects`, and the two rows about a standing selection are
-// `pointer/press-swaps` and `pointer/press-moves-selection`.
+// center lands is `pointer/press-miss`, what a press on the cell already held
+// does is `pointer/press-holds-again`, and the two rows about a standing
+// selection are `pointer/press-offers` and `pointer/press-moves-selection`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -51,6 +57,8 @@ import {
   captureStill,
   createHarness,
   loadBoard,
+  pressPoint,
+  releasePointer,
   type Harness,
 } from "../harness";
 
@@ -94,37 +102,45 @@ function targetsOnly(point: { x: number; y: number }, cell: CellRef): void {
 }
 
 /**
- * Press at `point` with nothing selected, and read the state the press left.
+ * Press at `point` with nothing selected, and assert the row's two halves: the
+ * cell it took hold of, and the offer it did not raise.
  *
  * The release ends the hold before the next press begins: specs/controls.md
  * turns a held pointer that reaches a neighbor into a drag, and this point is
  * about presses alone.
  */
-function pressWithNothingSelected(point: {
-  x: number;
-  y: number;
-}): CellRef | null {
+function pressWithNothingSelected(
+  point: { x: number; y: number },
+  cell: CellRef,
+  what: string,
+): void {
   h.debug.clearSelection();
-  assertNull(h.snapshot().selection, "nothing selected before the press");
-  h.debug.pointerDown(point.x, point.y);
-  const selection = h.snapshot().selection;
-  h.debug.pointerUp();
-  return selection;
+  h.debug.clearOffer();
+  const before = h.snapshot();
+  assertNull(before.selection, "nothing selected before the press");
+  assertNull(before.offer, "nothing offered before the press");
+
+  const pressed = pressPoint(h, point.x, point.y);
+  releasePointer(h);
+
+  assertDeepEqual(pressed.selection, cell, what);
+  assertNull(pressed.offer, `the offer after ${what}`);
 }
 
-it("selects the cell the press targets", async () => {
+it("takes hold of the cell the press targets, offering nothing", async () => {
   // The filler carries no run, so nothing resolves under the presses, and its
   // spare corner swap keeps the round from ending while the scenario runs.
   const posed = quietRowsWithEscape([]);
   const opened = loadBoard(h, posed);
   assertNull(opened.selection, "a posed board carries no selection");
+  assertNull(opened.offer, "a posed board carries no offer");
 
   // 1. The exact center — the position the radius is measured from.
   const middle: CellRef = { col: 3, row: 3 };
   const center = cellCenter(middle.col, middle.row);
   targetsOnly(center, middle);
-  assertDeepEqual(
-    pressWithNothingSelected(center),
+  pressWithNothingSelected(
+    center,
     middle,
     "a press at a cell's center selects that cell",
   );
@@ -137,8 +153,8 @@ it("selects the cell the press targets", async () => {
   //    point is 39 from (4,3)'s center, so no second cell is in reach.
   const offCenter = insideCell(middle.col, middle.row, BETWEEN_RADII, 0);
   targetsOnly(offCenter, middle);
-  assertDeepEqual(
-    pressWithNothingSelected(offCenter),
+  pressWithNothingSelected(
+    offCenter,
     middle,
     `a press ${BETWEEN_RADII} units off the center is inside GEM_HIT_R of it`,
   );
@@ -148,14 +164,14 @@ it("selects the cell the press targets", async () => {
   const corner: CellRef = { col: 7, row: 7 };
   const cornerCenter = cellCenter(corner.col, corner.row);
   targetsOnly(cornerCenter, corner);
-  assertDeepEqual(
-    pressWithNothingSelected(cornerCenter),
+  pressWithNothingSelected(
+    cornerCenter,
     corner,
     "a press selects the cell it landed on, not a fixed one",
   );
 
   // The frame is what the still is of, and it also proves the presses left the
-  // board resting: selecting is not a move, so nothing resolved under them.
+  // board resting: taking hold of a gem is not a move, so nothing resolved.
   await h.advance(1);
   captureStill(h, "select");
   const after = h.snapshot();

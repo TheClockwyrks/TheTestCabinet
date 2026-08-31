@@ -1,5 +1,6 @@
-// Facet — the readouts, drawn in code (specs/assets.md lists the HUD, the level
-// meter, the menus, and the marks as the chrome the build draws itself).
+// Facet — the readouts and the pause control, drawn in code (specs/assets.md
+// lists the HUD, the level meter, the menus, the pointer targets, and the marks
+// as the chrome the build draws itself).
 //
 // The board's extent is fixed by `specs/board.md` — cell centers x 388..892,
 // and the produced bench around them reaching x 316..964 — so the readouts take
@@ -7,24 +8,35 @@
 // and the level meter sit in the left margin; the chain multiplier, what the
 // last step did, and the controls sit in the right. Nothing overlaps the board.
 //
+// The `PAUSE` control is drawn where `src/core/targets.ts` puts its pointer
+// target and nowhere else, so what a player presses is exactly what they see,
+// and that target sits in the strip to the right of the board which the board
+// never reaches (specs/controls.md).
+//
 // `specs/ui.md` fixes the three labels (`SCORE`, `LEVEL`, `CHAIN`) and requires
 // the level meter to be read "without arithmetic", so the meter is a bar with
 // the two figures under it rather than a number to divide.
 
-import { HUD_CHAIN_LABEL, HUD_LEVEL_LABEL, HUD_SCORE_LABEL } from "./constants";
-import { levelTarget, multiplierFor } from "./core";
+import {
+  HUD_CHAIN_LABEL,
+  HUD_LEVEL_LABEL,
+  HUD_SCORE_LABEL,
+  PAUSE_LABEL,
+  TITLE_TEXT,
+} from "./constants";
+import { levelTarget, multiplierFor, targetsFor } from "./core";
 import {
   COLOR,
   FONT_DISPLAY,
   FONT_NUMERIC,
+  drawControl,
   drawTracked,
   font,
   roundedRect,
 } from "./theme";
-import { TITLE_TEXT } from "./constants";
 import type { FacetState } from "./game";
 
-/** The left readout column: from `x` to `x + WIDTH`, clear of the bench. */
+/** The left readout column: from `x` to `x + COLUMN_W`, clear of the bench. */
 const LEFT_X = 44;
 /** The right readout column, right-aligned on its own edge. */
 const RIGHT_EDGE = 1236;
@@ -151,13 +163,22 @@ function drawChain(ctx: CanvasRenderingContext2D, state: FacetState): void {
   );
 }
 
+/**
+ * The `PAUSE` control, drawn on the `pause` target `src/core/targets.ts`
+ * reports for the `playing` screen.
+ */
+function drawPauseControl(ctx: CanvasRenderingContext2D): void {
+  for (const target of targetsFor("playing")) {
+    if (target.id === "pause") drawControl(ctx, target, PAUSE_LABEL);
+  }
+}
+
 /** The controls, and the mute state, along the foot of the right column. */
 function drawHints(ctx: CanvasRenderingContext2D, state: FacetState): void {
   const lines = [
-    "ARROWS / WASD  MOVE",
-    "ENTER  SELECT AND SWAP",
-    "DRAG A GEM ONTO ITS NEIGHBOR",
-    "P  PAUSE     M  SOUND     `  DEBUG",
+    "PRESS A STONE TO TAKE HOLD OF IT",
+    "CARRY IT ONTO ITS NEIGHBOR AND LET GO",
+    "ESC or P  PAUSE     M  SOUND     `  DEBUG",
   ];
   ctx.font = font(13, 500, FONT_DISPLAY);
   ctx.textAlign = "right";
@@ -171,7 +192,7 @@ function drawHints(ctx: CanvasRenderingContext2D, state: FacetState): void {
   }
 }
 
-/** Every readout on the `playing` screen. */
+/** Every readout on the `playing` screen, and the pause control. */
 export function drawHud(
   ctx: CanvasRenderingContext2D,
   state: FacetState,
@@ -189,6 +210,7 @@ export function drawHud(
 
   drawMeter(ctx, state);
   drawChain(ctx, state);
+  drawPauseControl(ctx);
   drawHints(ctx, state);
 
   ctx.restore();

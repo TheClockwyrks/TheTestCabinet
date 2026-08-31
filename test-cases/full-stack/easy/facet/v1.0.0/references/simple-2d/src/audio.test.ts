@@ -45,7 +45,7 @@ function raise(...flags: (keyof FacetEvents)[]): FacetEvents {
 }
 
 describe("the cue sources", () => {
-  it("binds each of the eight cues specs/ui.md names to a produced file", () => {
+  it("binds each of the nine cues specs/ui.md names to a produced file", () => {
     const sources = cueSources();
     for (const cue of Object.values(CUES)) {
       expect(sources[cue], cue).toMatch(/^audio\/[a-z]+\.wav$/);
@@ -69,10 +69,14 @@ describe("the cue sources", () => {
     expect(cueSources()[MUSIC_PLAY]).toBe("audio/play.wav");
   });
 
-  it("names eighteen files in all, each exactly once", () => {
+  it("binds the land cue to its own produced sound", () => {
+    expect(cueSources()[CUES.land]).toBe("audio/land.wav");
+  });
+
+  it("names nineteen files in all, each exactly once", () => {
     const sources = cueSources();
-    expect(Object.keys(sources)).toHaveLength(18);
-    expect(new Set(Object.values(sources)).size).toBe(18);
+    expect(Object.keys(sources)).toHaveLength(19);
+    expect(new Set(Object.values(sources)).size).toBe(19);
   });
 });
 
@@ -131,6 +135,7 @@ describe("the bed", () => {
     expect(bedForScreen("howto")).toBe(MUSIC_TITLE);
     expect(bedForScreen("playing")).toBe(MUSIC_PLAY);
     expect(bedForScreen("paused")).toBe(MUSIC_PLAY);
+    expect(bedForScreen("levelclear")).toBe(MUSIC_PLAY);
     expect(bedForScreen("gameover")).toBe(MUSIC_PLAY);
   });
 
@@ -165,7 +170,16 @@ describe("playing a frame's events", () => {
     const { api, played } = bus();
     playFrameEvents(
       api,
-      raise("select", "swap", "refuse", "flaw", "cut", "levelUp", "gameOver"),
+      raise(
+        "select",
+        "swap",
+        "refuse",
+        "land",
+        "flaw",
+        "cut",
+        "levelUp",
+        "gameOver",
+      ),
       0,
       "playing",
     );
@@ -173,6 +187,7 @@ describe("playing a frame's events", () => {
       CUES.select,
       CUES.swap,
       CUES.refuse,
+      CUES.land,
       CUES.flaw,
       CUES.cut,
       CUES.levelUp,

@@ -4,7 +4,7 @@ import {
   createInitialState,
   loadBoard,
   poseSwap,
-  setCursor,
+  setOffer,
   setSelection,
   startRound,
 } from "./core";
@@ -36,8 +36,10 @@ describe("the overlay's sources", () => {
       "level",
       "chain",
       "last step",
-      "cursor",
+      "last motion",
       "selection",
+      "offer",
+      "best",
       "legal swap",
       "pointer",
     ]);
@@ -64,6 +66,8 @@ describe("the overlay's sources", () => {
       chainStep: 9,
       lastCleared: 5,
       lastPoints: 120,
+      bestMove: 640,
+      bestChain: 4,
     });
 
     expect(registered.get("score")?.(state)).toBe(4321);
@@ -71,21 +75,34 @@ describe("the overlay's sources", () => {
     // The multiplier caps at MAX_MULTIPLIER while the step keeps counting.
     expect(registered.get("chain")?.(state)).toBe("step 9  x8");
     expect(registered.get("last step")?.(state)).toBe("5 cells  120 pts");
+    expect(registered.get("best")?.(state)).toBe("move 640  chain 4");
   });
 
-  it("reports the cursor, the selection, and a board with no swap on it", () => {
+  it("reports what the most recent step set in motion", () => {
+    const registered = sources();
+    // A posed board stands exactly as it was written, so nothing has fallen.
+    const posed = fromCore(
+      loadBoard(startRound(createInitialState()), quietRows()),
+    );
+    expect(registered.get("last motion")?.(posed)).toBe("0 waves  0 rows");
+
+    const dealt = fromCore(startRound(createInitialState(4)));
+    expect(registered.get("last motion")?.(dealt)).toMatch(/0 waves {2}[1-9]/);
+  });
+
+  it("reports the selection, the offer, and a board with no swap on it", () => {
     const registered = sources();
     const posed = loadBoard(startRound(createInitialState()), quietRows());
-    const placed = setSelection(setCursor(posed, 4, 5), 2, 3);
-    const state = fromCore(placed);
+    const held = setOffer(setSelection(posed, 2, 3), 2, 4);
+    const state = fromCore(held);
 
-    expect(registered.get("cursor")?.(state)).toBe("4,5");
     expect(registered.get("selection")?.(state)).toBe("2,3");
+    expect(registered.get("offer")?.(state)).toBe("2,4");
     // The quiet board carries no productive swap at all.
     expect(registered.get("legal swap")?.(state)).toBe(false);
   });
 
-  it("reports no selection as a dash, and a live board as having a swap", () => {
+  it("reports nothing held as a dash, and a live board as having a swap", () => {
     const registered = sources();
     const state = fromCore(
       loadBoard(
@@ -94,21 +111,22 @@ describe("the overlay's sources", () => {
       ),
     );
     expect(registered.get("selection")?.(state)).toBe("-");
+    expect(registered.get("offer")?.(state)).toBe("-");
     expect(registered.get("legal swap")?.(state)).toBe(true);
   });
 
-  it("reports the pointer, marking it while it is held", () => {
+  it("reports the pointer, its device, and whether it is held", () => {
     const registered = sources();
     const up = fromCore({
       ...createInitialState(),
-      pointer: { x: 640.4, y: 360.6, down: false },
+      pointer: { x: 640.4, y: 360.6, down: false, device: "mouse" },
     });
     const down = fromCore({
       ...createInitialState(),
-      pointer: { x: 640.4, y: 360.6, down: true },
+      pointer: { x: 640.4, y: 360.6, down: true, device: "touch" },
     });
-    expect(registered.get("pointer")?.(up)).toBe("640, 361");
-    expect(registered.get("pointer")?.(down)).toBe("640, 361 down");
+    expect(registered.get("pointer")?.(up)).toBe("640, 361 mouse");
+    expect(registered.get("pointer")?.(down)).toBe("640, 361 touch down");
   });
 
   it("changes nothing it reads", () => {

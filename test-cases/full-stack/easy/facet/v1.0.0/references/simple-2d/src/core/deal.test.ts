@@ -30,6 +30,18 @@ describe("dealing an opening board", () => {
     }
   });
 
+  it("deals the whole board in from above, a row of travel per row", () => {
+    const { board } = deal(1);
+    for (let row = 0; row < GRID_ROWS; row++) {
+      for (let col = 0; col < GRID_COLS; col++) {
+        expect(board.gems[row * GRID_COLS + col]?.fell).toBe(row + 1);
+      }
+    }
+    // The reserve board is dealt in the same way, being an opening board.
+    expect(reserveBoard().gems[7 * GRID_COLS]?.fell).toBe(8);
+    expect(reserveBoard().gems[0]?.fell).toBe(1);
+  });
+
   it("holds no run under R4, and carries a legal swap, from any seed", () => {
     for (let seed = 1; seed <= 200; seed++) {
       const { board } = deal(seed);
@@ -109,5 +121,11 @@ describe("recognizing an opening board", () => {
 
   it("refuses the quiet board, which carries no legal swap", () => {
     expect(isOpeningBoard(parseBoard(quietRows()))).toBe(false);
+  });
+
+  it("refuses a board whose gems did not come in from above", () => {
+    // The notation writes every gem standing still, so a board read back out
+    // of it has traveled nowhere and is not a board that was just dealt.
+    expect(isOpeningBoard(parseBoard(formatBoard(deal(1).board)))).toBe(false);
   });
 });

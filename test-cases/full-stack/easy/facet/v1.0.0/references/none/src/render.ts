@@ -1,8 +1,9 @@
 // Facet — the frame, drawn.
 //
 // One entry point, one switch on `state.screen`, and the drawing itself split
-// by what it draws: the bench and the stones in `src/render.board.ts`, one gem
-// in `src/render.gems.ts`, the readouts in `src/render.hud.ts`, and the four
+// by what it draws: the bench and the stones in `src/render.board.ts`, where a
+// stone is at this instant in `src/motion.ts`, one gem in
+// `src/render.gems.ts`, the readouts in `src/render.hud.ts`, and the five
 // screens around the board in `src/render.screens.ts`.
 //
 // The renderer is a PURE FUNCTION OF THE STATE it is handed, plus the produced
@@ -21,6 +22,7 @@ import { drawHud } from "./render.hud";
 import {
   drawGameOverScreen,
   drawHowToScreen,
+  drawLevelClearScreen,
   drawPausedScreen,
   drawTitleScreen,
 } from "./render.screens";
@@ -51,6 +53,11 @@ export function renderGame(
       drawBoard(ctx, assets, state, presentation);
       drawHud(ctx, state);
       drawPausedScreen(ctx, state);
+      return;
+    case "levelclear":
+      drawBoard(ctx, assets, state, presentation);
+      drawHud(ctx, state);
+      drawLevelClearScreen(ctx, state);
       return;
     case "gameover":
       drawBoard(ctx, assets, state, presentation);

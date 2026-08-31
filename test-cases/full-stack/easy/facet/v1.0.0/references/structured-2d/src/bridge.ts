@@ -51,6 +51,7 @@ export function boardToCore(board: BoardState): CoreBoard {
       kind: cell.kind,
       cut: cell.cut,
       strain: cell.strain,
+      fell: cell.fell,
     };
   }
   return { cols: board.cols, rows: board.rows, gems };
@@ -58,7 +59,8 @@ export function boardToCore(board: BoardState): CoreBoard {
 
 /**
  * A core board as the live state carries it: one `GemState` per cell, in
- * reading order, each carrying the cell it occupies.
+ * reading order, each carrying the cell it occupies and how far it fell to
+ * reach it.
  *
  * A settled board holds a gem in every cell — a slot stands empty only between
  * R9's removal and its settling, both inside one `resolveStep` call — so an
@@ -81,6 +83,7 @@ export function boardFromCore(board: CoreBoard): BoardState {
         kind: gem.kind as GemKind | null,
         cut: gem.cut as Cut,
         strain: gem.strain,
+        fell: gem.fell,
       });
     }
   }
@@ -98,14 +101,19 @@ export function toCore(state: FacetState): CoreState {
     levelScore: state.levelScore,
     phase: state.phase,
     chainStep: state.chainStep,
+    swapTimer: state.swapTimer,
     stepTimer: state.stepTimer,
     chainSwap: state.chainSwap
       ? { a: cellOf(state.chainSwap.a), b: cellOf(state.chainSwap.b) }
       : null,
     lastCleared: state.lastCleared,
     lastPoints: state.lastPoints,
-    cursor: cellOf(state.cursor),
+    lastWaves: state.lastWaves,
+    moveScore: state.moveScore,
+    bestMove: state.bestMove,
+    bestChain: state.bestChain,
     selection: state.selection ? cellOf(state.selection) : null,
+    offer: state.offer ? cellOf(state.offer) : null,
     refusal: state.refusal
       ? { a: cellOf(state.refusal.a), b: cellOf(state.refusal.b) }
       : null,
@@ -114,9 +122,9 @@ export function toCore(state: FacetState): CoreState {
       x: state.pointer.x,
       y: state.pointer.y,
       down: state.pointer.down,
+      device: state.pointer.device,
     },
-    pressedCell: state.pressedCell ? cellOf(state.pressedCell) : null,
-    dragSwapped: state.dragSwapped,
+    armedTarget: state.armedTarget,
     muted: state.muted,
     simTime: state.simTime,
     rngState: state.rngState,
@@ -142,14 +150,19 @@ export function applyCore(state: FacetState, next: CoreState): void {
   state.board = boardFromCore(next.board);
   state.phase = next.phase;
   state.chainStep = next.chainStep;
+  state.swapTimer = next.swapTimer;
   state.stepTimer = next.stepTimer;
   state.score = next.score;
   state.level = next.level;
   state.levelScore = next.levelScore;
   state.lastCleared = next.lastCleared;
   state.lastPoints = next.lastPoints;
-  state.cursor = cellOf(next.cursor);
+  state.lastWaves = next.lastWaves;
+  state.moveScore = next.moveScore;
+  state.bestMove = next.bestMove;
+  state.bestChain = next.bestChain;
   state.selection = next.selection ? cellOf(next.selection) : null;
+  state.offer = next.offer ? cellOf(next.offer) : null;
   state.refusal = next.refusal
     ? {
         a: cellOf(next.refusal.a),
@@ -157,18 +170,18 @@ export function applyCore(state: FacetState, next: CoreState): void {
         timer: next.refusalTimer,
       }
     : null;
+  state.armedTarget = next.armedTarget;
   state.pointer = {
     x: next.pointer.x,
     y: next.pointer.y,
     down: next.pointer.down,
+    device: next.pointer.device,
   };
   state.simTime = next.simTime;
   state.rngState = next.rngState;
   state.chainSwap = next.chainSwap
     ? { a: cellOf(next.chainSwap.a), b: cellOf(next.chainSwap.b) }
     : null;
-  state.pressedCell = next.pressedCell ? cellOf(next.pressedCell) : null;
-  state.dragSwapped = next.dragSwapped;
 }
 
 /**

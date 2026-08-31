@@ -18,9 +18,12 @@
 // resolution, scoring, and end conditions run from there exactly as they do in
 // play" true rather than merely intended. The pointer operations in particular
 // do not stand in for the engine's pointer: they feed the SAME per-sample
-// resolution the player controller feeds, so the hit radius, the four press
-// rows, the drag, and the acceptance rules all run exactly as they do in play,
-// and each call takes effect immediately rather than waiting on a frame.
+// resolution the player controller feeds, so the target hit test, the hit
+// radius, the press, move and release tables, and the acceptance rules all run
+// exactly as they do in play, and each call takes effect immediately rather
+// than waiting on a frame. Each of the three carries the device that drove it,
+// defaulting to `"mouse"`, so a posed touch and a posed mouse differ only in
+// what the state reports.
 //
 // TWO OPERATIONS ARE ABSENT ON PURPOSE. `setAutoStep` and `advance` are the
 // CLOCK, and the clock is the engine's: `engine.setClock` takes the game off
@@ -32,12 +35,13 @@
 // debug surface" (specs/ui.md), so the events the core reports alongside a
 // state are dropped here; `src/frame.ts` plays what a frame raised.
 //
-// A POSE DOES SHOW ITS EFFECTS, because a scenario that poses a swap and then
-// looks at the board should see the board a player would see. A pose resolves
-// its chain step between frames, so `pose` below reports that one transition to
-// the presentation itself rather than leaving a frame to notice it, and a pose
-// that replaces the board outright — a fresh deal, a `loadBoard`, a `reset` —
-// drops whatever is still flying, because it belongs to a board that is gone.
+// A POSE DOES SHOW ITS EFFECTS, because a scenario that poses a board and then
+// looks at it should see the board a player would see. So a pose is folded into
+// a one-transition batch and handed to the presentation through exactly the
+// path a frame's batch takes: a pose that replaces the board outright — a fresh
+// deal, a `loadBoard`, a `reset` — drops whatever is still flying and pours a
+// dealt board in from above, and the auras are brought level with the board the
+// pose left.
 //
 // The surface is inert during normal play: nothing below runs until something
 // calls it.
@@ -47,9 +51,12 @@ import { assets } from "./assets";
 import { Bench } from "./bench";
 import { applyCore, toCore } from "./bridge";
 import { FACET_DEBUG_VERSION } from "./constants";
-import { reportFor } from "./steps";
+import { auraCells } from "./effects";
+import { fold, openBatch, showBatch } from "./steps";
 import {
+  clearOffer,
   clearSelection,
+  continueLevel,
   loadBoard,
   openHowTo,
   pauseGame,
@@ -57,19 +64,23 @@ import {
   pointerMove,
   pointerUp,
   poseSwap,
+  quiet,
   quitToTitle,
   reset,
   resumeGame,
-  setCursor,
+  setBestChain,
+  setBestMove,
   setGem,
   setLevel,
   setLevelScore,
+  setOffer,
   setScore,
   setSelection,
   snapshot,
   startRound,
   type FacetSnapshot,
   type FacetState as CoreState,
+  type PointerDevice,
 } from "./core";
 import { facetState, type FacetState } from "./game";
 
@@ -93,13 +104,17 @@ export interface FacetDebugApi {
   setScore(points: number): void;
   setLevel(level: number): void;
   setLevelScore(points: number): void;
-  setCursor(col: number, row: number): void;
+  setBestChain(chainStep: number): void;
+  setBestMove(points: number): void;
+  continueLevel(): void;
   setSelection(col: number, row: number): void;
   clearSelection(): void;
+  setOffer(col: number, row: number): void;
+  clearOffer(): void;
   requestSwap(colA: number, rowA: number, colB: number, rowB: number): void;
-  pointerDown(x: number, y: number): void;
-  pointerMove(x: number, y: number): void;
-  pointerUp(): void;
+  pointerDown(x: number, y: number, device?: PointerDevice): void;
+  pointerMove(x: number, y: number, device?: PointerDevice): void;
+  pointerUp(device?: PointerDevice): void;
 }
 
 /**
@@ -114,18 +129,14 @@ export function createDebugApi(world: () => World): FacetDebugApi {
   const pose = (apply: (state: CoreState) => CoreState): void => {
     const state = live();
     const before = toCore(state);
-    const after = apply(before);
-    applyCore(state, after);
+    const batch = fold(openBatch(before), quiet(apply(before)));
+    applyCore(state, batch.state);
 
     const presentation = world().find(Bench)?.presentation;
     if (presentation === undefined) return;
-    // A board that changed with no chain step to explain it is a different
-    // board entirely, and what is still flying belongs to the one that is gone.
-    if (after.board !== before.board && after.chainStep <= before.chainStep) {
-      presentation.clear();
-    }
-    const report = reportFor(before, after);
-    if (report !== null) presentation.push([report], assets());
+    const store = assets();
+    showBatch(presentation, batch, store);
+    presentation.syncAuras(auraCells(batch.state.board), store);
   };
 
   return {
@@ -170,17 +181,18 @@ export function createDebugApi(world: () => World): FacetDebugApi {
       pose(resumeGame);
     },
 
-    /** The choice of `QUIT`, which both the pause and game-over menus offer. */
+    /** The choice of `QUIT`, which the three menus that offer it all make. */
     quit() {
       pose(quitToTitle);
     },
 
     /**
      * An arbitrary board posed onto the `playing` screen, settled, with
-     * nothing selected. The notation is validated as it is parsed, and a board
-     * posed this way is a board like any other: it rests exactly as it was
-     * written until a swap is accepted on it, and the rules govern it
-     * unchanged from there.
+     * nothing selected and nothing offered. The notation is validated as it is
+     * parsed, and a board posed this way is a board like any other: every gem
+     * of it is standing still where it was written, so every cell reports a
+     * `fell` of `0`, it rests exactly as it was written until a swap is
+     * accepted on it, and the rules govern it unchanged from there.
      */
     loadBoard(rows) {
       pose((state) => loadBoard(state, rows));
@@ -206,9 +218,22 @@ export function createDebugApi(world: () => World): FacetDebugApi {
       pose((state) => setLevelScore(state, points));
     },
 
-    /** The cursor moved, within the board's dimensions. */
-    setCursor(col, row) {
-      pose((state) => setCursor(state, col, row));
+    /** `bestChain` set, a whole number of at least `0`. */
+    setBestChain(chainStep) {
+      pose((state) => setBestChain(state, chainStep));
+    },
+
+    /** `bestMove` set. `moveScore` is its own figure. */
+    setBestMove(points) {
+      pose((state) => setBestMove(state, points));
+    },
+
+    /**
+     * The choice of `CONTINUE` from the level-clear menu: the next level
+     * opened on a fresh opening board, with `score` carried across.
+     */
+    continueLevel() {
+      pose(continueLevel);
     },
 
     /** A cell made the selection. No swap is requested. */
@@ -216,33 +241,46 @@ export function createDebugApi(world: () => World): FacetDebugApi {
       pose((state) => setSelection(state, col, row));
     },
 
-    /** Nothing selected. The cursor, the board, and the phase stand. */
+    /** Nothing selected. The offer, the board, and the phase stand. */
     clearSelection() {
       pose(clearSelection);
     },
 
     /**
-     * A swap posed, through the same acceptance path a player's swap takes, so
-     * R1, R2, and R3 decide it and nothing is bypassed. It names both cells
-     * itself, so the selection stands where it was either way.
+     * A cell made the one the selected gem is offered into. No swap is
+     * requested: a release is what plays an offer (specs/controls.md).
+     */
+    setOffer(col, row) {
+      pose((state) => setOffer(state, col, row));
+    },
+
+    /** Nothing offered. The selection, the board, and the phase stand. */
+    clearOffer() {
+      pose(clearOffer);
+    },
+
+    /**
+     * A swap posed, through the same acceptance path a player's release takes,
+     * so R1, R2, and R3 decide it and nothing is bypassed. It names both cells
+     * itself, so the selection and the offer stand where they were either way.
      */
     requestSwap(colA, rowA, colB, rowB) {
       pose((state) => poseSwap(state, colA, rowA, colB, rowB));
     },
 
     /** A press, resolved immediately through the real input path. */
-    pointerDown(x, y) {
-      pose((state) => pointerDown(state, x, y).state);
+    pointerDown(x, y, device = "mouse") {
+      pose((state) => pointerDown(state, x, y, device).state);
     },
 
-    /** A move, resolved immediately: a drag's swap, or nothing. */
-    pointerMove(x, y) {
-      pose((state) => pointerMove(state, x, y).state);
+    /** A move, resolved immediately: an offer, a withdrawal, or a highlight. */
+    pointerMove(x, y, device = "mouse") {
+      pose((state) => pointerMove(state, x, y, device).state);
     },
 
-    /** A release, which ends the drag whatever it did. */
-    pointerUp() {
-      pose(pointerUp);
+    /** A release, which is what takes a target and what plays a move. */
+    pointerUp(device = "mouse") {
+      pose((state) => pointerUp(state, device).state);
     },
   };
 }

@@ -23,9 +23,16 @@
 // the step LEFT it rather than where it was posed. Three of the four stand
 // still — two are in columns the clear never emptied, and the sapphire sits
 // below the cell its column lost — while the jade above the run falls exactly
-// one row into the cell the run vacated. The reading comes from the step-1
-// snapshot, which specs/rules.md has an accepted swap resolve at the call, so
-// nothing later in the chain can have touched it.
+// one row into the cell the run vacated.
+//
+// WHEN THE READING IS TAKEN. specs/rules.md holds an accepted swap in
+// `swapping` for SWAP_SECONDS (0.18) of game time, with `chainStep` at 0 and
+// nothing cleared, and resolves step 1 when that time is spent. `swapAndStep`
+// carries the game exactly that far and hands back the reading step 1 left
+// behind. The step then holds the board for its own STEP_HOLD — `lastWaves x
+// WAVE_SECONDS` plus `lastFall x FALL_SECONDS_PER_ROW` plus STEP_SECONDS —
+// before the board is read again, so what this reads is R7's own answer and no
+// later step of the chain can have touched it.
 //
 // WHAT ELSE THE BOARD DOES NOT DO. Every gem posed is plain and unflawed, so R6
 // adds nothing to R5's seed and the clear set is the run and nothing more; the
@@ -56,7 +63,7 @@ import {
   createHarness,
   loadBoard,
   resolveChain,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -159,20 +166,24 @@ it("raises by one the strain of every gem touching the clear set", async () => {
 
   loadBoard(h, posed);
 
-  const rows = await captureReplay(h, "strain", async () => {
-    const stepOne = swap(h, SWAP.a, SWAP.b);
-    // Read before a single frame runs. An accepted swap resolves step 1 at the
-    // call (specs/rules.md), so this board is R7's own answer, uncontaminated
-    // by whatever the rest of the chain goes on to do while the replay records
-    // it.
-    const read = renderBoard(stepOne);
+  const taken = await captureReplay(h, "strain", async () => {
+    // Through the swap animation to the result of step 1. The reading is taken
+    // there, inside the step's own hold, so the strain it reports was raised by
+    // that one step; the chain is then driven on purely so the replay carries
+    // the whole move.
+    const stepOne = await swapAndStep(h, SWAP.a, SWAP.b);
+    const read = { rows: renderBoard(stepOne), chainStep: stepOne.chainStep };
     await resolveChain(h);
     return read;
   });
 
+  // The swap was accepted and it is step 1 that is being read, so a fixture
+  // whose swap was refused fails as a refusal rather than as a missing strain.
+  assertEqual(taken.chainStep, 1, "the chain step the accepted swap opened");
+
   for (const mark of MARKED) {
     assertEqual(
-      tokenAt(rows, mark.read.col, mark.read.row),
+      tokenAt(taken.rows, mark.read.col, mark.read.row),
       mark.token,
       `${mark.what}, at (${mark.read.col},${mark.read.row}) after the step`,
     );

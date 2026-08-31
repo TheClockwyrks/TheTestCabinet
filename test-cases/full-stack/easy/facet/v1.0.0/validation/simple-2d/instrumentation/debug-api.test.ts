@@ -36,6 +36,7 @@ import {
   assertBetween,
   assertContains,
   assertEqual,
+  assertGreaterThanOrEqual,
   assertHasProperty,
   assertLength,
   assertTrue,
@@ -48,6 +49,7 @@ import {
   GRID_COLS,
   GRID_ROWS,
   MAX_STRAIN,
+  POINTER_DEVICES,
   SCREENS,
 } from "../constants";
 import {
@@ -81,7 +83,14 @@ const INSPECTED = quietRowsWith([
   { col: 5, row: 5, token: "S2s" },
 ]);
 
-/** Every snapshot field specs/instrumentation.md types as a plain number. */
+/**
+ * Every snapshot field specs/instrumentation.md types as a plain number.
+ *
+ * The whole list rather than a sample, because the shape is what this point
+ * decides: a build that reports nineteen of the twenty is caught here and
+ * nowhere else, and the three timing figures in particular (`swapTimer`,
+ * `stepTimer`, `stepHold`) are the ones a reader of the chain reaches for.
+ */
 const NUMBERS = [
   "menuIndex",
   "score",
@@ -90,12 +99,30 @@ const NUMBERS = [
   "levelTarget",
   "chainStep",
   "multiplier",
+  "swapTimer",
   "stepTimer",
+  "stepHold",
   "lastCleared",
   "lastPoints",
+  "lastWaves",
+  "lastFall",
+  "moveScore",
+  "bestMove",
+  "bestChain",
   "rngState",
   "simTime",
 ] as const;
+
+/**
+ * The three values `phase` may hold, from specs/rules.md: "`phase` is `idle`,
+ * `swapping`, or `resolving`."
+ *
+ * Membership rather than a figure. The board this reading is taken over is posed
+ * and at rest, so a conformant build reports `idle` here; what is decided is that
+ * the field carries one of the three the specification names rather than a
+ * spelling of its own.
+ */
+const PHASES = ["idle", "swapping", "resolving"] as const;
 
 /**
  * Fail with the harness's own account of what is missing, paired with what the
@@ -162,24 +189,36 @@ it("reports the whole documented snapshot shape, off a board in play", async () 
   // The scalars, field by field, at the type the specification gives each.
   assertEqual(typeof s.version, "number", "snapshot.version");
   assertContains(SCREENS, s.screen, "snapshot.screen");
-  assertContains(["idle", "resolving"], s.phase, "snapshot.phase");
+  assertContains(PHASES, s.phase, "snapshot.phase");
   assertEqual(typeof s.legalSwap, "boolean", "snapshot.legalSwap");
   assertEqual(typeof s.muted, "boolean", "snapshot.muted");
   for (const field of NUMBERS) {
     assertEqual(typeof s[field], "number", `snapshot.${field}`);
   }
 
-  // The containers. `selection` and `refusal` are the two fields that may be
-  // `null`, so what is asked of them here is that they are REPORTED at all —
-  // specs/instrumentation.md's "every field is present on every screen" — and
-  // their resting value is `instrumentation/snapshot-resting-values`.
-  assertEqual(typeof s.cursor.col, "number", "snapshot.cursor.col");
-  assertEqual(typeof s.cursor.row, "number", "snapshot.cursor.row");
+  // The containers. `selection`, `offer`, `refusal` and `armedTarget` are the
+  // four fields that may be `null`, so what is asked of them here is that they
+  // are REPORTED at all — specs/instrumentation.md's "every field is present on
+  // every screen" — and their resting value is
+  // `instrumentation/snapshot-resting-values`.
   assertHasProperty(s, "selection", "the snapshot");
+  assertHasProperty(s, "offer", "the snapshot");
   assertHasProperty(s, "refusal", "the snapshot");
+  assertHasProperty(s, "armedTarget", "the snapshot");
   assertEqual(typeof s.pointer.x, "number", "snapshot.pointer.x");
   assertEqual(typeof s.pointer.y, "number", "snapshot.pointer.y");
   assertEqual(typeof s.pointer.down, "boolean", "snapshot.pointer.down");
+  // The device the pointer was last driven by is part of the reported pointer,
+  // and it is one of the three specs/controls.md names rather than a string of
+  // the build's own.
+  assertContains(POINTER_DEVICES, s.pointer.device, "snapshot.pointer.device");
+
+  // `targets` is an array on every screen. WHICH rectangles it holds, and that
+  // they satisfy specs/controls.md's four requirements, is the `targets`
+  // category's; what this point decides is that the field is present and is the
+  // list the shape says it is, so a reader that walks it never meets an
+  // `undefined`.
+  assertTrue(Array.isArray(s.targets), "snapshot.targets is a list");
 
   // A board is really in play, so these are live values rather than the resting
   // ones a stub would answer with.
@@ -209,6 +248,14 @@ it("reports the whole documented snapshot shape, off a board in play", async () 
     assertContains(CUTS, cell.cut, `the cut of ${at}`);
     assertTrue(Number.isInteger(cell.strain), `a whole strain at ${at}`);
     assertBetween(cell.strain, 0, MAX_STRAIN, `the strain of ${at}`);
+    // R9 gives every gem a `fell`, "how far it traveled to reach the cell it now
+    // holds, as a whole number of rows", so the field is reported on every cell
+    // rather than on the ones a step moved. What figure a POSED board's gems
+    // carry is `board/load-board`'s point and what a settled one's carry is
+    // `settling`'s, so all that is read here is the type and the floor a whole
+    // number of rows traveled cannot fall below.
+    assertTrue(Number.isInteger(cell.fell), `a whole fell at ${at}`);
+    assertGreaterThanOrEqual(cell.fell, 0, `the fell of ${at}`);
     // "a cell's `kind` is `null` for a `prism`" — and, being the other half of
     // the same sentence, a kind for everything else.
     if (cell.cut === "prism") {

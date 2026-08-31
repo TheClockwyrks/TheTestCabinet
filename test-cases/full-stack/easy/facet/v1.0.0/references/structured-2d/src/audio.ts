@@ -28,10 +28,11 @@
 // the mixing moved from the file into the bus.
 //
 // The music is not a cue at all but a bed: the title theme under `title` and
-// `howto`, the play bed under `playing`, `paused`, and `gameover`, so one of
-// the two is sounding on every screen. It is asked for by screen on every
-// frame, and the engine's `loop`/`stop` are no-ops on a cue already in that
-// state, which is the shape engine/audio.md asks a loop to be driven in.
+// `howto`, the play bed under `playing`, `paused`, `levelclear`, and
+// `gameover`, so one of the two is sounding on every screen. It is asked for by
+// screen on every frame, and the engine's `loop`/`stop` are no-ops on a cue
+// already in that state, which is the shape engine/audio.md asks a loop to be
+// driven in.
 
 import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
 import { CUES, MAX_MULTIPLIER } from "./constants";
@@ -60,6 +61,7 @@ export function cueFiles(): Readonly<Record<string, string>> {
     [CUES.refuse]: "audio/refuse.wav",
     // The sampled shatter body; the ladder rung is played over it.
     [CUES.clear]: "audio/shatter.wav",
+    [CUES.land]: "audio/land.wav",
     [CUES.flaw]: "audio/flaw.wav",
     [CUES.cut]: "audio/cut.wav",
     [CUES.levelUp]: "audio/levelup.wav",
@@ -90,6 +92,13 @@ export function cueSpecs(): Readonly<Record<string, CueSpec>> {
       freqTo: 110,
       gain: 0.18,
       durationMs: 140,
+    },
+    [CUES.land]: {
+      wave: "sine",
+      freq: 140,
+      freqTo: 70,
+      gain: 0.2,
+      durationMs: 180,
     },
     [CUES.flaw]: { wave: "square", freq: 320, gain: 0.16, durationMs: 60 },
     [CUES.cut]: {
@@ -191,6 +200,7 @@ export function playFrameEvents(
     audio.play(CUES.clear);
     audio.play(ladderCue(Math.min(Math.max(rung, 1), MAX_MULTIPLIER)));
   }
+  if (events.land) audio.play(CUES.land);
   if (events.flaw) audio.play(CUES.flaw);
   if (events.cut) audio.play(CUES.cut);
   if (events.levelUp) audio.play(CUES.levelUp);

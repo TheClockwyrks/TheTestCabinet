@@ -32,7 +32,7 @@ function recorder() {
 }
 
 describe("the cue declarations", () => {
-  it("declares exactly the eight cues specs/ui.md names", () => {
+  it("declares exactly the nine cues specs/ui.md names", () => {
     expect(Object.keys(CUE_SPECS).sort()).toEqual(
       Object.values(CUES).slice().sort(),
     );
@@ -69,8 +69,9 @@ describe("trackForScreen", () => {
     expect(trackForScreen("howto")).toBe(MUSIC_TITLE);
   });
 
-  it("plays the bed on the three screens a round is on", () => {
-    for (const screen of ["playing", "paused", "gameover"] as Screen[]) {
+  it("plays the bed on the four screens a round is on", () => {
+    const round: Screen[] = ["playing", "paused", "levelclear", "gameover"];
+    for (const screen of round) {
       expect(trackForScreen(screen)).toBe(MUSIC_PLAY);
     }
   });
@@ -89,6 +90,7 @@ describe("playFrameEvents", () => {
       ...NO_EVENTS,
       swap: true,
       clear: true,
+      land: true,
       flaw: true,
       cut: true,
     };
@@ -96,9 +98,16 @@ describe("playFrameEvents", () => {
     expect(played.map(([cue]) => cue)).toEqual([
       CUES.swap,
       CUES.clear,
+      CUES.land,
       CUES.flaw,
       CUES.cut,
     ]);
+  });
+
+  it("knocks when a step's stones land after a long fall", () => {
+    const { api, played } = recorder();
+    playFrameEvents(api, { ...NO_EVENTS, land: true }, 0, "playing");
+    expect(played).toEqual([[CUES.land, undefined]]);
   });
 
   it("sounds the ladder rung the step's multiplier names", () => {

@@ -21,7 +21,7 @@
 //
 // Every value below names the spec file that fixes it, under the name that
 // specification gives it, and the pairing is deliberate: `STEP_SECONDS` here is
-// `specs/rules.md`'s step, so a build that holds the board for some other
+// `specs/rules.md`'s rest span, so a build that holds the board for some other
 // interval fails the point rather than moving the target.
 //
 // FOUR GROUPS ARE NOT SPEC FIGURES, and each says so where it sits: the suite's
@@ -120,8 +120,46 @@ export const MAX_STRAIN = 3;
 /** The shortest line of one kind that counts as a run, under R4. */
 export const MATCH_MIN = 3;
 
-/** How long a chain step holds the board before the next one is read. */
+/**
+ * How long an accepted swap is in motion before its first chain step resolves.
+ *
+ * The exchange happens at once and `phase` becomes `swapping`; this is the game
+ * time that stands between it and step 1, and the overrun past it carries into
+ * `stepTimer` so the cadence is independent of how time was divided.
+ */
+export const SWAP_SECONDS = 0.18;
+
+/**
+ * How long one wave of a shattering clear set is behind the wave before it.
+ *
+ * R6 gives every cell of the set a wave, `0` for the seed and one more for each
+ * addition that reached it, and the cell at wave `w` shatters `w` of these into
+ * the step. `board.ts`'s clear set reports those waves.
+ */
+export const WAVE_SECONDS = 0.08;
+
+/** How long a falling gem takes per row it fell, under R9. */
+export const FALL_SECONDS_PER_ROW = 0.05;
+
+/**
+ * How long a chain step rests once its gems have landed, before the board is
+ * read again.
+ *
+ * It is the last of a step's three spans rather than the whole of its hold,
+ * which is
+ * `lastWaves * WAVE_SECONDS + lastFall * FALL_SECONDS_PER_ROW + STEP_SECONDS`
+ * and is the step's own figure rather than a constant. `board.ts`'s `stepHold`
+ * is that arithmetic written down.
+ */
 export const STEP_SECONDS = 0.25;
+
+/**
+ * A step whose longest fall was longer than this many rows plays `land`.
+ *
+ * Strictly longer, as specs/ui.md words it, so a step whose `lastFall` is
+ * exactly this plays nothing and a step at one more plays the cue.
+ */
+export const LAND_MIN_ROWS = 2;
 
 /** How long the mark on a refused swap stands on its two cells. */
 export const REFUSAL_SECONDS = 0.3;
@@ -145,19 +183,21 @@ export const LEVEL_TARGET_STEP = 2000;
 /**
  * Every screen `state.screen` names.
  *
- * specs/ui.md fixes the SET — "one of `title`, `howto`, `playing`, `paused`, and
- * `gameover`" — and no order over it. The order below is the order that sentence
- * lists them in, and nothing asserts it: a check reads membership.
+ * specs/ui.md fixes the SET — "one of `title`, `howto`, `playing`, `paused`,
+ * `levelclear`, and `gameover`" — and no order over it. The order below is the
+ * order that sentence lists them in, and nothing asserts it: a check reads
+ * membership.
  */
 export const SCREENS = [
   "title",
   "howto",
   "playing",
   "paused",
+  "levelclear",
   "gameover",
 ] as const;
 
-/** One of the five screens. Derived here so the union has a single home. */
+/** One of the six screens. Derived here so the union has a single home. */
 export type Screen = (typeof SCREENS)[number];
 
 export const TITLE_TEXT = "FACET";
@@ -169,6 +209,10 @@ export const TITLE_ITEMS = ["PLAY", "HOW TO PLAY"] as const;
 /** The pause screen: its heading, and its menu in that order. */
 export const PAUSED_TITLE_TEXT = "PAUSED";
 export const PAUSED_ITEMS = ["RESUME", "QUIT"] as const;
+
+/** The end of a level: its heading, and its menu in that order. */
+export const LEVELCLEAR_TITLE_TEXT = "LEVEL CLEAR";
+export const LEVELCLEAR_ITEMS = ["CONTINUE", "QUIT"] as const;
 
 /** The end of a round: its heading, and its menu in that order. */
 export const GAMEOVER_TITLE_TEXT = "NO MOVES LEFT";
@@ -183,12 +227,43 @@ export const HUD_SCORE_LABEL = "SCORE";
 export const HUD_LEVEL_LABEL = "LEVEL";
 export const HUD_CHAIN_LABEL = "CHAIN";
 
+/**
+ * The two figures a finished level is totted up by, on `levelclear`, each drawn
+ * beside the label named here.
+ */
+export const BEST_CHAIN_LABEL = "LONGEST CHAIN";
+export const BEST_MOVE_LABEL = "BEST MOVE";
+
+/**
+ * The two on-screen controls a player with only a pointer reaches a screen
+ * through: the one that raises the pause menu from the board, and the one that
+ * leaves `howto`. Each carries the pointer target of the same name.
+ */
+export const PAUSE_LABEL = "PAUSE";
+export const BACK_LABEL = "BACK";
+
+/* -------------------------------------------------------------------------- */
+/* Pointer targets — specs/controls.md                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The least a pointer target may measure, on each axis.
+ *
+ * specs/controls.md fixes both as a floor rather than a size: a target of
+ * exactly these dimensions conforms and so does one twice as large, so a check
+ * reads a reported rectangle against these and never for equality with them.
+ * They exist because a fingertip covers far more of a touchscreen than a cursor
+ * covers of a monitor, and the board is played by touch as readily as by mouse.
+ */
+export const TARGET_MIN_W = 96;
+export const TARGET_MIN_H = 72;
+
 /* -------------------------------------------------------------------------- */
 /* Audio cues — specs/ui.md                                                   */
 /* -------------------------------------------------------------------------- */
 
 /**
- * The eight cue names, one per event, under exactly the constant name
+ * The nine cue names, one per event, under exactly the constant name
  * specs/ui.md gives each.
  *
  * The NAME is observable under the two engines, where the game asks the engine's
@@ -207,17 +282,18 @@ export const CUES = {
   swap: "swap",
   refuse: "refuse",
   clear: "clear",
+  land: "land",
   flaw: "flaw",
   cut: "cut",
   levelUp: "levelup",
   gameOver: "gameover",
 } as const;
 
-/** One of the eight cue names. Derived here so the union has a single home. */
+/** One of the nine cue names. Derived here so the union has a single home. */
 export type CueName = (typeof CUES)[keyof typeof CUES];
 
 /**
- * The eight names as a list, for a check that sweeps them.
+ * The nine names as a list, for a check that sweeps them.
  *
  * In the order specs/ui.md tables them. The table fixes which event plays which
  * cue and nothing about order, so nothing asserts this sequence.
@@ -227,6 +303,7 @@ export const CUE_NAMES = [
   CUES.swap,
   CUES.refuse,
   CUES.clear,
+  CUES.land,
   CUES.flaw,
   CUES.cut,
   CUES.levelUp,
@@ -245,11 +322,15 @@ export const CUE_NAMES = [
  * equally seeded `src/main.ts` hands it to the engine. A harness passes the same
  * value so it stands the game up exactly as the build's own entry point does;
  * nothing asserts it. Under `none` there is no engine and it is unused.
+ *
+ * It is the one-slider layout because the board is played with the pointer and
+ * the keyboard's whole job is the menus, so `up` and `down` are the whole of the
+ * movement vocabulary the game needs.
  */
-export const LAYOUT = "dpad-4";
+export const LAYOUT = "single-vertical";
 
 /**
- * The eight actions the game registers, in the order the seeded, do-not-edit
+ * The six actions the game registers, in the order the seeded, do-not-edit
  * `src/constants.ts` of the two engine workspaces declares them.
  *
  * The specification fixes the SET of actions and what each one does. It does not
@@ -258,28 +339,34 @@ export const LAYOUT = "dpad-4";
  * of the kind here. So no check may assert this sequence, and a check that needs
  * an action reaches for it by name.
  *
- * Under the two engines the vocabulary is the engine's `dpad-4` layout plus the
- * menu actions it appends, which registers these same eight in this same
+ * Under the two engines the vocabulary is the engine's `single-vertical` layout
+ * plus the menu actions it appends, which registers these same six in this same
  * sequence. Under `none` the build registers them itself and any order it
  * reaches them in conforms — which is why the sequence is evidence of nothing.
  */
 export const ACTIONS = [
   "up",
   "down",
-  "left",
-  "right",
   "confirm",
   "back",
   "pause",
   "mute",
 ] as const;
 
-/** One of the eight actions. Derived here so the union has a single home. */
+/** One of the six actions. Derived here so the union has a single home. */
 export type ActionName = (typeof ACTIONS)[number];
 
-/** The cell the cursor occupies when a round opens. */
-export const CURSOR_START_COL = 0;
-export const CURSOR_START_ROW = 0;
+/**
+ * The three devices that drive the pointer, all on one path.
+ *
+ * specs/controls.md has a mouse, a pen and a finger read the same way, so the
+ * device is reported and nothing else about a press depends on it. The order is
+ * the order that file names them in, and nothing asserts it.
+ */
+export const POINTER_DEVICES = ["mouse", "pen", "touch"] as const;
+
+/** One of the three devices. Derived here so the union has a single home. */
+export type PointerDevice = (typeof POINTER_DEVICES)[number];
 
 /**
  * The keys each action is bound to, as `KeyboardEvent.code` values so a binding
@@ -288,20 +375,24 @@ export const CURSOR_START_ROW = 0;
  * specs/controls.md fixes this whole table — every action, every key — for a
  * build of every engine, so there is one binding table here and it is as valid
  * under `none` as under the two engines. A check may press a key for any of the
- * eight actions whatever the build was stood up on.
+ * six actions whatever the build was stood up on.
  *
  * Each key listed for an action fires that action on its own. A check presses an
- * action's FIRST binding; the alternate is listed beside it so a check may prove
- * the second key works as well.
+ * action's FIRST binding; where a second is listed it is the alternate, and a
+ * check may prove it works as well.
+ *
+ * `Escape` is listed twice on purpose, under `back` and under `pause`. The two
+ * act on screens that do not overlap — `pause` on `playing` and `paused` alone,
+ * `back` on `howto` and `gameover` alone — so a frame that fires both is
+ * unambiguous whichever order a build applies them in, and a check that presses
+ * `Escape` reads the one action the screen it pressed on carries.
  */
 export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
-  up: ["ArrowUp", "KeyW"],
-  down: ["ArrowDown", "KeyS"],
-  left: ["ArrowLeft", "KeyA"],
-  right: ["ArrowRight", "KeyD"],
+  up: ["ArrowUp"],
+  down: ["ArrowDown"],
   confirm: ["Enter", "Space"],
   back: ["Escape"],
-  pause: ["KeyP"],
+  pause: ["Escape", "KeyP"],
   mute: ["KeyM"],
 };
 
@@ -373,7 +464,14 @@ export const BACKGROUND_FALLBACK = "#000000";
 /** Frames per second of simulated time the suite drives at. */
 export const TICK_HZ = 64;
 
-/** One frame of the suite's clock, in seconds and in milliseconds. */
+/**
+ * One frame of the suite's clock, in seconds and in milliseconds.
+ *
+ * This is the figure a harness divides a duration by when it needs the frames
+ * that cover it. A step's hold is the case in point: it is the step's own
+ * arithmetic rather than a constant, so a harness that drives a step to its end
+ * takes the hold from `board.ts`'s `stepHold` and counts frames from here.
+ */
 export const TICK_S = 0.015625;
 export const TICK_MS = 15.625;
 
@@ -383,20 +481,33 @@ export const TICK_MS = 15.625;
  * 64 Hz rather than 60 because both `TICK_S` and `STEP_SECONDS` are exactly
  * representable in binary at this rate: sixteen frames of `0.015625` s sum to
  * `0.25` s with no floating-point residue at all. At 60 Hz they do not, and a
- * check about the step cadence would be reading the residue rather than the
- * build.
+ * check about the rest span would be reading the residue rather than the build.
+ *
+ * It is `STEP_SECONDS` alone, which is the LAST of a step's three spans. The
+ * shatter and the fall run before it, so a step's whole hold is longer than this
+ * by whatever `lastWaves` and `lastFall` were worth.
  */
 export const FRAMES_PER_STEP = 16;
 
 /**
- * Frames that carry `stepTimer` past `STEP_SECONDS` and short of two steps.
+ * Frames that carry `swapTimer` past `SWAP_SECONDS` and stop inside the step
+ * that follows.
  *
- * 17 frames is `0.265625` s: past `0.25` whether the build compares `>=` or `>`,
- * and well short of `0.5`, so exactly one further board read happens. A build
- * that reads the board more than once in `STEP_SECONDS` does not conform, and
- * this drive shows that as an extra chain step rather than hiding it.
+ * 14 frames is `0.21875` s. `swapTimer` reaches `SWAP_SECONDS` (`0.18`) on the
+ * twelfth frame, at `0.1875` s, so the swap is over whether the build compares
+ * `>=` or `>` and step 1 has resolved. The `0.0075` s of overrun carries into
+ * `stepTimer`, the two remaining frames add `0.03125` s, and the step is left
+ * `0.03875` s into its hold.
+ *
+ * That is well short of `0.3` s, which is the SHORTEST hold any step can have:
+ * `lastWaves` is `0` when the clear set is its seed alone, and `lastFall` is at
+ * least `1` because a step that cleared anything refills at least one cell from
+ * above row `0`, so the floor is `1 * FALL_SECONDS_PER_ROW + STEP_SECONDS`. So
+ * exactly one step has resolved when this drive returns, on every board, and a
+ * build that resolves a second inside it does not conform and is shown as an
+ * extra chain step rather than hidden.
  */
-export const STEP_DRIVE_FRAMES = 17;
+export const SWAP_DRIVE_FRAMES = 14;
 
 /** 19 frames is `0.296875` s: still inside `REFUSAL_SECONDS` (`0.3`). */
 export const REFUSAL_FRAMES_BEFORE = 19;

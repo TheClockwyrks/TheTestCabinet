@@ -6,28 +6,28 @@
 // SIMULATION TO THE PRESENTATION.
 //
 // The core reports THAT a step cleared something; the shatter sheets and the
-// particle bursts need to know WHICH cells. Putting that in the state would make
-// a decorative detail part of the contract `specs/instrumentation.md` rests on,
-// so `reportFor` re-derives it instead, from the core's own rule functions over
-// the board the step actually read — the same R5 seed, the same R6 closure, the
-// same R8 creations — and `advanceTime` slices the frame's delta so no slice can
-// cross more than one chain step, which is what lets EVERY step of a chain be
+// particle bursts need to know WHICH cells, and at WHICH WAVE each of them
+// went. Putting that in the state would make a decorative detail part of the
+// contract `specs/instrumentation.md` rests on, so `reportFor` re-derives it
+// instead, from the core's own rule functions over the board the step actually
+// read — the same R5 seed, the same R6 closure and its waves, the same R8
+// creations — and `advanceTime` slices the frame's delta so no slice can cross
+// more than one chain step, which is what lets EVERY step of a chain be
 // reported even out of a single long frame such as `engine.advance` over a
 // coarse clock.
 
 import { playFrameEvents } from "./audio";
 import { MAX_STRAIN, STEP_SECONDS } from "./constants";
 import {
-  applySwap,
   cellsIn,
   confirm as confirmAction,
   creationsFor,
   expandClearSet,
   gemAt,
   goBack,
+  cellKey,
   mergeEvents,
-  moveHorizontal,
-  moveVertical,
+  moveMenu,
   multiplierFor,
   NO_EVENTS,
   pointerDown,
@@ -86,13 +86,16 @@ export function fold(outcome: FrameOutcome, next: Stepped): FrameOutcome {
 }
 
 /**
- * What the chain step between `before` and `after` cleared and created, or
- * `null` when no step resolved.
+ * What the chain step between `before` and `after` cleared and created, and at
+ * which wave each cell went, or `null` when no step resolved.
  *
  * Re-derived rather than reported, from the core's own R5, R6, and R8 over the
- * board the step read: the ordinary board for a step the cadence set off, and
- * the board AFTER the exchange for step `1` of a chain a swap began — which is
- * also the only step that can be seeded from a prism.
+ * board the step read. An accepted swap exchanges its two cells the moment it is
+ * accepted and then travels for `SWAP_SECONDS`, so by the time step `1`
+ * resolves the exchange is already on the board `before` holds: the seed is
+ * taken from that board as it stands, and the only thing step `1` needs the
+ * swap itself for is the prism seed R5 gives it and the placement R8 makes from
+ * it.
  */
 export function reportFor(
   before: CoreState,
@@ -102,22 +105,25 @@ export function reportFor(
   const swap = after.chainSwap;
   const begun =
     before.chainStep === 0 && after.chainStep === 1 && swap !== null;
-  const board = begun ? applySwap(before.board, swap) : before.board;
-  const seed = begun
-    ? (prismSeed(board, swap) ?? seedFromRuns(board))
-    : seedFromRuns(board);
+  const board = before.board;
+  const seed =
+    begun && swap !== null
+      ? (prismSeed(board, swap) ?? seedFromRuns(board))
+      : seedFromRuns(board);
   const cleared = expandClearSet(board, seed.cells);
   return {
-    cleared: cellsIn(board, cleared).map((cell) => {
+    cleared: cellsIn(board, cleared.cells).map((cell) => {
       const gem = gemAt(board, cell);
       return {
         col: cell.col,
         row: cell.row,
         kind: gem?.kind ?? null,
         flawed: (gem?.strain ?? 0) >= MAX_STRAIN,
+        wave: cleared.waveOf.get(cellKey(cell)) ?? 0,
       };
     }),
     created: creationsFor(seed.runs, swap).map((creation) => creation.cell),
+    waves: cleared.waves,
   };
 }
 
@@ -131,10 +137,16 @@ export function reportFor(
  * left armed would be discarded rather than surfacing on the next frame. Each
  * armed action is then applied in turn, in the order below, to the state the one
  * before it left — so a frame carrying both an arrow and a `confirm` moves the
- * cursor and then acts on the cell it moved to, which is what a player who
+ * highlight and then takes the item it moved to, which is what a player who
  * pressed both between two repaints meant, and what a scenario driving the menus
  * with real key events gets whether or not a frame happened to fall between its
  * presses.
+ *
+ * `Escape` fires `pause` AND `back`, so both are applied. The two act on screens
+ * that do not overlap — `pause` on `playing` and `paused`, `back` on `howto` and
+ * `gameover` — so whichever is applied first, the other finds a screen it does
+ * nothing to, and one key raises the pause menu from the board, drops it again,
+ * and backs out of every other screen that can be backed out of.
  *
  * `mute` is not one of them: it is read on every screen and it toggles the
  * engine's bus rather than the state, which every frame then mirrors.
@@ -142,8 +154,6 @@ export function reportFor(
 export function handleInput(state: CoreState, api: UpdateApi): Stepped {
   const moveUp = pressed(api, "up");
   const moveDown = pressed(api, "down");
-  const moveLeft = pressed(api, "left");
-  const moveRight = pressed(api, "right");
   const accept = pressed(api, "confirm");
   const leave = pressed(api, "back");
   const held = pressed(api, "pause");
@@ -158,32 +168,47 @@ export function handleInput(state: CoreState, api: UpdateApi): Stepped {
 
   if (held) act(quiet(togglePause(current)));
   if (leave) act(quiet(goBack(current)));
-  if (moveUp) act(quiet(moveVertical(current, -1)));
-  if (moveDown) act(quiet(moveVertical(current, 1)));
-  if (moveLeft) act(quiet(moveHorizontal(current, -1)));
-  if (moveRight) act(quiet(moveHorizontal(current, 1)));
-  if (accept) act(confirmAction(current));
+  if (moveUp) act(quiet(moveMenu(current, -1)));
+  if (moveDown) act(quiet(moveMenu(current, 1)));
+  if (accept) act(quiet(confirmAction(current)));
   return { state: current, events };
 }
 
 /**
  * This frame's pointer samples, resolved one at a time in arrival order
  * (specs/controls.md), each through the very path a posed press takes — so a
- * sweep that crossed two cells between repaints is read as the drag it was
+ * sweep that crossed two cells between repaints is read as the carry it was
  * rather than as its last position.
+ *
+ * The game acts on the PRIMARY pointer alone, so a second finger resting on the
+ * screen changes nothing; the device that drove each sample is carried into the
+ * core, which is what puts `"mouse"`, `"pen"`, or `"touch"` on the state.
  */
 export function handlePointer(
   outcome: FrameOutcome,
   api: UpdateApi,
 ): FrameOutcome {
   for (const sample of api.input.pointerSamples()) {
-    const next =
-      sample.type === "down"
-        ? pointerDown(outcome.state, sample.x, sample.y)
-        : sample.type === "move"
-          ? pointerMove(outcome.state, sample.x, sample.y)
-          : quiet(pointerUp(outcome.state));
-    fold(outcome, next);
+    if (!sample.primary) continue;
+    if (sample.type === "down") {
+      fold(
+        outcome,
+        pointerDown(outcome.state, sample.x, sample.y, sample.device),
+      );
+      continue;
+    }
+    // A release carries a position of its own, and where a release lands is
+    // what decides both what it takes and what it plays. The core's release
+    // reads the pointer where the state holds it, so the position the release
+    // arrived at is resolved as the move it is before the lift is resolved —
+    // which is the same two readings a release preceded by a move gives.
+    fold(
+      outcome,
+      pointerMove(outcome.state, sample.x, sample.y, sample.device),
+    );
+    if (sample.type === "up") {
+      fold(outcome, pointerUp(outcome.state, sample.device));
+    }
   }
   return outcome;
 }
@@ -192,11 +217,13 @@ export function handlePointer(
  * The frame's game time, run through the core in slices no longer than one
  * `STEP_SECONDS`.
  *
- * The core resolves as many chain steps as the delta covers, in one call. The
- * slicing changes nothing about what it resolves — every timer in this game is a
- * linear accumulator, so the same interval reaches the same state however it is
- * divided — and it is what lets every step that runs be handed to the
- * presentation, rather than only the first.
+ * The core resolves the swap in motion and as many chain steps as the delta
+ * covers, in one call. The slicing changes nothing about what it resolves —
+ * every timer in this game is a linear accumulator, so the same interval
+ * reaches the same state however it is divided — and it is what lets every step
+ * that runs be handed to the presentation, rather than only the first. It runs
+ * while the board is `swapping` as well as while it is `resolving`, because the
+ * swap's own step is a step like any other.
  */
 export function advanceTime(outcome: FrameOutcome, dt: number): FrameOutcome {
   let remaining = dt;
@@ -204,7 +231,7 @@ export function advanceTime(outcome: FrameOutcome, dt: number): FrameOutcome {
   while (remaining > 0) {
     slices += 1;
     const slice =
-      outcome.state.phase === "resolving" && slices < MAX_SLICES
+      outcome.state.phase !== "idle" && slices < MAX_SLICES
         ? Math.min(remaining, STEP_SECONDS)
         : remaining;
     fold(outcome, tick(outcome.state, slice));
@@ -219,11 +246,11 @@ export function advanceTime(outcome: FrameOutcome, dt: number): FrameOutcome {
  * One frame, from the state the engine holds to the state it will hold next.
  *
  * `previous` is the state the last frame left, which is not always the state
- * this frame was handed: the debug surface poses BETWEEN frames, and a
- * `requestSwap` or a posed press resolves a chain step the moment `engine.apply`
- * runs it. Comparing the two is what lets the presentation show a step a pose
- * resolved, and it is the only use either state is put to beyond the frame
- * itself.
+ * this frame was handed: the debug surface poses BETWEEN frames, and a posed
+ * `requestSwap` or a posed press can put the board somewhere the frame it
+ * belongs to never saw. Comparing the two is what lets the presentation show a
+ * step a pose resolved, and it is the only use either state is put to beyond
+ * the frame itself.
  */
 export function runFrame(
   previous: CoreState,
@@ -253,9 +280,6 @@ export function runFrame(
     outcome.steps,
     assets,
   );
-  // A completed level deals a whole new board, so whatever is still flying
-  // belongs to a board that is gone.
-  if (outcome.events.levelUp) presentation.clear();
   presentation.advance(dt);
 
   return outcome.state;

@@ -1,18 +1,33 @@
-// Facet — the screens around the board: the title, how to play, the pause
-// menu, and the end of a round.
+// Facet — the screens around the board: the title, how to play, the pause menu,
+// the end of a level, and the end of a round.
 //
-// All four are chrome and all four are drawn in code (specs/assets.md). Every
+// All five are chrome and all five are drawn in code (specs/assets.md). Every
 // piece of copy on them is a constant `specs/ui.md` fixes, and the highlighted
 // menu item is drawn distinctly from the others so a player always sees which
 // item `confirm` would accept.
 //
-// `paused` and `gameover` draw the board first and lay a scrim over it, because
-// `specs/ui.md` asks for the position to be readable behind both.
+// EVERY MENU ROW AND EVERY CONTROL IS DRAWN ON ITS OWN POINTER TARGET. The
+// rectangles come from `src/core/targets.ts`, which is also what the game
+// hit-tests a press against (specs/controls.md), so the drawn row a player aims
+// at IS the target their release takes — there is no second set of numbers here
+// to drift out of step with the first, and every row is a fingertip's worth of
+// stage.
+//
+// `paused`, `levelclear`, and `gameover` draw the board first and lay a scrim
+// over it, because `specs/ui.md` asks for the position to be readable behind
+// all three.
 
 import {
+  BACK_LABEL,
+  BEST_CHAIN_LABEL,
+  BEST_MOVE_LABEL,
   GAMEOVER_ITEMS,
   GAMEOVER_TITLE_TEXT,
   GEM_KINDS,
+  HUD_LEVEL_LABEL,
+  HUD_SCORE_LABEL,
+  LEVELCLEAR_ITEMS,
+  LEVELCLEAR_TITLE_TEXT,
   PAUSED_ITEMS,
   PAUSED_TITLE_TEXT,
   STAGE_CX,
@@ -22,17 +37,20 @@ import {
   TITLE_ITEMS,
   TITLE_TEXT,
 } from "./constants";
+import { targetsFor } from "./core";
 import { drawGem } from "./render.gems";
 import {
   COLOR,
   FONT_BODY,
   FONT_DISPLAY,
+  drawControl,
+  drawPlate,
   drawTracked,
   font,
   roundedRect,
 } from "./theme";
 import type { AssetStore } from "./assets";
-import type { FacetState } from "./game";
+import type { FacetState, Screen } from "./game";
 import type { GemLook } from "./render.gems";
 
 /**
@@ -42,39 +60,40 @@ import type { GemLook } from "./render.gems";
  */
 const HOWTO_LEFT: readonly string[] = [
   "The bench holds an eight-by-eight field of cut",
-  "stones in seven kinds. Swap a stone with the one",
-  "beside it — with the pointer, or with the arrow",
-  "keys and Enter. A swap that shatters nothing is",
-  "refused, and the board is left exactly as it was.",
+  "stones in seven kinds. Press one to take hold of",
+  "it, carry it onto the stone beside it, and let go.",
+  "The release is what plays the move, so carrying",
+  "it back where it started plays nothing.",
   "",
-  "Three or more of one kind in a line shatter.",
-  "Every stone beside a shattering line takes",
-  "strain, and a stone that has taken enough of it",
-  "is flawed: it shatters along with any clear that",
-  "touches it, and it is worth double. A swap made",
-  "beside a worn stretch of board runs on and on.",
+  "Three or more of one kind in a line shatter. A",
+  "move that shatters nothing is refused, and the",
+  "board is left exactly as it was.",
+  "",
+  "Every stone beside a shattering line takes strain,",
+  "and a stone that has taken enough of it is flawed:",
+  "it shatters with any clear it touches, for double.",
 ];
 
 const HOWTO_RIGHT: readonly string[] = [
   "A line of four leaves a brilliant, which takes the",
   "ring of stones around it. A line of five or more",
-  "leaves a prism, which — swapped against a stone",
-  "— takes every stone of that kind. A line crossing",
+  "leaves a prism, which — swapped against a stone —",
+  "takes every stone of that kind. A line crossing",
   "another leaves a star, which takes its whole row",
   "and its whole column.",
   "",
   "What falls into the gap can shatter again, and",
   "each step of a chain is worth more than the one",
-  "before it. Reach the level's target and the next",
-  "level opens. The round ends when no swap is left",
-  "that would shatter anything.",
+  "before it. Reach the level's target and the level",
+  "is over. The round ends when no move is left that",
+  "would shatter anything.",
 ];
 
 /** The controls block under the how-to copy, naming the fixed bindings. */
 const HOWTO_CONTROLS: readonly string[] = [
-  "ARROWS or WASD — move the cursor          ENTER or SPACE — select, then swap",
-  "POINTER — press a stone, then press or drag onto the one beside it",
-  "P — pause          M — sound on and off          ` — debug overlay",
+  "MOUSE, PEN or FINGER — take hold of a stone, and work every screen",
+  "UP and DOWN ARROWS — move the highlight          ENTER or SPACE — choose",
+  "ESC or P — pause          ESC — back          M — sound          ` — debug overlay",
 ];
 
 /** A rounded panel with a brass edge, which every menu screen sits on. */
@@ -94,45 +113,49 @@ export function drawPanel(
   ctx.stroke();
 }
 
-/** The scrim `paused` and `gameover` lay over the board behind them. */
+/** The scrim the three screens with a board behind them lay over it. */
 export function drawScrim(ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = COLOR.scrim;
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
 }
 
 /**
- * A vertical menu, stacked from `y`, with the item at `menuIndex` highlighted:
- * gold, larger, and flanked by two marks, against dim, plain text.
+ * A vertical menu, one row per item, each drawn ON the `menu-<i>` pointer
+ * target `src/core/targets.ts` reports for the screen. The item at `menuIndex`
+ * is gold on a brass-edged plate against the dim plates of the others, so a
+ * player always sees which item `confirm` would accept and which row a release
+ * would take.
  */
 export function drawMenu(
   ctx: CanvasRenderingContext2D,
+  screen: Screen,
   items: readonly string[],
   menuIndex: number,
-  y: number,
-  spacing: number,
 ): void {
+  const targets = targetsFor(screen);
   ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
   items.forEach((item, index) => {
-    const highlighted = index === menuIndex;
-    ctx.font = font(
-      highlighted ? 30 : 26,
-      highlighted ? 700 : 500,
-      FONT_DISPLAY,
-    );
-    ctx.fillStyle = highlighted ? COLOR.gold : COLOR.textDim;
-    const at = y + index * spacing;
-    const width = drawTracked(ctx, item, STAGE_CX, at, 5);
-    if (!highlighted) return;
-    ctx.beginPath();
-    ctx.moveTo(STAGE_CX - width / 2 - 34, at - 9);
-    ctx.lineTo(STAGE_CX - width / 2 - 20, at - 9);
-    ctx.moveTo(STAGE_CX + width / 2 + 20, at - 9);
-    ctx.lineTo(STAGE_CX + width / 2 + 34, at - 9);
-    ctx.strokeStyle = COLOR.gold;
-    ctx.lineWidth = 3;
-    ctx.lineCap = "round";
-    ctx.stroke();
+    const rect = targets.find((target) => target.id === `menu-${index}`);
+    if (rect === undefined) return;
+    const picked = index === menuIndex;
+    drawPlate(ctx, rect, picked);
+    ctx.font = font(picked ? 30 : 26, picked ? 700 : 500, FONT_DISPLAY);
+    ctx.fillStyle = picked ? COLOR.gold : COLOR.textDim;
+    drawTracked(ctx, item, rect.x + rect.w / 2, rect.y + rect.h / 2 + 10, 5);
   });
+}
+
+/** The one control a screen carries, drawn on the target it is worked through. */
+function drawScreenControl(
+  ctx: CanvasRenderingContext2D,
+  screen: Screen,
+  id: string,
+  label: string,
+): void {
+  for (const target of targetsFor(screen)) {
+    if (target.id === id) drawControl(ctx, target, label);
+  }
 }
 
 /**
@@ -153,7 +176,7 @@ function drawTitleStones(
   const first = STAGE_CX - ((stones.length - 1) * pitch) / 2;
   stones.forEach((gem, index) => {
     const bob = Math.sin(state.simTime * 1.6 + index * 0.7) * 7;
-    drawGem(ctx, assets, gem, first + index * pitch, 392 + bob, state.simTime);
+    drawGem(ctx, assets, gem, first + index * pitch, 336 + bob, state.simTime);
   });
 }
 
@@ -168,76 +191,74 @@ export function drawTitleScreen(
 
   ctx.font = font(108, 700, FONT_DISPLAY);
   ctx.fillStyle = COLOR.gold;
-  drawTracked(ctx, TITLE_TEXT, STAGE_CX, 214, 26);
+  drawTracked(ctx, TITLE_TEXT, STAGE_CX, 190, 26);
 
   ctx.font = font(22, 500, FONT_DISPLAY);
   ctx.fillStyle = COLOR.textDim;
-  drawTracked(ctx, TAGLINE_TEXT, STAGE_CX, 262, 8);
+  drawTracked(ctx, TAGLINE_TEXT, STAGE_CX, 238, 8);
 
   ctx.strokeStyle = COLOR.goldDim;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(STAGE_CX - 300, 292);
-  ctx.lineTo(STAGE_CX + 300, 292);
+  ctx.moveTo(STAGE_CX - 300, 266);
+  ctx.lineTo(STAGE_CX + 300, 266);
   ctx.stroke();
 
   drawTitleStones(ctx, assets, state);
 
-  drawMenu(ctx, TITLE_ITEMS, state.menuIndex, 520, 56);
+  drawMenu(ctx, "title", TITLE_ITEMS, state.menuIndex);
 
   ctx.font = font(14, 500, FONT_DISPLAY);
   ctx.fillStyle = COLOR.textDim;
   ctx.textAlign = "center";
   ctx.fillText(
-    "ARROWS to choose      ENTER to accept      M for sound",
+    "PRESS AN ITEM, or ARROWS to choose and ENTER to accept      M for sound",
     STAGE_CX,
-    668,
+    620,
   );
   ctx.restore();
 }
 
-/** How to play, written for a player. `back` returns to the title. */
+/** How to play, written for a player. The `BACK` control returns to the title. */
 export function drawHowToScreen(ctx: CanvasRenderingContext2D): void {
   ctx.save();
   ctx.textBaseline = "alphabetic";
-  drawPanel(ctx, 92, 56, STAGE_W - 184, STAGE_H - 112);
+  drawPanel(ctx, 92, 28, STAGE_W - 184, 676);
 
-  ctx.font = font(40, 700, FONT_DISPLAY);
+  ctx.font = font(38, 700, FONT_DISPLAY);
   ctx.fillStyle = COLOR.gold;
-  drawTracked(ctx, "HOW TO PLAY", STAGE_CX, 126, 10);
+  drawTracked(ctx, "HOW TO PLAY", STAGE_CX, 92, 10);
 
   ctx.strokeStyle = COLOR.goldDim;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(140, 154);
-  ctx.lineTo(STAGE_W - 140, 154);
+  ctx.moveTo(140, 116);
+  ctx.lineTo(STAGE_W - 140, 116);
   ctx.stroke();
 
   ctx.font = font(17, 400, FONT_BODY);
   ctx.fillStyle = COLOR.text;
   ctx.textAlign = "left";
   HOWTO_LEFT.forEach((line, index) => {
-    ctx.fillText(line, 140, 200 + index * 26);
+    ctx.fillText(line, 140, 152 + index * 24);
   });
   HOWTO_RIGHT.forEach((line, index) => {
-    ctx.fillText(line, 676, 200 + index * 26);
+    ctx.fillText(line, 676, 152 + index * 24);
   });
 
   ctx.beginPath();
-  ctx.moveTo(140, 532);
-  ctx.lineTo(STAGE_W - 140, 532);
+  ctx.moveTo(140, 462);
+  ctx.lineTo(STAGE_W - 140, 462);
   ctx.stroke();
 
   ctx.font = font(15, 600, FONT_DISPLAY);
   ctx.fillStyle = COLOR.textDim;
   ctx.textAlign = "center";
   HOWTO_CONTROLS.forEach((line, index) => {
-    ctx.fillText(line, STAGE_CX, 568 + index * 24);
+    ctx.fillText(line, STAGE_CX, 494 + index * 24);
   });
 
-  ctx.font = font(16, 700, FONT_DISPLAY);
-  ctx.fillStyle = COLOR.gold;
-  ctx.fillText("ESC — BACK", STAGE_CX, 648);
+  drawScreenControl(ctx, "howto", "back", BACK_LABEL);
   ctx.restore();
 }
 
@@ -249,18 +270,64 @@ export function drawPausedScreen(
   ctx.save();
   ctx.textBaseline = "alphabetic";
   drawScrim(ctx);
-  drawPanel(ctx, STAGE_CX - 260, 218, 520, 284);
+  drawPanel(ctx, STAGE_CX - 260, 236, 520, 340);
 
   ctx.font = font(52, 700, FONT_DISPLAY);
   ctx.fillStyle = COLOR.gold;
-  drawTracked(ctx, PAUSED_TITLE_TEXT, STAGE_CX, 300, 14);
+  drawTracked(ctx, PAUSED_TITLE_TEXT, STAGE_CX, 316, 14);
 
-  drawMenu(ctx, PAUSED_ITEMS, state.menuIndex, 380, 54);
+  drawMenu(ctx, "paused", PAUSED_ITEMS, state.menuIndex);
 
   ctx.font = font(14, 500, FONT_DISPLAY);
   ctx.fillStyle = COLOR.textDim;
   ctx.textAlign = "center";
-  ctx.fillText("P or ESC to resume", STAGE_CX, 476);
+  ctx.fillText("ESC or P to resume", STAGE_CX, 556);
+  ctx.restore();
+}
+
+/** One labeled figure of a finished level, centered on `x`. */
+function drawLevelFigure(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  value: number,
+  x: number,
+): void {
+  ctx.font = font(15, 600, FONT_DISPLAY);
+  ctx.fillStyle = COLOR.textDim;
+  drawTracked(ctx, label, x, 350, 3);
+  ctx.font = font(40, 700, FONT_DISPLAY);
+  ctx.fillStyle = COLOR.text;
+  ctx.textAlign = "center";
+  ctx.fillText(String(value), x, 398);
+}
+
+/**
+ * The end of a level: what the level was measured by, and the two choices.
+ * `specs/ui.md` fixes both figures — the deepest chain step the level reached
+ * and the most points one move scored in it — and the level just finished.
+ */
+export function drawLevelClearScreen(
+  ctx: CanvasRenderingContext2D,
+  state: FacetState,
+): void {
+  ctx.save();
+  ctx.textBaseline = "alphabetic";
+  drawScrim(ctx);
+  drawPanel(ctx, STAGE_CX - 320, 178, 640, 460);
+
+  ctx.font = font(48, 700, FONT_DISPLAY);
+  ctx.fillStyle = COLOR.gold;
+  drawTracked(ctx, LEVELCLEAR_TITLE_TEXT, STAGE_CX, 250, 10);
+
+  ctx.font = font(22, 500, FONT_DISPLAY);
+  ctx.fillStyle = COLOR.text;
+  ctx.textAlign = "center";
+  ctx.fillText(`${HUD_LEVEL_LABEL} ${state.level}`, STAGE_CX, 296);
+
+  drawLevelFigure(ctx, BEST_CHAIN_LABEL, state.bestChain, STAGE_CX - 150);
+  drawLevelFigure(ctx, BEST_MOVE_LABEL, state.bestMove, STAGE_CX + 150);
+
+  drawMenu(ctx, "levelclear", LEVELCLEAR_ITEMS, state.menuIndex);
   ctx.restore();
 }
 
@@ -272,7 +339,7 @@ export function drawGameOverScreen(
   ctx.save();
   ctx.textBaseline = "alphabetic";
   drawScrim(ctx);
-  drawPanel(ctx, STAGE_CX - 300, 178, 600, 364);
+  drawPanel(ctx, STAGE_CX - 300, 178, 600, 460);
 
   ctx.font = font(48, 700, FONT_DISPLAY);
   ctx.fillStyle = COLOR.gold;
@@ -281,13 +348,17 @@ export function drawGameOverScreen(
   ctx.font = font(22, 500, FONT_DISPLAY);
   ctx.fillStyle = COLOR.text;
   ctx.textAlign = "center";
-  ctx.fillText(`SCORE ${state.score}      LEVEL ${state.level}`, STAGE_CX, 308);
+  ctx.fillText(
+    `${HUD_SCORE_LABEL} ${state.score}      ${HUD_LEVEL_LABEL} ${state.level}`,
+    STAGE_CX,
+    316,
+  );
 
-  drawMenu(ctx, GAMEOVER_ITEMS, state.menuIndex, 388, 54);
+  drawMenu(ctx, "gameover", GAMEOVER_ITEMS, state.menuIndex);
 
   ctx.font = font(14, 500, FONT_DISPLAY);
   ctx.fillStyle = COLOR.textDim;
   ctx.textAlign = "center";
-  ctx.fillText("ESC returns to the title", STAGE_CX, 508);
+  ctx.fillText("ESC returns to the title", STAGE_CX, 616);
   ctx.restore();
 }

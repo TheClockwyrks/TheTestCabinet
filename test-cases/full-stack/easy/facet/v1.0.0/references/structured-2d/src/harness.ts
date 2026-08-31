@@ -37,7 +37,7 @@ import {
 import { LAYOUT, STAGE_H, STAGE_W } from "./constants";
 import { Bench } from "./bench";
 import { BACKGROUND, facetState, game } from "./game";
-import type { FacetDebugApi, FacetState } from "./game";
+import type { FacetDebugApi, FacetState, PointerDevice } from "./game";
 import type { ScratchCanvas } from "./effects";
 
 /** One frame at sixty a second, in milliseconds, which the clock supplies. */
@@ -57,20 +57,26 @@ export class KeyEvent extends Event {
   }
 }
 
-/** A pointer event, the same. */
+/**
+ * A pointer event, the same. `pointerType` is what the engine reads the device
+ * off, so a dispatched touch reaches the game exactly as a real finger does.
+ */
 export class PointerEvt extends Event {
   readonly clientX: number;
   readonly clientY: number;
   readonly isPrimary = true;
+  readonly pointerType: PointerDevice;
 
   constructor(
     type: "pointerdown" | "pointermove" | "pointerup",
     x: number,
     y: number,
+    device: PointerDevice = "mouse",
   ) {
     super(type);
     this.clientX = x;
     this.clientY = y;
+    this.pointerType = device;
   }
 }
 
@@ -139,6 +145,7 @@ export interface Harness {
     type: "pointerdown" | "pointermove" | "pointerup",
     x: number,
     y: number,
+    device?: PointerDevice,
   ): void;
   advance(frames: number): Promise<void>;
   pixel(x: number, y: number): [number, number, number];
@@ -224,8 +231,8 @@ export async function createHarness(): Promise<Harness> {
     release: (code) => {
       events.dispatchEvent(new KeyEvent("keyup", code));
     },
-    pointer: (type, x, y) => {
-      events.dispatchEvent(new PointerEvt(type, x, y));
+    pointer: (type, x, y, device) => {
+      events.dispatchEvent(new PointerEvt(type, x, y, device));
     },
     advance: (frames) => engine.advance(frames),
     pixel: (x, y) => {

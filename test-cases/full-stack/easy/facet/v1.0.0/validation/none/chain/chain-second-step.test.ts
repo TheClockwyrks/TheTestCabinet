@@ -13,6 +13,18 @@
 // maximal run on the board step 2 reads. Nothing about the second run is posed —
 // it exists only because the first step settled.
 //
+// HOW THE TWO STEPS ARE REACHED. An accepted swap exchanges the two cells at
+// once, sets `phase` to `swapping`, sets `swapTimer` to `0` and leaves
+// `chainStep` at `0`; step 1 resolves when `swapTimer` reaches `SWAP_SECONDS`
+// (`0.18`) of game time. `swapAndStep` carries the game through exactly that
+// animation and hands back the reading of step 1's result. The board then holds
+// for that step's OWN length — `lastWaves * WAVE_SECONDS` plus
+// `lastFall * FALL_SECONDS_PER_ROW` plus `STEP_SECONDS`, which the snapshot
+// reports as `stepHold` — and `advanceStep` carries past exactly that one
+// boundary, reading the figure off the snapshot rather than counting a constant.
+// So neither drive here writes a frame count down, and a step whose gems fell
+// further is waited out for exactly as long as it asks for.
+//
 // WHAT IS ASSERTED IS COMPUTED FROM THE BOARD THAT WAS OBSERVED. R9 refills the
 // top of every cleared column from the game's own seeded generator, and what it
 // deals there is the build's business: it could itself seed a run. So the
@@ -47,7 +59,7 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -109,8 +121,9 @@ it("reads the settled board again and clears the run the settling made", async (
   );
 
   await loadBoard(h, posed);
-  const first = await swap(h, SWAP_A, SWAP_B);
-  assertEqual(first.chainStep, 1, "chainStep the accepted swap opened");
+  const first = await swapAndStep(h, SWAP_A, SWAP_B);
+  assertEqual(first.chainStep, 1, "the chain step the swap resolved into");
+  assertEqual(first.phase, "resolving", "the phase step 1 resolved in");
 
   // Read the board step 1 left, and take R5's seed and R6's closure over exactly
   // that board. The three fallen jades must be in it — that is the scenario, and
@@ -131,7 +144,11 @@ it("reads the settled board again and clears the run the settling made", async (
   // opened cleared that board's whole clear set.
   assertEqual(second.chainStep, 2, "chainStep after the step boundary");
   assertEqual(second.phase, "resolving", "phase after the step boundary");
-  assertEqual(second.lastCleared, expected.length, "cells the second step cleared");
+  assertEqual(
+    second.lastCleared,
+    expected.length,
+    "cells the second step cleared",
+  );
 
   // And the set really left the board. What R9 drops into the three cells is
   // column 4's beryl, amethyst and amber — the gems that stood above the jades —

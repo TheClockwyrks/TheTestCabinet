@@ -9,8 +9,9 @@
 //
 // The pointer is the other half of the input and is deliberately not here: the
 // controller reads its ordered samples and resolves them one at a time through
-// `src/core/controls.ts`, because a drag is decided by the positions the
-// pointer passed through rather than by where it ended up.
+// `src/core/controls.ts`, because a move is decided by the positions the
+// pointer passed through and by where the hold was let go rather than by where
+// it ended up.
 
 import type { InitApi } from "@test-cabinet/structured-2d";
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
@@ -19,10 +20,10 @@ import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
  * Register every action in `ACTIONS`, bound to the keys in `BINDINGS`.
  *
  * The engine's layout is checked first, so an engine stood up without the
- * `dpad-4` scheme this build is written against fails loudly at start-up rather
- * than shipping a board no key can move. `ACTIONS` is exactly that layout's
- * vocabulary: the four movement actions and the menu actions appended to every
- * layout (src/constants.ts).
+ * `single-vertical` scheme this build is written against fails loudly at
+ * start-up rather than shipping menus no key can move. `ACTIONS` is exactly
+ * that layout's vocabulary: the two movement actions the one vertical highlight
+ * needs, and the menu actions appended to every layout (src/constants.ts).
  */
 export function registerActions(api: Pick<InitApi, "input">): void {
   const layout = api.input.layout();

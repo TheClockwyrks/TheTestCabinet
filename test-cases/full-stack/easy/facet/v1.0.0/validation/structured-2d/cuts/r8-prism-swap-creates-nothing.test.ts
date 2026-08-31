@@ -26,13 +26,16 @@
 // either chain ... from the maximal runs", so a second step is an ordinary step
 // and is fully entitled to create cuts of its own. The settled board would answer
 // a different question, and answer it out of the build's random refill.
+//
+// WHICH READING IS STEP 1'S. specs/rules.md has an accepted swap exchange its two
+// cells at once, set `phase` to `swapping` with `chainStep` at `0`, and clear
+// nothing until `SWAP_SECONDS` (`0.18`) of game time has passed; step 1 then
+// resolves, R8 and R9 both inside it. `swapAndResolve` carries the game through
+// that animation and hands back `first`, the reading of step 1's result, which is
+// what this check reads.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThanOrEqual,
-  assertLength,
-} from "../assert";
+import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   isPrism,
   maximalRuns,
@@ -125,7 +128,7 @@ it("creates no brilliant, star or prism from a prism-seeded step", async () => {
 
   // The step really was the large clear the item asks for, so a build is being held
   // to R8 over a step that cleared plenty rather than over a trivial one.
-  assertEqual(first.chainStep, 1, "the chain step the swap opened");
+  assertEqual(first.chainStep, 1, "the chain step the accepted swap resolved");
   assertGreaterThanOrEqual(
     first.lastCleared,
     CLEAR_FLOOR,

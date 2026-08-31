@@ -3,10 +3,12 @@
 This is version `v1.0.0` of the **Facet** test case. The implemented game is an
 original gem-matching puzzle titled Facet, played over a lapidary's lit bench.
 The board is `GRID_COLS` (`8`) by `GRID_ROWS` (`8`) cells, every cell holding
-one cut stone. The player swaps two neighboring stones, any maximal line of
-`MATCH_MIN` (`3`) or more of one kind clears, the stones above fall into the
-gap, and fresh ones drop in from the top, so a single swap can touch off a chain
-that resolves long after the player's hand has left the board.
+one cut stone. The player takes hold of a stone with a mouse, a pen, or a finger,
+carries it onto the stone beside it and lets go; any maximal line of `MATCH_MIN`
+(`3`) or more of one kind clears, the stones above fall into the gap, and fresh
+ones drop in from the top, so a single move can touch off a chain that resolves
+long after the player's hand has left the board. A move is only offered while the
+hand is on it, so carrying a stone back where it came from takes the move back.
 
 `facet` is the catalog slug for this case, and the game's in-fiction title. The
 case belongs to the family of grid match games. What is original to it is
@@ -15,7 +17,9 @@ pressure never lets go, a gem at `MAX_STRAIN` (`3`) is flawed, and a flawed gem
 clears with anything that clears beside it and scores double. Around that sit
 three cuts — a run of `4` leaves a `brilliant`, a run of `5` or more leaves a
 `prism`, and two runs crossing leave a `star` — and a round with no clock that
-ends when the board has no legal swap left on it.
+climbs a level at a time, totalling each level up on a screen of its own before
+the next board pours in from above, and ending when the board has no legal move
+left on it.
 
 ## Why this case
 
@@ -29,9 +33,11 @@ cuts and the flawed gems, score it, spread strain to the survivors, remove the
 set, create the cuts, then settle and refill — and a build that reorders any two
 of those scores a different board. Around that sit a seeded deal that owes the
 player an opening board with a legal swap and no run on it, a legal-swap search
-that decides when the round is over, pointer and keyboard input over one
-selection model, five screens, and a debug surface that drives the real input
-path.
+that decides when the round is over, a move offered and withdrawn under the hand
+until a release commits it, a swap, a shattering set and a falling board the
+chain's own cadence has to wait on, six screens every one of which is worked from
+the pointer as well as the keyboard, and a debug surface that drives the real
+input path.
 
 It is also a full production pass. Every gem on the bench is a produced file
 rather than a shape drawn in code, and the build makes them during the run with
@@ -108,10 +114,10 @@ for every run:
 | `overview.md`        | What is built, what stays as it is, the code quality, and the commands run over the finished repository.                               |
 | `board.md`           | The grid, the cell-center formula, the seven kinds, the four cuts, strain, and the notation boards are written in.                     |
 | `rules.md`           | Rules `R1`–`R9`: the three move rules, the six resolution rules, the order a chain step resolves them in, the scoring, and the levels. |
-| `controls.md`        | The pointer table, the drag gesture, the cursor, the selection model, and the registered key actions.                                  |
+| `controls.md`        | The pointer over mouse, pen and touch, each screen's pointer targets, the offer-and-release gesture, and the registered key actions.   |
 | `state.md`           | What the game's state carries.                                                                                                         |
 | `instrumentation.md` | The debug and automation surface and the diagnostics overlay.                                                                          |
-| `ui.md`              | The `title`, `howto`, `playing`, `paused` and `gameover` screens, the menus, the readouts, and the audio cues.                         |
+| `ui.md`              | The `title`, `howto`, `playing`, `paused`, `levelclear` and `gameover` screens, the menus, the readouts, and the audio cues.           |
 | `assets.md`          | The production contract: which tool produces which file, what is drawn in code, and how each is played.                                |
 | `showcase.md`        | The store-page presentation the finished game ships beside its source.                                                                 |
 
@@ -137,10 +143,11 @@ PRODUCES during the run, with the six asset-generation binaries the
 `test-cabinet-full-stack-2d` image puts on `PATH`: `draw` for the seven kinds at
 each of four strain states, the three cut treatments and the board frame;
 `draw-sheet` for each kind's break animation and the prism's idle turn;
-`particle-2d` for the clear burst, the flawed detonation and the cut-gem flash;
-`sfx-synth` and `sfx-sample` for the cue set; and `music` for the title theme
-and the play bed. The HUD, the menus, the level meter, the cursor and selection
-marks and the debug overlay are drawn in code. `specs/assets.md` is the
+`particle-2d` for the clear burst, the flawed detonation, the cut-gem flash and
+the aura that runs at every cut stone standing on the board; `sfx-synth` and
+`sfx-sample` for the cue set; and `music` for the title theme and the play bed.
+The HUD, the menus, the level meter, the selection mark, the on-screen `PAUSE`
+and `BACK` controls and the debug overlay are drawn in code. `specs/assets.md` is the
 contract: what to produce, which tool makes it, where it lands, and how it is
 played.
 
@@ -152,11 +159,15 @@ imports like any other. The produced files are committed and bundled by
 that shells out to one at build time fails when it is rebuilt.
 
 The geometry is pinned to the figure: the stage, `CELL_PITCH` (`72`), the
-cell-center formulas and `GEM_HIT_R` (`36`). The palette, the type, the gem
-artwork and the board's dressing are left to the build and rated by a reviewer.
-What the specs fix about the look is legibility: seven kinds told apart by hue
-and by silhouette, the four strain states readable at a glance, a cut readable
-from a plain stone, and the readouts clear of the board's extent.
+cell-center formulas and `GEM_HIT_R` (`36`). Where each screen's pointer targets
+sit is the build's, and the case grades the four properties they must have
+(`TARGET_MIN_W` by `TARGET_MIN_H` at least, wholly on the stage, no two
+overlapping, and clear of the board on `playing`) against what the build reports.
+The palette, the type, the gem artwork and the board's dressing are left to the
+build and rated by a reviewer. What the specs fix about the look is legibility:
+seven kinds told apart by hue and by silhouette, the four strain states readable
+at a glance, a cut readable from a plain stone, and the readouts clear of the
+board's extent.
 
 ## Validation
 
@@ -164,7 +175,7 @@ This case is validator-rated: every point on the checklist carries a Vitest
 suite, and the validators decide the functional rating through each point's
 failure cap. A reviewer rates the run's aesthetics and may override a verdict.
 
-The checklist in `test-case.toml` holds 123 points across 18 categories, all on
+The checklist in `test-case.toml` holds 168 points across 19 categories, all on
 the single `gameplay` domain, and each point is one observable behavior, so a
 build fails exactly the rule it breaks. `validation/` holds one project per
 engine — `validation/none/`, `validation/simple-2d/` and

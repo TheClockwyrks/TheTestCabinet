@@ -24,22 +24,12 @@ import { defineCues, playFrameEvents } from "./audio";
 import { createDebugApi, type FacetDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { Presentation, type StepReport } from "./effects";
-import {
-  back,
-  confirm,
-  down,
-  left,
-  mute,
-  pause,
-  registerActions,
-  right,
-  up,
-} from "./input";
+import { back, confirm, down, mute, pause, registerActions, up } from "./input";
 import { renderGame } from "./render";
 import { COLOR } from "./theme";
 import { MAX_STRAIN, STEP_SECONDS } from "./constants";
 import {
-  applySwap,
+  cellKey,
   cellsIn,
   confirm as confirmAction,
   createInitialState,
@@ -48,8 +38,7 @@ import {
   gemAt,
   goBack,
   mergeEvents,
-  moveHorizontal,
-  moveVertical,
+  moveMenu,
   multiplierFor,
   NO_EVENTS,
   pointerDown,
@@ -126,9 +115,11 @@ function fold(outcome: FrameOutcome, next: Stepped): FrameOutcome {
  * `null` when no step resolved.
  *
  * Re-derived rather than reported, from the core's own R5, R6, and R8 over the
- * board the step read: the ordinary board for a step the cadence set off, and
- * the board AFTER the exchange for step `1` of a chain a swap began — which is
- * also the only step that can be seeded from a prism.
+ * board the step actually read, which is the board `before` holds: an accepted
+ * swap exchanges its two cells at the moment it is accepted and then travels
+ * for `SWAP_SECONDS`, so by the time step `1` resolves the exchange is already
+ * on the board. What is particular to step `1` is only its seed, which is the
+ * one step a prism swap can seed.
  */
 export function reportFor(
   before: FacetState,
@@ -136,24 +127,25 @@ export function reportFor(
 ): StepReport | null {
   if (after.chainStep <= before.chainStep) return null;
   const swap = after.chainSwap;
-  const begun =
-    before.chainStep === 0 && after.chainStep === 1 && swap !== null;
-  const board = begun ? applySwap(before.board, swap) : before.board;
+  const board = before.board;
+  const begun = after.chainStep === 1 && swap !== null;
   const seed = begun
     ? (prismSeed(board, swap) ?? seedFromRuns(board))
     : seedFromRuns(board);
   const cleared = expandClearSet(board, seed.cells);
   return {
-    cleared: cellsIn(board, cleared).map((cell) => {
+    cleared: cellsIn(board, cleared.cells).map((cell) => {
       const gem = gemAt(board, cell);
       return {
         col: cell.col,
         row: cell.row,
         kind: gem?.kind ?? null,
         flawed: (gem?.strain ?? 0) >= MAX_STRAIN,
+        wave: cleared.waveOf.get(cellKey(cell)) ?? 0,
       };
     }),
     created: creationsFor(seed.runs, swap).map((creation) => creation.cell),
+    waves: cleared.waves,
   };
 }
 
@@ -166,10 +158,15 @@ export function reportFor(
  * edge on the first read and an action left armed would be discarded at the end
  * of the frame rather than surfacing on the next one. Each armed action is then
  * applied in turn, in the order below, to the state the one before it left — so
- * a frame carrying both an arrow and a `confirm` moves the cursor and then acts
- * on the cell it moved to, which is what a player who pressed both between two
- * repaints meant, and what a scenario driving the menus with real key events
- * gets whether or not a frame happened to fall between its presses.
+ * a frame carrying both an arrow and a `confirm` moves the highlight and then
+ * takes the item it moved to, which is what a player who pressed both between
+ * two repaints meant, and what a scenario driving the menus with real key
+ * events gets whether or not a frame happened to fall between its presses.
+ *
+ * `Escape` fires BOTH `pause` and `back`, so a frame can carry both. That is
+ * safe in either order because the two act on screens that do not overlap:
+ * `pause` on `playing` and `paused`, `back` on `howto` and `gameover`
+ * (specs/controls.md).
  *
  * `mute` is not one of them: it is read on every screen and it changes the
  * runtime's bus rather than the state.
@@ -177,8 +174,6 @@ export function reportFor(
 function handleInput(state: FacetState, api: UpdateApi): Stepped {
   const moveUp = up(api);
   const moveDown = down(api);
-  const moveLeft = left(api);
-  const moveRight = right(api);
   const accept = confirm(api);
   const leave = back(api);
   const held = pause(api);
@@ -193,26 +188,30 @@ function handleInput(state: FacetState, api: UpdateApi): Stepped {
 
   if (held) act(quiet(togglePause(current)));
   if (leave) act(quiet(goBack(current)));
-  if (moveUp) act(quiet(moveVertical(current, -1)));
-  if (moveDown) act(quiet(moveVertical(current, 1)));
-  if (moveLeft) act(quiet(moveHorizontal(current, -1)));
-  if (moveRight) act(quiet(moveHorizontal(current, 1)));
-  if (accept) act(confirmAction(current));
+  if (moveUp) act(quiet(moveMenu(current, -1)));
+  if (moveDown) act(quiet(moveMenu(current, 1)));
+  if (accept) act(quiet(confirmAction(current)));
   return { state: current, events };
 }
 
 /**
  * This frame's pointer samples, resolved one at a time in arrival order
- * (specs/controls.md), each through the very path a posed press takes.
+ * (specs/controls.md), each through the very path a posed press takes and each
+ * carrying the device that drove it, so a finger, a pen, and a mouse reach the
+ * game down one path and differ only in what the state reports.
+ *
+ * The game acts on the primary pointer alone, so a second finger resting on a
+ * touchscreen changes nothing.
  */
 function handlePointer(outcome: FrameOutcome, api: UpdateApi): FrameOutcome {
   for (const sample of api.input.pointerSamples()) {
+    if (!sample.primary) continue;
     const next =
       sample.type === "down"
-        ? pointerDown(outcome.state, sample.x, sample.y)
+        ? pointerDown(outcome.state, sample.x, sample.y, sample.device)
         : sample.type === "move"
-          ? pointerMove(outcome.state, sample.x, sample.y)
-          : quiet(pointerUp(outcome.state));
+          ? pointerMove(outcome.state, sample.x, sample.y, sample.device)
+          : pointerUp(outcome.state, sample.device);
     fold(outcome, next);
   }
   return outcome;
@@ -222,11 +221,16 @@ function handlePointer(outcome: FrameOutcome, api: UpdateApi): FrameOutcome {
  * The frame's game time, run through the core in slices no longer than one
  * `STEP_SECONDS`.
  *
- * The core resolves as many chain steps as the delta covers, in one call. The
- * slicing changes nothing about what it resolves — every timer in this game is
- * a linear accumulator, so the same interval reaches the same state however it
- * is divided — and it is what lets EVERY step that runs be handed to the
- * presentation, rather than only the first.
+ * The core resolves a swap and as many chain steps as the delta covers, in one
+ * call. The slicing changes nothing about what it resolves — every timer in
+ * this game is a linear accumulator, so the same interval reaches the same
+ * state however it is divided — and it is what lets EVERY step that runs be
+ * handed to the presentation, rather than only the first.
+ *
+ * `STEP_SECONDS` is the right slice because no step holds for less than it, so
+ * no slice can carry the board across two step boundaries at once. The board
+ * only moves while something is in flight, so a settled board takes the frame
+ * whole.
  */
 function advanceTime(outcome: FrameOutcome, dt: number): FrameOutcome {
   let remaining = dt;
@@ -234,7 +238,7 @@ function advanceTime(outcome: FrameOutcome, dt: number): FrameOutcome {
   while (remaining > 0) {
     slices += 1;
     const slice =
-      outcome.state.phase === "resolving" && slices < MAX_SLICES
+      outcome.state.phase !== "idle" && slices < MAX_SLICES
         ? Math.min(remaining, STEP_SECONDS)
         : remaining;
     fold(outcome, tick(outcome.state, slice));
@@ -272,7 +276,7 @@ export function createGame(
   return {
     /**
      * Runs once, before any frame: register every action against its
-     * bindings, declare the eight cues over the produced sounds, register the
+     * bindings, declare the nine cues over the produced sounds, register the
      * diagnostic sources, build the complete initial state, and return it
      * beside the debug surface.
      *
@@ -286,7 +290,16 @@ export function createGame(
       defineCues(api);
       registerDiagnostics(api);
       assets = api.assets;
-      return [createInitialState(), createDebugApi()];
+      // The state the "last frame" left, standing in for a frame that has not
+      // run yet. It is the opening state rather than nothing, because a pose can
+      // put a board in play BEFORE the first frame: left empty, that frame would
+      // compare the posed board against itself, see no change, and hand the
+      // presentation a board it thinks was always there — so a round begun from
+      // code would arrive with none of the motion a round begun by hand arrives
+      // with.
+      const opening = createInitialState();
+      seen = opening;
+      return [opening, createDebugApi()];
     },
 
     /**
@@ -319,17 +332,9 @@ export function createGame(
       playFrameEvents(api, outcome.events, outcome.rung, outcome.state.screen);
 
       if (assets !== null) {
-        presentation.observe(
-          previous.board,
-          outcome.state.board,
-          outcome.steps,
-          assets,
-        );
+        presentation.observe(previous, outcome.state, outcome.steps, assets);
+        presentation.advance(dt, assets);
       }
-      // A completed level deals a whole new board, so whatever is still flying
-      // belongs to a board that is gone.
-      if (outcome.events.levelUp) presentation.clear();
-      presentation.advance(dt);
 
       const next: FacetState = {
         ...outcome.state,

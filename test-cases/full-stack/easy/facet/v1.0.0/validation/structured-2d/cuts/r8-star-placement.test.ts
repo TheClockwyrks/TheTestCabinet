@@ -22,6 +22,18 @@
 // a swap is accepted on it", and R3 accepts a swap when "the board it produces
 // carries at least one maximal run".
 //
+// WHEN THE READING IS TAKEN. specs/rules.md has an accepted swap exchange its two
+// cells at once, set `phase` to `swapping` with `chainStep` at `0`, and clear
+// nothing until `SWAP_SECONDS` (`0.18`) of game time has passed; step 1 then
+// resolves, R8 and R9 both inside it. `swapAndStep` drives exactly the frames
+// that carry the game across that boundary and no further: past `SWAP_SECONDS`
+// into step 1, and a small fraction of a second into a hold that is at least
+// `0.3` s on any board — `lastWaves * WAVE_SECONDS` plus
+// `lastFall * FALL_SECONDS_PER_ROW` plus `STEP_SECONDS`, with `lastFall` at least
+// `1` because a step that cleared anything refills from above row `0`. So exactly
+// one step has resolved when the reading comes back, and the still written from
+// the canvas is a frame that step drew.
+//
 // WHAT the created gem is — a star, of the runs' kind, at strain 0 — is
 // `cuts/r8-star-from-intersection`'s point. This one is about the cell.
 
@@ -38,7 +50,7 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 import type { CellSnapshot, FacetSnapshot } from "../surface";
@@ -128,14 +140,14 @@ it("puts the created star on the cell its two runs cross", async () => {
   const before = loadBoard(h, posed);
   assertLength(cutCells(before), 0, "cut gems on the posed board");
 
-  // Read the step the swap resolved, then draw one frame so the evidence shows the
-  // board the assertions are about. One frame is far short of STEP_SECONDS, so no
-  // second step is read before the picture is taken.
-  const first = swap(h, FROM, TO);
-  await h.advance(1);
+  // Carry the swap through its animation into step 1 and read what that step
+  // settled. The drive ends inside the step's own hold with the board it settled
+  // on drawn, so the still is a picture of the very board the assertions below
+  // are about, and it is written before them so a failing check still leaves it.
+  const first = await swapAndStep(h, FROM, TO);
   captureStill(h, "placement");
 
-  assertEqual(first.chainStep, 1, "the chain step the swap opened");
+  assertEqual(first.chainStep, 1, "the chain step the accepted swap resolved");
   assertEqual(first.lastCleared, CLEARED, "cells the step cleared");
 
   const created = cutCells(first);

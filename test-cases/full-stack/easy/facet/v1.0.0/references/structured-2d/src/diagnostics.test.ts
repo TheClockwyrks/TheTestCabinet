@@ -29,8 +29,9 @@ describe("the sources", () => {
       "level",
       "chain",
       "last step",
-      "cursor",
-      "selection",
+      "last motion",
+      "best",
+      "hold",
       "legal swap",
       "pointer",
     ]);
@@ -44,10 +45,11 @@ describe("the sources", () => {
     expect(values.get("level")).toBe(`1  0/${LEVEL_TARGET_STEP}`);
     expect(values.get("chain")).toBe("step 0  x0");
     expect(values.get("last step")).toBe("0 cells  0 pts");
-    expect(values.get("cursor")).toBe("0,0");
-    expect(values.get("selection")).toBe("-");
+    expect(values.get("last motion")).toBe("0 waves  0 rows");
+    expect(values.get("best")).toBe("move 0  chain 0");
+    expect(values.get("hold")).toBe("- -> -");
     expect(values.get("legal swap")).toBe(false);
-    expect(values.get("pointer")).toBe("0, 0");
+    expect(values.get("pointer")).toBe("0, 0 mouse");
   });
 
   it("reports the live board, the chain, and the pointer", () => {
@@ -63,9 +65,13 @@ describe("the sources", () => {
     state.levelScore = 900;
     state.lastCleared = 5;
     state.lastPoints = 120;
-    state.cursor = { col: 4, row: 6 };
+    state.lastWaves = 2;
+    state.board.cells[19] = { ...state.board.cells[19], fell: 4 };
+    state.bestMove = 780;
+    state.bestChain = 6;
     state.selection = { col: 1, row: 2 };
-    state.pointer = { x: 123.4, y: 55.6, down: true };
+    state.offer = { col: 2, row: 2 };
+    state.pointer = { x: 123.4, y: 55.6, down: true, device: "pen" };
 
     const values = read(state);
     expect(values.get("screen")).toBe("playing / resolving");
@@ -74,10 +80,11 @@ describe("the sources", () => {
     // The multiplier caps at MAX_MULTIPLIER while the step keeps counting.
     expect(values.get("chain")).toBe("step 11  x8");
     expect(values.get("last step")).toBe("5 cells  120 pts");
-    expect(values.get("cursor")).toBe("4,6");
-    expect(values.get("selection")).toBe("1,2");
+    expect(values.get("last motion")).toBe("2 waves  4 rows");
+    expect(values.get("best")).toBe("move 780  chain 6");
+    expect(values.get("hold")).toBe("1,2 -> 2,2");
     expect(values.get("legal swap")).toBe(true);
-    expect(values.get("pointer")).toBe("123, 56 down");
+    expect(values.get("pointer")).toBe("123, 56 pen down");
   });
 
   it("reads the state at the call rather than one captured at registration", () => {
@@ -106,7 +113,7 @@ describe("registration", () => {
       // Re-registering over the same world is what the mode's beginPlay does.
       const { registerDiagnostics } = await import("./diagnostics");
       registerDiagnostics(harness.engine.world);
-      expect(seen).toHaveLength(10);
+      expect(seen).toHaveLength(11);
       expect(seen).toContain("legal swap");
     } finally {
       harness.dispose();

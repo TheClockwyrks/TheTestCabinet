@@ -13,12 +13,17 @@
 // reports the frame being drawn and watching the overlay never changes what the
 // simulation does. Each line is short enough to read at a glance while the game
 // runs, and the set below is exactly the set `specs/instrumentation.md` asks
-// for.
+// for: the same facts the snapshot reports, two or three to a line.
 
-import type { World } from "@test-cabinet/structured-2d";
-import { legalSwapExists, levelTarget, multiplierFor } from "./core";
+import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
+import { lastFall, legalSwapExists, levelTarget, multiplierFor } from "./core";
 import { boardToCore } from "./bridge";
-import { facetState, type FacetState } from "./game";
+import { facetState, type CellRef, type FacetState } from "./game";
+
+/** A cell as one short line reads it, and `-` for no cell at all. */
+function cellLabel(cell: CellRef | null): string {
+  return cell ? `${cell.col},${cell.row}` : "-";
+}
 
 /**
  * The sources, each named and each a read through `read` at the call. Split
@@ -27,7 +32,7 @@ import { facetState, type FacetState } from "./game";
  */
 export function diagnosticSources(
   read: () => FacetState,
-): [string, () => unknown][] {
+): [string, () => DiagnosticValue][] {
   return [
     ["screen", () => `${read().screen} / ${read().phase}`],
     ["board", () => `${read().board.cols}x${read().board.rows}`],
@@ -54,17 +59,25 @@ export function diagnosticSources(
       },
     ],
     [
-      "cursor",
+      "last motion",
       () => {
-        const { cursor } = read();
-        return `${cursor.col},${cursor.row}`;
+        const state = read();
+        const fall = lastFall(boardToCore(state.board));
+        return `${state.lastWaves} waves  ${fall} rows`;
       },
     ],
     [
-      "selection",
+      "best",
       () => {
-        const { selection } = read();
-        return selection ? `${selection.col},${selection.row}` : "-";
+        const state = read();
+        return `move ${state.bestMove}  chain ${state.bestChain}`;
+      },
+    ],
+    [
+      "hold",
+      () => {
+        const state = read();
+        return `${cellLabel(state.selection)} -> ${cellLabel(state.offer)}`;
       },
     ],
     ["legal swap", () => legalSwapExists(boardToCore(read().board))],
@@ -73,7 +86,7 @@ export function diagnosticSources(
       () => {
         const { pointer } = read();
         return (
-          `${pointer.x.toFixed(0)}, ${pointer.y.toFixed(0)}` +
+          `${pointer.x.toFixed(0)}, ${pointer.y.toFixed(0)} ${pointer.device}` +
           (pointer.down ? " down" : "")
         );
       },

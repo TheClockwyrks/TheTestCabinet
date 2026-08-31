@@ -38,8 +38,9 @@ gem, break sheet, particle system, sound, and piece of music under
 `public/assets/` was made with the six asset tools during the authoring run and
 committed. The build bundles those committed files and **invokes no tool**, so
 `npm ci && npm run build` works on a machine that has never seen them. Only the
-chrome — the HUD, the level meter, the menus, the cursor, selection and refusal
-marks, and the debug overlay — is drawn in code.
+chrome — the HUD, the level meter, the menus, the `PAUSE` and `BACK` controls,
+the selection, offer and refusal marks, and the debug overlay — is drawn in
+code.
 
 The look is this build's own. The specs fix what must be legible — seven kinds
 told apart by more than hue, four strain states reading as deepening damage, the
@@ -52,31 +53,71 @@ in `src/constants.ts`.
 
 ## Controls
 
-The **pointer plays the board**: press a stone to select it, then press the one
-beside it to swap — or drag straight onto its neighbor, which asks for the same
-swap without a second press. Pressing the selected stone again clears the
-selection; pressing a stone farther off moves the selection there.
+The **pointer plays the board, and a mouse, a pen, and a finger all drive it**.
+Press a stone to take hold of it, carry the pointer onto the stone beside it —
+which **offers** the move, drawing the two stones exchanged — and let go to play
+it. Carrying it back where it started withdraws the offer, so letting go there
+plays nothing: a move is played only by a release with an offer standing.
+Pressing a stone farther off moves the hold there, and pressing clear of the
+board lets go of it.
 
-The keyboard drives a cursor over the same board, and the menus, as **named
-actions** bound to physical keys (`KeyboardEvent.code`), so the bindings survive
-a non-QWERTY layout:
+Every screen also carries **pointer targets**, the rectangles
+`src/core/targets.ts` reports and the renderer draws on: a plate per menu item,
+a `BACK` control on how-to, and a `PAUSE` control in the strip to the right of
+the board. Each is at least 96 x 72 logical units, so a fingertip works every
+screen. Moving over an item highlights it, a press highlights and arms it, and a
+release inside the armed one takes it.
 
-| Action                           | Keys               | Does                                                      |
-| -------------------------------- | ------------------ | --------------------------------------------------------- |
-| `up` / `down` / `left` / `right` | Arrows or `WASD`   | Move the board cursor; `up`/`down` move a menu highlight. |
-| `confirm`                        | `Enter` or `Space` | Selects the cursor's cell, or swaps with it.              |
-| `pause`                          | `P`                | Enters and leaves the pause screen.                       |
-| `mute`                           | `M`                | Toggles sound, on any screen.                             |
-| `back`                           | `Esc`              | Leaves how-to, the pause screen, and the end of a round.  |
+The keyboard drives the menus, as **named actions** bound to physical keys
+(`KeyboardEvent.code`), so the bindings survive a non-QWERTY layout:
+
+| Action    | Keys               | Does                                     |
+| --------- | ------------------ | ---------------------------------------- |
+| `up`      | `ArrowUp`          | Moves the menu highlight up, wrapping.   |
+| `down`    | `ArrowDown`        | Moves the menu highlight down, wrapping. |
+| `confirm` | `Enter` or `Space` | Takes the highlighted item.              |
+| `pause`   | `Esc` or `P`       | Enters and leaves the pause screen.      |
+| `mute`    | `M`                | Toggles sound, on any screen.            |
+| `back`    | `Esc`              | Leaves how-to and the end of a round.    |
+
+`Esc` fires **both** `pause` and `back`, and the two act on screens that do not
+overlap — `pause` on `playing` and `paused`, `back` on `howto` and `gameover` —
+so a frame carrying both is unambiguous whichever it applies first.
 
 The **backtick** key (`` ` ``) toggles the diagnostics overlay. That key belongs
 to the runtime (`src/overlay.ts`), not to the game.
 
-Eight audio cues — select, swap, refuse, clear, flaw, cut, level-up, game-over —
-are produced `.wav` files played over Web Audio, unlocked by the first gesture.
-`clear` sounds the **chain ladder**: the shatter body under one of eight
-ascending tones, the rung chosen by the step's multiplier, so a long chain climbs
-and holds at the top.
+Nine audio cues — select, swap, refuse, clear, land, flaw, cut, level-up,
+game-over — are produced `.wav` files played over Web Audio, unlocked by the
+first gesture. `clear` sounds the **chain ladder**: the shatter body under one of
+eight ascending tones, the rung chosen by the step's multiplier, so a long chain
+climbs and holds at the top. `land` is the low knock a step's stones make when
+the longest of them fell more than `LAND_MIN_ROWS` rows.
+
+## What moves
+
+Nothing on this board teleports, and `specs/rules.md` fixes how long each thing
+takes. `src/motion.ts` is that arithmetic, and every sprite, mark, and aura is
+placed through it, so a stone and everything drawn on it never come apart.
+
+- **A swap.** An accepted swap exchanges its two cells at once and then travels:
+  for `SWAP_SECONDS` the two stones are drawn between their cells, and only then
+  does the first chain step resolve.
+- **A shattering set.** R6 gives every cell of the clear set a **wave**, and the
+  cell at wave `w` comes apart `w * WAVE_SECONDS` into the step — so the ring a
+  brilliant takes goes after the run that lit it. `src/effects.ts` carries that
+  delay as a negative age on the break sheet and as a queue in front of the
+  burst.
+- **Falling stones.** Every gem carries the `fell` R9 gave it, so the renderer
+  knows how far above its cell it started: it holds there while the set
+  shatters, then closes on its cell over `fell * FALL_SECONDS_PER_ROW`. A freshly
+  dealt board's gems all carry a `fell` of at least `row + 1`, so a new level
+  pours in from above with no extra state — the presentation times that one pour
+  itself, because no timer in the game's state covers it.
+- **A cut stone's aura.** Every `brilliant`, `star`, and `prism` standing on the
+  board carries the looping `fx/cut-aura.system.json`, run continuously for as
+  long as that stone stands in that cell and reconciled against the board every
+  frame. A prism turns as well, on its own produced sheet.
 
 ## The produced assets
 
@@ -90,14 +131,17 @@ mounted under a sub-path.
 |                        | overlays; the board frame (648 x 648, the bench the field sits on)          |                           |
 | `gems/break/<kind>/`   | A six-frame shatter for each kind, played at the cell a step clears         | `draw-sheet`              |
 | `gems/prism-turn/`     | The prism's eight-frame idle turn, looped for a clean prism on the board    | `draw-sheet`              |
-| `fx/*.system.json`     | The clear burst, the flawed detonation, and the cut flash, simulated live   | `particle-2d`             |
-| `audio/*.wav`          | The seven synthesized cues, the eight ladder rungs, and the sampled shatter | `sfx-synth`, `sfx-sample` |
+| `fx/*.system.json`     | The clear burst, the flawed detonation, the cut flash, and the looping cut  | `particle-2d`             |
+|                        | aura, all simulated live                                                    |                           |
+| `audio/*.wav`          | The eight synthesized cues, the eight ladder rungs, and the sampled shatter | `sfx-synth`, `sfx-sample` |
 | `audio/{title,play}.*` | The title theme and the play bed, each a `.wav` beside its `.mid` score     | `music`                   |
 
-The three particle systems are played through
+The four particle systems are played through
 `@test-cabinet/particle-runtime`'s `ParticleCanvasPlayer` — the only runtime
-dependency this build has — each burst simulated into a scratch canvas of its
-system's own field size and blitted, additively, at the cell it belongs to.
+dependency this build has — each simulated into a scratch canvas of its system's
+own field size and blitted, additively, at the cell it belongs to. The scratch
+canvases are pooled per system, and the auras are capped, so a board that has
+earned a great many cut stones stays cheap to draw.
 
 ## The runtime this project carries
 
@@ -121,8 +165,15 @@ files:
   edge detection: an edge is armed when an action leaves rest, consumed by the
   first reader, and discarded at the end of its frame.
 - **`src/pointer.ts`** — the pointer read off the page: every press, move, and
-  release mapped into stage units and buffered in arrival order, so a drag that
-  crossed a cell boundary between two frames is resolved at the cell it crossed.
+  release mapped into stage units and buffered in arrival order, so a hold that
+  crossed a cell boundary between two frames offers into the cell it crossed.
+  Each sample carries the **device** that drove it (`mouse`, `pen`, `touch`) and
+  whether it was the primary pointer, so a second finger resting on a
+  touchscreen changes nothing. It also **takes the browser's own gestures on the
+  canvas** — `touch-action: none`, no text selection, no tap highlight, no
+  context menu, no page scroll — and **captures each contact**, so a drag that
+  leaves the canvas keeps delivering rather than being cancelled part way
+  through.
 - **`src/assets.ts`** — the manifest of every produced file and the loader that
   fetches it. Loading runs in the background from the first frame, so the game
   and `window.__facet` are up immediately and each sprite joins the picture on
@@ -170,21 +221,29 @@ The build exposes the surface `specs/instrumentation.md` specifies on
   `advance(1, 60)` reach the same outcome.
 - `reset(options?)` and `snapshot()` — return every declared field to its
   title-screen value (seedable; `muted` deliberately kept) and read the fixed
-  JSON-serializable view of the whole state, with cell centers, the level target,
-  the multiplier, and whether a legal swap exists derived by the game's own rules.
-- `start()`, `openHowTo()`, `pause()`, `resume()`, and `quit()` — pose exactly
-  the choices the menus make.
+  JSON-serializable view of the whole state, with cell centers, the level
+  target, the multiplier, the board's longest fall, how long the step in
+  progress holds, whether a legal swap exists, and the current screen's pointer
+  targets all derived by the game's own rules.
+- `start()`, `openHowTo()`, `pause()`, `resume()`, `continueLevel()`, and
+  `quit()` — pose exactly the choices the menus make, `continueLevel` being
+  `CONTINUE` on the level-clear screen.
 - `loadBoard(rows)`, `setGem(col, row, token)`, `setScore`, `setLevel`,
-  `setLevelScore`, `setCursor`, `setSelection`, and `clearSelection` — arrange
-  the board and the round's figures. A board posed this way is a board like any
-  other: it rests as written until a swap is accepted on it.
+  `setLevelScore`, `setBestChain`, `setBestMove`, `setSelection`,
+  `clearSelection`, `setOffer`, and `clearOffer` — arrange the board, the
+  round's figures, and the hold. A board posed this way is a board like any
+  other: it rests as written until a swap is accepted on it, and an offer posed
+  this way plays nothing until a release does.
 - `requestSwap(colA, rowA, colB, rowB)` — the same acceptance path a player's
-  swap takes, so R1, R2, and R3 decide it and a refusal stands for
+  release takes, so R1, R2, and R3 decide it, an acceptance travels for
+  `SWAP_SECONDS` before its first step resolves, and a refusal stands for
   `REFUSAL_SECONDS` like any other.
-- `pointerDown(x, y)`, `pointerMove(x, y)`, and `pointerUp()` — feed the same
-  input path the runtime's pointer feeds, each taking effect the moment it is
-  called, so a selection and the swap it leads to are both posed without
-  advancing the game at all.
+- `pointerDown(x, y, device?)`, `pointerMove(x, y, device?)`, and
+  `pointerUp(device?)` — feed the same input path the runtime's pointer feeds,
+  over the screen's targets and over the board alike, each taking effect the
+  moment it is called, so a hold and the move it plays are both posed without
+  advancing the game at all. `device` is `"mouse"`, `"pen"`, or `"touch"` and
+  defaults to `"mouse"`.
 
 Everything but the two clock calls is a read or a pose of the game's state: they
 arrange the board, and the game's own acceptance rules, chain resolution,
@@ -269,19 +328,23 @@ src/
   audio-bus.ts        Web Audio over the produced .wav files, and the unlock
   overlay.ts          The diagnostics panel and the backtick key
   constants.ts        Every figure the specs fix (logical 1280x720)
-  theme.ts            This build's own look: palette, type, bench placement
+  theme.ts            This build's own look: palette, type, bench placement,
+                      and the plate a pointer target is drawn as
+  motion.ts           Where a stone is drawn: the swap, the fall, the pour, and
+                      the two stones an offer shows exchanged
   core/               The whole simulation, framework-free (see above)
   game.ts             The per-frame update and the three functions the runtime
                       drives, plus the bridge to the presentation
-  effects.ts          The break sheets and the live particle bursts
+  effects.ts          The break sheets, the live particle bursts, the cut auras,
+                      and the clock a freshly dealt board pours in on
   debug.ts            The pose surface and the installed window.__facet
   input.ts            The registered actions, read as edges
-  audio.ts            The eight cues, the chain ladder, and the music beds
+  audio.ts            The nine cues, the chain ladder, and the music beds
   diagnostics.ts      The values the overlay shows
   render.ts           The frame, drawn: one switch on the screen
-  render.board.ts     The bench, the stones, the effects, and the three marks
+  render.board.ts     The bench, the stones in motion, the effects, the marks
   render.gems.ts      One gem: its sprite, its cut overlay, its turn
-  render.hud.ts       The score, the level, the meter, and the chain readout
-  render.screens.ts   Title, how to play, paused, and the end of a round
+  render.hud.ts       The score, the level, the meter, the chain readout, PAUSE
+  render.screens.ts   Title, how to play, paused, level clear, end of a round
   *.test.ts           The build's own tests, beside the code they cover
 ```

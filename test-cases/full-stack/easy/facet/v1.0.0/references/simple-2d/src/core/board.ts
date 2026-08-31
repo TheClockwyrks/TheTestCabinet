@@ -155,6 +155,9 @@ const TOKEN = /^([RACJBSMX])([0-3])([bs]?)$/;
  * read into a gem. A token that is not the notation's throws an `Error` naming
  * it, so a bad pose fails loudly instead of producing a gem the rules cannot
  * make sense of.
+ *
+ * The notation carries no `fell`: every gem of a written board is standing
+ * still in the cell it is written at, so it reads back at `0`.
  */
 export function parseToken(token: string): Gem {
   const matched = TOKEN.exec(token);
@@ -169,12 +172,13 @@ export function parseToken(token: string): Gem {
     if (cutLetter !== "") {
       throw new Error(`Facet: "${token}" gives a prism a second cut`);
     }
-    return { kind: null, cut: "prism", strain };
+    return { kind: null, cut: "prism", strain, fell: 0 };
   }
   return {
     kind: GEM_KINDS[KIND_LETTERS.indexOf(letter as (typeof KIND_LETTERS)[0])],
     cut: cutLetter === "" ? "plain" : CUT_LETTERS[cutLetter],
     strain,
+    fell: 0,
   };
 }
 
@@ -195,7 +199,9 @@ export function formatToken(gem: Gem): string {
 /**
  * A board from its notation: `GRID_ROWS` strings of `GRID_COLS` space-separated
  * tokens, read from the top-left to the bottom-right. The dimensions and every
- * token are checked as they are read, and anything wrong throws.
+ * token are checked as they are read, and anything wrong throws. Every gem of
+ * the board it builds is standing still, so every one of them carries `fell`
+ * `0`.
  */
 export function parseBoard(rows: readonly string[]): BoardState {
   if (rows.length !== GRID_ROWS) {
@@ -235,9 +241,14 @@ export function formatBoard(board: BoardState): string[] {
   return lines;
 }
 
-/** A plain gem of a kind at strain `0`, which is what a refill deals. */
-export function plainGem(kind: GemKind): Gem {
-  return { kind, cut: "plain", strain: 0 };
+/**
+ * A plain gem of a kind at strain `0`, which is what a refill and a deal both
+ * place. `fell` is how far it traveled to arrive, which is `0` for a gem
+ * written down where it stands and `row + 1` or more for one dealt in from
+ * above the board's top row.
+ */
+export function plainGem(kind: GemKind, fell: number = 0): Gem {
+  return { kind, cut: "plain", strain: 0, fell };
 }
 
 /** Whether a gem is flawed, which is to say it carries `MAX_STRAIN` (R6). */

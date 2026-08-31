@@ -53,7 +53,7 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -158,8 +158,17 @@ const CLEARED: readonly CellRef[] = distinct([
   ...ring(BRILLIANT.col, BRILLIANT.row),
 ]);
 
-/** Frames recorded after the swap, so the replay shows the step it resolved. */
-const REPLAY_FRAMES = 16;
+/**
+ * Frames recorded after the step has resolved, so the replay shows the clear set
+ * shattering and the board falling in behind it.
+ *
+ * `swapAndStep` leaves the step `0.03875` s into its own hold; twelve more frames
+ * of the suite's 64 Hz clock add `0.1875` s, for `0.22625` s in all. That is
+ * short of `0.3` s, the SHORTEST hold any step can have, so the board is never
+ * read a second time and every assertion is made against the reading the drive
+ * returned.
+ */
+const REPLAY_FRAMES = 12;
 
 let h: Harness;
 
@@ -203,13 +212,17 @@ it("grows the seed until the three additions add nothing more", async () => {
   await loadBoard(h, POSED);
 
   const step = await captureReplay(h, "clear", async () => {
-    const reading = await swap(h, FROM, TO);
+    const reading = await swapAndStep(h, FROM, TO);
     const settled = await h.board();
     await h.advance(REPLAY_FRAMES);
     return { reading, settled };
   });
 
-  assertEqual(step.reading.phase, "resolving", "phase after the swap");
+  assertEqual(
+    step.reading.phase,
+    "resolving",
+    "phase after the swap animation",
+  );
   assertEqual(step.reading.chainStep, 1, "the step the reading describes");
 
   // Fifteen from a seed of three, in ONE step. A build that applied the three

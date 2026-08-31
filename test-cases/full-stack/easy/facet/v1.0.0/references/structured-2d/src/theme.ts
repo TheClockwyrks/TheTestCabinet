@@ -33,6 +33,15 @@ export const FRAME_MARGIN = (FRAME_SIZE - FIELD_SIZE) / 2;
 export const FRAME_X = BOARD_CX - (GRID_COLS * CELL_PITCH) / 2 - FRAME_MARGIN;
 export const FRAME_Y = BOARD_CY - (GRID_ROWS * CELL_PITCH) / 2 - FRAME_MARGIN;
 
+/**
+ * The felt field's own top-left corner, which is the board's drawn extent. A
+ * stone on its way down comes from above the board's top row
+ * (specs/rules.md), so the stones are drawn clipped to this rectangle and a
+ * falling stone rises out of the bench's edge rather than over it.
+ */
+export const FIELD_X = FRAME_X + FRAME_MARGIN;
+export const FIELD_Y = FRAME_Y + FRAME_MARGIN;
+
 /** The colors the chrome is drawn in. */
 export const COLOR = {
   /** The stage ground, which the letterbox bars also carry. */
@@ -46,9 +55,12 @@ export const COLOR = {
   /** Headings, the highlighted menu item, and the brass rules. */
   gold: "#f6c66a",
   goldDim: "#8d6f36",
-  /** The cursor mark and the selection mark. */
-  cursor: "#fff4d2",
+  /** The ring that marks the cell the player has hold of. */
   selection: "#7ff0d8",
+  /** The plate a menu row and an on-screen control are drawn on. */
+  plate: "rgba(52, 38, 66, 0.55)",
+  plateEdge: "rgba(246, 198, 106, 0.22)",
+  platePicked: "rgba(246, 198, 106, 0.16)",
   /** The mark a refused swap leaves on its two cells. */
   refusal: "#ff6a6a",
   /** The level meter. */
@@ -135,4 +147,62 @@ export function roundedRect(
   ctx.arcTo(x, y + height, x, y, r);
   ctx.arcTo(x, y, x + width, y, r);
   ctx.closePath();
+}
+
+/** A rectangle in stage units, which is the shape a pointer target has. */
+export interface Rect {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+/**
+ * The plate a menu row and an on-screen control are drawn on.
+ *
+ * It is drawn at the rectangle it is given rather than around the text, because
+ * that rectangle is the pointer target `src/core/targets.ts` hit-tests against
+ * (specs/controls.md) — so what a player presses is exactly what they see, and
+ * a fingertip has the whole of it to land on. The edge is stroked INSIDE that
+ * rectangle rather than centered on it, so the drawn row falls wholly within
+ * the target it stands for and never a pixel beyond it.
+ */
+export function drawPlate(
+  ctx: CanvasRenderingContext2D,
+  rect: Rect,
+  picked: boolean,
+): void {
+  ctx.fillStyle = picked ? COLOR.platePicked : COLOR.plate;
+  roundedRect(ctx, rect.x, rect.y, rect.w, rect.h, 12);
+  ctx.fill();
+  const width = picked ? 2 : 1;
+  ctx.strokeStyle = picked ? COLOR.gold : COLOR.plateEdge;
+  ctx.lineWidth = width;
+  roundedRect(
+    ctx,
+    rect.x + width / 2,
+    rect.y + width / 2,
+    rect.w - width,
+    rect.h - width,
+    12 - width / 2,
+  );
+  ctx.stroke();
+}
+
+/**
+ * One on-screen control — the `PAUSE` and `BACK` targets `specs/controls.md`
+ * names — drawn on its own rectangle with its word centered in it.
+ */
+export function drawControl(
+  ctx: CanvasRenderingContext2D,
+  rect: Rect,
+  label: string,
+): void {
+  ctx.save();
+  ctx.textBaseline = "alphabetic";
+  drawPlate(ctx, rect, false);
+  ctx.font = font(20, 700, FONT_DISPLAY);
+  ctx.fillStyle = COLOR.gold;
+  drawTracked(ctx, label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 7, 5);
+  ctx.restore();
 }

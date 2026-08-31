@@ -1,4 +1,4 @@
-// assets/fx-systems-loaded — the running build loads its three produced particle
+// assets/fx-systems-loaded — the running build loads its four produced particle
 // systems from its own served `assets/fx/` directory.
 //
 // specs/assets.md: "Every produced file is loaded at runtime", and of the systems
@@ -8,31 +8,41 @@
 // the reading that tells the two apart.
 //
 // WHAT IS READ. Every request the build made, from the moment it started to the
-// end of a chain driven through it. Three distinct files under `assets/fx/` have
+// end of a chain driven through it. Four distinct files under `assets/fx/` have
 // to have been asked for, and none of them may have failed to arrive.
 //
 // WHY A CHAIN IS DRIVEN RATHER THAN THE OPENING FRAMES READ. A build is entitled
 // to fetch a system when it first needs it rather than at start-up, so a check
 // that read only the load would fail a build that loads lazily and is otherwise
-// conformant. The chain the scenario drives throws all three of the effects
+// conformant. The chain the scenario drives throws all four of the effects
 // specs/assets.md names: the run clears four cells, so the clear burst is thrown;
 // one of the four stands at `MAX_STRAIN`, so the flawed detonation is thrown
-// where it clears; and the run is maximal at exactly four, so R8 creates a
-// `brilliant` and the cut-gem flash is thrown where it arrives. Whichever moment
-// a build reaches for its systems at, it has reached for all three by the end.
+// where it clears; the run is maximal at exactly four, so R8 creates a
+// `brilliant` and the cut-gem flash is thrown where it arrives; and that same
+// `brilliant` then stands on the board while the chain runs on and settles, which
+// is what the cut aura is "played at the cell of every `brilliant` ... standing on
+// the board, for as long as that gem stands there" for. Whichever moment a build
+// reaches for its systems at, it has reached for all four by the end.
 //
-// WHY THE PATHS ARE COUNTED DISTINCTLY. The three effects are three systems, and
-// a build that asked for one file three times has loaded one effect. The count is
+// WHY THE PATHS ARE COUNTED DISTINCTLY. The four effects are four systems, and a
+// build that asked for one file four times has loaded one effect. The count is
 // over distinct served paths below `assets/fx/`, so a build that asks for the
 // same system twice is counted once.
 //
 // WHAT IS NOT ASKED. Which file is which effect, when in the drive each was
 // fetched, and how a build composites what it got. specs/assets.md fixes no file
 // name here, and how the runtime is driven is `assets/fx-systems-produced`'s
-// question about the files themselves.
+// question about the files themselves. Whether the aura actually RUNS at the
+// stone it was loaded for is `assets/cut-aura-animates`, which reads the pixels
+// rather than the requests.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+  assertLength,
+} from "../assert";
 import { MAX_STRAIN } from "../constants";
 import {
   clearSetFromRuns,
@@ -47,12 +57,14 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  swapAndResolve,
+  resolveChain,
+  swapAndStep,
   type Harness,
 } from "../harness";
+import type { FacetSnapshot } from "../surface";
 
-/** The clear burst, the flawed detonation, and the cut-gem flash. */
-const REQUIRED_SYSTEMS = 3;
+/** The clear burst, the flawed detonation, the cut-gem flash, and the cut aura. */
+const REQUIRED_SYSTEMS = 4;
 
 /** The served directory specs/assets.md lands the particle systems under. */
 const FX_SEGMENTS = ["assets", "fx"];
@@ -60,6 +72,17 @@ const FX_SEGMENTS = ["assets", "fx"];
 /** The kind the run is made of, and how many cells it holds. */
 const RUN_KIND = "ruby";
 const RUN_LENGTH = 4;
+
+/**
+ * Frames the settled board is held for once the chain has ended.
+ *
+ * NOT a specification figure. specs/assets.md fixes nothing about WHEN a build
+ * reaches for a produced file, so this is the suite's own patience: a stretch of
+ * frames with the created `brilliant` standing on a board at rest, which is
+ * exactly the situation the cut aura is produced for, so a build that loads that
+ * system when it first has a cut stone to run it at has had its occasion.
+ */
+const STANDING_FRAMES = 32;
 
 /**
  * The cells written over the filler.
@@ -114,6 +137,11 @@ function fxAssets(requests: readonly string[]): string[] {
   return [...named].sort();
 }
 
+/** The cells a reading reports that carry a cut R8 made: anything but `plain`. */
+function cutCells(snapshot: FacetSnapshot): FacetSnapshot["board"]["cells"] {
+  return snapshot.board.cells.filter((cell) => cell.cut !== "plain");
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -124,7 +152,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("fetches three distinct particle systems from its own assets/fx/", async () => {
+it("fetches four distinct particle systems from its own assets/fx/", async () => {
   const posed = quietRowsWithEscape(CELLS);
 
   // The scenario, established before the build is asked anything: the posed
@@ -146,14 +174,25 @@ it("fetches three distinct particle systems from its own assets/fx/", async () =
   );
 
   loadBoard(h, posed);
-  const { first } = await swapAndResolve(h, FROM, TO);
+  const first = await swapAndStep(h, FROM, TO);
+
+  // The swap was accepted and its first step resolved, so a build that loads its
+  // systems when it first throws one has had every occasion to throw three.
+  assertEqual(first.chainStep, 1, "the chain step the swap opened");
+  assertGreaterThan(
+    cutCells(first).length,
+    0,
+    "cut gems standing on the board once the step that created one resolved",
+  );
+
+  // And the fourth is the aura, which runs at a cut stone rather than firing at
+  // an event, so the chain is carried to its end and the board held a while with
+  // what R8 made standing on it.
+  await resolveChain(h);
+  await h.advance(STANDING_FRAMES);
   captureStill(h, "loaded");
 
-  // The swap was accepted and its chain ran, so a build that loads its systems
-  // when it first throws one has had every occasion to.
-  assertEqual(first.chainStep, 1, "the chain step the swap opened");
-
-  // Three distinct produced systems asked for, and every one of them arrived.
+  // Four distinct produced systems asked for, and every one of them arrived.
   const loaded = fxAssets(h.requests);
   assertGreaterThanOrEqual(
     loaded.length,

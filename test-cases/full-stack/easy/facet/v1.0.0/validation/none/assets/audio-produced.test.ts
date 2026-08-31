@@ -3,19 +3,19 @@
 //
 // specs/assets.md puts every sound the game plays under `public/assets/audio/`,
 // produced by three of the six tools, and names exactly what has to be there:
-// `sfx-synth` produces the `select`, `swap`, `refuse`, `flaw`, `cut`, `levelup`
-// and `gameover` cues, and "also produces the chain ladder: `MAX_MULTIPLIER`
-// (`8`) tones of one timbre"; `sfx-sample` produces "the shatter body"; and
-// `music` produces "two pieces: a title theme with a hook, and a slower play
-// bed". Seven plus eight plus one plus two is the count below, and it is the
-// specification's arithmetic rather than a figure read off any build.
+// `sfx-synth` produces the `select`, `swap`, `refuse`, `land`, `flaw`, `cut`,
+// `levelup` and `gameover` cues, and "also produces the chain ladder:
+// `MAX_MULTIPLIER` (`8`) tones of one timbre"; `sfx-sample` produces "the shatter
+// body"; and `music` produces "two pieces: a title theme with a hook, and a
+// slower play bed". Eight plus eight plus one plus two is the count below, and it
+// is the specification's arithmetic rather than a figure read off any build.
 //
 // WHY DISTINCTNESS IS PART OF THE CONTRACT. The ladder is eight tones ASCENDING
 // IN PITCH, and each cue has "its own character" — flat and dead for a refusal,
-// rising for a level-up, falling for a game-over. A build that renders one tone
-// and ships eight copies of it under eight names has produced one sound, so the
-// count here is of distinct PCM payloads and not of files: two names over the
-// same bytes count once.
+// "a low settling knock" for a landing, rising for a level-up, falling for a
+// game-over. A build that renders one tone and ships eight copies of it under
+// eight names has produced one sound, so the count here is of distinct PCM
+// payloads and not of files: two names over the same bytes count once.
 //
 // WHY SILENCE IS PART OF THE CONTRACT. specs/assets.md says outright that a
 // build that "plays silence or a hand-oscillated Web Audio stand-in in place of
@@ -55,6 +55,7 @@ const SYNTH_CUES = [
   "select",
   "swap",
   "refuse",
+  "land",
   "flaw",
   "cut",
   "levelup",
@@ -139,7 +140,13 @@ function sampleAt(
 
 /** A decoded `.wav`, or the sentence saying why it is not one. */
 type Decoded =
-  | { pcm: true; channels: number; sampleRate: number; samples: Float32Array; payload: Uint8Array }
+  | {
+      pcm: true;
+      channels: number;
+      sampleRate: number;
+      samples: Float32Array;
+      payload: Uint8Array;
+    }
   | { pcm: false; why: string };
 
 /**
@@ -151,7 +158,8 @@ type Decoded =
  * perfectly good file broken.
  */
 function decodeWav(bytes: Uint8Array): Decoded {
-  if (bytes.byteLength < 12) return { pcm: false, why: "shorter than a RIFF header" };
+  if (bytes.byteLength < 12)
+    return { pcm: false, why: "shorter than a RIFF header" };
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (fourCC(view, 0) !== "RIFF") return { pcm: false, why: "no RIFF header" };
   if (fourCC(view, 8) !== "WAVE") return { pcm: false, why: "not a WAVE file" };
@@ -191,7 +199,8 @@ function decodeWav(bytes: Uint8Array): Decoded {
   if (![8, 16, 24, 32, 64].includes(bits) || (format === 3 && bits < 32)) {
     return { pcm: false, why: `an unreadable sample width (${bits} bits)` };
   }
-  if (channels < 1 || sampleRate < 1) return { pcm: false, why: "no fmt chunk" };
+  if (channels < 1 || sampleRate < 1)
+    return { pcm: false, why: "no fmt chunk" };
 
   const width = bits / 8;
   const count = Math.floor(data.length / width);
@@ -282,7 +291,10 @@ function writeWaveforms(sounds: readonly Sound[]): void {
   const destination = mediaDestination("waveforms", "png");
   if (destination === null) return;
   const drawn = sounds.slice(0, PLOT_LIMIT);
-  const canvas = createCanvas(PLOT_WIDTH, Math.max(1, drawn.length) * PLOT_BAND);
+  const canvas = createCanvas(
+    PLOT_WIDTH,
+    Math.max(1, drawn.length) * PLOT_BAND,
+  );
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#111318";
   ctx.fillRect(0, 0, canvas.width, canvas.height);

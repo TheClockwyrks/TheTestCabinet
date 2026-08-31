@@ -97,8 +97,28 @@ export const MAX_STRAIN = 3;
 /** The shortest line of one kind that counts as a run under R4. */
 export const MATCH_MIN = 3;
 
-/** How long a chain step holds the board before the next one is read. */
+/** How long an accepted swap is in motion before its first step resolves. */
+export const SWAP_SECONDS = 0.18;
+
+/**
+ * How far behind the wave before it one wave of a shattering clear set runs. R6
+ * gives every cell of the set a wave, and the cell at wave `w` shatters `w` of
+ * these into the step.
+ */
+export const WAVE_SECONDS = 0.08;
+
+/** How long a falling gem takes per row it fell. */
+export const FALL_SECONDS_PER_ROW = 0.05;
+
+/**
+ * How long a chain step rests once its gems have landed, before the board is
+ * read again. The whole hold is
+ * `lastWaves * WAVE_SECONDS + lastFall * FALL_SECONDS_PER_ROW + STEP_SECONDS`.
+ */
 export const STEP_SECONDS = 0.25;
+
+/** A step whose longest fall was longer than this many rows plays `land`. */
+export const LAND_MIN_ROWS = 2;
 
 /** How long the mark on a refused swap stands. */
 export const REFUSAL_SECONDS = 0.3;
@@ -125,6 +145,10 @@ export const TITLE_ITEMS = ["PLAY", "HOW TO PLAY"] as const;
 export const PAUSED_TITLE_TEXT = "PAUSED";
 export const PAUSED_ITEMS = ["RESUME", "QUIT"] as const;
 
+/** The end of a level: its heading and its menu, in this order. */
+export const LEVELCLEAR_TITLE_TEXT = "LEVEL CLEAR";
+export const LEVELCLEAR_ITEMS = ["CONTINUE", "QUIT"] as const;
+
 /** The end of a round: its heading and its menu, in this order. */
 export const GAMEOVER_TITLE_TEXT = "NO MOVES LEFT";
 export const GAMEOVER_ITEMS = ["PLAY AGAIN", "QUIT"] as const;
@@ -134,24 +158,39 @@ export const HUD_SCORE_LABEL = "SCORE";
 export const HUD_LEVEL_LABEL = "LEVEL";
 export const HUD_CHAIN_LABEL = "CHAIN";
 
+/** The two figures a finished level is reported by, on `levelclear`. */
+export const BEST_CHAIN_LABEL = "LONGEST CHAIN";
+export const BEST_MOVE_LABEL = "BEST MOVE";
+
+/** The two on-screen controls a pointer-only player reaches a screen through. */
+export const PAUSE_LABEL = "PAUSE";
+export const BACK_LABEL = "BACK";
+
+// ---- Pointer targets (specs/controls.md) ---------------------------------
+
+/**
+ * The least a pointer target may measure, in logical units. A fingertip covers
+ * far more of a touchscreen than a mouse cursor covers of a monitor, so a target
+ * smaller than this is one a touch player cannot reliably hit.
+ */
+export const TARGET_MIN_W = 96;
+export const TARGET_MIN_H = 72;
+
 // ---- Input actions (specs/controls.md) -----------------------------------
 
 /**
- * Facet's board is played with the pointer, and the keyboard drives a cursor
- * over that same board and the menus: a four-way pad and the menu vocabulary
- * that comes with it.
+ * Facet's board is played with the pointer alone, so the keyboard's whole job is
+ * the menus: one vertical highlight and the menu vocabulary that comes with it.
  */
-export const LAYOUT = "dpad-4";
+export const LAYOUT = "single-vertical";
 
 /**
  * Every action Facet registers, which is exactly the vocabulary LAYOUT brings:
- * the four movement actions and the menu actions appended to every layout.
+ * the two movement actions and the menu actions appended to every layout.
  */
 export const ACTIONS = [
   "up",
   "down",
-  "left",
-  "right",
   "confirm",
   "back",
   "pause",
@@ -164,33 +203,30 @@ export type ActionName = (typeof ACTIONS)[number];
  * The keys each action is bound to, as `KeyboardEvent.code` values so a binding
  * is a physical key rather than a layout-dependent character.
  *
- * `specs/controls.md` fixes this whole table, and every key listed for an
- * action fires that action on its own, so both the arrow keys and WASD move
- * the cursor.
+ * `specs/controls.md` fixes this whole table, and every key listed for an action
+ * fires that action on its own. Escape is listed twice on purpose: it raises the
+ * pause menu from the board and it backs out of every other screen that can be
+ * backed out of, and the two actions act on screens that do not overlap, so a
+ * frame that fires both is unambiguous whichever it applies first.
  */
 export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
-  up: ["ArrowUp", "KeyW"],
-  down: ["ArrowDown", "KeyS"],
-  left: ["ArrowLeft", "KeyA"],
-  right: ["ArrowRight", "KeyD"],
+  up: ["ArrowUp"],
+  down: ["ArrowDown"],
   confirm: ["Enter", "Space"],
   back: ["Escape"],
-  pause: ["KeyP"],
+  pause: ["Escape", "KeyP"],
   mute: ["KeyM"],
 };
 
-/** The cell the cursor occupies when a round opens. */
-export const CURSOR_START_COL = 0;
-export const CURSOR_START_ROW = 0;
-
 // ---- Audio cues (specs/ui.md) --------------------------------------------
 
-/** The eight cue names, one per event. Define and play exactly these. */
+/** The nine cue names, one per event. Define and play exactly these. */
 export const CUES = {
   select: "select",
   swap: "swap",
   refuse: "refuse",
   clear: "clear",
+  land: "land",
   flaw: "flaw",
   cut: "cut",
   levelUp: "levelup",

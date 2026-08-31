@@ -10,26 +10,32 @@
 // time reaches the same state however it was divided into frames", and, of the
 // clock operation itself, "`advance(1, 1)` and `advance(1, 60)` cover the same
 // second of game time and must reach the same outcome". A build that counts
-// FRAMES instead — a chain step every frame, or every sixteenth one, rather than
-// every `STEP_SECONDS` (0.25) of accumulated game time — plays correctly on the
-// machine it was written on and runs at half speed on a 30 Hz display, at double
-// on a 120 Hz one. Nothing else in this project would catch that: every other
-// check drives at one fixed rate, where a frame count and an elapsed time are
-// the same statement.
+// FRAMES instead — a chain step every frame, or a swap that lands after a fixed
+// number of them, rather than after the game time specs/rules.md gives each —
+// plays correctly on the machine it was written on and runs at half speed on a
+// 30 Hz display, at double on a 120 Hz one. Nothing else in this project would
+// catch that: every other check drives at one fixed rate, where a frame count and
+// an elapsed time are the same statement.
+//
+// TWO TIMERS, AND THE INTERVAL CROSSES BOTH. specs/rules.md gives a move two
+// spans in succession: `swapTimer` runs to `SWAP_SECONDS` (`0.18`) while the two
+// gems are in motion, and then `stepTimer` runs to the resolving step's own
+// `stepHold`. They are integrated separately, and a build can carry one against
+// elapsed time and the other against frames, so the interval below is sized to
+// carry both boundaries under either division.
 //
 // WHERE THE TWO READINGS ARE VISIBLE, AND WHERE THEY ARE NOT. They part only
 // INSIDE a chain. Once a chain has run out, a build that resolved its steps a
-// frame apart and a build that resolved them `STEP_SECONDS` apart have cleared
-// the same cells in the same order off the same seeded refills and are sitting
-// on the same settled board — the difference has been spent, and comparing two
-// finished chains compares nothing. So the scenario below is a cascade six steps
-// deep by construction — every one of the six is forced by R4 and R9 rather than
-// dealt, and a build's own refills may carry it further still — and the interval
-// is one that leaves a build integrating game time at the SECOND of those six
-// however it is divided, while the fine drive's sixty frames carry a
-// frame-counting build clean through all of them. A shallow chain is what
-// leaves the point looking like coverage while grading nothing, which is worse
-// than no check at all.
+// frame apart and a build that resolved them a hold apart have cleared the same
+// cells in the same order off the same seeded refills and are sitting on the same
+// settled board — the difference has been spent, and comparing two finished
+// chains compares nothing. So the scenario below is a cascade six steps deep by
+// construction — every one of the six is forced by R4 and R9 rather than dealt,
+// and a build's own refills may carry it further still — and the interval is one
+// that leaves a build integrating game time at the SECOND of those six however it
+// is divided, while the fine drive's sixty frames carry a frame-counting build
+// clean through all of them. A shallow chain is what leaves the point looking
+// like coverage while grading nothing, which is worse than no check at all.
 //
 // THE CASCADE, AND WHY NONE OF IT IS POSED. Every step after the first is made
 // by R9's settling of the step before it, so a build cannot reach step six by
@@ -37,7 +43,8 @@
 // governs each of them, and the posed board carries no run at all:
 //
 //   1. The swap carries the ruby at (6,3) into (5,3), completing the rubies at
-//      (3,3) and (4,3) across row 3. R3 accepts it, and it resolves on the spot.
+//      (3,3) and (4,3) across row 3. R3 accepts it, and step 1 resolves once the
+//      swap animation has run.
 //   2. Column 4 holds jades at rows 2, 4 and 5 — no run while the ruby at (4,3)
 //      parts them. Step 1 removes that ruby, the jade at (4,2) falls into (4,3),
 //      and the three jades are a maximal run down column 4.
@@ -59,21 +66,39 @@
 // gems the settling put there, and a maximal run seeds a step whatever strain
 // its gems carry.
 //
-// THE INTERVAL, AND WHY IT IS THIS ONE. `DRIVE_SECONDS` is `1.5` times
-// `STEP_SECONDS`, so exactly one chain-step boundary falls inside it however the
-// interval is divided, and it is half a step clear of both `STEP_SECONDS` and
-// twice it. That margin is what makes the two drives comparable without reading
-// anything the specification leaves open: a build is entitled to cross the
-// boundary at `>=` or at `>`, and to carry the remainder of `stepTimer` forward
-// or return it to `0` — both readings of "When `stepTimer` reaches
-// `STEP_SECONDS` it returns to `0`" — and every one of those combinations
-// resolves exactly one step over this interval at either frame rate. `stepTimer`
-// itself is therefore not compared; the fields the point names are.
+// THE INTERVAL, AND WHY IT IS MEASURED RATHER THAN WRITTEN DOWN. A step's hold is
+// the STEP's own figure — `lastWaves * WAVE_SECONDS + lastFall *
+// FALL_SECONDS_PER_ROW + STEP_SECONDS` — and `lastFall` is a figure the
+// specification leaves partly to the build, since a refilled gem's `fell` is
+// fixed only as a floor. So there is no constant that is guaranteed to land
+// between step 1's boundary and step 2's for every conformant build, and an
+// interval that landed ON a boundary would be comparing two drives across a
+// coin toss rather than across a rule.
 //
-// WHY TWO INSTANCES. The comparison needs the same starting state twice, and the
-// first drive consumes it: the same seed, the same posed board and the same
-// swap, driven once coarsely and once finely, in builds that were loaded
-// separately.
+// The interval is therefore taken off the build itself. A PROBE instance poses
+// the same scenario, carries it past the swap animation into step 1, and reads
+// that step's own `stepHold`. The interval is
+//
+//   SWAP_SECONDS + stepHold(step 1) + BOUNDARY_MARGIN
+//
+// which is step 1's boundary plus a margin. `BOUNDARY_MARGIN` is half of
+// `STEP_SECONDS`, `0.125` s, and the SHORTEST hold any step can have is `0.3` s
+// (`lastWaves` is `0` when the clear set is its seed alone, and `lastFall` is at
+// least `1` because a step that cleared anything refills at least one cell from
+// above row `0`). So the interval lands `0.125` s past step 1's boundary and at
+// least `0.175` s short of step 2's, whatever figures the two steps turned out to
+// carry. Both divisions therefore cross exactly the same two boundaries, and
+// neither is decided by floating-point residue near one of them.
+//
+// WHAT IS COMPARED, AND WHAT IS NOT. The board, the chain step, the phase, the
+// score and the simulation clock. `swapTimer` and `stepTimer` are deliberately
+// left out: specs/rules.md says each returns to `0` when it reaches its span and
+// says nothing about what becomes of the overrun, so two compliant builds
+// legitimately hold different remainders just past a boundary.
+//
+// WHY THREE INSTANCES. The comparison needs the same starting state twice and the
+// probe consumes a third: the same seed, the same posed board and the same swap,
+// driven once coarsely and once finely, in builds that were loaded separately.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -93,30 +118,32 @@ import {
   type CellRef,
   type PlacedToken,
 } from "../board";
-import { STEP_SECONDS } from "../constants";
+import { STEP_SECONDS, SWAP_SECONDS } from "../constants";
 import {
+  advanceStep,
   captureReplay,
   createHarness,
   failSurface,
   loadBoard,
-  swap,
+  requestSwap,
   type Harness,
 } from "../harness";
 import type { FacetSnapshot } from "../surface";
 
 let h: Harness;
 
-/** The seed both drives run from, so R9's refill draws the same gems in each. */
+/** The seed all three instances run from, so R9's refill draws the same gems. */
 const SEED = 4242;
 
 /**
- * The interval both drives cover, in seconds of game time.
+ * How far past step 1's boundary the interval reaches, in seconds of game time.
  *
- * One and a half steps: past `STEP_SECONDS` and short of twice it by the same
- * half-step, so exactly one chain-step boundary lies inside it under every
- * reading of the boundary the specification allows.
+ * Half of `STEP_SECONDS`, which is half of the shortest hold any step can have,
+ * so the interval clears step 1's boundary by this much and falls short of step
+ * 2's by at least as much. Neither margin depends on a figure the build was free
+ * to choose.
  */
-const DRIVE_SECONDS = 1.5 * STEP_SECONDS;
+const BOUNDARY_MARGIN = STEP_SECONDS / 2;
 
 /** The two divisions of that interval: one whole frame, and sixty. */
 const COARSE_FRAMES = 1;
@@ -166,23 +193,47 @@ function requireSurface(): void {
   if (h.surfaceFault !== null) failSurface(h.surfaceFault);
 }
 
-/** Pose the scenario on `target` and read the state the swap left. */
-async function pose(target: Harness): Promise<FacetSnapshot> {
+/** Pose the scenario on `target` and read the state the REQUEST left. */
+function pose(target: Harness): FacetSnapshot {
   if (target.surfaceFault !== null) failSurface(target.surfaceFault);
-  await target.debug.reset({ seed: SEED });
-  await loadBoard(target, POSED);
-  return swap(target, SWAP_A, SWAP_B);
+  target.debug.reset({ seed: SEED });
+  loadBoard(target, POSED);
+  return requestSwap(target, SWAP_A, SWAP_B);
+}
+
+/**
+ * The interval both drives cover, read off a probe instance of the build.
+ *
+ * The probe poses the scenario, carries the swap through its own animation into
+ * step 1 — which is exactly what `advanceStep` does for a `swapping` board — and
+ * reports the hold that step gave itself. The probe is disposed before either
+ * drive is stood up, so nothing it did can reach them.
+ */
+async function driveSeconds(): Promise<number> {
+  const probe = await createHarness({ seed: SEED });
+  try {
+    pose(probe);
+    const resolving = await advanceStep(probe);
+    assertEqual(resolving.phase, "resolving", "the phase the probe reached");
+    assertEqual(resolving.chainStep, 1, "the step the probe reached");
+    return SWAP_SECONDS + resolving.stepHold + BOUNDARY_MARGIN;
+  } finally {
+    probe.dispose();
+  }
 }
 
 /** Drive the interval as `frames` equal frames, in a fresh instance. */
-async function driveFresh(frames: number): Promise<FacetSnapshot> {
+async function driveFresh(
+  span: number,
+  frames: number,
+): Promise<FacetSnapshot> {
   const fresh = await createHarness({ seed: SEED });
   try {
-    await pose(fresh);
-    await fresh.advanceSeconds(DRIVE_SECONDS, frames);
-    return await fresh.snapshot();
+    pose(fresh);
+    await fresh.advanceSeconds(span, frames);
+    return fresh.snapshot();
   } finally {
-    await fresh.dispose();
+    fresh.dispose();
   }
 }
 
@@ -190,8 +241,8 @@ beforeEach(async () => {
   h = await createHarness({ seed: SEED });
 });
 
-afterEach(async () => {
-  await h?.dispose();
+afterEach(() => {
+  h?.dispose();
 });
 
 it("reaches the same state whether the interval is one frame or sixty", async () => {
@@ -208,33 +259,43 @@ it("reaches the same state whether the interval is one frame or sixty", async ()
     "maximal runs the swap makes",
   );
 
-  const opened = await pose(h);
-  assertEqual(opened.phase, "resolving", "the phase the accepted swap left");
-  assertEqual(opened.chainStep, 1, "the chain step the accepted swap resolved");
+  const span = await driveSeconds();
+
+  const opened = pose(h);
+  // specs/rules.md: an accepted swap "exchanges the two cells at once, sets
+  // `phase` to `swapping`, sets `swapTimer` to `0`, and leaves `chainStep` at
+  // `0`". Nothing has been cleared yet, and that is where both drives begin.
+  assertEqual(opened.phase, "swapping", "the phase the accepted swap left");
+  assertEqual(opened.chainStep, 0, "the chain step the accepted swap left");
 
   // The whole interval as a single frame. Whatever the build does inside it, it
-  // is handed the interval as one delta.
+  // is handed the interval as one delta — both boundaries at once.
   await captureReplay(h, "drive", async () => {
-    await h.advanceSeconds(DRIVE_SECONDS, COARSE_FRAMES);
+    await h.advanceSeconds(span, COARSE_FRAMES);
   });
-  const coarse = await h.snapshot();
+  const coarse = h.snapshot();
 
   // The same interval, sixty frames of it, in a build stood up separately.
-  const fine = await driveFresh(FINE_FRAMES);
+  const fine = await driveFresh(span, FINE_FRAMES);
 
-  // The comparison says nothing unless the interval actually carried the chain
-  // somewhere. It is longer than `STEP_SECONDS`, so the board was read again and
-  // the step the swap resolved is behind both drives.
+  // The comparison says nothing unless the interval actually carried the move
+  // somewhere. It is past `SWAP_SECONDS` and past step 1's own hold, so the swap
+  // has landed, step 1 has resolved, and the board has been read again.
+  assertNotEqual(
+    coarse.phase,
+    opened.phase,
+    `the phase after ${span}s, which is past SWAP_SECONDS (${SWAP_SECONDS})`,
+  );
   assertNotEqual(
     coarse.chainStep,
-    opened.chainStep,
-    `the chain step after ${DRIVE_SECONDS}s, which is past STEP_SECONDS (${STEP_SECONDS})`,
+    1,
+    `the chain step after ${span}s, which is past step 1's own hold`,
   );
 
   assertBoardEquals(
     renderBoard(coarse),
     renderBoard(fine),
-    `the board after ${DRIVE_SECONDS}s driven as ${COARSE_FRAMES} frame against ${FINE_FRAMES}`,
+    `the board after ${span}s driven as ${COARSE_FRAMES} frame against ${FINE_FRAMES}`,
   );
   assertEqual(coarse.chainStep, fine.chainStep, "the chain step reached");
   assertEqual(coarse.phase, fine.phase, "the phase reached");

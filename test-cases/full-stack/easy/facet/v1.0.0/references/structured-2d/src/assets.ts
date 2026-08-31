@@ -67,10 +67,14 @@ export const FRAME_KEY = "frame";
 export const CUT_BRILLIANT_KEY = "cut:brilliant";
 export const CUT_STAR_KEY = "cut:star";
 
-/** The three particle systems. */
+/**
+ * The four particle systems: three one-shots a chain throws, and the looping
+ * aura every cut stone standing on the board carries (specs/assets.md).
+ */
 export const FX_CLEAR = "clear-burst";
 export const FX_FLAWED = "flawed-burst";
 export const FX_CUT = "cut-flash";
+export const FX_AURA = "cut-aura";
 
 // ---- The manifest --------------------------------------------------------
 
@@ -106,6 +110,7 @@ export function assetManifest(): AssetManifest {
     [FX_CLEAR]: "fx/clear-burst.system.json",
     [FX_FLAWED]: "fx/flawed-burst.system.json",
     [FX_CUT]: "fx/cut-flash.system.json",
+    [FX_AURA]: "fx/cut-aura.system.json",
   };
 
   return { images, systems };

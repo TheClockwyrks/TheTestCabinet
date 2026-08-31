@@ -61,6 +61,11 @@ its gem's kind rather than replacing it, so a player reads a gem's kind and its
 cut in the same glance. `specs/rules.md` says what creates each cut and what
 each one does when it clears.
 
+A cut gem is never still. `specs/assets.md` gives the produced effect that runs
+continuously at every `brilliant`, `star`, and `prism` standing on the board, so
+the three a chain earns are picked out by motion as well as by their treatment.
+A gem's strain raises no such effect: damage is read off the stone itself.
+
 ## Strain
 
 Strain is a whole number from `0` to `MAX_STRAIN` (`3`). Every gem carries one,
@@ -83,8 +88,9 @@ What the look must deliver:
    no kind.
 3. A gem's strain is readable without counting slowly, and a flawed gem is
    unmistakable.
-4. Every gem's drawn form fits inside `GEM_R` (`30`) of its cell center, so
-   neighboring gems never collide.
+4. Every gem's drawn form fits inside `GEM_R` (`30`) of its cell center once it
+   is resting in that cell, so neighboring gems never collide. A gem drawn
+   mid-fall or mid-swap is between cells, as `specs/rules.md` times it.
 5. The board reads as an `8` by `8` grid, with each gem clearly sitting in one
    cell.
 6. Text is legible against whatever it is drawn on at the logical stage size.
@@ -134,4 +140,5 @@ R0 A0 C0 J0 B0 S0 M0 R0
 ```
 
 The notation carries the board and nothing else. It records no score, no level,
-and no selection.
+no selection, and no `fell`: every gem of a board written in it is standing
+still in the cell it is written at, so it carries a `fell` of `0`.

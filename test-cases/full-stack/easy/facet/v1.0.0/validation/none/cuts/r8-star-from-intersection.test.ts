@@ -20,10 +20,18 @@
 // posed board carries no cut gem — so any gem that is not `plain` afterwards is
 // one R8 created.
 //
-// The reading is taken at step 1, which specs/rules.md resolves at the swap. WHERE
-// the star lands is `cuts/r8-star-placement`'s point; this check finds it wherever
-// it stands, which matters here because R9 runs after R8 in the same step and this
-// arrangement leaves emptied cells below the crossing for the star to fall into.
+// THE READING IS TAKEN AT STEP 1. specs/rules.md has an accepted swap exchange
+// its two cells at once, set `phase` to `swapping` with `chainStep` at `0`, and
+// clear nothing until `SWAP_SECONDS` (`0.18`) of game time has passed; step 1
+// then resolves, R8 and R9 both inside it. `swapAndResolve` carries the game
+// through that animation and hands back `first`, the reading of step 1's result,
+// which is what this check reads. A later step is seeded from whatever R9's
+// refill dealt and may create cuts of its own.
+//
+// WHERE the star lands is `cuts/r8-star-placement`'s point; this check finds it
+// wherever it stands, which matters here because R9 runs after R8 in the same
+// step and this arrangement leaves emptied cells below the crossing for the star
+// to fall into.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
@@ -123,8 +131,8 @@ it("leaves one star of the crossing runs' kind at strain 0", async () => {
     swapAndResolve(h, FROM, TO),
   );
 
-  // Step 1 resolved at the swap, and the clear set was the union of the two runs.
-  assertEqual(first.chainStep, 1, "the chain step the swap opened");
+  // The reading is step 1's, and its clear set was the union of the two runs.
+  assertEqual(first.chainStep, 1, "the chain step the accepted swap resolved");
   assertEqual(first.lastCleared, CLEARED, "cells the step cleared");
 
   // R8's third row: the crossing creates one gem, that gem is a star, and it

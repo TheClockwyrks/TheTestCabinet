@@ -62,30 +62,44 @@ import {
   HUD_SCORE_LABEL,
   LEVEL_TARGET_STEP,
   MAX_REPLAY_FRAMES,
+  REFUSAL_FRAMES_AFTER,
+  REFUSAL_FRAMES_BEFORE,
+  REFUSAL_SECONDS,
+  STEP_SECONDS,
+  SWAP_DRIVE_FRAMES,
   TAGLINE_TEXT,
   TICK_MS,
+  TICK_S,
   TITLE_ITEMS,
   TITLE_TEXT,
 } from "./constants";
 import {
+  advanceStep,
   captureReplay,
   createHarness,
+  dragGem,
   drawnText,
   drewText,
+  framesPast,
+  framesShortOf,
   loadBoard,
   meanColor,
   patchDistance,
   poseBoard,
+  requestSwap,
   resolveChain,
   retable,
   showsText,
   startRound,
-  swap,
+  stepDriveFrames,
+  swapAndStep,
+  takeTarget,
+  targetById,
   type DrawCall,
   type Harness,
   type Patch,
 } from "./harness";
-import { FACET_DEBUG_VERSION } from "./surface";
+import { FACET_DEBUG_VERSION, type FacetSnapshot, type Phase } from "./surface";
 
 /* -------------------------------------------------------------------------- */
 /* The notation                                                               */
@@ -93,19 +107,36 @@ import { FACET_DEBUG_VERSION } from "./surface";
 
 describe("the board notation", () => {
   it("reads every token specs/board.md writes out", () => {
-    expect(parseToken("R0")).toEqual({ kind: "ruby", cut: "plain", strain: 0 });
-    expect(parseToken("J3")).toEqual({ kind: "jade", cut: "plain", strain: 3 });
+    expect(parseToken("R0")).toEqual({
+      kind: "ruby",
+      cut: "plain",
+      strain: 0,
+      fell: 0,
+    });
+    expect(parseToken("J3")).toEqual({
+      kind: "jade",
+      cut: "plain",
+      strain: 3,
+      fell: 0,
+    });
     expect(parseToken("S1b")).toEqual({
       kind: "sapphire",
       cut: "brilliant",
       strain: 1,
+      fell: 0,
     });
     expect(parseToken("C0s")).toEqual({
       kind: "citrine",
       cut: "star",
       strain: 0,
+      fell: 0,
     });
-    expect(parseToken("X0")).toEqual({ kind: null, cut: "prism", strain: 0 });
+    expect(parseToken("X0")).toEqual({
+      kind: null,
+      cut: "prism",
+      strain: 0,
+      fell: 0,
+    });
   });
 
   it("writes back every token it reads", () => {
@@ -146,18 +177,26 @@ describe("the board notation", () => {
       kind: "amethyst",
       cut: "plain",
       strain: 2,
+      fell: 0,
     });
     expect(cells[3][5]).toEqual({
       kind: "beryl",
       cut: "brilliant",
       strain: 0,
+      fell: 0,
     });
     expect(cells[5][2]).toEqual({
       kind: "sapphire",
       cut: "star",
       strain: 2,
+      fell: 0,
     });
-    expect(cells[6][4]).toEqual({ kind: null, cut: "prism", strain: 0 });
+    expect(cells[6][4]).toEqual({
+      kind: null,
+      cut: "prism",
+      strain: 0,
+      fell: 0,
+    });
     expect(tokenAt(example, 6, 4)).toBe("R3");
   });
 
@@ -346,6 +385,64 @@ function flatPatch(r: number, g: number, b: number, size = 4): Patch {
   }
   return { half: size / 2, width: size, height: size, data };
 }
+
+describe("counting frames for a duration", () => {
+  it("stops strictly short of the duration it is given", () => {
+    // The one duration the suite writes both counts down for by hand, so the
+    // arithmetic here is held against a figure a reader can check.
+    expect(framesShortOf(REFUSAL_SECONDS)).toBe(REFUSAL_FRAMES_BEFORE);
+    expect(framesShortOf(REFUSAL_SECONDS) * TICK_S).toBeLessThan(
+      REFUSAL_SECONDS,
+    );
+    // A duration that is an exact whole number of frames still stops short.
+    expect(framesShortOf(16 * TICK_S)).toBe(15);
+    expect(framesShortOf(0)).toBe(0);
+  });
+
+  it("carries a whole frame past the duration it is given", () => {
+    expect(framesPast(REFUSAL_SECONDS)).toBeGreaterThanOrEqual(
+      REFUSAL_FRAMES_AFTER,
+    );
+    // A whole frame beyond, so a build comparing `>` has fired as surely as one
+    // comparing `>=`, and at most two, so the drive is nowhere near a second
+    // threshold of the same length.
+    for (const seconds of [0.18, 0.25, 0.3, 0.42, 16 * TICK_S]) {
+      const covered = framesPast(seconds) * TICK_S;
+      expect(covered).toBeGreaterThan(seconds + TICK_S - 1e-9);
+      expect(covered).toBeLessThan(seconds + 2 * TICK_S + 1e-9);
+    }
+  });
+
+  it("sizes a step's drive from the hold that step reports", () => {
+    // The three fields the drive is computed from, as a snapshot. A cast rather
+    // than a whole snapshot because the function reads exactly these three and a
+    // fabricated board would say nothing about which.
+    const timing = (
+      phase: Phase,
+      stepHold: number,
+      stepTimer: number,
+    ): FacetSnapshot =>
+      ({ phase, stepHold, stepTimer }) as unknown as FacetSnapshot;
+
+    // A step's hold is the step's own figure, so the drive is read off the
+    // snapshot rather than fixed.
+    expect(stepDriveFrames(timing("resolving", STEP_SECONDS, 0))).toBe(
+      framesPast(STEP_SECONDS),
+    );
+
+    // What has already run comes off the drive, so the overshoot past the
+    // boundary stays inside two frames however deep into the hold this is asked.
+    expect(
+      stepDriveFrames(timing("resolving", STEP_SECONDS, STEP_SECONDS / 2)),
+    ).toBe(framesPast(STEP_SECONDS / 2));
+
+    // A swap in motion is timed by SWAP_SECONDS instead, and is the one case
+    // the hold has nothing to say about.
+    expect(stepDriveFrames(timing("swapping", STEP_SECONDS, 0))).toBe(
+      SWAP_DRIVE_FRAMES,
+    );
+  });
+});
 
 describe("the patch instrument", () => {
   it("reads two identical patches as no distance at all", () => {
@@ -660,12 +757,33 @@ describe("the harness stands a build up", () => {
     expect(h.frame()).toBe(before);
   });
 
+  it("holds an accepted swap in motion before step 1 resolves", async () => {
+    // specs/rules.md exchanges the two cells at once, sets `phase` to
+    // `swapping`, and clears nothing until SWAP_SECONDS of game time has passed
+    // — so the two helpers read two different moments and a check that reached
+    // for the wrong one would be reading a board no step has touched.
+    loadBoard(h, threeInARow());
+    const requested = requestSwap(h, { col: 3, row: 1 }, { col: 3, row: 2 });
+    expect(requested.phase).toBe("swapping");
+    expect(requested.chainStep).toBe(0);
+    expect(requested.lastCleared).toBe(0);
+    // The exchange itself happened at the request: the ruby the filler holds at
+    // (3,2) is standing at (3,1), completing the run that step 1 will take.
+    expect(tokenAt(renderBoard(requested), 3, 1)).toBe("R0");
+    expect(tokenAt(renderBoard(requested), 3, 2)).toBe("C0");
+
+    const stepped = await advanceStep(h);
+    expect(stepped.phase).toBe("resolving");
+    expect(stepped.chainStep).toBe(1);
+    expect(stepped.lastCleared).toBe(3);
+  });
+
   it("clears a run of three, scores it, strains its neighbors and settles", async () => {
     loadBoard(h, threeInARow());
 
-    // The swap resolves step 1 on the spot (specs/rules.md), so this reading is
-    // that step: three clean rubies at multiplier 1.
-    const first = swap(h, { col: 3, row: 1 }, { col: 3, row: 2 });
+    // Carried through the swap animation, this reading is step 1: three clean
+    // rubies at multiplier 1.
+    const first = await swapAndStep(h, { col: 3, row: 1 }, { col: 3, row: 2 });
     expect(first.phase).toBe("resolving");
     expect(first.chainStep).toBe(1);
     expect(first.multiplier).toBe(1);
@@ -753,7 +871,7 @@ describe("the harness stands a build up", () => {
   it("writes a captured section as gzip and hands the value back", async () => {
     loadBoard(h, threeInARow());
     const frames = await captureReplay(h, "chain", async () => {
-      swap(h, { col: 3, row: 1 }, { col: 3, row: 2 });
+      await swapAndStep(h, { col: 3, row: 1 }, { col: 3, row: 2 });
       await resolveChain(h);
       return 7;
     });
@@ -804,6 +922,40 @@ describe("the harness stands a build up", () => {
     // The same press written at the level the checklist writes at.
     await h.tapAction("mute");
     expect(h.snapshot().muted).toBe(muted);
+  });
+
+  it("plays a move as the whole gesture, and never as a shortcut", async () => {
+    // specs/controls.md plays a move by taking hold of a gem, carrying it onto a
+    // neighbor, and letting go: the RELEASE is what requests the swap. The
+    // gesture helper goes through `pointerDown`, `pointerMove` and `pointerUp`
+    // and through nothing else, so what decides the outcome is the build's own
+    // press, move and release rules.
+    loadBoard(h, threeInARow());
+    const played = dragGem(h, { col: 3, row: 2 }, { col: 3, row: 1 });
+
+    // The release requested the swap and let the gem go.
+    expect(played.phase).toBe("swapping");
+    expect(played.offer).toBeNull();
+    expect(played.selection).toBeNull();
+
+    const settled = await resolveChain(h);
+    expect(settled.settled).toBe(true);
+    expect(settled.snapshot.score).toBeGreaterThanOrEqual(3 * BASE_SCORE);
+  });
+
+  it("takes a reported pointer target, by mouse and by touch", async () => {
+    // A target's rectangle is the BUILD's, so a check reads the one it is going
+    // to press off the snapshot. specs/instrumentation.md fixes that pressing
+    // and releasing at a listed target's center takes that target.
+    const play = targetById(h.snapshot(), "menu-0");
+    expect(play.w).toBeGreaterThan(0);
+    const opened = takeTarget(h, play, "touch");
+    expect(opened.screen).toBe("playing");
+    expect(opened.pointer.device).toBe("touch");
+
+    // And a target the screen does not carry fails as the fixture error it is,
+    // naming the ids that were reported.
+    expect(() => targetById(opened, "menu-1")).toThrow(/Expected:/);
   });
 
   it("reaches the surface with no fault, and reflects over it", async () => {

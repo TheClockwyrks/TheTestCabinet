@@ -10,7 +10,8 @@
 //     cell's address is its index, and an empty cell is written as the one
 //     `GemState` no gem can be — `kind: null` with `cut: "plain"`, since a
 //     kindless gem is a prism and a prism's cut says so. The map is therefore
-//     total and lossless in both directions.
+//     total and lossless in both directions, `fell` included: an empty cell
+//     traveled nowhere, so it is written at `0`.
 //
 //   * A REFUSAL. `specs/state.md` fixes one `RefusalState` carrying the two
 //     cells and the game time it has stood for; the core keeps the pair and the
@@ -43,7 +44,7 @@ import type { DeepReadonly } from "ts-essentials";
 
 /** The `GemState` an empty cell is written as; see the header. */
 export function emptyCell(col: number, row: number): GemState {
-  return { col, row, kind: null, cut: "plain", strain: 0 };
+  return { col, row, kind: null, cut: "plain", strain: 0, fell: 0 };
 }
 
 /** Whether a cell holds no gem, which is the encoding above read back. */
@@ -78,6 +79,7 @@ export function toCoreGem(cell: DeepReadonly<GemState>): CoreGem | null {
     kind: cell.kind as GemKind | null,
     cut: cell.cut as Cut,
     strain: cell.strain,
+    fell: cell.fell,
   };
 }
 
@@ -100,7 +102,14 @@ export function fromCoreBoard(board: CoreBoard): BoardState {
       cells.push(
         gem === null
           ? emptyCell(col, row)
-          : { col, row, kind: gem.kind, cut: gem.cut, strain: gem.strain },
+          : {
+              col,
+              row,
+              kind: gem.kind,
+              cut: gem.cut,
+              strain: gem.strain,
+              fell: gem.fell,
+            },
       );
     }
   }
@@ -120,12 +129,17 @@ export function toCore(state: DeepReadonly<FacetState>): CoreState {
     levelScore: state.levelScore,
     phase: state.phase,
     chainStep: state.chainStep,
+    swapTimer: state.swapTimer,
     stepTimer: state.stepTimer,
     chainSwap: state.chainSwap === null ? null : toCorePair(state.chainSwap),
     lastCleared: state.lastCleared,
     lastPoints: state.lastPoints,
-    cursor: toCoreCell(state.cursor),
+    lastWaves: state.lastWaves,
+    moveScore: state.moveScore,
+    bestMove: state.bestMove,
+    bestChain: state.bestChain,
     selection: state.selection === null ? null : toCoreCell(state.selection),
+    offer: state.offer === null ? null : toCoreCell(state.offer),
     refusal:
       state.refusal === null
         ? null
@@ -135,10 +149,9 @@ export function toCore(state: DeepReadonly<FacetState>): CoreState {
       x: state.pointer.x,
       y: state.pointer.y,
       down: state.pointer.down,
+      device: state.pointer.device,
     },
-    pressedCell:
-      state.pressedCell === null ? null : toCoreCell(state.pressedCell),
-    dragSwapped: state.dragSwapped,
+    armedTarget: state.armedTarget,
     muted: state.muted,
     simTime: state.simTime,
     rngState: state.rngState,
@@ -153,14 +166,19 @@ export function fromCore(state: CoreState): FacetState {
     board: fromCoreBoard(state.board),
     phase: state.phase,
     chainStep: state.chainStep,
+    swapTimer: state.swapTimer,
     stepTimer: state.stepTimer,
     score: state.score,
     level: state.level,
     levelScore: state.levelScore,
     lastCleared: state.lastCleared,
     lastPoints: state.lastPoints,
-    cursor: fromCoreCell(state.cursor),
+    lastWaves: state.lastWaves,
+    moveScore: state.moveScore,
+    bestMove: state.bestMove,
+    bestChain: state.bestChain,
     selection: state.selection === null ? null : fromCoreCell(state.selection),
+    offer: state.offer === null ? null : fromCoreCell(state.offer),
     refusal:
       state.refusal === null
         ? null
@@ -169,17 +187,16 @@ export function fromCore(state: CoreState): FacetState {
             b: fromCoreCell(state.refusal.b),
             timer: state.refusalTimer,
           },
+    armedTarget: state.armedTarget,
     pointer: {
       x: state.pointer.x,
       y: state.pointer.y,
       down: state.pointer.down,
+      device: state.pointer.device,
     },
     simTime: state.simTime,
     muted: state.muted,
     rngState: state.rngState,
     chainSwap: state.chainSwap === null ? null : fromCorePair(state.chainSwap),
-    pressedCell:
-      state.pressedCell === null ? null : fromCoreCell(state.pressedCell),
-    dragSwapped: state.dragSwapped,
   };
 }

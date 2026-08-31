@@ -5,7 +5,7 @@
 // `startLevel` and the game never opens another: every screen is a value of the
 // state's `screen` field, so the world and its game state live for the whole
 // session. `FacetInstance.initialize` runs once, before the level opens — it
-// registers the actions, defines the eight cues over the produced sounds, and
+// registers the actions, defines the nine cues over the produced sounds, and
 // returns the debug surface, which the engine holds and returns from
 // `engine.debug`. `FacetMode` runs that level: its `gameStateClass` is
 // `FacetState`, so the engine builds the state below when the world opens; its
@@ -15,11 +15,12 @@
 // the engine's mute bit (specs/state.md, specs/instrumentation.md).
 //
 // THE RULES ARE NOT HERE. `src/core/` is Facet's whole simulation — the board,
-// R1 to R9, the chain cadence, the screens, and the pose logic behind the debug
-// surface — written against nothing but `src/constants.ts`, so a score recorded
-// under this engine means exactly what a score recorded under another does.
-// This file declares the state the ENGINE holds; `src/bridge.ts` is the one
-// place that carries it into the core's own shape and back.
+// R1 to R9, the swap in motion, the chain cadence, the screens, the pointer
+// targets, and the pose logic behind the debug surface — written against
+// nothing but `src/constants.ts`, so a score recorded under this engine means
+// exactly what a score recorded under another does. This file declares the
+// state the ENGINE holds; `src/bridge.ts` is the one place that carries it into
+// the core's own shape and back.
 //
 // THE STATE SHAPE BELOW IS A CONTRACT (specs/state.md). It is the world's game
 // state — `engine.world.state` is the one instance of it — and the framework's
@@ -40,7 +41,7 @@ import type {
 import { loadAssets } from "./assets";
 import { defineCues, loadCues } from "./audio";
 import { Bench } from "./bench";
-import { CURSOR_START_COL, CURSOR_START_ROW, DEFAULT_SEED } from "./constants";
+import { DEFAULT_SEED } from "./constants";
 import { FacetController } from "./controller";
 import { createDebugApi, type FacetDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
@@ -66,9 +67,12 @@ export type GemKind =
 
 export type Cut = "plain" | "brilliant" | "star" | "prism";
 
-export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
+export type Screen =
+  "title" | "howto" | "playing" | "paused" | "levelclear" | "gameover";
 
-export type Phase = "idle" | "resolving";
+export type Phase = "idle" | "swapping" | "resolving";
+
+export type PointerDevice = "mouse" | "pen" | "touch";
 
 export interface CellRef {
   col: number;
@@ -81,6 +85,7 @@ export interface GemState {
   kind: GemKind | null;
   cut: Cut;
   strain: number;
+  fell: number;
 }
 
 export interface BoardState {
@@ -99,18 +104,19 @@ export interface PointerState {
   x: number;
   y: number;
   down: boolean;
+  device: PointerDevice;
 }
 
 /**
  * The engine's `GameState` under a type that leaves `phase` to Facet.
  *
- * `specs/state.md` declares `phase` as Facet's RESOLUTION phase — `"idle"` or
- * `"resolving"` — "over the framework's", and states the consequences outright:
- * the mode never calls `setPhase`, and `elapsed` stays `0`. Both hold here. The
- * engine accumulates `elapsed` only while the field reads the framework's
- * `"playing"`, which Facet's phase never does, and the only other reader of the
- * field is `setPhase` itself, which is never called; the overlay's own phase
- * line reads the game mode's `phase`, not the state's.
+ * `specs/state.md` declares `phase` as Facet's RESOLUTION phase — `"idle"`,
+ * `"swapping"`, or `"resolving"` — "over the framework's", and states the
+ * consequences outright: the mode never calls `setPhase`, and `elapsed` stays
+ * `0`. Both hold here. The engine accumulates `elapsed` only while the field
+ * reads the framework's `"playing"`, which Facet's phase never does, and the
+ * only other reader of the field is `setPhase` itself, which is never called;
+ * the overlay's own phase line reads the game mode's `phase`, not the state's.
  *
  * So the two meanings share one field at runtime and this class IS a
  * `GameState`. The alias below and the one paired with it at
@@ -130,6 +136,7 @@ export class FacetState extends GameStateBase {
   board: BoardState = { cols: 0, rows: 0, cells: [] };
   phase: Phase = "idle";
   chainStep = 0;
+  swapTimer = 0;
   stepTimer = 0;
 
   score = 0;
@@ -137,44 +144,42 @@ export class FacetState extends GameStateBase {
   levelScore = 0;
   lastCleared = 0;
   lastPoints = 0;
+  lastWaves = 0;
 
-  cursor: CellRef = { col: CURSOR_START_COL, row: CURSOR_START_ROW };
+  moveScore = 0;
+  bestMove = 0;
+  bestChain = 0;
+
   selection: CellRef | null = null;
+  offer: CellRef | null = null;
   refusal: RefusalState | null = null;
+  armedTarget: string | null = null;
 
-  pointer: PointerState = { x: 0, y: 0, down: false };
+  pointer: PointerState = { x: 0, y: 0, down: false, device: "mouse" };
   simTime = 0;
   muted = false;
   rngState = DEFAULT_SEED;
 
   // ---- Bookkeeping the rules need and the snapshot does not report -------
   //
-  // Three values are carried from one frame to the next that `specs/state.md`
-  // does not name, and every one of them is required for a rule that file
-  // points at. They live here rather than in a module variable or a closure
-  // because the state is "the whole of the authoritative game": a field kept
-  // anywhere else would survive `reset` and put a seeded replay out of step.
+  // One value is carried from one frame to the next that `specs/state.md` does
+  // not name, and it is required for a rule that file points at. It lives here
+  // rather than in a module variable or a closure because the state is "the
+  // whole of the authoritative game": a field kept anywhere else would survive
+  // `reset` and put a seeded replay out of step.
   //
-  // They are additions to the declared shape, never substitutes: every
-  // declared field above keeps its name, its type, and its meaning, and
-  // `reset` restores these three alongside them.
+  // It is an addition to the declared shape, never a substitute: every declared
+  // field above keeps its name, its type, and its meaning, and `reset` restores
+  // this one alongside them.
 
   /**
    * The swap that began the chain now running, and `null` while `phase` is
-   * `"idle"`. R8 reads it to place a created gem at the cell the chain's swap
-   * exchanged (specs/rules.md, R8), which no declared field records.
+   * `"idle"`. R5 reads it to seed a prism chain and R8 reads it to place a
+   * created gem at the cell the chain's swap exchanged (specs/rules.md), which
+   * no declared field records. The renderer reads it too, because it is what
+   * says which two gems are the ones travelling while `phase` is `"swapping"`.
    */
   chainSwap: { a: CellRef; b: CellRef } | null = null;
-
-  /**
-   * The cell a still-held press targeted, and whether that hold has already
-   * requested its one swap. `specs/controls.md` decides a drag from the cell
-   * the press landed on and permits one swap per hold, and both facts outlive
-   * the frame the press arrived in — `selection` cannot stand in for either,
-   * since an accepted swap clears it.
-   */
-  pressedCell: CellRef | null = null;
-  dragSwapped = false;
 }
 
 /**
@@ -214,11 +219,11 @@ class FacetInstance extends GameInstance<FacetDebugApi> {
  * The rules of the one level the game runs in.
  *
  * `beginPlay` adds the single player — possessing nothing, since the board is
- * played with the pointer and a cursor rather than through a pawn — and
- * registers the diagnostic sources with the world's overlay registry. `tick`
- * runs after every controller and actor has ticked, so it advances the
- * simulation over the state this frame's input already wrote, and it is where
- * `simTime` accumulates and the engine's mute bit is mirrored (specs/state.md).
+ * played with the pointer rather than through a pawn — and registers the
+ * diagnostic sources with the world's overlay registry. `tick` runs after every
+ * controller and actor has ticked, so it advances the simulation over the state
+ * this frame's input already wrote, and it is where `simTime` accumulates and
+ * the engine's mute bit is mirrored (specs/state.md).
  */
 class FacetMode extends GameMode {
   // The other half of the pair documented at `GameStateBase`: one field, two
@@ -244,10 +249,10 @@ class FacetMode extends GameMode {
   override tick(dt: number): void {
     const state = facetState(this.world);
     // The frame's game time, run through the core: `simTime` accumulates on
-    // every screen, and the board, the chain, and the refusal mark advance
-    // only on `playing` (specs/ui.md, What advances on each screen). The cues
-    // this frame raised — the controller's input events merged with the
-    // chain's — are played once each inside it.
+    // every screen, and the board, the swap in motion, the chain, and the
+    // refusal mark advance only on `playing` (specs/ui.md, What advances on
+    // each screen). The cues this frame raised — the controller's input events
+    // merged with the chain's — are played once each inside it.
     advanceFrame(this.world, state, dt);
     // The game's readable copy of the engine's mute bit, refreshed each frame.
     state.muted = this.world.audio.muted();

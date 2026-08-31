@@ -35,7 +35,13 @@
 // and fails only where the rates are decided.
 //
 // Both steps run at chain step 1, so each is a single step's worth and the two
-// readings are of one step each rather than of a chain.
+// readings are of one step each rather than of a chain. An accepted swap
+// exchanges the two cells at once, sets `phase` to `swapping` with `chainStep` at
+// `0`, and clears nothing; step 1 resolves once `SWAP_SECONDS` (`0.18`) of game
+// time has passed, and `swapAndStep` is what carries each board through that
+// animation to the reading of its own step 1. The second board is posed only
+// once the first drive has finished, so the fields really are holding the first
+// step's figures until the second step overwrites them.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual } from "../assert";
@@ -53,10 +59,12 @@ import {
 import {
   captureReplay,
   createHarness,
+  framesShortOf,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
+import type { FacetSnapshot } from "../surface";
 
 /**
  * The ruby three at strain 0 that the swap completes across row 4.
@@ -85,8 +93,20 @@ const SWAP_B: CellRef = { col: 3, row: 4 };
  */
 const FLAWED_CELL: PlacedToken = { col: 3, row: 5, token: "A3" };
 
-/** Frames recorded after each step, so a replay shows the clear it reports. */
-const AFTERMATH_FRAMES = 24; // 0.375 s
+/**
+ * Frames that carry the recording to just short of the end of the step the
+ * reading was taken in.
+ *
+ * A step's hold is the step's OWN figure — `lastWaves * WAVE_SECONDS` plus
+ * `lastFall * FALL_SECONDS_PER_ROW` plus `STEP_SECONDS`, which the snapshot
+ * reports as `stepHold` — so the frames that fill it are read off the snapshot
+ * rather than written down. `framesShortOf` keeps the drive strictly inside what
+ * is left of the hold, so neither board is read a second time and the two fields
+ * are not overwritten by a step this point never measured.
+ */
+function restOfStep(reading: FacetSnapshot): number {
+  return framesShortOf(Math.max(0, reading.stepHold - reading.stepTimer));
+}
 
 let h: Harness;
 
@@ -157,15 +177,16 @@ it("reports the cells and the points of the most recent chain step", async () =>
     // The standing score, read on the settled board the swap is about to be made
     // on. What the step is worth is what it moves this figure by.
     const beforeFirst = await h.snapshot();
-    const opening = await swap(h, SWAP_A, SWAP_B);
-    await h.advance(AFTERMATH_FRAMES);
-    // A fresh board, which leaves both fields holding the first step's figures
-    // until the second step overwrites them.
+    const opening = await swapAndStep(h, SWAP_A, SWAP_B);
+    await h.advance(restOfStep(opening));
+    // A fresh board, posed once the first step's own hold has run out, which
+    // leaves both fields holding the first step's figures until the second step
+    // overwrites them.
     await loadBoard(h, grown);
     await h.advance(1);
     const beforeSecond = await h.snapshot();
-    const later = await swap(h, SWAP_A, SWAP_B);
-    await h.advance(AFTERMATH_FRAMES);
+    const later = await swapAndStep(h, SWAP_A, SWAP_B);
+    await h.advance(restOfStep(later));
     return { beforeFirst, opening, beforeSecond, later };
   });
 

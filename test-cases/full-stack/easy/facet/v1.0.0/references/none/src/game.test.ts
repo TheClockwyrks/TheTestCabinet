@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AssetStore, assetManifest, type AssetIo } from "./assets";
-import { CUES, STEP_SECONDS } from "./constants";
+import { CUES, STEP_SECONDS, SWAP_SECONDS } from "./constants";
 import { createGame, reportFor } from "./game";
 import {
   cellCenter,
@@ -16,7 +16,28 @@ import {
 } from "./core";
 import { quietRowsWith } from "./core/fixtures";
 import type { InitApi, ScratchCanvas, UpdateApi } from "./runtime";
-import type { PointerSample } from "./pointer";
+import type { PointerDevice, PointerSample } from "./pointer";
+
+/** One pointer sample as the runtime's pointer layer reports it. */
+function sample(
+  type: PointerSample["type"],
+  x: number,
+  y: number,
+  device: PointerDevice = "mouse",
+  primary = true,
+): PointerSample {
+  return { type, x, y, device, primary };
+}
+
+/** A swap accepted and carried through its travel, so step 1 has resolved. */
+function played(
+  state: FacetState,
+  a: FacetState["selection"],
+  b: FacetState["selection"],
+) {
+  const swapped = requestSwap(state, { a: a!, b: b! }).state;
+  return { swapped, resolved: tick(swapped, SWAP_SECONDS).state };
+}
 
 /** A scratch factory over real contexts, so the particle players are genuine. */
 const scratch: ScratchCanvas = (width, height) =>
@@ -61,7 +82,13 @@ function harness(assets: AssetStore = emptyAssets()) {
   const played: [string, number | undefined][] = [];
   const pressed = new Set<string>();
   let samples: PointerSample[] = [];
-  let pointer = { x: 0, y: 0, down: false };
+  let pointer: { x: number; y: number; down: boolean; device: PointerDevice } =
+    {
+      x: 0,
+      y: 0,
+      down: false,
+      device: "mouse",
+    };
   let muted = false;
   const api: UpdateApi = {
     input: {
@@ -96,7 +123,12 @@ function harness(assets: AssetStore = emptyAssets()) {
     feed: (next: PointerSample[]) => {
       samples = next;
     },
-    movePointer: (next: { x: number; y: number; down: boolean }) => {
+    movePointer: (next: {
+      x: number;
+      y: number;
+      down: boolean;
+      device: PointerDevice;
+    }) => {
       pointer = next;
     },
     isMuted: () => muted,
@@ -133,13 +165,21 @@ describe("reportFor", () => {
     expect(reportFor(state, state)).toBeNull();
   });
 
+  it("reports nothing for a swap still travelling between its cells", () => {
+    const before = loadBoard(createInitialState(), NEAR_RUN);
+    const { swapped } = played(before, { col: 4, row: 5 }, { col: 4, row: 4 });
+    expect(swapped.phase).toBe("swapping");
+    expect(reportFor(before, swapped)).toBeNull();
+  });
+
   it("reports the cells step 1 of a swap's chain cleared", () => {
     const before = loadBoard(createInitialState(), NEAR_RUN);
-    const after = requestSwap(before, {
-      a: { col: 4, row: 5 },
-      b: { col: 4, row: 4 },
-    }).state;
-    const report = reportFor(before, after);
+    const { swapped, resolved } = played(
+      before,
+      { col: 4, row: 5 },
+      { col: 4, row: 4 },
+    );
+    const report = reportFor(swapped, resolved);
     expect(report?.cleared.map((cell) => [cell.col, cell.row])).toEqual([
       [2, 4],
       [3, 4],
@@ -147,6 +187,9 @@ describe("reportFor", () => {
     ]);
     expect(report?.cleared.every((cell) => cell.kind === "ruby")).toBe(true);
     expect(report?.cleared.every((cell) => !cell.flawed)).toBe(true);
+    // Every cell is the R5 seed itself, so the whole set shatters at once.
+    expect(report?.cleared.every((cell) => cell.wave === 0)).toBe(true);
+    expect(report?.waves).toBe(0);
   });
 
   it("marks a flawed gem, so the heavier detonation is thrown for it", () => {
@@ -155,18 +198,23 @@ describe("reportFor", () => {
       "3,4": "R0",
       "4,5": "R0",
       "4,4": "J0",
-      "1,4": "R3",
+      "2,5": "J3",
     });
     const before = loadBoard(createInitialState(), rows);
-    const after = requestSwap(before, {
-      a: { col: 4, row: 5 },
-      b: { col: 4, row: 4 },
-    }).state;
-    const report = reportFor(before, after);
-    // The flawed ruby beside the run is taken in by R6 and reads as flawed.
-    expect(
-      report?.cleared.find((cell) => cell.col === 1 && cell.row === 4)?.flawed,
-    ).toBe(true);
+    const { swapped, resolved } = played(
+      before,
+      { col: 4, row: 5 },
+      { col: 4, row: 4 },
+    );
+    const report = reportFor(swapped, resolved);
+    // The flawed jade under the run is taken in by R6 and reads as flawed.
+    const flawed = report?.cleared.find(
+      (cell) => cell.col === 2 && cell.row === 5,
+    );
+    expect(flawed?.flawed).toBe(true);
+    // R6 brought it in from the seed, so it shatters one wave after it.
+    expect(flawed?.wave).toBe(1);
+    expect(report?.waves).toBe(1);
   });
 
   it("reports the cut R8 created, at the cell the swap named", () => {
@@ -178,21 +226,23 @@ describe("reportFor", () => {
       "4,4": "J0",
     });
     const before = loadBoard(createInitialState(), rows);
-    const after = requestSwap(before, {
-      a: { col: 4, row: 5 },
-      b: { col: 4, row: 4 },
-    }).state;
-    expect(reportFor(before, after)?.created).toEqual([{ col: 4, row: 4 }]);
+    const { swapped, resolved } = played(
+      before,
+      { col: 4, row: 5 },
+      { col: 4, row: 4 },
+    );
+    expect(reportFor(swapped, resolved)?.created).toEqual([{ col: 4, row: 4 }]);
   });
 
   it("reads step 1 of a prism chain off the prism's own seed", () => {
     const rows = quietRowsWith({ "3,3": "X0", "4,3": "R0" });
     const before = loadBoard(createInitialState(), rows);
-    const after = requestSwap(before, {
-      a: { col: 3, row: 3 },
-      b: { col: 4, row: 3 },
-    }).state;
-    const report = reportFor(before, after);
+    const { swapped, resolved } = played(
+      before,
+      { col: 3, row: 3 },
+      { col: 4, row: 3 },
+    );
+    const report = reportFor(swapped, resolved);
     // The prism and every ruby on the board, and nothing created.
     expect(report?.created).toEqual([]);
     expect(report?.cleared.length).toBeGreaterThan(1);
@@ -232,9 +282,14 @@ describe("the game the runtime drives", () => {
   it("mirrors the pointer, the mute bit, and the clock every frame", () => {
     const { game, state } = started();
     const bench = harness();
-    bench.movePointer({ x: 120, y: 240, down: true });
+    bench.movePointer({ x: 120, y: 240, down: true, device: "pen" });
     const next = game.update(state, bench.api, 0.5);
-    expect(next.pointer).toEqual({ x: 120, y: 240, down: true });
+    expect(next.pointer).toEqual({
+      x: 120,
+      y: 240,
+      down: true,
+      device: "pen",
+    });
     expect(next.muted).toBe(false);
     expect(next.simTime).toBeCloseTo(0.5, 9);
   });
@@ -257,18 +312,21 @@ describe("the game the runtime drives", () => {
     expect(next.board.cols).toBe(8);
   });
 
-  it("moves the cursor and then acts on it when both arrive in one frame", () => {
+  it("raises the pause menu on the Escape both actions are bound to", () => {
     const { game } = started();
     const bench = harness();
-    const playing = {
-      ...startRound(createInitialState()),
-      cursor: { col: 3, row: 3 },
-    };
-    bench.press("right");
-    bench.press("confirm");
-    const next = game.update(playing, bench.api, 1 / 60);
-    expect(next.cursor).toEqual({ col: 4, row: 3 });
-    expect(next.selection).toEqual({ col: 4, row: 3 });
+    // Escape fires `pause` and `back` in the same frame, and the two act on
+    // screens that do not overlap, so the board is paused and nothing else.
+    bench.press("pause");
+    bench.press("back");
+    const playing = startRound(createInitialState());
+    const paused = game.update(playing, bench.api, 1 / 60);
+    expect(paused.screen).toBe("paused");
+
+    const leaving = harness();
+    leaving.press("pause");
+    leaving.press("back");
+    expect(game.update(paused, leaving.api, 1 / 60).screen).toBe("playing");
   });
 
   it("takes a menu item chosen in the same frame the highlight moved", () => {
@@ -287,10 +345,11 @@ describe("the game the runtime drives", () => {
     const [x, y] = cellCenter({ col: 4, row: 5 });
     const [bx, by] = cellCenter({ col: 4, row: 4 });
     bench.feed([
-      { type: "down", x, y },
-      { type: "move", x: bx, y: by },
+      sample("down", x, y, "touch"),
+      sample("move", bx, by, "touch"),
+      sample("up", bx, by, "touch"),
     ]);
-    game.update(posed, bench.api, 1 / 60);
+    game.update(posed, bench.api, SWAP_SECONDS);
     const cues = bench.played.map(([cue]) => cue);
     expect(cues).toContain(CUES.select);
     expect(cues).toContain(CUES.swap);
@@ -305,10 +364,11 @@ describe("the game the runtime drives", () => {
     const [x, y] = cellCenter({ col: 4, row: 5 });
     const [bx, by] = cellCenter({ col: 4, row: 4 });
     bench.feed([
-      { type: "down", x, y },
-      { type: "move", x: bx, y: by },
+      sample("down", x, y),
+      sample("move", bx, by),
+      sample("up", bx, by),
     ]);
-    game.update(posed, bench.api, 1 / 60);
+    game.update(posed, bench.api, SWAP_SECONDS);
     expect(bench.played.find(([cue]) => cue === CUES.clear)).toEqual([
       CUES.clear,
       1,
@@ -342,7 +402,8 @@ describe("the game the runtime drives", () => {
       b: { col: 4, row: 4 },
     }).state;
     expect(seen).toEqual([]);
-    game.update(swapped, bench.api, 1 / 60);
+    // The frame carries the swap through its travel and resolves step 1.
+    game.update(swapped, bench.api, SWAP_SECONDS);
     // Three stones cleared, so three clear bursts were thrown.
     expect(seen).toEqual([96, 96, 96]);
   });
@@ -352,9 +413,10 @@ describe("the game the runtime drives", () => {
     const bench = harness();
     const posed = debug.loadBoard(createInitialState(), NEAR_RUN);
     const swapped = debug.requestSwap(posed, 4, 5, 4, 4);
-    expect(swapped.phase).toBe("resolving");
+    expect(swapped.phase).toBe("swapping");
     expect(bench.played).toEqual([]);
-    // The frame after the pose plays nothing for what the pose did.
+    // The frame after the pose plays nothing for what the pose did, though it
+    // does sound the clear the step it carries through raises.
     game.update(swapped, bench.api, 1 / 60);
     expect(bench.played.map(([cue]) => cue)).not.toContain(CUES.swap);
   });
@@ -394,25 +456,17 @@ describe("the game the runtime drives", () => {
     expect(long.phase).toBe(short.phase);
   });
 
-  it("moves the cursor with each of the four movement actions", () => {
-    const { game } = started();
-    const playing = {
-      ...startRound(createInitialState()),
-      cursor: { col: 3, row: 3 },
-    };
-    const moves: [string, number, number][] = [
-      ["up", 3, 2],
-      ["down", 3, 4],
-      ["left", 2, 3],
-      ["right", 4, 3],
-    ];
-    for (const [action, col, row] of moves) {
+  it("wraps the menu highlight with up and down", () => {
+    const { game, state } = started();
+    for (const [action, index] of [
+      ["down", 1],
+      ["up", 1],
+    ] as const) {
       const bench = harness();
       bench.press(action);
-      expect(game.update(playing, bench.api, 1 / 60).cursor, action).toEqual({
-        col,
-        row,
-      });
+      expect(game.update(state, bench.api, 1 / 60).menuIndex, action).toBe(
+        index,
+      );
     }
   });
 
@@ -430,17 +484,51 @@ describe("the game the runtime drives", () => {
     }
   });
 
-  it("resolves a release through the pointer path", () => {
+  it("plays a move only on the release, and only with an offer standing", () => {
+    const { game } = started();
+    const posed = loadBoard(createInitialState(), NEAR_RUN);
+    const [x, y] = cellCenter({ col: 4, row: 5 });
+    const [bx, by] = cellCenter({ col: 4, row: 4 });
+
+    const held = harness();
+    held.feed([sample("down", x, y), sample("move", bx, by)]);
+    const holding = game.update(posed, held.api, 1 / 60);
+    expect(holding.selection).toEqual({ col: 4, row: 5 });
+    expect(holding.offer).toEqual({ col: 4, row: 4 });
+    expect(holding.phase).toBe("idle");
+
+    const let_go = harness();
+    let_go.feed([sample("up", bx, by)]);
+    const swapped = game.update(holding, let_go.api, 1 / 60);
+    expect(swapped.phase).toBe("swapping");
+    expect(swapped.selection).toBeNull();
+    expect(swapped.offer).toBeNull();
+  });
+
+  it("carries a hold back where it started and plays nothing", () => {
     const { game } = started();
     const bench = harness();
     const posed = loadBoard(createInitialState(), NEAR_RUN);
     const [x, y] = cellCenter({ col: 4, row: 5 });
+    const [bx, by] = cellCenter({ col: 4, row: 4 });
     bench.feed([
-      { type: "down", x, y },
-      { type: "up", x, y },
+      sample("down", x, y, "touch"),
+      sample("move", bx, by, "touch"),
+      sample("move", x, y, "touch"),
+      sample("up", x, y, "touch"),
     ]);
     const next = game.update(posed, bench.api, 1 / 60);
-    expect(next.pressedCell).toBeNull();
+    expect(next.phase).toBe("idle");
+    expect(next.board).toBe(posed.board);
+  });
+
+  it("acts on the primary pointer alone", () => {
+    const { game } = started();
+    const bench = harness();
+    const posed = loadBoard(createInitialState(), NEAR_RUN);
+    const [x, y] = cellCenter({ col: 4, row: 5 });
+    bench.feed([sample("down", x, y, "touch", false)]);
+    expect(game.update(posed, bench.api, 1 / 60).selection).toBeNull();
   });
 
   it("runs an absurdly long frame to its end rather than hanging on it", () => {
@@ -467,6 +555,7 @@ describe("the game the runtime drives", () => {
       "howto",
       "playing",
       "paused",
+      "levelclear",
       "gameover",
     ] as const) {
       const state = { ...startRound(createInitialState()), screen };

@@ -19,9 +19,11 @@
 //
 // The pointer operations do not stand in for the runtime's pointer: they feed
 // the SAME resolution path a player's pointer feeds (`src/core/controls.ts`),
-// so the hit radius, the four press rows, the drag, and the acceptance rules
-// all run exactly as they do in play, and each call takes effect immediately in
-// the state it returns rather than waiting on a frame. Everything else about
+// so the screen's targets, the hit radius, the five press rows, the offer a
+// move makes and withdraws, and the release that plays it all run exactly as
+// they do in play. Each carries the device that drove it, so a posed touch and
+// a posed mouse differ only in what the state reports, and each call takes
+// effect immediately in the state it returns rather than waiting on a frame. Everything else about
 // driving a browser game stays absent: there is no operation for the registered
 // actions (the runtime's keyboard is driven by dispatching real key events at
 // the page) and none for the overlay (the runtime owns the backtick key and the
@@ -32,7 +34,9 @@
 
 import { FACET_DEBUG_VERSION } from "./constants";
 import {
+  clearOffer,
   clearSelection,
+  continueLevel,
   loadBoard,
   openHowTo,
   pauseGame,
@@ -43,16 +47,19 @@ import {
   quitToTitle,
   reset,
   resumeGame,
-  setCursor,
+  setBestChain,
+  setBestMove,
   setGem,
   setLevel,
   setLevelScore,
+  setOffer,
   setScore,
   setSelection,
   snapshot,
   startRound,
   type FacetSnapshot,
   type FacetState,
+  type PointerDevice,
 } from "./core";
 
 /** The `window` property the installed API is published on. */
@@ -82,9 +89,13 @@ export interface FacetDebugApi {
   setScore(state: FacetState, points: number): FacetState;
   setLevel(state: FacetState, level: number): FacetState;
   setLevelScore(state: FacetState, points: number): FacetState;
-  setCursor(state: FacetState, col: number, row: number): FacetState;
+  setBestChain(state: FacetState, chainStep: number): FacetState;
+  setBestMove(state: FacetState, points: number): FacetState;
+  continueLevel(state: FacetState): FacetState;
   setSelection(state: FacetState, col: number, row: number): FacetState;
   clearSelection(state: FacetState): FacetState;
+  setOffer(state: FacetState, col: number, row: number): FacetState;
+  clearOffer(state: FacetState): FacetState;
   requestSwap(
     state: FacetState,
     colA: number,
@@ -92,9 +103,19 @@ export interface FacetDebugApi {
     colB: number,
     rowB: number,
   ): FacetState;
-  pointerDown(state: FacetState, x: number, y: number): FacetState;
-  pointerMove(state: FacetState, x: number, y: number): FacetState;
-  pointerUp(state: FacetState): FacetState;
+  pointerDown(
+    state: FacetState,
+    x: number,
+    y: number,
+    device?: PointerDevice,
+  ): FacetState;
+  pointerMove(
+    state: FacetState,
+    x: number,
+    y: number,
+    device?: PointerDevice,
+  ): FacetState;
+  pointerUp(state: FacetState, device?: PointerDevice): FacetState;
 }
 
 /**
@@ -120,13 +141,19 @@ export function createDebugApi(): FacetDebugApi {
     setScore,
     setLevel,
     setLevelScore,
-    setCursor,
+    setBestChain,
+    setBestMove,
+    continueLevel,
     setSelection,
     clearSelection,
+    setOffer,
+    clearOffer,
     requestSwap: poseSwap,
-    pointerDown: (state, x, y) => pointerDown(state, x, y).state,
-    pointerMove: (state, x, y) => pointerMove(state, x, y).state,
-    pointerUp,
+    pointerDown: (state, x, y, device) =>
+      pointerDown(state, x, y, device).state,
+    pointerMove: (state, x, y, device) =>
+      pointerMove(state, x, y, device).state,
+    pointerUp: (state, device) => pointerUp(state, device).state,
   };
 }
 
@@ -163,13 +190,17 @@ export interface FacetWindowApi {
   setScore(points: number): void;
   setLevel(level: number): void;
   setLevelScore(points: number): void;
-  setCursor(col: number, row: number): void;
+  setBestChain(chainStep: number): void;
+  setBestMove(points: number): void;
+  continueLevel(): void;
   setSelection(col: number, row: number): void;
   clearSelection(): void;
+  setOffer(col: number, row: number): void;
+  clearOffer(): void;
   requestSwap(colA: number, rowA: number, colB: number, rowB: number): void;
-  pointerDown(x: number, y: number): void;
-  pointerMove(x: number, y: number): void;
-  pointerUp(): void;
+  pointerDown(x: number, y: number, device?: PointerDevice): void;
+  pointerMove(x: number, y: number, device?: PointerDevice): void;
+  pointerUp(device?: PointerDevice): void;
 }
 
 /** Build the installed surface over one runtime and its pose surface. */
@@ -253,8 +284,16 @@ export function createWindowApi(
       host.apply((state) => api.setLevelScore(state, points));
     },
 
-    setCursor(col, row) {
-      host.apply((state) => api.setCursor(state, col, row));
+    setBestChain(chainStep) {
+      host.apply((state) => api.setBestChain(state, chainStep));
+    },
+
+    setBestMove(points) {
+      host.apply((state) => api.setBestMove(state, points));
+    },
+
+    continueLevel() {
+      host.apply((state) => api.continueLevel(state));
     },
 
     setSelection(col, row) {
@@ -265,6 +304,14 @@ export function createWindowApi(
       host.apply((state) => api.clearSelection(state));
     },
 
+    setOffer(col, row) {
+      host.apply((state) => api.setOffer(state, col, row));
+    },
+
+    clearOffer() {
+      host.apply((state) => api.clearOffer(state));
+    },
+
     requestSwap(colA, rowA, colB, rowB) {
       host.apply((state) => api.requestSwap(state, colA, rowA, colB, rowB));
     },
@@ -273,16 +320,16 @@ export function createWindowApi(
     // state `apply` stores back — no frame need pass between them, so a
     // selection and the swap it leads to are both posed without advancing the
     // game at all (specs/instrumentation.md).
-    pointerDown(x, y) {
-      host.apply((state) => api.pointerDown(state, x, y));
+    pointerDown(x, y, device) {
+      host.apply((state) => api.pointerDown(state, x, y, device));
     },
 
-    pointerMove(x, y) {
-      host.apply((state) => api.pointerMove(state, x, y));
+    pointerMove(x, y, device) {
+      host.apply((state) => api.pointerMove(state, x, y, device));
     },
 
-    pointerUp() {
-      host.apply((state) => api.pointerUp(state));
+    pointerUp(device) {
+      host.apply((state) => api.pointerUp(state, device));
     },
   };
 }

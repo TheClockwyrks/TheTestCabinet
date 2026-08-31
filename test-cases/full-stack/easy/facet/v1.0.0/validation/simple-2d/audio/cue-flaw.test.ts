@@ -28,11 +28,16 @@
 // which is after R6 and after the scoring. So both scenarios clear the same set,
 // and the check asserts that too rather than assuming it.
 //
-// WHY THE KEYBOARD IS THE ROUTE. specs/ui.md says "A cue is played by a frame,
-// never by a pose of the debug surface", so a swap posed through `requestSwap`
-// is entitled to raise nothing. specs/controls.md fixes `confirm` to `Enter` and
-// `Space` for a build of every engine, so one press puts the step inside a frame
-// under all three.
+// WHICH FRAME IS READ, AND WHY THE SWAP IS POSED. The event is raised by the
+// frame the STEP resolves on, which specs/rules.md puts `SWAP_SECONDS` after the
+// swap was accepted: "Nothing is cleared yet ... When `swapTimer` reaches
+// `SWAP_SECONDS` ... `chainStep` becomes `1`, and step `1` resolves." That frame
+// is a frame of the simulation rather than an input edge, so how the move was
+// asked for cannot change it, and `requestSwap` — which
+// specs/instrumentation.md sends "through the same acceptance path a player's
+// release takes" — puts no pointer surface between this point and the thing it
+// decides. The chain is then walked ONE FRAME AT A TIME so the frame the step
+// resolved on is the frame the cues are read against.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -41,6 +46,7 @@ import {
   assertEqual,
   assertLength,
   assertTrue,
+  fail,
 } from "../assert";
 import {
   areAdjacent,
@@ -67,19 +73,22 @@ import {
   cueNames,
   cuesOnFrame,
   loadBoard,
+  requestSwap,
+  stepDriveFrames,
   watchCues,
   type Harness,
 } from "../harness";
+import type { FacetSnapshot } from "../surface";
 
-/** The selected cell: the jade the swap carries down into row 3. */
-const SELECTED: CellRef = { col: 3, row: 2 };
+/** The cell the swap carries the jade down from. */
+const FROM: CellRef = { col: 3, row: 2 };
 
-/** The cursor's cell, orthogonally adjacent to it and one row below. */
-const NEIGHBOR: CellRef = { col: 3, row: 3 };
+/** The cell it carries the jade into, one row below and orthogonally adjacent. */
+const TO: CellRef = { col: 3, row: 3 };
 
 /**
- * Three jades over the run-free filler, so that exchanging {@link SELECTED} with
- * {@link NEIGHBOR} completes a horizontal run of jade across `(2,3)`, `(3,3)`,
+ * Three jades over the run-free filler, so that exchanging {@link FROM} with
+ * {@link TO} completes a horizontal run of jade across `(2,3)`, `(3,3)`,
  * `(4,3)` and R3 accepts the swap.
  */
 const SCENARIO: readonly PlacedToken[] = [
@@ -94,6 +103,16 @@ const SCENARIO: readonly PlacedToken[] = [
  */
 const STRESSED: CellRef = { col: 4, row: 2 };
 
+/**
+ * Frames allowed beyond the drive the swap animation needs.
+ *
+ * NOT a specification figure. `stepDriveFrames` is the harness's own count of the
+ * frames that carry a swapping board past `SWAP_SECONDS` into the step that
+ * follows, sized so a build comparing `>=` and one comparing `>` both read alike;
+ * two frames beyond it is room for a build that resolves on the next frame.
+ */
+const SEARCH_MARGIN = 2;
+
 /** How many gems on a written board are flawed, which specs/board.md is MAX_STRAIN. */
 function flawedGems(rows: BoardRows): number {
   return parseRows(rows)
@@ -102,6 +121,23 @@ function flawedGems(rows: BoardRows): number {
 }
 
 let h: Harness;
+
+/** Walk the swap one frame at a time to the frame step 1 resolves on. */
+async function stepOneFrame(): Promise<{
+  frame: number;
+  snapshot: FacetSnapshot;
+}> {
+  const cap = stepDriveFrames(h.snapshot()) + SEARCH_MARGIN;
+  for (let driven = 0; driven < cap; driven += 1) {
+    await h.advance(1);
+    const snapshot = h.snapshot();
+    if (snapshot.chainStep >= 1) return { frame: h.frame(), snapshot };
+  }
+  return fail(
+    `step 1 to resolve within ${cap} frames of the accepted swap`,
+    `phase ${h.snapshot().phase} at chain step ${h.snapshot().chainStep}`,
+  );
+}
 
 beforeEach(async () => {
   h = await createHarness();
@@ -142,7 +178,7 @@ it("plays the flaw cue on the frame a gem reaches MAX_STRAIN and not otherwise",
   ] as const) {
     assertLength(maximalRuns(rows), 0, `maximal runs on the ${name} board`);
     assertTrue(
-      swapIsLegal(rows, SELECTED, NEIGHBOR),
+      swapIsLegal(rows, FROM, TO),
       `R1 and R3 accept the swap on the ${name} board`,
     );
   }
@@ -170,7 +206,7 @@ it("plays the flaw cue on the frame a gem reaches MAX_STRAIN and not otherwise",
 
   // And the stressed cell is where R7 will reach it: outside the clear set the
   // swap seeds, and orthogonally adjacent to a cell inside it.
-  const cleared = clearSetFromRuns(swapped(control, SELECTED, NEIGHBOR));
+  const cleared = clearSetFromRuns(swapped(control, FROM, TO));
   assertTrue(
     !cleared.some((c) => c.col === STRESSED.col && c.row === STRESSED.row),
     "the stressed cell is outside the clear set",
@@ -180,14 +216,13 @@ it("plays the flaw cue on the frame a gem reaches MAX_STRAIN and not otherwise",
     "the stressed cell borders the clear set",
   );
 
-  /** Pose one of the two boards and make the swap from the keyboard. */
+  /** Pose one of the two boards, ask for the swap, and walk to step 1's frame. */
   const play = async (rows: BoardRows, outputId: string) => {
     loadBoard(h, rows);
-    h.debug.setSelection(SELECTED.col, SELECTED.row);
-    h.debug.setCursor(NEIGHBOR.col, NEIGHBOR.row);
+    requestSwap(h, FROM, TO);
     return captureReplay(h, outputId, async () => {
-      await h.tapAction("confirm");
-      return { frame: h.frame(), snapshot: h.snapshot(), board: h.board() };
+      const resolved = await stepOneFrame();
+      return { ...resolved, board: h.board() };
     });
   };
 

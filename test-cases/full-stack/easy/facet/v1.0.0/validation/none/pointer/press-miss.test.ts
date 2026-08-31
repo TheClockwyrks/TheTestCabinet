@@ -1,58 +1,90 @@
 // Facet — pointer/press-miss: a press farther than GEM_HIT_R from every cell
-// center targets no cell, and changes nothing.
+// center lets go of the gem, and leaves the board as it stands.
 //
-// specs/controls.md states it as a sentence of its own — "A press farther than
-// `GEM_HIT_R` from every cell center targets no cell and changes nothing" — and
-// specs/instrumentation.md repeats it of the posed press: "A press farther than
-// `GEM_HIT_R` from every cell center leaves the board and the selection as they
-// stand." So the reading is a pair: the selection is exactly what it was, and the
-// board is exactly what it was.
+// specs/controls.md states it as the last row of the press table: "No cell, the
+// press lying farther than `GEM_HIT_R` from every cell center — Clears the
+// selection and any offer, leaving the board as it stands."
+// specs/instrumentation.md repeats it of the posed press: "A press on `playing`
+// farther than `GEM_HIT_R` from every cell center and outside every target leaves
+// the board as it stands and clears the selection." So the reading is a trio:
+// nothing is selected, nothing is offered, and the board is exactly what it was.
 //
-// THREE POINTS, EACH RULING OUT A DIFFERENT WRONG RULE.
+// READ AS THE ROW IS WRITTEN, NOT AS "CHANGES NOTHING". The pointer itself moves
+// — specs/instrumentation.md has the snapshot's `pointer` mirror every press on
+// every screen, which is `pointer/pointer-mirrored`'s subject — so what stands
+// still here is the board and the hold, and the row says the hold is let go of
+// rather than left alone.
 //
-//  - Off the stage's board area entirely, near the top-left corner of the stage.
-//    A build that clamped the pointer onto the nearest cell rather than measuring
-//    a radius selects (0,0) here.
-//  - Just beyond a corner cell, 40 units out along one axis: past `GEM_HIT_R`
-//    (36) by four units and nothing more. A build whose radius is the cell pitch
-//    rather than half of it takes this one.
+// THE PRESS MUST MISS THE PAUSE CONTROL TOO. specs/controls.md plays the board
+// "on the `playing` screen, everywhere outside that screen's `pause` target", and
+// where that rectangle sits is the build's design. A press inside it would be
+// operating a control rather than the board, and the answer would be the pause
+// menu rather than a miss. So the target is READ off the snapshot and the points
+// this check presses at are chosen clear of it, rather than written down and
+// hoped for.
+//
+// THREE SHAPES OF MISS, EACH RULING OUT A DIFFERENT WRONG RULE.
+//
+//  - Off the board area entirely, out at a corner of the stage. A build that
+//    clamped the pointer onto the nearest cell rather than measuring a radius
+//    selects a corner cell here.
+//  - Just beyond a corner cell, four units past `GEM_HIT_R` (36) and nothing
+//    more. A build whose radius is the cell pitch rather than half of it takes
+//    this one.
 //  - The interior point where four cells meet, 36 units diagonally from each of
 //    the four centers, so 50.9 from every one of them. `GEM_HIT_R` is a RADIUS:
 //    this point is inside the square of half-pitch around each center and outside
 //    the circle, so a build that tested a box instead of a distance targets a
 //    cell here and no other point in this file catches it.
 //
-// EACH POINT IS PRESSED TWICE, because the sentence has two halves and a
-// standing selection is what makes the second half say something. With nothing
-// selected a wrong target shows as a selection appearing; with a selection
-// standing it shows as that selection moving, clearing, or being traded away.
+// Several candidates of the first two shapes are offered and the ones clear of
+// the build's own pause control are the ones pressed, so a build that put its
+// control in one corner of the stage is read at another rather than failed for a
+// placement the specification allows.
+//
+// EACH POINT IS PRESSED THREE TIMES, because the row has three clauses and only a
+// standing hold makes two of them say anything. With nothing selected a wrong
+// target shows as a selection appearing; with a selection standing it shows as
+// that selection surviving; with a selection and an offer both standing it shows
+// as the offer surviving — and that last one is the state a release would play a
+// move from, so a build that leaves it standing has a press off the board arm a
+// swap the player has walked away from.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  assertDeepEqual,
   assertGreaterThan,
+  assertGreaterThanOrEqual,
   assertNull,
 } from "../assert";
-import { CELL_PITCH, GEM_HIT_R } from "../constants";
+import { CELL_PITCH, GEM_HIT_R, STAGE_H, STAGE_W } from "../constants";
 import {
   assertBoardEquals,
   cellX,
   cellY,
   distanceToNearestCell,
-  offBoardPoint,
   quietRowsWithEscape,
   type BoardRows,
   type CellRef,
+  type TargetRect,
 } from "../board";
 import {
   captureStill,
   createHarness,
   loadBoard,
+  pressPoint,
+  releasePointer,
+  targetById,
   type Harness,
 } from "../harness";
 
-/** The cell a selection stands on for the second half of each probe. */
+/** The cell the hold stands on for the second and third halves of each probe. */
 const SELECTED: CellRef = { col: 3, row: 3 };
+
+/** The neighbor the held gem is offered into for the third half. */
+const OFFERED: CellRef = { col: 4, row: 3 };
+
+/** How many of the candidate points must survive the pause control to press at. */
+const POINTS_WANTED = 3;
 
 let h: Harness;
 
@@ -65,21 +97,26 @@ afterEach(async () => {
 });
 
 /**
- * The three points this check presses at, each proved to lie farther than
- * `GEM_HIT_R` from every one of the 64 cell centers before it is used.
+ * Every point this check would press at, each proved to lie farther than
+ * `GEM_HIT_R` from all 64 cell centers before it is used.
  *
  * Proved rather than argued: a point that drifted inside the radius would turn
- * this check into an assertion that a press SELECTS nothing when in fact it had
- * a cell to select, which passes on a broken build.
+ * this check into an assertion that a press LETS GO of a gem when in fact it had
+ * a cell to take hold of, which passes on a broken build.
  */
-function missPoints(): { name: string; x: number; y: number }[] {
+function missCandidates(): { name: string; x: number; y: number }[] {
+  const gap = GEM_HIT_R + 4;
   const points = [
-    { name: "off the board entirely", ...offBoardPoint() },
+    { name: "the stage's top-left corner", x: 40, y: 40 },
+    { name: "the stage's top-right corner", x: STAGE_W - 40, y: 40 },
+    { name: "the stage's bottom-left corner", x: 40, y: STAGE_H - 40 },
     {
-      name: "beyond the corner cell",
-      x: cellX(0) - GEM_HIT_R - 4,
-      y: cellY(0),
+      name: "the stage's bottom-right corner",
+      x: STAGE_W - 40,
+      y: STAGE_H - 40,
     },
+    { name: "just left of the first column", x: cellX(0) - gap, y: cellY(0) },
+    { name: "just right of the last column", x: cellX(7) + gap, y: cellY(7) },
     {
       name: "the gap where four cells meet",
       x: cellX(3) + CELL_PITCH / 2,
@@ -97,54 +134,87 @@ function missPoints(): { name: string; x: number; y: number }[] {
 }
 
 /**
- * Press at a point that targets no cell, and assert the two things the
- * specification says stand: the selection and the board.
+ * Whether a stage point lies inside a target's rectangle, its edges counted in.
  *
- * The release ends the hold, so the next probe is a fresh press rather than the
- * continuation of a drag.
+ * The edges are counted in because a press exactly on a border is a press a
+ * build is entitled to read as inside the control, and this check only wants
+ * points no reading of the rectangle can claim.
  */
-async function pressMisses(
-  point: { name: string; x: number; y: number },
-  selection: CellRef | null,
-  posed: BoardRows,
-): Promise<void> {
-  await h.debug.pointerDown(point.x, point.y);
-  const after = await h.snapshot();
-  await h.debug.pointerUp();
-  assertDeepEqual(
-    after.selection,
-    selection,
-    `the selection stands after a press ${point.name}`,
-  );
-  assertBoardEquals(
-    await h.board(),
-    posed,
-    `the board stands after a press ${point.name}`,
+function insideTarget(
+  point: { x: number; y: number },
+  target: TargetRect,
+): boolean {
+  return (
+    point.x >= target.x &&
+    point.x <= target.x + target.w &&
+    point.y >= target.y &&
+    point.y <= target.y + target.h
   );
 }
 
-it("targets no cell, and changes nothing", async () => {
+it("lets go of the gem, and leaves the board as it stands", async () => {
   const posed = quietRowsWithEscape([]);
   const opened = await loadBoard(h, posed);
   assertNull(opened.selection, "a posed board carries no selection");
+  assertNull(opened.offer, "a posed board carries no offer");
 
-  // Half one: with nothing selected, nothing becomes selected.
-  for (const point of missPoints()) {
-    await pressMisses(point, null, posed);
+  // The control the board is played around, read where the build put it.
+  const pause = targetById(opened, "pause");
+  const candidates = missCandidates();
+  const points = candidates.filter((point) => !insideTarget(point, pause));
+  assertGreaterThanOrEqual(
+    points.length,
+    POINTS_WANTED,
+    `points clear of the pause target at (${pause.x},${pause.y}) ` +
+      `${pause.w}x${pause.h}, out of the ${candidates.length} offered`,
+  );
+
+  /**
+   * Press at a point that targets no cell, and assert the three things the row
+   * states: nothing selected, nothing offered, the board standing.
+   *
+   * The release ends the hold, so the next probe is a fresh press rather than
+   * the continuation of a drag.
+   */
+  const pressMisses = async (
+    point: { name: string; x: number; y: number },
+    board: BoardRows,
+    half: string,
+  ): Promise<void> => {
+    const after = await pressPoint(h, point.x, point.y);
+    await releasePointer(h);
+    assertNull(
+      after.selection,
+      `the selection after a press at ${point.name}, ${half}`,
+    );
+    assertNull(
+      after.offer,
+      `the offer after a press at ${point.name}, ${half}`,
+    );
+    assertBoardEquals(
+      await h.board(),
+      board,
+      `the board after a press at ${point.name}, ${half}`,
+    );
+  };
+
+  // Half one: with nothing held, nothing becomes held.
+  for (const point of points) {
+    await pressMisses(point, posed, "with nothing held");
   }
 
-  // Half two: with a selection standing, it is neither moved, nor cleared, nor
-  // traded away — the last of which is what a build that targeted one of the
-  // four cells around the interior gap would do, since two of them are
-  // orthogonally adjacent to the selected cell.
-  await h.debug.setSelection(SELECTED.col, SELECTED.row);
-  assertDeepEqual(
-    (await h.snapshot()).selection,
-    SELECTED,
-    "the selection this half stands on",
-  );
-  for (const point of missPoints()) {
-    await pressMisses(point, SELECTED, posed);
+  // Half two: a gem is held, and the press lets go of it.
+  for (const point of points) {
+    await h.debug.setSelection(SELECTED.col, SELECTED.row);
+    await pressMisses(point, posed, "with a gem held");
+  }
+
+  // Half three: the gem is held AND offered into a neighbor, which is the state
+  // a release plays a move from. Both must be gone.
+  for (const point of points) {
+    await h.debug.setSelection(SELECTED.col, SELECTED.row);
+    await h.debug.setOffer(OFFERED.col, OFFERED.row);
+    await pressMisses(point, posed, "with a gem held and offered");
   }
 
   await h.advance(1);

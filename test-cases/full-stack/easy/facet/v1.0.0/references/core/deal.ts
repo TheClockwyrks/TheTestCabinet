@@ -16,6 +16,10 @@
 // the bottom is what makes that loop total rather than merely likely — it is a
 // fixed board verified against both properties by this module's own tests, and
 // it is reached only if every attempt in the budget misses.
+//
+// The whole board is dealt in from above, so a gem dealt into row `r` carries a
+// `fell` of `r + 1`, exactly as a refilled gem does under R9: one row of
+// travel per row of board it passed, and one more for the row above the top.
 
 import { GEM_KINDS, GRID_COLS, GRID_ROWS } from "../constants";
 import { parseBoard, plainGem } from "./board";
@@ -52,9 +56,19 @@ const RESERVE_ROWS = [
   "R0 A0 C0 J0 B0 S0 M0 R0",
 ];
 
-/** The reserve board, parsed fresh so no caller can hold onto one instance. */
+/**
+ * The reserve board, parsed fresh so no caller can hold onto one instance. It
+ * is dealt in from above like any other opening board, so the notation's
+ * standing-still gems take the `fell` their rows give them.
+ */
 export function reserveBoard(): BoardState {
-  return parseBoard(RESERVE_ROWS);
+  const board = parseBoard(RESERVE_ROWS);
+  return {
+    ...board,
+    gems: board.gems.map((gem, index) =>
+      gem ? { ...gem, fell: Math.floor(index / board.cols) + 1 } : gem,
+    ),
+  };
 }
 
 /**
@@ -85,9 +99,9 @@ function allowedKinds(
 
 /**
  * One deal of the fixed `GRID_COLS` by `GRID_ROWS` grid: plain gems at strain
- * `0`, with no run under R4. Whether it carries a legal swap is the caller's to
- * check. The generator is anything that can pick out of a list, so a test can
- * hand it a degenerate one.
+ * `0`, each with the `fell` its row gives it, and no run under R4. Whether it
+ * carries a legal swap is the caller's to check. The generator is anything that
+ * can pick out of a list, so a test can hand it a degenerate one.
  */
 export function dealBoardWithoutRuns(rng: {
   pick<T>(items: readonly T[]): T;
@@ -97,7 +111,7 @@ export function dealBoardWithoutRuns(rng: {
   for (let row = 0; row < GRID_ROWS; row++) {
     for (let col = 0; col < GRID_COLS; col++) {
       const kind = rng.pick(allowedKinds(gems, GRID_COLS, { col, row }));
-      gems[row * GRID_COLS + col] = plainGem(kind);
+      gems[row * GRID_COLS + col] = plainGem(kind, row + 1);
     }
   }
   return { cols: GRID_COLS, rows: GRID_ROWS, gems: gems as Gem[] };
@@ -121,12 +135,18 @@ export function dealOpeningBoard(
 }
 
 /**
- * Whether a board satisfies both properties an opening board has. The deal
- * guarantees them; this is what says so out loud, and what the tests ask.
+ * Whether a board satisfies every property an opening board has: every gem
+ * plain at strain `0` and dealt in from above its row, no run under R4, and at
+ * least one legal swap. The deal guarantees them; this is what says so out
+ * loud, and what the tests ask.
  */
 export function isOpeningBoard(board: BoardState): boolean {
   const dealt = board.gems.every(
-    (gem) => gem !== null && gem.cut === "plain" && gem.strain === 0,
+    (gem, index) =>
+      gem !== null &&
+      gem.cut === "plain" &&
+      gem.strain === 0 &&
+      gem.fell >= Math.floor(index / board.cols) + 1,
   );
   return dealt && maximalRuns(board).length === 0 && legalSwapExists(board);
 }

@@ -5,6 +5,7 @@ import {
   COLOR,
   FONT_BODY,
   KIND_FALLBACK,
+  drawControl,
   drawTracked,
   font,
   roundedRect,
@@ -111,5 +112,46 @@ describe("roundedRect", () => {
       roundedRect(ctx, 10, 10, 20, 20, 500);
       ctx.fill();
     }).not.toThrow();
+  });
+});
+
+describe("drawControl", () => {
+  it("fills the rectangle it is given, so the target it draws is pressable", () => {
+    const ctx = context(240, 120);
+    const rect = { x: 20, y: 20, w: 176, h: 72 };
+    drawControl(ctx, rect, "PAUSE");
+
+    const painted = (
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+    ): number => {
+      const data = ctx.getImageData(x, y, width, height).data;
+      let count = 0;
+      for (let index = 3; index < data.length; index += 4) {
+        if (data[index] > 8) count += 1;
+      }
+      return count;
+    };
+
+    // The plate covers its own rectangle, and its word is inside it.
+    expect(
+      painted(rect.x + 4, rect.y + 4, rect.w - 8, rect.h - 8),
+    ).toBeGreaterThan(0);
+    // Nothing is painted outside it.
+    expect(painted(0, 0, 240, rect.y - 2)).toBe(0);
+    expect(
+      painted(0, rect.y + rect.h + 2, 240, 120 - rect.y - rect.h - 2),
+    ).toBe(0);
+  });
+
+  it("hands the context back as it found it", () => {
+    const ctx = context(240, 120);
+    ctx.textAlign = "right";
+    ctx.lineWidth = 7;
+    drawControl(ctx, { x: 20, y: 20, w: 176, h: 72 }, "BACK");
+    expect(ctx.textAlign).toBe("right");
+    expect(ctx.lineWidth).toBe(7);
   });
 });

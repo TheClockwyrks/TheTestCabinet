@@ -1,8 +1,9 @@
 # Facet — the shared game core
 
 This directory is Facet's whole game: the board, the ruleset R1–R9, the chain
-step and its cadence, scoring, levels, the end of a round, the controls, the
-screens, and the logic behind the debug and automation surface. It is written
+step and its cadence, scoring, levels, the end of a round, the pointer targets,
+the controls, the screens, and the logic behind the debug and automation
+surface. It is written
 **once** and copied verbatim into each of the three reference builds.
 
 It imports nothing from an engine, a renderer, or a DOM. Hand it a state and a
@@ -41,19 +42,20 @@ Nothing else is imported. There are no runtime dependencies at all.
 
 ## The modules
 
-| Module        | What it holds                                                                                                      |
-| ------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `state.ts`    | `FacetState` and its resting values, the gem and board types, and the eight frame events the cues are played from. |
-| `rng.ts`      | The seeded generator, whose whole state is the one number in `rngState`.                                           |
-| `board.ts`    | Cell geometry, cell access, pointer targeting, and the board notation.                                             |
-| `rules.ts`    | R1–R9 as pure functions of a board, plus scoring and the legal-swap search.                                        |
-| `chain.ts`    | The order a chain step resolves in, the `STEP_SECONDS` cadence, and the level and end conditions.                  |
-| `deal.ts`     | Dealing an opening board: no run under R4, and at least one legal swap.                                            |
-| `controls.ts` | The selection table, the cursor, and the pointer's press, drag, and release.                                       |
-| `flow.ts`     | The screens, their menus, and every transition between them.                                                       |
-| `debug.ts`    | The snapshot projection and the poses the debug surface is built from.                                             |
-| `fixtures.ts` | Test support: the quiet board the tests are posed on.                                                              |
-| `index.ts`    | The barrel a build imports from.                                                                                   |
+| Module        | What it holds                                                                                                     |
+| ------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `state.ts`    | `FacetState` and its resting values, the gem and board types, and the nine frame events the cues are played from. |
+| `rng.ts`      | The seeded generator, whose whole state is the one number in `rngState`.                                          |
+| `board.ts`    | Cell geometry, cell access, pointer targeting of a cell, and the board notation.                                  |
+| `rules.ts`    | R1–R9 as pure functions of a board, plus scoring and the legal-swap search.                                       |
+| `chain.ts`    | The swap in motion, the order a chain step resolves in, the `stepHold` cadence, and the level and end conditions. |
+| `deal.ts`     | Dealing an opening board: no run under R4, and at least one legal swap.                                           |
+| `targets.ts`  | Every screen's pointer targets, and the hit test that says which one a position lies in.                          |
+| `controls.ts` | The board's press, move, and release tables, and the pointer's press, move, and release over a screen's targets.  |
+| `flow.ts`     | The screens, their menus, and every transition between them.                                                      |
+| `debug.ts`    | The snapshot projection and the poses the debug surface is built from.                                            |
+| `fixtures.ts` | Test support: the quiet board the tests are posed on.                                                             |
+| `index.ts`    | The barrel a build imports from.                                                                                  |
 
 ## What a build still owns
 

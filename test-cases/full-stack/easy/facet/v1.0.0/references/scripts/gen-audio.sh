@@ -2,8 +2,8 @@
 # Facet — produce every sound the game plays, with the on-PATH audio tools
 # (specs/assets.md → "Audio").
 #
-# Produces, under assets/audio/ (18 .wav + 2 .mid):
-#   sfx-synth   select swap refuse flaw cut levelup gameover          (7 cues)
+# Produces, under assets/audio/ (19 .wav + 2 .mid):
+#   sfx-synth   select swap refuse land flaw cut levelup gameover     (8 cues)
 #   sfx-synth   chain-1 … chain-8, the MAX_MULTIPLIER-rung ladder     (8 tones)
 #   sfx-sample  shatter, the glass body layered under the clear cue   (1)
 #   music       title (+ .mid) and play (+ .mid)                      (2 pieces)
@@ -120,6 +120,25 @@ x add-voice --name dead --wave noise --gain -17 --start 0 --dur 42
 x set-envelope --voice dead --env pluck
 x add-filter --voice dead --type lowpass --cutoff 420 --resonance 0.8
 x add-bitcrush --bus master --bits 7 --rate 11000
+x render
+
+# ================================== LAND ======================================
+# A chain step's gems land after a long fall: a low settling knock. A column of
+# stone arriving at the bottom of the board, so it is heavier and duller than
+# `swap`'s little seating knock and carries no pitched blip at all — weight, not
+# a note. It plays only when the step's longest fall was more than
+# LAND_MIN_ROWS (2) rows, so it marks a real collapse rather than a nudge.
+newsfx mono 260 "$AUD/land.wav"
+x add-voice --name thump --wave sine --freq 116 --gain -6 --start 0 --dur 140
+x set-envelope --voice thump --env punch
+x set-pitch --voice thump --slide-to 74 --over 120
+x add-voice --name grit --wave noise --gain -14 --start 0 --dur 55
+x set-envelope --voice grit --env pluck
+x add-filter --voice grit --type lowpass --cutoff 1500 --sweep-to 520 --over 55 --resonance 0.9
+x add-voice --name settle --wave triangle --freq 232 --gain -16 --start 22 --dur 120
+x set-envelope --voice settle --env pluck
+x set-pitch --voice settle --slide-to 168 --over 100
+x add-reverb --bus master --size 0.18 --mix 0.08
 x render
 
 # ================================== FLAW ======================================

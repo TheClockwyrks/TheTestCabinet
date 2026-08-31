@@ -32,10 +32,18 @@ describe("registerActions", () => {
     );
   });
 
-  it("binds the three keys specs/controls.md fixes", () => {
-    expect(BINDINGS.pause).toEqual(["KeyP"]);
+  it("binds the keys specs/controls.md fixes", () => {
+    expect(BINDINGS.up).toEqual(["ArrowUp"]);
+    expect(BINDINGS.down).toEqual(["ArrowDown"]);
+    expect(BINDINGS.confirm).toEqual(["Enter", "Space"]);
+    expect(BINDINGS.pause).toEqual(["Escape", "KeyP"]);
     expect(BINDINGS.mute).toEqual(["KeyM"]);
     expect(BINDINGS.back).toEqual(["Escape"]);
+  });
+
+  it("registers no board action at all, since the pointer plays the board", () => {
+    expect([...ACTIONS]).not.toContain("left");
+    expect([...ACTIONS]).not.toContain("right");
   });
 
   it("hands the engine a fresh array, so a binding cannot be edited in place", () => {
@@ -48,7 +56,7 @@ describe("registerActions", () => {
       },
     } as unknown as Pick<InitApi<FacetState>, "input">);
     registered[0].keys.push("KeyZ");
-    expect(BINDINGS.up).toEqual(["ArrowUp", "KeyW"]);
+    expect(BINDINGS.up).toEqual(["ArrowUp"]);
   });
 });
 

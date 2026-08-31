@@ -19,13 +19,13 @@
 // MAX_STRAIN by a raise it should never have had is a gem that reached it.
 //
 // THE SCENARIO, THEREFORE, IS A PAIR. Both boards complete the same jade run of
-// three with the same swap from the keyboard, and every gem on both stands at
-// strain 0 but for one: on the stressed board the run's left cell, which the
-// step CLEARS, is posed at MAX_STRAIN - 1. Nothing outside either clear set is
-// within reach of MAX_STRAIN, so a conforming step flaws nothing on either
-// board and the two frames sound alike; a step that raises the strain of what
-// it clears flaws the posed cell on the stressed board alone, and that frame
-// sounds the cue its control did not.
+// three with the same pointer gesture, and every gem on both stands at strain 0
+// but for one: on the stressed board the run's left cell, which the step CLEARS,
+// is posed at MAX_STRAIN - 1. Nothing OUTSIDE either clear set stands within one
+// raise of MAX_STRAIN, so a conforming step flaws nothing on either board and
+// the two frames sound alike; a step that raises the strain of what it clears
+// flaws the posed cell on the stressed board alone, and that frame sounds the
+// cue its control did not.
 //
 // WHY THE STRAIN DIGIT DISTURBS NOTHING ELSE. MAX_STRAIN - 1 is not flawed, so
 // R6 draws no extra cell in and both steps clear the same three cells; and
@@ -33,24 +33,42 @@
 // 2 alike, so both steps are worth the same and no readout moves between them.
 // The check asserts the clear sizes match rather than assuming it.
 //
+// WHY THE POINTER IS THE ROUTE. specs/controls.md plays the board with the
+// pointer alone: a press takes hold of the gem at the cell it targets, a move
+// while held offers that gem into an orthogonal neighbor, and "the release with
+// an offer standing is what requests the swap". `dragGem` is exactly those three
+// operations and nothing else, so what reaches the acceptance path is the
+// build's own press, move and release rules.
+//
+// WHICH FRAME IS READ, AND WHY IT IS NOT THE RELEASE'S. specs/ui.md says "A cue
+// is played by a frame, never by a pose of the debug surface", and the three
+// pointer operations take effect at their calls without a frame running — so the
+// gesture itself sounds nothing. The release only requests the swap: an accepted
+// swap enters `swapping` with `chainStep` at 0 and clears nothing until
+// SWAP_SECONDS (0.18) of game time has passed, so no frame in that span can
+// raise a strain at all. R7 runs inside the step that resolves when it is spent,
+// which makes the frame the step resolved on the one and only frame a wrongly
+// raised gem could reach MAX_STRAIN and sound `flaw` on. That is the frame this
+// reads, found by driving until `chainStep` rises and taking the frame counter
+// there. The drive is capped at `framesPast(SWAP_SECONDS)` — 13 frames of the
+// suite's clock, 0.203125 s — which is a whole frame beyond the boundary
+// whether a build compares `>=` or `>`, so a build that never resolves the swap
+// fails saying so rather than running on.
+//
 // HOW THE FRAME IS READ. The engine reports each cue it plays by name, so the
 // reading is direct: the frame that cleared the stressed gem raised no `flaw`.
 // The control board is driven all the same, so this scenario and the engineless
 // build's are one scenario.
-//
-// WHY THE KEYBOARD IS THE ROUTE. specs/ui.md says "A cue is played by a frame,
-// never by a pose of the debug surface", so a swap posed through `requestSwap`
-// is entitled to raise nothing. specs/controls.md fixes `confirm` to `Enter` and
-// `Space` for a build of every engine, so one press puts the step inside a frame
-// under all three.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertDeepEqual,
   assertEqual,
   assertLength,
+  assertLessThanOrEqual,
   assertTrue,
 } from "../assert";
+import { CUES, MAX_STRAIN, SWAP_SECONDS } from "../constants";
 import {
   clearSetFromRuns,
   isFlawed,
@@ -68,20 +86,21 @@ import {
   type CellRef,
   type PlacedToken,
 } from "../board";
-import { CUES, MAX_STRAIN } from "../constants";
 import {
   captureReplay,
   createHarness,
   cuesOnFrame,
+  dragGem,
+  framesPast,
   loadBoard,
   watchCues,
   type Harness,
 } from "../harness";
 
-/** The selected cell: the jade the swap carries down into row 3. */
+/** The cell the press takes hold of: the jade the gesture carries down a row. */
 const SELECTED: CellRef = { col: 3, row: 2 };
 
-/** The cursor's cell, orthogonally adjacent to it and one row below. */
+/** The cell it is offered into, orthogonally adjacent and one row below. */
 const NEIGHBOR: CellRef = { col: 3, row: 3 };
 
 /**
@@ -203,25 +222,59 @@ it("takes no strain from the gems the step is clearing", async () => {
     "gems one raise short of flawed on the stressed board",
   );
 
-  /** Pose one of the two boards and make the swap from the keyboard. */
-  const play = async (rows: BoardRows, outputId: string) => {
+  /**
+   * Pose one of the two boards, play the move with the pointer, and stop on the
+   * frame step 1 resolves on.
+   *
+   * `dragGem` is the press, the carry and the release, each of which takes
+   * effect at its call, so no frame has run when the swap is requested. The
+   * drive that follows is what carries the game across SWAP_SECONDS into step 1,
+   * and it stops on the first frame that reports a chain step — which is the
+   * frame R7 ran on.
+   */
+  const play = async (rows: BoardRows) => {
     loadBoard(h, rows);
-    h.debug.setSelection(SELECTED.col, SELECTED.row);
-    h.debug.setCursor(NEIGHBOR.col, NEIGHBOR.row);
-    return captureReplay(h, outputId, async () => {
-      await h.tapAction("confirm");
-      return { frame: h.frame(), snapshot: h.snapshot(), board: h.board() };
+    const released = dragGem(h, SELECTED, NEIGHBOR);
+    const resolved = await h.until((state) => state.chainStep >= 1, {
+      maxFrames: framesPast(SWAP_SECONDS),
     });
+    return {
+      released,
+      hit: resolved.hit,
+      frame: h.frame(),
+      snapshot: resolved.snapshot,
+      board: h.board(),
+    };
   };
 
   const cues = watchCues(h);
-  const quiet = await play(control, "exempt-control");
-  const spared = await play(stressed, "strain");
+  const quiet = await play(control);
+  const spared = await captureReplay(h, "strain", () => play(stressed));
+
+  // The gesture reached the acceptance path on both boards, and the drive found
+  // the step it opened, so both readings really are of a resolved step 1.
+  for (const [name, played] of [
+    ["control", quiet],
+    ["stressed", spared],
+  ] as const) {
+    assertEqual(
+      played.released.phase,
+      "swapping",
+      `the phase the release left on the ${name} board`,
+    );
+    assertTrue(
+      played.hit,
+      `the ${name} board's swap resolved within SWAP_SECONDS`,
+    );
+    assertEqual(
+      played.snapshot.chainStep,
+      1,
+      `the chain step the ${name} board's swap opened`,
+    );
+  }
 
   // The two steps really were the same step but for the one strain digit: both
-  // were step 1 of a chain, and both cleared the same number of cells.
-  assertEqual(quiet.snapshot.chainStep, 1, "the control chain's step");
-  assertEqual(spared.snapshot.chainStep, 1, "the stressed chain's step");
+  // cleared the same number of cells.
   assertEqual(
     spared.snapshot.lastCleared,
     quiet.snapshot.lastCleared,
@@ -237,19 +290,27 @@ it("takes no strain from the gems the step is clearing", async () => {
     "flawed gems after the stressed step",
   );
 
-  // So the stressed frame raised no `flaw`: a build that had raised the strain
-  // of what it was clearing would have carried the posed cell to MAX_STRAIN and
-  // sounded the cue for it.
+  // The control frame, on which every gem in the clear set stood at strain 0,
+  // is what the stressed frame is measured against — and it raised no `flaw`,
+  // since nothing outside either clear set is within a raise of MAX_STRAIN.
+  const quietFlaws = cuesOnFrame(cues, quiet.frame).filter(
+    (cue) => cue.cue === CUES.flaw,
+  );
   assertLength(
-    cuesOnFrame(cues, spared.frame).filter((cue) => cue.cue === CUES.flaw),
+    quietFlaws,
     0,
-    "flaw cues on the frame that cleared a gem at MAX_STRAIN - 1",
+    "flaw cues on the frame that cleared the gem at strain 0",
   );
 
-  // And the control frame, identical but for that digit, raised none either.
-  assertLength(
-    cuesOnFrame(cues, quiet.frame).filter((cue) => cue.cue === CUES.flaw),
-    0,
-    "flaw cues on the frame that cleared the same gem at strain 0",
+  // And the stressed frame, identical but for that one digit at a cell the step
+  // CLEARS, sounded no more than its control did. A build that had raised the
+  // strain of what it was clearing would have carried the posed cell to
+  // MAX_STRAIN and sounded the cue for it.
+  assertLessThanOrEqual(
+    cuesOnFrame(cues, spared.frame).filter((cue) => cue.cue === CUES.flaw)
+      .length,
+    quietFlaws.length,
+    "flaw cues on the frame that cleared a gem at MAX_STRAIN - 1, against the " +
+      "frame that cleared the same gem at strain 0",
   );
 });

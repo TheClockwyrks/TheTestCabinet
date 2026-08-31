@@ -14,8 +14,10 @@
 // the board and simply sit there, untouched, until the swap in the far corner
 // wakes the step up. The two runs share no column and no row and lie two rows
 // apart, so neither one's clear, settle or refill can reach the other, and the
-// six cells they hold between them are removed in the ONE step the swap
-// resolves: `lastCleared` is read off that step alone, with no frame advanced.
+// six cells they hold between them are removed in the ONE step the swap opens
+// onto once its animation has run: `lastCleared` is read off that step alone,
+// and the drive that reads it stops far short of the step's own hold, so no
+// second board read can have added to the figure.
 //
 // WHAT THIS POINT READS. The six columns the two runs stand in, and nothing
 // else. Each of them closed over one cell, which happens only if the step took
@@ -52,7 +54,7 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -153,10 +155,14 @@ const KINDS: PlacedToken[] = SETTLED.filter(({ from }) =>
 }));
 
 /**
- * Frames driven after the swap purely so the recorded clip holds motion. Short
- * of `STEP_SECONDS` (0.25 s, 16 frames of the suite's 64 Hz clock), so the board
- * is never read a second time and every assertion is made against the reading
- * taken before them.
+ * Frames driven after the step has resolved, purely so the recorded clip holds
+ * the shattering and the fall.
+ *
+ * `swapAndStep` leaves the step `0.03875` s into its own hold; twelve more frames
+ * of the suite's 64 Hz clock add `0.1875` s, for `0.22625` s in all. That is
+ * short of `0.3` s, the SHORTEST hold any step can have, so the board is never
+ * read a second time and every assertion is made against the reading taken before
+ * them.
  */
 const CLIP_FRAMES = 12;
 
@@ -180,7 +186,7 @@ it("clears both maximal runs standing on the board in one step", async () => {
   loadBoard(h, POSED);
 
   const first = await captureReplay(h, "clear", async () => {
-    const reading = swap(h, FROM, TO);
+    const reading = await swapAndStep(h, FROM, TO);
     await h.advance(CLIP_FRAMES);
     return reading;
   });

@@ -10,13 +10,17 @@
 // player looking at a dead board with no way to read the result or start again.
 //
 // HOW THE ROUND IS ENDED. specs/rules.md ends it "when `phase` returns to `idle`
-// and no legal swap exists on the board", so a chain is opened with a swap and
-// the board that chain will next be read against is written under it with
-// `setGem`, which specs/instrumentation.md says leaves the screen, the phase,
-// the cursor and the selection exactly where they were. `deadBoard()` carries no
-// run under R4 and no adjacent exchange R1 and R3 both accept — both asserted
-// here rather than assumed — so once the step's time is spent the board seeds
-// nothing, the chain returns to idle, and the round is over.
+// and no legal swap exists on the board", so a swap is accepted, carried through
+// the swap animation into step 1, and the board that step will next be read
+// against is written under it with `setGem`, which specs/instrumentation.md says
+// leaves the screen, the phase and the selection exactly where they were.
+// `deadBoard()` carries no run under R4 and no adjacent exchange R1 and R3 both
+// accept — both asserted here rather than assumed — so once the step's hold is
+// spent the board seeds nothing, the chain returns to idle, and the round is
+// over. Writing the board under the running step rather than posing it up front
+// is what makes the ending certain: R9's refill is the build's own draw, so a
+// board posed dead cannot be relied on to still be dead after a chain has
+// resolved on it.
 //
 // THE TWO FIGURES ARE POSED, so what the screen owes is known rather than
 // computed. `setScore` and `setLevel` are the poses specs/instrumentation.md
@@ -27,10 +31,10 @@
 // to write one, the second so the needle is not a lone digit that any readout
 // could answer for.
 //
-// The copy is read through `frameText`, which gathers a frame's canvas text and
-// the page's own DOM text alike, because specs/assets.md has an engineless build
-// draw its chrome "in code (canvas or DOM)" and this point is not about which of
-// the two it chose.
+// The copy is read through `frameText`, which hands back every string one frame
+// put on screen, and `showsText` decides whether a string is among them across
+// every shape specs/ui.md leaves open — one call per line, one per word, one per
+// glyph, or a figure drawn beside its label in a single run.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertTrue, fail } from "../assert";
@@ -39,25 +43,27 @@ import {
   GAMEOVER_TITLE_TEXT,
   GRID_COLS,
   GRID_ROWS,
-  STEP_DRIVE_FRAMES,
 } from "../constants";
 import {
   assertBoardEquals,
   deadBoard,
   legalSwaps,
   maximalRuns,
+  parseRows,
   quietRowsWith,
   swapIsLegal,
   tokenAt,
+  type BoardRows,
   type CellRef,
   type PlacedToken,
 } from "../board";
 import {
+  advanceStep,
   captureStill,
   createHarness,
   loadBoard,
   showsText,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -90,6 +96,18 @@ function requireCopy(drawn: readonly string[], wanted: string): void {
   }
 }
 
+/** Write a whole board onto the live one, `setGem` by `setGem`. */
+function writeBoard(rows: BoardRows): void {
+  // Parsed on this side first, so a typo in the fixture fails here rather than
+  // crossing into the build one cell at a time.
+  parseRows(rows);
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    for (let col = 0; col < GRID_COLS; col += 1) {
+      h.debug.setGem(col, row, tokenAt(rows, col, row));
+    }
+  }
+}
+
 beforeEach(async () => {
   h = await createHarness();
 });
@@ -100,29 +118,31 @@ afterEach(() => {
 
 it("ends the round on the game-over screen, showing its copy, its score and its level", async () => {
   const posed = quietRowsWith(TRIGGER);
+  assertLength(maximalRuns(posed), 0, "maximal runs on the posed board");
   assertTrue(swapIsLegal(posed, SWAP_A, SWAP_B), "R1 and R3 accept the swap");
   loadBoard(h, posed);
-  assertEqual(swap(h, SWAP_A, SWAP_B).phase, "resolving", "the phase");
 
-  // The round's final figures, banked while the step is still holding.
+  const first = await swapAndStep(h, SWAP_A, SWAP_B);
+  assertEqual(first.phase, "resolving", "the phase the accepted swap opened");
+
+  // The round's final figures, banked while the step is still holding. The
+  // level is posed AFTER the step scored, so nothing the chain adds can move
+  // the level score past the target and end the level instead of the round.
   h.debug.setScore(FINAL_SCORE);
   h.debug.setLevel(FINAL_LEVEL);
+  h.debug.setLevelScore(0);
 
   // The board the holding step will be read against: no run to seed a further
   // step, and no legal swap to carry the round on.
   const dead = deadBoard();
   assertLength(maximalRuns(dead), 0, "maximal runs on the dead board");
   assertLength(legalSwaps(dead), 0, "legal swaps on the dead board");
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLS; col += 1) {
-      h.debug.setGem(col, row, tokenAt(dead, col, row));
-    }
-  }
+  writeBoard(dead);
   assertBoardEquals(h.board(), dead, "the board the step is read against");
 
-  // Past `STEP_SECONDS`, so the board is read again, seeds nothing, and the
+  // Past the step's own hold, so the board is read again, seeds nothing, and the
   // chain returns to idle — where specs/rules.md evaluates the end of a round.
-  await h.advance(STEP_DRIVE_FRAMES);
+  await advanceStep(h);
 
   const over = h.snapshot();
   assertEqual(over.screen, "gameover", "the screen the settled round reaches");

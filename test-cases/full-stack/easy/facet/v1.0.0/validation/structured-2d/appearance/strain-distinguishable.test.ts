@@ -21,6 +21,13 @@
 // box of device pixels — so the distance between two readings is the distance
 // between two strain states of one gem and nothing else.
 //
+// STRAIN RAISES NO RUNNING EFFECT, WHICH IS WHY THIS IS A STILL COMPARISON.
+// specs/board.md gives the continuous effect to the three cuts and says outright
+// that "A gem's strain raises no such effect: damage is read off the stone
+// itself." All four gems read here are `plain`, so all four are stones entitled
+// to stand still, and a pair of frames decides them. The cuts, which are never
+// still, are read by `appearance/cuts-distinguishable` across a sweep instead.
+//
 // THE CONTROL THAT MAKES THE READING MEAN SOMETHING. A build is entitled to an
 // idle animation, so two readings of one cell taken frames apart need not be
 // identical. The sweep therefore ends by writing the first state back into that
@@ -29,8 +36,8 @@
 // what the instrument reads when the gem did not change, and it must stay within
 // PATCH_SAME_MAX.
 //
-// THE CURSOR IS PARKED OFF THE PROBE CELL, since specs/ui.md marks the cell at
-// `state.cursor` and a mark standing there would sit over all four readings
+// NOTHING IS SELECTED THROUGH ANY OF IT, since specs/ui.md marks the cell at
+// `state.selection` and a mark standing there would sit over all four readings
 // alike.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -63,10 +70,6 @@ import {
  */
 const PROBE_COL = 3;
 const PROBE_ROW = 3;
-
-/** Where the cursor is sent, so its mark never sits on the probe cell. */
-const PARKED_COL = 0;
-const PARKED_ROW = 0;
 
 /**
  * The kind carried through the sweep.
@@ -122,7 +125,6 @@ afterEach(() => {
 
 it(`draws all ${MAX_STRAIN + 1} strain states of one gem apart from one another`, async () => {
   loadBoard(h, BOARD);
-  h.debug.setCursor(PARKED_COL, PARKED_ROW);
   h.debug.clearSelection();
   await h.settle(ART_SETTLE_MS);
   await h.advance(1);

@@ -17,9 +17,9 @@ here is exactly what a run on this engine is asked to produce.
 **Facet** is a match game of cut stones, played in the browser on a lapidary's
 bench after dark. The board is an eight-by-eight field of gems in seven kinds —
 ruby, amber, citrine, jade, beryl, sapphire, amethyst — each with its own hue
-and its own cut pattern. Swap a stone with the one beside it and any line of
-three or more of one kind shatters; the stones above fall into the gap and fresh
-ones drop in from the top.
+and its own cut pattern. Take hold of a stone, carry it onto the one beside it,
+and let go: any line of three or more of one kind shatters; the stones above
+fall into the gap and fresh ones drop in from the top.
 
 Facet's defining idea is **strain**. Every clear presses on the gems around it,
 and a gem that has taken enough of that pressure is **flawed**: it shatters with
@@ -31,11 +31,13 @@ which takes the ring of stones around it; a line of five or more leaves a
 line crossing another leaves a **star**, which takes its whole row and column.
 
 A round runs level after level, each asking for more points than the one before
-it, and it ends when the board holds no swap that would shatter anything.
+it. Reaching a level's target opens a **level-clear** screen that tots up the
+longest chain and the best single move that level was worth; a round ends when
+the board holds no swap that would shatter anything.
 
 Everything on the bench other than the chrome is **produced by this build**: the
 gem sprites at all four strain states, the break sheets, the prism's idle turn,
-the three particle systems, and every sound and both music beds. They are
+the four particle systems, and every sound and both music beds. They are
 committed under `public/assets/` and bundled by the build, which invokes no
 asset tool.
 
@@ -45,29 +47,44 @@ network calls, or API keys; everything needed to play is in the built bundle.
 
 ## Controls
 
-The pointer plays the board; the keyboard plays the board and drives the menus.
-Every keyboard control is a **registered engine action** on the `dpad-4` touch
-layout:
+**The board is played with the pointer alone** — a mouse, a pen, or a finger,
+all three reaching the same path. Press a stone to take hold of it, carry the
+hold onto a stone beside it to offer the move, and **let go** to play it. While
+an offer stands the two stones are drawn exchanged, so the move on the screen is
+the move a release would play; carry the hold back where it started and the
+offer is withdrawn, so letting go there plays nothing. A press away from every
+cell lets the stone go. A move that would shatter nothing is refused and both
+cells are marked.
 
-| Action                           | Keys               | Does                                                              |
-| -------------------------------- | ------------------ | ----------------------------------------------------------------- |
-| `up` / `down` / `left` / `right` | Arrows or `WASD`   | Moves the cursor on the board, and the highlight on a menu.       |
-| `confirm`                        | `Enter` or `Space` | Selects the cursor's cell, or swaps with it; accepts a menu item. |
-| `pause`                          | `P`                | Enters and leaves the pause screen from the board.                |
-| `back`                           | `Esc`              | Leaves how-to-play, the pause screen, and the end of a round.     |
-| `mute`                           | `M`                | Toggles sound, on any screen.                                     |
+The keyboard's whole job is the menus. Every keyboard control is a **registered
+engine action** on the `single-vertical` touch layout:
 
-**Pointer:** press a stone to select it, then press the stone beside it to swap
-— or hold and **drag** onto the neighbor, which asks for the same swap without
-a second press. Pressing the selected stone again clears the selection, and
-pressing any other stone moves it. A swap that would shatter nothing is refused
-and both cells are marked.
+| Action        | Keys               | Does                                               |
+| ------------- | ------------------ | -------------------------------------------------- |
+| `up` / `down` | Arrows             | Moves the highlight on a menu.                     |
+| `confirm`     | `Enter` or `Space` | Accepts the highlighted menu item.                 |
+| `pause`       | `Esc` or `P`       | Enters and leaves the pause screen from the board. |
+| `back`        | `Esc`              | Leaves how-to-play and the end of a round.         |
+| `mute`        | `M`                | Toggles sound, on any screen.                      |
+
+`Esc` fires both `pause` and `back`, and the two act on screens that do not
+overlap, so one key raises the pause menu from the board, drops it again, and
+backs out of every other screen that can be backed out of.
+
+**Every screen also carries pointer targets**, so a player with only a finger
+reaches every choice: `menu-<i>` per item on the title, pause, level-clear, and
+game-over menus, a `BACK` control on how-to-play, and a `PAUSE` control beside
+the board. Each is at least 96 x 72 logical units, wholly on the stage, and drawn
+exactly where `src/core/targets.ts` reports it — the rectangle the player presses
+and the rectangle the game hit-tests are one rectangle. Moving over a menu row
+highlights it, a press arms it, and a release inside it takes it.
 
 The **backtick** key (`` ` ``) toggles the engine's debug overlay, which shows
 the screen and phase, the board's size, the score, the level against its target,
-the chain step and multiplier, what the last step cleared and scored, the cursor
-and selection, whether a legal swap exists, and the pointer. That key belongs to
-the engine, not to this game.
+the chain step and multiplier, what the last step cleared and scored and what it
+set in motion, the held cell and the offered cell, the level's best move and
+longest chain, whether a legal swap exists, and the pointer with its device. That
+key belongs to the engine, not to this game.
 
 ## What the engine owns
 
@@ -107,11 +124,12 @@ out, built by spreading what it keeps around what it changes. `render` and every
 diagnostic source are reads of the state they are given, and the compiler — not
 a convention — is what says they cannot change it.
 
-Three fields go past `specs/state.md`'s declaration, because the rules it fixes
-cannot be written without them and no declared field yields them: `chainSwap`,
-which R8 reads to place a created gem; and `pressedCell` with `dragSwapped`,
-which carry a drag across the frames of one hold. They are documented where they
-are declared, `reset` restores all three, and the snapshot reports none of them.
+One field goes past `specs/state.md`'s declaration, because the rules it fixes
+cannot be written without it and no declared field yields it: `chainSwap`, the
+pair the running chain began with, which R5 reads to seed a prism chain and R8
+reads to place a created gem — and which the renderer reads to draw the two
+stones travelling while `phase` is `swapping`. It is documented where it is
+declared, `reset` restores it, and the snapshot does not report it.
 
 ## The produced files
 
@@ -123,8 +141,8 @@ the six asset tools and committed under `public/assets/`:
 | `gems/*.png`           | The seven kinds at four strain states, the prism at four, the two cut overlays, and the bench frame  |
 | `gems/break/<kind>/`   | A six-frame shatter sheet per kind                                                                   |
 | `gems/prism-turn/`     | The prism's eight-frame idle turn                                                                    |
-| `fx/*.system.json`     | The clear burst, the flawed detonation, and the cut flash                                            |
-| `audio/*.wav`          | The seven synthesized cues, the eight ladder rungs, the sampled shatter body, and the two music beds |
+| `fx/*.system.json`     | The clear burst, the flawed detonation, the cut flash, and the looping cut aura                      |
+| `audio/*.wav`          | The eight synthesized cues, the eight ladder rungs, the sampled shatter body, and the two music beds |
 | `audio/*.mid`          | The portable score `music` emits beside each bed                                                     |
 
 `src/assets.ts` is the single list of what exists; nothing else in the build
@@ -136,9 +154,32 @@ falls back for it, and the game stays playable.
 
 The particle systems are **simulated live** through
 `@test-cabinet/particle-runtime`'s `ParticleCanvasPlayer`, so they vary from play
-to play. The break sheets, the prism's turn, and the bursts are decoration and
+to play. Three of the four are one-shots thrown at a cell; the fourth, the **cut
+aura**, loops, and one player is held for every `brilliant`, `star`, and `prism`
+standing on the board, taken up and given back as cuts arrive and clear, so a cut
+stone is never still.
+
+The break sheets, the prism's turn, the bursts, and the auras are decoration and
 deliberately live outside the state (`src/effects.ts`), which is derived from
 what each chain step cleared and never read back.
+
+## The board is drawn in motion
+
+`specs/rules.md` fixes every span, and each is read straight off the state rather
+than remembered:
+
+| In motion              | Timed from                                                                                                 |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| An accepted swap       | `swapTimer / SWAP_SECONDS` while `phase` is `swapping`, over the pair in `chainSwap`                       |
+| A shattering clear set | Each cell's **wave**, `w * WAVE_SECONDS` into the step, which is when that cell's break sheet and burst go |
+| A falling stone        | Its own `fell`, starting at `lastWaves * WAVE_SECONDS` and taking `fell * FALL_SECONDS_PER_ROW`            |
+| An offer standing      | The held stone and the offered one drawn exchanged                                                         |
+
+Every gem carries `fell`, the rows it traveled to reach its cell, so the
+renderer knows where each one came from and needs no memory of the board before.
+A freshly dealt board gives every gem a `fell` of at least `row + 1`, so a new
+level pours in from above; the only figure `src/effects.ts` holds for it is how
+long that board has been standing, because a deal has no chain step to time it.
 
 ## Debugging and automation
 
@@ -164,20 +205,23 @@ engine.apply((s) =>
   ]),
 );
 engine.apply((s) => engine.debug.requestSwap(s, 3, 1, 3, 2));
-await engine.advance(60);
+await engine.advance(120);
 const { score, lastCleared, legalSwap } = engine.debug.snapshot(engine.state);
 ```
 
 The operations are `reset` (seedable), `snapshot`, `start`, `openHowTo`,
 `pause`, `resume`, `quit`, `loadBoard`, `setGem`, `setScore`, `setLevel`,
-`setLevelScore`, `setCursor`, `setSelection`, `clearSelection`, `requestSwap`,
-and the immediate-effect pointer trio `pointerDown` / `pointerMove` /
-`pointerUp`. The pointer operations do not stand in for the engine's pointer —
+`setLevelScore`, `setBestChain`, `setBestMove`, `continueLevel`, `setSelection`,
+`clearSelection`, `setOffer`, `clearOffer`, `requestSwap`, and the
+immediate-effect pointer trio `pointerDown` / `pointerMove` / `pointerUp`, each
+of which takes a trailing device (`"mouse"`, `"pen"`, or `"touch"`, defaulting to
+`"mouse"`). The pointer operations do not stand in for the engine's pointer —
 they feed the **same resolution path** its samples feed, so the hit radius, the
-four press rows, the drag, and the acceptance rules run exactly as they do in
-play. Everything about _driving a browser game_ — the clock, exact frames, key
-events, the overlay — is the engine's, which is why the surface carries no
-`setAutoStep` and no `advance`. It is inert during normal play.
+press table, the offer, the release, the screen's targets, and the acceptance
+rules run exactly as they do in play. Everything about _driving a browser game_ —
+the clock, exact frames, key events, the overlay — is the engine's, which is why
+the surface carries no `setAutoStep` and no `advance`. It is inert during normal
+play.
 
 ## Requirements
 
@@ -243,9 +287,12 @@ by dispatching events at the surface's event target, poses scenarios through
 `engine.apply`, and reads results back from the state, the debug surface, the
 engine's cue events, and the pixels the render produced. No browser is involved.
 Among the suite: every produced sprite and particle system is loaded through the
-**engine's own asset path** off the committed tree and drawn, a chain is climbed
-step by step and its ladder rungs checked, and the same interval of game time is
-shown to reach the same state however it was divided into frames.
+**engine's own asset path** off the committed tree and drawn, a whole move is
+played with a mouse and again with a finger, every screen's pointer targets are
+shown to carry paint where the game hit-tests them, a chain is climbed step by
+step and its ladder rungs checked, a swap and a fall are read at points along
+their own timelines, and the same interval of game time is shown to reach the
+same state however it was divided into frames.
 
 ## Project layout
 
@@ -270,7 +317,8 @@ src/
     rules.ts          R1 to R9, as pure functions of a board
     chain.ts          A chain step's order, its cadence, scoring, levels, and
                       the end of a round
-    controls.ts       Selecting, swapping, the cursor, and the pointer
+    controls.ts       Taking hold, offering, releasing, and the screens' targets
+    targets.ts        Every screen's pointer targets, and the hit test over them
     deal.ts           Dealing an opening board
     flow.ts           The screens and their menus
     rng.ts            The seeded generator: a draw beside the next state
@@ -281,7 +329,8 @@ src/
   input.ts            The registered actions and their edge reads
   diagnostics.ts      The values the engine's overlay shows
   debug.ts            The debug surface: poses and readings over FacetState
-  effects.ts          The break sheets and the particle bursts a chain throws
+  effects.ts          The break sheets, the bursts a chain throws, the auras a
+                      cut stone stands in, and the pour a new board arrives on
   scratch.ts          The one drawing surface the engine does not supply
   theme.ts            This build's own look: palette, type, and the bench's placement
   render*.ts          All canvas drawing, in logical space

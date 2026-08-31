@@ -60,7 +60,7 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -153,10 +153,14 @@ const KINDS: PlacedToken[] = READINGS.filter(({ from }) =>
 }));
 
 /**
- * Frames driven after the swap purely so the recorded clip holds motion. Short
- * of `STEP_SECONDS` (0.25 s, 16 frames of the suite's 64 Hz clock), so the board
- * is never read a second time and every assertion is made against the reading
- * taken before them.
+ * Frames driven after the step has resolved, purely so the recorded clip holds
+ * the shattering and the fall.
+ *
+ * `swapAndStep` leaves the step `0.03875` s into its own hold; twelve more frames
+ * of the suite's 64 Hz clock add `0.1875` s, for `0.22625` s in all. That is
+ * short of `0.3` s, the SHORTEST hold any step can have, so the board is never
+ * read a second time and every assertion is made against the reading taken before
+ * them.
  */
 const CLIP_FRAMES = 12;
 
@@ -188,7 +192,7 @@ it("clears the prism and every gem of the kind it was traded against", async () 
   await loadBoard(h, POSED);
 
   const first = await captureReplay(h, "clear", async () => {
-    const reading = await swap(h, PRISM, GEM);
+    const reading = await swapAndStep(h, PRISM, GEM);
     await h.advance(CLIP_FRAMES);
     return reading;
   });

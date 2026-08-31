@@ -1,16 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ACTIONS, BINDINGS } from "./constants";
-import {
-  back,
-  confirm,
-  down,
-  left,
-  mute,
-  pause,
-  registerActions,
-  right,
-  up,
-} from "./input";
+import { back, confirm, down, mute, pause, registerActions, up } from "./input";
 import type { UpdateApi } from "./runtime";
 
 /** An api that answers `true` for exactly one action name. */
@@ -18,7 +8,7 @@ function armed(name: string): UpdateApi {
   return {
     input: {
       pressed: (asked) => asked === name,
-      pointer: () => ({ x: 0, y: 0, down: false }),
+      pointer: () => ({ x: 0, y: 0, down: false, device: "mouse" as const }),
       pointerSamples: () => [],
     },
     audio: {
@@ -43,10 +33,18 @@ describe("registerActions", () => {
     }
   });
 
-  it("binds the three keys specs/controls.md fixes", () => {
-    expect(BINDINGS.pause).toEqual(["KeyP"]);
+  it("binds the keys specs/controls.md fixes", () => {
+    expect(BINDINGS.up).toEqual(["ArrowUp"]);
+    expect(BINDINGS.down).toEqual(["ArrowDown"]);
+    expect(BINDINGS.confirm).toEqual(["Enter", "Space"]);
+    expect(BINDINGS.pause).toEqual(["Escape", "KeyP"]);
     expect(BINDINGS.mute).toEqual(["KeyM"]);
     expect(BINDINGS.back).toEqual(["Escape"]);
+  });
+
+  it("gives Escape to both pause and back, which act on disjoint screens", () => {
+    expect(BINDINGS.pause).toContain("Escape");
+    expect(BINDINGS.back).toContain("Escape");
   });
 });
 
@@ -54,8 +52,6 @@ describe("the action readers", () => {
   const readers: [string, (api: UpdateApi) => boolean][] = [
     ["up", up],
     ["down", down],
-    ["left", left],
-    ["right", right],
     ["confirm", confirm],
     ["back", back],
     ["pause", pause],

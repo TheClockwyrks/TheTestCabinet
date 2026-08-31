@@ -4,7 +4,8 @@
 // of it (specs/overview.md). This file is that layer's core, and it is
 // deliberately sized for THIS game rather than for every 2D game: a frame
 // loop, the canvas fit, and the wiring that hands the game a keyboard
-// (`src/keyboard.ts`), a pointer in logical stage units (`src/pointer.ts`), an
+// (`src/keyboard.ts`), a pointer in logical stage units that a mouse, a pen,
+// and a finger all drive (`src/pointer.ts`), an
 // audio bus over the produced `.wav`s (`src/audio-bus.ts`), the produced files
 // themselves (`src/assets.ts`), a viewport (`src/viewport.ts`), and a
 // diagnostics overlay (`src/overlay.ts`).
@@ -33,7 +34,12 @@ import { AssetStore } from "./assets";
 import { AudioBus, type AudioContextSource, type CueSpec } from "./audio-bus";
 import { Keyboard, asKeyboardEvent } from "./keyboard";
 import { Diagnostics, OVERLAY_KEY } from "./overlay";
-import { Pointer, type PointerPosition, type PointerSample } from "./pointer";
+import {
+  Pointer,
+  claimGestures,
+  type PointerPosition,
+  type PointerSample,
+} from "./pointer";
 import {
   clientToStage,
   deviceSize,
@@ -114,7 +120,7 @@ export interface UpdateApi {
   readonly input: {
     /** Whether the action went down since the last frame. Consumes the edge. */
     pressed(name: string): boolean;
-    /** The pointer's logical position and whether it is pressed, now. */
+    /** The pointer's logical position, press state, and device, now. */
     pointer(): PointerPosition;
     /** This frame's pointer samples, in arrival order. Consumes them. */
     pointerSamples(): PointerSample[];
@@ -224,9 +230,23 @@ export function createRuntime<S, D>(
   const assets = options.assets ?? new AssetStore();
   const scratch = options.scratch ?? domScratchCanvas();
   const keyboard = new Keyboard(surface.events());
-  const pointer = new Pointer(surface.events(), (clientX, clientY) =>
-    clientToStage(viewport, surface.origin(), surface.dpr(), clientX, clientY),
+  const pointer = new Pointer(
+    surface.events(),
+    (clientX, clientY) =>
+      clientToStage(
+        viewport,
+        surface.origin(),
+        surface.dpr(),
+        clientX,
+        clientY,
+      ),
+    canvas,
   );
+  // The browser's own gestures on the canvas belong to the game while it runs:
+  // without the claim a touch drag onto a neighboring gem is taken for a pan
+  // and cancelled part way through, and the secondary button opens a menu over
+  // the board (specs/controls.md, The pointer).
+  const releaseGestures = claimGestures(canvas);
   const audio = new AudioBus((key) => assets.sound(key), options.audioContext);
   const diagnostics = new Diagnostics<S>();
 
@@ -510,6 +530,7 @@ export function createRuntime<S, D>(
       surface.events().removeEventListener("keydown", onOverlayKey);
       keyboard.detach();
       pointer.detach();
+      releaseGestures();
       audio.dispose();
       live = null;
     },

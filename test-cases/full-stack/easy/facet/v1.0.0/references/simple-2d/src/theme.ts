@@ -46,9 +46,10 @@ export const COLOR = {
   /** Headings, the highlighted menu item, and the brass rules. */
   gold: "#f6c66a",
   goldDim: "#8d6f36",
-  /** The cursor mark and the selection mark. */
-  cursor: "#fff4d2",
+  /** The mark on the cell the player has hold of. */
   selection: "#7ff0d8",
+  /** The mark on the cell that gem is currently offered into. */
+  offer: "#f6c66a",
   /** The mark a refused swap leaves on its two cells. */
   refusal: "#ff6a6a",
   /** The level meter. */
@@ -116,6 +117,41 @@ export function drawTracked(
   });
   ctx.textAlign = previousAlign;
   return total;
+}
+
+/**
+ * One on-screen control, drawn to fill the pointer target `src/core/targets.ts`
+ * reports for it, so what a player presses and what the game hit-tests are one
+ * rectangle rather than two sets of numbers that agree until one is edited.
+ *
+ * `specs/controls.md` fixes the floor a target is sized to, and the two this
+ * game carries — `PAUSE` on the board and `BACK` on how-to-play — each read as
+ * a pressable plate with its one word centered in it.
+ */
+export function drawControl(
+  ctx: CanvasRenderingContext2D,
+  rect: {
+    readonly x: number;
+    readonly y: number;
+    readonly w: number;
+    readonly h: number;
+  },
+  label: string,
+): void {
+  ctx.save();
+  ctx.fillStyle = COLOR.panel;
+  roundedRect(ctx, rect.x, rect.y, rect.w, rect.h, 14);
+  ctx.fill();
+  ctx.strokeStyle = COLOR.panelEdge;
+  ctx.lineWidth = 2;
+  roundedRect(ctx, rect.x, rect.y, rect.w, rect.h, 14);
+  ctx.stroke();
+
+  ctx.font = font(20, 700, FONT_DISPLAY);
+  ctx.fillStyle = COLOR.gold;
+  ctx.textBaseline = "alphabetic";
+  drawTracked(ctx, label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 7, 6);
+  ctx.restore();
 }
 
 /** A rounded rectangle path, which the panels and the meter are drawn from. */

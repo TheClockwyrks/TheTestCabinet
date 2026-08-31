@@ -52,7 +52,7 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -134,11 +134,14 @@ const KINDS: PlacedToken[] = SETTLED.filter(({ from }) => besideRun(from)).map(
 );
 
 /**
- * Frames driven after the swap purely so the recorded clip holds motion.
+ * Frames driven after the step has resolved, purely so the recorded clip holds
+ * the shattering and the fall.
  *
- * Short of `STEP_SECONDS` (0.25 s, 16 frames of the suite's 64 Hz clock), so the
- * board is never read a second time and the clip shows step 1 alone. Every
- * assertion is made against the reading taken before them.
+ * `swapAndStep` leaves the step `0.03875` s into its own hold; twelve more frames
+ * of the suite's 64 Hz clock add `0.1875` s, for `0.22625` s in all. That is
+ * short of `0.3` s, the SHORTEST hold any step can have, so the board is never
+ * read a second time and the clip shows step 1 alone. Every assertion is made
+ * against the reading taken before them.
  */
 const CLIP_FRAMES = 12;
 
@@ -165,12 +168,13 @@ it("clears the three cells a swap lines up along one row", async () => {
   await loadBoard(h, POSED);
 
   const first = await captureReplay(h, "clear", async () => {
-    const reading = await swap(h, FROM, TO);
+    const reading = await swapAndStep(h, FROM, TO);
     await h.advance(CLIP_FRAMES);
     return reading;
   });
 
-  // An accepted swap resolves step 1 on the spot, so this reading IS the step.
+  // `swapAndStep` carried the swap through its own animation into step 1, so
+  // this reading IS that step's.
   assertEqual(first.lastCleared, MATCH_MIN, "cells the step cleared");
 
   // And the run's three columns say which three cells went: each of them closed

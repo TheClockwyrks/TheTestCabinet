@@ -2,10 +2,12 @@
 // resolving.
 //
 // R2 in specs/rules.md is one sentence — "A swap is accepted only while `phase`
-// is `idle`" — and it is the rule that keeps a chain from being reached into
-// while it runs. A build that checks only R1 and R3 lets a player trade gems out
-// from under a step that has already scored them, and nothing else in the
-// ruleset catches it.
+// is `idle`" — and it is the rule that keeps a board in motion from being reached
+// into. `phase` has two ways of not being `idle`, and a build can guard one and
+// not the other, so the sentence is two points: this one is `resolving`, and
+// `moves/r2-refused-while-swapping` is the other. A build that checks only R1 and
+// R3 lets a player trade gems out from under a step that has already scored them,
+// and nothing else in the ruleset catches it.
 //
 // HOW THE SCENARIO ISOLATES R2, WHICH IS THE WHOLE DIFFICULTY. A refusal proves
 // nothing unless the request would otherwise have been ACCEPTED. So the posed
@@ -18,13 +20,15 @@
 // the board the BUILD is holding at that moment, not against the fixture, so
 // what the second request meets is exactly one objection: R2.
 //
-// WHERE IN THE STEP THE REQUEST LANDS. The chain is carried part of the way
-// through step 1 first, so `stepTimer` is holding real game time. That turns
-// "the chain was not disturbed" into something readable: a build that answered
-// the request by restarting its step, or by counting a second one, shows a
-// `stepTimer` back at zero or a `chainStep` at 2. Advancing stops short of
-// `STEP_SECONDS`, so no second board read has happened and the step under
-// examination is still step 1.
+// WHERE IN THE STEP THE REQUEST LANDS. The opening swap is carried through its
+// own animation — nothing is `resolving` until `SWAP_SECONDS` (`0.18`) of game
+// time has gone by — and then part of the way through step 1, so `stepTimer` is
+// holding real game time when the second request arrives. That turns "the chain
+// was not disturbed" into something readable: a build that answered the request
+// by restarting its step, or by counting a second one, shows a `stepTimer` back
+// at zero or a `chainStep` at 2. The drive stops well short of the step's own
+// hold, whose floor is `0.3` s, so no second board read has happened and the step
+// under examination is still step 1.
 //
 // The board is compared cell by cell against the board the build held an instant
 // before the request, rather than against the fixture: step 1 has already cleared
@@ -50,7 +54,8 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  requestSwap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -88,12 +93,13 @@ const OPENING: Pair = { a: { col: 3, row: 3 }, b: { col: 3, row: 4 } };
 const SECOND: Pair = { a: { col: 6, row: 0 }, b: { col: 6, row: 1 } };
 
 /**
- * Frames advanced into step 1 before the second request.
+ * Frames advanced into step 1, beyond the ones the swap animation cost.
  *
- * Eight frames of the suite's clock is `0.125` s: enough that `stepTimer` is
- * carrying a figure a restart would visibly lose, and half of `STEP_SECONDS`
- * (`0.25`), so the board has not been read a second time and the step being
- * examined is still step 1.
+ * `swapAndStep` leaves the step `0.03875` s into its hold; eight more frames of
+ * the suite's clock add `0.125` s, for `0.16375` s in all. That is enough that
+ * `stepTimer` is carrying a figure a restart would visibly lose, and it is short
+ * of `0.3` s, the SHORTEST hold any step can have, so the board has not been read
+ * a second time and the step being examined is still step 1.
  */
 const MID_STEP_FRAMES = 8;
 
@@ -116,13 +122,14 @@ it("refuses a swap requested while a chain is resolving", async () => {
   );
   loadBoard(h, ROWS);
 
-  // Open the chain. specs/rules.md resolves step 1 at the request, so the board
-  // is `resolving` before a single frame has run.
-  const opening = swap(h, OPENING.a, OPENING.b);
+  // Open the chain, and carry the swap through its own animation: specs/rules.md
+  // clears nothing until `SWAP_SECONDS` has passed, so it is the drive rather
+  // than the request that leaves the board `resolving`.
+  const opening = await swapAndStep(h, OPENING.a, OPENING.b);
   assertEqual(opening.phase, "resolving", "phase after the opening swap");
   assertEqual(opening.chainStep, 1, "chainStep after the opening swap");
 
-  // Run part-way into the step, so `stepTimer` holds a figure worth watching.
+  // Run further into the step, so `stepTimer` holds a figure worth watching.
   await h.advance(MID_STEP_FRAMES);
   const before = h.snapshot();
   const boardBefore = h.board();
@@ -136,7 +143,7 @@ it("refuses a swap requested while a chain is resolving", async () => {
   );
 
   const refused = await captureReplay(h, "refused", async () => {
-    const reading = swap(h, SECOND.a, SECOND.b);
+    const reading = requestSwap(h, SECOND.a, SECOND.b);
     const board = h.board();
     await h.advance(1);
     return { reading, board };

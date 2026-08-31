@@ -6,7 +6,7 @@ import type { World } from "@test-cabinet/structured-2d";
 import { BACKGROUND, FacetState, facetState, game } from "./game";
 import { Bench } from "./bench";
 import { FacetController } from "./controller";
-import { CURSOR_START_COL, CURSOR_START_ROW, DEFAULT_SEED } from "./constants";
+import { DEFAULT_SEED } from "./constants";
 import { COLOR } from "./theme";
 import { createHarness } from "./harness";
 
@@ -35,39 +35,46 @@ describe("FacetState", () => {
     expect(state.board).toEqual({ cols: 0, rows: 0, cells: [] });
     expect(state.phase).toBe("idle");
     expect(state.chainStep).toBe(0);
+    expect(state.swapTimer).toBe(0);
     expect(state.stepTimer).toBe(0);
     expect(state.score).toBe(0);
     expect(state.level).toBe(1);
     expect(state.levelScore).toBe(0);
     expect(state.lastCleared).toBe(0);
     expect(state.lastPoints).toBe(0);
-    expect(state.cursor).toEqual({
-      col: CURSOR_START_COL,
-      row: CURSOR_START_ROW,
-    });
+    expect(state.lastWaves).toBe(0);
+    expect(state.moveScore).toBe(0);
+    expect(state.bestMove).toBe(0);
+    expect(state.bestChain).toBe(0);
     expect(state.selection).toBeNull();
+    expect(state.offer).toBeNull();
     expect(state.refusal).toBeNull();
-    expect(state.pointer).toEqual({ x: 0, y: 0, down: false });
+    expect(state.armedTarget).toBeNull();
+    expect(state.pointer).toEqual({
+      x: 0,
+      y: 0,
+      down: false,
+      device: "mouse",
+    });
     expect(state.simTime).toBe(0);
     expect(state.muted).toBe(false);
     expect(state.rngState).toBe(DEFAULT_SEED);
     expect(state.chainSwap).toBeNull();
-    expect(state.pressedCell).toBeNull();
-    expect(state.dragSwapped).toBe(false);
   });
 
   it("gives every instance its own containers", () => {
     const first = new FacetState();
     const second = new FacetState();
-    first.cursor.col = 5;
+    first.pointer.x = 5;
     first.board.cells.push({
       col: 0,
       row: 0,
       kind: "ruby",
       cut: "plain",
       strain: 0,
+      fell: 0,
     });
-    expect(second.cursor.col).toBe(0);
+    expect(second.pointer.x).toBe(0);
     expect(second.board.cells).toEqual([]);
   });
 });
@@ -140,10 +147,14 @@ describe("the world the engine builds", () => {
         "R0 A0 C0 J0 B0 S0 M0 R0",
       ]);
       harness.debug.requestSwap(1, 1, 1, 0);
-      // The pose spawned break sheets; without a canvas to composite into
-      // there are no bursts, so the sheets alone are what age away.
+      // The swap is in motion, so nothing has shattered yet. One frame past
+      // SWAP_SECONDS resolves the first step, which spawns the break sheets;
+      // without a canvas to composite into there are no bursts, so the sheets
+      // alone are what age away.
+      expect(harness.bench.presentation.idle()).toBe(true);
+      await harness.advance(12);
       expect(harness.bench.presentation.idle()).toBe(false);
-      await harness.advance(60);
+      await harness.advance(90);
       expect(harness.bench.presentation.idle()).toBe(true);
     } finally {
       harness.dispose();

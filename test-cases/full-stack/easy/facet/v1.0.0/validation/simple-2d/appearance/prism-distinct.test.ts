@@ -25,27 +25,31 @@
 // box of device pixels — so a distance between two readings is a distance between
 // two gems and nothing else.
 //
-// WHY THE PRISM IS READ SEVEN TIMES RATHER THAN ONCE. specs/board.md leaves the
-// animation to the build, and a prism is the gem a build is most likely to give
-// an idle turn to — it is the one gem with no kind to hold it still. A point that
-// compared each kind against the prism as it looked at ONE instant would be
-// deciding the requirement on whichever face of that turn happened to be showing.
-// So the sweep alternates: the prism is written into the cell, read, then the
-// kind, read, and so on through all seven. That leaves seven readings of the
-// prism spread across the sweep and seven of the kinds, and EVERY pair of them
-// must read more than PATCH_DISTINCT_MIN apart. The requirement is that a prism
-// never reads as a gem carrying a kind, and forty-nine pairs is that requirement
-// rather than a sample of it.
+// WHY THE PRISM IS READ SEVEN TIMES RATHER THAN ONCE. A prism is the one gem that
+// carries two motions of its own: specs/assets.md loops "The prism's idle turn"
+// at every prism standing on the board and runs the cut aura at it as well, and
+// specs/board.md sums that up as "A cut gem is never still." A point that compared
+// each kind against the prism as it looked at ONE instant would be deciding the
+// requirement on whichever face of that motion happened to be showing. So the
+// sweep alternates: the prism is written into the cell, read, then the kind,
+// read, and so on through all seven. That leaves seven readings of the prism
+// spread across the sweep and seven of the kinds, and EVERY pair of them must
+// read more than PATCH_DISTINCT_MIN apart. The requirement is that a prism never
+// reads as a gem carrying a kind, and forty-nine pairs is that requirement rather
+// than a sample of it.
 //
-// THE CONTROL THAT MAKES THE READINGS MEAN SOMETHING. The distances above are
-// only a reading of the two gems if the cell itself holds still between them. The
-// sweep therefore ends by writing the first kind back into that same cell and
-// reading it once more, a whole sweep after its first reading: that pair is what
-// the instrument sees when the gem did not change, and it must stay within
-// PATCH_SAME_MAX.
+// WHY THE CONTROL IS TAKEN ON A PLAIN GEM, AND BEFORE THE SWEEP. The distances
+// above are only a reading of the two gems if the cell itself can hold still, and
+// a prism compared against itself measures its motion rather than answering that.
+// A plain gem carries no running effect, so it is what can say what standing
+// still reads as: the cell is read twice with one plain gem in it, a whole
+// sweep's worth of frames apart, before any prism has stood there. It is taken
+// first because a cut's effect is a system of particles with a life of their own,
+// and a reading taken a frame after a prism stood in the cell could still be
+// carrying them.
 //
-// THE CURSOR IS PARKED OFF THE PROBE CELL, since specs/ui.md marks the cell at
-// `state.cursor` and a mark standing there would sit over every reading alike.
+// NOTHING IS SELECTED THROUGH ANY OF IT, since specs/ui.md marks the cell at
+// `state.selection` and a mark standing there would sit over every reading alike.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { quietRowsWithEscape, tokenOf, withCells } from "../board";
@@ -73,10 +77,6 @@ import {
 const PROBE_COL = 3;
 const PROBE_ROW = 3;
 
-/** Where the cursor is sent, so its mark never sits on the probe cell. */
-const PARKED_COL = 0;
-const PARKED_ROW = 0;
-
 /**
  * A prism at strain `0`.
  *
@@ -85,6 +85,9 @@ const PARKED_ROW = 0;
  * absent rather than set to anything.
  */
 const PRISM = tokenOf(null, 0, "prism");
+
+/** Frames the sweep spends: one for the prism and one for the kind, per kind. */
+const SWEEP_FRAMES = GEM_KINDS.length * 2;
 
 /** The board every reading is taken over: the run-free filler, with its escape. */
 const BOARD = quietRowsWithEscape([]);
@@ -121,10 +124,17 @@ afterEach(() => {
 
 it("draws a prism apart from a plain gem of every one of the seven kinds", async () => {
   loadBoard(h, BOARD);
-  h.debug.setCursor(PARKED_COL, PARKED_ROW);
   h.debug.clearSelection();
   await h.settle(ART_SETTLE_MS);
+
+  // The control, taken first and on a plain gem: one stone with no running effect
+  // at it, read twice a whole sweep apart. That is what the instrument reads when
+  // nothing about the gem changed.
+  h.debug.setGem(PROBE_COL, PROBE_ROW, tokenOf(GEM_KINDS[0], 0));
   await h.advance(1);
+  const still = readPatch(h, PROBE_COL, PROBE_ROW);
+  await h.advance(SWEEP_FRAMES);
+  const stillAgain = readPatch(h, PROBE_COL, PROBE_ROW);
 
   // The prism and one kind after another into the same cell, a frame each so the
   // build draws what it was handed. Alternating them leaves the prism sampled
@@ -141,22 +151,16 @@ it("draws a prism apart from a plain gem of every one of the seven kinds", async
     gems.push(readPatch(h, PROBE_COL, PROBE_ROW));
   }
 
-  // The control: the first kind written back into the same cell, a full sweep
-  // later than its first reading.
-  h.debug.setGem(PROBE_COL, PROBE_ROW, tokenOf(GEM_KINDS[0], 0));
-  await h.advance(1);
-  const again = readPatch(h, PROBE_COL, PROBE_ROW);
-
   // Evidence, and no part of the verdict: the prism beside all seven kinds.
   loadBoard(h, PRISM_ROW);
   await h.advance(1);
   captureStill(h, "prism");
 
   assertLessThanOrEqual(
-    patchDistance(gems[0], again),
+    patchDistance(still, stillAgain),
     PATCH_SAME_MAX,
-    `how far cell (${PROBE_COL},${PROBE_ROW}) reads from itself with a plain ` +
-      `${GEM_KINDS[0]} written into it twice`,
+    `how far cell (${PROBE_COL},${PROBE_ROW}) reads from itself over ` +
+      `${SWEEP_FRAMES} frames with a plain ${GEM_KINDS[0]} standing in it`,
   );
 
   for (let kindAt = 0; kindAt < GEM_KINDS.length; kindAt += 1) {

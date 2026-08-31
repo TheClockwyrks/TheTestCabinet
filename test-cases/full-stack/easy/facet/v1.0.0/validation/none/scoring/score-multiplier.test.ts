@@ -39,6 +39,14 @@
 // restates them. So a build whose refill differed is held to its own board rather
 // than to this one's.
 //
+// HOW THE TWO STEPS ARE REACHED. An accepted swap exchanges the two cells at
+// once, sets `phase` to `swapping` with `chainStep` at `0`, and clears nothing;
+// step 1 resolves once `SWAP_SECONDS` (`0.18`) of game time has passed.
+// `swapAndStep` carries the board through that animation to step 1's result, and
+// `advanceStep` then carries it past exactly one step boundary — the step's own
+// `stepHold`, read off the snapshot, less the `stepTimer` already spent — into
+// step 2.
+//
 // WHAT IS READ, AND WHERE. `score` either side of each step, since specs/rules.md
 // is about what a step ADDS. `lastPoints` is not read: what that field reports of
 // a step is `scoring/last-step-reported`'s claim.
@@ -64,10 +72,12 @@ import {
   advanceStep,
   captureReplay,
   createHarness,
+  framesShortOf,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
+import type { FacetSnapshot } from "../surface";
 
 /**
  * A ruby three in column 3 that the swap completes, with jades above and below it
@@ -75,7 +85,10 @@ import {
  * column and gives the next board read a run of its own.
  *
  * The jade at `(3,5)` sits under the run and does not move; the two above fall
- * onto it. Nothing here is three of a kind before the swap.
+ * onto it. Nothing here is three of a kind before the swap. All three cells of
+ * the run step 2 clears are SURVIVORS of step 1 rather than refills, so the
+ * second step happens whatever the build's generator dealt into the top of the
+ * column.
  */
 const CHAIN_CELLS: readonly PlacedToken[] = [
   { col: 3, row: 0, token: "J0" },
@@ -94,10 +107,19 @@ const SWAP_B: CellRef = { col: 3, row: 3 };
 const SECOND_STEP = 2;
 
 /**
- * Frames recorded after step 2, so the replay ends on the second clear rather
- * than on the board that led to it.
+ * Frames that carry the recording to just short of the end of the step the
+ * reading was taken in.
+ *
+ * A step's hold is the step's OWN figure — `lastWaves * WAVE_SECONDS` plus
+ * `lastFall * FALL_SECONDS_PER_ROW` plus `STEP_SECONDS`, which the snapshot
+ * reports as `stepHold` — so the frames that fill it are read off the snapshot
+ * rather than written down. `framesShortOf` keeps the drive strictly inside what
+ * is left of the hold, so the recording ends on step 2's own clear rather than on
+ * whatever a third step would make of it.
  */
-const AFTERMATH_FRAMES = 16; // one STEP_SECONDS
+function restOfStep(reading: FacetSnapshot): number {
+  return framesShortOf(Math.max(0, reading.stepHold - reading.stepTimer));
+}
 
 let h: Harness;
 
@@ -159,18 +181,22 @@ it("pays a second chain step twice its clear set's rates", async () => {
     // The standing score, read on the settled board the swap is about to be made
     // on. What each step paid is what it moves this figure by.
     const before = await h.snapshot();
-    const first = await swap(h, SWAP_A, SWAP_B);
+    const first = await swapAndStep(h, SWAP_A, SWAP_B);
     // The board step 1 LEFT, refill and all. This is what the next board read
     // will see, so step 2's clear set and the strain each of its gems carries are
     // both decidable here, before the build has scored anything for them.
     const between = await h.board();
     const second = await advanceStep(h);
     const measured = { before, first, between, second };
-    await h.advance(AFTERMATH_FRAMES);
+    await h.advance(restOfStep(second));
     return measured;
   });
 
-  assertEqual(chain.first.chainStep, 1, "the chain step the accepted swap opened");
+  assertEqual(
+    chain.first.chainStep,
+    1,
+    "the chain step the accepted swap opened",
+  );
 
   const laterCleared = clearSetFromRuns(chain.between);
   // Step 2 has to exist for the point to mean anything: a board step 1 left with
@@ -187,7 +213,11 @@ it("pays a second chain step twice its clear set's rates", async () => {
     "which the rules leave below MAX_STRAIN on a board opened at strain 0",
   );
 
-  assertEqual(chain.second.chainStep, SECOND_STEP, "the chain step that resolved");
+  assertEqual(
+    chain.second.chainStep,
+    SECOND_STEP,
+    "the chain step that resolved",
+  );
   assertEqual(
     chain.second.multiplier,
     SECOND_STEP,

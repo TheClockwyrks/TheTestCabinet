@@ -29,8 +29,15 @@
 // star must win. In each, the whole step must create exactly ONE gem: a build that
 // honored the losing row as well would leave two.
 //
-// Both are read at step 1, which specs/rules.md resolves at the swap, R8 and R9
-// included. Neither reads WHERE the gem ended up: R9 settles after R8 in the same
+// BOTH ARE READ AT STEP 1. specs/rules.md has an accepted swap exchange its two
+// cells at once, set `phase` to `swapping` with `chainStep` at `0`, and clear
+// nothing until `SWAP_SECONDS` (`0.18`) of game time has passed; step 1 then
+// resolves, R8 and R9 both inside it. `swapAndResolve` carries the game through
+// that animation and hands back `first`, the reading of step 1's result, which is
+// what each scenario reads. A later step is seeded from whatever R9's refill
+// dealt and may create cuts of its own.
+//
+// Neither scenario reads WHERE the gem ended up: R9 settles after R8 in the same
 // step, and the emptied column below the crossing lets the created gem fall.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -89,10 +96,7 @@ function cutCells(snapshot: FacetSnapshot): CellSnapshot[] {
  * scenario that stopped posing what its comment says fails as a fixture fault
  * rather than as a verdict about the build.
  */
-function assertCrossing(
-  posed: readonly string[],
-  rowRunLength: number,
-): void {
+function assertCrossing(posed: readonly string[], rowRunLength: number): void {
   assertLength(maximalRuns(posed), 0, "maximal runs on the posed board");
   const produced = maximalRuns(swapped(posed, FROM, TO));
   assertLength(produced, 2, "maximal runs the exchange produces");
@@ -145,7 +149,7 @@ it("gives a contested cell a prism rather than a star", async () => {
 
   // The clear set is the union of the two runs: five along the row and three down
   // the column, sharing the crossing.
-  assertEqual(first.chainStep, 1, "the chain step the swap opened");
+  assertEqual(first.chainStep, 1, "the chain step the accepted swap resolved");
   assertEqual(first.lastCleared, 7, "cells the step cleared");
 
   // One gem created, and the prism won the cell the two rows contested.
@@ -177,7 +181,7 @@ it("gives a contested cell a star rather than a brilliant", async () => {
 
   // The clear set is the union of the two runs: four along the row and three down
   // the column, sharing the crossing.
-  assertEqual(first.chainStep, 1, "the chain step the swap opened");
+  assertEqual(first.chainStep, 1, "the chain step the accepted swap resolved");
   assertEqual(first.lastCleared, 6, "cells the step cleared");
 
   // One gem created, and the star won the cell the two rows contested.

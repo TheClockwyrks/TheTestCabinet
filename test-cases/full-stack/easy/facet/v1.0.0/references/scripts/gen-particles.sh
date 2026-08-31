@@ -8,16 +8,18 @@
 # `@test-cabinet/particle-runtime`'s ParticleCanvasPlayer, so every burst is
 # simulated afresh and no two look quite alike — which is correct.
 #
-# Produces, under assets/fx/ (3 system.json files):
+# Produces, under assets/fx/ (4 system.json files):
 #   clear-burst.system.json    one short burst at every cell a chain step clears
 #   flawed-burst.system.json   the heavier detonation where a gem at MAX_STRAIN
 #                              (3) clears — visibly bigger and more violent
 #   cut-flash.system.json      the prismatic flash where a brilliant, a star, or
 #                              a prism is created
+#   cut-aura.system.json       the one LOOPING system, running at every brilliant,
+#                              star and prism standing on the board
 #
 # `particle-2d` is planar: there is no z, and y points UP, so a NEGATIVE gravity
 # pulls a particle down the screen. The simulator also holds a hard ceiling of
-# 10,000 live particles per system; the heaviest of these three peaks near 300,
+# 10,000 live particles per system; the heaviest of these four peaks near 300,
 # so a board throwing a dozen bursts at once stays far inside it.
 #
 # ParticleCanvasPlayer maps a particle at field `(x, y)` straight onto its canvas
@@ -165,5 +167,35 @@ p set-particle --emitter motes --size-curve linear --size-from 2 --size-to 0.4 \
 p set-forces --emitter motes --gravity 30 --drag 2
 p render >/dev/null
 echo "  fx/cut-flash.system.json"
+
+# =============================== CUT AURA =====================================
+# Played continuously at the cell of every brilliant, star and prism standing on
+# the board, for as long as that gem stands there. It is the one LOOPING system:
+# a cut stone is never still, so a player picks the three cuts a chain earns out
+# of a field of plain stones by their motion.
+#
+# It is deliberately quiet. Half a dozen cut gems can stand on one board at once,
+# and six copies of a loud effect would be a haze over the field rather than six
+# marked stones — so this is a low rate of small motes rising off the stone and
+# one slow glint turning over it, and nothing that reaches beyond a cell.
+FIELD_AURA=96; HALF_AURA=$((FIELD_AURA / 2))
+newfx "$FIELD_AURA" "$FIELD_AURA" 1600 true "$OUT/cut-aura.system.json"
+p set-timeline --loop true
+p add-emitter --name motes --shape disc --radius 13 --x "$HALF_AURA" --y "$HALF_AURA" \
+  --rate 9 --lifetime 900 --lifetime-spread 260 \
+  --speed 16 --speed-spread 9 --dir-y 1 --cone-angle 62 --seed 9701
+p set-particle --emitter motes --size-curve ease-out --size-from 2.6 --size-to 0.5 \
+  --opacity-curve ease-out --opacity-from 0.75 --opacity-to 0 \
+  --color-gradient '#ffffff@0,#cfe4ff@0.5,#8fb6ff@1'
+p set-forces --emitter motes --gravity 26 --drag 1.6 --turbulence 12,0.6
+p add-emitter --name glint --shape disc --radius 6 --x "$HALF_AURA" --y "$HALF_AURA" \
+  --rate 3 --lifetime 620 --lifetime-spread 140 \
+  --speed 34 --speed-spread 10 --dir-y 1 --cone-angle 180 --seed 4813
+p set-particle --emitter glint --size-curve ease-out --size-from 4.6 --size-to 0.4 \
+  --opacity-curve ease-out --opacity-from 0.9 --opacity-to 0 \
+  --color-gradient '#ffffff@0,#ffe9b0@0.45,#ffb44f@1' --rotation 120 --stretch 0.25
+p set-forces --emitter glint --drag 2.4 --vortex 26
+p render >/dev/null
+echo "  fx/cut-aura.system.json"
 
 echo "gen-particles.sh: done -> $OUT"

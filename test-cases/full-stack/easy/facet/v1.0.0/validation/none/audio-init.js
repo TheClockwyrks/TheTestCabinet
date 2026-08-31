@@ -5,7 +5,7 @@
  * the engine's: the game asks for a cue BY NAME and the engine announces the play
  * as an event, so a check reads the name, the frame, and the gain. An engineless
  * build writes the whole audio layer itself, so there is no bus to subscribe to
- * and no name to read — `specs/ui.md` fixes the eight cue names inside the build's
+ * and no name to read — `specs/ui.md` fixes the nine cue names inside the build's
  * own code and says nothing about how a build makes a sound.
  *
  * SO THIS OBSERVES THE SOUND, NOT THE SYNTHESIS. Every way a browser can actually
@@ -23,7 +23,7 @@
  *      rather than synthesizing them is playing sound just as legitimately.
  *
  * ONE-SHOTS ARE HELD APART FROM LOOPS, AND THAT IS FACET'S OWN ADDITION.
- * `specs/ui.md` puts EIGHT one-shot cues over the game and TWO looping music beds
+ * `specs/ui.md` puts NINE one-shot cues over the game and TWO looping music beds
  * under it, with one of the two playing on every screen. So a start is recorded
  * with whether the source that made it LOOPS, read from `this.loop === true` at
  * the moment of the call. Without that split a check about the `select` cue could

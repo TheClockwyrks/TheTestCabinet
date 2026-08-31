@@ -6,8 +6,9 @@
 // which is what this file does — and the set below is exactly the set that file
 // asks for: the screen and phase, the board's dimensions, the score, the level
 // and its score against the target, the chain step and multiplier, what the
-// most recent step cleared and scored, the cursor and the selection, whether a
-// legal swap exists, and the pointer.
+// most recent step cleared and scored, its `lastWaves` and its `lastFall`, the
+// selected cell and the offered cell, the level's best move and longest chain,
+// whether a legal swap exists, and the pointer with the device driving it.
 //
 // Every source is a PURE READ of the state it is handed — the state current at
 // the moment the overlay reads it, which the runtime passes in because the
@@ -15,9 +16,14 @@
 // watching the overlay never changes what the simulation does, and each line is
 // short enough to read at a glance while the game runs.
 
-import { legalSwapExists, levelTarget, multiplierFor } from "./core";
+import { lastFall, legalSwapExists, levelTarget, multiplierFor } from "./core";
 import type { InitApi } from "./runtime";
-import type { FacetState } from "./core";
+import type { Cell, FacetState } from "./core";
+
+/** A cell as one short line, or a dash where there is none to report. */
+function cellLine(cell: Cell | null): string {
+  return cell === null ? "-" : `${cell.col},${cell.row}`;
+}
 
 /** Register every diagnostic source, each a read of the state it is given. */
 export function registerDiagnostics(
@@ -46,11 +52,14 @@ export function registerDiagnostics(
     (state) => `${state.lastCleared} cells  ${state.lastPoints} pts`,
   );
   api.diagnostics.register(
-    "cursor",
-    (state) => `${state.cursor.col},${state.cursor.row}`,
+    "waves / fall",
+    (state) => `${state.lastWaves}  ${lastFall(state.board)}`,
   );
-  api.diagnostics.register("selection", (state) =>
-    state.selection ? `${state.selection.col},${state.selection.row}` : "-",
+  api.diagnostics.register("selection", (state) => cellLine(state.selection));
+  api.diagnostics.register("offer", (state) => cellLine(state.offer));
+  api.diagnostics.register(
+    "best",
+    (state) => `move ${state.bestMove}  chain ${state.bestChain}`,
   );
   api.diagnostics.register("legal swap", (state) =>
     legalSwapExists(state.board),
@@ -58,7 +67,7 @@ export function registerDiagnostics(
   api.diagnostics.register(
     "pointer",
     (state) =>
-      `${state.pointer.x.toFixed(0)}, ${state.pointer.y.toFixed(0)}` +
-      (state.pointer.down ? " down" : ""),
+      `${state.pointer.x.toFixed(0)}, ${state.pointer.y.toFixed(0)} ` +
+      `${state.pointer.device}${state.pointer.down ? " down" : ""}`,
   );
 }

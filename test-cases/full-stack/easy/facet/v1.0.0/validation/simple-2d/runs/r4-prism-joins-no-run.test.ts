@@ -47,7 +47,7 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -113,7 +113,15 @@ function besideRun(cell: CellRef): boolean {
  */
 const READ: readonly PlacedToken[] = LINE;
 
-/** One frame, so the still shows the line the step left standing. */
+/**
+ * One frame after the step has resolved, so the still shows the line the step
+ * left standing.
+ *
+ * `swapAndStep` leaves the step `0.03875` s into its own hold and one more frame
+ * of the suite's 64 Hz clock adds `0.015625` s, which is far short of `0.3` s,
+ * the SHORTEST hold any step can have. So the board is never read a second time
+ * and the assertions are made against the reading the drive returned.
+ */
 const CLIP_FRAMES = 1;
 
 let h: Harness;
@@ -147,7 +155,7 @@ it("leaves a prism-broken line of one kind entirely alone", async () => {
   }
 
   loadBoard(h, POSED);
-  const first = swap(h, FROM, TO);
+  const first = await swapAndStep(h, FROM, TO);
   await h.advance(CLIP_FRAMES);
   captureStill(h, "line");
 

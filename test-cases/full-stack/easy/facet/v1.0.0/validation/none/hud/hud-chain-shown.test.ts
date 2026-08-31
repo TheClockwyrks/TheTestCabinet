@@ -3,33 +3,38 @@
 //
 // specs/ui.md tables the readouts of the `playing` screen and gives this one a
 // name of its own — `HUD_CHAIN_LABEL` (`CHAIN`) — against `state.multiplier`,
-// "shown while `state.phase` is `resolving`". specs/rules.md makes every step
-// of a chain worth more than the one before it, so the multiplier is the figure
+// "shown while `state.phase` is `resolving`". specs/rules.md makes every step of
+// a chain worth more than the one before it, so the multiplier is the figure
 // that tells a player what the step they are watching is paying; a build that
 // never puts it on screen leaves the chain ladder invisible.
 //
-// THE ANTECEDENT IS THE FIRST HALF OF THE POINT, so the frame read below is
-// read on a state that really is resolving. specs/rules.md has an accepted swap
-// set `chainStep` to `1`, set `phase` to `resolving` and resolve step 1 on the
-// spot, and hold that board for `STEP_SECONDS` (`0.25`) before the next step is
-// read — so the single frame this drives, a sixty-fourth of a second, lands
-// well inside step 1 and the snapshot taken beside it says so.
+// THE ANTECEDENT IS THE FIRST HALF OF THE POINT, so the frame read below is read
+// on a state that really is resolving — and reaching that state takes driving,
+// not merely asking. specs/rules.md has an accepted swap exchange the two cells
+// and enter `swapping` with `chainStep` at `0`, and step 1 does not resolve
+// until `SWAP_SECONDS` (`0.18`) of game time has passed; only then does `phase`
+// become `resolving`. `swapAndStep` is the drive sized for exactly that in
+// `constants.ts`: 14 frames, `0.21875` s, which carries `swapTimer` past
+// `SWAP_SECONDS` whether the build compares `>=` or `>` and leaves the game
+// `0.03875` s into step 1's hold — far short of the `0.3` s that is the shortest
+// hold any step can have, so exactly one step has resolved and the frame drawn
+// below lands well inside it.
 //
 // THE SCENARIO IS A REAL SWAP, NOT A POSED PHASE. The surface has no operation
 // that writes `phase`, and it should not: the readout is about what a player
 // sees while a chain they started is running. Three rubies are posed across row
-// 4 with an amethyst between two of them, and the swap that trades that
-// amethyst out completes the run — the fixture proves that below, off the
-// written board, before the board crosses into the build.
+// 4 with an amethyst between two of them, and the swap that trades that amethyst
+// out completes the run — the fixture proves that below, off the written board,
+// before the board crosses into the build.
 //
 // WHAT THE FIGURE IS READ AGAINST. specs/ui.md says the readout shows
 // `state.multiplier`, so the figure required here is the one the build's own
 // snapshot reports at that moment rather than a number this check picked;
 // whether that figure is the `min(chainStep, MAX_MULTIPLIER)` specs/rules.md
-// derives is a different point. The score and the level score are posed to `0`
-// and the level to `3` after the swap has scored, so the figures the readouts
-// beside it are built from — `0`, `3`, and the level's `6000` target — cannot
-// be mistaken for the `1` a chain at step 1 is worth.
+// derives is `scoring/score-multiplier`'s point. The score and the level score
+// are posed to `0` and the level to `3` after the step has scored, so the
+// figures the readouts beside it are built from — `0`, `3`, and the level's
+// `6000` target — cannot be mistaken for the `1` a chain at step 1 is worth.
 //
 // The copy is read through `frameText`, which gathers a frame's canvas text and
 // the page's own DOM text alike, because specs/assets.md has an engineless
@@ -54,7 +59,7 @@ import {
   createHarness,
   loadBoard,
   showsText,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -104,24 +109,29 @@ it("shows the chain label and the multiplier while a chain resolves", async () =
   );
 
   await loadBoard(h, posed);
-  const resolving = await swap(h, SWAP_A, SWAP_B);
+  const resolving = await swapAndStep(h, SWAP_A, SWAP_B);
 
-  // The antecedent: a chain really is running as the frame below is drawn.
+  // The antecedent: the swap animation is over and a chain really is running as
+  // the frame below is drawn.
   assertEqual(resolving.screen, "playing", "the screen the readouts sit on");
   assertEqual(resolving.phase, "resolving", "the phase the swap opened");
   assertEqual(resolving.chainStep, 1, "the chain step the swap opened");
 
-  // The other figures on the frame, posed after the swap has scored so the
+  // The other figures on the frame, posed after the step has scored so the
   // points it banked do not put a stray digit beside the multiplier.
   await h.debug.setScore(0);
   await h.debug.setLevelScore(0);
   await h.debug.setLevel(POSED_LEVEL);
 
-  // One frame — a sixty-fourth of a second, far inside the 0.25 s step — and
-  // everything it put on screen. The still is that same frame.
+  // One frame — a sixty-fourth of a second, far inside the step's own hold —
+  // and everything it put on screen. The still is that same frame.
   const drawn = await h.frameText();
   await captureStill(h, "hud");
-  assertEqual((await h.snapshot()).phase, "resolving", "the phase it was read at");
+  assertEqual(
+    (await h.snapshot()).phase,
+    "resolving",
+    "the phase it was read at",
+  );
 
   requireCopy(drawn, HUD_CHAIN_LABEL);
   requireCopy(drawn, String(resolving.multiplier));

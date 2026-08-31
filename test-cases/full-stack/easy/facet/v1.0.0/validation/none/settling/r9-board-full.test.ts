@@ -24,6 +24,15 @@
 // down into row 4 between two beryls already standing there, which seeds the next
 // step from survivors alone rather than from anything random. Every settled
 // reading the chain produces is then held to the rule, the last one included.
+//
+// HOW THE CHAIN IS DRIVEN. An accepted swap exchanges the two cells at once and
+// then holds them in motion: specs/rules.md sets `phase` to `swapping` with
+// `chainStep` at 0, and step 1 resolves once `SWAP_SECONDS` (0.18) of game time
+// has passed. `swapAndStep` carries the board through exactly that and hands
+// back step 1's reading; `advanceStep` carries it past one step boundary at a
+// time after that, sizing each drive from the hold that step itself reports —
+// `lastWaves * WAVE_SECONDS` plus `lastFall * FALL_SECONDS_PER_ROW` plus
+// `STEP_SECONDS` — which is why no frame count appears anywhere below.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -55,7 +64,7 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 import type { FacetSnapshot } from "../surface";
@@ -159,7 +168,7 @@ it("hands back all 64 cells, one gem each, every time a step settles", async () 
   // Every reading is gathered first and judged after, so the still that stands
   // as this point's evidence is written whether the chain conformed or not.
   const readings: { snapshot: FacetSnapshot; when: string }[] = [];
-  let snapshot = await swap(h, A, B);
+  let snapshot = await swapAndStep(h, A, B);
   readings.push({ snapshot, when: `step ${snapshot.chainStep}` });
   let deepest = snapshot.chainStep;
   let reads = 0;

@@ -42,7 +42,7 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  swap,
+  requestSwap,
   type Harness,
 } from "../harness";
 
@@ -120,7 +120,7 @@ it("refuses a diagonal pair and leaves the board as it stands", async () => {
   assertFixture(DIAGONAL_ROWS, DIAGONAL, "the diagonal exchange");
   const posed = loadBoard(h, DIAGONAL_ROWS);
 
-  const refused = swap(h, DIAGONAL.a, DIAGONAL.b);
+  const refused = requestSwap(h, DIAGONAL.a, DIAGONAL.b);
   const after = h.board();
 
   // One frame, so the picture kept as this item's evidence is a board that was
@@ -137,7 +137,7 @@ it("refuses a pair two columns apart and leaves the board as it stands", async (
   assertFixture(APART_ROWS, APART, "the two-column exchange");
   const posed = loadBoard(h, APART_ROWS);
 
-  const refused = swap(h, APART.a, APART.b);
+  const refused = requestSwap(h, APART.a, APART.b);
   const after = h.board();
 
   assertBoardEquals(after, APART_ROWS, "after the two-column request");

@@ -10,27 +10,34 @@
 //
 // WHAT IS COMPARED, AND WHAT IS NOT. Two harnesses are stood up from the same
 // seed and driven through the identical scenario — a board carrying one planted
-// run, the cursor's cell selected with `confirm`, the swap beside it requested,
-// and its chain carried to the end. One of them presses the key
-// specs/controls.md binds to `mute` first. Afterwards the board, `screen`,
-// `phase`, `chainStep`, `score`, `levelScore`, `level`, `lastCleared`,
-// `lastPoints`, `legalSwap`, the cursor and the selection all have to agree, and
-// so do the frames the drive took and the game time it covered; `muted` is the
-// one field entitled to differ.
+// run, the swap that completes it requested, and its chain carried to the end.
+// One of them presses the key specs/controls.md binds to `mute` first.
+// Afterwards the board, `screen`, `phase`, `chainStep`, `score`, `levelScore`,
+// `level`, the four figures the last step left (`lastCleared`, `lastPoints`,
+// `lastWaves`, `lastFall`), the level's `bestMove` and `bestChain`, `legalSwap`,
+// the selection and the offer all have to agree, and so do the frames the drive
+// took and the game time it covered; `muted` is the one field entitled to differ.
 //
 // SILENCE ITSELF IS NOT READ, deliberately. specs/ui.md puts muting on the
 // RUNTIME rather than on the game, so a muted frame is entitled to raise its cue
-// and let the runtime's own bus zero it — and under this engine that bus is a
-// layer inside the build, whose master gain nothing outside it can see.
-// Asserting that a muted drive made no sound would fail a build that muted
-// exactly as the specification says to. What is asserted is the game, which is
-// what the sentence is about.
+// and let the runtime's own bus zero it — and under `none` that bus is a layer
+// inside the build that nothing outside can see. Asserting that a muted drive
+// made no sound would fail a build that muted exactly as the specification says
+// to. What is asserted is the game, which is what the sentence is about.
 //
 // WHY THE COUNTERS ARE READ FROM AN ORIGIN RATHER THAN ABSOLUTELY. Reaching the
 // mute bit costs the muted drive a key press, and a press is a frame the other
 // drive never spends. So each drive records `frame()` and the snapshot's
 // `simTime` at the instant its board is posed, and what is compared is the
 // frames taken and the game time covered SINCE that moment.
+//
+// AND WHY THE FRAME COUNTS CAN BE COMPARED AT ALL. `resolveChain` sizes each
+// boundary's drive off the state as it stands — the swap's own span while the
+// board is `swapping`, and the step's own `stepHold` less the `stepTimer` already
+// run while it is `resolving` — so two builds that reach the same states over the
+// same spans are driven over the same frames. A drive that took a different
+// number of frames is a drive that met different states, which is the difference
+// this point is looking for.
 //
 // NEITHER RESTING VALUE IS ASSUMED. The specification never says which way the
 // runtime's mute bit rests when a build opens, so each drive is brought to the
@@ -59,6 +66,7 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
+  requestSwap,
   resolveChain,
   type Harness,
 } from "../harness";
@@ -141,23 +149,10 @@ async function drive(h: Harness, muted: boolean): Promise<Drive> {
   const originFrame = h.frame();
   const originTime = (await h.snapshot()).simTime;
 
-  // Select the cursor's cell, then swap into the cell beside it. Each `confirm`
-  // lands on a frame of its own.
-  await h.debug.setCursor(FROM.col, FROM.row);
-  await h.advance(1);
-  await h.tapAction("confirm");
-  assertDeepEqual(
-    (await h.snapshot()).selection,
-    FROM,
-    "the cell `confirm` selected",
-  );
-
-  await h.debug.setCursor(TO.col, TO.row);
-  await h.advance(1);
-  await h.tapAction("confirm");
+  const requested = await requestSwap(h, FROM, TO);
   assertEqual(
-    (await h.snapshot()).phase,
-    "resolving",
+    requested.phase,
+    "swapping",
     "the phase the accepted swap opened",
   );
 
@@ -242,16 +237,36 @@ it("reaches the same board, score, phase and game time with sound muted", async 
       "the points the last step scored",
     );
     assertEqual(
+      quiet.snapshot.lastWaves,
+      heard.snapshot.lastWaves,
+      "the waves the last step's clear set carried",
+    );
+    assertEqual(
+      quiet.snapshot.lastFall,
+      heard.snapshot.lastFall,
+      "the longest fall the last step left",
+    );
+    assertEqual(
+      quiet.snapshot.bestMove,
+      heard.snapshot.bestMove,
+      "the level's best move",
+    );
+    assertEqual(
+      quiet.snapshot.bestChain,
+      heard.snapshot.bestChain,
+      "the level's longest chain",
+    );
+    assertEqual(
       quiet.snapshot.legalSwap,
       heard.snapshot.legalSwap,
       "whether a legal swap remains",
     );
-    assertDeepEqual(quiet.snapshot.cursor, heard.snapshot.cursor, "the cursor");
     assertDeepEqual(
       quiet.snapshot.selection,
       heard.snapshot.selection,
       "the selection",
     );
+    assertDeepEqual(quiet.snapshot.offer, heard.snapshot.offer, "the offer");
 
     // And the drive itself: the same chain, over the same frames, covering the
     // same span of game time.

@@ -1,14 +1,20 @@
-// The presentation layer: the break sheets and the particle bursts.
+// The presentation layer: the break sheets, the bursts, the auras, and the pour.
 
 import { describe, expect, it } from "vitest";
 import { createCanvas } from "@napi-rs/canvas";
 import {
+  auraCells,
   BREAK_FRAME_SECONDS,
   domScratch,
+  isDealtBoard,
+  POUR_SECONDS,
   Presentation,
   prismTurnFrame,
   type StepReport,
 } from "./effects";
+import { parseBoard } from "./core";
+import { quietRows, quietRowsWith } from "./core/fixtures";
+import { WAVE_SECONDS } from "./constants";
 import { napiScratch } from "./harness";
 import { buildStore, BREAK_FRAMES, PRISM_TURN_FRAMES } from "./assets";
 import type { AssetIo } from "./assets";
@@ -49,9 +55,9 @@ function painted(target: CanvasRenderingContext2D): number {
 
 const CLEARED_RUBY: StepReport = {
   cleared: [
-    { col: 0, row: 0, kind: "ruby", flawed: false },
-    { col: 1, row: 0, kind: "ruby", flawed: true },
-    { col: 2, row: 0, kind: null, flawed: false },
+    { col: 0, row: 0, kind: "ruby", flawed: false, wave: 0 },
+    { col: 1, row: 0, kind: "ruby", flawed: true, wave: 0 },
+    { col: 2, row: 0, kind: null, flawed: false, wave: 0 },
   ],
   created: [{ col: 1, row: 0 }],
 };
@@ -92,7 +98,7 @@ describe("break sheets", () => {
     presentation.push(
       [
         {
-          cleared: [{ col: 3, row: 3, kind: "jade", flawed: false }],
+          cleared: [{ col: 3, row: 3, kind: "jade", flawed: false, wave: 0 }],
           created: [],
         },
       ],
@@ -104,6 +110,33 @@ describe("break sheets", () => {
     const later = ctx2d();
     presentation.drawBreaks(later, store);
     expect(painted(first)).not.toBe(painted(later));
+  });
+
+  it("holds a cell's sheet back until its own wave comes round", async () => {
+    const store = await buildStore(io);
+    const presentation = new Presentation(napiScratch());
+    presentation.push(
+      [
+        {
+          cleared: [{ col: 3, row: 3, kind: "jade", flawed: false, wave: 2 }],
+          created: [],
+        },
+      ],
+      store,
+    );
+    const early = ctx2d();
+    presentation.drawBreaks(early, store);
+    expect(painted(early)).toBe(0);
+
+    presentation.advance(2 * WAVE_SECONDS + 0.001);
+    const onTime = ctx2d();
+    presentation.drawBreaks(onTime, store);
+    expect(painted(onTime)).toBeGreaterThan(0);
+
+    presentation.advance(BREAK_FRAMES * BREAK_FRAME_SECONDS);
+    const spent = ctx2d();
+    presentation.drawBreaks(spent, store);
+    expect(painted(spent)).toBe(0);
   });
 
   it("draws nothing for a sheet whose sprite is not in", async () => {
@@ -139,7 +172,7 @@ describe("particle bursts", () => {
     const presentation = new Presentation(napiScratch());
     presentation.push([CLEARED_RUBY], store);
     expect(presentation.idle()).toBe(false);
-    // Longer than any of the three systems' own durations.
+    // Longer than any of the one-shot systems' own durations.
     for (let step = 0; step < 400; step += 1) presentation.advance(0.05);
     expect(presentation.idle()).toBe(true);
   });
@@ -180,6 +213,7 @@ describe("particle bursts", () => {
         row: 0,
         kind: "ruby",
         flawed: false,
+        wave: 0,
       })),
       created: [],
     };
@@ -191,17 +225,119 @@ describe("particle bursts", () => {
   });
 });
 
+describe("the aura every cut stone carries", () => {
+  it("runs one at each cut stone and none anywhere else", () => {
+    const board = parseBoard(
+      quietRowsWith({ "1,1": "S0b", "4,4": "C0s", "6,2": "X0" }),
+    );
+    expect(auraCells(board)).toEqual([
+      { col: 1, row: 1 },
+      { col: 6, row: 2 },
+      { col: 4, row: 4 },
+    ]);
+    expect(auraCells(parseBoard(quietRows()))).toEqual([]);
+  });
+
+  it("composites one play per cut stone, wherever the renderer puts it", async () => {
+    const store = await buildStore(io);
+    const presentation = new Presentation(napiScratch());
+    presentation.syncAuras([{ col: 1, row: 1 }], store);
+    presentation.advance(0.2);
+
+    const target = ctx2d();
+    presentation.drawAuras(target, () => [400, 300]);
+    expect(painted(target)).toBeGreaterThan(0);
+
+    const elsewhere = ctx2d(200, 200);
+    presentation.drawAuras(elsewhere, () => [-500, -500]);
+    expect(painted(elsewhere)).toBe(0);
+  });
+
+  it("keeps the play a cell already had, and drops one whose stone is gone", async () => {
+    const store = await buildStore(io);
+    let made = 0;
+    const scratch = napiScratch();
+    const presentation = new Presentation((w, h) => {
+      made += 1;
+      return scratch(w, h);
+    });
+    presentation.syncAuras([{ col: 1, row: 1 }], store);
+    const first = made;
+    presentation.advance(0.2);
+    presentation.syncAuras([{ col: 1, row: 1 }], store);
+    expect(made).toBe(first);
+
+    presentation.syncAuras([], store);
+    const gone = ctx2d();
+    presentation.drawAuras(gone, () => [400, 300]);
+    expect(painted(gone)).toBe(0);
+  });
+
+  it("runs none at all when the system is not in", async () => {
+    const noSystems = await buildStore({
+      loadImage: io.loadImage,
+      load: async () => {
+        throw new Error("no systems");
+      },
+    });
+    const presentation = new Presentation(napiScratch());
+    presentation.syncAuras([{ col: 1, row: 1 }], noSystems);
+    presentation.advance(0.2);
+    const target = ctx2d();
+    presentation.drawAuras(target, () => [400, 300]);
+    expect(painted(target)).toBe(0);
+  });
+});
+
+describe("the pour a freshly dealt board comes in on", () => {
+  it("tells a dealt board from a posed one and from a settled one", () => {
+    const posed = parseBoard(quietRows());
+    expect(isDealtBoard(posed)).toBe(false);
+    const dealt = {
+      ...posed,
+      gems: posed.gems.map((gem, index) =>
+        gem === null
+          ? gem
+          : { ...gem, fell: Math.floor(index / posed.cols) + 1 },
+      ),
+    };
+    expect(isDealtBoard(dealt)).toBe(true);
+    expect(isDealtBoard({ cols: 0, rows: 0, gems: [] })).toBe(false);
+  });
+
+  it("runs a clock for exactly as long as the deepest gem takes to arrive", () => {
+    const presentation = new Presentation(napiScratch());
+    expect(presentation.pourAge()).toBeNull();
+    presentation.pour();
+    expect(presentation.pourAge()).toBe(0);
+    presentation.advance(0.05);
+    expect(presentation.pourAge()).toBeCloseTo(0.05, 6);
+    presentation.advance(POUR_SECONDS);
+    expect(presentation.pourAge()).toBeNull();
+  });
+
+  it("is dropped along with everything else a clear drops", () => {
+    const presentation = new Presentation(napiScratch());
+    presentation.pour();
+    presentation.clear();
+    expect(presentation.pourAge()).toBeNull();
+  });
+});
+
 describe("clearing", () => {
   it("drops everything flying and frees the pooled canvases", async () => {
     const store = await buildStore(io);
     const presentation = new Presentation(napiScratch());
     presentation.push([CLEARED_RUBY], store);
+    presentation.syncAuras([{ col: 1, row: 1 }], store);
+    presentation.advance(0.05);
     presentation.clear();
     expect(presentation.idle()).toBe(true);
 
     const target = ctx2d();
     presentation.drawBreaks(target, store);
     presentation.drawBursts(target);
+    presentation.drawAuras(target, () => [400, 300]);
     expect(painted(target)).toBe(0);
   });
 });

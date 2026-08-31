@@ -9,9 +9,14 @@
 // actually drawn — a pause screen whose entries are not on screen leaves a
 // player holding a board with no visible way to resume or leave.
 //
-// The key is real. specs/controls.md binds `pause` to `KeyP` and fixes that
-// table for a build of every engine, so `tapAction` delivers it as one press
-// the frame reads as an edge.
+// THE KEY IS REAL, AND IT IS `KeyP`. specs/controls.md binds `pause` to
+// `Escape` and `KeyP` and fixes that table for a build of every engine, so
+// either key opens the menu on its own; `KeyP` is the one pressed here because
+// `Escape` also fires `back`, and a check that reached this screen through the
+// key both actions share would leave which of the two acted open. `h.tap`
+// delivers it as one press the frame reads as an edge, and the fixture asserts
+// the key really is among the ones specs/controls.md binds to the action rather
+// than trusting the letter written above.
 //
 // The board is posed rather than dealt, so what is behind the menu is a known,
 // resting position: specs/instrumentation.md has a posed board rest exactly as
@@ -23,8 +28,8 @@
 // the build spent its draw calls on it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, fail } from "../assert";
-import { PAUSED_ITEMS, PAUSED_TITLE_TEXT } from "../constants";
+import { assertContains, assertEqual, fail } from "../assert";
+import { BINDINGS, PAUSED_ITEMS, PAUSED_TITLE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -32,6 +37,9 @@ import {
   showsText,
   type Harness,
 } from "../harness";
+
+/** The key of `pause` this point presses; the other is `Escape`. */
+const PAUSE_KEY = "KeyP";
 
 let h: Harness;
 
@@ -54,10 +62,16 @@ afterEach(() => {
 });
 
 it("opens the pause menu on the pause key, first item highlighted, with its copy drawn", async () => {
+  assertContains(
+    BINDINGS.pause,
+    PAUSE_KEY,
+    "the keys specs/controls.md binds to the pause action",
+  );
+
   const playing = poseBoardWithEscape(h, []);
   assertEqual(playing.screen, "playing", "the screen pause is pressed on");
 
-  await h.tapAction("pause");
+  await h.tap(PAUSE_KEY);
 
   const paused = h.snapshot();
   assertEqual(paused.screen, "paused", "the screen the pause action reaches");

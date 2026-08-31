@@ -35,11 +35,12 @@ import {
   GRID_COLS,
   GRID_ROWS,
   LAYOUT,
+  LEVELCLEAR_ITEMS,
   STAGE_H,
   STAGE_W,
   TITLE_ITEMS,
 } from "./constants";
-import { cellCenter } from "./core";
+import { cellCenter, targetsFor, type Cell } from "./core";
 import { quietRowsWith } from "./core/fixtures";
 import { setScratchCanvasFactory } from "./scratch";
 import type { FacetDebugApi } from "./debug";
@@ -62,16 +63,21 @@ class KeyEvent extends Event {
 class PointerEvt extends Event {
   readonly clientX: number;
   readonly clientY: number;
-  readonly isPrimary = true;
+  readonly isPrimary: boolean;
+  readonly pointerType: string;
 
   constructor(
     type: "pointerdown" | "pointermove" | "pointerup",
     x: number,
     y: number,
+    pointerType = "mouse",
+    isPrimary = true,
   ) {
     super(type);
     this.clientX = x;
     this.clientY = y;
+    this.pointerType = pointerType;
+    this.isPrimary = isPrimary;
   }
 }
 
@@ -95,7 +101,11 @@ interface Harness {
     type: "pointerdown" | "pointermove" | "pointerup",
     x: number,
     y: number,
+    pointerType?: string,
+    isPrimary?: boolean,
   ): void;
+  /** Take hold of a cell, carry onto another, and let go: one whole move. */
+  play(from: Cell, to: Cell, pointerType?: string): void;
   pose(operation: (state: DeepReadonly<FacetState>) => FacetState): void;
   dispose(): void;
 }
@@ -202,8 +212,19 @@ async function createHarness(): Promise<Harness> {
     tapTogether: (...codes) => {
       for (const code of codes) key(code);
     },
-    point: (type, x, y) => {
-      events.dispatchEvent(new PointerEvt(type, x, y));
+    point: (type, x, y, pointerType, isPrimary) => {
+      events.dispatchEvent(new PointerEvt(type, x, y, pointerType, isPrimary));
+    },
+    play: (from, to, pointerType) => {
+      const [fromX, fromY] = cellCenter(from);
+      const [toX, toY] = cellCenter(to);
+      events.dispatchEvent(
+        new PointerEvt("pointerdown", fromX, fromY, pointerType),
+      );
+      events.dispatchEvent(
+        new PointerEvt("pointermove", toX, toY, pointerType),
+      );
+      events.dispatchEvent(new PointerEvt("pointerup", toX, toY, pointerType));
     },
     pose: (operation) => {
       engine.apply((state) => operation(state));
@@ -231,6 +252,21 @@ function threeInARow(): string[] {
     "3,1": "C0",
     "3,2": "R0",
     "4,1": "B0",
+  });
+}
+
+/**
+ * A board whose one productive swap — `(3, 2)` against `(4, 2)` — completes a
+ * VERTICAL run of three rubies down the top of column `3`. R9 then refills that
+ * column's three emptied cells from above the board, so the step's longest fall
+ * is three rows, which is past `LAND_MIN_ROWS` and therefore audible.
+ */
+function tallFall(): string[] {
+  return quietRowsWith({
+    "3,0": "R0",
+    "3,1": "R0",
+    "3,2": "C0",
+    "4,2": "R0",
   });
 }
 
@@ -272,7 +308,14 @@ describe("the engine stands the game up", () => {
     expect(snapshot.rngState).toBe(DEFAULT_SEED);
     expect(snapshot.simTime).toBe(0);
     expect(snapshot.selection).toBeNull();
+    expect(snapshot.offer).toBeNull();
     expect(snapshot.refusal).toBeNull();
+    expect(snapshot.armedTarget).toBeNull();
+    expect(snapshot.targets.map((target) => target.id)).toEqual([
+      "menu-0",
+      "menu-1",
+    ]);
+    expect(snapshot.pointer.device).toBe("mouse");
   });
 
   it("runs frames, accumulating simulated time on the title screen", async () => {
@@ -323,7 +366,9 @@ describe("the keyboard drives the menus", () => {
     harness.tap("Escape");
     await harness.engine.advance(1);
     expect(harness.state.screen).toBe("title");
-    expect(harness.state.menuIndex).toBe(0);
+    // `back` puts a player who came in to read the rules back on the item they
+    // came in through, rather than at the top of the menu.
+    expect(harness.state.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
   });
 
   it("starts a round from PLAY, dealt through the game's own code", async () => {
@@ -340,7 +385,10 @@ describe("the keyboard drives the menus", () => {
       true,
     );
     expect(snapshot.legalSwap).toBe(true);
-    expect(snapshot.cursor).toEqual({ col: 0, row: 0 });
+    // The whole board is dealt in from above, so every stone traveled.
+    expect(
+      snapshot.board.cells.every((cell) => cell.fell >= cell.row + 1),
+    ).toBe(true);
   });
 
   it("pauses and resumes with the pause key, holding the board", async () => {
@@ -359,17 +407,19 @@ describe("the keyboard drives the menus", () => {
     expect(harness.debug.snapshot(harness.state).board).toEqual(board);
   });
 
-  it("moves the cursor with the arrows and clamps it at the edges", async () => {
+  it("raises and drops the pause menu with one Escape, which fires both", async () => {
+    // `Escape` is bound to `pause` AND to `back`, and the two act on screens
+    // that do not overlap, so one key does the right thing on every screen.
     const harness = await createHarness();
     harness.pose((state) => harness.debug.start(state));
 
-    harness.tap("ArrowUp");
+    harness.tap("Escape");
     await harness.engine.advance(1);
-    expect(harness.state.cursor).toEqual({ col: 0, row: 0 });
+    expect(harness.state.screen).toBe("paused");
 
-    harness.tapTogether("ArrowRight", "ArrowDown");
+    harness.tap("Escape");
     await harness.engine.advance(1);
-    expect(harness.state.cursor).toEqual({ col: 1, row: 1 });
+    expect(harness.state.screen).toBe("playing");
   });
 
   it("toggles the engine's mute bit and mirrors it into the state", async () => {
@@ -386,36 +436,60 @@ describe("the keyboard drives the menus", () => {
   });
 });
 
-describe("a swap on a posed board", () => {
-  it("resolves a chain and plays the cues the frame raised", async () => {
+describe("a move played on a posed board", () => {
+  it("resolves a chain and plays the cues the frames raised", async () => {
     const harness = await createHarness();
     harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
     harness.played.length = 0;
 
-    // The cursor's cell and then its neighbor: exactly a player's two presses.
-    harness.pose((state) => harness.debug.setCursor(state, 3, 2));
-    harness.tap("Enter");
+    // Take hold of a stone, carry it onto its neighbor, and let go.
+    harness.play({ col: 3, row: 2 }, { col: 3, row: 1 });
     await harness.engine.advance(1);
-    expect(harness.state.selection).toEqual({ col: 3, row: 2 });
-    expect(harness.played.map((play) => play.cue)).toContain(CUES.select);
 
-    harness.pose((state) => harness.debug.setCursor(state, 3, 1));
+    const accepted = harness.debug.snapshot(harness.state);
+    expect(accepted.phase).toBe("swapping");
+    expect(accepted.selection).toBeNull();
+    expect(accepted.offer).toBeNull();
+    // Nothing has shattered while the two stones are still travelling.
+    expect(accepted.lastCleared).toBe(0);
+
+    const cues = harness.played.map((play) => play.cue);
+    expect(cues).toContain(CUES.select);
+    expect(cues).toContain(CUES.swap);
+
     harness.played.length = 0;
-    harness.tap("Enter");
-    await harness.engine.advance(1);
+    await harness.engine.advance(30);
 
     const snapshot = harness.debug.snapshot(harness.state);
     expect(snapshot.lastCleared).toBe(3);
     expect(snapshot.lastPoints).toBe(30);
     expect(snapshot.score).toBe(30);
-    expect(snapshot.phase).toBe("resolving");
-    expect(snapshot.selection).toBeNull();
-
-    const cues = harness.played.map((play) => play.cue);
-    expect(cues).toContain(CUES.swap);
-    expect(cues).toContain(CUES.clear);
+    const after = harness.played.map((play) => play.cue);
+    expect(after).toContain(CUES.clear);
     // The clear sounds the ladder rung for the step's multiplier, which is 1.
-    expect(cues).toContain(ladderCue(1));
+    expect(after).toContain(ladderCue(1));
+  });
+
+  it("plays nothing where the hold is carried back where it started", async () => {
+    const harness = await createHarness();
+    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    const before = harness.debug.snapshot(harness.state).board;
+
+    const [fromX, fromY] = cellCenter({ col: 3, row: 2 });
+    const [toX, toY] = cellCenter({ col: 3, row: 1 });
+    harness.point("pointerdown", fromX, fromY);
+    harness.point("pointermove", toX, toY);
+    await harness.engine.advance(1);
+    expect(harness.state.offer).toEqual({ col: 3, row: 1 });
+
+    harness.point("pointermove", fromX, fromY);
+    harness.point("pointerup", fromX, fromY);
+    await harness.engine.advance(1);
+
+    const snapshot = harness.debug.snapshot(harness.state);
+    expect(snapshot.offer).toBeNull();
+    expect(snapshot.phase).toBe("idle");
+    expect(snapshot.board).toEqual(before);
   });
 
   it("refuses a barren swap, marks both cells, and lets the mark expire", async () => {
@@ -436,15 +510,11 @@ describe("a swap on a posed board", () => {
     expect(harness.state.refusal).toBeNull();
   });
 
-  it("plays the refusal cue when a frame refuses the swap", async () => {
+  it("plays the refusal cue when a frame refuses the move", async () => {
     const harness = await createHarness();
     harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
-    harness.pose((state) => harness.debug.setCursor(state, 6, 6));
-    harness.tap("Enter");
-    await harness.engine.advance(1);
-    harness.pose((state) => harness.debug.setCursor(state, 7, 6));
     harness.played.length = 0;
-    harness.tap("Enter");
+    harness.play({ col: 6, row: 6 }, { col: 7, row: 6 });
     await harness.engine.advance(1);
 
     expect(harness.played.map((play) => play.cue)).toContain(CUES.refuse);
@@ -456,36 +526,74 @@ describe("a swap on a posed board", () => {
     harness.pose((state) => harness.debug.requestSwap(state, 3, 6, 3, 7));
     harness.played.length = 0;
 
-    // The swap's own step was resolved by the pose, which plays no cue; the
-    // step the fall sets off belongs to a frame, and sounds the second rung.
-    await harness.engine.advance(60);
+    // The pose put the swap in motion and played no cue; both steps of the
+    // chain belong to frames, so both rungs sound, the lower one first.
+    await harness.engine.advance(120);
     const cues = harness.played.map((play) => play.cue);
     expect(cues).toContain(CUES.clear);
-    expect(cues).toContain(ladderCue(2));
-    expect(cues).not.toContain(ladderCue(1));
+    expect(cues.indexOf(ladderCue(1))).toBeGreaterThanOrEqual(0);
+    expect(cues.indexOf(ladderCue(2))).toBeGreaterThan(
+      cues.indexOf(ladderCue(1)),
+    );
 
     const snapshot = harness.debug.snapshot(harness.state);
     expect(snapshot.score).toBe(90);
     expect(snapshot.phase).toBe("idle");
+    // The move is the whole chain, and the level was measured by it.
+    expect(snapshot.bestMove).toBe(90);
+    expect(snapshot.bestChain).toBe(2);
   });
 
-  it("completes a level, banks the score, and deals a fresh board", async () => {
+  it("sounds the landing of a long fall", async () => {
+    const harness = await createHarness();
+    harness.pose((state) => harness.debug.loadBoard(state, tallFall()));
+    harness.pose((state) => harness.debug.requestSwap(state, 3, 2, 4, 2));
+    harness.played.length = 0;
+
+    // Three cells cleared down the top of one column: the whole of that gap is
+    // refilled from off the board, which is a fall worth hearing.
+    await harness.engine.advance(120);
+    expect(harness.played.map((play) => play.cue)).toContain(CUES.land);
+  });
+
+  it("ends a level onto its own screen without dealing anything", async () => {
     const harness = await createHarness();
     harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
     harness.pose((state) => harness.debug.setLevelScore(state, 1990));
+    const board = harness.debug.snapshot(harness.state).board;
     harness.pose((state) => harness.debug.requestSwap(state, 3, 1, 3, 2));
     harness.played.length = 0;
-    await harness.engine.advance(60);
+    await harness.engine.advance(120);
 
-    const snapshot = harness.debug.snapshot(harness.state);
-    expect(snapshot.level).toBe(2);
-    expect(snapshot.levelScore).toBe(0);
-    expect(snapshot.levelTarget).toBe(4000);
-    // `levelScore` is its own figure: 1990 banked plus the step's 30 crossed
-    // the target, while `score` counts only what this round actually scored.
-    expect(snapshot.score).toBe(30);
-    expect(snapshot.legalSwap).toBe(true);
+    const cleared = harness.debug.snapshot(harness.state);
+    expect(cleared.screen).toBe("levelclear");
+    expect(cleared.menuIndex).toBe(0);
+    // The level is not advanced and no board is dealt: the screen reports what
+    // the level was worth, and CONTINUE is what opens the next one.
+    expect(cleared.level).toBe(1);
+    expect(cleared.levelScore).toBe(2020);
+    expect(cleared.bestChain).toBe(1);
+    expect(cleared.bestMove).toBe(30);
+    expect(cleared.board).not.toEqual(board);
     expect(harness.played.map((play) => play.cue)).toContain(CUES.levelUp);
+
+    // CONTINUE is the first item, and the pointer takes it like any other.
+    const [first] = targetsFor("levelclear");
+    expect(LEVELCLEAR_ITEMS[0]).toBe("CONTINUE");
+    harness.point("pointerdown", first.x + first.w / 2, first.y + first.h / 2);
+    harness.point("pointerup", first.x + first.w / 2, first.y + first.h / 2);
+    await harness.engine.advance(1);
+
+    const next = harness.debug.snapshot(harness.state);
+    expect(next.screen).toBe("playing");
+    expect(next.level).toBe(2);
+    expect(next.levelScore).toBe(0);
+    expect(next.levelTarget).toBe(4000);
+    expect(next.bestChain).toBe(0);
+    expect(next.bestMove).toBe(0);
+    // `score` counts only what this round actually scored, and carries across.
+    expect(next.score).toBe(30);
+    expect(next.legalSwap).toBe(true);
   });
 
   it("settles the chain and refills every cell", async () => {
@@ -508,7 +616,7 @@ describe("a swap on a posed board", () => {
 });
 
 describe("the pointer plays the board", () => {
-  it("selects on a press and swaps on a drag onto the neighbor", async () => {
+  it("takes hold on a press, offers on a carry, and plays on the release", async () => {
     const harness = await createHarness();
     harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
 
@@ -521,12 +629,103 @@ describe("the pointer plays the board", () => {
 
     harness.point("pointermove", toX, toY);
     await harness.engine.advance(1);
-    expect(harness.state.selection).toBeNull();
-    expect(harness.debug.snapshot(harness.state).lastCleared).toBe(3);
+    expect(harness.state.offer).toEqual({ col: 3, row: 1 });
+    // Nothing has reached the move rules while the hold is still on.
+    expect(harness.state.phase).toBe("idle");
 
     harness.point("pointerup", toX, toY);
     await harness.engine.advance(1);
     expect(harness.state.pointer.down).toBe(false);
+    expect(harness.state.phase).toBe("swapping");
+
+    await harness.engine.advance(30);
+    expect(harness.debug.snapshot(harness.state).lastCleared).toBe(3);
+  });
+
+  it("plays the board from a finger exactly as from a mouse", async () => {
+    const harness = await createHarness();
+    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    harness.play({ col: 3, row: 2 }, { col: 3, row: 1 }, "touch");
+    await harness.engine.advance(30);
+
+    const snapshot = harness.debug.snapshot(harness.state);
+    expect(snapshot.pointer.device).toBe("touch");
+    expect(snapshot.lastCleared).toBe(3);
+  });
+
+  it("acts on the primary pointer alone", async () => {
+    const harness = await createHarness();
+    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    const [x, y] = cellCenter({ col: 3, row: 2 });
+    // A second finger resting on the screen changes nothing.
+    harness.point("pointerdown", x, y, "touch", false);
+    await harness.engine.advance(1);
+    expect(harness.state.selection).toBeNull();
+  });
+
+  it("works a screen's targets by press and release", async () => {
+    const harness = await createHarness();
+    const [, second] = targetsFor("title");
+    const cx = second.x + second.w / 2;
+    const cy = second.y + second.h / 2;
+
+    harness.point("pointermove", cx, cy);
+    await harness.engine.advance(1);
+    expect(harness.state.menuIndex).toBe(1);
+
+    harness.point("pointerdown", cx, cy);
+    await harness.engine.advance(1);
+    expect(harness.state.armedTarget).toBe("menu-1");
+
+    harness.point("pointerup", cx, cy);
+    await harness.engine.advance(1);
+    expect(harness.state.screen).toBe("howto");
+    expect(harness.state.armedTarget).toBeNull();
+
+    // And the `back` control on how-to-play leaves it again.
+    const [back] = targetsFor("howto");
+    harness.point("pointerdown", back.x + back.w / 2, back.y + back.h / 2);
+    harness.point("pointerup", back.x + back.w / 2, back.y + back.h / 2);
+    await harness.engine.advance(1);
+    expect(harness.state.screen).toBe("title");
+    // `back` from how-to-play puts the highlight back on the item it came in
+    // through, which is the second.
+    expect(harness.state.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
+  });
+
+  it("reads where a release landed, not where the last move did", async () => {
+    // A release carries a position of its own. A press on a menu row that is
+    // let go somewhere else takes nothing, and the highlight the press moved
+    // stands.
+    const harness = await createHarness();
+    const [first] = targetsFor("title");
+    harness.point("pointerdown", first.x + first.w / 2, first.y + first.h / 2);
+    harness.point("pointerup", 20, 20);
+    await harness.engine.advance(1);
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.armedTarget).toBeNull();
+
+    // And on the board, a hold let go over a neighbor plays that move even
+    // where no move sample was delivered between the press and the release.
+    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    const [fromX, fromY] = cellCenter({ col: 3, row: 2 });
+    const [toX, toY] = cellCenter({ col: 3, row: 1 });
+    harness.point("pointerdown", fromX, fromY);
+    harness.point("pointerup", toX, toY);
+    await harness.engine.advance(30);
+    expect(harness.debug.snapshot(harness.state).lastCleared).toBe(3);
+  });
+
+  it("leaves the board through the pause control without taking a stone", async () => {
+    const harness = await createHarness();
+    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    const [pause] = targetsFor("playing");
+    harness.point("pointerdown", pause.x + pause.w / 2, pause.y + pause.h / 2);
+    harness.point("pointerup", pause.x + pause.w / 2, pause.y + pause.h / 2);
+    await harness.engine.advance(1);
+
+    expect(harness.state.screen).toBe("paused");
+    expect(harness.state.selection).toBeNull();
   });
 
   it("ignores a press that lands on no cell", async () => {
@@ -542,28 +741,27 @@ describe("the pointer plays the board", () => {
   });
 
   it("reads a sweep sample by sample rather than as its last position", async () => {
-    // Both samples land in one input frame, so the drag is only seen if the
-    // frame resolves them in arrival order.
+    // All three samples land in one input frame, so the carry is only seen if
+    // the frame resolves them in arrival order.
     const harness = await createHarness();
     harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
-    const [fromX, fromY] = cellCenter({ col: 3, row: 2 });
-    const [toX, toY] = cellCenter({ col: 3, row: 1 });
-
-    harness.point("pointerdown", fromX, fromY);
-    harness.point("pointermove", toX, toY);
+    harness.play({ col: 3, row: 2 }, { col: 3, row: 1 });
     await harness.engine.advance(1);
 
+    expect(harness.state.phase).toBe("swapping");
+    await harness.engine.advance(30);
     expect(harness.debug.snapshot(harness.state).lastCleared).toBe(3);
   });
 
-  it("mirrors the pointer position into the state every frame", async () => {
+  it("mirrors the pointer position and its device into the state every frame", async () => {
     const harness = await createHarness();
-    harness.point("pointermove", BOARD_CX, 200);
+    harness.point("pointermove", BOARD_CX, 200, "pen");
     await harness.engine.advance(1);
     expect(harness.state.pointer).toEqual({
       x: BOARD_CX,
       y: 200,
       down: false,
+      device: "pen",
     });
   });
 });
@@ -611,16 +809,16 @@ describe("the produced files", () => {
 
     // Every image and system the manifest names arrived. The sounds are the
     // one thing that cannot: Node has no `AudioContext` for the engine to
-    // decode a `.wav` into, so those eighteen fail and fall back.
+    // decode a `.wav` into, so those nineteen fail and fall back.
     expect(harness.failed.filter((path) => !path.startsWith("audio/"))).toEqual(
       [],
     );
-    expect(harness.failed).toHaveLength(18);
+    expect(harness.failed).toHaveLength(19);
     const manifest = assetManifest();
     const total =
       Object.keys(manifest.images).length +
       Object.keys(manifest.systems).length;
-    expect(total).toBe(88);
+    expect(total).toBe(89);
     await harness.engine.advance(1);
     expect(harness.state.screen).toBe("title");
   });
@@ -632,7 +830,7 @@ describe("the produced files", () => {
 
     harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
     harness.pose((state) => harness.debug.requestSwap(state, 3, 1, 3, 2));
-    await harness.engine.advance(60);
+    await harness.engine.advance(120);
 
     expect(harness.debug.snapshot(harness.state).score).toBe(30);
     expect(harness.debug.snapshot(harness.state).phase).toBe("idle");

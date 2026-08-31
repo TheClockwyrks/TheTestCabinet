@@ -21,7 +21,14 @@ import {
   STAGE_W,
 } from "./constants";
 import { PRISM_TURN_FRAME_SECONDS, Presentation } from "./effects";
-import { cellCenter, createInitialState, loadBoard, startRound } from "./core";
+import {
+  cellCenter,
+  createInitialState,
+  loadBoard,
+  startRound,
+  targetsFor,
+  type TargetRect,
+} from "./core";
 import { quietRows } from "./core/fixtures";
 import { drawBoard, drawField, drawFrame } from "./render.board";
 import { drawGem, overlayKeyFor, spriteKeyFor } from "./render.gems";
@@ -134,13 +141,13 @@ describe("the bench's placement", () => {
 
 describe("spriteKeyFor", () => {
   it("names a kind's sprite at the strain it carries", () => {
-    expect(spriteKeyFor({ kind: "jade", cut: "plain", strain: 2 }, 0)).toBe(
-      gemKey("jade", 2),
-    );
+    expect(
+      spriteKeyFor({ kind: "jade", cut: "plain", strain: 2, fell: 0 }, 0),
+    ).toBe(gemKey("jade", 2));
   });
 
   it("turns a clean prism, frame by frame, off game time", () => {
-    const prism = { kind: null, cut: "prism" as const, strain: 0 };
+    const prism = { kind: null, cut: "prism" as const, strain: 0, fell: 0 };
     expect(spriteKeyFor(prism, 0)).toBe(prismTurnKey(0));
     expect(spriteKeyFor(prism, PRISM_TURN_FRAME_SECONDS + 0.001)).toBe(
       prismTurnKey(1),
@@ -148,28 +155,32 @@ describe("spriteKeyFor", () => {
   });
 
   it("draws a strained prism from its damaged sprite instead", () => {
-    expect(spriteKeyFor({ kind: null, cut: "prism", strain: 3 }, 0)).toBe(
-      prismKey(3),
-    );
+    expect(
+      spriteKeyFor({ kind: null, cut: "prism", strain: 3, fell: 0 }, 0),
+    ).toBe(prismKey(3));
   });
 
   it("clamps a strain outside the four states", () => {
-    expect(spriteKeyFor({ kind: "ruby", cut: "plain", strain: 9 }, 0)).toBe(
-      gemKey("ruby", MAX_STRAIN),
-    );
+    expect(
+      spriteKeyFor({ kind: "ruby", cut: "plain", strain: 9, fell: 0 }, 0),
+    ).toBe(gemKey("ruby", MAX_STRAIN));
   });
 });
 
 describe("overlayKeyFor", () => {
   it("composites a treatment over a brilliant and a star, and nothing else", () => {
-    expect(overlayKeyFor({ kind: "ruby", cut: "brilliant", strain: 0 })).toBe(
-      "cut:brilliant",
-    );
-    expect(overlayKeyFor({ kind: "ruby", cut: "star", strain: 0 })).toBe(
-      "cut:star",
-    );
-    expect(overlayKeyFor({ kind: "ruby", cut: "plain", strain: 0 })).toBeNull();
-    expect(overlayKeyFor({ kind: null, cut: "prism", strain: 0 })).toBeNull();
+    expect(
+      overlayKeyFor({ kind: "ruby", cut: "brilliant", strain: 0, fell: 0 }),
+    ).toBe("cut:brilliant");
+    expect(
+      overlayKeyFor({ kind: "ruby", cut: "star", strain: 0, fell: 0 }),
+    ).toBe("cut:star");
+    expect(
+      overlayKeyFor({ kind: "ruby", cut: "plain", strain: 0, fell: 0 }),
+    ).toBeNull();
+    expect(
+      overlayKeyFor({ kind: null, cut: "prism", strain: 0, fell: 0 }),
+    ).toBeNull();
   });
 });
 
@@ -186,8 +197,8 @@ describe("drawGem", () => {
         ctx.imageSmoothingEnabled = false;
         const gem =
           kind === null
-            ? { kind: null, cut: "prism" as const, strain }
-            : { kind, cut: "plain" as const, strain };
+            ? { kind: null, cut: "prism" as const, strain, fell: 0 }
+            : { kind, cut: "plain" as const, strain, fell: 0 };
         drawGem(ctx, assets, gem, size / 2, size / 2, 0);
         const data = ctx.getImageData(0, 0, size, size).data;
         let outside = 0;
@@ -214,7 +225,7 @@ describe("drawGem", () => {
     drawGem(
       plain,
       assets,
-      { kind: "ruby", cut: "plain", strain: 0 },
+      { kind: "ruby", cut: "plain", strain: 0, fell: 0 },
       32,
       32,
       0,
@@ -222,7 +233,7 @@ describe("drawGem", () => {
     drawGem(
       starred,
       assets,
-      { kind: "ruby", cut: "star", strain: 0 },
+      { kind: "ruby", cut: "star", strain: 0, fell: 0 },
       32,
       32,
       0,
@@ -236,7 +247,14 @@ describe("drawGem", () => {
     const ctx = createCanvas(64, 64).getContext(
       "2d",
     ) as unknown as CanvasRenderingContext2D;
-    drawGem(ctx, empty, { kind: "ruby", cut: "plain", strain: 0 }, 32, 32, 0);
+    drawGem(
+      ctx,
+      empty,
+      { kind: "ruby", cut: "plain", strain: 0, fell: 0 },
+      32,
+      32,
+      0,
+    );
     expect(inkIn(ctx, 0, 0, 64, 64)).toBeGreaterThan(0);
   });
 
@@ -244,7 +262,14 @@ describe("drawGem", () => {
     const ctx = createCanvas(64, 64).getContext(
       "2d",
     ) as unknown as CanvasRenderingContext2D;
-    drawGem(ctx, empty, { kind: null, cut: "prism", strain: 0 }, 32, 32, 0);
+    drawGem(
+      ctx,
+      empty,
+      { kind: null, cut: "prism", strain: 0, fell: 0 },
+      32,
+      32,
+      0,
+    );
     expect(inkIn(ctx, 0, 0, 64, 64)).toBeGreaterThan(0);
   });
 });
@@ -280,7 +305,7 @@ describe("the board", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("marks the cursor, the selection, and a refusal each in its own way", () => {
+  it("marks the selection, the offer, and a refusal each in its own way", () => {
     const base = loadBoard(createInitialState(), quietRows());
     const plain = stage();
     drawBoard(plain, assets, base, new Presentation(scratch));
@@ -292,16 +317,21 @@ describe("the board", () => {
       {
         ...base,
         selection: { col: 1, row: 1 },
+        offer: { col: 2, row: 1 },
         refusal: { a: { col: 5, row: 5 }, b: { col: 6, row: 5 } },
       },
       new Presentation(scratch),
     );
 
     const [sx, sy] = cellCenter({ col: 1, row: 1 });
+    const [ox, oy] = cellCenter({ col: 2, row: 1 });
     const [rx, ry] = cellCenter({ col: 5, row: 5 });
     const [ux, uy] = cellCenter({ col: 3, row: 7 });
     expect(
       pixelsDiffering(marked, plain, sx - 36, sy - 36, 72, 72),
+    ).toBeGreaterThan(0);
+    expect(
+      pixelsDiffering(marked, plain, ox - 36, oy - 36, 72, 72),
     ).toBeGreaterThan(0);
     expect(
       pixelsDiffering(marked, plain, rx - 36, ry - 36, 72, 72),
@@ -310,21 +340,63 @@ describe("the board", () => {
     expect(pixelsDiffering(marked, plain, ux - 30, uy - 30, 60, 60)).toBe(0);
   });
 
-  it("marks the cursor's cell, which a round opens at (0, 0)", () => {
+  it("draws the two gems an offer names in each other's cells", () => {
     const base = loadBoard(createInitialState(), quietRows());
-    const at00 = stage();
-    drawBoard(at00, assets, base, new Presentation(scratch));
-    const at34 = stage();
+    const plain = stage();
+    drawBoard(plain, assets, base, new Presentation(scratch));
+
+    const offered = stage();
     drawBoard(
-      at34,
+      offered,
       assets,
-      { ...base, cursor: { col: 3, row: 4 } },
+      { ...base, selection: { col: 1, row: 1 }, offer: { col: 2, row: 1 } },
       new Presentation(scratch),
     );
-    const [x, y] = cellCenter({ col: 3, row: 4 });
-    expect(pixelsDiffering(at00, at34, x - 36, y - 36, 72, 72)).toBeGreaterThan(
-      0,
+
+    // The two stones themselves differ, not just the marks around them: the
+    // quiet board holds a different kind in every neighboring cell.
+    const [sx, sy] = cellCenter({ col: 1, row: 1 });
+    const [ox, oy] = cellCenter({ col: 2, row: 1 });
+    expect(
+      pixelsDiffering(offered, plain, sx - 12, sy - 12, 24, 24),
+    ).toBeGreaterThan(0);
+    expect(
+      pixelsDiffering(offered, plain, ox - 12, oy - 12, 24, 24),
+    ).toBeGreaterThan(0);
+  });
+
+  it("holds a falling stone above its cell until the fall has run", () => {
+    const base = loadBoard(createInitialState(), quietRows());
+    const settled = stage();
+    drawBoard(settled, assets, base, new Presentation(scratch));
+
+    // A step that dropped every stone two rows, read one instant in.
+    const falling = stage();
+    drawBoard(
+      falling,
+      assets,
+      {
+        ...base,
+        phase: "resolving",
+        chainStep: 1,
+        stepTimer: 0,
+        lastWaves: 0,
+        board: {
+          ...base.board,
+          gems: base.board.gems.map((gem) => (gem ? { ...gem, fell: 2 } : gem)),
+        },
+      },
+      new Presentation(scratch),
     );
+
+    const [x, y] = cellCenter({ col: 4, row: 4 });
+    expect(
+      pixelsDiffering(falling, settled, x - 30, y - 30, 60, 60),
+    ).toBeGreaterThan(0);
+    // Two rows above is where the stone actually is at that instant.
+    expect(
+      inkIn(falling, x - 20, y - 2 * CELL_PITCH - 20, 40, 40),
+    ).toBeGreaterThan(0);
   });
 });
 
@@ -381,7 +453,7 @@ describe("the readouts", () => {
 });
 
 describe("renderGame", () => {
-  it("draws each of the five screens, and each differently", () => {
+  it("draws each of the six screens, and each differently", () => {
     const playing = startRound(createInitialState());
     const seen = new Set<string>();
     for (const screen of [
@@ -389,6 +461,7 @@ describe("renderGame", () => {
       "howto",
       "playing",
       "paused",
+      "levelclear",
       "gameover",
     ] as const) {
       const ctx = stage();
@@ -402,13 +475,13 @@ describe("renderGame", () => {
       expect(ink, screen).toBeGreaterThan(0);
       seen.add(`${screen}:${ink}`);
     }
-    expect(seen.size).toBe(5);
+    expect(seen.size).toBe(6);
   });
 
-  it("shows the board behind the pause menu and the end of a round", () => {
+  it("shows the board behind each of the three in-round screens", () => {
     const playing = startRound(createInitialState());
     const [x, y] = cellCenter({ col: 0, row: 0 });
-    for (const screen of ["paused", "gameover"] as const) {
+    for (const screen of ["paused", "levelclear", "gameover"] as const) {
       const ctx = stage();
       renderGame(
         { ...playing, screen },
@@ -423,6 +496,122 @@ describe("renderGame", () => {
   it("draws the title screen with no board in play", () => {
     const ctx = stage();
     renderGame(createInitialState(), ctx, assets, new Presentation(scratch));
-    expect(inkIn(ctx, 300, 150, 680, 140)).toBeGreaterThan(0);
+    expect(inkIn(ctx, 300, 100, 680, 160)).toBeGreaterThan(0);
+  });
+
+  it("reports the level's two figures on the level-clear screen", () => {
+    const played = {
+      ...startRound(createInitialState()),
+      screen: "levelclear" as const,
+      level: 3,
+      bestChain: 7,
+      bestMove: 1480,
+    };
+    const shown = stage();
+    renderGame(played, shown, assets, new Presentation(scratch));
+    for (const figure of ["bestChain", "bestMove", "level"] as const) {
+      const other = stage();
+      renderGame(
+        { ...played, [figure]: 0 },
+        other,
+        assets,
+        new Presentation(scratch),
+      );
+      expect(
+        pixelsDiffering(shown, other, 320, 200, 640, 260),
+        figure,
+      ).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("the pointer targets, as drawn", () => {
+  /** Every pixel two rasters of the whole stage disagree on. */
+  function differing(
+    a: CanvasRenderingContext2D,
+    b: CanvasRenderingContext2D,
+  ): [number, number][] {
+    const left = a.getImageData(0, 0, STAGE_W, STAGE_H).data;
+    const right = b.getImageData(0, 0, STAGE_W, STAGE_H).data;
+    const found: [number, number][] = [];
+    for (let index = 0; index < left.length; index += 4) {
+      const same =
+        left[index] === right[index] &&
+        left[index + 1] === right[index + 1] &&
+        left[index + 2] === right[index + 2] &&
+        left[index + 3] === right[index + 3];
+      if (same) continue;
+      const pixel = index / 4;
+      found.push([pixel % STAGE_W, Math.floor(pixel / STAGE_W)]);
+    }
+    return found;
+  }
+
+  /** Whether a point lies in a target, allowing for the edge's own softness. */
+  function within(target: TargetRect, x: number, y: number): boolean {
+    const slack = 2;
+    return (
+      x >= target.x - slack &&
+      x <= target.x + target.w + slack &&
+      y >= target.y - slack &&
+      y <= target.y + target.h + slack
+    );
+  }
+
+  it("draws each menu row over the rectangle the game hit-tests", () => {
+    const playing = startRound(createInitialState());
+    for (const screen of [
+      "title",
+      "paused",
+      "levelclear",
+      "gameover",
+    ] as const) {
+      const targets = targetsFor(screen);
+      const first = stage();
+      renderGame(
+        { ...playing, screen, menuIndex: 0 },
+        first,
+        assets,
+        new Presentation(scratch),
+      );
+      const second = stage();
+      renderGame(
+        { ...playing, screen, menuIndex: 1 },
+        second,
+        assets,
+        new Presentation(scratch),
+      );
+      const moved = differing(first, second);
+      expect(moved.length, screen).toBeGreaterThan(0);
+      // Moving the highlight changes the two menu rows and nothing else, so
+      // each drawn row covers exactly the `menu-<i>` target it names.
+      const stray = moved.filter(
+        ([x, y]) => !targets.some((target) => within(target, x, y)),
+      );
+      expect(stray.length, screen).toBe(0);
+    }
+  });
+
+  it("draws a BACK control on how-to's target and a PAUSE on the board's", () => {
+    const playing = startRound(createInitialState());
+    for (const screen of ["howto", "playing"] as const) {
+      const ctx = stage();
+      renderGame(
+        { ...playing, screen },
+        ctx,
+        assets,
+        new Presentation(scratch),
+      );
+      const [target] = targetsFor(screen);
+      expect(
+        inkIn(ctx, target.x + 8, target.y + 8, target.w - 16, target.h - 16),
+        target.id,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps the pause control wholly clear of the board's drawn extent", () => {
+    const [pause] = targetsFor("playing");
+    expect(pause.x).toBeGreaterThan(FRAME_X + FRAME_SIZE);
   });
 });

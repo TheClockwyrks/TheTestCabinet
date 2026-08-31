@@ -5,6 +5,7 @@ import {
   COLOR,
   FONT_BODY,
   KIND_FALLBACK,
+  drawControl,
   drawTracked,
   font,
   roundedRect,
@@ -111,5 +112,58 @@ describe("roundedRect", () => {
       roundedRect(ctx, 10, 10, 20, 20, 500);
       ctx.fill();
     }).not.toThrow();
+  });
+});
+
+describe("drawControl", () => {
+  /** How many pixels of a region carry any paint at all. */
+  function inkIn(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): number {
+    const data = ctx.getImageData(x, y, width, height).data;
+    let count = 0;
+    for (let index = 3; index < data.length; index += 4) {
+      if (data[index] > 8) count += 1;
+    }
+    return count;
+  }
+
+  const PLATE = { x: 40, y: 20, w: 320, h: 72 } as const;
+
+  it("fills the rectangle it is given and paints outside none of it", () => {
+    const ctx = context();
+    drawControl(ctx, PLATE, "CONTINUE", false);
+    expect(
+      inkIn(ctx, PLATE.x + 4, PLATE.y + 4, PLATE.w - 8, PLATE.h - 8),
+    ).toBeGreaterThan(0);
+    expect(inkIn(ctx, 0, 0, 400, PLATE.y - 2)).toBe(0);
+    expect(inkIn(ctx, 0, PLATE.y + PLATE.h + 2, 400, 6)).toBe(0);
+  });
+
+  it("draws the highlighted one apart from the rest", () => {
+    const dim = context();
+    drawControl(dim, PLATE, "CONTINUE", false);
+    const lit = context();
+    drawControl(lit, PLATE, "CONTINUE", true);
+    const before = dim.getImageData(0, 0, 400, 120).data;
+    const after = lit.getImageData(0, 0, 400, 120).data;
+    let differing = 0;
+    for (let index = 0; index < before.length; index += 4) {
+      if (before[index] !== after[index]) differing += 1;
+    }
+    expect(differing).toBeGreaterThan(0);
+  });
+
+  it("hands the context back as it found it", () => {
+    const ctx = context();
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    drawControl(ctx, PLATE, "PAUSE", true);
+    expect(ctx.textBaseline).toBe("alphabetic");
+    expect(ctx.textAlign).toBe("left");
   });
 });

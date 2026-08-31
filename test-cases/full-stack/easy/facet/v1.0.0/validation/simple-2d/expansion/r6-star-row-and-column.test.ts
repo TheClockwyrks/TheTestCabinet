@@ -37,7 +37,7 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -94,11 +94,7 @@ function restingKinds(
 const STAR: CellRef = { col: 3, row: 4 };
 
 /** The run of three the swap completes, with the star as its middle cell. */
-const RUN: readonly CellRef[] = [
-  { col: 2, row: 4 },
-  STAR,
-  { col: 4, row: 4 },
-];
+const RUN: readonly CellRef[] = [{ col: 2, row: 4 }, STAR, { col: 4, row: 4 }];
 
 /** The two cells the swap exchanges: the third ruby drops into the run. */
 const FROM: CellRef = { col: 4, row: 3 };
@@ -127,8 +123,17 @@ const CLEARED: readonly CellRef[] = distinct([
   ...rowAndColumn(STAR.col, STAR.row),
 ]);
 
-/** Frames recorded after the swap, so the replay shows the step it resolved. */
-const REPLAY_FRAMES = 16;
+/**
+ * Frames recorded after the step has resolved, so the replay shows the clear set
+ * shattering and the board falling in behind it.
+ *
+ * `swapAndStep` leaves the step `0.03875` s into its own hold; twelve more frames
+ * of the suite's 64 Hz clock add `0.1875` s, for `0.22625` s in all. That is
+ * short of `0.3` s, the SHORTEST hold any step can have, so the board is never
+ * read a second time and every assertion is made against the reading the drive
+ * returned.
+ */
+const REPLAY_FRAMES = 12;
 
 let h: Harness;
 
@@ -152,13 +157,17 @@ it("takes every cell of a cleared star's row and column", async () => {
   loadBoard(h, POSED);
 
   const step = await captureReplay(h, "clear", async () => {
-    const reading = swap(h, FROM, TO);
+    const reading = await swapAndStep(h, FROM, TO);
     const settled = h.board();
     await h.advance(REPLAY_FRAMES);
     return { reading, settled };
   });
 
-  assertEqual(step.reading.phase, "resolving", "phase after the swap");
+  assertEqual(
+    step.reading.phase,
+    "resolving",
+    "phase after the swap animation",
+  );
   assertEqual(step.reading.chainStep, 1, "the step the reading describes");
 
   // The whole row and the whole column, sharing the star: 15 cells for a step

@@ -1,13 +1,14 @@
-// assets/fx-systems-produced — the three produced particle systems ship with the
+// assets/fx-systems-produced — the four produced particle systems ship with the
 // build, and each of them actually emits.
 //
-// specs/assets.md, "Particle systems — particle-2d": "Produce these three" — the
-// clear burst, the flawed detonation, and the cut-gem flash — authored with
-// `particle-2d`, whose "render step writes the `system.json` that is the asset",
-// landed under `public/assets/fx/`. The same section rules out the substitute:
-// "Individual particles are not placed and frames are not baked", and the closing
-// list refuses a build that "paints a flat colored flash in place of the produced
-// particle systems".
+// specs/assets.md, "Particle systems — particle-2d": "Produce these four" — the
+// clear burst, the flawed detonation, the cut-gem flash, and the cut aura that
+// runs at every `brilliant`, `star` and `prism` standing on the board — authored
+// with `particle-2d`, whose "render step writes the `system.json` that is the
+// asset", landed under `public/assets/fx/`. The same section rules out the
+// substitute: "Individual particles are not placed and frames are not baked", and
+// the closing list refuses a build that "paints a flat colored flash in place of
+// the produced particle systems" or "leaves a cut stone standing still".
 //
 // WHY THE SYSTEMS ARE SIMULATED HERE. A `system.json` is not a picture, so
 // nothing about a file's bytes says whether it is an effect or an empty shell. It
@@ -19,8 +20,8 @@
 // system, and a system that emits no particle over its own whole duration is not
 // an effect.
 //
-// WHY THE CONTENTS ARE HASHED. Three files that are copies of one system are one
-// effect under three names, and the specification asks for three that differ from
+// WHY THE CONTENTS ARE HASHED. Four files that are copies of one system are one
+// effect under four names, and the specification asks for four that differ from
 // one another in what they throw. Byte-identical files are counted once.
 //
 // WHAT IS NOT ASKED. Which file is which effect, how many particles each throws,
@@ -49,22 +50,25 @@ import {
 import { assertGreaterThanOrEqual, assertNotNull, fail } from "../assert";
 import { mediaDestination, siteRoot } from "../harness";
 
-/** The clear burst, the flawed detonation, and the cut-gem flash. */
-const REQUIRED_SYSTEMS = 3;
+/** The clear burst, the flawed detonation, the cut-gem flash, and the cut aura. */
+const REQUIRED_SYSTEMS = 4;
 
 /** The served directory specs/assets.md lands the particle systems under. */
 const FX_DIR = ["assets", "fx"];
 
 /**
- * How the systems are stepped: the size of a simulated frame, and the longest
- * span one is driven for.
+ * How the systems are stepped: the size of a simulated frame, the least a system
+ * is driven for, and the longest span one is driven for.
  *
  * A whole frame at a common rate, and a span generous enough to cover any effect
- * a chain step throws. The drive stops at the system's own `durationMs` where
- * that is shorter, and one-shots are the case here, so nothing waits on a system
- * that has already finished.
+ * a chain step throws. Each system is driven over its own declared `durationMs`,
+ * held to at least the floor below: three of the four are one-shots that throw
+ * everything inside their own duration, and the fourth "runs on rather than
+ * firing once", so a continuous emitter is given a stretch of time to emit in
+ * rather than a single frame.
  */
 const STEP_MS = 16;
+const MIN_SPAN_MS = 1_000;
 const MAX_SPAN_MS = 4_000;
 
 /** One produced system, and the most particles a play of it held at once. */
@@ -106,7 +110,10 @@ function play(path: string): Effect | null {
   // instant counts: a one-shot that throws everything at once is at its busiest
   // before a frame has run.
   let peak = simulator.capture();
-  const span = Math.min(Math.max(system.durationMs ?? 0, STEP_MS), MAX_SPAN_MS);
+  const span = Math.min(
+    Math.max(system.durationMs ?? 0, MIN_SPAN_MS),
+    MAX_SPAN_MS,
+  );
   for (let elapsed = 0; elapsed < span; elapsed += STEP_MS) {
     simulator.step(STEP_MS);
     const live = simulator.capture();
@@ -134,7 +141,10 @@ function writeSystemSheet(outputId: string, effects: readonly Effect[]): void {
     context.fillRect(0, 0, canvas.width, canvas.height);
     for (const [index, effect] of effects.entries()) {
       const field = effect.system.field;
-      const scale = Math.min(cell / (field.width || 1), cell / (field.height || 1));
+      const scale = Math.min(
+        cell / (field.width || 1),
+        cell / (field.height || 1),
+      );
       const originX = index * cell + (cell - field.width * scale) / 2;
       const originY = (cell - field.height * scale) / 2;
       for (const particle of effect.peak) {
@@ -160,7 +170,7 @@ function writeSystemSheet(outputId: string, effects: readonly Effect[]): void {
   }
 }
 
-it("ships three distinct particle systems the runtime plays", () => {
+it("ships four distinct particle systems the runtime plays", () => {
   const root = siteRoot();
   assertNotNull(root, "the built site, or the committed public/ tree");
   const fx = join(root as string, ...FX_DIR);

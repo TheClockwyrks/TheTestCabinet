@@ -2,7 +2,8 @@
 // selection nor a neighbor of it moves the selection to that cell.
 //
 // The FOURTH row of specs/controls.md's press table — "Any other cell — Moves
-// the selection to that cell" — and the row is only reachable because of the
+// the selection to that cell, with no offer standing" — and the row is only
+// reachable because of the
 // sentence above the table: "The rows below are evaluated in order, and the first
 // row that matches is the one that applies." So the row says two things at once,
 // and both are read here. A selection is standing, so row one ("while nothing is
@@ -10,14 +11,14 @@
 // and three cannot match either; and what is left is this row, which moves the
 // selection rather than clearing it, trading it away, or leaving it where it was.
 //
-// WHAT THE READING IS. The selection is at the pressed cell afterward, and the
-// board is exactly the board that was posed. The board is half of the point
-// rather than a bonus: the row this press matches moves a selection and does
-// NOTHING else, and a build that fell through to the third row instead would
-// leave a requested swap behind — accepted here, since the pressed cell is not
-// adjacent to the selection, R1 refuses it and the refusal stands on two cells.
-// So `phase` at `idle` and no refusal are the same observation as the move: they
-// say which row applied.
+// WHAT THE READING IS. The selection is at the pressed cell afterward, nothing
+// is offered, and the board is exactly the board that was posed. Those last two
+// are half of the point rather than a bonus: the row this press matches moves a
+// selection and does NOTHING else, and a build that fell through to the third row
+// instead would offer the gem into a cell no neighbor of it — or, worse, request
+// the swap outright, which R1 refuses here and which would leave a refusal
+// standing on two cells. So `offer` at null, `phase` at `idle` and no refusal are
+// the same observation as the move: they say which row applied.
 //
 // THE TWO CELLS. The selection sits at (1,1) and the press lands at (5,5): four
 // columns and four rows apart, so the pair is neither equal nor orthogonally
@@ -29,11 +30,15 @@
 // build's event plumbing or frame scheduling.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertNull, assertTrue } from "../assert";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertNull,
+  assertTrue,
+} from "../assert";
 import {
   areAdjacent,
   assertBoardEquals,
-  cellCenter,
   hasAnyRun,
   quietRowsWithEscape,
   type CellRef,
@@ -42,6 +47,8 @@ import {
   captureStill,
   createHarness,
   loadBoard,
+  pressCell,
+  releasePointer,
   type Harness,
 } from "../harness";
 
@@ -75,23 +82,27 @@ it("moves the selection to the pressed cell", async () => {
 
   await loadBoard(h, posed);
   await h.debug.setSelection(SELECTED.col, SELECTED.row);
+  const held = await h.snapshot();
   assertDeepEqual(
-    (await h.snapshot()).selection,
+    held.selection,
     SELECTED,
     "the selection the press is made against",
   );
+  assertNull(held.offer, "the offer standing before the press");
 
-  const at = cellCenter(ELSEWHERE.col, ELSEWHERE.row);
-  await h.debug.pointerDown(at.x, at.y);
-  const moved = await h.snapshot();
+  const moved = await pressCell(h, ELSEWHERE);
   const board = await h.board();
-  await h.debug.pointerUp();
+  await releasePointer(h);
 
   // The frame that draws the moved selection, and the picture of it.
   await h.advance(1);
   await captureStill(h, "select");
 
   assertDeepEqual(moved.selection, ELSEWHERE, "the selection the press moved");
+  assertNull(
+    moved.offer,
+    "the offer, which the row this press matches does not raise",
+  );
   assertBoardEquals(
     board,
     posed,

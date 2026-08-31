@@ -17,17 +17,21 @@
 // of the top puts a different kind at every asserted cell rather than an
 // indistinguishable one.
 //
-// WHEN THE READING IS TAKEN. specs/rules.md has an accepted swap "resolve step 1
-// immediately", and R9 is the last thing that step does, so the board the swap
-// leaves behind is the settled board of step 1 — read before any later step and
-// before R9's refill can seed one.
+// WHEN THE READING IS TAKEN. An accepted swap exchanges the two cells at once
+// and then holds them in motion: specs/rules.md sets `phase` to `swapping` with
+// `chainStep` at 0, and step 1 resolves once `SWAP_SECONDS` (0.18) of game time
+// has passed. `swapAndStep` carries the board through exactly that and hands
+// back the reading step 1 left behind, R9 included — taken before any later step
+// and before R9's refill can seed one.
 //
 // WHAT IS DELIBERATELY LEFT UNASSERTED. The survivor that stood immediately above
 // the gap is orthogonally adjacent to the clear set, so R7 raises its strain as
 // the step resolves; that strain is R7's point and not this one, and only its
 // KIND and the cell it landed in are read. Column 6 is read whole and unchanged:
 // it lost no cell, and gravity acting within each column has to leave it exactly
-// as posed, which is the other half of the rule.
+// as posed, which is the other half of the rule. How far each gem reports having
+// traveled is `settling/r9-fell-reports-the-drop`'s point, over this same
+// scenario, so nothing here reads `fell`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
@@ -50,10 +54,12 @@ import {
 import {
   captureReplay,
   createHarness,
+  framesShortOf,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
+import type { FacetSnapshot } from "../surface";
 
 /** The column whose foot the step clears, and whose survivors are then read. */
 const COL = 4;
@@ -86,12 +92,20 @@ const CLEAR_SET: readonly CellRef[] = [
 ];
 
 /**
- * Frames driven after the swap purely so the replay has the fall in it.
+ * Frames that carry the recording to just short of the end of the step the
+ * reading was taken in, so the replay holds the fall rather than stopping on
+ * the frame the step resolved.
  *
- * Short of `STEP_SECONDS` (0.25 s, 16 frames of this clock), so the board is
- * never read a second time and every assertion below still describes step 1.
+ * A step's hold is the STEP's OWN figure — `lastWaves * WAVE_SECONDS` plus
+ * `lastFall * FALL_SECONDS_PER_ROW` plus `STEP_SECONDS` — which the snapshot
+ * reports as `stepHold`, so the frames that fill it are read off the reading
+ * rather than written down. `framesShortOf` keeps the drive strictly inside what
+ * is left of that hold, so the board is never read a second time and every
+ * figure asserted below still describes step 1.
  */
-const REPLAY_FRAMES = 12;
+function restOfStep(reading: FacetSnapshot): number {
+  return framesShortOf(Math.max(0, reading.stepHold - reading.stepTimer));
+}
 
 let h: Harness;
 
@@ -117,8 +131,8 @@ it("drops each column's survivors onto its foot in the order they stood in", asy
 
   loadBoard(h, posed);
   const settled = await captureReplay(h, "fall", async () => {
-    const first = swap(h, A, B);
-    await h.advance(REPLAY_FRAMES);
+    const first = await swapAndStep(h, A, B);
+    await h.advance(restOfStep(first));
     return first;
   });
   assertEqual(settled.chainStep, 1, "the chain step the swap opened");

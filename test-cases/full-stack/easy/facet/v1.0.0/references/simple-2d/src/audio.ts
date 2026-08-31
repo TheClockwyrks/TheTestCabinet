@@ -8,7 +8,7 @@
 // frame, which `playFrameEvents` gets by playing from the frame's merged event
 // flags rather than from each thing that raised one.
 //
-// Two of the eight cues are more than one file.
+// Two of the nine cues are more than one file.
 //
 //   * `clear` sounds the CHAIN LADDER. `specs/assets.md` produces eight tones
 //     ascending in pitch and a sampled shatter body "layered under the chain
@@ -20,15 +20,15 @@
 //     `1` plays the lowest while a capped chain holds on the highest.
 //
 //   * The MUSIC is not a cue at all but a bed. The title theme loops on `title`
-//     and `howto` and the play bed on `playing`, `paused`, and `gameover`, so
-//     one of the two is sounding on every screen. It is asked for by screen on
+//     and `howto` and the play bed on `playing`, `paused`, `levelclear`, and
+//     `gameover`, so one of the two is sounding on every screen. It is asked for by screen on
 //     every frame; the engine's `loop` on a cue already looping does nothing, so
 //     asking again costs nothing and the swap happens on the frame the screen
 //     changes. The engine's mute bit silences the beds along with the cues.
 //
 // A CUE WHOSE FILE DID NOT ARRIVE is declared as a plain synthesized bleep
 // instead, so `play` — which throws on a name that was never declared — cannot
-// take a frame down. Every one of the eighteen files below is committed, so a
+// take a frame down. Every one of the nineteen files below is committed, so a
 // build serving its own `dist/` never declares one; the fallback exists for the
 // build standing up in process, where there is no page to fetch from.
 
@@ -50,7 +50,7 @@ export const MUSIC_PLAY = "music-play";
 /**
  * Every cue name the build declares, and the produced file that sounds it.
  *
- * The eight `CUES` names are exactly the eight `specs/ui.md` fixes. `clear` is
+ * The nine `CUES` names are exactly the nine `specs/ui.md` fixes. `clear` is
  * bound to the sampled shatter body and the eight rungs sit beside it; the two
  * beds close the list.
  */
@@ -60,6 +60,7 @@ export function cueSources(): Readonly<Record<string, string>> {
     [CUES.swap]: "audio/swap.wav",
     [CUES.refuse]: "audio/refuse.wav",
     [CUES.clear]: "audio/shatter.wav",
+    [CUES.land]: "audio/land.wav",
     [CUES.flaw]: "audio/flaw.wav",
     [CUES.cut]: "audio/cut.wav",
     [CUES.levelUp]: "audio/levelup.wav",
@@ -140,6 +141,7 @@ export function playFrameEvents(
     api.audio.play(CUES.clear);
     api.audio.play(ladderCue(Math.min(Math.max(rung, 1), MAX_MULTIPLIER)));
   }
+  if (events.land) api.audio.play(CUES.land);
   if (events.flaw) api.audio.play(CUES.flaw);
   if (events.cut) api.audio.play(CUES.cut);
   if (events.levelUp) api.audio.play(CUES.levelUp);

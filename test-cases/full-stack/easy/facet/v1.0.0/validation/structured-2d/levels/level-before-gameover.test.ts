@@ -17,14 +17,17 @@
 // an ordinary accepted swap; while its step is still holding, every cell is
 // rewritten to the board of specs/rules.md's end condition — no run, no prism,
 // and no exchange of adjacent cells that makes one — and `levelScore` is posed at
-// level 1's target. specs/instrumentation.md says `setGem` leaves the phase and
-// the screen where they were and `setLevelScore` "changes nothing else", so what
-// the step reads when its STEP_SECONDS is up is a dead board on a finished level.
+// the target the round reports. specs/instrumentation.md says `setGem` leaves the
+// phase and the screen where they were and `setLevelScore` "changes nothing
+// else", so what the step reads when its hold is up is a dead board on a finished
+// level.
 //
-// The fresh board is read with this project's own R1/R3 search rather than off
-// the build's derived `legalSwap`, which is `levels/legal-swap-derived`'s
-// question: a board carrying a legal swap is one the dead board cannot be, and so
-// is proof that a new one was dealt.
+// WHAT THE WINNING ANSWER LOOKS LIKE. `levelclear`, and the board still dead
+// underneath it: specs/rules.md hands the next level's deal to `CONTINUE` rather
+// than to the settle, so nothing is dealt here and the board the round was won on
+// is the board that stands. The dead board is read back with this project's own
+// R1/R3 search, never off the build's derived `legalSwap`, which is
+// `levels/legal-swap-derived`'s question.
 //
 // WHERE THE TARGET COMES FROM. Off the round, not out of `LEVEL_TARGET_STEP`.
 // What this point decides is the ORDER the two end conditions are evaluated in,
@@ -52,7 +55,7 @@ import {
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -91,7 +94,7 @@ function writeBoard(rows: BoardRows): void {
   }
 }
 
-it("opens the next level rather than ending the round on a dead board", async () => {
+it("clears the level rather than ending the round on a dead board", async () => {
   const posed = quietRowsWithEscape(RUN_CELLS);
   const dead = deadBoard();
   assertEqual(
@@ -105,8 +108,8 @@ it("opens the next level rather than ending the round on a dead board", async ()
   loadBoard(h, posed);
 
   const after = await captureReplay(h, "levelup", async () => {
-    const first = swap(h, RUN_SWAP.a, RUN_SWAP.b);
-    assertEqual(first.phase, "resolving", "the phase the accepted swap opened");
+    const first = await swapAndStep(h, RUN_SWAP.a, RUN_SWAP.b);
+    assertEqual(first.phase, "resolving", "the phase step 1 resolved into");
 
     // Both conditions are now standing at once: nothing on the board can be
     // played, and the level's target has been met — the target the round itself
@@ -129,21 +132,24 @@ it("opens the next level rather than ending the round on a dead board", async ()
   });
 
   assertEqual(after.phase, "idle", "the phase the chain ended in");
-  assertEqual(after.screen, "playing", "the screen a completed level leaves");
-  assertEqual(after.level, 2, "the level the completed target opened");
-  assertEqual(after.levelScore, 0, "the level score after the level rose");
+  assertEqual(
+    after.screen,
+    "levelclear",
+    "the screen the met target opened, against the gameover a dead board alone " +
+      "would have reached",
+  );
+  assertEqual(after.menuIndex, 0, "the highlighted item on arriving");
+  assertEqual(after.level, 1, "the level the met target left standing");
 
-  // And what was dealt for the new level is a board that can be played, which
-  // the dead board it replaced could not be.
+  // Nothing was dealt over it. The level's own deal belongs to CONTINUE, so the
+  // board the round was won on is the board the screen was raised on — and it is
+  // still the dead one, which is what makes the order of the two conditions the
+  // only thing this reading could have turned on.
   const board = h.board();
   assertEqual(
     legalSwapExists(board),
-    true,
-    "a legal swap on the new level's board",
-  );
-  assertEqual(
-    hasAnyRun(board),
     false,
-    "a maximal run on the new level's board",
+    "a legal swap on the board the level was cleared from",
   );
+  assertEqual(hasAnyRun(board), false, "a maximal run on that same board");
 });

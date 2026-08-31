@@ -12,6 +12,10 @@ describe("the core's surface", () => {
       "parseBoard",
       "formatBoard",
       "targetCell",
+      // The screens' pointer targets.
+      "targetsFor",
+      "targetAt",
+      "menuIndexOf",
       // The ruleset.
       "maximalRuns",
       "seedFromRuns",
@@ -20,6 +24,7 @@ describe("the core's surface", () => {
       "applyStrain",
       "creationsFor",
       "settleAndRefill",
+      "lastFall",
       "judgeSwap",
       "legalSwapExists",
       // The chain and the frame.
@@ -28,17 +33,28 @@ describe("the core's surface", () => {
       "tick",
       "levelTarget",
       "multiplierFor",
+      "stepHold",
+      "landAt",
       // The deal, the controls, the screens, the state, the generator.
       "dealOpeningBoard",
-      "actOnCell",
+      "pressCell",
+      "offerCell",
+      "releaseBoard",
       "pointerDown",
+      "pointerMove",
+      "pointerUp",
       "startRound",
+      "continueLevel",
       "createInitialState",
       "nextRandom",
       // The debug logic.
       "snapshot",
       "reset",
       "loadBoard",
+      "setOffer",
+      "clearOffer",
+      "setBestChain",
+      "setBestMove",
       "poseSwap",
     ]) {
       expect(typeof core[name as keyof typeof core]).toBe("function");
@@ -51,5 +67,6 @@ describe("the core's surface", () => {
     expect(shot.screen).toBe("playing");
     expect(shot.board.cells).toHaveLength(64);
     expect(shot.legalSwap).toBe(true);
+    expect(shot.targets.map((target) => target.id)).toEqual(["pause"]);
   });
 });

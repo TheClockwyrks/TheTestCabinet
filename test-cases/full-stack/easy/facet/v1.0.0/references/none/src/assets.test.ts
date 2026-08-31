@@ -9,6 +9,7 @@ import {
   CUT_BRILLIANT_KEY,
   CUT_STAR_KEY,
   FRAME_KEY,
+  FX_AURA,
   FX_CLEAR,
   FX_CUT,
   FX_FLAWED,
@@ -84,13 +85,13 @@ describe("the manifest", () => {
     }
   });
 
-  it("names the three particle systems", () => {
+  it("names the four particle systems", () => {
     expect(Object.keys(manifest.systems).sort()).toEqual(
-      [FX_CLEAR, FX_CUT, FX_FLAWED].sort(),
+      [FX_CLEAR, FX_CUT, FX_FLAWED, FX_AURA].sort(),
     );
   });
 
-  it("names a sound for each of the eight cues, the ladder, and the music", () => {
+  it("names a sound for each of the nine cues, the ladder, and the music", () => {
     for (const cue of Object.values(CUES)) {
       if (cue === CUES.clear) continue;
       expect(manifest.sounds[cue]).toBeDefined();

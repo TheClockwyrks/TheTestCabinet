@@ -23,9 +23,14 @@
 //
 // WHAT IS SPECIFICATION HERE AND WHAT IS THE CASE'S OWN SCENERY.
 //
-//  - The NOTATION, the CELL-CENTER FORMULAS and the RUN, SWAP and CLEAR-SET
-//    predicates are specs/board.md and specs/rules.md written down. They are the
-//    case restating the contract, and each one names the rule it is.
+//  - The NOTATION, the CELL-CENTER FORMULAS, the RUN, SWAP and CLEAR-SET
+//    predicates, the SETTLING, the STEP'S THREE SPANS and the POINTER-TARGET
+//    requirements are specs/board.md, specs/rules.md and specs/controls.md
+//    written down. They are the case restating the contract, and each one names
+//    the rule it is. Two of them are deliberately WEAKER than an equality: R9
+//    fixes a refilled gem's fall only as a floor, and specs/controls.md fixes a
+//    target's rectangle only by four requirements, so this file expresses both
+//    as bounds a build satisfies rather than as a figure a build must match.
 //  - The FIXTURES (`quietBoard`, `deadBoard`, `ESCAPE_CELLS`, and the helpers
 //    that write cells over them) are the case's own scenery, chosen so a scenario
 //    poses exactly one thing and nothing else. `harness.test.ts` proves each
@@ -43,12 +48,19 @@ import {
   BOARD_CY,
   CELL_PITCH,
   CUTS,
+  FALL_SECONDS_PER_ROW,
   GEM_HIT_R,
   GEM_KINDS,
   GRID_COLS,
   GRID_ROWS,
   MATCH_MIN,
   MAX_STRAIN,
+  STAGE_H,
+  STAGE_W,
+  STEP_SECONDS,
+  TARGET_MIN_H,
+  TARGET_MIN_W,
+  WAVE_SECONDS,
   type Cut,
   type GemKind,
 } from "./constants";
@@ -86,6 +98,14 @@ export interface Gem {
   kind: GemKind | null;
   cut: Cut;
   strain: number;
+  /**
+   * How many rows the gem traveled to reach the cell it holds, under R9.
+   *
+   * The notation carries no `fell` — "every gem of a board written in it is
+   * standing still in the cell it is written at" — so a gem read out of a token
+   * carries `0`, and {@link settle} is what puts any other figure on one.
+   */
+  fell: number;
 }
 
 /** A maximal run under R4: its cells, the kind they share, and its axis. */
@@ -209,14 +229,14 @@ export function parseToken(token: string): Gem {
         suffix,
       );
     }
-    return { kind: null, cut: "prism", strain };
+    return { kind: null, cut: "prism", strain, fell: 0 };
   }
   const cut = CUT_LETTERS[suffix];
   if (cut === undefined) {
     fail(`a cut letter of b or s (token ${token})`, suffix);
   }
   const index = KIND_LETTERS.indexOf(letter as (typeof KIND_LETTERS)[number]);
-  return { kind: GEM_KINDS[index], cut, strain };
+  return { kind: GEM_KINDS[index], cut, strain, fell: 0 };
 }
 
 /**
@@ -225,8 +245,16 @@ export function parseToken(token: string): Gem {
  * A prism is written by its cut alone, since specs/board.md gives it no kind to
  * write; a gem of any other cut that carries no kind is not a gem the notation
  * can write, and says so.
+ *
+ * It takes the three fields the notation writes rather than a whole {@link Gem},
+ * because `fell` is not one of them: a written board records where every gem
+ * stands and nothing about how it got there.
  */
-export function formatToken(gem: Gem): string {
+export function formatToken(gem: {
+  kind: GemKind | null;
+  cut: Cut;
+  strain: number;
+}): string {
   if (gem.cut === "prism") return `${PRISM_LETTER}${gem.strain}`;
   const index = GEM_KINDS.indexOf(gem.kind as GemKind);
   if (index < 0) {
@@ -786,30 +814,56 @@ export function runSeed(rows: BoardRows): CellRef[] {
 }
 
 /**
+ * R6's clear set, with the wave R6 gave each of its cells.
+ *
+ * The two travel together because they come out of one traversal and a check
+ * about either reads the other: the set is what the step scores and removes, and
+ * the waves are what time its shattering.
+ */
+export interface ClearSet {
+  /** Every cell of the set, in reading order from the top-left. */
+  cells: CellRef[];
+  /** The wave of the cell at the same index of {@link cells}. */
+  waves: number[];
+  /**
+   * The figure specs/rules.md calls the set's `waves`: the greatest wave in it,
+   * and `0` when the set is its seed alone. It is what a step leaves behind as
+   * `lastWaves`, and the first of the two figures {@link stepHold} runs off.
+   */
+  greatestWave: number;
+}
+
+/**
  * R6: the smallest set of cells containing `seed` and closed under the three
  * additions — a `brilliant`'s eight surrounding cells, a `star`'s whole row and
- * whole column, and every flawed gem orthogonally adjacent to a cell in the set.
+ * whole column, and every flawed gem orthogonally adjacent to a cell in the set
+ * — with each cell's wave.
  *
- * Computed as a least fixed point: each cell reads its own three additions as it
- * enters the set, so a `brilliant` drawn in by a flawed neighbor brings its ring
- * in turn, which is the closure the rule asks for rather than one pass over the
- * seed. It is what `expansion/r6-closure`, `chain/chain-second-step` and
- * `scoring/score-multiplier` state their expectation with, over the board they
- * OBSERVED rather than one they predicted.
+ * Computed as a least fixed point, BREADTH FIRST from the seed. Each cell reads
+ * its own three additions as it enters the set, so a `brilliant` drawn in by a
+ * flawed neighbor brings its ring in turn, which is the closure the rule asks
+ * for rather than one pass over the seed. Visiting in the order cells entered is
+ * what makes the wave right as well as the membership: every seed cell is at
+ * wave `0`, a cell an addition brings in from a cell at wave `k` is at `k + 1`,
+ * and the first wave to reach a cell is the lowest any addition could, so the
+ * wave a cell is written with is never lowered later.
+ *
+ * The wave changes nothing about which cells the set holds, so the membership
+ * this returns is the membership `expansion/r6-closure`,
+ * `chain/chain-second-step` and `scoring/score-multiplier` state their
+ * expectation with, over the board they OBSERVED rather than one they predicted.
  */
-export function expandClearSet(
+export function expandClearSetInWaves(
   rows: BoardRows,
   seed: readonly CellRef[],
-): CellRef[] {
+): ClearSet {
   const grid = parseRows(rows);
-  const inSet = new Set<string>();
-  const members: CellRef[] = [];
-  const pending: CellRef[] = [];
-  const add = (cell: CellRef): void => {
-    if (!onBoard(cell) || inSet.has(cellKey(cell))) return;
-    inSet.add(cellKey(cell));
-    members.push(cell);
-    pending.push(cell);
+  const waveOf = new Map<string, number>();
+  const entered: CellRef[] = [];
+  const add = (cell: CellRef, wave: number): void => {
+    if (!onBoard(cell) || waveOf.has(cellKey(cell))) return;
+    waveOf.set(cellKey(cell), wave);
+    entered.push(cell);
   };
 
   for (const cell of seed) {
@@ -819,30 +873,265 @@ export function expandClearSet(
         `(${cell.col},${cell.row})`,
       );
     }
-    add(cell);
+    add(cell, 0);
   }
 
-  while (pending.length > 0) {
-    const cell = pending.pop();
-    if (cell === undefined) break;
+  for (let head = 0; head < entered.length; head += 1) {
+    const cell = entered[head];
+    const next = (waveOf.get(cellKey(cell)) ?? 0) + 1;
     const gem = grid[cell.row][cell.col];
     if (gem.cut === "brilliant") {
-      for (const around of ring(cell.col, cell.row)) add(around);
+      for (const around of ring(cell.col, cell.row)) add(around, next);
     }
     if (gem.cut === "star") {
-      for (const along of rowAndColumn(cell.col, cell.row)) add(along);
+      for (const along of rowAndColumn(cell.col, cell.row)) add(along, next);
     }
     for (const beside of neighbors(cell.col, cell.row)) {
-      if (isFlawed(grid[beside.row][beside.col].strain)) add(beside);
+      if (isFlawed(grid[beside.row][beside.col].strain)) add(beside, next);
     }
   }
 
-  return inReadingOrder(members);
+  const cells = inReadingOrder(entered);
+  const waves = cells.map((cell) => waveOf.get(cellKey(cell)) ?? 0);
+  return {
+    cells,
+    waves,
+    greatestWave: waves.reduce((deepest, wave) => Math.max(deepest, wave), 0),
+  };
+}
+
+/**
+ * R6's clear set alone, for the checks that are about membership.
+ *
+ * The same traversal as {@link expandClearSetInWaves} with the waves dropped, so
+ * the two can never disagree about what the set holds.
+ */
+export function expandClearSet(
+  rows: BoardRows,
+  seed: readonly CellRef[],
+): CellRef[] {
+  return expandClearSetInWaves(rows, seed).cells;
+}
+
+/** R5's ordinary seed grown to R6's clear set and its waves. */
+export function clearSetInWavesFromRuns(rows: BoardRows): ClearSet {
+  return expandClearSetInWaves(rows, runSeed(rows));
 }
 
 /** R5's ordinary seed grown to R6's clear set: what an ordinary step reads. */
 export function clearSetFromRuns(rows: BoardRows): CellRef[] {
   return expandClearSet(rows, runSeed(rows));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Settling — R9 of specs/rules.md                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * How far a gem traveled, as a check may hold a build to it.
+ *
+ * TWO CASES, AND THE TYPE IS WHAT KEEPS THEM APART. R9 fixes a surviving gem's
+ * `fell` exactly — its new row less its old row, and `0` for one it did not move
+ * — so a check asserts that figure and nothing else. It fixes a refilled gem's
+ * only as a floor: "a gem the refill dealt into row `r`" carries "at least
+ * `r + 1`", and "which figure at or above that each refilled gem carries is the
+ * build's". A build that drops its refill in from two rows above the board
+ * conforms exactly as one that drops it in from one row above does.
+ *
+ * So the two are different shapes rather than one number with a flag. A check
+ * cannot read `exactly` off a refilled cell without the compiler saying so,
+ * which is the whole point: an exact expectation written against a refill would
+ * fail a conforming build, and the failure would read as a defect in the build
+ * rather than as the check's own mistake.
+ */
+export type Fell = { readonly exactly: number } | { readonly atLeast: number };
+
+/** Whether a `fell` a build reported satisfies what R9 fixes for its cell. */
+export function fellHolds(expected: Fell, actual: number): boolean {
+  return "exactly" in expected
+    ? actual === expected.exactly
+    : actual >= expected.atLeast;
+}
+
+/** A {@link Fell} written for a failure message: `2`, or `at least 3`. */
+export function showFell(expected: Fell): string {
+  return "exactly" in expected
+    ? String(expected.exactly)
+    : `at least ${expected.atLeast}`;
+}
+
+/** One reported `fell` held to what R9 fixes for its cell. */
+export function assertFell(
+  actual: number,
+  expected: Fell,
+  context?: string,
+): void {
+  if (fellHolds(expected, actual)) return;
+  const bound = showFell(expected);
+  fail(context === undefined ? bound : `${bound} (${context})`, actual);
+}
+
+/** One cell of the board R9 left: the gem standing in it, and its `fell`. */
+export interface SettledCell {
+  col: number;
+  row: number;
+  /**
+   * The token the cell holds, and {@link WILDCARD} where the refill dealt the
+   * gem: R9 draws a refill's kind off the game's own seeded generator, so what
+   * lands there is the build's business and no check may assert it.
+   */
+  token: string;
+  /** What R9 fixes as this gem's `fell`. */
+  fell: Fell;
+}
+
+/** The board R9 leaves, cell by cell. */
+export interface Settlement {
+  /**
+   * The board in the notation, one string per row, every refilled cell written
+   * as {@link WILDCARD} — the expected board {@link assertBoardEquals} takes.
+   */
+  rows: string[];
+  /** Every cell of it, in reading order from the top-left. */
+  cells: SettledCell[];
+  /** The cells the refill dealt into, in reading order. */
+  refilled: CellRef[];
+  /**
+   * The figure specs/rules.md calls the board's `fall`: the greatest `fell` on
+   * it. It is what a step leaves behind as `lastFall`, and the second of the two
+   * figures {@link stepHold} runs off.
+   *
+   * A board carrying any refilled cell reports it as a floor rather than a
+   * figure, because a refill's own `fell` is a floor and the greatest of a set
+   * with a floor in it is one too.
+   */
+  fall: Fell;
+}
+
+/**
+ * R9: within each column every surviving gem falls to the lowest empty cell
+ * below it, keeping its order and carrying its strain and its cut, and each cell
+ * still empty is refilled from the top.
+ *
+ * `emptied` names the cells standing empty when R9 runs. The tokens `rows`
+ * carries at those cells are what the removal took away, and they are ignored,
+ * so a caller poses a step by handing over the board it started on and the clear
+ * set that was taken off it.
+ *
+ * R8 RUNS BEFORE THIS ONE. A created gem "occupies the cell it is placed at,
+ * which the removal left empty", so it is standing on the board by the time R9
+ * reads it and falls like any other survivor. A caller that poses a step with a
+ * cut in it writes the created gem over `rows` with {@link withCells} and leaves
+ * its cell out of `emptied`, and this settles it correctly with no further
+ * argument.
+ */
+export function settle(
+  rows: BoardRows,
+  emptied: readonly CellRef[],
+): Settlement {
+  const grid = parseRows(rows);
+  const empty = new Set<string>();
+  for (const cell of emptied) {
+    if (!onBoard(cell)) {
+      fail(
+        `an emptied cell inside the ${GRID_COLS}x${GRID_ROWS} board`,
+        `(${cell.col},${cell.row})`,
+      );
+    }
+    empty.add(cellKey(cell));
+  }
+
+  const placed: string[][] = Array.from({ length: GRID_ROWS }, () =>
+    Array.from({ length: GRID_COLS }, () => WILDCARD),
+  );
+  const fellOf = new Map<string, Fell>();
+  const refilled: CellRef[] = [];
+
+  for (let col = 0; col < GRID_COLS; col += 1) {
+    // The survivors of one column, read from the bottom up and dropped back in
+    // from the bottom up, which is what keeps "the order its column held it in".
+    let target = GRID_ROWS - 1;
+    for (let row = GRID_ROWS - 1; row >= 0; row -= 1) {
+      if (empty.has(cellKey({ col, row }))) continue;
+      placed[target][col] = formatToken(grid[row][col]);
+      fellOf.set(cellKey({ col, row: target }), { exactly: target - row });
+      target -= 1;
+    }
+    for (let row = target; row >= 0; row -= 1) {
+      // A refill comes from above the board's top row, so `row + 1` rows is the
+      // least it can have traveled, and the token it lands as is the build's.
+      fellOf.set(cellKey({ col, row }), { atLeast: row + 1 });
+      refilled.push({ col, row });
+    }
+  }
+
+  const cells: SettledCell[] = [];
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    for (let col = 0; col < GRID_COLS; col += 1) {
+      cells.push({
+        col,
+        row,
+        token: placed[row][col],
+        fell: fellOf.get(cellKey({ col, row })) ?? { exactly: 0 },
+      });
+    }
+  }
+
+  let greatest = 0;
+  for (const cell of cells) {
+    const figure =
+      "exactly" in cell.fell ? cell.fell.exactly : cell.fell.atLeast;
+    greatest = Math.max(greatest, figure);
+  }
+
+  return {
+    rows: placed.map((row) => row.join(" ")),
+    cells,
+    refilled: inReadingOrder(refilled),
+    fall: refilled.length > 0 ? { atLeast: greatest } : { exactly: greatest },
+  };
+}
+
+/** What R9 fixes as the `fell` of one cell of a settlement. */
+export function fellAt(settlement: Settlement, col: number, row: number): Fell {
+  const cell = settlement.cells.find(
+    (candidate) => candidate.col === col && candidate.row === row,
+  );
+  if (cell === undefined) {
+    fail(`a settled cell at (${col},${row})`, "none");
+  }
+  return cell.fell;
+}
+
+/* -------------------------------------------------------------------------- */
+/* A step's three spans — specs/rules.md                                      */
+/* -------------------------------------------------------------------------- */
+//
+// A step's hold is the step's OWN figure rather than a constant: it is built
+// from the `waves` R6 gave the step's clear set and the `fall` R9 left on the
+// board, both of which the step decides for itself. These three write down the
+// table specs/rules.md gives, so a harness driving a step to its end and a check
+// reading `snapshot().stepHold` are asking the same arithmetic.
+
+/** `SHATTER_END = lastWaves * WAVE_SECONDS`: when the last cell has shattered. */
+export function shatterEnd(lastWaves: number): number {
+  return lastWaves * WAVE_SECONDS;
+}
+
+/**
+ * `LAND_AT = SHATTER_END + lastFall * FALL_SECONDS_PER_ROW`: when the last gem
+ * has landed, and the moment the `land` cue plays on.
+ */
+export function landAt(lastWaves: number, lastFall: number): number {
+  return shatterEnd(lastWaves) + lastFall * FALL_SECONDS_PER_ROW;
+}
+
+/**
+ * `STEP_HOLD = LAND_AT + STEP_SECONDS`: how long a step holds the board before
+ * it is read again, which is what `snapshot().stepHold` reports.
+ */
+export function stepHold(lastWaves: number, lastFall: number): number {
+  return landAt(lastWaves, lastFall) + STEP_SECONDS;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1008,4 +1297,165 @@ export function distanceToNearestCell(x: number, y: number): number {
     }
   }
   return nearest;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Pointer targets — specs/controls.md                                        */
+/* -------------------------------------------------------------------------- */
+//
+// WHERE A TARGET COMES FROM, AND WHY NONE OF THEM IS WRITTEN DOWN HERE. A
+// target's rectangle is the BUILD's: specs/controls.md fixes each screen's ids
+// and four requirements over every rectangle, and leaves "what each target looks
+// like ... the build's to design". So this file states no rectangle at all. A
+// check reads the screen's targets off `snapshot().targets`, which reports "the
+// one the game actually hit-tests against", and holds what it read to the four
+// requirements below.
+
+/** One pointer target, as a snapshot reports it: an id and a rectangle. */
+export interface TargetRect {
+  id: string;
+  /** The rectangle's top-left corner, in the stage's logical units. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** The center of a target, which is where a check presses to take it. */
+export function targetCenter(target: TargetRect): { x: number; y: number } {
+  return { x: target.x + target.w / 2, y: target.y + target.h / 2 };
+}
+
+/** A target measures at least `TARGET_MIN_W` by `TARGET_MIN_H`. */
+export function targetIsBigEnough(target: TargetRect): boolean {
+  return target.w >= TARGET_MIN_W && target.h >= TARGET_MIN_H;
+}
+
+/** A target lies wholly within the `STAGE_W x STAGE_H` stage. */
+export function targetIsOnStage(target: TargetRect): boolean {
+  return (
+    target.x >= 0 &&
+    target.y >= 0 &&
+    target.x + target.w <= STAGE_W &&
+    target.y + target.h <= STAGE_H
+  );
+}
+
+/**
+ * Two targets overlap: their rectangles share area.
+ *
+ * Strict on every edge, so two targets laid edge to edge are separate. A shared
+ * boundary line has no area, and specs/controls.md asks that "no two targets on
+ * one screen overlap" so that "a pointer position lies in at most one target" —
+ * which a shared edge does not put at risk in any build that hit-tests a
+ * half-open rectangle.
+ */
+export function targetsOverlap(a: TargetRect, b: TargetRect): boolean {
+  return (
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  );
+}
+
+/**
+ * The stage the board occupies on `playing`, as a rectangle.
+ *
+ * Cell centers run `x` `388..892` and `y` `144..648`, and this is that span
+ * grown by `GEM_HIT_R` (`36`) on every side, so it runs `x` `352..928` and `y`
+ * `108..684`.
+ *
+ * `GEM_HIT_R` RATHER THAN `GEM_R`. specs/controls.md puts the `pause` target
+ * "wholly outside the board's extent ... so it never covers a cell", and a cell
+ * is covered wherever the pointer would target it, which specs/board.md puts at
+ * `GEM_HIT_R` of its center rather than at the `GEM_R` its drawn form fits
+ * inside. specs/instrumentation.md resolves a press against a cell only "outside
+ * that screen's `pause` target", so a target reaching inside `GEM_HIT_R` of a
+ * center would take presses meant for that gem and make part of the board
+ * unplayable. That is the reading under which the specification's own stated
+ * consequence holds, so it is the one this measures.
+ */
+export function boardExtent(): {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+} {
+  const left = cellX(0) - GEM_HIT_R;
+  const top = cellY(0) - GEM_HIT_R;
+  return {
+    x: left,
+    y: top,
+    w: cellX(GRID_COLS - 1) + GEM_HIT_R - left,
+    h: cellY(GRID_ROWS - 1) + GEM_HIT_R - top,
+  };
+}
+
+/** A target shares no area with {@link boardExtent}. */
+export function targetClearsBoard(target: TargetRect): boolean {
+  return !targetsOverlap(target, { id: "board", ...boardExtent() });
+}
+
+/**
+ * The first requirement a screen's reported targets break, worded for a failure,
+ * or `null` when they break none.
+ *
+ * The four requirements are specs/controls.md's, and they are asked of the set
+ * rather than of one rectangle, because the third is about a pair. `onPlaying`
+ * adds the fifth sentence that screen carries alone — the `pause` target lies
+ * clear of the board — since every other screen has no board under it.
+ *
+ * A sentence rather than a boolean: several checks read these targets, each for
+ * its own screen, and a reviewer reading one of their failures needs to be told
+ * which target broke which requirement and by how much.
+ */
+export function targetFault(
+  targets: readonly TargetRect[],
+  onPlaying: boolean,
+): string | null {
+  for (const target of targets) {
+    if (!targetIsBigEnough(target)) {
+      return (
+        `target ${target.id} measures ${target.w}x${target.h}, under the ` +
+        `${TARGET_MIN_W}x${TARGET_MIN_H} a fingertip needs`
+      );
+    }
+    if (!targetIsOnStage(target)) {
+      return (
+        `target ${target.id} runs from (${target.x},${target.y}) to ` +
+        `(${target.x + target.w},${target.y + target.h}), off the ` +
+        `${STAGE_W}x${STAGE_H} stage`
+      );
+    }
+    if (onPlaying && !targetClearsBoard(target)) {
+      const board = boardExtent();
+      return (
+        `target ${target.id} runs from (${target.x},${target.y}) to ` +
+        `(${target.x + target.w},${target.y + target.h}), over the board's ` +
+        `extent from (${board.x},${board.y}) to ` +
+        `(${board.x + board.w},${board.y + board.h})`
+      );
+    }
+  }
+  for (let i = 0; i < targets.length; i += 1) {
+    for (let j = i + 1; j < targets.length; j += 1) {
+      if (targetsOverlap(targets[i], targets[j])) {
+        return `targets ${targets[i].id} and ${targets[j].id} overlap`;
+      }
+    }
+  }
+  return null;
+}
+
+/** A screen's reported targets held to all of {@link targetFault}'s requirements. */
+export function assertTargetsConform(
+  targets: readonly TargetRect[],
+  onPlaying: boolean,
+  context?: string,
+): void {
+  const fault = targetFault(targets, onPlaying);
+  if (fault === null) return;
+  const wanted =
+    `every target at least ${TARGET_MIN_W}x${TARGET_MIN_H}, wholly on the ` +
+    `stage, and clear of every other` +
+    (onPlaying ? " and of the board" : "");
+  fail(context === undefined ? wanted : `${wanted} (${context})`, fault);
 }

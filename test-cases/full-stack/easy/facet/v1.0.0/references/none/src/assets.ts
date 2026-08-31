@@ -69,10 +69,11 @@ export const FRAME_KEY = "frame";
 export const CUT_BRILLIANT_KEY = "cut:brilliant";
 export const CUT_STAR_KEY = "cut:star";
 
-/** The three particle systems. */
+/** The four particle systems. Three are one-shots; {@link FX_AURA} loops. */
 export const FX_CLEAR = "clear-burst";
 export const FX_FLAWED = "flawed-burst";
 export const FX_CUT = "cut-flash";
+export const FX_AURA = "cut-aura";
 
 /** The two music beds. */
 export const MUSIC_TITLE = "title";
@@ -113,12 +114,14 @@ export function assetManifest(): AssetManifest {
     [FX_CLEAR]: "fx/clear-burst.system.json",
     [FX_FLAWED]: "fx/flawed-burst.system.json",
     [FX_CUT]: "fx/cut-flash.system.json",
+    [FX_AURA]: "fx/cut-aura.system.json",
   };
 
   const sounds: Record<string, string> = {
     select: "audio/select.wav",
     swap: "audio/swap.wav",
     refuse: "audio/refuse.wav",
+    land: "audio/land.wav",
     flaw: "audio/flaw.wav",
     cut: "audio/cut.wav",
     levelup: "audio/levelup.wav",

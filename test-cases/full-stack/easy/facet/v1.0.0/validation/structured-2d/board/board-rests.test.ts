@@ -2,12 +2,12 @@
 // as long as no swap is accepted on it, even with a maximal run already on it.
 //
 // WHAT IS BEING DECIDED. specs/rules.md begins a chain from an ACCEPTED SWAP and
-// from nothing else: an accepted swap sets `chainStep` to 1, sets `phase` to
-// `resolving`, and resolves step 1 on the spot, and every further step is read
-// only while `phase` is `resolving`. There is no rule that sweeps an idle board
-// for runs. specs/instrumentation.md draws the consequence for `loadBoard` in as
-// many words — "a posed board rests exactly as it was written until a swap is
-// accepted on it".
+// from nothing else: an accepted swap puts the board into `swapping`, and
+// `SWAP_SECONDS` later `phase` becomes `resolving`, `chainStep` becomes 1 and
+// step 1 resolves; every further step is read only while `phase` is `resolving`.
+// There is no rule that sweeps an idle board for runs. specs/instrumentation.md
+// draws the consequence for `loadBoard` in as many words — "a posed board rests
+// exactly as it was written until a swap is accepted on it".
 //
 // A build that instead scans the board each frame and clears whatever it finds
 // looks correct while it is playing, because in play a run only ever appears at
@@ -35,7 +35,12 @@ import {
 } from "../board";
 import { assertEqual, assertLength, assertTrue } from "../assert";
 import { FRAMES_PER_STEP, MATCH_MIN, STEP_SECONDS } from "../constants";
-import { captureStill, createHarness, loadBoard, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  loadBoard,
+  type Harness,
+} from "../harness";
 
 /**
  * A horizontal run of three rubies, in the middle of the board and clear of the
@@ -55,12 +60,13 @@ const RUN_CELLS: readonly PlacedToken[] = [
 const POSED = quietRowsWithEscape(RUN_CELLS);
 
 /**
- * How long the board is left standing: twelve steps of `STEP_SECONDS`, three
+ * How long the board is left standing: twelve times `STEP_SECONDS`, three
  * seconds of game time.
  *
  * Twelve rather than one because a build that resolves an idle board might do it
- * on its own cadence rather than the chain's; three seconds is long enough that
- * any cadence tied to `STEP_SECONDS` has fired repeatedly.
+ * on its own cadence rather than the chain's; three seconds is several times the
+ * longest hold any single step can carry, so any cadence tied to the step's own
+ * timing has fired repeatedly.
  */
 const RESTING_STEPS = 12;
 const RESTING_FRAMES = FRAMES_PER_STEP * RESTING_STEPS;
@@ -86,7 +92,11 @@ it(`stands unchanged with a run on it for ${RESTING_STEPS * STEP_SECONDS}s of ga
 
   const before = loadBoard(h, POSED);
   assertEqual(before.phase, "idle", "phase at the moment the board is posed");
-  assertEqual(before.chainStep, 0, "chainStep at the moment the board is posed");
+  assertEqual(
+    before.chainStep,
+    0,
+    "chainStep at the moment the board is posed",
+  );
 
   // Nothing is requested and nothing is pressed: game time simply passes.
   await h.advance(RESTING_FRAMES);

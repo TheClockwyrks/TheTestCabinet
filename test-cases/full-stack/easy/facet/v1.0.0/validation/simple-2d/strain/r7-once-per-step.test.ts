@@ -24,9 +24,16 @@
 // must come out of the step at strain 1, not 2.
 //
 // Column 3 loses only the cell above the jade, so R9 leaves it exactly where it
-// was posed. The reading is taken from the step-1 snapshot, which an accepted
-// swap resolves at the call, so a second step of the chain cannot have added
-// the strain this point is looking for the absence of.
+// was posed.
+//
+// WHEN THE READING IS TAKEN. specs/rules.md holds an accepted swap in
+// `swapping` for SWAP_SECONDS (0.18) of game time, clearing nothing, and
+// resolves step 1 when that time is spent. `swapAndStep` carries the game
+// exactly that far and hands back the reading step 1 left; the step then holds
+// the board for its own STEP_HOLD — `lastWaves x WAVE_SECONDS` plus `lastFall x
+// FALL_SECONDS_PER_ROW` plus STEP_SECONDS — before it is read again. So the
+// strain reported is one step's worth, and a second step of the chain cannot
+// have added the strain this point is looking for the absence of.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
@@ -46,7 +53,7 @@ import {
   createHarness,
   loadBoard,
   resolveChain,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -116,17 +123,19 @@ it("raises a gem bordering two cleared cells by one strain only", async () => {
 
   loadBoard(h, posed);
 
-  const rows = await captureReplay(h, "strain", async () => {
-    const stepOne = swap(h, SWAP.a, SWAP.b);
-    // Read at the resolution of step 1 and before any frame runs, so the strain
-    // this reports was raised by that one step alone.
-    const read = renderBoard(stepOne);
+  const taken = await captureReplay(h, "strain", async () => {
+    // Through the swap animation to the result of step 1, read inside that
+    // step's own hold so the strain it carries was raised by one step alone.
+    // The chain is driven on afterwards only so the replay holds the whole move.
+    const stepOne = await swapAndStep(h, SWAP.a, SWAP.b);
+    const read = { rows: renderBoard(stepOne), chainStep: stepOne.chainStep };
     await resolveChain(h);
     return read;
   });
 
+  assertEqual(taken.chainStep, 1, "the chain step the accepted swap opened");
   assertEqual(
-    tokenAt(rows, MARKED.col, MARKED.row),
+    tokenAt(taken.rows, MARKED.col, MARKED.row),
     EXPECTED,
     `the jade at (${MARKED.col},${MARKED.row}), bordering two cleared cells`,
   );

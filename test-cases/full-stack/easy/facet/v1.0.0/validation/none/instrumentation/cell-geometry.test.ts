@@ -64,7 +64,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await h?.dispose();
+  await h.dispose();
 });
 
 it("puts every reported cell center where the board formulas put it", async () => {

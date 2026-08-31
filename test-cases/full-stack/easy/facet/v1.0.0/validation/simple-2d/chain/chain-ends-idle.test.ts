@@ -3,10 +3,10 @@
 // specs/rules.md gives the step boundary two outcomes, and this is the other one:
 // "Otherwise `phase` returns to `idle`, `chainStep` returns to `0`, and the level
 // and end conditions below are evaluated." specs/instrumentation.md says the same
-// of the reading — "`chainStep` and `stepTimer` are `0` while `phase` is `idle`" —
-// so a build that leaves the chain counter standing, or the timer still holding
-// the overrun it stopped on, is reporting a chain that is not running as though
-// it were.
+// of the reading — "`chainStep` and `stepTimer` are `0` while `phase` is not
+// `resolving`" — so a build that leaves the chain counter standing, or the timer
+// still holding the overrun it stopped on, is reporting a chain that is not
+// running as though it were.
 //
 // THE BOARD IS DRIVEN TO ITS OWN END RATHER THAN FOR A FIXED NUMBER OF STEPS.
 // R9 refills the top of every cleared column from the game's own seeded
@@ -16,10 +16,22 @@
 // for a clear set under R5 and R6, and the point is that the settling and the
 // empty clear set are the same event: nothing more seeded, so the chain ended.
 //
-// Then time keeps running. A build that returns to `idle` and then reads the
+// HOW IT IS CARRIED. `swapAndStep` drives the swap animation — the accepted swap
+// exchanges the two cells at once and holds in `swapping` until `swapTimer`
+// reaches `SWAP_SECONDS` (`0.18`), when step 1 resolves — and `resolveChain`
+// then carries past one step boundary at a time, each sized from that step's own
+// reported `stepHold` rather than from a constant. It always returns: a build
+// whose chain never settles comes back as `settled: false` and fails here
+// instead of hanging.
+//
+// THEN TIME KEEPS RUNNING. A build that returns to `idle` and then reads the
 // board again anyway, or lets `stepTimer` go on accumulating while nothing is
-// resolving, is caught by driving two further steps' worth of frames over a
-// settled board and finding it exactly as it was left.
+// resolving, is caught by driving two steps' worth of frames over a settled
+// board and finding it exactly as it was left. Two steps' worth is measured from
+// the hold the settled board itself reports: `stepHold` is
+// `lastWaves * WAVE_SECONDS` plus `lastFall * FALL_SECONDS_PER_ROW` plus
+// `STEP_SECONDS`, so it is at least `STEP_SECONDS` whatever the last step did,
+// and twice the frames that carry past it is more than two steps of any shape.
 //
 // The engine holds the state BY VALUE, so a pose returns the next state and the
 // harness's driver applies it; a reading is synchronous. Only the frame drive is
@@ -28,7 +40,6 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertTrue } from "../assert";
-import { STEP_DRIVE_FRAMES } from "../constants";
 import {
   assertBoardEquals,
   clearSetFromRuns,
@@ -42,9 +53,10 @@ import {
 import {
   captureReplay,
   createHarness,
+  framesPast,
   loadBoard,
   resolveChain,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
 
@@ -86,9 +98,9 @@ it("returns to idle with chainStep and stepTimer at 0 once nothing seeds", async
   );
 
   loadBoard(h, posed);
-  const first = swap(h, SWAP_A, SWAP_B);
-  assertEqual(first.chainStep, 1, "chainStep the accepted swap opened");
-  assertEqual(first.phase, "resolving", "phase the accepted swap opened");
+  const first = await swapAndStep(h, SWAP_A, SWAP_B);
+  assertEqual(first.chainStep, 1, "the chain step the swap resolved into");
+  assertEqual(first.phase, "resolving", "the phase step 1 resolved in");
 
   const settled = await captureReplay(h, "settled", () => resolveChain(h));
 
@@ -102,11 +114,15 @@ it("returns to idle with chainStep and stepTimer at 0 once nothing seeds", async
   // seeds nothing under R5, so R6 closes over an empty seed and there is no
   // clear set for a further step to remove.
   const rested = h.board();
-  assertLength(clearSetFromRuns(rested), 0, "the clear set the rested board seeds");
+  assertLength(
+    clearSetFromRuns(rested),
+    0,
+    "the clear set the rested board seeds",
+  );
 
   // Time keeps running over a settled board, and nothing moves: no further board
   // read, no chain, and a timer that stays at rest rather than accumulating.
-  await h.advance(IDLE_STEPS * STEP_DRIVE_FRAMES);
+  await h.advance(IDLE_STEPS * framesPast(settled.snapshot.stepHold));
   const later = h.snapshot();
   assertEqual(later.phase, "idle", "phase two steps later");
   assertEqual(later.chainStep, 0, "chainStep two steps later");

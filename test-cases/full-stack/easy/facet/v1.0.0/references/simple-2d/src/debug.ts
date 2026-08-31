@@ -22,10 +22,12 @@
 // `specs/state.md` declares to the record those functions read and back.
 //
 // The pointer operations do not stand in for the engine's pointer: they feed the
-// SAME resolution path a player's pointer feeds, so the hit radius, the four
-// press rows, the drag, and the acceptance rules all run exactly as they do in
-// play, and each call takes effect immediately in the state it returns rather
-// than waiting on a frame. What the engine owns is absent by design: the clock
+// SAME resolution path a player's pointer feeds, so the hit radius, the press
+// table, the offer, the release, and the acceptance rules all run exactly as
+// they do in play, and each call takes effect immediately in the state it
+// returns rather than waiting on a frame. Each carries the device that drove it,
+// defaulting to `"mouse"`, so a posed touch and a posed mouse differ only in the
+// device the state reports. What the engine owns is absent by design: the clock
 // (`engine.advance` and its replaceable clock), the keyboard (real key events
 // dispatched at the engine's event target), and the overlay (the backtick key
 // and the panel) carry no operation here.
@@ -37,7 +39,9 @@
 import { fromCore, toCore } from "./bridge";
 import { FACET_DEBUG_VERSION } from "./constants";
 import {
+  clearOffer,
   clearSelection,
+  continueLevel,
   loadBoard,
   openHowTo,
   pauseGame,
@@ -48,17 +52,19 @@ import {
   quitToTitle,
   reset,
   resumeGame,
-  setCursor,
+  setBestChain,
+  setBestMove,
   setGem,
   setLevel,
   setLevelScore,
+  setOffer,
   setScore,
   setSelection,
   snapshot,
   startRound,
   type FacetSnapshot,
 } from "./core";
-import type { FacetState } from "./game";
+import type { FacetState, PointerDevice } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 export type { FacetSnapshot };
@@ -84,9 +90,13 @@ export interface FacetDebugApi {
   setScore(state: View, points: number): FacetState;
   setLevel(state: View, level: number): FacetState;
   setLevelScore(state: View, points: number): FacetState;
-  setCursor(state: View, col: number, row: number): FacetState;
+  setBestChain(state: View, chainStep: number): FacetState;
+  setBestMove(state: View, points: number): FacetState;
+  continueLevel(state: View): FacetState;
   setSelection(state: View, col: number, row: number): FacetState;
   clearSelection(state: View): FacetState;
+  setOffer(state: View, col: number, row: number): FacetState;
+  clearOffer(state: View): FacetState;
   requestSwap(
     state: View,
     colA: number,
@@ -94,9 +104,19 @@ export interface FacetDebugApi {
     colB: number,
     rowB: number,
   ): FacetState;
-  pointerDown(state: View, x: number, y: number): FacetState;
-  pointerMove(state: View, x: number, y: number): FacetState;
-  pointerUp(state: View): FacetState;
+  pointerDown(
+    state: View,
+    x: number,
+    y: number,
+    device?: PointerDevice,
+  ): FacetState;
+  pointerMove(
+    state: View,
+    x: number,
+    y: number,
+    device?: PointerDevice,
+  ): FacetState;
+  pointerUp(state: View, device?: PointerDevice): FacetState;
 }
 
 /** Build the bundle. It holds nothing: every operation is handed its state. */
@@ -117,17 +137,23 @@ export function createDebugApi(): FacetDebugApi {
     setLevel: (state, level) => fromCore(setLevel(toCore(state), level)),
     setLevelScore: (state, points) =>
       fromCore(setLevelScore(toCore(state), points)),
-    setCursor: (state, col, row) =>
-      fromCore(setCursor(toCore(state), col, row)),
+    setBestChain: (state, chainStep) =>
+      fromCore(setBestChain(toCore(state), chainStep)),
+    setBestMove: (state, points) =>
+      fromCore(setBestMove(toCore(state), points)),
+    continueLevel: (state) => fromCore(continueLevel(toCore(state))),
     setSelection: (state, col, row) =>
       fromCore(setSelection(toCore(state), col, row)),
     clearSelection: (state) => fromCore(clearSelection(toCore(state))),
+    setOffer: (state, col, row) => fromCore(setOffer(toCore(state), col, row)),
+    clearOffer: (state) => fromCore(clearOffer(toCore(state))),
     requestSwap: (state, colA, rowA, colB, rowB) =>
       fromCore(poseSwap(toCore(state), colA, rowA, colB, rowB)),
-    pointerDown: (state, x, y) =>
-      fromCore(pointerDown(toCore(state), x, y).state),
-    pointerMove: (state, x, y) =>
-      fromCore(pointerMove(toCore(state), x, y).state),
-    pointerUp: (state) => fromCore(pointerUp(toCore(state))),
+    pointerDown: (state, x, y, device = "mouse") =>
+      fromCore(pointerDown(toCore(state), x, y, device).state),
+    pointerMove: (state, x, y, device = "mouse") =>
+      fromCore(pointerMove(toCore(state), x, y, device).state),
+    pointerUp: (state, device = "mouse") =>
+      fromCore(pointerUp(toCore(state), device).state),
   };
 }

@@ -38,12 +38,15 @@
 // `engine.state`. Where its implementation lives under `src/` is your call; the
 // only fixed point is that `initialize` returns it.
 //
-// The pointer comes from the engine as well. A gem is selected by pressing on
-// it and a swap is requested by pressing its neighbor or dragging onto it, and
-// the engine hands `update` the pointer's position already in logical stage
-// units along with its press and release edges. The engine's input
-// documentation, seeded at `engine/`, defines the API, and `specs/controls.md`
-// states what Facet does with the three of them.
+// The pointer comes from the engine as well, and it is what the whole game is
+// worked with: a gem is taken hold of by pressing on it, offered onto its
+// neighbor by pressing or dragging there, and the move is played by the release.
+// Every screen carries pointer targets besides, so a player with nothing but a
+// touchscreen reaches all of them. The engine hands `update` the pointer's
+// position already in logical stage units, along with its press and release
+// edges and the device that drove it. The engine's input documentation, seeded
+// at `engine/`, defines the API, and `specs/controls.md` states what Facet does
+// with them.
 //
 // The sprites, effects, and sounds are produced, not supplied.
 // `specs/assets.md` states what you produce with the asset tools and commit
@@ -96,12 +99,12 @@ export const game: Game<FacetState, FacetDebugApi> = {
    *
    * `dt` is the real elapsed seconds of this frame, and `simTime` accumulates it
    * on every update whatever the screen. Read the frame's actions and the
-   * pointer position and edges, drive the menus and the cursor, decide every
-   * requested swap by the move rules in specs/rules.md, carry a chain forward
-   * against STEP_SECONDS while `phase` is `resolving`, play cues on their
-   * events, and mirror the engine's mute bit into the returned state's `muted`.
-   * The value returned is what `render` draws and what the next `update`
-   * receives; `state` itself is read-only and stays as it was.
+   * pointer position and edges, drive the menus and the pointer targets, decide
+   * every requested swap by the move rules in specs/rules.md, carry an accepted
+   * swap through SWAP_SECONDS and then a chain forward against each step's own
+   * hold, play cues on their events, and mirror the engine's mute bit into the
+   * returned state's `muted`. The value returned is what `render` draws and what
+   * the next `update` receives; `state` itself is read-only and stays as it was.
    */
   update(
     _state: DeepReadonly<FacetState>,
@@ -116,9 +119,11 @@ export const game: Game<FacetState, FacetDebugApi> = {
    *
    * `api.ctx` arrives cleared and already carrying the logical transform, so
    * draw in 1280x720 coordinates and never read the canvas element's size. Each
-   * cell draws at the center specs/board.md fixes, with the readouts and the
-   * screens clear of the board's extent. The state arrives read-only, so the
-   * type is what guarantees that rendering changes nothing.
+   * cell draws at the center specs/board.md fixes, with the readouts, the screens
+   * and the pointer targets clear of the board's extent. A swap in motion, a
+   * shattering set and a falling gem are each drawn between cells over the spans
+   * specs/rules.md gives them. The state arrives read-only, so the type is what
+   * guarantees that rendering changes nothing.
    */
   render(_state: DeepReadonly<FacetState>, _api: RenderApi): void {
     throw new Error(NOT_IMPLEMENTED);

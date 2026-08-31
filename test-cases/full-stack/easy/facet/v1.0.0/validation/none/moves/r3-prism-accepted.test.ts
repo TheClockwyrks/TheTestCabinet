@@ -13,11 +13,14 @@
 // of the two cells. So a build that accepts this request accepted it for the
 // prism, and one that refuses it is applying only half of R3.
 //
-// WHAT IS READ, AND WHAT DELIBERATELY IS NOT. Acceptance alone: phase
-// `resolving` at chainStep 1 with nothing refused, read with no frame advanced,
-// exactly as "A chain step" describes an accepted swap. What the step SEEDS from
-// a prism trade is R5's business and a different item's; nothing here reads the
-// clear set, the score, or the board the step left.
+// WHAT IS READ, AND WHAT DELIBERATELY IS NOT. Acceptance alone, in the two
+// places specs/rules.md shows it. The request is read with no frame advanced,
+// where an accepted swap is `swapping` with `chainStep` still `0` and nothing
+// refused; then the game is carried past `SWAP_SECONDS` (`0.18`), where the swap
+// has landed and step 1 is `resolving`. A build that refused the request reaches
+// neither reading. What the step SEEDS from a prism trade is R5's business and a
+// different item's; nothing here reads the clear set, the score, or the board the
+// step left.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNull, assertTrue } from "../assert";
@@ -30,19 +33,18 @@ import {
   type BoardRows,
   type CellRef,
 } from "../board";
-import { FRAMES_PER_STEP } from "../constants";
+import { SWAP_SECONDS } from "../constants";
 import {
+  advanceStep,
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  requestSwap,
   type Harness,
 } from "../harness";
 
 /** The run-free filler with a prism written into the middle of it. */
-const ROWS: BoardRows = quietRowsWithEscape([
-  { col: 3, row: 3, token: "X0" },
-]);
+const ROWS: BoardRows = quietRowsWithEscape([{ col: 3, row: 3, token: "X0" }]);
 
 /** The prism at `(3,3)`, traded with the plain jade orthogonally beside it. */
 const PAIR: { a: CellRef; b: CellRef } = {
@@ -74,15 +76,27 @@ it("accepts an exchange that moves a prism and makes no run", async () => {
 
   await loadBoard(h, ROWS);
 
-  const taken = await captureReplay(h, "swap", async () => {
-    const reading = await swap(h, PAIR.a, PAIR.b);
-    // One step's worth of frames after the request, so the evidence shows the
-    // step the prism opened rather than the instant before it.
-    await h.advance(FRAMES_PER_STEP);
-    return reading;
-  });
+  // The capture brackets the request and the animation that follows it, so the
+  // evidence shows the prism crossing to its neighbor and the step it opens
+  // rather than a still picture of the moment before it.
+  await captureReplay(h, "swap", async () => {
+    const taken = await requestSwap(h, PAIR.a, PAIR.b);
+    assertEqual(taken.phase, "swapping", "phase after the prism swap");
+    assertEqual(taken.chainStep, 0, "chainStep after the prism swap");
+    assertNull(taken.refusal, "refusal after the prism swap");
 
-  assertEqual(taken.phase, "resolving", "phase after the prism swap");
-  assertEqual(taken.chainStep, 1, "chainStep after the prism swap");
-  assertNull(taken.refusal, "refusal after the prism swap");
+    // `advanceStep` reads the frames it needs off the state, so what carries the
+    // board here is `SWAP_SECONDS` of game time rather than a count written down.
+    const landed = await advanceStep(h);
+    assertEqual(
+      landed.phase,
+      "resolving",
+      `phase ${SWAP_SECONDS}s after the prism swap`,
+    );
+    assertEqual(
+      landed.chainStep,
+      1,
+      `chainStep ${SWAP_SECONDS}s after the prism swap`,
+    );
+  });
 });

@@ -1,34 +1,30 @@
-// Facet — appearance/selection-marked: the selected cell is drawn differently
-// from that same cell unselected, and differently again from that cell carrying
-// the cursor alone.
+// Facet — appearance/selection-marked: the cell the player has hold of is drawn
+// differently from that same cell with nothing selected.
 //
 // WHAT IS BEING DECIDED. specs/ui.md lists the selection among what the `playing`
 // screen shows — "The selection — The cell at `state.selection` when there is
-// one, marked distinctly from the cursor" — and specs/overview.md requires that
-// "The cursor's cell and the selected cell each read distinctly". Two things are
-// asked of the mark, and both are read here: that a selected cell does not look
-// unselected, and that it does not look like a cell the cursor merely stands on.
-// The second is what "distinctly from the cursor" adds, and it is the one a
-// player depends on — specs/controls.md has the cursor move freely while a
-// selection stands, so both marks are on the board at once and a build that drew
-// them the same would leave a player unable to say which cell the next `confirm`
-// would swap with.
+// one, marked" — and specs/overview.md requires that "The selected cell reads
+// distinctly against a board of gems". The selection is the whole of what a
+// player has hold of: specs/controls.md makes a move a press that takes a gem, a
+// carry onto its neighbor and a release, so a player who cannot see which gem is
+// held cannot see what a release would play. What the mark looks like is the
+// build's, and nothing here reads a color, a shape or a style. The one question
+// with a yes/no answer is whether the cell is drawn differently when the gem in
+// it is the one being held, and that is what this decides.
 //
-// What the marks look like is the build's, and nothing here reads a color, a
-// shape or a style. Nor does anything here decide whether the CURSOR's own mark
-// is visible: that is `appearance/cursor-marked`, and the pair it answers for is
-// not asserted below.
+// HOW ONE CELL DECIDES IT. Two readings are taken at ONE cell of one posed board,
+// and the board is never touched between them: the cell with nothing selected,
+// and the same cell selected. The gem in that cell, its neighbors, the board
+// frame and the background are the same in both, so the distance between them is
+// the mark and nothing else.
 //
-// HOW ONE CELL DECIDES IT. Four readings are taken at ONE cell of one posed
-// board, and the board is never touched between them: the cell plain, the cell
-// carrying the cursor alone, the cell selected with the cursor parked far away,
-// and the cell plain again. The gem in that cell, its neighbors, the board frame
-// and the background are the same in all four, so the distance between two
-// readings is the marks and nothing else. The first and the last are the SAME
-// posed state and are the control — they must read within PATCH_SAME_MAX of each
-// other, or the cell moves on its own and every reading between them says nothing
-// — and they bracket the whole sweep, so the control spans a longer stretch of
-// the build's own animation than either pair it answers for.
+// WHY TWO FRAMES ARE ENOUGH, WITH NO CONTROL BESIDE THEM. The gem posed at the
+// probe cell is `plain` at strain 0. specs/board.md gives its continuous effect
+// to the three cuts alone and puts a gem's damage on the stone rather than in an
+// effect, so a plain stone at strain 0 is entitled to stand still and there is
+// nothing in the cell for the two frames to differ by except the mark. A build
+// that animated the whole field under its board could answer this spuriously,
+// which is a false pass and never a false failure.
 //
 // WHY THE CELL IS READ THROUGH TWO BOXES. specs/board.md confines a GEM's drawn
 // form to `GEM_R` (30) of the cell center, and says nothing of the kind about a
@@ -41,17 +37,14 @@
 // `CELL_PITCH`, and no neighbor's drawn form comes nearer than `CELL_PITCH` minus
 // `GEM_R`.
 //
-// WHY THE SELECTED READING PUTS THE CURSOR ELSEWHERE. specs/controls.md leaves
-// the cursor wherever it was when a selection is made and moves it independently
-// afterward, so a selected cell the cursor is not on is an ordinary position of
-// play. Reading it that way is also what isolates the selection's mark: with the
-// cursor parked at the same far cell in the plain reading and in the selected
-// one, the only thing that changed at the probe cell is the selection.
+// NO OFFER STANDS THROUGH EITHER READING. specs/ui.md draws the two cells of a
+// standing offer exchanged, which would put a different gem in the box, and that
+// is `appearance/offer-drawn-exchanged`'s point rather than this one's.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { quietRowsWithEscape } from "../board";
-import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
-import { CELL_PITCH, PATCH_DISTINCT_MIN, PATCH_SAME_MAX } from "../constants";
+import { assertGreaterThan } from "../assert";
+import { CELL_PITCH, PATCH_DISTINCT_MIN } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -68,19 +61,6 @@ import {
  */
 const PROBE_COL = 3;
 const PROBE_ROW = 3;
-
-/**
- * Where the cursor stands for the readings it is meant to be absent from.
- *
- * The opposite corner of the board, three cells away on each axis, so no mark
- * drawn on that cell can reach into the probe cell's own square.
- */
-const PARKED_COL = 0;
-const PARKED_ROW = 0;
-
-/** Where the cursor stands for the `selection` output, beside the selected cell. */
-const NEIGHBOR_COL = 4;
-const NEIGHBOR_ROW = 3;
 
 /**
  * Half the side of the second box a reading is taken through: the whole cell.
@@ -125,6 +105,14 @@ function apart(a: CellReading, b: CellReading): number {
 
 let h: Harness;
 
+/** Both boxes of the probe cell, off the frame the canvas is holding. */
+function readCell(): CellReading {
+  return {
+    gem: readPatch(h, PROBE_COL, PROBE_ROW),
+    cell: readPatch(h, PROBE_COL, PROBE_ROW, CELL_HALF),
+  };
+}
+
 beforeEach(async () => {
   h = await createHarness();
 });
@@ -133,70 +121,28 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws the selected cell apart from that cell unselected and from that cell under the cursor", async () => {
+it("draws the selected cell apart from that same cell unselected", async () => {
   loadBoard(h, BOARD);
   await h.settle(ART_SETTLE_MS);
 
-  // The cell plain: neither selected nor under the cursor.
+  // The cell with nothing selected and nothing offered.
   h.debug.clearSelection();
-  h.debug.setCursor(PARKED_COL, PARKED_ROW);
+  h.debug.clearOffer();
   await h.advance(1);
-  const plain = {
-    gem: readPatch(h, PROBE_COL, PROBE_ROW),
-    cell: readPatch(h, PROBE_COL, PROBE_ROW, CELL_HALF),
-  };
+  const unselected = readCell();
 
-  // The cell carrying the cursor and nothing else.
-  h.debug.setCursor(PROBE_COL, PROBE_ROW);
-  await h.advance(1);
-  const underCursor = {
-    gem: readPatch(h, PROBE_COL, PROBE_ROW),
-    cell: readPatch(h, PROBE_COL, PROBE_ROW, CELL_HALF),
-  };
-
-  // The cell selected, with the cursor back where it stood for the plain reading.
+  // The same cell, with the gem in it the one the player has hold of.
   h.debug.setSelection(PROBE_COL, PROBE_ROW);
-  h.debug.setCursor(PARKED_COL, PARKED_ROW);
   await h.advance(1);
-  const selected = {
-    gem: readPatch(h, PROBE_COL, PROBE_ROW),
-    cell: readPatch(h, PROBE_COL, PROBE_ROW, CELL_HALF),
-  };
+  const selected = readCell();
 
-  // And plain again — the same posed state as the first reading, three frames on.
-  h.debug.clearSelection();
-  h.debug.setCursor(PARKED_COL, PARKED_ROW);
-  await h.advance(1);
-  const plainAgain = {
-    gem: readPatch(h, PROBE_COL, PROBE_ROW),
-    cell: readPatch(h, PROBE_COL, PROBE_ROW, CELL_HALF),
-  };
-
-  // Evidence, and no part of the verdict: the selected cell and the cursor's cell
-  // standing side by side, as they do whenever a player has picked a gem.
-  h.debug.setSelection(PROBE_COL, PROBE_ROW);
-  h.debug.setCursor(NEIGHBOR_COL, NEIGHBOR_ROW);
-  await h.advance(1);
+  // Evidence, and no part of the verdict: the held gem standing on its board.
   captureStill(h, "selection");
 
-  assertLessThanOrEqual(
-    apart(plain, plainAgain),
-    PATCH_SAME_MAX,
-    `how far cell (${PROBE_COL},${PROBE_ROW}) reads from itself across the ` +
-      `sweep with nothing selected and the cursor parked both times`,
-  );
-
   assertGreaterThan(
-    apart(selected, plain),
+    apart(selected, unselected),
     PATCH_DISTINCT_MIN,
     `how far cell (${PROBE_COL},${PROBE_ROW}) reads selected from the same ` +
       `cell unselected`,
-  );
-
-  assertGreaterThan(
-    apart(selected, underCursor),
-    PATCH_DISTINCT_MIN,
-    `how far cell (${PROBE_COL},${PROBE_ROW}) reads selected from the same ` +
-      `cell carrying the cursor alone`,
   );
 });

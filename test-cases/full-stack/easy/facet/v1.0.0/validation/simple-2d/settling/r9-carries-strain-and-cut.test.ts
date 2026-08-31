@@ -21,6 +21,12 @@
 // of the seed, so it falls as an ordinary survivor and the step clears the same
 // three cells it would without it.
 //
+// WHEN THE READING IS TAKEN. An accepted swap exchanges the two cells at once and
+// then holds them in motion: specs/rules.md sets `phase` to `swapping` with
+// `chainStep` at 0, and step 1 resolves once `SWAP_SECONDS` (0.18) of game time
+// has passed. `swapAndStep` carries the board through exactly that and hands back
+// the reading step 1 left behind, R9 included.
+//
 // WHAT IS READ. Each mark is looked for at the cell three rows below the one it
 // was posed at, and its kind, its strain and its cut are read there one at a
 // time, so a build that carried the gem but flattened its strain fails on the
@@ -41,10 +47,12 @@ import {
 import {
   captureReplay,
   createHarness,
+  framesShortOf,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
+import type { FacetSnapshot } from "../surface";
 
 /** The column that is cleared at its foot and read at its middle. */
 const COL = 4;
@@ -84,12 +92,20 @@ const CLEAR_SET: readonly CellRef[] = [
 ];
 
 /**
- * Frames driven after the swap purely so the replay carries the fall.
+ * Frames that carry the recording to just short of the end of the step the
+ * reading was taken in, so the replay holds the fall rather than stopping on the
+ * frame the step resolved.
  *
- * Short of `STEP_SECONDS` (0.25 s, 16 frames of this clock), so the board is
- * never read a second time and the readings below still describe step 1.
+ * A step's hold is the STEP's OWN figure — `lastWaves * WAVE_SECONDS` plus
+ * `lastFall * FALL_SECONDS_PER_ROW` plus `STEP_SECONDS` — which the snapshot
+ * reports as `stepHold`, so the frames that fill it are read off the reading
+ * rather than written down. `framesShortOf` keeps the drive strictly inside what
+ * is left of that hold, so the board is never read a second time and the
+ * readings below still describe step 1.
  */
-const REPLAY_FRAMES = 12;
+function restOfStep(reading: FacetSnapshot): number {
+  return framesShortOf(Math.max(0, reading.stepHold - reading.stepTimer));
+}
 
 let h: Harness;
 
@@ -115,8 +131,8 @@ it("lands a fallen gem with the strain and the cut it set out with", async () =>
 
   loadBoard(h, posed);
   const settled = await captureReplay(h, "fall", async () => {
-    const first = swap(h, A, B);
-    await h.advance(REPLAY_FRAMES);
+    const first = await swapAndStep(h, A, B);
+    await h.advance(restOfStep(first));
     return first;
   });
   assertEqual(settled.chainStep, 1, "the chain step the swap opened");

@@ -10,18 +10,33 @@
 // `specs/ui.md` fixes the three labels (`SCORE`, `LEVEL`, `CHAIN`) and requires
 // the level meter to be read "without arithmetic", so the meter is a bar with
 // the two figures under it rather than a number to divide.
+//
+// The screen's one pointer target is drawn here too: the `PAUSE` control, at
+// exactly the rectangle `src/core/targets.ts` reports for it, which sits in the
+// strip to the right of the board and never covers a cell.
 
-import { HUD_CHAIN_LABEL, HUD_LEVEL_LABEL, HUD_SCORE_LABEL } from "./constants";
-import { levelTarget, multiplierFor, type FacetState } from "./core";
+import {
+  HUD_CHAIN_LABEL,
+  HUD_LEVEL_LABEL,
+  HUD_SCORE_LABEL,
+  PAUSE_LABEL,
+  TITLE_TEXT,
+} from "./constants";
+import {
+  levelTarget,
+  multiplierFor,
+  targetsFor,
+  type FacetState,
+} from "./core";
 import {
   COLOR,
   FONT_DISPLAY,
   FONT_NUMERIC,
+  drawControl,
   drawTracked,
   font,
   roundedRect,
 } from "./theme";
-import { TITLE_TEXT } from "./constants";
 
 /** The left readout column: from `x` to `x + WIDTH`, clear of the bench. */
 const LEFT_X = 44;
@@ -150,13 +165,24 @@ function drawChain(ctx: CanvasRenderingContext2D, state: FacetState): void {
   );
 }
 
+/**
+ * The `PAUSE` control, drawn to fill the `pause` pointer target exactly, so a
+ * player with only a pointer leaves the board through the rectangle the game
+ * actually hit-tests.
+ */
+function drawPauseControl(ctx: CanvasRenderingContext2D): void {
+  for (const target of targetsFor("playing")) {
+    if (target.id === "pause") drawControl(ctx, target, PAUSE_LABEL);
+  }
+}
+
 /** The controls, and the mute state, along the foot of the right column. */
 function drawHints(ctx: CanvasRenderingContext2D, state: FacetState): void {
   const lines = [
-    "ARROWS / WASD  MOVE",
-    "ENTER  SELECT AND SWAP",
-    "DRAG A GEM ONTO ITS NEIGHBOR",
-    "P  PAUSE     M  SOUND     `  DEBUG",
+    "PRESS A STONE TO TAKE HOLD",
+    "CARRY IT ONTO ITS NEIGHBOR",
+    "LET GO TO PLAY THE MOVE",
+    "ESC  PAUSE     M  SOUND     `  DEBUG",
   ];
   ctx.font = font(13, 500, FONT_DISPLAY);
   ctx.textAlign = "right";
@@ -189,6 +215,7 @@ export function drawHud(
   drawMeter(ctx, state);
   drawChain(ctx, state);
   drawHints(ctx, state);
+  drawPauseControl(ctx);
 
   ctx.restore();
 }

@@ -12,70 +12,141 @@
 // same choice PLAY AGAIN makes from gameover" and then lists exactly the state
 // a round opens in. So one pose decides both menu entries, and nothing here
 // depends on where either entry sits in its menu — the ordering is the menus'
-// own point, not this one.
+// own point, not this one. The pose is taken from each of the two screens in
+// turn, because the sentence is about both.
 //
 // TWO ROUNDS, AND THE SECOND IS THE ONE THAT DECIDES IT. The first `start()`
 // opens from a game that has played nothing, which a build carrying state over
-// would still pass. So the round is then dirtied through the poses
-// specs/instrumentation.md gives for exactly that — a score, a level, a level
-// score, a moved cursor and a selection — carried back to the title the way a
-// player leaves a round, and started again. Every field is asserted the same
-// way both times, by the same helper, because "fresh" has to mean the same
-// thing on the second round as on the first.
+// would still pass. So a round is then really played — a swap accepted, a chain
+// resolved, and the round driven to its end — and the figures it left are posed
+// higher still through the operations specs/instrumentation.md gives for exactly
+// that, so every zero asserted on the second round is known to be `start`
+// clearing something rather than a field that was never touched. Every field is
+// asserted the same way both times, by the same helper, because "fresh" has to
+// mean the same thing on the second round as on the first.
+//
+// THE THREE FIGURES A LEVEL IS MEASURED BY ARE IN THE LIST. specs/rules.md has
+// `moveScore`, `bestMove` and `bestChain` return to `0` "when a level is opened
+// and when a round starts, so each level is measured on its own" — so a round
+// played after another must be measured from zero, and a build that carried a
+// previous round's best move into a new one reports a figure no move of this
+// round earned.
+//
+// HOW THE FIRST ROUND IS ENDED. specs/rules.md ends a round "when `phase`
+// returns to `idle` and no legal swap exists on the board", so a chain is opened
+// with an accepted swap and the board that chain will next be read against is
+// written under it with `setGem`, which specs/instrumentation.md says leaves the
+// screen, the phase and the selection where they were. `deadBoard()` carries no
+// run under R4 and no adjacent exchange R1 and R3 both accept — both asserted
+// here rather than assumed — so once the step's hold is spent the board seeds
+// nothing, the chain returns to idle, and the round is over.
 //
 // The board is asserted as a board IN PLAY — the full GRID_COLS x GRID_ROWS
 // specs/board.md fixes, rather than the `{ cols: 0, rows: 0, cells: [] }` that
 // specs/instrumentation.md says stands while no board is in play. What that
-// dealt board must contain — no run, a legal swap, plain and clean gems — is
-// specs/rules.md's opening deal, and each of those is a point of its own.
+// dealt board must contain — no run, a legal swap, plain and clean gems, and a
+// fall from above the board — is specs/rules.md's opening deal, and each of
+// those is a point of its own.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual } from "../assert";
 import {
-  CURSOR_START_COL,
-  CURSOR_START_ROW,
-  GRID_COLS,
-  GRID_ROWS,
-} from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
+  assertDeepEqual,
+  assertEqual,
+  assertLength,
+  assertTrue,
+} from "../assert";
+import { GRID_COLS, GRID_ROWS } from "../constants";
+import {
+  deadBoard,
+  legalSwaps,
+  maximalRuns,
+  parseRows,
+  quietRowsWith,
+  swapIsLegal,
+  tokenAt,
+  type BoardRows,
+  type CellRef,
+  type PlacedToken,
+} from "../board";
+import {
+  advanceStep,
+  captureStill,
+  createHarness,
+  loadBoard,
+  swapAndStep,
+  type Harness,
+} from "../harness";
 import type { FacetSnapshot } from "../surface";
 
-/** Frames the first round is left running for, so it is a round that was played. */
-const PLAYED_FRAMES = 8;
+/** Three rubies across row 4, parted by the amethyst the swap trades out. */
+const TRIGGER: PlacedToken[] = [
+  { col: 3, row: 4, token: "R0" },
+  { col: 4, row: 4, token: "R0" },
+  { col: 5, row: 4, token: "M0" },
+  { col: 6, row: 4, token: "R0" },
+];
 
-/** The residue of a round: figures no fresh round may be handed. */
+const SWAP_A: CellRef = { col: 5, row: 4 };
+const SWAP_B: CellRef = { col: 6, row: 4 };
+
+/**
+ * The residue of a played round: figures no fresh round may be handed.
+ *
+ * Each is posed rather than earned, so what the second round has to clear away
+ * is a known figure. The two bests are posed ABOVE anything the chain could have
+ * reached — a chain of one step leaves `bestChain` at `1` — so a build that
+ * merely failed to raise them is not mistaken here for one that cleared them.
+ */
 const PLAYED_SCORE = 4321;
 const PLAYED_LEVEL = 3;
 const PLAYED_LEVEL_SCORE = 777;
-const PLAYED_CURSOR = { col: 5, row: 6 };
-const PLAYED_SELECTION = { col: 2, row: 3 };
+const PLAYED_BEST_CHAIN = 6;
+const PLAYED_BEST_MOVE = 890;
+const PLAYED_SELECTION: CellRef = { col: 2, row: 3 };
+const PLAYED_OFFER: CellRef = { col: 3, row: 3 };
 
 let h: Harness;
 
-/** Every field specs/ui.md and specs/instrumentation.md fix for a round's opening. */
+/** Every field the item names for a round's opening, read off one snapshot. */
 function assertFreshRound(round: FacetSnapshot, which: string): void {
   assertEqual(round.screen, "playing", `${which}: the screen a round opens on`);
   assertEqual(round.score, 0, `${which}: score`);
   assertEqual(round.level, 1, `${which}: level`);
   assertEqual(round.levelScore, 0, `${which}: levelScore`);
+  // The three figures specs/rules.md returns to 0 when a round starts.
+  assertEqual(round.moveScore, 0, `${which}: moveScore`);
+  assertEqual(round.bestMove, 0, `${which}: bestMove`);
+  assertEqual(round.bestChain, 0, `${which}: bestChain`);
   assertEqual(round.phase, "idle", `${which}: phase`);
   assertEqual(round.chainStep, 0, `${which}: chainStep`);
   assertEqual(round.menuIndex, 0, `${which}: menuIndex`);
-  assertDeepEqual(
-    round.cursor,
-    { col: CURSOR_START_COL, row: CURSOR_START_ROW },
-    `${which}: the cell the cursor opens on`,
-  );
   assertEqual(round.selection, null, `${which}: selection`);
+  assertEqual(round.offer, null, `${which}: offer`);
   assertEqual(round.refusal, null, `${which}: refusal`);
   // A board is in play, and it is the whole board specs/board.md fixes.
-  assertEqual(round.board.cols, GRID_COLS, `${which}: the dealt board's columns`);
-  assertEqual(round.board.rows, GRID_ROWS, `${which}: the dealt board's rows`);
   assertEqual(
-    round.board.cells.length,
+    round.board.cols,
+    GRID_COLS,
+    `${which}: the dealt board's columns`,
+  );
+  assertEqual(round.board.rows, GRID_ROWS, `${which}: the dealt board's rows`);
+  assertLength(
+    round.board.cells,
     GRID_COLS * GRID_ROWS,
     `${which}: cells on the dealt board`,
   );
+}
+
+/** Write a whole board onto the live one, `setGem` by `setGem`. */
+function writeBoard(rows: BoardRows): void {
+  // Parsed on this side first, so a typo in the fixture fails here rather than
+  // crossing into the build one cell at a time.
+  parseRows(rows);
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    for (let col = 0; col < GRID_COLS; col += 1) {
+      h.debug.setGem(col, row, tokenAt(rows, col, row));
+    }
+  }
 }
 
 beforeEach(async () => {
@@ -86,7 +157,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("opens a fresh round from the title, and another one after a round was played", async () => {
+it("opens a fresh round from the title, and another one from the end of a played round", async () => {
   h.debug.reset();
   assertEqual(h.snapshot().screen, "title", "the screen `start` is taken from");
 
@@ -97,34 +168,61 @@ it("opens a fresh round from the title, and another one after a round was played
   captureStill(h, "round");
   assertFreshRound(first, "the first round");
 
-  // Now play one: let frames run, bank a score and a level, and leave the
-  // cursor and a selection somewhere other than where a round opens. Each is
-  // read back, so what the second round has to clear away is known to be there
-  // rather than assumed.
-  await h.advance(PLAYED_FRAMES);
+  // Now a round is really played. The posed board carries the one productive
+  // exchange the scenario planted, and the swap opens a chain that scores.
+  const posed = quietRowsWith(TRIGGER);
+  assertLength(maximalRuns(posed), 0, "maximal runs on the posed board");
+  assertTrue(swapIsLegal(posed, SWAP_A, SWAP_B), "R1 and R3 accept the swap");
+  loadBoard(h, posed);
+  const resolving = await swapAndStep(h, SWAP_A, SWAP_B);
+  assertEqual(
+    resolving.phase,
+    "resolving",
+    "the phase the accepted swap opened",
+  );
+
+  // And driven to its end: the board the holding step will be read against
+  // seeds nothing and offers nothing, so the chain settles and the round is over.
+  const dead = deadBoard();
+  assertLength(maximalRuns(dead), 0, "maximal runs on the dead board");
+  assertLength(legalSwaps(dead), 0, "legal swaps on the dead board");
+  writeBoard(dead);
+  const over = await advanceStep(h);
+  assertEqual(over.screen, "gameover", "the screen the settled round reaches");
+
+  // The figures the played round leaves, posed higher than the round earned
+  // them and read back, so every zero asserted below is `start` clearing
+  // something that was standing.
   h.debug.setScore(PLAYED_SCORE);
   h.debug.setLevel(PLAYED_LEVEL);
   h.debug.setLevelScore(PLAYED_LEVEL_SCORE);
-  h.debug.setCursor(PLAYED_CURSOR.col, PLAYED_CURSOR.row);
+  h.debug.setBestChain(PLAYED_BEST_CHAIN);
+  h.debug.setBestMove(PLAYED_BEST_MOVE);
   h.debug.setSelection(PLAYED_SELECTION.col, PLAYED_SELECTION.row);
+  h.debug.setOffer(PLAYED_OFFER.col, PLAYED_OFFER.row);
+
   const played = h.snapshot();
   assertEqual(played.score, PLAYED_SCORE, "the score the round banked");
   assertEqual(played.level, PLAYED_LEVEL, "the level the round reached");
-  assertEqual(played.levelScore, PLAYED_LEVEL_SCORE, "the level score it banked");
-  assertDeepEqual(played.cursor, PLAYED_CURSOR, "where the round left the cursor");
-  assertDeepEqual(played.selection, PLAYED_SELECTION, "what the round left selected");
+  assertEqual(
+    played.levelScore,
+    PLAYED_LEVEL_SCORE,
+    "the level score it banked",
+  );
+  assertEqual(played.bestChain, PLAYED_BEST_CHAIN, "the level's longest chain");
+  assertEqual(played.bestMove, PLAYED_BEST_MOVE, "the level's best move");
+  assertDeepEqual(played.selection, PLAYED_SELECTION, "the gem it left held");
+  assertDeepEqual(played.offer, PLAYED_OFFER, "the cell it left offered");
 
-  // Leave the round the way a player leaves one, back to the title.
-  h.debug.pause();
-  h.debug.quit();
-  assertEqual(h.snapshot().screen, "title", "the screen a quit round returns to");
-
-  // With the highlight moved off the first item, so `menuIndex` being 0 in the
-  // round below is the round setting it rather than it never having moved.
+  // With the highlight moved off the first item, so `menuIndex` reading 0 in
+  // the round below is the round setting it rather than it never having moved.
+  // Nothing is asserted of that move: which item the highlight lands on is the
+  // menus' own point, so a build whose menu does not answer is asked this
+  // question unchanged rather than failed for it here.
   await h.tapAction("down");
 
-  // And the second round is as fresh as the first: every figure of the round
-  // that was just played is gone.
+  // And the round `PLAY AGAIN` opens is as fresh as the first: every figure of
+  // the round that was just played is gone.
   h.debug.start();
   assertFreshRound(h.snapshot(), "the round after a played round");
 });

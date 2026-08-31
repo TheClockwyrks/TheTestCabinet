@@ -4,19 +4,31 @@
 // move: the two cells "differ by 1 in column and 0 in row, or by 0 in column and
 // 1 in row". Both are posed here rather than one, because a build that wired
 // only one axis — a drag reader that answers a sideways gesture and drops an
-// upright one, a keyboard commit that only ever trades with the cell to the
-// right — passes a check that poses a single orientation while half of every
-// board is unplayable.
+// upright one, a release that only ever trades with the cell to the right —
+// passes a check that poses a single orientation while half of every board is
+// unplayable.
 //
-// WHAT ACCEPTANCE LOOKS LIKE, AND WHY IT IS READ THIS WAY. "A chain step" says
-// an accepted swap "exchanges the two cells at once, sets chainStep to 1, sets
-// phase to resolving, and resolves step 1 immediately". So the reading is taken
-// with NO frame advanced, and what it shows is phase `resolving` at chainStep 1
-// with nothing refused. The two exchanged cells are deliberately not read back:
-// step 1 has already cleared the run they made and R9 has refilled over it, so
-// they no longer hold what was exchanged. That is the ruleset working, not a
-// fault, and it is why acceptance is read off the phase rather than off the
-// board.
+// WHAT ACCEPTANCE LOOKS LIKE, AND WHY IT IS READ IN TWO PLACES. specs/rules.md
+// puts an animation between the acceptance and the first step: an accepted swap
+// "exchanges the two cells at once, sets `phase` to `swapping`, sets `swapTimer`
+// to `0`, and leaves `chainStep` at `0`. Nothing is cleared yet". So the request
+// is read with NO frame advanced, where the acceptance shows as `swapping` with
+// nothing refused and the two cells already exchanged; and then the game is
+// carried past `SWAP_SECONDS` (`0.18`), where the acceptance shows as
+// `resolving` at `chainStep` 1. A build that refused the request never reaches
+// either reading, and a build that took it and cleared on the spot fails the
+// first.
+//
+// THE WHOLE BOARD IS READ AT THE FIRST READING, AND IT CAN BE. Nothing has been
+// cleared yet, so the board the request left is the posed board with exactly two
+// cells exchanged — which `board.ts`'s `swapped` states independently. That is a
+// stronger reading than the two named cells: a build that exchanged the pair and
+// also disturbed something else is caught by it.
+//
+// WHAT IS DELIBERATELY NOT READ. What the step then CLEARS, which is `runs`'s,
+// and how long the swap holds before it resolves, which is `chain`'s two swap
+// points. What this one reads is only that the acceptance path was opened at all,
+// on both of R1's admissible offsets.
 //
 // WHY THE READING IS ABOUT R1 AND NOTHING ELSE. Each board is the run-free
 // filler with exactly the cells its scenario needs written over it, and the
@@ -29,18 +41,21 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNull, assertTrue } from "../assert";
 import {
   areAdjacent,
+  assertBoardEquals,
   maximalRuns,
   quietRowsWith,
   swapWouldMatch,
+  swapped,
   type BoardRows,
   type CellRef,
 } from "../board";
-import { FRAMES_PER_STEP } from "../constants";
+import { SWAP_SECONDS } from "../constants";
 import {
+  advanceStep,
   captureReplay,
   createHarness,
   loadBoard,
-  swap,
+  requestSwap,
   type Harness,
 } from "../harness";
 import type { FacetSnapshot } from "../surface";
@@ -114,36 +129,59 @@ function assertFixture(rows: BoardRows, pair: Pair, context: string): void {
   );
 }
 
-/** What specs/rules.md says an accepted swap has left behind. */
-function assertAccepted(taken: FacetSnapshot, context: string): void {
-  assertEqual(taken.phase, "resolving", `${context}: phase`);
-  assertEqual(taken.chainStep, 1, `${context}: chainStep`);
+/** What specs/rules.md says the frame that ACCEPTS a swap has left behind. */
+function assertInMotion(taken: FacetSnapshot, context: string): void {
+  assertEqual(taken.phase, "swapping", `${context}: phase`);
+  assertEqual(taken.chainStep, 0, `${context}: chainStep`);
   assertNull(taken.refusal, `${context}: refusal`);
 }
 
+/** What specs/rules.md says stands once `SWAP_SECONDS` has gone by. */
+function assertResolved(landed: FacetSnapshot, context: string): void {
+  assertEqual(landed.phase, "resolving", `${context}: phase`);
+  assertEqual(landed.chainStep, 1, `${context}: chainStep`);
+}
+
+/**
+ * Pose `rows`, request `pair`, and hold the two readings R1's acceptance shows
+ * itself in.
+ *
+ * `advanceStep` carries a `swapping` board past `SWAP_SECONDS` and stops well
+ * inside the step that follows, reading the frames it needs off the state rather
+ * than off a constant, so neither reading depends on a figure written here.
+ */
+async function acceptsAndResolves(
+  rows: BoardRows,
+  pair: Pair,
+  context: string,
+): Promise<void> {
+  assertFixture(rows, pair, context);
+  await loadBoard(h, rows);
+
+  const inMotion = await requestSwap(h, pair.a, pair.b);
+  assertInMotion(inMotion, context);
+  // The exchange happened "at once", and nothing else did: the board the request
+  // left is the posed board with exactly those two cells traded.
+  assertBoardEquals(
+    await h.board(),
+    swapped(rows, pair.a, pair.b),
+    `${context}: the board the acceptance left`,
+  );
+
+  assertResolved(await advanceStep(h), `${context}, ${SWAP_SECONDS}s later`);
+}
+
 it("accepts an exchange one column apart", async () => {
-  assertFixture(SIDEWAYS_ROWS, SIDEWAYS, "the sideways exchange");
-  await loadBoard(h, SIDEWAYS_ROWS);
-
-  // The capture brackets the request and one step's worth of frames after it, so
-  // the evidence a reviewer opens is the board taking the move rather than a
-  // still picture of the moment before it.
-  const taken = await captureReplay(h, "swap", async () => {
-    const reading = await swap(h, SIDEWAYS.a, SIDEWAYS.b);
-    await h.advance(FRAMES_PER_STEP);
-    return reading;
-  });
-
-  assertAccepted(taken, "the sideways exchange");
+  // The capture brackets the request and the animation that follows it, so the
+  // evidence a reviewer opens is the board taking the move rather than a still
+  // picture of the moment before it.
+  await captureReplay(h, "swap", () =>
+    acceptsAndResolves(SIDEWAYS_ROWS, SIDEWAYS, "the sideways exchange"),
+  );
 });
 
 it("accepts an exchange one row apart", async () => {
   // The same rule on the other axis. A build that accepts only one of the two
   // orientations reaches this check having passed the one above it.
-  assertFixture(UPRIGHT_ROWS, UPRIGHT, "the upright exchange");
-  await loadBoard(h, UPRIGHT_ROWS);
-
-  const taken = await swap(h, UPRIGHT.a, UPRIGHT.b);
-
-  assertAccepted(taken, "the upright exchange");
+  await acceptsAndResolves(UPRIGHT_ROWS, UPRIGHT, "the upright exchange");
 });

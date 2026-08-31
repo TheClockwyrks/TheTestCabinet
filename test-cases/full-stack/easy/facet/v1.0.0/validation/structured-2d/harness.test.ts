@@ -69,10 +69,14 @@ import {
   LEVEL_TARGET_STEP,
   MAX_STRAIN,
   PAUSED_TITLE_TEXT,
+  REFUSAL_FRAMES_BEFORE,
+  REFUSAL_SECONDS,
   STAGE_H,
   STAGE_W,
   STEP_SECONDS,
+  SWAP_DRIVE_FRAMES,
   TAGLINE_TEXT,
+  TICK_S,
   TITLE_ITEMS,
   TITLE_TEXT,
 } from "./constants";
@@ -80,36 +84,54 @@ import {
   captureReplay,
   captureStill,
   createHarness,
+  dragGem,
   drawnText,
   drewText,
+  framesPast,
+  framesShortOf,
   loadBoard,
   meanColor,
   patchDistance,
   poseBoard,
   poseBoardWithEscape,
+  requestSwap,
   resolveChain,
   seconds,
   showsText,
   startRound,
-  swap,
+  stepDriveFrames,
+  swapAndStep,
+  takeTarget,
+  targetById,
   watchCues,
   type DrawCall,
   type Harness,
   type Patch,
 } from "./harness";
-import { FACET_DEBUG_VERSION, REQUIRED_OPS } from "./surface";
+import {
+  FACET_DEBUG_VERSION,
+  REQUIRED_OPS,
+  type FacetSnapshot,
+  type Phase,
+} from "./surface";
 
 /* -------------------------------------------------------------------------- */
 /* The notation — specs/board.md                                              */
 /* -------------------------------------------------------------------------- */
 
 it("reads and writes every token specs/board.md gives as an example", () => {
+  // Every gem read out of a token carries a `fell` of 0: the notation records
+  // where a gem stands and nothing about how it got there, and specs/board.md
+  // has every gem of a written board standing still in the cell it is written
+  // at. `formatToken` writes the three fields the notation carries and never
+  // that one, which is why the fixtures below are read back whole and written
+  // back from the same object.
   const examples: [string, ReturnType<typeof parseToken>][] = [
-    ["R0", { kind: "ruby", cut: "plain", strain: 0 }],
-    ["J3", { kind: "jade", cut: "plain", strain: 3 }],
-    ["S1b", { kind: "sapphire", cut: "brilliant", strain: 1 }],
-    ["C0s", { kind: "citrine", cut: "star", strain: 0 }],
-    ["X0", { kind: null, cut: "prism", strain: 0 }],
+    ["R0", { kind: "ruby", cut: "plain", strain: 0, fell: 0 }],
+    ["J3", { kind: "jade", cut: "plain", strain: 3, fell: 0 }],
+    ["S1b", { kind: "sapphire", cut: "brilliant", strain: 1, fell: 0 }],
+    ["C0s", { kind: "citrine", cut: "star", strain: 0, fell: 0 }],
+    ["X0", { kind: null, cut: "prism", strain: 0, fell: 0 }],
   ];
   for (const [token, gem] of examples) {
     expect(parseToken(token)).toEqual(gem);
@@ -462,7 +484,9 @@ it("resolves the exact chain step specs/rules.md describes for one swap", async 
     { col: 3, row: 4, token: "R0" },
   ]);
 
-  const first = swap(h, { col: 4, row: 5 }, { col: 4, row: 4 });
+  // The request alone only puts the swap in motion; carried through the
+  // animation, this reading is step 1.
+  const first = await swapAndStep(h, { col: 4, row: 5 }, { col: 4, row: 4 });
 
   // R5 seeds the step with the union of the maximal runs: exactly three cells.
   expect(first.lastCleared).toBe(3);
@@ -500,7 +524,7 @@ it("resolves the exact chain step specs/rules.md describes for one swap", async 
 
 it("reads back a refusal for a swap that makes nothing", () => {
   poseBoard(h, []);
-  const refused = swap(h, { col: 0, row: 0 }, { col: 1, row: 0 });
+  const refused = requestSwap(h, { col: 0, row: 0 }, { col: 1, row: 0 });
   expect(refused.phase).toBe("idle");
   expect(refused.refusal).not.toBeNull();
   expect(refused.refusal?.a).toEqual({ col: 0, row: 0 });
@@ -574,7 +598,7 @@ it("writes a still and a replay under the running suite's own address", async ()
   await h.advance(1);
   captureStill(h, "posed");
   const settled = await captureReplay(h, "chain", async () => {
-    swap(h, { col: 4, row: 5 }, { col: 4, row: 4 });
+    await swapAndStep(h, { col: 4, row: 5 }, { col: 4, row: 4 });
     return resolveChain(h);
   });
   expect(settled.settled).toBe(true);
@@ -597,7 +621,7 @@ it("keeps the round alive when a chain settles over the escape swap", async () =
     { col: 2, row: 4, token: "R0" },
     { col: 3, row: 4, token: "R0" },
   ]);
-  const first = swap(h, { col: 4, row: 5 }, { col: 4, row: 4 });
+  const first = await swapAndStep(h, { col: 4, row: 5 }, { col: 4, row: 4 });
   expect(first.lastCleared).toBe(3);
   const settled = await resolveChain(h);
   expect(settled.settled).toBe(true);
@@ -614,7 +638,7 @@ it("ends the round when a chain settles on a board with no swap left", async () 
     { col: 2, row: 4, token: "R0" },
     { col: 3, row: 4, token: "R0" },
   ]);
-  swap(h, { col: 4, row: 5 }, { col: 4, row: 4 });
+  await swapAndStep(h, { col: 4, row: 5 }, { col: 4, row: 4 });
   const settled = await resolveChain(h);
   expect(settled.settled).toBe(true);
   expect(settled.snapshot.legalSwap).toBe(false);
@@ -622,20 +646,103 @@ it("ends the round when a chain settles on a board with no swap left", async () 
 });
 
 it("stamps a cue with the frame that played it", async () => {
-  // Cues are raised by a FRAME, never by a pose (specs/ui.md), so a cue is
-  // driven through the keyboard rather than through `requestSwap`.
+  // Cues are raised by a FRAME, never by a pose (specs/ui.md), so the press is
+  // delivered as a real pointer event and read inside a frame's own update
+  // rather than posed through the surface.
   const cues = watchCues(h);
   poseBoardWithEscape(h, [
     { col: 2, row: 4, token: "R0" },
     { col: 3, row: 4, token: "R0" },
   ]);
-  h.debug.setCursor(4, 5);
   await h.advance(1);
   const at = h.frame();
-  await h.tap("Enter");
+  const center = cellCenter(4, 5);
+  h.press(center.x, center.y);
+  await h.advance(1);
   expect(cues.length).toBeGreaterThan(0);
   expect(cues.every((cue) => cue.frame === at + 1)).toBe(true);
   expect(h.snapshot().selection).toEqual({ col: 4, row: 5 });
+});
+
+it("counts the frames that stop short of a duration, and that carry past it", () => {
+  // A step's hold is the step's own figure rather than a constant, so the drives
+  // below are counted from a duration. The one duration the suite also writes
+  // down by hand is what the arithmetic is held against.
+  expect(framesShortOf(REFUSAL_SECONDS)).toBe(REFUSAL_FRAMES_BEFORE);
+  expect(framesShortOf(REFUSAL_SECONDS) * TICK_S).toBeLessThan(REFUSAL_SECONDS);
+  expect(framesShortOf(16 * TICK_S)).toBe(15);
+
+  // Past the duration by a whole frame, so a build comparing `>` has fired as
+  // surely as one comparing `>=`, and by at most two, so the drive is nowhere
+  // near a second threshold of the same length.
+  for (const duration of [0.18, 0.25, 0.3, 0.42, 16 * TICK_S]) {
+    const covered = framesPast(duration) * TICK_S;
+    expect(covered).toBeGreaterThan(duration + TICK_S - 1e-9);
+    expect(covered).toBeLessThan(duration + 2 * TICK_S + 1e-9);
+  }
+});
+
+it("sizes a step's drive from the hold that step reports", () => {
+  // The three fields the drive is computed from, as a snapshot. A cast rather
+  // than a whole snapshot because the function reads exactly these three, and a
+  // fabricated board would say nothing about which.
+  const timing = (
+    phase: Phase,
+    stepHold: number,
+    stepTimer: number,
+  ): FacetSnapshot =>
+    ({ phase, stepHold, stepTimer }) as unknown as FacetSnapshot;
+
+  expect(stepDriveFrames(timing("resolving", STEP_SECONDS, 0))).toBe(
+    framesPast(STEP_SECONDS),
+  );
+  // What has already run comes off the drive, so the overshoot past the boundary
+  // stays inside two frames however deep into the hold this is asked.
+  expect(
+    stepDriveFrames(timing("resolving", STEP_SECONDS, STEP_SECONDS / 2)),
+  ).toBe(framesPast(STEP_SECONDS / 2));
+  // A swap in motion is timed by SWAP_SECONDS instead, and is the one case the
+  // hold has nothing to say about.
+  expect(stepDriveFrames(timing("swapping", STEP_SECONDS, 0))).toBe(
+    SWAP_DRIVE_FRAMES,
+  );
+});
+
+it("plays a move as the whole gesture, and never as a shortcut", async () => {
+  // specs/controls.md plays a move by taking hold of a gem, carrying it onto a
+  // neighbor, and letting go: the RELEASE is what requests the swap. The gesture
+  // helper goes through `pointerDown`, `pointerMove` and `pointerUp` and through
+  // nothing else, so what decides the outcome is the build's own press, move and
+  // release rules.
+  poseBoardWithEscape(h, [
+    { col: 2, row: 4, token: "R0" },
+    { col: 3, row: 4, token: "R0" },
+  ]);
+  const played = dragGem(h, { col: 4, row: 5 }, { col: 4, row: 4 });
+
+  // The release requested the swap and let the gem go.
+  expect(played.phase).toBe("swapping");
+  expect(played.offer).toBeNull();
+  expect(played.selection).toBeNull();
+
+  const settled = await resolveChain(h);
+  expect(settled.settled).toBe(true);
+  expect(settled.snapshot.score).toBeGreaterThanOrEqual(3 * BASE_SCORE);
+});
+
+it("takes a reported pointer target, by mouse and by touch", () => {
+  // A target's rectangle is the BUILD's, so a check reads the one it is going to
+  // press off the snapshot. specs/instrumentation.md fixes that pressing and
+  // releasing at a listed target's center takes that target.
+  const play = targetById(h.snapshot(), "menu-0");
+  expect(play.w).toBeGreaterThan(0);
+  const opened = takeTarget(h, play, "touch");
+  expect(opened.screen).toBe("playing");
+  expect(opened.pointer.device).toBe("touch");
+
+  // And a target the screen does not carry fails as the fixture error it is,
+  // naming the ids that were reported.
+  expect(() => targetById(opened, "menu-1")).toThrow(/Expected:/);
 });
 
 it("keeps the two looping music beds apart from the one-shot cues", async () => {
@@ -683,9 +790,9 @@ it("options.seed reaches the build, and the same seed deals the same board", asy
 /* The real pointer — specs/controls.md                                       */
 /* -------------------------------------------------------------------------- */
 //
-// The eight `pointer` review items are about the press RULES and pose through
-// `debug.pointerDown`, which specs/instrumentation.md says takes effect at the
-// call. These are about the OTHER path: the pointer verbs deliver an ordinary
+// The `pointer` review items are about the press, move and release RULES and
+// pose through `debug.pointerDown`, `debug.pointerMove` and `debug.pointerUp`,
+// which specs/instrumentation.md says take effect at the call. These are about the OTHER path: the pointer verbs deliver an ordinary
 // pointer event to the engine, so a check whose evidence is a CUE — which
 // specs/ui.md plays from a frame and never from a pose — has a way to make the
 // press a player would make. A verb nothing drives is a verb that has never been
@@ -703,7 +810,12 @@ it("a real pointer press selects the cell it landed on", async () => {
   // The conversion round-trips: the engine placed the event back on the exact
   // logical point the verb was given, which is what makes `client(x, y)` right
   // rather than merely close.
-  expect(snapshot.pointer).toEqual({ x: center.x, y: center.y, down: true });
+  expect(snapshot.pointer).toEqual({
+    x: center.x,
+    y: center.y,
+    down: true,
+    device: "mouse",
+  });
 });
 
 it("a press away from the board targets nothing", async () => {
@@ -716,7 +828,7 @@ it("a press away from the board targets nothing", async () => {
   expect(h.snapshot().selection).toBeNull();
 });
 
-it("a second press on the adjacent cell swaps, as specs/controls.md tables", async () => {
+it("a second press offers, and the release plays the move", async () => {
   // The arrangement the pure predicates above already prove: two rubies at
   // (2,4) and (3,4) over the quiet filler, whose own gem at (4,5) is a ruby, so
   // exchanging (4,5) with (4,4) completes a run of exactly three and nothing
@@ -732,18 +844,33 @@ it("a second press on the adjacent cell swaps, as specs/controls.md tables", asy
   await h.advance(1);
   expect(h.snapshot().selection).toEqual({ col: 4, row: 5 });
 
+  // The press on the neighbor OFFERS the held gem into it and plays nothing:
+  // specs/controls.md puts the whole move behind the release.
   h.lift();
   h.press(to.x, to.y);
   await h.advance(1);
+  const offered = h.snapshot();
+  expect(offered.selection).toEqual({ col: 4, row: 5 });
+  expect(offered.offer).toEqual({ col: 4, row: 4 });
+  expect(offered.phase).toBe("idle");
 
+  // The release requests the swap, which enters `swapping` for SWAP_SECONDS
+  // before its first step resolves.
+  h.lift();
+  await h.advance(1);
+  const played = h.snapshot();
+  expect(played.phase).toBe("swapping");
+  expect(played.selection).toBeNull();
+  expect(played.offer).toBeNull();
+
+  await h.advance(SWAP_DRIVE_FRAMES);
   const swapped = h.snapshot();
   expect(swapped.phase).toBe("resolving");
   expect(swapped.chainStep).toBe(1);
   expect(swapped.lastCleared).toBe(3);
-  expect(swapped.selection).toBeNull();
 });
 
-it("a drag onto the neighbor swaps with no second press", async () => {
+it("a drag onto the neighbor offers, and letting go plays the move", async () => {
   poseBoardWithEscape(h, [
     { col: 2, row: 4, token: "R0" },
     { col: 3, row: 4, token: "R0" },
@@ -761,11 +888,21 @@ it("a drag onto the neighbor swaps with no second press", async () => {
   h.moveTo(to.x, to.y);
   await h.advance(1);
 
+  // The carry has offered the gem into its neighbor; the board is untouched.
   const dragged = h.snapshot();
-  expect(dragged.phase).toBe("resolving");
-  expect(dragged.chainStep).toBe(1);
-  expect(dragged.lastCleared).toBe(3);
-  expect(dragged.selection).toBeNull();
+  expect(dragged.selection).toEqual({ col: 4, row: 5 });
+  expect(dragged.offer).toEqual({ col: 4, row: 4 });
+  expect(dragged.phase).toBe("idle");
+
+  h.lift();
+  await h.advance(1 + SWAP_DRIVE_FRAMES);
+
+  const played = h.snapshot();
+  expect(played.phase).toBe("resolving");
+  expect(played.chainStep).toBe(1);
+  expect(played.lastCleared).toBe(3);
+  expect(played.selection).toBeNull();
+  expect(played.offer).toBeNull();
 });
 
 it("client maps a logical stage point at a canvas denser than its layout", async () => {
@@ -789,13 +926,15 @@ it("client maps a logical stage point at a canvas denser than its layout", async
 });
 
 it("tapAction fires the action its name gives, through the real input path", async () => {
-  startRound(h);
+  // The keyboard drives the MENUS (specs/controls.md), so the reading is the
+  // title menu's highlight rather than anything on the board. `down` is bound to
+  // ArrowDown, and `tapAction` is what presses an action's first binding.
   await h.advance(1);
-  const cursor = h.snapshot().cursor;
+  expect(h.snapshot().menuIndex).toBe(0);
 
-  await h.tapAction("right");
+  await h.tapAction("down");
 
-  expect(h.snapshot().cursor).toEqual({ col: cursor.col + 1, row: cursor.row });
+  expect(h.snapshot().menuIndex).toBe(1);
 });
 
 /* -------------------------------------------------------------------------- */

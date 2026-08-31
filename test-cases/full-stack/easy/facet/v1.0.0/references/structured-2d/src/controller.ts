@@ -12,10 +12,22 @@
 // consumes an edge on the first read and the engine discards whatever is left
 // armed when the input frame closes — an action held back for a later frame
 // would simply be lost. So a frame carrying both an arrow and a `confirm` moves
-// the cursor and then acts on the cell it moved to, which is what a player who
+// the highlight and then takes the item it moved to, which is what a player who
 // pressed both between two repaints meant, and what a scenario driving the
 // menus with real key events gets whether or not a frame happened to fall
 // between its presses.
+//
+// `Escape` is bound to `pause` AND to `back`, so one press of it arms both and
+// both are applied. That is safe in any order because the two act on screens
+// that do not overlap: `pause` acts on `playing` and `paused` alone, `back` on
+// `howto` and `gameover` alone (specs/controls.md), so at most one of them ever
+// has anything to do.
+//
+// THE BOARD IS PLAYED WITH THE POINTER ALONE. The keyboard's whole job is the
+// menus, so the samples below are where every move comes from: the game acts on
+// the PRIMARY pointer, so a second finger resting on the screen is dropped
+// here rather than fighting the first, and each sample carries the device that
+// drove it, which the state reports.
 //
 // The controller holds no authoritative state: everything it decides is written
 // straight onto the world's `FacetState`, through the core's own transitions.
@@ -32,8 +44,7 @@ import { fold, openBatch, type StepBatch } from "./steps";
 import {
   confirm,
   goBack,
-  moveHorizontal,
-  moveVertical,
+  moveMenu,
   pointerDown,
   pointerMove,
   pointerUp,
@@ -67,8 +78,6 @@ export class FacetController extends PlayerController {
 
     const moveUp = this.input.pressed("up");
     const moveDown = this.input.pressed("down");
-    const moveLeft = this.input.pressed("left");
-    const moveRight = this.input.pressed("right");
     const accept = this.input.pressed("confirm");
     const leave = this.input.pressed("back");
     const held = this.input.pressed("pause");
@@ -78,29 +87,36 @@ export class FacetController extends PlayerController {
 
     if (held) fold(batch, quiet(togglePause(at())));
     if (leave) fold(batch, quiet(goBack(at())));
-    if (moveUp) fold(batch, quiet(moveVertical(at(), -1)));
-    if (moveDown) fold(batch, quiet(moveVertical(at(), 1)));
-    if (moveLeft) fold(batch, quiet(moveHorizontal(at(), -1)));
-    if (moveRight) fold(batch, quiet(moveHorizontal(at(), 1)));
-    if (accept) fold(batch, confirm(at()));
+    if (moveUp) fold(batch, quiet(moveMenu(at(), -1)));
+    if (moveDown) fold(batch, quiet(moveMenu(at(), 1)));
+    if (accept) fold(batch, quiet(confirm(at())));
 
     // The pointer's samples, each resolved on its own, in arrival order, so a
     // drag that crossed several cells between two frames is read as every
     // position it visited rather than as the last one alone.
     for (const sample of this.input.pointerSamples()) {
+      if (!sample.primary) continue;
       if (sample.type === "down") {
-        fold(batch, pointerDown(at(), sample.x, sample.y));
+        fold(batch, pointerDown(at(), sample.x, sample.y, sample.device));
       } else if (sample.type === "move") {
-        fold(batch, pointerMove(at(), sample.x, sample.y));
+        fold(batch, pointerMove(at(), sample.x, sample.y, sample.device));
       } else {
-        fold(batch, quiet(pointerUp(at())));
+        fold(batch, pointerUp(at(), sample.device));
       }
     }
 
     applyCore(state, batch.state);
     // The engine's own snapshot, mirrored for the frame being drawn
-    // (specs/state.md, PointerState).
-    state.pointer = this.input.pointer();
+    // (specs/state.md, PointerState). The button list the engine carries
+    // alongside it is the engine's own bookkeeping and is not part of the
+    // declared shape, so the four declared fields are copied out by name.
+    const pointer = this.input.pointer();
+    state.pointer = {
+      x: pointer.x,
+      y: pointer.y,
+      down: pointer.down,
+      device: pointer.device,
+    };
     this.batch = batch;
   }
 }

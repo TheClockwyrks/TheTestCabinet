@@ -173,10 +173,12 @@ clock is already doing.
 
 Restores every declared field of the game's state to its title-screen value: the
 title screen with its first menu item highlighted, no board in play, `phase`
-`idle` with `chainStep` and `stepTimer` at `0`, `score` at `0`, `level` at `1`,
-`levelScore` at `0`, `lastCleared` and `lastPoints` at `0`, the cursor at
-`(0, 0)`, no selection and no refusal, the pointer reported as up, and `simTime`
-at `0`. `options.seed` seeds `rngState`, defaulting to `DEFAULT_SEED` (`1`).
+`idle` with `chainStep`, `swapTimer` and `stepTimer` at `0`, `score` at `0`,
+`level` at `1`, `levelScore` at `0`, `lastCleared`, `lastPoints` and `lastWaves`
+at `0`, `moveScore`, `bestMove` and `bestChain` at `0`, no selection, no offer,
+no refusal and no armed target, the pointer reported as up and driven by
+`mouse`, and `simTime` at `0`. `options.seed` seeds `rngState`, defaulting to
+`DEFAULT_SEED` (`1`).
 
 `muted` is untouched; the runtime owns muting.
 
@@ -205,11 +207,12 @@ below. It changes nothing.
 
 Poses the choice of `PLAY` from the title menu, which is the same choice
 `PLAY AGAIN` makes from `gameover`. A round begins: `score` at `0`, `level` at
-`1`, `levelScore` at `0`, `phase` `idle` with `chainStep` at `0`, `menuIndex`
-at `0`, the cursor at `(0, 0)`, no selection, no refusal, and a fresh opening
-board dealt through the game's own code, so it holds no run under R4 and carries
-at least one legal swap, as `specs/rules.md` requires. The screen becomes
-`playing`.
+`1`, `levelScore` at `0`, `moveScore`, `bestMove` and `bestChain` at `0`, `phase`
+`idle` with `chainStep`, `swapTimer` and `stepTimer` at `0`, `menuIndex` at `0`,
+no selection, no offer, no refusal, and a fresh opening board dealt through the
+game's own code, so it holds no run under R4, carries at least one legal swap,
+and comes in from above the board as `specs/rules.md` requires. The screen
+becomes `playing`.
 
 It leaves `rngState`, `simTime`, and `muted` as they stand, so a round from a
 known deal is a `reset` carrying a seed followed by this.
@@ -275,12 +278,14 @@ fresh round.
 {{/if}}
 
 Poses an arbitrary board and moves to `playing`, with `phase` `idle`,
-`chainStep` and `stepTimer` at `0`, no selection, and no refusal. `rows` is the
-board notation `specs/board.md` defines, one string per row, `GRID_ROWS` (`8`)
-of them carrying `GRID_COLS` (`8`) tokens each. Cell centers follow the formulas
-in `specs/board.md`, so a posed board sits on the stage exactly where a dealt
-board does. `score`, `level`, `levelScore`, `rngState`, and `simTime` stand
-where they were.
+`chainStep`, `swapTimer` and `stepTimer` at `0`, no selection, no offer, and no
+refusal. `rows` is the board notation `specs/board.md` defines, one string per
+row, `GRID_ROWS` (`8`) of them carrying `GRID_COLS` (`8`) tokens each. Every gem
+of a posed board is standing still where it was written, so every cell reports a
+`fell` of `0`. Cell centers follow the formulas in `specs/board.md`, so a posed
+board sits on the stage exactly where a dealt board does. `score`, `level`,
+`levelScore`, `moveScore`, `bestMove`, `bestChain`, `rngState`, and `simTime`
+stand where they were.
 
 A board posed this way is a board like any other, and the rules in
 `specs/rules.md` govern it unchanged. Those rules run a chain from an accepted
@@ -296,9 +301,9 @@ board rests exactly as it was written until a swap is accepted on it.
 {{/if}}
 
 Writes one cell of the board. The gem at `(col, row)` takes the kind, the
-strain, and the cut the token names, `token` being a single cell token of the
-notation `specs/board.md` defines. Every other cell, the screen, the phase, the
-cursor, and the selection stand where they were.
+strain, and the cut the token names, and a `fell` of `0`, `token` being a single
+cell token of the notation `specs/board.md` defines. Every other cell, the
+screen, the phase, and the selection stand where they were.
 
 {{#if (eq engine.slug "none")}}
 ### `setScore(points)`
@@ -336,15 +341,40 @@ Sets `levelScore` to `points`. Nothing else changes. The level condition in
 past the target advances the level as the next chain settles.
 
 {{#if (eq engine.slug "none")}}
-### `setCursor(col, row)`
+### `setBestChain(chainStep)`
 {{else if (eq engine.slug "simple-2d")}}
-### `setCursor(state, col, row)`
+### `setBestChain(state, chainStep)`
 {{else}}
-### `setCursor(col, row)`
+### `setBestChain(chainStep)`
 {{/if}}
 
-Moves the cursor to `(col, row)`, which lies within the board's dimensions. The
-selection stands where it was, and nothing on the board changes.
+Sets `bestChain` to `chainStep`, a whole number of at least `0`. Nothing else
+changes.
+
+{{#if (eq engine.slug "none")}}
+### `setBestMove(points)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setBestMove(state, points)`
+{{else}}
+### `setBestMove(points)`
+{{/if}}
+
+Sets `bestMove` to `points`. Nothing else changes, and `moveScore` is its own
+figure.
+
+{{#if (eq engine.slug "none")}}
+### `continueLevel()`
+{{else if (eq engine.slug "simple-2d")}}
+### `continueLevel(state)`
+{{else}}
+### `continueLevel()`
+{{/if}}
+
+Poses the choice of `CONTINUE` from the level-clear menu: `level` rises by `1`,
+`levelScore`, `bestMove`, `bestChain` and `moveScore` return to `0`, a fresh
+opening board is dealt through the game's own code, and the screen becomes
+`playing` with `menuIndex` at `0`, no selection, no offer and no refusal.
+`score` carries across.
 
 {{#if (eq engine.slug "none")}}
 ### `setSelection(col, row)`
@@ -354,7 +384,7 @@ selection stands where it was, and nothing on the board changes.
 ### `setSelection(col, row)`
 {{/if}}
 
-Makes `(col, row)` the selected cell, whatever was selected before. The cursor,
+Makes `(col, row)` the selected cell, whatever was selected before. The offer,
 the board, and the phase stand where they were, and no swap is requested.
 
 {{#if (eq engine.slug "none")}}
@@ -365,7 +395,31 @@ the board, and the phase stand where they were, and no swap is requested.
 ### `clearSelection()`
 {{/if}}
 
-Leaves nothing selected. The cursor, the board, and the phase stand where they
+Leaves nothing selected. The offer, the board, and the phase stand where they
+were.
+
+{{#if (eq engine.slug "none")}}
+### `setOffer(col, row)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setOffer(state, col, row)`
+{{else}}
+### `setOffer(col, row)`
+{{/if}}
+
+Makes `(col, row)` the cell the selected gem is offered into, whatever was
+offered before. The selection, the board, and the phase stand where they were,
+and no swap is requested: a release is what plays the offer, as
+`specs/controls.md` states.
+
+{{#if (eq engine.slug "none")}}
+### `clearOffer()`
+{{else if (eq engine.slug "simple-2d")}}
+### `clearOffer(state)`
+{{else}}
+### `clearOffer()`
+{{/if}}
+
+Leaves nothing offered. The selection, the board, and the phase stand where they
 were.
 
 {{#if (eq engine.slug "none")}}
@@ -377,29 +431,40 @@ were.
 {{/if}}
 
 Requests the swap of `(colA, rowA)` with `(colB, rowB)` through the same
-acceptance path a player's swap takes, so R1, R2, and R3 in `specs/rules.md`
+acceptance path a player's release takes, so R1, R2, and R3 in `specs/rules.md`
 decide it and nothing is bypassed. An accepted swap exchanges the two cells and
-resolves its first chain step on the spot, exactly as `specs/rules.md`
+puts the game into `swapping`, its first chain step resolving once
+`SWAP_SECONDS` (`0.18`) of game time has passed, exactly as `specs/rules.md`
 describes. A refused swap leaves the board as it stands and names the two cells
 as the standing refusal for `REFUSAL_SECONDS` (`0.3`).
 
-It names both cells itself, so the selection stands where it was either way.
+It names both cells itself, so the selection and the offer stand where they were
+either way.
 
 {{#if (eq engine.slug "none")}}
-### `pointerDown(x, y)`, `pointerMove(x, y)`, `pointerUp()`
+### `pointerDown(x, y, device)`, `pointerMove(x, y, device)`, `pointerUp(device)`
 {{else if (eq engine.slug "simple-2d")}}
-### `pointerDown(state, x, y)`, `pointerMove(state, x, y)`, `pointerUp(state)`
+### `pointerDown(state, x, y, device)`, `pointerMove(state, x, y, device)`, `pointerUp(state, device)`
 {{else}}
-### `pointerDown(x, y)`, `pointerMove(x, y)`, `pointerUp()`
+### `pointerDown(x, y, device)`, `pointerMove(x, y, device)`, `pointerUp(device)`
 {{/if}}
 
-Report a press, a move, and a release at a logical stage position. They feed the
-same input path a real pointer feeds, so a posed press and a player's press are
-the same event to the game: a press resolves against the cell whose center is
-within `GEM_HIT_R` (`36`) of `(x, y)` by exactly the press rules in
-`specs/controls.md`, a drag from a cell to an orthogonally adjacent one requests
-that swap under those same rules, and a swap so requested is decided by R1, R2,
-and R3 in `specs/rules.md` like any other.
+Report a press, a move, and a release at a logical stage position, from
+`device`, which is `"mouse"`, `"pen"`, or `"touch"` and defaults to `"mouse"`.
+The three drive the same input path a real pointer drives, so a posed touch and
+a posed mouse differ only in the `device` the state reports, and a posed press
+and a player's press are the same event to the game.
+
+On the screens that carry pointer targets the three operate those targets by
+exactly the rules in `specs/controls.md`: a move highlights, a press highlights
+and arms, and a release inside the armed target takes it.
+
+On `playing`, outside that screen's `pause` target, a press resolves against the
+cell whose center is within `GEM_HIT_R` (`36`) of `(x, y)` by exactly the press
+rules in `specs/controls.md`, a move offers the selected gem into an
+orthogonally adjacent cell or withdraws the offer under those same rules, and
+the release with an offer standing requests that swap, which R1, R2, and R3 in
+`specs/rules.md` decide like any other.
 
 Each of the three **takes effect immediately**, when it is called, rather than
 {{#if (eq engine.slug "none")}}
@@ -421,8 +486,9 @@ frame. No frame need pass between them, so a selection and the swap it leads to
 can both be posed without advancing the game at all.
 {{/if}}
 
-A press farther than `GEM_HIT_R` from every cell center leaves the board and the
-selection as they stand.
+A press on `playing` farther than `GEM_HIT_R` from every cell center and outside
+every target leaves the board as it stands and clears the selection, as
+`specs/controls.md` states.
 
 {{#if (eq engine.slug "none")}}
 ## Snapshot shape
@@ -441,16 +507,18 @@ selection as they stand.
 ```js
 {
   version: 1,
-  screen: "title" | "howto" | "playing" | "paused" | "gameover",
+  screen: "title" | "howto" | "playing" | "paused" | "levelclear" | "gameover",
   menuIndex: <number>,        // the screen's highlighted menu item, from 0
   score: <number>,
   level: <number>,            // the level being played, counted from 1
   levelScore: <number>,       // banked toward the current level
   levelTarget: <number>,      // LEVEL_TARGET_STEP * level, derived
-  phase: "idle" | "resolving",
-  chainStep: <number>,        // 0 while idle
+  phase: "idle" | "swapping" | "resolving",
+  chainStep: <number>,        // 0 unless resolving
   multiplier: <number>,       // min(chainStep, MAX_MULTIPLIER), derived
-  stepTimer: <number>,        // game time accumulated toward the next step
+  swapTimer: <number>,        // game time accumulated into the swap in motion
+  stepTimer: <number>,        // game time accumulated into the step in progress
+  stepHold: <number>,         // how long the step in progress holds, derived
   board: {
     cols: <number>,
     rows: <number>,
@@ -458,17 +526,28 @@ selection as they stand.
       { col, row, x, y,
         kind: <string | null>,
         cut: "plain" | "brilliant" | "star" | "prism",
-        strain: <number> },
+        strain: <number>,
+        fell: <number> },
     ],
   },
-  cursor: { col: <number>, row: <number> },
   selection: { col: <number>, row: <number> } | null,
+  offer: { col: <number>, row: <number> } | null,
   refusal: { a: { col, row }, b: { col, row } } | null,
   lastCleared: <number>,      // cells cleared by the most recent chain step
   lastPoints: <number>,       // points the most recent chain step scored
+  lastWaves: <number>,        // the greatest wave that step's clear set carried
+  lastFall: <number>,         // the greatest fell on the board, derived
+  moveScore: <number>,        // points the move currently running has scored
+  bestMove: <number>,         // the level's best move
+  bestChain: <number>,        // the level's deepest chain step
   legalSwap: <boolean>,       // whether any legal swap exists, derived
   rngState: <number>,
-  pointer: { x: <number>, y: <number>, down: <boolean> },
+  pointer: { x: <number>, y: <number>, down: <boolean>,
+             device: "mouse" | "pen" | "touch" },
+  armedTarget: <string | null>,
+  targets: [
+    { id: <string>, x: <number>, y: <number>, w: <number>, h: <number> },
+  ],
   muted: <boolean>,
   simTime: <number>,          // accumulated simulation time, in seconds
 }
@@ -476,27 +555,37 @@ selection as they stand.
 
 The shape is fixed, and every field is present on every screen. A field with
 nothing to report holds its resting value rather than going missing: `board` is
-`{ cols: 0, rows: 0, cells: [] }` while no board is in play, `selection` and
-`refusal` are `null` while none stands, `chainStep` and `stepTimer` are `0`
-while `phase` is `idle`, and `menuIndex` is live on every screen carrying a menu
-and rests at `0` on `playing`. `cells` lists every cell of the board in reading
-order from the top-left cell to the bottom-right, and a cell's `kind` is `null`
-for a `prism`.
+`{ cols: 0, rows: 0, cells: [] }` while no board is in play, `selection`,
+`offer`, `refusal` and `armedTarget` are `null` while none stands, `chainStep`
+and `stepTimer` are `0` while `phase` is not `resolving`, `swapTimer` is `0`
+while `phase` is not `swapping`, and `menuIndex` is live on every screen
+carrying a menu and rests at `0` on `playing`. `cells` lists every cell of the
+board in reading order from the top-left cell to the bottom-right, and a cell's
+`kind` is `null` for a `prism`.
+
+`targets` lists the current screen's pointer targets, under the ids and in the
+order `specs/controls.md` fixes for that screen, each with its top-left corner
+and its size in the stage's logical units. A target's rectangle is the one the
+game actually hit-tests against, so pressing and releasing at a listed target's
+center takes that target.
 
 Every field is read straight off the game's state, so what the snapshot reports
-is what the game holds. Four are derived rather than stored:
+is what the game holds. Six are derived rather than stored:
 
 | Field | Derived from |
 | --- | --- |
 | a cell's `x`, `y` | the cell center formulas in `specs/board.md` |
 | `levelTarget` | `LEVEL_TARGET_STEP` (`2000`) times `level` |
 | `multiplier` | `min(chainStep, MAX_MULTIPLIER)`, `MAX_MULTIPLIER` (`8`) |
+| `lastFall` | the greatest `fell` on the board |
+| `stepHold` | `lastWaves * WAVE_SECONDS + lastFall * FALL_SECONDS_PER_ROW + STEP_SECONDS`, as `specs/rules.md` fixes it |
 | `legalSwap` | R1 and R3 in `specs/rules.md`, over the board as it stands |
+| `targets` | the current screen's targets in `specs/controls.md` |
 
 Three fields need the game to keep them honest every frame:
 
-- `pointer` mirrors the position the pointer input reports and whether the
-  pointer is currently pressed, refreshed in every update.
+- `pointer` mirrors the position the pointer input reports, whether the pointer
+  is currently pressed, and the device that drove it, refreshed in every update.
 - `muted` mirrors the runtime's mute bit, refreshed in every update, since the
   runtime owns muting and this is the game's readable copy of it.
 - `simTime` accumulates the delta time of every update, whatever the screen.
@@ -507,10 +596,12 @@ The runtime's debug overlay shows the values the game registers with it as
 diagnostic sources. Register at least the current `screen` and `phase`, the
 board's `cols` and `rows`, the score, the level and the level score against the
 level's target, the chain step and the multiplier, how many cells the most
-recent chain step cleared and what it scored, the cursor cell and the selected
-cell, whether a legal swap exists, and the pointer position, the same facts the
-snapshot reports. Keep each one short enough to read on a line, and keep every
-source a pure read, so watching the overlay leaves the game as it is.
+recent chain step cleared, what it scored, its `lastWaves` and its `lastFall`,
+the selected cell and the offered cell, the level's best move and longest chain,
+whether a legal swap exists, and the pointer position with the device that drove
+it, the same facts the snapshot reports. Keep each one short enough to read on a
+line, and keep every source a pure read, so watching the overlay leaves the game
+as it is.
 
 {{#if (eq engine.slug "none")}}
 The overlay is part of the runtime layer you write. It draws the registered

@@ -35,7 +35,14 @@
 // maximal run", which a standing run satisfies. So both are ordinary boards under
 // the rules, reached the way the rules allow.
 //
-// Every reading is taken at step 1, which specs/rules.md resolves at the swap.
+// EVERY READING IS TAKEN AT STEP 1. specs/rules.md has an accepted swap exchange
+// its two cells at once, set `phase` to `swapping` with `chainStep` at `0`, and
+// clear nothing until `SWAP_SECONDS` (`0.18`) of game time has passed; step 1
+// then resolves, R8 and R9 both inside it. `swapAndResolve` carries the game
+// through that animation and hands back `first`, the reading of step 1's result,
+// which is what each scenario reads. A later step is seeded from whatever R9's
+// refill dealt and may create a cut of its own at a cell no clause of the
+// placement paragraph names.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";

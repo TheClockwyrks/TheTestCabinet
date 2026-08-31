@@ -28,11 +28,13 @@ browser game needs and the game itself on top of it:
 - the board and its gems, the swap and chain rules, strain, scoring and levels,
   and the screens.
 
-The board is played with the pointer as well as the keyboard, so the pointer
-path is part of what you build: taking the cursor off the page and delivering
-its position in the game's logical units, with its movement and its press and
-release edges, to the game. `specs/controls.md` states what Facet does with
-them.
+The board is played with the pointer alone and every screen is worked with it,
+so the pointer path is part of what you build: taking a mouse, a pen, and a
+finger off the page and delivering the position in the game's logical units,
+with its movement, its press and release edges, and the device that drove it, to
+the game. It also takes the browser's own gestures on the canvas, so a drag on a
+touchscreen reaches the game whole rather than being taken for a scroll part way
+through. `specs/controls.md` states what Facet does with them.
 
 You also write the `window.__facet` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how

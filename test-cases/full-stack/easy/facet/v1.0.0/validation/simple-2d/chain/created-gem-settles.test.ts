@@ -6,7 +6,7 @@
 // the gem exists before the column falls, and R9 makes no exception for it —
 // "every surviving gem falls to the lowest empty cell below it". A build that
 // creates the gem after settling, or that pins it to the cell it was placed at,
-// leaves it hanging where the run used to be with empty cells beneath it.
+// leaves it hanging where the run stood, with empty cells beneath it.
 //
 // THE SCENARIO SEPARATES THE PLACEMENT FROM THE REST. A vertical run of four
 // rubies fills column 4 at rows 2 to 5. R8's placement rule puts the created gem
@@ -20,14 +20,26 @@
 // posed board carries no brilliant, so the one brilliant on the settled board is
 // the one R8 created, and where it stands is the whole of this point.
 //
+// WHEN THE READING IS TAKEN. An accepted swap exchanges the two cells at once
+// and sets `phase` to `swapping` with `chainStep` at `0`; step 1 resolves once
+// `swapTimer` reaches `SWAP_SECONDS` (`0.18`) of game time, and R8 and R9 both
+// run inside that one step. `swapAndStep` carries the game through exactly that
+// animation and hands back the reading of step 1's result, which is the board
+// this check reads. The frames driven afterwards are for the replay alone and
+// are counted so that the board is never read a second time.
+//
 // The engine holds the state BY VALUE, so a pose returns the next state and the
 // harness's driver applies it; a reading is synchronous. Only the frame drive is
 // awaited. The scenario itself is the specification's, and reads the same under
 // all three engines.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertLength, assertTrue } from "../assert";
-import { FRAMES_PER_STEP } from "../constants";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertLength,
+  assertTrue,
+} from "../assert";
 import {
   maximalRuns,
   parseToken,
@@ -41,10 +53,12 @@ import {
 import {
   captureReplay,
   createHarness,
+  framesShortOf,
   loadBoard,
-  swap,
+  swapAndStep,
   type Harness,
 } from "../harness";
+import type { FacetSnapshot } from "../surface";
 
 /**
  * A vertical run of four in column 4, three quarters posed and the last quarter
@@ -68,8 +82,20 @@ const PLACED_AT: CellRef = { col: 4, row: 3 };
 /** The lowest cell the removal left empty below the placement, where R9 rests it. */
 const RESTS_AT: CellRef = { col: 4, row: 5 };
 
-/** Frames held after the swap, inside step 1, so the replay shows the result. */
-const HELD_FRAMES = FRAMES_PER_STEP - 1;
+/**
+ * Frames that carry the recording to just short of the end of the step the
+ * reading was taken in.
+ *
+ * A step's hold is the step's OWN figure — `lastWaves * WAVE_SECONDS` plus
+ * `lastFall * FALL_SECONDS_PER_ROW` plus `STEP_SECONDS`, which the snapshot
+ * reports as `stepHold` — so the frames that fill it are read off the snapshot
+ * rather than written down. `framesShortOf` keeps the drive strictly inside what
+ * is left of the hold, so the board is never read a second time and the reading
+ * asserted below still describes step 1.
+ */
+function restOfStep(reading: FacetSnapshot): number {
+  return framesShortOf(Math.max(0, reading.stepHold - reading.stepTimer));
+}
 
 let h: Harness;
 
@@ -102,12 +128,12 @@ it("settles the created brilliant to the lowest cell the removal emptied", async
 
   loadBoard(h, posed);
   const first = await captureReplay(h, "settle", async () => {
-    const resolved = swap(h, SWAP_A, SWAP_B);
-    await h.advance(HELD_FRAMES);
+    const resolved = await swapAndStep(h, SWAP_A, SWAP_B);
+    await h.advance(restOfStep(resolved));
     return resolved;
   });
 
-  assertEqual(first.chainStep, 1, "chainStep the accepted swap opened");
+  assertEqual(first.chainStep, 1, "the chain step the swap resolved into");
 
   // One brilliant on the board, and it is at the lowest cell the removal left
   // empty rather than at the cell R8 placed it in: (4,3) held it when the column

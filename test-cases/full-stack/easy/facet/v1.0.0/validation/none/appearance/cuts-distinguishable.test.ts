@@ -17,24 +17,31 @@
 // and that is what this decides — a build that renders a `brilliant` exactly as
 // it renders a `plain` leaves R8's creations invisible, and it fails here.
 //
-// HOW ONE CELL DECIDES IT. Every reading is taken at ONE cell of one posed board,
-// with one cut after another written into that cell through `setGem`, which
-// specs/instrumentation.md defines as touching that cell alone. The kind and the
-// strain are held fixed across all three, and so is everything around the cell —
-// the same neighbors, the same board frame, the same background, the same box of
-// device pixels — so the distance between two readings is the distance between
-// two cuts of one gem and nothing else.
+// WHY A SWEEP RATHER THAN A PAIR OF FRAMES. A cut gem is never still.
+// specs/board.md says so outright — "A cut gem is never still" — and hands
+// specs/assets.md the continuous effect that "is played at the cell of every
+// `brilliant`, every `star`, and every `prism` standing on the board". So a
+// `brilliant` read at one instant and a `star` read at another may be two
+// instants of two running effects as readily as two treatments, and one pair of
+// frames cannot tell which. The sweep answers the requirement instead of sampling
+// it: each cut is written into one cell in turn, round after round, which leaves
+// SAMPLES readings of each spread across the sweep, and EVERY cross-cut pair of
+// them has to read more than PATCH_DISTINCT_MIN apart. A pair that agreed only
+// because two effects happened to align would be one reading among many, and the
+// others decide the point.
 //
-// THE CONTROL THAT MAKES THE READING MEAN SOMETHING. A build is entitled to an
-// idle animation, so two readings of one cell taken frames apart need not be
-// identical. The sweep therefore ends by writing the first cut back into that
-// same cell and reading it once more, a whole sweep after the reading it is
-// measured against. That distance is what the instrument reads when the gem did
-// not change, and it must stay within PATCH_SAME_MAX.
+// WHY THE CONTROL IS TAKEN ON THE PLAIN GEM, AND BEFORE THE SWEEP. The control
+// answers "what does the instrument read when the gem did not change", and a
+// `brilliant` compared against itself answers "how far does its effect travel"
+// instead — the very motion the sweep exists to look past. The plain gem is the
+// one of the three that carries no running effect, so it is the one that can say
+// what standing still reads as. It is read TWICE before the sweep begins, a whole
+// sweep's worth of frames apart, with no cut having stood in the cell: a cut's
+// effect is a system of particles with a life of their own, and a plain reading
+// taken a frame after a `star` stood there could still be carrying them.
 //
-// THE CURSOR IS PARKED OFF THE PROBE CELL, since specs/ui.md marks the cell at
-// `state.cursor` and a mark standing there would sit over all three readings
-// alike.
+// NOTHING IS SELECTED THROUGH ANY OF IT, since specs/ui.md marks the cell at
+// `state.selection` and a mark standing there would sit over every reading alike.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { quietRowsWithEscape, tokenOf, withCells } from "../board";
@@ -67,10 +74,6 @@ import {
 const PROBE_COL = 3;
 const PROBE_ROW = 3;
 
-/** Where the cursor is sent, so its mark never sits on the probe cell. */
-const PARKED_COL = 0;
-const PARKED_ROW = 0;
-
 /**
  * The kind the three cuts are carried on.
  *
@@ -88,6 +91,20 @@ const KIND = GEM_KINDS[0];
  * is not a cut OF this gem and is not posed here.
  */
 const KINDED_CUTS = CUTS.filter((cut) => cut !== "prism");
+
+/**
+ * How many times each cut is read: rounds of the sweep, one reading of each cut
+ * per round.
+ *
+ * NOT a specification figure. Five rounds is fifteen frames of the suite's clock,
+ * a quarter of a second of game time, which samples a running effect at fifteen
+ * points of whatever it is doing rather than at one. It leaves twenty-five
+ * readings behind for each of the three cross-cut pairs.
+ */
+const SAMPLES = 5;
+
+/** Frames the sweep spends: one per cut, per round. */
+const SWEEP_FRAMES = SAMPLES * KINDED_CUTS.length;
 
 /** The board every reading is taken over: the run-free filler, with its escape. */
 const BOARD = quietRowsWithEscape([]);
@@ -130,25 +147,33 @@ afterEach(async () => {
 
 it("draws a plain, a brilliant and a star of one kind apart from one another", async () => {
   await loadBoard(h, BOARD);
-  await h.debug.setCursor(PARKED_COL, PARKED_ROW);
   await h.debug.clearSelection();
   await h.settle(ART_SETTLE_MS);
-  await h.advance(1);
 
-  // One cut after another into the same cell, a frame each so the build draws
-  // what it was handed, and the pixels that frame left in the cell.
-  const patches: Patch[] = [];
-  for (const cut of KINDED_CUTS) {
-    await h.debug.setGem(PROBE_COL, PROBE_ROW, tokenOf(KIND, 0, cut));
-    await h.advance(1);
-    patches.push(await readPatch(h, PROBE_COL, PROBE_ROW));
-  }
-
-  // The control: the first cut written back into the same cell, a full sweep
-  // later than the reading it answers for.
+  // The control, taken first and on the plain gem: the cell holding a stone with
+  // no running effect at it, read twice a whole sweep apart. That is what the
+  // instrument reads when nothing about the gem changed, and every distance below
+  // is measured against the same box of pixels.
   await h.debug.setGem(PROBE_COL, PROBE_ROW, tokenOf(KIND, 0, KINDED_CUTS[0]));
   await h.advance(1);
-  const again = await readPatch(h, PROBE_COL, PROBE_ROW);
+  const still = await readPatch(h, PROBE_COL, PROBE_ROW);
+  await h.advance(SWEEP_FRAMES);
+  const stillAgain = await readPatch(h, PROBE_COL, PROBE_ROW);
+
+  // The sweep: one cut after another into the same cell, a frame each so the
+  // build draws what it was handed, round after round.
+  const byCut = new Map<string, Patch[]>(
+    KINDED_CUTS.map((cut) => [cut, [] as Patch[]]),
+  );
+  for (let round = 0; round < SAMPLES; round += 1) {
+    for (const cut of KINDED_CUTS) {
+      await h.debug.setGem(PROBE_COL, PROBE_ROW, tokenOf(KIND, 0, cut));
+      await h.advance(1);
+      (byCut.get(cut) as Patch[]).push(
+        await readPatch(h, PROBE_COL, PROBE_ROW),
+      );
+    }
+  }
 
   // Evidence, and no part of the verdict: the three cuts on one board.
   await loadBoard(h, CUTS_ROW);
@@ -156,20 +181,27 @@ it("draws a plain, a brilliant and a star of one kind apart from one another", a
   await captureStill(h, "cuts");
 
   assertLessThanOrEqual(
-    patchDistance(patches[0], again),
+    patchDistance(still, stillAgain),
     PATCH_SAME_MAX,
-    `how far cell (${PROBE_COL},${PROBE_ROW}) reads from itself with a ` +
-      `${KINDED_CUTS[0]} ${KIND} written into it twice`,
+    `how far cell (${PROBE_COL},${PROBE_ROW}) reads from itself over ` +
+      `${SWEEP_FRAMES} frames with a ${KINDED_CUTS[0]} ${KIND} standing in it`,
   );
 
   for (let a = 0; a < KINDED_CUTS.length; a += 1) {
     for (let b = a + 1; b < KINDED_CUTS.length; b += 1) {
-      assertGreaterThan(
-        patchDistance(patches[a], patches[b]),
-        PATCH_DISTINCT_MIN,
-        `how far a ${KINDED_CUTS[a]} ${KIND} and a ${KINDED_CUTS[b]} ${KIND} ` +
-          `read apart at cell (${PROBE_COL},${PROBE_ROW})`,
-      );
+      const left = byCut.get(KINDED_CUTS[a]) as Patch[];
+      const right = byCut.get(KINDED_CUTS[b]) as Patch[];
+      for (let i = 0; i < left.length; i += 1) {
+        for (let j = 0; j < right.length; j += 1) {
+          assertGreaterThan(
+            patchDistance(left[i], right[j]),
+            PATCH_DISTINCT_MIN,
+            `how far a ${KINDED_CUTS[a]} ${KIND} read at sample ${i + 1} and a ` +
+              `${KINDED_CUTS[b]} ${KIND} read at sample ${j + 1} stand apart at ` +
+              `cell (${PROBE_COL},${PROBE_ROW})`,
+          );
+        }
+      }
     }
   }
 });
