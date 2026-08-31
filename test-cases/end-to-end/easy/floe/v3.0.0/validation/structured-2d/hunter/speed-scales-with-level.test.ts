@@ -1,27 +1,98 @@
-// Floe — hunter/speed-scales-with-level: SCAFFOLD STUB, NOT A VALIDATOR.
+// hunter/speed-scales-with-level — both of a bear's speeds rise 6% a level.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `hunter.speed-scales-with-level` review item, written
-// against the `structured-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/hunter.md:
 //
-// The item this file decides, from test-case.toml:
+//   bearIceSpeed(L)  = BEAR_ICE_SPEED  * BEAR_SPEED_STEP ^ (L - 1)
+//   bearSwimSpeed(L) = BEAR_SWIM_SPEED * BEAR_SPEED_STEP ^ (L - 1)
 //
-//   A bear speeds up 6% a level
+// with `BEAR_SPEED_STEP` (1.06). The two rates are measured the way `ice-speed`
+// and `swim-speed` measure them — across the median for ice, across a water row
+// emptied of floes for swimming — at three levels rather than one.
 //
-//   At levels 1, 4 and 8 both the ice speed and the swim speed are their
-//   level-1 figures times 1.06^(level - 1), within 2%.
+// LEVELS 1, 4 AND 8 ARE THE DISTINGUISHING SET. `1.06^3` is `1.19` and `1.06^7` is
+// `1.50`, so a build that never scales reads 96 at level 8 where 144 is required —
+// a third low, sixteen times the allowance — and a build that scales by the wrong
+// step reads a number between the two rather than either. Level 1 anchors the
+// pair: a build with the right ratio and the wrong base fails there.
 //
-// Its declared media: replay `glide`.
+// The level is set by `startCrossing`, which sets it BEFORE it empties the strait:
+// `setLevel` re-lays all sixteen lanes by design, so setting it afterwards would
+// put the traffic back onto the row each rate is measured on.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween } from "../assert";
+import {
+  ROW_MEDIAN,
+  TILE,
+  bearIceSpeed,
+  bearSwimSpeed,
+} from "../../src/constants";
+import {
+  captureReplay,
+  createHarness,
+  poseBear,
+  startCrossing,
+  ticksFor,
+  type Harness,
+} from "../harness";
+import { speedOverTicks, stepAcross } from "./harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The levels read: the base, one step up the curve, and the far end. */
+const LEVELS = [1, 4, 8];
 
-it("hunter/speed-scales-with-level has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** A row of the water band, and where each run starts. */
+const WATER_ROW = 6;
+const FROM_COL = 5;
+
+/** The game time each rate is measured over. */
+const MEASURE_SECONDS = 1;
+
+/** The allowance the item states around each figure. */
+const SPEED_TOLERANCE = 0.02;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+/** One rate, in stage units a second, measured on one row at the posed level. */
+async function rateOn(row: number, level: number): Promise<number> {
+  startCrossing(h, level);
+  const id = poseBear(h, FROM_COL, row, { sense: false, routing: false });
+  const ticks = ticksFor(MEASURE_SECONDS);
+  return speedOverTicks(await stepAcross(h, id, "right", ticks), ticks);
+}
+
+it("scales both of a bear's speeds by BEAR_SPEED_STEP each level", async () => {
+  const ice: number[] = [];
+  const swim: number[] = [];
+
+  await captureReplay(h, "glide", async () => {
+    for (const level of LEVELS) {
+      ice.push(await rateOn(ROW_MEDIAN, level));
+      swim.push(await rateOn(WATER_ROW, level));
+    }
+  });
+
+  for (const [index, level] of LEVELS.entries()) {
+    const onIce = bearIceSpeed(level) * TILE;
+    assertBetween(
+      ice[index],
+      onIce * (1 - SPEED_TOLERANCE),
+      onIce * (1 + SPEED_TOLERANCE),
+      `stage units a second on ice at level ${level}`,
+    );
+    const swimming = bearSwimSpeed(level) * TILE;
+    assertBetween(
+      swim[index],
+      swimming * (1 - SPEED_TOLERANCE),
+      swimming * (1 + SPEED_TOLERANCE),
+      `stage units a second swimming at level ${level}`,
+    );
+  }
 });
