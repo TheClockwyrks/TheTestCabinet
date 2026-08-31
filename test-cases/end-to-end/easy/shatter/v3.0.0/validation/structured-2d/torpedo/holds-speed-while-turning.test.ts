@@ -26,12 +26,18 @@
 // `torpedo/picks-the-nearest-in-the-cone`'s business, but a torpedo that did not
 // turn cannot decide THIS item either way.
 //
-// THE SPAN IS HALF A SECOND, which is under half the way to the rock — the
-// torpedo needs about `1.1` s to reach it — so nothing is destroyed under the
-// reading and the whole span is turning and closing. The pair stands in the bottom
-// of the field; the torpedo's own path never comes within `330` units of the
-// star's centre, and `specs/gravity.md` never pulls a torpedo, so the speed this
-// check reads is the speed the build's own steering left.
+// THE SPAN IS FOUR FIFTHS OF A SECOND, and it is long deliberately. A build that
+// gets this wrong usually gets it wrong a LITTLE per tick, so the longer the
+// pursuit the further its speed has drifted by the end: over these `96` ticks the
+// heading swings about `18` degrees in all — the initial `10` onto the target, and
+// the rest tracking it as the well carries it in — where the first tenth of a
+// second alone is worth only two. It stops `35` ticks short of the impact, which
+// lands at about tick `131`, so nothing is destroyed under the reading.
+//
+// THE PAIR STANDS IN THE BOTTOM OF THE FIELD; the torpedo's own path never comes
+// within `280` units of the star's centre, and `specs/gravity.md` never pulls a
+// torpedo, so the speed this check reads is the speed the build's own steering
+// left.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { DEG, TORPEDO_SPEED, TICK_DT } from "../../src/constants";
@@ -64,7 +70,7 @@ const TARGET_X = TORPEDO_X + Math.cos(HEADING + TARGET_OFF) * TARGET_RANGE;
 const TARGET_Y = TORPEDO_Y + Math.sin(HEADING + TARGET_OFF) * TARGET_RANGE;
 
 /** How long the turn is watched, and how often it is read: every tick. */
-const WATCH_TICKS = ticksFor(0.5);
+const WATCH_TICKS = ticksFor(0.8);
 const SAMPLE_EVERY = 1;
 
 /** What one tick of travel is worth at the specified speed, in units. */
@@ -76,10 +82,16 @@ const TICK_TRAVEL = TORPEDO_SPEED * TICK_DT;
  *
  * 3 percent, the figure the review item states — `12.6` units per second. The
  * rule is a constant, so a conforming build has no latitude on it beyond the
- * arithmetic of composing a velocity from a heading and a magnitude. The wrong
- * model it separates is a build that steers by adding a lateral correction: a
- * turn of `TORPEDO_TURN` for one tick adds `420 * tan(1.33 degrees)` sideways,
- * which compounds over the sixty ticks of this span into tens of units per second.
+ * arithmetic of composing a velocity from a heading and a magnitude.
+ *
+ * The wrong model it is really aimed at is a build that TRADES SPEED FOR TURN —
+ * the commonest way to write a guided munition, and the one `specs/weapons.md`
+ * rules out in as many words by holding the speed "whether or not it is turning".
+ * Such a build reads well under `420` for every tick the turn is saturated, tens
+ * of units per second out. The other, a build that composes its velocity by adding
+ * a steering impulse and never brings the magnitude back, drifts by a little each
+ * tick rather than a lot on one, which is why the span this is read over is `96`
+ * ticks rather than the dozen a single turn takes.
  */
 const SPEED_TOLERANCE = 0.03 * TORPEDO_SPEED;
 
