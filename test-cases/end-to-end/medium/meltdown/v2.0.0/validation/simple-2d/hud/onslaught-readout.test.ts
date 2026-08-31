@@ -34,10 +34,20 @@
 // in a build or opening phase, and The Hundred's preview would otherwise put its
 // own count of `100` into the strip.
 //
+// AND THE READOUT IS STILL THERE, WHICH THE NEGATIVE ALONE DOES NOT SAY.
+// specs/hud.md draws the three readouts "at all times during a run" and gives the
+// wave one the label `HUD_WAVE_LABEL`; The Hundred changes what that readout
+// READS, not whether it exists — the rule is that the onslaught stands "in place
+// of a wave over a total". So the label is required in The Hundred's own panel
+// too, and a build that answers this mode by dropping the readout altogether
+// fails here rather than passing the absence check for free. The label is the one
+// piece of copy specs/hud.md fixes, which is why it is the piece that is read.
+//
 // WHAT IT DOES NOT DECIDE. That the numbered readout is drawn correctly is
 // `hud.wave-readout`; what The Hundred fields is `modes.the-hundred-*`.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { HUD_WAVE_LABEL } from "../../src/constants";
 import { assertTrue } from "../assert";
 import {
   captureStill,
@@ -47,7 +57,7 @@ import {
   type Harness,
   type TextSpan,
 } from "../harness";
-import { readPanel, readsNumber, textsOf } from "./read";
+import { readPanel, readsNumber, readsText, textsOf } from "./read";
 
 /** The mode whose readout must NOT read a wave over a total. */
 const ONSLAUGHT_MODE = "hundred";
@@ -136,5 +146,12 @@ it("reads the onslaught rather than a wave over a total in The Hundred", async (
       `place (specs/hud.md, The status readouts); the panel drew ` +
       `${JSON.stringify(textsOf(onslaught))}, reading wave ${wave} over ` +
       `${total}`,
+  );
+  assertTrue(
+    readsText(onslaught, HUD_WAVE_LABEL),
+    `the ${HUD_WAVE_LABEL} label still drawn in The Hundred's panel, the ` +
+      `readout being one specs/hud.md draws "at all times during a run" and ` +
+      `The Hundred changing only what it reads (specs/hud.md, The status ` +
+      `readouts); the panel drew ${JSON.stringify(textsOf(onslaught))}`,
   );
 });
