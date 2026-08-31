@@ -29,7 +29,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 import { requireCharge, requireReady } from "./scenario";
 
 /** The seed the run is opened on. Any would do; a fixed one makes the picture stable. */

@@ -61,12 +61,7 @@ afterEach(() => {
 
 it("adds no second torpedo when the key is pressed with one already in flight", async () => {
   startPlaying(h);
-  const standing = poseTorpedo(
-    h,
-    STANDING.x,
-    STANDING.y,
-    STANDING_HEADING,
-  );
+  const standing = poseTorpedo(h, STANDING.x, STANDING.y, STANDING_HEADING);
   h.debug.setTorpedoCharge?.(1);
 
   const posed = h.snapshot();

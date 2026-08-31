@@ -96,8 +96,7 @@ it("launches a torpedo at TORPEDO_SPEED along the facing from a ship drifting ac
   // The torpedo leaving a drifting ship on the facing alone.
   captureStill(h, "launch");
 
-  const along =
-    torpedo.vx * Math.cos(FACING) + torpedo.vy * Math.sin(FACING);
+  const along = torpedo.vx * Math.cos(FACING) + torpedo.vy * Math.sin(FACING);
   const across =
     torpedo.vx * Math.cos(DRIFT_HEADING) + torpedo.vy * Math.sin(DRIFT_HEADING);
 

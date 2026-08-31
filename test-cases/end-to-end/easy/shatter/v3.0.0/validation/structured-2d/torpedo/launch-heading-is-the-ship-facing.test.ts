@@ -99,7 +99,7 @@ it("launches a torpedo on the ship's facing at each of four facings", async () =
       "the launched torpedo's heading to be the ship's facing at that " +
         `moment, ${(facing / DEG).toFixed(0)} degrees, within ` +
         `${(HEADING_TOLERANCE / DEG).toFixed(0)} degree (specs/weapons.md); ` +
-        `read ${((torpedo.heading / DEG + 540) % 360 - 180).toFixed(2)} ` +
+        `read ${(((torpedo.heading / DEG + 540) % 360) - 180).toFixed(2)} ` +
         `degrees, ${(off / DEG).toFixed(2)} degrees off by the shortest arc`,
     );
   }
