@@ -31,7 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TICK_HZ, tileCX, tileCY } from "../../src/constants";
-import { assertEqual } from "../assert";
+import { assertCloseTo, assertEqual } from "../assert";
 import {
   bearOf,
   captureReplay,
@@ -60,6 +60,17 @@ const STEP_ROW = BEAR_ROW;
  */
 const SPAN_TICKS = TICK_HZ;
 
+/**
+ * How many decimal places the held centre must agree to.
+ *
+ * Six places is half a millionth of a stage unit — the same allowance the other
+ * two engines' suites read this item at, and far below anything a build could
+ * move a bear by on purpose. A centre that HOLDS is a centre nothing was added
+ * to, so the only distance from the tile centre is the arithmetic of the pose
+ * itself; a build whose travel ran anyway is out by whole tiles.
+ */
+const CENTRE_DIGITS = 6;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -83,13 +94,20 @@ it("holds a gated bear's centre while its routing still commits a step", async (
     return bearOf(h.snapshot(), bear);
   });
 
-  assertEqual(
-    `${held.x},${held.y}`,
-    `${tileCX(BEAR_COL)},${tileCY(BEAR_ROW)}`,
-    `the CENTRE of the bear with setBearTravel(${bear}, false) after one second ` +
-      `of game time, against the centre of the tile it was settled on — a gated ` +
-      `bear's centre holds however long a scenario runs ` +
+  assertCloseTo(
+    held.x,
+    tileCX(BEAR_COL),
+    CENTRE_DIGITS,
+    `the centre x of the bear with setBearTravel(${bear}, false) after one ` +
+      `second of game time, against the centre of the tile it was settled on — ` +
+      `a gated bear's centre holds however long a scenario runs ` +
       `(specs/instrumentation.md)`,
+  );
+  assertCloseTo(
+    held.y,
+    tileCY(BEAR_ROW),
+    CENTRE_DIGITS,
+    `the centre y that same bear reports after the same second`,
   );
   assertEqual(
     `${held.col},${held.row}`,
