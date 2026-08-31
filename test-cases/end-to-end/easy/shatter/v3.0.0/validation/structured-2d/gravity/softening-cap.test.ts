@@ -17,8 +17,9 @@
 //     capped (the rule)      MU / 90^2  * TICK_DT  =  4.62963 units per second
 //     uncapped (the fault)   MU / 60^2  * TICK_DT  = 10.41667 units per second
 //
-// The fault reads 2.25 times the rule, which is forty-five times the 5 percent
-// this check allows, so no tolerance can let one pass for the other. Sixty units
+// The fault reads 2.25 times the rule — 125 percent away, twenty-five times the 5
+// percent this check allows — so no tolerance can let one pass for the other.
+// Sixty units
 // is two thirds of `SOFTEN`, far enough inside it that a build whose cap is off
 // by a few units still reads the capped figure, and it clears the star's core —
 // `specs/collision.md` absorbs a round that reaches `CORE_R + BULLET_R` (`33`),

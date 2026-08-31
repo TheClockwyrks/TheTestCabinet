@@ -86,8 +86,9 @@ const VELOCITY_TOLERANCE = 0.5;
  *
  * One unit. `specs/instrumentation.md` enters the saucer "with no vertical
  * component", and with its mind off nothing gives it one, so a conformant build
- * holds `y` exactly. A build that displaces its bodies toward the star instead of
- * accelerating them falls more than a hundred units in these two seconds.
+ * holds `y` exactly. A build that lets the well move the saucer at all leaves
+ * that row: `specs/gravity.md`'s law integrated from this pose puts it 171 units
+ * below the row after the two seconds.
  */
 const CROSS_TRACK_TOLERANCE = 1;
 

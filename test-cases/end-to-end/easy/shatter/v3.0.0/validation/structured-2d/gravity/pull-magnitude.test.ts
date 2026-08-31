@@ -25,7 +25,8 @@
 //
 //   a constant pull            same figure at all three; fails at least two
 //   MU / d rather than MU / d^2  22 500 : 30 000 : 37 500, out by two orders
-//   MU / d^3                   11.25 : 13.3 : 2.6 of the wanted, wrong at all three
+//   MU / d^3                   0.56 : 1.33 : 2.60, under a hundredth of the
+//                              wanted at every one of the three
 //   the softening cap applied everywhere  555.6 at all three, wrong at all three
 //   the wrong MU               every reading off by the same ratio
 //

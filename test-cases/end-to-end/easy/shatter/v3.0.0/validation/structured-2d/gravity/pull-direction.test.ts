@@ -15,10 +15,11 @@
 // WHY FOUR BEARINGS, AND WHY THESE FOUR. One bearing cannot separate a pull
 // toward the star from a pull along a fixed direction, and one QUADRANT cannot
 // separate the pull from a build that got a sign wrong on one axis. Four bearings
-// spread one to a quadrant catch both: a build that pulls everything downward
-// reads right at one bearing and 90 or 180 degrees out at the others, and a build
-// whose `y` term is negated is exactly right on the two bearings level with the
-// star and reflected on the rest.
+// spread one to a quadrant catch both: a build that pulls everything downward is
+// between 25 and 155 degrees out at these four, and a build whose `y` term is
+// negated reflects the pull about the horizontal, which at these four is 50 or
+// 130 degrees out. A single bearing, or a single quadrant, would have let one of
+// the two through.
 //
 // The four are `25`, `115`, `205` and `295` degrees. None is on an axis and none
 // is on a diagonal, which is what catches the two cheap approximations a build

@@ -25,9 +25,9 @@
 // this pose and none of which is inside the bound:
 //
 //   a range cutoff on the well          0, against 0.08110
-//   Manhattan, |dx| + |dy| = 920        0.0463, 43 percent low
+//   Manhattan, |dx| + |dy| = 920        0.0443, 45 percent low
 //   the larger axis alone, 600          0.1042, 28 percent high
-//   the softening cap applied always    0.4630, five and a half times
+//   the softening cap applied always    4.6296, fifty-seven times
 //   the shortest wrapped distance       the same 680 — see the note below
 //
 // WHAT THIS ITEM CANNOT SEPARATE, STATED PLAINLY. The star stands at the field's
