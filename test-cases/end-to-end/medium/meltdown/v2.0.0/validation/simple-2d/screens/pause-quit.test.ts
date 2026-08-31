@@ -1,18 +1,65 @@
-// Meltdown — screens/pause-quit: quit returns to the title.
+// screens/pause-quit — confirming QUIT TO MENU leaves the run and returns to the
+// title.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// THE RULE. specs/screens.md's `paused` table: the `QUIT TO MENU` row leads to
+// `title`.
 //
-// What it must decide:
+// THE THIRD ROW, AND THE ONE THAT LEAVES THE RUN. The other two rows of
+// `PAUSE_ITEMS` both keep the player in the game — `screens.pause-resume` returns
+// to the match and `screens.pause-restart` replays it — so this is the only row
+// that has to abandon it, and it is the row a player reaches for when they have
+// finished. A build that answers it by resuming, or by replaying, keeps a player
+// in a run they asked to leave, and reads `playing` here.
 //
-//   Confirming QUIT TO MENU returns the screen to title.
+// THE PAUSE SCREEN IS POSED OVER A REAL RUN. `startRun` opens an empty, quiet
+// floor and the screen is set on top of it, so the press is made from where a
+// player would make it. `setScreen` runs no entry effect
+// (specs/instrumentation.md), so what is graded is the row alone; how a player
+// reaches the pause screen is `controls.esc-pauses` and `controls.pause-key`.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { BINDINGS, PAUSE_ITEMS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { poseMenu } from "./menu";
 
-it("Quit returns to the title", () => {
-  throw new Error(
-    "Meltdown: validation/screens/pause-quit.test.ts is not implemented yet",
+/** The key specs/controls.md binds `confirm` to. */
+const CONFIRM = BINDINGS.confirm[0];
+
+/** The row `QUIT TO MENU` sits on, last of the three `PAUSE_ITEMS`. */
+const QUIT_ROW = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("returns to the title when QUIT TO MENU is confirmed", async () => {
+  assertEqual(
+    PAUSE_ITEMS[QUIT_ROW],
+    "QUIT TO MENU",
+    "posing: the row this item is about (specs/screens.md, PAUSE_ITEMS)",
+  );
+  poseMenu(h, "paused", QUIT_ROW);
+  await h.advance(1);
+  assertEqual(
+    h.snapshot().screen,
+    "paused",
+    "posing: the screen the press is made on (specs/screens.md)",
+  );
+
+  await h.tap(CONFIRM);
+  captureStill(h, "title");
+
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    `${CONFIRM} on the QUIT TO MENU row: the screen it leads to ` +
+      `(specs/screens.md)`,
   );
 });
