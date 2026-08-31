@@ -13,6 +13,11 @@
 // both globals up over the project's own `assets/` directory for the life of the
 // file and restores them afterwards.
 //
+// `tsconfig.json` declares no global type packages, so the game's own code is
+// typed against the browser alone. `@types/node` is installed for the tests, and
+// a test module that reads the disk asks for it with `/// <reference types="node"
+// />` at its top, which scopes Node's types to that one module.
+//
 // Coverage is measured over `src/` alone, so it reports the code this build
 // actually ships. `passWithNoTests` keeps a build that has not written its tests
 // yet reporting an honest zero rather than a runner error.
