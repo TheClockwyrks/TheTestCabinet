@@ -47,13 +47,17 @@ import { clearTheWave, openWaveAt } from "./scene";
 const WAVE = 3;
 
 /**
- * How long the banner is watched: `WAVE_BANNER_TIME` and a tenth of a second.
+ * How long the field is watched: three times `WAVE_BANNER_TIME` and a half second.
  *
- * The extra tenth carries the window past the end of a conformant build's banner,
- * so the samples the rule is applied to cover the whole of it rather than
- * stopping a tick short of the moment a late spawn would show.
+ * The rule is about every point the banner is showing, so the window has to
+ * outlast the banner — and it is the BUILD's banner, not the specified one. Three
+ * times over covers a build that runs its banner too long, which is a defect
+ * `banner-runs-for-1p5s` charges it for and which must not also let it spawn a
+ * wave unwatched. Samples taken after the banner has run out carry a `waveBanner`
+ * of `0` and are filtered out below, so the extra length costs a conformant build
+ * nothing but the samples.
  */
-const WATCH_TICKS = ticksFor(WAVE_BANNER_TIME + 0.1);
+const WATCH_TICKS = ticksFor(3 * WAVE_BANNER_TIME + 0.5);
 
 /**
  * The banner reading below which a sample is the arrival's own tick rather than
