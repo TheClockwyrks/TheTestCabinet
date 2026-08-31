@@ -1,27 +1,82 @@
-// Floe — bays/fish-appears-in-open-bay: SCAFFOLD STUB, NOT A VALIDATOR.
+// bays/fish-appears-in-open-bay — the bonus catch the cadence produces turns up
+// in a bay that is OPEN.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `bays.fish-appears-in-open-bay` review item, written
-// against the `simple-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/bays.md: "A bonus catch is a small fish that visits the open bays ... The
+// bay a bonus catch appears in is drawn from the game's own seeded randomness,
+// among the bays that are open at that moment other than the bay the previous
+// bonus catch occupied."
 //
-// The item this file decides, from test-case.toml:
+// This is one of the five points whose requirement IS the cadence, so
+// `setFishCadence` is turned back on after `startCrossing` shut it. Nothing else
+// on the strait is touched: no fish is posed, because a posed one would be this
+// check's own choice of bay rather than the build's.
 //
-//   The bonus catch appears in an open bay
+// THE FILLED BAY IS BAY `0`, AND THE INDEX IS THE POINT OF IT. There is no
+// previous bonus catch on a level's first, so the draw is over the four bays that
+// remain open — and the wrong models this point exists to catch are the ones that
+// draw over all five: taking the first bay of the array, taking `bays[0]`
+// outright, or drawing an index without filtering. Every one of those reads `0`,
+// which the check below refuses. Filling any other bay would leave the commonest
+// wrong answer indistinguishable from a right one.
 //
-//   With the cadence on and one bay posed filled, the first fish that appears
-//   is in a bay that is open.
-//
-// Its declared media: image `fish`.
+// What is read is the bay's own flag rather than its index, so a build that is
+// merely drawing a different bay from the reference's still passes.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNotNull } from "../assert";
+import { FISH_INTERVAL, TICK_HZ } from "../../src/constants";
+import {
+  captureStill,
+  createHarness,
+  startCrossing,
+  ticksFor,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The one bay posed filled: the index every "ignores openness" model reads. */
+const FILLED_BAY = 0;
 
-it("bays/fish-appears-in-open-bay has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/**
+ * How long the first bonus catch is waited for, in frames of game time.
+ *
+ * `specs/bays.md` has the first appear `FISH_INTERVAL` (`8` s) after the level is
+ * laid out. Half as long again is allowed here, because WHEN it arrives is
+ * `bays/fish-interval`'s requirement rather than this one's: a build whose first
+ * catch is a second late should fail there and pass here.
+ */
+const WAIT_FRAMES = ticksFor(FISH_INTERVAL * 1.5);
+
+/** How many frames separate two samples of the wait: a tenth of a second. */
+const POLL_FRAMES = Math.round(0.1 * TICK_HZ);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("puts the first bonus catch in a bay that is open", async () => {
+  startCrossing(h);
+  h.debug.setBay(FILLED_BAY, true);
+  h.debug.setFishCadence(true);
+
+  const appeared = await h.until((s) => s.fishBay !== null, {
+    maxFrames: WAIT_FRAMES,
+    poll: POLL_FRAMES,
+  });
+
+  captureStill(h, "fish");
+
+  assertEqual(appeared.hit, true, "a bonus catch within the wait");
+  const bay = appeared.snapshot.fishBay;
+  assertNotNull(bay, "the bay the bonus catch appeared in");
+  assertEqual(
+    appeared.snapshot.bays[bay as number],
+    false,
+    `bay ${bay} open when the bonus catch appeared in it`,
+  );
 });
