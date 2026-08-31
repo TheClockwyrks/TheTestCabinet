@@ -12,15 +12,15 @@ slug = "wick"
 name = "Wick"
 
 # Experimental until the case carries what a public version must. The checklist
-# below is already on the engine format and every item names its validator, but
-# the validator suites those names point at (`validation/none/`,
-# `validation/simple-2d/`, and `validation/structured-2d/`), the three reference
-# implementations `variants/base.toml` describes, the baselines
-# `tcab capture-baselines` synthesizes from them, and the showcase have yet to
-# land. A version that runs freezes, and a frozen version can never gain a
-# validator, so this keeps the version off the catalog unless a deployment opts
-# in with `TCAB_BACKEND_ALLOW_EXPERIMENTAL`. Drop the key when the suites,
-# references, and baselines are in.
+# below is already on the engine format, every item names its validator, and
+# `variants/base.toml` names the three reference implementations, but the
+# validator suites those names point at (`validation/none/`,
+# `validation/simple-2d/`, and `validation/structured-2d/`), the baselines
+# `tcab capture-baselines` synthesizes from the references, and the showcase
+# have yet to land. A version that runs freezes, and a frozen version can never
+# gain a validator, so this keeps the version off the catalog unless a
+# deployment opts in with `TCAB_BACKEND_ALLOW_EXPERIMENTAL`. Drop the key when
+# the suites and baselines are in.
 experimental = true
 
 # Relative difficulty, surfaced on the site. Easy: the case is a great deal of
@@ -207,8 +207,9 @@ build = "npm run build"
 # other three are recorded; `test` additionally records the count and coverage
 # the build's own suite reports. These four are exactly the commands
 # `specs/overview.md` tells the build will be run over the finished repository.
-# Every seeded `.prettierignore` excludes `specs/` (and `engine/` under an engine)
-# so `format` walks the build's own files alone.
+# The three seeded `.prettierignore` files exclude Markdown (so `specs/` and the
+# engine's docs), the vendored engine, and the produced assets, so `format` walks
+# the build's own files alone.
 [toolchain]
 typecheck = "npx tsc --noEmit"
 lint = "npx eslint ."
@@ -1465,7 +1466,7 @@ title = "An enemy killed on a tick lands no hit on that tick"
 description = "A moth overlapping the lamplighter with its contact cooldown due that a posed bolt kills on the same tick leaves hp untouched, because hits and deaths resolve before contact."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "clock/dead-enemy-no-contact.test.ts", outputs = [ { id = "nohit", name = "The kill resolved before the hit", kind = "image" } ] }
+validation = { script = "clock/dead-enemy-no-contact.test.ts", outputs = [ { id = "no-hit", name = "The kill resolved before the hit", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "recovery-before-contact"

@@ -11,24 +11,24 @@ description = "The whole night: every weapon, passive, and enemy, through to daw
 # branches on the variant at all, and the only axis the specs branch on is
 # `engine.slug`.
 
-# No `reference_implementation` yet. The authored, correct builds of this
-# variant, one per supported engine because the build a reference demonstrates
-# differs under each, land beside the validator suites, and a declared path must
-# exist for the case to resolve. Declare the table then, naming EXACTLY the
-# engines the case supports:
-#
-#   [reference_implementation]
-#   none = "references/none/base"
-#   "simple-2d" = "references/simple-2d/base"
-#   "structured-2d" = "references/structured-2d/base"
-#
-# No reference directory is ever seeded into a run: each is the authored answer,
-# built with the case's own `[build]` commands and held to the same four
-# toolchain gates a run is, and each is what `tcab capture-baselines` drives to
-# synthesize the baseline half of the validation media for its engine. This is
-# a full-stack case, so each of those builds also PRODUCES its own sprites,
-# sheets, icons, and audio during authoring, committed beside it; the build
-# itself only loads them, so `npm ci && npm run build` is self-contained.
+# The authored, correct builds of this variant, one directory per supported
+# engine, because the build a reference demonstrates differs under each: the
+# engineless one writes its own runtime and `window.__wick`, the Simple 2D one
+# a value-typed game over the engine's frame loop, and the Structured 2D one a
+# game mode, actors, and a controller inside the engine's framework. This table
+# names EXACTLY the engines the case supports; the resolver checks both
+# directions. No reference directory is ever seeded into a run: each is the
+# authored answer, built with the case's own `[build]` commands and held to the
+# same four toolchain gates a run is, and each is what `tcab capture-baselines`
+# drives to synthesize the baseline half of the validation media for its
+# engine. This is a full-stack case, so each of these builds also PRODUCED its
+# own sprites, sheets, icons, and audio during authoring, committed beside it
+# (its `ASSET-LAYOUT.md` maps the set); the build itself only loads them, so
+# `npm ci && npm run build` is self-contained.
+[reference_implementation]
+none = "references/none/base"
+"simple-2d" = "references/simple-2d/base"
+"structured-2d" = "references/structured-2d/base"
 
 # No `showcase` yet either. The curated catalog presentation, a player-facing
 # description and a carousel led by sustained real play captured from a
