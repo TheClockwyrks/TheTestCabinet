@@ -1,17 +1,136 @@
-// Spectra — resonance/core-fills: a Prism's core kill fills the meter
+// resonance/core-fills — destroying a Prism's exposed core raises the meter by
+// `RESONANCE_KILL`.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `resonance.core-fills` on the
-// `none` configuration, and captures the media `test-case.toml` declares
-// for it.
+// THE RULE. `specs/resonance.md`, the same sentence that exempts the shell:
+// "Breaking a Prism's shell adds nothing; destroying a Prism's exposed core is a
+// matching kill and adds `RESONANCE_KILL`." This is the other direction of
+// `resonance/shell-fills-nothing`: a build that pays nothing for either layer
+// fails here and passes there, and a build that pays for both fails there and
+// passes here, so the pair cannot be satisfied by one blanket rule.
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// THE PRISM IS POSED WITH ITS SHELL ALREADY BROKEN, through `setDroneShell`,
+// rather than broken with a first shot. `specs/drones.md` makes the core the
+// exposed layer exactly when the shell is gone, and that is the whole
+// precondition this point needs; firing a shell-breaking shot first would put a
+// second matching contact inside a scenario that is measuring what ONE kill adds.
+//
+// THE SHOT IS THE CORE'S BAND, WHICH IS THE OPPOSITE OF THE STORED ONE.
+// `specs/drones.md`: "The shell's band is the Prism's stored band, and the core's
+// is always the opposite", and a shell-broken Prism is "Broken by | A shot whose
+// effective band matches the core's". The Prism stores cyan, so the magenta shot
+// is the matching one — which also means a build that reads the stored band
+// straight through, ignoring the shell swap, destroys nothing here and reads the
+// meter unmoved.
+//
+// WHAT THIS DOES NOT DECIDE. That the core falls to a matching shot at all is
+// `bands`' and `drones`'; what the core kill SCORES is `scoring`'s.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertUndefined } from "../assert";
+import { FORM_CENTER_X, RESONANCE_KILL, RESONANCE_MAX } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  droneById,
+  poseBystander,
+  poseDrone,
+  requireDrone,
+  shootDrone,
+  startPosed,
+  type Harness,
+} from "../harness";
 
-it("A Prism's core kill fills the meter", () => {
-  throw new Error(
-    "Spectra: validation/none/resonance/core-fills.test.ts is a scaffold placeholder and has not been implemented",
+/**
+ * Where the meter is posed before the kill, in meter points.
+ *
+ * A fifth of `RESONANCE_MAX` (100): clear of `0`, so adding and setting read
+ * differently, and clear of the ceiling, so `POSED_METER + RESONANCE_KILL` (24)
+ * is nowhere near the cap.
+ */
+const POSED_METER = 20;
+
+/**
+ * Where the target Prism stands.
+ *
+ * Mid-field on the ship's own lane, clear of both HUD strips (`FIELD_TOP` 64,
+ * `FIELD_BOTTOM` 656), clear of `SHIP_Y` (600), and clear of the corner the
+ * bystander holds.
+ */
+const TARGET = { x: FORM_CENTER_X, y: 300 } as const;
+
+/**
+ * How far below the target the shot is placed, in logical units.
+ *
+ * A shell-broken Prism's contact reach is `PRISM_CORE_HALF` (13) +
+ * `PLAYER_BULLET_HALF` (6) = 19 units of centre separation, so 140 places the
+ * bullet seven times clear of it.
+ */
+const SHOT_BELOW = 140;
+
+/**
+ * Frames the flight is allowed.
+ *
+ * At `PLAYER_BULLET_SPEED` (760) a bullet covers 7.6 units per frame of the
+ * harness's 100 Hz clock, so it enters the 19-unit reach 121 units up, inside 16
+ * frames. Thirty leaves fourteen frames of slack.
+ */
+const SHOT_FRAMES = 30;
+
+/** Decimal places the meter is read to: whole-number figures, round-off only. */
+const METER_DIGITS = 6;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("adds RESONANCE_KILL when a matching shot destroys a Prism's exposed core", async () => {
+  await startPosed(h);
+  // The Prism is destroyed outright by this scenario, and a stage clears in the
+  // moment the last drone of its wave is destroyed (specs/stages.md); the
+  // bystander leaves the wave a drone under either reading of "its wave".
+  await poseBystander(h);
+  await h.debug.setResonance(POSED_METER);
+  const prism = await poseDrone(h, "prism", TARGET.x, TARGET.y, {
+    band: "cyan",
+    shell: false,
+  });
+
+  const posed = await h.snapshot();
+  assertEqual(
+    requireDrone(posed, prism, "the target Prism").shellAlive,
+    false,
+    "precondition: the Prism's core is the exposed layer",
+  );
+  assertCloseTo(
+    posed.resonance,
+    POSED_METER,
+    METER_DIGITS,
+    "precondition: the meter the core kill is measured from",
+  );
+
+  const shot = await shootDrone(h, prism, "magenta", {
+    below: SHOT_BELOW,
+    maxFrames: SHOT_FRAMES,
+  });
+  await captureStill(h, "filled");
+
+  assertUndefined(
+    droneById(shot.snapshot, prism),
+    "precondition: the magenta shot destroyed the exposed cyan Prism's core " +
+      "(specs/drones.md)",
+  );
+  assertCloseTo(
+    shot.snapshot.resonance,
+    POSED_METER + RESONANCE_KILL,
+    METER_DIGITS,
+    `the meter after a Prism's exposed core was destroyed: ${POSED_METER} + ` +
+      `RESONANCE_KILL (${RESONANCE_KILL}) (specs/resonance.md), out of ` +
+      `RESONANCE_MAX (${RESONANCE_MAX})`,
   );
 });
