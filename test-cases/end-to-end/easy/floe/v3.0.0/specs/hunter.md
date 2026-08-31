@@ -119,7 +119,9 @@ slot fills again once its delay has passed.
 
 ## Catching the critter
 
-A bear catches the critter, while the critter is in play, when the distance
-between their centers is at most `BEAR_CATCH_DIST` (`18`) units. The critter
-loses a life, wherever on the strait the two met, and `specs/progression.md`
-fixes what that costs.
+A bear catches the critter, while the critter is in play, when the straight-line
+distance between their centers, `hypot(bearX - critterX, bearY - critterY)`, is
+at most `BEAR_CATCH_DIST` (`18`) stage units. This is the one distance in the
+game measured in stage units rather than in tiles; the tile distance above is
+what the routing reads. The critter loses a life, wherever on the strait the two
+met, and `specs/progression.md` fixes what that costs.
