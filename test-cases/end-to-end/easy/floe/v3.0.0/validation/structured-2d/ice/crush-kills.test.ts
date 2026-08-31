@@ -7,40 +7,42 @@
 // specs/progression.md fixes what a life costs: "`lives` drops by exactly one,
 // `phase` becomes `dying`".
 //
-// THE SCENARIO POSES THE ARRIVAL EXACTLY, so that every wrong model of it reads
-// as a different tick. A `car` is parked `112` units to the RIGHT of the
-// critter's centre on a leftward lane held at `2.0` tiles a second — `64` units
-// of stage a second — so its left edge reaches that centre after `112 / 64`
-// seconds, which is `1.75` s and a whole `210` ticks. Against that:
+// THE TWO TICKS ARE BOTH READ OFF THE BUILD. The rule is a relation between two
+// things the build itself reports — where the car is, and when the life goes —
+// so the sweep below records, tick by tick, whether the car's span covers the
+// critter's posed centre and whether a life has gone, and requires the two
+// moments to be the same tick. Nothing here compares the crush against a tick
+// this check computed from a speed: `ice/lane-speeds` grades how fast the lane
+// runs, and a bound stated in absolute ticks would fail a build for a wrong lane
+// speed twice over.
+//
+// WHAT THAT READING SEPARATES. Every wrong model of the crush lands on a
+// different tick FROM THE BUILD'S OWN COVERING:
 //
 //   - a build that crushes on OVERLAP of the two bodies rather than on the
-//     centre being covered — the critter's tile is `32` units wide, so its right
-//     side meets the car's left edge `16` units earlier — reads about tick
-//     `180`;
+//     centre being covered fires while the car's left edge is still a critter's
+//     half-tile short of the centre — `16` units, or thirty ticks at the posed
+//     rate;
 //   - a build that crushes whenever a vehicle is anywhere on the critter's ROW
-//     reads tick 1;
-//   - a build that never crushes reads no tick at all.
+//     fires on the first tick, hundreds short;
+//   - a build that never crushes reaches no tick at all.
 //
-// Each is tens of ticks from `210`, and the bound below is three.
+// The bound below is three ticks, which is what a tick boundary and the order a
+// build runs its lanes and its hazards in can account for and nothing else.
 //
 // THE LANE'S MOTION IS POSED, both its speed and its direction, because neither
-// is what this decides: `ice/lane-speeds` and `ice/lane-directions` grade the
-// table. What is left for this check is the crush and the tick it lands on.
+// is what this decides. The sweep is then given more than three times the game
+// time that posed geometry needs, so the verdict does not turn on the lane
+// running at exactly the rate it was set to.
 //
 // THE STRAIT IS EMPTY BUT FOR THE TWO BODIES. `startCrossing` clears both
 // rosters and shuts the four world gates, so the life this loses cannot have
 // come from a bear, from open water, from the crossing timer or from anything
 // else that costs one (specs/progression.md).
 
-import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
-import {
-  START_LIVES,
-  TICK_HZ,
-  TILE,
-  tileCX,
-  tileLeft,
-} from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { START_LIVES, tileCX, tileLeft } from "../../src/constants";
 import {
   captureReplay,
   createHarness,
@@ -49,6 +51,7 @@ import {
   startCrossing,
   ticksFor,
   vehicleById,
+  type FloeSnapshot,
   type Harness,
   type LaneDir,
   type VehicleKind,
@@ -73,26 +76,42 @@ const CAR_COL = 24;
 const LANE_DIR: LaneDir = -1;
 const LANE_SPEED = 2.0;
 
-/** How far the car's left edge starts from the critter's centre, in stage units. */
-const APPROACH = tileLeft(CAR_COL) - tileCX(CRITTER_COL);
+/**
+ * How long the sweep runs for, in seconds of game time.
+ *
+ * The posed geometry puts the car's left edge `112` units right of the critter's
+ * centre and moves it `64` units a second, so it arrives after `1.75` s. Six
+ * seconds is more than three times that, which is what keeps the verdict off the
+ * lane's exact rate: a build drifting at half the speed it was set to still
+ * arrives well inside the sweep, and fails `ice/lane-speeds` rather than this.
+ */
+const SWEEP_SECONDS = 6;
 
-/** The tick the car's left edge reaches that centre: `APPROACH / (speed * TILE)`. */
-const ARRIVAL_TICK = Math.round((APPROACH / (LANE_SPEED * TILE)) * TICK_HZ);
+/** The sweep in ticks, one tick a frame. */
+const SWEEP_TICKS = ticksFor(SWEEP_SECONDS);
 
 /**
- * How many ticks either side of the arrival the life may be taken on.
+ * How many ticks may separate the tick the car first covers the centre from the
+ * tick the life goes.
  *
- * A tick is `1/120` s and the approach is integrated over two hundred and ten of
- * them, so a build summing `speed * TILE * TICK_DT` lands a few parts in a
- * quadrillion either side of the boundary and may take the tick after; a build
- * that runs its hazards before its lanes rather than after takes one more. Three
- * covers both and stays an order of magnitude inside the nearest wrong model,
- * which is thirty ticks away.
+ * Both are read from the same build at the same tick granularity, so the only
+ * honest slack is the order a build runs its two systems in: hazards after lanes
+ * takes the life on the covering tick itself, hazards before lanes takes it on
+ * the next, and a rate summed tick by tick can land a few parts in a quadrillion
+ * either side of the boundary and cost one more. Three covers all of that and
+ * stays ten times inside the nearest wrong model, which is thirty ticks away.
  */
 const ARRIVAL_TOLERANCE_TICKS = 3;
 
-/** How far past the arrival the sweep looks before reporting no crush at all. */
-const SWEEP_TICKS = ARRIVAL_TICK + ticksFor(1);
+/** What the sweep found: the tick each of the two moments landed on. */
+interface Sweep {
+  /** The first tick the car's span covered the critter's posed centre. */
+  covering: number | null;
+  /** The first tick a life had gone. */
+  lost: number | null;
+  /** The state at the tick the life went, or the last state swept. */
+  atLoss: FloeSnapshot;
+}
 
 let h: Harness;
 
@@ -125,35 +144,66 @@ it("costs a life on the tick a released vehicle's span reaches the critter's cen
       `x ${tileCX(CRITTER_COL)} (specs/ice.md), was ${JSON.stringify(car)}`,
   );
 
-  // Released, and swept a tick at a time so the tick the life goes is the tick
+  // The centre the covering is read against, taken while the critter is still on
+  // the strait: a life lost takes it off, and the snapshot then reports the last
+  // centre it held (specs/instrumentation.md), which is this one.
+  const centre = posed.critter.x;
+
+  // Released, and swept a tick at a time so each of the two moments is the tick
   // this reads.
-  const crushed = await captureReplay(h, "crush", () => {
+  const swept = await captureReplay(h, "crush", async (): Promise<Sweep> => {
     h.debug.setLaneSpeed(LANE_ROW, LANE_SPEED);
-    return h.until((snapshot) => snapshot.lives < START_LIVES, {
-      maxFrames: SWEEP_TICKS,
-      poll: 1,
-    });
+    let covering: number | null = null;
+    let lost: number | null = null;
+    let atLoss = h.snapshot();
+    for (let tick = 1; tick <= SWEEP_TICKS; tick += 1) {
+      await h.advance(1);
+      const now = h.snapshot();
+      const item = vehicleById(now, carId);
+      if (
+        covering === null &&
+        item !== undefined &&
+        itemCoversPoint(item, centre)
+      ) {
+        covering = tick;
+      }
+      if (lost === null && now.lives < START_LIVES) {
+        lost = tick;
+        atLoss = now;
+      }
+      if (covering !== null && lost !== null) break;
+      if (lost === null) atLoss = now;
+    }
+    return { covering, lost, atLoss };
   });
 
   assertTrue(
-    crushed.hit,
-    `a life lost within ${SWEEP_TICKS} ticks of the lane being released, as ` +
-      `the car's span reaches the critter's centre at tick ${ARRIVAL_TICK} ` +
-      `(specs/ice.md), was ${crushed.snapshot.lives} lives still in hand`,
+    swept.covering !== null,
+    `the released lane to carry the car's span onto the critter's centre at ` +
+      `x ${centre} within ${SWEEP_SECONDS} s of game time (specs/ice.md), was ` +
+      `never covered`,
   );
+  assertTrue(
+    swept.lost !== null,
+    `a life lost as the car's span reaches the critter's centre ` +
+      `(specs/ice.md), was ${swept.atLoss.lives} lives still in hand after ` +
+      `${SWEEP_SECONDS} s`,
+  );
+  if (swept.covering === null || swept.lost === null) return;
+
   assertLessThanOrEqual(
-    Math.abs(crushed.frames - ARRIVAL_TICK),
+    Math.abs(swept.lost - swept.covering),
     ARRIVAL_TOLERANCE_TICKS,
-    `the tick the life was taken on, away from the tick the car's left edge ` +
-      `reaches the critter's centre (${ARRIVAL_TICK}), was ${crushed.frames}`,
+    `the tick the life was taken on (${swept.lost}), away from the tick the ` +
+      `car's own span first covered the critter's centre (${swept.covering})`,
   );
   assertEqual(
-    crushed.snapshot.lives,
+    swept.atLoss.lives,
     START_LIVES - 1,
     "the lives left after being crushed (specs/progression.md)",
   );
   assertEqual(
-    crushed.snapshot.phase,
+    swept.atLoss.phase,
     "dying",
     "the phase a lost life leaves the crossing in (specs/progression.md)",
   );
