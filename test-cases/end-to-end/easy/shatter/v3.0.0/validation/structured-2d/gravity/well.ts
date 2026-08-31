@@ -32,6 +32,7 @@
 // Nothing here holds a threshold. Every figure a check asserts is stated in the
 // check itself, derived from `specs/gravity.md`.
 
+import { assertLessThanOrEqual } from "../assert";
 import type { Vec } from "../geometry";
 import { STAR } from "../geometry";
 import {
@@ -40,6 +41,21 @@ import {
   type Harness,
   type ShatterSnapshot,
 } from "../harness";
+
+/**
+ * How far a posed round's centre may sit from where it was asked to go, in
+ * units, read back before any frame runs.
+ *
+ * Half a unit. `specs/instrumentation.md` places `addBullet`'s round "its centre
+ * at a logical field position" and, under this engine, a pose "acts on the live
+ * game the moment it is called" — so nothing has moved it yet and a conformant
+ * build reads back the number it was handed. This is not a check on `addBullet`,
+ * which is `instrumentation/add-bullet`'s item: it is the precondition the
+ * readings rest on, so a build that placed its round somewhere else fails naming
+ * THAT rather than showing up as a pull of the wrong size at a distance nobody
+ * posed.
+ */
+const POSE_TOLERANCE = 0.5;
 
 /**
  * The point exactly `distance` units from the star's centre along `bearing`.
@@ -80,14 +96,21 @@ export async function gainsAtRest(
 
   const posed: ShatterSnapshot = h.snapshot();
   for (let i = 0; i < ids.length; i += 1) {
-    // The pose landed where it was asked to. A round the surface put somewhere
-    // else would be read at a distance the check never posed, so this is caught
-    // here rather than showing up as a wrong magnitude.
-    requireBullet(
+    const round = requireBullet(
       posed,
       ids[i],
       `addBullet(${at[i].x.toFixed(2)}, ${at[i].y.toFixed(2)}, 0, 0) to place ` +
         "a round at rest (specs/instrumentation.md)",
+    );
+    // The pose landed where it was asked to. A round the surface put somewhere
+    // else would be read at a distance the check never posed, so it is caught
+    // here rather than showing up as a pull of the wrong size.
+    assertLessThanOrEqual(
+      Math.hypot(round.x - at[i].x, round.y - at[i].y),
+      POSE_TOLERANCE,
+      `how far the round addBullet placed sits from the ` +
+        `(${at[i].x.toFixed(2)}, ${at[i].y.toFixed(2)}) it was given, in ` +
+        "units, before any frame ran (specs/instrumentation.md)",
     );
   }
 
