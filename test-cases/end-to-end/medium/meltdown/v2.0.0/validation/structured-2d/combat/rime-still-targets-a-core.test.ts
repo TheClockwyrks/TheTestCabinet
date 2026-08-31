@@ -1,19 +1,72 @@
-// Meltdown — combat/rime-still-targets-a-core: the Rime still targets a Core.
+// Meltdown — combat/rime-still-targets-a-core: an immune unit is an ordinary target.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// specs/combat.md: "A unit immune to slowing is an ordinary target: it is chosen and
+// fired on under the rule above like any other unit." So the Core's immunity
+// (specs/surge.md marks it `Slowable: no`) is about what a shot DOES to it, never about
+// whether the shot is taken.
 //
-// What it must decide:
+// THIS IS THE HALF A BUILD DROPS ON THE WAY TO THE OTHER ONE. Having read that the Core
+// cannot be slowed, the shortest way to honour it is to skip the unit in the Rime's
+// targeting — at which point the boss walks past every Rime on the floor untouched,
+// `combat/core-is-immune-to-slowing` passes, and nothing else in the group notices. So
+// this point poses a Core as the only unit in range of a Rime and asserts the two
+// things that say the Rime treated it as a target: `targeting` names it, and its hp
+// falls.
 //
-//   A Rime with a Core as the only unit in range reports it as targeting and
-//   fires at it.
+// THE HP READING IS THE LOAD-BEARING ONE. A build could name the Core in `targeting`
+// and decline to resolve a shot at it, so the drive runs half an interval past the
+// first shot and reads what came off.
+//
+// ONE UNIT ON AN EMPTY FLOOR, so `targeting` names the Core or it names nothing, and
+// there is no second unit whose `remaining` could be the reason for either answer.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  NEAR_UNITS,
+  fireRateOf,
+  poseGun,
+  poseMarkEast,
+  readGun,
+  readHp,
+  ticksForShots,
+} from "./duel";
 
-it("The Rime still targets a Core", () => {
-  throw new Error(
-    "Meltdown: validation/combat/rime-still-targets-a-core.test.ts is not implemented yet",
+/** The one emitter whose effect the Core is immune to, at level I, pinned cold. */
+const TOWER = "rime";
+const LEVEL = 1;
+const HEAT = 0;
+const MARK = "core";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("The Rime still targets a Core", async () => {
+  const gunId = poseGun(h, TOWER, HEAT, LEVEL);
+  const mark = poseMarkEast(h, TOWER, MARK, NEAR_UNITS);
+  const opened = readHp(h, mark);
+
+  await h.advance(ticksForShots(1, fireRateOf(TOWER, LEVEL)));
+  captureStill(h, "targeting");
+  const gun = readGun(h, gunId);
+
+  assertEqual(
+    gun.targeting,
+    mark,
+    `the unit a ${TOWER} targeted with an immune ${MARK} the only unit in range`,
+  );
+  assertGreaterThan(
+    opened - readHp(h, mark),
+    0,
+    `hp the ${TOWER} removed from the ${MARK}, after one ` +
+      `${(1 / fireRateOf(TOWER, LEVEL)).toFixed(4)}s interval`,
   );
 });
