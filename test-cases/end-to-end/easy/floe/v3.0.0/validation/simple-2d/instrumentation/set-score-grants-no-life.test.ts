@@ -1,28 +1,136 @@
-// Floe — instrumentation/set-score-grants-no-life: SCAFFOLD STUB, NOT A VALIDATOR.
+// instrumentation/set-score-grants-no-life — posing the score carries it across a
+// bonus-life boundary and grants no life.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `instrumentation.set-score-grants-no-life` review item, written
-// against the `simple-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/instrumentation.md fixes the operation's scope in one sentence: "Sets the
+// score. It grants no bonus life: a bonus life belongs to the scoring path, and a
+// posed score is a precondition." specs/progression.md fixes the award itself, and
+// fixes it to PLAY: "The score earns a life at every `BONUS_LIFE_EVERY` (`10,000`)
+// points it crosses through play: `lives` rises by one for each boundary the score
+// passes, so a single award that carries it over two boundaries earns two lives."
 //
-// The item this file decides, from test-case.toml:
+// WITHOUT THIS ITEM HALF THE SUITE CANNOT POSE A SCORE AT ALL. Every check that
+// needs a run partway through — one that reads what a crossing pays, or what the
+// victory screen reports — poses a score first, and a `setScore` that also paid the
+// bonus life would silently change the lives that check was about to read. It is
+// graded here so that it is known to be safe there.
 //
-//   Posing the score grants no bonus life
+// THE TWO POSES ARE THE TWO CASES THE PROGRESSION RULE NAMES, and they are read in
+// the same direction: neither grants a life.
 //
-//   setScore across a BONUS_LIFE_EVERY (10,000) boundary leaves lives exactly
-//   as it was: the award belongs to the scoring path, and a pose is a
-//   precondition.
+//   - ONE BOUNDARY. `9,990` to `10,010` steps across `10,000` exactly once. A
+//     build that ran its scoring path from the pose reads one life more.
+//   - TWO BOUNDARIES AT ONCE. `10,010` to `30,010` steps across `20,000` and
+//     `30,000` together, which is the case specs/progression.md singles out as
+//     paying twice. A build that pays per boundary reads two lives more, and a
+//     build that pays per award reads one, so the failure names which wrong model
+//     was implemented.
 //
-// Its declared media: image `after`.
+// THE LIVES ARE POSED AWAY FROM THE START. `START_LIVES` is `3`, so a build that
+// merely reset the lives on a score change would read `3` and pass a check that had
+// left them there; posed at `2`, the reading is of the lives this scenario put on
+// the strait.
+//
+// AND THE FRAMES AFTER EACH POSE ARE RUN, on an empty, quiet strait where nothing
+// else can score and nothing else can cost a life, so an award deferred to the next
+// update is caught rather than missed by a snapshot taken too early.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { BONUS_LIFE_EVERY } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startCrossing,
+  ticksFor,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The lives the run is posed with: away from `START_LIVES`, so a reset shows. */
+const POSED_LIVES = 2;
 
-it("instrumentation/set-score-grants-no-life has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** A score just short of the first boundary, and one just past it. */
+const BELOW_ONE = BONUS_LIFE_EVERY - 10;
+const ABOVE_ONE = BONUS_LIFE_EVERY + 10;
+
+/** A score two boundaries further on, crossed in a single pose. */
+const ABOVE_THREE = 3 * BONUS_LIFE_EVERY + 10;
+
+/** Seconds of stepped game time run after each pose, so a deferred award fires. */
+const SETTLE_SECONDS = 0.25;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("grants no bonus life for a score posed across one boundary or two", async () => {
+  startCrossing(h);
+  h.debug.setLives(POSED_LIVES);
+  h.debug.setScore(BELOW_ONE);
+  await h.advance(ticksFor(SETTLE_SECONDS));
+
+  const before = h.snapshot();
+  assertEqual(
+    before.score,
+    BELOW_ONE,
+    `the score posed just short of the first boundary, at ${BELOW_ONE}`,
+  );
+  assertEqual(
+    before.lives,
+    POSED_LIVES,
+    "the lives posed under it — the reading every assertion below is against",
+  );
+
+  h.debug.setScore(ABOVE_ONE);
+  const crossedOne = h.snapshot();
+  await h.advance(ticksFor(SETTLE_SECONDS));
+  const settledOne = h.snapshot();
+
+  h.debug.setScore(ABOVE_THREE);
+  const crossedTwo = h.snapshot();
+  await h.advance(ticksFor(SETTLE_SECONDS));
+  const settledTwo = h.snapshot();
+  // Before the assertions, so a build that paid a life still leaves the picture of
+  // the HUD it paid it on.
+  captureStill(h, "after");
+
+  assertEqual(
+    crossedOne.lives,
+    POSED_LIVES,
+    `the lives the instant after setScore(${ABOVE_ONE}) carried the score across ` +
+      `BONUS_LIFE_EVERY (${BONUS_LIFE_EVERY}) — a pose grants no bonus life ` +
+      `(specs/instrumentation.md)`,
+  );
+  assertEqual(
+    settledOne.lives,
+    POSED_LIVES,
+    `the lives ${SETTLE_SECONDS} s of game time after that pose, so an award ` +
+      `deferred to an update is caught too`,
+  );
+
+  assertEqual(
+    crossedTwo.lives,
+    POSED_LIVES,
+    `the lives the instant after setScore(${ABOVE_THREE}) carried the score ` +
+      `across two boundaries at once, which specs/progression.md makes worth two ` +
+      `lives when PLAY pays it`,
+  );
+  assertEqual(
+    settledTwo.lives,
+    POSED_LIVES,
+    `the lives ${SETTLE_SECONDS} s of game time after the two-boundary pose`,
+  );
+
+  // The score really did land where it was posed, so the readings above are of a
+  // score that crossed the boundaries rather than of one that never moved.
+  assertEqual(
+    settledTwo.score,
+    ABOVE_THREE,
+    `the score after setScore(${ABOVE_THREE})`,
+  );
 });
