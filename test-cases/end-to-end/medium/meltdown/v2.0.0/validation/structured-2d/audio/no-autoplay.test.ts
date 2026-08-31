@@ -27,11 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CUES } from "../../src/constants";
-import {
-  assertDeepEqual,
-  assertEqual,
-  assertLength,
-} from "../assert";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
 import {
   captureStill,
   createHarness,

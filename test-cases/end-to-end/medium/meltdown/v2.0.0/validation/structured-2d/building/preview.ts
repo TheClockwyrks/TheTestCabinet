@@ -74,10 +74,7 @@ export function probeValid(
  * failure from whatever it went on to read, so it is named as one here rather
  * than surfacing as a reading taken off `undefined`.
  */
-export function towerOf(
-  snapshot: MeltdownSnapshot,
-  id: number,
-): TowerSnapshot {
+export function towerOf(snapshot: MeltdownSnapshot, id: number): TowerSnapshot {
   const tower = towerById(snapshot, id);
   if (tower === undefined) {
     return fail(

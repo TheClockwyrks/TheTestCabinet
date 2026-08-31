@@ -24,11 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CUES } from "../../src/constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLength,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,
   createHarness,

@@ -16,7 +16,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { TOWER_DEFS } from "../../src/constants";
 import { assertEqual, assertLength, assertNull } from "../assert";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 
 /** The type armed, and the cost specs/towers.md gives it. */
 const HELD = "arc";

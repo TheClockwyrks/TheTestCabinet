@@ -20,7 +20,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { TOWER_DEFS } from "../../src/constants";
 import { assertEqual, assertLength } from "../assert";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 import { heldPreview } from "./preview";
 
 /** The type armed once, and the rotation held once. */

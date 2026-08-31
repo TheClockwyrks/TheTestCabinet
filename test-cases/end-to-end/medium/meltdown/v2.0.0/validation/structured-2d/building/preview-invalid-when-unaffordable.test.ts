@@ -15,7 +15,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { TOWER_DEFS } from "../../src/constants";
 import { assertEqual } from "../assert";
-import { captureStill, createHarness, startRun, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
 import { probeValid } from "./preview";
 
 /** The type read. Its cost is the figure specs/towers.md gives the Arc. */

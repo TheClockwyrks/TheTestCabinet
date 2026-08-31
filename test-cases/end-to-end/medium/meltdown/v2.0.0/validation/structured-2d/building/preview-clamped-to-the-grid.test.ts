@@ -69,7 +69,12 @@ it("keeps the whole footprint on the grid at every corner of the floor", async (
 
       const build = heldPreview(h);
       const where = `${type} (${size}x${size}) at the floor's ${corner.name} corner`;
-      assertBetween(build.col, 0, COLS - size, `${where}: the footprint's column`);
+      assertBetween(
+        build.col,
+        0,
+        COLS - size,
+        `${where}: the footprint's column`,
+      );
       assertBetween(build.row, 0, ROWS - size, `${where}: the footprint's row`);
     }
   }

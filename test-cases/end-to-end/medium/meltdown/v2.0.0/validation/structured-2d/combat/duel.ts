@@ -243,10 +243,7 @@ export function poseMarkEast(
  * honest reading of a roster that does not hold it; every check in this group wants
  * the tower it posed, so what a missing one means is stated once, here.
  */
-export function towerOf(
-  snapshot: MeltdownSnapshot,
-  id: number,
-): TowerSnapshot {
+export function towerOf(snapshot: MeltdownSnapshot, id: number): TowerSnapshot {
   const tower = towerById(snapshot, id);
   if (tower === undefined) {
     return fail(`the tower ${id} still on the floor`, "no such tower");

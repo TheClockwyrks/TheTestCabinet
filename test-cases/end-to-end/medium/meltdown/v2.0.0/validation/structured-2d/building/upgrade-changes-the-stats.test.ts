@@ -181,13 +181,7 @@ const TARGET_HP = 1e6;
  */
 function poseProbe(h: Harness, tiles: number): number {
   h.debug.clearSurge();
-  return poseTargetAt(
-    h,
-    "mote",
-    CENTRE.x + tiles * TILE,
-    CENTRE.y,
-    TARGET_HP,
-  );
+  return poseTargetAt(h, "mote", CENTRE.x + tiles * TILE, CENTRE.y, TARGET_HP);
 }
 
 let h: Harness;

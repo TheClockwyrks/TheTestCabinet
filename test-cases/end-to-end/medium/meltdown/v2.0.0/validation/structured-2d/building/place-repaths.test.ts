@@ -25,11 +25,7 @@
 // snapshot, which is what makes it a reading about the frame the tower lands on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertGreaterThan,
-  assertNotNull,
-  assertTrue,
-} from "../assert";
+import { assertGreaterThan, assertNotNull, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,

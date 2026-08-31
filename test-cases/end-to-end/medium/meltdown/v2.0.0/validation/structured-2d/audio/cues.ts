@@ -21,13 +21,15 @@
 // its event the way a player reaches it — a real shot, a real kill, a real leak,
 // a real clear, a real press.
 
-import { tileCenter, poseWalker, type Harness, type TimedCue } from "../harness";
+import {
+  tileCenter,
+  poseWalker,
+  type Harness,
+  type TimedCue,
+} from "../harness";
 
 /** Every cue that played on `frame`, by name, in the order they played. */
-export function playedOn(
-  played: readonly TimedCue[],
-  frame: number,
-): string[] {
+export function playedOn(played: readonly TimedCue[], frame: number): string[] {
   return played.filter((cue) => cue.frame === frame).map((cue) => cue.cue);
 }
 
@@ -40,10 +42,7 @@ export function playedBefore(
 }
 
 /** Every play of the cue named `name`, oldest first. */
-export function playsOf(
-  played: readonly TimedCue[],
-  name: string,
-): TimedCue[] {
+export function playsOf(played: readonly TimedCue[], name: string): TimedCue[] {
   return played.filter((cue) => cue.cue === name);
 }
 

@@ -26,7 +26,12 @@
 // decides that a unit beyond the radius is nothing to shoot at.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertEqual, assertLength, assertNull } from "../assert";
+import {
+  assertCloseTo,
+  assertEqual,
+  assertLength,
+  assertNull,
+} from "../assert";
 import {
   captureStill,
   createHarness,

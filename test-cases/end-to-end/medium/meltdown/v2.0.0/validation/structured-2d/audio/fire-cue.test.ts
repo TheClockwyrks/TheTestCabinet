@@ -97,10 +97,9 @@ it("plays the fire cue on the frame the shot resolves, and nothing else", async 
   // `damageDealt` accumulates "the hp each of its shots actually removed"
   // (specs/combat.md), so the frame it first rises is the frame a shot resolved
   // on — the frame specs/audio.md puts the cue on.
-  const shot = await h.until(
-    (s) => (towerById(s, arc)?.damageDealt ?? 0) > 0,
-    { maxFrames: SHOT_TICKS },
-  );
+  const shot = await h.until((s) => (towerById(s, arc)?.damageDealt ?? 0) > 0, {
+    maxFrames: SHOT_TICKS,
+  });
   const frame = h.engine.frame().count;
   captureStill(h, "fire");
 

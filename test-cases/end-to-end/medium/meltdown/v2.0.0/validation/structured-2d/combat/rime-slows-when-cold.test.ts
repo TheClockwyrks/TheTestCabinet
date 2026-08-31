@@ -91,7 +91,11 @@ it("A cold Rime slows hardest", async () => {
     BASE_SPEED,
     `precondition: the ${MARK}'s baseSpeed, which specs/surge.md fixes`,
   );
-  assertEqual(slowed.slowed, true, `the ${MARK} carrying a slow after one shot`);
+  assertEqual(
+    slowed.slowed,
+    true,
+    `the ${MARK} carrying a slow after one shot`,
+  );
   assertCloseTo(
     slowed.slowFactor,
     EXPECTED_FACTOR,
