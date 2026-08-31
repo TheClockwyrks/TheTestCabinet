@@ -25,10 +25,7 @@
 // tick rather than in one step. A build weaving at `120` is over by a third.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  SAUCER_WEAVE_INTERVAL,
-  SAUCER_WEAVE_SPEED,
-} from "../../src/constants";
+import { SAUCER_WEAVE_INTERVAL, SAUCER_WEAVE_SPEED } from "../../src/constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

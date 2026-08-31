@@ -53,8 +53,7 @@ const STAND = { x: 320, y: 620 };
  * The standoff covered at the muzzle speed, with eight ticks over for a build
  * whose swept test resolves a tick late. A route, not a bound.
  */
-const FLIGHT_TICKS =
-  Math.ceil(ROUND_STANDOFF / (MUZZLE_SPEED * TICK_DT)) + 8;
+const FLIGHT_TICKS = Math.ceil(ROUND_STANDOFF / (MUZZLE_SPEED * TICK_DT)) + 8;
 
 let h: Harness;
 

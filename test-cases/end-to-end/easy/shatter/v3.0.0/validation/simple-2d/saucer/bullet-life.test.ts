@@ -33,10 +33,7 @@
 // cannot carry it into anything, not so that the pull is switched off.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  SAUCER_BULLET_LIFE,
-  SAUCER_BULLET_SPEED,
-} from "../../src/constants";
+import { SAUCER_BULLET_LIFE, SAUCER_BULLET_SPEED } from "../../src/constants";
 import { assertDeepEqual } from "../assert";
 import {
   captureStill,
@@ -71,13 +68,7 @@ afterEach(() => {
 
 it("takes a saucer round off the field between 1.3 s and 1.5 s", async () => {
   startPlaying(h);
-  const round = poseEnemyBullet(
-    h,
-    START.x,
-    START.y,
-    SAUCER_BULLET_SPEED,
-    0,
-  );
+  const round = poseEnemyBullet(h, START.x, START.y, SAUCER_BULLET_SPEED, 0);
   const inFlight = (): number[] =>
     h.snapshot().enemyBullets.map((shot) => shot.id);
 

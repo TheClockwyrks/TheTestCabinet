@@ -19,13 +19,12 @@
 
 import { fail } from "../assert";
 import { FIELD_W } from "../../src/constants";
-import {
-  secondsFor,
-  startPlaying,
-  ticksFor,
-  type Harness,
-} from "../harness";
-import type { BulletSnapshot, SaucerSnapshot, ShatterSnapshot } from "../surface";
+import { secondsFor, startPlaying, ticksFor, type Harness } from "../harness";
+import type {
+  BulletSnapshot,
+  SaucerSnapshot,
+  ShatterSnapshot,
+} from "../surface";
 
 /* -------------------------------------------------------------------------- */
 /* Opening a game the saucer arrives into                                      */

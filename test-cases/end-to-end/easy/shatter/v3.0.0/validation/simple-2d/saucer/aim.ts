@@ -15,10 +15,7 @@
 // of a visit are geometry and cost; every tolerance stays in the check that
 // asserts it, derived there from the figure `specs/saucer.md` fixes for it.
 
-import {
-  SAUCER_AIM_ERROR,
-  SAUCER_FIRE_INTERVAL,
-} from "../../src/constants";
+import { SAUCER_AIM_ERROR, SAUCER_FIRE_INTERVAL } from "../../src/constants";
 import { fail } from "../assert";
 import {
   angleBetween,
