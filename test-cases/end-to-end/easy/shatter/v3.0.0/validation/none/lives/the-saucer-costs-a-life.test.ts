@@ -1,19 +1,91 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// lives/the-saucer-costs-a-life — the saucer's own hull is lethal to the ship.
 //
-// lives/the-saucer-costs-a-life — The saucer destroys the ship
+// THE RULE. `specs/collision.md` gives the pair "The ship and the saucer" the
+// resolution "The ship is destroyed and a life is lost", and
+// `specs/progression.md` names the saucer as one of the three lethal contacts. It
+// is a different pair from the one the saucer's GUN makes, and it is graded
+// separately here so a build that kills the ship with saucer fire but flies its
+// saucer straight through the ship loses this point and keeps
+// `a-saucer-bullet-costs-a-life`.
 //
-// A saucer advanced onto the ship drops lives by exactly one.
+// SO THE SAUCER ARRIVES WITH ITS GUN SHUT. `setSaucerGun(false)` gates the aimed
+// shot alone (`specs/instrumentation.md`), which is what makes the reading
+// attributable: with the gun open, a saucer that fires on its way in could take
+// the ship with a bullet, and this item would pass on a build whose hull is
+// harmless. Its mind is shut on the same terms, so the weave and the steering
+// around the core cannot carry it off the line this check put it on; its travel is
+// left running, because crossing the field into the ship is the whole scenario.
 //
-// Declared by test-case.toml as validation.script "lives/the-saucer-costs-a-
-// life.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the none harness in validation/none/harness.ts and the spec-
-// derived oracle in validation/none/geometry.ts — never against a reference
-// build.
+// THE APPROACH IS THE SAUCER'S OWN. It enters `APPROACH_GAP` to the ship's left
+// travelling right at `SAUCER_SPEED` (`140`), which is the speed
+// `specs/saucer.md` fixes for a crossing, and closes the `68` units past the `32`
+// at which the pair touches (`SHIP_R + SAUCER_R`) in half a second. The well never
+// pulls the saucer at all (`specs/gravity.md`), so the course is exactly the one
+// posed.
 //
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// EVERY WRONG MODEL READS AS A DIFFERENT NUMBER, on the same terms as
+// `a-rock-costs-a-life`: `3` for a saucer that passes through, `1` or `0` for a
+// build that resolves the same overlap on tick after tick.
 
-throw new Error(
-  "Shatter v3.0.0: validation/none/lives/the-saucer-costs-a-life.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { SAUCER_R, SAUCER_SPEED, SHIP_R } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  poseSaucer,
+  startPlaying,
+  type Harness,
+} from "../harness";
+import {
+  APPROACH_GAP,
+  DEATH_SPOT,
+  contactNeeded,
+  untilLifeLost,
+} from "./scene";
+
+/** The separation at which the ship and the saucer touch (`specs/collision.md`). */
+const TOUCHING = SHIP_R + SAUCER_R;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("drops the ship count by exactly one when the saucer reaches the ship", async () => {
+  await startPlaying(h);
+  const before = (await h.snapshot()).lives;
+
+  await h.debug.setShipPosition(DEATH_SPOT.x, DEATH_SPOT.y);
+  await h.debug.setShipVelocity(0, 0);
+  await h.debug.setShipInvuln(0);
+  // The gate this whole group turns on: the contact test IS the requirement.
+  await h.debug.setShipCollision(true);
+  await poseSaucer(h, DEATH_SPOT.x - APPROACH_GAP, DEATH_SPOT.y, {
+    vx: SAUCER_SPEED,
+    vy: 0,
+    mind: false,
+    gun: false,
+  });
+
+  const lost = await untilLifeLost(h, before);
+  await captureStill(h, "contact");
+
+  assertEqual(
+    lost.hit,
+    true,
+    contactNeeded("the saucer", APPROACH_GAP, TOUCHING, SAUCER_SPEED),
+  );
+  assertEqual(
+    lost.snapshot.lives,
+    before - 1,
+    `the ships left after the saucer reached the ship, from the ${before} it ` +
+      `stood at — the ship and the saucer destroys the ship and costs one life ` +
+      `(specs/collision.md, specs/progression.md)`,
+  );
+});
