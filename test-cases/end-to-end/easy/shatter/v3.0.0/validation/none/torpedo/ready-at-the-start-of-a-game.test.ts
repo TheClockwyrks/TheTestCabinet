@@ -1,19 +1,71 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// torpedo/ready-at-the-start-of-a-game — a game opens with the torpedo charged.
 //
-// torpedo/ready-at-the-start-of-a-game — A game starts with the torpedo charged
+// specs/weapons.md, "The charge": "The ship holds one torpedo charge, a number
+// from `0` to `1`. A game begins with the charge at `1`, ready to fire." And
+// specs/instrumentation.md fixes the reading: `torpedoCharge` is the stored
+// number, and `torpedoReady` is `true` exactly when that charge is `1`. So the
+// opening state is two readings of one rule, and both are taken here.
 //
-// A game opened from the title reports torpedoReady true and torpedoCharge 1.
+// THE GAME IS OPENED THE WAY A PLAYER OPENS ONE, and it has to be. No pose can
+// produce a new game: `setTorpedoCharge` would set the very number under test, so
+// a check that posed it would compare the build against the check. `reset()` puts
+// the build back on the title, `PLAY` is confirmed with a real key through
+// Chromium's input pipeline, and what is read afterwards is what the build's own
+// new-game path built. That route leaves both world gates on — `reset` restores
+// them — so this is a real opening wave, which is the point.
 //
-// Declared by variants/warhead.toml as validation.script "torpedo/ready-at-
-// the-start-of-a-game.test.ts", so the manifest resolves only while this file
-// exists. The Validators stage of the v3.0.0 rework replaces it with the real
-// suite, written against the none harness in validation/none/harness.ts and
-// the spec-derived oracle in validation/none/geometry.ts — never against a
-// reference build.
-//
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// THE SCREEN IS CONFIRMED BEFORE THE CHARGE IS READ. A build that never left the
+// title has not begun a game at all, and "a game begins with the charge at 1" is
+// not decidable against one that never did; the check names that as what it needed
+// rather than reading a title screen's charge and calling it an opening.
 
-throw new Error(
-  "Shatter v3.0.0: validation/none/torpedo/ready-at-the-start-of-a-game.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, fail } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startGameFromTitle,
+  type Harness,
+} from "../harness";
+import { chargeOf, readyOf } from "./scene";
+
+/** The charge a game opens on (`specs/weapons.md`). */
+const FULL = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("opens a game with the charge full and the torpedo ready", async () => {
+  await startGameFromTitle(h);
+  const opened = await h.snapshot();
+  // The fresh game, its charge indicator full.
+  await captureStill(h, "charged");
+
+  if (opened.screen !== "playing") {
+    fail(
+      "a game opened from the title by confirming PLAY, so the charge a new " +
+        "game begins with can be read (specs/ui.md, specs/weapons.md)",
+      `the build was on the ${opened.screen} screen`,
+    );
+  }
+
+  assertEqual(
+    chargeOf(opened, "a game just opened from the title"),
+    FULL,
+    "the torpedo charge a new game begins with (specs/weapons.md: a game " +
+      "begins with the charge at 1, ready to fire)",
+  );
+  assertEqual(
+    readyOf(opened, "a game just opened from the title"),
+    true,
+    "torpedoReady on a new game, which specs/instrumentation.md makes true " +
+      "exactly when the charge is 1",
+  );
+});
