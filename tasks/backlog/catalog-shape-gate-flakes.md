@@ -10,27 +10,34 @@ The test failed once under `cargo nextest run --workspace --exclude
 test-cabinet-desktop`, in a run of 5,567 tests where it was the only failure. It
 passed when run alone, and it passed on a full re-run of the same suite over the
 same tree. `.config/nextest.toml` sets `flaky-result=fail`, so a result that
-varies between runs fails the gate.
+varies between runs fails the gate. The failing run's assertion message was
+discarded, so which of the four assertions failed and for which case is
+unrecorded.
 
-The test reads the repository's own `test-cases/` directory through
-`catalog_root`, which resolves to `$CARGO_MANIFEST_DIR/../../test-cases`. Every
-case and every version is resolved and its serialized shape asserted. The
-directory is shared with the rest of the suite rather than copied per test.
+The test reads the repository's own `test-cases/` and `game-jams/` directories
+through `catalog_root`, shared with the rest of the suite rather than copied per
+test. Three of its assertions compare a resolved version against its own
+serialization; the fourth compares the number of versions the catalog resolved
+against the number of manifests `on_disk_manifests` walks off disk. Each is a
+function of those two trees alone.
 
-The failing run's assertion message was discarded, so which of the three
-assertions failed and for which case is unrecorded.
+Repeated full runs of the suite report the same result, and a watch over both
+trees across a full run records no write to either. A result that varies
+therefore means either the committed manifests changed while the suite ran, or a
+directory read failed and the walk answered a short list.
 
 ## Design
 
-Capture the failure before deciding the fix. Run the suite until the result
-reproduces, keeping the full output.
+Reproduce the failure before deciding anything further. Run the suite until the
+result recurs, keeping the full output.
 
-Then establish whether the reading is affected by what the rest of the suite
-does to the shared directory. If it is, give the test a catalog it owns.
+A read that fails must name itself and the path it failed on, so that a run
+which varies says why rather than presenting as a catalog disagreeing with its
+own directory.
 
 ## Done when
 
 - [ ] The failing assertion and the case it names are recorded.
 - [ ] The cause is identified.
-- [ ] Repeated runs of the full suite report the same result.
-- [ ] Gates green.
+- [x] Repeated runs of the full suite report the same result.
+- [x] Gates green.
