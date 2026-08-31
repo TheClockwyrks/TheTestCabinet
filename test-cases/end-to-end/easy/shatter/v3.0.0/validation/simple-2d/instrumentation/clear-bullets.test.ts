@@ -1,20 +1,69 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// instrumentation/clear-bullets — `clearBullets()` empties the ship's bullet roster
+// and leaves every other roster standing.
 //
-// instrumentation/clear-bullets — clearBullets empties the ship's bullets alone
+// THE SECOND HALF IS THE HALF THAT MATTERS. `specs/instrumentation.md` gives the
+// operation both halves — "Removes every one of the ship's bullets, leaving the
+// rocks, saucer bullets, and the saucer standing" — and the second is what the
+// harness's own `clearWorld` leans on, since it empties the world one roster at a
+// time. The two shot rosters are the pair most easily confused for one another, so
+// the saucer's fire is on the field while the ship's is cleared, and it is read
+// back by id.
 //
-// clearBullets() removes every one of the ship's bullets and leaves the rocks,
-// enemy bullets and saucer standing.
-//
-// Declared by test-case.toml as validation.script "instrumentation/clear-
-// bullets.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the simple-2d harness in validation/simple-2d/harness.ts and
-// the spec-derived oracle in validation/simple-2d/geometry.ts — never against
-// a reference build.
-//
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// IT IS ALSO WHAT KEEPS THIS OPERATION APART FROM THE GUN. Nothing here fires:
+// `specs/instrumentation.md` gives the surface no operation that does, so the
+// bullets are placed and then removed, and what is graded is the removal alone.
 
-throw new Error(
-  "Shatter v3.0.0: validation/simple-2d/instrumentation/clear-bullets.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startPlaying,
+  theSaucer,
+  type Harness,
+} from "../harness";
+import { posePopulatedField } from "./populated-field";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("removes every one of the ship's bullets and leaves the rest standing", async () => {
+  startPlaying(h);
+  const posed = posePopulatedField(h);
+  await h.advance(1);
+  const before = h.snapshot();
+  assertLength(
+    before.bullets,
+    posed.bullets.length,
+    "the ship's bullets the field held",
+  );
+
+  h.debug.clearBullets();
+  await h.advance(1);
+  captureStill(h, "cleared");
+  const after = h.snapshot();
+
+  assertLength(after.bullets, 0, "the ship's bullets clearBullets left");
+  assertDeepEqual(
+    after.rocks.map((rock) => rock.id),
+    posed.rocks,
+    "the rocks left standing",
+  );
+  assertDeepEqual(
+    after.enemyBullets.map((bullet) => bullet.id),
+    posed.enemyBullets,
+    "the saucer bullets left standing",
+  );
+  assertEqual(
+    theSaucer(after, "the saucer clearBullets left standing").id,
+    posed.saucer,
+    "the saucer left standing",
+  );
+});

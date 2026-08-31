@@ -1,20 +1,74 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// instrumentation/clear-rocks — `clearRocks()` empties the rock roster and leaves
+// every other roster standing.
 //
-// instrumentation/clear-rocks — clearRocks empties the rocks alone
+// THE SECOND HALF IS THE HALF THAT MATTERS. Emptying the rocks is easy to get
+// right; emptying the rocks AND NOTHING ELSE is what `specs/instrumentation.md`
+// asks for — "Removes every rock, leaving the bullets, saucer bullets, and the
+// saucer standing" — and it is what the harness's own `clearWorld` depends on,
+// since it empties the world one roster at a time and would be blind to a clear
+// that took a neighbour with it. So the field this runs over carries something on
+// every roster at once, and each survivor is read back BY ITS ID: a build that
+// emptied a roster and refilled it would be caught by the count, and one that
+// replaced an entity with a fresh one is caught by the id.
 //
-// clearRocks() removes every rock and leaves the bullets, enemy bullets and
-// saucer standing.
-//
-// Declared by test-case.toml as validation.script "instrumentation/clear-
-// rocks.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the simple-2d harness in validation/simple-2d/harness.ts and
-// the spec-derived oracle in validation/simple-2d/geometry.ts — never against
-// a reference build.
-//
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// AND IT DESTROYS NOTHING. `specs/instrumentation.md` is explicit that `clearRocks`
+// "destroys nothing and scores nothing, so a field it emptied has had no rock
+// destroyed on that tick", which is what keeps it apart from the wave-clear rule of
+// `specs/progression.md`. The score is therefore read before and after, and a build
+// that paid for the rocks it removed fails here.
 
-throw new Error(
-  "Shatter v3.0.0: validation/simple-2d/instrumentation/clear-rocks.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startPlaying,
+  theSaucer,
+  type Harness,
+} from "../harness";
+import { posePopulatedField } from "./populated-field";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("removes every rock and leaves the rest of the field standing", async () => {
+  startPlaying(h);
+  const posed = posePopulatedField(h);
+  await h.advance(1);
+  const before = h.snapshot();
+  assertLength(before.rocks, posed.rocks.length, "the rocks the field held");
+
+  h.debug.clearRocks();
+  await h.advance(1);
+  captureStill(h, "cleared");
+  const after = h.snapshot();
+
+  assertLength(after.rocks, 0, "the rocks clearRocks left");
+  assertDeepEqual(
+    after.bullets.map((bullet) => bullet.id),
+    posed.bullets,
+    "the ship's bullets left standing",
+  );
+  assertDeepEqual(
+    after.enemyBullets.map((bullet) => bullet.id),
+    posed.enemyBullets,
+    "the saucer bullets left standing",
+  );
+  assertEqual(
+    theSaucer(after, "the saucer clearRocks left standing").id,
+    posed.saucer,
+    "the saucer left standing",
+  );
+  assertEqual(
+    after.score,
+    before.score,
+    "clearRocks destroys nothing, so it scores nothing",
+  );
+});
