@@ -1,22 +1,100 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// saucer/at-most-one-at-a-time — a second visit never begins over a live one.
 //
-// saucer/at-most-one-at-a-time — Only one saucer is up at a time
+// THE RULE. `specs/saucer.md`, The cadence: "At most one saucer is on the field at
+// a time... A saucer already on the field is never joined by a second."
 //
-// Sampled every tick across two minutes of game time with spawning on, the
-// reported saucer.id never changes from one live saucer to another without a
-// tick reporting saucer null between the two visits, so a build whose spawner
-// starts a second visit over a live one fails.
+// WHY THE ID AND NOT A COUNT. `specs/instrumentation.md` makes the saucer a SINGLE
+// SLOT rather than a roster — "`snapshot().saucer` is the address" — so there is
+// nothing to count, and a check that counted would pass vacuously for every build
+// while baking the single slot into the shape it read. What the specification does
+// give is identity: every arrival "takes a fresh id, distinct among every live
+// entity, and that id is not reused while any live entity holds it, so one visit
+// is distinguishable from the next". So the requirement is read as CONTINUITY: a
+// live id may be followed by the same live id or by a clear field, and a live id
+// followed straight by a DIFFERENT live id is a second visit begun over the first.
+// A build whose spawner starts one while the previous is still up shows exactly
+// that, whichever of the two its single slot ends up holding.
 //
-// Declared by test-case.toml as validation.script "saucer/at-most-one-at-a-
-// time.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the structured-2d harness in
-// validation/structured-2d/harness.ts and the spec-derived oracle in
-// validation/structured-2d/geometry.ts — never against a reference build.
+// EVERY TICK, AND TWO MINUTES OF THEM. The changeover this hunts is one tick wide,
+// so this is the one point in this directory that does NOT march: its harness runs
+// at the default clock and every tick is a sample. Two minutes of game time is
+// long enough to hold three arrivals under the `18` s first delay and the
+// `25`–`35` s gaps after it, so the requirement is exercised across visits rather
+// than asserted over one.
 //
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// AT LEAST TWO VISITS ARE REQUIRED. A run that produced one saucer, or none, could
+// not have shown an overlap and must not be reported as having ruled one out — so
+// the count is asserted before the continuity is.
+//
+// NOTHING ELSE IS LEFT RUNNING. The game is really opened, the wave loop is shut
+// and the opening wave taken off, and the ship's lethal contact test is shut, so
+// two minutes pass without a wave, a death or a game over interrupting the
+// cadence. `saucerSpawning` is left on: the arrivals have to be the game's own.
+//
+// WHAT THIS DOES NOT DECIDE. When the arrivals come — `saucer/first-arrives-at-18s`
+// and `saucer/subsequent-gap` own the two figures.
 
-throw new Error(
-  "Shatter v3.0.0: validation/structured-2d/saucer/at-most-one-at-a-time.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  ticksFor,
+  type Harness,
+} from "../harness";
+import { openQuietGame, watchVisits } from "./visits";
+
+/** The seed the game is opened on, so the same visits are watched every run. */
+const SEED = 1;
+
+/** How much game time the slot is watched for, in seconds. */
+const WATCH_SECONDS = 120;
+
+/**
+ * The fewest visits the watch has to have seen for its verdict to mean anything.
+ *
+ * Two. The requirement is about one visit following another, so a run that held
+ * only one had no changeover to get wrong, and a pass over it would be a pass over
+ * a scenario that was never posed.
+ */
+const MIN_VISITS = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  // The default clock: one simulation tick a frame, so every tick is a sample.
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("never reports one live saucer id giving way to another without a clear tick between", async () => {
+  const opened = await openQuietGame(h, SEED);
+
+  let filmed = false;
+  const watch = await watchVisits(h, ticksFor(WATCH_SECONDS) - opened, {
+    onArrival: () => {
+      if (filmed) return;
+      filmed = true;
+      // One visit on the field at a time: the first arrival, on the tick it came.
+      captureStill(h, "visit");
+    },
+  });
+
+  assertGreaterThanOrEqual(
+    watch.visits.length,
+    MIN_VISITS,
+    `saucer visits over ${WATCH_SECONDS} s of game time with the game's own ` +
+      "arrival running — fewer than two is a run with no changeover to check " +
+      "(specs/saucer.md, The cadence)",
+  );
+  assertEqual(
+    watch.overlaps.length,
+    0,
+    "ticks on which a live saucer id gave way to another live one with no " +
+      "tick between reporting the slot clear — a saucer already on the field " +
+      `is never joined by a second (specs/saucer.md): ${watch.overlaps.join("; ")}`,
+  );
+});
