@@ -27,7 +27,6 @@ import {
   createHarness,
   startCrossing,
   ticksFor,
-  ticksPast,
   type Harness,
 } from "../harness";
 
@@ -35,22 +34,25 @@ import {
 const ROW = 15;
 
 /**
- * How long the key is held, in ticks.
+ * How long the key is held, in ticks: one tick short of the whole ticks
+ * `HOP_COOLDOWN` (`0.12` s) covers.
  *
- * `0.06` s is half of `HOP_COOLDOWN` (`0.12` s), so the release lands well
- * inside the cooldown the first hop set and the "released before the cooldown
- * reaches `0`" clause is the one being exercised.
+ * The longest hold that still ends INSIDE the cooldown the first hop set, which
+ * is the widest reading of the "released before the cooldown reaches `0`"
+ * clause and so the hardest case for a build that latches the press.
  */
-const HOLD_TICKS = ticksFor(HOP_COOLDOWN / 2);
+const HOLD_TICKS = ticksFor(HOP_COOLDOWN) - 1;
 
 /**
- * How long the drive runs on after the release.
+ * How long the drive runs on after the release: four whole cooldowns.
  *
- * `ticksPast(HOP_COOLDOWN)` is the first whole tick at or past the cooldown, so
- * by the end of this the cooldown has expired with the key up — which is the
- * moment a build that had latched the press would spend it on a second tile.
+ * The cooldown expires with the key up a quarter of the way into this, which is
+ * the moment a build that had latched the press would spend it on a second
+ * tile — and a build that spends it later, or that repeats on a cadence of its
+ * own, has three further cooldowns to show it. One cooldown would see only the
+ * first of those builds.
  */
-const SETTLE_TICKS = ticksPast(HOP_COOLDOWN);
+const SETTLE_TICKS = ticksFor(4 * HOP_COOLDOWN);
 
 let harness: Harness;
 
@@ -65,6 +67,16 @@ afterEach(async () => {
 it("moves exactly one tile for a press held and released inside the cooldown", async () => {
   await startCrossing(harness);
   await harness.debug.addCritter(START_COL, ROW);
+
+  // The tile the one hop is measured from, read from the build rather than
+  // assumed of the pose.
+  const before = await harness.snapshot();
+  assertEqual(
+    before.critter.col,
+    START_COL,
+    "the column the critter is posed on",
+  );
+  assertEqual(before.critter.row, ROW, "the row the critter is posed on");
 
   const after = await captureReplay(harness, "hop", async () => {
     await harness.hold(HOP_KEY.up);
