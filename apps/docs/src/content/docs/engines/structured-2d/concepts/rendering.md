@@ -68,12 +68,22 @@ exactly. A frame is a function of the world alone, which is what lets a
 validator read a pixel back and assert on it, and what lets two runs of the same
 scenario produce the same picture.
 
+## Screen space
+
+A readout, a menu, and an overlay hold their place on the canvas while the
+camera moves through the world. A render component states that with its space:
+a `screen` component draws through the viewport alone, in logical units, and
+the camera's position, zoom, and rotation leave it where it is. The same sort
+orders both spaces, so a HUD is a layer above the field rather than a second
+pipeline, and a screen component is read back from the world like any other.
+
 ## Drawing directly
 
 A case whose subject is the drawing itself attaches a draw component and
 implements its draw method. The engine calls it in its place in the layer order,
-with the context already carrying the world-to-device transform, so it draws in
-world units and sits among the declarative components rather than over them.
+with the context already carrying the transform of the component's space, so it
+draws in world units or in logical units and sits among the declarative
+components rather than over them.
 
 This path is what a case uses to measure drawing code the model wrote: whether
 it draws the right figure, in the right place, and whether it honors the mode

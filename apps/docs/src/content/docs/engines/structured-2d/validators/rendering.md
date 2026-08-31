@@ -47,7 +47,9 @@ context.
 `camera.logicalToWorld`. A world's camera starts at the center of the design
 field with a zoom of `1`, so world coordinates and logical coordinates coincide
 until the game moves the camera. Going through the camera anyway keeps a check
-correct once a level follows a view target or clamps to `camera.bounds`.
+correct once a level follows a view target or clamps to `camera.bounds`. A
+component in `screen` space skips the first stage: its composed transform is
+already logical, so a check applies the second stage alone to it.
 
 The second stage is `offsetX + x * scale` and `offsetY + y * scale`. `scale` is
 device pixels per logical unit with the device pixel ratio already folded in,

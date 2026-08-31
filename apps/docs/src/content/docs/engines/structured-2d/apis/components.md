@@ -53,10 +53,13 @@ only what it needs.
 ## `RenderComponent`
 
 ```ts
+type RenderSpace = "world" | "screen";
+
 class RenderComponent extends Component {
   layer: number;
   visible: boolean;
   opacity: number;
+  space: RenderSpace;
 }
 ```
 
@@ -65,11 +68,22 @@ class RenderComponent extends Component {
 | `layer` | `0` | Orders the pipeline. Lower layers draw first. |
 | `visible` | `true` | Whether the pipeline collects the component. |
 | `opacity` | `1` | Clamped to `0..1`. |
+| `space` | `"world"` | The space the component draws in. `"screen"` draws through the viewport alone, in logical units. |
 
 `RenderComponent` is the base every drawing component extends. The pipeline
 sorts the collection by `layer` ascending, then by the owning actor's spawn
 order, then by attachment order, and the sort is stable, so a redraw with no
 change reproduces the previous order exactly.
+
+A `world` component draws through the camera and then the viewport, so its
+transform, its sizes, and its font size are world units. A `screen` component
+draws through the viewport alone: its composed transform, its sizes, and its
+font size are logical units measured from the top-left of the design field, so
+it holds its place on the canvas whatever the camera does. Every quantity the
+tables below state in world units is a logical unit under `screen`. One sort
+orders both spaces, so a `screen` component's `layer` places
+it among the `world` components. See
+[rendering](/engines/structured-2d/apis/rendering/).
 
 ## `SpriteComponent`
 
@@ -184,8 +198,9 @@ class TextComponent extends RenderComponent {
 | `align` | `"center"` | Horizontal alignment against the component's transform. |
 | `baseline` | `"middle"` | Vertical alignment against the component's transform. |
 
-The font size is world units, scaled by the camera like every other drawn
-quantity.
+The font size is in the component's space: world units under `world`, scaled
+by the camera like every other drawn quantity, and logical units under
+`screen`.
 
 ## `DrawComponent`
 
@@ -193,6 +208,7 @@ quantity.
 interface DrawApi {
   readonly ctx: CanvasRenderingContext2D;
   readonly mode: RenderMode;
+  readonly space: RenderSpace;
   frame(): FrameInfo;
   viewport(): Viewport;
   camera(): CameraSnapshot;
@@ -205,17 +221,19 @@ abstract class DrawComponent extends RenderComponent {
 
 | Member | Meaning |
 | --- | --- |
-| `ctx` | The 2D context, already carrying the world-to-device transform. |
+| `ctx` | The 2D context, already carrying the transform of the component's `space`. |
 | `mode` | The render mode in force for this frame. |
+| `space` | The component's space: `world` for the world-to-device transform, `screen` for the viewport alone. |
 | `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
 | `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
 | `camera` | The camera's position, zoom, and rotation for this frame. |
 | `draw` | Called in the component's place in the layer order. |
 
 `DrawComponent` is the direct-drawing path, for a case that measures the drawing
-itself. The context already carries the world-to-device transform, so the
-component draws in world units. Render modes belong to the declarative pipeline,
-so a `DrawComponent` reads `api.mode` and supplies its own.
+itself. The context already carries the transform of the component's `space`,
+so a `world` component draws in world units and a `screen` component in logical
+units. Render modes belong to the declarative pipeline, so a `DrawComponent`
+reads `api.mode` and supplies its own.
 
 ## `CameraComponent`
 
@@ -260,6 +278,6 @@ after it.
 `Component`, `RenderComponent`, `SpriteComponent`, `ShapeComponent`,
 `TextComponent`, `DrawComponent`, `CameraComponent`, and `ColliderComponent` are
 exported as classes from `@test-cabinet/structured-2d`. `ComponentClass`,
-`SpriteOptions`, `Shape`, `ShapeOptions`, `TextOptions`, `DrawApi`,
-`ColliderOptions`, `Vec2`, and `Rect` are exported as types from the same entry
-point.
+`RenderSpace`, `SpriteOptions`, `Shape`, `ShapeOptions`, `TextOptions`,
+`DrawApi`, `ColliderOptions`, `Vec2`, and `Rect` are exported as types from the
+same entry point.

@@ -39,6 +39,11 @@ inside a rectangle of the world, and an axis whose visible extent exceeds the
 bounds on that axis centers on them, so a level narrower than the view stays
 centered.
 
+A render component may draw in the logical field directly by taking `screen`
+space. The camera then plays no part in where it lands: the viewport alone
+carries it onto the canvas, which is how a HUD holds its place while the camera
+follows the play.
+
 ## The viewport letterboxes the field onto the canvas
 
 The scale is uniform: one minimum of the two axis ratios, the reported width

@@ -162,14 +162,21 @@ export class Scoreboard extends Actor {
 ```
 
 The font size is world units and is scaled by the camera like every other drawn
-quantity. A readout that holds its place while the camera moves rides the
-camera, so the scoreboard's `tick` writes its own transform as well:
+quantity. A readout that holds its place while the camera moves draws in screen
+space instead. Set `space` to `"screen"`, and the component's transform, its
+`offset`, and its font size are logical units measured from the top-left of the
+design field:
 
 ```ts
-const view = this.world.camera.snapshot();
-this.transform.x = view.x;
-this.transform.y = view.y - 150;
+this.label.space = "screen";
+this.label.offset.x = WIDTH / 2;
+this.label.offset.y = 30;
 ```
+
+A `screen` component keeps its `layer` in the same sort as every `world`
+component, so the scoreboard still draws on the HUD layer above the field. A
+HUD is an actor whose components all take `screen` space, each offset to its
+logical position.
 
 ## Choosing layers
 
@@ -240,7 +247,9 @@ the target and leaves the camera wherever the game writes it.
 
 A case that measures the drawing itself uses a `DrawComponent`. The engine calls
 `draw` in the component's place in the layer order, with the context already
-carrying the world-to-device transform, so the component draws in world units.
+carrying the transform of the component's `space`, so a `world` component draws
+in world units and a `screen` component in logical units. `api.space` names
+which.
 
 Render modes belong to the declarative pipeline, so a `DrawComponent` reads
 `api.mode` and supplies its own.
