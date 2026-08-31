@@ -18,7 +18,17 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { ITEM_LEN, TILE, bearIceSpeed } from "../../src/constants";
 import { assertBetween, assertEqual } from "../assert";
-import { captureReplay, coversTile, createHarness, itemsInRow, poseBear, poseLane, speedOverTicks, startCrossing, type Harness } from "../harness";
+import {
+  captureReplay,
+  coversTile,
+  createHarness,
+  itemsInRow,
+  poseBear,
+  poseLane,
+  speedOverTicks,
+  startCrossing,
+  type Harness,
+} from "../harness";
 import { travelOverTicks } from "./harness";
 
 /** A row of the water band, and where the run starts on it. */

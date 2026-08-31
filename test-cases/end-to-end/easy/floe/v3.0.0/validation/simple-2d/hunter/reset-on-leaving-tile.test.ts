@@ -32,7 +32,12 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { bearStepTile, bearTile, samplePerTick, vehicleCoversTile } from "./harness";
+import {
+  bearStepTile,
+  bearTile,
+  samplePerTick,
+  vehicleCoversTile,
+} from "./harness";
 
 /** The row, the tile the bear is leaving, and the tile it is entering. */
 const ROW = 15;
@@ -82,7 +87,6 @@ it("removes a mid-glide bear when a vehicle reaches the tile it is leaving", asy
 
   poseLane(h, ROW, "car", [CAR_COL]);
   h.debug.setLaneSpeed(ROW, laneSpeed(ROW, LEVEL));
-
 
   // The scenario this check needs, read off the game itself: the bear really is
   // between the two tiles and so occupying both of them. A bear settled on one of

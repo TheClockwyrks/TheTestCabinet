@@ -23,7 +23,17 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { ITEM_LEN, ROW_MEDIAN } from "../../src/constants";
 import { assertEqual } from "../assert";
-import { bearOf, captureReplay, coversTile, createHarness, itemsInRow, poseBear, poseLane, startCrossing, type Harness } from "../harness";
+import {
+  bearOf,
+  captureReplay,
+  coversTile,
+  createHarness,
+  itemsInRow,
+  poseBear,
+  poseLane,
+  startCrossing,
+  type Harness,
+} from "../harness";
 
 /** The water row the raft is laid on, and the column its left edge sits on. */
 const WATER_ROW = 6;

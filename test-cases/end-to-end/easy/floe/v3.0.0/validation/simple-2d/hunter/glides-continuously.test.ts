@@ -17,7 +17,14 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { ROW_MEDIAN, tileCX } from "../../src/constants";
 import { assertDeepEqual, assertGreaterThanOrEqual } from "../assert";
-import { bearOf, captureReplay, createHarness, poseBear, startCrossing, type Harness } from "../harness";
+import {
+  bearOf,
+  captureReplay,
+  createHarness,
+  poseBear,
+  startCrossing,
+  type Harness,
+} from "../harness";
 import { bearStepTile, samplePerTick } from "./harness";
 
 /** The tile the bear is settled on, and the one it is stepped into. */
