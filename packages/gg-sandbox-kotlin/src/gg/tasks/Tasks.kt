@@ -1,13 +1,11 @@
 /**
- * The agent's own task list, which is a directed acyclic graph rather than a list of lines.
+ * This session's task list, a directed acyclic graph.
  *
- * A task is the lightweight unit of work: an id chosen by the caller, a title, and the tasks that
- * must be done first. Nothing dispatches a task and nothing reviews one, which is what separates it
- * from an issue on the board.
+ * A task is an id chosen by the caller, a title, and the tasks that must be done first. Nothing
+ * dispatches a task and nothing reviews one.
  *
- * A revision's description is three-way, and `gg.core.Patch` says all three states without a
- * sentinel: leaving the argument out keeps what is there, `Patch.Clear` empties it, and
- * `Patch.Replace` replaces it.
+ * A revision's description is three-way, and `gg.core.Patch` says all three states: leaving the
+ * argument out keeps what is there, `Patch.Clear` empties it, and `Patch.Replace` replaces it.
  *
  * @ggmodule tasks
  */
@@ -125,7 +123,7 @@ public data class TaskUsage(val count: Int, val maxTasks: Int)
 /**
  * Where a task stands.
  *
- * @property wireName gg's own word for this status, which is what both execution modes report.
+ * @property wireName gg's own word for this status.
  */
 public enum class TaskStatus(public val wireName: String) {
     /** Not started. Every task begins here. */

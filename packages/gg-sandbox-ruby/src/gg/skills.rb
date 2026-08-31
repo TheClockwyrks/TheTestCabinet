@@ -3,9 +3,8 @@
 module GG
   # Read the skills this run authored.
   #
-  # A skill name is a plain string rather than one of a fixed set, because the catalogue is per run
-  # while this component is baked once. The names available are listed in the system prompt, and an
-  # unknown one comes back as `:not_found` carrying the full list.
+  # The names available are listed in the system prompt, and an unknown one comes back as
+  # `:not_found` carrying the full list.
   module Skills
     extend Surface::Operations
 
@@ -14,7 +13,7 @@ module GG
     # Reading it also pins that body permanently into context, so a skill that has been read stays
     # read.
     #
-    # A skill may be **code** rather than prose, or as well as it. Its code is reached at
+    # A skill may be code rather than prose, or as well as it. Its code is reached at
     # `lib.<key>` by a program that writes `require "lib"`, and reading the skill opens a
     # documentation view of each function the module declares. An on-use script runs on every read,
     # after the calling program has ended, and whatever it shows arrives on the next turn.

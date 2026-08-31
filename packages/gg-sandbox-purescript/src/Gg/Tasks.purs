@@ -1,11 +1,9 @@
 -- | The task list, which is a directed acyclic graph rather than a list of lines.
 -- |
--- | A task is the lightweight unit of work: an id, a title, and the tasks that must finish first. A
--- | unit heavy enough to brief a child agent from belongs on `Gg.Board` instead.
+-- | A task is the lightweight unit of work: an id, a title, and the tasks that must finish first.
 -- |
--- | One spelling here is worth reading twice. A revision's `description` is a **three-way** edit, and
--- | a record with optional fields says all three without a sentinel: leaving the field out keeps the
--- | description, `Nothing` clears it, `Just` replaces it.
+-- | A revision's `description` is three-way: leaving the field out keeps the description, `Nothing`
+-- | clears it, `Just` replaces it.
 module Gg.Tasks
   ( addTask
   , updateTask

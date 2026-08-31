@@ -3,18 +3,7 @@
 module GG
   # Durable memories, which survive a context compaction.
   #
-  # A run picks one of three memory strategies and binds only that strategy's functions, so what
-  # this module offers is the honest answer to what memory can do here. The scratchpad keeps every
-  # memory in the context window (`write_memory`, `update_memory`); the two file-shaped strategies
-  # keep the contents outside it (`create_memory`, `read_memory`, `edit_memory`), one behind an
-  # index that is always in context and one behind `search_memories`. `delete_memory` is bound under
-  # all three.
-  #
-  # Every mutation hands back the budget after it, so a program can decide whether to write another
-  # memory by reading numbers rather than by parsing a sentence about them. The three writes take
-  # their fields as arguments rather than as a record, because a language whose optional arguments
-  # are keyword arguments has no reason to make a program construct a value before it can make a
-  # call.
+  # Every mutation hands back the memory budget after it.
   module Memories
     extend Surface::Operations
 
@@ -67,11 +56,10 @@ module GG
 
     # Record a durable memory that survives a context compaction.
     #
-    # A memory may also carry **code**. `code` is a Ruby module whose methods are reached at
-    # `lib.<name>` by every later program this session writes that requires `lib`, so a helper got
-    # right once is never written again; `on_use` is a script gg runs on every use of the memory,
-    # whose views arrive on the next turn. Neither is context: they cost no window, are never shown
-    # back, and count against no body limit.
+    # A memory may also carry code. `code` is a Ruby module whose methods are reached at
+    # `lib.<name>` by every later program this session writes that requires `lib`; `on_use` is a
+    # script gg runs on every use of the memory, whose views arrive on the next turn. Neither is
+    # context: they cost no window, are never shown back, and count against no body limit.
     #
     # @param name [String] The memory's slug: letters, digits, `-`, `_` and `.`. Every other memory
     #   call takes it, and no two memories may share one.
@@ -85,8 +73,7 @@ module GG
     #   memory that runs nothing.
     # @return [GG::Memories::MemoryUsage] how much of the memory budget is now used
     # @raise [GG::Core::ApiError] `:conflict` on a duplicate name, and `:limit_exceeded` when the
-    #   body would breach the run's caps — revising or deleting a memory is the way out, rather than
-    #   accruing more.
+    #   body would breach the run's caps.
     def self.write_memory(name, description, body, code: nil, on_use: nil)
       usage(Wire.call("write_memory", "memories", "writeMemory",
                       [input(name, description, body, code, on_use)]))
@@ -150,17 +137,13 @@ module GG
 
     # Revise a memory in place, replacing the one exact occurrence of `search` with `replace`.
     #
-    # Appending is done by quoting the last line and replacing it with itself plus what is being
-    # added.
-    #
     # @param name [String] The slug of the memory to revise.
     # @param search [String] The exact text to find in its contents. It must appear exactly once.
     # @param replace [String] The text to put in its place.
     # @return [GG::Memories::MemoryUsage] how much of the memory budget is now used
     # @raise [GG::Core::ApiError] `:not_found` when the text does not appear, `:conflict` when it
     #   appears more than once, `:limit_exceeded` when the result would be too long, and
-    #   `:invalid_argument` when the edit would leave the memory empty — deleting it is the way to
-    #   do that.
+    #   `:invalid_argument` when the edit would leave the memory empty.
     def self.edit_memory(name, search, replace)
       usage(Wire.call("edit_memory", "memories", "editMemory", [
                         Wire.record("name" => name, "search" => search, "replace" => replace)
@@ -171,12 +154,10 @@ module GG
     # Find the memories mentioning any of `keywords`, best first.
     #
     # Plain case-insensitive substring matching over each memory's slug, description and contents,
-    # ranked by how many distinct keywords a memory mentions and then by how often. Several specific
-    # words rank better than one sentence; `GG::Memories.read_memory` is what fetches a hit worth
-    # having in full. A search that matches nothing is an empty array.
+    # ranked by how many distinct keywords a memory mentions and then by how often. A search that
+    # matches nothing is an empty array.
     #
-    # @param keywords [Array<String>] The words to look for, splatted. Several specific words rank
-    #   better than one sentence, because a memory is ranked by how many of them it mentions.
+    # @param keywords [Array<String>] The words to look for, splatted.
     # @return [Array<GG::Memories::MemoryHit>] the memories that matched, best first
     # @raise [GG::Core::ApiError] `:invalid_argument` when every keyword is empty.
     def self.search_memories(*keywords)
@@ -207,8 +188,7 @@ module GG
     # How much of the run's durable-memory budget is used, after the call that returned it.
     #
     # Every maximum is optional: each limit can be turned off, and a run's memory strategy applies
-    # only some of them, so `nil` means nothing bounds that axis — which is worth checking before
-    # subtracting.
+    # only some of them, so `nil` means nothing bounds that axis.
     class MemoryUsage
       include Value
 
@@ -275,9 +255,6 @@ module GG
       end
 
       # Read this memory's full contents, which a search hit does not carry.
-      #
-      # `GG::Memories.read_memory` with the slug already supplied, for the common case where the hit
-      # is in hand.
       #
       # @return [String] the memory's contents
       # @raise [GG::Core::ApiError] `:not_found` when the memory has since been deleted.

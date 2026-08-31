@@ -11,14 +11,8 @@ import java.util.OptionalInt;
 /**
  * Durable memories, which survive a context compaction.
  *
- * <p>A run picks one of three memory strategies and binds only that strategy's calls: the
- * scratchpad's {@code writeMemory} and {@code updateMemory}, or the file-shaped
- * {@code createMemory}, {@code readMemory} and {@code editMemory} — plus {@code searchMemories}
- * where there is no pinned index. {@code deleteMemory} is bound under all three, and the system
- * prompt says which strategy is in force.
- *
  * <p>A memory may carry code, which is a module in this language bound at {@code lib.<name>} in
- * every later program — a helper written once. It costs no context window and is never shown back.
+ * every later program. The code occupies no context window and is never shown back.
  *
  * @ggmodule memories
  */
@@ -29,9 +23,7 @@ public final class Memories {
     /**
      * Record a durable memory that survives a context compaction.
      *
-     * <p>The scratchpad strategy's write, which keeps the memory in the context window rather than
-     * outside it. Every mutation hands back the budget after it, so a program decides whether to
-     * write another by reading numbers rather than by parsing a sentence about them.
+     * <p>The memory is kept in the context window.
      *
      * @param name The memory's slug: letters, digits, {@code -}, {@code _} and {@code .}. It is what
      *     every other memory call takes, and no two memories may share one.
@@ -98,8 +90,8 @@ public final class Memories {
     /**
      * Record a memory whose contents stay out of the context window until they are read.
      *
-     * <p>The file-shaped strategies' write. What is in context is the description — the memory's line
-     * in the index — rather than the body.
+     * <p>What is in context is the description — the memory's line in the index — rather than the
+     * body.
      *
      * @param name The memory's slug: letters, digits, {@code -}, {@code _} and {@code .}.
      * @param description A one-line description of what the memory holds, which is its line in the
@@ -154,8 +146,6 @@ public final class Memories {
     /**
      * Revise a memory in place, replacing the one exact occurrence of some text.
      *
-     * <p>Appending is quoting the last line and replacing it with itself plus what is being added.
-     *
      * @param name The slug of the memory to revise.
      * @param search The exact text to find in its contents. It must appear exactly once.
      * @param replace The text to put in its place.
@@ -178,12 +168,10 @@ public final class Memories {
      * Find the memories mentioning any of some keywords, best first.
      *
      * <p>Plain case-insensitive substring matching over each memory's slug, description and
-     * contents, ranked by how many distinct keywords a memory mentions and then by how often.
-     * Several specific words rank better than one sentence. A search that matches nothing is an
-     * empty list.
+     * contents, ranked by how many distinct keywords a memory mentions and then by how often. A
+     * search that matches nothing is an empty list.
      *
-     * @param keywords The words to look for. Several specific words rank better than one sentence,
-     *     because a memory is ranked by how many of them it mentions.
+     * @param keywords The words to look for.
      * @return every memory that mentioned one, best first
      * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when every keyword is empty.
      * @ggop memories.search_memories

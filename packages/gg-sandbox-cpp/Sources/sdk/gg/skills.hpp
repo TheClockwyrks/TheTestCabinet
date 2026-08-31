@@ -15,9 +15,8 @@ namespace gg {
 
 /// Read the skills this run was given.
 ///
-/// A skill name is a plain string rather than an enumerator, because the catalogue is per run
-/// while this SDK is compiled once. The system prompt lists the names available, and an unknown
-/// one comes back as `not_found` carrying the full list.
+/// The system prompt lists the names available; an unknown one comes back as `not_found` carrying
+/// the full list.
 ///
 /// <ggmodule>skills</ggmodule>
 namespace skills {

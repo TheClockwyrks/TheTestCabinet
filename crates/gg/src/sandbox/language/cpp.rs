@@ -152,10 +152,12 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, spell,
+    ProgramLanguage, WORKSPACE_TREE_VIEW, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "cpp.compile.rs"]
 pub(super) mod compile;
@@ -371,17 +373,27 @@ impl ProgramLanguage for Cpp {
     /// seam knows about: an agent holding neither `files` nor `shell` is handed no modules and gets
     /// [no search at all](self::bootstrap_program), and an `#include` for a header nothing in the
     /// program names is a habit a model reads out of its own transcript.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
-        let calls: &[crate::sandbox::OperationId] = match modules.is_empty() {
-            true => &[VIEWS_OPEN_DOCS_VIEW],
-            false => &[DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW],
-        };
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
+        let mut made: Vec<crate::sandbox::OperationId> = Vec::new();
+        if tree.is_some() {
+            made.push(FILES_TREE);
+            made.push(VIEWS_OPEN_TEXT);
+        }
+        if !modules.is_empty() {
+            made.push(DOCS_SEARCH);
+        }
+        made.push(VIEWS_OPEN_DOCS_VIEW);
         bootstrap_program(
-            &includes(self, calls),
-            &spell(self, DOCS_SEARCH),
-            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            BootstrapCalls {
+                includes: &includes(self, &made),
+                search: &spell(self, DOCS_SEARCH),
+                open_docs_view: &spell(self, VIEWS_OPEN_DOCS_VIEW),
+                tree_call: &spell(self, FILES_TREE),
+                open_text: &spell(self, VIEWS_OPEN_TEXT),
+            },
             modules,
             docs,
+            tree,
         )
     }
 
@@ -610,6 +622,24 @@ pub(super) fn open_docs_views_statement(
     )
 }
 
+/// The four calls the [opening program](bootstrap_program) writes, and the `#include` lines that
+/// declare them.
+///
+/// One value rather than five parameters: this arm needs the include block as well as the spellings,
+/// and five strings in a row is a call site whose arguments are told apart by counting.
+pub(super) struct BootstrapCalls<'a> {
+    /// The `#include` lines for exactly the modules this program calls into.
+    pub includes: &'a str,
+    /// This arm's spelling of the documentation search.
+    pub search: &'a str,
+    /// This arm's spelling of the documentation-view open.
+    pub open_docs_view: &'a str,
+    /// This arm's spelling of the workspace tree.
+    pub tree_call: &'a str,
+    /// This arm's spelling of the text-view open.
+    pub open_text: &'a str,
+}
+
 /// The opening turn: one `int main` holding one search over every module gg listed and an array of
 /// names opened as documentation views, with a range `for` over it.
 ///
@@ -641,12 +671,25 @@ pub(super) fn open_docs_views_statement(
 /// A failed call throws and nothing here catches it, which is this arm's failure model: a bootstrap
 /// that caught its own failure would be a worked example of swallowing one.
 pub(super) fn bootstrap_program(
-    includes: &str,
-    search: &str,
-    open_docs_view: &str,
+    calls: BootstrapCalls<'_>,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
+    let BootstrapCalls {
+        includes,
+        search,
+        open_docs_view,
+        tree_call,
+        open_text,
+    } = calls;
+    let walked = match tree {
+        None => String::new(),
+        Some(depth) => format!(
+            "  {open_text}({}, {tree_call}({{.depth = {depth}}}));\n\n",
+            serde_json::Value::String(WORKSPACE_TREE_VIEW.to_string())
+        ),
+    };
     let paths: Vec<String> = modules
         .iter()
         .map(|path| serde_json::Value::String((*path).to_string()).to_string())
@@ -672,7 +715,7 @@ pub(super) fn bootstrap_program(
         ),
     };
     format!(
-        "{}{includes}int main() {{\n{lookup}{functions}  for (const auto &name : functions) \
+        "{}{includes}int main() {{\n{walked}{lookup}{functions}  for (const auto &name : functions) \
          {{\n    {open_docs_view}(name);\n  }}\n  return 0;\n}}\n",
         standard_includes(docs.is_empty())
     )

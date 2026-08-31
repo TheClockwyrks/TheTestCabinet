@@ -113,11 +113,13 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, LIB_ACCESS_NAME, PrepareContext, PrepareFailure, PreparedModule,
-    PreparedProgram, ProgramLanguage, spell,
+    PreparedProgram, ProgramLanguage, WORKSPACE_TREE_VIEW, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
 use crate::sandbox::locate::Locations;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "purescript.compile.rs"]
 pub(super) mod compile;
@@ -340,12 +342,15 @@ impl ProgramLanguage for PureScript {
     /// [A module whose `main` searches every module it was handed at once and then folds a `for_`
     /// over the names](self::bootstrap_program), with both calls resolved from this language's own
     /// catalogue and every module the program calls into imported by name.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            &spell(self, FILES_TREE),
+            &spell(self, VIEWS_OPEN_TEXT),
             modules,
             docs,
+            tree,
         )
     }
 }
@@ -520,8 +525,11 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
+    tree_call: &str,
+    open_text: &str,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
     let listed = |names: &[&str]| -> String {
         let mut entries = String::new();
@@ -536,42 +544,62 @@ pub(super) fn bootstrap_program(
         entries
     };
     let functions = listed(docs);
-    // Two calls where there is a module to search for, and on this arm each needs its own import
-    // line — unless the SDK ever files both under one module, in which case importing it twice would
-    // be the compile error rather than the program. Where there is none, there is one call, and the
-    // documentation module is not imported at all: `purs` calls a qualified import nothing names
-    // redundant and says so, which is not a thing gg's own program should be warned about.
-    let docs_module = module_of(search);
-    let views_module = module_of(open_docs_view);
-    let views_import = format!("import {views_module} as {views_module}\n");
-    let (imports, paths, main) = match modules.is_empty() {
-        true => (
-            views_import,
-            String::new(),
-            format!("main = for_ functions {open_docs_view}\n"),
+
+    // One qualified import per module the program really calls into, deduplicated and ordered:
+    // `purs` calls a qualified import nothing names redundant and says so, which is not a thing gg's
+    // own program should be warned about.
+    let mut imported: Vec<&str> = Vec::new();
+    if tree.is_some() {
+        imported.push(module_of(tree_call));
+        imported.push(module_of(open_text));
+    }
+    if !modules.is_empty() {
+        imported.push(module_of(search));
+    }
+    imported.push(module_of(open_docs_view));
+    imported.sort_unstable();
+    imported.dedup();
+    let imports: String = imported
+        .iter()
+        .map(|module| format!("import {module} as {module}\n"))
+        .collect();
+
+    let paths = match modules.is_empty() {
+        true => String::new(),
+        false => format!(
+            "modules :: Array String\n\
+             modules =\n\
+             {}  ]\n\
+             \n",
+            listed(modules)
         ),
-        false => {
-            let mut imports = format!("import {docs_module} as {docs_module}\n");
-            if views_module != docs_module {
-                imports.push_str(&views_import);
-            }
-            (
-                imports,
-                format!(
-                    "modules :: Array String\n\
-                     modules =\n\
-                     {}  ]\n\
-                     \n",
-                    listed(modules)
-                ),
-                format!(
-                    "main = do\n\
-                     \x20 void ({search} {{ modules, limit: {MAX_SEARCH_LIMIT} }})\n\
-                     \x20 for_ functions {open_docs_view}\n"
-                ),
-            )
+    };
+
+    // The statements `main` runs, in the order the model reads them.
+    let mut statements: Vec<String> = Vec::new();
+    if let Some(depth) = tree {
+        statements.push(format!(
+            "{tree_call} {{ depth: {depth} }} >>= {open_text} {}",
+            serde_json::Value::String(WORKSPACE_TREE_VIEW.to_string())
+        ));
+    }
+    if !modules.is_empty() {
+        statements.push(format!(
+            "void ({search} {{ modules, limit: {MAX_SEARCH_LIMIT} }})"
+        ));
+    }
+    statements.push(format!("for_ functions {open_docs_view}"));
+    let main = match statements.len() {
+        1 => format!("main = {}\n", statements[0]),
+        _ => {
+            let body: String = statements
+                .iter()
+                .map(|statement| format!("\x20 {statement}\n"))
+                .collect();
+            format!("main = do\n{body}")
         }
     };
+
     format!(
         "module Main where\n\
          \n\

@@ -131,13 +131,13 @@ use crate::memories::MemoryCode;
 use crate::programs::{ProgramRefusal, ProgramSummary};
 use crate::sandbox::signatures::CatalogueFunction;
 use crate::sandbox::{
-    ApiIdentity, DocSearchQuery, DocSearchResult, OperationApi, OperationId, PreparedProgram,
-    ProgramLanguage, ProgramScope, RunEnding, SandboxLimits, SandboxOutcome, SandboxViewOpened,
-    ViewOpenOutcome, ViewRefusal, catalogue_functions, catalogue_modules, operation_by_id,
-    operation_of,
+    ApiIdentity, DocSearchQuery, DocSearchResult, FILES_TREE, OperationApi, OperationId,
+    PreparedProgram, ProgramLanguage, ProgramScope, RunEnding, SandboxLimits, SandboxOutcome,
+    SandboxViewOpened, ViewOpenOutcome, ViewRefusal, catalogue_functions, catalogue_modules,
+    operation_by_id, operation_of,
 };
 use crate::tasks::TaskStatus;
-use crate::tools::{ToolFailure, ToolOutcome};
+use crate::tools::{ToolContext, ToolFailure, ToolOutcome, TreeTool};
 
 /// The deterministic id of the bootstrap's synthesized `submit_program` call — a shape the turn
 /// loop never mints, so the opening turn cannot collide with a real call's id.
@@ -153,8 +153,11 @@ const BOOTSTRAP_CALL_ID: &str = "bootstrap-program";
 /// and a bootstrap running under a wider grant than the membrane will service is a program gg wrote
 /// and gg then refuses.
 pub(crate) struct BootstrapAgent<'a> {
-    /// The two lists this agent's window opens on, exactly as its profile wrote them.
+    /// The two lists and the tree this agent's window opens on, exactly as its profile wrote them.
     pub opening_turn: &'a GgOpeningTurn,
+    /// Where this agent's calls are rooted, as the loop already resolved it — the workspace the
+    /// opening tree is walked from.
+    pub tool_ctx: &'a ToolContext,
     /// The gg capability ids this agent holds, as the loop resolved them.
     pub capabilities: &'a [String],
     /// The operations its allowlist names within those capabilities.
@@ -184,6 +187,8 @@ pub(crate) enum Dropped {
     Module(String),
     /// An operation id this agent does not hold, or that this arm does not catalogue.
     Function(String),
+    /// A workspace tree this agent's opening turn asked for and this agent may not walk.
+    Tree,
 }
 
 impl fmt::Display for Dropped {
@@ -198,6 +203,11 @@ impl fmt::Display for Dropped {
                 f,
                 "`{id}` is listed in this agent's opening turn but the agent does not hold it, so \
                  its documentation is not opened"
+            ),
+            Self::Tree => write!(
+                f,
+                "this agent's opening turn asks for a workspace tree but the agent does not hold \
+                 `files.tree`, so no tree is opened"
             ),
         }
     }
@@ -247,6 +257,9 @@ pub(crate) struct ResolvedOpeningTurn {
     /// This arm's fully-qualified name for each listed function the agent holds, in the order the
     /// profile listed them, each once.
     pub keys: Vec<String>,
+    /// The depth the program walks the workspace to, where this agent asked for a tree and holds
+    /// the call to walk one.
+    pub tree: Option<u32>,
     /// Every entry in gg's vocabulary that this agent does not hold, in document order.
     pub dropped: Vec<Dropped>,
 }
@@ -254,7 +267,7 @@ pub(crate) struct ResolvedOpeningTurn {
 impl ResolvedOpeningTurn {
     /// Whether there is nothing left to seed.
     pub(crate) fn is_empty(&self) -> bool {
-        self.modules.is_empty() && self.keys.is_empty()
+        self.modules.is_empty() && self.keys.is_empty() && self.tree.is_none()
     }
 }
 
@@ -316,9 +329,23 @@ pub(crate) fn resolve_opening_turn(
         }
     }
 
+    // The tree is held on exactly the terms a listed function is: `DocsRuntime::bound`, asked about
+    // the entry this arm catalogues for `files.tree`.
+    let tree = match opening.tree.include {
+        false => None,
+        true => match bootstrap_function(&functions, FILES_TREE, |function| docs.bound(function)) {
+            Some(_) => Some(opening.tree.depth),
+            None => {
+                dropped.push(Dropped::Tree);
+                None
+            }
+        },
+    };
+
     ResolvedOpeningTurn {
         modules,
         keys,
+        tree,
         dropped,
     }
 }
@@ -366,6 +393,7 @@ pub(crate) async fn seed_bootstrap(
             .map(String::as_str)
             .collect::<Vec<_>>(),
         &resolved.keys.iter().map(String::as_str).collect::<Vec<_>>(),
+        resolved.tree,
     );
 
     // Pushed **before** the program runs, so the window reads in the order the work happened: the
@@ -398,6 +426,7 @@ pub(crate) async fn seed_bootstrap(
     let ending = RunEnding::Role(agent.role);
     let limits = agent.limits;
     let api = BootstrapApi {
+        tool_ctx: agent.tool_ctx.clone(),
         context: context.take(),
         docs: std::mem::replace(
             docs,
@@ -607,6 +636,10 @@ fn source_hash(source: &str) -> u64 {
 /// [`Send + 'static`](OperationApi) bound on the trait requires: the sandbox runs on a blocking thread,
 /// so nothing borrowed from the loop could cross into it.
 struct BootstrapApi {
+    /// Where this agent's calls are rooted. The one call the program makes that touches the disk —
+    /// the workspace tree — is rooted here, so gg's own program walks exactly the tree the agent's
+    /// own program would.
+    tool_ctx: ToolContext,
     /// The agent's window. Every view this program opens lands in it directly.
     context: ContextModel,
     /// The agent's documentation runtime, which answers exactly what its own lookups will answer —
@@ -821,6 +854,34 @@ impl OperationApi for BootstrapApi {
         Ok(opened)
     }
 
+    /// Walk the workspace — the third of the three calls gg's own program makes, and the only one
+    /// that touches the disk.
+    ///
+    /// The tool's own implementation, rooted at the context the loop resolved for this agent, so the
+    /// tree the window opens on is byte for byte the tree the agent's own `files.tree` would render.
+    fn tree(&mut self, path: Option<String>, depth: Option<u32>) -> ToolOutcome {
+        TreeTool.tree(&self.tool_ctx, path, depth)
+    }
+
+    /// Put the workspace tree in the window as a text view, under the label gg's program wrote.
+    ///
+    /// The loop's own [push](ContextModel::open_text_view) rather than a private one: a view the
+    /// session opens holding must be the same kind of thing, under the same selector rules, as one
+    /// the model's own program opens, or closing it would behave differently from closing any other.
+    fn open_text_view(
+        &mut self,
+        label: String,
+        body: String,
+    ) -> Result<SandboxViewOpened, ViewRefusal> {
+        let opened = self.context.open_text_view(label.clone(), body);
+        Ok(SandboxViewOpened {
+            kind: ViewKind::Text,
+            selector: label,
+            tokens: opened.tokens as u64,
+            superseded: opened.superseded,
+        })
+    }
+
     unimplemented_calls! {
         shell(command: String, timeout: Duration) -> ToolOutcome;
         read_file(path: String, offset: Option<usize>, limit: Option<usize>) -> ToolOutcome;
@@ -913,7 +974,6 @@ impl OperationApi for BootstrapApi {
             limit: Option<usize>,
             max_line_chars: Option<usize>,
         ) -> ViewOpenOutcome;
-        open_text_view(label: String, body: String) -> Result<SandboxViewOpened, ViewRefusal>;
         close_view(selector: String) -> Result<u32, ViewRefusal>;
         program_history() -> Vec<ProgramSummary>;
         program_source(id: &str) -> Result<String, ProgramRefusal>;

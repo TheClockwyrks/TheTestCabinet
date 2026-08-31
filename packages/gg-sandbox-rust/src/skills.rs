@@ -12,9 +12,9 @@ pub(crate) const OPERATIONS: &[&str] = &["read_skill"];
 
 /// Read a skill by name and hand back its body with the front matter stripped.
 ///
-/// Reading it also pins that body permanently into context, so a skill that has been read stays read.
+/// The body is pinned permanently into context.
 ///
-/// A skill may be **code** rather than prose, or as well as it. Its code becomes a crate every later
+/// A skill may be code rather than prose, or as well as it. Its code becomes a crate every later
 /// program this session writes reaches as `<key>::<name>`, and using it opens a documentation view
 /// of each function that crate declares. An on-use program runs once this program has ended, and
 /// whatever it shows arrives on the next turn.

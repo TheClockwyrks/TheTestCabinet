@@ -1,8 +1,6 @@
-//! Manage the agent's own context window.
+//! Manage this session's context window.
 //!
-//! These are the only calls whose effect is on the conversation rather than on the workspace. They
-//! are worth making from a program precisely because a program can decide *when* to: read a set of
-//! files, extract what matters, then evict the views, all in one turn.
+//! These are the only calls whose effect is on the conversation rather than on the workspace.
 
 use std::ops::RangeInclusive;
 
@@ -45,7 +43,7 @@ pub fn evict_file_view(path: Option<&str>) -> Result<ReclaimReport, ApiError> {
 ///
 /// Every result carries a header with its turn number and roughly what holding it costs, which is
 /// what names the turns worth dropping. A span is a Rust inclusive range and both ends are included,
-/// so `context::archive_thread(&[4..=19])` archives turns 4 through 19. The agent's own messages in an
+/// so `context::archive_thread(&[4..=19])` archives turns 4 through 19. Assistant messages in an
 /// archived turn are dropped; the results are kept and stay searchable with [`search_archive`].
 ///
 /// # Arguments
@@ -69,9 +67,8 @@ pub fn archive_thread(ranges: &[RangeInclusive<u32>]) -> Result<ReclaimReport, A
 
 /// Search archived history for a case-insensitive substring, most recent first, up to 8 hits.
 ///
-/// [`archive_empty`](ArchiveSearch::archive_empty) is worth checking before
-/// [`hits`](ArchiveSearch::hits): it distinguishes "nothing has been archived yet" from "the search
-/// ran and matched nothing", so a program does not archive again believing the first archive failed.
+/// [`archive_empty`](ArchiveSearch::archive_empty) distinguishes "nothing has been archived yet"
+/// from "the search ran and matched nothing".
 ///
 /// # Arguments
 ///
@@ -79,8 +76,7 @@ pub fn archive_thread(ranges: &[RangeInclusive<u32>]) -> Result<ReclaimReport, A
 ///
 /// # Returns
 ///
-/// Whether anything is archived at all, and the matches — the two questions this call answers, and
-/// the reason a hit list is not the whole of its result.
+/// Whether anything is archived at all, and the matches.
 ///
 /// # Errors
 ///
@@ -97,8 +93,7 @@ pub fn search_archive(query: &str) -> Result<ArchiveSearch, ApiError> {
 /// other call until it arrives.
 ///
 /// It does not stop the program: it registers the request and returns, and the rewrite happens once
-/// the program has ended. Everything not in the summary and not in `files` is gone, so the summary is
-/// written for the agent that comes after and `files` names what it will need in hand.
+/// the program has ended. Everything not in the summary and not in `files` is gone.
 ///
 /// # Arguments
 ///
@@ -133,9 +128,9 @@ pub struct ReclaimReport {
 pub enum MessageRole {
     /// The system prompt.
     System,
-    /// A turn's input to the agent — a result, a view, or an operator's instruction.
+    /// A turn's input — a result, a view, or an operator's instruction.
     User,
-    /// Something the agent said.
+    /// Something the assistant said.
     Assistant,
     /// A tool result, on a session that made tool calls rather than writing programs.
     Tool,

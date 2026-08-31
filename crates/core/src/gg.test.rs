@@ -1041,8 +1041,9 @@ fn an_agents_opening_turn_is_required_and_seeded_on_a_fresh_profile() {
                 "views.open_file",
                 "files.search",
             ],
+            "tree": { "include": true, "depth": DEFAULT_OPENING_TREE_DEPTH },
         }),
-        "the key is always written, in camelCase, with both lists"
+        "the key is always written, in camelCase, with both lists and the tree"
     );
     let back: GgAgentConfig = serde_json::from_value(value).expect("deserialize");
     assert_eq!(back, root);
@@ -1059,7 +1060,36 @@ fn an_agents_opening_turn_is_required_and_seeded_on_a_fresh_profile() {
     assert_eq!(
         value["openingTurn"],
         json!({ "modules": [], "functions": [] }),
-        "and it is still written out, empty"
+        "and it is still written out, empty — a document with no tree is written back without one"
+    );
+
+    // A depth kept while the tree is off is not the default, so it survives a round trip: an
+    // operator who switches the tree back on gets the depth they chose.
+    let kept = GgOpeningTurn {
+        modules: Vec::new(),
+        functions: Vec::new(),
+        tree: GgOpeningTree {
+            include: false,
+            depth: 5,
+        },
+    };
+    assert_eq!(
+        serde_json::to_value(&kept).expect("serialize")["tree"],
+        json!({ "include": false, "depth": 5 })
+    );
+
+    // The tree alone is not an empty opening turn: a window may open on the shape of the workspace
+    // and nothing else.
+    let tree_only: GgAgentConfig = serde_json::from_value(json!({
+        "slug": ROOT_PROFILE_ID,
+        "name": ROOT_AGENT,
+        "openingTurn": { "modules": [], "functions": [], "tree": { "include": true } },
+    }))
+    .expect("a tree with no depth of its own reads");
+    assert!(!tree_only.opening_turn.is_empty());
+    assert_eq!(
+        tree_only.opening_turn.tree.depth,
+        DEFAULT_OPENING_TREE_DEPTH
     );
 
     // A document without the key does not read.
@@ -1078,6 +1108,10 @@ fn an_agents_opening_turn_is_required_and_seeded_on_a_fresh_profile() {
         (
             "an unknown key",
             json!({ "modules": [], "functions": [], "tools": [] }),
+        ),
+        (
+            "an unknown key inside the tree",
+            json!({ "modules": [], "functions": [], "tree": { "root": "src" } }),
         ),
     ] {
         serde_json::from_value::<GgAgentConfig>(json!({

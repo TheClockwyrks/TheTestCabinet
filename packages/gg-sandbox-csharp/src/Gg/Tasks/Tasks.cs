@@ -1,10 +1,7 @@
 namespace Gg;
 
 /// <summary>A private task list, held as a graph with blocker edges.</summary>
-/// <remarks>
-/// Small units of the agent's own work. Nobody dispatches from it — <c>Board</c> is where other
-/// agents pick work up.
-/// </remarks>
+/// <remarks>Small units of this session's own work. Nothing is dispatched from it.</remarks>
 /// <ggmodule>tasks</ggmodule>
 public static partial class Tasks
 {

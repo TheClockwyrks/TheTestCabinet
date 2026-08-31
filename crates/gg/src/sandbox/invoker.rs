@@ -286,6 +286,10 @@ pub trait OperationApi: Send + 'static {
     fn write_file(&mut self, path: String, contents: String) -> ToolOutcome;
     fn edit_file(&mut self, path: String, old_string: String, new_string: String) -> ToolOutcome;
     fn list_dir(&mut self, path: Option<String>) -> ToolOutcome;
+    /// Render the tree beneath `path` under the ignore files — the `tree` tool, with the rendering
+    /// on its [`TreeText`](crate::tools::ApiData::TreeText) sidecar. `path` roots the tree (`None`
+    /// is the workspace) and `depth` bounds it, both on the tool's terms.
+    fn tree(&mut self, path: Option<String>, depth: Option<u32>) -> ToolOutcome;
     /// Search the workspace's files for `query` under the ignore files — the `search` tool, with the
     /// matches on its [`SearchMatches`](crate::tools::ApiData::SearchMatches) sidecar. `path` roots
     /// the search (`None` is the workspace) and `limit` bounds the list, both on the tool's terms.

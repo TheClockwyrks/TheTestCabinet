@@ -153,8 +153,8 @@ use test_cabinet_core::gg::{
     GgCapabilitySet, GgContextAction, GgContextSource, GgHookAgentKind, GgHookEvent,
     GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgReviewer, GgRosterEntry,
     GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind, GgUndocumentedCalls,
-    PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT,
-    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    MAX_OPENING_TREE_DEPTH, PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS,
+    PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 use test_cabinet_core::gg_session_record::{
@@ -6622,6 +6622,7 @@ impl Agent {
                 &mut programs,
                 crate::bootstrap::BootstrapAgent {
                     opening_turn: &profile.opening_turn,
+                    tool_ctx,
                     capabilities: &granted_capabilities,
                     operations: &granted_operations,
                     role: ending_role,
@@ -11296,6 +11297,20 @@ fn check_opening_turn(profile: &GgAgentConfig, report: &mut crate::validate::Lau
             format!(
                 "`{id}` is held by {held_by}, not by this profile's configuration, so an opening \
                  turn cannot promise to open its documentation."
+            ),
+        ));
+    }
+    // The depth is refused where it is written rather than where it would be honoured, and whether
+    // or not the tree is switched on: a document holding a number gg would not honour is a document
+    // whose author is owed the refusal now, not on the day somebody flips the switch.
+    let depth = profile.opening_turn.tree.depth;
+    if !(1..=MAX_OPENING_TREE_DEPTH).contains(&depth) {
+        report.report(crate::validate::LaunchDefect::run_level(
+            "openingTurn.tree.depth",
+            depth.to_string(),
+            format!(
+                "an opening turn's workspace tree is walked between 1 and {MAX_OPENING_TREE_DEPTH} \
+                 levels below the workspace root; `{depth}` is not a depth gg would honour."
             ),
         ));
     }

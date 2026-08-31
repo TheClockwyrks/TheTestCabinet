@@ -1,9 +1,5 @@
 //! Fetch a program that already ran, and hand a patched copy back to be run.
 //!
-//! Under responses as code a reply is a whole program, so a one-character mistake in a sixty-line
-//! program costs the sixty lines again. The library makes the fix proportional to the mistake: fetch
-//! what ran, patch it with ordinary string work, hand it back.
-//!
 //! ```ignore
 //! let source = programs::get("k3p9")?;
 //! programs::rerun(&source.replace("views::open_tex(", "views::open_text("))?;
@@ -16,9 +12,8 @@ use crate::wire;
 /// List the programs this session has already run, oldest first.
 ///
 /// Each carries its id, the turn it ran on, how big it was, and whether it ran to its end. It lists
-/// shapes, not sources: [`get`] is what fetches one. The list survives a compaction, so it is also
-/// how a program whose text has left the context window is found again. A session that has run
-/// nothing yet gets an empty `Vec` rather than an error.
+/// shapes, not sources: [`get`] is what fetches one. The list survives a compaction. A session that
+/// has run nothing yet gets an empty `Vec`.
 ///
 /// # Returns
 ///
@@ -26,8 +21,7 @@ use crate::wire;
 ///
 /// # Errors
 ///
-/// `Unavailable` when this agent keeps no program library — which is a different fact from an empty
-/// one, and the reason this hands back a `Result` rather than a bare `Vec`.
+/// `Unavailable` when this session keeps no program library.
 #[doc(alias = "ggop:programs.history")]
 pub fn history() -> Result<Vec<ProgramSummary>, ApiError> {
     wire::lift(programs::history())
@@ -37,12 +31,9 @@ pub fn history() -> Result<Vec<ProgramSummary>, ApiError> {
 /// Fetch the exact source of one program that ran, by the id its acknowledgement carried.
 ///
 /// The id is the tool result the `submit_program` call that carried the program was acknowledged
-/// with — a receipt, not a verdict — and [`history`] reports it beside every program. This is the
-/// first half of fixing a program without rewriting it: get what ran, patch it with ordinary string
-/// work, and hand the result to [`rerun`]. What comes back is the program that **executed**, so when
-/// a submission's program was itself handed over by [`rerun`], the program that ran is what arrives
-/// rather than the few lines that asked for it — and fetch-patch-run composes turn after turn. A
-/// rerun keeps the id of the submission it ran for.
+/// with, and [`history`] reports it beside every program. What comes back is the program that
+/// executed, so a submission whose program was itself handed over by [`rerun`] returns what ran
+/// rather than the lines that asked for it. A rerun keeps the id of the submission it ran for.
 ///
 /// # Arguments
 ///
@@ -50,14 +41,12 @@ pub fn history() -> Result<Vec<ProgramSummary>, ApiError> {
 ///
 /// # Returns
 ///
-/// That program's source, exactly as it executed — so a program that was itself handed over by
-/// [`rerun`] comes back as what ran, not as the lines that asked for it.
+/// That program's source, exactly as it executed.
 ///
 /// # Errors
 ///
-/// `NotFound`, naming the ids that are held, for an id this agent was never issued or one whose
-/// program is old enough that the library has dropped it, and `Unavailable` when this agent keeps no
-/// program library.
+/// `NotFound`, naming the ids that are held, for an id this session was never issued or one whose
+/// program the library has dropped, and `Unavailable` when this session keeps no program library.
 #[doc(alias = "ggop:programs.get")]
 pub fn get(id: &str) -> Result<String, ApiError> {
     wire::lift(programs::get(id))
@@ -66,16 +55,13 @@ pub fn get(id: &str) -> Result<String, ApiError> {
 /// Hand gg a program to run in place of this one.
 ///
 /// The calling program finishes, then gg compiles and runs `source` as this submission's program,
-/// under the same id — so a later [`get`] of that id returns `source`, the program that ran. Used
-/// with [`get`] it fixes a program without re-emitting it. Nothing is undone: every call the calling
-/// program already made stands, and the program that runs next sees the world it left behind — so the
-/// hand-over belongs before work that should not happen twice.
+/// under the same id, so a later [`get`] of that id returns `source`. Nothing is undone: every call
+/// the calling program already made stands, and the program that runs next sees the world it left
+/// behind.
 ///
-/// The first call stands, because a silently replaced program is a change nobody can see. If the
-/// calling program then fails, the hand-over is cancelled along with everything else that program
-/// decided, and the turn ends in an ordinary error. Chains are bounded: a submission runs at most
-/// four programs, this one plus three handed over, and the fixed program is the one that does the
-/// work.
+/// The first call in a program stands and a second is refused. If the calling program then fails,
+/// the hand-over is cancelled along with everything else that program decided, and the turn ends in
+/// an ordinary error. A submission runs at most four programs, this one plus three handed over.
 ///
 /// # Arguments
 ///
@@ -84,7 +70,7 @@ pub fn get(id: &str) -> Result<String, ApiError> {
 /// # Errors
 ///
 /// `Refused` for a second hand-over from the same program, `InvalidArgument` for a blank source, and
-/// `Unavailable` when this agent keeps no program library.
+/// `Unavailable` when this session keeps no program library.
 #[doc(alias = "ggop:programs.rerun")]
 pub fn rerun(source: &str) -> Result<(), ApiError> {
     wire::lift(programs::rerun(source))
@@ -92,9 +78,7 @@ pub fn rerun(source: &str) -> Result<(), ApiError> {
 
 /// One program that already ran, as [`history`] lists it.
 ///
-/// It describes the program's **shape**, never its source: a directory that inlined every program
-/// would put the whole session back in the context window, which is the one thing the library exists
-/// to avoid. [`get`] is what fetches a source.
+/// It describes the program's shape, never its source; [`get`] fetches a source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgramSummary {
     /// The id its `submit_program` acknowledgement carried — what [`get`] takes.
@@ -114,8 +98,7 @@ pub struct ProgramSummary {
 impl ProgramSummary {
     /// Fetch the exact source of this program.
     ///
-    /// [`get`] with the id already supplied, for the common case where the summary worth fetching
-    /// is in hand.
+    /// The same call as [`get`], with the id already supplied.
     ///
     /// # Returns
     ///

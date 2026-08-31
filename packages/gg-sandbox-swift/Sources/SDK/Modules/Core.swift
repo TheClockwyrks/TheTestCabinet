@@ -1,30 +1,22 @@
 /// The types every other module's signatures name: how a call fails, and how a field is patched.
 ///
-/// A capability module owns the types it produces, so `files.FileRead` belongs to `files` and
-/// `board.IssueCreated` to `board`. These three belong to none of them because they belong to all of
-/// them: every fallible function in this SDK throws a `core.ApiError`, every one of those is
-/// classified by a `core.ApiErrorCode`, and both patch calls take a `core.TextEdit`.
-///
-/// It is the one module that offers no capability at all, and the reflector refuses a catalogue in
-/// which it offers one.
+/// Every fallible function in this SDK throws a `core.ApiError`, every one of those is classified
+/// by a `core.ApiErrorCode`, and every patch call takes a `core.TextEdit`.
 ///
 /// - ggmodule: core
 public enum core {
     /// A gg call that failed.
     ///
-    /// Every fallible function in this SDK is `throws` and throws one of these, which is what a
-    /// Swift author expects of a fallible call and what makes `try` the whole of the ceremony:
-    /// `let skill = try skills.readSkill("testing")` binds a `String`, and a failure ends the
-    /// program with gg told exactly which call failed and on which line.
+    /// Every fallible function in this SDK is `throws` and throws one of these. An uncaught one
+    /// ends the program, with gg told which call failed and on which line.
     ///
-    /// A failure a program expects is an ordinary `catch` on `code`, which is a value rather than
-    /// prose:
+    /// A failure a program expects is an ordinary `catch` on `code`:
     ///
     /// ```swift
     /// do {
-    ///     try views.openFile("notes.md")
+    ///     _ = try files.readFile("notes.md")
     /// } catch let failure as core.ApiError where failure.code == .notFound {
-    ///     try files.writeFile("notes.md", contents: "")
+    ///     // the file is not there
     /// }
     /// ```
     public struct ApiError: Error, CustomStringConvertible, Sendable {
@@ -32,15 +24,10 @@ public enum core {
         public let code: ApiErrorCode
         /// The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`).
         public let operation: String
-        /// What went wrong, in gg's words. Worth showing in a view; not worth matching on.
+        /// What went wrong, in gg's words. It is prose rather than a stable value.
         public let message: String
 
         /// gg's own sentence about a failed call: the call, the class, and what went wrong.
-        ///
-        /// It is gg's convention rather than Swift's. The same line is what the ECMAScript guest's
-        /// shim writes and what the native tool-calling path shows, and it is what a model reads
-        /// when a failure escapes — so two arms whose uncaught failures read differently would be
-        /// two arms whose error rates a study could not compare.
         public var description: String {
             "`\(operation)` failed (\(code.ggName)): \(message)"
         }
@@ -79,9 +66,8 @@ public enum core {
         case refused
         /// The call exists and this run's capability set does not offer it.
         ///
-        /// Every name in this SDK is in scope whatever a run enables, because the module is
-        /// compiled once and a run's capability set is decided per run — so a withheld call comes
-        /// back as this rather than as a compile error.
+        /// Every name in this SDK is in scope whatever a run enables, so a withheld call comes back
+        /// as this rather than as a compile error.
         case unavailable
         /// A gg-side ceiling was reached.
         ///
@@ -95,12 +81,9 @@ public enum core {
         /// it.
         case other
 
-        /// gg's own word for this class, as every other execution mode and every other language arm
-        /// prints it.
+        /// gg's own word for this class, as every other execution mode prints it.
         ///
-        /// A Swift case is `notFound` and gg's word is `not-found`. A model that has read one
-        /// failure should recognise the next one whichever arm it is on, so the sentence a failure
-        /// renders as uses gg's word rather than this SDK's.
+        /// A Swift case is `notFound` and gg's word is `not-found`.
         public var ggName: String {
             switch self {
             case .invalidArgument: "invalid-argument"
@@ -131,12 +114,8 @@ public enum core {
 
     /// A three-way edit of an optional text field: leave it, empty it, or replace it.
     ///
-    /// It is an `enum` because the field really has three states: a `String?` could say only two,
-    /// and would make "clear it" and "set it to the empty string" one request.
-    ///
     /// `.keep` is the default value of every argument that takes one, so a patch that names two
-    /// fields leaves the third alone — which is what leaving a field out of a patch has to mean.
-    /// The board's `updateIssue` takes the same type.
+    /// fields leaves the third alone.
     public enum TextEdit: Sendable {
         /// Leave the field as it is.
         case keep

@@ -1,12 +1,7 @@
 /// The epic and issue board, on which work is decomposed into dispatchable units.
 ///
-/// An issue is heavyweight and self-contained: its scope, non-scope and completion criteria are
-/// exactly what a delegated child agent is briefed from, which is why `createIssue` asks for more
-/// than adding a task does.
-///
-/// Two of `updateIssue`'s arguments are three-way, and Swift has an `enum` for exactly that:
-/// `core.TextEdit` leaves, empties or replaces a description, and `board.EpicAssignment` leaves,
-/// detaches or regroups an epic. Neither needs a sentinel.
+/// An issue is self-contained: it carries its own scope, non-scope and completion criteria, which
+/// are what a delegated child agent is briefed from.
 ///
 /// - ggmodule: board
 public enum board {
@@ -55,30 +50,27 @@ public enum board {
     /// Create a self-contained, dispatchable issue, and hand back the id the board assigned it.
     ///
     /// The id is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it
-    /// has no epic. It is the board's to choose, so it is worth keeping: blocking a later issue on
-    /// this one, and waiting for it, both take it. `inScope`, `outOfScope` and `completionCriteria`
-    /// are what a child agent is briefed from, so they are written for a reader with no other
-    /// context.
+    /// has no epic; the board chooses it. `inScope`, `outOfScope` and `completionCriteria` are the
+    /// brief a child agent is given.
     ///
     /// - Parameters:
     ///   - title: A short line naming the work.
     ///   - inScope: What the issue covers, precisely. Part of the brief a child agent is given.
-    ///   - outOfScope: What the issue deliberately does not cover, so the work stops where it was
-    ///     meant to.
+    ///   - outOfScope: What the issue deliberately does not cover.
     ///   - completionCriteria: What must be true for the issue to be done. It is what a reviewer
     ///     checks the work against.
-    ///   - agent: The agent the issue is dispatched to. It must be one this agent may spawn.
+    ///   - agent: The agent the issue is dispatched to, from the ones this run permits.
     ///   - description: What the work is, for a child agent with no other context. Left out, the
     ///     issue has none.
     ///   - blockedBy: The ids of every issue that must be done before this one. Empty by default.
     ///   - epic: The id of an existing epic to group it under. Left out, the issue is ungrouped and
     ///     numbered under `ISSUE`.
-    ///   - reviewers: The agents that must approve the work, from the set this agent may spawn.
+    ///   - reviewers: The agents that must approve the work, from the ones this run permits.
     ///     Required when this run's reviewers feature is on, and empty otherwise.
     /// - Returns: the id the board assigned, and the board budget.
     /// - Throws: `core.ApiError` with `.invalidArgument` when `agent` or a reviewer is not one this
-    ///   agent may assign, `.notFound` for an unknown epic or blocker, and `.conflict` on a blocker
-    ///   edge that would close a cycle.
+    ///   run permits, `.notFound` for an unknown epic or blocker, and `.conflict` on a blocker edge
+    ///   that would close a cycle.
     /// - ggop: board.create_issue
     @discardableResult
     public static func createIssue(
@@ -214,13 +206,13 @@ public enum board {
     ///
     /// Nothing blocks inside the program: the wait is recorded and the call returns at once, so the
     /// rest of the program still runs. The suspension happens after the program ends, between turns
-    /// — the run frees this agent's slot until the issue is terminal, done or failed, then resumes
-    /// on the next turn. It is how a turn's work is sequenced behind an issue it depends on. The
-    /// issue this agent was assigned to implement is the one issue it may not wait on.
+    /// — the run frees this session's slot until the issue is terminal, done or failed, then
+    /// resumes on the next turn. The issue this session was assigned to implement is the one issue
+    /// it may not wait on.
     ///
-    /// - Parameter id: The issue to wait on. It may not be the issue this agent was assigned.
+    /// - Parameter id: The issue to wait on. It may not be the issue this session was assigned.
     /// - Returns: gg's acknowledgement of the registered wait.
-    /// - Throws: `core.ApiError` with `.invalidArgument` for this agent's own assigned issue, and
+    /// - Throws: `core.ApiError` with `.invalidArgument` for this session's own assigned issue, and
     ///   `.notFound` for an id the board does not hold.
     /// - ggop: board.wait_for_issue
     @discardableResult
@@ -327,10 +319,8 @@ public enum board {
 extension board.IssueCreated {
     /// Register a wait on this issue, with its id already supplied.
     ///
-    /// `board.waitForIssue` for the common case where the created issue is in hand.
-    ///
     /// - Returns: gg's acknowledgement of the registered wait.
-    /// - Throws: `core.ApiError` with `.invalidArgument` when this is the issue the agent was
+    /// - Throws: `core.ApiError` with `.invalidArgument` when this is the issue this session was
     ///   assigned.
     /// - ggop-alias: board.wait_for_issue
     @discardableResult

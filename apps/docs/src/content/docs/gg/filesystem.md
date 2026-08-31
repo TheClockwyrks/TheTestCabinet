@@ -2,9 +2,10 @@
 title: "Filesystem tools"
 ---
 
-The four editor primitives a coding agent works through, and the search that
-finds where to point them. Each is its own capability, so a study can withhold
-or reconfigure one without disturbing the others.
+The four editor primitives a coding agent works through, the two directory
+calls that say what is there, and the search that finds where to point them.
+Each capability is its own, so a study can withhold or reconfigure one without
+disturbing the others.
 
 | Capability | Tool | What it does |
 | --- | --- | --- |
@@ -12,10 +13,12 @@ or reconfigure one without disturbing the others.
 | `write-file` | `write_file` | Create or overwrite a whole file (parents created). |
 | `edit-file` | `edit_file` | Replace one exact, unique occurrence of a string. |
 | `list-dir` | `list_dir` | List a directory's entries (directories suffixed `/`). |
+| `list-dir` | `tree` | Render a depth-bounded tree of a directory, under the ignore rule in [trees](#trees) below. |
 | `search` | `search` | Content search over the workspace, under the ignore rule in [searching](#searching) below. |
 
-All five are enabled in a fresh configuration, and they appear as their own
-Filesystem group in the [configuration](/gg/configurations/) editor.
+All five capabilities are enabled in a fresh configuration, and they appear as
+their own Filesystem group in the [configuration](/gg/configurations/) editor.
+`list-dir` buys two calls: one directory's entries, and the tree beneath one.
 
 `edit_file` replaces exactly one occurrence. Text that is absent and text that
 occurs several times are distinct failures with distinct recoveries: the first
@@ -40,6 +43,52 @@ The container is the boundary, so these tools reach anything in it. gg's own
 shell [offloads](/gg/shell/#output-offloading) command output to `/tmp/gg-shell`
 and tells the agent to read it there, which a workspace-confined `read_file`
 could not honor.
+
+## Trees
+
+The `list-dir` capability's second call renders the directory tree beneath a
+root, bounded by a depth. Under
+[responses as code](/gg/responses-as-code/overview/) the same operation is
+`gg.files.tree`, and it is what the
+[opening turn](/gg/responses-as-code/views/#the-opening-turn) uses to open a
+window on the shape of the workspace before the model's first turn.
+
+`path` roots the tree at one directory — absent, the workspace root — and a path
+that does not exist is `not-found`. A path that is not a directory is
+`invalid-argument`.
+
+`depth` counts levels of children below the root: `1` is the root's own entries,
+`2` adds their contents. It is `2` when it is left out, and never more than
+`10`, so a larger request is answered at 10. A `depth` of zero is
+`invalid-argument`.
+
+The result is one block of text, the root itself unnamed, each level indented
+two further spaces than its parent, directories suffixed `/`, and every level in
+path order:
+
+```
+README.md
+engine/
+  game.js
+  input.js
+  render/ (4 entries not shown)
+src/
+  main.js
+  systems/ (7 entries not shown)
+```
+
+A directory sitting at the depth bound is suffixed with how many entries it
+holds that the walk did not enter, so the bound is stated where it was reached
+and the recovery is a deeper `depth` or a `path` rooted there. A root with
+nothing beneath it renders as `(empty directory)`.
+
+The rendering is bounded so one call cannot flood a turn: at most 1,000 lines
+and at most 16 KiB, whichever binds first, and a result cut by either ends with
+a line saying so.
+
+The tree honors ignore files on exactly the terms [searching](#searching) states,
+so an ignored directory is absent from it and a tree holds the agent's own
+sources rather than `node_modules`, build output and the run's bookkeeping.
 
 ## Searching
 

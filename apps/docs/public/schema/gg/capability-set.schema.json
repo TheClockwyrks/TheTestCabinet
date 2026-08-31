@@ -343,9 +343,28 @@
       "required": ["name"],
       "type": "object"
     },
+    "GgOpeningTree": {
+      "additionalProperties": false,
+      "description": "**The workspace tree a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens\nholding** — whether gg's synthesized opening turn calls `files.tree` at all, and the depth it\ncalls it with.\n\nA model that opens a window on the prompt alone has to guess at paths, and a guess that names a\nfile the workspace does not hold costs the whole program the turn was spent on. The opening\ntree answers the question those guesses ask, and it is configuration rather than gg's choice\nfor the same reason the two lists beside it are: what a window opens on is an operator's\ndecision about the agent.\n\n[`include`](Self::include) and [`depth`](Self::depth) are independent, so a study that switches\nthe tree off and on again gets the depth it chose back rather than gg's.\n\nThe tree is dropped at seed time for an agent that does not hold `files.tree`, on the same terms\na listed module or function it does not hold is. A [`depth`](Self::depth) gg cannot honour\nrefuses the launch whether or not `include` is set, because a document holding a number gg would\nnot honour is refused where it is written.",
+      "properties": {
+        "depth": {
+          "default": 2,
+          "description": "The depth that call names: levels of children below the workspace root, `1` being the root's\nown entries. Held to `1..=`[`MAX_OPENING_TREE_DEPTH`] at launch.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "include": {
+          "default": false,
+          "description": "Whether the opening program calls `files.tree` at all.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "GgOpeningTurn": {
       "additionalProperties": false,
-      "description": "**What a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens holding** — the\ntwo lists gg's synthesized opening turn is generated from, per agent.\n\nA code agent's first turn is a program gg writes in the agent's own language and runs before the\nmodel has said a word: it searches the documentation of the modules named here, together, in one\nlisting keyed by their paths, and opens a documentation view of each function named here, in the\norder written. The prompt names no function, so this is the only thing that hands a model its way\ninto its own surface; the lists are **configuration** rather than gg's choice because what a\nwindow should open on is an operator's decision about the agent, and a study that varies it is a\nstudy gg has no business deciding the answer to.\n\nBoth vocabularies are gg's cross-arm ones: [`modules`](Self::modules) names a module by its id\n(the namespace half of an operation id — `files`, `shell`, `views`, …) and\n[`functions`](Self::functions) names an operation (`files.read_file`), never an arm's own\nspelling of either. The two lists are **independent**: a function's documentation is opened\nwhether or not its module is listed, and a module is listed whether or not any of its functions\nis opened.\n\nAn entry gg has no vocabulary for refuses the launch, on the terms an\n[allowlist](GgAgentConfig::operations) entry does; so does a function held by role or by\nplacement (an ending call, `delegation.transition_state`), which no configuration can promise.\nAn entry in the right vocabulary that *this* agent does not hold — a module none of whose\nfunctions it may call, a function it was not granted — is dropped at seed time with a warning,\nwhich is what lets one shared document describe agents with different grants. Duplicates are\nopened once. Two lists that come out empty seed no program at all, which is a valid choice\nrather than a defect.\n\n**Required** on every agent, and always written: a document without it does not read. The\nauthored default a fresh profile is seeded with is [`GgAgentConfig::root`]'s —\n[`DEFAULT_OPENING_MODULES`] and [`DEFAULT_OPENING_FUNCTIONS`].",
+      "description": "**What a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens holding** — the\ntwo lists and the [tree](GgOpeningTree) gg's synthesized opening turn is generated from, per\nagent.\n\nA code agent's first turn is a program gg writes in the agent's own language and runs before the\nmodel has said a word: it searches the documentation of the modules named here, together, in one\nlisting keyed by their paths, and opens a documentation view of each function named here, in the\norder written. The prompt names no function, so this is the only thing that hands a model its way\ninto its own surface; the lists are **configuration** rather than gg's choice because what a\nwindow should open on is an operator's decision about the agent, and a study that varies it is a\nstudy gg has no business deciding the answer to.\n\nBoth vocabularies are gg's cross-arm ones: [`modules`](Self::modules) names a module by its id\n(the namespace half of an operation id — `files`, `shell`, `views`, …) and\n[`functions`](Self::functions) names an operation (`files.read_file`), never an arm's own\nspelling of either. The two lists are **independent**: a function's documentation is opened\nwhether or not its module is listed, and a module is listed whether or not any of its functions\nis opened.\n\nAn entry gg has no vocabulary for refuses the launch, on the terms an\n[allowlist](GgAgentConfig::operations) entry does; so does a function held by role or by\nplacement (an ending call, `delegation.transition_state`), which no configuration can promise.\nAn entry in the right vocabulary that *this* agent does not hold — a module none of whose\nfunctions it may call, a function it was not granted — is dropped at seed time with a warning,\nwhich is what lets one shared document describe agents with different grants. Duplicates are\nopened once. Two lists that come out empty seed no program at all, which is a valid choice\nrather than a defect.\n\n**Required** on every agent, and always written: a document without it does not read. Its\n[`tree`](Self::tree) is the one part a document may leave out. The authored default a fresh\nprofile is seeded with is [`GgAgentConfig::root`]'s — [`DEFAULT_OPENING_MODULES`],\n[`DEFAULT_OPENING_FUNCTIONS`] and a tree at [`DEFAULT_OPENING_TREE_DEPTH`].",
       "properties": {
         "functions": {
           "description": "The operation ids whose documentation view the opening program opens, in this order:\n`docs.search`, `views.open_file`, ….",
@@ -360,6 +379,10 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "tree": {
+          "$ref": "#/$defs/GgOpeningTree",
+          "description": "Whether the opening program opens a [tree](GgOpeningTree) of the workspace, and how deep.\n\nOptional in a document, unlike the two lists, because every capability set written before\ngg had a tree call left it out and those documents open the window they always opened:\n[`GgOpeningTree::default`] is the tree switched off. A fresh profile is seeded with it on\n([`GgOpeningTurn::seeded`])."
         }
       },
       "required": ["modules", "functions"],
@@ -582,7 +605,11 @@
               "views.open_file",
               "files.search"
             ],
-            "modules": ["files", "shell"]
+            "modules": ["files", "shell"],
+            "tree": {
+              "depth": 2,
+              "include": true
+            }
           },
           "operations": [
             "shell.shell",
@@ -590,6 +617,7 @@
             "files.write_file",
             "files.edit_file",
             "files.list_dir",
+            "files.tree",
             "files.search",
             "skills.read_skill",
             "memories.write_memory",
@@ -613,6 +641,7 @@
             "write_file",
             "edit_file",
             "list_dir",
+            "tree",
             "search",
             "read_skill",
             "write_memory",

@@ -7,9 +7,8 @@ public static partial class Tasks
     /// <summary>A three-way edit of an optional text field: leave it, empty it, or replace it.</summary>
     /// <remarks>
     /// <para>
-    /// It exists so that clearing a description and setting it to the empty string stop being one
-    /// request. The default is <see cref="Keep"/>, so an update that does not mention a description
-    /// does not touch it. <c>Board.UpdateIssue</c> takes the same value for the same reason.
+    /// The default is <see cref="Keep"/>, so an update that does not mention a description does not
+    /// touch it. Clearing a description and setting it to the empty string are different requests.
     /// </para>
     /// <code>
     /// Tasks.UpdateTask("build", description: Tasks.TextEdit.Set("cargo build --release"));
@@ -45,8 +44,7 @@ public static partial class Tasks
     /// <summary>Where a task stands.</summary>
     /// <remarks>
     /// A program that also writes <c>using System.Threading.Tasks;</c> reaches this one as
-    /// <c>Gg.Tasks.TaskStatus</c>, since that namespace declares a type of the same name. There is
-    /// nothing here to use it for: every call on this surface is synchronous.
+    /// <c>Gg.Tasks.TaskStatus</c>, since that namespace declares a type of the same name.
     /// </remarks>
     public enum TaskStatus
     {

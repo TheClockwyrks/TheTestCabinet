@@ -25,10 +25,7 @@ namespace tasks {
 
 /// A three-way edit of an optional text field: leave it, empty it, or replace it.
 ///
-/// The field really has three states and an `std::optional<std::string>` could say only two of
-/// them, which is how a stringly interface ends up treating "clear it" and "set it to the empty
-/// string" as one request. A default-constructed value keeps the field, so a patch that says
-/// nothing about a description leaves it alone.
+/// A default-constructed value keeps the field.
 class text_edit {
  public:
   /// Leave the field as it is, which is what a default-constructed value does.

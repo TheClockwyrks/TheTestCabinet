@@ -201,7 +201,7 @@ fn the_generated_documentation_program_is_a_whole_kotlin_program() {
 fn the_opening_program_is_a_whole_kotlin_program() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
     assert_eq!(
-        kotlin().bootstrap_program(&["gg.files", "gg.shell"], &["readFile"]),
+        kotlin().bootstrap_program(&["gg.files", "gg.shell"], &["readFile"], None),
         format!(
             "fun main() {{\n    \
                  gg.docs.search(modules = listOf(\"gg.files\", \"gg.shell\"), limit = \
@@ -219,7 +219,7 @@ fn the_opening_program_is_a_whole_kotlin_program() {
     // filter is refused as `INVALID_ARGUMENT` — so the call goes rather than being written over an
     // empty list. What is left is the program the documentation keys alone make.
     assert_eq!(
-        kotlin().bootstrap_program(&[], &["readFile"]),
+        kotlin().bootstrap_program(&[], &["readFile"], None),
         "fun main() {\n    \
              val functions = listOf(\n        \"readFile\"\n    )\n    \
              for (name in functions) {\n        \

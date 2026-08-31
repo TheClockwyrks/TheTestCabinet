@@ -124,7 +124,7 @@ pub(crate) use filesystem::READ_FILE_CAP;
 pub(crate) use filesystem::clip_line;
 pub use filesystem::{
     EditFileTool, ListDirTool, READ_FILE_TOOL, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED,
-    ReadFileTool, ReadPolicy, SEARCH_TOOL, SearchTool, WriteFileTool,
+    ReadFileTool, ReadPolicy, SEARCH_TOOL, SearchTool, TREE_TOOL, TreeTool, WriteFileTool,
 };
 pub use memories::{
     CREATE_MEMORY_TOOL, CreateMemoryTool, DELETE_MEMORY_TOOL, DeleteMemoryTool, EDIT_MEMORY_TOOL,
@@ -171,6 +171,7 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "write_file",
     "edit_file",
     "list_dir",
+    TREE_TOOL,
     SEARCH_TOOL,
     "read_skill",
     "write_memory",
@@ -250,7 +251,7 @@ pub fn tool_capability(name: &str) -> Option<&'static str> {
         READ_FILE_TOOL => CAPABILITY_READ_FILE,
         "write_file" => CAPABILITY_WRITE_FILE,
         "edit_file" => CAPABILITY_EDIT_FILE,
-        "list_dir" => CAPABILITY_LIST_DIR,
+        "list_dir" | TREE_TOOL => CAPABILITY_LIST_DIR,
         SEARCH_TOOL => CAPABILITY_SEARCH,
         READ_SKILL_TOOL => CAPABILITY_SKILLS,
         WRITE_MEMORY_TOOL | UPDATE_MEMORY_TOOL | CREATE_MEMORY_TOOL | READ_MEMORY_TOOL
@@ -770,8 +771,12 @@ impl ToolRegistry {
         if capabilities.is_enabled(CAPABILITY_EDIT_FILE) {
             tools.push(Box::new(filesystem::EditFileTool));
         }
+        // One capability, two calls: a directory's entries and the tree beneath it. They are one
+        // capability rather than two because they answer one question at two scales, and a study
+        // that wants only one of them narrows the agent's allowlist.
         if capabilities.is_enabled(CAPABILITY_LIST_DIR) {
             tools.push(Box::new(filesystem::ListDirTool));
+            tools.push(Box::new(filesystem::TreeTool));
         }
         // The search is filed with the filesystem primitives and gated exactly as they are: its own
         // capability, one tool, no params.

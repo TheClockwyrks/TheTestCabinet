@@ -1,14 +1,9 @@
 /**
  * Durable notes that survive a context compaction.
  *
- * A run picks one of three memory strategies and binds only that strategy's functions, so what this
- * module offers is the honest answer to what memory can do here. The scratchpad keeps every
- * memory in the context window; the two file-shaped strategies keep the contents outside it, one
- * behind an index that is always in context and one behind a keyword search. Deleting is bound under
- * all three.
+ * Only the functions of this run's memory strategy are bound.
  *
- * Every mutation hands back the budget after it, so a program decides whether to write another memory
- * by reading numbers rather than by parsing a sentence about them.
+ * Every mutation hands back the memory budget after it.
  *
  * @ggmodule memories
  */
@@ -25,10 +20,9 @@ import gg.internal.ggTexts
 /**
  * Record a durable memory that survives context compaction.
  *
- * A memory's code costs no window, is never shown back, and counts against no body limit: a module is
- * bound at `lib.<key>` for every later program this session writes, so a helper got right once is
- * never written again, and an on-use script runs on every use of the memory with its views arriving
- * on the next turn.
+ * A memory's code costs no window, is never shown back, and counts against no body limit. A module is
+ * bound at `lib.<name>` for every later program this session writes, and an on-use script runs on
+ * every use of the memory, its views arriving on the next turn.
  *
  * @ggop memories.write_memory
  * @param name The memory's slug: letters, digits, `-`, `_` and `.`. Every other memory call takes it,
@@ -36,7 +30,7 @@ import gg.internal.ggTexts
  * @param description A one-line description of what the memory holds, which is its line in a memory
  *   index where the run keeps one.
  * @param body The memory's contents.
- * @param code A Kotlin file whose public top-level functions are reached at `lib.<name>.<export>`
+ * @param code A Kotlin file whose public top-level functions are reached at `lib.<name>.<function>`
  *   from every later program this session writes.
  * @param onUse A program gg runs on every use of the memory, after the turn's own program has
  *   ended, whose views arrive on the next turn.
@@ -61,7 +55,7 @@ public fun writeMemory(
  * @param name The slug of the memory to replace.
  * @param description The one-line description to replace the old one with.
  * @param body The contents to replace the old ones with.
- * @param code A Kotlin file whose public top-level functions are reached at `lib.<name>.<export>`,
+ * @param code A Kotlin file whose public top-level functions are reached at `lib.<name>.<function>`,
  *   replacing whatever module the memory carried.
  * @param onUse A program gg runs on every use of the memory, replacing whatever script the memory
  *   carried.
@@ -79,15 +73,12 @@ public fun updateMemory(
 /**
  * Record a new memory whose contents stay out of the context window until they are read.
  *
- * This is the write the two file-shaped strategies bind, and the distinction from the scratchpad's
- * write is where the contents live rather than what they say.
- *
  * @ggop memories.create_memory
  * @param name The memory's slug: letters, digits, `-`, `_` and `.`.
  * @param description A one-line description of what the memory holds, which is its line in the index.
  * @param body The memory's initial contents, which stay out of the context window until they are
  *   read.
- * @param code A Kotlin file whose public top-level functions are reached at `lib.<name>.<export>`
+ * @param code A Kotlin file whose public top-level functions are reached at `lib.<name>.<function>`
  *   once the memory is read.
  * @param onUse A program gg runs on every use of the memory, whose views arrive on the next turn.
  * @return how much of the memory budget is now used
@@ -120,8 +111,6 @@ public fun readMemory(name: String): String =
 /**
  * Revise a memory in place, replacing the one exact occurrence of `search` with `replace`.
  *
- * Appending is quoting the last line and replacing it with itself plus whatever is being added.
- *
  * @ggop memories.edit_memory
  * @param name The slug of the memory to revise.
  * @param search The exact text to find in its contents. It must appear exactly once.
@@ -144,12 +133,11 @@ public fun editMemory(name: String, search: String, replace: String): MemoryUsag
  * Find the memories mentioning any of `keywords`, best first.
  *
  * Plain case-insensitive substring matching over each memory's slug, description and contents, ranked
- * by how many of the keywords a memory mentions and then by how often. Several specific words rank
- * better than one sentence. A search that matches nothing is an empty list.
+ * by how many of the keywords a memory mentions and then by how often. A search that matches nothing
+ * is an empty list.
  *
  * @ggop memories.search_memories
- * @param keywords The words to look for. Several specific words rank better than one sentence,
- *   because a memory is ranked by how many of them it mentions.
+ * @param keywords The words to look for.
  * @return every memory that mentioned one, best first
  * @throws ApiError `INVALID_ARGUMENT` when every keyword is empty.
  */
@@ -227,9 +215,6 @@ public data class MemoryHit(
 ) {
     /**
      * Read this hit's memory in full, with its slug already supplied.
-     *
-     * `gg.memories.readMemory` for the common case where the search result is in hand, written as a
-     * member so that the value carrying the slug is what the call hangs off.
      *
      * @ggalias memories.read_memory
      * @return the memory's contents

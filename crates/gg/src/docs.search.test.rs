@@ -130,13 +130,19 @@ fn a_name_is_matched_through_its_spelling() {
 
 /// **Identifiers outrank prose.** A word that is a function's whole name comes before one that only
 /// appears in some other entry's description, however often it appears there.
+///
+/// Asked of `compact`, which is one function's whole name and a word several other entries state a
+/// fact with — a memory and a program library both outlive one. A name only ever spoken by its own
+/// entry would make the second assertion below unfalsifiable, and every arm's prose is written to
+/// name as few of its siblings as it can, so the word this is asked of has to be one the surface
+/// says something *about* rather than a call the rest of the surface points at.
 #[test]
 fn an_identifier_match_outranks_a_description_match() {
     let docs = full();
-    let found = docs.search(ask("readFile")).expect("a usable query");
+    let found = docs.search(ask("compact")).expect("a usable query");
     assert_eq!(
         found.hits.first().map(|hit| hit.key.as_str()),
-        Some(key_of("readFile").as_str()),
+        Some(key_of("compact").as_str()),
         "an exact name is the surest evidence there is: {:?}",
         keys(&found)
     );

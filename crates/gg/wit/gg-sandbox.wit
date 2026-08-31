@@ -209,6 +209,24 @@ interface files {
     /// directory is an empty list, not an error.
     list-dir: func(path: option<string>) -> result<list<dir-entry>, api-error>;
 
+    /// Render the directory tree beneath `path` — `none` is the workspace root — as one block of
+    /// text: the root itself unnamed, each level indented two further spaces than its parent, every
+    /// level in path order, and directories suffixed `/`. A root with nothing beneath it renders as
+    /// `(empty directory)`.
+    ///
+    /// `depth` counts levels of children below the root: `1` is the root's own entries. It is 2
+    /// when it is absent and never more than 10, so a larger request is answered at 10; a `depth`
+    /// of zero is `invalid-argument`. A directory sitting at the bound is suffixed with how many
+    /// entries it holds that the walk did not enter.
+    ///
+    /// The tree honours ignore files exactly as `search` does: what `.gitignore`, `.ignore` and
+    /// their kin exclude is never walked and never rendered, `.git` itself included. A `path` that
+    /// does not exist is `not-found`; one that is not a directory is `invalid-argument`.
+    ///
+    /// The rendering is bounded at 1000 lines and 16 KiB, whichever binds first, and a result cut
+    /// by either ends with a line saying so.
+    tree: func(path: option<string>, depth: option<u32>) -> result<string, api-error>;
+
     /// One line a `search` matched.
     record search-match {
         /// The file's path, relative to the workspace root (or absolute, for a search rooted

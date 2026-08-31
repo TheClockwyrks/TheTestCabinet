@@ -1,13 +1,10 @@
-//! End the session, with the ending that belongs to this agent's role.
+//! End the session, with the ending that belongs to this session's role.
 //!
-//! Under responses as code every reply is a program, so there is no prose turn that could mean "the
-//! work is done" — a model that answers "task complete" has written a reply that failed to be a
-//! program, not an ending. These are the calls that mean it, and a run binds only the group its
-//! agent's role has: an agent doing work ends by reporting what it did, and a reviewer ends with a
-//! verdict.
+//! A run binds only the group its role has: work is ended by reporting what was done, and a review
+//! is ended with a verdict.
 //!
-//! None of them stops the program. Whatever follows an ending still runs, so an ending belongs last —
-//! and a program that then fails has its ending revoked along with everything else it decided.
+//! None of these calls stops the program. Whatever follows an ending still runs, and a program that
+//! then fails has its ending revoked along with everything else it decided.
 
 use crate::bindings::test_cabinet::gg::session;
 use crate::core::ApiError;
@@ -15,9 +12,8 @@ use crate::wire;
 
 /// End the session, reporting what was done in a sentence or two.
 ///
-/// This is the only thing that ends a working agent's session. It does not stop the program — whatever
-/// follows it still runs — so it belongs last, once the tools have confirmed the work is really done.
-/// A program that then fails has the ending cancelled and gets another turn.
+/// It does not stop the program: whatever follows it still runs. A program that then fails has the
+/// ending cancelled and gets another turn.
 ///
 /// # Arguments
 ///
@@ -25,8 +21,8 @@ use crate::wire;
 ///
 /// # Errors
 ///
-/// `InvalidArgument` for a blank summary, and `Unavailable` when this agent's role ends its session
-/// some other way.
+/// `InvalidArgument` for a blank summary, and `Unavailable` when this session's role ends some other
+/// way.
 #[doc(alias = "ggop:session.finish")]
 pub fn finish(summary: &str) -> Result<(), ApiError> {
     wire::lift(session::finish(summary))
@@ -34,13 +30,11 @@ pub fn finish(summary: &str) -> Result<(), ApiError> {
 
 /// Accept the work under review: it meets every completion criterion and stays in scope.
 ///
-/// This ends the session. It does not stop the program — whatever follows it still runs — so it
-/// belongs last, once the change has actually been read. It takes nothing, because an approval
-/// carries no obligation beyond itself.
+/// This ends the session. It does not stop the program: whatever follows it still runs.
 ///
 /// # Errors
 ///
-/// `Unavailable` when this agent's role ends its session some other way.
+/// `Unavailable` when this session's role ends some other way.
 #[doc(alias = "ggop:session.approve")]
 pub fn approve() -> Result<(), ApiError> {
     wire::lift(session::approve())
@@ -58,8 +52,8 @@ pub fn approve() -> Result<(), ApiError> {
 ///
 /// # Errors
 ///
-/// `InvalidArgument` when the list is empty, and `Unavailable` when this agent's role ends its
-/// session some other way.
+/// `InvalidArgument` when the list is empty, and `Unavailable` when this session's role ends some
+/// other way.
 #[doc(alias = "ggop:session.request_changes")]
 pub fn request_changes(items: &[&str]) -> Result<(), ApiError> {
     wire::lift(session::request_changes(&wire::strings(items)))

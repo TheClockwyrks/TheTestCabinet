@@ -114,6 +114,7 @@ use crate::sandbox::{
     ProgramLanguage, SandboxError, SandboxLimits, all_languages, capability_operations,
     gating_capabilities,
 };
+use crate::tools::ToolContext;
 
 /// The ceilings the check's own programs run under — 30 s of guest CPU and 256 MiB of linear
 /// memory.
@@ -476,9 +477,14 @@ async fn check_arm(arm: &'static dyn ProgramLanguage) -> ArmCheck {
     // A library that keeps nothing: the check has no session to file an opening program into, and a
     // library that issued ids would be recording a run that does not exist.
     let mut programs = ProgramLibrary::disabled();
-    // The opening turn a **fresh profile** is seeded with — the two lists every real run's first
-    // window opens on, rather than a pair chosen here to be easy to satisfy.
+    // The opening turn a **fresh profile** is seeded with — the two lists and the tree every real
+    // run's first window opens on, rather than a set chosen here to be easy to satisfy.
     let opening = GgOpeningTurn::seeded();
+    // Where the opening tree is walked from. The check has no run workspace, so it walks the
+    // directory gg was invoked from: a real tree, which is what makes the tree call a real call
+    // rather than one answered by an empty directory.
+    let tool_ctx =
+        ToolContext::new(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
 
     let seeding = Instant::now();
     let seeded = seed_bootstrap(
@@ -487,6 +493,7 @@ async fn check_arm(arm: &'static dyn ProgramLanguage) -> ArmCheck {
         &mut programs,
         BootstrapAgent {
             opening_turn: &opening,
+            tool_ctx: &tool_ctx,
             capabilities: &capabilities,
             operations: &operations,
             role: SELFCHECK_ROLE,

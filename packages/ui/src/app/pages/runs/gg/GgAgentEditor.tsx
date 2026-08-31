@@ -13,10 +13,13 @@ import {
   AGENT_MODES,
   AGENT_MODE_HINT,
   CAP_GROUPS,
+  DEFAULT_OPENING_TURN,
   FSM_CAP,
   GG_MODULES,
   LOOP_DETECTION_HINT,
   LOOP_DETECTION_SPECS,
+  MAX_OPENING_TREE_DEPTH,
+  OPENING_TREE_OPERATION,
   RESPONSES_AS_CODE_CAP,
   SUBAGENT_SCOPES,
   capabilitiesForMode,
@@ -56,6 +59,7 @@ import {
   type GgConfigDraft,
   type GgHookDraft,
   type GgModelSlotDraft,
+  type GgOpeningTreeDraft,
 } from "./ggConfigDraft";
 import runExec from "../RunExec.module.scss";
 import gg from "./GgConfigEditor.module.scss";
@@ -71,6 +75,20 @@ const AGENT_MODE_OPTIONS = AGENT_MODES.map((mode) => ({
   value: mode.value,
   label: mode.label,
 }));
+
+/**
+ * A typed depth for the opening tree's field: a whole number inside the range gg honours.
+ *
+ * The field is clamped rather than validated because every value outside `1..=`
+ * [MAX_OPENING_TREE_DEPTH] refuses the launch, and a form that can write one is a form
+ * that saves a configuration nothing will run. A field cleared to nothing reads as the
+ * default rather than as zero.
+ */
+function clampTreeDepth(written: string): number {
+  const parsed = Number.parseInt(written, 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_OPENING_TURN.tree.depth;
+  return Math.min(Math.max(parsed, 1), MAX_OPENING_TREE_DEPTH);
+}
 
 /** The per-agent editor's sections. */
 type AgentTab =
@@ -262,6 +280,21 @@ export function GgAgentEditor({
         : [...current, id]
       : current.filter((entry) => entry !== id);
     onPatch({ openingTurn: { ...agent.openingTurn, [list]: next } });
+  };
+  // The tree's two knobs, kept independent: switching it off leaves the depth exactly as
+  // it is, so switching it back on restores the window the operator chose rather than
+  // gg's default.
+  // Whether this agent may walk the workspace at all. gg drops a tree it does not hold at
+  // seed time, so a switch that promised one would be a control for a value the run never
+  // reads.
+  const treeHeld = operationHeld(agent, OPENING_TREE_OPERATION);
+  const setOpeningTree = (patch: Partial<GgOpeningTreeDraft>) => {
+    onPatch({
+      openingTurn: {
+        ...agent.openingTurn,
+        tree: { ...agent.openingTurn.tree, ...patch },
+      },
+    });
   };
   // Loop detection's switch and its knobs, written separately: the knobs survive the
   // switch going off, so an operator who tunes the detector and then disarms it finds
@@ -918,6 +951,73 @@ export function GgAgentEditor({
             opened. The rest is dropped when the agent is saved.
           </p>
           <div className={gg.capList}>
+            {/* The workspace tree, above the modules: it is the program's first statement
+                and the only entry that is not a module or one of a module's functions. */}
+            <div
+              className={`${gg.capRow}${
+                agent.openingTurn.tree.include && treeHeld ? "" : ` ${gg.capOff}`
+              }`}
+              role="group"
+              aria-label="Workspace tree"
+            >
+              <label className={gg.capHeader}>
+                <Switch
+                  checked={agent.openingTurn.tree.include}
+                  disabled={readOnly || !treeHeld}
+                  onChange={(next) => setOpeningTree({ include: next })}
+                />
+                <span className={gg.capName}>Workspace tree</span>
+                <span className={gg.capId}>{OPENING_TREE_OPERATION}</span>
+              </label>
+              <p className={gg.capPurpose}>
+                Opens the window on the shape of the workspace, so the first turn
+                does not spend itself guessing at paths. Ignored directories are
+                left out.
+              </p>
+              {!treeHeld ? (
+                <p className={gg.capPurpose}>
+                  This agent does not hold {OPENING_TREE_OPERATION}, so no tree
+                  can be opened.
+                </p>
+              ) : (
+                <div className={gg.capBody}>
+                  <div className={gg.capParamGrid}>
+                    <CapField
+                      label="Depth"
+                      hint={`How many levels of children below the workspace root the tree renders. 1 is the root's own entries. gg walks at most ${MAX_OPENING_TREE_DEPTH}.`}
+                      modified={
+                        !readOnly &&
+                        agent.openingTurn.tree.depth !==
+                          DEFAULT_OPENING_TURN.tree.depth
+                      }
+                      onReset={() =>
+                        setOpeningTree({
+                          depth: DEFAULT_OPENING_TURN.tree.depth,
+                        })
+                      }
+                    >
+                      {(id) => (
+                        <input
+                          id={id}
+                          className={runExec.input}
+                          type="number"
+                          min={1}
+                          max={MAX_OPENING_TREE_DEPTH}
+                          step={1}
+                          value={agent.openingTurn.tree.depth}
+                          disabled={readOnly}
+                          onChange={(e) =>
+                            setOpeningTree({
+                              depth: clampTreeDepth(e.target.value),
+                            })
+                          }
+                        />
+                      )}
+                    </CapField>
+                  </div>
+                </div>
+              )}
+            </div>
             {GG_MODULES.map((module) => {
               const held = moduleHeld(agent, module.id);
               const listed = agent.openingTurn.modules.includes(module.id);

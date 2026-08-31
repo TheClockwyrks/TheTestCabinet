@@ -1,8 +1,6 @@
--- | Managing the agent's own context window.
+-- | Managing the context window.
 -- |
--- | These are the only calls whose effect is on the conversation rather than on the workspace. They
--- | are worth making from a program precisely because a program can decide *when* to: read a set of
--- | files, extract what matters, then evict the views in the same turn.
+-- | These are the only calls whose effect is on the conversation rather than on the workspace.
 module Gg.Context
   ( evictFileView
   , archiveThread
@@ -48,8 +46,8 @@ type ReclaimReport =
 
 -- | An inclusive span of turn numbers, the unit an archive moves out of the window.
 -- |
--- | The numbers are the ones on the header of every result the agent is given, so
--- | `{ from: 4, to: 19 }` means exactly the turns numbered 4 through 19, both ends included.
+-- | The numbers are the ones on every result's header, so `{ from: 4, to: 19 }` means the turns
+-- | numbered 4 through 19, both ends included.
 -- |
 -- | # Fields
 -- |
@@ -66,9 +64,9 @@ data MessageRole
   = SystemMessage
   -- | A turn's input: a result, a view, or an operator's instruction.
   | UserMessage
-  -- | Something the agent itself said.
+  -- | Something the assistant said.
   | AssistantMessage
-  -- | A tool result, on a session that made tool calls rather than writing programs.
+  -- | A tool result.
   | ToolMessage
 
 derive instance Eq MessageRole
@@ -95,8 +93,7 @@ type ArchiveHit =
 -- |
 -- | - `archiveEmpty` — Nothing has been archived yet, so there was nothing to search.
 -- |
--- |   Deliberately distinct from a search that ran and matched nothing, so that a second archive is
--- |   not made in the belief that the first one failed.
+-- |   Distinct from a search that ran and matched nothing.
 -- | - `hits` — The matches, most recent first, at most 8.
 type ArchiveSearch =
   { archiveEmpty :: Boolean
@@ -136,10 +133,9 @@ evictFileView options =
 
 -- | Move whole turns out of the context window.
 -- |
--- | Every result carries a header with its turn number and roughly what holding it costs, so the
--- | turns worth dropping can be named: a span is inclusive at both ends, so `[ { from: 4, to: 19 } ]`
--- | archives turns 4 through 19. The agent's own messages in an archived turn are dropped; the
--- | results are kept and stay searchable.
+-- | Every result carries a header with its turn number and roughly what holding it costs. A span is
+-- | inclusive at both ends, so `[ { from: 4, to: 19 } ]` archives turns 4 through 19. An archived
+-- | turn's assistant messages are dropped; its results are kept and stay searchable.
 -- |
 -- | # Operation
 -- |
@@ -163,9 +159,8 @@ archiveThread ranges =
 
 -- | Search archived history for a case-insensitive substring, most recent first, up to 8 hits.
 -- |
--- | `archiveEmpty` is worth checking before `hits`: it distinguishes nothing having been archived yet
--- | from a search that ran and matched nothing, so a second archive is not made in the belief that
--- | the first one failed.
+-- | `archiveEmpty` distinguishes nothing having been archived yet from a search that ran and matched
+-- | nothing.
 -- |
 -- | # Operation
 -- |
@@ -193,8 +188,7 @@ searchArchive query =
 -- | until it is made.
 -- |
 -- | It does not stop the program: it registers the request and returns, and the rewrite happens once
--- | the program has ended. Everything not in the summary and not in `files` is gone, so the summary
--- | is written for the agent that resumes, and the files it will need in hand are named.
+-- | the program has ended. Everything not in the summary and not in `files` is gone.
 -- |
 -- | # Operation
 -- |

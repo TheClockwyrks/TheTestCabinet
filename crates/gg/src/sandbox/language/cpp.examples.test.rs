@@ -201,12 +201,16 @@ fn every_cpp_example_a_model_is_shown_compiles() {
     // The gate must not be able to go quiet. A floor, not a count: an example added is welcome, an
     // example that stopped being recognised as one is the failure this catches.
     //
-    // Since the prompt stopped naming functions it writes no ```cpp fence at all, so all three come
-    // from the **catalogue** — the `///` comments on the SDK, which are what a model is shown when
-    // it opens a documentation view. Three is exactly what it carries today, so deleting the last
-    // one fails the gate.
+    // Since the prompt stopped naming functions it writes no ```cpp fence at all, so the one that
+    // is left comes from the **catalogue** — the `///` comments on the SDK, which are what a model
+    // is shown when it opens a documentation view. It is `gg::files::file_read`'s, showing how a
+    // `std::variant` this SDK hands back is narrowed; the two that stood beside it went when the
+    // SDK documentation was brought onto its policies, both for reaching across capability modules
+    // (`gg::core::api_error`'s called `gg::views` and `gg::files`, and `gg::programs`' called
+    // `gg::views`) from documentation a run may bind without them. One is exactly what it carries
+    // today, so deleting the last one fails the gate.
     assert!(
-        snippets.len() >= 3,
+        !snippets.is_empty(),
         "only {} fenced C++ examples were found across the prompt, the notice and the catalogue. A \
          ```cpp fence lost its tag, or an SDK documentation comment lost its example — either way \
          this gate is no longer reading what a model is shown.",

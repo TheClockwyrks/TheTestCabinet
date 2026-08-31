@@ -230,7 +230,8 @@ export type GgAgentConfig = {
 
 /**
  * **What a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens holding** — the
- * two lists gg's synthesized opening turn is generated from, per agent.
+ * two lists and the [tree](GgOpeningTree) gg's synthesized opening turn is generated from, per
+ * agent.
  *
  * A code agent's first turn is a program gg writes in the agent's own language and runs before the
  * model has said a word: it searches the documentation of the modules named here, together, in one
@@ -256,9 +257,10 @@ export type GgAgentConfig = {
  * opened once. Two lists that come out empty seed no program at all, which is a valid choice
  * rather than a defect.
  *
- * **Required** on every agent, and always written: a document without it does not read. The
- * authored default a fresh profile is seeded with is [`GgAgentConfig::root`]'s —
- * [`DEFAULT_OPENING_MODULES`] and [`DEFAULT_OPENING_FUNCTIONS`].
+ * **Required** on every agent, and always written: a document without it does not read. Its
+ * [`tree`](Self::tree) is the one part a document may leave out. The authored default a fresh
+ * profile is seeded with is [`GgAgentConfig::root`]'s — [`DEFAULT_OPENING_MODULES`],
+ * [`DEFAULT_OPENING_FUNCTIONS`] and a tree at [`DEFAULT_OPENING_TREE_DEPTH`].
  */
 export type GgOpeningTurn = {
   /**
@@ -271,6 +273,46 @@ export type GgOpeningTurn = {
    * `docs.search`, `views.open_file`, ….
    */
   functions: Array<string>;
+  /**
+   * Whether the opening program opens a [tree](GgOpeningTree) of the workspace, and how deep.
+   *
+   * Optional in a document, unlike the two lists, because every capability set written before
+   * gg had a tree call left it out and those documents open the window they always opened:
+   * [`GgOpeningTree::default`] is the tree switched off. A fresh profile is seeded with it on
+   * ([`GgOpeningTurn::seeded`]).
+   */
+  tree?: GgOpeningTree;
+};
+
+/**
+ * **The workspace tree a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens
+ * holding** — whether gg's synthesized opening turn calls `files.tree` at all, and the depth it
+ * calls it with.
+ *
+ * A model that opens a window on the prompt alone has to guess at paths, and a guess that names a
+ * file the workspace does not hold costs the whole program the turn was spent on. The opening
+ * tree answers the question those guesses ask, and it is configuration rather than gg's choice
+ * for the same reason the two lists beside it are: what a window opens on is an operator's
+ * decision about the agent.
+ *
+ * [`include`](Self::include) and [`depth`](Self::depth) are independent, so a study that switches
+ * the tree off and on again gets the depth it chose back rather than gg's.
+ *
+ * The tree is dropped at seed time for an agent that does not hold `files.tree`, on the same terms
+ * a listed module or function it does not hold is. A [`depth`](Self::depth) gg cannot honour
+ * refuses the launch whether or not `include` is set, because a document holding a number gg would
+ * not honour is refused where it is written.
+ */
+export type GgOpeningTree = {
+  /**
+   * Whether the opening program calls `files.tree` at all.
+   */
+  include: boolean;
+  /**
+   * The depth that call names: levels of children below the workspace root, `1` being the root's
+   * own entries. Held to `1..=`[`MAX_OPENING_TREE_DEPTH`] at launch.
+   */
+  depth: number;
 };
 
 /**

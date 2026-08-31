@@ -365,7 +365,8 @@ fn main() -> Result<()> {
         TsModule {
             file: GG_MODULE,
             decls: ts_decls![&cfg;
-                gg::GgAgentConfig, gg::GgOpeningTurn, gg::GgSubagentRef, gg::GgSubagentScope,
+                gg::GgAgentConfig, gg::GgOpeningTurn, gg::GgOpeningTree, gg::GgSubagentRef,
+                gg::GgSubagentScope,
                 gg::GgPromptCacheTtl, gg::GgLoopDetection, gg::GgModelSlot,
                 gg::GgConfigSlot, gg::GgSlotTarget,
                 gg::GgCapabilityConfig, gg::GgCapabilitySet,
@@ -700,6 +701,7 @@ fn main() -> Result<()> {
             owns: &[
                 "GgAgentConfig",
                 "GgOpeningTurn",
+                "GgOpeningTree",
                 "GgSubagentRef",
                 "GgSubagentScope",
                 "GgPromptCacheTtl",

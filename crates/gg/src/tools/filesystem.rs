@@ -1,4 +1,4 @@
-//! The filesystem tools: read, write, edit, and list files.
+//! The filesystem tools: read, write, edit, list and walk files.
 //!
 //! gg runs inside the run container, so these tools operate on the **local**
 //! filesystem, exactly as `sh -c` does. A path a tool accepts is resolved by
@@ -61,8 +61,15 @@ use serde_json::{Value, json};
 #[path = "filesystem.search.rs"]
 mod search;
 
+#[path = "filesystem.tree.rs"]
+mod tree;
+
+#[path = "filesystem.walk.rs"]
+mod walk;
+
 pub(crate) use search::clip_line;
 pub use search::{SEARCH_TOOL, SearchTool};
+pub use tree::{TREE_TOOL, TreeTool};
 
 use super::{
     ApiData, ArgumentError, DirEntryData, DirEntryKind, FileImageData, FileTextData, Tool,

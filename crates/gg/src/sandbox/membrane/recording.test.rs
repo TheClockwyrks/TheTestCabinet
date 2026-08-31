@@ -54,6 +54,7 @@ fn call_everything(state: &mut MembraneState<FakeOperationApi>) {
     let _ = state.write_file("out.txt".to_string(), "body".to_string());
     let _ = state.edit_file("out.txt".to_string(), "a".to_string(), "b".to_string());
     let _ = state.list_dir(None);
+    let _ = state.tree(None, None);
     let _ = FilesHost::search(state, "needle".to_string(), None, None);
     let _ = state.read_skill("testing".to_string());
 

@@ -1,10 +1,9 @@
 namespace Gg;
 
-/// <summary>Reclaim room in the agent's own context window.</summary>
+/// <summary>Reclaim room in the context window.</summary>
 /// <remarks>
-/// In the order a full window wants them: drop file views that are done with, move whole turns into
-/// the archive and search it for what was moved, and — when none of that is enough — restart the
-/// window from a summary.
+/// Three reclaims: dropping file views, moving whole turns into a searchable archive, and restarting
+/// the window from a summary.
 /// </remarks>
 /// <ggmodule>context</ggmodule>
 public static partial class Context
@@ -14,8 +13,7 @@ public static partial class Context
     /// <param name="path">The workspace path whose views to drop. Left out, every file view goes.</param>
     /// <returns>what was actually freed, and from where.</returns>
     /// <exception cref="ApiException">
-    /// <see cref="ApiErrorCode.InvalidArgument"/> for a path that is given but empty; leaving it
-    /// out altogether is how every file view is dropped.
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a path that is given but empty.
     /// </exception>
     /// <ggop>context.evict_file_view</ggop>
     public static ReclaimReport EvictFileView(string? path = null)
@@ -31,8 +29,8 @@ public static partial class Context
 
     /// <summary>Move whole turns out of the window, named by the turn numbers on each result.</summary>
     /// <remarks>
-    /// Ranges are inclusive and may overlap. The agent's own messages in an archived turn are
-    /// dropped; the results are kept and stay searchable with <see cref="SearchArchive"/>.
+    /// Ranges are inclusive and may overlap. Assistant messages in an archived turn are dropped; the
+    /// results are kept and stay searchable.
     /// </remarks>
     /// <param name="ranges">
     /// The spans of turns to archive. Each is inclusive at both ends, and a span whose ends are
@@ -95,12 +93,12 @@ public static partial class Context
     /// <remarks>
     /// <para>
     /// It is registered rather than performed: the call validates and returns, the program carries
-    /// on, and gg rewrites the window once the program has ended — a context reset has no shape
-    /// inside the program whose context it resets. A second call simply replaces the request.
+    /// on, and gg rewrites the window once the program has ended. A second call replaces the
+    /// request.
     /// </para>
     /// <para>
-    /// Skills, memories and the task list are kept regardless. gg asks for this call when the window
-    /// is full and refuses every other call until it is made, so it is available at all times.
+    /// Skills, memories and the task list are kept. The call is available at all times, including
+    /// while a compaction is already in flight.
     /// </para>
     /// </remarks>
     /// <param name="summary">
@@ -109,8 +107,7 @@ public static partial class Context
     /// </param>
     /// <param name="files">Workspace paths to read freshly into the new window.</param>
     /// <exception cref="ApiException">
-    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank summary. This is the one call gg does
-    /// not refuse while a compaction is in flight, since nothing else can clear the window.
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank summary.
     /// </exception>
     /// <ggop>context.compact</ggop>
     public static void Compact(string summary, params string[] files) =>

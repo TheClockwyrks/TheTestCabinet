@@ -905,6 +905,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "tree",
+            program: "GG::Files.tree(path: \"src\", depth: 3)",
+            expected: || json!({ "path": "src", "depth": 3 }),
+        },
+        Crossing {
             tool: "search",
             program: "GG::Files.search(\"fn\\\\s+update\", path: \"src\", limit: 20)",
             expected: || json!({ "query": "fn\\s+update", "path": "src", "limit": 20 }),

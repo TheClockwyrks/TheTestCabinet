@@ -80,10 +80,12 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, spell,
+    ProgramLanguage, WORKSPACE_TREE_VIEW, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "kotlin.compile.rs"]
 pub(super) mod compile;
@@ -297,12 +299,15 @@ impl ProgramLanguage for Kotlin {
     /// [One search over every listed module at once, then a `listOf(…)` and a `for`
     /// loop](self::bootstrap_program) in a `fun main()`, with both calls resolved from this
     /// language's own catalogue and the filters passed as named default arguments.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            &spell(self, FILES_TREE),
+            &spell(self, VIEWS_OPEN_TEXT),
             modules,
             docs,
+            tree,
         )
     }
 
@@ -544,13 +549,23 @@ fn listed(binding: &str, names: &[&str]) -> String {
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
+    tree_call: &str,
+    open_text: &str,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
     let paths: Vec<String> = modules
         .iter()
         .map(|path| serde_json::Value::String((*path).to_string()).to_string())
         .collect();
+    let walked = match tree {
+        None => String::new(),
+        Some(depth) => format!(
+            "    {open_text}({}, {tree_call}(depth = {depth}))\n\n",
+            serde_json::Value::String(WORKSPACE_TREE_VIEW.to_string())
+        ),
+    };
     let listing = match paths.is_empty() {
         true => String::new(),
         false => format!(
@@ -558,7 +573,10 @@ pub(super) fn bootstrap_program(
             paths.join(", ")
         ),
     };
-    main_program(&format!("{listing}{}", views_loop(open_docs_view, docs)))
+    main_program(&format!(
+        "{walked}{listing}{}",
+        views_loop(open_docs_view, docs)
+    ))
 }
 
 #[cfg(test)]

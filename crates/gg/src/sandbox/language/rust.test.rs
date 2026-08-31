@@ -231,7 +231,7 @@ fn the_generated_documentation_program_declares_its_own_main() {
 fn the_opening_program_composes_every_call_with_a_question_mark() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
     assert_eq!(
-        rust().bootstrap_program(&["files", "views"], &["read_file"]),
+        rust().bootstrap_program(&["files", "views"], &["read_file"], None),
         format!(
             "fn main() -> Result<(), gg::Failure> {{\n    \
                  gg::docs::search(gg::docs::SearchOptions {{\n        \
@@ -255,7 +255,7 @@ fn the_opening_program_composes_every_call_with_a_question_mark() {
 /// it. What is left is a whole program still: `fn main`, the array, the `for` and the `?`.
 #[test]
 fn the_opening_program_of_an_agent_with_no_modules_makes_no_search() {
-    let program = rust().bootstrap_program(&[], &["read_file"]);
+    let program = rust().bootstrap_program(&[], &["read_file"], None);
     assert_eq!(
         program,
         "fn main() -> Result<(), gg::Failure> {\n    \

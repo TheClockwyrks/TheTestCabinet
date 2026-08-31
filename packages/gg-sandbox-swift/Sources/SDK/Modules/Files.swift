@@ -1,33 +1,32 @@
-/// Read, write, edit, list and search the files of the workspace.
+/// Read, write, edit, list, walk and search the files of the workspace.
 ///
-/// Nothing here places anything in the agent's context window: showing something is what the
-/// `gg.views` module is for.
+/// Nothing here places material in the context window.
 ///
 /// - ggmodule: files
 public enum files {
     /// The gg tools this module dispatches, which is its share of what the artifact answers
     /// `bound-operations` with. Declared beside the functions that call them, so a tool added here
     /// is a tool the artifact reports.
-    static let ggOperations = ["read_file", "write_file", "edit_file", "list_dir", "search"]
+    static let ggOperations = [
+        "read_file", "write_file", "edit_file", "list_dir", "tree", "search",
+    ]
 
     /// Read a file, as either a `FileRead.text` or a `FileRead.image`.
     ///
-    /// Which of the two comes back is detected from the file's bytes, never from the extension, so
-    /// a mislabelled picture is still a picture. The enum is closed, so an ordinary `switch` needs
-    /// no `default`:
+    /// Which of the two comes back is detected from the file's bytes, never from the extension. The
+    /// enum is closed, so a `switch` over it needs no `default`:
     ///
     /// ```swift
     /// switch try files.readFile("logo.png") {
-    /// case .text(let file): try views.openText("logo", body: file.contents)
-    /// case .image(let picture): try views.openText("logo", body: picture.label)
+    /// case .text(let file): print(file.contents)
+    /// case .image(let picture): print(picture.label)
     /// }
     /// ```
     ///
     /// A relative path resolves against the workspace; an absolute one is read as given, so
     /// anything else in this container — an offloaded command's output under `/tmp/gg-shell`, say —
-    /// is readable. This call hands bytes to the program and places nothing in the context window;
-    /// reading a picture describes it and shows nothing, so a file only read here is a file nobody
-    /// has looked at.
+    /// is readable. The bytes go to the program and nothing is placed in the context window; a
+    /// picture is described rather than shown.
     ///
     /// - Parameters:
     ///   - path: The file to read, relative to the workspace or absolute.
@@ -79,9 +78,6 @@ public enum files {
 
     /// Replace the one exact occurrence of some text in a file with something else.
     ///
-    /// Widening the surrounding context until the match is unique is the way to disambiguate;
-    /// counting occurrences is not.
-    ///
     /// - Parameters:
     ///   - path: The file to edit.
     ///   - replacing: The exact text to find, whitespace included. It must appear exactly once.
@@ -128,22 +124,69 @@ public enum files {
         }
     }
 
+    /// Render the tree beneath a directory, skipping everything the ignore files exclude.
+    ///
+    /// One block of text: the root itself unnamed, each level indented two further spaces than its
+    /// parent, every level in path order, and directories suffixed `/`. A root with nothing beneath
+    /// it renders as `(empty directory)`.
+    ///
+    /// `depth` counts levels of children below the root, so `1` is the root's own entries. A
+    /// directory sitting at the bound is suffixed with how many entries it holds that were not
+    /// walked, as `assets/ (12 entries not shown)`.
+    ///
+    /// Whatever `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file exclude —
+    /// nested files and negations included — is never walked and never rendered, `.git` itself is
+    /// skipped, dotfiles are rendered, symbolic links are not followed, and none of it needs a
+    /// repository to be there.
+    ///
+    /// The rendering is bounded at 1000 lines and 16 KiB, whichever binds first, and a result cut
+    /// by either ends with a line saying so.
+    ///
+    /// - Parameters:
+    ///   - path: The directory to walk, relative to the workspace or absolute. Left out, the
+    ///     workspace root is walked.
+    ///   - depth: How many levels of children below the root to render: 2 when left out, 10 at most
+    ///     — a larger request is answered at 10 — and anything below `1` is refused.
+    /// - Returns: the rendered tree.
+    /// - Throws: `core.ApiError` with `.notFound` for a path that is not there, and
+    ///   `.invalidArgument` for a path that is not a directory or a depth below `1`.
+    /// - ggop: files.tree
+    public static func tree(path: String? = nil, depth: Int? = nil) throws -> String {
+        if let depth, depth < 1 {
+            throw core.ApiError(
+                code: .invalidArgument, operation: "tree",
+                message: "depth must be at least 1 (\(depth) given); leave it out for gg's default")
+        }
+        return try withScratch { scratch in
+            var ret = sandbox_string_t()
+            var err = test_cabinet_gg_types_api_error_t()
+            let ok = withOptional(path.map { scratch.string($0) }) { path in
+                withOptional(depth.map { UInt32(clamping: $0) }) { depth in
+                    test_cabinet_gg_files_tree(path, depth, &ret, &err)
+                }
+            }
+            guard ok else { throw lift(failure: &err) }
+            let rendered = lift(ret)
+            sandbox_string_free(&ret)
+            return rendered
+        }
+    }
+
     /// Search the workspace's files for a regular expression, and hand back every line that matches.
     ///
-    /// `query` is a regular expression in Rust's syntax — `foo|bar`, `fn [a-z_]+`, `(?i)todo` for
-    /// a case-insensitive match — matched against each line on its own, and every line it matches
-    /// comes back as a `SearchMatch` carrying the file's path, the 1-based line number and the line
-    /// itself, in path order and then line order. It is this sandbox's grep, and it honours ignore
-    /// files: whatever `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file
-    /// exclude — nested files and negations included — is never scanned and never returned, `.git`
-    /// itself is skipped, dotfiles are searched, and none of it needs a repository to be there. A
-    /// file that is not text (one carrying a NUL byte) is skipped too.
+    /// This is the sandbox's grep. `query` is a regular expression in Rust's syntax — `foo|bar`,
+    /// `fn [a-z_]+`, `(?i)todo` for a case-insensitive match — matched against each line on its
+    /// own. Every line it matches comes back as a `SearchMatch` carrying the file's path, the
+    /// 1-based line number and the line itself, in path order and then line order.
+    ///
+    /// Whatever `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file exclude —
+    /// nested files and negations included — is never scanned, `.git` itself is skipped, dotfiles
+    /// are searched, and none of it needs a repository to be there. A file carrying a NUL byte is
+    /// skipped.
     ///
     /// A matching line longer than 200 characters is cut there and annotated in place as
-    /// `foo (123 more chars...)`. The result is a value for the program and places nothing in the
-    /// context window. An array exactly `limit` long may have been cut — there is no offset to page
-    /// with, so narrowing the query or the path is what shows the rest: a search says where to
-    /// point a read, and is not a way of reading a file.
+    /// `foo (123 more chars...)`. There is no offset: an array exactly `limit` long may have been
+    /// cut.
     ///
     /// - Parameters:
     ///   - query: The regular expression to match each line against, in Rust's syntax; `(?i)`
@@ -178,11 +221,7 @@ public enum files {
 
     /// What a read returned: a text file's window, or a picture's description.
     ///
-    /// A picture is a different kind of thing from text, so it is a different case rather than a
-    /// string that happens to be binary — a program that treats an image as text is caught by the
-    /// `switch` instead of silently writing an empty string somewhere. Image bytes never enter the
-    /// program: gg attaches the picture to the turn instead, which is worth far more than base64 in
-    /// a variable.
+    /// Image bytes never enter the program; gg attaches the picture to the turn instead.
     public enum FileRead: Sendable {
         /// This file is text.
         case text(TextFile)
@@ -206,7 +245,7 @@ public enum files {
         public let firstLine: Int
         /// The 1-based last line returned.
         public let lastLine: Int
-        /// The file's total line count, which says whether to page again.
+        /// The file's total line count.
         public let totalLines: Int
         /// Whether a 256 KiB byte ceiling cut the returned text.
         public let byteTruncated: Bool

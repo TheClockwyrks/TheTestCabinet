@@ -12,11 +12,7 @@ public static partial class Delegation
 {
     /// <summary>What a child agent is asked to do: a written brief, or a board issue.</summary>
     /// <remarks>
-    /// <para>
-    /// It is exactly one of the two, and that is the whole reason it is a type rather than two
-    /// nullable arguments: gg can carry out neither "both" nor "neither", and this type makes both
-    /// of those a compile error rather than a refusal at run time.
-    /// </para>
+    /// <para>It is exactly one of the two: a written prompt, or a board issue.</para>
     /// <code>
     /// Delegation.SpawnSubagent("reviewer", Delegation.Brief.Issue("AUTH-3"));
     /// Delegation.SpawnSubagent("worker", Delegation.Brief.Prompt("port the fixtures"));
@@ -38,8 +34,7 @@ public static partial class Delegation
 
         /// <summary>Brief the child with instructions written here.</summary>
         /// <param name="prompt">
-        /// The whole of what the child is to do. It sees none of the spawning conversation, so
-        /// anything it needs has to be in here.
+        /// The whole of what the child is to do. It sees none of the spawning conversation.
         /// </param>
         /// <returns>a brief carrying those instructions.</returns>
         public static Brief Prompt(string prompt) => new(0, prompt);
@@ -59,10 +54,6 @@ public static partial class Delegation
     public sealed record SubagentHandle(string Id, string Slot, string ModelId)
     {
         /// <summary>Deliver a message to this child's inbox, which it reads at its next turn.</summary>
-        /// <remarks>
-        /// <see cref="SendMessage"/> with the id already supplied, for the common case where the
-        /// handle is in hand.
-        /// </remarks>
         /// <param name="message">What to tell it.</param>
         /// <exception cref="ApiException">
         /// <see cref="ApiErrorCode.Conflict"/> for a child that has already returned.

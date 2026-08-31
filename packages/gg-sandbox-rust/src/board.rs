@@ -1,12 +1,10 @@
 //! The epic and issue board, on which work is decomposed into dispatchable units.
 //!
-//! An issue is heavyweight and self-contained: its scope, non-scope and completion criteria are
-//! exactly what a delegated child agent is briefed from, which is why [`create_issue`] asks for more
-//! than adding a task does.
+//! An issue is self-contained: its scope, non-scope and completion criteria are what a delegated
+//! child agent is briefed from.
 //!
-//! Two of [`IssuePatch`]'s fields are three-way, and Rust has an `enum` for exactly that:
-//! [`TextEdit`] leaves, empties or replaces a description, and
-//! [`EpicAssignment`] leaves, detaches or regroups an epic. Neither needs a sentinel.
+//! [`IssuePatch`] carries two three-way fields: [`TextEdit`] leaves, empties or replaces a
+//! description, and [`EpicAssignment`] leaves, detaches or regroups an epic.
 
 use crate::bindings::test_cabinet::gg::board;
 use crate::core::ApiError;
@@ -59,9 +57,10 @@ pub fn create_epic(prefix: &str, title: &str, description: &str) -> Result<EpicC
 /// Create a self-contained, dispatchable issue, and hand back the id the board assigned it.
 ///
 /// The id is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has
-/// no epic. It is the board's to choose, so it is worth keeping: blocking a later issue on this one,
-/// and waiting for it, both take it. `in_scope`, `out_of_scope` and `completion_criteria` are what a
-/// child agent is briefed from, so they are written for a reader with no other context.
+/// no epic. It is the board's to choose. Blocking a later issue on this one, and waiting for it,
+/// both take it.
+///
+/// `in_scope`, `out_of_scope` and `completion_criteria` are what a child agent is briefed from.
 ///
 /// # Arguments
 ///
@@ -71,7 +70,7 @@ pub fn create_epic(prefix: &str, title: &str, description: &str) -> Result<EpicC
 ///   meant to.
 /// * `completion_criteria` — What must be true for the issue to be done. It is what a reviewer checks
 ///   the work against.
-/// * `agent` — The agent the issue is dispatched to. It must be one this agent may spawn.
+/// * `agent` — The agent the issue is dispatched to. It must be one this session may spawn.
 /// * `options` — The parts that may be left out: a description, blockers, an epic, reviewers.
 ///
 /// # Returns
@@ -81,8 +80,9 @@ pub fn create_epic(prefix: &str, title: &str, description: &str) -> Result<EpicC
 ///
 /// # Errors
 ///
-/// `InvalidArgument` when a required field is blank or `agent`/a reviewer is not one this agent may
-/// assign, `NotFound` for an unknown epic or blocker, and `LimitExceeded` at the board's issue cap.
+/// `InvalidArgument` when a required field is blank or `agent`/a reviewer is not one this session
+/// may assign, `NotFound` for an unknown epic or blocker, and `LimitExceeded` at the board's issue
+/// cap.
 #[doc(alias = "ggop:board.create_issue")]
 pub fn create_issue(
     title: &str,
@@ -182,23 +182,22 @@ pub fn remove_issue(id: &str) -> Result<BoardUsage, ApiError> {
 /// Register a wait on an issue and hand back an acknowledgement.
 ///
 /// Nothing blocks inside the program: the wait is recorded and the call returns at once, so the rest
-/// of the program still runs. The suspension happens after the program ends, between turns — the run
-/// frees this agent's slot until the issue is terminal, done or failed, then resumes on the next
-/// turn. It is how a turn's work is sequenced behind an issue it depends on. The issue this agent was
-/// assigned to implement is the one issue it may not wait on.
+/// of the program still runs. The suspension happens after the program ends, between turns — the
+/// session resumes on the next turn, once the issue is terminal, done or failed. The issue this
+/// session was assigned to implement is the one issue it may not wait on.
 ///
 /// # Arguments
 ///
-/// * `id` — The issue to wait on. It may not be the issue this agent was assigned.
+/// * `id` — The issue to wait on. It may not be the issue this session was assigned.
 ///
 /// # Returns
 ///
-/// gg's acknowledgement that the wait is registered — not the issue's outcome, which is what the
+/// gg's acknowledgement that the wait is registered, not the issue's outcome, which is what the
 /// resumed turn opens with.
 ///
 /// # Errors
 ///
-/// `InvalidArgument` for a blank id, or for this agent's own assigned issue, `NotFound` for an id
+/// `InvalidArgument` for a blank id, or for this session's own assigned issue, `NotFound` for an id
 /// the board does not hold, and `Unavailable` when the run has no board.
 #[doc(alias = "ggop:board.wait_for_issue")]
 pub fn wait_for_issue(id: &str) -> Result<String, ApiError> {
@@ -241,10 +240,9 @@ pub struct IssueCreated {
 }
 
 impl IssueCreated {
-    /// Register a wait on this issue, which suspends the agent between turns until it is terminal.
+    /// Register a wait on this issue, which suspends the session between turns until it is terminal.
     ///
-    /// [`wait_for_issue`] with the id already supplied, for the common case where the issue that was
-    /// just created is the one to wait on.
+    /// The same call as [`wait_for_issue`], with the id already supplied.
     ///
     /// # Returns
     ///
@@ -283,7 +281,7 @@ pub struct IssueOptions<'a> {
     ///
     /// Left out, the issue is ungrouped and numbered under `ISSUE`.
     pub epic_id: Option<&'a str>,
-    /// The agents that must approve the work, from the set this agent may spawn.
+    /// The agents that must approve the work, from the set this session may spawn.
     ///
     /// Required when this run's reviewers feature is on.
     pub reviewers: &'a [&'a str],

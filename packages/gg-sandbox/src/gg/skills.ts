@@ -1,9 +1,8 @@
 /**
- * Read the skills this agent was given.
+ * Read the skills available to this session.
  *
- * A skill name is a plain string rather than a union of the run's skills, because the catalogue is
- * per run while this component is baked once. The names on offer are listed in the system prompt, and
- * an unknown one comes back as `not-found` carrying the list of the ones that exist.
+ * A skill name is a plain string. The names on offer are listed in the system prompt, and an unknown
+ * one comes back as `not-found` carrying the list of the ones that exist.
  */
 
 import * as raw from "test-cabinet:gg/skills";
@@ -12,13 +11,12 @@ import { call } from "../internal/errors.js";
 /**
  * Read a skill by name, returning its body with the front matter stripped.
  *
- * Reading pins that body permanently into the agent's context, so a skill once read stays read.
+ * The body is pinned permanently into the context window.
  *
- * A skill may be **code** rather than prose, or as well as it. Reading one makes its module
- * importable by every later program and opens a documentation view of each function the module
- * declares, which is where the line that imports it is stated. Nothing about the module is added to
- * this reply. An on-use script runs after the program has ended, on every read, and whatever it
- * shows arrives on the next turn.
+ * A skill may carry code as well as, or instead of, prose. Reading one makes its module importable
+ * by every later program and opens a documentation view of each function the module declares, which
+ * states the line that imports it. Nothing about the module is added to this reply. An on-use script
+ * runs after the program has ended, on every read, and whatever it shows arrives on the next turn.
  *
  * @ggop skills.read_skill
  * @param name The skill's name, as the system prompt lists it.

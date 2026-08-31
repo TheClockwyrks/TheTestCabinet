@@ -3,10 +3,6 @@
 /// Every task may name the tasks that must finish before it, and an edge that would close a cycle
 /// is refused.
 ///
-/// One argument here is worth reading twice. `updateTask`'s `description` is a three-way edit, and
-/// `core.TextEdit` says all three without a sentinel: `.keep` keeps the description that is there,
-/// `.clear` empties it, `.set` replaces it.
-///
 /// - ggmodule: tasks
 public enum tasks {
     /// The gg tools this module dispatches — see `files.ggOperations`.

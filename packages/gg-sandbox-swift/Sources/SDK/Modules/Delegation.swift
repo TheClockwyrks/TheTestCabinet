@@ -1,12 +1,7 @@
 /// Delegate work to child agents, and hand this session's own turn to another agent.
 ///
-/// Waiting on children can dominate a turn's wall clock — it blocks while real agents run — and the
-/// run's budget keeps ticking while it does. A program should therefore spawn broadly and wait once,
-/// rather than spawn-and-wait in a loop.
-///
-/// The brief is where this arm's types earn their keep: a child is briefed either with a
-/// self-contained `Brief.prompt` or with a board `Brief.issue`, and because that choice is one
-/// `enum` rather than two optional arguments, "both" and "neither" are programs that do not compile.
+/// Waiting on children blocks while they run, and the run's budget keeps ticking while it does. A
+/// child is briefed either with a self-contained `Brief.prompt` or with a board `Brief.issue`.
 ///
 /// - ggmodule: delegation
 public enum delegation {
@@ -18,19 +13,19 @@ public enum delegation {
     /// Delegate scoped work to a child agent and hand back its handle immediately.
     ///
     /// The child runs in parallel while the program continues. `agent` names one of the agent
-    /// profiles this agent may spawn — the system prompt lists them, and the profile selects the
+    /// profiles this session may spawn — the system prompt lists them, and the profile selects the
     /// child's model, tools and instructions. The brief is either
     /// `.prompt("self-contained instructions")` or `.issue("AUTH-1")`. The child shares the
     /// workspace.
     ///
     /// - Parameters:
-    ///   - agent: The agent profile to run the child as, from the ones this agent may spawn. It
+    ///   - agent: The agent profile to run the child as, from the ones this session may spawn. It
     ///     selects the child's model, tools and instructions.
     ///   - task: What the child is to do: `.prompt` with self-contained instructions, or `.issue`
     ///     with the id of a board issue to brief it from.
     /// - Returns: the child's handle, to wait on or to message.
     /// - Throws: `core.ApiError` with `.limitExceeded` at the delegation depth cap, and
-    ///   `.invalidArgument` when `agent` is not one this agent may spawn.
+    ///   `.invalidArgument` when `agent` is not one this session may spawn.
     /// - ggop: delegation.spawn_subagent
     @discardableResult
     public static func spawnSubagent(_ agent: String, task: Brief) throws -> SubagentHandle {
@@ -51,12 +46,12 @@ public enum delegation {
     /// Block until the named children have finished and collect their results in dispatch order.
     ///
     /// With the ids left out it waits for every outstanding child. The run's wall-clock budget keeps
-    /// running throughout, so one wait for many children costs far less than one wait per child.
+    /// running throughout.
     ///
     /// - Parameter ids: The children to wait for, as `delegation.spawnSubagent` returned them. Left
     ///   out, it waits for every one still outstanding.
     /// - Returns: each child's status and final message.
-    /// - Throws: `core.ApiError` with `.notFound` for an id this agent did not spawn.
+    /// - Throws: `core.ApiError` with `.notFound` for an id this session did not spawn.
     /// - ggop: delegation.wait_for_subagents
     public static func waitForSubagents(_ ids: [String]? = nil) throws -> [SubagentResult] {
         try withScratch { scratch in
@@ -74,12 +69,9 @@ public enum delegation {
 
     /// Deliver a message to a running child agent's inbox, which it reads at its next turn.
     ///
-    /// `SubagentHandle.send` is the same call with the id already supplied, for the common case
-    /// where the handle is in hand.
-    ///
     /// - Parameters:
     ///   - message: What to put in its inbox. It reads it at its next turn.
-    ///   - to: The child to deliver to, as `delegation.spawnSubagent` returned it.
+    ///   - to: The child to deliver to, by the id its handle carries.
     /// - Throws: `core.ApiError` with `.notFound` for an unknown agent id, and `.conflict` when
     ///   that child has already returned.
     /// - ggop: delegation.send_message
@@ -97,11 +89,9 @@ public enum delegation {
     /// Move the process this session is running inside on to another of its states.
     ///
     /// The state is named the way an agent to spawn is named. It is bound only when a state machine
-    /// is driving the session and the current state has somewhere to go. Like a compaction it is
-    /// registered rather than performed: the call validates the target, returns, and the program
-    /// runs on to its end, because replacing the agent — and its window — mid-program would pull
-    /// every remaining call out from under it. The first declaration in a turn is the one that
-    /// stands.
+    /// is driving the session and the current state has somewhere to go. It is registered rather
+    /// than performed: the call validates the target, returns, and the program runs on to its end.
+    /// The first declaration in a turn is the one that stands.
     ///
     /// - Parameters:
     ///   - to: The state to move on to, named the way an agent to spawn is named.
@@ -123,15 +113,13 @@ public enum delegation {
     /// Continue this session as a different agent, from the next turn.
     ///
     /// The named agent takes over with its own model, tools and instructions, keeping every
-    /// capability the two of them share — the whole conversation above all, so it needs no catching
-    /// up. Registered rather than performed, exactly as a state transition is and for the same
-    /// reason: the window would otherwise be pulled out from under the program still composing
-    /// into it. A session makes one succession per turn. It is bound only when this agent may make
-    /// agent transitions and has agents it may become, and never while a state machine is driving
-    /// the session.
+    /// capability the two of them share and the whole conversation. It is registered rather than
+    /// performed: the call returns and the program runs on to its end. A session makes one
+    /// succession per turn. It is bound only when this session may make agent transitions and has
+    /// agents it may become, and never while a state machine is driving the session.
     ///
     /// - Parameters:
-    ///   - agent: The agent to become, from the ones this agent may become.
+    ///   - agent: The agent to become, from the ones this session may become.
     ///   - prompt: Its opening message. It already has the whole conversation, so this is the
     ///     instruction rather than a briefing. Left out, it is told nothing.
     /// - Throws: `core.ApiError` with `.invalidArgument` for an agent this session may not become,
@@ -148,16 +136,14 @@ public enum delegation {
         }
     }
 
-    /// Run a copy of this agent, in parallel, on something it will not do itself.
+    /// Run a copy of this session, in parallel, on something it will not do itself.
     ///
     /// The copy has the same model, the same tools and a private copy of the whole conversation, so
-    /// `prompt` is the *difference* rather than a briefing — everything already worked out is
-    /// already there.
+    /// `prompt` is the difference rather than a briefing.
     ///
     /// Its handle comes back immediately, but the copy itself starts once this turn's tool results
-    /// are recorded, because the conversation it inherits has to be a complete one. So it can only
-    /// be collected on a later turn, and waiting on it in the program that made it never returns
-    /// it.
+    /// are recorded, so it can only be collected on a later turn; waiting on it in the program that
+    /// made it never returns it.
     ///
     /// - Parameter prompt: What the copy is to do instead. It has the whole conversation already, so
     ///   this is the difference rather than a briefing.
@@ -180,9 +166,6 @@ public enum delegation {
     }
 
     /// What a child agent is briefed with.
-    ///
-    /// The choice is an `enum` rather than a pair of optional arguments, so "both" and "neither" are
-    /// programs that do not compile instead of calls that fail at run time.
     public enum Brief: Sendable {
         /// Self-contained instructions for a child that needs no other context.
         case prompt(String)
@@ -253,9 +236,6 @@ public enum delegation {
 
 extension delegation.SubagentHandle {
     /// Deliver a message to this child's inbox, which it reads at its next turn.
-    ///
-    /// `delegation.sendMessage` with the id already supplied, for the common case where the handle
-    /// is in hand.
     ///
     /// - Parameter message: What to put in its inbox.
     /// - Throws: `core.ApiError` with `.conflict` when this child has already returned.

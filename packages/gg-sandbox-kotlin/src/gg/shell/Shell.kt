@@ -1,11 +1,7 @@
 /**
  * Run shell commands in the workspace.
  *
- * One function, and the way a program reaches everything gg has no tool for: a build, a test run,
- * `git`, `curl`, a package manager. The workspace is the working directory.
- *
- * A non-zero exit is a result rather than a failure, because deciding whether a build or a test run
- * passed is the single most common thing a program does with one.
+ * The workspace is the working directory. A non-zero exit is a result rather than a failure.
  *
  * @ggmodule shell
  */
@@ -24,11 +20,10 @@ import gg.internal.ggText
  * A non-zero exit is not a failure: [ShellOutput.exitCode] carries it. Only a process that could not
  * be launched, or one the timeout killed, raises.
  *
- * This run may offload shell output, and the `shell` tool's own description says which mode is in
- * force. Under `offload`, [ShellOutput.output] holds only the tail that fits and ends with a note
- * naming the two files the command's full standard output and standard error were written to, with
- * the shape of what went there — how many lines, how long they run. Those files are readable by
- * absolute path, so reading a window of one, or a grep, is cheaper than running the command again.
+ * This run may offload shell output. Under `offload`, [ShellOutput.output] holds only the tail that
+ * fits and ends with a note naming the two files the command's full standard output and standard
+ * error were written to, with how many lines they run to and how long those lines are. Those files
+ * are readable by absolute path.
  *
  * @ggop shell.shell
  * @param command The command line, run by `sh -c` with the workspace as its working directory.

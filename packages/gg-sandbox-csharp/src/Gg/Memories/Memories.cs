@@ -4,28 +4,14 @@ namespace Gg;
 
 /// <summary>Durable memories, which survive a context compaction.</summary>
 /// <remarks>
-/// <para>
-/// A run picks one of three memory strategies and binds only that strategy's calls: the scratchpad's
-/// <see cref="WriteMemory"/> and <see cref="UpdateMemory"/>, or the file-shaped
-/// <see cref="CreateMemory"/>, <see cref="ReadMemory"/> and <see cref="EditMemory"/> — plus
-/// <see cref="SearchMemories"/> where there is no pinned index. <see cref="DeleteMemory"/> is bound
-/// under all three, and the system prompt says which strategy is in force.
-/// </para>
-/// <para>
-/// A memory may carry <c>code</c>, which is a module in this language bound at
-/// <c>lib.&lt;name&gt;</c> in every later program — a helper written once. It costs no context
-/// window and is never shown back: what a use of it opens is a documentation view of each function
-/// it declares.
-/// </para>
+/// A memory may carry <c>code</c>, a module in this language bound at <c>lib.&lt;name&gt;</c> in
+/// every later program. It costs no context window and is never shown back; a use of it opens a
+/// documentation view of each function it declares.
 /// </remarks>
 /// <ggmodule>memories</ggmodule>
 public static partial class Memories
 {
     /// <summary>Record a new durable memory.</summary>
-    /// <remarks>
-    /// A duplicate name, or a body that would breach a limit, is a failure — the answer is to revise
-    /// or evict rather than to accrue more.
-    /// </remarks>
     /// <param name="name">The unique short name this memory is addressed by.</param>
     /// <param name="description">A one-line description of what it holds.</param>
     /// <param name="body">The memory itself.</param>
@@ -53,7 +39,6 @@ public static partial class Memories
     /// <summary>Replace an existing memory's description and body.</summary>
     /// <remarks>
     /// The whole memory is replaced, so everything it should still say has to be passed again.
-    /// <see cref="EditMemory"/> is the call that changes part of one.
     /// </remarks>
     /// <param name="name">The memory to replace, by the name it was given.</param>
     /// <param name="description">Its new one-line description.</param>
@@ -72,8 +57,7 @@ public static partial class Memories
 
     /// <summary>Record a new memory file, whose contents stay out of the window until read.</summary>
     /// <remarks>
-    /// The file-shaped strategies' way of writing one: what is pinned is the index line, and the
-    /// body costs nothing until <see cref="ReadMemory"/> fetches it.
+    /// The description is pinned; the body costs no context window until it is read back.
     /// </remarks>
     /// <param name="name">The unique short name this memory is addressed by.</param>
     /// <param name="description">A one-line description, which is the part that stays pinned.</param>

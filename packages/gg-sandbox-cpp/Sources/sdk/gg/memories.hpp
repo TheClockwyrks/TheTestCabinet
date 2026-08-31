@@ -17,22 +17,14 @@ namespace gg {
 
 /// Keep durable memories that survive context compaction.
 ///
-/// A run picks one of three memory strategies and binds only that strategy's functions, so what
-/// this module offers is the honest answer to what memory can do in a given run. The scratchpad
-/// keeps every memory in the context window; the two file-shaped strategies keep the contents
-/// outside it, one behind an index that is always in context and one behind a search.
-///
-/// Every mutation hands back the budget after it, so a program decides whether to write another
-/// memory by reading numbers rather than by parsing a sentence about them.
+/// A run binds one memory strategy's functions. Every mutation hands back the budget after it.
 ///
 /// <ggmodule>memories</ggmodule>
 namespace memories {
 
 /// How much of the run's durable-memory budget is used, after the call that returned it.
 ///
-/// Every maximum is optional, because each limit can be turned off and a run's memory strategy
-/// applies only some of them: an empty one means nothing bounds that axis, which is worth checking
-/// before subtracting.
+/// An empty maximum means nothing bounds that axis.
 struct memory_usage {
   /// Memories currently held.
   std::uint32_t count{};
@@ -84,10 +76,7 @@ struct memory_options {
 
 /// Record a durable memory that survives context compaction, and hand back the memory budget.
 ///
-/// A memory may also carry code: `options.code` is a C++ file whose declarations every later
-/// program reaches by writing `import lib.<name>;`, so a helper written correctly once is never
-/// written again, and `options.on_use` is a program gg runs on every use of the memory. Neither
-/// costs any context window.
+/// `options.code` and `options.on_use` cost no context window.
 ///
 /// <ggop>memories.write_memory</ggop>
 ///
@@ -122,9 +111,7 @@ memories::memory_usage update_memory(std::string_view name, std::string_view des
 
 /// Record a new memory whose contents stay out of the context window until they are read.
 ///
-/// This is the file-shaped strategies' write: the description is what the index carries, and it is
-/// required where the run keeps one, because it is all that is seen of the memory until it is
-/// read.
+/// The description is what the run's memory index carries, and is required where the run keeps one.
 ///
 /// <ggop>memories.create_memory</ggop>
 ///
@@ -154,8 +141,6 @@ std::string read_memory(std::string_view name);
 
 /// Revise a memory in place, replacing the one exact occurrence of `search` with `replace`.
 ///
-/// Appending is quoting the last line and replacing it with itself plus what is being added.
-///
 /// <ggop>memories.edit_memory</ggop>
 ///
 /// \param name The slug of the memory to revise.
@@ -170,14 +155,13 @@ memories::memory_usage edit_memory(std::string_view name, std::string_view searc
 
 /// Find the memories mentioning any of `keywords`, best first.
 ///
-/// Plain case-insensitive substring matching over each memory's slug, description and contents,
-/// ranked by how many distinct keywords a memory mentions and then by how often. Several specific
-/// words rank better than one sentence, and a search that matches nothing is an empty vector
-/// rather than a failure.
+/// Case-insensitive substring matching over each memory's slug, description and contents, ranked by
+/// how many distinct keywords a memory mentions and then by how often. Nothing matching is an empty
+/// vector, not a failure.
 ///
 /// <ggop>memories.search_memories</ggop>
 ///
-/// \param keywords The words to look for. Several specific words rank better than one sentence.
+/// \param keywords The words to look for.
 /// \returns the memories that matched, best first.
 /// \throws gg::core::api_error `invalid_argument` when every keyword is empty.
 std::vector<memories::memory_hit> search_memories(std::vector<std::string> keywords);

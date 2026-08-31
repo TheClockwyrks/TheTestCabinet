@@ -1334,10 +1334,10 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     id: "list-dir",
     name: "List directory",
     group: "Filesystem",
-    purpose: "List a directory's entries in the run's workspace.",
+    purpose: "List a directory's entries, or the tree beneath one, in the run's workspace.",
     defaultOn: true,
-    tools: ["list_dir"],
-    operations: ["files.list_dir"],
+    tools: ["list_dir", "tree"],
+    operations: ["files.list_dir", "files.tree"],
   },
   {
     id: "search",
@@ -2085,13 +2085,14 @@ export const ALWAYS_BOUND_OPERATIONS: ReadonlyArray<string> = [
 ];
 
 /**
- * The opening turn a fresh agent is seeded with — what `GgAgentConfig::root()` writes, and
- * the two lists gg used to hard-code before they became configuration: the workspace and
- * shell modules listed, and the five calls a program needs to look around with opened.
+ * The opening turn a fresh agent is seeded with — what `GgAgentConfig::root()` writes: the
+ * workspace and shell modules listed, the five calls a program needs to look around with
+ * opened, and a two-level tree of the workspace.
  */
 export const DEFAULT_OPENING_TURN: {
   modules: ReadonlyArray<string>;
   functions: ReadonlyArray<string>;
+  tree: { include: boolean; depth: number };
 } = {
   modules: ["files", "shell"],
   functions: [
@@ -2101,7 +2102,17 @@ export const DEFAULT_OPENING_TURN: {
     "views.open_file",
     "files.search",
   ],
+  tree: { include: true, depth: 2 },
 };
+
+/**
+ * The deepest workspace tree an opening turn may ask for — gg's `MAX_OPENING_TREE_DEPTH`.
+ * A configuration naming more refuses the launch, so the editor cannot write one.
+ */
+export const MAX_OPENING_TREE_DEPTH = 10;
+
+/** The operation the opening turn's workspace tree is walked by. */
+export const OPENING_TREE_OPERATION = "files.tree";
 
 /** One function an opening turn may open the documentation of, and who offers it. */
 export interface OpeningTurnFunction {

@@ -3,8 +3,7 @@
 /// One function, and the way a program reaches everything gg has no tool for: a build, a test run,
 /// `git`, `curl`, a package manager. The workspace is the working directory.
 ///
-/// A non-zero exit is a *result* rather than a failure, because deciding whether a build or a test
-/// run passed is the single most common thing a program does with one.
+/// A non-zero exit is a result rather than a failure.
 ///
 /// - ggmodule: shell
 public enum shell {
@@ -19,7 +18,7 @@ public enum shell {
     /// This run may offload shell output — the `shell` tool's own description says which mode is in
     /// force. Under `offload`, `output` holds only the tail that fits and ends with a note naming
     /// the two files the command's full stdout and stderr were written to. Those files are readable
-    /// by absolute path, so reading one, or a grep, is cheaper than re-running the command.
+    /// by absolute path.
     ///
     /// - Parameters:
     ///   - command: The command line, run by `sh -c` with the workspace as its working directory.
