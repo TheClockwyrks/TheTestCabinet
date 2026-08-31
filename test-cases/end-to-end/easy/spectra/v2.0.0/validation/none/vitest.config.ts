@@ -11,20 +11,19 @@
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
 // The root is the workspace, not this directory, so a validator addresses the
-// build by the same relative path the build itself uses. It is derived from this
-// file's own URL rather than from the working directory, so the command above
-// works from anywhere.
+// build by the same relative path the build itself uses, and reads the seeded art
+// off the workspace's own `assets/` tree. It is derived from this file's own URL
+// rather than from the working directory, so the command above works from
+// anywhere.
 //
 // The environment is `node`: these suites DRIVE a browser, they do not run in
 // one. An engineless build is a static site with nothing to import, so every
 // check reaches it through Chromium and `window.__spectra`.
 //
-// SCAFFOLD NOTE: this project is not finished. The validator stage writes
-// `harness.ts`, `assert.ts`, `fixtures.ts`, `constants.ts`, `chromium.ts`,
-// `globalSetup.ts`, `setup.ts`, `audio-init.js` and `recorder-init.js` beside
-// this file, and adds the `globalSetup`, `setupFiles` and worker settings this
-// project needs, at which point this comment goes. Every suite here is a
-// placeholder that THROWS.
+// WHY THIS PROJECT NEEDS SCAFFOLDING THE ENGINE-BACKED ONES DO NOT. `globalSetup`
+// starts the one static server and the one Chromium the whole project shares,
+// before any suite runs; `setupFiles` gives each suite worker the teardown that
+// returns its page when the file is done.
 
 import { defineConfig } from "vitest/config";
 
@@ -34,10 +33,25 @@ export default defineConfig({
     name: "validation",
     include: ["validation/**/*.test.ts"],
     environment: "node",
+    globalSetup: ["validation/globalSetup.ts"],
+    setupFiles: ["validation/setup.ts"],
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
-    testTimeout: 60_000,
-    hookTimeout: 60_000,
+    // Each suite file holds a page of the shared browser while it runs, so the
+    // ceiling on files in flight is the ceiling on pages — and a suite spends
+    // almost all of its time waiting on a crossing into one, so overlapping them
+    // is most of what decides how long the whole run takes. Capped rather than
+    // left to the core count because the cost of a page is memory in one shared
+    // browser process rather than a core, and the host running this is running a
+    // model's build under it.
+    maxWorkers: 4,
+    minWorkers: 1,
+    // Every scenario is posed rather than played into, so a suite is a few
+    // hundred crossings into the page rather than thousands of real-time frames;
+    // the ceiling is for the handful that run a stage's whole entrance, and it
+    // still bounds a hung one.
+    testTimeout: 90_000,
+    hookTimeout: 90_000,
   },
 });
