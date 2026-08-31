@@ -131,11 +131,14 @@ it("puts the announced wave up whole as the banner reaches zero", async () => {
     // it for. Stopping at a conformant build's 1.5 s would fail this item for a
     // banner that is merely too long, which is another item's defect.
     const samples: Sample[] = [];
-    let ticks = 0;
-    for (; ticks < BANNER_WINDOW_TICKS; ticks += 1) {
-      samples.push(read(h.snapshot()));
-      if (ticks > 0 && samples[ticks].banner <= 0 && samples[0].banner > 0)
-        break;
+    let seen = false;
+    for (let ticks = 0; ticks < BANNER_WINDOW_TICKS; ticks += 1) {
+      const sample = read(h.snapshot());
+      samples.push(sample);
+      if (sample.banner > 0) seen = true;
+      // The first tick with no banner AFTER one that had it: the end the arrival
+      // is timed against. Stop there, with the clock exactly on that sample.
+      else if (seen) break;
       await h.advance(1);
     }
     // The tick of grace the arrival is allowed, and the settle window after it.
