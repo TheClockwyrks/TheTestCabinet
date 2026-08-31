@@ -1,0 +1,119 @@
+# Facet — Controls
+
+This file defines how a player operates the game: the pointer selects and swaps
+gems on the board, and the keyboard drives a cursor over the same board and the
+menus. The cell centers the pointer is measured against are in `specs/board.md`,
+and the rules that decide whether a requested swap is accepted are in
+`specs/rules.md`. Every figure below carries the name this specification gives
+it.
+
+## The pointer
+
+{{#if (eq engine.slug "none")}}
+This game stands on no engine, so the pointer belongs to the runtime layer you
+write. What the game reads from that layer is a pointer position in the game's
+logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, and
+a release edge. How the layer produces those three is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+The pointer belongs to the engine, which documents it in the `engine/` directory
+at the root of this repository. What the game reads from it is a pointer
+position in the game's logical units on the `STAGE_W x STAGE_H` (`1280 x 720`)
+stage, a press edge, and a release edge.
+{{else}}
+The pointer belongs to the engine, which documents it in the `engine/` directory
+at the root of this repository. What the game reads from it is a pointer
+position in the game's logical units on the `STAGE_W x STAGE_H` (`1280 x 720`)
+stage, a press edge, and a release edge, delivered as the ordered samples the
+player controller reads from the engine each frame, so a drag that crossed
+several cells between two frames arrives as every position it visited rather
+than as the last one alone.
+{{/if}}
+
+The game acts on those three alone, and this file states what it does with them.
+Each pointer position the game reads is resolved on its own, in the order the
+positions arrive. The pointer drives the board on the `playing` screen, and menu
+navigation runs through the actions listed at the end of this file.
+
+## Selecting and swapping
+
+A press targets the cell whose center is nearest the pointer position, when that
+center lies within `GEM_HIT_R` (`36`) of it. `GEM_HIT_R` is half of `CELL_PITCH`
+(`72`), so at most one cell center lies strictly within that radius, and a
+position lying exactly `GEM_HIT_R` from two centers targets the cell at the
+lower row, and within one row the cell at the lower column. A press farther than
+`GEM_HIT_R` from every cell center targets no cell and changes nothing.
+
+What a press does depends on the cell it targets and on whether a cell is
+already selected. The rows below are evaluated in order, and the first row that
+matches is the one that applies.
+
+| Targeted cell | What the press does |
+| --- | --- |
+| Any cell, while nothing is selected | Selects that cell. |
+| The selected cell | Clears the selection. |
+| A cell orthogonally adjacent to the selected cell | Requests that swap and clears the selection. |
+| Any other cell | Moves the selection to that cell. |
+
+Dragging requests a swap without a second press. While the pointer is held down
+from a press that targeted a cell, the pointer moving within `GEM_HIT_R` of the
+center of a cell orthogonally adjacent to the pressed cell requests that swap
+and clears the selection. A drag requests at most one swap, so the rest of that
+hold changes nothing, and the release edge ends the drag.
+
+Every requested swap goes through one acceptance path, whether a press, a drag,
+or the keyboard asked for it, and the move rules in `specs/rules.md` decide it.
+
+## The cursor
+
+The keyboard drives a cursor over the board on the `playing` screen. The cursor
+occupies one cell, and a round opens with it at `CURSOR_START_COL` (`0`),
+`CURSOR_START_ROW` (`0`).
+
+| Action | Where the cursor goes |
+| --- | --- |
+| `up` | One row toward row `0`. |
+| `down` | One row toward row `GRID_ROWS - 1`. |
+| `left` | One column toward column `0`. |
+| `right` | One column toward column `GRID_COLS - 1`. |
+
+The cursor stays on the board, so a movement that would carry it off an edge
+leaves it where it is.
+
+`confirm` acts on the cursor's cell exactly as a press on that cell does. The
+four rows under Selecting and swapping decide it, read against the cursor's cell
+in place of a targeted one.
+
+## Actions and bindings
+
+`ACTIONS` holds the actions the game registers with the runtime, and `BINDINGS`
+maps each action to the keys that fire it. Each action is read once per frame as
+a press edge.
+
+| Action | Effect |
+| --- | --- |
+| `up` | Moves the menu highlight up, and the cursor up one row. |
+| `down` | Moves the menu highlight down, and the cursor down one row. |
+| `left` | Moves the cursor left one column. |
+| `right` | Moves the cursor right one column. |
+| `confirm` | Chooses the highlighted menu item; on the board, selects the cursor's cell, or swaps with it. |
+| `pause` | Enters and leaves `paused` from `playing`. |
+| `mute` | Toggles the runtime's mute bit. |
+| `back` | Leaves `howto`, `paused`, and `gameover`. |
+
+Every key is a `KeyboardEvent.code`, so a binding is a physical key rather than
+a layout-dependent character.
+
+| Action | Keys |
+| --- | --- |
+| `up` | `ArrowUp`, `KeyW` |
+| `down` | `ArrowDown`, `KeyS` |
+| `left` | `ArrowLeft`, `KeyA` |
+| `right` | `ArrowRight`, `KeyD` |
+| `confirm` | `Enter`, `Space` |
+| `pause` | `KeyP` |
+| `mute` | `KeyM` |
+| `back` | `Escape` |
+
+Each key listed for an action fires that action on its own, so either key of a
+two-key action is enough. The screens these actions move between, and where each
+one leads, are in `specs/ui.md`.

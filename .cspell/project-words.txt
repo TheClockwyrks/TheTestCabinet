@@ -380,7 +380,6 @@ multishots
 muteable
 napi
 needbar
-neighbours
 nonfiring
 nonking
 nostack
@@ -560,6 +559,7 @@ undoable
 undrawn
 undrillable
 undrilled
+unflawed
 unfun
 unheld
 unioned

@@ -1,0 +1,132 @@
+// Facet — dealing an opening board (specs/rules.md, `## The opening board`).
+//
+// An opening board has two properties: it holds NO RUN under R4, and AT LEAST
+// ONE LEGAL SWAP exists on it. Every gem on it is plain at strain 0, with its
+// kind drawn from `GEM_KINDS` off the game's seeded random source, and the
+// whole of that source's state is `FacetState.rngState`, so a seed replays a
+// deal exactly.
+//
+// The first property is earned by construction: a cell is drawn from the kinds
+// that would not complete a run with the two cells already placed to its left
+// or above it, so no run can exist when the last cell is placed. At most two
+// kinds are ever barred, so at least five remain and the draw never gets stuck.
+//
+// The second is earned by rejection: a dealt board almost always carries a
+// legal swap, and one that does not is simply dealt again. The reserve board at
+// the bottom is what makes that loop total rather than merely likely — it is a
+// fixed board verified against both properties by this module's own tests, and
+// it is reached only if every attempt in the budget misses.
+
+import { GEM_KINDS, GRID_COLS, GRID_ROWS } from "../constants";
+import { parseBoard, plainGem } from "./board";
+import { legalSwapExists, maximalRuns } from "./rules";
+import { cursor } from "./rng";
+import type { BoardState, Cell, Gem, GemKind } from "./state";
+
+/** A dealt board, and the generator state to store back in `rngState`. */
+export interface Deal {
+  readonly board: BoardState;
+  readonly rngState: number;
+}
+
+/** Deals made before the reserve board is taken. */
+const MAX_ATTEMPTS = 64;
+
+/**
+ * A fixed opening board, held in the notation so what it is can be read.
+ *
+ * It is a diagonal Latin pattern — kind `(col + 3 * row) mod 7` — which has no
+ * two neighbors alike in any row or column and therefore no run at all, with
+ * two cells rewritten to plant a swap: exchanging `(2, 0)` with `(2, 1)` puts a
+ * third ruby into the top row. `deal.test.ts` asserts both properties rather
+ * than trusting this note.
+ */
+const RESERVE_ROWS = [
+  "R0 R0 C0 J0 B0 S0 M0 R0",
+  "J0 B0 R0 M0 R0 A0 C0 J0",
+  "M0 R0 A0 C0 J0 B0 S0 M0",
+  "C0 J0 B0 S0 M0 R0 A0 C0",
+  "S0 M0 R0 A0 C0 J0 B0 S0",
+  "A0 C0 J0 B0 S0 M0 R0 A0",
+  "B0 S0 M0 R0 A0 C0 J0 B0",
+  "R0 A0 C0 J0 B0 S0 M0 R0",
+];
+
+/** The reserve board, parsed fresh so no caller can hold onto one instance. */
+export function reserveBoard(): BoardState {
+  return parseBoard(RESERVE_ROWS);
+}
+
+/**
+ * The kinds a cell may take without completing a run: everything except a kind
+ * already standing on the `MATCH_MIN - 1` cells to its left, or on the
+ * `MATCH_MIN - 1` cells above it. At most two kinds are ever barred, so five of
+ * the seven always remain.
+ */
+function allowedKinds(
+  gems: readonly (Gem | null)[],
+  cols: number,
+  cell: Cell,
+): GemKind[] {
+  const barred = new Set<GemKind>();
+  const kindAt = (col: number, row: number): GemKind | null => {
+    if (col < 0 || row < 0) return null;
+    return gems[row * cols + col]?.kind ?? null;
+  };
+  const left = kindAt(cell.col - 1, cell.row);
+  if (left !== null && left === kindAt(cell.col - 2, cell.row))
+    barred.add(left);
+  const above = kindAt(cell.col, cell.row - 1);
+  if (above !== null && above === kindAt(cell.col, cell.row - 2)) {
+    barred.add(above);
+  }
+  return GEM_KINDS.filter((kind) => !barred.has(kind));
+}
+
+/**
+ * One deal of the fixed `GRID_COLS` by `GRID_ROWS` grid: plain gems at strain
+ * `0`, with no run under R4. Whether it carries a legal swap is the caller's to
+ * check. The generator is anything that can pick out of a list, so a test can
+ * hand it a degenerate one.
+ */
+export function dealBoardWithoutRuns(rng: {
+  pick<T>(items: readonly T[]): T;
+}): BoardState {
+  const cells = GRID_COLS * GRID_ROWS;
+  const gems: (Gem | null)[] = new Array<Gem | null>(cells).fill(null);
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      const kind = rng.pick(allowedKinds(gems, GRID_COLS, { col, row }));
+      gems[row * GRID_COLS + col] = plainGem(kind);
+    }
+  }
+  return { cols: GRID_COLS, rows: GRID_ROWS, gems: gems as Gem[] };
+}
+
+/**
+ * An opening board and the generator state after it. Deals until one carries a
+ * legal swap, and falls to the reserve board if the budget runs out. `attempts`
+ * is the budget, named so a test can watch the fallback rather than trust it.
+ */
+export function dealOpeningBoard(
+  rngState: number,
+  attempts: number = MAX_ATTEMPTS,
+): Deal {
+  const rng = cursor(rngState);
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const board = dealBoardWithoutRuns(rng);
+    if (legalSwapExists(board)) return { board, rngState: rng.state };
+  }
+  return { board: reserveBoard(), rngState: rng.state };
+}
+
+/**
+ * Whether a board satisfies both properties an opening board has. The deal
+ * guarantees them; this is what says so out loud, and what the tests ask.
+ */
+export function isOpeningBoard(board: BoardState): boolean {
+  const dealt = board.gems.every(
+    (gem) => gem !== null && gem.cut === "plain" && gem.strain === 0,
+  );
+  return dealt && maximalRuns(board).length === 0 && legalSwapExists(board);
+}

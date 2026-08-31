@@ -1,0 +1,65 @@
+// Facet — boards the core's own tests are written against.
+//
+// This module is test support, not game code: nothing under `src/` outside the
+// `*.test.ts` files imports it. It lives beside the core rather than inside one
+// test file because several of them need the same substrate.
+//
+// THE QUIET BOARD is that substrate. Its kind at `(col, row)` is
+// `GEM_KINDS[(col + 3 * row) % 7]`, so along a row the kind advances by one and
+// down a column by three: no two neighbors are ever alike, the board therefore
+// carries no run under R4, and — because every swap moves a kind by one or
+// three into a neighborhood that differs from it by one, two, three, four, or
+// six — no swap on it is productive either. A test can pose it, edit the
+// handful of cells its scenario is about, and know that everything it did not
+// touch stays out of the way.
+
+import { GRID_COLS, GRID_ROWS } from "../constants";
+
+/** The kind letters of the notation, in the order of `GEM_KINDS`. */
+const KIND_LETTERS = ["R", "A", "C", "J", "B", "S", "M"] as const;
+
+/**
+ * The quiet board: no run stands on it, and no swap on it is productive, so it
+ * is both a board with no legal swap and an inert filler around a scenario.
+ */
+export function quietRows(): string[] {
+  const rows: string[] = [];
+  for (let row = 0; row < GRID_ROWS; row++) {
+    const tokens: string[] = [];
+    for (let col = 0; col < GRID_COLS; col++) {
+      tokens.push(`${KIND_LETTERS[(col + 3 * row) % KIND_LETTERS.length]}0`);
+    }
+    rows.push(tokens.join(" "));
+  }
+  return rows;
+}
+
+/** One cell of a notation board rewritten, keyed `"col,row"`. */
+export function rewrite(
+  rows: readonly string[],
+  edits: Readonly<Record<string, string>>,
+): string[] {
+  const grid = rows.map((line) => line.trim().split(/\s+/));
+  for (const [key, token] of Object.entries(edits)) {
+    const [col, row] = key.split(",").map(Number);
+    if (
+      !Number.isInteger(col) ||
+      !Number.isInteger(row) ||
+      col < 0 ||
+      col >= GRID_COLS ||
+      row < 0 ||
+      row >= GRID_ROWS
+    ) {
+      throw new Error(`Facet: "${key}" is not a cell of the board`);
+    }
+    grid[row][col] = token;
+  }
+  return grid.map((line) => line.join(" "));
+}
+
+/** The quiet board with the given cells rewritten, which is the usual pose. */
+export function quietRowsWith(
+  edits: Readonly<Record<string, string>>,
+): string[] {
+  return rewrite(quietRows(), edits);
+}

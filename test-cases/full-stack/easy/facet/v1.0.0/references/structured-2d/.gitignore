@@ -1,0 +1,28 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`. Every pattern here is
+# ANCHORED to the repository root on purpose: the engine is vendored into this
+# repository at `.tcab/engine/@test-cabinet/structured-2d/`, and the particle
+# runtime beside it at `.tcab/packages/@test-cabinet/particle-runtime/`, both
+# prebuilt, with their own `dist/` committed with the seed. An unanchored
+# `dist/` would match those directories too and leave the build unable to
+# resolve them.
+/dist/
+/build/
+/out/
+
+# Coverage reports — produced by `npm test`.
+coverage/
+
+# Playwright verification scratch.
+test-results/
+playwright-report/
+
+# Logs.
+*.log
+
+# Case validators, staged in by `tcab validate` (and by hand when checking a
+# reference against them). Produced, never authored here: the authored copy is
+# the case's own `validation/<engine>/`.
+validation/

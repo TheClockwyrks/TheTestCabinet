@@ -1,0 +1,530 @@
+# Facet — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Facet carries a small debugging and automation surface, `window.__facet`, so the
+game can be driven and inspected from code without moving a real pointer or
+waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__facet` as soon as the game has
+initialized. Every scenario driven from code reaches the game through it, so it
+is present and exactly as specified here.
+
+Each operation is a read or a pose of the game's state. It arranges the board,
+and the game's own acceptance rules, chain resolution, scoring, and end
+conditions run from there exactly as they do in play, so a scenario driven from
+code behaves exactly like one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else if (eq engine.slug "simple-2d")}}
+Facet carries a small debugging and automation surface so the game can be driven
+and inspected from code without moving a real pointer or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on the
+page. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a reading or a pose of `FacetState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a
+writable one. A pose takes the current state, as `DeepReadonly<FacetState>`, and
+returns the next `FacetState`; a reading takes the state the same way and
+returns what it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.clearSelection(s))`, and a reading against the
+engine's current state, as `debug.snapshot(engine.state)`. A pose arranges the
+board, and the game's own acceptance rules, chain resolution, scoring, and end
+conditions run from there exactly as they do in play, so a scenario driven from
+code behaves exactly like one played by hand. `src/game.ts` declares and exports
+its type, `FacetDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Facet carries a small debugging and automation surface so the game can be driven
+and inspected from code without moving a real pointer or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` returns the finished surface. The engine holds it
+and returns it from `engine.debug`, and it is reached that way alone: nothing is
+installed on the page. Every scenario driven from code reaches the game through
+it, so it is present and exactly as specified here.
+
+Each operation acts on the live game at the moment it is called. A pose takes
+only the parameters its heading names, arranges the running game through the
+same systems play uses, and returns nothing; a reading returns plain data built
+at the call and changes nothing. A pose arranges the board, and the game's own
+acceptance rules, chain resolution, scoring, and end conditions run from there
+exactly as they do in play, so a scenario driven from code behaves exactly like
+one played by hand. `src/game.ts` declares and exports its type,
+`FacetDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
+
+## A deterministic core
+
+The surface rests on the simulation being deterministic: every rate integrated
+against the delta time the game is given, so an interval of game time reaches
+the same state however it was divided into frames. Two more properties make it
+driveable from code:
+
+- Render-free core. Game state advances from the elapsed time the game is
+  handed, independent of a canvas, of the frame loop that measured it, and of
+  wall-clock time. The dependency runs one way: the simulation reads nothing
+  from the renderer. Whether a swap makes a match, and what a chain step clears,
+  is decided from the board alone, never from anything the renderer holds.
+- Seeded randomness. Any randomness the game uses runs off a generator seeded
+  from `state.rngState`, and it keeps its whole generator state in that field,
+  so reseeding and replaying the same calls reproduces the same result exactly.
+  The deal of an opening board and the refill in R9 draw from it.
+
+Given the same seed and the same sequence of calls and elapsed game time, the
+game reaches the same state every time.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard, the pointer, and the overlay belong to the runtime layer beneath
+the game, and the surface carries no operation for the registered actions or for
+the overlay. That layer delivers the actions the game registers from the key
+bindings this specification fixes, it reports the pointer position in the
+stage's logical units along with the press and release edges, and it draws and
+toggles the debug overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `advance` below.
+{{else if (eq engine.slug "simple-2d")}}
+The clock, the keyboard, the pointer, and the overlay belong to the
+{{engine.name}} engine, which documents them in the `engine/` directory at the
+root of this repository, and the surface carries no operation for any of them.
+The engine advances the game frame by frame and can take it off real time, it
+drives the actions the game registers, it reports the pointer position in the
+stage's logical units along with the press and release edges, and it draws and
+toggles the debug overlay.
+{{else}}
+The clock, the keyboard, the pointer, and the overlay belong to the
+{{engine.name}} engine, which documents them in the `engine/` directory at the
+root of this repository, and the surface carries no operation for any of them.
+The engine advances the game frame by frame and can take it off real time, it
+drives the actions the game registers, it hands the game the pointer's ordered
+samples in the stage's logical units with the press and release edges, and it
+draws and toggles the debug overlay.
+{{/if}}
+
+What the overlay shows is Facet's, under Diagnostics below.
+
+## The operations
+
+The surface carries `version` (`FACET_DEBUG_VERSION`, `1`), a plain number, and
+the operations below. Values are plain numbers, strings, and booleans. `x` and
+`y` are in the stage's logical units, `col` and `row` are cell coordinates as
+`specs/board.md` defines them, and every duration is game time in seconds.
+{{#if (eq engine.slug "none")}}
+{{else if (eq engine.slug "simple-2d")}}
+
+Each operation's first parameter is the current state,
+`DeepReadonly<FacetState>`. A pose returns the next `FacetState`, built from the
+one it was handed, which it leaves as it was; a reading returns what it read.
+The headings below name the parameters that follow the state.
+{{else}}
+
+Each operation takes only the parameters its heading names and acts on the live
+game the moment it is called. A pose returns nothing; a reading returns what it
+read and changes nothing.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+### `setAutoStep(enabled)`
+
+Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
+frame loop advancing the simulation from the wall clock, so the game changes
+only when `advance` says so. `setAutoStep(true)` returns it to running itself,
+which is how a build starts and how it is played.
+
+Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
+the state the most recent frame left.
+
+### `advance(seconds, frames)`
+
+Runs `frames` whole frames covering `seconds` of game time, each worth
+`seconds / frames`, immediately and in order. `frames` defaults to `1`. Each is
+a real frame, the same update the loop runs followed by a render, so the game's
+own chain cadence and end conditions produce the result and the canvas reflects
+it.
+
+Every rate in this game is per second and integrated against the frame's delta
+time, so `advance(1, 1)` and `advance(1, 60)` cover the same second of game time
+and must reach the same outcome, beyond the drift a change in step size
+explains.
+
+Advancing while the game is still stepping automatically adds to what the wall
+clock is already doing.
+
+{{/if}}
+{{#if (eq engine.slug "none")}}
+### `reset(options)`
+{{else if (eq engine.slug "simple-2d")}}
+### `reset(state, options)`
+{{else}}
+### `reset(options)`
+{{/if}}
+
+Restores every declared field of the game's state to its title-screen value: the
+title screen with its first menu item highlighted, no board in play, `phase`
+`idle` with `chainStep` and `stepTimer` at `0`, `score` at `0`, `level` at `1`,
+`levelScore` at `0`, `lastCleared` and `lastPoints` at `0`, the cursor at
+`(0, 0)`, no selection and no refusal, the pointer reported as up, and `simTime`
+at `0`. `options.seed` seeds `rngState`, defaulting to `DEFAULT_SEED` (`1`).
+
+`muted` is untouched; the runtime owns muting.
+
+{{#if (eq engine.slug "none")}}
+### `snapshot()`
+
+A pure read of the state, returned as the plain object under Snapshot shape
+below. It changes nothing.
+
+### `start()`
+{{else if (eq engine.slug "simple-2d")}}
+### `snapshot(state)`
+
+A pure reading of `state`, returned as the plain object under Snapshot shape
+below. It returns no state, because it poses nothing.
+
+### `start(state)`
+{{else}}
+### `snapshot()`
+
+A pure read of the state, returned as the plain object under Snapshot shape
+below. It changes nothing.
+
+### `start()`
+{{/if}}
+
+Poses the choice of `PLAY` from the title menu, which is the same choice
+`PLAY AGAIN` makes from `gameover`. A round begins: `score` at `0`, `level` at
+`1`, `levelScore` at `0`, `phase` `idle` with `chainStep` at `0`, `menuIndex`
+at `0`, the cursor at `(0, 0)`, no selection, no refusal, and a fresh opening
+board dealt through the game's own code, so it holds no run under R4 and carries
+at least one legal swap, as `specs/rules.md` requires. The screen becomes
+`playing`.
+
+It leaves `rngState`, `simTime`, and `muted` as they stand, so a round from a
+known deal is a `reset` carrying a seed followed by this.
+
+{{#if (eq engine.slug "none")}}
+### `openHowTo()`
+{{else if (eq engine.slug "simple-2d")}}
+### `openHowTo(state)`
+{{else}}
+### `openHowTo()`
+{{/if}}
+
+Poses the choice of `HOW TO PLAY` from the title menu: the screen becomes
+`howto` with `menuIndex` at `0`, exactly as choosing that item does. Nothing
+else changes.
+
+{{#if (eq engine.slug "none")}}
+### `pause()`
+{{else if (eq engine.slug "simple-2d")}}
+### `pause(state)`
+{{else}}
+### `pause()`
+{{/if}}
+
+Poses the `pause` action from `playing`: the screen becomes `paused` with the
+first item of `PAUSED_ITEMS` highlighted. The board, the chain, and every timer
+stand where they were, and game time stops advancing them for as long as the
+game is paused.
+
+{{#if (eq engine.slug "none")}}
+### `resume()`
+{{else if (eq engine.slug "simple-2d")}}
+### `resume(state)`
+{{else}}
+### `resume()`
+{{/if}}
+
+Poses the choice of `RESUME` from the pause menu: the screen returns to
+`playing` and the board, the chain, and every timer carry on from exactly where
+`pause` left them.
+
+{{#if (eq engine.slug "none")}}
+### `quit()`
+{{else if (eq engine.slug "simple-2d")}}
+### `quit(state)`
+{{else}}
+### `quit()`
+{{/if}}
+
+Poses the choice of `QUIT`, which the pause menu and the game-over menu both
+offer. The round ends: the screen becomes `title` with its first menu item
+highlighted, no board is in play, `phase` is `idle` with `chainStep` and
+`stepTimer` at `0`, and there is no selection and no refusal. `score`, `level`,
+and `levelScore` hold what the round left them at, and the next `start` begins a
+fresh round.
+
+{{#if (eq engine.slug "none")}}
+### `loadBoard(rows)`
+{{else if (eq engine.slug "simple-2d")}}
+### `loadBoard(state, rows)`
+{{else}}
+### `loadBoard(rows)`
+{{/if}}
+
+Poses an arbitrary board and moves to `playing`, with `phase` `idle`,
+`chainStep` and `stepTimer` at `0`, no selection, and no refusal. `rows` is the
+board notation `specs/board.md` defines, one string per row, `GRID_ROWS` (`8`)
+of them carrying `GRID_COLS` (`8`) tokens each. Cell centers follow the formulas
+in `specs/board.md`, so a posed board sits on the stage exactly where a dealt
+board does. `score`, `level`, `levelScore`, `rngState`, and `simTime` stand
+where they were.
+
+A board posed this way is a board like any other, and the rules in
+`specs/rules.md` govern it unchanged. Those rules run a chain from an accepted
+swap and evaluate the level and end conditions when one settles, so a posed
+board rests exactly as it was written until a swap is accepted on it.
+
+{{#if (eq engine.slug "none")}}
+### `setGem(col, row, token)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setGem(state, col, row, token)`
+{{else}}
+### `setGem(col, row, token)`
+{{/if}}
+
+Writes one cell of the board. The gem at `(col, row)` takes the kind, the
+strain, and the cut the token names, `token` being a single cell token of the
+notation `specs/board.md` defines. Every other cell, the screen, the phase, the
+cursor, and the selection stand where they were.
+
+{{#if (eq engine.slug "none")}}
+### `setScore(points)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setScore(state, points)`
+{{else}}
+### `setScore(points)`
+{{/if}}
+
+Sets `score` to `points`. Nothing else changes, and `levelScore` is its own
+figure.
+
+{{#if (eq engine.slug "none")}}
+### `setLevel(level)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setLevel(state, level)`
+{{else}}
+### `setLevel(level)`
+{{/if}}
+
+Sets `level` to `level`, a whole number of at least `1`. The level's target
+follows from it, at `LEVEL_TARGET_STEP` (`2000`) times the level. The board and
+`levelScore` stand where they were.
+
+{{#if (eq engine.slug "none")}}
+### `setLevelScore(points)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setLevelScore(state, points)`
+{{else}}
+### `setLevelScore(points)`
+{{/if}}
+
+Sets `levelScore` to `points`. Nothing else changes. The level condition in
+`specs/rules.md` is evaluated when a chain settles, so a level score posed at or
+past the target advances the level as the next chain settles.
+
+{{#if (eq engine.slug "none")}}
+### `setCursor(col, row)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setCursor(state, col, row)`
+{{else}}
+### `setCursor(col, row)`
+{{/if}}
+
+Moves the cursor to `(col, row)`, which lies within the board's dimensions. The
+selection stands where it was, and nothing on the board changes.
+
+{{#if (eq engine.slug "none")}}
+### `setSelection(col, row)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setSelection(state, col, row)`
+{{else}}
+### `setSelection(col, row)`
+{{/if}}
+
+Makes `(col, row)` the selected cell, whatever was selected before. The cursor,
+the board, and the phase stand where they were, and no swap is requested.
+
+{{#if (eq engine.slug "none")}}
+### `clearSelection()`
+{{else if (eq engine.slug "simple-2d")}}
+### `clearSelection(state)`
+{{else}}
+### `clearSelection()`
+{{/if}}
+
+Leaves nothing selected. The cursor, the board, and the phase stand where they
+were.
+
+{{#if (eq engine.slug "none")}}
+### `requestSwap(colA, rowA, colB, rowB)`
+{{else if (eq engine.slug "simple-2d")}}
+### `requestSwap(state, colA, rowA, colB, rowB)`
+{{else}}
+### `requestSwap(colA, rowA, colB, rowB)`
+{{/if}}
+
+Requests the swap of `(colA, rowA)` with `(colB, rowB)` through the same
+acceptance path a player's swap takes, so R1, R2, and R3 in `specs/rules.md`
+decide it and nothing is bypassed. An accepted swap exchanges the two cells and
+resolves its first chain step on the spot, exactly as `specs/rules.md`
+describes. A refused swap leaves the board as it stands and names the two cells
+as the standing refusal for `REFUSAL_SECONDS` (`0.3`).
+
+It names both cells itself, so the selection stands where it was either way.
+
+{{#if (eq engine.slug "none")}}
+### `pointerDown(x, y)`, `pointerMove(x, y)`, `pointerUp()`
+{{else if (eq engine.slug "simple-2d")}}
+### `pointerDown(state, x, y)`, `pointerMove(state, x, y)`, `pointerUp(state)`
+{{else}}
+### `pointerDown(x, y)`, `pointerMove(x, y)`, `pointerUp()`
+{{/if}}
+
+Report a press, a move, and a release at a logical stage position. They feed the
+same input path a real pointer feeds, so a posed press and a player's press are
+the same event to the game: a press resolves against the cell whose center is
+within `GEM_HIT_R` (`36`) of `(x, y)` by exactly the press rules in
+`specs/controls.md`, a drag from a cell to an orthogonally adjacent one requests
+that swap under those same rules, and a swap so requested is decided by R1, R2,
+and R3 in `specs/rules.md` like any other.
+
+Each of the three **takes effect immediately**, when it is called, rather than
+{{#if (eq engine.slug "none")}}
+being sampled once per update. The press, the move, or the release is resolved
+in the state the call returns rather than deferred to the next update. No frame
+need pass between them, so a selection and the swap it leads to can both be
+posed without advancing the game at all.
+{{else if (eq engine.slug "simple-2d")}}
+being sampled once per update. The press, the move, or the release is resolved
+in the state the call returns rather than deferred to the next update. Each
+returns the state that press, move, or release left behind, and the next call is
+handed that state, so a selection and the swap it leads to can both be posed
+without a frame passing between the calls.
+{{else}}
+being sampled once per frame. The press, the move, or the release is resolved
+against the live state before the call returns rather than deferred to the next
+frame, through the same per-sample resolution the player controller feeds each
+frame. No frame need pass between them, so a selection and the swap it leads to
+can both be posed without advancing the game at all.
+{{/if}}
+
+A press farther than `GEM_HIT_R` from every cell center leaves the board and the
+selection as they stand.
+
+{{#if (eq engine.slug "none")}}
+## Snapshot shape
+
+`snapshot()` returns:
+{{else if (eq engine.slug "simple-2d")}}
+## Snapshot shape
+
+`snapshot` returns:
+{{else}}
+## Snapshot shape
+
+`snapshot()` returns:
+{{/if}}
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "playing" | "paused" | "gameover",
+  menuIndex: <number>,        // the screen's highlighted menu item, from 0
+  score: <number>,
+  level: <number>,            // the level being played, counted from 1
+  levelScore: <number>,       // banked toward the current level
+  levelTarget: <number>,      // LEVEL_TARGET_STEP * level, derived
+  phase: "idle" | "resolving",
+  chainStep: <number>,        // 0 while idle
+  multiplier: <number>,       // min(chainStep, MAX_MULTIPLIER), derived
+  stepTimer: <number>,        // game time accumulated toward the next step
+  board: {
+    cols: <number>,
+    rows: <number>,
+    cells: [
+      { col, row, x, y,
+        kind: <string | null>,
+        cut: "plain" | "brilliant" | "star" | "prism",
+        strain: <number> },
+    ],
+  },
+  cursor: { col: <number>, row: <number> },
+  selection: { col: <number>, row: <number> } | null,
+  refusal: { a: { col, row }, b: { col, row } } | null,
+  lastCleared: <number>,      // cells cleared by the most recent chain step
+  lastPoints: <number>,       // points the most recent chain step scored
+  legalSwap: <boolean>,       // whether any legal swap exists, derived
+  rngState: <number>,
+  pointer: { x: <number>, y: <number>, down: <boolean> },
+  muted: <boolean>,
+  simTime: <number>,          // accumulated simulation time, in seconds
+}
+```
+
+The shape is fixed, and every field is present on every screen. A field with
+nothing to report holds its resting value rather than going missing: `board` is
+`{ cols: 0, rows: 0, cells: [] }` while no board is in play, `selection` and
+`refusal` are `null` while none stands, `chainStep` and `stepTimer` are `0`
+while `phase` is `idle`, and `menuIndex` is live on every screen carrying a menu
+and rests at `0` on `playing`. `cells` lists every cell of the board in reading
+order from the top-left cell to the bottom-right, and a cell's `kind` is `null`
+for a `prism`.
+
+Every field is read straight off the game's state, so what the snapshot reports
+is what the game holds. Four are derived rather than stored:
+
+| Field | Derived from |
+| --- | --- |
+| a cell's `x`, `y` | the cell center formulas in `specs/board.md` |
+| `levelTarget` | `LEVEL_TARGET_STEP` (`2000`) times `level` |
+| `multiplier` | `min(chainStep, MAX_MULTIPLIER)`, `MAX_MULTIPLIER` (`8`) |
+| `legalSwap` | R1 and R3 in `specs/rules.md`, over the board as it stands |
+
+Three fields need the game to keep them honest every frame:
+
+- `pointer` mirrors the position the pointer input reports and whether the
+  pointer is currently pressed, refreshed in every update.
+- `muted` mirrors the runtime's mute bit, refreshed in every update, since the
+  runtime owns muting and this is the game's readable copy of it.
+- `simTime` accumulates the delta time of every update, whatever the screen.
+
+## Diagnostics
+
+The runtime's debug overlay shows the values the game registers with it as
+diagnostic sources. Register at least the current `screen` and `phase`, the
+board's `cols` and `rows`, the score, the level and the level score against the
+level's target, the chain step and the multiplier, how many cells the most
+recent chain step cleared and what it scored, the cursor cell and the selected
+cell, whether a legal swap exists, and the pointer position, the same facts the
+snapshot reports. Keep each one short enough to read on a line, and keep every
+source a pure read, so watching the overlay leaves the game as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, it is shown and hidden by the backtick key (`KeyboardEvent.code`
+`Backquote`), and it reads the game without changing it.
+{{else if (eq engine.slug "simple-2d")}}
+Registering those values is the whole of Facet's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the read,
+as `DeepReadonly<FacetState>`, and reads off that argument. Drawing the panel,
+toggling it, and keeping it read-only are the engine's.
+{{else}}
+Registering those values is the whole of Facet's part, through
+`world.diagnostics` in the game mode's `beginPlay`. Each source is a function of
+no arguments, called at each read; read the live state at the call, through the
+world the mode holds, so the panel reports the frame being drawn. Drawing the
+panel and toggling it are the engine's.
+{{/if}}

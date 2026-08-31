@@ -1,0 +1,14 @@
+# Everything that is not authored source: installed packages, build output,
+# coverage reports, the produced assets, and the supplied specification.
+node_modules/
+/dist/
+/build/
+/out/
+coverage/
+.tcab/
+package-lock.json
+specs/
+
+# The produced assets under `public/`, which the six asset tools wrote: they
+# are tool output, not authored source, and no formatter owns them.
+public/
