@@ -1,18 +1,61 @@
-// Meltdown — building/place-deducts-the-cost: placing costs its price.
+// building/place-deducts-the-cost — a placement costs exactly the type's build
+// cost.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// specs/building.md, Placing: on the frame the preview is committed, "the money
+// falls by exactly the type's build cost, and by nothing else".
 //
-// What it must decide:
+// A FLAK IS PLACED RATHER THAN AN ARC because 60 is the figure specs/towers.md
+// gives it and nothing else in this reading is 60: a build charging the level-II
+// upgrade price, a refund-adjusted price, or one flat price for every tower reads
+// a different balance, and the failure names the balance it left.
 //
-//   Money falls by exactly the tower's cost and by nothing else.
+// THE PURSE IS POSED AT A ROUND FIGURE so the arithmetic in a failure is legible,
+// and the balance is read on the frame the tower lands, with no frame run in
+// between — "and by nothing else" is a claim about that frame, and a reading taken
+// a second later would be measuring whatever else the run does with money.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TOWER_DEFS } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startRun,
+  type Harness,
+} from "../harness";
+import { placeAt, requirePlaced } from "./preview";
+import { FREE_SITE } from "./sites";
 
-it("Placing costs its price", () => {
-  throw new Error(
-    "Meltdown: validation/building/place-deducts-the-cost.test.ts is not implemented yet",
-  );
+/** The type placed and the cost specs/towers.md gives it. */
+const HELD = "flak";
+const COST = TOWER_DEFS[HELD].cost;
+
+/** The purse the placement is paid out of. */
+const PURSE = 500;
+
+/** A quiet anchor: clear of every opening and of both corridors. */
+const AT = FREE_SITE;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("takes exactly the build cost out of the money", async () => {
+  startRun(h);
+  h.debug.setMoney(PURSE);
+
+  const placed = placeAt(h, HELD, AT.col, AT.row);
+  const after = h.snapshot().money;
+
+  await h.advance(1);
+  captureStill(h, "cost");
+
+  requirePlaced(placed, `a ${HELD} on open floor at (${AT.col}, ${AT.row})`);
+  assertEqual(after, PURSE - COST, `the balance after placing a ${HELD}`);
 });
