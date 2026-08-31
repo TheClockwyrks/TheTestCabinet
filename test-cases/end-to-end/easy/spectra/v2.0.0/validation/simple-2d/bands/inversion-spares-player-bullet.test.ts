@@ -1,17 +1,74 @@
-// Spectra — bands/inversion-spares-player-bullet: a player bullet is never inverted
+// bands/inversion-spares-player-bullet — a player bullet is never inverted.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `bands.inversion-spares-player-bullet` on the
-// `simple-2d` configuration, and captures the media `test-case.toml` declares
-// for it.
+// specs/bands.md, "Effective band": "The ship's band and the player's bullets are
+// never swapped. A player bullet's effective band always equals its stored band,
+// and the ship reads its own true band through an inversion." The inversion's own
+// section says the same from the other side — "Nothing about the ship, the
+// player's bullets, or any stored band changes."
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// THIS IS THE EXCEPTION TO `bands.inversion-swaps-enemy-bullet`, and the pair is
+// what separates a build that swaps the right roster from one that swaps every
+// bullet on the field. The two are posed identically — the same band, the same
+// inversion, the same single frame — and differ only in which `add*Bullet`
+// operation put the bullet in flight, so a build that inverts indiscriminately
+// passes that point and fails this one.
+//
+// THE BULLET IS PLACED RATHER THAN FIRED, so the stored band under test is the
+// one this check chose and no lockout, cadence or cap can keep the shot from
+// existing (specs/ship.md gates the cannon three ways; none of them is this
+// point's business).
+//
+// IT IS PLACED WELL BELOW THE LINE THAT REMOVES IT — specs/field.md removes a
+// player bullet whose centre climbs above `FIELD_TOP` (`64`) — so the single
+// frame that runs leaves it on the roster to be read.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { INVERSION_TIME } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  LANE_CENTER,
+  bulletOf,
+  captureStill,
+  createHarness,
+  lastBullet,
+  startPosed,
+  type Harness,
+} from "../harness";
 
-it("A player bullet is never inverted", () => {
-  throw new Error(
-    "Spectra: validation/simple-2d/bands/inversion-spares-player-bullet.test.ts is a scaffold placeholder and has not been implemented",
+/** Where the bullet is placed: mid-field, far below FIELD_TOP (specs/field.md). */
+const BULLET_X = LANE_CENTER;
+const BULLET_Y = 400;
+
+/** The band the player's bullet stores, which an inversion must not touch. */
+const STORED_BAND = "cyan" as const;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("keeps a player bullet's stored band while an inversion runs", async () => {
+  startPosed(h);
+  h.debug.setInversion(INVERSION_TIME);
+  h.debug.addPlayerBullet(BULLET_X, BULLET_Y, STORED_BAND);
+  const bulletId = lastBullet(h.snapshot()).id;
+
+  await h.advance(1);
+  captureStill(h, "kept");
+
+  const bullet = bulletOf(h.snapshot(), bulletId);
+  assertEqual(
+    bullet.effectiveBand,
+    STORED_BAND,
+    `the effective band of one of the player's bullets storing ` +
+      `${STORED_BAND} with an inversion of ${INVERSION_TIME} s posed (it ` +
+      `stores ${bullet.band}, friendly ${String(bullet.friendly)}) — ` +
+      "specs/bands.md: the player's bullets are never swapped, so a player " +
+      "bullet's effective band always equals its stored band",
   );
 });
