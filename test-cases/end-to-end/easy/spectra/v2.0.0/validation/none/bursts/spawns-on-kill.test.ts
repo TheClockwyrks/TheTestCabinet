@@ -1,17 +1,127 @@
-// Spectra — bursts/spawns-on-kill: a pop plays the burst
+// Spectra — bursts/spawns-on-kill: a pop plays the burst.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `bursts.spawns-on-kill` on the
-// `none` configuration, and captures the media `test-case.toml` declares
-// for it.
+// `specs/assets.md`, the drone-burst's two opening rules: "One burst starts in
+// the moment a drone is destroyed, by a bullet or by a discharge wave alike",
+// and "Centered on the destroyed drone's center." So the reading has three
+// halves — that a matching shot leaves a burst at all, that it leaves exactly
+// ONE, and that the one it leaves stands where the drone stood.
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// THE SHOT IS THE PLAINEST POP THERE IS. A Shard, whose band is fixed for its
+// life (`specs/drones.md`), held still with every faculty off, struck by one of
+// the player's bullets carrying the Shard's own band. `specs/bands.md` makes
+// that the destroying case, so nothing about the outcome is posed: the build's
+// own contact and band rules are what destroy the drone, and the burst is what
+// the build did about it. The discharge's half of the same rule is
+// `bursts/discharge-pops`, and the Prism's is `bursts/prism-twice`.
+//
+// WHY THE FIELD IS POSED EMPTY AND WHY A BYSTANDER STANDS IN THE CORNER.
+// `startPosed` leaves no drone, no bullet and no burst, so the roster this check
+// counts starts at zero and the only thing that can put a burst on it is the
+// kill. The bystander keeps a drone standing, so a build that reads "its wave"
+// as the drones on the field does not clear the stage under the kill and stop
+// resolving the frame this check reads (see `poseBystander`); it stands in the
+// far corner with every faculty off, so it takes no part.
+//
+// WHAT THIS DOES NOT DECIDE. Whether the drone was destroyed at all is
+// `bands/match-destroys`, and it is read here as the precondition of a pop.
+// What the burst is SCALED to is `bursts/scaled-to-drone`, how long it plays is
+// `bursts/one-shot-ends`, and whether it is painted is `bursts/drawn`.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertLength,
+  assertLessThanOrEqual,
+  assertUndefined,
+} from "../assert";
+import { SHARD_SIZE } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  droneById,
+  poseBystander,
+  poseDrone,
+  requireDrone,
+  shootDrone,
+  startPosed,
+  type Harness,
+} from "../harness";
 
-it("A pop plays the burst", () => {
-  throw new Error(
-    "Spectra: validation/none/bursts/spawns-on-kill.test.ts is a scaffold placeholder and has not been implemented",
+/**
+ * How far from the destroyed drone's centre the burst's own centre may stand,
+ * in logical units.
+ *
+ * `specs/assets.md` says "Centered on the destroyed drone's center", and half a
+ * `SHARD_SIZE` (`28`) footprint is the latitude a burst still reads as centred
+ * on the drone from: a burst placed anywhere inside the square the drone was
+ * drawn on covers the drone it is popping. A burst put at the ship, at the top
+ * of the field, or at the origin is nowhere near it.
+ */
+const PLACED_MAX = SHARD_SIZE / 2;
+
+/**
+ * Where the drone is posed: a clear stretch of the play field, below the
+ * formation grid's lowest row and its full sway, above the ship's lane, and well
+ * clear of the corner the bystander holds.
+ */
+const POP_AT = { x: 1000, y: 460 } as const;
+
+/**
+ * How far below the drone the shot starts, in logical units.
+ *
+ * Clear of the drone at the moment it is placed — `SHARD_HALF` (`14`) plus
+ * `PLAYER_BULLET_HALF` (`6`) is `20` — with room to spare, so the bullet is in
+ * flight rather than already in contact, and short enough that it climbs into a
+ * drone that is holding still.
+ */
+const SHOT_BELOW = 60;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("leaves exactly one burst, at the destroyed drone's centre", async () => {
+  await startPosed(h);
+  await poseBystander(h);
+  const target = await poseDrone(h, "shard", POP_AT.x, POP_AT.y, {
+    band: "cyan",
+  });
+
+  const before = await h.snapshot();
+  assertLength(before.bursts, 0, "precondition: no burst is playing yet");
+  const drone = requireDrone(before, target, "the drone the shot destroys");
+
+  await shootDrone(h, target, "cyan", { below: SHOT_BELOW });
+
+  // The burst the kill started, on the frame the shot resolved.
+  await captureStill(h, "burst");
+
+  const after = await h.snapshot();
+  assertUndefined(
+    droneById(after, target),
+    `precondition: the Shard destroyed by one of the player's bullets carrying ` +
+      `its own band (specs/bands.md)`,
+  );
+  assertLength(
+    after.bursts,
+    1,
+    `the bursts playing after one drone was destroyed (specs/assets.md: one ` +
+      `burst starts in the moment a drone is destroyed)`,
+  );
+
+  const burst = after.bursts[0];
+  const off = Math.hypot(burst.x - drone.x, burst.y - drone.y);
+  assertLessThanOrEqual(
+    off,
+    PLACED_MAX,
+    `the burst centred within ${PLACED_MAX} units of the destroyed drone's ` +
+      `centre, (${drone.x.toFixed(1)}, ${drone.y.toFixed(1)}) ` +
+      `(specs/assets.md: centered on the destroyed drone's center); it was ` +
+      `reported at (${burst.x.toFixed(1)}, ${burst.y.toFixed(1)})`,
   );
 });
