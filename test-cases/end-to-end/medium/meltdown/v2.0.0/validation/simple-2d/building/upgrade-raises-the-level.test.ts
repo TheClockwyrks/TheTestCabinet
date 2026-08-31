@@ -1,18 +1,70 @@
-// Meltdown — building/upgrade-raises-the-level: upgrading raises the level.
+// building/upgrade-raises-the-level — an upgrade takes a tower one level up, twice.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// specs/building.md, Upgrading: "Upgrading raises the selected tower one level,
+// from 1 to 2 and from 2 to 3."
 //
-// What it must decide:
+// ONE LEVEL AT A TIME, AND BOTH STEPS ARE READ. A build that jumped straight to
+// level III on the first upgrade, or that stopped after the first, reads a
+// different level than the one due, and the failure names which step it was. What
+// the level costs is `building/upgrade-costs`, what it changes is
+// `building/upgrade-changes-the-stats`, and that it stops at three is
+// `building/upgrade-stops-at-three`; this item is the level number alone.
 //
-//   upgradeTower takes a tower from level 1 to 2 to 3.
+// THE TOWER IS POSED WITH `poseTower`, the atom that costs nothing and runs no
+// placement check (specs/instrumentation.md), so a tower on the floor is a
+// precondition here rather than a thing being graded, and the purse is posed far
+// above both upgrade costs so affordability is never what refuses a step —
+// `building/upgrade-refused-when-unaffordable` is where that is decided.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  poseTower,
+  startRun,
+  towerOf,
+  type Harness,
+} from "../harness";
+import { FREE_SITE } from "./sites";
 
-it("Upgrading raises the level", () => {
-  throw new Error(
-    "Meltdown: validation/building/upgrade-raises-the-level.test.ts is not implemented yet",
+/** The tower upgraded, on a quiet anchor. */
+const HELD = "arc";
+const AT = FREE_SITE;
+
+/** Far above both upgrade costs, so affordability never refuses a step. */
+const PURSE = 1000;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("raises the level one step at a time, from I to II to III", async () => {
+  startRun(h);
+  h.debug.setMoney(PURSE);
+  const id = poseTower(h, HELD, AT.col, AT.row);
+
+  assertEqual(
+    towerOf(h.snapshot(), id).level,
+    1,
+    "the level a tower stands on the floor at",
   );
+
+  h.debug.upgradeTower(id);
+  const second = towerOf(h.snapshot(), id);
+
+  h.debug.upgradeTower(id);
+  const third = towerOf(h.snapshot(), id);
+
+  await h.advance(1);
+  captureStill(h, "level");
+
+  assertEqual(second.level, 2, "the level after one upgrade");
+  assertEqual(third.level, 3, "the level after a second upgrade");
 });
