@@ -55,9 +55,9 @@ import { requireOp } from "../surface";
  * corner, `(320, 620)`.
  *
  * `412` units from the star, where `specs/gravity.md`'s well pulls at about `26`
- * units per second squared — so over the fortieth of a second a torpedo spends
- * crossing its standoff, the well adds well under a unit per second to whatever
- * the check arranged. That matters here more than anywhere else: the two scatter
+ * units per second squared — so over the hundredth of a second a torpedo spends
+ * crossing its `ROUND_STANDOFF` of `4` units, the well adds a quarter of a unit
+ * per second to whatever the check arranged. That matters here more than anywhere else: the two scatter
  * items read a VELOCITY the detonation wrote, and the previous version of this
  * case posed its parent rock where the well had moved that velocity substantially
  * over the shots, so the item read a drift gravity had built rather than the one
