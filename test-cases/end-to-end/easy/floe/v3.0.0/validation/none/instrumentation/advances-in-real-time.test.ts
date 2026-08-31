@@ -35,12 +35,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDefined, assertGreaterThan } from "../assert";
-import {
-  ICE_LANES,
-  TICK_DT,
-  tileLeft,
-  type VehicleKind,
-} from "../constants";
+import { ICE_LANES, TICK_DT, tileLeft, type VehicleKind } from "../constants";
 import {
   captureStill,
   createHarness,

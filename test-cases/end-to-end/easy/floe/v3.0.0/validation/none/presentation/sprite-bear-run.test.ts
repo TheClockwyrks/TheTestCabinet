@@ -34,11 +34,7 @@
 // beyond any reach with the catch test shut.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThanOrEqual,
-  assertLength,
-} from "../assert";
+import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   BEAR_ICE_SPEED,
   BEAR_RUN_FRAMES,

@@ -67,6 +67,7 @@ export function fractionAtLeast(
   min: number,
 ): number {
   if (distances.length === 0) return 0;
-  return distances.filter((distance) => distance >= min).length /
-    distances.length;
+  return (
+    distances.filter((distance) => distance >= min).length / distances.length
+  );
 }

@@ -29,11 +29,7 @@
 // tiles is the situation the drawing rule names.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThanOrEqual,
-  assertLength,
-} from "../assert";
+import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   BEAR_SWIM_FRAMES,
   BEAR_SWIM_SPEED,

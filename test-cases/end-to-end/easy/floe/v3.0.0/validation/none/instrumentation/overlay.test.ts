@@ -121,7 +121,10 @@ const VEHICLE_COUNT = VEHICLE_COLS.length;
 const FLOE_COUNT = FLOE_COLS.length + SPARE_FLOE_COLS.length;
 
 /** The text one frame drew, minus the text the same frame drew without a panel. */
-function panelText(shown: readonly string[], hidden: readonly string[]): string[] {
+function panelText(
+  shown: readonly string[],
+  hidden: readonly string[],
+): string[] {
   const rest = [...hidden];
   const own: string[] = [];
   for (const run of shown) {

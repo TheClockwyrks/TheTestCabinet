@@ -135,7 +135,10 @@ function rosterIds(snapshot: FloeSnapshot, roster: Roster): number[] {
 }
 
 /** The floes of one row, by id. */
-function floesOnRow(snapshot: FloeSnapshot, row: number): Map<number, ItemView> {
+function floesOnRow(
+  snapshot: FloeSnapshot,
+  row: number,
+): Map<number, ItemView> {
   return new Map(
     snapshot.floes
       .filter((item) => item.row === row)
@@ -300,7 +303,8 @@ it("gives every added entity an id of its own and keeps it across a lane wrap", 
       "present",
       `a water lane reported for row ${row} (specs/instrumentation.md)`,
     );
-    const travel = (lane?.dir ?? 0) * (lane?.speed ?? 0) * TILE * SECTION_SECONDS;
+    const travel =
+      (lane?.dir ?? 0) * (lane?.speed ?? 0) * TILE * SECTION_SECONDS;
     const wasOn = panBefore.get(row) ?? new Map<number, ItemView>();
     const isOn = floesOnRow(after, row);
     for (const [id, was] of wasOn) {

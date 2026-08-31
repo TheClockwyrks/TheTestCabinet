@@ -38,12 +38,7 @@ import {
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
-import {
-  ICE_LANES,
-  TICK_HZ,
-  tileLeft,
-  type VehicleKind,
-} from "../constants";
+import { ICE_LANES, TICK_HZ, tileLeft, type VehicleKind } from "../constants";
 import {
   captureStill,
   createHarness,

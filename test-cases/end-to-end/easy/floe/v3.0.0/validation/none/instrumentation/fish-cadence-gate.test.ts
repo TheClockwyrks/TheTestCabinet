@@ -37,12 +37,7 @@
 // spare, and grades neither.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertBetween,
-  assertEqual,
-  assertNull,
-  assertTrue,
-} from "../assert";
+import { assertBetween, assertEqual, assertNull, assertTrue } from "../assert";
 import { BAY_COUNT, FISH_INTERVAL, FISH_LINGER } from "../constants";
 import {
   captureStill,
