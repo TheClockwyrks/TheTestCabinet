@@ -27,22 +27,21 @@ description = "The stock turns three cards at a time, fanned, with only the fron
 # lets one validator suite read both. That is a change from v2.1.0, where
 # `wasteVisibleCount` was a Draw Three affordance.
 
-# What the game looks like played correctly, shown before anyone runs it: sustained
-# real play captured from `references/none/draw-three` driven through its own
-# `window.__cascade` pointer path, plus stills.
-# `showcase/draw-three/showcase.toml` lists the media;
-# `showcase/draw-three/showcase.md` carries the description. Every outcome on
-# screen arises from the game's own rules under scripted pointer input; posing an
-# outcome through the debug surface would be fabrication.
+# What the game looks like played correctly, shown before anyone runs it: one
+# whole game of Draw Three, dealt from a chosen seed and played to the victory
+# cascade with the REAL MOUSE against `references/none/draw-three`, and three frames
+# taken out of that same take. `showcase/draw-three/showcase.toml` lists the media in
+# carousel order and `showcase/draw-three/showcase.md` carries the player-facing
+# description.
 #
-# SCAFFOLD: the key below is COMMENTED OUT, and uncommenting it is the last
-# act of the showcase stage. A declared `showcase` must resolve — the
-# directory, a non-empty `showcase.md`, a `showcase.toml` naming at least one
-# `[[media]]`, and every media file it names — and the media does not exist
-# until it has been captured from the reference build. Declaring it before
-# then makes the whole case fail to resolve, and there is no honest
-# placeholder for a capture of real play.
-# showcase = "showcase/draw-three"
+# Every outcome on screen arose from the game's own rules under real pointer
+# input. The debug surface is touched twice and both times outside the play:
+# `reset({ seed })` before the first gesture, to choose the deal, and `snapshot()`
+# after each one, to CHECK that the game did what the plan expected — a
+# divergence fails the capture. Nothing is posed; posing an outcome through the
+# surface would be fabrication. `showcase/capture/README.md` records how each
+# committed file was produced and how to produce it again.
+showcase = "showcase/draw-three"
 
 # The authored, *correct* build of this variant, one directory per supported
 # engine, because the build a reference demonstrates differs under each. This table
