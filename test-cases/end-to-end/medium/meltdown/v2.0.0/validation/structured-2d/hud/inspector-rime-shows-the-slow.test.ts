@@ -1,21 +1,147 @@
-// Meltdown — hud/inspector-rime-shows-the-slow: a selected Rime shows its
-// slow.
+// hud/inspector-rime-shows-the-slow — a selected Rime's inspector reads its LIVE
+// slow where another emitter reads a damage figure.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// THE RULE. specs/hud.md, The damage read: "A selected Rime shows its live slow
+// percentage where another emitter shows a damage read. That is a display
+// convention of this panel and nothing more; a Rime's shots deal ordinary damage,
+// as `specs/combat.md` states." The figure is specs/combat.md's:
 //
-// What it must decide:
+//   slowFactor(H) = slowCeil * (1 - H / 100),  slowCeil = RIME_SLOW_CEIL at level
 //
-//   The Rime's inspector shows its live slow percentage where another emitter
-//   shows a damage read. It is a display convention and nothing more: the Rime
-//   deals ordinary damage, which combat.rime-deals-its-damage decides.
+// TWO HEATS, BECAUSE THE WORD IN THE REQUIREMENT IS "LIVE". A Rime at heat `40`
+// slows by `0.33` and the same Rime at heat `80` by `0.11`, so a panel that drew
+// the level's ceiling `0.55` and never looked at the heat reads the same figure
+// twice, and a panel that read the slow live reads two figures twenty-two points
+// of percentage apart. The second reading therefore requires the first figure
+// GONE as well as the second there, and the ceiling required absent besides.
+//
+// THE FIGURE IS ACCEPTED AS EITHER FORM. specs/hud.md calls it a "live slow
+// percentage" and specs/combat.md states it as a fraction, so `33` and `0.33` are
+// the same reading and both are taken. Nothing else on this panel is equal to
+// either, at either heat.
+//
+// THE HEAT IS PINNED, through `setTowerThermal(id, false)`, because the heat is
+// the argument of the figure being read. The Rime's redline is `100`, so it
+// "never reaches a plateau" (specs/towers.md) and both heats read sit on the live
+// part of the curve.
+//
+// WHAT THIS POINT DOES NOT DECIDE. That the Rime's shots deal ordinary damage —
+// `combat.rime-deals-its-damage` decides that, and specs/hud.md is explicit that
+// the panel's convention "is a display convention of this panel and nothing
+// more". So nothing here requires the damage figure to be ABSENT: a build that
+// draws the slow and the damage both has drawn the slow where the damage read
+// goes, and has told the player more rather than less.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { RIME_SLOW_CEIL } from "../../src/constants";
+import { assertEqual, assertTrue } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  posePinnedTower,
+  startRun,
+  type Harness,
+  type TextSpan,
+} from "../harness";
+import { rimeSlowOf } from "./figures";
+import { readPanel, reads, towerOf } from "./panel";
+import { FREE_SITE } from "./sites";
 
-it("A selected Rime shows its slow", () => {
-  throw new Error(
-    "Meltdown: validation/hud/inspector-rime-shows-the-slow.test.ts is not implemented yet",
+/** The tower read, at the level whose ceiling specs/towers.md gives as 0.55. */
+const TYPE = "rime" as const;
+const LEVEL = 1;
+
+/** The level's cold-slow ceiling, which a panel ignoring the heat would read. */
+const CEILING = RIME_SLOW_CEIL[LEVEL - 1];
+
+/** The two heats read: both on the live part of the Rime's curve. */
+const COLD = 40;
+const HOT = 80;
+
+/** What specs/combat.md gives the slow at each, restated in `hud/figures.ts`. */
+const COLD_SLOW = rimeSlowOf(COLD, LEVEL);
+const HOT_SLOW = rimeSlowOf(HOT, LEVEL);
+
+/**
+ * How far a drawn percentage may sit from the one it must be: half a point.
+ *
+ * A percentage is drawn as a whole number of points or with a decimal, and half a
+ * point carries both onto `33` and `11`. Those two are twenty-two points apart,
+ * so the window cannot let one stand in for the other, nor either for the
+ * ceiling's `55`.
+ */
+const PERCENT_ROUNDED = 0.5;
+
+/** And as a fraction, the same window scaled: five thousandths. */
+const FRACTION_ROUNDED = 0.005;
+
+/** Whether the panel reads `factor`, as a percentage or as a fraction. */
+function readsSlow(runs: readonly TextSpan[], factor: number): boolean {
+  return (
+    reads(runs, factor * 100, PERCENT_ROUNDED) ||
+    reads(runs, factor, FRACTION_ROUNDED)
+  );
+}
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("reads 33% at heat 40 and 11% at heat 80, and stops reading 33%", async () => {
+  startRun(h);
+  const id = posePinnedTower(h, TYPE, FREE_SITE.col, FREE_SITE.row, COLD);
+  h.debug.setTowerLevel(id, LEVEL);
+  h.debug.setSelected(id);
+
+  const cold = await readPanel(h);
+  captureStill(h, "slow");
+  const coldTower = towerOf(h.snapshot(), id, "the Rime at heat 40");
+
+  h.debug.setTowerHeat(id, HOT);
+  const hot = await readPanel(h);
+  const hotTower = towerOf(h.snapshot(), id, "the Rime at heat 80");
+
+  assertEqual(
+    coldTower.heat,
+    COLD,
+    "precondition: the Rime's heat is pinned at 40",
+  );
+  assertEqual(
+    hotTower.heat,
+    HOT,
+    "precondition: the Rime's heat is pinned at 80",
+  );
+  assertEqual(
+    coldTower.level,
+    LEVEL,
+    "precondition: the Rime stands at level I",
+  );
+
+  assertTrue(
+    readsSlow(cold, COLD_SLOW),
+    `the inspector to read the Rime's live slow of ` +
+      `${(COLD_SLOW * 100).toFixed(1)}% at heat ${COLD} (specs/hud.md)`,
+  );
+  assertTrue(
+    readsSlow(hot, HOT_SLOW),
+    `the inspector to read the Rime's live slow of ` +
+      `${(HOT_SLOW * 100).toFixed(1)}% at heat ${HOT}`,
+  );
+  assertTrue(
+    !readsSlow(hot, COLD_SLOW),
+    `the inspector to have stopped reading ${(COLD_SLOW * 100).toFixed(1)}% ` +
+      `once the heat reached ${HOT}`,
+  );
+  assertTrue(
+    !readsSlow(hot, CEILING),
+    `the inspector not to read the level's ceiling of ` +
+      `${(CEILING * 100).toFixed(0)}%, which is the slow of a Rime at heat 0 ` +
+      `and not of this one`,
   );
 });
