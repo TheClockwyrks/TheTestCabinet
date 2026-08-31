@@ -67,7 +67,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { expect, inject } from "vitest";
-import type { Browser, BrowserContext, Page } from "playwright";
+import type { Browser, BrowserContext, ConsoleMessage, Page } from "playwright";
 import { connectChromium } from "./chromium";
 import { fail } from "./assert";
 import {
@@ -772,6 +772,23 @@ async function sharedBrowser(): Promise<Browser> {
  */
 const contexts = new Map<string, BrowserContext>();
 
+/**
+ * Whether a console error is Chromium's own unsolicited `/favicon.ico` request
+ * coming back 404, rather than anything the build did.
+ *
+ * `specs/` asks a build for a canvas and nothing else in the page, so a missing
+ * site icon says nothing about it; the request is the browser's, is fired at a
+ * moment of its own choosing after load, and the static server answers what it
+ * answers for anything absent. Left in, it would turn `pageErrors` into a
+ * reading of whether a check ran long enough for that request to land.
+ */
+function isUnsolicitedFavicon(message: ConsoleMessage): boolean {
+  return (
+    message.location().url.endsWith("/favicon.ico") &&
+    message.text().includes("Failed to load resource")
+  );
+}
+
 /** Every page this worker opened, so none is left behind in the shared browser. */
 const openPages = new Set<Page>();
 
@@ -944,7 +961,15 @@ export async function createHarness(
     pageErrors.push(String(error.message || error));
   });
   page.on("console", (message) => {
-    if (message.type() === "error") pageErrors.push(message.text());
+    if (message.type() !== "error") return;
+    // The one console error that is the BROWSER's rather than the build's.
+    // Chromium asks every page it opens for `/favicon.ico` without being told
+    // to, at a moment of its own choosing, and the static server answers 404
+    // because nothing in `specs/` asks a build for a site icon. It surfaces
+    // whenever a check runs long enough for the request to land, which would
+    // make "the page logged nothing" a check on how long a scenario took.
+    if (isUnsolicitedFavicon(message)) return;
+    pageErrors.push(message.text());
   });
 
   await page.goto(inject("floeUrl"), { waitUntil: "load" });
