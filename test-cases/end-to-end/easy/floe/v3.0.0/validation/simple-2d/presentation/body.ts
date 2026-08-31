@@ -24,8 +24,7 @@
 // how far apart is apart, and how much of the tile must be — are stated in the
 // points themselves, not here.
 
-import { tileCX, tileCY } from "../../src/constants";
-import { TILE } from "../../src/constants";
+import { TILE, tileCX, tileCY } from "../../src/constants";
 import { colorDistance, type Rgb } from "../harness";
 import type { Raster } from "./raster";
 
