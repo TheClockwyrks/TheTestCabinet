@@ -1,20 +1,84 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// instrumentation/remove-bullet — `removeBullet(id)` removes exactly the one of the
+// ship's bullets that id names, and leaves the others in flight carrying their own
+// ids.
 //
-// instrumentation/remove-bullet — removeBullet removes one bullet by id
+// THREE BULLETS, AND THE ONE ADDRESSED IS THE MIDDLE OF THEM. `specs/instrumentation.md`
+// makes every bullet's id "distinct among the entities live at any moment" and has
+// every per-entity operation take one, so the fault this is hunting is an operation
+// that removes by POSITION rather than by identity — the first of the roster, the
+// last of it, or the one whose index happened to match the number it was handed.
+// Naming the middle entry tells all three apart from the right answer.
 //
-// Of three posed bullets, removeBullet(id) removes exactly the one named and
-// leaves the other two carrying their ids.
+// AND THE SURVIVORS ARE READ BY ID RATHER THAN COUNTED. A roster of the right
+// length can still be the wrong two bullets.
 //
-// Declared by test-case.toml as validation.script "instrumentation/remove-
-// bullet.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the none harness in validation/none/harness.ts and the spec-
-// derived oracle in validation/none/geometry.ts — never against a reference
-// build.
-//
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// NOTHING ELSE IS ON THE FIELD, and the three are placed at rest and far apart, so
+// nothing but the operation can take one off the roster: `specs/weapons.md` gives a
+// bullet a life of `BULLET_LIFE` and `specs/collision.md` removes one that lands or
+// reaches the core, and neither has anything to happen to here.
 
-throw new Error(
-  "Shatter v3.0.0: validation/none/instrumentation/remove-bullet.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertContains, assertEqual, assertLength } from "../assert";
+import {
+  bulletById,
+  captureStill,
+  createHarness,
+  poseBullet,
+  startPlaying,
+  type Harness,
+} from "../harness";
+
+/** Where the three bullets sit: spread, at rest, and well clear of the star. */
+const PLACES = [
+  { x: 200, y: 160 },
+  { x: 1080, y: 160 },
+  { x: 200, y: 620 },
+] as const;
+
+/** Which of the three is addressed: the middle one, so neither end is the answer. */
+const ADDRESSED = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("removes the bullet its id names and no other", async () => {
+  await startPlaying(h);
+  const ids: number[] = [];
+  for (const place of PLACES) {
+    ids.push(await poseBullet(h, place.x, place.y, 0, 0));
+  }
+  await h.advance(1);
+  assertLength(
+    (await h.snapshot()).bullets,
+    PLACES.length,
+    "the bullets the field held",
+  );
+
+  await h.debug.removeBullet(ids[ADDRESSED]);
+  await h.advance(1);
+  await captureStill(h, "removed");
+  const after = await h.snapshot();
+
+  assertLength(
+    after.bullets,
+    PLACES.length - 1,
+    "the bullets that outlived it",
+  );
+  assertEqual(
+    bulletById(after, ids[ADDRESSED]),
+    undefined,
+    `the bullet ${ids[ADDRESSED]} removeBullet was handed`,
+  );
+  const flying = after.bullets.map((bullet) => bullet.id);
+  for (const [index, id] of ids.entries()) {
+    if (index === ADDRESSED) continue;
+    assertContains(flying, id, `the bullet ${id} still carrying its id`);
+  }
+});
