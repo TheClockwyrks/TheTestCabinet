@@ -31,7 +31,12 @@ import {
   tapAction,
   type Harness,
 } from "../harness";
-import { TORPEDO_ACTION, requireCharge, requireReady } from "./scenario";
+import {
+  POSED_CHARGE_SLACK,
+  TORPEDO_ACTION,
+  requireCharge,
+  requireReady,
+} from "./scenario";
 
 /**
  * How far above `0` the charge may read on the tick of the launch, as a fraction
@@ -60,9 +65,11 @@ afterEach(() => {
 it("reads torpedoCharge 0 and torpedoReady false the tick a torpedo launches", async () => {
   startPlaying(h);
 
-  assertEqual(
-    requireCharge(h.snapshot(), "the charge the launch is made on"),
-    1,
+  assertLessThanOrEqual(
+    Math.abs(
+      requireCharge(h.snapshot(), "the charge the launch is made on") - 1,
+    ),
+    POSED_CHARGE_SLACK,
     "the charge full before the press, so what the reading after it shows is " +
       "what the launch spent (specs/weapons.md)",
   );

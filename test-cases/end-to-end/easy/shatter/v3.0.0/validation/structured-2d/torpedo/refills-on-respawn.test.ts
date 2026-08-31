@@ -36,7 +36,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ROCK_RADIUS, SHIP_R, START_LIVES } from "../../src/constants";
-import { assertEqual, assertGreaterThanOrEqual, assertTrue } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+  assertTrue,
+} from "../assert";
 import { STAR, shortestSeparation } from "../geometry";
 import {
   captureStill,
@@ -47,7 +52,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { requireCharge } from "./scenario";
+import { POSED_CHARGE_SLACK, requireCharge } from "./scenario";
 
 /** The quiet ground the duel is fought on: far from the star and from the safe point. */
 const DUEL_X = 300;
@@ -115,9 +120,11 @@ it("refills the torpedo charge to 1 on the ship that follows a death", async () 
     "the ships the run stands on before the contact, so a respawn follows it " +
       "(specs/progression.md)",
   );
-  assertEqual(
-    requireCharge(armed, "the charge the dying ship carries"),
-    POSED_CHARGE,
+  assertLessThanOrEqual(
+    Math.abs(
+      requireCharge(armed, "the charge the dying ship carries") - POSED_CHARGE,
+    ),
+    POSED_CHARGE_SLACK,
     `setTorpedoCharge(${POSED_CHARGE}) to leave the bar part filled, which is ` +
       "the state the respawn has to refill (specs/instrumentation.md)",
   );

@@ -24,7 +24,7 @@
 // the true one — that a `warhead` build is missing something its specification
 // requires.
 
-import { TICK_DT, TORPEDO_SPEED } from "../../src/constants";
+import { TICK_DT, TORPEDO_RECHARGE, TORPEDO_SPEED } from "../../src/constants";
 import { fail } from "../assert";
 import { shortestSeparation, wrapPoint, type Vec } from "../geometry";
 import { torpedoesOf, type Harness, type ShatterSnapshot } from "../harness";
@@ -140,6 +140,21 @@ export function standTheShipClear(h: Harness): void {
 /* -------------------------------------------------------------------------- */
 /* Reading the charge                                                         */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * How far a POSED charge may read from the value `setTorpedoCharge` was handed,
+ * as a fraction of the bar.
+ *
+ * One tick of the refill, `1 / 1200`. It is used only for the PRECONDITIONS in
+ * this group — the reading that says a check's own arrangement took — never for a
+ * figure a review item grades, which each check derives for itself from
+ * `specs/weapons.md`. `specs/instrumentation.md` has `setTorpedoCharge` set the
+ * stored charge, so a build that keeps it as a plain number reads back exactly
+ * what it was given; the allowance is for one that keeps it as whole ticks of
+ * `TORPEDO_RECHARGE` and rounds, which is a conforming way to hold a bar that
+ * only ever moves a tick at a time.
+ */
+export const POSED_CHARGE_SLACK = TICK_DT / TORPEDO_RECHARGE;
 
 /** The stored charge, hard-asserted to be a number the snapshot reports. */
 export function requireCharge(

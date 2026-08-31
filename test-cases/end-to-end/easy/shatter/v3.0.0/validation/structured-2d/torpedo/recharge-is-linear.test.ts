@@ -28,7 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TORPEDO_RECHARGE } from "../../src/constants";
-import { assertEqual, assertLessThanOrEqual } from "../assert";
+import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -36,7 +36,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { requireCharge } from "./scenario";
+import { POSED_CHARGE_SLACK, requireCharge } from "./scenario";
 
 /** The two moments the specification states a value for, in seconds of game time. */
 const QUARTER_AT = TORPEDO_RECHARGE / 4;
@@ -71,9 +71,9 @@ it("reads a quarter of the charge at 2.5 s and half of it at 5 s", async () => {
   startPlaying(h);
   h.debug.setTorpedoCharge?.(0);
 
-  assertEqual(
+  assertLessThanOrEqual(
     requireCharge(h.snapshot(), "the charge the refill starts from"),
-    0,
+    POSED_CHARGE_SLACK,
     "setTorpedoCharge(0) to leave the charge empty, so both readings are " +
       "taken along one whole refill (specs/instrumentation.md)",
   );

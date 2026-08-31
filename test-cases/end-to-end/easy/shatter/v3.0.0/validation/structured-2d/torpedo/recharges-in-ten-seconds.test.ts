@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TORPEDO_RECHARGE } from "../../src/constants";
-import { assertBetween, assertEqual } from "../assert";
+import { assertBetween, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -38,7 +38,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { requireCharge, requireReady } from "./scenario";
+import { POSED_CHARGE_SLACK, requireCharge, requireReady } from "./scenario";
 
 /** The charge the refill starts from: empty, as a launch leaves it. */
 const START_CHARGE = 0;
@@ -70,9 +70,12 @@ it("fills the charge from 0 to 1 over TORPEDO_RECHARGE of game time", async () =
   startPlaying(h);
   h.debug.setTorpedoCharge?.(START_CHARGE);
 
-  assertEqual(
-    requireCharge(h.snapshot(), "the charge the refill starts from"),
-    START_CHARGE,
+  assertLessThanOrEqual(
+    Math.abs(
+      requireCharge(h.snapshot(), "the charge the refill starts from") -
+        START_CHARGE,
+    ),
+    POSED_CHARGE_SLACK,
     "setTorpedoCharge(0) to leave the charge empty, so what the reading ten " +
       "seconds later shows is a whole refill (specs/instrumentation.md)",
   );

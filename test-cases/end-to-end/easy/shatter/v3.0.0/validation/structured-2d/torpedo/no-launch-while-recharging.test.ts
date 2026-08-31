@@ -24,7 +24,7 @@
 // world gates, so the reading — an empty torpedo roster — has one possible cause.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength } from "../assert";
+import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -33,7 +33,12 @@ import {
   torpedoesOf,
   type Harness,
 } from "../harness";
-import { TORPEDO_ACTION, requireCharge, requireReady } from "./scenario";
+import {
+  POSED_CHARGE_SLACK,
+  TORPEDO_ACTION,
+  requireCharge,
+  requireReady,
+} from "./scenario";
 
 /** The part-filled bar the press is made on. See the note above on why it is half. */
 const POSED_CHARGE = 0.5;
@@ -53,9 +58,11 @@ it("launches nothing when the torpedo key is pressed on a half-filled charge", a
   h.debug.setTorpedoCharge?.(POSED_CHARGE);
 
   const posed = h.snapshot();
-  assertEqual(
-    requireCharge(posed, "the charge the press is made on"),
-    POSED_CHARGE,
+  assertLessThanOrEqual(
+    Math.abs(
+      requireCharge(posed, "the charge the press is made on") - POSED_CHARGE,
+    ),
+    POSED_CHARGE_SLACK,
     `setTorpedoCharge(${POSED_CHARGE}) to leave the charge half full, which ` +
       "is the state this item's refusal is about (specs/instrumentation.md)",
   );

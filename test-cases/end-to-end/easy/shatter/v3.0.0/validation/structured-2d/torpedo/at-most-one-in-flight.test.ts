@@ -32,7 +32,7 @@
 // left in flight.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength } from "../assert";
+import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
 import { QUIET_CORNER_OPPOSITE } from "../fixtures";
 import {
   captureStill,
@@ -42,7 +42,12 @@ import {
   torpedoesOf,
   type Harness,
 } from "../harness";
-import { TORPEDO_ACTION, poseTorpedo, requireCharge } from "./scenario";
+import {
+  POSED_CHARGE_SLACK,
+  TORPEDO_ACTION,
+  poseTorpedo,
+  requireCharge,
+} from "./scenario";
 
 /** Where the standing torpedo is posed, and the heading it holds. */
 const STANDING = QUIET_CORNER_OPPOSITE;
@@ -65,9 +70,11 @@ it("adds no second torpedo when the key is pressed with one already in flight", 
   h.debug.setTorpedoCharge?.(1);
 
   const posed = h.snapshot();
-  assertEqual(
-    requireCharge(posed, "the charge the refused press is made on"),
-    1,
+  assertLessThanOrEqual(
+    Math.abs(
+      requireCharge(posed, "the charge the refused press is made on") - 1,
+    ),
+    POSED_CHARGE_SLACK,
     "the charge posed full, so nothing but the one-at-a-time rule can refuse " +
       "the press (specs/weapons.md, specs/instrumentation.md)",
   );
