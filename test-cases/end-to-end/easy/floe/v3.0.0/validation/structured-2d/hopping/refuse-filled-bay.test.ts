@@ -97,6 +97,11 @@ it("refuses a hop into a filled bay and takes the same hop once it is open", asy
     seen.refused.critter.present,
     "the critter still in play after a refused hop",
   );
+  assertEqual(
+    seen.refused.bays[BAY],
+    true,
+    `bay ${BAY} still filled after the refused hop, which changed nothing`,
+  );
 
   assertEqual(
     seen.moved,
