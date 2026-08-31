@@ -1,28 +1,162 @@
-// Floe — instrumentation/reset-seeds-randomness: SCAFFOLD STUB, NOT A VALIDATOR.
+// Floe — instrumentation/reset-seeds-randomness: `reset({ seed })` seeds all of
+// the game's randomness, so the same seed lays the same strait and a different
+// seed lays a different one.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `instrumentation.reset-seeds-randomness` review item, written
-// against the `none` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// `specs/instrumentation.md` rests the surface on it: "The randomness the game
+// uses runs off a generator seeded by `reset`, and the generator keeps its whole
+// state in the game's own state, so reseeding and replaying the same calls
+// reproduces the same result exactly. The lanes' phases and the bay each bonus
+// catch appears in are drawn from it", and "`options.seed`, a number defaulting
+// to `DEFAULT_SEED` (`1`), seeds all of the game's randomness". `specs/ice.md`
+// and `specs/water.md` name the phases as one of the draws — "Where a lane's
+// pattern sits along its row when a level is laid out is drawn from the game's
+// own seeded randomness" — and `specs/bays.md` names the other: "The bay a bonus
+// catch appears in is drawn from the game's own seeded randomness".
 //
-// The item this file decides, from test-case.toml:
+// THOSE TWO ARE THE WITNESSES BECAUSE THEY ARE THE TWO DRAWS THE SPECIFICATION
+// NAMES. The sixteen phases are laid in one go when a level opens, so two runs
+// that agree on all sixteen agree on the generator rather than on a single coin
+// toss; the bay is the one draw taken later, so it also says the generator's
+// state travelled with the run rather than being re-seeded per level.
 //
-//   reset seeds the game's randomness
+// THE ASSERTION IS AGREEMENT AND DISAGREEMENT, NOT A LAYOUT. Asserting a
+// particular set of phases would fix the generator rather than the seeding, so
+// what is read is that two runs of ONE seed agree and two runs of DIFFERENT seeds
+// do not.
 //
-//   Two runs started after reset({ seed: 7 }) lay the sixteen lanes at
-//   identical phases and put the first bonus catch in the same bay; a run
-//   after reset({ seed: 8 }) differs in at least one of them.
+// THE RUN IS OPENED THROUGH THE TITLE'S FIRST ITEM, WHICH IS THE ONLY ROUTE. The
+// surface poses fields; it has no operation that opens a run, and a level's lanes
+// are laid out when one does. So `confirm` on the title's highlighted item —
+// which `reset` leaves at `0` — is how a layout is reached at all, and a build
+// that cannot open a run from its title fails here as well as at
+// `screens/title-cross`.
 //
-// Its declared media: image `seeded`.
+// WHAT THIS DOES NOT DECIDE. Nothing about the layout itself: that a lane is
+// evenly spaced, that the band is staggered, and that the bonus catch appears in
+// an OPEN bay are `ice/*`, `water/*` and `bays/fish-appears-in-open-bay`. This
+// point reads only whether two straits are the same strait.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertNotEqual,
+  assertTrue,
+} from "../assert";
+import { FISH_INTERVAL } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  startRunFromTitle,
+  type FloeSnapshot,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The seed two runs share, and the one a third run is given instead. */
+const SEED = 7;
+const OTHER_SEED = 8;
 
-it("instrumentation/reset-seeds-randomness has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/**
+ * How long a run is given to put its first bonus catch in a bay, in seconds.
+ *
+ * `specs/bays.md` fixes it at `FISH_INTERVAL` (`8` s) after the level is laid
+ * out, so this is twice that with two seconds over: a build whose cadence is
+ * slower than the figure still produces one here and is graded on the figure by
+ * `bays/fish-interval`. It is also short of `crossingTimer(1)` (`30` s), so the
+ * crossing the wait runs inside never runs out of time.
+ */
+const FISH_WINDOW = 2 * FISH_INTERVAL + 2;
+
+/** How much game time separates two samples of that wait, in seconds. */
+const POLL_SECONDS = 0.25;
+
+/**
+ * The sixteen lanes' phases as one comparable string: every lane item's row,
+ * kind and left edge, in a fixed order.
+ *
+ * Sorted rather than compared where they lie, because the order a roster reports
+ * its entries in is not what this point is about.
+ */
+function phasesOf(snapshot: FloeSnapshot): string {
+  return [...snapshot.vehicles, ...snapshot.floes]
+    .map((item) => `${item.row}:${item.kind}@${item.x.toFixed(4)}`)
+    .sort()
+    .join(" ");
+}
+
+/** One run's two draws, as the pair this point compares. */
+interface Laid {
+  phases: string;
+  fishBay: number | null;
+}
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("lays the same strait for one seed and a different one for another", async () => {
+  /** Seed the generator, open a run from the title, and read what it drew. */
+  const runWith = async (seed: number): Promise<Laid> => {
+    await startRunFromTitle(h, { seed });
+    // Read before any of the wait below, so both runs' phases are read at the
+    // same point of their own game time.
+    const phases = phasesOf(await h.snapshot());
+    const arrived = await h.skipUntil((s) => s.fishBay !== null, {
+      maxSeconds: FISH_WINDOW,
+      pollSeconds: POLL_SECONDS,
+    });
+    assertTrue(
+      arrived.hit,
+      `a bonus catch to be in a bay within ${FISH_WINDOW} s of a run opened ` +
+        `after reset({ seed: ${seed} }) — specs/bays.md puts the first one out ` +
+        `FISH_INTERVAL (${FISH_INTERVAL} s) after the level is laid out, and ` +
+        `this point cannot compare a bay that never filled`,
+    );
+    return { phases, fishBay: arrived.snapshot.fishBay };
+  };
+
+  const first = await runWith(SEED);
+  // Before the assertions, so a failing seed still leaves the picture of the
+  // strait the first run laid.
+  await captureStill(h, "seeded");
+
+  assertGreaterThan(
+    first.phases.length,
+    0,
+    `the lane items a run opened after reset({ seed: ${SEED} }) laid — a run ` +
+      `opens on confirm at the title's first item and lays the sixteen lanes ` +
+      `then (specs/progression.md), and an empty strait leaves nothing to ` +
+      `compare`,
+  );
+
+  const again = await runWith(SEED);
+  assertEqual(
+    again.phases,
+    first.phases,
+    `the sixteen lanes a second run opened after reset({ seed: ${SEED} }) ` +
+      `laid, against the lanes the first one laid — the same seed replays the ` +
+      `same draws exactly (specs/instrumentation.md)`,
+  );
+  assertEqual(
+    again.fishBay,
+    first.fishBay,
+    `the bay the second run's first bonus catch appeared in, against the ` +
+      `first run's — both runs were opened after reset({ seed: ${SEED} }) ` +
+      `and the bay is drawn from that same seeded generator (specs/bays.md)`,
+  );
+
+  const other = await runWith(OTHER_SEED);
+  assertNotEqual(
+    `${other.phases}|fish ${other.fishBay}`,
+    `${first.phases}|fish ${first.fishBay}`,
+    `the sixteen lanes and the first bonus catch's bay of a run opened after ` +
+      `reset({ seed: ${OTHER_SEED} }), against what seed ${SEED} drew — a ` +
+      `different seed draws a different result, in at least one of them`,
+  );
 });
