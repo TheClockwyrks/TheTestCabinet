@@ -1,19 +1,49 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// rocks/health-small-1 — a Small takes one hit from the gun.
 //
-// rocks/health-small-1 — A Small takes one hit
+// `specs/rocks.md` gives a Small `ROCK_HEALTH.small` (1), so the first round is
+// already the hit that takes its health to zero and destroys it. It is the floor of
+// the armor table and the size the whole wave loop rests on: only destroying a
+// Small takes a rock off the field, so a build that armored a Small would leave
+// every wave unclearable.
 //
-// One round destroys a Small.
-//
-// Declared by variants/warhead.toml as validation.script "armor/health-
-// small-1.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the simple-2d harness in validation/simple-2d/harness.ts and
-// the spec-derived oracle in validation/simple-2d/geometry.ts — never against
-// a reference build.
-//
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// THE ONE DIRECTION THIS CHECKS is that a single round is enough. A build that
+// gives a Small two or more hits leaves it standing here and fails; a build with
+// the table right passes whatever it does with the larger sizes, which are graded
+// by their own items.
 
-throw new Error(
-  "Shatter v3.0.0: validation/simple-2d/armor/health-small-1.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertUndefined } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  poseRock,
+  shootRock,
+  startPlaying,
+  type Harness,
+} from "../harness";
+import { CHIP_SPOT } from "./scene";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("destroys a Small with a single round", async () => {
+  startPlaying(h);
+  const id = poseRock(h, "small", CHIP_SPOT.x, CHIP_SPOT.y);
+
+  const round = await shootRock(h, id);
+  const after = h.snapshot();
+  captureStill(h, "armor");
+
+  assertEqual(round.spent, true, "the round resolved");
+  assertUndefined(
+    after.rocks.find((rock) => rock.id === id),
+    "the Small after one round (specs/rocks.md)",
+  );
+});

@@ -1,19 +1,70 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// rocks/health-falls-by-one — each hit costs exactly one health.
 //
-// rocks/health-falls-by-one — Each hit costs exactly one health
+// `specs/rocks.md`: "A bullet that hits a rock lowers that rock's health by exactly
+// 1." That is the arithmetic under the whole armor table, and it is a different
+// requirement from how much health a size carries: a build could give a Large the
+// right three hits by taking its health from 3 to 0 in one step and refusing to
+// destroy it until the third round, and a build could decrement correctly from a
+// wrong starting figure.
 //
-// A Large posed at health 3 reports 2 after one round and 1 after two.
+// SO THE DELTA IS WHAT IS READ, not the absolute number. The Large's health is
+// taken as the build reports it on the tick it was posed, and each round is
+// required to lower it by exactly one from there. A build whose Large carries five
+// hits fails `health-large-3`, which is the item that owns that figure, and passes
+// here — which is what makes a failed grade name the rule that is actually broken.
 //
-// Declared by variants/warhead.toml as validation.script "armor/health-falls-
-// by-one.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the simple-2d harness in validation/simple-2d/harness.ts and
-// the spec-derived oracle in validation/simple-2d/geometry.ts — never against
-// a reference build.
-//
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// EVERY WRONG MODEL READS AS A DIFFERENT NUMBER. Two rounds leave `h0 - 2` on a
+// correct build, `h0` on one that never decrements, `h0 - 4` on one that costs two
+// a hit, and `h0 - 1` on one that only counts the first hit of a life.
 
-throw new Error(
-  "Shatter v3.0.0: validation/simple-2d/armor/health-falls-by-one.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  poseRock,
+  rockById,
+  shootRock,
+  startPlaying,
+  type Harness,
+} from "../harness";
+import { CHIP_SPOT, chippedRock, healthOf } from "./scene";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("lowers a Large's health by exactly one for each round that lands", async () => {
+  startPlaying(h);
+  const id = poseRock(h, "large", CHIP_SPOT.x, CHIP_SPOT.y);
+  const posed = healthOf(
+    rockById(h.snapshot(), id, "the posed Large"),
+    "the posed Large",
+  );
+
+  const first = await shootRock(h, id);
+  assertEqual(first.spent, true, "the first round resolved");
+  const once = chippedRock(h.snapshot(), id, "the first round");
+
+  const second = await shootRock(h, id);
+  assertEqual(second.spent, true, "the second round resolved");
+  const twice = chippedRock(h.snapshot(), id, "the second round");
+  captureStill(h, "armor");
+
+  assertEqual(
+    healthOf(once, "after one round"),
+    posed - 1,
+    "the health left after one round (specs/rocks.md)",
+  );
+  assertEqual(
+    healthOf(twice, "after two rounds"),
+    posed - 2,
+    "the health left after two rounds (specs/rocks.md)",
+  );
+});
