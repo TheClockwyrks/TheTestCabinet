@@ -1092,7 +1092,9 @@ describe("the faculty gates", () => {
     startRun();
     h.pose((d, s) => d.setPhase(s, "wave"));
     h.pose((d, s) => d.setWavePending(s, 30));
-    await h.engine.advance(120 * 60);
+    // Thirty seconds is fifty release intervals: if the run were still
+    // releasing, the pending count could not survive the window intact.
+    await h.engine.advance(30 * 60);
     expect(h.snap().surge).toEqual([]);
     expect(h.snap().wavePending).toBe(30);
   });
