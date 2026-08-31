@@ -62,7 +62,7 @@ import {
   STAR_X,
   STAR_Y,
 } from "../../src/constants";
-import { assertGreaterThan } from "../assert";
+import { assertGreaterThan, assertLessThan } from "../assert";
 import { STAR, closestApproachTo, foldX, type Point } from "../geometry";
 import {
   captureReplay,
@@ -252,6 +252,18 @@ it("keeps every one of 54 crossings clear of CORE_R + SAUCER_R", async () => {
     await h.advance(WINDOW_TICKS + TAIL_TICKS);
   });
 
+  // A CROSSING THIS SWEEP NEVER SAW IS NOT A CROSSING THAT KEPT ITS DISTANCE.
+  // Every one of the 54 is posed at an edge heading into the field, and
+  // `specs/saucer.md` crosses it at `SAUCER_SPEED` (`140`), so `12` seconds of
+  // visit carries it `1680` units — past the star's column whichever edge it came
+  // in at. A build whose saucer never reached the window therefore never flew the
+  // scenario, and this item fails on that rather than passing on an empty path.
+  assertLessThan(
+    worst,
+    Number.POSITIVE_INFINITY,
+    "a saucer reaching the star's column on at least one of 54 crossings, " +
+      `each posed at an edge and crossing at SAUCER_SPEED (specs/saucer.md)`,
+  );
   assertGreaterThan(
     worst,
     SAUCER_CLEARANCE - CHORD_ALLOWANCE,
