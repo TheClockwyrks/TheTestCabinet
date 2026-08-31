@@ -39,7 +39,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { holdItsHeading, poseTorpedo } from "./scenario";
+import { holdItsHeading, poseTorpedo, standTheShipClear } from "./scenario";
 
 /** The lane the flight is measured along, and where on it the torpedo starts. */
 const LANE_Y = 620;
@@ -79,6 +79,7 @@ afterEach(() => {
 
 it("carries a torpedo TORPEDO_SPEED units of field over a second of straight flight", async () => {
   startPlaying(h);
+  standTheShipClear(h);
   const id = poseTorpedo(h, START_X, LANE_Y, HEADING);
   holdItsHeading(h, id);
 

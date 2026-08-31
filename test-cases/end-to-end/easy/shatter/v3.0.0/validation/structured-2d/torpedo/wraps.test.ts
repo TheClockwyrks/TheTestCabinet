@@ -40,7 +40,12 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { TORPEDO_TICK_TRAVEL, holdItsHeading, poseTorpedo } from "./scenario";
+import {
+  TORPEDO_TICK_TRAVEL,
+  holdItsHeading,
+  poseTorpedo,
+  standTheShipClear,
+} from "./scenario";
 
 /** Where the torpedo starts: one unit inside the right edge, off the star's row. */
 const START = SEAM.right;
@@ -89,6 +94,7 @@ afterEach(() => {
 
 it("re-enters at the left edge, on its row and at its speed, after crossing the right one", async () => {
   startPlaying(h);
+  standTheShipClear(h);
   const id = poseTorpedo(h, START.x, START.y, HEADING);
   holdItsHeading(h, id);
 

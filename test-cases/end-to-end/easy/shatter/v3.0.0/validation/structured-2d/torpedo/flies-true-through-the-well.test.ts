@@ -62,7 +62,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { holdItsHeading, poseTorpedo } from "./scenario";
+import { holdItsHeading, poseTorpedo, standTheShipClear } from "./scenario";
 
 /** The lane: 100 units above the star's row. See the note above on why not on it. */
 const LANE_Y = STAR_Y - 100;
@@ -112,6 +112,7 @@ afterEach(() => {
 
 it("holds a torpedo's heading and its line across the star's own column", async () => {
   startPlaying(h);
+  standTheShipClear(h);
   const id = poseTorpedo(h, START_X, LANE_Y, HEADING);
   holdItsHeading(h, id);
 

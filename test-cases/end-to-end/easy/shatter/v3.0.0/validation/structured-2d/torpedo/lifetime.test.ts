@@ -45,7 +45,7 @@ import {
   torpedoById,
   type Harness,
 } from "../harness";
-import { holdItsHeading, poseTorpedo } from "./scenario";
+import { holdItsHeading, poseTorpedo, standTheShipClear } from "./scenario";
 
 /** The lane the torpedo is flown along: the very bottom of the field. */
 const LANE_Y = 690;
@@ -69,6 +69,7 @@ afterEach(() => {
 
 it("keeps a torpedo in flight to 3.4 s of game time and removes it by 3.6 s", async () => {
   startPlaying(h);
+  standTheShipClear(h);
   const id = poseTorpedo(h, START_X, LANE_Y, HEADING);
   holdItsHeading(h, id);
 
