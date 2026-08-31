@@ -1,26 +1,78 @@
-// Floe — presentation/hud-score: SCAFFOLD STUB, NOT A VALIDATOR.
+// presentation/hud-score — the score is drawn in the HUD bar, and the figure it
+// shows follows the score.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `presentation.hud-score` review item, written against the
-// `simple-2d` engine. Until then it FAILS, deliberately and loudly: a stub that
-// passed would score the item a point the build never earned, and a stub the
-// Validators stage forgot would be indistinguishable from a passing check.
+// specs/ui.md gives the HUD five readouts and gives the first of them "The running
+// score", inside the bar specs/strait.md puts at `y` in `[0, HUD_H]`: "Their
+// arrangement and styling are yours; each is inside the bar and legible against
+// it." So this point asserts exactly two things — that a run of text inside the
+// bar reads as the score, and that the run reading the OLD score is gone once the
+// score changes — and nothing about where in the bar it sits or what it is
+// labelled.
 //
-// The item this file decides, from test-case.toml:
+// TWO POSED VALUES, NOT ONE. A build that draws a fixed figure, or that draws the
+// score it had at load, passes a single reading and fails here: the second value
+// must be drawn AND the first must no longer be. The two are `1234` and `5678`,
+// which no other readout of this posed crossing can produce — the lives read `3`,
+// the level `1` out of `8` and the timer the level-1 crossing time — so a run
+// reading either of them is the score readout and nothing else.
 //
-//   The HUD shows the score
-//
-//   The score is drawn inside the HUD bar and the digits change when the score
-//   changes.
-//
-// Its declared media: image `hud`.
+// THE SCORE IS POSED, NOT EARNED. `setScore` "sets the score. It grants no bonus
+// life: this is a precondition" (specs/instrumentation.md), so what is read is the
+// readout following the field. What the game ADDS to the score is the `scoring`
+// group's, and a crossing that hopped its way to a score would drag every rule of
+// the crossing into a point about the HUD.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drawFrame,
+  startCrossing,
+  type Harness,
+} from "../harness";
+import { describeRuns, hudRuns, runsShowing } from "./readout";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The first score posed, and the second. Neither collides with a readout. */
+const FIRST = 1234;
+const SECOND = 5678;
 
-it("presentation/hud-score has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws the score in the HUD bar and follows it when it changes", async () => {
+  startCrossing(h);
+
+  h.debug.setScore(FIRST);
+  const before = hudRuns(h, await drawFrame(h));
+  captureStill(h, "hud");
+
+  h.debug.setScore(SECOND);
+  const after = hudRuns(h, await drawFrame(h));
+
+  assertGreaterThanOrEqual(
+    runsShowing(before, FIRST).length,
+    1,
+    `a run of text inside the HUD bar reading ${FIRST}, the posed score ` +
+      `(specs/ui.md) — the bar drew ${describeRuns(before)}`,
+  );
+  assertGreaterThanOrEqual(
+    runsShowing(after, SECOND).length,
+    1,
+    `a run of text inside the HUD bar reading ${SECOND} once the score was ` +
+      `posed there (specs/ui.md) — the bar drew ${describeRuns(after)}`,
+  );
+  assertLength(
+    runsShowing(after, FIRST),
+    0,
+    `runs still reading the old score ${FIRST} after it changed to ` +
+      `${SECOND} — the readout shows the running score (specs/ui.md)`,
+  );
 });

@@ -22,8 +22,13 @@
 // own text — the commonest colour of the run's box — and the reading is how far
 // the glyph pixels sit from that.
 
-import { drawnTextSpans, type DrawCall, type Harness, type Rgb } from "../harness";
-import { colorDistance } from "../harness";
+import {
+  colorDistance,
+  drawnTextSpans,
+  type DrawCall,
+  type Harness,
+  type Rgb,
+} from "../harness";
 import type { Raster } from "./raster";
 
 /** The canvas default when a build never sets one, in CSS pixels. */
@@ -85,10 +90,7 @@ function fontSize(font: unknown): number | null {
  * transform the context held at the call; the font in force at each call is
  * tracked here in the same order, so the two line up run for run.
  */
-export function textBoxes(
-  h: Harness,
-  calls: readonly DrawCall[],
-): TextBox[] {
+export function textBoxes(h: Harness, calls: readonly DrawCall[]): TextBox[] {
   const view = h.engine.viewport();
   const spans = drawnTextSpans(h, calls);
 
@@ -147,7 +149,10 @@ export function legibilityOf(raster: Raster, box: TextBox): Legibility {
 
   // The commonest colour, over buckets sixteen levels wide so a gradient or a
   // dither still reads as one background.
-  const buckets = new Map<number, { n: number; r: number; g: number; b: number }>();
+  const buckets = new Map<
+    number,
+    { n: number; r: number; g: number; b: number }
+  >();
   for (const sample of samples) {
     const key =
       ((sample.r >> 4) << 8) | ((sample.g >> 4) << 4) | (sample.b >> 4);

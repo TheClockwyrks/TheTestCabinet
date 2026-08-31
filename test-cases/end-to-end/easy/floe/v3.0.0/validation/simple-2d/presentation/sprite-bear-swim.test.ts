@@ -30,11 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BEAR_SWIM_SPEED, TICK_HZ, TILE } from "../../src/constants";
-import {
-  assertEqual,
-  assertGreaterThanOrEqual,
-  assertLength,
-} from "../assert";
+import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   BEAR_SWIM_FRAMES,
   bearOf,
