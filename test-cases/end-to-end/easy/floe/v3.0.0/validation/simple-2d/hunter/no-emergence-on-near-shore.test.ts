@@ -75,9 +75,18 @@ it("never emerges a bear behind a critter still on the near shore", async () => 
     POLL_TICKS,
   );
 
-  // The critter really did stay where a fresh crossing put it, so the advance the
-  // rule reads really was nil throughout.
-  assertEqual(h.snapshot().critter.bestRow, ROW_NEAR, "bestRow");
+  // The scenario this check needs, read off the game itself: the run's own
+  // emergence really was running, and the critter really did stay where a fresh
+  // crossing put it, so the advance the rule reads was nil throughout. Without the
+  // first of those an empty roster would say nothing at all.
+  const settled = h.snapshot();
+  assertEqual(
+    settled.bearEmergence,
+    true,
+    "the run's own emergence of bears, opened for this check " +
+      "(specs/instrumentation.md)",
+  );
+  assertEqual(settled.critter.bestRow, ROW_NEAR, "bestRow");
   assertEqual(
     Math.max(opening, rest),
     0,

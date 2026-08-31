@@ -19,7 +19,7 @@ import {
   ROW_NEAR,
   START_COL,
 } from "../../src/constants";
-import { assertLength } from "../assert";
+import { assertEqual, assertLength } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -61,6 +61,17 @@ it("emerges a bear once the advance is made and the delay has passed", async () 
   h.debug.setCritterTile(START_COL, ADVANCED_ROW);
   h.debug.setBestRow(ADVANCED_ROW);
   h.debug.setBearEmergence(true);
+
+  // The scenario this check needs: the advance condition already met, and the
+  // run's own emergence running, so the delay is the only condition outstanding.
+  const posed = h.snapshot();
+  assertEqual(posed.critter.bestRow, ADVANCED_ROW, "the critter's bestRow");
+  assertEqual(
+    posed.bearEmergence,
+    true,
+    "the run's own emergence of bears, opened for this check " +
+      "(specs/instrumentation.md)",
+  );
 
   const { before, after } = await captureReplay(h, "emerge", async () => {
     await h.advance(ticksFor(BEAR_EMERGE_DELAY) - DELAY_SLACK_TICKS);

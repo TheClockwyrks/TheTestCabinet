@@ -19,7 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { tileCX, tileCY } from "../../src/constants";
-import { assertDeepEqual, assertLessThanOrEqual } from "../assert";
+import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   bearOf,
   captureReplay,
@@ -30,7 +30,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { bearStepTile, bearTile } from "./harness";
+import { bearStepTile, bearTile, vehicleCoversTile } from "./harness";
 
 /** The row the vehicle is parked on, the bear's tile, and the vehicle's. */
 const ROW = 15;
@@ -64,6 +64,22 @@ it("refuses a step into a parked vehicle and leaves the bear where it stood", as
   startCrossing(h);
   poseLane(h, ROW, "car", [CAR_COL]);
   const id = poseBear(h, BEAR_COL, ROW, { sense: false, routing: false });
+
+  // The scenario this check needs, read off the game itself: the tile the step is
+  // sent into really is covered, and the tile the bear stands on really is not. A
+  // bear left standing on an uncovered strait would be a refusal of nothing.
+  const posed = h.snapshot();
+  assertEqual(
+    vehicleCoversTile(posed, BEAR_COL + 1, ROW),
+    true,
+    `a vehicle over the tile the step is sent into (${BEAR_COL + 1}, ${ROW}), ` +
+      `which is what closes it (specs/hunter.md)`,
+  );
+  assertEqual(
+    vehicleCoversTile(posed, BEAR_COL, ROW),
+    false,
+    `a vehicle over the tile the bear stands on (${BEAR_COL}, ${ROW})`,
+  );
 
   const after = await captureReplay(h, "refuse", async () => {
     h.debug.setBearStep(id, "right");

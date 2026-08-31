@@ -16,15 +16,21 @@
 //
 // The bear is posed with its routing and its travel off, so what is read is its
 // SENSE and nothing else: it neither chooses a step nor moves, and its target is
-// the only thing about it that can change. The critter is moved by REAL HOPS,
+// the only thing about it that can change. It is frozen HALF A TILE into a step
+// rather than settled on one, so a build that refreshed its target only when a
+// bear settles never refreshes it here and reads a stale tile. The critter is moved by REAL HOPS,
 // each driven as the one tick that delivers the press.
 //
 // The strait is emptied and the hops run up the ice band, so no hop is refused by
 // traffic and the tile the critter lands on is the tile it aimed for.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR } from "../../src/constants";
-import { assertDeepEqual, assertGreaterThanOrEqual } from "../assert";
+import { ROW_NEAR, TILE, tileCX, tileCY } from "../../src/constants";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThanOrEqual,
+} from "../assert";
 import {
   HOP_COOLDOWN_TICKS,
   bearOf,
@@ -33,12 +39,14 @@ import {
   critterTile,
   keyFor,
   poseBear,
+  sameTile,
   startCrossing,
   tileKey,
   type Facing,
   type Harness,
   type Tile,
 } from "../harness";
+import { bearStepTile, bearTile } from "./harness";
 
 /** Where the bear watches from: far enough off to be a spectator, on solid ice. */
 const BEAR_COL = 5;
@@ -63,6 +71,20 @@ it("reports the critter's tile as its target within a tick of each hop", async (
     routing: false,
     travel: false,
   });
+  // Frozen half a tile into a step, so it is between two tiles for every reading
+  // below rather than settled on one.
+  h.debug.setBearStep(id, "right");
+  h.debug.setBearPosition(id, tileCX(BEAR_COL) + TILE / 2, tileCY(BEAR_ROW));
+
+  // The scenario this check needs, read off the game itself: the bear really is
+  // between tiles, so a build that refreshed its target only on settling reads a
+  // stale tile here rather than the right one for the wrong reason.
+  const watching = bearOf(h.snapshot(), id);
+  assertEqual(
+    sameTile(bearTile(watching), bearStepTile(watching)),
+    false,
+    "the bear settled, which the mid-glide pose is meant to prevent",
+  );
 
   const readings: { critter: Tile; target: Tile }[] = [];
   await captureReplay(h, "pursue", async () => {

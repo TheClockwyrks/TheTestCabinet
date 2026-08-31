@@ -21,8 +21,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TILE, laneSpeed, tileCX, tileCY } from "../../src/constants";
-import { assertEqual, assertLength, fail } from "../assert";
+import { assertDeepEqual, assertEqual, assertLength, fail } from "../assert";
 import {
+  bearOf,
   captureReplay,
   createHarness,
   poseBear,
@@ -31,7 +32,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { samplePerTick, vehicleCoversTile } from "./harness";
+import { bearStepTile, bearTile, samplePerTick, vehicleCoversTile } from "./harness";
 
 /** The row, the tile the bear is leaving, and the tile it is entering. */
 const ROW = 15;
@@ -81,6 +82,22 @@ it("removes a mid-glide bear when a vehicle reaches the tile it is leaving", asy
 
   poseLane(h, ROW, "car", [CAR_COL]);
   h.debug.setLaneSpeed(ROW, laneSpeed(ROW, LEVEL));
+
+
+  // The scenario this check needs, read off the game itself: the bear really is
+  // between the two tiles and so occupying both of them. A bear settled on one of
+  // them would make the reading below the other rule's rather than this one's.
+  const posedBear = bearOf(h.snapshot(), id);
+  assertDeepEqual(
+    bearTile(posedBear),
+    { col: LEAVING_COL, row: ROW },
+    "the tile the bear last settled on",
+  );
+  assertDeepEqual(
+    bearStepTile(posedBear),
+    { col: ENTERING_COL, row: ROW },
+    "the tile the bear is travelling into",
+  );
 
   const samples = await captureReplay(h, "reset", () =>
     samplePerTick(h, ticksFor(WATCH_SECONDS)),

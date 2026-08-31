@@ -16,15 +16,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ROW_MEDIAN, tileCX } from "../../src/constants";
-import { assertGreaterThanOrEqual } from "../assert";
-import {
-  captureReplay,
-  createHarness,
-  poseBear,
-  startCrossing,
-  type Harness,
-} from "../harness";
-import { samplePerTick } from "./harness";
+import { assertDeepEqual, assertGreaterThanOrEqual } from "../assert";
+import { bearOf, captureReplay, createHarness, poseBear, startCrossing, type Harness } from "../harness";
+import { bearStepTile, samplePerTick } from "./harness";
 
 /** The tile the bear is settled on, and the one it is stepped into. */
 const FROM_COL = 12;
@@ -61,6 +55,15 @@ it("spends consecutive ticks between the two tile centres", async () => {
     routing: false,
   });
   h.debug.setBearStep(id, "right");
+
+  // The scenario this check needs: the bear really is committed to the step into
+  // the neighbouring tile, so what is read below is the crossing of that tile
+  // rather than a bear that was never sent anywhere.
+  assertDeepEqual(
+    bearStepTile(bearOf(h.snapshot(), id)),
+    { col: TO_COL, row: ROW_MEDIAN },
+    "the tile the bear is travelling into",
+  );
 
   const samples = await captureReplay(h, "glide", () =>
     samplePerTick(h, DRIVE_TICKS),

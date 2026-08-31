@@ -20,8 +20,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { START_LIVES, colAt, rowAt, tileCX, tileCY } from "../../src/constants";
-import { assertEqual } from "../assert";
+import { assertCloseTo, assertEqual } from "../assert";
 import {
+  bearOf,
   captureReplay,
   createHarness,
   poseBear,
@@ -47,6 +48,15 @@ const BEAR_Y = tileCY(ROW) + AXIS_OFFSET;
 /** The game time it is held out of reach for, from the item. */
 const HOLD_SECONDS = 3;
 
+/**
+ * Decimal places the posed separation is confirmed to, before anything is driven.
+ *
+ * Three places is a thousandth of a stage unit — six thousand times finer than
+ * the six units this pose sits outside the figure by, so this can only catch a
+ * pose the build did not carry out, never a rounding.
+ */
+const DISTANCE_DIGITS = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -70,6 +80,24 @@ it("costs no life over three seconds with a bear beyond BEAR_CATCH_DIST", async 
     travel: false,
   });
   h.debug.setBearPosition(id, BEAR_X, BEAR_Y);
+
+  // The scenario this check needs, read off the game itself: the two centres
+  // really are POSED_DISTANCE apart, and the catch test really is running. A
+  // life kept with the catch test shut, or with a bear the pose never moved,
+  // would say nothing about the figure at all.
+  const posed = h.snapshot();
+  const bear = bearOf(posed, id);
+  assertCloseTo(
+    Math.hypot(bear.x - posed.critter.x, bear.y - posed.critter.y),
+    POSED_DISTANCE,
+    DISTANCE_DIGITS,
+    "stage units between the two centres, as posed",
+  );
+  assertEqual(
+    posed.catchTest,
+    true,
+    "the catch test, opened for this check (specs/instrumentation.md)",
+  );
 
   const after = await captureReplay(h, "near", async () => {
     await h.advance(ticksFor(HOLD_SECONDS));

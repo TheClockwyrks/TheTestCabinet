@@ -59,6 +59,15 @@ it("leaves the roster empty on the tick a lost life turns the phase to dying", a
   const frozen = { sense: false, routing: false, travel: false } as const;
   for (const at of BEARS) poseBear(h, at.col, at.row, frozen);
 
+  // The scenario this check needs: BOTH bears really on the strait before the life
+  // is lost, because what the rule clears is "every bear". An empty roster read at
+  // the end says nothing if the roster was empty to start with.
+  assertLength(
+    h.snapshot().bears,
+    BEARS.length,
+    "the bears posed on the strait before the life is lost",
+  );
+
   const dying = await captureReplay(h, "reset", async () => {
     h.debug.setCritterTile(DROWN_COL, DROWN_ROW);
     return h.until((snapshot) => snapshot.phase === "dying", {

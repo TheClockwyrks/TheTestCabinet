@@ -25,7 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { COLS, ITEM_LEN, ROW_NEAR } from "../../src/constants";
-import { assertDeepEqual } from "../assert";
+import { assertDeepEqual, assertEqual } from "../assert";
 import {
   bearOf,
   captureReplay,
@@ -35,7 +35,7 @@ import {
   startCrossing,
   type Harness,
 } from "../harness";
-import { bearStepTile } from "./harness";
+import { bearStepTile, vehicleCoversTile } from "./harness";
 
 /** The sealed row, which is the target's row, and the target on it. */
 const SEALED_ROW = 15;
@@ -74,6 +74,32 @@ it("steps into the open neighbour least far from a target no route reaches", asy
   poseLane(h, SEALED_ROW, "car", SEAL_COLS);
   const id = poseBear(h, BEAR_COL, BEAR_ROW, { sense: false, travel: false });
   h.debug.setBearTarget(id, TARGET.col, TARGET.row);
+
+  // The scenario this check needs, read off the game itself: the seal really does
+  // close the target's whole row, so no open route to the target exists and the
+  // rule's SECOND branch is the one in play; and the neighbour the rule names
+  // really is open, so there is a right answer to give.
+  const posed = h.snapshot();
+  const unsealed = Array.from({ length: COLS }, (_unused, col) => col).filter(
+    (col) => !vehicleCoversTile(posed, col, SEALED_ROW),
+  );
+  assertDeepEqual(
+    unsealed,
+    [],
+    `columns of row ${SEALED_ROW} no vehicle covers, the seal being what ` +
+      `leaves no open route to (${TARGET.col}, ${TARGET.row})`,
+  );
+  assertEqual(
+    vehicleCoversTile(posed, CLOSEST_NEIGHBOUR.col, CLOSEST_NEIGHBOUR.row),
+    false,
+    `a vehicle over the neighbour the rule names ` +
+      `(${CLOSEST_NEIGHBOUR.col}, ${CLOSEST_NEIGHBOUR.row})`,
+  );
+  assertDeepEqual(
+    bearOf(posed, id).target,
+    TARGET,
+    "the tile the bear was posed hunting",
+  );
 
   const chosen = await captureReplay(h, "route", async () => {
     await h.advance(1);

@@ -28,8 +28,9 @@ import {
   tileCX,
   tileCY,
 } from "../../src/constants";
-import { assertEqual } from "../assert";
+import { assertCloseTo, assertEqual } from "../assert";
 import {
+  bearOf,
   captureReplay,
   createHarness,
   poseBear,
@@ -51,6 +52,15 @@ const POSED_DISTANCE = BEAR_CATCH_DIST - 1;
 
 /** The offset on each axis that puts the two centres exactly that far apart. */
 const AXIS_OFFSET = POSED_DISTANCE / Math.SQRT2;
+
+/**
+ * Decimal places the posed separation is confirmed to, before anything is driven.
+ *
+ * Three places is a thousandth of a stage unit — a thousand times finer than the
+ * one unit this pose sits inside the figure by, so this can only catch a pose the
+ * build did not carry out, never a rounding.
+ */
+const DISTANCE_DIGITS = 3;
 
 let h: Harness;
 
@@ -76,6 +86,23 @@ it("costs a life when a bear is inside BEAR_CATCH_DIST of the critter", async ()
     id,
     tileCX(COL) + AXIS_OFFSET,
     tileCY(ROW) + AXIS_OFFSET,
+  );
+
+  // The scenario this check needs, read off the game itself: the two centres
+  // really are POSED_DISTANCE apart, and the catch test really is running. A life
+  // lost from a bear the pose never moved would say nothing about the figure.
+  const posed = h.snapshot();
+  const bear = bearOf(posed, id);
+  assertCloseTo(
+    Math.hypot(bear.x - posed.critter.x, bear.y - posed.critter.y),
+    POSED_DISTANCE,
+    DISTANCE_DIGITS,
+    "stage units between the two centres, as posed",
+  );
+  assertEqual(
+    posed.catchTest,
+    true,
+    "the catch test, opened for this check (specs/instrumentation.md)",
   );
 
   const after = await captureReplay(h, "catch", async () => {

@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { COLS, ITEM_LEN, ROW_NEAR } from "../../src/constants";
-import { assertLength, assertTrue } from "../assert";
+import { assertDeepEqual, assertLength, assertTrue } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -83,6 +83,20 @@ it("routes through the gap without ever standing on the wall", async () => {
   poseLane(h, WALL_ROW, "car", WALL_COLS);
   h.debug.setCritterTile(CRITTER_COL, CRITTER_ROW);
   const id = poseBear(h, BEAR_COL, BEAR_ROW);
+
+  // The scenario this check needs, read off the game itself: the wall really does
+  // close every column of its row but the two the gap is cut from. A bear that
+  // crossed a row nothing was on would be routing around nothing.
+  const posed = h.snapshot();
+  const open = Array.from({ length: COLS }, (_unused, col) => col).filter(
+    (col) => !vehicleCoversTile(posed, col, WALL_ROW),
+  );
+  assertDeepEqual(
+    open,
+    GAP_COLS,
+    `the columns of row ${WALL_ROW} no vehicle covers, which is the gap the ` +
+      `route has to find`,
+  );
 
   const trespass: string[] = [];
   let reached = false;

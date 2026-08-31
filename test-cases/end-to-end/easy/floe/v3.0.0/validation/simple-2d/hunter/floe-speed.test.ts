@@ -17,16 +17,8 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ITEM_LEN, TILE, bearIceSpeed } from "../../src/constants";
-import { assertBetween } from "../assert";
-import {
-  captureReplay,
-  createHarness,
-  poseBear,
-  poseLane,
-  speedOverTicks,
-  startCrossing,
-  type Harness,
-} from "../harness";
+import { assertBetween, assertEqual } from "../assert";
+import { captureReplay, coversTile, createHarness, itemsInRow, poseBear, poseLane, speedOverTicks, startCrossing, type Harness } from "../harness";
 import { travelOverTicks } from "./harness";
 
 /** A row of the water band, and where the run starts on it. */
@@ -41,6 +33,15 @@ const FROM_COL = 5;
  * whatever the build's rate turns out to be.
  */
 const RAFT_COLS = [FROM_COL - 1, FROM_COL - 1 + ITEM_LEN.raft4];
+
+/**
+ * Columns right of `FROM_COL` the covering is confirmed over.
+ *
+ * The two `raft4`s span `2 * ITEM_LEN.raft4` columns from `FROM_COL - 1`, so the
+ * bear's own column and every column out to this one is floe footing — which is
+ * what makes the whole measurement one footing rather than two.
+ */
+const MEASURED_COLS = 2 * ITEM_LEN.raft4 - 2;
 
 /** The level the figure is stated at. */
 const LEVEL = 1;
@@ -68,6 +69,19 @@ it("travels at the ice speed over a water row a raft covers", async () => {
     sense: false,
     routing: false,
   });
+
+  // The scenario this check needs, read off the game itself: every tile the run
+  // is measured over really is covered by a floe, so the footing under the whole
+  // measurement is the one the rule calls ice.
+  const rafts = itemsInRow(h.snapshot().floes, WATER_ROW);
+  for (let col = FROM_COL; col <= FROM_COL + MEASURED_COLS; col += 1) {
+    assertEqual(
+      rafts.some((raft) => coversTile(raft, col)),
+      true,
+      `a floe over water tile (${col}, ${WATER_ROW}), which is what makes it ` +
+        `ice footing (specs/hunter.md)`,
+    );
+  }
 
   const covered = await captureReplay(h, "swim", () =>
     travelOverTicks(h, id, "right", MEASURE_TICKS),

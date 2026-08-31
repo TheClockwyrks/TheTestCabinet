@@ -23,15 +23,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { ITEM_LEN, ROW_MEDIAN } from "../../src/constants";
 import { assertEqual } from "../assert";
-import {
-  bearOf,
-  captureReplay,
-  createHarness,
-  poseBear,
-  poseLane,
-  startCrossing,
-  type Harness,
-} from "../harness";
+import { bearOf, captureReplay, coversTile, createHarness, itemsInRow, poseBear, poseLane, startCrossing, type Harness } from "../harness";
 
 /** The water row the raft is laid on, and the column its left edge sits on. */
 const WATER_ROW = 6;
@@ -62,6 +54,23 @@ it("reports swimming over open water and ice footing everywhere else", async () 
   const ice = poseBear(h, ON_ICE.col, ON_ICE.row, settled);
   const median = poseBear(h, ON_MEDIAN.col, ON_MEDIAN.row, settled);
   const raft = poseBear(h, ON_RAFT.col, ON_RAFT.row, settled);
+
+  // The scenario this check needs, read off the game itself: the fourth bear's
+  // tile really is covered by the raft and the first bear's really is not. The two
+  // readings that separate the band from the covering are the whole of this item,
+  // and neither means anything if the raft is somewhere else.
+  const rafts = itemsInRow(h.snapshot().floes, WATER_ROW);
+  assertEqual(
+    rafts.some((item) => coversTile(item, ON_RAFT.col)),
+    true,
+    `a floe over water tile (${ON_RAFT.col}, ${WATER_ROW})`,
+  );
+  assertEqual(
+    rafts.some((item) => coversTile(item, OPEN_WATER.col)),
+    false,
+    `a floe over water tile (${OPEN_WATER.col}, ${WATER_ROW}), which is read ` +
+      `as open water`,
+  );
 
   const after = await captureReplay(h, "swim", async () => {
     await h.advance(1);

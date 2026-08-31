@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ROW_NEAR } from "../../src/constants";
-import { assertLength } from "../assert";
+import { assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -71,17 +71,28 @@ it("moves the bear along one axis on every tick of a pursuit", async () => {
   );
 
   const diagonal: string[] = [];
+  let moved = 0;
   for (let k = 1; k < samples.length; k += 1) {
     const before = samples[k - 1].bears.find((entry) => entry.id === id);
     const after = samples[k].bears.find((entry) => entry.id === id);
     if (before === undefined || after === undefined) continue;
-    if (axisMoved(before, after, MOVE_EPSILON) === "both") {
+    const axis = axisMoved(before, after, MOVE_EPSILON);
+    if (axis === "x" || axis === "y") moved += 1;
+    if (axis === "both") {
       diagonal.push(
         `tick ${k}: (${before.x}, ${before.y}) to (${after.x}, ${after.y})`,
       );
     }
   }
 
+  // The property below is one a bear that never moved would satisfy without
+  // travelling at all, so the scenario is confirmed first: the pursuit really did
+  // carry the bear somewhere.
+  assertGreaterThanOrEqual(
+    moved,
+    1,
+    `ticks of ${PURSUIT_SECONDS} s of pursuit that moved the bear at all`,
+  );
   assertLength(
     diagonal,
     0,

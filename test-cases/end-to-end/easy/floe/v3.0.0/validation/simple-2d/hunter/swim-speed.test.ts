@@ -16,15 +16,8 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TILE, bearSwimSpeed } from "../../src/constants";
-import { assertBetween } from "../assert";
-import {
-  captureReplay,
-  createHarness,
-  poseBear,
-  speedOverTicks,
-  startCrossing,
-  type Harness,
-} from "../harness";
+import { assertBetween, assertLength } from "../assert";
+import { captureReplay, createHarness, itemsInRow, poseBear, speedOverTicks, startCrossing, type Harness } from "../harness";
 import { travelOverTicks } from "./harness";
 
 /** A row of the water band, and where the run starts on it. */
@@ -64,6 +57,16 @@ it("covers BEAR_SWIM_SPEED tiles of game time a second over open water", async (
     sense: false,
     routing: false,
   });
+
+  // The scenario this check needs, read off the game itself: the row really is
+  // open water. A floe anywhere on it would make the tiles it covers ice footing,
+  // and the rate measured would be a mixture of the two speeds rather than this
+  // one.
+  assertLength(
+    itemsInRow(h.snapshot().floes, WATER_ROW),
+    0,
+    `floes on water row ${WATER_ROW}, which is measured as open water`,
+  );
 
   const covered = await captureReplay(h, "swim", () =>
     travelOverTicks(h, id, "right", MEASURE_TICKS),

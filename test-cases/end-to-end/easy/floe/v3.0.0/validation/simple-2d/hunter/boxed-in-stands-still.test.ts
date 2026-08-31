@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { tileCX, tileCY } from "../../src/constants";
-import { assertDeepEqual, assertLessThanOrEqual } from "../assert";
+import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   bearOf,
   captureReplay,
@@ -31,7 +31,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { bearStepTile, bearTile } from "./harness";
+import { bearStepTile, bearTile, vehicleCoversTile } from "./harness";
 
 /** The bear's tile, and the tile it is hunting beyond the ring. */
 const BEAR_COL = 20;
@@ -79,6 +79,30 @@ it("takes no step and holds its centre when every neighbour is closed", async ()
   poseLane(h, BEAR_ROW + 1, "dogsled", [BELOW_DOGSLED_COL]);
   const id = poseBear(h, BEAR_COL, BEAR_ROW, { sense: false });
   h.debug.setBearTarget(id, TARGET.col, TARGET.row);
+
+  // The scenario this check needs, read off the game itself: all four neighbours
+  // covered and the bear's own tile clear. A bear that held still on a strait the
+  // vehicles never reached would be holding still for no reason the rule gives.
+  const posed = h.snapshot();
+  for (const [name, tile] of [
+    ["above", { col: BEAR_COL, row: BEAR_ROW - 1 }],
+    ["below", { col: BEAR_COL, row: BEAR_ROW + 1 }],
+    ["left", { col: BEAR_COL - 1, row: BEAR_ROW }],
+    ["right", { col: BEAR_COL + 1, row: BEAR_ROW }],
+  ] as const) {
+    assertEqual(
+      vehicleCoversTile(posed, tile.col, tile.row),
+      true,
+      `a vehicle over the neighbour ${name} of the bear ` +
+        `(${tile.col}, ${tile.row}), which is what closes it (specs/hunter.md)`,
+    );
+  }
+  assertEqual(
+    vehicleCoversTile(posed, BEAR_COL, BEAR_ROW),
+    false,
+    `a vehicle over the bear's own tile (${BEAR_COL}, ${BEAR_ROW}), which the ` +
+      `ring leaves clear`,
+  );
 
   const after = await captureReplay(h, "route", async () => {
     await h.advance(ticksFor(HOLD_SECONDS));

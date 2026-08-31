@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BAYS, WATER_TOP } from "../../src/constants";
-import { assertLength } from "../assert";
+import { assertEqual, assertLength } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -60,11 +60,34 @@ it("leaves the roster empty on the hop that ends a crossing in a bay", async () 
   poseLane(h, WATER_TOP, "raft3", [RAFT_COL]);
   h.debug.setCritterTile(LAUNCH_COL, WATER_TOP);
 
+  // The scenario this check needs: BOTH bears really on the strait, because what
+  // the rule says is "every bear"; and the bay the hop is aimed at really open,
+  // because a hop into a filled bay ends no crossing (specs/bays.md).
+  const posed = h.snapshot();
+  assertLength(
+    posed.bears,
+    BEARS.length,
+    "the bears posed on the strait before the crossing is completed",
+  );
+  assertEqual(
+    posed.bays[BAY_INDEX],
+    false,
+    `bay ${BAY_INDEX}, which the hop below is aimed into`,
+  );
+
   const after = await captureReplay(h, "reset", async () => {
     await hop(h, "up");
     return h.snapshot();
   });
 
+  // The hop really did complete the crossing, so what emptied the roster is the
+  // event the rule names rather than anything else.
+  assertEqual(
+    after.bays[BAY_INDEX],
+    true,
+    `bay ${BAY_INDEX} after the hop up from (${LAUNCH_COL}, ${WATER_TOP}), ` +
+      `which is what a completed crossing fills (specs/bays.md)`,
+  );
   assertLength(
     after.bears,
     0,
