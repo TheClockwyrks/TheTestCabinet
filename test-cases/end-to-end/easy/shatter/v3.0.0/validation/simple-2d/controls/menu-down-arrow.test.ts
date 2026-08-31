@@ -3,9 +3,9 @@
 //
 // THE RULE. `specs/controls.md` binds `ArrowDown` to the `down` action, whose menu
 // column reads "Move the selection down" and whose playing column is empty — so
-// `down` does one thing in the whole game and this is it. The move is a press edge,
-// and "the up and down inputs move the highlight by one entry and wrap at both
-// ends". `specs/instrumentation.md` reports the highlight as `menuIndex`, "the
+// `down` does one thing in the whole game and this is it. What a move is, is fixed:
+// "the up and down inputs move the highlight by one entry and wrap at both ends".
+// `specs/instrumentation.md` reports the highlight as `menuIndex`, "the
 // highlighted entry, from 0", so a move down is that number rising by one.
 //
 // WHY THE PAUSE MENU, AND WHY FROM THE FIRST ENTRY. Three entries is what it takes
@@ -26,6 +26,15 @@
 // two frames and a build that latched it answers in the second — and because the
 // key is up before the second frame runs, a build reading the HELD value instead of
 // the edge still moves the highlight only one entry.
+//
+// WHAT THE SPECIFICATION LEAVES OPEN, AND THIS ITEM THEREFORE DOES NOT DECIDE.
+// `specs/controls.md`'s "Holds and presses" section classifies rotation, thrust and
+// firing, and calls confirming, leaving a screen, pausing and muting press edges
+// "once per press" — but it says nothing about the two MENU MOVES, so whether a
+// HELD up or down key repeats is unstated. Nothing here demands either reading: the
+// key is down for exactly one frame, so a build that answers the armed edge and a
+// build that answers the held value both move the highlight by the one entry the
+// specification does fix.
 //
 // WHAT THIS ITEM DOES NOT DECIDE. That the highlight WRAPS, or that it never leaves
 // the menu's entries — `screens/menu-selection-stays-in-range`. Nor that the

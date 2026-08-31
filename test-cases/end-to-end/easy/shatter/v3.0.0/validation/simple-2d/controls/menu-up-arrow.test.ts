@@ -1,10 +1,10 @@
 // controls/menu-up-arrow — `ArrowUp` pressed on a menu lowers `menuIndex` by one.
 //
 // THE RULE. `specs/controls.md` binds `ArrowUp` to the `up` action, whose menu
-// column reads "Move the selection up", reads the move as a press edge, and fixes
-// what a move is: "the up and down inputs move the highlight by one entry and wrap
-// at both ends". `specs/instrumentation.md` reports the highlight as `menuIndex`,
-// "the highlighted entry, from 0", so a move up is that number falling by one.
+// column reads "Move the selection up", and fixes what a move is: "the up and down
+// inputs move the highlight by one entry and wrap at both ends".
+// `specs/instrumentation.md` reports the highlight as `menuIndex`, "the
+// highlighted entry, from 0", so a move up is that number falling by one.
 //
 // `ArrowUp` CARRIES A SECOND MEANING, AND THIS IS THE MENU ONE. The same key
 // thrusts while the game is being played (`controls/thrust-up`) through the very
@@ -32,6 +32,15 @@
 // two frames and a build that latched it answers in the second — and because the
 // key is up before the second frame runs, a build reading the HELD value instead of
 // the edge still moves the highlight only one entry.
+//
+// WHAT THE SPECIFICATION LEAVES OPEN, AND THIS ITEM THEREFORE DOES NOT DECIDE.
+// `specs/controls.md`'s "Holds and presses" section classifies rotation, thrust and
+// firing, and calls confirming, leaving a screen, pausing and muting press edges
+// "once per press" — but it says nothing about the two MENU MOVES, so whether a
+// HELD up or down key repeats is unstated. Nothing here demands either reading: the
+// key is down for exactly one frame, so a build that answers the armed edge and a
+// build that answers the held value both move the highlight by the one entry the
+// specification does fix.
 //
 // WHAT THIS ITEM DOES NOT DECIDE. That the highlight WRAPS, or that it never leaves
 // the menu's entries — `screens/menu-selection-stays-in-range`. Nor that the

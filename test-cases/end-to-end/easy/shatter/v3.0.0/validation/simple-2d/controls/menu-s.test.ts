@@ -3,7 +3,7 @@
 // THE RULE. `specs/controls.md`'s binding table gives the `down` action two keys,
 // `ArrowDown` and `KeyS`, and `down`'s menu column reads "Move the selection down"
 // while its playing column is empty — so `KeyS` does one thing in the whole game
-// and this is it. The move is a press edge, and "the up and down inputs move the
+// and this is it. What a move is, is fixed: "the up and down inputs move the
 // highlight by one entry and wrap at both ends". `specs/instrumentation.md` reports
 // the highlight as `menuIndex`, "the highlighted entry, from 0", so a move down
 // is that number rising by one.
@@ -28,6 +28,15 @@
 // `KeyS` the PHYSICAL key rather than the character a layout happens to put there.
 // A press is "news for exactly one frame", so an edge-reading build answers in the
 // first frame and a latching build in the second, and both are read.
+//
+// WHAT THE SPECIFICATION LEAVES OPEN, AND THIS ITEM THEREFORE DOES NOT DECIDE.
+// `specs/controls.md`'s "Holds and presses" section classifies rotation, thrust and
+// firing, and calls confirming, leaving a screen, pausing and muting press edges
+// "once per press" — but it says nothing about the two MENU MOVES, so whether a
+// HELD up or down key repeats is unstated. Nothing here demands either reading: the
+// key is down for exactly one frame, so a build that answers the armed edge and a
+// build that answers the held value both move the highlight by the one entry the
+// specification does fix.
 //
 // WHAT THIS ITEM DOES NOT DECIDE. That the highlight WRAPS, or that it never leaves
 // the menu's entries — `screens/menu-selection-stays-in-range`. Nor that the
