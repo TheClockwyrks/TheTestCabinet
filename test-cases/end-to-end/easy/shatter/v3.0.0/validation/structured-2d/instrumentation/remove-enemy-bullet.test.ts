@@ -1,20 +1,101 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// instrumentation/remove-enemy-bullet — `removeEnemyBullet(id)` removes exactly the saucer bullet it
+// names.
 //
-// instrumentation/remove-enemy-bullet — removeEnemyBullet removes one enemy bullet by id
+// THE RULE. `specs/instrumentation.md`, The bullets: "`removeEnemyBullet(id)`
+// Removes the saucer bullet with that id." —
+// one entity, addressed by the id `snapshot` reports for it, and no other.
 //
-// Of three posed enemy bullets, removeEnemyBullet(id) removes exactly the one
-// named and leaves the other two carrying their ids.
+// THE ONE ADDRESSED IS THE MIDDLE OF THREE. A roster of one cannot tell "removes
+// the one named" from "removes the first", "removes the last", or "empties the
+// roster", and every one of those is a way a build gets this wrong. With three
+// posed and the middle one addressed, each wrong model leaves a different roster
+// behind, so the failure names which one the build implemented.
 //
-// Declared by test-case.toml as validation.script "instrumentation/remove-
-// enemy-bullet.test.ts", so the manifest resolves only while this file exists.
-// The Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the structured-2d harness in
-// validation/structured-2d/harness.ts and the spec-derived oracle in
-// validation/structured-2d/geometry.ts — never against a reference build.
+// THE SURVIVORS ARE HELD WHOLE. Not merely present: the same ids at the same
+// places with the same velocities, so a build that rebuilt its roster and handed
+// out fresh ids fails here rather than downstream, where every per-id scenario
+// in this suite would silently address the wrong body.
 //
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// AND THE OTHER ROSTERS ARE HELD TOO. The saucer's rounds and the ship's are separate rosters
+// carrying entries of the same shape (`specs/state.md`), and the ids are
+// distinct across every live entity (`specs/instrumentation.md`, Identity) —
+// so a build that searches every roster for the id it was handed is caught by
+// the ship's rounds still standing whole.
+//
+// THE READING IS TAKEN AT THE CALL, with no frame between the pose, the removal
+// and the reading: a pose acts on the live game the moment it is made
+// (`specs/instrumentation.md`), so what is compared is the operation's own
+// effect and not a tick of the game's rules laid over it.
 
-throw new Error(
-  "Shatter v3.0.0: validation/structured-2d/instrumentation/remove-enemy-bullet.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  enemyBulletById,
+  type Harness,
+} from "../harness";
+import { posePopulatedField } from "./scene";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("removes the saucer bullet it names and leaves the other two carrying their ids", async () => {
+  posePopulatedField(h);
+  const before = h.snapshot();
+  assertLength(before.enemyBullets, 3, "the posed field carries three");
+
+  // The middle of the three, so no wrong model passes by coincidence.
+  const addressed = before.enemyBullets[1];
+  const survivors = before.enemyBullets.filter(
+    (entry) => entry.id !== addressed.id,
+  );
+
+  h.debug.removeEnemyBullet(addressed.id);
+  const after = h.snapshot();
+
+  assertLength(
+    after.enemyBullets,
+    survivors.length,
+    "one entry removed, no more",
+  );
+  assertEqual(
+    enemyBulletById(after, addressed.id),
+    undefined,
+    "the saucer bullet the id named is gone",
+  );
+  for (const survivor of survivors) {
+    assertDeepEqual(
+      enemyBulletById(after, survivor.id),
+      survivor,
+      `the saucer bullet ${survivor.id} outlives the one addressed, unchanged`,
+    );
+  }
+
+  assertDeepEqual(
+    after.rocks,
+    before.rocks,
+    "the rocks are left standing, unchanged",
+  );
+  assertDeepEqual(
+    after.bullets,
+    before.bullets,
+    "the ship's bullets are left standing, unchanged",
+  );
+  assertDeepEqual(
+    after.saucer,
+    before.saucer,
+    "the saucer is left standing, unchanged",
+  );
+
+  // The two that outlived the one addressed.
+  await h.advance(1);
+  captureStill(h, "removed");
+});
