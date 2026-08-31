@@ -42,11 +42,20 @@ it("reports the title screen as the screen it initialized on", async () => {
   // empty canvas. It cannot reach the reading above.
   await h.advance(1);
   captureStill(h, "title");
+  const drawn = h.snapshot().screen;
 
   assertEqual(
     opened,
     "title",
     "the screen a freshly initialized build reports, before anything has " +
       "posed one (specs/screens.md: the game opens on title)",
+  );
+  assertEqual(
+    drawn,
+    "title",
+    "the screen after one frame of a game nothing has touched, which is the " +
+      "screen the player is actually looking at — a build that reported " +
+      "title and then left it on its own first frame has not opened on the " +
+      "title screen (specs/screens.md)",
   );
 });

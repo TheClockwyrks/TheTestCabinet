@@ -21,12 +21,23 @@
 // fourteen points decide the geometry to their own figures. Hence the deliberately
 // coarse tolerance below, which is far looser than any of those points allows.
 //
+// AND THE BOX IS READ AS A CARD, NOT MERELY AS A BOX. An EMPTY slot's mark is
+// card-sized too (specs/table.md), so a build that drew thirteen empty slots and no
+// cards at all would satisfy the boxes above while showing the player an empty
+// table. Each anchor is therefore also read in PIXELS across the pose: the bare
+// table is drawn and sampled first, the card is posed and the anchor sampled again,
+// and the two readings must differ. What changed there is the card the pile took.
+//
 // WHAT THIS DOES NOT DECIDE. What is drawn ON a card — its rank, its suit, its
 // back — which is the `presentation` group's, nor where a column's further cards
 // fan to, which is `table/face-up-offset` and its neighbours.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNotNull } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertNotNull,
+} from "../assert";
 import {
   boxAt,
   cardBoxes,
@@ -41,6 +52,12 @@ import {
   type Harness,
   type PileKind,
 } from "../harness";
+import {
+  CARD_COLS,
+  CARD_ROWS,
+  cardSamples,
+  differingCells,
+} from "../presentation/reading";
 
 /**
  * How far a drawn box may sit from a pile's anchor, and from the card footprint,
@@ -56,6 +73,28 @@ import {
  * tolerances are their own and are far tighter than this.
  */
 const NEAR_ANCHOR = 10;
+
+/**
+ * How far two samples of the same point must sit apart, out of 441, to count as
+ * painted differently rather than as the same colour read twice.
+ *
+ * Matched to the `presentation` group's own ink threshold. It is far above the
+ * rounding a build's own anti-aliasing costs, and far below the distance between
+ * any two colours a build would pick for felt, a slot mark and a card face.
+ */
+const INK = 24;
+
+/**
+ * How many of the `CARD_COLS x CARD_ROWS` points sampled over an anchor must have
+ * changed when the pile took its card.
+ *
+ * A card covers the whole footprint, so a compliant build repaints nearly every
+ * one of the 2240 points; a build that drew only the empty slot's mark repaints
+ * none of them. Sixty is a floor low enough that a build whose card face happens
+ * to be near its slot colour still clears it on the rank and suit alone, and high
+ * enough that no seam or hairline reaches it.
+ */
+const MIN_CHANGED = 60;
 
 /** The thirteen piles, and the card posed on each. */
 const PILES: readonly {
@@ -91,6 +130,16 @@ afterEach(() => {
 
 it("draws a card at each of the thirteen piles' anchors", async () => {
   openTable(h);
+
+  // The bare table, sampled at every anchor before a card is posed on any of them.
+  // Whatever a build draws for an empty pile is in these readings, so the pixels
+  // that change below are the CARD and cannot be the slot.
+  await drawFrame(h);
+  const bare = PILES.map((at) => {
+    const anchor = pileTopLeft(at.pile, at.index);
+    return cardSamples(h, anchor.x, anchor.y);
+  });
+
   for (const at of PILES) {
     if (at.pile === "waste") poseWaste(h, [at.card], [1]);
     else posePile(h, at.pile, at.index, [at.card]);
@@ -106,7 +155,7 @@ it("draws a card at each of the thirteen piles' anchors", async () => {
   captureStill(h, "table");
 
   const boxes = cardBoxes(drawnBoxes(h, calls), NEAR_ANCHOR);
-  for (const at of PILES) {
+  PILES.forEach((at, index) => {
     const anchor = pileTopLeft(at.pile, at.index);
     assertNotNull(
       boxAt(boxes, anchor.x, anchor.y, NEAR_ANCHOR),
@@ -114,5 +163,15 @@ it("draws a card at each of the thirteen piles' anchors", async () => {
         `anchor (${anchor.x}, ${anchor.y}), so the pile is drawn at all ` +
         "(specs/screens.md, specs/table.md)",
     );
-  }
+    assertGreaterThanOrEqual(
+      differingCells(bare[index], cardSamples(h, anchor.x, anchor.y), INK)
+        .length,
+      MIN_CHANGED,
+      `points of ${at.what}'s footprint at (${anchor.x}, ${anchor.y}) that ` +
+        `changed when it took the ${at.card}, of the ` +
+        `${String(CARD_COLS * CARD_ROWS)} sampled — so what is drawn there is ` +
+        "the card and not the empty slot that was there before " +
+        "(specs/screens.md, specs/table.md)",
+    );
+  });
 });

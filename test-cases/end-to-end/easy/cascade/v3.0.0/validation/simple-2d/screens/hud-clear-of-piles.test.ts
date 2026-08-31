@@ -42,7 +42,7 @@ import {
   STAGE_W,
   type Rect,
 } from "../../src/constants";
-import { assertEqual, assertLength } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   cardBoxes,
   captureStill,
@@ -144,7 +144,17 @@ it("keeps every card out of the strip its three controls sit in", async () => {
   const calls = await drawFrame(h);
   captureStill(h, "strip");
 
-  const intruders = cardBoxes(drawnBoxes(h, calls), CARD_LIKE).filter(
+  const drawn = cardBoxes(drawnBoxes(h, calls), CARD_LIKE);
+  assertGreaterThanOrEqual(
+    drawn.length,
+    LONG_COLUMN.length,
+    "card-sized boxes the frame drew, one at least for each card of the " +
+      "posed column — so the reading below is taken off a table that was " +
+      "DRAWN, rather than passing because the build drew nothing at all " +
+      "(specs/screens.md)",
+  );
+
+  const intruders = drawn.filter(
     (box) =>
       box.y + box.h > STRIP.y &&
       box.y < STRIP.y + STRIP.h &&
