@@ -563,6 +563,14 @@ failure_cap = "passable"
 validation = { script = "instrumentation/frame-off-playing-keeps-accumulator-zero.test.ts", outputs = [ { id = "paused", name = "A paused frame with no remainder", kind = "image" } ] }
 
 [[review.categories.items]]
+id = "step-runs-n-frames"
+title = "step runs every frame it is asked for"
+description = "In an engineless build, step(5) on playing with pendingLevelUps posed to 1 runs one tick that opens the level-up overlay and then four frames on levelup, so run.tick rises by 1 and simTime by 5 × TICK_DT; under an engine five frames of a scripted clock are five frames by construction."
+domains = ["survival", "progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/step-runs-n-frames.test.ts", outputs = [ { id = "five", name = "Five frames across an overlay", kind = "image" } ] }
+
+[[review.categories.items]]
 id = "set-tick"
 title = "setTick poses the run clock"
 description = "setTick(4500) on playing sets tick to 4500, the snapshot reads time 75 and spawnWindow 2, and the next tick is 4501."
@@ -1261,7 +1269,7 @@ validation = { script = "instrumentation/clear-pickups.test.ts", outputs = [ { i
 [[review.categories.items]]
 id = "invalid-argument-throws"
 title = "An argument outside its domain throws"
-description = "setTick(36000), setTick(-1), setLevel(0), setXp(-1), setKills(1.5), setSpawnTimer(-1), setFacing('up'), spawnEnemy('ghost', 0, 0), setWeapon(0, 'taper', 9), setWeapon(0, 'pyre', 2), setPassive(0, 'brass', 4), and spawnGem('huge', 0, 0) each throw and leave the state exactly as it was, and no operation rounds or clamps an argument into range."
+description = "setTick(36000), setTick(-1), setLevel(0), setXp(-1), setKills(1.5), setSpawnTimer(-1), setFacing('up'), spawnEnemy('ghost', 0, 0), setWeapon(0, 'taper', 9), setWeapon(0, 'pyre', 2), setPassive(0, 'brass', 4), spawnGem('huge', 0, 0), setWeapon(3, 'pin', 1) with one weapon held, setWeaponCooldown(3, 0) and removeWeapon(3) on an empty slot, removePassive(0) with no passive held, setGemAttracted on an id that names no gem, spawnPickup('coin', 0, 0), spawnProjectile('taper', 0, 0, 1, 0, 0), spawnPuddle('halo', 0, 0), and, in an engineless build, step(0) and advance(0), each throw and leave the state exactly as it was, and no operation rounds or clamps an argument into range."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/invalid-argument-throws.test.ts", outputs = [ { id = "refused", name = "The state untouched by every refused call", kind = "image" } ] }
@@ -1442,6 +1450,22 @@ description = "On a tick the lamplighter moves 3 units right and Taper fires, th
 domains = ["arsenal"]
 failure_cap = "passable"
 validation = { script = "clock/fire-at-this-ticks-position.test.ts", outputs = [ { id = "moved", name = "The slash fired from the moved position", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "aim-at-this-ticks-enemy-position"
+title = "A weapon aims at the enemies' positions of this tick"
+description = "On a tick a moth moves and Ember fires, the bolt's velocity points at the moth's center after its move on that tick rather than the center the tick began at."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "clock/aim-at-this-ticks-enemy-position.test.ts", outputs = [ { id = "aimed", name = "The bolt aimed at the moved moth", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "dead-enemy-no-contact"
+title = "An enemy killed on a tick lands no hit on that tick"
+description = "A moth overlapping the lamplighter with its contact cooldown due that a posed bolt kills on the same tick leaves hp untouched, because hits and deaths resolve before contact."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "clock/dead-enemy-no-contact.test.ts", outputs = [ { id = "nohit", name = "The kill resolved before the hit", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "recovery-before-contact"
@@ -1630,20 +1654,14 @@ validation = { script = "lamplighter/ground-fixed-in-world.test.ts", outputs = [
 
 # --- Controls -----------------------------------------------------------------
 # The eight actions and their keys as the screens read them. The movement
-# keys are decided under The Lamplighter; here are the menu and screen
-# actions, each key its own point, the edge rules, and the rule that a screen
-# reads only the actions its row lists.
+# keys are decided under The Lamplighter and each screen's transitions under
+# Screens; here are the second key of each doubled action, the mute key, the
+# held-value and press-edge rules, and the rule that a screen reads only the
+# actions its row lists.
 [[review.categories]]
 id = "controls"
 title = "Controls"
 
-[[review.categories.items]]
-id = "enter-confirms"
-title = "Enter accepts the highlighted menu entry"
-description = "Pressing Enter on title with LIGHT THE LAMP highlighted starts a fresh run on playing."
-domains = ["survival"]
-failure_cap = "scuffed"
-validation = { script = "controls/enter-confirms.test.ts", outputs = [ { id = "enter", name = "Enter confirming the title menu", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "space-confirms"
@@ -1653,21 +1671,7 @@ domains = ["survival"]
 failure_cap = "great"
 validation = { script = "controls/space-confirms.test.ts", outputs = [ { id = "space", name = "Space confirming the title menu", kind = "image" } ] }
 
-[[review.categories.items]]
-id = "arrow-down-moves-highlight"
-title = "ArrowDown moves a menu highlight down"
-description = "Pressing ArrowDown on title with menuIndex 0 moves menuIndex to 1."
-domains = ["survival"]
-failure_cap = "scuffed"
-validation = { script = "controls/arrow-down-moves-highlight.test.ts", outputs = [ { id = "down", name = "ArrowDown on the title menu", kind = "image" } ] }
 
-[[review.categories.items]]
-id = "arrow-up-moves-highlight"
-title = "ArrowUp moves a menu highlight up"
-description = "Pressing ArrowUp on title with menuIndex 1 moves menuIndex to 0."
-domains = ["survival"]
-failure_cap = "scuffed"
-validation = { script = "controls/arrow-up-moves-highlight.test.ts", outputs = [ { id = "up", name = "ArrowUp on the title menu", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "key-s-moves-highlight"
@@ -1685,37 +1689,16 @@ domains = ["survival"]
 failure_cap = "great"
 validation = { script = "controls/key-w-moves-highlight.test.ts", outputs = [ { id = "w", name = "KeyW on the title menu", kind = "image" } ] }
 
-[[review.categories.items]]
-id = "escape-is-back"
-title = "Escape is the back action"
-description = "Pressing Escape on howto returns to title, and pressing it on paused abandons the run and returns to title."
-domains = ["survival"]
-failure_cap = "scuffed"
-validation = { script = "controls/escape-is-back.test.ts", outputs = [ { id = "escape", name = "Escape leaving the how-to screen", kind = "image" } ] }
 
-[[review.categories.items]]
-id = "key-p-pauses"
-title = "KeyP pauses a live run"
-description = "Pressing KeyP on playing enters paused with menuIndex 0."
-domains = ["survival"]
-failure_cap = "scuffed"
-validation = { script = "controls/key-p-pauses.test.ts", outputs = [ { id = "paused", name = "KeyP pausing the run", kind = "image" } ] }
 
-[[review.categories.items]]
-id = "key-p-resumes"
-title = "KeyP resumes from the pause screen"
-description = "Pressing KeyP on paused returns to playing with the run untouched."
-domains = ["survival"]
-failure_cap = "scuffed"
-validation = { script = "controls/key-p-resumes.test.ts", outputs = [ { id = "resumed", name = "KeyP resuming the run", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "key-m-mutes"
-title = "KeyM toggles mute"
-description = "Pressing KeyM flips muted in the next snapshot, and pressing it again flips it back."
+title = "KeyM toggles mute back off"
+description = "After KeyM has set muted true, pressing KeyM again reads muted false in the next snapshot."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "controls/key-m-mutes.test.ts", outputs = [ { id = "muted", name = "The mute bit flipped by KeyM", kind = "image" } ] }
+validation = { script = "controls/key-m-mutes.test.ts", outputs = [ { id = "unmuted", name = "The mute bit flipped back by KeyM", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "edge-once-per-press"
@@ -1750,9 +1733,33 @@ failure_cap = "passable"
 validation = { script = "controls/held-keys-inert-off-playing.test.ts", outputs = [ { id = "held", name = "The lamplighter unmoved off playing", kind = "image" } ] }
 
 [[review.categories.items]]
+id = "held-values-apply-to-every-tick"
+title = "A frame's held values apply to every tick it consumes"
+description = "One frame worth 0.05 s with ArrowRight held (advance(0.05) under none, a 50 ms clock under an engine) moves the lamplighter 9 units, 3 on each of the three ticks the frame consumes."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "controls/held-values-apply-to-every-tick.test.ts", outputs = [ { id = "frame", name = "Three ticks under one held frame", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "bindings-by-code"
+title = "A binding matches the physical key"
+description = "A keydown whose code is KeyW and whose key is a character other than w moves the lamplighter up on playing, because BINDINGS match KeyboardEvent.code."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "controls/bindings-by-code.test.ts", outputs = [ { id = "code", name = "The physical key read", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "held-until-every-key-released"
+title = "An action stays held while any of its keys is down"
+description = "With ArrowUp and KeyW both held on playing, releasing KeyW leaves the lamplighter moving up, and it stops only once ArrowUp is released as well."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "controls/held-until-every-key-released.test.ts", outputs = [ { id = "held", name = "The action held by its second key", kind = "replay" } ] }
+
+[[review.categories.items]]
 id = "omitted-action-inert"
 title = "An action a screen omits does nothing there"
-description = "KeyP on title, Enter on howto, Escape on title, and ArrowDown on chest each leave the screen and menuIndex exactly as they were, because the screen table of specs/controls.md omits them."
+description = "KeyP on title and Enter on howto each leave the screen and menuIndex exactly as they were, because the screen table of specs/controls.md omits them."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "controls/omitted-action-inert.test.ts", outputs = [ { id = "inert", name = "The screens untouched by omitted actions", kind = "image" } ] }
@@ -2057,6 +2064,14 @@ failure_cap = "passable"
 validation = { script = "weapons/finite-pierce-ascending-id.test.ts", outputs = [ { id = "order", name = "The hits taken in id order", kind = "image" } ] }
 
 [[review.categories.items]]
+id = "rehit-timed-per-projectile"
+title = "A re-hit interval is timed per projectile"
+description = "Two posed shards with zero velocity overlapping one hound each hit it on the next tick, so the hound loses both shards' damage on that tick and again 30 ticks later."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "weapons/rehit-timed-per-projectile.test.ts", outputs = [ { id = "two", name = "Two shards on one hound", kind = "replay" } ] }
+
+[[review.categories.items]]
 id = "circle-overlap-strict"
 title = "Two circles overlap only when closer than their radii's sum"
 description = "A posed ember of radius 8 with zero velocity whose center is exactly 18 units from a moth of radius 10 never hits it, and one at 17.9 hits on the next tick."
@@ -2067,7 +2082,7 @@ validation = { script = "weapons/circle-overlap-strict.test.ts", outputs = [ { i
 [[review.categories.items]]
 id = "zone-fields-by-kind"
 title = "Each zone reports the fields its kind fixes"
-description = "Every zone's x and y is its center; a slash carries width and height with radius 0; a strike's radius is its area; a burst's radius is its Flare radius; and a Chandelier lantern's ttl is null while every other zone's ttl counts down."
+description = "Every zone's x and y is its center; a slash carries width and height with radius 0; a strike's radius is its area; a burst's radius is its Flare radius; and an aura's and a Chandelier lantern's ttl is null while every other zone's ttl counts down."
 domains = ["arsenal"]
 failure_cap = "passable"
 validation = { script = "weapons/zone-fields-by-kind.test.ts", outputs = [ { id = "zones", name = "One zone of each kind", kind = "image" } ] }
@@ -2735,6 +2750,14 @@ failure_cap = "scuffed"
 validation = { script = "oil-splash/pulse-interval.test.ts", outputs = [ { id = "pulses", name = "The puddle's pulse schedule", kind = "replay" } ] }
 
 [[review.categories.items]]
+id = "puddle-duration"
+title = "A puddle vanishes when its duration is due"
+description = "A level-1 puddle reads ttl 2.5 on its firing tick, is present on the 149th tick after it, and is gone on the 150th, round(2.5 × 60)."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "oil-splash/puddle-duration.test.ts", outputs = [ { id = "vanished", name = "The puddle vanishing on its due tick", kind = "replay" } ] }
+
+[[review.categories.items]]
 id = "fires-alone"
 title = "Oil Splash fires with no enemy alive"
 description = "With no enemy alive, Oil Splash's due tick creates its puddles."
@@ -2821,6 +2844,14 @@ description = "With one moth at distance 599 and one at 601, the strike lands on
 domains = ["arsenal"]
 failure_cap = "scuffed"
 validation = { script = "spark/targets-within-range.test.ts", outputs = [ { id = "range", name = "The strike inside the range", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "range-boundary-inclusive"
+title = "An enemy at exactly SPARK_RANGE is in range"
+description = "With the only moth exactly 600 units from the lamplighter's center, the strike lands on it, because an enemy is within the range when its center is at most 600 away."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "spark/range-boundary-inclusive.test.ts", outputs = [ { id = "boundary", name = "The strike at the range boundary", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "distinct-targets"
@@ -3650,9 +3681,10 @@ validation = { script = "evolutions/blaze-fires-alone.test.ts", outputs = [ { id
 
 # --- Passives -----------------------------------------------------------------
 # The ten derived stats and the one place each passive acts: each formula
-# read through the behavior it drives, each length Glass scales, each weapon
-# Mirror is ignored by or capped for, the four multipliers on an evolved row,
-# and the figures every passive leaves as written.
+# read through the behavior it drives, each length Glass scales, Mirror's
+# bonus on every amount (the weapons that ignore or cap it are decided under
+# their own categories), the four multipliers on an evolved row, and the
+# figures every passive leaves as written.
 [[review.categories]]
 id = "passives"
 title = "Passives"
@@ -3801,45 +3833,10 @@ domains = ["arsenal"]
 failure_cap = "scuffed"
 validation = { script = "passives/mirror-adds-to-amount.test.ts", outputs = [ { id = "amount", name = "The amounts raised by Mirror", kind = "image" } ] }
 
-[[review.categories.items]]
-id = "mirror-ignored-by-halo"
-title = "Halo ignores Mirror"
-description = "With Halo and Mirror 2 held, exactly one aura exists and its pulse removes the row's damage once."
-domains = ["arsenal"]
-failure_cap = "passable"
-validation = { script = "passives/mirror-ignored-by-halo.test.ts", outputs = [ { id = "halo", name = "One aura under Mirror", kind = "image" } ] }
 
-[[review.categories.items]]
-id = "mirror-ignored-by-corona"
-title = "Corona ignores Mirror"
-description = "With Corona and Mirror 2 held, exactly one aura exists and its pulse removes 12 once."
-domains = ["arsenal"]
-failure_cap = "passable"
-validation = { script = "passives/mirror-ignored-by-corona.test.ts", outputs = [ { id = "corona", name = "One Corona aura under Mirror", kind = "image" } ] }
 
-[[review.categories.items]]
-id = "mirror-ignored-by-flare"
-title = "Flare ignores Mirror"
-description = "With Flare and Mirror 2 held, a firing creates exactly one burst zone."
-domains = ["arsenal"]
-failure_cap = "passable"
-validation = { script = "passives/mirror-ignored-by-flare.test.ts", outputs = [ { id = "flare", name = "One burst under Mirror", kind = "image" } ] }
 
-[[review.categories.items]]
-id = "mirror-capped-for-taper"
-title = "Taper's amount caps at 2 under Mirror"
-description = "With Taper at level 1 and Mirror 2 held, amount 3 fires exactly two slashes."
-domains = ["arsenal"]
-failure_cap = "passable"
-validation = { script = "passives/mirror-capped-for-taper.test.ts", outputs = [ { id = "taper", name = "Two slashes under Mirror", kind = "image" } ] }
 
-[[review.categories.items]]
-id = "mirror-capped-for-pyre"
-title = "Pyre's amount caps at 2 under Mirror"
-description = "With Pyre and Mirror 2 held, amount 4 fires exactly two slashes."
-domains = ["arsenal"]
-failure_cap = "passable"
-validation = { script = "passives/mirror-capped-for-pyre.test.ts", outputs = [ { id = "pyre", name = "Two Pyre slashes under Mirror", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "bellows-speed-mul"
@@ -4030,10 +4027,18 @@ validation = { script = "progression/multiple-level-ups-queue.test.ts", outputs 
 [[review.categories.items]]
 id = "start-at-level-1"
 title = "A run starts at level 1 with no experience"
-description = "A fresh run reads level 1, xp 0, xpToNext 5, and pendingLevelUps 0."
+description = "A fresh run reads level 1, xp 0, xpToNext 5, kills 0, and pendingLevelUps 0."
 domains = ["progression"]
 failure_cap = "passable"
 validation = { script = "progression/start-at-level-1.test.ts", outputs = [ { id = "start", name = "The start of a run", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "overlay-opens-on-gain"
+title = "A queued level-up opens the overlay in play"
+description = "After a gem collected on playing queues a level-up, screen reads levelup with its offers filled by the end of the second playing tick after the gain."
+domains = ["progression"]
+failure_cap = "broken"
+validation = { script = "progression/overlay-opens-on-gain.test.ts", outputs = [ { id = "opened", name = "The overlay opened in play", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "overlay-opens-same-tick"
@@ -4583,11 +4588,19 @@ validation = { script = "enemies/dark-takes-other-damage.test.ts", outputs = [ {
 # What enters the night and when: the spawn ring, despawning and who is
 # outside it, the window index and each of the twenty window rows, the
 # spawn timer's three rules, the cap and who stands outside it, each of the
-# seven scripted events, and the swarm's geometry. Every scenario turns on
-# exactly one of the three director switches.
+# seven scripted events and the once-per-run rule they share, and the swarm's
+# geometry. Every scenario turns on exactly one of the three director switches.
 [[review.categories]]
 id = "director"
 title = "The Spawn Director"
+
+[[review.categories.items]]
+id = "window-spawns-land"
+title = "The director spawns"
+description = "With spawning on in window 0, an enemy appears on the field within the first 120 ticks of a fresh run."
+domains = ["survival"]
+failure_cap = "broken"
+validation = { script = "director/window-spawns-land.test.ts", outputs = [ { id = "spawned", name = "The first enemy of the night", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "spawn-ring-distance"
@@ -4904,7 +4917,7 @@ validation = { script = "director/events-spawn-past-cap.test.ts", outputs = [ { 
 [[review.categories.items]]
 id = "swarm-1-00"
 title = "The gnat swarm arrives at 1:00"
-description = "With events on and the clock posed to 3599, the next tick reads tick 3600 and a gnat swarm of 24 gnats spawns on that tick and not the one before, firedEvents gains 60, and the event fires no second time when the clock is posed back and carried across 3600 again."
+description = "With events on and the clock posed to 3599, the next tick reads tick 3600 and a gnat swarm of 24 gnats spawns on that tick and not the one before, firedEvents gains 60."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/swarm-1-00.test.ts", outputs = [ { id = "event", name = "The event on tick 3600", kind = "replay" } ] }
@@ -4912,7 +4925,7 @@ validation = { script = "director/swarm-1-00.test.ts", outputs = [ { id = "event
 [[review.categories.items]]
 id = "mothwing-2-00"
 title = "The first Mothwing arrives at 2:00"
-description = "With events on and the clock posed to 7199, the next tick reads tick 7200 and one mothwing spawns at a spawn point on that tick and not the one before, firedEvents gains 120, and the event fires no second time when the clock is posed back and carried across 7200 again."
+description = "With events on and the clock posed to 7199, the next tick reads tick 7200 and one mothwing spawns at a spawn point on that tick and not the one before, firedEvents gains 120."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/mothwing-2-00.test.ts", outputs = [ { id = "event", name = "The event on tick 7200", kind = "replay" } ] }
@@ -4920,7 +4933,7 @@ validation = { script = "director/mothwing-2-00.test.ts", outputs = [ { id = "ev
 [[review.categories.items]]
 id = "swarm-4-00"
 title = "The second gnat swarm arrives at 4:00"
-description = "With events on and the clock posed to 14399, the next tick reads tick 14400 and a gnat swarm of 24 gnats spawns on that tick and not the one before, firedEvents gains 240, and the event fires no second time when the clock is posed back and carried across 14400 again."
+description = "With events on and the clock posed to 14399, the next tick reads tick 14400 and a gnat swarm of 24 gnats spawns on that tick and not the one before, firedEvents gains 240."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/swarm-4-00.test.ts", outputs = [ { id = "event", name = "The event on tick 14400", kind = "replay" } ] }
@@ -4928,7 +4941,7 @@ validation = { script = "director/swarm-4-00.test.ts", outputs = [ { id = "event
 [[review.categories.items]]
 id = "mothwing-5-00"
 title = "The second Mothwing arrives at 5:00"
-description = "With events on and the clock posed to 17999, the next tick reads tick 18000 and one mothwing spawns at a spawn point on that tick and not the one before, firedEvents gains 300, and the event fires no second time when the clock is posed back and carried across 18000 again."
+description = "With events on and the clock posed to 17999, the next tick reads tick 18000 and one mothwing spawns at a spawn point on that tick and not the one before, firedEvents gains 300."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/mothwing-5-00.test.ts", outputs = [ { id = "event", name = "The event on tick 18000", kind = "replay" } ] }
@@ -4936,7 +4949,7 @@ validation = { script = "director/mothwing-5-00.test.ts", outputs = [ { id = "ev
 [[review.categories.items]]
 id = "swarm-7-00"
 title = "The third gnat swarm arrives at 7:00"
-description = "With events on and the clock posed to 25199, the next tick reads tick 25200 and a gnat swarm of 24 gnats spawns on that tick and not the one before, firedEvents gains 420, and the event fires no second time when the clock is posed back and carried across 25200 again."
+description = "With events on and the clock posed to 25199, the next tick reads tick 25200 and a gnat swarm of 24 gnats spawns on that tick and not the one before, firedEvents gains 420."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/swarm-7-00.test.ts", outputs = [ { id = "event", name = "The event on tick 25200", kind = "replay" } ] }
@@ -4944,7 +4957,7 @@ validation = { script = "director/swarm-7-00.test.ts", outputs = [ { id = "event
 [[review.categories.items]]
 id = "owl-7-30"
 title = "The Owl arrives at 7:30"
-description = "With events on and the clock posed to 26999, the next tick reads tick 27000 and one owl spawns at a spawn point on that tick and not the one before, firedEvents gains 450, and the event fires no second time when the clock is posed back and carried across 27000 again."
+description = "With events on and the clock posed to 26999, the next tick reads tick 27000 and one owl spawns at a spawn point on that tick and not the one before, firedEvents gains 450."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/owl-7-30.test.ts", outputs = [ { id = "event", name = "The event on tick 27000", kind = "replay" } ] }
@@ -4952,10 +4965,18 @@ validation = { script = "director/owl-7-30.test.ts", outputs = [ { id = "event",
 [[review.categories.items]]
 id = "dark-9-00"
 title = "The Dark arrives at 9:00"
-description = "With events on and the clock posed to 32399, the next tick reads tick 32400 and the Dark spawns at a spawn point on that tick and not the one before, firedEvents gains 540, and the event fires no second time when the clock is posed back and carried across 32400 again."
+description = "With events on and the clock posed to 32399, the next tick reads tick 32400 and the Dark spawns at a spawn point on that tick and not the one before, firedEvents gains 540."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/dark-9-00.test.ts", outputs = [ { id = "event", name = "The event on tick 32400", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "event-fires-once-per-run"
+title = "A scripted event fires once per run"
+description = "After the 1:00 swarm has fired, posing the clock back to 3599 and carrying it across tick 3600 again spawns no second swarm and leaves 60 in firedEvents once, and a fresh run fires it again."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "director/event-fires-once-per-run.test.ts", outputs = [ { id = "once", name = "The event refusing to fire twice", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "second-mothwing-with-first-alive"
@@ -5111,6 +5132,14 @@ failure_cap = "passable"
 validation = { script = "pickups/gem-collected-same-tick-as-drop.test.ts", outputs = [ { id = "same", name = "The drop collected on its tick", kind = "image" } ] }
 
 [[review.categories.items]]
+id = "chest-collected-same-tick-as-drop"
+title = "A chest dropped at the lamplighter is collected that tick"
+description = "A mothwing killed at the lamplighter's center leaves no chest in that tick's snapshot and the tick ends on chest with chestResult set, because the tick's drops are collected on that tick."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "pickups/chest-collected-same-tick-as-drop.test.ts", outputs = [ { id = "same", name = "The chest collected on its drop tick", kind = "image" } ] }
+
+[[review.categories.items]]
 id = "gem-persists"
 title = "A gem never despawns"
 description = "A gem posed 3000 units from the lamplighter is still on the field after 600 ticks with despawning on."
@@ -5209,7 +5238,7 @@ validation = { script = "pickups/drop-kinds-occur.test.ts", outputs = [ { id = "
 [[review.categories.items]]
 id = "bread-rate"
 title = "Bread drops at BREAD_CHANCE"
-description = "Over 4000 seeded common kills the bread count is between 40 and 120, the expected 80 at 0.02 with both tails below one in a hundred thousand."
+description = "Over 4000 seeded common kills the bread count is between 40 and 125, the expected 80 at 0.02 with both tails below one in a hundred thousand."
 domains = ["progression"]
 failure_cap = "passable"
 validation = { script = "pickups/bread-rate.test.ts", outputs = [ { id = "rate", name = "The bread count over the sample", kind = "image" } ] }
@@ -5217,7 +5246,7 @@ validation = { script = "pickups/bread-rate.test.ts", outputs = [ { id = "rate",
 [[review.categories.items]]
 id = "draft-rate"
 title = "A draft drops at DRAFT_CHANCE"
-description = "Over 4000 seeded common kills the draft count is between 4 and 45, the expected 19.6 at 0.005 after a failed bread draw with both tails below one in a hundred thousand."
+description = "Over 4000 seeded common kills the draft count is between 3 and 45, the expected 19.6 at 0.005 after a failed bread draw with both tails below one in a hundred thousand."
 domains = ["progression"]
 failure_cap = "passable"
 validation = { script = "pickups/draft-rate.test.ts", outputs = [ { id = "rate", name = "The draft count over the sample", kind = "image" } ] }
@@ -5225,7 +5254,7 @@ validation = { script = "pickups/draft-rate.test.ts", outputs = [ { id = "rate",
 [[review.categories.items]]
 id = "elites-make-no-draw"
 title = "An elite kill draws for no pickup"
-description = "Over twenty mothwing kills at the same seed, each leaves exactly its chest and nothing else, and rngState advances as if no draw were made."
+description = "Over twenty mothwing kills at the same seed, with spawning, events, and every weapon that draws at random held off, each leaves exactly its chest and nothing else, and rngState reads the same after the tick of each kill as before it."
 domains = ["progression"]
 failure_cap = "passable"
 validation = { script = "pickups/elites-make-no-draw.test.ts", outputs = [ { id = "chest", name = "The elite's chest alone", kind = "image" } ] }
@@ -5339,7 +5368,7 @@ validation = { script = "screens/howto-back-returns.test.ts", outputs = [ { id =
 [[review.categories.items]]
 id = "fresh-run-state"
 title = "A fresh run starts from the specified state"
-description = "Confirming LIGHT THE LAMP reads tick 0, the lamplighter at (0, 0) facing right with hp 100, level 1 with xp 0 and kills 0, Taper alone at level 1 with cooldown 0, no passive, no enemy, projectile, zone, gem, or pickup, pendingLevelUps 0, chestResult null, and spawnTimer 0."
+description = "Confirming LIGHT THE LAMP reads tick 0, Taper alone at level 1 with cooldown 0, no passive, no enemy, projectile, zone, gem, or pickup, no offers, pendingLevelUps 0, chestResult null, no event fired, and spawnTimer 0."
 domains = ["survival", "progression"]
 failure_cap = "scuffed"
 validation = { script = "screens/fresh-run-state.test.ts", outputs = [ { id = "fresh", name = "The fresh run", kind = "image" } ] }
@@ -5394,11 +5423,19 @@ validation = { script = "screens/paused-menu-keys-inert.test.ts", outputs = [ { 
 
 [[review.categories.items]]
 id = "levelup-copy"
-title = "The level-up overlay draws its heading and offers"
-description = "The levelup frame draws THE LAMP BURNS BRIGHTER and the offers in the order of offers, listed vertically, with the highlighted offer drawn distinctly from the others."
+title = "The level-up overlay draws its heading"
+description = "The levelup frame draws THE LAMP BURNS BRIGHTER over the held world."
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "screens/levelup-copy.test.ts", outputs = [ { id = "overlay", name = "The level-up overlay", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "levelup-lists-offers"
+title = "The level-up overlay lists its offers"
+description = "The levelup frame draws the offers in the order of offers, listed vertically, with the highlighted offer drawn distinctly from the others."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/levelup-lists-offers.test.ts", outputs = [ { id = "offers", name = "The offers listed", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "offer-shows-name"
@@ -5707,7 +5744,7 @@ validation = { script = "screens/menu-highlight-distinct.test.ts", outputs = [ {
 [[review.categories.items]]
 id = "mute-toggles-from-any-screen"
 title = "mute toggles from every screen"
-description = "Pressing KeyM on title, howto, playing, levelup, chest, paused, and fallen each flips muted in the next snapshot."
+description = "Pressing KeyM on title, howto, playing, levelup, chest, paused, fallen, and dawn each flips muted in the next snapshot."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/mute-toggles-from-any-screen.test.ts", outputs = [ { id = "muted", name = "The mute bit flipped on every screen", kind = "image" } ] }
@@ -5779,10 +5816,10 @@ validation = { script = "hud/level-label-drawn.test.ts", outputs = [ { id = "lab
 [[review.categories.items]]
 id = "clock-format"
 title = "The clock counts up as m:ss"
-description = "The frame at tick 300 draws 0:05, the frame at tick 4020 draws 1:07, and the frame at tick 36000 draws 10:00, the seconds always two digits."
+description = "The frame at tick 300 draws 0:05, the frame at tick 4020 draws 1:07, the frame at tick 4050 still draws 1:07, and the frame at tick 35999 draws 9:59, whole seconds with the seconds always two digits."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "hud/clock-format.test.ts", outputs = [ { id = "clock", name = "The clock at three ticks", kind = "image" } ] }
+validation = { script = "hud/clock-format.test.ts", outputs = [ { id = "clock", name = "The clock at four ticks", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "kills-drawn"
@@ -5924,7 +5961,7 @@ validation = { script = "audio/cue-hurt-once-per-tick.test.ts", outputs = [ { id
 [[review.categories.items]]
 id = "cue-level-up"
 title = "level-up plays when a level-up overlay opens"
-description = "The tick that opens the level-up overlay plays the level-up cue, and so does the opening of a queued second overlay after choose."
+description = "The tick that opens the level-up overlay plays the level-up cue, and so does the frame on which Enter accepts an offer with another level-up queued and the next overlay opens."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "audio/cue-level-up.test.ts", outputs = [ { id = "levelup", name = "The level-up cue", kind = "replay" } ] }
@@ -6439,7 +6476,7 @@ title = "Produced Assets"
 [[review.categories.items]]
 id = "lamplighter-idle-produced"
 title = "The lamplighter's idle sprite is produced"
-description = "assets/sprites/lamplighter/idle.png exists, is 24 x 32 within 25% per axis, and carries non-transparent paint."
+description = "assets/sprites/lamplighter/idle.png exists, is exactly 24 x 32, and carries non-transparent paint."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/lamplighter-idle-produced.test.ts", outputs = [ { id = "idle", name = "The idle sprite", kind = "image" } ] }
@@ -6447,7 +6484,7 @@ validation = { script = "assets/lamplighter-idle-produced.test.ts", outputs = [ 
 [[review.categories.items]]
 id = "lamplighter-walk-produced"
 title = "The lamplighter's walk sheet ships six frames"
-description = "assets/sprites/lamplighter/walk/0.png through 5.png exist, each 24 x 32 within 25% per axis, each carrying non-transparent paint."
+description = "assets/sprites/lamplighter/walk/0.png through 5.png exist, each exactly 24 x 32, each carrying non-transparent paint."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/lamplighter-walk-produced.test.ts", outputs = [ { id = "walk", name = "The six walk frames", kind = "image" } ] }
@@ -6463,7 +6500,7 @@ validation = { script = "assets/lamplighter-walk-frames-distinct.test.ts", outpu
 [[review.categories.items]]
 id = "common-enemy-sheets-produced"
 title = "Each common enemy ships a four-frame sheet"
-description = "For each of the ten common ids, assets/sprites/enemies/<id>/0.png through 3.png exist, each a square of twice the enemy's radius within 25%, each carrying non-transparent paint."
+description = "For each of the ten common ids, assets/sprites/enemies/<id>/0.png through 3.png exist, each exactly a square of twice the enemy's radius, each carrying non-transparent paint."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/common-enemy-sheets-produced.test.ts", outputs = [ { id = "sheets", name = "The ten common sheets", kind = "image" } ] }
@@ -6477,9 +6514,17 @@ failure_cap = "passable"
 validation = { script = "assets/common-enemy-frames-distinct.test.ts", outputs = [ { id = "distinct", name = "The common frames side by side", kind = "image" } ] }
 
 [[review.categories.items]]
+id = "enemy-sheets-distinct"
+title = "The thirteen enemies' sheets differ from one another"
+description = "No two of the thirteen enemies' 0.png frames are pixel-identical."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "assets/enemy-sheets-distinct.test.ts", outputs = [ { id = "roster", name = "The thirteen first frames side by side", kind = "image" } ] }
+
+[[review.categories.items]]
 id = "mothwing-sheet-produced"
 title = "The mothwing sheet ships four frames"
-description = "assets/sprites/enemies/mothwing/0.png through 3.png exist, each 56 x 56 within 25%, each carrying non-transparent paint, no two identical."
+description = "assets/sprites/enemies/mothwing/0.png through 3.png exist, each exactly 56 x 56, each carrying non-transparent paint, no two identical."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/mothwing-sheet-produced.test.ts", outputs = [ { id = "mothwing", name = "The mothwing frames", kind = "image" } ] }
@@ -6487,7 +6532,7 @@ validation = { script = "assets/mothwing-sheet-produced.test.ts", outputs = [ { 
 [[review.categories.items]]
 id = "owl-sheet-produced"
 title = "The owl sheet ships four frames"
-description = "assets/sprites/enemies/owl/0.png through 3.png exist, each 72 x 72 within 25%, each carrying non-transparent paint, no two identical."
+description = "assets/sprites/enemies/owl/0.png through 3.png exist, each exactly 72 x 72, each carrying non-transparent paint, no two identical."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/owl-sheet-produced.test.ts", outputs = [ { id = "owl", name = "The owl frames", kind = "image" } ] }
@@ -6495,7 +6540,7 @@ validation = { script = "assets/owl-sheet-produced.test.ts", outputs = [ { id = 
 [[review.categories.items]]
 id = "dark-sheet-produced"
 title = "The Dark's sheet ships four frames"
-description = "assets/sprites/enemies/dark/0.png through 3.png exist, each 80 x 80 within 25%, each carrying non-transparent paint, no two identical."
+description = "assets/sprites/enemies/dark/0.png through 3.png exist, each exactly 80 x 80, each carrying non-transparent paint, no two identical."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/dark-sheet-produced.test.ts", outputs = [ { id = "dark", name = "The Dark's frames", kind = "image" } ] }
@@ -6503,7 +6548,7 @@ validation = { script = "assets/dark-sheet-produced.test.ts", outputs = [ { id =
 [[review.categories.items]]
 id = "puff-sheet-produced"
 title = "The death puff ships four frames"
-description = "assets/sprites/puff/0.png through 3.png exist, each 24 x 24 within 25%, each carrying non-transparent paint, no two identical."
+description = "assets/sprites/puff/0.png through 3.png exist, each exactly 24 x 24, each carrying non-transparent paint, no two identical."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "assets/puff-sheet-produced.test.ts", outputs = [ { id = "puff", name = "The puff frames", kind = "image" } ] }
@@ -6511,7 +6556,7 @@ validation = { script = "assets/puff-sheet-produced.test.ts", outputs = [ { id =
 [[review.categories.items]]
 id = "gem-sprites-produced"
 title = "The three gem sprites are produced"
-description = "assets/sprites/gems/small.png, medium.png, and large.png exist at 8 x 8, 12 x 12, and 16 x 16 within 25%, each carrying non-transparent paint."
+description = "assets/sprites/gems/small.png, medium.png, and large.png exist at exactly 8 x 8, 12 x 12, and 16 x 16, each carrying non-transparent paint."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/gem-sprites-produced.test.ts", outputs = [ { id = "gems", name = "The three gem sprites", kind = "image" } ] }
@@ -6519,7 +6564,7 @@ validation = { script = "assets/gem-sprites-produced.test.ts", outputs = [ { id 
 [[review.categories.items]]
 id = "pickup-sprites-produced"
 title = "The three pickup sprites are produced"
-description = "assets/sprites/pickups/chest.png, bread.png, and draft.png exist at 24 x 24 within 25%, each carrying non-transparent paint, no two identical."
+description = "assets/sprites/pickups/chest.png, bread.png, and draft.png exist at exactly 24 x 24, each carrying non-transparent paint, no two identical."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/pickup-sprites-produced.test.ts", outputs = [ { id = "pickups", name = "The three pickup sprites", kind = "image" } ] }
@@ -6527,7 +6572,7 @@ validation = { script = "assets/pickup-sprites-produced.test.ts", outputs = [ { 
 [[review.categories.items]]
 id = "ground-tile-produced"
 title = "The ground tile is produced"
-description = "assets/sprites/ground.png exists, is 64 x 64 within 25%, and carries non-transparent paint."
+description = "assets/sprites/ground.png exists, is exactly 64 x 64, and carries non-transparent paint."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "assets/ground-tile-produced.test.ts", outputs = [ { id = "ground", name = "The ground tile", kind = "image" } ] }
@@ -6535,7 +6580,7 @@ validation = { script = "assets/ground-tile-produced.test.ts", outputs = [ { id 
 [[review.categories.items]]
 id = "base-effect-sprites-produced"
 title = "The ten base weapon effects are produced"
-description = "assets/sprites/effects/taper.png (120 x 40), ember.png (16 x 16), pin.png (12 x 12), lantern.png (28 x 28), halo.png (160 x 160), oil-splash.png (100 x 100), shard.png (16 x 16), spark/0.png through 3.png (80 x 80), sconce/0.png through 3.png (24 x 24), and flare/0.png through 5.png (128 x 128) exist at their canvases within 25%, each carrying non-transparent paint."
+description = "assets/sprites/effects/taper.png (120 x 40), ember.png (16 x 16), pin.png (12 x 12), lantern.png (28 x 28), halo.png (160 x 160), oil-splash.png (100 x 100), shard.png (16 x 16), spark/0.png through 3.png (80 x 80), sconce/0.png through 3.png (24 x 24), and flare/0.png through 5.png (128 x 128) exist at exactly their canvases, each carrying non-transparent paint."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/base-effect-sprites-produced.test.ts", outputs = [ { id = "effects", name = "The ten base effects", kind = "image" } ] }
@@ -6543,7 +6588,7 @@ validation = { script = "assets/base-effect-sprites-produced.test.ts", outputs =
 [[review.categories.items]]
 id = "evolved-effect-sprites-produced"
 title = "The six evolved weapon effects are produced"
-description = "assets/sprites/effects/pyre.png (120 x 40), beacon.png (16 x 16), hail.png (12 x 12), chandelier.png (28 x 28), corona.png (160 x 160), and blaze.png (100 x 100) exist at their canvases within 25%, each carrying non-transparent paint."
+description = "assets/sprites/effects/pyre.png (120 x 40), beacon.png (16 x 16), hail.png (12 x 12), chandelier.png (28 x 28), corona.png (160 x 160), and blaze.png (100 x 100) exist at exactly their canvases, each carrying non-transparent paint."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/evolved-effect-sprites-produced.test.ts", outputs = [ { id = "evolved", name = "The six evolved effects", kind = "image" } ] }
@@ -6559,7 +6604,7 @@ validation = { script = "assets/evolved-effects-differ-from-base.test.ts", outpu
 [[review.categories.items]]
 id = "icons-produced"
 title = "The twenty-seven icons are produced"
-description = "assets/icons/<id>.png exists for each of the ten base weapons, the six evolutions, the ten passives, and lamp-oil, each 24 x 24 within 25% and carrying non-transparent paint."
+description = "assets/icons/<id>.png exists for each of the ten base weapons, the six evolutions, the ten passives, and lamp-oil, each exactly 24 x 24 and carrying non-transparent paint."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/icons-produced.test.ts", outputs = [ { id = "icons", name = "The twenty-seven icons", kind = "image" } ] }
@@ -6640,8 +6685,8 @@ validation = { script = "assets/cues-bound-to-their-files.test.ts", outputs = [ 
 id = "build-self-contained"
 title = "The build invokes no asset tool"
 description = "npm ci followed by npm run build completes with no asset tool on PATH, invoking none, and the built dist/ fetches nothing from outside itself."
-domains = ["presentation", "survival"]
-failure_cap = "scuffed"
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "broken"
 validation = { script = "assets/build-self-contained.test.ts", outputs = [ { id = "built", name = "The committed build running", kind = "image" } ] }
 
 [[review.categories.items]]
