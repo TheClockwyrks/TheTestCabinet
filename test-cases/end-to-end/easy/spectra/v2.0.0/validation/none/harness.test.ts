@@ -38,6 +38,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, it } from "vitest";
+import { ParticleSimulator } from "@test-cabinet/particle-runtime";
 import {
   assertBetween,
   assertCloseTo,
@@ -85,6 +86,7 @@ import {
   requireDrone,
   sampleColor,
   sampleField,
+  seededBurstSystem,
   seededSprites,
   shootDrone,
   silhouetteArea,
@@ -435,6 +437,23 @@ it("measures a drawn sprite against the seeded art", async () => {
     prism[0].agreement.prism,
     0.99,
     "the Prism's blit carries assets/prism.png's silhouette",
+  );
+});
+
+it("reads the seeded burst system off the workspace's assets", async () => {
+  const system = seededBurstSystem();
+  assertEqual(seededBurstSystem(), system, "parsed once per worker and shared");
+
+  // It really simulates: a tenth of a second in, the one-shot is holding
+  // particles, which is the reading a burst point compares a live burst's own
+  // count against.
+  const sim = new ParticleSimulator(system, { seed: 1 });
+  sim.step(100);
+  assertGreaterThan(sim.liveCount, 0, "live particles a tenth of a second in");
+  assertEqual(
+    sim.capture().length,
+    sim.liveCount,
+    "the particles it reports back",
   );
 });
 

@@ -76,10 +76,12 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { expect, inject } from "vitest";
+import type { ParticleSystem } from "@test-cabinet/particle-runtime";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { connectChromium } from "./chromium";
 import { fail } from "./assert";
 import {
+  BURST_SYSTEM,
   ENEMY_BULLET_SPEED,
   FIELD_LEFT,
   FIELD_TOP,
@@ -2353,6 +2355,36 @@ export function seededSprites(): Promise<
     return sprites as Record<SpriteName, SeededSprite>;
   })();
   return seededSpritesPromise;
+}
+
+let seededBurstPromise: ParticleSystem | null = null;
+
+/**
+ * The seeded particle system a destroyed drone pops with, read off the
+ * workspace's own `assets/` tree and parsed once per suite worker.
+ *
+ * WHAT A BURST CHECK DOES WITH IT. `specs/assets.md` says the build PLAYS this
+ * system rather than hand-coding an effect of its own, and the snapshot reports
+ * each live burst's own particle count — so a check that wants to know whether
+ * what is playing really is the seeded system runs the package's own pure
+ * simulator over this system for the same span and compares the two counts:
+ *
+ * ```ts
+ * const sim = new ParticleSimulator(seededBurstSystem(), { seed: 1 });
+ * sim.step(100);                       // milliseconds
+ * sim.liveCount;                       // what the burst's own count is read against
+ * ```
+ *
+ * The tolerance between the two is the check's own figure, stated there. Use the
+ * pure `ParticleSimulator` rather than the package's canvas player: the player
+ * issues a radial gradient per particle per frame, and there is nothing to draw
+ * on in this process anyway.
+ */
+export function seededBurstSystem(): ParticleSystem {
+  seededBurstPromise ??= JSON.parse(
+    readFileSync(join(WORKSPACE_ROOT, "assets", BURST_SYSTEM), "utf8"),
+  ) as ParticleSystem;
+  return seededBurstPromise;
 }
 
 /** One `drawImage` a frame issued, as a sprite point reads it. */
