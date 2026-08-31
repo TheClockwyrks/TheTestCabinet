@@ -1,18 +1,101 @@
-// Meltdown — surge/swarm-stats: the Swarm carries its stats.
+// surge/swarm-stats — the Swarm's row of the roster: HP 12, speed 70, slowable,
+// walks, bounty 2, leak 1.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// THE RULE. specs/surge.md's table of the six types gives the Swarm `12` hp, a
+// speed of `70` logical units per second, `yes` to slowable, `no` to flies, a
+// bounty of `2` and a leak of `1`. Those six columns are this point, and they are
+// read one column at a time, each with the column's name on its failure.
 //
-// What it must decide:
+// WHY THE SIX SPLIT INTO TWO KINDS OF READING. Three columns the unit reports
+// itself and are read off the snapshot the vent's arrival produced: `maxHp`,
+// `baseSpeed`, `flying`. The other three are BEHAVIOUR that no field carries — a
+// bounty is money paid on the frame hp reaches `0` (specs/economy.md), a leak
+// value is lives taken on the frame a unit reaches its exhaust (specs/surge.md),
+// and slowable is whether a Rime's slow touches it at all (specs/combat.md) — so
+// each is reached the way the game reaches it, on a floor of its own, by
+// `surge/roster.ts`.
 //
-//   HP 12, speed 70, slowable, walks, bounty 2, leak 1.
+// THE SWARM IS THE LIGHTEST ROW AND THE ONLY ONE THAT PAYS `2`, so it is what
+// separates a build that looks its bounty up from one that derived it from hp: the
+// Swarm carries less than a third of a Mote's hp and pays two thirds of a Mote's
+// bounty, and no monotone function of hp lands on both.
+//
+// WHY THE HP READING IS TAKEN ON WAVE 1. specs/waves.md scales a unit's maximum hp
+// by `1 + 0.62 * (w - 1)`, which is `1` on Wave 1 and only there, so a Wave 1
+// arrival is the one place the base figure can be read without the scaling on top
+// of it. `hp-scales-with-the-wave` is the point that reads the scaling.
+//
+// WHAT EVERY WRONG MODEL READS. A build that paid a bounty proportional to hp pays
+// the Swarm well under the Mote's `3` where the table says `2`; one that gave
+// every ground unit one hp pool reads `40` where this row says `12`; one that
+// carried one speed reads `60` where this row says `70`. Each is a different
+// reading from the row.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { SURGE_DEFS } from "../../src/constants";
+import { assertCloseTo, assertEqual, assertTrue } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { bountyPaidFor, livesLostTo, readArrival, slowTouches } from "./roster";
 
-it("The Swarm carries its stats", () => {
-  throw new Error(
-    "Meltdown: validation/surge/swarm-stats.test.ts is not implemented yet",
+/** The type this point is the row of. */
+const TYPE = "swarm";
+
+/** The row specs/surge.md gives it, as the case seeded it. */
+const ROW = SURGE_DEFS[TYPE];
+
+/**
+ * The decimal places an hp or a speed reading is compared to: six.
+ *
+ * Both figures are whole numbers in the table and the Wave 1 scaling is exactly
+ * `1`, so nothing but floating-point arithmetic can separate a correct build's
+ * reading from the figure. Six places is a tolerance of `5e-7`, which is far below
+ * any difference between two rows of the table and far above the error of
+ * multiplying by one.
+ */
+const FIGURE_DIGITS = 6;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("carries 12 hp, speed 70, walks, is slowable, pays 2 and costs a life", async () => {
+  const arrived = await readArrival(h, TYPE);
+  captureStill(h, "swarm");
+
+  const bounty = await bountyPaidFor(h, TYPE);
+  const leak = await livesLostTo(h, TYPE);
+  const slow = await slowTouches(h, TYPE);
+
+  assertEqual(arrived.type, TYPE, "the type the vent released");
+  assertCloseTo(arrived.maxHp, ROW.hp, FIGURE_DIGITS, "its maximum hp on wave 1");
+  assertCloseTo(arrived.hp, arrived.maxHp, FIGURE_DIGITS, "its hp on arrival");
+  assertCloseTo(
+    arrived.baseSpeed,
+    ROW.speed,
+    FIGURE_DIGITS,
+    "its unslowed speed",
   );
+  assertCloseTo(
+    arrived.speed,
+    ROW.speed,
+    FIGURE_DIGITS,
+    "its current speed, with nothing slowing it",
+  );
+  assertEqual(arrived.flying, ROW.flies, "whether it flies");
+
+  assertTrue(bounty.killed, "precondition: the Arc's shot killed the Swarm");
+  assertEqual(bounty.paid, ROW.bounty, "the money killing it paid");
+
+  assertTrue(leak.leaked, "precondition: the Swarm reached its exhaust");
+  assertTrue(leak.gone, "it left the roster on reaching its exhaust");
+  assertEqual(leak.lost, ROW.leak, "the lives leaking it cost");
+
+  assertTrue(slow.struck, "precondition: the Rime's shot landed on the Swarm");
+  assertEqual(slow.slowed, ROW.slowable, "whether a Rime's slow touched it");
 });
