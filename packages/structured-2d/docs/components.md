@@ -135,6 +135,9 @@ through the asset loader before the component is constructed — a level's `load
 is awaited before any of its actors exist — so a sprite reads its bitmap as a
 plain value. See `assets.md`.
 
+The image is sampled as `EngineOptions.imageSmoothing` states: bilinearly by
+default, nearest-neighbor when it is `false`. See `rendering.md`.
+
 A sheet is one image with a `source` region selecting the frame, and the region
 is a field the actor writes:
 

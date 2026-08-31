@@ -126,6 +126,7 @@ interface EngineOptions<D = unknown> {
   height: number;
   game: GameDefinition<D>;
   background?: string;
+  imageSmoothing?: boolean;
   layout?: string;
   clock?: Clock;
   surface?: SurfaceMetrics;
@@ -140,6 +141,7 @@ interface EngineOptions<D = unknown> {
 | `height` | — | The logical design height the camera projects into. Finite and positive. |
 | `game` | — | The game definition, bound for the engine's lifetime. `D` is inferred from it. |
 | `background` | — | A CSS color cleared to before every frame. Absent, the frame clears to transparency. |
+| `imageSmoothing` | `true` | Whether an image the fit scales is resampled bilinearly. `false` samples nearest-neighbor, which keeps pixel art crisp. See `rendering.md`. |
 | `layout` | — | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. See `input.md`. |
 | `clock` | `new WallClock()` | The clock supplying each frame's delta. See `frame.md`. |
 | `surface` | Read from the canvas | Where the engine reads element size and device pixel ratio, and attaches its listeners. |

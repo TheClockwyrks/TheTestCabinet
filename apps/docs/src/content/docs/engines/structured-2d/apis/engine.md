@@ -35,6 +35,7 @@ interface EngineOptions<D = unknown> {
   height: number;
   game: GameDefinition<D>;
   background?: string;
+  imageSmoothing?: boolean;
   layout?: string;
   clock?: Clock;
   surface?: SurfaceMetrics;
@@ -49,6 +50,7 @@ interface EngineOptions<D = unknown> {
 | `height` | — | The logical design height the camera projects into. Finite and positive. |
 | `game` | — | The [game definition](/engines/structured-2d/apis/game-instance/): the level registry, the start level, and the game instance class. |
 | `background` | — | A CSS color cleared to before every frame. Absent, the frame clears to transparency. |
+| `imageSmoothing` | `true` | Whether an image the fit scales is resampled bilinearly. `false` samples nearest-neighbor, which keeps pixel art crisp. See [rendering](/engines/structured-2d/apis/rendering/). |
 | `layout` | — | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. |
 | `clock` | `new WallClock()` | The [clock](/engines/structured-2d/apis/clocks/) supplying each frame's delta. |
 | `surface` | Read from the canvas | Where the engine reads element size and device pixel ratio, and attaches its key listeners. |

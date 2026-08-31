@@ -47,6 +47,15 @@ mode. It draws every enabled collider's shape over the finished picture, in a
 color per response, so what the engine tests for collision is visible beside
 what the game drew.
 
+## Sampling is one option
+
+The fit scales every image the pipeline draws, so how an image's pixels are
+spread over device pixels is a property of the whole picture rather than of one
+sprite. The engine takes it as one option, `imageSmoothing`, and applies it to
+every image it draws each frame: bilinear resampling by default, nearest-neighbor
+sampling for a game whose art is pixel art. A build states its art style once,
+and every sprite and every direct draw follow it.
+
 ## Layering and the stable sort
 
 Depth is a number on a component rather than a position in a draw function. The

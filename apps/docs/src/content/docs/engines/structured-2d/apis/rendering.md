@@ -55,7 +55,7 @@ Each frame, after the ticks and after any transition:
 1. The camera is updated: a world following a view target takes that target's
    world transform and zoom, then the result is clamped to `camera.bounds`.
 2. The canvas is cleared to `background`, or to transparency when none was
-   given.
+   given, and the context's image smoothing is set from `imageSmoothing`.
 3. The engine collects every enabled, visible `RenderComponent` on every live
    actor.
 4. The collection is sorted by `layer` ascending, and within a layer by the
@@ -84,6 +84,23 @@ The sort is stable, so a redraw with no change reproduces the previous order
 exactly. Two components sharing a layer, an actor, and an attachment position
 cannot exist, so the order is total and a frame is reproducible from the world
 alone.
+
+## Image smoothing
+
+The viewport fit scales the whole picture, so an image drawn at its pixel size
+in world units still covers more or fewer device pixels than it has. How those
+device pixels are filled is
+[`EngineOptions.imageSmoothing`](/engines/structured-2d/apis/engine/). `true`,
+the default, resamples bilinearly; `false` samples nearest-neighbor, so each
+image pixel becomes a block of device pixels and pixel art stays crisp at every
+fit.
+
+The pipeline sets the context's `imageSmoothingEnabled` from the option in
+step 2 of every frame, before any component draws, so every `SpriteComponent`
+blit and the scratch a tinted sprite is flattened on sample the same way, and
+a `DrawComponent` receives the context already carrying the setting. The
+option is fixed for the engine's lifetime and applies under every render mode
+that draws an image.
 
 ## Direct drawing
 

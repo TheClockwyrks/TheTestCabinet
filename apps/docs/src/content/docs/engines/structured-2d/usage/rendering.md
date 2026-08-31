@@ -101,6 +101,21 @@ size, so give them whenever the design field's units differ from the image's
 pixels. `anchorX` and `anchorY` default to `0.5`, which centers the sprite on
 its transform.
 
+The viewport fit still scales a sprite drawn at its pixel size, and by default
+the scaled image is resampled bilinearly. Pixel art stays crisp by creating the
+engine with `imageSmoothing: false`, which samples every image the pipeline
+draws nearest-neighbor:
+
+```ts
+const engine = createEngine({
+  canvas,
+  width: WIDTH,
+  height: HEIGHT,
+  game,
+  imageSmoothing: false,
+});
+```
+
 A sheet is one image with a `source` region selecting the frame, and the region
 is a field the actor writes:
 

@@ -12,7 +12,7 @@ Each frame, after the ticks and after any transition:
 1. The camera is updated: a world following a view target takes that target's
    world transform and zoom, then the result is clamped to `camera.bounds`.
 2. The canvas is cleared to `background`, or to transparency when none was
-   given.
+   given, and the context's image smoothing is set from `imageSmoothing`.
 3. The engine collects every enabled, visible `RenderComponent` on every live
    actor.
 4. The collection is sorted by `layer` ascending, and within a layer by the
@@ -47,6 +47,21 @@ export const LAYER = { field: 0, actors: 10, effects: 20, hud: 30 } as const;
 
 Two components that must overlap in a fixed order belong on two layers, or on
 one actor attached in the order they should draw.
+
+## Image smoothing
+
+The viewport fit scales the whole picture, so an image drawn at its pixel size
+in world units still covers more or fewer device pixels than it has. How those
+device pixels are filled is `EngineOptions.imageSmoothing`. `true`, the
+default, resamples bilinearly; `false` samples nearest-neighbor, so each image
+pixel becomes a block of device pixels and pixel art stays crisp at every fit.
+
+The pipeline sets the context's `imageSmoothingEnabled` from the option in
+step 2 of every frame, before any component draws, so every `SpriteComponent`
+blit and the scratch a tinted sprite is flattened on sample the same way, and
+a `DrawComponent` receives the context already carrying the setting. The
+option is fixed for the engine's lifetime and applies under every render mode
+that draws an image.
 
 ## `RenderMode`
 
@@ -145,7 +160,9 @@ export class Trail extends DrawComponent {
 
 Attach it like any other render component, and give it a layer. Balance `save`
 and `restore` around a transformed or restyled subtree, so the components drawn
-after it start from the transform and the styles the pipeline handed over.
+after it start from the transform and the styles the pipeline handed over. The
+context arrives with image smoothing set from `imageSmoothing`, so an image a
+`DrawComponent` draws samples the way a sprite does.
 
 `DrawApi` also carries `frame()` (the frame counter, the accumulated simulated
 time, and the most recent delta), `viewport()` (the current logical-to-device

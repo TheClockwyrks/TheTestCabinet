@@ -110,6 +110,10 @@ The anchor defaults center the sprite on its transform. An image is loaded
 through the [assets](/engines/structured-2d/apis/assets/) loader before the
 component is constructed, so a sprite reads its bitmap as a plain value.
 
+The image is sampled as `EngineOptions.imageSmoothing` states: bilinearly by
+default, nearest-neighbor when it is `false`. See
+[rendering](/engines/structured-2d/apis/rendering/).
+
 ## `Shape`
 
 ```ts
