@@ -1,20 +1,90 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// instrumentation/saucer-spawning-gate — `setSaucerSpawning(false)` really does
+// shut the game's own arrival of a saucer, and opening it lets one in.
 //
-// instrumentation/saucer-spawning-gate — Saucer spawning off keeps the saucer away
+// WHY A MINUTE. `specs/saucer.md` puts the first arrival of a game at
+// `SAUCER_FIRST_DELAY` (18 seconds) and every later one `SAUCER_GAP_MIN` to
+// `SAUCER_GAP_MAX` (25 to 35 seconds) after the previous saucer leaves. Sixty
+// seconds of game time with the gate shut is more than three first delays and
+// longer than the longest gap, so a build whose gate does nothing has had every
+// opportunity the specification gives it.
 //
-// With setSaucerSpawning(false) no saucer joins over sixty seconds of game
-// time; with it on, one does.
+// WHY THE GATE MATTERS TO EVERYTHING ELSE. `startPlaying` shuts it for every
+// scenario in this project, because a scenario that runs past eighteen seconds of
+// game time is otherwise joined by a craft that hunts the ship and fires at it. A
+// build whose gate does nothing therefore does not merely fail this item — it puts
+// an enemy into every long scenario in the case — which is why the item exists to
+// name it.
 //
-// Declared by test-case.toml as validation.script "instrumentation/saucer-
-// spawning-gate.test.ts", so the manifest resolves only while this file
-// exists. The Validators stage of the v3.0.0 rework replaces it with the real
-// suite, written against the none harness in validation/none/harness.ts and
-// the spec-derived oracle in validation/none/geometry.ts — never against a
-// reference build.
-//
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// AND THE OPEN LEG IS GENEROUS ON PURPOSE. Nothing in `specs/instrumentation.md`
+// says what a shut gate does to the arrival CLOCK: a build may hold it while the
+// gate is shut, or let it run and arrive the moment the gate opens. Both are
+// conformant, so the open leg allows the longest wait either model can produce —
+// the first delay plus the longest gap — rather than demanding a schedule the
+// specification never fixed.
 
-throw new Error(
-  "Shatter v3.0.0: validation/none/instrumentation/saucer-spawning-gate.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertNull, assertTrue } from "../assert";
+import { SAUCER_FIRST_DELAY, SAUCER_GAP_MAX } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  requireSaucer,
+  startPlaying,
+  ticksFor,
+  type Harness,
+} from "../harness";
+
+/** The game time a shut gate is watched over, in seconds. */
+const QUIET_TIME = 60;
+
+/**
+ * The game time an open gate is given to produce a saucer, in seconds.
+ *
+ * The first delay plus the longest gap plus five seconds, which covers both of the
+ * arrival-clock models a shut gate leaves open and leaves a margin on top.
+ */
+const ARRIVAL_TIME = SAUCER_FIRST_DELAY + SAUCER_GAP_MAX + 5;
+
+/** How often either stretch is sampled, in ticks: a quarter of a second. */
+const POLL = ticksFor(0.25);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("keeps the saucer away for a minute while the gate is shut", async () => {
+  // `startPlaying` opens with the saucer gate shut, which is the state under test.
+  await startPlaying(h);
+  const joined = await h.skipUntil((s) => s.saucer !== null, {
+    maxTicks: ticksFor(QUIET_TIME),
+    poll: POLL,
+  });
+  await captureStill(h, "quiet");
+
+  assertTrue(
+    !joined.hit,
+    `no saucer joined over ${QUIET_TIME}s of game time with setSaucerSpawning(false)`,
+  );
+  assertNull((await h.snapshot()).saucer, `the saucer slot ${QUIET_TIME}s on`);
+});
+
+it("lets one in once the gate is open", async () => {
+  await startPlaying(h);
+  await h.debug.setSaucerSpawning(true);
+  const joined = await h.skipUntil((s) => s.saucer !== null, {
+    maxTicks: ticksFor(ARRIVAL_TIME),
+    poll: POLL,
+  });
+
+  assertTrue(
+    joined.hit,
+    `a saucer arrived within ${ARRIVAL_TIME}s of game time with setSaucerSpawning(true)`,
+  );
+  requireSaucer(joined.snapshot, "the saucer the open gate let in");
+});
