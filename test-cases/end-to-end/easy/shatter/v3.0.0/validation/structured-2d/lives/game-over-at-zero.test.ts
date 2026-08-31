@@ -1,20 +1,80 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// lives/game-over-at-zero — the last ship lost takes the counter to zero.
 //
-// lives/game-over-at-zero — The last ship lost takes the counter to zero
+// THE RULE. `specs/progression.md`: "When the last ship is lost the life count
+// reaches `0`, no new ship appears, and the game is over." This item decides the
+// COUNTER and nothing else. That no ship is put up is
+// `lives/respawn-only-with-lives-left`, and the screen the loss raises is
+// `screens/game-over-on-the-last-life`, so a build that reaches zero and forgets
+// to change screen loses one point rather than two.
 //
-// lives reads exactly 0 after the last ship is destroyed. The counter alone;
-// the screen it puts up is screens/game-over-on-the-last-life's point.
+// EXACTLY ZERO. `specs/instrumentation.md` reports `lives` as the ships left
+// "INCLUDING the one in play", so the ship that just died is the one that came
+// off the count and the figure below is an equality rather than a bound. The two
+// wrong models this separates both read a different number: a build that stops
+// the counter at one because it will not respawn below that reads `1`, and a
+// build that decrements past the end reads `-1`.
 //
-// Declared by test-case.toml as validation.script "lives/game-over-at-
-// zero.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the structured-2d harness in
-// validation/structured-2d/harness.ts and the spec-derived oracle in
-// validation/structured-2d/geometry.ts — never against a reference build.
-//
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// THE RUN IS TAKEN DOWN TO ONE SHIP WITH `setLives(1)`, which is the ship being
+// flown with nothing in reserve, so the contact that follows is the last death.
+// The counter is read on the tick it falls, so nothing that happens afterwards —
+// a screen change, a menu, a build's own tidying — stands between the death and
+// the reading.
 
-throw new Error(
-  "Shatter v3.0.0: validation/structured-2d/lives/game-over-at-zero.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertTrue } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  ticksFor,
+  type Harness,
+} from "../harness";
+import { poseLosingDuel, watchTheDeath } from "./duel";
+
+/** The ships the run is taken down to: the one being flown, nothing in reserve. */
+const LAST_SHIP = 1;
+
+/** The ceiling on the drive to the death: see `duel.ts`. */
+const DEATH_TICKS = ticksFor(0.5);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("takes the ship counter to exactly zero on the last death", async () => {
+  const rockId = poseLosingDuel(h);
+  h.debug.setLives(LAST_SHIP);
+
+  const armed = h.snapshot();
+  assertEqual(
+    armed.lives,
+    LAST_SHIP,
+    "setLives to be reported by the snapshot, so the contact that follows " +
+      "is the last death (specs/instrumentation.md)",
+  );
+  assertEqual(
+    armed.ship.collision,
+    true,
+    "the ship's lethal contact test running for the contact " +
+      "(specs/instrumentation.md)",
+  );
+
+  const death = await watchTheDeath(h, rockId, DEATH_TICKS);
+  captureStill(h, "zero");
+
+  assertTrue(
+    death.lostAt >= 0,
+    "the rock reaching the ship to cost the last life (specs/collision.md)",
+  );
+  assertEqual(
+    death.end.lives,
+    0,
+    "the ships left the tick the last one was destroyed — the life count " +
+      "reaches 0 (specs/progression.md)",
+  );
+});
