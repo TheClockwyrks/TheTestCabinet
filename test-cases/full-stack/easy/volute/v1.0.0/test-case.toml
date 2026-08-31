@@ -406,7 +406,7 @@ description = "The produced art, motion, effects, and audio, and how the hall re
 # `[[review.categories.items]]` under it is one graded review item, worth one
 # point (the default weight), so a category is worth the number of items it holds
 # and there is no fractional scoring. A category carries no prose of its own; each
-# item states in `description` the claim its validator checks. Eighty-three items
+# item states in `description` the claim its validator checks. Eighty-five items
 # across eleven categories, all common: the case has one variant, so no point
 # lives in a variant file.
 #
@@ -971,6 +971,17 @@ validation = { script = "insertion/backward-shift.test.ts", outputs = [
 # as three points, the step a merge adds, the step an insertion takes it back to,
 # and the lapse the quiet hall pays, since a build can step the chain up
 # correctly and never let it fall back.
+#
+# The OTHER half of the threshold — specs/extraction.md's "a run that reaches 3
+# cores by any other means stays on the channel" — is graded where the game
+# itself assembles such a run mid-play, which it does in two ways: a removal's
+# recoil pushes a trailing group onto a train pinned at the inlet, and backflow
+# packs the whole channel up from the back. Neither is an insertion and neither is
+# a merge, and a build that sweeps its train for runs instead of extracting at the
+# two events passes every point above while playing a different game. (The third
+# way a run simply STANDS there — a level's seeded twelve are each drawn at random
+# from three or four charges — is graded by `instrumentation/pose-decides-nothing`,
+# which poses exactly that hall.)
 [[review.categories]]
 id = "extraction"
 title = "Extraction and chains"
@@ -1041,6 +1052,40 @@ failure_cap = "scuffed"
 # validation/<engine>/extraction/recoil-hold.test.ts.
 validation = { script = "extraction/recoil-hold.test.ts", outputs = [
   { id = "hold", name = "The train held after a recoil", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "recoil-join-stays"
+title = "A run of three a recoil joins stays on the channel"
+description = "When a recoil leaves two groups exactly one spacing apart and the join completes a maximal run of three, that run is left on the channel."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: setQuotaRemaining(0), pose three segments on the top run —
+# a lead of halide, sulfur, sulfur at 239; a chaser of sulfur, cobalt, cobalt 15
+# units short of the merge; and a pack of cobalt, halide, halide, halide 48 units
+# behind the chaser's tail, reaching back to arc position -48. The chaser merges
+# on the sixth tick and its sulfur head extracts, the cobalt pair falls all the
+# room it has (22.2 units on the reference, well inside RECOIL), and the pack —
+# whose last core stands behind the inlet and so has none — does not move, leaving
+# three cobalt one spacing apart in one segment. Confirm they were in two segments before the removal and one after, and
+# that a second later all three are still on the channel with nothing further
+# scored. See validation/<engine>/extraction/recoil-join-stays.test.ts.
+validation = { script = "extraction/recoil-join-stays.test.ts", outputs = [
+  { id = "join", name = "A run of three a recoil brought together", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "backflow-join-stays"
+title = "A run of three backflow packs together stays on the channel"
+description = "A maximal run of three that backflow's packing brings together is left on the channel."
+domains = ["channel"]
+failure_cap = "scuffed"
+# Automated validation: setQuotaRemaining(0), pose a cobalt pair at 90 and 62 and
+# a lone cobalt at 30, grant backflow, and step 40 ticks — past the 34th, on which
+# the pair finishes packing onto the core at the inlet, and well inside backflow's
+# 5 s. Confirm the three stand at 0, 28 and 56 as one segment, that all three are
+# still on the channel, and that nothing scored. See
+# validation/<engine>/extraction/backflow-join-stays.test.ts.
+validation = { script = "extraction/backflow-join-stays.test.ts", outputs = [
+  { id = "packed", name = "A run of three packed together by backflow", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "merge-extraction"

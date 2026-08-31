@@ -82,7 +82,7 @@ engine's own `file:` dependency, written in at seed time.
 
 ## The checklist
 
-Eighty-three items across eleven categories, in the categories grammar
+Eighty-five items across eleven categories, in the categories grammar
 (`[review] format = 2`), every one weighted `1`. The case is on the per-engine
 spelling and so is validator-rated: every item carries `validation`,
 `failure_cap`, and `domains`. Four domains — `channel`, `injector`,
