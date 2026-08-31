@@ -20,6 +20,7 @@ import type {
   DrawApi,
   EndPlayReason,
   Rect,
+  RenderSpace,
   Shape,
   ShapeOptions,
   SpriteOptions,
@@ -127,6 +128,16 @@ export class RenderComponent extends Component {
 
   /** Clamped to `0..1` by the pipeline when it draws. Defaults to `1`. */
   opacity = 1;
+
+  /**
+   * The space the component draws in. Defaults to `world`, which draws through
+   * the camera and then the viewport in world units. `screen` draws through
+   * the viewport alone: the composed transform, every size, and the font size
+   * are logical units from the top-left of the design field, so the component
+   * holds its place on the canvas whatever the camera does. `layer` orders both
+   * spaces in the one sort.
+   */
+  space: RenderSpace = "world";
 }
 
 /**
@@ -200,8 +211,9 @@ export class ShapeComponent extends RenderComponent {
 }
 
 /**
- * A string drawn at the component's world transform. The font size is world
- * units, scaled by the camera like every other drawn quantity.
+ * A string drawn at the component's world transform. The font size is in the
+ * component's space: world units under `world`, scaled by the camera like every
+ * other drawn quantity, and logical units under `screen`.
  */
 export class TextComponent extends RenderComponent {
   /** The string drawn. */
@@ -233,9 +245,10 @@ export class TextComponent extends RenderComponent {
  * The direct-drawing path, for a case that measures the drawing itself.
  *
  * The engine calls {@link draw} in the component's place in the layer order,
- * with the context already carrying the world-to-device transform, so the
- * component draws in world units. Render modes belong to the declarative
- * pipeline, so a `DrawComponent` reads `api.mode` and supplies its own.
+ * with the context already carrying the transform of the component's `space`,
+ * so a `world` component draws in world units and a `screen` component in
+ * logical units. Render modes belong to the declarative pipeline, so a
+ * `DrawComponent` reads `api.mode` and supplies its own.
  */
 export abstract class DrawComponent extends RenderComponent {
   /** Called in the component's place in the layer order. */

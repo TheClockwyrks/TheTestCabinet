@@ -639,6 +639,18 @@ export interface CollisionWorld {
 export type RenderMode = "shaded" | "wireframe" | "unlit" | "silhouette";
 
 /**
+ * Which map a render component draws through.
+ *
+ * `world`, the default, draws through the camera and then the viewport, so the
+ * component states every coordinate, size, and font size in world units.
+ * `screen` draws through the viewport alone: the component's composed
+ * transform is read in logical units from the top-left of the design field,
+ * and it holds its place on the canvas whatever the camera does. Both spaces
+ * share the pipeline's one sort.
+ */
+export type RenderSpace = "world" | "screen";
+
+/**
  * The rendering pipeline's two switches, reached as `engine.renderer` and
  * available from construction.
  */
@@ -661,15 +673,22 @@ export interface Renderer {
  * What a `DrawComponent`'s `draw` receives: the direct-drawing path, for a case
  * that measures the drawing itself.
  *
- * The context already carries the world-to-device transform, so the component
- * draws in world units. Render modes belong to the declarative pipeline, so a
- * `DrawComponent` reads `mode` and supplies its own.
+ * The context already carries the transform of the component's `space`: the
+ * world-to-device transform under `world`, so the component draws in world
+ * units, and the viewport alone under `screen`, so it draws in logical units.
+ * Render modes belong to the declarative pipeline, so a `DrawComponent` reads
+ * `mode` and supplies its own.
  */
 export interface DrawApi {
-  /** The 2D context, already carrying the world-to-device transform. */
+  /** The 2D context, already carrying the transform of the component's `space`. */
   readonly ctx: CanvasRenderingContext2D;
   /** The render mode in force for this frame. */
   readonly mode: RenderMode;
+  /**
+   * The component's space: `world` for the world-to-device transform, `screen`
+   * for the viewport alone.
+   */
+  readonly space: RenderSpace;
   /** The frame counter, the accumulated simulated time, and the last delta. */
   frame(): FrameInfo;
   /** The current logical-to-device fit, as a snapshot the caller owns. */

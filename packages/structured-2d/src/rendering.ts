@@ -17,10 +17,12 @@
  * 4. The collection is sorted by `layer` ascending, then by the owning actor's
  *    spawn order, then by attachment order. The sort is stable, so a redraw
  *    with no change reproduces the previous order exactly.
- * 5. Each component is drawn with the context carrying the world-to-device
- *    transform — the camera composed onto the viewport, so a component states
- *    every coordinate, size, and font size in world units. A `DrawComponent`
- *    receives `DrawApi` and draws itself.
+ * 5. Each component is drawn with the context carrying the transform of its
+ *    `space`. A `world` component draws under the world-to-device transform —
+ *    the camera composed onto the viewport, so it states every coordinate,
+ *    size, and font size in world units; a `screen` component draws under the
+ *    viewport alone, in logical units, wherever the camera is. A
+ *    `DrawComponent` receives `DrawApi` and draws itself.
  * 6. The collision overlay draws, when it is enabled: every enabled collider's
  *    shape over the finished picture, in a color per response, independent of
  *    the mode.
@@ -34,12 +36,13 @@
  * Two design points worth stating once:
  *
  * - **The transform is replaced, never composed across components.** Each
- *   component starts from `setTransform(viewport)` with the camera pushed on
- *   top; its world *position* stays in each operation's own arguments (only a
- *   rotation or scale adds a pivot transform), so a `DrawComponent` that
- *   forgets a `restore` costs the components after it nothing but leaked style
- *   properties — and every declarative component sets the styles it paints with
- *   before painting, so even those cannot leak into the built-in picture.
+ *   component starts from `setTransform(viewport)`, with the camera pushed on
+ *   top for a `world` component; its *position* stays in each operation's own
+ *   arguments (only a rotation or scale adds a pivot transform), so a
+ *   `DrawComponent` that forgets a `restore` costs the components after it
+ *   nothing but leaked style properties — and every declarative component sets
+ *   the styles it paints with before painting, so even those cannot leak into
+ *   the built-in picture.
  * - **The pipeline never reads a pixel and never keeps one.** The whole
  *   picture is a function of the world at the moment `render` runs, which is
  *   what lets a validator read a pixel back and assert on it, and what lets two
@@ -63,6 +66,7 @@ import type {
   DrawApi,
   FrameInfo,
   RenderMode,
+  RenderSpace,
   Renderer,
   Shape,
   Transform,
@@ -244,11 +248,18 @@ export class RenderPipeline implements Renderer {
     const camera = scene.world.camera.snapshot();
     // The mode is captured once per frame: a `setMode` issued mid-pipeline
     // (from a `DrawComponent.draw`, say) waits for the next frame, and
-    // `api.mode` agrees with every draw this frame makes.
+    // `api.mode` agrees with every draw this frame makes. One API per space,
+    // so `api.space` names the transform the context arrived under.
     const mode = this.renderMode;
-    const api = this.drawApi(scene, camera, mode);
+    const apis: Record<RenderSpace, DrawApi> = {
+      world: this.drawApi(scene, camera, mode, "world"),
+      screen: this.drawApi(scene, camera, mode, "screen"),
+    };
     for (const entry of collected) {
-      this.drawOne(scene, camera, entry.component, api, mode);
+      const component = entry.component;
+      // Anything but `screen` is world space, matching the transform applied.
+      const api = component.space === "screen" ? apis.screen : apis.world;
+      this.drawOne(scene, camera, component, api, mode);
     }
 
     if (this.overlayEnabled) this.drawCollisionOverlay(scene, camera);
@@ -356,17 +367,22 @@ export class RenderPipeline implements Renderer {
     return collected;
   }
 
-  /** The API a `DrawComponent`'s `draw` receives, built once per frame. */
+  /**
+   * The API a `DrawComponent`'s `draw` receives, built once per frame and per
+   * space.
+   */
   private drawApi(
     scene: RenderScene,
     camera: CameraSnapshot,
     mode: RenderMode,
+    space: RenderSpace,
   ): DrawApi {
     const frame: FrameInfo = { ...scene.frame };
     const viewport: Viewport = { ...scene.viewport };
     return {
       ctx: scene.ctx,
       mode,
+      space,
       // Snapshots the caller owns: a held one keeps this frame's values.
       frame: (): FrameInfo => ({ ...frame }),
       viewport: (): Viewport => ({ ...viewport }),
@@ -394,6 +410,23 @@ export class RenderPipeline implements Renderer {
     ctx.translate(-camera.x, -camera.y);
   }
 
+  /**
+   * Point the context at the space a component draws in: world space is the
+   * camera composed onto the viewport, screen space the viewport alone.
+   */
+  private applySpaceTransform(
+    ctx: CanvasRenderingContext2D,
+    viewport: Viewport,
+    camera: CameraSnapshot,
+    space: RenderSpace,
+  ): void {
+    if (space === "screen") {
+      applyViewport(ctx, viewport);
+      return;
+    }
+    this.applyWorldTransform(ctx, viewport, camera);
+  }
+
   /** Step 5: one component, in its place in the layer order. */
   private drawOne(
     scene: RenderScene,
@@ -403,21 +436,23 @@ export class RenderPipeline implements Renderer {
     mode: RenderMode,
   ): void {
     const { ctx } = scene;
-    this.applyWorldTransform(ctx, scene.viewport, camera);
+    this.applySpaceTransform(ctx, scene.viewport, camera, component.space);
 
-    // The direct-drawing path: the context carries the world-to-device
-    // transform and nothing else, so the component draws at absolute world
-    // coordinates and reads `api.mode` to supply its own render modes.
+    // The direct-drawing path: the context carries the transform of the
+    // component's space and nothing else, so the component draws at absolute
+    // coordinates in that space and reads `api.mode` to supply its own render
+    // modes.
     if (component instanceof DrawComponent) {
       component.draw(api);
       return;
     }
 
     // The position stays in each operation's own arguments — the stream
-    // records the world coordinates the game asked for, not a chain of
-    // translates — so only a rotation or a scale earns a transform, and it
-    // pivots about the component's world position to leave those arguments in
-    // world coordinates too.
+    // records the coordinates the game asked for, not a chain of translates —
+    // so only a rotation or a scale earns a transform, and it pivots about the
+    // component's position to leave those arguments in the space's
+    // coordinates too. A `screen` component's composed transform is read as
+    // logical units, so the same arithmetic serves both spaces.
     const at = component.worldTransform();
     this.applyLocalTransform(ctx, at);
 
