@@ -203,6 +203,27 @@ describe("a chest's other results", () => {
     expect([...seen].sort()).toEqual(["tallow", "taper"]);
   });
 
+  it("passes over a max-level weapon that has no recipe", () => {
+    for (const id of ["spark", "shard", "sconce", "flare"] as const) {
+      expect(evolutionOf(id)).toBeNull();
+      expect(pairedIds(id)).toEqual([id]);
+    }
+    const world = playing(["spark", MAX_WEAPON_LEVEL], ["taper", 2]);
+    hold(world, "wick", PASSIVES.wick.maxLevel);
+    chest(world);
+    step(world);
+    expect(world.state.run.chestResult).toEqual({
+      kind: "level",
+      item: "taper",
+      level: 3,
+    });
+    expect(world.state.run.weapons.map((weapon) => weapon.id)).toEqual([
+      "spark",
+      "taper",
+    ]);
+    expect(world.cues.has("evolve")).toBe(false);
+  });
+
   it("heals CHEST_HEAL, capped at maxHp, when nothing can level", () => {
     const world = playing(["taper", MAX_WEAPON_LEVEL], ["corona", 1]);
     for (const id of ["brass", "mirror"] as const) {

@@ -5,6 +5,7 @@
 // overlay leaves the game exactly as it is. The overlay draws whatever is
 // registered here.
 
+import type { Cue } from "./constants";
 import { SWITCH_NAMES } from "./state";
 import type { Game } from "./game";
 import { runTime, spawnWindow } from "./sim/enemies";
@@ -97,4 +98,27 @@ export function registerGameDiagnostics(
     );
   }
   diagnostics.register("autoStep", () => String(game.autoStep));
+}
+
+/** As much of the audio layer as the overlay reports. */
+export interface AudioDiagnosed {
+  /** The looping cues sounding right now. */
+  looping(): Cue[];
+  /** The runtime's mute bit. */
+  readonly muted: boolean;
+}
+
+/**
+ * Register the audio sources: the looping cues sounding, and the mute bit the
+ * game mirrors into `muted`.
+ */
+export function registerAudioDiagnostics(
+  diagnostics: Diagnostics,
+  audio: AudioDiagnosed,
+): void {
+  diagnostics.register("loops", () => {
+    const looping = audio.looping();
+    return looping.length === 0 ? "none" : looping.join(", ");
+  });
+  diagnostics.register("muted", () => (audio.muted ? "yes" : "no"));
 }

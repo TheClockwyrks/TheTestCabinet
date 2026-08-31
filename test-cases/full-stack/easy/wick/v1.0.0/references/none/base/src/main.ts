@@ -7,7 +7,11 @@
 
 import { loadAssets } from "./assets";
 import { WebAudioBus } from "./audio";
-import { Diagnostics, registerGameDiagnostics } from "./diagnostics";
+import {
+  Diagnostics,
+  registerAudioDiagnostics,
+  registerGameDiagnostics,
+} from "./diagnostics";
 import { Game } from "./game";
 import { Keyboard } from "./input";
 import { Runtime } from "./runtime";
@@ -31,6 +35,7 @@ async function main(): Promise<void> {
   const keyboard = new Keyboard();
   const diagnostics = new Diagnostics();
   registerGameDiagnostics(diagnostics, game);
+  registerAudioDiagnostics(diagnostics, audio);
 
   keyboard.onFirstPress(() => audio.unlock());
   keyboard.attach(window);

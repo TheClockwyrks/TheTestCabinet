@@ -43,9 +43,9 @@ export function isWeaponId(id: string): id is WeaponId {
   return isBaseWeapon(id) || isEvolution(id);
 }
 
-/** The evolved form of a base weapon. */
-export function evolutionOf(base: BaseWeaponId): EvolutionId {
-  return EVOLUTION_IDS.find((id) => EVOLUTIONS[id].from === base)!;
+/** The evolved form of a base weapon, or `null` for one with no recipe. */
+export function evolutionOf(base: BaseWeaponId): EvolutionId | null {
+  return EVOLUTION_IDS.find((id) => EVOLUTIONS[id].from === base) ?? null;
 }
 
 /** The base weapon an evolved one came from. */
@@ -55,7 +55,9 @@ export function baseOf(evolved: EvolutionId): BaseWeaponId {
 
 /** The weapons `id` cannot share a loadout with: itself and its pair. */
 export function pairedIds(id: WeaponId): readonly WeaponId[] {
-  return isBaseWeapon(id) ? [id, evolutionOf(id)] : [id, baseOf(id)];
+  if (isEvolution(id)) return [id, baseOf(id)];
+  const evolved = evolutionOf(id);
+  return evolved === null ? [id] : [id, evolved];
 }
 
 /** The row `id` reads at `level`; an evolved weapon's fixed row. */

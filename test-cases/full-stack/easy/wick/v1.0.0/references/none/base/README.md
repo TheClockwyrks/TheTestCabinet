@@ -52,16 +52,33 @@ npm test            # vitest run, with coverage
 Every sprite, sheet, icon, and sound the game shows or plays was produced
 once with the asset tools and committed under `assets/`; the build bundles
 those files and invokes no tool. `ASSET-LAYOUT.md` maps every file to the
-code that draws it. To regenerate the image set, with `draw` and `draw-sheet`
-on the `PATH` (or built under `$CARGO_TARGET_DIR`):
+code that draws or plays it. To regenerate them, with the tools on the `PATH`
+(or built under `$CARGO_TARGET_DIR`):
 
 ```sh
-node scripts/gen-sprites.mjs   # the lamplighter, enemies, effects, icons, ground
+node scripts/gen-sprites.mjs   # the lamplighter, enemies, effects, icons, ground (draw, draw-sheet)
+bash scripts/gen-audio.sh      # the fourteen cues, the hum, and the music bed (sfx-synth, music)
 ```
 
-The script composes each sprite as a pixel raster under `scripts/sprites/`
-and hands it to the tool as the operations that reproduce it, so each
-committed PNG is the tool's own render of its recorded log.
+The sprite script composes each sprite as a pixel raster under
+`scripts/sprites/` and hands it to the tool as the operations that reproduce
+it, so each committed PNG is the tool's own render of its recorded log. The
+audio script builds each cue from oscillator and noise voices and sequences
+the bed on synth-waveform tracks; the two loops are authored to run end into
+start, and `src/assets.test.ts` reads every file back to check it.
+
+## Sound
+
+`src/audio.ts` is the Web Audio layer: one buffer per cue, decoded before
+the first frame; a one-shot cue plays through a fresh source on the cue bus,
+and each of the two looping cues sounds through a single source set to loop
+on the loop bus, from the frame that starts it to the frame that stops it.
+The frame loop reconciles the loops from the state every frame, so the bed
+runs exactly while the screen is `playing`, `levelup`, `chest`, or `paused`,
+and the hum exactly while Halo or Corona is held on `playing`. `M` drives the
+master gain to silence without stopping a loop, so muting and unmuting leave
+a loop in place. Browsers hold audio until the first gesture, so the context
+is resumed on the first key press or pointer press.
 
 ## Controls
 
@@ -75,7 +92,7 @@ The game is keyboard only. Keys are bound by physical position
 | Back | `Escape` | Leaves the how-to screen; abandons a paused run; returns to the title from an end screen |
 | Pause | `KeyP` | Pauses the night; resumes it |
 | Mute | `KeyM` | Toggles sound, on every screen |
-| Diagnostics | `` ` `` (backquote) | Shows and hides the debug overlay |
+| Diagnostics | `` ` `` (backquote) | Shows and hides the debug overlay: the screen, the clock, the loadout, the switches, the loops sounding, and the mute bit |
 
 ## The debug surface
 
@@ -94,8 +111,8 @@ poses one part of the game and sounds nothing.
 | `src/state.ts` | The state's shape, the idle run, and a fresh run. |
 | `src/game.ts` | The screens, the menus, the frame's update, and the cues. |
 | `src/sim/` | The tick: the lamplighter, enemies, weapons, effects, drops, and progression. |
-| `src/runtime.ts`, `src/viewport.ts`, `src/input.ts`, `src/audio.ts`, `src/assets.ts` | The runtime layer. |
+| `src/runtime.ts`, `src/viewport.ts`, `src/input.ts`, `src/audio.ts`, `src/assets.ts` | The runtime layer: the frame loop, the canvas fit, the keyboard, the Web Audio bus, the loader. |
 | `src/render/` | The world under the camera, the effects over each hitbox, the HUD, and the screens. |
 | `src/surface.ts`, `src/diagnostics.ts`, `src/overlay.ts` | The debug surface and the overlay. |
 | `assets/` | The produced sprites, icons, and sounds; `ASSET-LAYOUT.md` maps them. |
-| `scripts/` | The asset production scripts, run once by hand. |
+| `scripts/` | The asset production scripts, `gen-sprites.mjs` and `gen-audio.sh`, run once by hand. |

@@ -58,8 +58,9 @@ export function candidatePool(run: RunState): OfferId[] {
     const held = run.weapons.find((weapon) => weapon.id === id);
     if (held) {
       if (held.level < MAX_WEAPON_LEVEL) pool.push(id);
-    } else if (weaponSlotFree && !heldWeapons.has(evolutionOf(id))) {
-      pool.push(id);
+    } else if (weaponSlotFree) {
+      const evolved = evolutionOf(id);
+      if (evolved === null || !heldWeapons.has(evolved)) pool.push(id);
     }
   }
   const passiveSlotFree = run.passives.length < PASSIVE_SLOTS;
@@ -167,6 +168,7 @@ export function openChest(ctx: TickContext): ChestResult {
   for (const held of run.weapons) {
     if (!isBaseWeapon(held.id) || held.level < MAX_WEAPON_LEVEL) continue;
     const evolved = evolutionOf(held.id);
+    if (evolved === null) continue;
     if (passiveLevel(run.passives, EVOLUTIONS[evolved].passive) === 0) continue;
     held.id = evolved;
     held.level = 1;

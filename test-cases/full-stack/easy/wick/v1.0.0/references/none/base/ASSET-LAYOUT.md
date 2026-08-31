@@ -7,8 +7,8 @@ where it landed and how it is wired in.
 
 Everything here was produced once with the tools on the `PATH` and committed.
 `npm ci` and `npm run build` bundle the committed files and invoke no tool.
-`node scripts/gen-sprites.mjs` regenerates the whole image set; the sound is
-produced separately and mapped below when it lands.
+`node scripts/gen-sprites.mjs` regenerates the whole image set and
+`bash scripts/gen-audio.sh` the whole sound set.
 
 ## How the files are loaded
 
@@ -99,7 +99,42 @@ symbol is its base's burning hotter.
 | `bellows`, `tallow`, `tinder`, `soot`, `lure` | A bellows, a heart, twigs with sparks, a black smudge, a magnet. |
 | `lamp-oil` | An oil can with a green cross. |
 
-## Audio
+## Audio, `scripts/gen-audio.sh`
 
-The fourteen cues and the music bed of `specs/assets.md` land under
-`assets/audio/` and are mapped here when produced.
+44.1 kHz PCM-16 throughout, decoded by `src/audio.ts` through the Web Audio
+API before the first frame, and bound to its cue by file name:
+`audio/<cue>.wav` for each name in `CUES`. Every cue is pure `sfx-synth`
+(the baked sample pack on the producing machine is empty, and the warm
+palette wants the oscillator control anyway); the bed is `music` over
+synth-waveform tracks, its `.mid` committed beside the `.wav`. The palette is
+warm and candlelit, soft sines and triangles, FM bells, wooden knocks, and
+breathy noise, so the set sounds like one night. `src/assets.test.ts` reads
+every file back and checks its format, its length class, and the two loops'
+seams.
+
+| File | Length | Ch | Played on | Character |
+| --- | --- | --- | --- | --- |
+| `audio/hit.wav` | 0.07 s | mono | an enemy takes damage | a light wooden tick dipping a fourth, dry |
+| `audio/kill.wav` | 0.22 s | mono | an enemy dies | a noise puff over a low pop falling away; above hit by weight and length |
+| `audio/gem.wav` | 0.09 s | mono | a gem is collected | a tiny glass chime rising a fourth |
+| `audio/hurt.wav` | 0.34 s | mono | the lamplighter takes damage | a ring-modulated square scraping down an octave through distortion; the only buzz in the set |
+| `audio/level-up.wav` | 1.20 s | stereo | the level-up overlay opens | a rising four-note FM bell figure, D5 F5 A5 D6 |
+| `audio/choose.wav` | 0.38 s | mono | an offer is accepted | a two-tone affirm, G5 then D6 |
+| `audio/chest.wav` | 1.35 s | stereo | the chest overlay opens | a wooden knock, a bit-crushed creak, a brass chime |
+| `audio/evolve.wav` | 2.50 s | stereo | a weapon evolves | a two-octave shimmer rising into three bells, in a large room |
+| `audio/pickup.wav` | 0.17 s | mono | bread or a draft is collected | a soft round blip stepping up a third, lower than the gem |
+| `audio/fallen.wav` | 3.80 s | stereo | the run ends fallen | a saw column sagging two octaves over a sub, a dark toll; the heaviest, darkest sound |
+| `audio/dawn.wav` | 4.40 s | stereo | the run ends at dawn | an F major swell climbing an octave into three bells; as weighty as fallen and bright where it is dark |
+| `audio/menu-move.wav` | 0.07 s | mono | a menu highlight moves | a tiny wooden tick |
+| `audio/menu-confirm.wav` | 0.34 s | mono | a menu item is confirmed | a short two-tone, E5 then B5 |
+| `audio/hum.wav` | 3.000 s | stereo | loops while Halo or Corona is held on `playing` | a warm throbbing drone: sines at 55, 110, and 110⅓ Hz beating once per loop, a soft triangle fifth, an FM glow |
+| `audio/music.wav` (+ `.mid`) | 36.000 s | stereo | loops from the start of a run to its end | a D minor lullaby, 12 bars at 80 BPM: a sine drone, a triangle pad of chord tones, a low pulse on each bar, a sparse bell melody, a quiet square arpeggio |
+
+Both loops run end into start under 1% of full scale. `hum` is periodic in
+its file length: every voice is a fixed-frequency oscillator under a flat
+envelope, and every frequency completes a whole number of cycles in 3000 ms.
+The bed's last notes end exactly on beat 48 under `gate` envelopes, so the
+end sample sits at silence beside the silent first sample, and the tracks
+carrying the reverb stop a beat or more before the seam. The bed peaks at
+0.28 and the hum at 0.24, under the cues (0.31 to 0.75), and `src/audio.ts`
+plays the loops at half the cue bus's level.
