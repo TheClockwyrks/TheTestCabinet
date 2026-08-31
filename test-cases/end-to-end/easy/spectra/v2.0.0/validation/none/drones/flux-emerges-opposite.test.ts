@@ -1,17 +1,102 @@
-// Spectra — drones/flux-emerges-opposite: a Flux emerges on the other band
+// drones/flux-emerges-opposite — a shimmer ends on the other band.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `drones.flux-emerges-opposite` on the
-// `none` configuration, and captures the media `test-case.toml` declares
-// for it.
+// specs/drones.md, Its rhythm: "When the band clock reaches `fluxWindow(stage)`,
+// the Flux's stored band flips to the opposite one and the band clock returns to
+// `0`, starting the next window." That flip is the whole point of the kind: it is
+// what makes a Flux a moving target for the cannon rather than a slower Shard, and
+// what makes `fluxCycle(stage)` — two windows — the trip back to the same band.
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// WHAT IS DRIVEN. One Flux alone, its band clock at `0` and its stored band CYAN,
+// with the oscillation gate on and travel and fire off, so the band clock is the
+// only thing moving. The sweep runs to the build's own shimmer and then out the
+// far side of it, and the band is read there.
+//
+// WHY CYAN IS THE POSED BAND. `addDrone` creates a drone holding cyan
+// (specs/instrumentation.md), so cyan-in means the value this check requires,
+// magenta, is one no build can produce by leaving the band alone or by
+// recomputing it from a default. A build whose Flux never flips reads cyan here,
+// and so does one that resets the band at the window boundary.
+//
+// This reads the stored band alone. What a Flux reads AS mid-shimmer — the band
+// it is moving toward — is `bands`', and how long each part of the window lasts is
+// `drones/flux-cycle-holds`' and `drones/flux-shimmer-duration`'s.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  FLUX_SHIMMER,
+  FORM_CENTER_X,
+  fluxWindow,
+  opposite,
+} from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  framesFor,
+  poseDrone,
+  requireDrone,
+  startPosed,
+  type Harness,
+} from "../harness";
 
-it("A Flux emerges on the other band", () => {
-  throw new Error(
-    "Spectra: validation/none/drones/flux-emerges-opposite.test.ts is a scaffold placeholder and has not been implemented",
+/** The stage the scenario is posed at: a band window's length is per stage. */
+const STAGE = 1;
+
+/** The band the Flux enters its shimmer holding. */
+const POSED_BAND = "cyan" as const;
+
+/** Where the Flux stands. Mid-field, clear of both HUD strips and of the ship. */
+const AT = { x: FORM_CENTER_X, y: 300 } as const;
+
+/**
+ * Frames from the start of the window to the shimmer, before the sweep gives up.
+ *
+ * A whole window (`fluxWindow(1)` = 2.0 s) plus 20%, so a build that never
+ * shimmers still reaches the reading below — where its band, unflipped, fails.
+ */
+const ENTER_FRAMES = framesFor(fluxWindow(STAGE) * 1.2);
+
+/**
+ * Frames the shimmer's end is swept for.
+ *
+ * Three times `FLUX_SHIMMER`, so a build whose telegraph runs long is still read
+ * on the far side of it rather than mid-shimmer. How long it may run is
+ * `drones/flux-shimmer-duration`'s reading, not this one's.
+ */
+const LEAVE_FRAMES = framesFor(FLUX_SHIMMER * 3);
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.dispose();
+});
+
+it("brings a Flux out of its shimmer on the opposite band", async () => {
+  await startPosed(harness, { stage: STAGE });
+  const flux = await poseDrone(harness, "flux", AT.x, AT.y, {
+    band: POSED_BAND,
+    bandClock: 0,
+    oscillation: true,
+  });
+
+  const settled = await captureReplay(harness, "emerged", async () => {
+    await harness.until((snapshot) => requireDrone(snapshot, flux).shimmer, {
+      maxFrames: ENTER_FRAMES,
+      poll: 1,
+    });
+    return harness.until((snapshot) => !requireDrone(snapshot, flux).shimmer, {
+      maxFrames: LEAVE_FRAMES,
+      poll: 1,
+    });
+  });
+
+  assertEqual(
+    requireDrone(settled.snapshot, flux).band,
+    opposite(POSED_BAND),
+    "the band a Flux holds after a shimmer, opposite the one it entered with (specs/drones.md)",
   );
 });
