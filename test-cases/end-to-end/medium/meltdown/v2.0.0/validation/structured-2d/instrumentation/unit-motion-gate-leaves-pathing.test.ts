@@ -85,7 +85,11 @@ it("raises a held unit's remaining when a wall is built across its way", async (
   h.debug.setUnitMotion(id, false);
   await h.advance(1);
 
-  const before = readUnit(h.snapshot(), id, "the held unit on the open corridor");
+  const before = readUnit(
+    h.snapshot(),
+    id,
+    "the held unit on the open corridor",
+  );
   assertEqual(before.motion, false, "precondition: the unit's motion is held");
   assertEqual(
     before.flying,
@@ -103,7 +107,11 @@ it("raises a held unit's remaining when a wall is built across its way", async (
   await h.advance(1);
   captureStill(h, "repathed");
 
-  const after = readUnit(h.snapshot(), id, "the held unit after the wall landed");
+  const after = readUnit(
+    h.snapshot(),
+    id,
+    "the held unit after the wall landed",
+  );
   assertLessThan(
     distance(wasAt, positionOf(after)),
     HELD_TOLERANCE,

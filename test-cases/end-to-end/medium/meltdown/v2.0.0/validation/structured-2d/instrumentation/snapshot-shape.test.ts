@@ -354,7 +354,11 @@ it("reports every documented field, on a floor that exercises each of them", asy
 
   // The three sizes and both movers really are on the floor the shape was read
   // off, so the reading covered every branch it claims to.
-  assertEqual(readTower(snapshot, arc, "the posed Arc").size, 2, "the Arc's size");
+  assertEqual(
+    readTower(snapshot, arc, "the posed Arc").size,
+    2,
+    "the Arc's size",
+  );
   assertEqual(
     readTower(snapshot, bloom, "the posed Bloom").size,
     3,

@@ -84,7 +84,11 @@ it("gives every entity a distinct id, appends it, and keeps it across frames and
     const towers = h.snapshot().towers;
     assertLength(towers, index + 1, `the roster after adding the ${type}`);
     const added = towers[towers.length - 1];
-    assertEqual(added.type, type, `the last roster entry after adding the ${type}`);
+    assertEqual(
+      added.type,
+      type,
+      `the last roster entry after adding the ${type}`,
+    );
     return added.id;
   });
 
@@ -92,7 +96,11 @@ it("gives every entity a distinct id, appends it, and keeps it across frames and
   for (let index = 0; index < UNITS; index += 1) {
     h.debug.addUnit("mote", "left");
     const surge = h.snapshot().surge;
-    assertLength(surge, index + 1, `the surge roster after adding unit ${index}`);
+    assertLength(
+      surge,
+      index + 1,
+      `the surge roster after adding unit ${index}`,
+    );
     const added = surge[surge.length - 1];
     const site = quietSite(index + 8);
     const at = tileCenter(site.col, site.row);
@@ -110,11 +118,7 @@ it("gives every entity a distinct id, appends it, and keeps it across frames and
   );
   for (const towerId of towerIds) {
     for (const unitId of unitIds) {
-      assertNotEqual(
-        towerId,
-        unitId,
-        "a tower's id against a live unit's",
-      );
+      assertNotEqual(towerId, unitId, "a tower's id against a live unit's");
     }
   }
 

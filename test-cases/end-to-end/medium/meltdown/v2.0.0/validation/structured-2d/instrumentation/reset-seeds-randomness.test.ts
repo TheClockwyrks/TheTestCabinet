@@ -94,7 +94,11 @@ async function ventsFrom(seed: number): Promise<VentName[]> {
 
   const vents: VentName[] = [];
   const seen = new Set<number>();
-  for (let frame = 0; frame < RELEASE_FRAMES && vents.length < UNITS; frame += 1) {
+  for (
+    let frame = 0;
+    frame < RELEASE_FRAMES && vents.length < UNITS;
+    frame += 1
+  ) {
     await h.advance(1);
     for (const unit of h.snapshot().surge) {
       if (seen.has(unit.id)) continue;

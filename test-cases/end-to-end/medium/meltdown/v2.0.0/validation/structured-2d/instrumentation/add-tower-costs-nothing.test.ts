@@ -109,7 +109,11 @@ it("builds on a footprint the placement check refuses for want of money, and spe
   const after = h.snapshot();
 
   assertLength(after.towers, 1, "the towers addTower left on the floor");
-  const built = readTower(after, after.towers[0].id, "the tower addTower posed");
+  const built = readTower(
+    after,
+    after.towers[0].id,
+    "the tower addTower posed",
+  );
   assertEqual(built.type, TYPE, "the type addTower built");
   assertEqual(built.col, SITE.col, "the column addTower built on");
   assertEqual(built.row, SITE.row, "the row addTower built on");

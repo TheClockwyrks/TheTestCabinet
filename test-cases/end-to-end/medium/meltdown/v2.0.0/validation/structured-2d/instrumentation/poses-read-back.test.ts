@@ -35,11 +35,7 @@
 // `hp`, so the reading is of two poses rather than of one clamping the other.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertCloseTo,
-  assertEqual,
-  assertNotNull,
-} from "../assert";
+import { assertCloseTo, assertEqual, assertNotNull } from "../assert";
 import {
   captureStill,
   createHarness,

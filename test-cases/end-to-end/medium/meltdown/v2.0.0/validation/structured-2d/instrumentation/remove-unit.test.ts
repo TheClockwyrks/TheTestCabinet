@@ -27,11 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { SURGE_DEFS } from "../../src/constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLength,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -93,7 +89,11 @@ it("removes that unit alone, leaves the rest walking and pays nothing", async ()
   await h.advance(WALK_FRAMES);
 
   const before = h.snapshot();
-  assertLength(before.towers, 0, "precondition: nothing on the floor could kill one");
+  assertLength(
+    before.towers,
+    0,
+    "precondition: nothing on the floor could kill one",
+  );
   assertLength(before.surge, WALKERS, "precondition: the walkers on the floor");
   assertGreaterThan(
     SURGE_DEFS.mote.bounty,

@@ -139,11 +139,7 @@ export const OPEN_ROW_EXIT: Tile = {
  * `setUnitPosition` recomputes its route from the tile the position falls in
  * (`specs/instrumentation.md`), so what follows is the game's own walk.
  */
-export function poseWalkerAt(
-  h: Harness,
-  type: SurgeType,
-  tile: Tile,
-): number {
+export function poseWalkerAt(h: Harness, type: SurgeType, tile: Tile): number {
   h.debug.addUnit(type, "left");
   const surge = h.snapshot().surge;
   const id = surge[surge.length - 1].id;

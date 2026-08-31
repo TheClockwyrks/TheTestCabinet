@@ -1,20 +1,325 @@
-// Meltdown — instrumentation/overlay: the debug overlay reports the game.
+// Meltdown — instrumentation/overlay: the debug overlay reports the game, and
+// watching it leaves the game as it is.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// Under this engine the overlay is ENGINE CHROME: the backtick key toggles it and
+// the engine draws it. Meltdown's whole part is to REGISTER the values it wants on
+// it, and `specs/instrumentation.md`, Diagnostics, lists them: "the current
+// `screen` and `phase`; the mode and the difficulty; the money, the lives, the
+// wave, and the score; the lengths of the two routes; for each tower, its id, its
+// type, its level, its heat, its redline, whether it is tripped, and its kills;
+// for each surge unit, its id, its type, the tile it stands on, its hp, and
+// whether it is slowed." And: "keep every source a pure read, so watching the
+// overlay leaves the game exactly as it is."
 //
-// What it must decide:
+// THE OVERLAY'S LINES ARE THE ONES THE TOGGLE ADDS. The engine draws through the
+// same context this harness records, so the overlay's text arrives as ordinary
+// text runs — beside the panel's and the floor's. What separates them is the
+// toggle: a bare frame is read first, and every run the overlaid frame draws that
+// the bare frame did not is the overlay's. That is what keeps a shop entry
+// labelled LANCE from standing in for the overlay's own tower line.
 //
-//   Toggling the overlay over a posed floor draws the facts
-//   specs/instrumentation.md lists, and the snapshot is identical before and
-//   after.
+// WHAT IS ASSERTED IS THE VALUE, NEVER THE WORDING. What words a build puts round
+// a figure is the build's; the specification fixes only which figures are there.
+// So every value posed below is one that could not be mistaken for another on the
+// same panel — `4321` of money, `176` lives, wave `13`, a score of `987654`, a
+// Lance pinned at heat `61` against its own redline of `92`, a Drift on tile
+// `(40, 30)` at `55` hp — and each is looked for as a run of text carrying it.
+// A route's length is a fraction, so it is looked for under any of the roundings a
+// build might print it at.
+//
+// THE TWO FLAGS ARE READ BY DIFFERENCE, because a flag has no figure to look for:
+// a build may write `TRIPPED`, `T`, or a colour. So the tower's line is read, the
+// flag is flipped with the pose that touches nothing else — `setTowerTripped`
+// "sets that flag alone" — and the line must have changed. The unit's slow is read
+// the same way, and so are the KILLS, which no pose can set: the gun is given a
+// mark it can kill and its line must differ once it has taken it.
+//
+// A PURE READ IS THE LAST LEG, and it is read the one way the specification
+// allows: `simTime` "accumulates the game time the simulation advanced by" on
+// every screen, and a toggle costs a frame — so `simTime` is compared as exactly
+// that one frame's advance and every other field must be identical. The floor is
+// made static first: the trip flag and its timer down, the slow and its timer
+// down, the tower's heat pinned, the unit's motion held and out of every range,
+// the phase `wave` so no build timer counts, and the world gate off so nothing
+// arrives. Anything that moved across that frame would be the overlay's doing.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { TOWER_DEFS } from "../../src/constants";
+import {
+  assertCloseTo,
+  assertDeepEqual,
+  assertGreaterThan,
+  assertNotEqual,
+  fail,
+} from "../assert";
+import {
+  captureStill,
+  clearCalls,
+  createHarness,
+  drawnText,
+  seconds,
+  startRun,
+  ticksFor,
+  tileCenter,
+  toggleOverlay,
+  type Harness,
+} from "../harness";
+import { readTower, readUnit } from "./ground";
 
-it("The debug overlay reports the game", () => {
-  throw new Error(
-    "Meltdown: validation/instrumentation/overlay.test.ts is not implemented yet",
+/** The run figures posed, each one distinctive on a panel full of numbers. */
+const MONEY = 4321;
+const LIVES = 176;
+const WAVE = 13;
+const SCORE = 987_654;
+
+/** The tower posed, where it stands, and the heat it is pinned at. */
+const TOWER_TYPE = "lance";
+const TOWER_AT = { col: 4, row: 4 };
+const TOWER_LEVEL = 3;
+const TOWER_HEAT = 61;
+const TOWER_REDLINE =
+  TOWER_DEFS[TOWER_TYPE].kind === "emitter"
+    ? TOWER_DEFS[TOWER_TYPE].redline
+    : 0;
+
+/** The unit whose line the overlay must carry, and where it stands. */
+const UNIT_TYPE = "drift";
+const UNIT_AT = { col: 40, row: 30 };
+const UNIT_HP = 55;
+const UNIT_SLOW = 0.5;
+const UNIT_SLOW_SECONDS = 1000;
+
+/** The mark the gun is given to kill, and how long it is given. */
+const MARK_AT = { col: 9, row: 4 };
+const MARK_HP = 1;
+const KILL_FRAMES = ticksFor(6);
+
+/** How closely `simTime` must match one frame's advance, in decimal places. */
+const SIM_TIME_DIGITS = 6;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+/** The text runs one frame drew, with the overlay in whatever state it is in. */
+async function textOfOneFrame(): Promise<string[]> {
+  clearCalls(h);
+  await h.advance(1);
+  return drawnText(h.calls);
+}
+
+/** The first of `lines` containing `needle`, ignoring case, or a failure. */
+function lineContaining(
+  lines: readonly string[],
+  needle: string,
+  requirement: string,
+): string {
+  const wanted = needle.toLowerCase();
+  const found = lines.find((line) => line.toLowerCase().includes(wanted));
+  if (found === undefined) {
+    fail(
+      `an overlay line containing ${JSON.stringify(needle)} (${requirement})`,
+      lines,
+    );
+  }
+  return found;
+}
+
+/**
+ * A line carrying `value` under any rounding a build might print it at.
+ *
+ * A route length is a sum of `1`s and `sqrt(2)`s (`specs/mazing.md`), so it is a
+ * fraction and how many places a build shows is the build's. What the
+ * specification fixes is that the length is there.
+ */
+function lineWithNumber(
+  lines: readonly string[],
+  value: number,
+  requirement: string,
+): string {
+  const renderings = [
+    String(value),
+    String(Math.round(value)),
+    String(Math.trunc(value)),
+    value.toFixed(0),
+    value.toFixed(1),
+    value.toFixed(2),
+  ];
+  const found = lines.find((line) =>
+    renderings.some((rendering) => line.includes(rendering)),
+  );
+  if (found === undefined) {
+    fail(`an overlay line carrying ${value} (${requirement})`, lines);
+  }
+  return found;
+}
+
+it("draws every registered fact and changes nothing about the game", async () => {
+  startRun(h, "bottleneck");
+  h.debug.setDifficulty("hard");
+  // `building` while the facts are read, because it is a word that appears
+  // nowhere else on this panel — where `wave` is also the label the run's own
+  // line carries — and then `wave` for the pure-read leg, where a phase whose
+  // build timer counts down would move a field for a reason of its own.
+  h.debug.setPhase("building");
+  h.debug.setWavePending(0);
+  h.debug.setMoney(MONEY);
+  h.debug.setLives(LIVES);
+  h.debug.setWave(WAVE);
+  h.debug.setScore(SCORE);
+
+  h.debug.addTower(TOWER_TYPE, TOWER_AT.col, TOWER_AT.row, 0);
+  const tower = h.snapshot().towers[0].id;
+  h.debug.setTowerThermal(tower, false);
+  h.debug.setTowerHeat(tower, TOWER_HEAT);
+  h.debug.setTowerLevel(tower, TOWER_LEVEL);
+
+  h.debug.addUnit(UNIT_TYPE, "left");
+  const unit = h.snapshot().surge[0].id;
+  const where = tileCenter(UNIT_AT.col, UNIT_AT.row);
+  h.debug.setUnitPosition(unit, where.x, where.y);
+  h.debug.setUnitMotion(unit, false);
+  h.debug.setUnitMaxHp(unit, UNIT_HP);
+  h.debug.setUnitHp(unit, UNIT_HP);
+  h.debug.setUnitSlow(unit, UNIT_SLOW);
+  h.debug.setUnitSlowTimer(unit, UNIT_SLOW_SECONDS);
+
+  // A bare frame first: everything the game draws with the overlay down.
+  const bare = new Set(await textOfOneFrame());
+
+  // Then the toggle, and the runs it added are the overlay's.
+  clearCalls(h);
+  await toggleOverlay(h);
+  captureStill(h, "overlay");
+  const overlaid = drawnText(h.calls);
+  const added = overlaid.filter((line) => !bare.has(line));
+  assertGreaterThan(added.length, 0, "the text runs the toggle added");
+
+  const posed = h.snapshot();
+
+  // The run.
+  lineContaining(added, posed.screen, "the current screen");
+  lineContaining(added, posed.phase, "the current phase");
+  lineContaining(added, posed.mode, "the mode");
+  lineContaining(added, posed.difficulty, "the difficulty");
+  lineContaining(added, String(MONEY), "the money");
+  lineContaining(added, String(LIVES), "the lives");
+  lineContaining(added, String(WAVE), "the wave");
+  lineContaining(added, String(SCORE), "the score");
+
+  // The two routes.
+  lineWithNumber(added, posed.paths.left.length, "the left route's length");
+  lineWithNumber(added, posed.paths.top.length, "the top route's length");
+
+  // The tower: its id, its type, its level, its heat and its redline, all on the
+  // line the overlay gave it.
+  const towerLine = lineContaining(added, TOWER_TYPE, "the tower's type");
+  lineContaining([towerLine], String(tower), "the tower's id");
+  const level = towerLine.toLowerCase();
+  if (!level.includes(String(TOWER_LEVEL)) && !level.includes("iii")) {
+    fail(
+      `the tower's level on its overlay line, as ${TOWER_LEVEL} or III`,
+      towerLine,
+    );
+  }
+  lineContaining([towerLine], String(TOWER_HEAT), "the tower's heat");
+  lineContaining([towerLine], String(TOWER_REDLINE), "the tower's redline");
+
+  // The unit: its id, its type, its tile and its hp.
+  const unitLine = lineContaining(added, UNIT_TYPE, "the unit's type");
+  lineContaining([unitLine], String(unit), "the unit's id");
+  lineContaining([unitLine], String(UNIT_AT.col), "the unit's column");
+  lineContaining([unitLine], String(UNIT_AT.row), "the unit's row");
+  lineContaining([unitLine], String(UNIT_HP), "the unit's hp");
+
+  // The two flags, by difference: the pose touches that flag alone, so a line
+  // that did not change is a line that never carried it.
+  h.debug.setTowerTripped(tower, true);
+  const tripped = (await textOfOneFrame()).filter((line) => !bare.has(line));
+  assertNotEqual(
+    lineContaining(tripped, TOWER_TYPE, "the tower's line, once tripped"),
+    towerLine,
+    "the tower's overlay line, against the same line before it was tripped",
+  );
+  h.debug.setTowerTripped(tower, false);
+
+  h.debug.setUnitSlow(unit, 0);
+  h.debug.setUnitSlowTimer(unit, 0);
+  const unslowed = (await textOfOneFrame()).filter((line) => !bare.has(line));
+  assertNotEqual(
+    lineContaining(unslowed, UNIT_TYPE, "the unit's line, once unslowed"),
+    unitLine,
+    "the unit's overlay line, against the same line while it was slowed",
+  );
+
+  // And the kills, which no pose can set: the gun is given a mark it can kill.
+  const before = (await textOfOneFrame()).filter((line) => !bare.has(line));
+  const beforeTower = lineContaining(
+    before,
+    TOWER_TYPE,
+    "the tower's line before it had a kill",
+  );
+  h.debug.addUnit("mote", "left");
+  const mark = h.snapshot().surge[h.snapshot().surge.length - 1].id;
+  const markAt = tileCenter(MARK_AT.col, MARK_AT.row);
+  h.debug.setUnitPosition(mark, markAt.x, markAt.y);
+  h.debug.setUnitMotion(mark, false);
+  h.debug.setUnitMaxHp(mark, MARK_HP);
+  h.debug.setUnitHp(mark, MARK_HP);
+  await h.until(
+    (snapshot) => snapshot.surge.every((entry) => entry.id !== mark),
+    { maxFrames: KILL_FRAMES, poll: 4 },
+  );
+  assertGreaterThan(
+    readTower(h.snapshot(), tower, "the gun after its shot").kills,
+    0,
+    "precondition: the gun took the kill its overlay line must report",
+  );
+  const scored = (await textOfOneFrame()).filter((line) => !bare.has(line));
+  assertNotEqual(
+    lineContaining(scored, TOWER_TYPE, "the tower's line, once it has a kill"),
+    beforeTower,
+    "the tower's overlay line, against the same line before the kill",
+  );
+
+  // ---- A pure read -------------------------------------------------------
+  // The floor is made static, so anything that moves across the toggle's frame
+  // moved because of the overlay.
+  h.debug.setPhase("wave");
+  h.debug.setTowerTripTimer(tower, 0);
+  assertGreaterThan(
+    readUnit(h.snapshot(), unit, "the unit the overlay reports").hp,
+    0,
+    "precondition: the unit whose line the overlay carries is still on the floor",
+  );
+  await h.advance(2);
+
+  const still = h.snapshot();
+  clearCalls(h);
+  await toggleOverlay(h);
+  const down = new Set(drawnText(h.calls));
+  const settled = h.snapshot();
+
+  assertDeepEqual(
+    { ...settled, simTime: 0 },
+    { ...still, simTime: 0 },
+    "every field but simTime, across the frame the overlay came down on",
+  );
+  assertCloseTo(
+    settled.simTime,
+    still.simTime + seconds(1),
+    SIM_TIME_DIGITS,
+    "simTime across the toggle: exactly the one frame it ran",
+  );
+  assertDeepEqual(
+    added.filter((line) => down.has(line)),
+    [],
+    "the overlay's own lines, once the overlay is down again",
   );
 });

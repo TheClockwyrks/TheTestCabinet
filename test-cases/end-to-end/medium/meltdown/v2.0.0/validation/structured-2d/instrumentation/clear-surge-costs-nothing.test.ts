@@ -77,11 +77,27 @@ it("leaves lives, money and score exactly where they were", async () => {
   await h.advance(WALK_FRAMES);
 
   const before = h.snapshot();
-  assertLength(before.towers, 0, "precondition: nothing on the floor could kill one");
+  assertLength(
+    before.towers,
+    0,
+    "precondition: nothing on the floor could kill one",
+  );
   assertLength(before.surge, WALKERS, "precondition: the walkers on the floor");
-  assertEqual(before.money, POSED_MONEY, "precondition: the money before the clear");
-  assertEqual(before.lives, POSED_LIVES, "precondition: the lives before the clear");
-  assertEqual(before.score, POSED_SCORE, "precondition: the score before the clear");
+  assertEqual(
+    before.money,
+    POSED_MONEY,
+    "precondition: the money before the clear",
+  );
+  assertEqual(
+    before.lives,
+    POSED_LIVES,
+    "precondition: the lives before the clear",
+  );
+  assertEqual(
+    before.score,
+    POSED_SCORE,
+    "precondition: the score before the clear",
+  );
   assertGreaterThan(
     BOUNTY_IF_PAID,
     0,

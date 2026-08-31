@@ -121,7 +121,11 @@ it("removes that tower alone, reopens its footprint and pays nothing", async () 
   const after = h.snapshot();
 
   // One gone.
-  assertLength(after.towers, TYPES.length - 1, "the tower roster after removeTower");
+  assertLength(
+    after.towers,
+    TYPES.length - 1,
+    "the tower roster after removeTower",
+  );
   assertEqual(
     after.towers.some((tower) => tower.id === ids[REMOVED]),
     false,
@@ -150,7 +154,11 @@ it("removes that tower alone, reopens its footprint and pays nothing", async () 
     assertEqual(standing.row, was.row, `tower ${id}: its row`);
     assertEqual(standing.level, was.level, `tower ${id}: its level`);
     assertEqual(standing.spent, was.spent, `tower ${id}: what was spent on it`);
-    for (const tile of footprintTiles(standing.col, standing.row, standing.size)) {
+    for (const tile of footprintTiles(
+      standing.col,
+      standing.row,
+      standing.size,
+    )) {
       assertEqual(
         holds(blocked, tile.col, tile.row),
         true,

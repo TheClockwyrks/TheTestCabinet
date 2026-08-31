@@ -119,8 +119,16 @@ it("removes every tower, reopens every footprint, gives the routes back and leav
 
   await h.advance(1);
   const built = h.snapshot();
-  assertLength(built.towers, 9, "precondition: the towers the floor was posed with");
-  assertLength(built.surge, UNITS, "precondition: the units the floor was posed with");
+  assertLength(
+    built.towers,
+    9,
+    "precondition: the towers the floor was posed with",
+  );
+  assertLength(
+    built.surge,
+    UNITS,
+    "precondition: the units the floor was posed with",
+  );
   assertGreaterThan(
     built.paths.left.length - emptyLeft,
     MIN_LENGTHENING,

@@ -40,11 +40,7 @@
 // death and no re-acquisition interrupts the fire clock.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  MAX_HEAT_MULT,
-  MIN_HEAT_MULT,
-  TOWER_DEFS,
-} from "../../src/constants";
+import { MAX_HEAT_MULT, MIN_HEAT_MULT, TOWER_DEFS } from "../../src/constants";
 import {
   assertCloseTo,
   assertEqual,
@@ -118,7 +114,11 @@ afterEach(() => {
 });
 
 it("fires at its rate and removes the pinned heat's damage on every shot", async () => {
-  assertEqual(SHOTS, 5, "precondition: the window holds five whole fire intervals");
+  assertEqual(
+    SHOTS,
+    5,
+    "precondition: the window holds five whole fire intervals",
+  );
   assertGreaterThan(
     EXPECTED_DAMAGE,
     0,

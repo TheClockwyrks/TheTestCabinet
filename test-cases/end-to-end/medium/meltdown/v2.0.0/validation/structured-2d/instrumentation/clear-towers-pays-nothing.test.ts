@@ -61,10 +61,7 @@ function spentAtTop(type: TowerType): number {
 }
 
 /** What a fresh floor of these towers would refund if the clear paid one. */
-const REFUND_IF_PAID = TYPES.reduce(
-  (sum, type) => sum + spentAtTop(type),
-  0,
-);
+const REFUND_IF_PAID = TYPES.reduce((sum, type) => sum + spentAtTop(type), 0);
 
 let h: Harness;
 
