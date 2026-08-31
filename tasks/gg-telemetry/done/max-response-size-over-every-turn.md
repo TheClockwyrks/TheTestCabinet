@@ -37,6 +37,6 @@ are nearly all of it. Correct the description.
 
 ## Done when
 
-- [ ] The fold covers every turn that did not hit the length cutoff.
-- [ ] The telemetry documentation states the fold's rule and what `responseChars` measures.
-- [ ] Gates green.
+- [x] The fold covers every turn that did not hit the length cutoff.
+- [x] The telemetry documentation states the fold's rule and what `responseChars` measures.
+- [x] Gates green.
