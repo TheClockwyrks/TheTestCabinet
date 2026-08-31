@@ -90,43 +90,46 @@ import {
 } from "../harness";
 
 /**
- * The four window shapes, and the two device pixel ratios between them.
+ * The four window shapes, and the two device pixel ratios each is opened at.
  *
- * `narrowest` marks the shape the item's `fitted` output is captured at: the
- * portrait window, which is the narrowest of the four both in CSS width and in
- * aspect, and the one where the letterboxing is widest and so the most worth
- * looking at.
+ * The item names four shapes and two pixel ratios, so the surfaces are their
+ * CROSS PRODUCT rather than four shapes with a ratio picked for each: a build
+ * that fits a landscape window correctly at one device pixel per CSS pixel and
+ * drops the ratio out of its arithmetic is only visible where a landscape window
+ * is opened at two, and a build that letterboxes a portrait window only at the
+ * higher ratio is only visible where a portrait one is opened at one.
  */
-const SURFACES = [
+const SHAPES = [
   {
     name: "a window the shape of the stage",
     cssWidth: STAGE_W,
     cssHeight: STAGE_H,
-    dpr: 1,
-    narrowest: false,
   },
-  {
-    name: "a window wider than the stage",
-    cssWidth: 1600,
-    cssHeight: 720,
-    dpr: 1,
-    narrowest: false,
-  },
-  {
-    name: "a window taller than the stage",
-    cssWidth: 1280,
-    cssHeight: 900,
-    dpr: 1,
-    narrowest: false,
-  },
-  {
-    name: "a narrow window at twice the device pixel ratio",
-    cssWidth: 700,
-    cssHeight: 900,
-    dpr: 2,
-    narrowest: true,
-  },
-];
+  { name: "a window wider than the stage", cssWidth: 1600, cssHeight: 720 },
+  { name: "a window taller than the stage", cssWidth: 1280, cssHeight: 900 },
+  { name: "a narrow portrait window", cssWidth: 700, cssHeight: 900 },
+] as const;
+
+/** The two device pixel ratios every shape above is opened at. */
+const RATIOS = [1, 2] as const;
+
+/**
+ * The surface the item's `fitted` output is captured at: the portrait window at
+ * twice the device pixel ratio, which is the narrowest of the eight both in CSS
+ * width and in aspect, and the one where the letterboxing is widest and so the
+ * most worth looking at.
+ */
+const NARROWEST = { shape: SHAPES[3], dpr: 2 };
+
+/** Every surface the fit is read at: each shape at each ratio. */
+const SURFACES = SHAPES.flatMap((shape) =>
+  RATIOS.map((dpr) => ({
+    ...shape,
+    dpr,
+    at: `${shape.name} at ${dpr} device pixel(s) per CSS pixel`,
+    narrowest: shape === NARROWEST.shape && dpr === NARROWEST.dpr,
+  })),
+);
 
 /** The foundation the top row's rightmost card is posed on: the last of four. */
 const FOUNDATION = FOUNDATION_X.length - 1;
@@ -228,7 +231,7 @@ afterEach(async () => {
 });
 
 it.each(SURFACES)(
-  "fits the whole table into $name, centred and unclipped",
+  "fits the whole table into $at, centred and unclipped",
   async ({ cssWidth, cssHeight, dpr, narrowest }) => {
     const h = await createHarness({ cssWidth, cssHeight, dpr });
     harnesses.push(h);
