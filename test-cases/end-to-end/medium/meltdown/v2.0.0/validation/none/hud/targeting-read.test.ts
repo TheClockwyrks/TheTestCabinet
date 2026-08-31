@@ -1,20 +1,120 @@
-// Meltdown — hud/targeting-read: every tower's targeting reads on the panel.
+// hud/targeting-read — the panel's targeting read tells the three classes of tower
+// apart, on the hover panel and on the inspector.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// `specs/hud.md`, The targeting read: "Both the hover panel and the inspector read
+// what the tower fires on. Every emitter but the Flak reads as hitting ground and
+// air, the Flak reads as air-only, and the Forge and the Sink read as never
+// firing." `specs/combat.md` is where those three classes come from.
 //
-// What it must decide:
+// HOW THIS IS READ WITHOUT FIXING A SINGLE WORD. `specs/hud.md` fixes the three
+// readout LABELS and no other copy the panel draws, so a point that looked for
+// `GROUND + AIR` would be grading a build against the reference's vocabulary — a
+// build reading `HITS GROUND AND FLYERS` says exactly the right thing in the wrong
+// words. What the specification does fix is a PARTITION: five of the eight towers
+// share one read, one has another, and two have a third. So what is looked for is
+// a run of text that the five ground-and-air emitters ALL draw and that the Flak,
+// the Forge and the Sink ALL do not.
 //
-//   Each emitter but the Flak reads as hitting ground and air, the Flak reads
-//   air-only, and both movers read as never firing, on both the hover panel
-//   and the inspector.
+// That one existence check carries the whole rule, and it is worth seeing why. The
+// five share their labels with the Flak and the movers, so a label cannot be it.
+// No two of the eight share a value: every range, fire rate, mass, redline and
+// per-shot heat in `specs/towers.md` is distinct, and so is every damage read. The
+// radiator rows do not partition this way either — the Arc's faces are `N S` and
+// the Stutter's, Bloom's and Lance's are `N E`. So the only run five of them can
+// share while the Flak and the two movers lack it is the targeting read, and it
+// exists exactly when:
+//
+//   - the five all read as hitting ground and air (else the run is not shared);
+//   - the Flak does NOT read that way (else the run is not the Flak's to lack);
+//   - neither mover reads that way either.
+//
+// A build that reads air-only on every emitter fails; one that reads ground and air
+// on the Flak fails; one that reads ground and air on the Forge fails; one that
+// draws no targeting read at all fails.
+//
+// BOTH PANELS, BECAUSE THE REQUIREMENT NAMES BOTH. The hover pass hovers each of
+// the eight entries in turn on an empty floor. The inspector pass poses one tower
+// of each type in turn, at level I with nothing else on the floor, and selects it.
+// A build whose hover panel reads targeting and whose inspector does not must grade
+// apart from one where both do, so the two are asserted separately.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual } from "../assert";
+import { EMITTER_TYPES, MOVER_TYPES, TOWER_TYPES, type TowerType } from "../constants";
+import { FREE_SITE } from "../fixtures";
+import {
+  captureStill,
+  createHarness,
+  poseTower,
+  startRun,
+  type Harness,
+} from "../harness";
+import { readPanel, runTexts } from "./panel";
 
-it("Every tower's targeting reads on the panel", () => {
-  throw new Error(
-    "Meltdown: validation/hud/targeting-read.test.ts is not implemented yet",
+/** The five emitters `specs/hud.md` says read as hitting ground and air. */
+const GROUND_AND_AIR: readonly TowerType[] = EMITTER_TYPES.filter(
+  (type) => type !== "flak",
+);
+
+/** The three that must not: the air-only Flak, and the two that never fire. */
+const NOT_GROUND_AND_AIR: readonly TowerType[] = ["flak", ...MOVER_TYPES];
+
+/** The reads the five share and the other three lack. One is the targeting read. */
+function sharedByTheFive(
+  panels: Map<TowerType, Set<string>>,
+): string[] {
+  const [first, ...rest] = GROUND_AND_AIR;
+  const start = panels.get(first) ?? new Set<string>();
+  return [...start].filter(
+    (run) =>
+      rest.every((type) => panels.get(type)?.has(run) === true) &&
+      NOT_GROUND_AND_AIR.every((type) => panels.get(type)?.has(run) !== true),
+  );
+}
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("draws one read the five ground-and-air emitters share and the other three lack", async () => {
+  await startRun(h);
+
+  // The hover panel, on an empty floor.
+  const hovered = new Map<TowerType, Set<string>>();
+  for (const type of TOWER_TYPES) {
+    await h.debug.setHoverShop(type);
+    hovered.set(type, runTexts(await readPanel(h)));
+    if (type === "flak") await captureStill(h, "targeting");
+  }
+  await h.debug.setHoverShop(null);
+
+  // The inspector, one tower at a time so nothing else stands on the floor.
+  const selected = new Map<TowerType, Set<string>>();
+  for (const type of TOWER_TYPES) {
+    await h.debug.setSelected(null);
+    await h.debug.clearTowers();
+    const id = await poseTower(h, type, FREE_SITE.col, FREE_SITE.row);
+    await h.debug.setSelected(id);
+    selected.set(type, runTexts(await readPanel(h)));
+  }
+
+  const onHover = sharedByTheFive(hovered);
+  const onInspector = sharedByTheFive(selected);
+
+  assertGreaterThanOrEqual(
+    onHover.length,
+    1,
+    "a read the hover panel draws for the Arc, Stutter, Rime, Bloom and Lance and draws for neither the Flak nor the Forge nor the Sink, which is the ground-and-air targeting read",
+  );
+  assertGreaterThanOrEqual(
+    onInspector.length,
+    1,
+    "the same read on the inspector of a selected tower of each of the eight types",
   );
 });
