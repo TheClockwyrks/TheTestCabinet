@@ -89,8 +89,7 @@ function readBand(snapshot: FloeSnapshot, at: number): LaneReading[] {
       count: ordered.length,
       runs: clearIceRuns(snapshot, lane.row),
       leftEdge: ordered.length === 0 ? Number.NaN : ordered[0].x,
-      rightEdge:
-        ordered.length === 0 ? Number.NaN : last.x + TILE * last.len,
+      rightEdge: ordered.length === 0 ? Number.NaN : last.x + TILE * last.len,
     };
   });
 }

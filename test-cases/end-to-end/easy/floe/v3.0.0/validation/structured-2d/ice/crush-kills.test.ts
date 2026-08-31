@@ -1,27 +1,160 @@
-// Floe — ice/crush-kills: SCAFFOLD STUB, NOT A VALIDATOR.
+// Floe — ice/crush-kills: a vehicle whose own motion brings the critter's centre
+// under it costs a life, on the tick it arrives.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `ice.crush-kills` review item, written
-// against the `structured-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/ice.md: "The critter is crushed on any tick on which a vehicle in a lane
+// whose speed is above `0` covers the critter's center. It loses a life", and
+// covering is the span rule — the centre lies in `[itemX, itemX + TILE * len)`.
+// specs/progression.md fixes what a life costs: "`lives` drops by exactly one,
+// `phase` becomes `dying`".
 //
-// The item this file decides, from test-case.toml:
+// THE SCENARIO POSES THE ARRIVAL EXACTLY, so that every wrong model of it reads
+// as a different tick. A `car` is parked `112` units to the RIGHT of the
+// critter's centre on a leftward lane held at `2.0` tiles a second — `64` units
+// of stage a second — so its left edge reaches that centre after `112 / 64`
+// seconds, which is `1.75` s and a whole `210` ticks. Against that:
 //
-//   A vehicle arriving on the critter kills
+//   - a build that crushes on OVERLAP of the two bodies rather than on the
+//     centre being covered — the critter's tile is `32` units wide, so its right
+//     side meets the car's left edge `16` units earlier — reads about tick
+//     `180`;
+//   - a build that crushes whenever a vehicle is anywhere on the critter's ROW
+//     reads tick 1;
+//   - a build that never crushes reads no tick at all.
 //
-//   A vehicle released so that its span reaches the critter's centre costs a
-//   life on the tick it arrives.
+// Each is tens of ticks from `210`, and the bound below is three.
 //
-// Its declared media: replay `crush`.
+// THE LANE'S MOTION IS POSED, both its speed and its direction, because neither
+// is what this decides: `ice/lane-speeds` and `ice/lane-directions` grade the
+// table. What is left for this check is the crush and the tick it lands on.
+//
+// THE STRAIT IS EMPTY BUT FOR THE TWO BODIES. `startCrossing` clears both
+// rosters and shuts the four world gates, so the life this loses cannot have
+// come from a bear, from open water, from the crossing timer or from anything
+// else that costs one (specs/progression.md).
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
+import {
+  START_LIVES,
+  TICK_HZ,
+  TILE,
+  tileCX,
+  tileLeft,
+} from "../../src/constants";
+import {
+  captureReplay,
+  createHarness,
+  itemCoversPoint,
+  poseLane,
+  startCrossing,
+  ticksFor,
+  vehicleById,
+  type Harness,
+  type LaneDir,
+  type VehicleKind,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The level the crossing is posed at. The crush rule is the same at each. */
+const LEVEL = 1;
 
-it("ice/crush-kills has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** The ice lane the two bodies are posed on. Mid-band, clear of both shores. */
+const LANE_ROW = 15;
+
+/** The kind posed: a car, which the lane table gives row 15. */
+const LANE_KIND: VehicleKind = "car";
+
+/** The column the critter stands on. Mid-strait, clear of both edges. */
+const CRITTER_COL = 20;
+
+/** The column the car is parked at before the lane is released. */
+const CAR_COL = 24;
+
+/** The lane's posed motion: leftward, at the table's level-1 figure for row 15. */
+const LANE_DIR: LaneDir = -1;
+const LANE_SPEED = 2.0;
+
+/** How far the car's left edge starts from the critter's centre, in stage units. */
+const APPROACH = tileLeft(CAR_COL) - tileCX(CRITTER_COL);
+
+/** The tick the car's left edge reaches that centre: `APPROACH / (speed * TILE)`. */
+const ARRIVAL_TICK = Math.round((APPROACH / (LANE_SPEED * TILE)) * TICK_HZ);
+
+/**
+ * How many ticks either side of the arrival the life may be taken on.
+ *
+ * A tick is `1/120` s and the approach is integrated over two hundred and ten of
+ * them, so a build summing `speed * TILE * TICK_DT` lands a few parts in a
+ * quadrillion either side of the boundary and may take the tick after; a build
+ * that runs its hazards before its lanes rather than after takes one more. Three
+ * covers both and stays an order of magnitude inside the nearest wrong model,
+ * which is thirty ticks away.
+ */
+const ARRIVAL_TOLERANCE_TICKS = 3;
+
+/** How far past the arrival the sweep looks before reporting no crush at all. */
+const SWEEP_TICKS = ARRIVAL_TICK + ticksFor(1);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("costs a life on the tick a released vehicle's span reaches the critter's centre", async () => {
+  startCrossing(h, LEVEL);
+  h.debug.setCritterTile(CRITTER_COL, LANE_ROW);
+  const [carId] = poseLane(h, LANE_ROW, LANE_KIND, [CAR_COL]);
+  h.debug.setLaneDirection(LANE_ROW, LANE_DIR);
+
+  // The scenario this check needs: the critter on the lane with its full lives,
+  // and the car clear of it on the side the lane runs from.
+  const posed = h.snapshot();
+  const car = vehicleById(posed, carId);
+  assertEqual(
+    posed.lives,
+    START_LIVES,
+    "the crossing begins with every life still in hand (specs/progression.md)",
+  );
+  assertTrue(
+    car !== undefined && !itemCoversPoint(car, posed.critter.x),
+    `a car parked at x ${tileLeft(CAR_COL)}, clear of the critter's centre at ` +
+      `x ${tileCX(CRITTER_COL)} (specs/ice.md), was ${JSON.stringify(car)}`,
+  );
+
+  // Released, and swept a tick at a time so the tick the life goes is the tick
+  // this reads.
+  const crushed = await captureReplay(h, "crush", () => {
+    h.debug.setLaneSpeed(LANE_ROW, LANE_SPEED);
+    return h.until((snapshot) => snapshot.lives < START_LIVES, {
+      maxFrames: SWEEP_TICKS,
+      poll: 1,
+    });
+  });
+
+  assertTrue(
+    crushed.hit,
+    `a life lost within ${SWEEP_TICKS} ticks of the lane being released, as ` +
+      `the car's span reaches the critter's centre at tick ${ARRIVAL_TICK} ` +
+      `(specs/ice.md), was ${crushed.snapshot.lives} lives still in hand`,
+  );
+  assertLessThanOrEqual(
+    Math.abs(crushed.frames - ARRIVAL_TICK),
+    ARRIVAL_TOLERANCE_TICKS,
+    `the tick the life was taken on, away from the tick the car's left edge ` +
+      `reaches the critter's centre (${ARRIVAL_TICK}), was ${crushed.frames}`,
+  );
+  assertEqual(
+    crushed.snapshot.lives,
+    START_LIVES - 1,
+    "the lives left after being crushed (specs/progression.md)",
+  );
+  assertEqual(
+    crushed.snapshot.phase,
+    "dying",
+    "the phase a lost life leaves the crossing in (specs/progression.md)",
+  );
 });
