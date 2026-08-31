@@ -22,13 +22,23 @@
 // coincidentally right. The screen is not `title`, the mode is not
 // `containment`, the difficulty is not `medium`, the speed is not `1`.
 //
-// MUTE IS NOT ON THE LIST. There is no `setMuted`: muting is a player preference
-// the runtime owns, reached through its binding or the panel's control, and the
-// snapshot merely reports the bit (`specs/instrumentation.md`). `audio/*` and
-// `controls/*` decide it.
+// MUTE IS NOT ON THE LIST, AND THAT ABSENCE IS READ RATHER THAN ASSUMED. There is
+// no `setMuted`: muting is a player preference the runtime owns, reached through
+// its binding or the panel's control, and the snapshot merely reports the bit
+// (`specs/instrumentation.md`). `audio/*` and `controls/*` decide what pressing
+// the binding does; what is decided HERE is that the surface offers no way to
+// pose it, because a build that added one would have added an operation the
+// specification does not carry and would be silencing its own audio through a
+// path no player has. So the surface is reflected for the name and it must not be
+// a function.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
+import {
+  assertCloseTo,
+  assertDeepEqual,
+  assertEqual,
+  assertNotEqual,
+} from "../assert";
 import { tileCX, tileCY, TRIP_TIME } from "../constants";
 import { freeSite } from "../fixtures";
 import {
@@ -51,6 +61,9 @@ import {
  * a tolerance on behaviour; nothing here runs a rule.
  */
 const EXACT = 6;
+
+/** The operation the surface must NOT carry: muting is the runtime's, not a pose. */
+const MUTE_OP = "setMuted";
 
 /** Distinguishing values: no two the same, and not one of them a default. */
 const POSED = {
@@ -230,6 +243,16 @@ it("reports a unit's posed position, hp, slow and motion gate", async () => {
   assertEqual(back.slowFactor, 0, "setUnitSlow(0)");
   assertEqual(back.slowTimer, 0, "setUnitSlowTimer(0)");
   assertEqual(back.motion, true, "setUnitMotion(true)");
+});
+
+it("carries no operation that sets muting", async () => {
+  const probed = await h.probe([MUTE_OP]);
+  assertNotEqual(
+    probed.ops[MUTE_OP],
+    "function",
+    `typeof window.__meltdown.${MUTE_OP}, which specs/instrumentation.md does ` +
+      "not list: muting is the runtime's, and the snapshot only reports it",
+  );
 });
 
 it("reports the pointer's posed position and press state", async () => {
