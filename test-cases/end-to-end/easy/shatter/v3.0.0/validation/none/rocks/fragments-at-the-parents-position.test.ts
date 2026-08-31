@@ -1,20 +1,91 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// rocks/fragments-at-the-parents-position — the pieces stand where the parent stood.
 //
-// rocks/fragments-at-the-parents-position — Fragments appear where the parent died
+// `specs/rocks.md`, Splitting: "Both fragments appear at the destroyed rock's
+// position." One sentence, one requirement, and this item decides it alone: what
+// the two pieces then CARRY is `specs/collision.md`'s fan and belongs to the four
+// fragment-velocity items beside this one.
 //
-// Both fragments appear within one tick of travel of the destroyed rock's last
-// reported centre.
+// THE PARENT IS POSED AT REST, which is what makes the reading exact. A drifting
+// parent's last reported centre is a tick old by the time the round lands, so a
+// check would have to model the build's tick order to say where it stood; at rest
+// the well is the only thing that moves it, and at `412` units out that is
+// `26` units per second squared — two thousandths of a unit over a tick.
+// `addRock` places a rock at rest (`specs/instrumentation.md`), so this is the pose
+// the surface gives and nothing is arranged beyond it.
 //
-// Declared by test-case.toml as validation.script "rocks/fragments-at-the-
-// parents-position.test.ts", so the manifest resolves only while this file
-// exists. The Validators stage of the v3.0.0 rework replaces it with the real
-// suite, written against the none harness in validation/none/harness.ts and
-// the spec-derived oracle in validation/none/geometry.ts — never against a
-// reference build.
+// THE TOLERANCE IS ONE TICK OF THE FRAGMENT'S OWN TRAVEL, DOUBLED. The review item
+// states one tick of travel. A build that creates the pieces and then runs the
+// tick's motion over them has moved each one a full tick before the snapshot is
+// taken, and a build that runs its motion first has moved them none; the doubling
+// admits both without admitting anything else. At the kick `specs/collision.md`
+// fixes (`SPLIT_KICK`, `90`) that is a unit and a half, against a Large's radius of
+// `46` — so a build that scatters the pair around the parent's rim, or drops them
+// at the field's origin, fails by thirty times the bound and more.
 //
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// NOTHING ELSE IS ON THE FIELD. `startPlaying` empties every roster and shuts both
+// world gates, and the round is placed on the parent's doorstep on the side facing
+// away from the star, so `specs/collision.md`'s absorption at the core cannot take
+// it on the way in.
 
-throw new Error(
-  "Shatter v3.0.0: validation/none/rocks/fragments-at-the-parents-position.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertLessThanOrEqual } from "../assert";
+import { TICK_DT } from "../constants";
+import { magnitude, wrappedDistance } from "../geometry";
+import {
+  captureStill,
+  centreOf,
+  createHarness,
+  requireRock,
+  startPlaying,
+  velocityOf,
+  type Harness,
+} from "../harness";
+import { QUIET_GROUND, fragmentPair, killRock, poseRockAt } from "./scene";
+
+/**
+ * How many ticks of a fragment's own travel it may stand from where its parent
+ * died.
+ *
+ * One, as the review item states, doubled so that a build which steps a fresh
+ * fragment on the tick it was born and one which steps it on the next both clear
+ * the bound. It is measured at the fragment's OWN reported speed, so the figure is
+ * the piece's real travel rather than a number this file made up.
+ */
+const TRAVEL_TICKS = 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("stands both fragments where the destroyed rock last stood", async () => {
+  await startPlaying(h);
+  const parentId = await poseRockAt(h, "large", QUIET_GROUND);
+
+  const kill = await killRock(h, parentId);
+  await captureStill(h, "fragments");
+
+  const parent = requireRock(
+    kill.before,
+    parentId,
+    "the Large on the tick before the fatal round landed",
+  );
+  const fragments = fragmentPair(
+    kill.at,
+    "medium",
+    "fragments-at-the-parents-position",
+  );
+
+  for (const [index, fragment] of fragments.entries()) {
+    assertLessThanOrEqual(
+      wrappedDistance(centreOf(parent), centreOf(fragment)),
+      TRAVEL_TICKS * magnitude(velocityOf(fragment)) * TICK_DT,
+      `units fragment ${index + 1} stands from the destroyed rock's last reported centre (specs/rocks.md)`,
+    );
+  }
+});
