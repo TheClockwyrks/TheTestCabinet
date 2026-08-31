@@ -99,7 +99,24 @@ it("appends a set, reports the memory, and empties it, with the shown count foll
       "whatever cards the waste still holds (specs/instrumentation.md)",
   );
 
+  // The FIRST set alone, read before the second is posed: one call appends one
+  // entry, and the shown count follows it while it is the newest one there is.
   h.debug.addWasteSet(OLDER_SET);
+  const one = h.snapshot();
+  assertDeepEqual(
+    one.wasteSets,
+    [OLDER_SET],
+    "the waste's set memory after ONE addWasteSet call: it appends exactly " +
+      "that one entry (specs/instrumentation.md)",
+  );
+  assertEqual(
+    one.wasteVisibleCount,
+    OLDER_SET,
+    `cards the waste shows over a single set of ${OLDER_SET} on a waste ` +
+      `holding ${WASTE_CARDS.length}: the count is the newest set's, which is ` +
+      "the only set there is (specs/instrumentation.md)",
+  );
+
   h.debug.addWasteSet(NEWER_SET);
   const posed = h.snapshot();
 
