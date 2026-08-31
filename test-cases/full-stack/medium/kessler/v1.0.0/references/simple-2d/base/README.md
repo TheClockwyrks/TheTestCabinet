@@ -143,3 +143,10 @@ steps it off real time with `engine.advance` under a `ConstantClock` of
 `1000 / 60` milliseconds, and reads it back with
 `engine.debug.snapshot(engine.state)`. The overlay on `Backquote` shows the
 live diagnostics.
+
+## The showcase
+
+`showcase/` holds the store-page presentation: `showcase.md`, the carousel in
+`showcase.toml`, a replay of sustained live play captured with the engine's
+own recorder, and stills of the same run. Recapture it with a dev server and
+Playwright via `node scripts/capture-showcase.mjs`.

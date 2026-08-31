@@ -1,0 +1,15 @@
+[[media]]
+file = "sweep.json.gz"
+name = "Sweeping the rings at full spin"
+
+[[media]]
+file = "field.png"
+name = "Deep into wave 1, deflector widened"
+
+[[media]]
+file = "title.png"
+name = "The title screen"
+
+[[media]]
+file = "how-to-play.png"
+name = "How a wave is played"
