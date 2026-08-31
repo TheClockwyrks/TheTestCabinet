@@ -35,7 +35,7 @@
 // at all fails the ON leg.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_BANNER_TIME, WAVE_BASE_ROCKS } from "../../src/constants";
+import { WAVE_BANNER_TIME } from "../../src/constants";
 import {
   assertCloseTo,
   assertEqual,
@@ -72,9 +72,6 @@ const QUIET_FRAMES = ticksFor(10);
  * than fixing a schedule.
  */
 const ARRIVAL_FRAMES = ticksFor(WAVE_BANNER_TIME + 0.5);
-
-/** The rocks wave `NEXT_WAVE` puts up: `WAVE_BASE_ROCKS + N` (specs/progression.md). */
-const NEXT_WAVE_ROCKS = WAVE_BASE_ROCKS + NEXT_WAVE;
 
 /** The decimal places the banner is read to: exactly, since `0` means none. */
 const BANNER_DIGITS = 6;
@@ -165,11 +162,8 @@ it("leaves an emptied field empty with the gate off, and turns it over with the 
   assertTrue(
     arrived.hit,
     `wave ${NEXT_WAVE} put its rocks up as the banner ended ` +
-      "(specs/progression.md)",
-  );
-  assertLength(
-    arrived.snapshot.rocks,
-    NEXT_WAVE_ROCKS,
-    `the rocks wave ${NEXT_WAVE} spawned: WAVE_BASE_ROCKS + N`,
+      "(specs/progression.md). How MANY it put up is " +
+      "waves/wave-n-spawns-three-plus-n's to decide, so what is asked here is " +
+      "that the field turned over at all",
   );
 });

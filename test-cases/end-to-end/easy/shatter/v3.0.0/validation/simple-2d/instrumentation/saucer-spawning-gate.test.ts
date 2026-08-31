@@ -31,8 +31,7 @@
 // can put a body on it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_FIRST_DELAY } from "../../src/constants";
-import { assertNull, assertTrue, assertLessThanOrEqual } from "../assert";
+import { assertNull, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -44,18 +43,16 @@ import {
 /** The seed both legs are opened on, so neither turns on a lucky draw. */
 const SEED = 5;
 
-/** The game time each leg watches for, in ticks: three first delays and more. */
-const WATCH_FRAMES = ticksFor(60);
-
 /**
- * How long the ON leg is allowed to wait for the first arrival, in ticks.
+ * The game time each leg watches for, in ticks: the minute the item names.
  *
- * `SAUCER_FIRST_DELAY` (18 seconds) plus a second of slack, which bounds a build
- * that never brings one on rather than fixing the moment: the moment itself is
- * `saucer/first-arrives-at-18s`'s to decide, and this item only asks that the
- * gate lets an arrival happen at all.
+ * The SAME window decides both legs, and deliberately so. It is far more than the
+ * `SAUCER_FIRST_DELAY` (18 seconds) `specs/saucer.md` puts the first arrival at,
+ * so the ON leg asks only that the gate let an arrival happen at all — WHEN it
+ * happens is `saucer/first-arrives-at-18s`'s to decide, and grading it twice would
+ * make one late arrival cost a build two points.
  */
-const ARRIVAL_FRAMES = ticksFor(SAUCER_FIRST_DELAY + 1);
+const WATCH_FRAMES = ticksFor(60);
 
 let h: Harness;
 
@@ -91,17 +88,12 @@ it("keeps the saucer away with the gate off, and lets one arrive with it on", as
   // ---- And the same minute with the gate open -----------------------------
   openRun(true);
   const arrived = await h.until((s) => s.saucer !== null, {
-    maxFrames: ARRIVAL_FRAMES,
+    maxFrames: WATCH_FRAMES,
     poll: 1,
   });
   assertTrue(
     arrived.hit,
-    "a saucer arrived with setSaucerSpawning(true), within a second of " +
-      "SAUCER_FIRST_DELAY (specs/saucer.md)",
-  );
-  assertLessThanOrEqual(
-    arrived.snapshot.simTime,
-    SAUCER_FIRST_DELAY + 1,
-    "the game time the first arrival came at, in seconds",
+    "a saucer arrived over a minute of game time with " +
+      "setSaucerSpawning(true) (specs/saucer.md)",
   );
 });
