@@ -95,9 +95,12 @@ const WAVE = 3;
  * (`specs/instrumentation.md`), and with its mind off it holds that course, so it
  * crosses the field on this row. `240` units clear of the star's row is far
  * outside the `CORE_R + SAUCER_R` (`48`) the specification holds it to, so the
- * steering it does not have is never wanted; and over the five seconds this check
- * can spend it travels at most `700` units from here, so it neither leaves the
- * field nor wraps.
+ * steering it does not have is never wanted.
+ *
+ * It may WRAP during the run-up, and that costs nothing: the travel below is
+ * measured over the banner alone, which is at most `2` seconds and `280` units —
+ * well under half the field's width, so the shortest wrapped separation between
+ * the two endpoints is the distance it actually covered.
  */
 const SAUCER_X = 200;
 const SAUCER_Y = 120;
@@ -105,14 +108,20 @@ const SAUCER_Y = 120;
 /**
  * How long each of the two run-up shots is waited for.
  *
- * Three firing intervals. `specs/saucer.md` has the saucer fire "every
+ * Two firing intervals. `specs/saucer.md` has the saucer fire "every
  * `SAUCER_FIRE_INTERVAL` (`1.6` seconds) on the field", and `addSaucer` starts its
  * fire clock at a full interval — so one interval is what a build that reads that
  * clock as time-remaining takes and zero is what a build that reads it as
- * ready-to-fire takes. Three covers both with room for a build whose interval is
- * its own, and two of them together stay well inside `SAUCER_LIFETIME` (`12` s).
+ * ready-to-fire takes. Two covers both, with room for a build whose interval is
+ * half again the specified one.
+ *
+ * THE WHOLE SCENARIO HAS TO FIT INSIDE `SAUCER_LIFETIME` (`12` s), because
+ * `specs/saucer.md` takes the saucer off the field that long after it enters and
+ * there is no gate for the clock. The worst case is two waits of `3.2` s, then at
+ * most `2.6` s to the lead, then the `2` s window below: `11` seconds, with a
+ * second to spare. A conformant build spends `5.7`.
  */
-const SHOT_WINDOW_TICKS = ticksFor(3 * SAUCER_FIRE_INTERVAL);
+const SHOT_WINDOW_TICKS = ticksFor(2 * SAUCER_FIRE_INTERVAL);
 
 /**
  * The most of an interval the banner may be raised ahead of the next shot.
@@ -133,11 +142,18 @@ const LEAD_MARGIN_SECONDS = 0.15;
 /**
  * The most of the banner that is ever watched.
  *
- * Three times `WAVE_BANNER_TIME` and a half second — a bound on the scenario
- * rather than a threshold, so a build whose banner is too LONG is still read here
- * and charged only by `banner-runs-for-1p5s`.
+ * `WAVE_BANNER_TIME` and a half second, and it is a bound on the SCENARIO rather
+ * than a threshold on the build: the check never requires the window to reach the
+ * banner's end, only that the banner outlast the lead the shot was placed at. So a
+ * build whose banner is too LONG has its window cut short here and reads exactly
+ * the same travel and the same shot, and is charged for the length by
+ * `banner-runs-for-1p5s` alone; a build whose banner is too SHORT ends the window
+ * early, and is charged there too.
+ *
+ * The figure is what `SAUCER_LIFETIME` leaves rather than what the banner wants —
+ * see {@link SHOT_WINDOW_TICKS}.
  */
-const BANNER_WINDOW_TICKS = ticksFor(3 * WAVE_BANNER_TIME + 0.5);
+const BANNER_WINDOW_TICKS = ticksFor(WAVE_BANNER_TIME + 0.5);
 
 /**
  * How far the measured travel may fall from `SAUCER_SPEED` times the elapsed time,
