@@ -1,19 +1,64 @@
-// SCAFFOLD STUB — NOT A VALIDATOR.
+// rocks/health-medium-2 — a Medium takes two hits from the gun.
 //
-// rocks/health-medium-2 — A Medium takes two hits
+// `specs/rocks.md` gives a Medium `ROCK_HEALTH.medium` (2), under the same three
+// rules a Large is graded by next door: a bullet costs exactly one health, health
+// remaining means no destruction, and only the hit that takes health to zero
+// destroys. So one round leaves it standing at health 1 and the second takes it.
 //
-// One round leaves a Medium standing with health 1; the second destroys it.
+// IT IS ITS OWN CHECK because it is its own figure. A build that gave every size
+// three hits passes `health-large-3` and fails here, and a failed grade then names
+// the size whose armor is wrong rather than "armor".
 //
-// Declared by variants/warhead.toml as validation.script "armor/health-
-// medium-2.test.ts", so the manifest resolves only while this file exists. The
-// Validators stage of the v3.0.0 rework replaces it with the real suite,
-// written against the none harness in validation/none/harness.ts and the spec-
-// derived oracle in validation/none/geometry.ts — never against a reference
-// build.
-//
-// It THROWS on import rather than passing, so a stub the Validators stage
-// forgets fails loudly instead of silently scoring a point.
+// The Medium is put on the field directly rather than split out of a Large, so
+// nothing about splitting, scoring or fragment health can move this reading:
+// `addRock` is specified to place a rock at full health for its size.
 
-throw new Error(
-  "Shatter v3.0.0: validation/none/armor/health-medium-2.test.ts is a scaffold stub and has not been written yet",
-);
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertUndefined } from "../assert";
+import { ROCK_HEALTH } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  poseRock,
+  rockById,
+  shootRock,
+  startPlaying,
+  type Harness,
+} from "../harness";
+import { CHIP_SPOT, chippedRock, healthOf } from "./scene";
+
+/** What a Medium has left after one round: `2 - 1`. */
+const AFTER_ONE = ROCK_HEALTH.medium - 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("leaves a Medium standing at health 1 after one round and destroys it on the second", async () => {
+  await startPlaying(h);
+  const id = await poseRock(h, "medium", CHIP_SPOT.x, CHIP_SPOT.y);
+
+  const first = await shootRock(h, id);
+  assertEqual(first.hit, true, "the first round resolved");
+  const chipped = chippedRock(first.snapshot, id, "the first round");
+
+  const second = await shootRock(h, id);
+  assertEqual(second.hit, true, "the second round resolved");
+  await captureStill(h, "armor");
+
+  assertEqual(
+    healthOf(chipped, "after one round"),
+    AFTER_ONE,
+    "the health a Medium has left after one round (specs/rocks.md)",
+  );
+  assertUndefined(
+    rockById(second.snapshot, id),
+    "the Medium after the second round (specs/rocks.md)",
+  );
+});
