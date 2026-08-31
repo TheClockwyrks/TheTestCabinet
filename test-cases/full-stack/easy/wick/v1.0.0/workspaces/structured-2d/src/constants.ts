@@ -1368,3 +1368,26 @@ export const WICK_DEBUG_VERSION = 1;
 
 /** The seed `reset()` restores when the caller names none. */
 export const DEFAULT_SEED = 1;
+
+// ---- The level and the actor tags (specs/overview.md) --------------------
+
+/**
+ * The one level the whole game runs in. `src/game.ts` keys its level registry
+ * and `startLevel` by this name, and the game never opens another level: every
+ * screen is a value of the game state's screen field.
+ */
+export const LEVEL_NAME = "night";
+
+/** The tag each kind of actor in the night carries. */
+export const TAGS = {
+  lamplighter: "lamplighter",
+  enemy: "enemy",
+  projectile: "projectile",
+  zone: "zone",
+  gem: "gem",
+  pickup: "pickup",
+  hud: "hud",
+  screen: "screen",
+} as const;
+
+export type ActorTag = (typeof TAGS)[keyof typeof TAGS];
