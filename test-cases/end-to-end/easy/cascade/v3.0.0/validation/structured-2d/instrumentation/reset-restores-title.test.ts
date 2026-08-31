@@ -37,6 +37,7 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLength,
+  assertNotNull,
   assertNull,
 } from "../assert";
 import {
@@ -48,6 +49,7 @@ import {
   poseColumn,
   pressAt,
   startCascade,
+  type CascadeSnapshot,
   type Harness,
 } from "../harness";
 
@@ -59,6 +61,16 @@ const HELD_COLUMN = 6;
 
 /** The seconds posed onto the launch clock, so `0` afterwards is a restoration. */
 const DIRTY_LAUNCH_CLOCK = 0.09;
+
+/** Cards standing on the thirteen piles, which reset takes off all of them. */
+function tableCards(snapshot: CascadeSnapshot): number {
+  return (
+    snapshot.stock.length +
+    snapshot.waste.length +
+    snapshot.foundations.reduce((n, pile) => n + pile.length, 0) +
+    snapshot.tableau.reduce((n, pile) => n + pile.length, 0)
+  );
+}
 
 let h: Harness;
 
@@ -95,6 +107,10 @@ it("restores every declared field to its title-screen value and leaves muted unt
   h.world.audio.setMuted(true);
   await h.advance(1);
 
+  // EVERY FIELD THE READING BELOW RESTORES IS DIRTY FIRST. A field that was
+  // already at its title value would be restored by a `reset` that did nothing
+  // at all, so each of these is what makes the corresponding reading mean
+  // something.
   const before = h.snapshot();
   assertGreaterThan(before.simTime, 0, "simTime accumulated before the reset");
   assertEqual(before.muted, true, "the runtime's mute bit before the reset");
@@ -102,6 +118,47 @@ it("restores every declared field to its title-screen value and leaves muted unt
     before.flyers.length,
     0,
     "cards in flight before the reset",
+  );
+  assertGreaterThan(
+    before.launched,
+    0,
+    "cards launched before the reset, which reset puts back to 0",
+  );
+  assertGreaterThan(
+    before.trailStamps,
+    0,
+    "stamps on the painted layer before the reset, which reset clears",
+  );
+  assertGreaterThan(
+    tableCards(before),
+    0,
+    "cards on the table before the reset, which reset takes off every pile",
+  );
+  assertNotNull(
+    before.drag,
+    "the run in hand before the reset, which reset clears: a press that " +
+      "grabbed nothing would leave this reading nothing to say",
+  );
+  assertDeepEqual(
+    {
+      autoFlip: before.autoFlip,
+      winDetect: before.winDetect,
+      launching: before.launching,
+      trailPainting: before.trailPainting,
+    },
+    {
+      autoFlip: false,
+      winDetect: false,
+      launching: false,
+      trailPainting: false,
+    },
+    "the four gates before the reset, all four switched off, which reset " +
+      "turns back on",
+  );
+  assertEqual(
+    before.launchClock,
+    DIRTY_LAUNCH_CLOCK,
+    "the launch clock posed before the reset, which reset puts back to 0",
   );
 
   // The reset under test, read with no frame between.
