@@ -2,8 +2,8 @@
 //
 // The Validators stage of the Floe v3.0.0 rework replaces this file with the
 // real suite for the `presentation.bear-reads-apart` review item, written
-// against the `simple-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
+// against the `simple-2d` engine. Until then it FAILS, deliberately and loudly:
+// a stub that passed would score the item a point the build never earned, and a
 // stub the Validators stage forgot would be indistinguishable from a passing
 // check.
 //
