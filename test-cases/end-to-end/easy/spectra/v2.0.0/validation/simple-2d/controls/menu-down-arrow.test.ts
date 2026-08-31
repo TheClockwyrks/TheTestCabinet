@@ -1,17 +1,112 @@
-// Spectra — controls/menu-down-arrow: menu down on the Down arrow
+// Spectra — controls/menu-down-arrow: `ArrowDown` moves the title menu's selection down.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `controls.menu-down-arrow` on the
-// `simple-2d` configuration, and captures the media `test-case.toml` declares
-// for it.
+// THE RULE. `specs/controls.md` binds the `down` action to `ArrowDown` and
+// `KeyS`, reads it as a press EDGE, and lists it among the actions the `title`
+// screen reads. Its Menus section says every menu is vertical, that `up` and `down`
+// "move the highlight by one item and wrap at both ends". `specs/ui.md` says the
+// title's highlight rests on the first item on arriving there, and gives
+// `TITLE_ITEMS` exactly two entries — "The mode entry `specs/mode.md` names, then
+// `HOW TO PLAY`, in that order". This point decides one half of the binding: that
+// the physical key `ArrowDown` is one of the keys which drives `down`.
+// `controls/menu-down-s` decides `KeyS`.
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// THE UNAMBIGUOUS HALF OF THE BINDING. `ArrowDown` drives `down` and nothing else,
+// where the other keys this menu answers to are shared with the cannon. What moves
+// the highlight here can therefore only be the `down` action.
+//
+// WHAT A TWO-ITEM MENU CAN AND CANNOT DECIDE. `TITLE_ITEMS` has exactly two
+// entries, so with the wrap the specification requires, `up` and `down` are the
+// same permutation of the highlight — from either index, both land on the other.
+// This suite therefore does not claim to tell `down` apart from its opposite on
+// this menu; no check could, and one that tried would be asserting something
+// `specs/ui.md` does not state. What it does pin is the whole of what IS stated for
+// this key on this screen, over a full cycle: the press steps from the first item to the second, and the second press wraps from the last item back to the first.
+// Every wrong model reads as a different index — a key wired to nothing leaves the
+// highlight at 0 throughout, a build that clamps instead of wrapping stalls at an
+// end, a build that moves by two never leaves 0, and a build that navigates away
+// leaves the title screen altogether.
+//
+// WHAT IS NOT ASSERTED. Which item is DRAWN as highlighted is
+// `screens/title-menu-selection`'s; what the menu's entries say is
+// `screens/title-menu-items`'s; that a highlight move sounds its cue is
+// `audio/menu`'s. This point reads `menuIndex` off the snapshot and nothing else.
+//
+// THE MENU'S LENGTH IS THE SPECIFICATION'S, NOT THE BUILD'S. The indices below come
+// from `specs/ui.md`'s two-entry `TITLE_ITEMS` rather than from the build's own
+// `TITLE_ITEMS` array. A build that shipped a third entry would agree with itself
+// and pass a check that read its own table; it fails this one, and
+// `screens/title-menu-items` names the fault.
+//
+// THE KEY IS TAPPED, AND IT IS A REAL ONE. `specs/controls.md` reads `down` as an
+// edge, so a conforming build resolves it through the engine's `pressed`: `tap`
+// presses the key, releases it, and runs the one frame that delivers the armed
+// edge, which is exactly what the engine's input frame carries. The event is a
+// `KeyboardEvent`-shaped one dispatched at the engine's own event target, which the
+// engine resolves exactly as it resolves a player's key. The code below is the
+// LITERAL `specs/controls.md` states rather than `BINDINGS.down[…]`: that table is
+// the build's own copy of the very thing this point decides.
+//
+// THE SCREEN IS THE ONE A FRESH PAGE OPENS ON. The harness builds the engine and
+// initializes the build, and `specs/ui.md` makes `title` the screen the game opens
+// on with its highlight on the first item. Nothing is posed: this point wants the
+// menu exactly as a player first meets it.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
 
-it("Menu down on the Down arrow", () => {
-  throw new Error(
-    "Spectra: validation/simple-2d/controls/menu-down-arrow.test.ts is a scaffold placeholder and has not been implemented",
+/** The key `specs/controls.md` binds the `down` action to, written out as it states it. */
+const KEY = "ArrowDown";
+
+/** Where `specs/ui.md` rests the title's highlight on arrival. */
+const FIRST_INDEX = 0;
+
+/**
+ * The last index of the title menu.
+ *
+ * `specs/ui.md` gives `TITLE_ITEMS` two entries — the mode entry, then
+ * `HOW TO PLAY` — so the last one is index 1.
+ */
+const LAST_INDEX = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("moves the title menu's selection with the Down arrow, wrapping at the end", async () => {
+  await h.advance(1);
+  const opened = h.snapshot();
+  assertEqual(opened.screen, "title", "the game opens on the title screen");
+  assertEqual(opened.menuIndex, FIRST_INDEX, "with its first item highlighted");
+
+  await h.tap(KEY);
+  // Before the assertions, so a check that fails still leaves the picture of the
+  // menu the first press left behind.
+  captureStill(h, "moved");
+  assertEqual(
+    h.snapshot().menuIndex,
+    LAST_INDEX,
+    `the highlighted item after one the Down arrow from index ${String(FIRST_INDEX)} ` +
+      "of a two-item menu that wraps at both ends (specs/controls.md, specs/ui.md)",
+  );
+
+  await h.tap(KEY);
+  const cycled = h.snapshot();
+  assertEqual(
+    cycled.menuIndex,
+    FIRST_INDEX,
+    `the highlighted item after a second the Down arrow, which closes the cycle back ` +
+      "on the first item (specs/controls.md, specs/ui.md)",
+  );
+  assertEqual(
+    cycled.screen,
+    "title",
+    "the screen the presses were made on, which a highlight move never leaves",
   );
 });
