@@ -1,17 +1,113 @@
-// Spectra — swarm/dive-returns: a surviving diver comes home
+// swarm/dive-returns — a diver that survives comes home to its slot.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `swarm.dive-returns` on the
-// `none` configuration, and captures the media `test-case.toml` declares
-// for it.
+// specs/swarm.md, "The dive": "Once the path is done the drone enters phase
+// `returning` and travels back to its slot, reaching it within four seconds,
+// where it enters phase `formation` again and may be launched into a later dive."
+// A dive itself "runs no longer than eight seconds", so a survivor is back in its
+// slot within twelve of the launch.
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// THE RE-SETTLE ALONE IS GRADED HERE, and that is deliberate: v1.0.0 read the
+// bottom-to-top wrap of a legitimately wrapping dive as a failure to come home,
+// and a build that wraps honestly but never returns was named for the same fault
+// as one that jumped. `swarm/dive-continuous` grades the path; this reads only
+// where the drone ended up. It asks nothing about the ROUTE home — a build that
+// returns over the top of the field and one that climbs straight back both pass.
+//
+// "AT ITS SLOT" is the slot the drone reports plus the sway the block rides
+// (`specs/field.md`), so the horizontal reading allows the whole `SWAY_AMP` (20)
+// the offset can reach and one unit besides, and the vertical reading is the
+// slot's outright.
+//
+// ONE DRONE, launched into a dive from its slot with travel on and firing off:
+// nothing it would shoot reaches the ship, and `startPosed` shuts the wave's
+// entry and dive gates, so nothing joins it and nothing launches it a second time
+// once it is home.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
+import { SWAY_AMP, slotX, slotY } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  droneById,
+  poseDrone,
+  requireDrone,
+  startPosed,
+  type Harness,
+} from "../harness";
 
-it("A surviving diver comes home", () => {
-  throw new Error(
-    "Spectra: validation/none/swarm/dive-returns.test.ts is a scaffold placeholder and has not been implemented",
+/** The stage the dive is posed at: the first, a standard wave's. */
+const STAGE = 1;
+
+/** The slot the diver flies home to: off the grid's centre column. */
+const SLOT = { col: 6, row: 1 } as const;
+
+/**
+ * The seconds the whole flight is given, dive and return together.
+ *
+ * `specs/swarm.md` allows a dive eight seconds and the return that follows it
+ * four, so twelve is the specification's own bound on the round trip; one more is
+ * the sampling's.
+ */
+const HOME_BY = 13;
+
+/** How often the flight is sampled while it is waited out, in seconds. */
+const POLL = 0.1;
+
+/** How far from its slot the drone may settle: the sway's reach, and one unit. */
+const X_TOLERANCE = SWAY_AMP + 1;
+const Y_TOLERANCE = 1;
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.dispose();
+});
+
+it("brings a surviving diver back to phase formation at its slot", async () => {
+  await startPosed(harness, { stage: STAGE });
+  const id = await poseDrone(
+    harness,
+    "shard",
+    slotX(SLOT.col),
+    slotY(SLOT.row),
+    { phase: "diving", travel: true },
+  );
+
+  const home = await harness.skipUntil(
+    (snapshot) => droneById(snapshot, id)?.phase === "formation",
+    { maxSeconds: HOME_BY, pollSeconds: POLL },
+  );
+  await captureStill(harness, "home");
+
+  const drone = requireDrone(home.snapshot, id, "the diver on its way home");
+  assertTrue(
+    home.hit,
+    `the diver back in phase formation within ${HOME_BY}s of its launch — the ` +
+      `eight seconds a dive may run and the four a return may take ` +
+      `(specs/swarm.md); it was ${drone.phase} at (${drone.x.toFixed(0)}, ` +
+      `${drone.y.toFixed(0)})`,
+  );
+  assertEqual(
+    drone.phase,
+    "formation",
+    `the phase the surviving diver came home in (specs/swarm.md)`,
+  );
+  assertLessThanOrEqual(
+    Math.abs(drone.x - slotX(SLOT.col)),
+    X_TOLERANCE,
+    `how far the returned diver sat from its slot's x (${slotX(SLOT.col)}), ` +
+      `allowing the block's SWAY_AMP (${SWAY_AMP}) offset (specs/swarm.md, ` +
+      `specs/field.md)`,
+  );
+  assertLessThanOrEqual(
+    Math.abs(drone.y - slotY(SLOT.row)),
+    Y_TOLERANCE,
+    `how far the returned diver sat from its slot's y (${slotY(SLOT.row)}) ` +
+      `(specs/swarm.md)`,
   );
 });
