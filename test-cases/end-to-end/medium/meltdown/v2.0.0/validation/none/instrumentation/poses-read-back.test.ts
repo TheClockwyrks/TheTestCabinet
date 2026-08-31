@@ -28,11 +28,7 @@
 // `controls/*` decide it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertCloseTo,
-  assertDeepEqual,
-  assertEqual,
-} from "../assert";
+import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
 import { tileCX, tileCY, TRIP_TIME } from "../constants";
 import { freeSite } from "../fixtures";
 import {

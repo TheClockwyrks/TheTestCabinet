@@ -236,9 +236,18 @@ it("reports the whole documented shape over a fully posed floor", async () => {
     assertRect(entry, `controls.shop[${index}]`);
   }
   // Four are null with nothing armed and nothing selected; this floor posed both.
-  assertPresentRect(s.controls.rotate, "controls.rotate, with a placement armed");
-  assertPresentRect(s.controls.cancel, "controls.cancel, with a placement armed");
-  assertPresentRect(s.controls.upgrade, "controls.upgrade, with a tower selected");
+  assertPresentRect(
+    s.controls.rotate,
+    "controls.rotate, with a placement armed",
+  );
+  assertPresentRect(
+    s.controls.cancel,
+    "controls.cancel, with a placement armed",
+  );
+  assertPresentRect(
+    s.controls.upgrade,
+    "controls.upgrade, with a tower selected",
+  );
   assertPresentRect(s.controls.sell, "controls.sell, with a tower selected");
   for (const name of ["send", "speed", "pause", "mute"] as const) {
     assertRect(s.controls[name], `controls.${name}`);
