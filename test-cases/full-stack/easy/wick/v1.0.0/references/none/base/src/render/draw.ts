@@ -9,9 +9,13 @@ export interface TextOptions {
   bold?: boolean;
   align?: CanvasTextAlign;
   spacing?: number;
+  /** Whether a dark shadow sits under the text; on unless set off. */
+  shadow?: boolean;
 }
 
-/** Draw `label` with its baseline at `y`. */
+const SHADOW = "rgba(0, 0, 0, 0.75)";
+
+/** Draw `label` with its baseline at `y`, over a shadow that keeps it legible. */
 export function text(
   ctx: CanvasRenderingContext2D,
   label: string,
@@ -22,12 +26,17 @@ export function text(
   const size = options.size ?? 16;
   ctx.save();
   ctx.font = `${options.bold ? "bold " : ""}${size}px ${FONT}`;
-  ctx.fillStyle = options.color ?? "#ffffff";
   ctx.textAlign = options.align ?? "left";
   ctx.textBaseline = "alphabetic";
   if (options.spacing) {
     ctx.letterSpacing = `${options.spacing}px`;
   }
+  if (options.shadow !== false) {
+    const offset = size >= 40 ? 3 : size >= 24 ? 2 : 1;
+    ctx.fillStyle = SHADOW;
+    ctx.fillText(label, x + offset, y + offset);
+  }
+  ctx.fillStyle = options.color ?? "#ffffff";
   ctx.fillText(label, x, y);
   ctx.restore();
 }
@@ -71,9 +80,18 @@ export function centeredRect(
   }
 }
 
+export interface SpriteOptions {
+  /** Mirror across the sprite's vertical axis. */
+  mirror?: boolean;
+  /** Turn clockwise by this many radians about the center. */
+  rotation?: number;
+  /** Opacity, `1` unless given. */
+  alpha?: number;
+}
+
 /**
- * Draw `image` centered at `(x, y)` at `width x height` units, mirrored
- * across its vertical axis when `mirror` is set.
+ * Draw `image` centered at `(x, y)` at `width x height` units, mirrored,
+ * rotated, or faded as `options` say.
  */
 export function sprite(
   ctx: CanvasRenderingContext2D,
@@ -82,11 +100,13 @@ export function sprite(
   y: number,
   width: number,
   height: number,
-  mirror = false,
+  options: SpriteOptions = {},
 ): void {
   ctx.save();
   ctx.translate(x, y);
-  if (mirror) ctx.scale(-1, 1);
+  if (options.rotation) ctx.rotate(options.rotation);
+  if (options.mirror) ctx.scale(-1, 1);
+  if (options.alpha !== undefined) ctx.globalAlpha = options.alpha;
   ctx.drawImage(image, -width / 2, -height / 2, width, height);
   ctx.restore();
 }

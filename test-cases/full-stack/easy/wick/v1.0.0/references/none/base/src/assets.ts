@@ -9,7 +9,31 @@
 // first frame draws, and a load that fails leaves the game running on its
 // code-drawn stand-ins.
 
-import { ASSET_PATHS, CUE_NAMES, type Cue } from "./constants";
+import {
+  ASSET_PATHS,
+  BASE_WEAPON_IDS,
+  CUE_NAMES,
+  EFFECT_SHEETS,
+  EFFECT_SIZES,
+  ENEMIES,
+  ENEMY_IDS,
+  ENEMY_WALK_FRAMES,
+  EVOLUTION_IDS,
+  GEM_SIZES,
+  GEM_TIERS,
+  GROUND_TILE,
+  ICON_SIZE,
+  LAMPLIGHTER_SIZE,
+  LAMPLIGHTER_WALK_FRAMES,
+  LAMP_OIL_ID,
+  PASSIVE_IDS,
+  PICKUP_KINDS,
+  PICKUP_SIZE,
+  PUFF_FRAMES,
+  PUFF_SIZE,
+  type CanvasSize,
+  type Cue,
+} from "./constants";
 
 const IMAGE_URLS = import.meta.glob<string>("../assets/**/*.png", {
   eager: true,
@@ -44,6 +68,58 @@ export class Assets {
   get imageCount(): number {
     return this.images.size;
   }
+}
+
+export interface ProducedImage extends CanvasSize {
+  /** The path under `assets/`. */
+  readonly path: string;
+}
+
+/**
+ * Every image the build produces, with the canvas each is drawn on: the
+ * lamplighter and his walk, every enemy's walk, the puff, the gems, the
+ * pickups, the ground, the sixteen effects, and the twenty-seven icons.
+ */
+export function producedImages(): ProducedImage[] {
+  const images: ProducedImage[] = [];
+  const add = (path: string, size: CanvasSize): void => {
+    images.push({ path, width: size.width, height: size.height });
+  };
+  const sq = (size: number): CanvasSize => ({ width: size, height: size });
+  add(ASSET_PATHS.lamplighterIdle, LAMPLIGHTER_SIZE);
+  for (let f = 0; f < LAMPLIGHTER_WALK_FRAMES; f += 1) {
+    add(ASSET_PATHS.lamplighterWalk(f), LAMPLIGHTER_SIZE);
+  }
+  for (const id of ENEMY_IDS) {
+    for (let f = 0; f < ENEMY_WALK_FRAMES; f += 1) {
+      add(ASSET_PATHS.enemy(id, f), sq(ENEMIES[id].radius * 2));
+    }
+  }
+  for (let f = 0; f < PUFF_FRAMES; f += 1)
+    add(ASSET_PATHS.puff(f), sq(PUFF_SIZE));
+  for (const tier of GEM_TIERS) add(ASSET_PATHS.gem(tier), sq(GEM_SIZES[tier]));
+  for (const kind of PICKUP_KINDS)
+    add(ASSET_PATHS.pickup(kind), sq(PICKUP_SIZE));
+  add(ASSET_PATHS.ground, sq(GROUND_TILE));
+  for (const weapon of [...BASE_WEAPON_IDS, ...EVOLUTION_IDS]) {
+    const frames = EFFECT_SHEETS[weapon];
+    if (frames === undefined) {
+      add(ASSET_PATHS.effect(weapon), EFFECT_SIZES[weapon]);
+      continue;
+    }
+    for (let f = 0; f < frames; f += 1) {
+      add(ASSET_PATHS.effectFrame(weapon, f), EFFECT_SIZES[weapon]);
+    }
+  }
+  for (const id of [
+    ...BASE_WEAPON_IDS,
+    ...EVOLUTION_IDS,
+    ...PASSIVE_IDS,
+    LAMP_OIL_ID,
+  ]) {
+    add(ASSET_PATHS.icon(id), sq(ICON_SIZE));
+  }
+  return images;
 }
 
 function pathOf(key: string): string {

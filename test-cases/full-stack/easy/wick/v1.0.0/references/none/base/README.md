@@ -47,6 +47,22 @@ npm run format      # prettier --check .
 npm test            # vitest run, with coverage
 ```
 
+## The produced assets
+
+Every sprite, sheet, icon, and sound the game shows or plays was produced
+once with the asset tools and committed under `assets/`; the build bundles
+those files and invokes no tool. `ASSET-LAYOUT.md` maps every file to the
+code that draws it. To regenerate the image set, with `draw` and `draw-sheet`
+on the `PATH` (or built under `$CARGO_TARGET_DIR`):
+
+```sh
+node scripts/gen-sprites.mjs   # the lamplighter, enemies, effects, icons, ground
+```
+
+The script composes each sprite as a pixel raster under `scripts/sprites/`
+and hands it to the tool as the operations that reproduce it, so each
+committed PNG is the tool's own render of its recorded log.
+
 ## Controls
 
 The game is keyboard only. Keys are bound by physical position
@@ -79,6 +95,7 @@ poses one part of the game and sounds nothing.
 | `src/game.ts` | The screens, the menus, the frame's update, and the cues. |
 | `src/sim/` | The tick: the lamplighter, enemies, weapons, effects, drops, and progression. |
 | `src/runtime.ts`, `src/viewport.ts`, `src/input.ts`, `src/audio.ts`, `src/assets.ts` | The runtime layer. |
-| `src/render/` | The world under the camera, the HUD, and the screens. |
+| `src/render/` | The world under the camera, the effects over each hitbox, the HUD, and the screens. |
 | `src/surface.ts`, `src/diagnostics.ts`, `src/overlay.ts` | The debug surface and the overlay. |
-| `assets/` | The produced sprites, icons, and sounds. |
+| `assets/` | The produced sprites, icons, and sounds; `ASSET-LAYOUT.md` maps them. |
+| `scripts/` | The asset production scripts, run once by hand. |

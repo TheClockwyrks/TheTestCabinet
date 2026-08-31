@@ -34,6 +34,7 @@ import { isBaseWeapon } from "../sim/weapons";
 import { text } from "./draw";
 import { drawIcon } from "./hud";
 import { COLORS } from "./theme";
+import { drawLamplighterAt } from "./world";
 
 const MENU_LINE = 44;
 
@@ -76,6 +77,7 @@ function menu(
       color: active ? COLORS.stage : COLORS.text,
       bold: active,
       align: "center",
+      shadow: !active,
     });
   });
 }
@@ -83,8 +85,17 @@ function menu(
 export function drawTitle(
   ctx: CanvasRenderingContext2D,
   state: WickState,
+  assets: Assets,
 ): void {
   dim(ctx);
+  // The lamplighter stands large under his lamp, the one warm thing.
+  const lampX = STAGE_CX + 200;
+  const glow = ctx.createRadialGradient(lampX, 560, 20, lampX, 560, 200);
+  glow.addColorStop(0, "rgba(255, 196, 96, 0.28)");
+  glow.addColorStop(1, "rgba(255, 196, 96, 0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(lampX - 200, 360, 400, 400);
+  drawLamplighterAt(ctx, state.run, assets, lampX, 560, 4);
   text(ctx, TITLE_TEXT, STAGE_CX, 250, {
     size: 96,
     color: COLORS.highlight,
@@ -186,11 +197,13 @@ export function drawLevelUp(
       size: 24,
       color: active ? COLORS.stage : COLORS.text,
       bold: active,
+      shadow: !active,
     });
     text(ctx, offerTag(run, id), STAGE_CX + 250, y + 30, {
       size: 20,
       color: active ? COLORS.stage : COLORS.textDim,
       align: "right",
+      shadow: !active,
     });
   });
 }

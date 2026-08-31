@@ -26,7 +26,7 @@ export function render(
   switch (state.screen) {
     case "title":
       drawWorld(ctx, run, assets);
-      drawTitle(ctx, state);
+      drawTitle(ctx, state, assets);
       break;
     case "howto":
       drawWorld(ctx, run, assets);

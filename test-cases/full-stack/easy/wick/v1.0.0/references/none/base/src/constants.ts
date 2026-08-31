@@ -702,6 +702,45 @@ export const GEM_SIZES: Readonly<Record<GemTier, number>> = {
 export const PICKUP_SIZE = 24;
 export const GROUND_TILE = 64;
 export const ICON_SIZE = 24;
+export const PUFF_SIZE = 24;
+
+export const SPARK_FRAMES = 4;
+export const SCONCE_FRAMES = 4;
+export const FLARE_FRAMES = 6;
+
+/** The weapons whose effect is a sheet rather than one sprite. */
+export const EFFECT_SHEETS: Readonly<Partial<Record<WeaponId, number>>> = {
+  spark: SPARK_FRAMES,
+  sconce: SCONCE_FRAMES,
+  flare: FLARE_FRAMES,
+};
+
+export interface CanvasSize {
+  readonly width: number;
+  readonly height: number;
+}
+
+const square = (size: number): CanvasSize => ({ width: size, height: size });
+
+/** The canvas each weapon's effect is produced on, in units. */
+export const EFFECT_SIZES: Readonly<Record<WeaponId, CanvasSize>> = {
+  taper: { width: 120, height: 40 },
+  pyre: { width: 120, height: 40 },
+  ember: square(16),
+  beacon: square(16),
+  pin: square(12),
+  hail: square(12),
+  lantern: square(28),
+  chandelier: square(28),
+  halo: square(160),
+  corona: square(160),
+  "oil-splash": square(100),
+  blaze: square(100),
+  spark: square(80),
+  shard: square(16),
+  sconce: square(24),
+  flare: square(128),
+};
 
 /** The path of a produced file under `assets/`. */
 export const ASSET_PATHS = {
@@ -714,6 +753,9 @@ export const ASSET_PATHS = {
   gem: (tier: GemTier): string => `sprites/gems/${tier}.png`,
   pickup: (kind: PickupKind): string => `sprites/pickups/${kind}.png`,
   ground: "sprites/ground.png",
+  effect: (weapon: WeaponId): string => `sprites/effects/${weapon}.png`,
+  effectFrame: (weapon: WeaponId, frame: number): string =>
+    `sprites/effects/${weapon}/${frame}.png`,
   icon: (id: string): string => `icons/${id}.png`,
   audio: (cue: Cue): string => `audio/${cue}.wav`,
 } as const;

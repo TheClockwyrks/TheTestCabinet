@@ -5,7 +5,8 @@
 // STAGE_CY)`, so the lamplighter sits at the stage center and the ground
 // pattern, fixed in world space, slides beneath it. A produced sprite is
 // drawn at one unit per pixel where it decoded; where it did not, a
-// code-drawn stand-in of the same size takes its place.
+// code-drawn stand-in of the same size takes its place. Every animation is
+// counted in ticks, so it holds still on every screen but `playing`.
 
 import type { Assets } from "../assets";
 import {
@@ -18,17 +19,22 @@ import {
   LAMPLIGHTER_WALK_FRAMES,
   PICKUP_SIZE,
   PLAYER_RADIUS,
-  PUFF_FRAMES,
-  PUFF_TIME,
+  PUFF_SIZE,
   STAGE_CX,
   STAGE_CY,
   STAGE_H,
   STAGE_W,
   TICK_DT,
-  WALK_FRAME_TIME,
 } from "../constants";
 import type { RunState } from "../state";
 import { centeredRect, circle, sprite } from "./draw";
+import {
+  ageOf,
+  drawProjectile,
+  drawZone,
+  puffFrame,
+  walkFrame,
+} from "./effects";
 import { COLORS } from "./theme";
 
 /** The stage position of a world point. */
@@ -69,6 +75,23 @@ export function drawGround(
       ctx.fillRect(x, y, 1, GROUND_TILE);
     }
   }
+}
+
+/** The lamp's light on the ground about the lamplighter. */
+function drawLamplight(ctx: CanvasRenderingContext2D): void {
+  const reach = PLAYER_RADIUS * 9;
+  const light = ctx.createRadialGradient(
+    STAGE_CX,
+    STAGE_CY,
+    PLAYER_RADIUS,
+    STAGE_CX,
+    STAGE_CY,
+    reach,
+  );
+  light.addColorStop(0, COLORS.lamplight);
+  light.addColorStop(1, "rgba(255, 196, 96, 0)");
+  ctx.fillStyle = light;
+  ctx.fillRect(STAGE_CX - reach, STAGE_CY - reach, reach * 2, reach * 2);
 }
 
 function drawGems(
@@ -125,29 +148,40 @@ function drawPickups(
   }
 }
 
-function drawZones(ctx: CanvasRenderingContext2D, run: RunState): void {
+/** The zones on the ground: puddles and the aura under everything else. */
+function drawGroundZones(
+  ctx: CanvasRenderingContext2D,
+  run: RunState,
+  assets: Assets,
+): void {
   for (const zone of run.zones) {
+    if (zone.kind !== "puddle" && zone.kind !== "aura") continue;
     const [x, y] = toStage(run, zone.x, zone.y);
-    if (zone.kind === "slash") {
-      centeredRect(
-        ctx,
-        x,
-        y,
-        zone.width ?? 0,
-        zone.height ?? 0,
-        COLORS.zone,
-        COLORS.zoneEdge,
-      );
-      continue;
-    }
-    circle(ctx, x, y, zone.radius, COLORS.zone, COLORS.zoneEdge);
+    drawZone(ctx, run, assets, zone, x, y);
   }
 }
 
-function drawProjectiles(ctx: CanvasRenderingContext2D, run: RunState): void {
+/** The zones in the air: slashes, lanterns, strikes, and bursts. */
+function drawAirZones(
+  ctx: CanvasRenderingContext2D,
+  run: RunState,
+  assets: Assets,
+): void {
+  for (const zone of run.zones) {
+    if (zone.kind === "puddle" || zone.kind === "aura") continue;
+    const [x, y] = toStage(run, zone.x, zone.y);
+    drawZone(ctx, run, assets, zone, x, y);
+  }
+}
+
+function drawProjectiles(
+  ctx: CanvasRenderingContext2D,
+  run: RunState,
+  assets: Assets,
+): void {
   for (const projectile of run.projectiles) {
     const [x, y] = toStage(run, projectile.x, projectile.y);
-    circle(ctx, x, y, projectile.radius, COLORS.projectile);
+    drawProjectile(ctx, run, assets, projectile, x, y);
   }
 }
 
@@ -159,18 +193,12 @@ function drawEnemies(
   for (const enemy of run.enemies) {
     const [x, y] = toStage(run, enemy.x, enemy.y);
     const def = ENEMIES[enemy.type];
-    const frame = Math.floor(enemy.age / WALK_FRAME_TIME) % ENEMY_WALK_FRAMES;
+    const frame = walkFrame(enemy.age, ENEMY_WALK_FRAMES);
     const image = assets.image(ASSET_PATHS.enemy(enemy.type, frame));
     if (image) {
-      sprite(
-        ctx,
-        image,
-        x,
-        y,
-        def.radius * 2,
-        def.radius * 2,
-        enemy.heading.x < 0,
-      );
+      sprite(ctx, image, x, y, def.radius * 2, def.radius * 2, {
+        mirror: enemy.heading.x < 0,
+      });
       continue;
     }
     const fill =
@@ -190,43 +218,41 @@ function drawPuffs(
   assets: Assets,
 ): void {
   for (const puff of run.puffs) {
-    const t = (run.tick - puff.bornTick) * TICK_DT;
-    const frame = Math.min(
-      PUFF_FRAMES - 1,
-      Math.floor(t / (PUFF_TIME / PUFF_FRAMES)),
-    );
+    const frame = puffFrame(ageOf(run, puff.bornTick));
     const [x, y] = toStage(run, puff.x, puff.y);
     const image = assets.image(ASSET_PATHS.puff(frame));
     if (image) {
-      sprite(ctx, image, x, y, 24, 24);
+      sprite(ctx, image, x, y, PUFF_SIZE, PUFF_SIZE);
       continue;
     }
     circle(ctx, x, y, 4 + frame * 3, COLORS.puff);
   }
 }
 
-function drawLamplighter(
+/** Draw the lamplighter centered at `(x, y)`, `scale` units per pixel. */
+export function drawLamplighterAt(
   ctx: CanvasRenderingContext2D,
   run: RunState,
   assets: Assets,
+  x: number,
+  y: number,
+  scale = 1,
 ): void {
-  const { width, height } = LAMPLIGHTER_SIZE;
+  const width = LAMPLIGHTER_SIZE.width * scale;
+  const height = LAMPLIGHTER_SIZE.height * scale;
   const mirror = run.player.facing === "left";
-  const frame =
-    Math.floor((run.movedTicks * TICK_DT) / WALK_FRAME_TIME) %
-    LAMPLIGHTER_WALK_FRAMES;
+  const frame = walkFrame(run.movedTicks * TICK_DT, LAMPLIGHTER_WALK_FRAMES);
   const image = run.moving
     ? assets.image(ASSET_PATHS.lamplighterWalk(frame))
     : assets.image(ASSET_PATHS.lamplighterIdle);
-  circle(ctx, STAGE_CX, STAGE_CY, PLAYER_RADIUS * 5, COLORS.lamplight);
   if (image) {
-    sprite(ctx, image, STAGE_CX, STAGE_CY, width, height, mirror);
+    sprite(ctx, image, x, y, width, height, { mirror });
     return;
   }
   ctx.save();
-  ctx.translate(STAGE_CX, STAGE_CY);
+  ctx.translate(x, y);
   if (mirror) ctx.scale(-1, 1);
-  const bob = run.moving ? (frame % 2) * 2 : 0;
+  const bob = run.moving ? (frame % 2) * 2 * scale : 0;
   centeredRect(
     ctx,
     0,
@@ -237,7 +263,14 @@ function drawLamplighter(
     COLORS.lamplighterDark,
   );
   // The lamp, held out on the facing side.
-  centeredRect(ctx, width / 2 + 4, -6 + bob, 8, 10, COLORS.highlight);
+  centeredRect(
+    ctx,
+    width / 2 + 4 * scale,
+    -6 * scale + bob,
+    8 * scale,
+    10 * scale,
+    COLORS.highlight,
+  );
   ctx.restore();
 }
 
@@ -248,11 +281,13 @@ export function drawWorld(
   assets: Assets,
 ): void {
   drawGround(ctx, run, assets);
-  drawZones(ctx, run);
+  drawLamplight(ctx);
+  drawGroundZones(ctx, run, assets);
   drawGems(ctx, run, assets);
   drawPickups(ctx, run, assets);
   drawPuffs(ctx, run, assets);
   drawEnemies(ctx, run, assets);
-  drawProjectiles(ctx, run);
-  drawLamplighter(ctx, run, assets);
+  drawAirZones(ctx, run, assets);
+  drawProjectiles(ctx, run, assets);
+  drawLamplighterAt(ctx, run, assets, STAGE_CX, STAGE_CY);
 }
