@@ -1,138 +1,109 @@
-// combat/fires-at-its-rate — an emitter fires at its stated rate.
+// Meltdown — combat/fires-at-its-rate: an emitter fires at its stated rate.
 //
-// specs/combat.md, The fire clock: an emitter that has a target and is online
-// adds the frame's game time to a fire accumulator, and each time that
-// accumulator reaches `1 / fireRate` one shot resolves and the interval is
-// subtracted. A run of firing therefore lands its FIRST shot one full interval
-// after the target was acquired — never on the frame the target appeared — and
-// lands the rest at the tower's own rate from there.
+// specs/combat.md's fire clock: the frame's game time is added to the emitter's
+// accumulator on every frame it has a target and is online, and "each time the
+// accumulator reaches `1 / fireRate` ... one shot resolves and `1 / fireRate` is
+// subtracted". So "a run of firing ... lands its first shot one full interval
+// after the target was acquired, not on the frame it appeared", and one every
+// interval after that. specs/towers.md gives the Arc `2.0` shots a second, so its
+// interval is half a second: nothing at `0.25` s, one shot by `0.75` s, and one
+// more every half-second after.
 //
-// The Arc's rate is `2.0` shots a second (specs/towers.md), so its interval is
-// half a second: the first shot half a second in, and ten shots by 5.25 s.
+// THE SHOT COUNT IS READ IN UNITS OF THE FIRST SHOT, WHICH IS WHAT MAKES THIS A
+// READING OF THE RATE ALONE. Every observable a shot leaves is some other item's
+// figure — the hp it removes is `combat/damage-per-shot`'s, the heat it adds is
+// `heat/firing-adds-heat`'s — so a count taken in hit points would fail this point
+// for a build whose rate is perfect and whose damage figure is not. What this
+// point does instead is measure the removal ONE shot makes and count the later
+// removals against it. A build that fires twice as hard passes; a build that fires
+// twice as often does not.
 //
-// Shots are counted off the target's hp, because hp is what a shot is FOR: one
-// shot removes `baseDamage * heatMultiplier(H, redline)` (specs/combat.md,
-// Damage), and the tower is posed at a heat that cannot drift, so that figure is
-// the same for every shot of the run. The target is given far more hp than the
-// run removes, so the reading is a subtraction rather than a death.
+// WHERE THE CHECKPOINTS FALL. `ticksForShots(n, rate)` lands half an interval past
+// the `n`-th shot, which is the furthest point in the cycle from both boundaries,
+// so `n` shots have resolved whichever side of an exact multiple a build's own
+// accumulation of a hundred floating-point deltas falls on.
+//
+// THE HEAT CANNOT MOVE AND THE MARK CANNOT LEAVE. The Arc is pinned, so every shot
+// of the drive removes the same amount and the count in units of the first is
+// exact; the mark holds its tile with hp far past five shots' worth, so it neither
+// walks out of range nor dies partway through.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
 import {
-  TOWER_DEFS,
-  heatMultiplier,
-  type EmitterDef,
-} from "../../src/constants";
-import { assertBetween, assertCloseTo, assertEqual, assertTruthy } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  posePinnedTower,
-  poseTarget,
-  startRun,
-  ticksFor,
-  unitById,
-  type Harness,
-  type UnitSnapshot,
-} from "../harness";
+  NEAR_UNITS,
+  fireRateOf,
+  poseGun,
+  poseMarkEast,
+  readHp,
+  ticksForShots,
+} from "./duel";
 
-const ARC = TOWER_DEFS.arc as EmitterDef;
+/** The emitter read, and the heat it is pinned at. */
+const TOWER = "arc";
+const HEAT = 0;
 
-/**
- * A quiet footprint anchor: clear of the left corridor (rows 16..19) and of the
- * top one (columns 22..29), so the tower posed here lengthens neither route
- * (specs/floor.md).
- */
-const SITE = { col: 4, row: 4 };
+/** specs/towers.md: the Arc fires 2.0 shots a second. */
+const FIRE_RATE = fireRateOf(TOWER);
+
+/** How many shots the drive walks through, one checkpoint each. */
+const SHOTS = 4;
 
 /**
- * Where the target stands: four tiles below the anchor, 3.5 tiles from the
- * footprint's centre — inside the Arc's level-I radius of 6.0 tiles
- * (specs/towers.md) and clear of the footprint itself.
- */
-const TARGET_TILE = { col: 4, row: 8 };
-
-/** specs/towers.md: the Arc fires 2.0 shots a second at level I. */
-const INTERVAL = 1 / ARC.fireRate;
-
-/** The heat the tower is pinned at, so the per-shot damage cannot drift. */
-const PINNED_HEAT = 0;
-
-/** specs/combat.md, Damage: what one of this tower's shots removes. */
-const DAMAGE = ARC.baseDamage * heatMultiplier(PINNED_HEAT, ARC.redline);
-
-/** The frame the first shot is due on: one full interval after the target. */
-const FIRST_SHOT_TICKS = ticksFor(INTERVAL);
-
-/**
- * How far the first shot's frame may sit from that: ONE frame.
+ * How close each count must come, as decimal places of a shot.
  *
- * The accumulator is a sum of the deltas the frames handed the game, and whether
- * the sixtieth of them carries it to exactly half a second or leaves it a
- * floating-point hair short is a property of that addition rather than of the
- * rule. Nothing wider is needed: a build that fires on the frame the target
- * appeared, or at twice the rate, is a whole interval out.
+ * Two places is `0.005` of a shot. Every shot of this drive removes the same
+ * amount — the heat is pinned, so the multiplier cannot move — which makes the
+ * ratio of a cumulative removal to one shot's an exact integer up to the float
+ * slack of a few subtractions, many orders below the bound. What the bound
+ * excludes is every neighbouring rate: a build one shot behind or ahead at a
+ * checkpoint reads a whole integer away.
  */
-const TICK_SLACK = 1;
+const COUNT_DIGITS = 2;
 
-/**
- * The window the run is counted over, and the shots specs/combat.md puts in it.
- *
- * 5.25 s is ten and a half intervals, so the reading sits half an interval clear
- * of both the tenth shot and the eleventh and cannot turn on a rounding.
- */
-const RUN_SECONDS = 5.25;
-const RUN_SHOTS = 10;
-
-/** More hp than the run removes, so the reading is a subtraction, not a death. */
-const TARGET_HP = 10_000;
-
-let harness: Harness;
+let h: Harness;
 
 beforeEach(async () => {
-  harness = await createHarness();
+  h = await createHarness();
 });
 
 afterEach(() => {
-  harness?.dispose();
+  h?.dispose();
 });
 
-/** The target as the snapshot reports it; a target that has gone fails here. */
-function targetNow(id: number): UnitSnapshot {
-  const unit = unitById(harness.snapshot(), id);
-  assertTruthy(unit, `the target unit ${id} still on the floor`);
-  return unit as UnitSnapshot;
-}
+it("An emitter fires at its stated rate", async () => {
+  poseGun(h, TOWER, HEAT);
+  const mark = poseMarkEast(h, TOWER, "mote", NEAR_UNITS);
+  const opened = readHp(h, mark);
 
-it("lands its first shot an interval in and fires at its rate after", async () => {
-  startRun(harness);
-  posePinnedTower(harness, "arc", SITE.col, SITE.row, PINNED_HEAT);
-  const target = poseTarget(
-    harness,
-    "mote",
-    TARGET_TILE.col,
-    TARGET_TILE.row,
-    TARGET_HP,
-  );
+  // Cumulative hp removed at half an interval past the n-th shot, n = 0..SHOTS.
+  const removed: number[] = [];
+  let driven = 0;
+  for (let n = 0; n <= SHOTS; n += 1) {
+    const wanted = ticksForShots(n, FIRE_RATE);
+    await h.advance(wanted - driven);
+    driven = wanted;
+    removed.push(opened - readHp(h, mark));
+  }
+  captureStill(h, "rate");
 
-  const first = await harness.until(
-    (snapshot) => (unitById(snapshot, target)?.hp ?? 0) < TARGET_HP,
-    { maxFrames: ticksFor(2 * INTERVAL) },
+  assertEqual(
+    removed[0],
+    0,
+    `hp removed ${0.5 / FIRE_RATE}s in, half an interval before the first shot`,
   );
-  assertEqual(first.hit, true, "a first shot within two of the Arc's intervals");
-  assertBetween(
-    first.frames,
-    FIRST_SHOT_TICKS - TICK_SLACK,
-    FIRST_SHOT_TICKS + TICK_SLACK,
-    `the frame the first shot landed on, ${INTERVAL}s at ${ARC.fireRate}/s`,
+  assertGreaterThan(
+    removed[1],
+    0,
+    `hp removed by the first shot, one ${1 / FIRE_RATE}s interval in`,
   );
-
-  await harness.advance(ticksFor(RUN_SECONDS) - first.frames);
-  captureStill(harness, "rate");
-
-  assertCloseTo(
-    targetNow(target).hp,
-    TARGET_HP - RUN_SHOTS * DAMAGE,
-    6,
-    `hp after ${RUN_SECONDS}s, which is ${RUN_SHOTS} shots of ${DAMAGE}`,
-  );
+  for (let n = 2; n <= SHOTS; n += 1) {
+    assertCloseTo(
+      removed[n] / removed[1],
+      n,
+      COUNT_DIGITS,
+      `shots resolved by ${(n + 0.5) / FIRE_RATE}s, in units of the first shot`,
+    );
+  }
 });

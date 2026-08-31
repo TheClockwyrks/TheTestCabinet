@@ -1,101 +1,92 @@
-// combat/fire-clock-holds-without-a-target — the fire clock waits for a target.
+// Meltdown — combat/fire-clock-holds-without-a-target: the fire clock waits.
 //
-// specs/combat.md, The fire clock: on a frame in which an emitter has no target
-// its accumulator NEITHER GROWS NOR FALLS, so "an emitter that has sat without a
-// target lands its first shot one full interval after the target arrives".
+// specs/combat.md: "On a frame in which it has no target, or is tripped, the
+// accumulator neither grows nor falls", and therefore "an emitter that has sat
+// without a target lands its first shot one full interval after the target
+// arrives". So the ten seconds this emitter spends alone must leave its clock
+// exactly where it started, and the shot must come half a second after the mark
+// appears rather than on the frame it does.
 //
-// This is the direction `fires-at-its-rate` cannot see. A build that lets the
-// accumulator run while the floor is empty fires its first shot on the frame the
-// target appears — the accumulator is twenty intervals over by then — and still
-// fires at two shots a second afterwards, so only a tower left idle FIRST tells
-// the two apart. Ten seconds of idling is twenty of the Arc's intervals, which
-// is far more than the one a wrongly-running clock would need to bank.
+// WHAT THE WRONG MODEL LOOKS LIKE, AND WHY THIS POINT EXISTS. A build that adds
+// the frame's time to the accumulator unconditionally — the obvious way to write
+// it — banks twenty intervals over those ten seconds and fires the instant a mark
+// comes into range, and then goes on firing at its real rate, so every other point
+// in this group passes. The only reading that separates the two is the one below:
+// whether anything is removed inside the first interval after the mark arrives.
 //
-// The tower is pinned at a heat that cannot drift, so the shot the reading looks
-// for removes a fixed figure, and the target carries far more hp than one shot
-// takes.
+// THE READING IS TAKEN IN HIT POINTS BUT GRADED ONLY BY WHETHER THERE ARE ANY, so
+// a build whose per-shot figure is wrong is graded for that by
+// `combat/damage-per-shot` and passes here.
+//
+// THE MARK APPEARS WITH THE CLOCK ALREADY OLD. `poseMarkEast` puts it three tiles
+// out, well inside the Arc's `6.0`, and takes its motion off, so the acquisition
+// happens on the first frame after it is posed and the interval being timed starts
+// there.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, type EmitterDef } from "../../src/constants";
-import { assertBetween, assertEqual } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  posePinnedTower,
-  poseTarget,
-  startRun,
   ticksFor,
-  unitById,
   type Harness,
 } from "../harness";
+import {
+  NEAR_UNITS,
+  fireRateOf,
+  poseGun,
+  poseMarkEast,
+  readHp,
+  ticksForShots,
+} from "./duel";
 
-const ARC = TOWER_DEFS.arc as EmitterDef;
+/** The emitter read, and the heat it is pinned at. */
+const TOWER = "arc";
+const HEAT = 0;
 
-/**
- * A quiet footprint anchor: clear of the left corridor (rows 16..19) and of the
- * top one (columns 22..29) (specs/floor.md).
- */
-const SITE = { col: 4, row: 4 };
+/** specs/towers.md: 2.0 shots a second, so a half-second interval. */
+const FIRE_RATE = fireRateOf(TOWER);
 
-/** Four tiles below the anchor: 3.5 tiles out, inside the Arc's 6.0-tile radius. */
-const TARGET_TILE = { col: 4, row: 8 };
-
-/** The heat the tower is pinned at, so nothing about its damage can drift. */
-const PINNED_HEAT = 0;
-
-/** specs/towers.md: the Arc fires 2.0 shots a second at level I. */
-const INTERVAL = 1 / ARC.fireRate;
-
-/** How long the tower is left with nothing to shoot at: twenty intervals. */
+/** How long the emitter sits with nothing to shoot at, in seconds. */
 const IDLE_SECONDS = 10;
 
-/** The frame the first shot is due on, counted from the target's arrival. */
-const FIRST_SHOT_TICKS = ticksFor(INTERVAL);
-
-/**
- * How far that frame may sit from the interval: ONE frame, for the same reason
- * `fires-at-its-rate` allows one — whether the sixtieth delta carries the
- * accumulator to exactly half a second is a property of the addition. A build
- * whose clock ran while it was idle fires on the FIRST frame, fifty-nine out.
- */
-const TICK_SLACK = 1;
-
-/** More hp than a shot removes, so the reading is a subtraction, not a death. */
-const TARGET_HP = 10_000;
-
-let harness: Harness;
+let h: Harness;
 
 beforeEach(async () => {
-  harness = await createHarness();
+  h = await createHarness();
 });
 
 afterEach(() => {
-  harness?.dispose();
+  h?.dispose();
 });
 
-it("still waits a full interval for its first shot after ten idle seconds", async () => {
-  startRun(harness);
-  posePinnedTower(harness, "arc", SITE.col, SITE.row, PINNED_HEAT);
-  await harness.advance(ticksFor(IDLE_SECONDS));
+it("The fire clock waits for a target", async () => {
+  poseGun(h, TOWER, HEAT);
+  await h.advance(ticksFor(IDLE_SECONDS));
 
-  const target = poseTarget(
-    harness,
-    "mote",
-    TARGET_TILE.col,
-    TARGET_TILE.row,
-    TARGET_HP,
-  );
-  const first = await harness.until(
-    (snapshot) => (unitById(snapshot, target)?.hp ?? 0) < TARGET_HP,
-    { maxFrames: ticksFor(2 * INTERVAL) },
-  );
-  captureStill(harness, "waiting");
+  const mark = poseMarkEast(h, TOWER, "mote", NEAR_UNITS);
+  const opened = readHp(h, mark);
 
-  assertEqual(first.hit, true, "a first shot within two of the Arc's intervals");
-  assertBetween(
-    first.frames,
-    FIRST_SHOT_TICKS - TICK_SLACK,
-    FIRST_SHOT_TICKS + TICK_SLACK,
-    `the frame the first shot landed on after ${IDLE_SECONDS}s idle`,
+  // Half an interval in: the furthest point from both boundaries of the first
+  // interval, and before the first shot of a run may resolve.
+  const earlyTicks = ticksForShots(0, FIRE_RATE);
+  await h.advance(earlyTicks);
+  const early = opened - readHp(h, mark);
+
+  await h.advance(ticksForShots(1, FIRE_RATE) - earlyTicks);
+  captureStill(h, "waiting");
+  const late = opened - readHp(h, mark);
+
+  assertEqual(
+    early,
+    0,
+    `hp removed in the first ${0.5 / FIRE_RATE}s after a target arrived, on an ` +
+      `emitter that had sat ${IDLE_SECONDS}s without one`,
+  );
+  assertGreaterThan(
+    late,
+    0,
+    `hp removed by the first shot, one ${1 / FIRE_RATE}s interval after the ` +
+      `target arrived`,
   );
 });
