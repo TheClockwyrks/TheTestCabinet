@@ -254,8 +254,9 @@ it("keeps the saucer travelling and firing while the banner shows", async () => 
   // The window is the banner: watched tick by tick until it runs out.
   let watched = 0;
   let shots = 0;
-  for (; watched < BANNER_WINDOW_TICKS; watched += 1) {
+  while (watched < BANNER_WINDOW_TICKS) {
     await h.advance(1);
+    watched += 1;
     const at = h.snapshot();
     shots = Math.max(shots, at.enemyBullets.length);
     if (at.waveBanner <= 0) break;

@@ -103,9 +103,9 @@ const MIN_BURN_TICKS = ticksFor(0.25);
  * How far the burn under the banner may fall from the burn in play, as a fraction
  * of the play burn.
  *
- * 2 percent. The two burns are the same code over the same second, so the only
- * legitimate difference between them is where the tick boundaries fall relative to
- * the key's edge: one tick of a `480` units-per-second-squared thrust is `4` units
+ * 2 percent. The two burns are the same code over the same number of ticks, so
+ * the only legitimate difference between them is where the tick boundaries fall
+ * relative to the key's edge: one tick of a `480` units-per-second-squared thrust is `4` units
  * per second, and two percent of a `428` unit-per-second burn is `8.6` — room for
  * a couple of ticks of offset and nothing else. A build that pauses the ship under
  * the banner is a hundred percent out.
@@ -146,8 +146,9 @@ it("builds the same speed under the banner as it does in play", async () => {
   let burned = 0;
   h.hold(keysFor("up")[0]);
   try {
-    for (; burned < BURN_TICKS; burned += 1) {
+    while (burned < BURN_TICKS) {
       await h.advance(1);
+      burned += 1;
       if (h.snapshot().waveBanner <= 0) break;
     }
   } finally {
