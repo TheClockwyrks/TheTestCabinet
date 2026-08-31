@@ -49,7 +49,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertGreaterThanOrEqual } from "../assert";
-import { LEFT_VENT_ROWS, WAVE_SPAWN_INTERVAL, waveSize } from "../constants";
+import {
+  LEFT_VENT_ROWS,
+  WAVE_SPAWN_INTERVAL,
+  colAt,
+  rowAt,
+  waveSize,
+} from "../constants";
 import {
   captureStill,
   createHarness,
@@ -115,13 +121,25 @@ it("enters every left-vent unit on the one opening tile no footprint covers", as
   // the tile it entered on. Only the left vent's are kept: the top vent's opening
   // is untouched and says nothing about this rule.
   const seen = new Set<number>();
-  const entries: { id: number; col: number; row: number }[] = [];
+  const entries: {
+    id: number;
+    col: number;
+    row: number;
+    x: number;
+    y: number;
+  }[] = [];
   const record = (snapshot: MeltdownSnapshot): void => {
     for (const unit of snapshot.surge) {
       if (seen.has(unit.id)) continue;
       seen.add(unit.id);
       if (unit.vent === "left") {
-        entries.push({ id: unit.id, col: unit.col, row: unit.row });
+        entries.push({
+          id: unit.id,
+          col: unit.col,
+          row: unit.row,
+          x: unit.x,
+          y: unit.y,
+        });
       }
     }
   };
@@ -149,6 +167,18 @@ it("enters every left-vent unit on the one opening tile no footprint covers", as
       `the tile unit ${entry.id} appeared on: three of the left vent's four ` +
         `opening tiles are covered by a footprint, so every unit that vent ` +
         `releases appears on the fourth (specs/surge.md)`,
+    );
+    // And where the build actually PUT it, read back through specs/floor.md's
+    // own map from a stage position to a tile. The pair matters because the two
+    // readings can disagree: a build reporting the tile it meant while standing
+    // the unit somewhere else has not entered it on the open tile, and the
+    // reported col and row alone would never say so.
+    assertDeepEqual(
+      { col: colAt(entry.x), row: rowAt(entry.y) },
+      { col: OPEN_TILE.col, row: OPEN_TILE.row },
+      `the tile unit ${entry.id}'s own position (${entry.x.toFixed(2)}, ` +
+        `${entry.y.toFixed(2)}) falls in, under the tile map specs/floor.md ` +
+        `fixes`,
     );
   }
 });

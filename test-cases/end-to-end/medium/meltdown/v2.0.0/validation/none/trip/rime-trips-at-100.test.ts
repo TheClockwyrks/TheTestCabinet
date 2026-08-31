@@ -27,12 +27,13 @@
 // that the crossing happens at all, on a different gun.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual } from "../assert";
-import { TRIP_HEAT } from "../constants";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { TRIP_HEAT, TRIP_TIME } from "../constants";
 import {
   captureStill,
   createHarness,
   requireTower,
+  seconds,
   type Harness,
 } from "../harness";
 import {
@@ -56,6 +57,19 @@ const SHOT_HEAT = shotHeatOf(TOWER, LEVEL);
 /** The most air takes between two of its shots, at the trip itself: 6.82. */
 const AIR_PER_INTERVAL = maxAirLossPerIntervalOf(TOWER, LEVEL);
 
+/**
+ * How far below `100` the heat may read on the frame the trip is caught.
+ *
+ * `specs/heat.md` writes the trip on the frame the heat REACHES `100` and clamps
+ * heat to `[0, 100]`, so the crossing frame reads exactly `100`. A build that
+ * starts the `TRIP_HEAT / TRIP_TIME` bleed on that same frame instead of the next
+ * reads one frame of it lower, and that one frame is the whole of the room here.
+ * It is what makes this item about the LINE rather than about the flag: a build
+ * that trips at its redline, or at `99`, reads whole heat points away and is
+ * caught, where a check that read `tripped` alone would take it.
+ */
+const HEAT_FLOOR = TRIP_HEAT - (TRIP_HEAT / TRIP_TIME) * seconds(1);
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -69,6 +83,13 @@ afterEach(async () => {
 it("The Rime trips like any emitter", async () => {
   const { id } = await poseLiveGun(h, TOWER, OPENING_HEAT, LEVEL);
 
+  assertEqual(
+    requireTower(await h.snapshot(), id, "the emitter as it was posed").tripped,
+    false,
+    `whether a ${TOWER} posed at heat ${OPENING_HEAT} is already tripped, ` +
+      `which specs/heat.md puts at the ${TRIP_HEAT} it has not yet reached`,
+  );
+
   const swept = await sweepToTheTrip(h, id, TOWER, LEVEL);
   await captureStill(h, "trip");
   const gun = requireTower(swept.snapshot, id, "the Rime driven to the trip");
@@ -81,5 +102,12 @@ it("The Rime trips like any emitter", async () => {
       `trip, its ${SHOT_HEAT.toFixed(2)} per shot against at most ` +
       `${AIR_PER_INTERVAL.toFixed(2)} of air between two: after ` +
       `${swept.frames} frames it sat at heat ${gun.heat.toFixed(3)}`,
+  );
+
+  assertGreaterThanOrEqual(
+    gun.heat,
+    HEAT_FLOOR,
+    `the heat the ${TOWER} tripped at, which specs/heat.md puts at ` +
+      `${TRIP_HEAT} for every emitter`,
   );
 });

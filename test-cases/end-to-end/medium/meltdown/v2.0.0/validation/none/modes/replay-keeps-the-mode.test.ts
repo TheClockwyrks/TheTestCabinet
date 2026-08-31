@@ -56,12 +56,20 @@ const PLAY_AGAIN_ROW = 0;
 /**
  * What the finished run is left carrying.
  *
- * None of the three is any row's starting money or starting lives, so nothing
- * below can be satisfied by leaving the run where it stood.
+ * None of the four is any row's starting money, starting lives or opening wave,
+ * so nothing below can be satisfied by leaving the run where it stood. The wave
+ * is there because "a FRESH run" is half of what the item asks for: a build that
+ * carried the mode and the difficulty across but reopened on the wave the last
+ * run died on has not replayed the run, it has resumed it.
  */
 const STALE_MONEY = 7;
 const STALE_LIVES = 13;
 const STALE_SCORE = 4321;
+const STALE_WAVE = 9;
+
+/** The wave and the phase every run opens on (specs/waves.md, specs/modes.md). */
+const OPENING_WAVE = 1;
+const OPENING_PHASE = "opening";
 
 /** The four arrangements: both end screens, on both distinguishing pairs. */
 const ARRANGEMENTS: readonly {
@@ -98,6 +106,7 @@ it("opens a fresh run on the same mode and difficulty from either end screen", a
     await debug.setMoney(STALE_MONEY);
     await debug.setLives(STALE_LIVES);
     await debug.setScore(STALE_SCORE);
+    await debug.setWave(STALE_WAVE);
     await debug.setScreen(screen);
     await debug.setMenuIndex(PLAY_AGAIN_ROW);
 
@@ -112,15 +121,18 @@ it("opens a fresh run on the same mode and difficulty from either end screen", a
       difficulty,
       `the difficulty after ${where}`,
     );
+    assertEqual(snapshot.money, figures.startMoney, `the money after ${where}`);
+    assertEqual(snapshot.lives, figures.startLives, `the lives after ${where}`);
     assertEqual(
-      snapshot.money,
-      figures.startMoney,
-      `the money after ${where}`,
+      snapshot.wave,
+      OPENING_WAVE,
+      `the wave after ${where}, which a FRESH run opens on however far the ` +
+        `finished one got (it was left on ${STALE_WAVE})`,
     );
     assertEqual(
-      snapshot.lives,
-      figures.startLives,
-      `the lives after ${where}`,
+      snapshot.phase,
+      OPENING_PHASE,
+      `the phase after ${where}, which a fresh run opens in`,
     );
   }
 });
