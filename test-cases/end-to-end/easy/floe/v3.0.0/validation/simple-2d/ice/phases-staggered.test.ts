@@ -13,12 +13,17 @@
 // is. So for each of the forty columns the eight rows are counted, and no column
 // may reach eight.
 //
-// EIGHT SEEDS, NOT ONE. The phases are drawn from the generator `reset` seeds,
-// so a single draw grades one draw. The rule is a property of the DRAW, so this
-// takes eight of them — a build that stated the rule and never enforced it lands
-// a wall on some seeds and not others, and a build that enforces it lands none
-// on any. Nothing else varies between the eight: level 1, laid out the same way
-// each time.
+// MANY SEEDS, NOT ONE. The phases are drawn from the generator `reset` seeds, so
+// a single draw grades one draw, and the rule is a property of the DRAW.
+//
+// WHAT THAT CAN AND CANNOT CATCH, stated plainly. A wall is a rare arrangement —
+// with the level-1 table a given column is covered in all eight rows on well
+// under a thousandth of draws — so a build that enforces the rule and a build
+// that merely got lucky look alike over any number of seeds a validator can
+// afford. What these draws decide is the thing the item states: that no level
+// this case lays out puts a wall in front of the critter. A build that lays one
+// down on a seed read here fails, and the seed and the column are named. Nothing
+// else varies between the draws: level 1, laid out the same way each time.
 //
 // A LANE HAS TO CARRY SOMETHING for the count to mean anything: a band with no
 // vehicles at all covers no column in eight rows, and would pass a reading that
@@ -41,7 +46,7 @@ import { layOutLevel } from "./harness";
 const LEVEL = 1;
 
 /** The seeds the phases are drawn from, one fresh draw of the band each. */
-const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
+const SEEDS = Array.from({ length: 24 }, (_unused, index) => index + 1);
 
 /** How many ice rows a column may be covered in: fewer than all eight. */
 const ROWS_COVERED_LIMIT = ICE_LANES.length;
