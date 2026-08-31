@@ -1,27 +1,92 @@
-// Floe — scoring/row-advance: SCAFFOLD STUB, NOT A VALIDATOR.
+// scoring/row-advance — a hop onto a row above every row this crossing has
+// reached pays `SCORE_ROW`, and pays nothing else.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `scoring.row-advance` review item, written
-// against the `structured-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/scoring.md: "A newly reached row | `SCORE_ROW` (`10`) | An accepted hop
+// takes the critter to a row above every row it has reached this crossing, which
+// is any hop that moves `bestRow` closer to the far shore." specs/hopping.md
+// fixes `bestRow` as the topmost row the critter has stood on this crossing,
+// `ROW_NEAR` (`19`) when a crossing begins.
 //
-// The item this file decides, from test-case.toml:
+// THE HOP IS THE FIRST ONE OF A FRESH CROSSING, from the near shore into the ice
+// band, which is the plainest hop the game has that moves `bestRow`: one row, no
+// bay, no crossing ended, nothing else the specification pays for. What it pays
+// is therefore `SCORE_ROW` and nothing at all beside it.
 //
-//   A newly reached row scores ten
+// THE CROSSING TIMER IS LEFT WHERE A FRESH CROSSING PUTS IT — 30 s at level 1,
+// held there by the timer gate `startCrossing` shuts. That is the distinguishing
+// value: specs/scoring.md pays the time bonus for "a crossing [that] ends in an
+// open bay" and this hop ends nothing, so a build that pays `SCORE_TIME_BONUS`
+// per whole second on every scoring hop reads 70 here rather than 10, and a build
+// that pays the bay award too reads 120. Posing the timer to 0 would have hidden
+// both.
 //
-//   A hop to a row above every row this crossing has reached adds SCORE_ROW
-//   (10).
+// THE STRAIT IS EMPTY, so the ice row hopped onto carries no vehicle to refuse
+// the hop (specs/hopping.md) and nothing beside the critter moves while the
+// reading is taken.
 //
-// Its declared media: replay `score`.
+// The row hopped ONTO is read as well, because an award for a row the critter
+// never reached would be the same 10 as an award for one it did.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  ICE_BOTTOM,
+  ROW_NEAR,
+  SCORE_ROW,
+  START_COL,
+} from "../../src/constants";
+import {
+  captureReplay,
+  createHarness,
+  hop,
+  startCrossing,
+  ticksFor,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The row the critter starts the crossing on, and the row it hops onto. */
+const FROM_ROW = ROW_NEAR;
+const TO_ROW = ICE_BOTTOM;
 
-it("scoring/row-advance has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** What that hop pays: one newly reached row, and nothing else. */
+const EXPECTED_AWARD = SCORE_ROW;
+
+/** Frames recorded after the hop, for the replay alone. Every reading precedes them. */
+const AFTER_FRAMES = ticksFor(0.25);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("pays ten for the row a hop newly reaches, and nothing else", async () => {
+  startCrossing(h);
+
+  const posed = h.snapshot();
+  assertEqual(posed.critter.row, FROM_ROW, "the critter on the near shore");
+  assertEqual(posed.critter.bestRow, FROM_ROW, "a fresh crossing's bestRow");
+  assertEqual(posed.score, 0, "a fresh run's score");
+
+  const advanced = await captureReplay(h, "score", async () => {
+    await hop(h, "up");
+    const landed = h.snapshot();
+    await h.advance(AFTER_FRAMES);
+    return landed;
+  });
+
+  // The hop has to have been taken for the award to be about anything: a build
+  // that refused it would otherwise fail below for paying nothing.
+  assertEqual(advanced.critter.row, TO_ROW, "the row the hop landed on");
+  assertEqual(advanced.critter.col, START_COL, "the column it hopped from");
+
+  assertEqual(
+    advanced.score - posed.score,
+    EXPECTED_AWARD,
+    "SCORE_ROW alone, for one newly reached row",
+  );
 });
