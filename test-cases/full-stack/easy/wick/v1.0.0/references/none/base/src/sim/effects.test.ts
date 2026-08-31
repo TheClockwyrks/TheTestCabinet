@@ -14,6 +14,8 @@ function playing(): { state: WickState; rng: Rng; cues: Set<Cue> } {
   state.switches.enemyMotion = false;
   state.switches.enemyContact = false;
   state.switches.weaponFire = false;
+  // The director would put a moth on the ring and draw its angle.
+  state.switches.spawning = false;
   return { state, rng: new Rng(() => state), cues: new Set() };
 }
 

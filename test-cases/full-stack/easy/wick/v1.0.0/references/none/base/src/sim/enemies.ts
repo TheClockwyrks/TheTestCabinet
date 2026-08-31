@@ -1,19 +1,22 @@
 // Wick — the enemies (specs/enemies.md).
 //
-// How an enemy comes into the world, how it ages, and the figures the
-// director reads: the window index, the count against the cap, and the health
-// scaling. The movement behaviors and the director itself are phases 4 and
-// 10 of the tick.
+// How an enemy comes into the world, the figures the director reads (the
+// window index, the count against the cap, the health scaling), and phase 4
+// of the tick: every enemy ages, and, while `enemyMotion` is on, moves as
+// its behavior states. The director itself is `director.ts`.
 
 import {
   ENEMIES,
+  ENEMY_IDS,
   HP_SCALE_PER_MINUTE,
   LAST_WINDOW,
   SPAWN_WINDOW,
   TICK_DT,
   TICK_HZ,
+  WISP_AMPLITUDE,
+  WISP_PERIOD,
+  type EnemyDef,
   type EnemyId,
-  ENEMY_IDS,
 } from "../constants";
 import type { Enemy, RunState } from "../state";
 import type { TickContext } from "./context";
@@ -28,16 +31,24 @@ export function runTime(run: RunState): number {
   return run.tick / TICK_HZ;
 }
 
+/** The spawn window a tick falls in. */
+export function windowOfTick(tick: number): number {
+  return Math.min(LAST_WINDOW, Math.floor(tick / TICK_HZ / SPAWN_WINDOW));
+}
+
 /** The current spawn window's index. */
 export function spawnWindow(run: RunState): number {
-  return Math.min(LAST_WINDOW, Math.floor(runTime(run) / SPAWN_WINDOW));
+  return windowOfTick(run.tick);
+}
+
+/** Whether an enemy counts against the cap: a common other than a gnat. */
+export function countsAgainstCap(type: EnemyId): boolean {
+  return ENEMIES[type].rank === "common" && type !== "gnat";
 }
 
 /** How many live commons other than gnats count against the cap. */
 export function aliveCommons(run: RunState): number {
-  return run.enemies.filter(
-    (enemy) => ENEMIES[enemy.type].rank === "common" && enemy.type !== "gnat",
-  ).length;
+  return run.enemies.filter((enemy) => countsAgainstCap(enemy.type)).length;
 }
 
 /** The health multiplier a common enemy spawning at `time` takes. */
@@ -89,18 +100,88 @@ export function spawnEnemy(
   return enemy;
 }
 
-/** Phase 4: every enemy ages, and, while `enemyMotion` is on, moves. */
-export function ageAndMoveEnemies(ctx: TickContext): void {
-  for (const enemy of ctx.run.enemies) enemy.age += TICK_DT;
-  if (ctx.state.switches.enemyMotion) moveEnemies(ctx);
+// ---- Movement --------------------------------------------------------------
+
+/** The heading rotated +90 degrees. */
+function perpendicular(heading: Vec): Vec {
+  return { x: -heading.y, y: heading.x };
 }
 
-/** Every enemy advances one step as its behavior states. */
-export function moveEnemies(_ctx: TickContext): void {}
+/** A weaver's sideways offset from its anchor at `age`. */
+export function weaveOffset(age: number): number {
+  return WISP_AMPLITUDE * Math.sin((2 * Math.PI * age) / WISP_PERIOD);
+}
+
+/** One step of `def.speed` along `heading`. */
+function advance(at: Vec, heading: Vec, def: EnemyDef): void {
+  at.x += heading.x * def.speed * TICK_DT;
+  at.y += heading.y * def.speed * TICK_DT;
+}
 
 /**
- * Phase 10: the spawn director. Despawning while `despawning` is on, the
- * scripted events while `events` is on, then the spawn timer while
- * `spawning` is on.
+ * A chaser recomputes its heading toward the lamplighter's center and
+ * advances one step; one whose center coincides with it holds.
  */
-export function runDirector(_ctx: TickContext): void {}
+function chase(run: RunState, enemy: Enemy, def: EnemyDef): void {
+  const heading = direction(enemy, run.player);
+  if (heading === null) return;
+  enemy.heading = heading;
+  advance(enemy, heading, def);
+}
+
+/** A drifter advances one step along the heading it spawned with. */
+function drift(enemy: Enemy, def: EnemyDef): void {
+  advance(enemy, enemy.heading, def);
+}
+
+/**
+ * A weaver's anchor chases the lamplighter, and its position is the anchor
+ * plus a perpendicular offset that swings with age. The anchor is recovered
+ * from the position at the age before this tick, advanced, and the position
+ * rebuilt at the age after it. An anchor coinciding with the lamplighter's
+ * center holds the heading and the position; the age still counts.
+ */
+function weave(run: RunState, enemy: Enemy, def: EnemyDef): void {
+  const before = perpendicular(enemy.heading);
+  const offset = weaveOffset(enemy.age);
+  const anchor = {
+    x: enemy.x - before.x * offset,
+    y: enemy.y - before.y * offset,
+  };
+  const heading = direction(anchor, run.player);
+  enemy.age += TICK_DT;
+  if (heading === null) return;
+  advance(anchor, heading, def);
+  enemy.heading = heading;
+  const after = perpendicular(heading);
+  const swung = weaveOffset(enemy.age);
+  enemy.x = anchor.x + after.x * swung;
+  enemy.y = anchor.y + after.y * swung;
+}
+
+/** One tick of one enemy: it ages and moves as its behavior states. */
+export function stepEnemy(run: RunState, enemy: Enemy): void {
+  const def = ENEMIES[enemy.type];
+  switch (def.behavior) {
+    case "chase":
+      enemy.age += TICK_DT;
+      chase(run, enemy, def);
+      return;
+    case "drift":
+      enemy.age += TICK_DT;
+      drift(enemy, def);
+      return;
+    case "weave":
+      weave(run, enemy, def);
+      return;
+  }
+}
+
+/** Phase 4: every enemy ages, and, while `enemyMotion` is on, moves. */
+export function ageAndMoveEnemies(ctx: TickContext): void {
+  const { run, state } = ctx;
+  for (const enemy of run.enemies) {
+    if (state.switches.enemyMotion) stepEnemy(run, enemy);
+    else enemy.age += TICK_DT;
+  }
+}

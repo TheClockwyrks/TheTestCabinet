@@ -97,7 +97,7 @@ export function moveEffects(ctx: TickContext): void {
 }
 
 /** Forget the re-hit entries of enemies that are gone. */
-function forgetHits(run: RunState, dead: ReadonlySet<number>): void {
+export function forgetHits(run: RunState, dead: ReadonlySet<number>): void {
   const keep = (hit: { enemy: number }): boolean => !dead.has(hit.enemy);
   for (const projectile of run.projectiles) {
     projectile.hits = projectile.hits.filter(keep);

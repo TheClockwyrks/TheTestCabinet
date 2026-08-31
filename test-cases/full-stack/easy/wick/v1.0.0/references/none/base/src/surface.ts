@@ -39,6 +39,7 @@ import {
   spawnEnemy,
   spawnWindow,
 } from "./sim/enemies";
+import { forgetHits } from "./sim/effects";
 import { unit } from "./sim/geometry";
 import { candidatePool, isOfferId, isPassiveId } from "./sim/progression";
 import {
@@ -687,11 +688,14 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
         run().enemies = run().enemies.filter(
           (candidate) => candidate !== enemy,
         );
+        forgetHits(run(), new Set([enemy.id]));
       });
     },
     clearEnemies() {
       pose(() => {
+        const gone = new Set(run().enemies.map((enemy) => enemy.id));
         run().enemies = [];
+        forgetHits(run(), gone);
       });
     },
 

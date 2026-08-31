@@ -8,6 +8,7 @@ import {
 } from "../constants";
 import { Rng } from "../rng";
 import { freshRun, initialState, type WickState } from "../state";
+import { xpToNext } from "../stats";
 import { NOTHING_HELD, makeTickContext, type TickContext } from "./context";
 import {
   acceptOffer,
@@ -32,6 +33,22 @@ function world(): { state: WickState; ctx: TickContext } {
 }
 
 describe("experience", () => {
+  it("needs XP_BASE + XP_STEP × (level − 1) to leave a level", () => {
+    const table = [5, 15, 25, 35, 45, 55, 65, 75, 85, 95];
+    table.forEach((needed, i) => expect(xpToNext(i + 1)).toBe(needed));
+    const run = freshRun();
+    gainXp(run, 4);
+    expect([run.level, run.xp, run.pendingLevelUps]).toEqual([1, 4, 0]);
+    gainXp(run, 1);
+    expect([run.level, run.xp, run.pendingLevelUps]).toEqual([2, 0, 1]);
+    const fresh = freshRun();
+    gainXp(fresh, 500);
+    expect([fresh.level, fresh.xp, fresh.pendingLevelUps]).toEqual([11, 0, 10]);
+    const short = freshRun();
+    gainXp(short, 499);
+    expect([short.level, short.xp]).toEqual([10, 94]);
+  });
+
   it("carries overflow across several levels from one gain", () => {
     const run = freshRun();
     gainXp(run, 21);

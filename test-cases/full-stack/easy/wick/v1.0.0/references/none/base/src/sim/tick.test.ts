@@ -17,6 +17,9 @@ describe("a long night", () => {
     const state: WickState = initialState(7);
     state.run = freshRun();
     state.screen = "playing";
+    // The crowd closes in and the director adds to it; what the night tests
+    // is the shapes, so the lamplighter is spared the contact.
+    state.switches.enemyContact = false;
     state.run.weapons = (
       ["pyre", "beacon", "hail", "chandelier", "corona", "blaze"] as const
     ).map((id) => ({ id, level: 1, cooldown: 0, cooldownSet: 0 }));
