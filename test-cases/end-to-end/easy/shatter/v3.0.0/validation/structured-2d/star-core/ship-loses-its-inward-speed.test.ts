@@ -13,6 +13,16 @@
 // `specs/collision.md` step 1 pushes it out along — on the tick the contact
 // resolved. Removed means gone, so what is left along that direction is zero.
 //
+// AND WHY THE NORMAL IS READ AT THE END OF THE TICK. Because that is where
+// `specs/simulation.md` resolves the contact: its tick order advances every
+// position in step 4 and wraps it in step 5, and only then runs
+// `specs/collision.md`'s resolution in step 6. So the "direction from the star's
+// centre to the ship" that step 1 pushes along, and the normal step 2's two
+// components are taken against, is the one measured from the ship's END-OF-TICK
+// position — which is exactly the one this check reads back off the resolved
+// position. A build that detects the contact by the swept test the same file
+// mandates still resolves it there, so the two agree.
+//
 // WHY THE MAGNITUDE AND NOT THE SIGNED INWARD PART. Because a reflection has to
 // fail here, and reading only the part still heading inward would let it pass. A
 // build that bounces the ship off the core leaves the same speed along the normal
