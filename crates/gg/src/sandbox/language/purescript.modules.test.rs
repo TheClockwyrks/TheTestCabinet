@@ -362,25 +362,60 @@ fn a_declaration_written_outside_ascii_is_read() {
     assert_eq!(exports[0].returns, ["String"]);
 }
 
-/// **A signature written with PureScript's Unicode spellings is read.**
+/// **A signature written with PureScript's Unicode spellings reads as its ASCII twin does.**
 ///
-/// The `∀` binder comes off with `forall`, and the split that finds a signature's positions looks
-/// for the ASCII `=>` and `->`: a `⇒` stays where it is written, so the constraint it introduces is
-/// read as a position rather than as a constraint. Over-reporting a type name costs a documentation
-/// view a model did not need, where losing the declaration costs it the call.
+/// `purs` accepts `∀` for `forall`, `⇒` for `=>` and `→` for `->`, so the two spellings of a
+/// signature declare the same parameters and the same result. A reading that knew one spelling
+/// showed the page a shorter signature than the module declares, with nothing to say it had stopped
+/// early.
 #[test]
-fn a_signature_written_with_unicode_operators_is_read() {
-    let exports = exports(
-        "module Helpers where\n\
-         \n\
-         greet :: ∀ a. Show a ⇒ a -> String\n\
-         greet = show\n",
+fn a_signature_written_with_unicode_operators_reads_as_its_ascii_twin() {
+    let read = |signature: &str| {
+        let exports = exports(&format!("module Helpers where\n\n{signature}\n"));
+        assert_eq!(exports.len(), 1, "one declaration: {signature}");
+        let export = &exports[0];
+        (
+            export.kind,
+            export.parameters.clone(),
+            export.returns.clone(),
+        )
+    };
+
+    let function = read("greet :: forall a. Show a => Array a -> String");
+    assert_eq!(
+        function,
+        (
+            ModuleExportKind::Function,
+            vec!["Array".to_string()],
+            vec!["String".to_string()]
+        )
     );
-    assert_eq!(exports.len(), 1);
-    assert_eq!(exports[0].name, "greet");
-    assert_eq!(exports[0].declaration, "greet :: ∀ a. Show a ⇒ a -> String");
-    assert_eq!(exports[0].parameters, ["Show"]);
-    assert_eq!(exports[0].returns, ["String"]);
+
+    // Each operator is read on its own, so a source writing one of the two spellings — or mixing
+    // them, which `purs` also accepts — is read as whatever it actually writes.
+    assert_eq!(read("greet :: ∀ a. Show a ⇒ Array a → String"), function);
+    assert_eq!(read("greet :: ∀ a. Show a => Array a -> String"), function);
+    assert_eq!(
+        read("greet :: forall a. Show a ⇒ Array a -> String"),
+        function
+    );
+    assert_eq!(
+        read("greet :: forall a. Show a => Array a → String"),
+        function
+    );
+
+    // The arrow that makes a type a function is the one the argument split looks for, in either
+    // spelling, so a constrained value stays a value taking nothing.
+    let value = read("limit :: forall a. Show a => Int");
+    assert_eq!(
+        value,
+        (
+            ModuleExportKind::Value,
+            Vec::<String>::new(),
+            vec!["Int".to_string()]
+        )
+    );
+    assert_eq!(read("limit :: ∀ a. Show a ⇒ Int"), value);
 }
 
 /// **The header's own name span** — the one reading of a `module … where` header this arm makes.

@@ -81,9 +81,10 @@ Its file is written into the loaded-module band of the agent's compile workspace
 where `purs` finds it up to date on every later program. gg reports the lower-case
 value names among its exports, with the type names each signature writes in return
 and in parameter position. That reading is over the module as written: it walks
-the source a byte at a time to split a signature at its top-level `=>` and `->`,
-and a declaration holding characters outside ASCII is split at those same
-spellings.
+the source a byte at a time to split a signature at its top-level constraint and
+function arrows. PureScript accepts two spellings of each, so a constraint ends
+at `=>` or `⇒` and an argument ends at `->` or `→`, and a signature
+written in either spelling declares the same parameters.
 
 `.purs` is the arm's only module file extension.
 
