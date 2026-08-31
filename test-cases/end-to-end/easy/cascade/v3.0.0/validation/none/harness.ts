@@ -2595,6 +2595,37 @@ export function columnCardsDrawn(
     .sort((a, b) => a.y - b.y);
 }
 
+/**
+ * The distinct rows one tableau column's cards were drawn on, highest first.
+ *
+ * {@link columnCardsDrawn} reports one entry per card-sized SHAPE, and a build is
+ * free to draw one card as more than one of them: an outer plate filled and the
+ * same rectangle stroked over it is two shapes at one corner. A column's layout,
+ * though, is a list of ROWS — `specs/table.md` fixes the offset from each card to
+ * the one below it — so shapes closer together than `tolerance` are one row here.
+ *
+ * The whole `table` group's offset and compression readings come off this: a
+ * column's gaps are the differences between consecutive rows, and a gap is
+ * comparable with the figure the specification fixes for it without ever knowing
+ * how many shapes the build spent on a card.
+ *
+ * `tolerance` is the caller's figure, exactly as it is for
+ * {@link cardFootprints}, and it has to stay well under `FACE_UP_OFFSET_MIN`
+ * (`14`) so that two cards of a compressed column are never merged into one row.
+ */
+export function columnRowTops(
+  calls: readonly DrawCall[],
+  col: number,
+  tolerance = 0,
+): number[] {
+  const rows: number[] = [];
+  for (const { y } of columnCardsDrawn(calls, col, tolerance)) {
+    const last = rows[rows.length - 1];
+    if (last === undefined || y - last > tolerance + READ_EPSILON) rows.push(y);
+  }
+  return rows;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Reading a snapshot                                                         */
 /* -------------------------------------------------------------------------- */
@@ -2961,6 +2992,35 @@ export function runDown(
     });
   }
   return run;
+}
+
+/**
+ * A column of `count` distinct cards, the first `downCount` of them face-down and
+ * every one after them face-up.
+ *
+ * A column's layout follows from its FACES alone (`specs/table.md`): the offset
+ * under a card is decided by whether that card is face-up or face-down, and a
+ * card's suit and rank decide nothing about where it is drawn. So the long
+ * columns the `table` group poses for the compression rule say only how many
+ * cards they hold and how many of those are face-down, and the cards themselves
+ * are dealt out of one deck in order so that no pose puts the same card on the
+ * table twice.
+ *
+ * Throws past a deck, because a scenario that asked for fifty-three cards has a
+ * defect in it rather than in the build.
+ */
+export function columnOfCards(count: number, downCount = 0): CardSpec[] {
+  const deck = SUITS.length * RANK_MAX;
+  if (count > deck) {
+    throw new RangeError(
+      `cascade: a column of ${count} cards would need more than the ${deck} of one deck`,
+    );
+  }
+  return Array.from({ length: count }, (_, i) => ({
+    suit: SUITS[Math.floor(i / RANK_MAX)],
+    rank: (i % RANK_MAX) + 1,
+    faceUp: i >= downCount,
+  }));
 }
 
 /**

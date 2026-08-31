@@ -19,7 +19,7 @@
 // fraction of the pointer's travel drifts further from it at every sample.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLessThanOrEqual, assertNotNull } from "../assert";
+import { assertLength, assertLessThanOrEqual, assertNotNull } from "../assert";
 import {
   card,
   captureReplay,
@@ -80,6 +80,11 @@ it("carries the held run with the pointer, sample after sample", async () => {
   const offsetX = pressX - lifted.x;
   const offsetY = pressY - lifted.y;
 
+  // The drive is wrapped, and the readings it took are held against the rule
+  // afterwards, so the replay is the sweep itself and a failure still leaves it
+  // behind.
+  const readings: { x: number; y: number; held: { x: number; y: number } }[] =
+    [];
   await captureReplay(h, "sweep", async () => {
     for (let step = 1; step <= SWEEP_SAMPLES; step += 1) {
       const at = step / SWEEP_SAMPLES;
@@ -87,20 +92,27 @@ it("carries the held run with the pointer, sample after sample", async () => {
       const y = pressY + (SWEEP_TO.y - pressY) * at;
       await h.debug.pointerMove(x, y);
       await h.advance(FRAMES_PER_SAMPLE);
-
       const held = (await h.snapshot()).drag;
-      assertNotNull(held, `the run still in hand at sample ${step}`);
-      if (held === null) return;
-      assertLessThanOrEqual(
-        Math.abs(x - held.x - offsetX),
-        POSITION_TOLERANCE,
-        `sample ${step}: the run's x against the offset the press gave it`,
-      );
-      assertLessThanOrEqual(
-        Math.abs(y - held.y - offsetY),
-        POSITION_TOLERANCE,
-        `sample ${step}: the run's y against the offset the press gave it`,
-      );
+      if (held === null) break;
+      readings.push({ x, y, held: { x: held.x, y: held.y } });
     }
   });
+
+  assertLength(
+    readings,
+    SWEEP_SAMPLES,
+    "the samples the run was still in hand for",
+  );
+  for (const [index, reading] of readings.entries()) {
+    assertLessThanOrEqual(
+      Math.abs(reading.x - reading.held.x - offsetX),
+      POSITION_TOLERANCE,
+      `sample ${index + 1}: the run's x against the offset the press gave it`,
+    );
+    assertLessThanOrEqual(
+      Math.abs(reading.y - reading.held.y - offsetY),
+      POSITION_TOLERANCE,
+      `sample ${index + 1}: the run's y against the offset the press gave it`,
+    );
+  }
 });
