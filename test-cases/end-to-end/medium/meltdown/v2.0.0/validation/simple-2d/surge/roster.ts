@@ -21,6 +21,15 @@
 // row needs cannot contaminate one another: the unit a bounty was read on is gone
 // before the unit a leak is read on arrives.
 //
+// THE WAVE IS A PARAMETER, AND IT DEFAULTS TO 1. specs/waves.md scales a unit's
+// maximum hp by `1 + 0.62 * (w - 1)`, which is exactly `1` on Wave 1, so a Wave 1
+// reading is a reading of the base figure alone. `only-hp-scales` asks for the
+// same three readings deep into a run, and passes its own wave.
+//
+// THE KILL FLOOR IS SHARED WITH `dies-at-zero-hp`, which needs the same gun and
+// the same one-hp mark but drives them a frame at a time rather than in a sweep,
+// so its geometry is exported rather than kept private here.
+//
 // Local to this group on purpose. Nothing outside `surge/` reads a roster row.
 
 import { COLS, RIGHT_EXHAUST_ROWS } from "../../src/constants";
@@ -57,8 +66,10 @@ import {
 export async function readArrival(
   h: Harness,
   type: SurgeType,
+  wave = 1,
 ): Promise<UnitSnapshot> {
   startRun(h);
+  h.debug.setWave(wave);
   const id = poseWalker(h, type, "left");
   const arrived = unitOf(h.snapshot(), id);
   h.debug.setUnitMotion(id, false);
@@ -69,7 +80,7 @@ export async function readArrival(
 /* ---- The bounty ---------------------------------------------------------- */
 
 /** The Arc's footprint top-left: open floor, well clear of every opening. */
-const GUN = { col: 20, row: 10 } as const;
+export const GUN = { col: 20, row: 10 } as const;
 
 /**
  * The tile the mark stands on: three tiles right of the gun's anchor, so it is off
@@ -77,7 +88,7 @@ const GUN = { col: 20, row: 10 } as const;
  * `5.5`-tile range, measured from the footprint's centre (specs/combat.md,
  * specs/towers.md).
  */
-const MARK = { col: 23, row: 10 } as const;
+export const MARK = { col: 23, row: 10 } as const;
 
 /**
  * The hp a mark that is meant to die is posed with: the least a live unit can
@@ -88,7 +99,7 @@ const MARK = { col: 23, row: 10 } as const;
  * damage or fire rate is off still reaches the death these readings are taken
  * across.
  */
-const MARK_HP = 1;
+export const MARK_HP = 1;
 
 /**
  * How long a kill is waited for: six seconds of game time.
@@ -98,7 +109,7 @@ const MARK_HP = 1;
  * dozen intervals and a build firing far slower still removes a single hp inside
  * the window.
  */
-const KILL_TICKS = ticksFor(6);
+export const KILL_TICKS = ticksFor(6);
 
 /**
  * Kill one unit of `type` with an Arc and hand back the money that death paid.
@@ -120,8 +131,10 @@ const KILL_TICKS = ticksFor(6);
 export async function bountyPaidFor(
   h: Harness,
   type: SurgeType,
+  wave = 1,
 ): Promise<{ paid: number; killed: boolean }> {
   startRun(h);
+  h.debug.setWave(wave);
   posePinnedTower(h, "arc", GUN.col, GUN.row, 0);
   poseTarget(h, type, MARK.col, MARK.row, MARK_HP);
 
@@ -176,8 +189,10 @@ const LEAK_TICKS = ticksFor(4);
 export async function livesLostTo(
   h: Harness,
   type: SurgeType,
+  wave = 1,
 ): Promise<{ lost: number; leaked: boolean; gone: boolean }> {
   startRun(h);
+  h.debug.setWave(wave);
   const id = poseWalker(h, type, "left");
   const at = tileCentre(LEAK_TILE.col, LEAK_TILE.row);
   h.debug.setUnitPosition(id, at.x, at.y);
