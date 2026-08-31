@@ -92,7 +92,9 @@ export interface Zone {
   bornTick: number;
   /** A lantern's angle on its orbit, in degrees. */
   angle?: number;
-  /** A pulsing zone's seconds until its next pulse. */
+  /** A lantern's orbit radius about the lamplighter. */
+  orbit?: number;
+  /** A puddle's seconds until its next pulse. */
   pulse?: number;
 }
 

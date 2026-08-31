@@ -8,7 +8,7 @@ import {
 } from "../constants";
 import { Rng } from "../rng";
 import { freshRun, initialState, type WickState } from "../state";
-import { NOTHING_HELD, type TickContext } from "./context";
+import { NOTHING_HELD, makeTickContext, type TickContext } from "./context";
 import {
   acceptOffer,
   applyOffer,
@@ -22,15 +22,12 @@ function world(): { state: WickState; ctx: TickContext } {
   const state = initialState(1);
   state.run = freshRun();
   state.screen = "playing";
-  const cues = new Set<Cue>();
-  const ctx: TickContext = {
+  const ctx = makeTickContext(
     state,
-    run: state.run,
-    rng: new Rng(() => state),
-    held: NOTHING_HELD,
-    cues,
-    chestCollected: false,
-  };
+    new Rng(() => state),
+    NOTHING_HELD,
+    new Set<Cue>(),
+  );
   return { state, ctx };
 }
 

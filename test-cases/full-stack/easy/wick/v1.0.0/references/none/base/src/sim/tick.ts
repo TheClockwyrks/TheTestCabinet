@@ -7,18 +7,15 @@
 import { CUES, PUFF_TIME, TICK_HZ, type Cue } from "../constants";
 import type { Rng } from "../rng";
 import type { WickState } from "../state";
-import type { Held, TickContext } from "./context";
+import { makeTickContext, type Held, type TickContext } from "./context";
 import { attractAndCollectGems, collectPickups } from "./drops";
-import {
-  expireEffects,
-  moveEffects,
-  resolveDeaths,
-  resolveHits,
-} from "./effects";
+import { expireEffects, moveEffects, resolveDeaths } from "./effects";
 import { ageAndMoveEnemies, runDirector } from "./enemies";
+import { fireWeapons } from "./firing";
+import { resolveHits } from "./hits";
 import { contact, endings, moveLamplighter, recover } from "./lamplighter";
+import { placePermanents } from "./placement";
 import { openLevelUp } from "./progression";
-import { fireWeapons, placePermanents } from "./weapons";
 
 /** Puffs are pictures; one is gone after `PUFF_TIME`. */
 function prunePuffs(ctx: TickContext): void {
@@ -38,14 +35,7 @@ export function tick(
   held: Held,
   cues: Set<Cue>,
 ): void {
-  const ctx: TickContext = {
-    state,
-    run: state.run,
-    rng,
-    held,
-    cues,
-    chestCollected: false,
-  };
+  const ctx = makeTickContext(state, rng, held, cues);
   const { run } = ctx;
 
   run.tick += 1;

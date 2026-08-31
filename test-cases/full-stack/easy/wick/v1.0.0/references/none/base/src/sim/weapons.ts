@@ -2,9 +2,10 @@
 // specs/evolutions.md).
 //
 // The table row a weapon reads at a level, the derived figures a shape takes
-// when it is created, and the projectile and puddle factories the debug
-// surface and the firing share. The firing and the placement of the
-// permanent shapes are phase 5 of the tick.
+// when it is created, the targeting every weapon shares, and the projectile,
+// puddle, and lantern factories the debug surface, the firing, and the
+// placement share. The firing itself is `firing.ts` and the placement of the
+// permanent shapes is `placement.ts`, the two parts of phase 5 of the tick.
 
 import {
   BASE_WEAPON_IDS,
@@ -18,16 +19,17 @@ import {
   SCONCE_DECEL,
   SCONCE_REHIT,
   SHARD_REHIT,
+  TAPER_MAX_AMOUNT,
   WEAPON_LEVELS,
   type BaseWeaponId,
   type EvolutionId,
   type WeaponId,
   type WeaponRow,
 } from "../constants";
-import type { Projectile, RunState, Zone } from "../state";
-import { areaMul, cooldownMul, damageMul } from "../stats";
-import type { TickContext } from "./context";
-import { unit } from "./geometry";
+import type { Enemy, Projectile, RunState, Zone } from "../state";
+import { amountBonus, areaMul, cooldownMul, damageMul } from "../stats";
+import { facingVector } from "./enemies";
+import { direction, distance, fromDegrees, unit, type Vec } from "./geometry";
 
 export function isBaseWeapon(id: string): id is BaseWeaponId {
   return (BASE_WEAPON_IDS as readonly string[]).includes(id);
@@ -182,15 +184,70 @@ export function makePuddle(
 }
 
 /**
- * Phase 5, the firing: while `weaponFire` is on, each held weapon's timer
- * counts down and each weapon whose timer is due fires.
+ * One lantern of `weapon` at `angle` degrees on a circle of radius `orbit`
+ * about the lamplighter, a touching zone with `ttl` `null` unless given.
  */
-export function fireWeapons(_ctx: TickContext): void {}
+export function makeLantern(
+  run: RunState,
+  weapon: WeaponId,
+  angle: number,
+  orbit: number,
+  radius: number,
+  damage: number,
+  ttl: number | null,
+): Zone {
+  const zone: Zone = {
+    id: run.nextId,
+    weapon,
+    kind: "lantern",
+    x: 0,
+    y: 0,
+    radius,
+    damage,
+    ttl,
+    hits: [],
+    bornTick: run.tick,
+    angle,
+    orbit,
+  };
+  run.nextId += 1;
+  placeLantern(run, zone);
+  return zone;
+}
+
+/** Put a lantern on its orbit about the lamplighter's center, at its angle. */
+export function placeLantern(run: RunState, lantern: Zone): void {
+  const dir = fromDegrees(lantern.angle ?? 0);
+  const orbit = lantern.orbit ?? 0;
+  lantern.x = run.player.x + dir.x * orbit;
+  lantern.y = run.player.y + dir.y * orbit;
+}
 
 /**
- * Phase 5, the placement, on every `playing` tick: an aura or lantern set is
- * created when its weapon is held and none exists, removed when its weapon is
- * no longer held, re-centered about the lamplighter, and resized from the
- * level and multipliers in force.
+ * The amount a weapon fires with: the row's amount plus `amountBonus`, capped
+ * for the two-sided slash of Taper and Pyre.
  */
-export function placePermanents(_ctx: TickContext): void {}
+export function amountOf(run: RunState, id: WeaponId, row: WeaponRow): number {
+  const amount = (row.amount ?? 0) + amountBonus(run.passives);
+  return id === "taper" || id === "pyre"
+    ? Math.min(TAPER_MAX_AMOUNT, amount)
+    : amount;
+}
+
+/** The live enemies nearest the lamplighter: distance, then lowest id. */
+export function nearestEnemies(run: RunState, count: number): Enemy[] {
+  const player = run.player;
+  return run.enemies
+    .map((enemy) => ({ enemy, gap: distance(player, enemy) }))
+    .sort((a, b) => a.gap - b.gap || a.enemy.id - b.enemy.id)
+    .slice(0, count)
+    .map(({ enemy }) => enemy);
+}
+
+/**
+ * The unit vector from the lamplighter's center toward `target`, or the
+ * facing direction when the two coincide.
+ */
+export function aimAt(run: RunState, target: Vec): Vec {
+  return direction(run.player, target) ?? facingVector(run);
+}

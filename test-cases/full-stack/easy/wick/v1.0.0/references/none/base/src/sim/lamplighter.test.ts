@@ -18,6 +18,8 @@ function playing(): { state: WickState; rng: Rng; cues: Set<Cue> } {
   const state = initialState(1);
   state.run = freshRun();
   state.screen = "playing";
+  // Taper would slash whatever stands at the lamplighter's feet.
+  state.switches.weaponFire = false;
   const rng = new Rng(() => state);
   return { state, rng, cues: new Set() };
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PASSIVES, type PassiveId } from "./constants";
 import {
   amountBonus,
   areaMul,
@@ -52,6 +53,46 @@ describe("derived stats", () => {
     expect(recovery(rest)).toBe(1.5);
     expect(xpMul(rest)).toBeCloseTo(1.1);
     expect(pickupRadius(rest)).toBe(72);
+  });
+
+  it("read one passive each, at every level up to its max", () => {
+    const at = (
+      id: PassiveId,
+      level: number,
+    ): { id: PassiveId; level: number }[] =>
+      level === 0 ? [] : [{ id, level }];
+    const each = <T>(id: PassiveId, read: (level: number) => T): T[] =>
+      Array.from({ length: PASSIVES[id].maxLevel + 1 }, (_, level) =>
+        read(level),
+      );
+    expect(each("wick", (l) => damageMul(at("wick", l)))).toEqual(
+      [1, 1.1, 1.2, 1.3, 1.4, 1.5].map((v) => expect.closeTo(v, 9)),
+    );
+    expect(each("oil", (l) => cooldownMul(at("oil", l)))).toEqual(
+      [1, 0.92, 0.84, 0.76, 0.68, 0.6].map((v) => expect.closeTo(v, 9)),
+    );
+    expect(each("glass", (l) => areaMul(at("glass", l)))).toEqual(
+      [1, 1.1, 1.2, 1.3, 1.4, 1.5].map((v) => expect.closeTo(v, 9)),
+    );
+    expect(each("brass", (l) => armor(at("brass", l)))).toEqual([0, 1, 2, 3]);
+    expect(each("mirror", (l) => amountBonus(at("mirror", l)))).toEqual([
+      0, 1, 2,
+    ]);
+    expect(each("bellows", (l) => moveSpeed(at("bellows", l)))).toEqual(
+      [180, 198, 216, 234, 252, 270].map((v) => expect.closeTo(v, 9)),
+    );
+    expect(each("tallow", (l) => maxHp(at("tallow", l)))).toEqual([
+      100, 115, 130, 145, 160, 175,
+    ]);
+    expect(each("tinder", (l) => recovery(at("tinder", l)))).toEqual([
+      0, 0.5, 1, 1.5, 2, 2.5,
+    ]);
+    expect(each("soot", (l) => xpMul(at("soot", l)))).toEqual(
+      [1, 1.1, 1.2, 1.3, 1.4, 1.5].map((v) => expect.closeTo(v, 9)),
+    );
+    expect(each("lure", (l) => pickupRadius(at("lure", l)))).toEqual([
+      48, 60, 72, 84, 96, 108,
+    ]);
   });
 
   it("follows the experience curve", () => {

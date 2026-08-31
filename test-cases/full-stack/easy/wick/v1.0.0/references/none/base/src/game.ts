@@ -18,7 +18,12 @@ import {
 } from "./constants";
 import { Rng, seedState } from "./rng";
 import { freshRun, idleRun, initialState, type WickState } from "./state";
-import { NOTHING_HELD, type Held, type TickContext } from "./sim/context";
+import {
+  NOTHING_HELD,
+  makeTickContext,
+  type Held,
+  type TickContext,
+} from "./sim/context";
 import { acceptOffer, openLevelUp } from "./sim/progression";
 import { tick } from "./sim/tick";
 
@@ -193,14 +198,7 @@ export class Game {
   }
 
   private context(): TickContext {
-    return {
-      state: this.state,
-      run: this.state.run,
-      rng: this.rng,
-      held: this.held,
-      cues: this.cues,
-      chestCollected: false,
-    };
+    return makeTickContext(this.state, this.rng, this.held, this.cues);
   }
 
   // ---- Menus ---------------------------------------------------------------

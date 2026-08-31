@@ -13,6 +13,7 @@ function playing(): { state: WickState; rng: Rng; cues: Set<Cue> } {
   state.screen = "playing";
   state.switches.enemyMotion = false;
   state.switches.enemyContact = false;
+  state.switches.weaponFire = false;
   return { state, rng: new Rng(() => state), cues: new Set() };
 }
 
@@ -42,6 +43,7 @@ describe("expiry", () => {
     const world = playing();
     const { run } = world.state;
     run.zones.push(makePuddle(run, "oil-splash", 10, 10));
+    run.weapons.push({ id: "halo", level: 1, cooldown: 0, cooldownSet: 0 });
     run.zones.push({
       id: run.nextId,
       weapon: "halo",
