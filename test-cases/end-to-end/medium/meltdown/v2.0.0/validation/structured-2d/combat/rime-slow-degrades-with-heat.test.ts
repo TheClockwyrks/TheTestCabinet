@@ -1,20 +1,93 @@
-// Meltdown — combat/rime-slow-degrades-with-heat: the slow fades as the Rime
-// heats.
+// Meltdown — combat/rime-slow-degrades-with-heat: the slow fades as the Rime heats.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// specs/combat.md gives the Rime's live slow as
 //
-// What it must decide:
+//   slowFactor(H) = slowCeil * (1 - H / 100)
 //
-//   At heat 50 the slow is 0.275, and the reported slowFactor follows slowCeil
-//   * (1 - heat / 100) at five heats.
+// and spells out the arithmetic: "A Rime at heat `0` and level I therefore applies
+// `0.55`, a Rime at heat `50` applies `0.275`, and a Rime at heat `100` applies
+// nothing at all." The tower reports that fraction as `slowFactor`
+// (specs/instrumentation.md: "A Rime's live slow fraction; `0` on every other
+// tower").
+//
+// FIVE HEATS, BECAUSE TWO POINTS FIT A GREAT MANY CURVES. Read at `0`, `25`, `50`,
+// `75` and `100`, the specification requires `0.55`, `0.4125`, `0.275`, `0.1375` and
+// `0`, and every wrong model reads a different five:
+//
+//   - a build that does not fade the slow at all reads `0.55` five times;
+//   - a build that fades it QUADRATICALLY, the way specs/heat.md climbs the damage
+//     multiplier, reads `0.55`, `0.5156`, `0.4125`, `0.2406`, `0` — right at both
+//     ends and half again too strong in the middle, which is why the interior
+//     samples are here;
+//   - a build that inverts the rule and slows hardest when hot reads the sequence
+//     backwards.
+//
+// THE HEAT IS MOVED WITH THE TOWER PINNED, so each of the five readings is taken at
+// exactly the heat posed: `setTowerThermal(id, false)` holds the tower's part in the
+// heat model, so nothing cools between the pose and the read, and the trip — which
+// belongs to that model — cannot take the tower offline at the `100` sample
+// (specs/instrumentation.md).
+//
+// ONE FRAME IS RUN AFTER EACH POSE, so a build that recomputes its derived readouts
+// once a frame and one that derives them at the snapshot are read alike. Nothing else
+// is on the floor, so the frame moves nothing: the emitter has no target, and
+// specs/combat.md neither grows nor shrinks its accumulator on such a frame.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo } from "../assert";
+import { TRIP_HEAT } from "../../src/constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { poseGun, readGun, slowCeilOf } from "./duel";
 
-it("The slow fades as the Rime heats", () => {
-  throw new Error(
-    "Meltdown: validation/combat/rime-slow-degrades-with-heat.test.ts is not implemented yet",
-  );
+/** The one emitter that slows (specs/towers.md), at level I. */
+const TOWER = "rime";
+const LEVEL = 1;
+
+/** The five heats read, spanning the scale end to end. */
+const HEATS: readonly number[] = [0, 25, 50, 75, 100];
+
+/** specs/combat.md: `slowCeil * (1 - H / 100)`. */
+function expectedFactor(heat: number): number {
+  return slowCeilOf(LEVEL) * (1 - heat / TRIP_HEAT);
+}
+
+/**
+ * How close each reading must come, as decimal places of a slow fraction.
+ *
+ * Four places is `0.00005`. Each reading is one product and one subtraction over
+ * figures the specification states exactly, so a conformant build's float slack is
+ * orders below the bound; the nearest wrong model — the quadratic fade, read at heat
+ * `25` — is `0.10` away, two thousand times the bound.
+ */
+const FACTOR_DIGITS = 4;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("The slow fades as the Rime heats", async () => {
+  const id = poseGun(h, TOWER, HEATS[0], LEVEL);
+
+  const read: number[] = [];
+  for (const heat of HEATS) {
+    h.debug.setTowerHeat(id, heat);
+    await h.advance(1);
+    read.push(readGun(h, id).slowFactor);
+  }
+  captureStill(h, "degraded");
+
+  for (const [index, heat] of HEATS.entries()) {
+    assertCloseTo(
+      read[index],
+      expectedFactor(heat),
+      FACTOR_DIGITS,
+      `the slowFactor a level-${LEVEL} ${TOWER} reports at heat ${heat}`,
+    );
+  }
 });
