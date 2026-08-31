@@ -11,18 +11,19 @@
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
 // The root is the workspace, not this directory, so a validator addresses the
-// build by the same relative path the build itself uses. It is derived from this
-// file's own URL rather than from the working directory, so the command above
-// works from anywhere.
+// build by the same relative path the build itself uses, and reads the seeded art
+// off the workspace's own `assets/` tree. It is derived from this file's own URL
+// rather than from the working directory, so the command above works from
+// anywhere.
 //
 // The environment is `node`. The engine runs over an `@napi-rs/canvas` canvas and
 // a `SurfaceMetrics` of the harness's own, so these suites need no DOM: a
 // scenario is posed through the surface `engine.debug` returns, advanced with the
-// engine's own stepping, and read back from the snapshot.
-//
-// SCAFFOLD NOTE: this project is not finished. The validator stage writes
-// `harness.ts`, `assert.ts`, `fixtures.ts` and `surface.ts` beside this file, at
-// which point this comment goes. Every suite here is a placeholder that THROWS.
+// engine's own stepping, and read back from the snapshot. There is no page
+// either, so nothing would resolve the relative URL the engine's asset loader
+// fetches: `harness.ts` stands `fetch` and `createImageBitmap` up over that
+// `assets/` tree for the life of each harness, so every scenario draws the field
+// from the art the case seeded.
 
 import { defineConfig } from "vitest/config";
 
@@ -35,7 +36,11 @@ export default defineConfig({
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
+    // Every scenario is posed and stepped in process, so a suite costs
+    // milliseconds; the ceiling is for the few that run a minute of game time.
     testTimeout: 60_000,
+    // The harness builds an engine and loads the seeded art in a `beforeEach`, so
+    // the hook gets the same ceiling the suite does.
     hookTimeout: 60_000,
   },
 });
