@@ -31,6 +31,9 @@
 // (`surge/roster.ts`), so a wave that slipped one unit of another type in at the
 // end is read exactly as one that opened with it.
 //
+// THE PICTURE IS TAKEN WHEN THE RELEASE HAS RUN, with the wave's later units
+// still crossing the floor and the earliest already gone: one wave, one type.
+//
 // THE LIVES ARE POSED PAST EVERY LEAK, so the run cannot end half way through the
 // wave being read; and how MANY units arrived is `surge/wave-size`'s, so the only
 // count asserted here is the one that makes the claim non-vacuous.
@@ -58,9 +61,6 @@ const EXPECTED_TYPE = waveType(WAVE, WAVE_COUNT);
  */
 const MIN_UNITS_READ = 2;
 
-/** How far into the release the picture is taken, in seconds of game time. */
-const PICTURE_SECONDS = 8;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -74,13 +74,11 @@ afterEach(async () => {
 it("fields one type for the whole of a forty-unit Swarm wave", async () => {
   await openWave(h, WAVE);
 
-  const early = await watchRelease(h, PICTURE_SECONDS);
-  await captureStill(h, "single");
-  const late = await watchRelease(
+  const arrivals = await watchRelease(
     h,
-    releaseSeconds(waveSize(WAVE, WAVE_COUNT)) - PICTURE_SECONDS,
+    releaseSeconds(waveSize(WAVE, WAVE_COUNT)),
   );
-  const arrivals = [...early, ...late];
+  await captureStill(h, "single");
 
   assertGreaterThan(
     arrivals.length,

@@ -322,25 +322,38 @@ export const SAMPLE_HZ = 30;
 
 /**
  * Watch a release for `seconds` of game time and hand back every unit that
- * appeared, in the order it was first seen.
+ * arrived, in the order it arrived.
  *
- * Ids are distinct among live entities and are never reused while the entity
- * holding one is live (`specs/instrumentation.md`), so a unit seen once is
- * counted once however long it then lives — and a unit that has already leaked by
- * the end of the window is still in the list. The gathering happens inside the
- * sweep's predicate because a sample is one crossing into the page and a separate
- * read would double the cost of every one of them.
+ * AN ARRIVAL IS AN ID THAT WAS NOT THERE ON THE PREVIOUS SAMPLE, and the reason
+ * it is not simply an id never seen before is worth stating. The specification
+ * says only that "an id is never reused WHILE THE ENTITY HOLDING IT IS LIVE"
+ * (`specs/instrumentation.md`), so a build that draws its ids from a pool and
+ * returns them on death is conformant — and a long release outlives its earliest
+ * units, so an id freed by a leak may legitimately come back on a later one.
+ * Counting ids never seen before would silently drop those units and read a short
+ * wave off a correct build. A unit never leaves the floor and returns, so an id
+ * absent from one sample and present in the next is an arrival either way.
+ *
+ * A unit that has already leaked by the end of the window is still in the list:
+ * it was counted where it arrived. The gathering happens inside the sweep's
+ * predicate because a sample is one crossing into the page and a separate read
+ * would double the cost of every one of them.
+ *
+ * The whole of one release goes through a SINGLE call, because each call starts
+ * with an empty idea of what is on the floor and would count everything standing
+ * there as having just arrived.
  */
 export async function watchRelease(
   h: Harness,
   seconds: number,
 ): Promise<Arrival[]> {
   const arrivals: Arrival[] = [];
-  const seen = new Set<number>();
+  let present = new Set<number>();
   const gather = (snapshot: MeltdownSnapshot): void => {
+    const now = new Set<number>();
     for (const unit of snapshot.surge) {
-      if (seen.has(unit.id)) continue;
-      seen.add(unit.id);
+      now.add(unit.id);
+      if (present.has(unit.id)) continue;
       arrivals.push({
         id: unit.id,
         type: unit.type,
@@ -349,6 +362,7 @@ export async function watchRelease(
         row: unit.row,
       });
     }
+    present = now;
   };
 
   gather(await h.snapshot());
