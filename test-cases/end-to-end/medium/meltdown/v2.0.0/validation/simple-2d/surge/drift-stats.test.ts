@@ -79,7 +79,12 @@ it("carries 60 hp, speed 80, flies, is slowable, pays 6 and costs a life", async
   const slow = await slowTouches(h, TYPE);
 
   assertEqual(arrived.type, TYPE, "the type the vent released");
-  assertCloseTo(arrived.maxHp, ROW.hp, FIGURE_DIGITS, "its maximum hp on wave 1");
+  assertCloseTo(
+    arrived.maxHp,
+    ROW.hp,
+    FIGURE_DIGITS,
+    "its maximum hp on wave 1",
+  );
   assertCloseTo(arrived.hp, arrived.maxHp, FIGURE_DIGITS, "its hp on arrival");
   assertCloseTo(
     arrived.baseSpeed,

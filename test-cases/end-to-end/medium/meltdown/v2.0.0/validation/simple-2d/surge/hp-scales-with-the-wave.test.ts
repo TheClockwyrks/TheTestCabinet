@@ -104,7 +104,10 @@ it("gives a wave-w arrival maxHp of its base times 1 + 0.62 * (w - 1)", async ()
 
   // For the picture alone: spread them out and hold them where they stand.
   for (const [index, entry] of read.entries()) {
-    const at = tileCentre(SHOWCASE_COL0 + index * SHOWCASE_STRIDE, SHOWCASE_ROW);
+    const at = tileCentre(
+      SHOWCASE_COL0 + index * SHOWCASE_STRIDE,
+      SHOWCASE_ROW,
+    );
     h.debug.setUnitPosition(entry.id, at.x, at.y);
     h.debug.setUnitMotion(entry.id, false);
   }
