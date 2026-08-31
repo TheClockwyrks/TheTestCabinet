@@ -20,12 +20,19 @@
 // column's centre tested against that span. For each of the forty columns the
 // eight rows are counted, and no column may reach eight.
 //
-// EIGHT SEEDS, NOT ONE. The phases are drawn from the generator `reset` seeds,
-// so a single draw grades one draw. The rule is a property of the DRAW, so this
-// takes eight of them — a build that stated the rule and never enforced it lands
-// a ladder on some seeds and not others, and a build that enforces it lands none
-// on any. Nothing else varies between the eight: level 1, laid out the same way
-// each time.
+// MANY SEEDS, NOT ONE. The phases are drawn from the generator `reset` seeds, so
+// a single draw grades one draw, and a build that stated the rule and never
+// enforced it still lays a staggered band most of the time. How often it does
+// not follows from the lane table itself: a lane carries a floe over
+// `len / (len + gap)` of its row, which the eight rows of specs/water.md put at
+// `3/6, 4/7, 3/6, 1/3, 4/7, 3/6, 1/3, 4/7`, so an unconstrained draw covers any
+// one column in all eight rows about once in four hundred, and some column of
+// the forty in perhaps one draw in twenty. `SEEDS` is therefore a sample large
+// enough that such a build is caught rather than sampled past — at one draw in
+// twenty, ninety-six of them miss it with a probability near one in a hundred
+// and fifty — while a build that enforces the rule lands no wall on any draw and
+// passes at any sample size. Nothing else varies between them: level 1, laid out
+// the same way each time.
 //
 // A LANE HAS TO CARRY SOMETHING for the count to mean anything: a band with no
 // floes at all carries no column in eight rows, and would pass a reading that
@@ -47,7 +54,7 @@ import { floesAlong, layOutLevel } from "./harness";
 const LEVEL = 1;
 
 /** The seeds the phases are drawn from, one fresh draw of the band each. */
-const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
+const SEEDS = Array.from({ length: 96 }, (_unused, index) => index + 1);
 
 /** How many water rows a column may carry a floe in: fewer than all eight. */
 const ROWS_CARRYING_LIMIT = WATER_LANES.length;
