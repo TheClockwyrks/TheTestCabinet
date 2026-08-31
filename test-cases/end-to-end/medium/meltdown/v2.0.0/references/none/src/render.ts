@@ -664,6 +664,30 @@ function drawInfoArea(
   drawNextWave(state, ctx);
 }
 
+/**
+ * Where the information area's rows sit inside `INFO_RECT`.
+ *
+ * Named once because three faces share the box — the hover panel, the inspector
+ * and the next-wave preview — and the deepest of them, the inspector on an
+ * emitter, draws thirteen rows. Every figure here is measured from the box's own
+ * top and bottom so the rows move with it, and the step is set so that the last
+ * row of the deepest face still lands inside the box: `panel.test.ts` holds the
+ * box clear of the action buttons, and `render.test.ts` holds the rows inside
+ * the box.
+ */
+const INFO = {
+  /** The heading: a tower's name, with its level beside it. */
+  headY: INFO_RECT.y + 16,
+  /** The one-line effect read under the heading. */
+  effectY: INFO_RECT.y + 36,
+  /** The first label/value row, and the step from one row to the next. */
+  rowY: INFO_RECT.y + 50,
+  rowStep: 12,
+  /** The standing hint at the foot of the box, and its second line. */
+  hintY: INFO_RECT.y + INFO_RECT.h - 32,
+  hintStep: 12,
+} as const;
+
 /** The fields both the hover panel and the inspector draw. */
 function commonFields(type: TowerType, level: number): Array<[string, string]> {
   const def = TOWER_DEFS[type];
@@ -688,28 +712,25 @@ function commonFields(type: TowerType, level: number): Array<[string, string]> {
 /** A shop entry's info at level I. */
 function drawTypeInfo(ctx: CanvasRenderingContext2D, type: TowerType): void {
   const def = TOWER_DEFS[type];
-  let y = INFO_RECT.y + 18;
-  text(ctx, def.name, INFO_RECT.x + 10, y, { size: 15, weight: "700" });
-  text(ctx, "LEVEL I", INFO_RECT.x + INFO_RECT.w - 10, y, {
+  text(ctx, def.name, INFO_RECT.x + 10, INFO.headY, { size: 15, weight: "700" });
+  text(ctx, "LEVEL I", INFO_RECT.x + INFO_RECT.w - 10, INFO.headY, {
     size: 11,
     color: COLOR.textDim,
     align: "right",
   });
-  y += 20;
-  text(ctx, effectRead(type, 1, null), INFO_RECT.x + 10, y, {
+  text(ctx, effectRead(type, 1, null), INFO_RECT.x + 10, INFO.effectY, {
     size: 12,
     color: COLOR.highlight,
   });
-  y += 8;
+  let y = INFO.rowY;
   for (const [label, value] of commonFields(type, 1)) {
-    y += 16;
     text(ctx, label, INFO_RECT.x + 10, y, { size: 11, color: COLOR.textDim });
     text(ctx, value, INFO_RECT.x + INFO_RECT.w - 10, y, {
       size: 11,
       align: "right",
     });
+    y += INFO.rowStep;
   }
-  y += 16;
   text(ctx, "RADIATORS", INFO_RECT.x + 10, y, {
     size: 11,
     color: COLOR.textDim,
@@ -721,8 +742,8 @@ function drawTypeInfo(ctx: CanvasRenderingContext2D, type: TowerType): void {
     y,
     { size: 11, align: "right", color: COLOR.radiator },
   );
-  y += 22;
-  wrapped(ctx, def.blurb, INFO_RECT.x + 10, y, INFO_RECT.w - 20, 13, {
+  y += 18;
+  wrapped(ctx, def.blurb, INFO_RECT.x + 10, y, INFO_RECT.w - 20, 12, {
     size: 10,
     color: COLOR.textFaint,
   });
@@ -763,69 +784,47 @@ function drawInspector(
   tower: Tower,
 ): void {
   const def = TOWER_DEFS[tower.type];
-  let y = INFO_RECT.y + 18;
-  text(ctx, def.name, INFO_RECT.x + 10, y, { size: 15, weight: "700" });
+  text(ctx, def.name, INFO_RECT.x + 10, INFO.headY, { size: 15, weight: "700" });
   text(
     ctx,
     `LEVEL ${["I", "II", "III"][tower.level - 1]}`,
     INFO_RECT.x + INFO_RECT.w - 10,
-    y,
+    INFO.headY,
     { size: 11, color: COLOR.highlight, align: "right" },
   );
-  y += 20;
-  text(ctx, effectRead(tower.type, tower.level, tower), INFO_RECT.x + 10, y, {
-    size: 12,
-    color: COLOR.highlight,
-  });
-  y += 8;
-  for (const [label, value] of commonFields(tower.type, tower.level)) {
-    y += 15;
+  text(
+    ctx,
+    effectRead(tower.type, tower.level, tower),
+    INFO_RECT.x + 10,
+    INFO.effectY,
+    { size: 12, color: COLOR.highlight },
+  );
+  const faces = radiatorFaces(tower);
+  const rows: Array<[string, string, string]> = [
+    ...commonFields(tower.type, tower.level).map(
+      ([label, value]): [string, string, string] => [label, value, COLOR.text],
+    ),
+    ["RADIATORS", faces.length > 0 ? faces.join(" ") : "—", COLOR.radiator],
+    [
+      "HEAT",
+      isEmitter(def)
+        ? `${tower.heat.toFixed(1)} / ${redlineOf(tower)}${tower.tripped ? "  TRIPPED" : ""}`
+        : "—",
+      tower.tripped ? COLOR.tripMark : COLOR.text,
+    ],
+    ["KILLS", String(tower.kills), COLOR.text],
+    ["DAMAGE", tower.damageDealt.toFixed(0), COLOR.text],
+  ];
+  let y = INFO.rowY;
+  for (const [label, value, color] of rows) {
     text(ctx, label, INFO_RECT.x + 10, y, { size: 11, color: COLOR.textDim });
     text(ctx, value, INFO_RECT.x + INFO_RECT.w - 10, y, {
       size: 11,
       align: "right",
+      color,
     });
+    y += INFO.rowStep;
   }
-  y += 15;
-  text(ctx, "RADIATORS", INFO_RECT.x + 10, y, {
-    size: 11,
-    color: COLOR.textDim,
-  });
-  const faces = radiatorFaces(tower);
-  text(
-    ctx,
-    faces.length > 0 ? faces.join(" ") : "—",
-    INFO_RECT.x + INFO_RECT.w - 10,
-    y,
-    { size: 11, align: "right", color: COLOR.radiator },
-  );
-  y += 15;
-  text(ctx, "HEAT", INFO_RECT.x + 10, y, { size: 11, color: COLOR.textDim });
-  text(
-    ctx,
-    isEmitter(def)
-      ? `${tower.heat.toFixed(1)} / ${redlineOf(tower)}${tower.tripped ? "  TRIPPED" : ""}`
-      : "—",
-    INFO_RECT.x + INFO_RECT.w - 10,
-    y,
-    {
-      size: 11,
-      align: "right",
-      color: tower.tripped ? COLOR.tripMark : COLOR.text,
-    },
-  );
-  y += 15;
-  text(ctx, "KILLS", INFO_RECT.x + 10, y, { size: 11, color: COLOR.textDim });
-  text(ctx, String(tower.kills), INFO_RECT.x + INFO_RECT.w - 10, y, {
-    size: 11,
-    align: "right",
-  });
-  y += 15;
-  text(ctx, "DAMAGE", INFO_RECT.x + 10, y, { size: 11, color: COLOR.textDim });
-  text(ctx, tower.damageDealt.toFixed(0), INFO_RECT.x + INFO_RECT.w - 10, y, {
-    size: 11,
-    align: "right",
-  });
 
   const controls = panelControls(state);
   if (controls.upgrade !== null) {
@@ -878,14 +877,13 @@ function drawNextWave(
   }
   const figures = modeFigures(state.mode, state.difficulty);
   const coming = wavePreview(state.mode, state.wave, figures.waveCount);
-  let y = INFO_RECT.y + 20;
-  text(ctx, "NEXT WAVE", INFO_RECT.x + 10, y, {
+  text(ctx, "NEXT WAVE", INFO_RECT.x + 10, INFO.headY, {
     size: 12,
     color: COLOR.textDim,
   });
-  y += 26;
+  const countY = INFO.headY + 24;
   if (coming === null) {
-    text(ctx, "NONE", INFO_RECT.x + 10, y, { size: 16, weight: "700" });
+    text(ctx, "NONE", INFO_RECT.x + 10, countY, { size: 16, weight: "700" });
     drawInfoHint(ctx);
     return;
   }
@@ -893,10 +891,10 @@ function drawNextWave(
     ctx,
     `${coming.count} x ${previewTypeLabel(state, coming.type)}`,
     INFO_RECT.x + 10,
-    y,
+    countY,
     { size: 18, weight: "700", color: COLOR.highlight },
   );
-  y += 24;
+  let y = countY + 20;
   const def = SURGE_DEFS[coming.type];
   const fields: Array<[string, string]> =
     state.mode === "hundred"
@@ -909,7 +907,7 @@ function drawNextWave(
           ["LEAK", `${def.leak} lives`],
         ];
   for (const [label, value] of fields) {
-    y += 17;
+    y += 15;
     text(ctx, label, INFO_RECT.x + 10, y, { size: 11, color: COLOR.textDim });
     text(ctx, value, INFO_RECT.x + INFO_RECT.w - 10, y, {
       size: 11,
@@ -921,15 +919,17 @@ function drawNextWave(
 
 /** The standing note under the information area: how to fill it with a tower. */
 function drawInfoHint(ctx: CanvasRenderingContext2D): void {
-  const y = INFO_RECT.y + INFO_RECT.h - 30;
-  text(ctx, "HOVER A SHOP ENTRY OR", INFO_RECT.x + 10, y, {
+  text(ctx, "HOVER A SHOP ENTRY OR", INFO_RECT.x + 10, INFO.hintY, {
     size: 10,
     color: COLOR.textFaint,
   });
-  text(ctx, "SELECT A TOWER FOR ITS INFO", INFO_RECT.x + 10, y + 13, {
-    size: 10,
-    color: COLOR.textFaint,
-  });
+  text(
+    ctx,
+    "SELECT A TOWER FOR ITS INFO",
+    INFO_RECT.x + 10,
+    INFO.hintY + INFO.hintStep,
+    { size: 10, color: COLOR.textFaint },
+  );
 }
 
 function drawWaveControls(

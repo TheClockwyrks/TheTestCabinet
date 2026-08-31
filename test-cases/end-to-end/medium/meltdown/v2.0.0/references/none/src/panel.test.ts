@@ -34,6 +34,16 @@ function scene(): MeltdownState {
   return state;
 }
 
+/** Whether two rectangles share no pixel. */
+function apart(a: Rect, b: Rect): boolean {
+  return (
+    a.x + a.w <= b.x ||
+    b.x + b.w <= a.x ||
+    a.y + a.h <= b.y ||
+    b.y + b.h <= a.y
+  );
+}
+
 /** Whether a rectangle lies wholly inside the panel's strip. */
 function insideStrip(rect: Rect): boolean {
   return (
@@ -53,14 +63,7 @@ describe("the shop", () => {
     const rects = shopRects();
     for (let i = 0; i < rects.length; i += 1) {
       for (let j = i + 1; j < rects.length; j += 1) {
-        const a = rects[i];
-        const b = rects[j];
-        const apart =
-          a.x + a.w <= b.x ||
-          b.x + b.w <= a.x ||
-          a.y + a.h <= b.y ||
-          b.y + b.h <= a.y;
-        expect(apart).toBe(true);
+        expect(apart(rects[i], rects[j])).toBe(true);
       }
     }
   });
@@ -79,6 +82,19 @@ describe("every control", () => {
     for (const rect of everyControlRect()) expect(insideStrip(rect)).toBe(true);
     expect(insideStrip(INFO_RECT)).toBe(true);
     expect(insideStrip(STATUS_RECT)).toBe(true);
+  });
+
+  // The information area and the status area are drawn EARLIER than the controls
+  // and are full of text, so a control laid over either does not sit beside that
+  // text — it paints it out, and a readout a player cannot read is a readout the
+  // panel does not have (specs/overview.md's legibility rule). This is the
+  // arithmetic guard on that: the two reading areas keep clear of every control.
+  it("keeps clear of the two areas the panel reads out in", () => {
+    for (const rect of everyControlRect()) {
+      expect(apart(rect, INFO_RECT)).toBe(true);
+      expect(apart(rect, STATUS_RECT)).toBe(true);
+    }
+    expect(apart(INFO_RECT, STATUS_RECT)).toBe(true);
   });
 });
 

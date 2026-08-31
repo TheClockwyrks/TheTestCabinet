@@ -28,7 +28,12 @@ export const PANEL = {
   placeY: 320,
   placeH: 36,
   infoY: 364,
-  infoH: 240,
+  // The information area stops a row gap short of the action row. It used to run
+  // 240 units deep, which put its last rows UNDER the Upgrade and Sell buttons —
+  // the inspector's bottom two fields were drawn and then painted over, so a
+  // player reading a selected tower's kills and damage read the button instead.
+  // `panel.test.ts` now holds every one of these rectangles apart.
+  infoH: 184,
   actionY: 556,
   actionH: 40,
   sendY: 616,
