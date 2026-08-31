@@ -1,0 +1,358 @@
+// Kessler — the debug and automation surface (specs/instrumentation.md).
+//
+// The game instance's `initialize` returns the surface built here, the engine
+// holds it as `engine.debug`, and that is the whole route to it: nothing is
+// installed on the page. Every operation is imperative over the LIVE world,
+// read off the engine at the moment of the call, so the surface follows the
+// one world the game runs in. Each pose sets one thing through the same
+// systems play uses and returns nothing; each reading returns plain data
+// built at the call; no pose decides an outcome, and no pose sounds a cue —
+// the cues a scenario hears come from the ticks run after it. An argument
+// outside the domain its operation states fails loudly, except where the
+// specification says the operation normalizes or ignores the call.
+
+import {
+  BALL_CAP,
+  DEFLECTOR_BALL_CONTACT_RADIUS,
+  POD_KINDS,
+  RINGS,
+  SCREENS,
+  type PodKind,
+  type Screen,
+} from "./constants";
+import { FxActor } from "./actors";
+import { ringSpeedForWave } from "./figures";
+import { poseScreen, resetState } from "./flow";
+import { kesslerState, type KesslerState } from "./state";
+import { normalizeDeg, pointAt, polarOf } from "./polar";
+import { launchParkedBall } from "./sim";
+import { spanOf, piercingNow } from "./session";
+import type { World } from "@test-cabinet/structured-2d";
+
+/** The snapshot `specs/instrumentation.md` fixes, as a plain object. */
+export interface KesslerSnapshot {
+  screen: Screen;
+  ticks: number;
+  wave: number;
+  score: number;
+  lives: number;
+  waveAdvance: boolean;
+  podSpawn: boolean;
+  paddle: { angleDeg: number; spanDeg: number };
+  balls: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    parked: boolean;
+    piercing: boolean;
+  }[];
+  rings: {
+    angleDeg: number;
+    speedDegPerSec: number;
+    targets: { slot: number; hp: number }[];
+  }[];
+  pods: { kind: string; x: number; y: number }[];
+  effects: {
+    widenTicks: number;
+    narrowTicks: number;
+    pierceTicks: number;
+    shieldActive: boolean;
+  };
+  menu: { index: number };
+}
+
+/** The debug and automation surface, exactly as the specification lists it. */
+export interface KesslerDebugApi {
+  reset(options?: { seed?: number }): void;
+  snapshot(): KesslerSnapshot;
+  setScreen(name: Screen): void;
+  setScore(n: number): void;
+  setLives(n: number): void;
+  setWave(n: number): void;
+  setPaddleAngle(deg: number): void;
+  launchBall(): void;
+  clearBalls(): void;
+  spawnBall(x: number, y: number, vx: number, vy: number): void;
+  parkBall(): void;
+  clearTargets(): void;
+  spawnTarget(ring: number, slot: number, hp: number): void;
+  setRingAngle(ring: number, deg: number): void;
+  setRingSpeed(ring: number, degPerSec: number): void;
+  clearPods(): void;
+  spawnPod(kind: PodKind, x: number, y: number): void;
+  setEffectTicks(kind: "widen" | "narrow" | "pierce", ticks: number): void;
+  setShield(active: boolean): void;
+  setWaveAdvance(on: boolean): void;
+  setPodSpawn(on: boolean): void;
+}
+
+function mustWhole(name: string, value: unknown, min: number): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < min) {
+    throw new Error(
+      `${name} must be a whole number of at least ${min}; got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+function mustFinite(name: string, value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${name} must be a finite number; got ${String(value)}`);
+  }
+  return value;
+}
+
+function mustBoolean(name: string, value: unknown): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(`${name} must be a boolean; got ${String(value)}`);
+  }
+  return value;
+}
+
+function mustRingIndex(ring: unknown): number {
+  const value = mustWhole("ring", ring, 1);
+  if (value > RINGS.length) {
+    throw new Error(`ring must be 1 to ${RINGS.length}; got ${value}`);
+  }
+  return value - 1;
+}
+
+/** A pure read of `state`, in the fixed shape. */
+export function snapshotOf(state: KesslerState): KesslerSnapshot {
+  const piercing = piercingNow(state);
+  return {
+    screen: state.screen,
+    ticks: state.ticks,
+    wave: state.wave,
+    score: state.score,
+    lives: state.lives,
+    waveAdvance: state.waveAdvance,
+    podSpawn: state.podSpawn,
+    paddle: { angleDeg: state.paddleAngleDeg, spanDeg: spanOf(state) },
+    balls: state.balls.map((ball) => ({
+      x: ball.x,
+      y: ball.y,
+      vx: ball.vx,
+      vy: ball.vy,
+      parked: ball.parked,
+      piercing,
+    })),
+    rings: state.rings.map((ring) => ({
+      angleDeg: ring.angleDeg,
+      speedDegPerSec: ring.speedDegPerSec,
+      targets: ring.targets.flatMap((hp, slot) =>
+        hp === null ? [] : [{ slot, hp }],
+      ),
+    })),
+    pods: state.pods.map((pod) => {
+      const at = pointAt(pod.r, pod.angleDeg);
+      return { kind: pod.kind, x: at.x, y: at.y };
+    }),
+    effects: {
+      widenTicks: state.effects.widenTicks,
+      narrowTicks: state.effects.narrowTicks,
+      pierceTicks: state.effects.pierceTicks,
+      shieldActive: state.effects.shieldActive,
+    },
+    menu: { index: state.menuIndex },
+  };
+}
+
+/**
+ * Build the surface over `worldOf`, the accessor the game instance closes
+ * over `this.engine`, so every operation reads the world live at its call.
+ */
+export function createDebugApi(worldOf: () => World): KesslerDebugApi {
+  const stateOf = (): KesslerState => kesslerState(worldOf());
+  return {
+    reset(options) {
+      let seed: number | undefined;
+      if (options !== undefined && options !== null) {
+        if (typeof options !== "object") {
+          throw new Error(
+            `reset options must be an object; got ${String(options)}`,
+          );
+        }
+        if (options.seed !== undefined) {
+          seed = mustFinite("options.seed", options.seed);
+        }
+      }
+      resetState(stateOf(), seed);
+      // A reset wants a bare field, live effects included.
+      worldOf().find(FxActor)?.fx.clear();
+    },
+
+    snapshot() {
+      return snapshotOf(stateOf());
+    },
+
+    setScreen(name) {
+      if (!SCREENS.includes(name)) {
+        throw new Error(`setScreen: unknown screen ${String(name)}`);
+      }
+      poseScreen(stateOf(), name);
+    },
+
+    setScore(n) {
+      stateOf().score = mustWhole("setScore n", n, 0);
+    },
+
+    setLives(n) {
+      stateOf().lives = mustWhole("setLives n", n, 0);
+    },
+
+    setWave(n) {
+      const state = stateOf();
+      const wave = mustWhole("setWave n", n, 1);
+      state.wave = wave;
+      for (let index = 0; index < RINGS.length; index += 1) {
+        state.rings[index].speedDegPerSec = ringSpeedForWave(
+          RINGS[index],
+          wave,
+        );
+      }
+    },
+
+    setPaddleAngle(deg) {
+      const state = stateOf();
+      state.paddleAngleDeg = normalizeDeg(mustFinite("deg", deg));
+      const parked = state.balls.find((ball) => ball.parked);
+      if (parked) {
+        const at = pointAt(DEFLECTOR_BALL_CONTACT_RADIUS, state.paddleAngleDeg);
+        parked.x = at.x;
+        parked.y = at.y;
+      }
+    },
+
+    launchBall() {
+      launchParkedBall(stateOf());
+    },
+
+    clearBalls() {
+      stateOf().balls = [];
+    },
+
+    spawnBall(x, y, vx, vy) {
+      mustFinite("x", x);
+      mustFinite("y", y);
+      mustFinite("vx", vx);
+      mustFinite("vy", vy);
+      const state = stateOf();
+      if (state.balls.length >= BALL_CAP) return;
+      state.nextId += 1;
+      state.balls.push({
+        id: state.nextId,
+        x,
+        y,
+        vx,
+        vy,
+        parked: false,
+        spawnTick: state.simTicks,
+      });
+    },
+
+    parkBall() {
+      const state = stateOf();
+      if (state.balls.some((ball) => ball.parked)) return;
+      if (state.balls.length >= BALL_CAP) return;
+      const at = pointAt(DEFLECTOR_BALL_CONTACT_RADIUS, state.paddleAngleDeg);
+      state.nextId += 1;
+      state.balls.push({
+        id: state.nextId,
+        x: at.x,
+        y: at.y,
+        vx: 0,
+        vy: 0,
+        parked: true,
+        spawnTick: state.simTicks,
+      });
+    },
+
+    clearTargets() {
+      for (const ring of stateOf().rings) {
+        ring.targets = ring.targets.map(() => null);
+      }
+    },
+
+    spawnTarget(ring, slot, hp) {
+      const index = mustRingIndex(ring);
+      const slots = RINGS[index].slots;
+      const slotValue = mustWhole("slot", slot, 0);
+      if (slotValue >= slots) {
+        throw new Error(`slot must be 0 to ${slots - 1}; got ${slotValue}`);
+      }
+      stateOf().rings[index].targets[slotValue] = mustWhole("hp", hp, 1);
+    },
+
+    setRingAngle(ring, deg) {
+      const index = mustRingIndex(ring);
+      stateOf().rings[index].angleDeg = normalizeDeg(mustFinite("deg", deg));
+    },
+
+    setRingSpeed(ring, degPerSec) {
+      const index = mustRingIndex(ring);
+      stateOf().rings[index].speedDegPerSec = mustFinite(
+        "degPerSec",
+        degPerSec,
+      );
+    },
+
+    clearPods() {
+      stateOf().pods = [];
+    },
+
+    spawnPod(kind, x, y) {
+      if (!POD_KINDS.includes(kind)) {
+        throw new Error(`spawnPod: unknown kind ${String(kind)}`);
+      }
+      const state = stateOf();
+      const at = polarOf(mustFinite("x", x), mustFinite("y", y));
+      state.nextId += 1;
+      state.pods.push({
+        id: state.nextId,
+        kind,
+        r: at.r,
+        angleDeg: at.angleDeg,
+      });
+    },
+
+    setEffectTicks(kind, ticks) {
+      if (kind !== "widen" && kind !== "narrow" && kind !== "pierce") {
+        throw new Error(`setEffectTicks: unknown kind ${String(kind)}`);
+      }
+      const value = mustWhole("ticks", ticks, 0);
+      const effects = stateOf().effects;
+      if (kind === "pierce") {
+        effects.pierceTicks = value;
+        return;
+      }
+      if (value === 0) {
+        if (kind === "widen") effects.widenTicks = 0;
+        else effects.narrowTicks = 0;
+        return;
+      }
+      // A span effect above zero enters force exactly as its catch would,
+      // with the same mutual cancel between widen and narrow.
+      if (kind === "widen") {
+        effects.widenTicks = value;
+        effects.narrowTicks = 0;
+      } else {
+        effects.narrowTicks = value;
+        effects.widenTicks = 0;
+      }
+    },
+
+    setShield(active) {
+      stateOf().effects.shieldActive = mustBoolean("active", active);
+    },
+
+    setWaveAdvance(on) {
+      stateOf().waveAdvance = mustBoolean("on", on);
+    },
+
+    setPodSpawn(on) {
+      stateOf().podSpawn = mustBoolean("on", on);
+    },
+  };
+}

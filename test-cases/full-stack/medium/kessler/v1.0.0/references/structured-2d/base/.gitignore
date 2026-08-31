@@ -1,0 +1,33 @@
+# Dependencies — reinstalled with `npm ci`; never committed. The engine,
+# `@test-cabinet/structured-2d`, and the particle playback library,
+# `@test-cabinet/particle-runtime`, are resolved from the repository's own
+# `packages/` through relative `file:` dependencies that npm installs as
+# symlinks, so nothing of either is written here.
+node_modules/
+
+# Production build output — produced by `npm run build`. Anchored to this
+# project's root so the patterns name only its own output.
+/dist/
+/build/
+/out/
+
+# Coverage reports — produced by `npm test`.
+coverage/
+
+# Asset-authoring scratch. Only the finished PNG, `.wav`, and `system.json` files
+# under `assets/` are committed, never the intermediate configuration, action log,
+# or preview files an asset tool leaves beside what it produced.
+assets/**/*.config.json
+assets/**/*.actions.json
+assets/**/*.preview.png
+assets/**/*.preview.gif
+
+# Playwright verification scratch.
+test-results/
+playwright-report/
+
+# Logs.
+*.log
+
+# Scratch that `tcab validate --implementation` writes beside the build.
+.tcab/
