@@ -1,26 +1,143 @@
-// Floe — controls/arrow-down: SCAFFOLD STUB, NOT A VALIDATOR.
+// Floe — controls/arrow-down: `ArrowDown` alone hops the critter one row down.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `controls.arrow-down` review item, written
-// against the `simple-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// `specs/controls.md` binds `ArrowDown` to the `down` action, and fixes what that
+// action does on the `playing` screen: hop the critter one tile that way.
+// `specs/hopping.md` fixes what an accepted hop leaves behind — the critter's
+// centre on the target tile's centre exactly, one absolute tile of the strait
+// from where it stood.
 //
-// The item this file decides, from test-case.toml:
+// ONE BINDING OF ONE DIRECTION, AND NOTHING ELSE. `ArrowDown` and `KeyS` are two
+// keys bound to the same action, and each carries its own point, so a build that
+// wired the arrows and left WASD dead is graded differently from one that wired
+// neither, and a build that got three directions right keeps their three points.
+// The cadence a held direction repeats at, the facing a hop takes, the row it
+// scores and the five refusals are `hopping`'s items, not this one's: this point
+// asks only which way `ArrowDown` moves the critter.
 //
-//   ArrowDown hops the critter down
+// THE KEY IS A REAL KEY, AND THE WHOLE BINDING IS ON THE ROUTE. Under this engine
+// the game never reads a `KeyboardEvent`: `specs/controls.md` has it register the
+// eight named actions with the keys bound to them and read the actions back, and
+// `specs/instrumentation.md` gives the surface no keyboard operation at all. So
+// this check dispatches the physical key at the target the engine listens on and
+// nothing else — the engine's binding of `ArrowDown` to `down`, its edge and hold
+// detection, and the build's reading of that action are every step between the
+// key and the moved critter, and all of them are exercised here. A build that
+// registered `down` without `ArrowDown` among its keys fails exactly this point.
 //
-//   The ArrowDown key alone moves the critter one row down.
+// THE PRESS IS DOWN, ONE WHOLE TICK, UP. `specs/controls.md` reads the four
+// movement actions as HELD on the `playing` screen and `specs/hopping.md` fixes
+// that a press released before the cooldown reaches `0` produces exactly one hop,
+// so a key genuinely down while a tick runs is the one press both readings of a
+// direction agree on: a build that reads the action's held value and a build that
+// reads its press edge each see exactly one request. `HOP_COOLDOWN` is `0.12` s —
+// `14.4` ticks — so no second hop can follow inside that one tick.
 //
-// Its declared media: replay `hop`.
+// THE WORLD IS POSED DOWN TO THE ONE HOP. `startCrossing` clears every vehicle,
+// floe and bear and shuts the four world gates, and the critter is then posed on
+// the ice band, which `specs/strait.md` makes solid ice the critter may stand on
+// anywhere. With no vehicle on the strait none of `specs/hopping.md`'s refusals
+// can bind on any of the four neighbours, so the hop's outcome is decided by the
+// binding alone. The tile is off-centre in both axes on purpose: the four
+// candidate targets are four DISTINCT tiles, so a build that read this key as one
+// of the other three directions reads as that direction's tile rather than merely
+// as "not the one expected".
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual } from "../assert";
+import { tileCX, tileCY } from "../../src/constants";
+import {
+  captureReplay,
+  createHarness,
+  holdFor,
+  startCrossing,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The key this point decides, named literally: it is the whole of the point. */
+const KEY = "ArrowDown";
 
-it("controls/arrow-down has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/**
+ * The tile the critter is posed on, and the tile this key must take it to.
+ *
+ * Row 15 is inside the ice band (`ICE_TOP` 11 to `ICE_BOTTOM` 18), which
+ * `specs/strait.md` makes solid ice, and every one of its four neighbours is
+ * inside the grid and inside the band or the median, so no refusal
+ * `specs/hopping.md` states can bind on a strait cleared of vehicles. Column 22
+ * differs from the row, so a build that swapped the axes lands somewhere this
+ * check names rather than somewhere it merely rejects.
+ */
+const POSE_COL = 22;
+const POSE_ROW = 15;
+const TARGET_COL = POSE_COL;
+const TARGET_ROW = POSE_ROW + 1;
+
+/**
+ * The slack allowed on the landed centre, as `assertCloseTo` digits.
+ *
+ * `specs/hopping.md` says an accepted hop sets the critter's centre to the target
+ * tile's centre EXACTLY, so the only honest tolerance is the arithmetic's own:
+ * six digits is 5e-7 of a stage unit, about a sixty-millionth of a tile.
+ */
+const CENTRE_DIGITS = 6;
+
+/**
+ * Ticks recorded either side of the press, so the clip reads as a control rather
+ * than as a critter that was already where it ended up.
+ *
+ * Neither is measured. Every reading below is taken on the tick the key was held
+ * for, before the trailing stretch runs; that stretch is past `HOP_COOLDOWN`
+ * (`0.12` s, 14.4 ticks at `TICK_HZ`) with nothing held, so the clip also shows
+ * the critter staying put once the key is up.
+ */
+const REST_TICKS = 24; // 0.2 s of a still crossing before the key goes down
+const SETTLE_TICKS = 24; // 0.2 s after it comes up, past HOP_COOLDOWN's 14.4
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("hops the critter one row down when ArrowDown is pressed", async () => {
+  startCrossing(h);
+  h.debug.addCritter(POSE_COL, POSE_ROW);
+
+  const posed = h.snapshot().critter;
+  assertEqual(posed.col, POSE_COL, "the pose put the critter on column 22");
+  assertEqual(posed.row, POSE_ROW, "the pose put the critter on row 15");
+
+  const landed = await captureReplay(h, "hop", async () => {
+    await h.advance(REST_TICKS);
+    await holdFor(h, KEY, 1);
+    const at = h.snapshot().critter;
+    await h.advance(SETTLE_TICKS);
+    return at;
+  });
+
+  assertEqual(
+    landed.row,
+    TARGET_ROW,
+    "ArrowDown hops the critter one row down (specs/controls.md)",
+  );
+  assertEqual(
+    landed.col,
+    POSE_COL,
+    "and leaves its column where it was: a hop is one tile in one grid direction (specs/hopping.md)",
+  );
+  assertCloseTo(
+    landed.x,
+    tileCX(TARGET_COL),
+    CENTRE_DIGITS,
+    "the hop lands the centre on the target tile's centre (specs/hopping.md)",
+  );
+  assertCloseTo(
+    landed.y,
+    tileCY(TARGET_ROW),
+    CENTRE_DIGITS,
+    "the hop lands the centre on the target tile's centre (specs/hopping.md)",
+  );
 });

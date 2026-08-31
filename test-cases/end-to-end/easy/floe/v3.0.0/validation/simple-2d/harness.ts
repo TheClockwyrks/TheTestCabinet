@@ -1951,6 +1951,32 @@ export function drawnTextSpans(
   return spans;
 }
 
+/* ---- The diagnostics overlay ---------------------------------------------- */
+
+/**
+ * Toggle the engine's diagnostics overlay and run the frame that draws — or
+ * stops drawing — it.
+ *
+ * The overlay is ENGINE CHROME under this engine: `Backquote` reaches it through
+ * a `keydown` listener the engine itself owns on the harness's event target,
+ * outside the action registry the game registers into, so this is the same
+ * gesture a player makes and not a call into anything the build wrote
+ * (specs/controls.md, specs/instrumentation.md). The engine ignores an
+ * auto-repeat, so one toggle is one press.
+ *
+ * The panel is drawn after `render` returns, through the same context this
+ * harness records — so with the overlay up, the registered sources' lines land in
+ * {@link Harness.calls} as ordinary text draws, readable with {@link drawnText} —
+ * but AFTER the engine recorder's bracket has closed, so none of it appears in a
+ * {@link captureReplay} recording. Overlay evidence is captured with
+ * {@link captureStill}.
+ */
+export async function toggleOverlay(h: Harness): Promise<void> {
+  h.hold("Backquote");
+  h.release("Backquote");
+  await h.advance(1);
+}
+
 /* ---- Where a frame put its sprites ---------------------------------------- */
 
 /** The source rectangle a nine-argument `drawImage` named, in source pixels. */
