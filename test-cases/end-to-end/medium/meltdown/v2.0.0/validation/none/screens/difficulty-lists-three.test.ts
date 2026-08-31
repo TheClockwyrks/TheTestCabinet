@@ -1,19 +1,63 @@
-// Meltdown — screens/difficulty-lists-three: difficulty select lists Easy,
+// Meltdown — screens/difficulty-lists-three: the difficulty list names Easy,
 // Medium and Hard.
 //
-// SCAFFOLD. This validator has not been written yet. `test-case.toml`
-// declares it, so the file must exist for the manifest to resolve, and it
-// THROWS rather than passing so a stub nobody came back to fails loudly
-// instead of silently scoring a point.
+// THE RULE. `specs/screens.md`, on `difficultyselect`: it "Draws the three rows of
+// `DIFFICULTY_ITEMS`: `EASY`, `MEDIUM`, and `HARD`." All three, because
+// `specs/modes.md` gives each its own starting money and wave count and a
+// difficulty a player cannot see is one a player cannot choose.
 //
-// What it must decide:
+// EACH NAME IS ASSERTED SEPARATELY, so a build that drew two of the three fails
+// with the missing one named. MATCHED BY SUBSTRING, because the words are the
+// case's and the presentation is the build's: a row is commonly drawn with a marker
+// or padding beside it.
 //
-//   All three names appear.
+// THE SCREEN IS POSED, because what the list DRAWS does not depend on how a player
+// got to it — reaching it is `screens.containment-opens-difficulty-select`'s
+// reading. What each row SHOWS about the run it starts is
+// `screens.difficulty-shows-its-figures`'s, and where a row leads is
+// `screens.difficulty-starts-the-run`'s.
+//
+// THE HIGHLIGHT IS LEFT WHERE `reset` PUTS IT, on row `0`, because every row must be
+// drawn whichever one is highlighted.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { DIFFICULTY_ITEMS } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  drewText,
+  type Harness,
+} from "../harness";
 
-it("Difficulty select lists Easy, Medium and Hard", () => {
-  throw new Error(
-    "Meltdown: validation/screens/difficulty-lists-three.test.ts is not implemented yet",
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("draws all three difficulty names on the difficulty list", async () => {
+  const { debug } = h;
+  await debug.reset();
+  await debug.setScreen("difficultyselect");
+
+  const calls = await h.frameCalls();
+  await captureStill(h, "difficulties");
+
+  assertEqual(
+    (await h.snapshot()).screen,
+    "difficultyselect",
+    "the screen the list is read on",
   );
+  for (const [row, item] of DIFFICULTY_ITEMS.entries()) {
+    assertEqual(
+      drewText(calls, item),
+      true,
+      `the difficulty list drew ${item}, row ${row} of ${DIFFICULTY_ITEMS.length}`,
+    );
+  }
 });
