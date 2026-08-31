@@ -110,7 +110,9 @@ it("routes through the gap without ever standing on the wall", async () => {
           { col: bear.stepCol, row: bear.stepRow },
         ]) {
           if (vehicleCoversTile(snapshot, tile.col, tile.row)) {
-            trespass.push(`(${tile.col}, ${tile.row}) at t=${snapshot.simTime}`);
+            trespass.push(
+              `(${tile.col}, ${tile.row}) at t=${snapshot.simTime}`,
+            );
           }
         }
         if (bear.row === CRITTER_ROW) reached = true;

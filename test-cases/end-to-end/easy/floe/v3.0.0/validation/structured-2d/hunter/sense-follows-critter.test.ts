@@ -2,23 +2,38 @@
 // follows it there the moment it hops.
 //
 // specs/hunter.md: "A bear's target is the tile the critter is on, read afresh
-// every tick." So the target is not the tile the critter was on when the bear
+// EVERY TICK." So the target is not the tile the critter was on when the bear
 // emerged, nor a tile refreshed on some slower cadence: each hop is answered on
 // the tick that delivers it.
 //
-// The bear is posed with its routing and its travel off, so what is read is its
-// SENSE and nothing else: it neither chooses a step nor moves, and its target is
-// the only thing about it that can change. The critter is moved by REAL HOPS,
-// each driven as the one frame the direction is held for, so the reading really
-// is taken within a tick of the hop rather than a cooldown later.
+// THE BEAR IS POSED MID-GLIDE, and that is what makes this a reading of "every
+// tick". A bear spends most of its ticks between two tiles, and a build that
+// refreshed its target only on the ticks it SETTLES would report the right tile
+// for a settled bear and a stale one for this bear — so posing it settled would
+// grade a cadence rule with a scenario the cadence cannot show up in. It is put
+// half a tile along a step with its travel off, so it stays exactly there while
+// the critter hops around it.
+//
+// Its routing and its travel are off, so what is read is its SENSE and nothing
+// else: it neither chooses a step nor moves, and its target is the only thing
+// about it that can change. The critter is moved by REAL HOPS, each driven as the
+// one frame the direction is held for, so the reading really is taken within a
+// tick of the hop rather than a cooldown later.
 //
 // The strait is emptied and the hops run up the ice band, so no hop is refused by
-// traffic and the tile the critter lands on is the tile it aimed for.
+// traffic and the tile the critter lands on is the tile it aimed for. The bear's
+// own row is emptied ice too, so the step it is frozen on is one nothing arrives
+// on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertGreaterThanOrEqual } from "../assert";
-import { ROW_NEAR } from "../../src/constants";
 import {
+  assertDeepEqual,
+  assertGreaterThanOrEqual,
+  assertEqual,
+} from "../assert";
+import { ROW_NEAR, TILE, tileCX, tileCY } from "../../src/constants";
+import {
+  bearSettled,
   captureReplay,
   createHarness,
   critterTile,
@@ -53,6 +68,19 @@ it("reports the critter's tile as its target within a tick of each hop", async (
     routing: false,
     travel: false,
   });
+  // Frozen half a tile into a step, so it is between two tiles for every reading
+  // below rather than settled on one.
+  h.debug.setBearStep(id, "right");
+  h.debug.setBearPosition(id, tileCX(BEAR_COL) + TILE / 2, tileCY(BEAR_ROW));
+
+  // The scenario this check needs, read off the game itself: the bear really is
+  // between tiles, so a build that refreshed its target only on settling reads a
+  // stale tile here rather than the right one for the wrong reason.
+  assertEqual(
+    bearSettled(requireBear(h.snapshot(), id, "the watching bear")),
+    false,
+    "the bear settled, which the mid-glide pose is meant to prevent",
+  );
 
   const readings: {
     critter: { col: number; row: number };
