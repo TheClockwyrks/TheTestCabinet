@@ -1,26 +1,57 @@
-// Floe — water/lane-kinds: SCAFFOLD STUB, NOT A VALIDATOR.
+// Floe — water/lane-kinds: every floe in a lane is the one kind that lane
+// carries.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `water.lane-kinds` review item, written
-// against the `structured-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/water.md's lane table gives each of the eight rows one floe kind, and
+// the population rule states it directly: "Every floe in a lane is the lane's
+// own kind." So a freshly laid-out level is read row by row and every floe on
+// the row is required to report that row's kind.
 //
-// The item this file decides, from test-case.toml:
+// A LANE HAS TO CARRY SOMETHING for the reading to mean anything, and
+// specs/water.md requires that too — "a lane always carries enough floes to
+// reach both edges of the strait" — so an empty lane fails here rather than
+// passing vacuously.
 //
-//   Each water lane carries its stated floe
-//
-//   Every floe in each row is the kind the lane table gives that row.
-//
-// Its declared media: image `scene`.
+// The kinds are what tell the eight lanes apart: three rows carry a `raft3`,
+// three a `raft4` and two a `pan`, in that arrangement and no other, so a build
+// that gave every lane the same floe fails on five rows and a build that shifted
+// the table by one fails on six.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { WATER_LANES } from "../../src/constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { floesAlong, layOutLevel } from "./harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The level laid out. The table this reads is the same at every level. */
+const LEVEL = 1;
 
-it("water/lane-kinds has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("fills each water lane with the floe kind the lane table gives its row", async () => {
+  const laid = await layOutLevel(h, LEVEL);
+  captureStill(h, "scene");
+
+  for (const lane of WATER_LANES) {
+    const carried = floesAlong(laid, lane.row);
+    assertGreaterThanOrEqual(
+      carried.length,
+      1,
+      `row ${lane.row}: a lane carries floes at all (specs/water.md)`,
+    );
+    for (const [index, floe] of carried.entries()) {
+      assertEqual(
+        floe.kind,
+        lane.kind,
+        `row ${lane.row}, floe ${index} at x ${floe.x}: kind`,
+      );
+    }
+  }
 });
