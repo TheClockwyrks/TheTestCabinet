@@ -30,10 +30,11 @@
 //   THE SIZE and THE MASS are read as `4` and `2.8`, which specs/towers.md leaves
 //   untouched by a level.
 //
-//   THE LIVE HEAT is read as {@link PINNED_HEAT} itself, and it is pinned there:
-//   `posePinnedTower` holds the tower's part in the heat model
-//   (specs/instrumentation.md), so the heat drawn is the heat posed rather than
-//   whatever the tower had drifted to by the frame the panel was read.
+//   THE LIVE HEAT is read against the heat the snapshot reports for the SAME
+//   frame, so the two cannot straddle a frame boundary, and the tower is posed
+//   at {@link PINNED_HEAT} with `posePinnedTower`, which holds its part in the
+//   heat model (specs/instrumentation.md) so the figure the panel is held to is
+//   a settled one rather than a heat still drifting under the reading.
 //
 //   THE DAMAGE DEALT is read as the figure the snapshot reports, after the tower
 //   has really fired at a target. The tally is not posable — the surface carries
