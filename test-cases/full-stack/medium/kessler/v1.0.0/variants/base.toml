@@ -9,10 +9,20 @@ description = "The orbital demolition run: ride the deflector, bat the ball thro
 # and a carousel led by sustained real play captured from a reference build — lands
 # in the change that adds `showcase/base/` and its capture driver.
 
-# No `reference_implementation` yet. The authored, correct builds — one per
-# supported engine under `references/<engine>/base/`, each passing the case's four
-# toolchain gates with its produced assets committed beside it — land in the change
-# that adds `references/`, and the validation baselines are captured from them.
+# The authored, *correct* playable build of this variant, one directory per supported
+# engine, because the build a reference demonstrates differs under each. This table
+# must name EXACTLY the engines the case supports; the resolver checks both
+# directions. No reference directory is ever seeded into a run: each is the authored
+# answer, built with the case's own `[build]` commands and held to the same four
+# toolchain gates a run is, and each is what `tcab capture-baselines` drives to
+# synthesize the baseline half of the validation media for its engine. This is a
+# full-stack case, so each of these builds also PRODUCED its own sprites, particle
+# systems, and audio during authoring, committed beside it; the build itself only
+# loads them, so `npm ci && npm run build` is self-contained.
+[reference_implementation]
+none = "references/none/base"
+"simple-2d" = "references/simple-2d/base"
+"structured-2d" = "references/structured-2d/base"
 
 # No `[workspaces]` override. This is the only variant, so the case's own
 # `[workspaces]` names its starter projects directly, one per engine.

@@ -237,6 +237,7 @@ despawning
 despawns
 dests
 desync
+detuned
 Devstral
 difficultyselect
 diggable
@@ -463,6 +464,7 @@ retargets
 retuned
 retunes
 rgba
+ringmod
 rity
 rlib
 roadline
