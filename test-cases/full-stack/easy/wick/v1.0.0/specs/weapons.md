@@ -17,8 +17,10 @@ defines one, independent of every other weapon's. On acquisition the timer is
 Oil Splash, Pin, Shard, and Flare need no target and fire the same way, Halo
 by pulsing. After firing, the timer is set to the weapon's current cooldown,
 and the weapon fires again on the tick the timer is due. The current cooldown
-is the table cooldown times `cooldownMul`, floored at `MIN_COOLDOWN` (`0.1`).
-Lantern sets its timer differently, as its section states.
+is the table cooldown times `cooldownMul`, floored at `MIN_COOLDOWN` (`0.2`).
+Lantern sets its timer differently, as its section states. The timers count
+and the weapons fire on the ticks the `weaponFire` switch of
+`specs/instrumentation.md` is on, which is how the game is played.
 
 A weapon that needs a target and finds no eligible target does not fire on
 that tick, and its timer is set to its current cooldown as though it had. Which
@@ -53,12 +55,19 @@ enemy is a circle of its own radius, from `specs/enemies.md`.
 
 An effect hits an enemy when the effect's shape overlaps the enemy's circle,
 except where a weapon's section says its test is distance to the enemy's
-center instead.
+center instead. Every zone's position is the center of its shape; a strike's
+`radius` is its `area`, a burst's is its Flare `radius`, and a slash carries
+its `width` and `height` with a `radius` of `0`.
 
 ### Hits and death
 
-A hit removes the weapon's damage per hit from the enemy's `hp`. Damage per
-hit is the table damage times `damageMul`, a real number, and `hp` is real.
+A hit removes the shape's damage per hit from the enemy's `hp`. Damage per
+hit is the table damage times `damageMul`, a real number, and `hp` is real. A
+shape's damage per hit is fixed when the shape is created, from the level and
+`damageMul` in force on that tick, with one exception: the aura of Halo or
+Corona and each Chandelier lantern have their damage recomputed on every tick,
+with their radius. A Wick level gained later leaves every other live shape's
+damage as it was.
 On any tick an enemy's `hp` is at or below `0` the enemy dies on that tick: the
 kill count rises by one, the enemy drops what `specs/enemies.md` lists for it,
 and the bread and draft draws of `specs/world.md` are made. Hits and deaths
@@ -67,7 +76,9 @@ play the `hit` and `kill` cues as `specs/ui.md` states.
 ### Projectiles and pierce
 
 A projectile is a circle that moves at a constant velocity from the tick after
-it is fired, except Sconce, which decelerates, and Shard, which bounces. Every
+it is fired, except Sconce, which decelerates, and Shard, which bounces. On
+each tick it moves, its position advances by its velocity times `TICK_DT`, and
+then its velocity changes by its acceleration times `TICK_DT`. Every
 hit lowers its `pierce` by one, and a hit on a projectile whose `pierce` is
 `0` removes it instead, so a projectile with `pierce` `n` hits `n + 1`
 enemies. A projectile whose `pierce` is `INFINITE_PIERCE` (`-1`) is never
@@ -100,9 +111,9 @@ produces. Halo and Flare ignore amount.
 
 Each column of a level table passes through the derived stats of
 `specs/passives.md` as follows, read on the tick the weapon fires. A shape's
-lengths are fixed when it is created, with one exception: the Halo aura's
-radius is recomputed on every tick from the level and `areaMul` in force on
-that tick.
+lengths and its damage are fixed when it is created, with one exception: the
+Halo aura's radius and damage are recomputed on every tick from the level,
+`areaMul`, and `damageMul` in force on that tick.
 
 | Column | Used as |
 | --- | --- |
@@ -221,7 +232,9 @@ Each lantern is a touching effect with re-hit interval `LANTERN_REHIT`
 (`0.5`), timed per lantern per enemy. The lanterns vanish on the tick their
 `ttl` is due. On firing, Lantern's cooldown timer is set to `duration` plus
 the current cooldown, both read on that tick, so the timer is due once the set
-has been gone for the cooldown and one set is in the world at a time.
+has been gone for the cooldown and one set is in the world at a time. A set is
+fixed when it is created: a Mirror level gained while a set lives leaves that
+set's count as it is, and the next firing reads the new amount.
 
 | Level | Damage | Cooldown | Orbit | Radius | Duration | Amount |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -238,9 +251,10 @@ has been gone for the cooldown and one set is in the world at a time.
 
 Halo is a permanent aura: one zone of kind `aura`, a circle of `radius`
 centered on the player's center every tick. The zone is created on the first
-`playing` tick Halo is held and stays for as long as Halo is held, and its
-`radius` is recomputed on every tick from the level and `areaMul` in force on
-that tick. It is a pulsing effect whose interval is its cooldown: on each tick
+`playing` tick Halo is held and none exists, it is removed on the next
+`playing` tick Halo is no longer held, and its `radius` and `damage` are
+recomputed on every tick from the level, `areaMul`, and `damageMul` in force
+on that tick. It is a pulsing effect whose interval is its cooldown: on each tick
 the cooldown timer is due it pulses, every enemy whose circle overlaps the
 aura takes `damage`, and the timer is set to the current cooldown. Halo pulses
 on the first `playing` tick it is held. Amount is ignored.
@@ -340,10 +354,12 @@ A sconce is a circle of `radius`, launched from the player's center at `speed`
 along the launch direction `d`, the direction of the nearest enemy on the tick
 of firing. Sconce needs at least one enemy to fire. Its velocity along `d`
 falls under a constant acceleration of `−SCONCE_DECEL` (`600`) units per second
-squared, so after `t` seconds its velocity is `(speed − SCONCE_DECEL × t) × d`,
-integrated per tick. It reverses at `speed / SCONCE_DECEL` seconds and returns
-past the launch point, which stays where the player's center was on the tick
-of firing.
+squared, integrated per tick as Projectiles and pierce states, position first
+and then velocity, so after `n` moving ticks its velocity is
+`(speed − SCONCE_DECEL × n × TICK_DT) × d`. It reverses once
+`speed / SCONCE_DECEL` seconds of motion have passed and returns past the
+launch point, which stays where the player's center was on the tick of
+firing.
 
 Its pierce is `INFINITE_PIERCE`, its re-hit interval is `SCONCE_REHIT` (`0.5`)
 per sconce per enemy, and it is removed after `duration` seconds. Amount `n`

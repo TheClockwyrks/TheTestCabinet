@@ -56,7 +56,10 @@ the Dark exactly as it damages any enemy.
 
 An enemy spawns with the next id from `nextId`, so ids ascend in spawn order
 and each is used once per run. It spawns at full health, with `age` `0`,
-`contactCooldown` `0`, and the heading its behavior gives it below. `age` is
+`contactCooldown` `0`, and the heading its behavior gives it below: the unit
+vector from its spawn point to the lamplighter's center, or the facing
+direction of `specs/weapons.md` when the two coincide, except for a swarm gnat,
+which takes the swarm's heading. `age` is
 the seconds since it spawned: every tick adds `TICK_DT` (`1 / 60`) to it. Each
 tick the enemy moves as its behavior states, then the weapons hit it, then
 its contact with the lamplighter is resolved as `specs/world.md` states. An
@@ -151,10 +154,13 @@ bread and for a draft, as that file states.
 ## The spawn director
 
 The spawn director decides what enters the night. It runs on every tick of the
-`playing` screen while `autoSpawn` is `true`, which is how a run starts, and
-it holds still while `autoSpawn` is `false`. Everything it spawns takes the
-spawn rules above, health scaling included. Its randomness, the spawn angle
-and the type choice, is drawn from the game's seeded generator.
+`playing` screen, in three parts that the driver switches
+`specs/instrumentation.md` defines gate one each: despawning runs while
+`despawning` is on, the scripted events fire while `events` is on, and the
+spawn timer counts and spawns while `spawning` is on. Every switch is on when
+the game is played. Everything the director spawns takes the spawn rules
+above, health scaling included. Its randomness, the spawn angle and the type
+choice, is drawn from the game's seeded generator.
 
 ### The spawn ring
 
@@ -168,10 +174,10 @@ y = player.y + sin(angle) * SPAWN_DISTANCE
 
 ### Despawning
 
-Each tick, every common enemy whose center is farther than `DESPAWN_DISTANCE`
-(`1200`) units from the lamplighter's center is removed: no gem, no kill, no
-cue. Gnats are common and despawn the same way. Elites and the Dark are outside
-this rule and stay on the field at any distance.
+Each tick `despawning` is on, every common enemy whose center is farther than
+`DESPAWN_DISTANCE` (`1200`) units from the lamplighter's center is removed: no
+gem, no kill, no cue. Gnats are common and despawn the same way. Elites and the
+Dark are outside this rule and stay on the field at any distance.
 
 ### Windows
 
@@ -212,7 +218,9 @@ A window's row applies from its start until the next window starts; window
 
 `spawnTimer` is a timer as `specs/world.md` defines one. It is set to `0` when
 a run starts and to `0` on every tick whose window index differs from the
-previous tick's. On every tick the director runs, in this order:
+previous tick's, the window of `tick − 1`, so a clock the debug surface poses
+changes the timer on no tick of its own. On every tick `spawning` is on, in
+this order:
 
 ```
 spawnTimer counts down
@@ -225,7 +233,8 @@ if spawnTimer is due and aliveCommons < cap:
 `interval` and `cap` are the current window's. A spawn therefore lands on the
 first tick of a run, on the first tick of every window, and every `interval`
 seconds between. When the cap is full the timer rests at `0`, and the next
-spawn lands on the first tick that has room.
+spawn lands on the first tick that has room. While `spawning` is off the timer
+holds where it stands and no window spawn lands.
 
 ### The cap
 
@@ -238,8 +247,10 @@ the timer's spawns alone; a scripted event spawns regardless of it.
 
 `EVENTS` lists the night's scripted spawns in time order. Each fires once per
 run, on exactly the tick the run clock equals its time (`tick == time * 60`,
-read after the tick's clock has risen), and only while the director is
-running. `firedEvents` records the times that have fired.
+read after the tick's clock has risen), and only while `events` is on; an
+event whose tick passes while `events` is off, or which the debug surface's
+`setTick` skips over, never fires. `firedEvents` records the times that have
+fired.
 
 | Time | Seconds | Event |
 | --- | --- | --- |

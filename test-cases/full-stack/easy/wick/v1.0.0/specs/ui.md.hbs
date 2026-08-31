@@ -3,10 +3,10 @@
 This file defines the screens Wick opens on and plays on, what each shows, how a
 player moves between them, and the game's audio. The rules the screens present
 are in `specs/world.md`, `specs/progression.md`, and `specs/evolutions.md`;
-the actions the menus are driven by are bound in
-`specs/controls.md`; and the icons, sprites, and sounds the screens draw and
-play are the produced files `specs/assets.md` lists. Every figure and every
-piece of screen copy below carries the name this specification gives it.
+the actions the menus are driven by are bound in `specs/controls.md`; and the
+icons, sprites, and sounds the screens draw and play are the produced files
+`specs/assets.md` lists. Every figure and every piece of screen copy below
+carries the name this specification gives it.
 
 ## Presentation
 
@@ -89,13 +89,13 @@ The HUD is drawn over the world and reads against it:
 
 | Element | What the player sees |
 | --- | --- |
-| Health | A bar filled to `hp / maxHp`, with both numbers beside it. |
-| Experience | A bar filled to `xp / xpToNext`, labeled with `LEVEL_LABEL` (`LEVEL`) and the current level, as `LEVEL 4`. |
+| Health | A bar whose filled width scales with `hp / maxHp`, with both numbers beside it. |
+| Experience | A bar whose filled width scales with `xp / xpToNext`, labeled with `LEVEL_LABEL` (`LEVEL`) and the current level, as `LEVEL 4`. |
 | Clock | The run clock as `m:ss`, counting up from `0:00` in whole seconds, the seconds always two digits. |
 | Kills | The kill count. |
 | Weapon slots | `WEAPON_SLOTS` (`6`) slots in slot order, each held weapon as its icon with one pip per level held, and an empty slot visibly empty. |
 | Passive slots | `PASSIVE_SLOTS` (`6`) slots, the same way. |
-| Cooldowns | On each weapon's slot, how much of its cooldown timer is still to run, from all of it on the tick it fires to none on the tick it fires again. A weapon whose timer is `0` shows none to run; a Lantern slot's timer covers the set's life and the gap after it together. |
+| Cooldowns | On each weapon's slot, its cooldown state: the slot's picture on the tick the weapon fires differs from its picture on the tick before, and a weapon whose timer is `0` shows nothing left to run. A Lantern slot's timer covers the set's life and the gap after it together. |
 
 ### `levelup`
 
@@ -120,8 +120,7 @@ overlay opens with a fresh set of offers and `menuIndex = 0`; else
 ### `chest`
 
 An overlay over the held world, opened as `specs/progression.md` states. It
-shows
-`CHEST_TEXT` (`A CHEST OPENS`) and the result in `chestResult`:
+shows `CHEST_TEXT` (`A CHEST OPENS`) and the result in `chestResult`:
 
 | `kind` | Shows |
 | --- | --- |
@@ -158,26 +157,30 @@ sets `screen = playing`, and `TITLE` returns to `title` with `menuIndex = 0`.
 
 ## A fresh run
 
-`LIGHT THE LAMP`, `TRY AGAIN`, and the debug surface's `start` each begin a
-fresh run, and whatever the previous run held is discarded. A fresh run has the
-run clock at `0:00`, the lamplighter at the world origin `(0, 0)` with
-`hp = BASE_MAX_HP` (`100`) and `facing = "right"`, level `1` with `xp = 0` and
-`kills = 0`, Taper at level `1` alone in the first weapon slot and no passive
-held, no enemy, projectile, zone, gem, or pickup in the world, no level-up
-queued, and the spawn director on with its timer at `0`, as `specs/enemies.md`
-states.
+`LIGHT THE LAMP`, `TRY AGAIN`, and the debug surface's `setScreen("playing")`
+each begin a fresh run, and whatever the previous run held is discarded. A
+fresh run has the run clock at `0:00`, the lamplighter at the world origin
+`(0, 0)` with `hp = BASE_MAX_HP` (`100`) and `facing = "right"`, level `1` with
+`xp = 0` and `kills = 0`, Taper at level `1` alone in the first weapon slot and
+no passive held, no enemy, projectile, zone, gem, or pickup in the world, no
+level-up queued, and the spawn timer at `0`, as `specs/enemies.md` states.
 
 ## What advances on each screen
 
-`state.simTime` accumulates the frame's delta time on every update, whatever
-the screen, and input is read on every screen. The simulation is the exception:
+`simTime` accumulates the frame's delta time on every frame, whatever the
+screen, and input is read on every screen. The simulation is the exception:
 
 | Screen | What advances |
 | --- | --- |
 | `title`, `howto` | Nothing. |
 | `playing` | The simulation, in whole ticks of `TICK_DT` (`1/60`) consumed from the accumulated delta time, as `specs/overview.md` states. |
-| `levelup`, `chest`, `paused` | Nothing. The world beneath holds exactly the tick it was at; the delta time left unconsumed when the screen left `playing` is discarded, so the accumulator is `0` on every screen but `playing`. |
+| `levelup`, `chest`, `paused` | Nothing. The world beneath holds exactly the tick it was at. |
 | `fallen`, `dawn` | Nothing. |
+
+The delta time left unconsumed is discarded on any frame or pose that leaves
+`playing`, whether a tick opened an overlay or ended the run, `pause` was
+pressed, or the debug surface posed the screen, so the accumulator is `0` on
+every screen but `playing` by every route.
 
 ## Menu navigation
 
@@ -195,10 +198,15 @@ alone, and `mute` is read on every screen.
 The audio layer is part of the runtime you write, and what it plays are the
 produced files `specs/assets.md` lists. Define and play exactly the fifteen
 cues in `CUES`, under exactly these names, one per event:
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 Audio plays through the engine's cue bus, each cue bound with `api.audio.load`
 to the produced file `specs/assets.md` lists. Define and play exactly the
 fifteen cues in `CUES`, under exactly these names, one per event:
+{{else}}
+Audio plays through the engine's cue bus, each cue bound in the instance's
+`initialize` with `api.audio.load` to the produced file `specs/assets.md`
+lists, and played from a tick through `world.audio`. Define and play exactly
+the fifteen cues in `CUES`, under exactly these names, one per event:
 {{/if}}
 
 | Cue | Constant | Played when |
@@ -220,11 +228,11 @@ fifteen cues in `CUES`, under exactly these names, one per event:
 | `hum` | `CUES.hum` | Loops while Halo or Corona is held on `playing`. |
 
 The first thirteen are one-shot cues, each a distinct sound so the events are
-told apart by ear. Each is played from `update` on the tick its event happens,
-or on the frame for a menu event, and at most once on that tick: a tick on
-which twenty enemies take damage plays `hit` once, and a tick that raises
-several different cues plays each of those once. A cue is played by a tick or
-a frame, never by a pose of the debug surface.
+told apart by ear. Each is played on the tick its event happens, or on the
+frame for a menu event, and at most once on that tick: a tick on which twenty
+enemies take damage plays `hit` once, and a tick that raises several different
+cues plays each of those once. A cue is played by a tick or a frame, never by
+a pose of the debug surface.
 
 ### The loops
 
@@ -235,23 +243,27 @@ once.
   `levelup`, `chest`, and `paused`. It stops on the tick the run ends, fallen
   or at dawn, and when `back` on `paused` abandons the run. `title` and `howto`
   carry no music.
-- `hum` is looping on every update exactly when `screen` is `playing` and a
-  held weapon is `halo` or `corona`. It starts on the update that first makes
+- `hum` is looping on every frame exactly when `screen` is `playing` and a
+  held weapon is `halo` or `corona`. It starts on the frame that first makes
   both true, whether Halo was just acquired or play just resumed from an
-  overlay or a pause, and it stops on the update either stops being true.
+  overlay or a pause, and it stops on the frame either stops being true.
+
+Both loops are reconciled from the state on every frame, so a state the debug
+surface posed sounds, one frame later, exactly as the same state reached by
+play.
 
 {{#if (eq engine.slug "none")}}
-The audio layer you write supports a looping cue: starting a loop plays the
-cue's file end to end without a gap until the loop is stopped, and a cue is
-either looping or not, so starting one that is already looping changes nothing.
-Loops are started and stopped from `update`, like every other cue.
+A looping cue sounds through a single source set to loop, from the frame that
+starts it until the frame that stops it, playing its file end to end with no
+gap; a cue is either looping or not, so starting one that is already looping
+changes nothing.
 
 Muting and the first-interaction unlock belong to the runtime. The game binds
 the `mute` action to the runtime's mute bit and toggles it from any screen,
-then mirrors that bit into `state.muted` every frame. Muting silences a running
-loop without stopping it, and the loop returns in place when unmuted. The game
+then mirrors that bit into `muted` every frame. Muting silences a running loop
+without stopping it, and the loop returns in place when unmuted. The game
 stays fully playable with sound muted.
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 `api.audio.loop` starts a cue looping, `api.audio.stop` ends it, and
 `api.audio.looping` reports whether it is; a file-backed cue loops its decoded
 buffer seamlessly, and a cue is either looping or not. Loops are started and
@@ -259,7 +271,18 @@ stopped from `update`, like every other cue.
 
 Muting and the first-gesture unlock belong to the engine. The game binds the
 `mute` action to `api.audio.setMuted` and toggles it from any screen, then
-mirrors `api.audio.muted()` into `state.muted` every frame. A muted loop keeps
+mirrors `api.audio.muted()` into `muted` every frame. A muted loop keeps
+looping silently and returns when unmuted. The game stays fully playable with
+sound muted.
+{{else}}
+`world.audio.loop` starts a cue looping, `world.audio.stop` ends it, and
+`world.audio.looping` reports whether it is; a file-backed cue loops its
+decoded buffer seamlessly, and a cue is either looping or not. Loops are
+started and stopped from the game mode's tick, like every other cue.
+
+Muting and the first-gesture unlock belong to the engine. The game binds the
+`mute` action to `world.audio.setMuted` and toggles it from any screen, then
+mirrors `world.audio.muted()` into `muted` every frame. A muted loop keeps
 looping silently and returns when unmuted. The game stays fully playable with
 sound muted.
 {{/if}}

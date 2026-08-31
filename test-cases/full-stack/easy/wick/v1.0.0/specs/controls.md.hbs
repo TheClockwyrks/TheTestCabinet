@@ -5,7 +5,7 @@ bound to each, and what each screen reads of them. The movement vector and
 `facing` the held directions drive are in `specs/world.md`, the weapons that
 aim by facing are in `specs/weapons.md`, and what each screen shows is in
 `specs/ui.md`. Every figure below carries the name this specification gives
-it.
+it. Wick is keyboard only.
 
 ## Where input comes from
 
@@ -18,12 +18,9 @@ its keys is down and `0` otherwise, and as a press edge, true once for the frame
 in which the held value went from `0` to `1`. A key event whose `repeat` flag is
 set arms no edge. `LAYOUT` (`dpad-4`) names the control scheme: a four-way pad
 whose vocabulary is the four movement actions, with the menu actions beside
-them.
-
-While the debug surface's `setInput` holds a set of directions, that set stands
-in for the keyboard's held movement values; `specs/instrumentation.md` states
-it. The diagnostics overlay toggles on `Backquote`, outside the action registry.
-{{else}}
+them. The diagnostics overlay toggles on `Backquote`, outside the action
+registry.
+{{else if (eq engine.slug "simple-2d")}}
 The {{engine.name}} engine delivers the input, and its documentation defines
 the API. `src/main.ts` builds the engine with `LAYOUT` (`dpad-4`), so the four
 movement actions are the layout's own vocabulary and the menu actions come with
@@ -31,6 +28,15 @@ it, and `initialize` registers every name in `ACTIONS` against its keys in
 `BINDINGS`. `update` reads a held value with `value` and a press edge with
 `pressed`, once per frame. The diagnostics overlay's toggle, the backtick, is
 the engine's own.
+{{else}}
+The {{engine.name}} engine delivers the input, and its documentation defines
+the API. `src/main.ts` builds the engine with `LAYOUT` (`dpad-4`), so the four
+movement actions are the layout's own vocabulary and the menu actions come with
+it, and the instance's `initialize` registers every name in `ACTIONS` against
+its keys in `BINDINGS`. The player controller the game mode adds is the one
+place they are read: a held value with `value` and a press edge with `pressed`,
+once per frame. The diagnostics overlay's toggle, the backtick, is the engine's
+own.
 {{/if}}
 
 ## Actions and bindings
@@ -49,6 +55,11 @@ to the `KeyboardEvent.code` values that fire it.
 | `pause` | `KeyP` | edge | pauses on `playing`; resumes on `paused` |
 | `mute` | `KeyM` | edge | toggles sound, on every screen |
 
+The two keys bound to an action are interchangeable: `KeyW` does exactly what
+`ArrowUp` does wherever `up` is read. All of a frame's edges are read against
+the screen the frame began on, so a press that changes screens never also acts
+on the screen it lands in.
+
 ## Moving the lamplighter
 
 On `playing`, the four movement actions are read as held values, sampled once
@@ -61,14 +72,19 @@ only thing the player steers; every weapon fires on its own rhythm, as
 
 | Screen | Held | Press edges |
 | --- | --- | --- |
-| `title` | — | `up`, `down` move the highlight, wrapping at both ends; `confirm` takes the highlighted item; `mute` |
-| `howto` | — | `back` returns to `title`; `mute` |
+| `title` | none | `up`, `down` move the highlight, wrapping at both ends; `confirm` takes the highlighted item; `mute` |
+| `howto` | none | `back` returns to `title`; `mute` |
 | `playing` | `up`, `down`, `left`, `right` | `pause` opens `paused`; `mute` |
-| `levelup` | — | `up`, `down` move the highlight, wrapping at both ends; `confirm` accepts the highlighted offer; `mute` |
-| `chest` | — | `confirm` closes the overlay; `mute` |
-| `paused` | — | `pause` resumes `playing`; `back` abandons the run and returns to `title`; `mute` |
-| `fallen`, `dawn` | — | `up`, `down` move the highlight, wrapping at both ends; `confirm` takes the highlighted item; `back` returns to `title`; `mute` |
+| `levelup` | none | `up`, `down` move the highlight, wrapping at both ends; `confirm` accepts the highlighted offer; `mute` |
+| `chest` | none | `confirm` closes the overlay; `mute` |
+| `paused` | none | `pause` resumes `playing`; `back` abandons the run and returns to `title`; `mute` |
+| `fallen`, `dawn` | none | `up`, `down` move the highlight, wrapping at both ends; `confirm` takes the highlighted item; `back` returns to `title`; `mute` |
 
 An action a row omits does nothing on that screen. `menuIndex` is `0` on
 entering every screen, and on a screen with no highlight it stays `0`. Where
 each `confirm` leads is in `specs/ui.md`.
+
+## Out of scope
+
+- Touch and gamepad input. The game is played from the keyboard alone.
+- Rebinding. The bindings are fixed and the game offers no way to change them.

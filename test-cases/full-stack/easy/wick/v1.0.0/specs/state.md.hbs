@@ -37,23 +37,26 @@ specification is written against them:
   spawned, and the seconds until it can hit the lamplighter again.
 - Every projectile: a unique id, the weapon that fired it, its world position,
   its velocity in units per second and its acceleration in units per second
-  squared, its collision radius, its seconds left, its remaining pierce, and
-  the enemies it has hit with the seconds until each may be hit again.
+  squared, its collision radius, its damage per hit, its seconds left, its
+  remaining pierce, and the enemies it has hit with the seconds until each may
+  be hit again.
 - Every zone, an effect that is not a projectile: a unique id, the weapon, its
   kind (`puddle`, `lantern`, `aura`, `slash`, `strike`, or `burst`), its world
-  position, its radius, the rectangle of a slash, its seconds left or that it
-  never expires, and the enemies it has hit with the seconds until each may be
-  hit again.
+  position, its radius, the rectangle of a slash, its damage per hit, its
+  seconds left or that it never expires, and the enemies it has hit with the
+  seconds until each may be hit again.
 - Every gem: a unique id, its tier, its world position, and whether it is
   attracted. Every pickup: a unique id, its kind (`chest`, `bread`, or
   `draft`), and its world position.
-- The spawn director: the seconds until the next window spawn, whether the
-  director is on, and the run-clock times of the scripted events that have
-  fired this run.
+- The spawn director: the seconds until the next window spawn, and the
+  run-clock times of the scripted events that have fired this run.
 - The next id to assign, one counter shared by enemies, projectiles, zones,
   gems, and pickups and never reused within a run.
-- The simulation time, in seconds, which every update adds its `dt` to whatever
-  the screen. The snapshot reports it as `simTime`.
+- The seven driver switches `specs/instrumentation.md` names, each a boolean,
+  held outside the run: a fresh run leaves them as they stand, and the
+  surface's `reset` restores every one to on.
+- The simulation time, in seconds, which every frame adds its delta time to
+  whatever the screen. The snapshot reports it as `simTime`.
 - Whether audio is muted, and the state of the seeded random generator every
   random draw comes from.
 
@@ -61,10 +64,10 @@ Off the run, on `title` and `howto`, the run's fields hold their idle values:
 tick `0`, level `1`, no experience, no kills, the lamplighter at the world
 origin facing right with `BASE_MAX_HP` (`100`) health, no weapons, no passives,
 nothing alive, nothing dropped, no offers, no level-ups earned, no chest
-result, the spawn timer at `0`, the director on, no events fired, and the next
-id `0`. The `fallen` and `dawn` screens keep the run that just ended, since
-they report its time, level, and kills.
-{{else}}
+result, the spawn timer at `0`, no events fired, and the next id `0`. The
+`fallen` and `dawn` screens keep the run that just ended, since they report its
+time, level, and kills.
+{{else if (eq engine.slug "simple-2d")}}
 `src/game.ts` declares and exports the state the game is written against. This
 section is that declaration: write it into `src/game.ts` exactly as it stands
 here. The six id and tier aliases `src/constants.ts` already exports are
@@ -160,6 +163,7 @@ export interface ProjectileState {
   readonly ax: number;
   readonly ay: number;
   readonly radius: number;
+  readonly damage: number;
   readonly ttl: number;
   readonly pierce: number;
   readonly hits: readonly EnemyHit[];
@@ -174,6 +178,7 @@ export interface ZoneState {
   readonly radius: number;
   readonly width?: number;
   readonly height?: number;
+  readonly damage: number;
   readonly ttl: number | null;
   readonly hits: readonly EnemyHit[];
 }
@@ -211,7 +216,6 @@ export interface RunState {
   readonly pendingLevelUps: number;
   readonly chestResult: ChestResult | null;
   readonly spawnTimer: number;
-  readonly autoSpawn: boolean;
   readonly firedEvents: readonly number[];
   readonly nextId: number;
 }
@@ -224,8 +228,186 @@ export interface WickState {
   readonly simTime: number;
   readonly muted: boolean;
   readonly rngState: number;
+  readonly spawning: boolean;
+  readonly events: boolean;
+  readonly despawning: boolean;
+  readonly enemyMotion: boolean;
+  readonly enemyContact: boolean;
+  readonly weaponFire: boolean;
+  readonly effectMotion: boolean;
 }
 ```
+{{else}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here, with initializers of your own that give every field of `WickState` its
+title-screen value. The six id and tier aliases `src/constants.ts` already
+exports are imported and re-exported rather than declared a second time.
+`WickState` is a class extending the engine's `GameState`: the game mode names
+it as `gameStateClass`, the engine constructs it with no arguments when the
+world is built, and the instance lives for the whole session. The framework's
+states are live objects, so every field is a plain mutable value and a tick
+writes the fields it advances in place.
+
+```ts
+import { GameState } from "@test-cabinet/structured-2d";
+import type {
+  EnemyId,
+  GemTier,
+  OfferId,
+  PassiveId,
+  PickupKind,
+  WeaponId,
+} from "./constants";
+
+export type { EnemyId, GemTier, OfferId, PassiveId, PickupKind, WeaponId };
+
+export type Screen =
+  | "title"
+  | "howto"
+  | "playing"
+  | "levelup"
+  | "chest"
+  | "paused"
+  | "fallen"
+  | "dawn";
+
+export type Facing = "left" | "right";
+
+export type ZoneKind =
+  | "puddle"
+  | "lantern"
+  | "aura"
+  | "slash"
+  | "strike"
+  | "burst";
+
+export type ChestResult =
+  | { kind: "evolve"; weapon: WeaponId }
+  | { kind: "level"; item: WeaponId | PassiveId; level: number }
+  | { kind: "heal" };
+
+export interface PlayerState {
+  x: number;
+  y: number;
+  facing: Facing;
+  hp: number;
+}
+
+export interface WeaponSlot {
+  id: WeaponId;
+  level: number;
+  cooldown: number;
+}
+
+export interface PassiveSlot {
+  id: PassiveId;
+  level: number;
+}
+
+export interface EnemyState {
+  id: number;
+  type: EnemyId;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  heading: { x: number; y: number };
+  age: number;
+  contactCooldown: number;
+}
+
+export interface EnemyHit {
+  enemy: number;
+  cooldown: number;
+}
+
+export interface ProjectileState {
+  id: number;
+  weapon: WeaponId;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  ax: number;
+  ay: number;
+  radius: number;
+  damage: number;
+  ttl: number;
+  pierce: number;
+  hits: EnemyHit[];
+}
+
+export interface ZoneState {
+  id: number;
+  weapon: WeaponId;
+  kind: ZoneKind;
+  x: number;
+  y: number;
+  radius: number;
+  width?: number;
+  height?: number;
+  damage: number;
+  ttl: number | null;
+  hits: EnemyHit[];
+}
+
+export interface GemState {
+  id: number;
+  tier: GemTier;
+  x: number;
+  y: number;
+  attracted: boolean;
+}
+
+export interface PickupState {
+  id: number;
+  kind: PickupKind;
+  x: number;
+  y: number;
+}
+
+export interface RunState {
+  tick: number;
+  level: number;
+  xp: number;
+  kills: number;
+  player: PlayerState;
+  weapons: WeaponSlot[];
+  passives: PassiveSlot[];
+  enemies: EnemyState[];
+  projectiles: ProjectileState[];
+  zones: ZoneState[];
+  gems: GemState[];
+  pickups: PickupState[];
+  offers: OfferId[];
+  nextOffers: OfferId[] | null;
+  pendingLevelUps: number;
+  chestResult: ChestResult | null;
+  spawnTimer: number;
+  firedEvents: number[];
+  nextId: number;
+}
+
+export class WickState extends GameState {
+  screen: Screen;
+  menuIndex: number;
+  run: RunState;
+  accumulator: number;
+  simTime: number;
+  muted: boolean;
+  rngState: number;
+  spawning: boolean;
+  events: boolean;
+  despawning: boolean;
+  enemyMotion: boolean;
+  enemyContact: boolean;
+  weaponFire: boolean;
+  effectMotion: boolean;
+}
+```
+{{/if}}
+{{#if (ne engine.slug "none")}}
 
 ## The type aliases
 
@@ -244,16 +426,15 @@ below.
 
 The lamplighter.
 
-- `x`, `y` — the center of the lamplighter's collision circle, of radius
+- `x`, `y`: the center of the lamplighter's collision circle, of radius
   `PLAYER_RADIUS` (`12`), in world units. The world origin is where the run
   began, so a fresh run holds `0, 0`.
-- `facing` — `"right"` when a run begins, and afterwards the direction of the
+- `facing`: `"right"` when a run begins, and afterwards the direction of the
   most recent non-zero horizontal input.
-- `hp` — the current health, a real number at most `maxHp`; a hit may take it
-  below `0`, which ends the run. Maximum health
-  is derived from the held Tallow level as `BASE_MAX_HP` (`100`) plus
-  `TALLOW_HP_PER_LEVEL` (`15`) per level, so it is read off `passives` rather
-  than stored.
+- `hp`: the current health, a real number at most `maxHp`; a hit may take it
+  below `0`, which ends the run. Maximum health is derived from the held Tallow
+  level as `BASE_MAX_HP` (`100`) plus `TALLOW_HP_PER_LEVEL` (`15`) per level,
+  so it is read off `passives` rather than stored.
 
 ## `WeaponSlot` and `PassiveSlot`
 
@@ -262,11 +443,11 @@ in slot order: an item joins the first free slot of its kind, an evolution
 replaces its base weapon in the same slot, and a run begins with Taper at level
 `1` in the first weapon slot and no passives.
 
-- `id` — the item held in the slot, base or evolved for a weapon.
-- `level` — from `1` to `MAX_WEAPON_LEVEL` (`8`) for a base weapon and `1` for
+- `id`: the item held in the slot, base or evolved for a weapon.
+- `level`: from `1` to `MAX_WEAPON_LEVEL` (`8`) for a base weapon and `1` for
   an evolved one; from `1` to the passive's `maxLevel` in `PASSIVES` for a
   passive.
-- `cooldown` — the weapon's cooldown timer, a timer as `specs/world.md`
+- `cooldown`: the weapon's cooldown timer, a timer as `specs/world.md`
   defines one: the seconds until the weapon next fires, counting down while a
   run ticks. It is `0` on acquisition and on evolution, so a weapon fires on
   the first `playing` tick it is held. For Halo and Corona it is the seconds to
@@ -278,21 +459,21 @@ replaces its base weapon in the same slot, and a run begins with Taper at level
 
 One enemy alive, in `enemies`.
 
-- `id` — unique for the run, assigned from `nextId` when the enemy spawns.
-- `type` — the enemy's row in `ENEMIES`.
-- `x`, `y` — the center of the enemy's collision circle, of the radius its row
+- `id`: unique for the run, assigned from `nextId` when the enemy spawns.
+- `type`: the enemy's row in `ENEMIES`.
+- `x`, `y`: the center of the enemy's collision circle, of the radius its row
   gives. For a weaving enemy this is the anchor plus the perpendicular offset,
   so the anchor is derived by subtracting the offset that `heading` and `age`
   give.
-- `hp`, `maxHp` — real numbers. `maxHp` is set once, at spawn: the row's `hp`
+- `hp`, `maxHp`: real numbers. `maxHp` is set once, at spawn: the row's `hp`
   times `1 + HP_SCALE_PER_MINUTE` (`0.15`) `× floor(time / 60)` for a common
   enemy, and the row's `hp` unscaled for an elite and for the Dark. `hp` begins
   at `maxHp`.
-- `heading` — the unit vector the enemy moves along. A chasing and a weaving
+- `heading`: the unit vector the enemy moves along. A chasing and a weaving
   enemy recompute it toward the lamplighter's center on every tick before
   moving; a drifting enemy keeps the heading it spawned with.
-- `age` — seconds since the enemy spawned, growing by `TICK_DT` per tick.
-- `contactCooldown` — a timer as `specs/world.md` defines one, the seconds
+- `age`: seconds since the enemy spawned, growing by `TICK_DT` per tick.
+- `contactCooldown`: a timer as `specs/world.md` defines one, the seconds
   until the enemy can hit the lamplighter again: `0` when it can,
   `CONTACT_COOLDOWN` (`0.5`) the tick it hits, counting down every tick whether
   or not it is in contact.
@@ -302,31 +483,33 @@ One enemy alive, in `enemies`.
 One projectile in flight, in `projectiles`: an Ember, Beacon, Pin, or Hail
 bolt, a Shard, or a Sconce.
 
-- `id` — unique for the run, assigned from `nextId`.
-- `weapon` — the weapon that fired it.
-- `x`, `y` — the center of its collision circle.
-- `vx`, `vy` — its velocity, in units per second.
-- `ax`, `ay` — its acceleration, in units per second squared, added to the
-  velocity every tick before the position integrates. Every projectile holds
+- `id`: unique for the run, assigned from `nextId`.
+- `weapon`: the weapon that fired it.
+- `x`, `y`: the center of its collision circle.
+- `vx`, `vy`: its velocity, in units per second.
+- `ax`, `ay`: its acceleration, in units per second squared, added to the
+  velocity every tick after the position integrates. Every projectile holds
   `0, 0` except a Sconce, whose acceleration is `SCONCE_DECEL` (`600`) along the
   opposite of its launch direction.
-- `radius` — its collision radius, the level table's value times the area
+- `radius`: its collision radius, the level table's value times the area
   multiplier in force when it was fired.
-- `ttl` — the seconds it has left, a timer as `specs/world.md` defines one,
+- `damage`: its damage per hit, the level table's value times the damage
+  multiplier in force when it was fired.
+- `ttl`: the seconds it has left, a timer as `specs/world.md` defines one,
   set to its `duration` when it is fired. The projectile is removed on the
   tick `ttl` is due.
-- `pierce` — how many more enemies it may pass through after a hit. It falls
+- `pierce`: how many more enemies it may pass through after a hit. It falls
   by one per enemy hit, a projectile at `0` is removed by the hit that would
   take it lower, and `INFINITE_PIERCE` (`-1`) marks a projectile hits never
   lower or remove.
-- `hits` — the enemies it has hit and may not hit again yet, under `EnemyHit`.
+- `hits`: the enemies it has hit and may not hit again yet, under `EnemyHit`.
 
 ## `EnemyHit`
 
 One entry of a projectile's or a zone's `hits`.
 
-- `enemy` — the id of the enemy hit.
-- `cooldown` — the seconds until this projectile or zone may hit that enemy
+- `enemy`: the id of the enemy hit.
+- `cooldown`: the seconds until this projectile or zone may hit that enemy
   again, a timer as `specs/world.md` defines one; an entry that is due is
   dropped. A Shard, a Sconce, and a lantern set it to their weapon's re-hit
   interval. A projectile with finite pierce sets it to its own remaining `ttl`,
@@ -336,29 +519,33 @@ One entry of a projectile's or a zone's `hits`.
 
 One effect that is not a projectile, in `zones`.
 
-- `id` — unique for the run, assigned from `nextId`.
-- `weapon` — the weapon that produced it.
-- `kind` — `puddle` for an Oil Splash or Blaze puddle, `lantern` for one
+- `id`: unique for the run, assigned from `nextId`.
+- `weapon`: the weapon that produced it.
+- `kind`: `puddle` for an Oil Splash or Blaze puddle, `lantern` for one
   orbiting lantern of Lantern or Chandelier, `aura` for the Halo or Corona
   aura, `slash` for a Taper or Pyre slash, `strike` for a Spark strike, and
   `burst` for a Flare burst.
-- `x`, `y` — the center of the circle, and for a slash the center of the
+- `x`, `y`: the center of the circle, and for a slash the center of the
   rectangle. A lantern and an aura are placed relative to the lamplighter every
   tick, so their positions follow the lamplighter.
-- `radius` — the circle's radius after the area multiplier, and `0` for a
-  slash. It is fixed when the zone is created, except on an aura and a
+- `radius`: the circle's radius after the area multiplier, and `0` for a
+  slash. A strike's `radius` is its `area` and a burst's is its Flare
+  `radius`. It is fixed when the zone is created, except on an aura and a
   Chandelier lantern, where it is recomputed on every tick from the level and
   the area multiplier in force on that tick.
-- `width`, `height` — the full extent of a slash's rectangle, after the area
+- `width`, `height`: the full extent of a slash's rectangle, after the area
   multiplier. They are present on a slash and absent on every other kind.
-- `ttl` — the seconds the zone has left, a timer as `specs/world.md` defines
+- `damage`: its damage per hit. It is fixed when the zone is created, except
+  on an aura and a Chandelier lantern, where it is recomputed on every tick
+  from the level and the damage multiplier in force on that tick.
+- `ttl`: the seconds the zone has left, a timer as `specs/world.md` defines
   one, and `null` for a zone that never expires: an aura, and a Chandelier
   lantern. A zone is removed on the tick `ttl` is due. A slash holds
   `SLASH_FLASH` (`0.1`), a strike `SPARK_FLASH` (`0.2`), and a burst
   `FLARE_FLASH` (`0.4`), each drawn for that long and dealing its damage on the
   tick it appears alone; a Lantern lantern holds the set's `duration` and a
   puddle its `duration`.
-- `hits` — for a lantern, the enemies it may not hit again yet, under
+- `hits`: for a lantern, the enemies it may not hit again yet, under
   `EnemyHit`. Every other kind holds an empty list, since a puddle and an aura
   pulse over every enemy they overlap and a slash, a strike, and a burst hit on
   the tick they appear.
@@ -374,12 +561,12 @@ lanterns are replaced by new zones, as `specs/evolutions.md` states.
 
 One gem and one pickup lying on the field, in `gems` and `pickups`.
 
-- `id` — unique for the run, assigned from `nextId`.
-- `tier` — the gem's tier, worth `GEM_VALUES[tier]` experience before the
+- `id`: unique for the run, assigned from `nextId`.
+- `tier`: the gem's tier, worth `GEM_VALUES[tier]` experience before the
   experience multiplier.
-- `kind` — the pickup's kind.
-- `x`, `y` — its center in world units.
-- `attracted` — whether the gem is flying to the lamplighter. It becomes
+- `kind`: the pickup's kind.
+- `x`, `y`: its center in world units.
+- `attracted`: whether the gem is flying to the lamplighter. It becomes
   `true` on the tick the gem is within the pickup radius, or on the tick a
   draft is collected, and stays `true`.
 
@@ -393,35 +580,34 @@ became, and `heal` reports the `CHEST_HEAL` (`30`) fallback.
 
 The run in progress or just ended.
 
-- `tick` — ticks since the run started. The run clock is `tick / TICK_HZ`
+- `tick`: ticks since the run started. The run clock is `tick / TICK_HZ`
   (`60`) seconds, and the run ends at dawn on the tick the clock reaches
   `DAWN_TIME` (`600`).
-- `level` — the lamplighter's level, starting at `1`.
-- `xp` — the experience toward the next level, a real number below
+- `level`: the lamplighter's level, starting at `1`.
+- `xp`: the experience toward the next level, a real number below
   `xpToNext(level)`, which is `XP_BASE` (`5`) `+ XP_STEP` (`10`)
   `× (level − 1)`.
-- `kills` — how many enemies have died this run.
-- `player` — the lamplighter.
-- `weapons`, `passives` — the loadout, in slot order.
-- `enemies`, `projectiles`, `zones`, `gems`, `pickups` — everything alive or
+- `kills`: how many enemies have died this run.
+- `player`: the lamplighter.
+- `weapons`, `passives`: the loadout, in slot order.
+- `enemies`, `projectiles`, `zones`, `gems`, `pickups`: everything alive or
   lying on the field, each list ascending by id.
-- `offers` — the offers the open level-up overlay presents, top to bottom,
+- `offers`: the offers the open level-up overlay presents, top to bottom,
   and empty on every other screen.
-- `nextOffers` — the offers the next level-up overlay will present, when the
+- `nextOffers`: the offers the next level-up overlay will present, when the
   debug surface has set them, and `null` otherwise. Opening an overlay consumes
   it.
-- `pendingLevelUps` — how many level-ups have been earned and not yet resolved
+- `pendingLevelUps`: how many level-ups have been earned and not yet resolved
   by a choice, the one the open overlay presents included. It is at least `1`
   whenever `screen` is `levelup`.
-- `chestResult` — what the open chest overlay reports, and `null` on every
-  other screen.
-- `spawnTimer` — the seconds until the director's next window spawn. It is `0`
+- `chestResult`: what the open chest overlay reports, `null` on every other
+  screen except an end screen reached by the tick that collected the chest,
+  which keeps it.
+- `spawnTimer`: the seconds until the director's next window spawn. It is `0`
   when a run starts and on every window change.
-- `autoSpawn` — whether the director, the window spawns and the scripted
-  events, is running.
-- `firedEvents` — the run-clock times, in seconds, of the scripted events that
+- `firedEvents`: the run-clock times, in seconds, of the scripted events that
   have fired this run, ascending.
-- `nextId` — the next id to assign, one counter shared by enemies,
+- `nextId`: the next id to assign, one counter shared by enemies,
   projectiles, zones, gems, and pickups. It is `0` when a run starts and is
   never reused within a run.
 
@@ -443,7 +629,6 @@ report its time, level, and kills.
 | `pendingLevelUps` | `0` |
 | `chestResult` | `null` |
 | `spawnTimer` | `0` |
-| `autoSpawn` | `true` |
 | `firedEvents` | empty |
 | `nextId` | `0` |
 
@@ -452,42 +637,55 @@ first weapon slot.
 
 ## `WickState`
 
-The whole of Wick's state. Every field is present from the moment `initialize`
-returns, and every one is plain data: numbers, strings, booleans, `null`, and
-containers of them, so a scenario is posed by building a state that differs in
-the fields posed and read back by reading them.
+The whole of Wick's state. Every field is present from the moment
+{{#if (eq engine.slug "simple-2d")}}
+`initialize` returns, and every one is plain data: numbers, strings, booleans,
+`null`, and containers of them, so a scenario is posed by building a state that
+differs in the fields posed and read back by reading them.
+{{else}}
+the engine constructs it, and every one is plain data: numbers, strings,
+booleans, `null`, and containers of them, so a scenario is posed by writing the
+fields posed and read back by reading them.
+{{/if}}
 
-- `screen` — the screen currently shown.
-- `menuIndex` — the highlighted item on whichever vertical menu `screen` is
+- `screen`: the screen currently shown.
+- `menuIndex`: the highlighted item on whichever vertical menu `screen` is
   showing. It is `0` on entering every screen, and on a screen with no menu it
   stays `0`.
-- `run` — the run in progress or just ended, and the idle run on `title` and
+- `run`: the run in progress or just ended, and the idle run on `title` and
   `howto`.
-- `accumulator` — the frame time waiting for the next whole tick, in seconds,
+- `accumulator`: the frame time waiting for the next whole tick, in seconds,
   at least `0` and below `TICK_DT`. It grows on `playing` alone: the delta
   time left unconsumed when the screen leaves `playing` is discarded, so it
   holds `0` on every other screen.
-- `simTime` — accumulated simulation time, in seconds. Every `update` adds its
-  `dt`, whatever the screen, the menus and the overlays included.
-- `muted` — the game's readable copy of the engine's mute bit, which every
-  `update` carries into the state it returns. The engine owns muting, and this
-  field is what the debug surface reports.
-- `rngState` — the state of the game's one seeded random generator. A `reset`
+- `simTime`: accumulated simulation time, in seconds. Every frame adds its
+  delta time, whatever the screen, the menus and the overlays included.
+- `muted`: the game's readable copy of the engine's mute bit, refreshed every
+  frame. The engine owns muting, and this field is what the debug surface
+  reports.
+- `rngState`: the state of the game's one seeded random generator. A `reset`
   with a seed sets it, and every random draw advances it: a spawn's angle and
   type, an offer draw, a puddle's landing point, a strike's target, a chest's
   fallback item, a swarm's direction, and the bread and draft draws.
+- `spawning`, `events`, `despawning`, `enemyMotion`, `enemyContact`,
+  `weaponFire`, `effectMotion`: the seven driver switches
+  `specs/instrumentation.md` names, each `true` from `initialize` and after
+  `reset`, and left as they stand by a fresh run.
 
 ## The contract
 
 The declaration above is what the debug surface reads and poses.
 
+{{#if (eq engine.slug "simple-2d")}}
 - Keep every field under its declared name, type, and meaning.
 - `initialize` builds the whole state in one go, so every field is present by
   the time a frame can observe it. `ZoneState.width` and `height` are the one
   optional pair, present on a slash alone.
-- Fields you add hold derived data you can rebuild from the declared ones. A
-  `reset` restores the declared fields to their title-screen values, so those
-  fields are the whole of the authoritative state.
+- Fields you add carry nothing a rule of this specification reads: derived
+  data rebuilt from the declared fields, or presentation such as an
+  animation's timer. A `reset` restores the declared fields to their
+  title-screen values and clears the rest, so the declared fields are the whole
+  of the authoritative state.
 - The state handed to `update` is the whole of the game, and the state `update`
   returns is the whole of the next frame. Every value the game carries from one
   frame to the next lives in it. Loaded images and decoded audio are the one
@@ -499,4 +697,24 @@ The declaration above is what the debug surface reads and poses.
   built from the one they received; `render`, the sources, and `snapshot`
   return no state. The type is what guarantees that rendering changes nothing
   and that nothing but a transition advances the game.
+{{else}}
+- Keep every field under its declared name, type, and meaning.
+- The engine builds the state from the game mode's `gameStateClass` when the
+  world is built, so every field is present, at its title-screen value, by the
+  time a frame can observe it. `ZoneState.width` and `height` are the one
+  optional pair, present on a slash alone.
+- Fields you add carry nothing a rule of this specification reads: derived
+  data rebuilt from the declared fields, or presentation such as an
+  animation's timer. A `reset` restores the declared fields to their
+  title-screen values and clears the rest, so the declared fields are the whole
+  of the authoritative state.
+- The state the mode holds is the whole of the game. Every value the game
+  carries from one frame to the next lives in it; the actors, components, and
+  controllers you write draw that state and drive it, and hold nothing
+  authoritative of their own. Loaded images and decoded audio are the one
+  exception: they live in a module the actors read, since they are not game
+  state.
+- Rendering changes nothing, and nothing but the mode's tick and the debug
+  surface's poses advances the game.
+{{/if}}
 {{/if}}

@@ -10,16 +10,13 @@ build installs the finished surface on `window.__wick` as soon as the game has
 initialized. Every scenario driven from code reaches the game through it, so it
 is present and exactly as specified here.
 
-Each operation is a read or a pose of the game's state. A pose arranges the
-night, and the game's own systems run from there exactly as they do in play: an
-enemy spawned through the surface is scaled and driven as one the director
-spawned, an offer granted through it passes the same candidate rules the
-overlay applies, and experience added through it levels the lamplighter exactly
-as a gem does.
+Each operation is a read of the game's state or a pose of one part of it. A pose
+sets one thing, and the game's own ticks, movement, weapons, enemies, drops, and
+progression run from there exactly as they do in play, so a scenario driven from
+code behaves exactly like one played by hand.
 
-The surface is inert during normal play, doing nothing until something calls
-it.
-{{else}}
+The surface is inert during normal play, doing nothing until something calls it.
+{{else if (eq engine.slug "simple-2d")}}
 Wick carries a small debugging and automation surface so the game can be driven
 and inspected from code without holding a key or waiting on real time.
 
@@ -35,34 +32,59 @@ Each operation is a reading or a pose of `WickState`, written in the shape of
 writable one. A pose takes the current state, as `DeepReadonly<WickState>`, and
 returns the next `WickState`; a reading takes the state the same way and
 returns what it read. A caller drives a pose through the engine's `apply`, as
-`engine.apply((s) => debug.start(s))`, and a reading against the engine's
-current state, as `debug.snapshot(engine.state)`. A pose arranges the night,
-and the game's own systems run from there exactly as they do in play: an enemy
-spawned through the surface is scaled and driven as one the director spawned,
-and an offer granted through it passes the same candidate rules the overlay
-applies. Where the surface's implementation lives under `src/` is yours to
-decide; `src/game.ts` declares and exports its type, `WickDebugApi`.
+`engine.apply((s) => debug.setHp(s, 40))`, and a reading against the engine's
+current state, as `debug.snapshot(engine.state)`. A pose sets one thing, and
+the game's own ticks, movement, weapons, enemies, drops, and progression run
+from there exactly as they do in play, so a scenario driven from code behaves
+exactly like one played by hand. `src/game.ts` declares and exports its type,
+`WickDebugApi`.
 
-The surface is inert during normal play, doing nothing until something calls
-it.
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Wick carries a small debugging and automation surface so the game can be driven
+and inspected from code without holding a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` returns the finished surface. The engine holds it
+and returns it from `engine.debug`, and it is reached that way alone: nothing is
+installed on the page. Every scenario driven from code reaches the game through
+it, so it is present and exactly as specified here.
+
+Each operation acts on the live game at the moment it is called. A pose takes
+only the parameters its heading names, arranges the running game through the
+same systems play uses, and returns nothing; a reading takes no parameters,
+returns plain data built at the call, and changes nothing. A pose sets one
+thing, and the game's own ticks, movement, weapons, enemies, drops, and
+progression run from there exactly as they do in play, so a scenario driven
+from code behaves exactly like one played by hand. Wick runs in one level for
+the whole session and every screen is a value of the state's `screen` field, so
+a pose that changes the screen takes effect at the call rather than riding a
+level transition. `src/game.ts` declares and exports its type, `WickDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
 ## A deterministic core
 
-The surface rests on the simulation being deterministic. A run advances on a
-fixed tick of `TICK_HZ` (`60`) ticks per second, each worth `TICK_DT` (`1/60`)
-seconds: every frame's delta time accumulates, whole ticks are consumed, and
-the remainder waits for the next frame, so an interval of game time reaches the
-same state however it was divided into frames. Only the `playing` screen ticks.
-Every rate in this specification is per second and every duration is in
-seconds, and each tick applies exactly `TICK_DT` of them. Two more properties
-make the game driveable from code:
+The surface rests on the simulation being deterministic and steppable. Three
+properties make it so.
 
-- Render-free core. Game state advances from ticks and input alone,
+- A fixed timestep, decoupled from rendering. The simulation advances only in
+  whole ticks of `TICK_DT` (`1 / 60`) seconds, `TICK_HZ` (`60`) of them per
+  second of game time. On `playing`, each frame's delta time joins the
+  accumulator, every whole `TICK_DT` in it is consumed as a tick, and the
+  remainder waits for the next frame. A tick that leaves `playing`, by opening
+  an overlay or ending the run, is the last tick its frame runs, and the
+  remainder is discarded; so is the remainder on any other frame or pose that
+  leaves `playing`. On every other screen a frame ticks nothing and the
+  accumulator holds `0`. An interval of game time on `playing` therefore
+  reaches the same state however it was divided into frames, and drawing
+  advances nothing.
+- A render-free core. Game state advances from ticks and input alone,
   independent of the canvas, of the frame loop that measured the delta time,
-  and of wall-clock time. The dependency runs one way: the simulation reads
-  nothing from the renderer, and every hit, kill, drop, and level-up is decided
-  from the state alone.
+  and of wall-clock time. The simulation reads nothing from the renderer, and
+  every hit, kill, drop, collection, level-up, and ending is decided from the
+  state alone.
 - Seeded randomness. The game holds one pseudo-random generator, seeded by
   `reset` and keeping its whole state in `rngState`, and every random draw
   comes from it: a spawn's angle and type, an offer draw, a puddle's landing
@@ -70,53 +92,100 @@ make the game driveable from code:
   the bread and draft draws. The order in which the systems draw from it is
   yours.
 
-Given the same seed, the same sequence of calls, and the same number of ticks,
-the game reaches the same `run` and `rngState` every time. `simTime` and
-`muted` stand outside that: `simTime` accumulates the delta time of every
-update whatever the screen, and `muted` mirrors the runtime.
+Given the same seed, the same sequence of operations, and the same number of
+ticks, the game reaches the same `run` and `rngState` every time. `simTime` and
+`muted` stand outside that: `simTime` rises by every frame's delta time on every
+screen, and `muted` mirrors the runtime.
 
 Audio belongs to the ticks and the frames. A pose changes the state alone and
-sounds nothing; the cues a scenario hears come from the ticks run afterwards.
+sounds nothing; the cues a scenario hears come from the ticks and frames run
+after it. The two looping cues are reconciled from the state by the next
+frame, so a run posed through `setScreen("playing")` sounds exactly as one
+started from the menu one frame later.
 
 ## What the runtime provides instead
 
 {{#if (eq engine.slug "none")}}
 The keyboard and the overlay belong to the runtime layer beneath the game, and
-the surface carries no operation for the menu actions or for the overlay. That
-layer delivers the actions the game registers from the key bindings this
-specification fixes, and it draws and toggles the debug overlay.
+the surface carries no operation for either. That layer delivers the key
+bindings `specs/controls.md` fixes, so a dispatched keyboard event moves the
+lamplighter and works the menus exactly as a player's key does, and it draws
+and toggles the debug overlay.
 
 The clock is the exception, because nothing outside this build owns it. The
 surface is what takes the game off real time and advances it, through
-`setAutoStep` and `step` below. Movement is the other exception: `setInput`
-stands in for the held movement keys, so a scenario walks the lamplighter
-without a key event.
+`setAutoStep`, `step`, and `advance` below.
+{{else if (eq engine.slug "simple-2d")}}
+The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
+which documents them in the `engine/` directory at the root of this repository,
+and the surface carries no operation for any of them. The engine advances the
+game frame by frame, and a clock that supplies its own deltas takes it off real
+time: a scenario pairs a `ConstantClock` of `1000 / 60` milliseconds with
+`engine.advance`, so one frame on `playing` consumes exactly one tick, and a
+clock of any other length poses a partial frame. `simTime` and `accumulator`
+behave under such a clock exactly as under the wall clock. The engine drives
+the actions the game registers, so a keyboard event dispatched at the engine's
+event target moves the lamplighter and works the menus exactly as a player's
+key does, and it draws and toggles the debug overlay.
 {{else}}
 The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
 which documents them in the `engine/` directory at the root of this repository,
 and the surface carries no operation for any of them. The engine advances the
-game frame by frame and can take it off real time, so a scenario pairs a clock
-that supplies its own deltas with `engine.advance`, and a `ConstantClock` of
-`1000 / TICK_HZ` milliseconds steps exactly one tick per frame. It drives the
-actions the game registers, so a scenario walks the lamplighter by dispatching
-key events at the engine's event target, or places it with `setPlayer` below.
-It draws and toggles the debug overlay.
-
-The two looping cues are reconciled by `update` on every frame from the state
-it is handed, through the engine's `looping`, `loop`, and `stop`, so a run
-started through `start` sounds exactly as one started from the menu.
+game frame by frame, and a clock that supplies its own deltas takes it off real
+time: a scenario pairs a `ConstantClock` of `1000 / 60` milliseconds with
+`engine.advance`, so one frame on `playing` consumes exactly one tick, and a
+clock of any other length poses a partial frame. `simTime` and `accumulator`
+behave under such a clock exactly as under the wall clock. The engine drives
+the actions the game registers, so a keyboard event dispatched at the engine's
+event target moves the lamplighter and works the menus exactly as a player's
+key does, read by the player controller the game mode adds, and it draws and
+toggles the debug overlay.
 {{/if}}
 
 What the overlay shows is Wick's, under Diagnostics below.
+
+## The driver switches
+
+Seven switches give a scenario a hold on the game's autonomous systems, so it
+can watch one behavior without another arriving on top of it. Each is on when
+the game is played, each is restored to on by `reset`, each is left as it
+stands by `setScreen`, each is set by its own operation below, and each is
+reported by the snapshot under the same name. A switch changes only what it
+names; turning one back on resumes that faculty from the next tick, with no
+catching up for the ticks it missed.
+
+| Operation | Switch | While it is on | While it is off |
+| --- | --- | --- | --- |
+| `setSpawning(on)` | `spawning` | The window spawn timer counts down and spawns as `specs/enemies.md` states. | The timer holds where it stands and no window spawn lands. |
+| `setEvents(on)` | `events` | The scripted events fire on their exact tick. | No scripted event fires; an event whose tick passes while the switch is off never fires. |
+| `setDespawning(on)` | `despawning` | Commons beyond `DESPAWN_DISTANCE` are removed. | Nothing is removed by distance. |
+| `setEnemyMotion(on)` | `enemyMotion` | Every enemy moves as its behavior states, recomputing its heading where the behavior does. | Every enemy holds its position and heading. `age` and `contactCooldown` still count. |
+| `setEnemyContact(on)` | `enemyContact` | An overlapping enemy whose cooldown is due hits. | No enemy hits. Every `contactCooldown` still counts down. |
+| `setWeaponFire(on)` | `weaponFire` | Cooldown timers count down and due weapons fire or pulse. | Every cooldown timer holds where it stands and nothing fires or pulses. |
+| `setEffectMotion(on)` | `effectMotion` | Projectiles integrate, lanterns revolve, shards bounce, and sconces decelerate. | Every projectile holds its position and velocity, and every lantern holds its angle. `ttl` and every re-hit entry still count, and hits still resolve. |
+
+Placement is gated by neither `weaponFire` nor `effectMotion`. On every
+`playing` tick, whatever the two hold, phase 5 of `specs/world.md` places the
+permanent shapes: the aura's center and each lantern's center about the
+lamplighter's position of this tick, the aura's radius and each Chandelier
+lantern's orbit and radius recomputed from the level and `areaMul` in force,
+their damage recomputed the same way, an aura or lantern set created when its
+weapon is held and none exists, and one removed when its weapon is no longer
+held.
 
 ## The operations
 
 The surface carries `version` (`WICK_DEBUG_VERSION`, `1`), a plain number, and
 the operations below. Values are plain numbers, strings, booleans, and plain
-objects. `x` and `y` are world units, on the plane whose origin is where the
-run began, and every duration is in seconds.
-{{#if (eq engine.slug "none")}}
-{{else}}
+objects. `x` and `y` are world units on the plane whose origin is where the run
+began, every duration is in seconds, and `tick` is a whole count of ticks.
+
+Each pose sets one thing and leaves the rest of the game as it stands, so a
+caller that wants several things arranged makes several calls, in the order it
+wants them. No pose decides an outcome: every hit, kill, drop, collection,
+level-up, evolution, and ending comes from the ticks run after the pose, so a
+scenario reads what happened from the snapshot.
+{{#if (eq engine.slug "simple-2d")}}
 
 Each operation's first parameter is the current state,
 `DeepReadonly<WickState>`. A pose returns the next `WickState`, built from the
@@ -124,246 +193,517 @@ one it was handed, which it leaves as it was; a reading returns what it read.
 The headings below name the parameters that follow the state.
 {{/if}}
 
-No operation decides an outcome. Hits, kills, gems, experience, level-ups, and
-evolutions come from stepping the real systems after a pose, and an operation
-whose precondition does not hold leaves the state exactly as it was, so a
-scenario reads the outcome of any pose from `snapshot`.
+An argument outside the domain its operation states is invalid, and the call
+throws rather than guessing what was meant; no operation rounds, clamps, or
+otherwise normalizes an argument. A call on a screen the operation does not
+apply to leaves the state exactly as it was, and each operation names the
+screens it applies to. "A run screen" below means `playing` or `paused`.
+
+A pose changes the state alone and sounds nothing. A pose that creates an
+entity gives it the next id from `nextId`, and a posed enemy, projectile,
+puddle, gem, or pickup first moves, first hits, and first pulses on the next
+tick, exactly as one a tick created.
+
+### Core
 
 {{#if (eq engine.slug "none")}}
-### `setAutoStep(enabled)`
+#### `setAutoStep(auto)`
 
 Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
-frame loop feeding the wall clock's delta time into the tick accumulator, so
-the run advances only when `step` says so. `setAutoStep(true)` returns it to
-running itself, which is how a build starts and how it is played.
+frame loop feeding the wall clock's delta time into the tick accumulator, so no
+tick runs until `step` or `advance` runs one. `setAutoStep(true)` returns the
+game to advancing itself, which is how a build starts and how it is played. It
+changes no game state.
 
-Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
-the state the most recent tick left.
+Drawing and input are unaffected either way: the build's own loop keeps running
+frames in real time, each reading the keys, reconciling the loops, mirroring
+`muted`, and rendering, so a menu still answers a key press while the
+simulation is held. The snapshot reports the switch as `autoStep`, and `reset`
+leaves it untouched.
 
-### `step(ticks)`
+#### `step(ticks)`
 
-Runs `ticks` whole simulation ticks, immediately and in order, each the full
-tick followed by a render. `ticks` defaults to `1`. It runs on `playing`, and a
-tick that opens an overlay or ends the run is the last one the call runs; the
-ticks not run are not carried over. On any other screen the call changes
-nothing, since nothing ticks there.
+Runs `ticks` frames of the build's loop immediately and in order, whatever the
+screen. `ticks` is a whole number of at least `1` and defaults to `1`. Each
+frame is exactly a frame of the loop: it reads the keys as they stand, the held
+movement values and the press edges, runs the screen's update, then renders.
 
-Stepping while the game is still stepping automatically adds to what the wall
-clock is already doing, so a scenario that must be reproducible calls
-`setAutoStep(false)` first.
+On `playing` the update is one whole tick of `specs/world.md`, run directly
+rather than through the accumulator, with the frame's held movement values
+applied to that tick. The accumulator is left as it stands, except that a tick
+which leaves `playing` discards it as any such tick does. On every other
+screen the update ticks nothing: the menu edges are read, the loops are
+reconciled, `muted` is mirrored, and `run.tick` is untouched. `simTime` rises
+by `TICK_DT` per frame on every screen. A frame whose tick opens an overlay or
+ends the run is followed by the remaining frames on the screen it opened, so
+`step(n)` always runs `n` frames.
 
-{{/if}}
-{{#if (eq engine.slug "none")}}
-### `reset(options)`
+#### `advance(seconds)`
+
+Runs one frame of the build's loop worth `seconds` of delta time, a real number
+above `0`, exactly as a wall-clock frame of that length: the keys are read,
+`simTime` rises by `seconds`, and on `playing` the delta joins the accumulator
+and every whole `TICK_DT` in it is consumed as a tick, the remainder waiting in
+`accumulator`. A tick that opens an overlay or ends the run is the last the
+frame runs and the remainder is discarded. On any other screen the frame ticks
+nothing and the accumulator stays `0`. Then a render. This is the operation
+that poses a partial frame.
+
+#### `reset(options)`
+{{else if (eq engine.slug "simple-2d")}}
+#### `reset(state, options)`
 {{else}}
-### `reset(state, options)`
+#### `reset(options)`
 {{/if}}
 
 Restores every declared field of the game's state to its title-screen value:
-the title screen with its first item highlighted, the idle run `specs/state.md`
-gives, the tick accumulator and `simTime` at `0`. `options.seed` seeds
-`rngState`, defaulting to `DEFAULT_SEED` (`1`). `muted` stays as it is.
+the `title` screen with `menuIndex` `0`, the idle run of `specs/state.md`, the
+accumulator and `simTime` at `0`, and every driver switch on. `options` is
+optional, and `options.seed` seeds `rngState`, defaulting to `DEFAULT_SEED`
+(`1`). `muted` stays as it is.
 {{#if (eq engine.slug "none")}}
-Any looping cue stops.
-{{else}}
-The next `update` stops any looping cue, since the state it restores holds no
+`autoStep` stays as it is: it belongs to the caller driving the game rather than
+to the session being played, so a `reset` inside a stepped scenario leaves the
+game off the wall clock. Any looping cue stops on the next frame, which
+`step(1)` runs one of.
+{{else if (eq engine.slug "simple-2d")}}
+Any looping cue stops on the next `update`, since the state it restores holds no
 run.
+{{else}}
+Any looping cue stops on the next tick of the game mode, since the state it
+restores holds no run.
 {{/if}}
 
-{{#if (eq engine.slug "none")}}
-### `snapshot()`
+A reset leaves the game indistinguishable from a freshly started session, so
+anything else the build keeps across frames is derived from what a reset
+restores.
 
-A pure read of the state, returned as the plain object under Snapshot shape
-below. It changes nothing.
-
-### `start()`
-{{else}}
-### `snapshot(state)`
+{{#if (eq engine.slug "simple-2d")}}
+#### `snapshot(state)`
 
 A pure reading of `state`, returned as the plain object under Snapshot shape
 below. It returns no state, because it poses nothing.
+{{else}}
+#### `snapshot()`
 
-### `start(state)`
+A pure read of the state, returned as the plain object under Snapshot shape
+below. It changes nothing.
 {{/if}}
 
-Poses exactly what `LIGHT THE LAMP` does, from any screen: a fresh run, which
-is the idle run of `specs/state.md` with Taper at level `1` and cooldown `0` in
-the first weapon slot, `screen` at `playing`, `menuIndex` at `0`, and
-`autoSpawn` `true`. `rngState` and `simTime` stay as they are, so a run from a
-known seed is a `reset` followed by this.
+### Screens
 
-{{#if (eq engine.slug "none")}}
-### `setAutoSpawn(enabled)`
+{{#if (eq engine.slug "simple-2d")}}
+#### `setScreen(state, name)`
 {{else}}
-### `setAutoSpawn(state, enabled)`
+#### `setScreen(name)`
 {{/if}}
 
-Turns the spawn director on or off: the window spawns and the scripted events
-together. Turning it off removes nothing already alive, and turning it on
-resumes the director where its timer and its fired events stand. It applies on
-`playing` and `paused`.
+Enters screen `name`, one of the `Screen` values the rows below list, exactly
+as the real transition into it from the current screen enters it, with
+`menuIndex` `0`. No cue sounds at the call. The driver switches stay as they
+are.
 
-{{#if (eq engine.slug "none")}}
-### `spawnEnemy(type, x, y)`
+| `name` | From | What the call does |
+| --- | --- | --- |
+| `title` | any | Discards the run exactly as `TITLE` on an end screen or `back` on `paused` does: the idle run. |
+| `howto` | any | Enters the how-to screen exactly as confirming `HOW TO PLAY` does: the idle run. |
+| `playing` | `paused` | Resumes exactly as `pause` on `paused` does; the run is untouched. |
+| `playing` | `chest` | Closes the overlay exactly as `confirm` does: `chestResult` becomes `null`. |
+| `playing` | `levelup` | Changes nothing; `choose` is the way out. |
+| `playing` | any other | Begins a fresh run exactly as `LIGHT THE LAMP` and `TRY AGAIN` do: the idle run with Taper at level `1` and cooldown `0` in the first weapon slot. `rngState` and `simTime` stay as they are, so a run from a known seed is `reset` followed by this. |
+| `levelup` | `playing`, with `pendingLevelUps` at least `1` | Opens the overlay exactly as the end of a `playing` tick opens it: the pool is computed, `nextOffers` is consumed or the draw is made, and `offers` is filled. With `pendingLevelUps` `0` the call leaves the state as it was. |
+| `paused` | `playing` | Exactly as `pause` does; the accumulator is discarded as on any frame that leaves `playing`. |
+| `fallen`, `dawn` | `playing`, `paused` | Ends the run exactly as that ending does, the run kept for the end screen to report. |
+
+Any row not listed, `chest` from anywhere or `levelup` from `title` among them,
+leaves the state as it was. The chest overlay is reached through
+`spawnPickup("chest", x, y)` at the lamplighter's center and one tick, which is
+the real collection path.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `choose(state, index)`
 {{else}}
-### `spawnEnemy(state, type, x, y)`
-{{/if}}
-
-Spawns one enemy of `type`, an `EnemyId`, centered at world `(x, y)` through
-the real spawn path: its `maxHp` is scaled by the run clock exactly as the
-director's spawns are, it takes the next id, and a drifting enemy's heading is
-the unit vector from `(x, y)` toward the lamplighter's center. It applies on
-`playing`, and the enemy appears in the next snapshot.
-
-{{#if (eq engine.slug "none")}}
-### `clearEnemies()`
-{{else}}
-### `clearEnemies(state)`
-{{/if}}
-
-Removes every enemy alive, elites and the Dark included. Nothing drops, nothing
-counts as a kill, and every other field stays as it was. It applies on
-`playing`.
-
-{{#if (eq engine.slug "none")}}
-### `spawnPickup(kind, x, y)`
-{{else}}
-### `spawnPickup(state, kind, x, y)`
-{{/if}}
-
-Places one item at world `(x, y)` with the next id. `kind` is a `GemTier`, which
-places a gem of that tier, unattracted, or a `PickupKind`, which places that
-pickup. It applies on `playing`.
-
-{{#if (eq engine.slug "none")}}
-### `grant(id)`
-{{else}}
-### `grant(state, id)`
-{{/if}}
-
-Applies exactly what accepting the offer `id` would apply, through the accept
-path, outside any overlay: a weapon or passive not held joins the first free
-slot of its kind at level `1`, a held one gains one level with every effect a
-level brings, and `LAMP_OIL_ID` (`"lamp-oil"`) heals `LAMP_OIL_HEAL` (`30`),
-capped at `maxHp`, whatever the candidate pool holds. An `id` that is not a
-legal candidate at the moment of the call leaves the state as it was: the slot
-kind is full, the item is at its maximum level, the id is an evolved weapon, or
-the id is a base weapon whose evolution is held. It applies on `playing`.
-
-{{#if (eq engine.slug "none")}}
-### `setOffers(ids)`
-{{else}}
-### `setOffers(state, ids)`
-{{/if}}
-
-Sets what the next level-up overlay presents, in the order given, in place of
-the random draw. The list is checked against the candidate pool at the moment
-that overlay opens, and it is accepted when it holds `1` to `OFFER_COUNT`
-(`3`) distinct ids, each a candidate of the pool at that moment, or holds
-`LAMP_OIL_ID` alone while the pool is empty; the overlay then presents exactly
-that list. Any other list is discarded whole and the overlay draws at random.
-One overlay consumes it, and a later overlay draws at random again. It applies
-on `playing`.
-
-{{#if (eq engine.slug "none")}}
-### `addXp(amount)`
-{{else}}
-### `addXp(state, amount)`
-{{/if}}
-
-Adds `amount` experience, as it stands and with no multiplier, through the
-real gain path: every level-up the total earns queues, overflow carries, and
-the level-up overlay opens on the spot exactly as it does for a gem. It applies
-on `playing`.
-
-{{#if (eq engine.slug "none")}}
-### `choose(index)`
-{{else}}
-### `choose(state, index)`
+#### `choose(index)`
 {{/if}}
 
 On `levelup`, accepts the offer at `index`, counted from `0` down the list,
 exactly as moving the highlight there and pressing `confirm` would: the item is
-applied, and either the next queued overlay opens with a fresh pool or play
-resumes. An `index` outside the offers leaves the state as it was.
+applied, `pendingLevelUps` falls by one, and either the next queued overlay
+opens with a fresh pool or `screen` returns to `playing`. An `index` outside
+`offers` leaves the state as it was. Sounds nothing.
 
-{{#if (eq engine.slug "none")}}
-### `setPlayer(patch)`
+### The driver switches
+
+#### The seven switch operations
+
+{{#if (eq engine.slug "simple-2d")}}
+`setSpawning(state, on)`, `setEvents(state, on)`, `setDespawning(state, on)`,
+`setEnemyMotion(state, on)`, `setEnemyContact(state, on)`,
+`setWeaponFire(state, on)`, and `setEffectMotion(state, on)` set the seven
+driver switches, as The driver switches above describes.
 {{else}}
-### `setPlayer(state, patch)`
+`setSpawning(on)`, `setEvents(on)`, `setDespawning(on)`, `setEnemyMotion(on)`,
+`setEnemyContact(on)`, `setWeaponFire(on)`, and `setEffectMotion(on)` set the
+seven driver switches, as The driver switches above describes.
+{{/if}}
+`on` is a boolean. Each applies on every screen and changes nothing but its
+switch.
+
+### The clock
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setTick(state, tick)`
+{{else}}
+#### `setTick(tick)`
 {{/if}}
 
-Applies `patch`, an object of any of `x`, `y`, `hp`, and `facing`, directly to
-the lamplighter as a precondition, leaving every field the patch omits as it
-was. `hp` is capped at `maxHp`, and `facing` is `"left"` or `"right"`. It
-applies on `playing`.
+Sets `tick` to `tick`, a whole number from `0` to `DAWN_TIME × TICK_HZ − 1`
+(`35999`). Nothing else changes: `spawnTimer`, `firedEvents`, and every live
+entity stay as they stand, and everything derived from the clock, `time`,
+`spawnWindow`, the health scaling of later spawns, and which event is due,
+follows from the next tick on. A scripted event fires only on its exact tick,
+so a clock posed past an event never fires it. Applies on a run screen.
 
-{{#if (eq engine.slug "none")}}
-### `setTime(seconds)`
+{{#if (eq engine.slug "simple-2d")}}
+#### `setSpawnTimer(state, seconds)`
 {{else}}
-### `setTime(state, seconds)`
+#### `setSpawnTimer(seconds)`
 {{/if}}
 
-Sets the run clock: `tick` becomes `round(seconds × TICK_HZ)`. Everything the
-clock derives follows from the next tick on: the spawn window, the health
-scaling of later spawns, and the scripted events, so every event whose time is
-at or before the new clock is marked fired without spawning anything, and an
-event whose time is after it fires when the clock reaches it. When the window
-changes, `spawnTimer` becomes `0` as on any window change. It applies on
-`playing`.
+Sets `spawnTimer` to `seconds`, at least `0`. Applies on a run screen.
 
-{{#if (eq engine.slug "none")}}
-### `setInput(held)`
+### The lamplighter
 
-Holds movement actions from code. `held` is an object of any of `up`, `down`,
-`left`, and `right`, each a boolean; an action the object names is held or
-released as given, an action it omits is released, and the values persist until
-the next call. While any action is held this way the movement the game reads on
-`playing` comes from here in place of the keyboard, so the lamplighter walks
-exactly as it does under held keys, the facing included. `setInput({})`
-releases every action and hands movement back to the keyboard.
-
-### `pause()`, `resume()`
+{{#if (eq engine.slug "simple-2d")}}
+#### `setPlayerPosition(state, x, y)`
 {{else}}
-### `pause(state)`, `resume(state)`
+#### `setPlayerPosition(x, y)`
 {{/if}}
 
-`pause` poses the pause action on `playing`, moving to `paused`. `resume`
-poses it on `paused`, returning to `playing`. On any other screen each leaves
-the state as it was.
+Sets the lamplighter's center to `(x, y)`. Nothing else moves: the camera
+follows on the next render, and the aura and lanterns follow on the next tick.
+Applies on a run screen.
 
-{{#if (eq engine.slug "none")}}
-### `openChest()`
+{{#if (eq engine.slug "simple-2d")}}
+#### `setFacing(state, facing)`
 {{else}}
-### `openChest(state)`
+#### `setFacing(facing)`
 {{/if}}
 
-On `playing`, poses collecting a chest: the chest overlay opens with the same
-result collecting one produces, an evolution of the first eligible weapon in
-slot order, a level for a random held item below its maximum, or the heal, and
-`chestResult` reports which.
+Sets `facing` to `facing`, `"left"` or `"right"`. Applies on a run screen.
 
-{{#if (eq engine.slug "none")}}
-### `closeOverlay()`
+{{#if (eq engine.slug "simple-2d")}}
+#### `setHp(state, hp)`
 {{else}}
-### `closeOverlay(state)`
+#### `setHp(hp)`
 {{/if}}
 
-Poses `confirm` on an overlay. On `levelup` it accepts the highlighted offer,
-exactly as `choose(menuIndex)` does; on `chest` it closes the overlay and play
-resumes. On any other screen it leaves the state as it was.
+Sets `hp` to `hp`, a real number at most `maxHp`; a value above `maxHp` is
+invalid, and there is no lower bound. A value at or below `0` ends the run
+fallen at the end of the next `playing` tick, through the ending rule of
+`specs/world.md`. Applies on a run screen.
 
-{{#if (eq engine.slug "none")}}
-A typical scenario calls `reset` with a seed and `start`, `setAutoStep(false)`,
-`setAutoSpawn(false)` to keep the director out of the way, `spawnEnemy` and
-`grant` to pose the encounter wanted, `setInput` to walk, then `step` through
-it, reading positions, health, and kills from `snapshot()` as it goes.
+### Progression
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setLevel(state, level)`
 {{else}}
-A typical scenario applies `reset` with a seed and `start` through
-`engine.apply`, applies `setAutoSpawn(false)` to keep the director out of the
-way, `spawnEnemy` and `grant` to pose the encounter wanted, then steps the
-engine's own clock through it, reading positions, health, and kills from
-`debug.snapshot(engine.state)` as it goes.
+#### `setLevel(level)`
+{{/if}}
+
+Sets `level` to `level`, a whole number of at least `1`. `xp` is untouched.
+Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setXp(state, xp)`
+{{else}}
+#### `setXp(xp)`
+{{/if}}
+
+Sets `xp` to `xp`, a real number of at least `0`. No level-up is derived from
+it: a level-up comes from the next gain. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setKills(state, kills)`
+{{else}}
+#### `setKills(kills)`
+{{/if}}
+
+Sets `kills` to `kills`, a whole number of at least `0`. Applies on a run
+screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setPendingLevelUps(state, count)`
+{{else}}
+#### `setPendingLevelUps(count)`
+{{/if}}
+
+Sets `pendingLevelUps` to `count`, a whole number of at least `0`. A `playing`
+tick that ends with it above `0` opens the overlay exactly as a gain does.
+Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setNextOffers(state, ids)`
+{{else}}
+#### `setNextOffers(ids)`
+{{/if}}
+
+Sets `nextOffers` to `ids`, a list of `1` to `OFFER_COUNT` (`3`) distinct
+`OfferId`s; a length outside that range, a repeated id, or a string that is no
+`OfferId` is invalid. The list is checked against the candidate pool at the
+moment the next level-up overlay opens: it is accepted when every id is a
+candidate of the pool at that moment, or when it holds `LAMP_OIL_ID` alone
+while the pool is empty, and the overlay then presents exactly that list in
+that order. Otherwise it is discarded whole and the overlay draws at random. One
+overlay consumes it, and a later overlay draws at random again. Applies on a
+run screen and on `levelup`, where the next overlay is the queued one.
+
+### The loadout
+
+`slot` counts from `0`. `weapons` and `passives` stay contiguous: a placement
+in slot `weapons.length` appends, and a removal moves the slots after it up by
+one.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setWeapon(state, slot, id, level)`
+{{else}}
+#### `setWeapon(slot, id, level)`
+{{/if}}
+
+Puts weapon `id`, a `WeaponId`, at `level` in `slot`. `slot` is `0` to
+`weapons.length`, at most `WEAPON_SLOTS − 1`; `level` is `1` to
+`MAX_WEAPON_LEVEL` for a base weapon and `1` for an evolved one. Invalid: an
+`id` already held in another slot; a base weapon whose evolution is held in
+another slot; an evolved weapon whose base is held in another slot. When the
+slot's `id` changes its cooldown timer becomes `0`; when only the level changes
+the timer keeps counting. Nothing else changes: the aura of Halo or Corona and
+the lanterns of Chandelier appear on the next `playing` tick under the
+placement rule. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setWeaponCooldown(state, slot, seconds)`
+{{else}}
+#### `setWeaponCooldown(slot, seconds)`
+{{/if}}
+
+Sets the cooldown timer of the weapon in `slot`, a held slot, to `seconds`, at
+least `0`. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `removeWeapon(state, slot)`
+{{else}}
+#### `removeWeapon(slot)`
+{{/if}}
+
+Removes the weapon in `slot`, a held slot. Its aura or lantern set is removed
+on the next `playing` tick under the placement rule; the projectiles and other
+zones it produced stay. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setPassive(state, slot, id, level)`
+{{else}}
+#### `setPassive(slot, id, level)`
+{{/if}}
+
+Puts passive `id`, a `PassiveId`, at `level` in `slot`. `slot` is `0` to
+`passives.length`, at most `PASSIVE_SLOTS − 1`; `level` is `1` to the passive's
+`maxLevel` in `PASSIVES`. An `id` held in another slot is invalid. `hp` is
+untouched; `maxHp`, `armor`, `moveSpeed`, `pickupRadius`, and every multiplier
+follow from the next read. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `removePassive(state, slot)`
+{{else}}
+#### `removePassive(slot)`
+{{/if}}
+
+Removes the passive in `slot`, a held slot. `hp` is capped at the new `maxHp`
+on the next tick's recovery step. Applies on a run screen.
+
+### Enemies
+
+An `id` that names no live enemy is invalid for every operation below that
+takes one.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `spawnEnemy(state, type, x, y)`
+{{else}}
+#### `spawnEnemy(type, x, y)`
+{{/if}}
+
+Spawns one enemy of `type`, an `EnemyId`, centered at `(x, y)` through the real
+spawn path: its `maxHp` is scaled by the run clock exactly as a director spawn
+is, its `age` and `contactCooldown` are `0`, it takes the next id, and its
+heading is the one `specs/enemies.md` gives a spawn at that point, the unit
+vector toward the lamplighter's center, or the facing direction when the two
+coincide. Applies on `playing` and `paused`.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setEnemyPosition(state, id, x, y)`
+{{else}}
+#### `setEnemyPosition(id, x, y)`
+{{/if}}
+
+Moves enemy `id` to `(x, y)`; its heading, age, and health are untouched. A
+weaver's anchor follows from the new position. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setEnemyHp(state, id, hp)`
+{{else}}
+#### `setEnemyHp(id, hp)`
+{{/if}}
+
+Sets enemy `id`'s `hp` to `hp`, a real number above `0` and at most its
+`maxHp`; anything else is invalid, since death is decided by the tick. Applies
+on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setEnemyHeading(state, id, hx, hy)`
+{{else}}
+#### `setEnemyHeading(id, hx, hy)`
+{{/if}}
+
+Sets enemy `id`'s heading to the unit vector of `(hx, hy)`; a zero vector is
+invalid. A chaser or weaver recomputes its heading on its next move, so this
+poses a drifter. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setEnemyAge(state, id, seconds)`
+{{else}}
+#### `setEnemyAge(id, seconds)`
+{{/if}}
+
+Sets enemy `id`'s `age` to `seconds`, at least `0`. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setEnemyContactCooldown(state, id, seconds)`
+{{else}}
+#### `setEnemyContactCooldown(id, seconds)`
+{{/if}}
+
+Sets enemy `id`'s `contactCooldown` to `seconds`, at least `0`. Applies on a
+run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `removeEnemy(state, id)`
+{{else}}
+#### `removeEnemy(id)`
+{{/if}}
+
+Removes enemy `id`. Nothing drops, nothing counts as a kill, and no cue plays.
+Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `clearEnemies(state)`
+{{else}}
+#### `clearEnemies()`
+{{/if}}
+
+Removes every enemy, elites and the Dark included, the same way. Applies on a
+run screen.
+
+### Projectiles and zones
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `spawnProjectile(state, weapon, x, y, vx, vy, pierce)`
+{{else}}
+#### `spawnProjectile(weapon, x, y, vx, vy, pierce)`
+{{/if}}
+
+Adds one projectile of `weapon`, one of `ember`, `pin`, `shard`, `sconce`,
+`beacon`, and `hail`, centered at `(x, y)` with velocity `(vx, vy)` in units
+per second and `pierce` a whole number of at least `0` or `INFINITE_PIERCE`
+(`-1`). Its figures are the ones the weapon would give a projectile fired on
+this tick: `radius` is the weapon's table radius at the level held, or at level
+`1` (an evolved weapon's fixed row) when the weapon is not held, times the
+`areaMul` in force at the call; `damage` is that row's damage times the
+`damageMul` in force at the call; `ttl` is that row's duration; `hits` is
+empty. A `sconce` takes acceleration `−SCONCE_DECEL` along the unit vector of
+`(vx, vy)`, so a zero velocity is invalid for `sconce`; every other weapon
+takes `(0, 0)`. Its `weapon` decides its re-hit interval and the effect drawn
+over it. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `clearProjectiles(state)`
+{{else}}
+#### `clearProjectiles()`
+{{/if}}
+
+Removes every projectile. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `spawnPuddle(state, weapon, x, y)`
+{{else}}
+#### `spawnPuddle(weapon, x, y)`
+{{/if}}
+
+Adds one zone of kind `puddle` for `weapon`, one of `oil-splash` and `blaze`,
+centered at `(x, y)`: `radius` is the weapon's table radius at the level held,
+or at level `1` (Blaze's fixed row) when the weapon is not held, times the
+`areaMul` in force at the call; `damage` is that row's damage times the
+`damageMul` in force at the call; `ttl` is that row's duration; `hits` is
+empty. It pulses first on the next tick and every `OIL_PULSE` or `BLAZE_PULSE`
+after. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `clearZones(state)`
+{{else}}
+#### `clearZones()`
+{{/if}}
+
+Removes every zone, the aura and the lanterns included. An aura or a Chandelier
+lantern set whose weapon is still held is created again on the next `playing`
+tick under the placement rule. Applies on a run screen.
+
+Slashes, strikes, bursts, lanterns, and auras are never posed directly: each is
+created by holding its weapon through `setWeapon` and running the tick it fires
+on, and `setWeaponCooldown(slot, 0)` makes that the next tick.
+
+### Gems and pickups
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `spawnGem(state, tier, x, y)`
+{{else}}
+#### `spawnGem(tier, x, y)`
+{{/if}}
+
+Places one unattracted gem of `tier`, a `GemTier`, at `(x, y)` with the next
+id. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setGemAttracted(state, id, attracted)`
+{{else}}
+#### `setGemAttracted(id, attracted)`
+{{/if}}
+
+Sets gem `id`'s `attracted` to `attracted`, a boolean; an `id` that names no
+gem is invalid. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `clearGems(state)`
+{{else}}
+#### `clearGems()`
+{{/if}}
+
+Removes every gem; no experience is gained. Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `spawnPickup(state, kind, x, y)`
+{{else}}
+#### `spawnPickup(kind, x, y)`
+{{/if}}
+
+Places one pickup of `kind`, a `PickupKind`, at `(x, y)` with the next id.
+Applies on a run screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `clearPickups(state)`
+{{else}}
+#### `clearPickups()`
+{{/if}}
+
+Removes every pickup; nothing is collected. Applies on a run screen.
+{{#if (eq engine.slug "simple-2d")}}
 
 ## `WickDebugApi`
 
@@ -380,49 +720,193 @@ export interface WickDebugApi {
     options?: { readonly seed?: number },
   ): WickState;
   snapshot(state: DeepReadonly<WickState>): WickSnapshot;
-  start(state: DeepReadonly<WickState>): WickState;
-  setAutoSpawn(state: DeepReadonly<WickState>, enabled: boolean): WickState;
+  setScreen(state: DeepReadonly<WickState>, name: Screen): WickState;
+  choose(state: DeepReadonly<WickState>, index: number): WickState;
+  setSpawning(state: DeepReadonly<WickState>, on: boolean): WickState;
+  setEvents(state: DeepReadonly<WickState>, on: boolean): WickState;
+  setDespawning(state: DeepReadonly<WickState>, on: boolean): WickState;
+  setEnemyMotion(state: DeepReadonly<WickState>, on: boolean): WickState;
+  setEnemyContact(state: DeepReadonly<WickState>, on: boolean): WickState;
+  setWeaponFire(state: DeepReadonly<WickState>, on: boolean): WickState;
+  setEffectMotion(state: DeepReadonly<WickState>, on: boolean): WickState;
+  setTick(state: DeepReadonly<WickState>, tick: number): WickState;
+  setSpawnTimer(state: DeepReadonly<WickState>, seconds: number): WickState;
+  setPlayerPosition(
+    state: DeepReadonly<WickState>,
+    x: number,
+    y: number,
+  ): WickState;
+  setFacing(state: DeepReadonly<WickState>, facing: Facing): WickState;
+  setHp(state: DeepReadonly<WickState>, hp: number): WickState;
+  setLevel(state: DeepReadonly<WickState>, level: number): WickState;
+  setXp(state: DeepReadonly<WickState>, xp: number): WickState;
+  setKills(state: DeepReadonly<WickState>, kills: number): WickState;
+  setPendingLevelUps(state: DeepReadonly<WickState>, count: number): WickState;
+  setNextOffers(
+    state: DeepReadonly<WickState>,
+    ids: readonly OfferId[],
+  ): WickState;
+  setWeapon(
+    state: DeepReadonly<WickState>,
+    slot: number,
+    id: WeaponId,
+    level: number,
+  ): WickState;
+  setWeaponCooldown(
+    state: DeepReadonly<WickState>,
+    slot: number,
+    seconds: number,
+  ): WickState;
+  removeWeapon(state: DeepReadonly<WickState>, slot: number): WickState;
+  setPassive(
+    state: DeepReadonly<WickState>,
+    slot: number,
+    id: PassiveId,
+    level: number,
+  ): WickState;
+  removePassive(state: DeepReadonly<WickState>, slot: number): WickState;
   spawnEnemy(
     state: DeepReadonly<WickState>,
     type: EnemyId,
     x: number,
     y: number,
   ): WickState;
-  clearEnemies(state: DeepReadonly<WickState>): WickState;
-  spawnPickup(
+  setEnemyPosition(
     state: DeepReadonly<WickState>,
-    kind: GemTier | PickupKind,
+    id: number,
     x: number,
     y: number,
   ): WickState;
-  grant(state: DeepReadonly<WickState>, id: OfferId): WickState;
-  setOffers(
+  setEnemyHp(state: DeepReadonly<WickState>, id: number, hp: number): WickState;
+  setEnemyHeading(
     state: DeepReadonly<WickState>,
-    ids: readonly OfferId[],
+    id: number,
+    hx: number,
+    hy: number,
   ): WickState;
-  addXp(state: DeepReadonly<WickState>, amount: number): WickState;
-  choose(state: DeepReadonly<WickState>, index: number): WickState;
-  setPlayer(
+  setEnemyAge(
     state: DeepReadonly<WickState>,
-    patch: {
-      readonly x?: number;
-      readonly y?: number;
-      readonly hp?: number;
-      readonly facing?: Facing;
-    },
+    id: number,
+    seconds: number,
   ): WickState;
-  setTime(state: DeepReadonly<WickState>, seconds: number): WickState;
-  pause(state: DeepReadonly<WickState>): WickState;
-  resume(state: DeepReadonly<WickState>): WickState;
-  openChest(state: DeepReadonly<WickState>): WickState;
-  closeOverlay(state: DeepReadonly<WickState>): WickState;
+  setEnemyContactCooldown(
+    state: DeepReadonly<WickState>,
+    id: number,
+    seconds: number,
+  ): WickState;
+  removeEnemy(state: DeepReadonly<WickState>, id: number): WickState;
+  clearEnemies(state: DeepReadonly<WickState>): WickState;
+  spawnProjectile(
+    state: DeepReadonly<WickState>,
+    weapon: "ember" | "pin" | "shard" | "sconce" | "beacon" | "hail",
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    pierce: number,
+  ): WickState;
+  clearProjectiles(state: DeepReadonly<WickState>): WickState;
+  spawnPuddle(
+    state: DeepReadonly<WickState>,
+    weapon: "oil-splash" | "blaze",
+    x: number,
+    y: number,
+  ): WickState;
+  clearZones(state: DeepReadonly<WickState>): WickState;
+  spawnGem(
+    state: DeepReadonly<WickState>,
+    tier: GemTier,
+    x: number,
+    y: number,
+  ): WickState;
+  setGemAttracted(
+    state: DeepReadonly<WickState>,
+    id: number,
+    attracted: boolean,
+  ): WickState;
+  clearGems(state: DeepReadonly<WickState>): WickState;
+  spawnPickup(
+    state: DeepReadonly<WickState>,
+    kind: PickupKind,
+    x: number,
+    y: number,
+  ): WickState;
+  clearPickups(state: DeepReadonly<WickState>): WickState;
+}
+```
+{{else if (eq engine.slug "structured-2d")}}
+
+## `WickDebugApi`
+
+`src/game.ts` declares and exports the surface's type exactly as it stands
+here, so a caller written against it drives any build the same way.
+`WickSnapshot` is the type of the object under Snapshot shape below, declared
+by the build to match that shape field for field.
+
+```ts
+export interface WickDebugApi {
+  readonly version: number;
+  reset(options?: { readonly seed?: number }): void;
+  snapshot(): WickSnapshot;
+  setScreen(name: Screen): void;
+  choose(index: number): void;
+  setSpawning(on: boolean): void;
+  setEvents(on: boolean): void;
+  setDespawning(on: boolean): void;
+  setEnemyMotion(on: boolean): void;
+  setEnemyContact(on: boolean): void;
+  setWeaponFire(on: boolean): void;
+  setEffectMotion(on: boolean): void;
+  setTick(tick: number): void;
+  setSpawnTimer(seconds: number): void;
+  setPlayerPosition(x: number, y: number): void;
+  setFacing(facing: Facing): void;
+  setHp(hp: number): void;
+  setLevel(level: number): void;
+  setXp(xp: number): void;
+  setKills(kills: number): void;
+  setPendingLevelUps(count: number): void;
+  setNextOffers(ids: readonly OfferId[]): void;
+  setWeapon(slot: number, id: WeaponId, level: number): void;
+  setWeaponCooldown(slot: number, seconds: number): void;
+  removeWeapon(slot: number): void;
+  setPassive(slot: number, id: PassiveId, level: number): void;
+  removePassive(slot: number): void;
+  spawnEnemy(type: EnemyId, x: number, y: number): void;
+  setEnemyPosition(id: number, x: number, y: number): void;
+  setEnemyHp(id: number, hp: number): void;
+  setEnemyHeading(id: number, hx: number, hy: number): void;
+  setEnemyAge(id: number, seconds: number): void;
+  setEnemyContactCooldown(id: number, seconds: number): void;
+  removeEnemy(id: number): void;
+  clearEnemies(): void;
+  spawnProjectile(
+    weapon: "ember" | "pin" | "shard" | "sconce" | "beacon" | "hail",
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    pierce: number,
+  ): void;
+  clearProjectiles(): void;
+  spawnPuddle(weapon: "oil-splash" | "blaze", x: number, y: number): void;
+  clearZones(): void;
+  spawnGem(tier: GemTier, x: number, y: number): void;
+  setGemAttracted(id: number, attracted: boolean): void;
+  clearGems(): void;
+  spawnPickup(kind: PickupKind, x: number, y: number): void;
+  clearPickups(): void;
 }
 ```
 {{/if}}
 
 ## Snapshot shape
 
+{{#if (eq engine.slug "simple-2d")}}
 `snapshot` returns:
+{{else}}
+`snapshot()` returns:
+{{/if}}
 
 ```js
 {
@@ -430,6 +914,16 @@ export interface WickDebugApi {
   screen: "title" | "howto" | "playing" | "levelup"
         | "chest" | "paused" | "fallen" | "dawn",
   menuIndex: <number>,
+{{#if (eq engine.slug "none")}}
+  autoStep: <boolean>,             // whether the frame loop advances the simulation
+{{/if}}
+  spawning: <boolean>,             // the seven driver switches
+  events: <boolean>,
+  despawning: <boolean>,
+  enemyMotion: <boolean>,
+  enemyContact: <boolean>,
+  weaponFire: <boolean>,
+  effectMotion: <boolean>,
   run: {
     tick: <number>,
     time: <number>,                // tick / TICK_HZ, seconds
@@ -448,25 +942,25 @@ export interface WickDebugApi {
       { id, type, x, y, hp, maxHp, heading: { x, y }, age, contactCooldown },
     ],
     projectiles: [
-      { id, weapon, x, y, vx, vy, ax, ay, radius, ttl, pierce,
+      { id, weapon, x, y, vx, vy, ax, ay, radius, damage, ttl, pierce,
         hits: [{ enemy, cooldown }] },
     ],
     zones: [
-      { id, weapon, kind, x, y, radius, width?, height?, ttl,
+      { id, weapon, kind, x, y, radius, width?, height?, damage, ttl,
         hits: [{ enemy, cooldown }] },
     ],
     gems: [{ id, tier, x, y, attracted }],
     pickups: [{ id, kind, x, y }],
     offers: [<string>],            // the open level-up overlay's offers
-    nextOffers: [<string>] | null, // what setOffers queued
+    pool: [<string>],              // the candidate pool on levelup, else empty
+    nextOffers: [<string>] | null, // what setNextOffers queued
     pendingLevelUps: <number>,
     chestResult: { kind: "evolve", weapon }
       | { kind: "level", item, level }
       | { kind: "heal" }
       | null,
     spawnTimer: <number>,
-    spawnWindow: <number>,         // floor(time / SPAWN_WINDOW)
-    autoSpawn: <boolean>,
+    spawnWindow: <number>,         // min(19, floor(time / SPAWN_WINDOW))
     firedEvents: [<number>],       // run-clock seconds, ascending
     aliveCommons: <number>,
     nextId: <number>,
@@ -481,10 +975,20 @@ export interface WickDebugApi {
 The shape is fixed, and every field is present whatever the screen. `run`
 reports the idle run of `specs/state.md` on `title` and `howto`, and the run
 that just ended on `fallen` and `dawn`. `zones[].ttl` is `null` for a zone that
-never expires, and `width` and `height` appear on a slash alone. Every other
-field, `accumulator` included, is read straight off the game's state, so what
-the snapshot reports is what the game holds. Eight are derived rather than
-stored:
+never expires, and `width` and `height` appear on a slash alone. Every zone's
+`x`, `y` is its center; a strike's `radius` is its `area` and a burst's is its
+Flare `radius`. The seven switches sit beside `muted`, outside `run`, and a
+fresh run leaves them as they stand.
+{{#if (eq engine.slug "none")}}
+
+`autoStep` is `true` while the frame loop advances the simulation from the wall
+clock, which is how a build starts and how it is played, and `false` while
+`setAutoStep(false)` holds the simulation off it.
+{{/if}}
+
+Every other field, `accumulator` included, is read straight off the game's
+state, so what the snapshot reports is what the game holds. Nine are derived
+rather than stored:
 
 | Field | Derived from |
 | --- | --- |
@@ -496,35 +1000,54 @@ stored:
 | `pickupRadius` | `PICKUP_RADIUS` (`48`) `× (1 + LURE_PICKUP_PER_LEVEL` (`0.25`) `×` the Lure level held`)` |
 | `spawnWindow` | `min(19, floor(time / SPAWN_WINDOW))`, with `SPAWN_WINDOW` (`30`) |
 | `aliveCommons` | how many of `enemies` have `rank` `common` in `ENEMIES` and are not `gnat`, the count `specs/enemies.md` holds against the cap |
+| `pool` | on `levelup`, the candidate pool of `specs/progression.md` computed from the slots as they stand, each id once, in `BASE_WEAPON_IDS` order then `PASSIVE_IDS` order, so `offers` is a subset of it except for the lamp-oil offer over an empty pool; on every other screen an empty list |
 
-A passive not held counts as level `0` in every formula above. Two fields need
-the game to keep them honest every frame:
+A passive not held counts as level `0` in every formula above. `damage` on a
+projectile or zone is the damage per hit the shape carries: fixed when the
+shape was created for every shape but the aura and the Chandelier lanterns,
+whose `damage` is recomputed on every tick with their radius, as
+`specs/weapons.md` states. Two fields need the game to keep them honest every
+frame:
 
-- `muted` mirrors the runtime's mute bit, refreshed in every update, since the
+- `muted` mirrors the runtime's mute bit, refreshed in every frame, since the
   runtime owns muting and this is the game's readable copy of it.
-- `simTime` accumulates the delta time of every update, whatever the screen.
+- `simTime` rises by the delta time of every frame, whatever the screen.
 
 ## Diagnostics
 
+{{#if (eq engine.slug "none")}}
 The runtime's debug overlay shows the values the game registers with it as
-diagnostic sources. Register at least the current `screen`, the run clock, the
-level with `xp` over `xpToNext`, `hp` over `maxHp`, the kill count, the
-lamplighter's position and facing, the enemy count with the spawn window
-index, the projectile and zone counts, the gem count, the held weapons with
-their levels and cooldowns, the held passives with their levels, `autoSpawn`,
-and `pendingLevelUps`, the same facts the snapshot reports. Keep each one short
-enough to read on a line, and keep every source a pure read, so watching the
-overlay leaves the game as it is.
+diagnostic sources.
+{{else}}
+The engine's debug overlay shows the values the game registers with it as
+diagnostic sources.
+{{/if}}
+Register at least the current `screen`, the run clock, the level with `xp` over
+`xpToNext`, `hp` over `maxHp`, the kill count, the lamplighter's position and
+facing, the enemy count with the spawn window index, the projectile and zone
+counts, the gem count, the held weapons with their levels and cooldowns, the
+held passives with their levels, `pendingLevelUps`, and the seven driver
+switches, the same facts the snapshot reports. Keep each one short enough to
+read on a line, and keep every source a pure read, so watching the overlay
+leaves the game as it is.
 
 {{#if (eq engine.slug "none")}}
 The overlay is part of the runtime layer you write. It draws the registered
-sources, it is shown and hidden by the backtick key (`KeyboardEvent.code`
-`Backquote`), and it reads the game without changing it.
-{{else}}
+sources, the backtick key (`KeyboardEvent.code` `Backquote`) shows and hides
+it, it is off when the game starts, and it reads the game without changing it.
+It is a diagnostic layer rather than part of the game's presentation, so keep
+it visually plain and clearly separate from the HUD.
+{{else if (eq engine.slug "simple-2d")}}
 Registering those values is the whole of Wick's part, through
 `InitApi.diagnostics`. Each source is called with the state current at the
-read, as `DeepReadonly<WickState>`, and reads off that argument: a source that
-closed over the state `initialize` built would report the title screen forever,
-because every frame leaves a new value behind. Drawing the panel, toggling it,
+read, as `DeepReadonly<WickState>`, and reads off that argument. Drawing the
+panel, toggling it with the backtick key (`KeyboardEvent.code` `Backquote`),
 and keeping it read-only are the engine's.
+{{else}}
+Registering those values is the whole of Wick's part, through
+`world.diagnostics` in the game mode's `beginPlay`. Each source is a function
+of no arguments, called at each read; read the live state at the call, through
+the world the mode holds, so the panel reports the frame being drawn. Drawing
+the panel, toggling it with the backtick key (`KeyboardEvent.code`
+`Backquote`), and keeping it read-only are the engine's.
 {{/if}}
