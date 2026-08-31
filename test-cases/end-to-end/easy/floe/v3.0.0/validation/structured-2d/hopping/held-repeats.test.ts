@@ -1,27 +1,75 @@
-// Floe — hopping/held-repeats: SCAFFOLD STUB, NOT A VALIDATOR.
+// hopping/held-repeats — a held direction auto-repeats at the cooldown.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `hopping.held-repeats` review item, written
-// against the `structured-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/hopping.md (The cadence): "A direction held across the cooldown hops
+// again the moment the cooldown reaches `0`, so holding a direction
+// auto-repeats at `HOP_COOLDOWN`" (`0.12` s), and specs/controls.md reads the
+// four movement actions as HELD on the playing screen. A direction held for one
+// second of game time therefore hops the whole cooldowns that second covers,
+// plus the one at the start that no cooldown precedes.
 //
-// The item this file decides, from test-case.toml:
-//
-//   A held direction auto-repeats at the cooldown
-//
-//   Holding a direction for one second of game time moves the critter floor(1
-//   / HOP_COOLDOWN) + 1 (9) tiles, within one.
-//
-// Its declared media: replay `hop`.
+// The hold runs ALONG the near shore rather than up the strait. The near shore
+// is solid across its whole width (specs/strait.md), so nine hops in a row are
+// nine accepted hops; nine hops UP from row 19 would climb into the water band,
+// where the count would stop being a reading about the cadence and start being
+// one about drowning. `startCrossing` leaves the strait empty and quiet, so the
+// only thing moving the critter over that second is the key that is down.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { HOP_COOLDOWN, ROW_NEAR, START_COL } from "../../src/constants";
+import { assertBetween, assertEqual } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  critterTile,
+  holdActionFor,
+  startCrossing,
+  ticksFor,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The window the direction is held for, in seconds of game time. */
+const HOLD_SECONDS = 1;
 
-it("hopping/held-repeats has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/**
+ * Hops that window must produce: the whole cooldowns it covers,
+ * `floor(1 / HOP_COOLDOWN)` (`8`), plus the opening hop, which is taken on the
+ * first held frame with no cooldown to wait out — `9`.
+ */
+const EXPECTED_HOPS = Math.floor(HOLD_SECONDS / HOP_COOLDOWN) + 1;
+
+/**
+ * The tolerance, in hops: one. `HOP_COOLDOWN` is `14.4` ticks, which no whole
+ * number of simulation ticks lands on, so where the last repeat of the window
+ * falls depends on which side of a tick boundary a conformant build rounds to —
+ * a difference of one hop in nine, and nothing the specification fixes.
+ */
+const HOP_TOLERANCE = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("hops about nine tiles for a direction held one second", async () => {
+  startCrossing(h);
+  const start = critterTile(h.snapshot());
+  assertEqual(start.col, START_COL, "the column a fresh crossing starts on");
+
+  const after = await captureReplay(h, "hop", async () => {
+    await holdActionFor(h, "left", ticksFor(HOLD_SECONDS));
+    return h.snapshot();
+  });
+
+  assertEqual(after.critter.row, ROW_NEAR, "the row a held LEFT ends on");
+  assertBetween(
+    start.col - after.critter.col,
+    EXPECTED_HOPS - HOP_TOLERANCE,
+    EXPECTED_HOPS + HOP_TOLERANCE,
+    "hops taken in one second of a held direction",
+  );
 });

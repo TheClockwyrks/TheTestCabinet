@@ -1,27 +1,94 @@
-// Floe — hopping/refuse-far-shore: SCAFFOLD STUB, NOT A VALIDATOR.
+// hopping/refuse-far-shore — the solid far shore refuses a hop, and costs
+// nothing.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `hopping.refuse-far-shore` review item, written
-// against the `structured-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/hopping.md (Refused hops): a hop is refused when its target tile "is on
+// row `1` at a column no bay covers", and "a refused hop leaves everything as it
+// was ... no life is lost". specs/strait.md fixes the bay row as five two-column
+// bays — `(3,4)`, `(11,12)`, `(19,20)`, `(27,28)`, `(35,36)` — and "every column
+// of row `1` outside those ten is solid far shore".
 //
-// The item this file decides, from test-case.toml:
+// The critter is posed on the top water row at column `SOLID_COL`, which lies
+// between bay `0` and bay `1` and so is covered by no bay at any moment, and
+// hops up. That is the only rule under test: the bays are all OPEN
+// (`startCrossing` clears them), so a build that refuses on the strength of a
+// FILLED bay — the neighbouring item — cannot pass here by accident, and one
+// that treats the whole of row `1` as bays lets the critter onto solid shore.
 //
-//   A hop into the solid far shore is refused
-//
-//   A hop up from row 2 at a column outside every bay pair leaves the critter
-//   on row 2 and costs no life.
-//
-// Its declared media: replay `refuse`.
+// The water row it stands on carries a raft held still, because a bare water
+// tile drowns the critter (specs/water.md) and this item is about what the hop
+// does, not about what the water does. The reading is taken again a settling
+// window later: a refusal costs no life, and a build that lets the critter into
+// the shore and then kills it is exactly what that second reading catches.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { START_LIVES, WATER_TOP } from "../../src/constants";
+import { assertEqual, assertTrue } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  hop,
+  poseLane,
+  startCrossing,
+  ticksFor,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/**
+ * A column of the bay row no bay covers: `8` falls between bay `0` (`3`, `4`)
+ * and bay `1` (`11`, `12`), so the tile above it is solid far shore
+ * (specs/strait.md).
+ */
+const SOLID_COL = 8;
 
-it("hopping/refuse-far-shore has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** The raft's left edge, so its three tiles cover `7`, `8` and `9`. */
+const RAFT_COL = SOLID_COL - 1;
+
+/** Frames watched after the refused press: half a second of game time. */
+const SETTLE_FRAMES = ticksFor(0.5);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("refuses a hop up into the solid far shore and costs no life", async () => {
+  startCrossing(h);
+  poseLane(h, WATER_TOP, "raft3", [RAFT_COL]);
+  h.debug.setCritterTile(SOLID_COL, WATER_TOP);
+
+  const after = await captureReplay(h, "refuse", async () => {
+    await hop(h, "up");
+    await h.advance(SETTLE_FRAMES);
+    return h.snapshot();
+  });
+
+  assertEqual(
+    after.critter.row,
+    WATER_TOP,
+    `the row after a hop up at column ${SOLID_COL}`,
+  );
+  assertEqual(
+    after.critter.col,
+    SOLID_COL,
+    `the column after a hop up at column ${SOLID_COL}`,
+  );
+  assertEqual(
+    after.lives,
+    START_LIVES,
+    `lives after a hop up at column ${SOLID_COL}`,
+  );
+  assertEqual(
+    after.phase,
+    "crossing",
+    `the phase after a hop up at column ${SOLID_COL}`,
+  );
+  assertTrue(
+    after.critter.present,
+    "the critter still in play after a refused hop",
+  );
 });

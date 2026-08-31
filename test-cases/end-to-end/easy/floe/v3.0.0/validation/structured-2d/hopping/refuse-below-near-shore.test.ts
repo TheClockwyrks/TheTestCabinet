@@ -1,26 +1,74 @@
-// Floe — hopping/refuse-below-near-shore: SCAFFOLD STUB, NOT A VALIDATOR.
+// hopping/refuse-below-near-shore — a hop off the bottom is refused, and free.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `hopping.refuse-below-near-shore` review item, written
-// against the `structured-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/hopping.md (Refused hops): a hop is refused when its target tile "is
+// outside the grid: `inBounds(col, row)` is false", and "a refused hop leaves
+// everything as it was ... no life is lost". specs/strait.md fixes `inBounds` as
+// `0 <= r < 20` and the near shore as row `ROW_NEAR` (`19`), the bottom row of
+// the strait, so a hop DOWN from it targets row `20`, which is off the strait.
 //
-// The item this file decides, from test-case.toml:
-//
-//   A hop below the near shore is refused
-//
-//   A hop down from row 19 leaves the critter on row 19 and costs no life.
-//
-// Its declared media: replay `refuse`.
+// The near shore is where every crossing begins, so this is the edge a player
+// meets first and the one a build is likeliest to leave open: the strait's other
+// three edges are reached only by going out of the way. It is a refusal and not
+// a death — a build that walks the critter off the bottom and drowns it there
+// costs a life the specification does not — so the reading is taken again a
+// settling window later, on an empty strait with every world gate shut.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { ROW_NEAR, START_COL, START_LIVES } from "../../src/constants";
+import { assertEqual, assertTrue } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  hop,
+  startCrossing,
+  ticksFor,
+  type Harness,
+} from "../harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** Frames watched after the refused press: half a second of game time. */
+const SETTLE_FRAMES = ticksFor(0.5);
 
-it("hopping/refuse-below-near-shore has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("refuses a hop down from the near shore and costs no life", async () => {
+  startCrossing(h);
+
+  const after = await captureReplay(h, "refuse", async () => {
+    await hop(h, "down");
+    await h.advance(SETTLE_FRAMES);
+    return h.snapshot();
+  });
+
+  assertEqual(
+    after.critter.row,
+    ROW_NEAR,
+    "the row after a hop down from the near shore",
+  );
+  assertEqual(
+    after.critter.col,
+    START_COL,
+    "the column after a hop down from the near shore",
+  );
+  assertEqual(
+    after.lives,
+    START_LIVES,
+    "lives after a hop down from the near shore",
+  );
+  assertEqual(
+    after.phase,
+    "crossing",
+    "the phase after a hop down from the near shore",
+  );
+  assertTrue(
+    after.critter.present,
+    "the critter still in play after a refused hop",
+  );
 });
