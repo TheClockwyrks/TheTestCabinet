@@ -1,27 +1,81 @@
-// Floe — ice/lane-lengths: SCAFFOLD STUB, NOT A VALIDATOR.
+// Floe — ice/lane-lengths: each vehicle kind spans the number of tiles its own
+// row of the vehicle table gives it.
 //
-// The Validators stage of the Floe v3.0.0 rework replaces this file with the
-// real suite for the `ice.lane-lengths` review item, written
-// against the `structured-2d` engine. Until then it FAILS, deliberately and loudly: a
-// stub that passed would score the item a point the build never earned, and a
-// stub the Validators stage forgot would be indistinguishable from a passing
-// check.
+// specs/ice.md: a `plow` is `3` tiles, a `dogsled` `2` and a `car` `2`, and
+// `ITEM_LEN` "names the length in tiles of every lane item". The length is not
+// decoration: the covering rule is written on it — an item occupies
+// `[x, x + TILE * len)` — so every refusal, every crush and every gap in this
+// group is measured against the span this check decides.
 //
-// The item this file decides, from test-case.toml:
-//
-//   Each vehicle spans its stated tiles
-//
-//   A plow reports len 3, a dogsled 2 and a car 2, on every lane that carries
-//   one.
-//
-// Its declared media: image `scene`.
+// It reads every vehicle on a freshly laid-out level rather than one of each
+// kind, so a build that got a plow right in one lane and wrong in another fails
+// with the row named. The three kinds are each required to appear, because the
+// table puts all three on the eight lanes and a reading that saw only cars would
+// have graded a third of the requirement.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertContains,
+  assertEqual,
+  assertGreaterThanOrEqual,
+} from "../assert";
+import { ICE_LANES, ITEM_LEN } from "../../src/constants";
+import {
+  captureStill,
+  createHarness,
+  type Harness,
+  type VehicleKind,
+} from "../harness";
+import { layOutLevel } from "./harness";
 
-const NOT_WRITTEN =
-  "Floe: this validator is a scaffold stub and has not been implemented. " +
-  "It fails by design; the Validators stage replaces it.";
+/** The level laid out. The kinds' lengths are the same at every level. */
+const LEVEL = 1;
 
-it("ice/lane-lengths has not been written yet", () => {
-  throw new Error(NOT_WRITTEN);
+/** The three kinds the ice band carries (specs/ice.md). */
+const VEHICLE_KINDS: readonly VehicleKind[] = ["plow", "dogsled", "car"];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("spans a plow over 3 tiles and a dogsled and a car over 2, on every lane", async () => {
+  const laid = await layOutLevel(h, LEVEL);
+  captureStill(h, "scene");
+
+  assertGreaterThanOrEqual(
+    laid.vehicles.length,
+    ICE_LANES.length,
+    "the eight ice lanes carry vehicles at all (specs/ice.md)",
+  );
+
+  for (const vehicle of laid.vehicles) {
+    assertContains(
+      VEHICLE_KINDS,
+      vehicle.kind,
+      `row ${vehicle.row} at x ${vehicle.x}: the ice band carries only plows, ` +
+        `dogsleds and cars (specs/ice.md)`,
+    );
+    assertEqual(
+      vehicle.len,
+      ITEM_LEN[vehicle.kind],
+      `row ${vehicle.row}, ${vehicle.kind} at x ${vehicle.x}: len in tiles`,
+    );
+  }
+
+  // All three kinds are on the table, so all three are on the strait: a level
+  // that laid down only one kind would otherwise have graded only that one.
+  const drawn = new Set(laid.vehicles.map((vehicle) => vehicle.kind));
+  for (const kind of VEHICLE_KINDS) {
+    assertContains(
+      [...drawn],
+      kind,
+      `the lane table puts a ${kind} on the ice band (specs/ice.md)`,
+    );
+  }
 });
