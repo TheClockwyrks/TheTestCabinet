@@ -1,0 +1,74 @@
+// Wick — one tick of the world (specs/world.md "One tick").
+//
+// The twelve phases in order, each reading the state the phases before it
+// left. A tick runs on `playing` alone; a tick that opens an overlay or ends
+// the run leaves `state.screen` on the screen it opened.
+
+import { CUES, PUFF_TIME, TICK_HZ, type Cue } from "../constants";
+import type { Rng } from "../rng";
+import type { WickState } from "../state";
+import type { Held, TickContext } from "./context";
+import { attractAndCollectGems, collectPickups } from "./drops";
+import {
+  expireEffects,
+  moveEffects,
+  resolveDeaths,
+  resolveHits,
+} from "./effects";
+import { ageAndMoveEnemies, runDirector } from "./enemies";
+import { contact, endings, moveLamplighter, recover } from "./lamplighter";
+import { openLevelUp } from "./progression";
+import { fireWeapons, placePermanents } from "./weapons";
+
+/** Puffs are pictures; one is gone after `PUFF_TIME`. */
+function prunePuffs(ctx: TickContext): void {
+  const { run } = ctx;
+  run.puffs = run.puffs.filter(
+    (puff) => (run.tick - puff.bornTick) / TICK_HZ < PUFF_TIME,
+  );
+}
+
+/**
+ * Run one tick over `state`, with the movement actions as `held`. Every cue
+ * the tick raises lands in `cues`, each at most once.
+ */
+export function tick(
+  state: WickState,
+  rng: Rng,
+  held: Held,
+  cues: Set<Cue>,
+): void {
+  const ctx: TickContext = {
+    state,
+    run: state.run,
+    rng,
+    held,
+    cues,
+    chestCollected: false,
+  };
+  const { run } = ctx;
+
+  run.tick += 1;
+  prunePuffs(ctx);
+  moveLamplighter(ctx);
+  recover(ctx);
+  ageAndMoveEnemies(ctx);
+  if (state.switches.weaponFire) fireWeapons(ctx);
+  placePermanents(ctx);
+  expireEffects(ctx);
+  if (state.switches.effectMotion) moveEffects(ctx);
+  resolveHits(ctx);
+  resolveDeaths(ctx);
+  contact(ctx);
+  collectPickups(ctx);
+  attractAndCollectGems(ctx);
+  runDirector(ctx);
+  if (endings(ctx)) return;
+  if (ctx.chestCollected) {
+    state.screen = "chest";
+    state.menuIndex = 0;
+    cues.add(CUES.chest);
+  } else if (run.pendingLevelUps > 0) {
+    openLevelUp(state, rng, cues);
+  }
+}
