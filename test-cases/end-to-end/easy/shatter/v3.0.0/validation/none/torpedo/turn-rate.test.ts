@@ -28,8 +28,20 @@
 // torus: a body more than `360` units down the field is nearer the other way, so its
 // bearing points backward and no conformant build acquires it (see `scene.ts`).
 //
+// THE WINDOW OPENS ONE TICK AFTER THE POSE, which is the same tick-order
+// ambiguity `launches-from-the-nose` reasons about from the other end.
+// specs/simulation.md fixes the order of work inside a tick but does not say where
+// in one a torpedo just put on the field first runs its guidance, so a conformant
+// build may steer on the very next tick or on the one after. Reading from the pose
+// itself would charge the second build a tick it never steered through — six ticks
+// of turning spread over seven, `133` degrees per second, a fifth low — and fail it
+// for a choice the specification leaves open. Opening the window a tick later reads
+// `160` under both conventions and costs nothing: the turn the target demands is
+// still larger than one tick of the ceiling at the far end of the window either
+// way.
+//
 // specs/gravity.md never pulls a torpedo at all, and the rock it is coming round
-// onto moves by a tenth of a unit over the six ticks the rate is read from.
+// onto moves by a tenth of a unit over the ticks the rate is read from.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual, fail } from "../assert";
@@ -51,6 +63,15 @@ const OFF_AXIS_DEG = 12;
 
 /** How far ahead it is posed, in units: within the field's half-height either way. */
 const RANGE = 350;
+
+/**
+ * The tick the reading window opens on, counted from the pose.
+ *
+ * One rather than zero: which tick a posed torpedo first steers on is left open by
+ * specs/simulation.md, so the window skips that tick and reads only ticks every
+ * conformant build is guiding through (see above).
+ */
+const READ_FROM = 1;
 
 /** How many ticks the rate is read over: all of them rate-limited (see above). */
 const READ_TICKS = 6;
@@ -95,23 +116,27 @@ it("turns 160 degrees per second onto a target 12 degrees off its heading", asyn
     return flown;
   });
 
-  if (flight.ticks < READ_TICKS) {
+  if (flight.ticks < READ_FROM + READ_TICKS) {
     fail(
-      `a torpedo still in flight ${READ_TICKS} ticks into its turn onto a rock ` +
-        `${RANGE} units ahead (specs/weapons.md)`,
+      `a torpedo still in flight ${READ_FROM + READ_TICKS} ticks into its turn ` +
+        `onto a rock ${RANGE} units ahead (specs/weapons.md)`,
       `it left the roster after ${flight.ticks} ticks`,
     );
   }
 
-  const swept = angleDelta(flight.headings[0], flight.headings[READ_TICKS]);
+  const swept = angleDelta(
+    flight.headings[READ_FROM],
+    flight.headings[READ_FROM + READ_TICKS],
+  );
   const rate = swept / DEG / (READ_TICKS * TICK_DT);
   assertLessThanOrEqual(
     Math.abs(rate - TORPEDO_TURN_DEG),
     TOLERANCE,
-    `the degrees per second the torpedo's heading turned over the first ` +
+    `the degrees per second the torpedo's heading turned over ` +
       `${READ_TICKS} ticks of coming round onto a rock ${OFF_AXIS_DEG} degrees ` +
-      `off it — while the turn it demands is still larger than one tick of the ` +
-      `ceiling — against the TORPEDO_TURN (${TORPEDO_TURN_DEG} degrees per ` +
+      `off it, the window opening ${READ_FROM} tick after the pose — while the ` +
+      `turn it demands is still larger than one tick of the ceiling — against ` +
+      `the TORPEDO_TURN (${TORPEDO_TURN_DEG} degrees per ` +
       `second) specs/weapons.md fixes; it read ${rate.toFixed(2)}, having swept ` +
       `${(swept / DEG).toFixed(3)} degrees`,
   );
