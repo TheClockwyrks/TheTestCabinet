@@ -71,6 +71,25 @@
       state.sounds += 1;
     }
 
+    // A looping bed, started well after the tick that asked for it — the way a
+    // build whose bed waits on a decoded file starts its own. Nothing can observe
+    // it on that tick, which is what a wait for it has to survive. The delay is
+    // long enough that no single crossing into this page can cover it, and short
+    // enough that a wait stepping one tick per crossing finds it easily.
+    const BED_DELAY_MS = 100;
+    let bedSource = null;
+    function bed() {
+      audio ??= new (window.AudioContext || window.webkitAudioContext)();
+      setTimeout(() => {
+        const source = audio.createBufferSource();
+        source.buffer = audio.createBuffer(1, 128, audio.sampleRate);
+        source.loop = true;
+        source.connect(audio.destination);
+        source.start();
+        bedSource = source;
+      }, BED_DELAY_MS);
+    }
+
     function fit() {
       const dpr = window.devicePixelRatio;
       canvas.width = Math.round(window.innerWidth * dpr);
@@ -147,6 +166,8 @@
         state.clicks = 0;
         state.seed = options?.seed ?? null;
         held.clear();
+        bedSource?.stop();
+        bedSource = null;
         draw();
       },
       advance(count) {
@@ -157,6 +178,7 @@
         draw();
       },
       blip,
+      bed,
       snapshot() {
         return {
           screen: state.screen,

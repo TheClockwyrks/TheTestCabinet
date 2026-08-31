@@ -52,15 +52,16 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  IDENTITY,
-  apply,
-  callsTo,
   createCaseHarness,
-  numbers,
-  transformed,
-  type DrawCall,
+  darkestOf,
+  mouseGlide,
+  mousePress,
+  mouseRelease,
+  rectCenter,
+  rectsOverlap,
   type Harness as BaseHarness,
-  type Matrix,
+  type Point,
+  type Rgb,
   type UntilResult as BaseUntilResult,
 } from "./case-harness/index";
 import { fail } from "./assert";
@@ -114,7 +115,12 @@ export const REFRACT_DEBUG_VERSION = 2;
 
 /** The screens the game can be on. */
 export type Screen =
-  "title" | "howto" | "select" | "playing" | "solved" | "complete";
+  | "title"
+  | "howto"
+  | "select"
+  | "playing"
+  | "solved"
+  | "complete";
 
 /** The two ways to play. */
 export type Mode = "campaign" | "cascade";
@@ -296,143 +302,26 @@ export type {
 
 export {
   ConstantClock,
-  DRAW_METHODS,
   callsTo,
   closeWorkerBrowser,
-  drawOps,
+  colorDistance,
+  drawnText,
+  drewText,
+  mouseGlide,
+  mousePress,
+  mouseRelease,
   retable,
+  sampleColor,
   setsOf,
+  textDraws,
   thinReplay,
 } from "./case-harness/index";
 
-/* -------------------------------------------------------------------------- */
-/* Reading one frame's render                                                 */
-/* -------------------------------------------------------------------------- */
-
-/** Every string the frame drew, through `fillText` or `strokeText`. */
-export function drawnText(calls: readonly DrawCall[]): string[] {
-  return [
-    ...callsTo(calls, "fillText"),
-    ...callsTo(calls, "strokeText"),
-  ].flatMap((args) => (typeof args[0] === "string" ? [args[0]] : []));
-}
-
-/**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
-}
-
-/** One run of text a frame drew, and where it drew it in canvas pixels. */
-export interface TextDraw {
-  text: string;
-  /** The anchor the run was drawn at, mapped through the transform in force. */
-  x: number;
-  y: number;
-}
-
-/**
- * Every run of text the frame drew, with its anchor in canvas pixels.
- *
- * A build is free to draw under a transform — to translate to a HUD corner and
- * draw at the origin, say — so the position a `fillText` names is only where the
- * text landed once the transform in force at that call is applied. This walks
- * the frame's operations and carries that transform: `save`/`restore`,
- * `translate`, `scale`, `rotate`, `transform`, `setTransform` and
- * `resetTransform`. At the harness's default shape the canvas is the stage at
- * one pixel per unit, so the result is in logical units as well.
- */
-export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
-  const draws: TextDraw[] = [];
-  const stack: Matrix[] = [];
-  let current: Matrix = IDENTITY;
-  for (const call of calls) {
-    if (call.kind !== "call") continue;
-    const { method, args } = call;
-    if (method === "save") {
-      stack.push(current);
-      continue;
-    }
-    if (method === "restore") {
-      current = stack.pop() ?? IDENTITY;
-      continue;
-    }
-    const moved = transformed(current, method, args);
-    if (moved !== null) {
-      current = moved;
-      continue;
-    }
-    if (method !== "fillText" && method !== "strokeText") continue;
-    const [text] = args;
-    const at = numbers(args.slice(1), 2);
-    if (typeof text !== "string" || at === null) continue;
-    draws.push({ text, ...apply(current, at[0], at[1]) });
-  }
-  return draws;
-}
+export type { Rgb, TextDraw } from "./case-harness/index";
 
 /* -------------------------------------------------------------------------- */
 /* Colour sampling                                                            */
 /* -------------------------------------------------------------------------- */
-
-/** A colour read off the canvas. */
-export interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
-
-/** The five offsets a colour sample is averaged over, in logical px. */
-const SAMPLE_OFFSETS: readonly (readonly [number, number])[] = [
-  [0, 0],
-  [4, 0],
-  [-4, 0],
-  [0, 4],
-  [0, -4],
-];
-
-/**
- * The rendered colour at a logical point, averaged over a small cluster.
- *
- * The centre pixel plus four neighbours 4 px out, all comfortably inside
- * `NODE_R` when the point is a cell center, so one stray anti-aliased or glow
- * pixel cannot swing the reading.
- */
-export async function sampleColor(
-  h: Harness,
-  x: number,
-  y: number,
-): Promise<Rgb> {
-  const read = await h.pixels(
-    SAMPLE_OFFSETS.map(([dx, dy]) => ({ x: x + dx, y: y + dy })),
-  );
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (const [pr, pg, pb] of read) {
-    r += pr;
-    g += pg;
-    b += pb;
-  }
-  return { r: r / read.length, g: g / read.length, b: b / read.length };
-}
-
-/** Euclidean distance between two colours, 0 to about 441. */
-export function colorDistance(a: Rgb, b: Rgb): number {
-  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
-}
-
-/** A colour's luminance, the reading the bench is darkest on. */
-function luminance(c: Rgb): number {
-  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-}
 
 /**
  * Candidate patches of bare bench, in logical units, clear of the largest
@@ -456,15 +345,13 @@ export const BENCH_POINTS: readonly { x: number; y: number }[] = [
 /**
  * The bare bench's colour: the darkest of the {@link BENCH_POINTS} patches,
  * sampled off the canvas as it stands.
+ *
+ * The shared reading's default sample radius is what this case wants: 4 logical
+ * units out, comfortably inside `NODE_R` (30) when the point is a cell center,
+ * so one stray anti-aliased or glow pixel cannot swing it.
  */
-export async function sampleBench(h: Harness): Promise<Rgb> {
-  const samples: Rgb[] = [];
-  for (const point of BENCH_POINTS) {
-    samples.push(await sampleColor(h, point.x, point.y));
-  }
-  return samples.reduce((darkest, sample) =>
-    luminance(sample) < luminance(darkest) ? sample : darkest,
-  );
+export function sampleBench(h: Harness): Promise<Rgb> {
+  return darkestOf(h, BENCH_POINTS);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -608,35 +495,6 @@ export async function drawBeams(h: Harness, beams: Beams): Promise<void> {
 // above all — drives Chromium's real mouse instead, one frame per sample, and
 // reads the cue off the frame that consumed it. The mapping from stage units to
 // CSS pixels is the harness's own fit, the identity at the default shape.
-
-/** Press the real mouse at a logical stage point, and run the frame that reads it. */
-export async function mousePress(
-  h: Harness,
-  x: number,
-  y: number,
-): Promise<void> {
-  const at = h.css(x, y);
-  await h.page.mouse.move(at.x, at.y);
-  await h.page.mouse.down();
-  await h.advance(1);
-}
-
-/** Move the held mouse to a logical stage point, and run the frame that reads it. */
-export async function mouseGlide(
-  h: Harness,
-  x: number,
-  y: number,
-): Promise<void> {
-  const at = h.css(x, y);
-  await h.page.mouse.move(at.x, at.y);
-  await h.advance(1);
-}
-
-/** Release the real mouse, and run the frame that reads it. */
-export async function mouseRelease(h: Harness): Promise<void> {
-  await h.page.mouse.up();
-  await h.advance(1);
-}
 
 /**
  * Draw a route with the REAL mouse: a press at the first cell's center, a move
@@ -869,19 +727,20 @@ export function targetById(
   return found;
 }
 
-/** The middle of a target, which is where every pointer check aims. */
-export function targetCenter(target: TargetSnapshot): {
-  x: number;
-  y: number;
-} {
-  return { x: target.x + target.w / 2, y: target.y + target.h / 2 };
+/**
+ * The middle of a target, which is where every pointer check aims.
+ *
+ * A {@link TargetSnapshot} IS a rectangle in the shared readings' sense — it
+ * carries `x`, `y`, `w` and `h` beside what else it reports — so this and
+ * {@link targetsOverlap} name the shared geometry rather than restating it.
+ */
+export function targetCenter(target: TargetSnapshot): Point {
+  return rectCenter(target);
 }
 
 /** Whether two target rectangles share any area. */
 export function targetsOverlap(a: TargetSnapshot, b: TargetSnapshot): boolean {
-  return (
-    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
-  );
+  return rectsOverlap(a, b);
 }
 
 /**

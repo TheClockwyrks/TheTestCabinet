@@ -66,6 +66,8 @@ export interface FixtureDebug {
   reset(options?: { seed: number }): Promise<void>;
   startPlaying(): Promise<void>;
   blip(): Promise<void>;
+  /** Ask for the looping bed, which starts a turn of the event loop later. */
+  bed(): Promise<void>;
 }
 
 const kit = createCaseHarness<FixtureSnapshot, FixtureDebug>({

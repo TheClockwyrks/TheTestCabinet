@@ -115,3 +115,32 @@ silent or total, and neither is caught by a compiler.
   never from a file URL. Derived here it would name the staged validator project,
   find no `dist/`, and throw — and a `globalSetup` that throws takes down the
   whole project, leaving every point the run's validators decide undecided.
+
+## Names that collided, and what each case binds
+
+Four copies of this machinery drifted for as long as they existed, and the drift
+that matters is not the code — it is the **names**. Six readings were spelled the
+same way in two cases and meant different things, and a seventh was spelled two
+ways and meant one thing. Folding either kind together silently rescales a
+threshold or drops a call site, and nothing type-checks a case's validator tree
+before it runs, so neither failure has anywhere to surface.
+
+So both halves of every genuine disagreement ship, under names that say which is
+which, and a case binds the one it has always meant. The rule this follows is the
+one `speedOverTicks`/`gainOverTicks` already set: **never silently pick a
+winner.**
+
+| Package name                                   | What it is                                                                                                                                           | Bound by                                                                   |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `luminance(c)`                                 | Rec. 709 weighted, `0.2126r + 0.7152g + 0.0722b`                                                                                                     | refract, carom, volute (volute re-exports it; `luminanceMask` ranks by it) |
+| `meanChannel(c)`                               | The unweighted mean, `(r + g + b) / 3`                                                                                                               | fathom, as its own `luminance`                                             |
+| `meanColor(rect, keep?)`                       | The mean over a **rectangle**, skipping what `keep` rejects                                                                                          | volute                                                                     |
+| `meanOf(pixels)`                               | The mean over a run of sampled **points**                                                                                                            | fathom, as its own `meanColor`                                             |
+| `drawnText(calls)`                             | The runs a frame drew, as a `string[]`                                                                                                               | refract, carom, volute; fathom as its own `textRuns`                       |
+| —                                              | Fathom's `drawnText(ops)` — the runs upper-cased and joined into one string — is a **different function**, and stays in fathom's `states/screens.ts` | fathom                                                                     |
+| `sampleColor(h, x, y, radius?)`                | The mean of a five-point cluster, `radius` out on the axes                                                                                           | refract, carom (both at the default `4`)                                   |
+| `sampleDisc(h, x, y, radius)`                  | The mean over a disc; **the radius is required**                                                                                                     | volute, which supplies its own `CORE_RADIUS - 1`                           |
+| `darkestOf(h, points, radius?)`                | The darkest of several sampled patches: the bare ground                                                                                              | refract as `sampleBench`, carom as `sampleField`                           |
+| `brightestIn(samples, score, keep?)`           | The brightest of a neighbourhood; **`score` is required**, because the two luminances above pick different pixels                                    | fathom                                                                     |
+| `mousePress` / `mouseGlide` / `mouseRelease`   | A real mouse gesture mapped through `Harness.css`, one driven frame each                                                                             | refract                                                                    |
+| `Harness.movePointer` / `Harness.clickPointer` | The harness's own pair, mapped through `Harness.cssPoint` — unrounded, for the case that measures the fit itself                                     | volute                                                                     |

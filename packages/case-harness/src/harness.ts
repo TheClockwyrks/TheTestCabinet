@@ -355,6 +355,18 @@ export interface Harness<S, D> {
   armAudio(): Promise<void>;
   /** How many sounds the build has emitted since the page loaded, in total. */
   sounds(): Promise<number>;
+  /**
+   * How many of the sources the build started are still live and LOOPING.
+   *
+   * A build that runs a bed by setting `loop` on its source is read directly
+   * here. One that instead re-schedules the buffer end to end is equally
+   * conformant and reports zero, so a check about a bed pairs this with
+   * {@link sounds}: a bed that is sounding at all is the weaker reading every
+   * conformant build satisfies.
+   */
+  loopingSounds(): Promise<number>;
+  /** How many of the sounds emitted were looping when they started. */
+  loopStarts(): Promise<number>;
 
   /** Release anything held, and let the page go. */
   dispose(): Promise<void>;
@@ -1041,6 +1053,24 @@ export function createHarnessFactory<S, D extends object>(
             (window as unknown as Record<string, { started(): number }>)[
               audioName
             ]!.started(),
+          resolved.audioGlobal,
+        ),
+
+      loopingSounds: () =>
+        page.evaluate(
+          (audioName) =>
+            (window as unknown as Record<string, { looping(): number }>)[
+              audioName
+            ]!.looping(),
+          resolved.audioGlobal,
+        ),
+
+      loopStarts: () =>
+        page.evaluate(
+          (audioName) =>
+            (window as unknown as Record<string, { loopStarts(): number }>)[
+              audioName
+            ]!.loopStarts(),
           resolved.audioGlobal,
         ),
 

@@ -8,10 +8,12 @@
 // It is a `setupFiles` entry rather than something the harness does on its own
 // because there is no other moment to do it in — a worker has no lifecycle hook
 // of its own, and a harness cannot know it built the last one.
+//
+// The teardown is REGISTERED by a call rather than by importing this module's
+// contents, because the shared harness's barrel re-exports it: a module that
+// registered an `afterAll` merely by being loaded would register one on every
+// suite that imports anything at all.
 
-import { afterAll } from "vitest";
-import { closeWorkerBrowser } from "./harness";
+import { registerWorkerTeardown } from "./case-harness/setup";
 
-afterAll(async () => {
-  await closeWorkerBrowser();
-});
+registerWorkerTeardown();

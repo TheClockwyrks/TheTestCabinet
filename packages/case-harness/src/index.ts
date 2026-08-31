@@ -57,10 +57,14 @@ export * from "./setup";
 export * from "./surface";
 
 /* The readings a check makes off a frame. */
+export * from "./audio";
+export * from "./color";
 export * from "./draw-calls";
 export * from "./matrix";
 export * from "./pixels";
 export * from "./point";
+export * from "./pointer";
+export * from "./text";
 export * from "./viewport";
 
 /* The evidence a review point is decided on. */
