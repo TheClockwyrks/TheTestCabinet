@@ -1,17 +1,97 @@
-// Spectra — overload/charge-resets: an overload resets the charge
+// overload/charge-resets — an overload puts the charge back to zero.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `overload.charge-resets` on the
-// `none` configuration, and captures the media `test-case.toml` declares
-// for it.
+// specs/mode.md: "A mismatched shot into a drone already at `OVERLOAD_AT - 1` or
+// above overloads it instead: it runs the reaction for its kind, below, and its
+// charge returns to `0`." So the charge is a count of the mismatched shots taken
+// SINCE THE LAST OVERLOAD, and the overload is what empties it.
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// THE READING IS ONE NUMBER, taken in the frame the overloading shot resolved: the
+// drone's charge. It separates the wrong models by the number each leaves behind —
+// a build that carries the count on reads `OVERLOAD_AT` (3), one that stops the
+// count at the ceiling reads `OVERLOAD_AT - 1` (2), and one that empties it reads
+// 0.
+//
+// THE DRONE IS A PROP. It is a Shard with every faculty off, so it holds the place
+// it was posed at and the only thing the shot can change about it is the charge
+// this point reads. That the reaction ran at all is `overload/overloads-at-three`'s
+// reading, and each kind's reaction is its own point; the charge is this one's, and
+// it is the same number whichever kind takes the shot.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { FORM_CENTER_X, OVERLOAD_AT } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  poseDrone,
+  requireDrone,
+  startPosed,
+  type Harness,
+} from "../harness";
+import { chargeOf, mismatchShot } from "./charge";
 
-it("An overload resets the charge", () => {
-  throw new Error(
-    "Spectra: validation/none/overload/charge-resets.test.ts is a scaffold placeholder and has not been implemented",
+/** Where the target Shard stands. As in `overload/mismatch-charges`. */
+const TARGET = { x: FORM_CENTER_X, y: 300 } as const;
+
+/**
+ * How far below the target the shot is placed, in logical units.
+ *
+ * Seven times the 20-unit contact reach a Shard has against one of the player's
+ * bullets (`SHARD_HALF` 14 + `PLAYER_BULLET_HALF` 6).
+ */
+const SHOT_BELOW = 140;
+
+/**
+ * Frames the flight is allowed.
+ *
+ * At `PLAYER_BULLET_SPEED` (760), 7.6 units per frame of the harness's 100 Hz
+ * clock: the bullet enters the contact reach inside 16 frames, and thirty leaves
+ * slack for whichever frame a build resolves the contact on.
+ */
+const SHOT_FRAMES = 30;
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.dispose();
+});
+
+it("puts a drone's charge back to zero in the frame it overloads", async () => {
+  await startPosed(harness);
+  const target = await poseDrone(harness, "shard", TARGET.x, TARGET.y, {
+    band: "cyan",
+    charge: OVERLOAD_AT - 1,
+  });
+
+  const posed = requireDrone(await harness.snapshot(), target, "the posed Shard");
+  assertEqual(
+    chargeOf(posed, "the Shard posed one charge short of an overload"),
+    OVERLOAD_AT - 1,
+    "the charge `setDroneCharge` poses (specs/instrumentation.md)",
+  );
+
+  const shot = await mismatchShot(harness, target, {
+    below: SHOT_BELOW,
+    maxFrames: SHOT_FRAMES,
+  });
+  await captureStill(harness, "reset");
+
+  assertEqual(
+    shot.hit,
+    true,
+    `the ${shot.band} shot placed ${String(SHOT_BELOW)} units below the drone ` +
+      `resolved inside the ${String(SHOT_FRAMES)} frames its climb takes`,
+  );
+  assertEqual(
+    chargeOf(
+      requireDrone(shot.snapshot, target, "the drone that has just overloaded"),
+      "the drone that has just overloaded",
+    ),
+    0,
+    "the charge a drone carries in the frame it overloads (specs/mode.md)",
   );
 });
