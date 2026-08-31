@@ -24,18 +24,21 @@ name = "Kessler"
 # sits above the first table.
 type = "full-stack"
 
-# Relative difficulty of this case, surfaced on the site. Kessler's simulation is a
-# real step up from the easy full-stack cases: everything lives in polar coordinates
-# around one center, every contact is a crossing event with a direction gate, and the
-# deflector bounce is a four-step pipeline (specular reflection, english from the
-# contact offset, an exit-angle clamp, and the wave's ball speed) with a further
-# decay-and-kick pipeline on every other surface. Around that core sit three orbiting
-# rings with per-wave speed formulas, a seeded salvage-pod stream feeding five
-# distinct effects, waves, lives, and six screens. The produced-asset pass is also
-# wider than an easy case's — two sprite sets and a sheet, three particle systems,
-# thirteen cues and two seamless music beds — but each piece is individually
-# tractable, so the case sits at medium rather than hard.
-difficulty = "medium"
+# Relative difficulty (easy | medium | hard), surfaced on the site. Kessler is easy:
+# everything lives in polar coordinates around one center, so every rule is a table
+# row or a short formula over an angle and a radius — a contact is a crossing event
+# with a direction gate, and the deflector bounce is a fixed four-step pipeline
+# (specular reflection, english from the contact offset, an exit-angle clamp, and the
+# wave's ball speed) with a spelled-out decay-and-kick pipeline on every other
+# surface. Around that core sit three orbiting rings with per-wave speed formulas, a
+# seeded salvage-pod stream feeding five distinct effects, waves, lives, and six
+# screens — all of them exactly specified, with no physics to tune, no opponent to
+# model, and no subsystem large enough to need splitting out behind an interface.
+# What it measures is whether a build carries the specified loop through without
+# blurring a row. The produced-asset pass — two sprite sets and a sheet, three
+# particle systems, thirteen cues and two seamless music beds — is what the runtime
+# budget below accounts for, not the difficulty.
+difficulty = "easy"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["arcade", "2d", "orbital", "score-attack"]

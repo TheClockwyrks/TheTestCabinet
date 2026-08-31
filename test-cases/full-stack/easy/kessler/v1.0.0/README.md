@@ -31,8 +31,8 @@ screens. None of it is exotic, and all of it has to be right.
 
 The full-stack half asks for two sprite sets, a spin sheet, three
 radially-symmetric particle systems played through the particle runtime, and
-fifteen produced audio files — a bigger pass than the easy full-stack cases —
-wired into the build during the run. A correct game with code-drawn placeholders
+fifteen produced audio files — a wide pass, though each piece is individually
+tractable — wired into the build during the run. A correct game with code-drawn placeholders
 and handsome assets bolted to a bounce that mishandles its english both fall
 short.
 
@@ -127,6 +127,6 @@ suite path runs under all three engines.
 ## Versioning
 
 This case follows semantic versioning per version folder
-(`test-cases/full-stack/medium/kessler/v1.0.0/`). Each version is self-contained
+(`test-cases/full-stack/easy/kessler/v1.0.0/`). Each version is self-contained
 and immutable once a run references it; design revisions land as new version
 folders.
