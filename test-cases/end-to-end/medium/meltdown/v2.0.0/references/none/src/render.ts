@@ -712,7 +712,10 @@ function commonFields(type: TowerType, level: number): Array<[string, string]> {
 /** A shop entry's info at level I. */
 function drawTypeInfo(ctx: CanvasRenderingContext2D, type: TowerType): void {
   const def = TOWER_DEFS[type];
-  text(ctx, def.name, INFO_RECT.x + 10, INFO.headY, { size: 15, weight: "700" });
+  text(ctx, def.name, INFO_RECT.x + 10, INFO.headY, {
+    size: 15,
+    weight: "700",
+  });
   text(ctx, "LEVEL I", INFO_RECT.x + INFO_RECT.w - 10, INFO.headY, {
     size: 11,
     color: COLOR.textDim,
@@ -784,7 +787,10 @@ function drawInspector(
   tower: Tower,
 ): void {
   const def = TOWER_DEFS[tower.type];
-  text(ctx, def.name, INFO_RECT.x + 10, INFO.headY, { size: 15, weight: "700" });
+  text(ctx, def.name, INFO_RECT.x + 10, INFO.headY, {
+    size: 15,
+    weight: "700",
+  });
   text(
     ctx,
     `LEVEL ${["I", "II", "III"][tower.level - 1]}`,

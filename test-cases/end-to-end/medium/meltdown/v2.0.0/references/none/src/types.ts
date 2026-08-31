@@ -21,25 +21,14 @@ export type Phase = "opening" | "building" | "wave";
 
 /** The five modes (specs/modes.md). */
 export type ModeId =
-  | "containment"
-  | "hundred"
-  | "deeppockets"
-  | "bottleneck"
-  | "suddendeath";
+  "containment" | "hundred" | "deeppockets" | "bottleneck" | "suddendeath";
 
 /** Containment's three difficulties (specs/modes.md). */
 export type DifficultyId = "easy" | "medium" | "hard";
 
 /** The eight towers, in shop order (specs/towers.md). */
 export type TowerType =
-  | "arc"
-  | "stutter"
-  | "rime"
-  | "flak"
-  | "bloom"
-  | "lance"
-  | "forge"
-  | "sink";
+  "arc" | "stutter" | "rime" | "flak" | "bloom" | "lance" | "forge" | "sink";
 
 /** The six surge types (specs/surge.md). */
 export type SurgeType = "mote" | "sprint" | "hulk" | "swarm" | "drift" | "core";

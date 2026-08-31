@@ -37,10 +37,7 @@ function scene(): MeltdownState {
 /** Whether two rectangles share no pixel. */
 function apart(a: Rect, b: Rect): boolean {
   return (
-    a.x + a.w <= b.x ||
-    b.x + b.w <= a.x ||
-    a.y + a.h <= b.y ||
-    b.y + b.h <= a.y
+    a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y
   );
 }
 
