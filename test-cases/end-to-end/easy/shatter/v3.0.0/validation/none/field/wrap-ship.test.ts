@@ -27,8 +27,9 @@
 // the seam. On the star's row that false line runs through the core, and the ship
 // is pushed off it by the slide `specs/collision.md` states. Off the row it
 // misses, and the fault is invisible. A conformant build is not touched: the
-// shortest wrapped separation from the seam to the star's centre is 637 units,
-// against the 44 at which the slide begins.
+// shortest wrapped separation from the seam to the star's centre is 640 units
+// across its row and 360 down its column, against the 44 at which the slide
+// begins.
 //
 // WHY THE SHIP IS POSED WITH A VELOCITY. "Driven off each of the four edges" is
 // about the wrap, not about the thrust: `setShipVelocity` is the one operation
@@ -75,18 +76,23 @@ const DWELL_TICKS = ticksFor(0.375);
 /**
  * How far the wrapped centre may sit from where the modulus puts it, in units.
  *
- * The rule is arithmetic, so a conformant build has almost nothing to be off by:
- * the reading is taken one tick after the position and velocity it is predicted
- * from, and over that tick the only thing that touches the ship is its drag,
- * which removes 0.19 percent of a tick's travel — a hundredth of a unit at this
- * speed. The well never pulls the ship at all (`specs/gravity.md`). So this bound
- * is sixty times the largest deviation a correct build can have, and still an
- * eighth of the 2.5 units of overshoot the pose builds in, which is what a build
- * that snaps the coordinate to the edge instead of carrying the overshoot across
- * misses by. It is also far under `SHIP_R` (`14`), so a build that wraps on the
- * ship's edge rather than its centre fails.
+ * The rule is arithmetic, so a conformant build has almost nothing to be off by.
+ * The reading is taken one tick after the position and velocity it is predicted
+ * from, and over that tick the only thing that touches the ship is its drag: at
+ * `SHIP_DRAG_HALFLIFE` (`3.0` s) one tick multiplies the velocity by
+ * `0.5 ^ (TICK_DT / 3)`, taking 0.23 percent off that tick's travel — a
+ * hundredth of a unit at this speed. The well never pulls the ship at all
+ * (`specs/gravity.md`), and a build that drags AFTER it moves is off by nothing.
+ *
+ * So this bound is thirty times the largest deviation a correct build can have,
+ * and still a fifth of the gap it has to open up. That gap is the overshoot the
+ * pose builds in: half a tick's travel is 2.5 units, and the same drag bleeds the
+ * approach down to a real 1.6 by the crossing — which is what a build that snaps
+ * the coordinate to the edge instead of carrying the overshoot across misses by.
+ * It is also far under `SHIP_R` (`14`), so a build that wraps on the ship's edge
+ * rather than its centre fails.
  */
-const WRAP_TOLERANCE = 0.6;
+const WRAP_TOLERANCE = 0.3;
 
 /** The crossing whose drive is kept as the item's replay. */
 const RECORDED: Seam = "right";
