@@ -400,6 +400,11 @@ export function createDebugApi(): CascadeDebugApi {
         wasteSets: [],
         foundations: emptyFoundations(),
         tableau: emptyTableau(),
+        // A held run holds cards the clear has taken off the table, so it goes
+        // with them, and the drop target it was resolved against with it
+        // (specs/instrumentation.md).
+        drag: null,
+        dropTarget: null,
       };
     },
 

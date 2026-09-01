@@ -385,11 +385,17 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
       if (pile === "waste") state.wasteSets = [];
     },
 
-    /** Every pile emptied. The flyers, the painted layer and the gates stand. */
+    /**
+     * Every pile emptied, and with them the run in hand and its drop target: a
+     * held run holds cards the clear has taken off the table. The flyers, the
+     * painted layer and the gates stand.
+     */
     clearTable() {
       const state = read();
       for (const pile of allPiles(state)) pile.length = 0;
       state.wasteSets = [];
+      state.drag = null;
+      state.dropTarget = null;
     },
 
     addWasteSet(count) {

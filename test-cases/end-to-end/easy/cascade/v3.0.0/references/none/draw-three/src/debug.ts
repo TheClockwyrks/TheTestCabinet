@@ -403,13 +403,17 @@ export function createDebugApi(
     },
 
     /**
-     * Empty all thirteen piles and the waste's set memory.
+     * Empty all thirteen piles and the waste's set memory, and with them the run
+     * in hand and its drop target: a held run holds cards the clear has taken
+     * off the table.
      *
      * It leaves the flyers, the painted layer and every gate alone, so a cleared
      * table is an isolated world rather than a whole reset.
      */
     clearTable() {
       emptyTable(state);
+      state.drag = null;
+      state.dropTarget = null;
     },
 
     /** Append one set of `count` cards to the newest end of the memory. */

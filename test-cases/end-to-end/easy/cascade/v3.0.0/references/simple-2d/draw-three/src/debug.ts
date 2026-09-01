@@ -398,6 +398,11 @@ export function createDebugApi(): CascadeDebugApi {
     clearTable: (state) =>
       pose(state, (sim) => {
         emptyEveryPile(sim);
+        // A held run holds cards the clear has taken off the table, so it goes
+        // with them, and the drop target it was resolved against with it
+        // (specs/instrumentation.md).
+        sim.drag = null;
+        sim.dropTarget = null;
       }),
 
     // ---- The waste's sets -------------------------------------------------
