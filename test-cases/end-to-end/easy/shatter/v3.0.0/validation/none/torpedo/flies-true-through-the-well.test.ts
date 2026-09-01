@@ -35,6 +35,17 @@
 // THE PATH IS READ AT EVERY TICK, not at the ends. A torpedo that were pulled in
 // and slung back out could leave the run on its original line while having been
 // bent the whole way; every sample is held against the straight line instead.
+//
+// AND THE VELOCITY IS READ AT EVERY TICK TOO, WHICH IS THE RULE'S OWN WORDS. The
+// path bound is a bound on the CONSEQUENCE; specs/gravity.md states the rule about
+// the velocity — "the well never adds anything to their velocity". A build that
+// lets the well accelerate its torpedo but rebuilds the velocity from the heading
+// at the top of the next tick puts only a third of a unit of drift into each tick's
+// position and drifts under two units over the whole crossing — inside the four the
+// path may stray by, and no player would see it — while its reported velocity picks
+// up the whole of a tick's pull, `450 / 120` units per second at the closest
+// approach. So the velocity is held against the velocity the flight began with, and
+// the two readings together leave a build no version of this fault to hold.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual, fail } from "../assert";
@@ -80,6 +91,20 @@ const LINE_TOLERANCE = 4;
  * headings in `[0, 2pi)` must not read as a whole turn of error.
  */
 const HEADING_TOLERANCE = 1 * DEG;
+
+/**
+ * How far the reported velocity may move over the whole flight, in units per second.
+ *
+ * One. With the guidance shut off specs/instrumentation.md has the torpedo hold its
+ * heading, and specs/weapons.md holds its speed constant, so a conformant build's
+ * velocity does not change at all over the crossing — it reads the same float on
+ * every tick — and this is not room on the rule. It is a quarter of the
+ * `MU / 260^2 / TICK_HZ` = `3.75` units per second that ONE tick of the well's pull
+ * at this lane's closest approach would add, so a build that lets a single tick of
+ * the pull reach its torpedo's velocity reads outside it however quickly it wipes
+ * it again.
+ */
+const VELOCITY_TOLERANCE = 1;
 
 /**
  * How near the star's centre the path must have come for the reading to mean
@@ -148,6 +173,23 @@ it("holds its line and its heading across the well, out past the star's column",
       `${STAR_Y - LANE_Y} units from the star's centre (specs/gravity.md: the ` +
       `well never adds anything to a torpedo's velocity, whatever its distance ` +
       `from the star)`,
+  );
+
+  const opening = flight.velocities[0];
+  const shifted = flight.velocities.reduce(
+    (most, v) =>
+      Math.max(most, Math.hypot(v.vx - opening.vx, v.vy - opening.vy)),
+    0,
+  );
+  assertLessThanOrEqual(
+    shifted,
+    VELOCITY_TOLERANCE,
+    `the units per second the torpedo's reported velocity moved over the ` +
+      `crossing, against the (${opening.vx.toFixed(1)}, ` +
+      `${opening.vy.toFixed(1)}) it began with (specs/gravity.md: the well ` +
+      `never adds anything to a torpedo's velocity, whatever its distance from ` +
+      `the star; specs/instrumentation.md: with its homing off it holds its ` +
+      `heading)`,
   );
 
   const turned = flight.headings.reduce(

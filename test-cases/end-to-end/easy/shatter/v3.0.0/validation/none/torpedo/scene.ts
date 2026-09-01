@@ -224,6 +224,8 @@ export interface Flight {
   path: Vec[];
   /** Its heading at each of those samples, in radians. */
   headings: number[];
+  /** The velocity it REPORTED at each of those samples, in units per second. */
+  velocities: { vx: number; vy: number }[];
   /** The speed it actually travelled at over each tick, in units per second. */
   speeds: number[];
   /** How far it travelled in all, in units. */
@@ -263,6 +265,9 @@ export async function flyTorpedo(
   );
   const path: Vec[] = [{ x: start.x, y: start.y }];
   const headings: number[] = [start.heading];
+  const velocities: { vx: number; vy: number }[] = [
+    { vx: start.vx, vy: start.vy },
+  ];
   const speeds: number[] = [];
   let distance = 0;
   let ran = 0;
@@ -274,9 +279,10 @@ export async function flyTorpedo(
     const step = magnitude(shortestDelta(path[path.length - 1], flown));
     path.push({ x: flown.x, y: flown.y });
     headings.push(flown.heading);
+    velocities.push({ vx: flown.vx, vy: flown.vy });
     speeds.push(step / TICK_DT);
     distance += step;
     ran += 1;
   }
-  return { path, headings, speeds, distance, ticks: ran };
+  return { path, headings, velocities, speeds, distance, ticks: ran };
 }

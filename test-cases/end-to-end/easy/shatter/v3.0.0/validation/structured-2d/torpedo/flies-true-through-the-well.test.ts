@@ -37,14 +37,26 @@
 // acquirable body cannot confound the reading: the only thing left that could turn
 // this torpedo is the well.
 //
-// THE PATH IS READ, NOT JUST THE ENDS. Every sample over the span must lie within
-// `4` units of the straight line the torpedo was posed on, so a build whose
-// torpedo dives toward the star and swings back out is caught in the middle even
-// if it happens to end near the line. And the flight is asserted to have COVERED
-// the span — a torpedo that never moved would sit on its own line for ever, and
-// that is not a torpedo flying true through anything. How far it should have got
-// is `torpedo/speed`'s figure; what is asserted here is only that it passed the
-// column the well is at.
+// THE PATH, THE HEADING AND THE VELOCITY ARE ALL READ AT EVERY TICK, NOT JUST AT
+// THE ENDS. Every sample over the span must lie within `4` units of the straight
+// line the torpedo was posed on, its heading must be within a degree of the one it
+// was posed on, and its reported velocity within a unit per second of the one it
+// began with — each at every one of the 240 ticks. A torpedo that dives toward the
+// star and swings back out is caught in the middle even if it happens to end near
+// the line and on its original heading, which reading only the ends would let
+// through. And the flight is asserted to have COVERED the span — a torpedo that
+// never moved would sit on its own line for ever, and that is not a torpedo flying
+// true through anything. How far it should have got is `torpedo/speed`'s figure;
+// what is asserted here is only that it passed the column the well is at.
+//
+// THE VELOCITY IS READ BECAUSE IT IS THE RULE'S OWN WORDS. The path bound is a
+// bound on the CONSEQUENCE; `specs/gravity.md` states the rule about the velocity —
+// "the well never adds anything to their velocity". A build that lets the well
+// accelerate its torpedo but rebuilds the velocity from the heading at the top of
+// the next tick puts only a third of a unit of drift into each tick's position and
+// drifts under two units over the whole crossing — inside the four the path may
+// stray by, and no player would see it — while its reported velocity picks up the
+// whole of a tick's pull, `450 / 120` units per second at the closest approach.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CORE_R, STAR_X, STAR_Y, TORPEDO_R } from "../../src/constants";
@@ -73,8 +85,14 @@ const HEADING = 0;
 
 /** How far the torpedo is followed: 840 units, past the star's column. */
 const FLIGHT_TICKS = 240;
-/** How often the path is sampled, in ticks: 7 units of travel a sample. */
-const SAMPLE_EVERY = 2;
+/**
+ * How often the flight is sampled, in ticks: every one of them.
+ *
+ * Every tick rather than every other, so the path, the heading and the velocity are
+ * each read at the same resolution the other two engines' suites read them at, and
+ * a build bent for a single tick has nowhere between two samples to hide it.
+ */
+const SAMPLE_EVERY = 1;
 /** A little more flight after the reading, so the recording ends on the outcome. */
 const TAIL_TICKS = 48;
 
@@ -99,6 +117,21 @@ const LINE_TOLERANCE = 4;
  * flight, a whole turn of apparent error.
  */
 const HEADING_TOLERANCE = 1 * DEG;
+
+/**
+ * How far the reported velocity may move over the whole flight, in units per
+ * second.
+ *
+ * One. With the guidance shut off `specs/instrumentation.md` has the torpedo hold
+ * its heading, and `specs/weapons.md` holds its speed constant, so a conformant
+ * build's velocity does not change at all over the crossing — it reads the same
+ * float on every tick — and this is not room on the rule. It is a quarter of the
+ * `MU / 260^2 / TICK_HZ` = `3.75` units per second that ONE tick of the well's pull
+ * at this lane's closest approach would add, so a build that lets a single tick of
+ * the pull reach its torpedo's velocity reads outside it however quickly it wipes
+ * it again.
+ */
+const VELOCITY_TOLERANCE = 1;
 
 let h: Harness;
 
@@ -125,7 +158,8 @@ it("holds a torpedo's heading and its line across the star's own column", async 
     return samples;
   });
 
-  const end = requireTorpedo(
+  // A hard reading of the torpedo the run ends with: it survived the crossing.
+  requireTorpedo(
     h.snapshot(),
     id,
     "the torpedo still in flight past the star's column — the well never adds " +
@@ -144,6 +178,17 @@ it("holds a torpedo's heading and its line across the star's own column", async 
       `started at x = ${START_X}`,
   );
 
+  const opening = path[0];
+  assertTrue(
+    opening !== undefined,
+    "the torpedo on the field before the run begins, so the velocity it held " +
+      "at the start is the one the crossing is read against " +
+      "(specs/instrumentation.md)",
+  );
+
+  let strayed = 0;
+  let turned = 0;
+  let shifted = 0;
   for (const [index, sample] of path.entries()) {
     assertTrue(
       sample !== undefined,
@@ -152,26 +197,45 @@ it("holds a torpedo's heading and its line across the star's own column", async 
         "core absorbed it — and the well never pulls a torpedo " +
         "(specs/gravity.md)",
     );
-    if (sample === undefined) continue;
-    assertLessThanOrEqual(
-      Math.abs(sample.y - LANE_Y),
-      LINE_TOLERANCE,
-      `the torpedo's path within ${LINE_TOLERANCE} units of the straight line ` +
-        `y = ${LANE_Y} it was posed on, at every point of the crossing — the ` +
-        "well never adds anything to a torpedo's velocity (specs/gravity.md); " +
-        `at tick ${index * SAMPLE_EVERY} it stood at y = ` +
-        `${sample.y.toFixed(2)}, with the star ${CORE_R + TORPEDO_R} units of ` +
-        "absorption radius below the lane",
+    if (sample === undefined || opening === undefined) continue;
+    strayed = Math.max(strayed, Math.abs(sample.y - LANE_Y));
+    turned = Math.max(turned, angleBetween(sample.heading, HEADING));
+    shifted = Math.max(
+      shifted,
+      Math.hypot(sample.vx - opening.vx, sample.vy - opening.vy),
     );
   }
 
   assertLessThanOrEqual(
-    angleBetween(end.heading, HEADING),
+    strayed,
+    LINE_TOLERANCE,
+    `the torpedo's path within ${LINE_TOLERANCE} units of the straight line ` +
+      `y = ${LANE_Y} it was posed on, at every one of the ${FLIGHT_TICKS} ` +
+      "ticks of the crossing — the well never adds anything to a torpedo's " +
+      "velocity (specs/gravity.md); at its worst it stood " +
+      `${strayed.toFixed(2)} units off it, with the star ` +
+      `${CORE_R + TORPEDO_R} units of absorption radius below the lane`,
+  );
+
+  assertLessThanOrEqual(
+    shifted,
+    VELOCITY_TOLERANCE,
+    "the units per second the torpedo's reported velocity moved over the " +
+      `crossing, at its worst, against the (${opening?.vx.toFixed(1)}, ` +
+      `${opening?.vy.toFixed(1)}) it began with (specs/gravity.md: the well ` +
+      "never adds anything to a torpedo's velocity, whatever its distance " +
+      "from the star; specs/instrumentation.md: with its homing off it holds " +
+      "its heading)",
+  );
+
+  assertLessThanOrEqual(
+    turned,
     HEADING_TOLERANCE,
-    `the torpedo's heading unchanged across the well, within ` +
+    "the torpedo's heading unchanged across the well, at every one of the " +
+      `${FLIGHT_TICKS} ticks, within ` +
       `${(HEADING_TOLERANCE / DEG).toFixed(0)} degree of the ${HEADING} it was ` +
       "posed on, with its guidance held off so nothing but the well could turn " +
-      `it (specs/gravity.md, specs/instrumentation.md); read ` +
-      `${(angleBetween(end.heading, HEADING) / DEG).toFixed(2)} degrees off`,
+      `it (specs/gravity.md, specs/instrumentation.md); at its worst it read ` +
+      `${(turned / DEG).toFixed(3)} degrees off`,
   );
 });
