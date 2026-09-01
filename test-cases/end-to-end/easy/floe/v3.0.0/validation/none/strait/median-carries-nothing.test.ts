@@ -8,7 +8,13 @@
 // footing table says the same of what standing there gives: footing is `solid`
 // when the row is `10`.
 //
-// WHY THIS IS READ OVER LIVE LANES RATHER THAN ON A FRESH LAYOUT. A build that
+// THE ITEM'S TWO HALVES ARE TWO CHECKS. The first reads the LAYOUT — the eight
+// levels laid out in turn, each asked for a median carrying nothing — because the
+// rule is stated "at any level" and a lane table that put a populated lane on row
+// `10` puts it there at every one of them. The second reads a SECTION OF PLAY,
+// for the reason below.
+//
+// WHY THE SECOND IS READ OVER LIVE LANES RATHER THAN ON A FRESH LAYOUT. A build that
 // laid a lane onto the median would be caught by a single reading, but that is
 // not the failure worth catching: it is a lane whose items WRAP through the
 // median as they run — a wrap that carries a floe off row `9` and back on at row
@@ -25,7 +31,7 @@
 // a bear emerges behind the critter, the timer takes a life at the end of the ten
 // seconds, and a fish arrives in a bay: none of which is the median.
 //
-// TWO READINGS, EVERY SECOND, IN ONE DIRECTION EACH. What the median CARRIES —
+// TWO READINGS, EVERY HALF SECOND, IN ONE DIRECTION EACH. What the median CARRIES —
 // no vehicle and no floe reports row `10` — and what standing on it GIVES — the
 // critter's footing is `solid`. The second is not implied by the first: a build
 // whose footing table put the water band on rows `2`-`10` reads `water` on an
@@ -35,7 +41,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
-import { ROW_MEDIAN, START_COL } from "../constants";
+import { ROW_MEDIAN, START_COL, TOTAL_LEVELS } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -63,13 +69,16 @@ const SECTION_SECONDS = 10;
 /**
  * How long a stretch of that section separates two readings, in seconds.
  *
- * One second. The slowest thing that could reach the median is a lane item, and
- * the slowest lane either band has runs at `3.0` tiles a second
- * (specs/water.md), so an item that wrapped onto row `10` would take more than
- * thirteen seconds to cross the strait's forty columns and be on the row at
- * every one of these readings. Nothing here could slip between two of them.
+ * Half a second, which is twenty readings over the section. A lane item's ROW is
+ * the row of the lane it belongs to, and the wrap specs/water.md fixes moves an
+ * item along its row rather than off it, so an item that ever reaches the median
+ * is still reporting row `10` at every later reading and nothing can slip between
+ * two of them. What the interval bounds is how soon after the wrap the reading
+ * notices, and half a second is inside the first wrap of even the fastest lane:
+ * `4.2` tiles a second (specs/water.md, row `4`) crosses the strait's forty
+ * columns in nine and a half.
  */
-const SAMPLE_SECONDS = 1;
+const SAMPLE_SECONDS = 0.5;
 
 /** What the median looked like at one moment. */
 interface Reading {
@@ -97,6 +106,29 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await h.dispose();
+});
+
+it("lays no vehicle and no floe on the median, at every level", async () => {
+  // The first half of the item, read on the layout itself rather than on a
+  // section of play: the rule holds "at any level", and a lane table that put a
+  // populated lane on row 10 would be laying it there at every one of the eight.
+  for (let level = 1; level <= TOTAL_LEVELS; level += 1) {
+    await poseLiveLanes(h, START_COL, ROW_MEDIAN, level);
+
+    const laid = itemsOnRow(await h.snapshot(), ROW_MEDIAN);
+    assertLength(
+      laid,
+      0,
+      `level ${level}: vehicles and floes laid out on the median, row ` +
+        `${ROW_MEDIAN} (specs/strait.md)` +
+        (laid.length === 0
+          ? ""
+          : `; found ${laid.map((item) => item.kind).join(", ")}`),
+    );
+  }
+
+  // Nothing the page threw or logged as an error while this harness drove it.
+  assertDeepEqual(h.pageErrors, []);
 });
 
 it("keeps every vehicle and every floe off the median across ten seconds of live lanes", async () => {
