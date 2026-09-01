@@ -23,9 +23,11 @@
 // WHAT IS READ IS A DISTANCE, NEVER A COLOUR. Floe fixes no palette; every
 // reading is between two things the build itself drew.
 //
-// BAY `2` (columns `19`, `20`) is the one read: the middle bay, so neither the
-// leftmost nor the rightmost, and its two neighbours of solid shore (columns `18`
-// and `21`) are both well inside the strait rather than against an edge.
+// BAY `2` (columns `19`, `20`) is the one the FILLED half is read on: the middle
+// bay, so neither the leftmost nor the rightmost, and its two neighbours of solid
+// shore (columns `18` and `21`) are both well inside the strait rather than
+// against an edge. The OPEN half is read on all five, because a build that opened
+// one mouth and forgot another fails on the one it forgot.
 //
 // THE BAY IS FILLED BY A POSE, NOT BY A CROSSING. What this point grades is how a
 // filled bay is DRAWN, and `setBay(index, filled)` sets exactly that one field
@@ -46,6 +48,7 @@ import {
   sampleColor,
   startCrossing,
   type Harness,
+  type Rgb,
 } from "../harness";
 import { bayMouthX } from "./harness";
 
@@ -78,14 +81,18 @@ const BAY_APART_MIN = 60;
  */
 const FILLED_DIFFERS_MIN = 20;
 
-/** The bay read: the middle of the five (specs/strait.md). */
+/** The bay the filled half is read on: the middle of the five (specs/strait.md). */
 const BAY = 2;
 
-/** The two columns of solid far shore either side of that bay's mouth. */
-const SHORE_COLUMNS: readonly { col: number; side: string }[] = [
-  { col: BAYS[BAY][0] - 1, side: "to its left" },
-  { col: BAYS[BAY][1] + 1, side: "to its right" },
-];
+/** The two columns of solid far shore either side of a bay's mouth. */
+function shoreColumns(
+  pair: readonly [number, number],
+): readonly { col: number; side: string }[] {
+  return [
+    { col: pair[0] - 1, side: "to its left" },
+    { col: pair[1] + 1, side: "to its right" },
+  ];
+}
 
 let h: Harness;
 
@@ -105,12 +112,28 @@ it("draws an open bay apart from the shore beside it, and a filled bay apart fro
   await h.step();
 
   const mouthY = tileCY(ROW_BAYS);
-  const mouthX = bayMouthX(BAYS[BAY]);
-  const open = await sampleColor(h, mouthX, mouthY);
-  const shore = [];
-  for (const { col, side } of SHORE_COLUMNS) {
-    shore.push({ side, col, read: await sampleColor(h, tileCX(col), mouthY) });
+  // Every one of the five mouths, and the solid shore on either side of each,
+  // read off the one frame the empty strait drew.
+  const mouths: {
+    bay: number;
+    pair: readonly [number, number];
+    read: Rgb;
+    shore: { side: string; col: number; read: Rgb }[];
+  }[] = [];
+  for (const [bay, pair] of BAYS.entries()) {
+    const read = await sampleColor(h, bayMouthX(pair), mouthY);
+    const shore = [];
+    for (const { col, side } of shoreColumns(pair)) {
+      shore.push({
+        side,
+        col,
+        read: await sampleColor(h, tileCX(col), mouthY),
+      });
+    }
+    mouths.push({ bay, pair, read, shore });
   }
+  const mouthX = bayMouthX(BAYS[BAY]);
+  const open = mouths[BAY].read;
 
   // The same bay, filled, and nothing else on the strait changed.
   await h.debug.setBay(BAY, true);
@@ -120,15 +143,18 @@ it("draws an open bay apart from the shore beside it, and a filled bay apart fro
   await captureStill(h, "scene");
   const filled = await sampleColor(h, mouthX, mouthY);
 
-  for (const sample of shore) {
-    assertGreaterThanOrEqual(
-      colorDistance(open, sample.read),
-      BAY_APART_MIN,
-      `the mouth of bay ${BAY} (columns ${BAYS[BAY][0]} and ${BAYS[BAY][1]}), ` +
-        `open, read against the solid far shore at column ${sample.col} ` +
-        `${sample.side} — an open bay reads as an opening in the far shore, ` +
-        `distinct from the solid shore beside it (specs/overview.md)`,
-    );
+  for (const mouth of mouths) {
+    for (const sample of mouth.shore) {
+      assertGreaterThanOrEqual(
+        colorDistance(mouth.read, sample.read),
+        BAY_APART_MIN,
+        `the mouth of bay ${mouth.bay} (columns ${mouth.pair[0]} and ` +
+          `${mouth.pair[1]}), open, read against the solid far shore at column ` +
+          `${sample.col} ${sample.side} — an open bay reads as an opening in ` +
+          `the far shore, distinct from the solid shore beside it ` +
+          `(specs/overview.md)`,
+      );
+    }
   }
 
   assertGreaterThanOrEqual(

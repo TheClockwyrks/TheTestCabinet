@@ -35,6 +35,11 @@
 //
 // THE STRAIT IS EMPTIED AND THE CRITTER TAKEN OFF IT, so nothing is standing in
 // the mouth or on the shore when either reading is taken.
+//
+// AND THE OPEN HALF IS READ ON ALL FIVE MOUTHS, because a build that opened one
+// mouth and forgot another fails on the one it forgot. The FILLED half stays on
+// the middle bay alone: it is a comparison of the same point of the same bay
+// before and after `setBay`, and one bay decides it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
@@ -76,14 +81,18 @@ const BAY_APART_MIN = 60;
  */
 const FILLED_DIFFERS_MIN = 20;
 
-/** The bay read: the middle of the five (specs/strait.md). */
+/** The bay the filled half is read on: the middle of the five (specs/strait.md). */
 const BAY = 2;
 
-/** The two columns of solid far shore either side of that bay's mouth. */
-const SHORE_COLUMNS: readonly { col: number; side: string }[] = [
-  { col: BAY_PAIRS[BAY][0] - 1, side: "to its left" },
-  { col: BAY_PAIRS[BAY][1] + 1, side: "to its right" },
-];
+/** The two columns of solid far shore either side of a bay's mouth. */
+function shoreColumns(
+  pair: readonly [number, number],
+): readonly { col: number; side: string }[] {
+  return [
+    { col: pair[0] - 1, side: "to its left" },
+    { col: pair[1] + 1, side: "to its right" },
+  ];
+}
 
 let h: Harness;
 
@@ -102,12 +111,21 @@ it("draws an open bay apart from the shore beside it, and a filled bay apart fro
   h.debug.removeCritter();
   await h.advance(1);
 
-  const mouthX = bayMouthX(BAY_PAIRS[BAY]);
   const mouthY = mapCY(ROW_BAYS);
-  const open = sampleColor(h, mouthX, mouthY);
-  const shore: { side: string; col: number; read: Rgb }[] = SHORE_COLUMNS.map(
-    ({ col, side }) => ({ side, col, read: bandColor(h, col, ROW_BAYS) }),
-  );
+  // Every one of the five mouths, and the solid shore on either side of each,
+  // read off the one frame the empty strait drew.
+  const mouths = BAY_PAIRS.map((pair, bay) => ({
+    bay,
+    pair,
+    read: sampleColor(h, bayMouthX(pair), mouthY),
+    shore: shoreColumns(pair).map(({ col, side }) => ({
+      side,
+      col,
+      read: bandColor(h, col, ROW_BAYS),
+    })) as { side: string; col: number; read: Rgb }[],
+  }));
+  const mouthX = bayMouthX(BAY_PAIRS[BAY]);
+  const open = mouths[BAY].read;
 
   // The same bay, filled, and nothing else on the strait changed.
   h.debug.setBay(BAY, true);
@@ -117,16 +135,18 @@ it("draws an open bay apart from the shore beside it, and a filled bay apart fro
   captureStill(h, "scene");
   const filled = sampleColor(h, mouthX, mouthY);
 
-  for (const sample of shore) {
-    assertGreaterThanOrEqual(
-      colorDistance(open, sample.read),
-      BAY_APART_MIN,
-      `the mouth of bay ${BAY} (columns ${BAY_PAIRS[BAY][0]} and ` +
-        `${BAY_PAIRS[BAY][1]}), ` +
-        `open, read against the solid far shore at column ${sample.col} ` +
-        `${sample.side} — an open bay reads as an opening in the far shore, ` +
-        `distinct from the solid shore beside it (specs/overview.md)`,
-    );
+  for (const mouth of mouths) {
+    for (const sample of mouth.shore) {
+      assertGreaterThanOrEqual(
+        colorDistance(mouth.read, sample.read),
+        BAY_APART_MIN,
+        `the mouth of bay ${mouth.bay} (columns ${mouth.pair[0]} and ` +
+          `${mouth.pair[1]}), open, read against the solid far shore at column ` +
+          `${sample.col} ${sample.side} — an open bay reads as an opening in ` +
+          `the far shore, distinct from the solid shore beside it ` +
+          `(specs/overview.md)`,
+      );
+    }
   }
 
   assertGreaterThanOrEqual(
