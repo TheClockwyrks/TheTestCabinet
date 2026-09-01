@@ -24,8 +24,19 @@
 // asserts it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FOUNDATION_X, STOCK_X, TOP_ROW_Y, WASTE_X } from "../../src/constants";
-import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
+import {
+  CARD_H,
+  CARD_W,
+  FOUNDATION_X,
+  STOCK_X,
+  TOP_ROW_Y,
+  WASTE_X,
+} from "../../src/constants";
+import {
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   ACE,
   alternatingRun,
@@ -49,21 +60,35 @@ import {
   corners,
   rowTops,
   tableauBoxes,
+  type PlacedBox,
 } from "./placed";
 
 /**
- * How far a drawn box's size may sit from `100 x 140`, as a fraction of each
- * side, and still be a card's footprint: one per cent, which is a unit across
- * and a unit and a half down.
+ * How far a drawn box's size may sit from `100 x 140` and still be READ AS A
+ * CARD at all, as a fraction of each side.
  *
- * `CARD_W x CARD_H` is an exact figure, so this is rounding room and nothing
- * else — it covers a build that snaps its drawing to whole device pixels and
- * excludes anything drawn at a different size. This is the one point in the
- * group that reads the footprint itself, so it is the one that states a
- * tolerance this tight; the rest identify a card far more loosely, so that a
- * build which drew its cards small is charged here and nowhere else.
+ * A generous fifth, which is what every other point in this group uses to
+ * identify a card. It is deliberately NOT the grading figure: a build that drew
+ * its cards small has to be FOUND before it can be charged, and a filter tight
+ * enough to grade would simply drop such a card out of the reading and fail this
+ * point on the anchor instead of on the size.
  */
-const CARD_FOOTPRINT_TOLERANCE = 0.01;
+const CARD_LIKE_TOLERANCE = 0.2;
+
+/**
+ * How far a drawn card's extent may sit from `100 x 140` and still be said to
+ * cover the footprint, in logical units.
+ *
+ * The allowance for a stroke traced down its centre-line: a build that draws its
+ * card as a `strokeRect` two units wide inset to sit inside the footprint names
+ * `98 x 138` and covers `100 x 140`. `specs/` fixes no line width, so two units
+ * is the room this leaves, and it is the same two units every other `table` and
+ * `presentation` point allows for the same reason. A build that sized its cards
+ * wrongly at all misses by tens of units: the next plausible footprint down, a
+ * card scaled to nine tenths, is `10` short across and `14` short down. The
+ * `none` and `simple-2d` suites hold this item to the same two units.
+ */
+const SIZE_TOLERANCE = 2;
 
 /**
  * How far a drawn card's top-left may sit from the anchor specs/table.md fixes
@@ -102,6 +127,28 @@ const COLUMN = 2;
 /** How many cards the fan holds. */
 const FANNED = 3;
 
+/**
+ * How far the CLOSEST of a group of boxes sits from `100 x 140`, in logical
+ * units — the larger of its two side errors.
+ *
+ * The closest, because a build is free to draw a card as several shapes (a fill
+ * and a stroke, a rounded body and a border) and only one of them has to cover
+ * the footprint.
+ */
+function deviation(boxes: readonly PlacedBox[]): number {
+  return Math.min(
+    ...boxes.map((box) =>
+      Math.max(Math.abs(box.w - CARD_W), Math.abs(box.h - CARD_H)),
+    ),
+  );
+}
+
+/** The measured extents of a group of boxes, to a tenth of a unit, for a message. */
+function extents(boxes: readonly PlacedBox[]): string {
+  const round = (value: number) => Math.round(value * 10) / 10;
+  return boxes.map((box) => `${round(box.w)} x ${round(box.h)}`).join(", ");
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -120,7 +167,7 @@ it("draws a card over its whole footprint on each squared pile", async () => {
 
   const calls = await h.drawFrame();
   captureStill(h, "card");
-  const boxes = cardBoxes(h, calls, CARD_FOOTPRINT_TOLERANCE);
+  const boxes = cardBoxes(h, calls, CARD_LIKE_TOLERANCE);
 
   const sites: readonly [string, number, number][] = [
     ["the card on the stock", STOCK_X, TOP_ROW_Y],
@@ -128,11 +175,20 @@ it("draws a card over its whole footprint on each squared pile", async () => {
     ["the card on the third foundation", FOUNDATION_X[2], TOP_ROW_Y],
   ];
   for (const [name, x, y] of sites) {
+    const at = boxesAt(boxes, x, y, ANCHOR_TOLERANCE);
     assertGreaterThan(
-      boxesAt(boxes, x, y, ANCHOR_TOLERANCE).length,
+      at.length,
       0,
-      `${name} drawn as a 100 x 140 box at (${x}, ${y}); the frame drew ` +
-        `card-sized boxes at ${corners(boxes)}`,
+      `${name} drawn as a card-sized box at (${x}, ${y}); the frame drew ` +
+        `card-like boxes at ${corners(boxes)}`,
+    );
+    assertLessThanOrEqual(
+      deviation(at),
+      SIZE_TOLERANCE,
+      `how far the closest box drawn at (${x}, ${y}) sits from the ` +
+        `${CARD_W} x ${CARD_H} footprint a card occupies wherever it sits, ` +
+        `here ${name}; the boxes drawn there measured ${extents(at)} ` +
+        "(specs/table.md)",
     );
   }
 });
@@ -142,14 +198,26 @@ it("keeps the footprint of every card of a fanned column", async () => {
   poseColumn(h, COLUMN, alternatingRun(KING, FANNED));
 
   const calls = await h.drawFrame();
-  const boxes = cardBoxes(h, calls, CARD_FOOTPRINT_TOLERANCE);
+  const boxes = cardBoxes(h, calls, CARD_LIKE_TOLERANCE);
   const column = busiestColumn(tableauBoxes(boxes), SAME_COLUMN_TOLERANCE);
   const rows = rowTops(column, ROW_TOLERANCE);
 
   assertGreaterThanOrEqual(
     rows.length,
     FANNED,
-    `each of the ${FANNED} cards of the column drawn as a 100 x 140 box; ` +
-      `the frame drew the column's card-sized boxes at ${corners(column)}`,
+    `each of the ${FANNED} cards of the column drawn as a card-sized box; ` +
+      `the frame drew the column's card-like boxes at ${corners(column)}`,
   );
+
+  for (const top of rows) {
+    const row = column.filter((box) => Math.abs(box.y - top) <= ROW_TOLERANCE);
+    assertLessThanOrEqual(
+      deviation(row),
+      SIZE_TOLERANCE,
+      `how far the closest box of the column's row at y = ${Math.round(top)} ` +
+        `sits from the ${CARD_W} x ${CARD_H} footprint a card keeps even ` +
+        `overlapped in a column; that row's boxes measured ${extents(row)} ` +
+        "(specs/table.md)",
+    );
+  }
 });
