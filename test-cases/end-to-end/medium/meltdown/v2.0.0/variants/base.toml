@@ -18,15 +18,21 @@ description = "The reactor floor with all five modes: Containment over three dif
 # spec, and no spec of any other kind, to put here. If you came to this file to
 # add one, it almost certainly belongs in `test-case.toml` as a common spec.
 
-# What the game looks like played correctly, shown before anyone runs it: a
-# sustained clip of a maze laid out tower by tower and a wave released against
-# it, the surge winding the long way round while the emitters climb their glow
-# ramp, one gun packed too tight tripping and strobing, and a Sink threaded in to
-# bring the core back into its plateau -- plus stills of a mid-wave floor, the
-# inspector open on a white-hot Lance, and the title screen. All captured from
-# `references/none` driven through its own `window.__meltdown` surface.
-# `showcase/base/showcase.toml` lists the media; `showcase/base/showcase.md`
-# carries the description.
+# What the game looks like played correctly, shown before anyone runs it: half a
+# minute of a real Containment run -- a short wall laid tower by tower, Wave 1
+# sent early into it, the takings spent on upgrades and a level III Forge, then
+# Wave 2 cooking two guns past 100 until they trip and go dark while the surge
+# walks by, a Sink dropped against them, and the wall grown out into a cross
+# while the wave is still running -- plus two stills from the same take: the
+# floor mid-wave with the tripped guns and the Sink, and the inspector open on an
+# Arc sitting exactly on its redline at full power.
+#
+# All of it captured from `references/structured-2d`, driven through the case's
+# own validator harness with the real key and pointer input path and recorded
+# with the engine's own recorder. `showcase/capture/` holds the driver and the
+# README that says how each committed file was produced;
+# `showcase/base/showcase.toml` lists the media in carousel order and
+# `showcase/base/showcase.md` carries the description.
 showcase = "showcase/base"
 
 # The authored correct build, one directory per supported engine, because the

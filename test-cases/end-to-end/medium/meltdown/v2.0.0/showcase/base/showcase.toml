@@ -1,10 +1,11 @@
-# SCAFFOLD. The showcase stage captures the real media and lists it here, in the
-# order the carousel plays it: a sustained clip of real play showing a maze laid
-# out tower by tower and a wave released against it, then three stills — a
-# mid-wave floor with the heat reads up, the inspector open on a white-hot Lance,
-# and the title screen. The single entry below is a placeholder so the manifest
-# resolves; it is replaced, not added to.
+[[media]]
+file = "gameplay.json.gz"
+name = "Two waves held on the reactor floor"
 
 [[media]]
-file = "placeholder.png"
-name = "Placeholder — the showcase has not been captured yet"
+file = "mid-wave.png"
+name = "Mid-wave, with two guns tripped and a Sink on them"
+
+[[media]]
+file = "inspector.png"
+name = "An Arc at its redline, at full power"
