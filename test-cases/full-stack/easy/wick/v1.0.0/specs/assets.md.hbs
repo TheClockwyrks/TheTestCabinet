@@ -108,7 +108,8 @@ straight-alpha canvas of exactly the size its row states, so a sprite `24`
 pixels wide stands `24` units wide in the world, and the game draws it with
 image smoothing off so it stays crisp at the stage's fit. Each is drawn
 centered on the thing it depicts. A sheet's frames are separate PNG files,
-numbered from `0`, each on a canvas of the sheet's size.
+numbered from `0`, each on a canvas of the sheet's size, and no two frames of
+one sheet are the same picture.
 
 | Sprite | Files | Tool | Frames | Canvas |
 | --- | --- | --- | --- | --- |
@@ -129,7 +130,9 @@ commons. An enemy's sprite may be mirrored across its vertical axis to face
 the sign of its heading's `x`; nothing else about its orientation is fixed.
 The three gem tiers are told apart by size and form. The ground tile sits
 flush against itself on all four sides, since the ground is that tile repeated
-across the world.
+across the world. The game draws the ground as that tile once for every
+`GROUND_TILE_SIZE` cell of world space the view overlaps, each drawing covering
+its cell exactly.
 
 ### The weapon effects
 

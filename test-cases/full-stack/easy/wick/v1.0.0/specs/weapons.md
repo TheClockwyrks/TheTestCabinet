@@ -84,13 +84,14 @@ the `hit` and `kill` cues as `specs/ui.md` states.
 A projectile is a circle that moves at a constant velocity from the tick after
 it is fired, except Sconce, which decelerates, and Shard, which bounces. On
 each tick it moves, its position advances by its velocity times `TICK_DT`, and
-then its velocity changes by its acceleration times `TICK_DT`. Every
-hit lowers its `pierce` by one, and a hit on a projectile whose `pierce` is
-`0` removes it instead, so a projectile with `pierce` `n` hits `n + 1`
-enemies. A projectile whose `pierce` is `INFINITE_PIERCE` (`-1`) is never
-lowered and never removed by a hit. A projectile's `ttl` is set to its
-`duration` when it is fired, and it is removed on the tick `ttl` is due,
-whether or not it hit anything.
+then its velocity changes by its acceleration times `TICK_DT`. A fired
+projectile's acceleration is `(0, 0)` for every weapon but Sconce, whose
+acceleration is the one its section states. Every hit lowers its `pierce` by
+one, and a hit on a projectile whose `pierce` is `0` removes it instead, so a
+projectile with `pierce` `n` hits `n + 1` enemies. A projectile whose `pierce`
+is `INFINITE_PIERCE` (`-1`) is never lowered and never removed by a hit. A
+projectile's `ttl` is set to its `duration` when it is fired, and it is removed
+on the tick `ttl` is due, whether or not it hit anything.
 
 A projectile with finite pierce hits a given enemy at most once: its re-hit
 entry for that enemy carries the projectile's remaining `ttl` at the hit, so

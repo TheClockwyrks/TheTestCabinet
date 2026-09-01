@@ -53,13 +53,15 @@ which is how the game is played, and holds while it is off.
 5. The weapons, in two parts. The firing, while `weaponFire` is on: each held
    weapon's timer counts down, and each weapon whose timer is due fires,
    creating its projectiles and zones at the lamplighter's and the enemies'
-   positions of this tick. The placement, on every `playing` tick: an aura or
-   a lantern set is created on a tick its weapon is held and none exists, and
-   removed on a tick its weapon is no longer held; the aura's center and each
-   lantern's center are placed about the lamplighter's position of this tick;
-   and the aura's radius and damage and each Chandelier lantern's orbit,
-   radius, and damage are recomputed from the level, `areaMul`, and
-   `damageMul` in force.
+   positions of this tick. The placement, on every `playing` tick: an aura is
+   created on a tick its weapon is held and none exists, and a Chandelier
+   lantern set on a tick Chandelier is held and no Chandelier lantern exists;
+   an aura or a lantern set is removed on a tick its weapon is no longer held;
+   the aura's center and each lantern's center are placed about the
+   lamplighter's position of this tick; and the aura's radius and damage and
+   each Chandelier lantern's orbit, radius, and damage are recomputed from the
+   level, `areaMul`, and `damageMul` in force. A base Lantern set is created by
+   firing alone.
 6. Projectiles and zones. Every projectile and zone that existed before this
    tick counts its `ttl` down and is removed when it is due; every re-hit entry
    counts down. Then, while `effectMotion` is on, every remaining projectile

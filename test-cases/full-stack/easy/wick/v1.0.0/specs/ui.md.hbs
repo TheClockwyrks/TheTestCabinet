@@ -95,7 +95,7 @@ The HUD is drawn over the world and reads against it:
 | Kills | The kill count. |
 | Weapon slots | `WEAPON_SLOTS` (`6`) slots in slot order, each held weapon as its icon with one pip per level held, and an empty slot visibly empty. |
 | Passive slots | `PASSIVE_SLOTS` (`6`) slots, the same way. |
-| Cooldowns | On each weapon's slot, its cooldown state: the slot's picture on the tick the weapon fires differs from its picture on the tick before, and a weapon whose timer is `0` shows nothing left to run. A Lantern slot's timer covers the set's life and the gap after it together. |
+| Cooldowns | On each weapon's slot, its cooldown state: the slot's picture on the tick the weapon fires differs from its picture on the tick before, and a weapon whose timer is `0` shows nothing left to run, its slot drawing the same picture on every tick the timer stays `0`. A Lantern slot's timer covers the set's life and the gap after it together. |
 
 ### `levelup`
 
