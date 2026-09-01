@@ -81,6 +81,16 @@ const POSED = {
   fireCooldown: 13,
   rockVx: -77,
   rockVy: 44,
+  /**
+   * The saucer's posed velocity, in units per second.
+   *
+   * Neither the cruise `(SAUCER_SPEED, 0)` `addSaucer` brings a saucer on at nor
+   * anything a weave reroll could produce, so no arrival and no decision of the
+   * craft's own can leave this pair on the field by accident
+   * (`specs/saucer.md`).
+   */
+  saucerVx: -33,
+  saucerVy: 22,
 } as const;
 
 /**
@@ -192,6 +202,26 @@ it("reports back a rock's posed velocity", () => {
   assertEqual(rock.vy, POSED.rockVy, "setRockVelocity reads back: vy");
   assertEqual(rock.x, QUIET_CORNER.x, "setRockVelocity moves no position: x");
   assertEqual(rock.y, QUIET_CORNER.y, "setRockVelocity moves no position: y");
+});
+
+it("reports back the saucer's posed velocity", () => {
+  startPlaying(h);
+  poseSaucer(h, QUIET_CORNER_OPPOSITE.x, QUIET_CORNER_OPPOSITE.y);
+
+  h.debug.setSaucerVelocity(POSED.saucerVx, POSED.saucerVy);
+  const saucer = requireSaucer(h.snapshot(), "the posed saucer");
+  assertEqual(saucer.vx, POSED.saucerVx, "setSaucerVelocity reads back: vx");
+  assertEqual(saucer.vy, POSED.saucerVy, "setSaucerVelocity reads back: vy");
+  assertEqual(
+    saucer.x,
+    QUIET_CORNER_OPPOSITE.x,
+    "setSaucerVelocity moves no position: x",
+  );
+  assertEqual(
+    saucer.y,
+    QUIET_CORNER_OPPOSITE.y,
+    "setSaucerVelocity moves no position: y",
+  );
 });
 
 it("reports back the two world gates and the ship's contact gate, both ways", () => {

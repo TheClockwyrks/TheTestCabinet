@@ -73,6 +73,15 @@ const POSED_ROCK_VELOCITY = { vx: 77, vy: -44 } as const;
 const SAUCER_PLACE = { x: 1000, y: 140 } as const;
 
 /**
+ * The saucer's posed velocity, in units per second.
+ *
+ * Neither the cruise `(SAUCER_SPEED, 0)` `addSaucer` brings a saucer on at nor
+ * anything a weave reroll could produce, so no arrival and no decision of the
+ * craft's own can leave this pair on the field by accident (`specs/saucer.md`).
+ */
+const POSED_SAUCER_VELOCITY = { vx: -33, vy: 22 } as const;
+
+/**
  * The decimal places a posed number is read back to.
  *
  * Six, which is to say exactly. A pose writes a number and a read returns it;
@@ -120,6 +129,10 @@ it("reports every value the surface poses", () => {
   // And a saucer, which `addSaucer` brings on with all three faculties running —
   // the opposite of the state the second leg below poses them into.
   const saucerId = poseSaucer(h, SAUCER_PLACE.x, SAUCER_PLACE.y);
+  h.debug.setSaucerVelocity(
+    POSED_SAUCER_VELOCITY.vx,
+    POSED_SAUCER_VELOCITY.vy,
+  );
 
   captureStill(h, "posed");
   const s = h.snapshot();
@@ -163,6 +176,18 @@ it("reports every value the surface poses", () => {
 
   const saucer = theSaucer(s, "the saucer whose faculties were posed");
   assertEqual(saucer.id, saucerId, "the saucer that was added");
+  assertCloseTo(
+    saucer.vx,
+    POSED_SAUCER_VELOCITY.vx,
+    READ_BACK_DIGITS,
+    "setSaucerVelocity vx",
+  );
+  assertCloseTo(
+    saucer.vy,
+    POSED_SAUCER_VELOCITY.vy,
+    READ_BACK_DIGITS,
+    "setSaucerVelocity vy",
+  );
   assertEqual(saucer.mind, true, "addSaucer brings its mind on");
   assertEqual(saucer.gun, true, "addSaucer brings its gun on");
   assertEqual(saucer.travel, true, "addSaucer brings its travel on");

@@ -72,6 +72,15 @@ const POSED_ROCK_VELOCITY = { vx: 77, vy: -44 } as const;
 const SAUCER_PLACE = { x: 1000, y: 140 } as const;
 
 /**
+ * The saucer's posed velocity, in units per second.
+ *
+ * Neither the cruise `(SAUCER_SPEED, 0)` `addSaucer` brings a saucer on at nor
+ * anything a weave reroll could produce, so no arrival and no decision of the
+ * craft's own can leave this pair on the field by accident (`specs/saucer.md`).
+ */
+const POSED_SAUCER_VELOCITY = { vx: -33, vy: 22 } as const;
+
+/**
  * The decimal places a posed number is read back to.
  *
  * Six, which is to say exactly. A pose writes a number and a read returns it;
@@ -125,6 +134,11 @@ it("reports every value the surface poses", async () => {
     travel: true,
   });
 
+  await h.debug.setSaucerVelocity(
+    POSED_SAUCER_VELOCITY.vx,
+    POSED_SAUCER_VELOCITY.vy,
+  );
+
   await captureStill(h, "posed");
   const s = await h.snapshot();
 
@@ -167,6 +181,18 @@ it("reports every value the surface poses", async () => {
 
   const saucer = requireSaucer(s, "the saucer whose faculties were posed");
   assertEqual(saucer.id, saucerId, "the saucer that was added");
+  assertCloseTo(
+    saucer.vx,
+    POSED_SAUCER_VELOCITY.vx,
+    READ_BACK_DIGITS,
+    "setSaucerVelocity vx",
+  );
+  assertCloseTo(
+    saucer.vy,
+    POSED_SAUCER_VELOCITY.vy,
+    READ_BACK_DIGITS,
+    "setSaucerVelocity vy",
+  );
   assertEqual(saucer.mind, true, "setSaucerMind(true)");
   assertEqual(saucer.gun, true, "setSaucerGun(true)");
   assertEqual(saucer.travel, true, "setSaucerTravel(true)");
