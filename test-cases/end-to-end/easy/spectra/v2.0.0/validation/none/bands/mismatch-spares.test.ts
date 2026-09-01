@@ -18,7 +18,7 @@
 // reading is in play.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDefined } from "../assert";
+import { assertDefined, assertEqual } from "../assert";
 import { FORM_CENTER_X } from "../constants";
 import {
   captureStill,
@@ -74,6 +74,11 @@ it("leaves a Shard whose effective band the shot does not match standing", async
   });
   await captureStill(harness, "spared");
 
+  assertEqual(
+    shot.hit,
+    true,
+    "the mismatched bullet resolving on the drone inside the frames its climb takes — a mismatched shot is consumed on contact (specs/bands.md), so the bullet leaving the roster is the evidence the shot arrived at all, and without it a build whose bullet never moves would satisfy every unchanged reading below",
+  );
   assertDefined(
     droneById(shot.snapshot, target),
     "the stored-cyan Shard a magenta shot must not destroy (specs/bands.md)",

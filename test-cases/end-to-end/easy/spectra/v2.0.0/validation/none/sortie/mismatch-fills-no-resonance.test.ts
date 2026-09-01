@@ -97,7 +97,7 @@ it("fills nothing for a shot of the band opposite the drone's", async () => {
     band: "cyan",
   });
 
-  await shootDrone(harness, target, "magenta", {
+  const shot = await shootDrone(harness, target, "magenta", {
     below: SHOT_BELOW,
     maxFrames: SHOT_FRAMES,
   });
@@ -105,6 +105,11 @@ it("fills nothing for a shot of the band opposite the drone's", async () => {
   await captureStill(harness, "meter");
 
   const after = await harness.snapshot();
+  assertEqual(
+    shot.hit,
+    true,
+    "the mismatched bullet resolving on the drone inside the frames its climb takes — a mismatched shot is consumed on contact (specs/bands.md), so the bullet leaving the roster is the evidence the shot arrived at all, and without it a build whose bullet never moves would satisfy every unchanged reading below",
+  );
   assertEqual(
     after.resonance,
     SEEDED_METER,

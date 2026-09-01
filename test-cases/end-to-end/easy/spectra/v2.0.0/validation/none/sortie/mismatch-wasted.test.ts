@@ -35,7 +35,7 @@
 // is in play.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertDeepEqual } from "../assert";
+import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
 import { FORM_CENTER_X } from "../constants";
 import {
   captureStill,
@@ -129,7 +129,7 @@ it("leaves the drone a mismatched shot crossed exactly as it was", async () => {
     "the posed Shard, before the mismatched shot",
   );
 
-  await shootDrone(harness, target, "magenta", {
+  const shot = await shootDrone(harness, target, "magenta", {
     below: SHOT_BELOW,
     maxFrames: SHOT_FRAMES,
   });
@@ -142,6 +142,11 @@ it("leaves the drone a mismatched shot crossed exactly as it was", async () => {
     "the stored-cyan Shard a magenta shot leaves alive and exactly as it was (specs/mode.md)",
   );
 
+  assertEqual(
+    shot.hit,
+    true,
+    "the mismatched bullet resolving on the drone inside the frames its climb takes — a mismatched shot is consumed on contact (specs/bands.md), so the bullet leaving the roster is the evidence the shot arrived at all, and without it a build whose bullet never moves would satisfy every unchanged reading below",
+  );
   assertDeepEqual(
     record(after),
     record(before),
