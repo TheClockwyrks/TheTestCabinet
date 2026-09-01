@@ -46,6 +46,7 @@ import {
   upgradeAt,
 } from "./build";
 import { resetState } from "./flow";
+import { isEmitter } from "./geometry";
 import { hpScaleOf } from "./modes";
 import {
   pointerDown as resolveDown,
@@ -300,10 +301,13 @@ export function createDebugApi(): MeltdownDebugApi {
     removeTower: (state, id) => removeTowerById(held(state), id),
     clearTowers: (state) => clearAllTowers(held(state)),
     setTowerHeat: (state, id, heat) =>
-      withTower(state, id, (tower) => ({
-        ...tower,
-        heat: clamp(heat, 0, TRIP_HEAT),
-      })),
+      // The Forge and the Sink carry no heat of their own and report `0` for it
+      // forever (specs/heat.md), so this operation is the emitter's alone.
+      withTower(state, id, (tower) =>
+        isEmitter(tower.type)
+          ? { ...tower, heat: clamp(heat, 0, TRIP_HEAT) }
+          : tower,
+      ),
     setTowerTripped: (state, id, tripped) =>
       withTower(state, id, (tower) => ({ ...tower, tripped })),
     setTowerTripTimer: (state, id, seconds) =>
