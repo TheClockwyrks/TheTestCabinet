@@ -78,12 +78,20 @@ const CHANGE = 30;
 /**
  * How much of the whole swing each of the two steps must carry.
  *
- * A fifth. A bar that fills smoothly puts half the swing into each half of the
- * recharge, so a conformant build reads about `0.5` for both steps; this admits a
- * build whose glyph does most of its brightening in one of them and still refuses a
- * readout that does nothing at all over one half of the charge.
+ * A tenth, and it is set to refuse ONE thing: a readout that does nothing at all
+ * over one half of the recharge, which is what "fills smoothly from empty to full"
+ * rules out. A build whose bar jumps from empty straight to full at the last instant
+ * reads `0` for the half it did nothing in and fails at any positive figure.
+ *
+ * It is deliberately not tighter, because how the swing divides between the bar and
+ * the glyph is the build's own and the specification fixes neither. A bar that fills
+ * evenly puts half the swing into each step; a build whose glyph is large and only
+ * lights at a full charge puts most of it into the first. The three references read
+ * `0.25`, `0.34` and `0.44` for their smaller step, so a tenth clears every one of
+ * them by more than double and still leaves a static half of the recharge nowhere to
+ * hide.
  */
-const MIN_STEP = 0.2;
+const MIN_STEP = 0.1;
 
 /** The score and the ships posed, so the HUD's other readouts are drawn throughout. */
 const SCORE = 730;

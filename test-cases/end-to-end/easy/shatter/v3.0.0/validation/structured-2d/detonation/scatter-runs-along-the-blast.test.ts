@@ -131,7 +131,11 @@ it("kicks both fragments along the torpedo's line rather than across it", async 
     parentId,
     "the Large on the tick it broke",
   );
-  const [first, second] = fragmentPair(run.at, "medium", "scatter-runs-along-the-blast");
+  const [first, second] = fragmentPair(
+    run.at,
+    "medium",
+    "scatter-runs-along-the-blast",
+  );
 
   for (const [index, fragment] of [first, second].entries()) {
     const kick = {

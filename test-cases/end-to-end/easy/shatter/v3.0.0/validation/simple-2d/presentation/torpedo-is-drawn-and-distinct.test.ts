@@ -113,12 +113,7 @@ it("paints the torpedo apart from the field and apart from a round", async () =>
   startPlaying(h);
   h.debug.setShipPosition(FAR_SHIP.x, FAR_SHIP.y);
   poseBullet(h, BULLET_SPOT.x, BULLET_SPOT.y, 0, 0);
-  const torpedoId = poseTorpedo(
-    h,
-    TORPEDO_SPOT.x,
-    TORPEDO_SPOT.y,
-    HEADING,
-  );
+  const torpedoId = poseTorpedo(h, TORPEDO_SPOT.x, TORPEDO_SPOT.y, HEADING);
   await h.advance(1);
 
   // The torpedo is in flight and has moved, so the disc follows it.
@@ -138,10 +133,7 @@ it("paints the torpedo apart from the field and apart from a round", async () =>
   );
 
   assertGreaterThan(
-    colorDistance(
-      inkOf(heavy, field, "torpedo"),
-      inkOf(light, field, "round"),
-    ),
+    colorDistance(inkOf(heavy, field, "torpedo"), inkOf(light, field, "round")),
     APART_FROM_BULLET,
     "the distance out of 441 between the colour the build drew the torpedo " +
       "in and the colour it drew a round in, which a player must tell apart " +

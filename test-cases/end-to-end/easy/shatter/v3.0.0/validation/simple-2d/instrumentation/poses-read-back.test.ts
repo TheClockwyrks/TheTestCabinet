@@ -129,10 +129,7 @@ it("reports every value the surface poses", () => {
   // And a saucer, which `addSaucer` brings on with all three faculties running —
   // the opposite of the state the second leg below poses them into.
   const saucerId = poseSaucer(h, SAUCER_PLACE.x, SAUCER_PLACE.y);
-  h.debug.setSaucerVelocity(
-    POSED_SAUCER_VELOCITY.vx,
-    POSED_SAUCER_VELOCITY.vy,
-  );
+  h.debug.setSaucerVelocity(POSED_SAUCER_VELOCITY.vx, POSED_SAUCER_VELOCITY.vy);
 
   captureStill(h, "posed");
   const s = h.snapshot();

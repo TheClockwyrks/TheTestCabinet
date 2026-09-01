@@ -92,7 +92,6 @@ const TOLERANCE = 0.1;
  */
 const HARDER_THAN_THE_GUN = 2;
 
-
 /** Frames of the fragments coming apart, recorded after the reading is taken. */
 const AFTERMATH_TICKS = ticksFor(1);
 

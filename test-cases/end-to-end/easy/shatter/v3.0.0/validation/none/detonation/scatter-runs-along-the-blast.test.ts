@@ -126,9 +126,17 @@ it("kicks both fragments along the torpedo's line rather than across it", async 
 
   // The parent as it stood on the last tick it was still whole, so the drift the
   // well had added to it is subtracted rather than measured.
-  const struck = requireRock(run.before, parentId, "scatter-runs-along-the-blast");
+  const struck = requireRock(
+    run.before,
+    parentId,
+    "scatter-runs-along-the-blast",
+  );
   const parentVelocity = velocityOf(struck);
-  const [first, second] = fragmentPair(run.at, "medium", "scatter-runs-along-the-blast");
+  const [first, second] = fragmentPair(
+    run.at,
+    "medium",
+    "scatter-runs-along-the-blast",
+  );
 
   for (const [index, fragment] of [first, second].entries()) {
     const kick = subtract(velocityOf(fragment), parentVelocity);
