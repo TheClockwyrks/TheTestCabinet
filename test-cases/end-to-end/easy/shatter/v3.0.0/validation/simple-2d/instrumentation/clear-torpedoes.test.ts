@@ -14,6 +14,13 @@
 // back BY ITS ID: a build that emptied a roster and refilled it would be caught by
 // the count, and one that replaced an entity with a fresh one is caught by the id.
 //
+// AND THE SCORE IS READ EITHER SIDE OF THE CLEAR, as it is for `clearRocks`.
+// `specs/instrumentation.md` has the operation REMOVE every torpedo, and a removal
+// is not a kill: a build whose `clearTorpedoes` detonates each round where it
+// stands, or credits the player for one it took away, has spent the torpedoes
+// rather than cleared them. Nothing on this field is on a torpedo's path, so the
+// only thing that could move the score between the two readings is the clear.
+//
 // THE TORPEDOES ARE POSED WHERE THEY ACQUIRE NOTHING. `specs/weapons.md` gives a
 // torpedo a forward cone of `TORPEDO_CONE` (15 degrees) and has it take the nearest
 // candidate inside it every tick, so a torpedo posed with a rock ahead of it would
@@ -65,8 +72,9 @@ it("removes every torpedo and leaves the rest of the field standing", async () =
     poseTorpedo(h, place.x, place.y, TORPEDO_HEADING),
   );
   await h.advance(1);
+  const before = h.snapshot();
   assertLength(
-    torpedoesOf(h.snapshot()),
+    torpedoesOf(before),
     torpedoes.length,
     "the torpedoes the field held",
   );
@@ -103,5 +111,10 @@ it("removes every torpedo and leaves the rest of the field standing", async () =
     theSaucer(after, "the saucer clearTorpedoes left standing").id,
     posed.saucer,
     "the saucer left standing",
+  );
+  assertEqual(
+    after.score,
+    before.score,
+    "clearTorpedoes destroys nothing, so it scores nothing",
   );
 });
