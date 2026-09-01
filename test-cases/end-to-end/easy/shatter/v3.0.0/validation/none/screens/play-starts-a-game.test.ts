@@ -13,6 +13,14 @@
 // addressed at the first entry, and a real confirm key through Chromium's own input
 // pipeline — and what is read afterwards is what the build's own new-game path built.
 //
+// AND THE TITLE IS POSED WRONG FIRST, WHICH IS WHAT MAKES THE READING DECIDE
+// ANYTHING. `reset()` already leaves `score` at `0` and `lives` at `START_LIVES`
+// (`specs/instrumentation.md`), so a build whose `PLAY` did nothing but change the
+// screen would read a fresh run's own figures back and pass. Posing a score no new
+// game holds and one ship in hand separates every wrong model: a build that only
+// switched screens keeps both posed figures, a build that reset the score but not
+// the ships keeps the posed count, and a build that resumed something keeps both.
+//
 // THE ENTRY IS ADDRESSED, NOT COUNTED. `setMenuIndex(0)` places the highlight;
 // counting presses onto it would grade `controls/menu-down-arrow` a second time. The
 // confirm key is pressed for real because `specs/instrumentation.md` carries no
@@ -32,6 +40,12 @@ import { assertFreshRun, confirmEntry, reachTitle } from "./screens";
 /** The title menu's first entry, `PLAY` (`specs/ui.md`). */
 const PLAY_ENTRY = 0;
 
+/** A score no new game holds, posed into the title so a no-op `PLAY` is caught. */
+const POSED_SCORE = 4260;
+
+/** Ships in hand no new game holds, posed on the same terms. */
+const POSED_LIVES = 1;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -50,6 +64,12 @@ it("opens a game with three ships and no score when PLAY is confirmed", async ()
   );
 
   await reachTitle(h);
+  await h.debug.setScore(POSED_SCORE);
+  await h.debug.setLives(POSED_LIVES);
+  const posed = await h.snapshot();
+  assertEqual(posed.score, POSED_SCORE, "the score the title was left holding");
+  assertEqual(posed.lives, POSED_LIVES, "the ships the title was left holding");
+
   await confirmEntry(h, PLAY_ENTRY);
   await captureStill(h, "opening");
 
