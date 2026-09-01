@@ -137,16 +137,33 @@ function closing(h: Harness, speed: number = CLOSING_SPEED): Vec {
  * The range and the closing speed are the CALLER's, because an item that is
  * about how fast a body may close before a build stops noticing it has to state
  * both itself. {@link poseClosingRock} is the ordinary form.
+ *
+ * `across` displaces the whole approach sideways — the rock is moved that many
+ * units PERPENDICULAR to the line it closes along, and its velocity is left
+ * alone, so it runs the same approach at the same speed down a parallel line
+ * that misses the ship's centre by exactly `across`. An item that needs a
+ * near-miss as the control on a hit poses one with it; every other caller leaves
+ * it at nothing and gets the approach through the centre.
  */
 export function poseRockAtRange(
   h: Harness,
   size: RockSize,
   centres: number,
   speed: number,
+  across = 0,
 ): number {
   const at = doorstep(centres);
   const v = closing(h, speed);
-  return poseRock(h, size, at.x, at.y, v.x, v.y);
+  // The unit vector at a right angle to the approach, which is at a right angle
+  // to the line out from the star the approach runs along.
+  return poseRock(
+    h,
+    size,
+    at.x - AWAY_FROM_STAR.y * across,
+    at.y + AWAY_FROM_STAR.x * across,
+    v.x,
+    v.y,
+  );
 }
 
 /** One rock on the ship's doorstep, closing on it, and its id. */

@@ -28,6 +28,15 @@
 // EXACTLY ONE, because a build that resolves the same pair once per position
 // and once per sweep drops two.
 //
+// AND THE MISS IS THE CONTROL. The same rock, on the same approach at the same
+// speed, run down a parallel line displaced `MISS_ACROSS` (32) units across it —
+// four more than the 28 at which the pair touches — must leave every ship
+// standing. Without it a build that spent a life for any rock passing anywhere
+// near the ship would pass the reading above, and this item would be grading
+// proximity rather than contact. It is flown FIRST, on its own ground, and the
+// field is laid fresh before the approach that counts, so neither reading can be
+// the other one's leftovers.
+//
 // The ship is posed at rest on quiet ground with its lethal contact test on and
 // no respawn grace, and the field holds nothing but the two bodies.
 
@@ -67,6 +76,19 @@ const CONTACT = SHIP_R + ROCK_RADIUS[ROCK];
  */
 const RANGE = CONTACT + STEP * 0.8;
 
+/**
+ * How far across its approach the control rock is displaced, in units: 32.
+ *
+ * Four more than the `CONTACT` (28) at which `specs/collision.md` has the pair
+ * touch, so the nearest the two circles come over the whole of the control's run
+ * is four units of clear air. A rock that never touched the ship costs no life,
+ * however fast it went past.
+ */
+const MISS_ACROSS = CONTACT + 4;
+
+/** How long the control is flown for: long enough to carry it past the ship. */
+const MISS_TICKS = 6;
+
 /** More of the field after the contact, filmed for the replay. */
 const DWELL_TICKS = ticksFor(0.25);
 
@@ -80,7 +102,24 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("spends exactly one life on the tick a fast rock reaches the ship", async () => {
+it("spends exactly one life on the tick a fast rock reaches the ship, and none on the same rock offset past their radii", async () => {
+  // The control first: the same rock at the same closing speed, on a line that
+  // misses the ship's centre by more than the two touch at, flown until it is
+  // past the ship entirely.
+  poseDuel(h);
+  poseRockAtRange(h, ROCK, RANGE, CLOSING_SPEED, MISS_ACROSS);
+  await h.advance(MISS_TICKS);
+  assertEqual(
+    h.snapshot().lives,
+    START_LIVES,
+    `the ships left after a ${ROCK} closing at ${String(CLOSING_SPEED)} units ` +
+      `per second passed the ship ${String(MISS_ACROSS)} units across its ` +
+      `approach, which is more than the SHIP_R + ROCK_RADIUS.${ROCK} ` +
+      `(${String(CONTACT)}) at which the two touch — a body that never came ` +
+      "within the sum of the radii never collided (specs/collision.md)",
+  );
+
+  // And the approach that counts, on ground laid fresh.
   poseDuel(h);
   const rockId = poseRockAtRange(h, ROCK, RANGE, CLOSING_SPEED);
 
