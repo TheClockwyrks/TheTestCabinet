@@ -35,6 +35,16 @@ action bindings, the cue names, the screen copy — is stated in `specs/`. Name
 them once in your own module and read from it, rather than restating a number
 at each use.
 
+**You also produce every asset the game shows and plays.** Asset-generation
+tools are on your `PATH` while you build here. `specs/assets.md` is the
+contract: what to produce, which tool produces it, the path it lands at, and the
+bar it is held to. The finished files are committed to this repository and
+loaded at runtime, and `npm run build` never invokes the tools.
+
+`@test-cabinet/particle-runtime` is already a dependency, vendored into this
+repository and resolved by a `file:` entry in `package.json`. It plays a produced
+`system.json` into a 2D drawing context. Import it like any other dependency.
+
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
 runs them in process, in Node, with coverage over `src/`. `@napi-rs/canvas` is
 installed, so a test that needs a real 2D context can draw through one without
@@ -46,6 +56,7 @@ a browser.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`,
   `.prettierignore`, and `.gitignore`.
+- **`.tcab/`** — the vendored runtime libraries.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json` — the build is installed with `npm ci`. Leave the existing

@@ -54,6 +54,16 @@ meaning `specs/state.md` gives it. You may add fields, but only for data you
 can rebuild from the declared ones: the declared fields are the whole of the
 authoritative state, and the surface's `reset()` restores exactly those.
 
+**You also produce every asset the game shows and plays.** Asset-generation
+tools are on your `PATH` while you build here. `specs/assets.md` is the
+contract: what to produce, which tool produces it, the path it lands at, and the
+bar it is held to. The finished files are committed to this repository and
+loaded at runtime, and `npm run build` never invokes the tools.
+
+`@test-cabinet/particle-runtime` is already a dependency, vendored into this
+repository and resolved by a `file:` entry in `package.json`. It plays a produced
+`system.json` into a 2D drawing context. Import it like any other dependency.
+
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
 runs them in process, with coverage over `src/`. The engine's documentation
 carries a complete worked example of testing a game this way.
@@ -70,7 +80,7 @@ carries a complete worked example of testing a game this way.
 - **`index.html`** — the page and the canvas the engine fits the stage into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
-- **`.tcab/`** — the vendored engine.
+- **`.tcab/`** — the vendored engine and runtime libraries.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json` — the build is installed with `npm ci`. Leave the existing

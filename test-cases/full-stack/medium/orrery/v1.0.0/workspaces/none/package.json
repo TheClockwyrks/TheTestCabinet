@@ -13,6 +13,9 @@
     "format": "prettier --check .",
     "test": "vitest run --coverage"
   },
+  "dependencies": {
+    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"
+  },
   "devDependencies": {
     "@eslint/js": "^9",
     "@napi-rs/canvas": "^0.1",

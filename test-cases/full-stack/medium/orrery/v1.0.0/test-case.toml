@@ -84,6 +84,21 @@ max_runtime_hours = 6
 # setup.
 init = "npm install && npx playwright install chromium"
 
+# Test Cabinet runtime libraries installed into the run so the build can play the
+# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# the review UI plays a produced effect with; core bakes it into the run image and
+# every seeded workspace `package.json` depends on it via its baked-in `file:` path,
+# so the build imports it (its `./canvas` binding) like any other dependency and
+# plays each produced `system.json` by simulating it live. Orrery's three effects —
+# the delivery burst at a set, the fault at the mote or part that stopped the run,
+# and the completion burst — are all produced `particle-2d` systems played this way;
+# `specs/assets.md` is the consumption contract. It is declared for every engine:
+# no engine supplies particles, and each hands the game a 2D drawing context to play
+# a produced system through. It is also why `init` above is `npm install` and NOT
+# `npm ci` — the `file:` dependency is injected at seed time and the lockfile is
+# completed there. (A root key, so it must sit above the first `[table]` header.)
+packages = ["@test-cabinet/particle-runtime"]
+
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Orrery declares exactly ONE, so every run of this case is the same game.
 #
@@ -302,6 +317,13 @@ source = "specs/instrumentation.md.hbs"
 # six audio cues.
 [[spec]]
 source = "specs/ui.md.hbs"
+
+# The assets this build produces: what to make, which tool on the `PATH` makes it,
+# where the file lands under `assets/`, how the build wires it in, and the bar each
+# is held to. It branches on the engine for how files are loaded and how a particle
+# system reaches the screen.
+[[spec]]
+source = "specs/assets.md.hbs"
 
 # Campaign: the course the build designs itself — count bounds, solvability with
 # shipped reference solutions, whole-vocabulary coverage, the unlock rule, and its

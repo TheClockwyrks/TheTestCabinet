@@ -412,7 +412,7 @@ export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
 
 // ---- Audio cues (specs/ui.md) --------------------------------------------
 
-/** The six cue names, one per event. Define and play exactly these. */
+/** The seven cue names, one per event. Define and play exactly these. */
 export const CUES = {
   place: "place",
   erase: "erase",
@@ -420,9 +420,164 @@ export const CUES = {
   halt: "halt",
   constellation: "constellation",
   complete: "complete",
+  music: "music",
 } as const;
 
 export type CueName = (typeof CUES)[keyof typeof CUES];
+
+/** The one cue that loops until stopped rather than playing once. */
+export const LOOPING_CUES: readonly CueName[] = ["music"];
+
+// ---- The produced assets (specs/assets.md) -------------------------------
+//
+// Every produced file this build loads, as a path under the engine's asset root
+// (`assets/`), with the canvas and frame count each is authored at. The files
+// themselves do not exist yet: this build produces them with the generation
+// tools on the `PATH` and commits them here. Every canvas below is in pixels;
+// each sprite is drawn at that same size in logical units.
+
+/** One sprite per mote type, drawn centered on the mote's position. */
+export const MOTE_SPRITE_PATHS: Readonly<Record<MoteName, string>> = {
+  dust: "sprites/motes/dust.png",
+  nebula: "sprites/motes/nebula.png",
+  comet: "sprites/motes/comet.png",
+  nova: "sprites/motes/nova.png",
+  meteor: "sprites/motes/meteor.png",
+  mercury: "sprites/motes/mercury.png",
+  saturn: "sprites/motes/saturn.png",
+  jupiter: "sprites/motes/jupiter.png",
+  mars: "sprites/motes/mars.png",
+  venus: "sprites/motes/venus.png",
+  luna: "sprites/motes/luna.png",
+  sol: "sprites/motes/sol.png",
+  umbra: "sprites/motes/umbra.png",
+  lumen: "sprites/motes/lumen.png",
+  aether: "sprites/motes/aether.png",
+};
+
+/** The square canvas every mote sprite is authored on. */
+export const MOTE_SPRITE_SIZE = 44;
+
+/** The two filament strips, by weight: `1` is plain and `3` is triune. */
+export const FILAMENT_SPRITE_PATHS = {
+  plain: "sprites/filaments/plain.png",
+  triune: "sprites/filaments/triune.png",
+} as const;
+
+/** The filament strip's canvas: it spans HEX_PITCH between two mote centers. */
+export const FILAMENT_SPRITE_W = 48;
+export const FILAMENT_SPRITE_H = 16;
+
+/** One glyph per transforming sigil, drawn upright on the sigil's anchor hex. */
+export const SIGIL_GLYPH_PATHS = {
+  bind: "sprites/sigils/bind.png",
+  manifold: "sprites/sigils/manifold.png",
+  triune: "sprites/sigils/triune.png",
+  sunder: "sprites/sigils/sunder.png",
+  wane: "sprites/sigils/wane.png",
+  mirror: "sprites/sigils/mirror.png",
+  ascend: "sprites/sigils/ascend.png",
+  conjoin: "sprites/sigils/conjoin.png",
+  eclipse: "sprites/sigils/eclipse.png",
+  confluence: "sprites/sigils/confluence.png",
+  dispersion: "sprites/sigils/dispersion.png",
+  void: "sprites/sigils/void.png",
+} as const;
+
+/** The square canvas every sigil glyph is authored on. */
+export const SIGIL_GLYPH_SIZE = 48;
+
+/** One glyph per instruction, drawn centered in a tape cell. */
+export const INSTRUCTION_GLYPH_PATHS: Readonly<
+  Record<InstructionName, string>
+> = {
+  grab: "sprites/instructions/grab.png",
+  drop: "sprites/instructions/drop.png",
+  "rotate-cw": "sprites/instructions/rotate-cw.png",
+  "rotate-ccw": "sprites/instructions/rotate-ccw.png",
+  "pivot-cw": "sprites/instructions/pivot-cw.png",
+  "pivot-ccw": "sprites/instructions/pivot-ccw.png",
+  extend: "sprites/instructions/extend.png",
+  retract: "sprites/instructions/retract.png",
+  advance: "sprites/instructions/advance.png",
+  recede: "sprites/instructions/recede.png",
+};
+
+/** The square canvas every instruction glyph is authored on, TAPE_CELL_W wide. */
+export const INSTRUCTION_GLYPH_SIZE = 24;
+
+/**
+ * The two arm hubs: the arm hub is carried by `arm`, `biarm`, `triarm`, and
+ * `hexarm`, the piston hub by `piston`.
+ */
+export const HUB_PATHS = {
+  arm: "sprites/parts/hub-arm.png",
+  piston: "sprites/parts/hub-piston.png",
+} as const;
+
+/** The square canvas each arm hub is authored on. */
+export const HUB_SPRITE_SIZE = 40;
+
+/** The gripper in its two states, drawn turned to its spoke's live angle. */
+export const GRIPPER_PATHS = {
+  open: "sprites/parts/gripper-open.png",
+  closed: "sprites/parts/gripper-closed.png",
+} as const;
+
+/** The square canvas each gripper sprite is authored on. */
+export const GRIPPER_SPRITE_SIZE = 32;
+
+/** The wheel's hub, and the mount drawn under each of its fixtures. */
+export const WHEEL_HUB_PATH = "sprites/parts/wheel-hub.png";
+export const FIXTURE_MOUNT_PATH = "sprites/parts/fixture-mount.png";
+
+/** The square canvas the wheel hub and the fixture mount share. */
+export const WHEEL_SPRITE_SIZE = 48;
+
+/** The two aperture sheets, as the directory each one's frames sit in. */
+export const APERTURE_SHEETS = {
+  rise: "sprites/apertures/rise",
+  set: "sprites/apertures/set",
+} as const;
+
+/** The frames each aperture sheet holds, numbered `0` to `APERTURE_FRAMES - 1`. */
+export const APERTURE_FRAMES = 6;
+
+/** The square canvas every aperture frame is authored on. */
+export const APERTURE_SPRITE_SIZE = 48;
+
+/** The seconds one aperture frame is shown. */
+export const APERTURE_FRAME_TIME = 0.12;
+
+/** The produced particle systems, played through the particle runtime. */
+export const PARTICLE_PATHS = {
+  deliver: "particles/deliver.json",
+  fault: "particles/fault.json",
+  complete: "particles/complete.json",
+} as const;
+
+/** The one file per cue name, the music bed included. */
+export const CUE_PATHS: Readonly<Record<CueName, string>> = {
+  place: "audio/place.wav",
+  erase: "audio/erase.wav",
+  start: "audio/start.wav",
+  halt: "audio/halt.wav",
+  constellation: "audio/constellation.wav",
+  complete: "audio/complete.wav",
+  music: "audio/music.wav",
+};
+
+/** The music bed's portable score, committed beside the bed. */
+export const MUSIC_SCORE_PATH = "audio/music.mid";
+
+/** The least the music bed runs, in seconds. */
+export const MUSIC_MIN_SECONDS = 30;
+
+/**
+ * The most a loop's last sample may differ from its first, in each channel, as
+ * a fraction of full scale.
+ */
+export const LOOP_SEAM_TOLERANCE = 0.01;
 
 // ---- Debug surface (specs/instrumentation.md) ----------------------------
 
