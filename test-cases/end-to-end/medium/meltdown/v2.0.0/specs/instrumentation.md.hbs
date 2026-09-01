@@ -239,9 +239,9 @@ clears nothing; the coming wave's type and count and the hp scaling follow it.
 | Operation | Effect |
 | --- | --- |
 | `addTower(type, col, row, rotation)` | Adds one tower of `type` with its footprint's top-left at tile `(col, row)` and its placement `rotation` (`0` to `3`). It costs nothing, spends nothing, and runs no placement check. The footprint's tiles become blocked and the routes are recomputed exactly as a placed tower's are. The tower starts at heat `0`, level `1`, not tripped, with `spent` equal to its build cost, `fresh` true, and both faculties on. It is appended to `towers`. |
-| `removeTower(id)` | Removes that tower. Its footprint reopens and the routes are recomputed. It pays no refund and changes neither money nor score. |
-| `clearTowers()` | Removes every tower, reopening every footprint and recomputing the routes. It pays no refund and changes neither money nor score, and it leaves the surge standing. |
-| `setTowerHeat(id, heat)` | Sets the emitter's heat, a number in `[0, 100]`. It does not trip the tower: the trip belongs to the heat model, and this is a precondition. |
+| `removeTower(id)` | Removes that tower. Its footprint reopens and the routes are recomputed. It pays no refund and changes neither money nor score, and it clears the selection if the removed tower was selected. |
+| `clearTowers()` | Removes every tower, reopening every footprint and recomputing the routes. It pays no refund and changes neither money nor score, it clears the selection, and it leaves the surge standing. |
+| `setTowerHeat(id, heat)` | Sets the emitter's heat, a number in `[0, 100]`. It does not trip the tower: the trip belongs to the heat model, and this is a precondition. On a Forge or a Sink it does nothing, because a mover carries no heat of its own (`specs/heat.md`). |
 | `setTowerTripped(id, tripped)` | Sets whether the tower is offline on a trip. It sets that flag alone, touching neither the heat nor `tripTimer` and raising no cue. |
 | `setTowerTripTimer(id, seconds)` | Sets the seconds left on the trip cooldown. It sets that field alone and does not trip or un-trip the tower. |
 | `setTowerLevel(id, level)` | Sets the tower's level, `1`, `2`, or `3`. It spends nothing, and every stat `specs/towers.md` derives from the level follows. |
@@ -256,7 +256,7 @@ reported by `snapshot`.
 | Gate | What it holds |
 | --- | --- |
 | `firingEnabled` | The tower's targeting and firing: acquiring a target, resolving a shot, the damage and splash the shot deals, the slow a Rime applies, and the `heatPerShot` the shot adds. Off, the tower's thermal model runs exactly as an idle tower's does: it cools, conducts, exchanges with movers, and trips. |
-| `thermalEnabled` | The tower's part in the heat model: its air cooling, its conduction with its neighbours, the flow a Forge or a Sink drives into or out of it, and its trip. Off, an emitter's heat holds exactly where it was posed while it goes on acquiring targets, firing at its rate, and dealing its damage at that pinned heat. |
+| `thermalEnabled` | The tower's part in the heat model: its air cooling, its conduction with its neighbours, the flow a Forge or a Sink drives into or out of it, the `heatPerShot` its own shots add, and its trip. Off, an emitter's heat holds exactly where it was posed while it goes on acquiring targets, firing at its rate, and dealing its damage at that pinned heat. |
 
 There is no operation that rotates a placed tower. Orientation is fixed at
 placement, so `rotation` is set by `addTower` and by the preview's rotation at
