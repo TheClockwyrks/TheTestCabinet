@@ -999,6 +999,41 @@ export function clockText(tick: number): string {
   return `${m}:${s < 10 ? "0" : ""}${s}`;
 }
 
+/* ---------------------------- The idle run -------------------------------- */
+// specs/state.md, "The idle run": the values `run` holds whenever `screen` is
+// `title` or `howto`, which `initialize` and `reset` build and which leaving a
+// run for the title restores; and specs/ui.md, "A fresh run", which is that run
+// with Taper at level 1 and cooldown 0 in the first weapon slot.
+
+/** The stored fields of the idle run, exactly as specs/state.md's table gives them. */
+export const IDLE_RUN = {
+  tick: 0,
+  level: 1,
+  xp: 0,
+  kills: 0,
+  player: { x: 0, y: 0, facing: "right", hp: BASE_MAX_HP },
+  weapons: [],
+  passives: [],
+  enemies: [],
+  projectiles: [],
+  zones: [],
+  gems: [],
+  pickups: [],
+  offers: [],
+  nextOffers: null,
+  pendingLevelUps: 0,
+  chestResult: null,
+  spawnTimer: 0,
+  firedEvents: [],
+  nextId: 0,
+} as const;
+
+/** The stored fields of a fresh run: the idle run, plus Taper (specs/ui.md). */
+export const FRESH_RUN = {
+  ...IDLE_RUN,
+  weapons: [{ id: "taper", level: 1, cooldown: 0 }],
+} as const;
+
 /* ------------------------------- Controls --------------------------------- */
 // specs/controls.md: the actions and the `KeyboardEvent.code` keys bound to each.
 
@@ -1288,3 +1323,15 @@ export const ISOLATE_LEVEL = 50;
  * driving the game.
  */
 export const UNBOUND_KEY = "F24";
+
+/**
+ * Where a drawn sprite's center, or a drawn tile's corner, is read back on the
+ * stage against the point the camera formula of specs/world.md gives it. A
+ * build may snap a sprite to whole device pixels to keep pixel art crisp, and
+ * the harness's device mapping rounds once more, so a drawn point is read
+ * within 1 unit. The smallest produced sprite is 8 units across, so one unit
+ * cannot attribute a blit to a neighbour, and a sprite anchored on its edge
+ * rather than its center, or a camera that lags the lamplighter by a single
+ * tick, misses by 3 units or more.
+ */
+export const DRAWN_POINT_TOLERANCE = 1;

@@ -84,14 +84,18 @@ import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
 import {
   ASSET_ROOT,
+  BASE_MAX_HP,
   ISOLATE_LEVEL,
   LAST_TICK,
   LAYOUT,
+  MOVE_SPEED,
   OVERLAY_TOGGLE_CODE,
+  PICKUP_RADIUS,
   STAGE_H,
   STAGE_W,
   TICK_HZ,
   TICK_MS,
+  XP_BASE,
   type EnemyId,
   type GemTier,
   type PassiveId,
@@ -109,6 +113,7 @@ import {
   type SnapshotPassive,
   type SnapshotPickup,
   type SnapshotProjectile,
+  type SnapshotRun,
   type SnapshotWeapon,
   type SnapshotZone,
   type SwitchName,
@@ -126,6 +131,7 @@ export type {
   SnapshotPassive,
   SnapshotPickup,
   SnapshotProjectile,
+  SnapshotRun,
   SnapshotWeapon,
   SnapshotZone,
   SwitchName,
@@ -1201,6 +1207,32 @@ export async function holdTogether(
 }
 
 /**
+ * Hold `codes` down together and run `ticks` whole ticks ONE FRAME AT A TIME,
+ * reading the snapshot after each, then release them all: the tick-by-tick
+ * trace of a held movement, for a check that asserts something "tick over
+ * tick" (`specs/world.md`, Movement and Facing) rather than at the end of a
+ * span. Entry `i` is the state after tick `i + 1` of the hold; the state
+ * before the first tick is the caller's to read before calling.
+ */
+export async function holdSampling(
+  h: Harness,
+  codes: readonly string[],
+  ticks: number,
+): Promise<WickSnapshot[]> {
+  const trace: WickSnapshot[] = [];
+  for (const code of codes) h.holdKey(code);
+  try {
+    for (let tick = 0; tick < ticks; tick += 1) {
+      await h.advance(FRAMES_PER_TICK);
+      trace.push(h.snapshot());
+    }
+  } finally {
+    for (const code of codes) h.releaseKey(code);
+  }
+  return trace;
+}
+
+/**
  * Dispatch a `keydown` carrying the `repeat` flag for a key already held, run
  * one frame, and leave the key down: the auto-repeat a held key produces,
  * which `specs/controls.md` says arms no second edge.
@@ -1342,6 +1374,53 @@ export function freshRun(h: Harness, seed?: number): WickSnapshot {
   h.debug.setScreen("playing");
   return h.snapshot();
 }
+
+/**
+ * The idle run of `specs/state.md`, as the snapshot reports it: every stored
+ * field at the value the table "The idle run" gives, and every derived field
+ * (`specs/instrumentation.md`, "Snapshot shape") at what those values derive
+ * to with no passive held. What `run` holds on `title` and `howto`, and what
+ * `reset` and `setScreen("title")` restore; a check compares a whole run
+ * against it with `assertDeepEqual`.
+ */
+export const IDLE_RUN: SnapshotRun = {
+  tick: 0,
+  time: 0,
+  level: 1,
+  xp: 0,
+  xpToNext: XP_BASE,
+  kills: 0,
+  player: { x: 0, y: 0, facing: "right", hp: BASE_MAX_HP },
+  maxHp: BASE_MAX_HP,
+  armor: 0,
+  moveSpeed: MOVE_SPEED,
+  pickupRadius: PICKUP_RADIUS,
+  weapons: [],
+  passives: [],
+  enemies: [],
+  projectiles: [],
+  zones: [],
+  gems: [],
+  pickups: [],
+  offers: [],
+  pool: [],
+  nextOffers: null,
+  pendingLevelUps: 0,
+  chestResult: null,
+  spawnTimer: 0,
+  spawnWindow: 0,
+  firedEvents: [],
+  aliveCommons: 0,
+  nextId: 0,
+};
+
+/**
+ * A fresh run's loadout: "the idle run with Taper at level `1` and cooldown
+ * `0` in the first weapon slot" (`specs/state.md`, `specs/ui.md`).
+ */
+export const FRESH_WEAPONS: readonly SnapshotWeapon[] = [
+  { id: "taper", level: 1, cooldown: 0 },
+];
 
 /**
  * Reach the `playing` screen the way a player does: reset to the title and
@@ -1573,6 +1652,31 @@ export function pickupById(
 /** Every zone of `kind`, in id order. */
 export function zonesOfKind(s: WickSnapshot, kind: ZoneKind): SnapshotZone[] {
   return s.run.zones.filter((zone) => zone.kind === kind);
+}
+
+/**
+ * The zones `after` holds that did not exist when `before` was read.
+ *
+ * Every entity a tick or a pose creates takes the next id from `nextId`
+ * (`specs/instrumentation.md`), so a zone whose id is at least the `nextId`
+ * `before` reported was created since — which is how a check reads what one
+ * tick fired, telling a fresh slash from one a previous tick left.
+ */
+export function zonesCreatedSince(
+  before: WickSnapshot,
+  after: WickSnapshot,
+): SnapshotZone[] {
+  return after.run.zones.filter((zone) => zone.id >= before.run.nextId);
+}
+
+/** The projectiles `after` holds that did not exist when `before` was read. */
+export function projectilesCreatedSince(
+  before: WickSnapshot,
+  after: WickSnapshot,
+): SnapshotProjectile[] {
+  return after.run.projectiles.filter(
+    (projectile) => projectile.id >= before.run.nextId,
+  );
 }
 
 /** Every zone `weapon` produced, in id order. */

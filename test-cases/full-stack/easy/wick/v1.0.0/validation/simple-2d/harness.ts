@@ -106,13 +106,17 @@ import {
   STAGE_CY,
   STAGE_H,
   STAGE_W,
+  TICK_DT,
   TICK_MS,
   UNBOUND_KEY,
   type ActionName,
   type EnemyId,
   type GemTier,
   type PassiveId,
+  type OfferId,
   type PickupKind,
+  type ProjectileWeapon,
+  type PuddleWeapon,
   type WeaponId,
 } from "./constants";
 import {
@@ -125,10 +129,14 @@ import {
   type Facing,
   type GemSnapshot,
   type OperationName,
+  type PassiveSnapshot,
   type PickupSnapshot,
+  type PlayerSnapshot,
   type ProjectileSnapshot,
+  type RunSnapshot,
   type Screen,
   type SwitchName,
+  type WeaponSnapshot,
   type WickDebugApi,
   type WickSnapshot,
   type ZoneKind,
@@ -141,10 +149,14 @@ export type {
   Facing,
   GemSnapshot,
   OperationName,
+  PassiveSnapshot,
   PickupSnapshot,
+  PlayerSnapshot,
   ProjectileSnapshot,
+  RunSnapshot,
   Screen,
   SwitchName,
+  WeaponSnapshot,
   WickDebugApi,
   WickSnapshot,
   ZoneKind,
@@ -1389,6 +1401,32 @@ export async function tap(h: Harness, code: string): Promise<WickSnapshot> {
 }
 
 /**
+ * Press `code` and deliver its edge on a frame too short to consume a tick.
+ *
+ * What a check writes where the ARRIVAL is the thing it reads: "The frame's
+ * update then runs on the screen the edges left ... a frame whose press enters
+ * `playing` ... runs that frame's ticks" (specs/controls.md), so a press that
+ * lights the lamp under {@link tap} leaves the run at tick `1` with the
+ * director's first window already spawned, and a press that resumes a pause
+ * leaves it one tick past where the pause left it. A frame of half a tick
+ * delivers the same edge and consumes no tick, since "A tick is consumed while
+ * the accumulator is at least `TICK_DT − TICK_EPSILON`"
+ * (specs/instrumentation.md), so what the check reads is the state the
+ * transition itself produced.
+ */
+export async function tapWithoutTick(
+  h: Harness,
+  code: string,
+): Promise<WickSnapshot> {
+  h.holdKey(code);
+  try {
+    return await h.frameOf(TICK_DT / 2);
+  } finally {
+    h.releaseKey(code);
+  }
+}
+
+/**
  * Hold `code` down for `ticks` whole ticks, then release it.
  *
  * The movement actions are read as held values on `playing`, sampled once per
@@ -1652,6 +1690,52 @@ export function spawnPickupAt(
   return id;
 }
 
+/**
+ * Add one projectile of `weapon` at `(x, y)` with velocity `(vx, vy)` and
+ * `pierce` through the surface; its id. Its figures are the ones the weapon
+ * would give a projectile fired on this tick (specs/instrumentation.md,
+ * `spawnProjectile`), and it first moves and first hits on the next tick.
+ */
+export function spawnProjectileAt(
+  h: Harness,
+  weapon: ProjectileWeapon,
+  x: number,
+  y: number,
+  vx: number,
+  vy: number,
+  pierce: number,
+): number {
+  const id = h.snapshot().run.nextId;
+  h.debug.spawnProjectile(weapon, x, y, vx, vy, pierce);
+  return id;
+}
+
+/**
+ * Add one puddle of `weapon` at `(x, y)` through the surface; its id. It
+ * pulses first on the next tick (specs/instrumentation.md, `spawnPuddle`).
+ */
+export function spawnPuddleAt(
+  h: Harness,
+  weapon: PuddleWeapon,
+  x: number,
+  y: number,
+): number {
+  const id = h.snapshot().run.nextId;
+  h.debug.spawnPuddle(weapon, x, y);
+  return id;
+}
+
+/**
+ * `value`, or the item failed: what a check writes where it reads an entity it
+ * posed or expects and goes on to read that entity's fields. The failure is
+ * `assertDefined`'s, with `what` as its context, and the return is the value
+ * narrowed for the reads that follow.
+ */
+export function present<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) fail(`a value (${what})`, value);
+  return value;
+}
+
 /** The enemy `id` names in `snapshot`, or `undefined` once it is gone. */
 export function enemyById(
   snapshot: WickSnapshot,
@@ -1714,6 +1798,63 @@ export function switchesOf(
     enemyContact: snapshot.enemyContact,
     weaponFire: snapshot.weaponFire,
     effectMotion: snapshot.effectMotion,
+  };
+}
+
+/** The stored fields of a run, in the order specs/state.md's idle table lists them. */
+export interface RunFields {
+  tick: number;
+  level: number;
+  xp: number;
+  kills: number;
+  player: PlayerSnapshot;
+  weapons: WeaponSnapshot[];
+  passives: PassiveSnapshot[];
+  enemies: EnemySnapshot[];
+  projectiles: ProjectileSnapshot[];
+  zones: ZoneSnapshot[];
+  gems: GemSnapshot[];
+  pickups: PickupSnapshot[];
+  offers: OfferId[];
+  nextOffers: OfferId[] | null;
+  pendingLevelUps: number;
+  chestResult: ChestResult | null;
+  spawnTimer: number;
+  firedEvents: number[];
+  nextId: number;
+}
+
+/**
+ * The nineteen STORED fields of a run, projected off a snapshot, for comparison
+ * against the `IDLE_RUN` and `FRESH_RUN` of `constants.ts`.
+ *
+ * The derived readings (`time`, `xpToNext`, `maxHp`, `armor`, `moveSpeed`,
+ * `pickupRadius`, `spawnWindow`, `aliveCommons`, `pool`) are left out, because
+ * specs/state.md's idle table and specs/ui.md's fresh run each fix the stored
+ * fields and the derivations follow from them; a check about a derivation is the
+ * snapshot's own.
+ */
+export function runFields(run: RunSnapshot): RunFields {
+  return {
+    tick: run.tick,
+    level: run.level,
+    xp: run.xp,
+    kills: run.kills,
+    player: run.player,
+    weapons: run.weapons,
+    passives: run.passives,
+    enemies: run.enemies,
+    projectiles: run.projectiles,
+    zones: run.zones,
+    gems: run.gems,
+    pickups: run.pickups,
+    offers: run.offers,
+    nextOffers: run.nextOffers,
+    pendingLevelUps: run.pendingLevelUps,
+    chestResult: run.chestResult,
+    spawnTimer: run.spawnTimer,
+    firedEvents: run.firedEvents,
+    nextId: run.nextId,
   };
 }
 
@@ -1905,6 +2046,36 @@ export function blitsOfFile(blits: readonly Blit[], path: string): Blit[] {
 }
 
 /**
+ * Every blit of a produced file under the directory `dir`, relative to the
+ * `assets/` root: how a blit is attributed to a SHEET whatever frame of it was
+ * drawn, `sprites/lamplighter` for the idle sprite and every walk frame alike.
+ */
+export function blitsUnderDir(blits: readonly Blit[], dir: string): Blit[] {
+  const prefix = `${assetPath(dir)}/`;
+  return blits.filter((blit) => blit.id.startsWith(prefix));
+}
+
+/** A blit's box in logical stage units, past the viewport fit. */
+export function blitBoxOnStage(
+  h: Harness,
+  blit: Blit,
+): { x: number; y: number; w: number; h: number } {
+  const view = h.viewport();
+  return {
+    x: (blit.x - view.offsetX) / view.scale,
+    y: (blit.y - view.offsetY) / view.scale,
+    w: blit.w / view.scale,
+    h: blit.h / view.scale,
+  };
+}
+
+/** Where a blit's center landed, in logical stage units. */
+export function blitCenterOnStage(h: Harness, blit: Blit): Point {
+  const box = blitBoxOnStage(h, blit);
+  return { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+}
+
+/**
  * Every blit whose center landed within `within` logical units of the logical
  * stage point `(x, y)`: how a blit is attributed to the enemy, gem, or effect
  * it was drawn on, since every produced sprite is drawn centered on the thing
@@ -1962,6 +2133,33 @@ export function drewText(calls: readonly DrawCall[], text: string): boolean {
   return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
 }
 
+/**
+ * Whether the frame drew the words of `phrase`, in order, whatever runs of text
+ * it split them across and whatever it separated them with.
+ *
+ * What a check about a piece of the case's COPY reads. The specification fixes
+ * the words a screen shows (`THE LAMP BURNS BRIGHTER`, `LEVEL 4`) and, by
+ * "Wick fixes no palette, no font, no layout, and no styling for any screen"
+ * (specs/ui.md), nothing about how they are laid out, so a build is free to
+ * wrap a heading over two lines, draw a tag's label and its number as two runs,
+ * or put a marker between them. The frame's runs are read as one corpus and the
+ * words are matched in order with any non-alphanumeric separator between them,
+ * so every layout of the stated copy passes and a build that shows other words
+ * fails.
+ */
+export function drewPhrase(
+  calls: readonly DrawCall[],
+  phrase: string,
+): boolean {
+  const words = phrase.match(/[A-Za-z0-9]+/g);
+  if (words === null || words.length === 0) return false;
+  const pattern = new RegExp(
+    `(?<![A-Za-z0-9])${words.join("[^A-Za-z0-9]+")}(?![A-Za-z0-9])`,
+    "i",
+  );
+  return pattern.test(drawnText(calls).join(" "));
+}
+
 /** One run of text a frame drew, and where it drew it in device pixels. */
 export interface TextDraw {
   text: string;
@@ -1993,6 +2191,37 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
     });
   }
   return draws;
+}
+
+/**
+ * Every run of text the frame drew that holds `text`, ignoring case.
+ *
+ * What a check about WHERE a piece of copy sits reads: a build commonly draws
+ * one run twice, a shadow under the face of it, and commonly wraps a marker
+ * around the item at `menuIndex`, so a run is attributed to the copy it
+ * contains rather than matched whole.
+ */
+export function textDrawsOf(
+  calls: readonly DrawCall[],
+  text: string,
+): TextDraw[] {
+  const wanted = text.trim().toLowerCase();
+  return textDraws(calls).filter((draw) =>
+    draw.text.toLowerCase().includes(wanted),
+  );
+}
+
+/**
+ * The topmost anchor a piece of copy was drawn at, in device pixels, or `null`
+ * when the frame drew it nowhere. How a check reads the ORDER two stacked runs
+ * of copy sit in.
+ */
+export function topAnchorOf(
+  calls: readonly DrawCall[],
+  text: string,
+): number | null {
+  const draws = textDrawsOf(calls, text);
+  return draws.length === 0 ? null : Math.min(...draws.map((draw) => draw.y));
 }
 
 /**

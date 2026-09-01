@@ -47,14 +47,18 @@ import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
 import {
   createCaseHarness,
+  imageDraws,
+  type DrawCall,
   type Harness as BaseHarness,
   type HarnessOptions,
+  type ImageDraw,
   type UntilOptions,
   type UntilResult as BaseUntilResult,
 } from "./case-harness/index";
 import { fail } from "./assert";
 import {
   BINDINGS,
+  BLIT_TOL,
   CUE_NAMES,
   DEFAULT_SEED,
   HANDLE,
@@ -66,8 +70,10 @@ import {
   STAGE_W,
   SWITCH_NAMES,
   TICK_HZ,
+  TICK_MS,
   UNBOUND_KEY,
   type Action,
+  type CanvasSize,
   type EnemyId,
   type EvolutionId,
   type Facing,
@@ -83,6 +89,31 @@ import {
   type WeaponId,
   type ZoneKind,
 } from "./constants";
+import {
+  BASE_MAX_HP,
+  BASE_WEAPON_IDS,
+  ENEMY_FIELDS,
+  evolutionOf,
+  GEM_FIELDS,
+  HIT_ENTRY_FIELDS,
+  MAX_WEAPON_LEVEL,
+  MOVE_SPEED,
+  PASSIVE_IDS,
+  PASSIVE_SLOT_FIELDS,
+  PASSIVE_SLOTS,
+  PASSIVES,
+  PICKUP_FIELDS,
+  PICKUP_RADIUS,
+  PLAYER_FIELDS,
+  PROJECTILE_FIELDS,
+  RUN_FIELDS,
+  SNAPSHOT_FIELDS,
+  WEAPON_SLOT_FIELDS,
+  WEAPON_SLOTS,
+  xpToNext,
+  ZONE_FIELDS,
+} from "./constants";
+import { drawnText } from "./case-harness/index";
 
 /* -------------------------------------------------------------------------- */
 /* The contract the build owes                                                */
@@ -890,6 +921,29 @@ export function player(snapshot: WickSnapshot): PlayerView {
   return snapshot.run.player;
 }
 
+/**
+ * The 1-based ticks of `history` on which the lamplighter's `hp` fell from the
+ * tick before, reading `start` as the tick before the first.
+ *
+ * The reading a contact schedule is decided by, and one that says nothing about
+ * how much a hit took: a hit is the only thing that lowers `hp` on a night
+ * where recovery is `BASE_RECOVERY` and nothing heals, so the ticks it fell on
+ * are the ticks a hit landed on.
+ */
+export function ticksHpFell(
+  start: WickSnapshot,
+  history: readonly WickSnapshot[],
+): number[] {
+  const fell: number[] = [];
+  let previous = player(start).hp;
+  for (const [index, snapshot] of history.entries()) {
+    const hp = player(snapshot).hp;
+    if (hp < previous) fell.push(index + 1);
+    previous = hp;
+  }
+  return fell;
+}
+
 /** The seven switches, as the snapshot reports them. */
 export function switchesOf(
   snapshot: WickSnapshot,
@@ -1189,6 +1243,34 @@ export function facingVector(facing: Facing): XY {
   return { x: facing === "right" ? 1 : -1, y: 0 };
 }
 
+/**
+ * The lamplighter's displacement on each tick of `ticks`, each against the
+ * snapshot before it, starting from `from`: what a check about a per-tick step
+ * of specs/world.md's "each tick the position advances by the velocity times
+ * `TICK_DT`" reads.
+ */
+export function tickSteps(
+  from: WickSnapshot,
+  ticks: readonly WickSnapshot[],
+): XY[] {
+  const steps: XY[] = [];
+  let before = from.run.player;
+  for (const snapshot of ticks) {
+    const at = snapshot.run.player;
+    steps.push({ x: at.x - before.x, y: at.y - before.y });
+    before = at;
+  }
+  return steps;
+}
+
+/** The lamplighter's displacement from `from` to `to`. */
+export function displacement(from: WickSnapshot, to: WickSnapshot): XY {
+  return {
+    x: to.run.player.x - from.run.player.x,
+    y: to.run.player.y - from.run.player.y,
+  };
+}
+
 /** A point `units` from `from` along the direction at `degrees`. */
 export function alongAngle(from: XY, degrees: number, units: number): XY {
   const radians = (degrees * Math.PI) / 180;
@@ -1217,6 +1299,43 @@ export function stagePoint(snapshot: WickSnapshot, wx: number, wy: number): XY {
 export function worldPoint(snapshot: WickSnapshot, sx: number, sy: number): XY {
   const at = snapshot.run.player;
   return { x: sx - STAGE_CX + at.x, y: sy - STAGE_CY + at.y };
+}
+
+/**
+ * The images a frame drew at `size` on the stage, within `BLIT_TOL` on each
+ * side: "a sprite `24` pixels wide stands `24` units wide in the world"
+ * (specs/assets.md), so a sprite is told by the size it was drawn at rather than
+ * by its file, which a bundler may inline, or by its source's natural size,
+ * which a build that packs its sheets into one atlas would not keep. A sprite
+ * mirrored through a negative scale reports a negative width, so the sizes are
+ * compared unsigned.
+ */
+export function spriteDraws(
+  calls: readonly DrawCall[],
+  size: CanvasSize,
+): ImageDraw[] {
+  return imageDraws(calls).filter(
+    (draw) =>
+      Math.abs(Math.abs(draw.dw) - size.width) <= BLIT_TOL &&
+      Math.abs(Math.abs(draw.dh) - size.height) <= BLIT_TOL,
+  );
+}
+
+/** The draw of `draws` whose centre is nearest `at`, or `undefined` of none. */
+export function drawNearest(
+  draws: readonly ImageDraw[],
+  at: XY,
+): ImageDraw | undefined {
+  let best: ImageDraw | undefined;
+  let gap = Number.POSITIVE_INFINITY;
+  for (const draw of draws) {
+    const d = Math.hypot(draw.cx - at.x, draw.cy - at.y);
+    if (d < gap) {
+      gap = d;
+      best = draw;
+    }
+  }
+  return best;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1688,6 +1807,100 @@ export async function holdKeys(
   }
 }
 
+/**
+ * Hold every key in `codes` down together for `frames` frames, one frame at a
+ * time, then release them all, and hand back the snapshot each frame left in
+ * order. What a check about a tick-over-tick figure drives: the lamplighter's
+ * step on every tick of a hold, or `facing` on every tick of one.
+ */
+export async function holdKeysWatching(
+  h: Harness,
+  codes: readonly string[],
+  frames: number,
+): Promise<WickSnapshot[]> {
+  for (const code of codes) await h.hold(code);
+  try {
+    return await h.stepWatching(frames);
+  } finally {
+    for (const code of codes) await h.release(code);
+  }
+}
+
+/* ---- Synthetic key events ------------------------------------------------- */
+//
+// Two facts about the keyboard layer can only be reached with an event the
+// harness BUILDS rather than one Chromium types: "That layer maps each key in
+// `BINDINGS` to its action in `ACTIONS` by `KeyboardEvent.code`" and "A key
+// event whose `repeat` flag is set arms no edge" (specs/controls.md). Chromium
+// derives `key` from `code` and sets `repeat` itself, so a check about either
+// dispatches a `KeyboardEvent` of its own, which the same specification
+// sanctions: "a dispatched keyboard event moves the lamplighter and works the
+// menus exactly as a player's key does" (specs/instrumentation.md).
+//
+// The event is dispatched on the focused element, bubbling, which is where a
+// typed key lands and the path every listener a build may have attached sits
+// on: the element itself, `document`, and `window`.
+
+/** What a dispatched key event carries beyond its `code`. */
+export interface KeyEventOptions {
+  /** The event's `key`. Defaults to `code`, as a plain keyboard reports an arrow. */
+  key?: string;
+  /** The event's `repeat` flag. Off by default. */
+  repeat?: boolean;
+}
+
+/**
+ * Dispatch one `keydown` or `keyup` for `code` on the page's focused element,
+ * without stepping a frame. Every held key Chromium holds stays held.
+ */
+export async function dispatchKey(
+  h: Harness,
+  type: "keydown" | "keyup",
+  code: string,
+  options: KeyEventOptions = {},
+): Promise<void> {
+  await h.page.evaluate(
+    ([kind, init]) => {
+      const active = document.activeElement;
+      const target =
+        active instanceof HTMLElement && active !== document.documentElement
+          ? active
+          : document.body;
+      target.dispatchEvent(
+        new KeyboardEvent(kind, {
+          ...init,
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+        }),
+      );
+    },
+    [
+      type,
+      { code, key: options.key ?? code, repeat: options.repeat ?? false },
+    ] as const,
+  );
+}
+
+/**
+ * Press `code` through a dispatched `keydown` carrying `options`, run the one
+ * frame that delivers it, and release it with the matching `keyup`; the frame
+ * between the two is what makes it a press either conformant reading sees, as
+ * {@link Harness.tap} explains.
+ */
+export async function tapDispatched(
+  h: Harness,
+  code: string,
+  options: KeyEventOptions = {},
+): Promise<WickSnapshot> {
+  await dispatchKey(h, "keydown", code, options);
+  try {
+    return await h.step(1);
+  } finally {
+    await dispatchKey(h, "keyup", code, { key: options.key });
+  }
+}
+
 /* ---- The overlays and the endings ----------------------------------------- */
 //
 // Each is reached through the REAL path: a chest at the lamplighter's feet and
@@ -1758,4 +1971,385 @@ export function stepUntilScreen(
     maxFrames,
     poll: 1,
   });
+}
+
+/* -------------------------------------------------------------------------- */
+/* The idle run, the pool, and the documented projection                     */
+/* -------------------------------------------------------------------------- */
+//
+// Three readings the instrumentation checks share. Each is the specification's
+// figure restated as a value a check compares against, never a build's: the
+// idle run `specs/state.md` lists, the candidate pool `specs/progression.md`
+// computes from the slots, and the documented fields of `specs/instrumentation.md`
+// picked off whatever else a build chose to report beside them.
+
+/**
+ * The idle run of `specs/state.md`: "tick `0`, level `1`, no experience, no
+ * kills, the lamplighter at the world origin facing right with `BASE_MAX_HP`
+ * (`100`) health, no weapons, no passives, nothing alive, nothing dropped, no
+ * offers, no level-ups earned, no chest result, the spawn timer at `0`, no
+ * events fired, and the next id `0`" — with the derived fields each formula
+ * gives an empty loadout, and `weapons` as the caller says (a fresh run holds
+ * "Taper at level `1` and cooldown `0` in the first weapon slot").
+ */
+export function idleRun(weapons: readonly WeaponSlotView[] = []): RunView {
+  return {
+    tick: 0,
+    time: 0,
+    level: 1,
+    xp: 0,
+    xpToNext: xpToNext(1),
+    kills: 0,
+    player: { x: 0, y: 0, facing: "right", hp: BASE_MAX_HP },
+    maxHp: BASE_MAX_HP,
+    armor: 0,
+    moveSpeed: MOVE_SPEED,
+    pickupRadius: PICKUP_RADIUS,
+    weapons: [...weapons],
+    passives: [],
+    enemies: [],
+    projectiles: [],
+    zones: [],
+    gems: [],
+    pickups: [],
+    offers: [],
+    pool: [],
+    nextOffers: null,
+    pendingLevelUps: 0,
+    chestResult: null,
+    spawnTimer: 0,
+    spawnWindow: 0,
+    firedEvents: [],
+    aliveCommons: 0,
+    nextId: 0,
+  };
+}
+
+/** The weapon slot a fresh run starts with: "Taper at level `1` and cooldown `0`". */
+export const FRESH_TAPER: WeaponSlotView = { id: "taper", level: 1, cooldown: 0 };
+
+/**
+ * The candidate pool `specs/progression.md` computes "from the slots as they
+ * stand": every held base weapon below `MAX_WEAPON_LEVEL` and every held passive
+ * below its max as a `+1`; with a weapon slot free, every base weapon not held
+ * whose evolution is not held; with a passive slot free, every passive not held
+ * — "each id once, in `BASE_WEAPON_IDS` order then `PASSIVE_IDS` order"
+ * (specs/instrumentation.md).
+ */
+export function candidatePool(snapshot: WickSnapshot): OfferId[] {
+  const weapons = snapshot.run.weapons ?? [];
+  const passives = snapshot.run.passives ?? [];
+  const heldWeapon = (id: WeaponId): WeaponSlotView | undefined =>
+    weapons.find((slot) => slot.id === id);
+  const pool: OfferId[] = [];
+  for (const id of BASE_WEAPON_IDS) {
+    const held = heldWeapon(id);
+    if (held !== undefined) {
+      if (held.level < MAX_WEAPON_LEVEL) pool.push(id);
+      continue;
+    }
+    const evolved = evolutionOf(id);
+    const evolvedHeld = evolved !== null && heldWeapon(evolved) !== undefined;
+    if (weapons.length < WEAPON_SLOTS && !evolvedHeld) pool.push(id);
+  }
+  for (const id of PASSIVE_IDS) {
+    const held = passives.find((slot) => slot.id === id);
+    if (held !== undefined) {
+      if (held.level < PASSIVES[id].maxLevel) pool.push(id);
+      continue;
+    }
+    if (passives.length < PASSIVE_SLOTS) pool.push(id);
+  }
+  return pool;
+}
+
+/** Pick the named fields off `value`, in that order, dropping everything else. */
+function pick<T extends object>(
+  value: T,
+  fields: readonly string[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const source = value as Record<string, unknown>;
+  for (const field of fields) out[field] = source[field];
+  return out;
+}
+
+/**
+ * The `run` object reduced to the fields `specs/instrumentation.md` documents,
+ * nested entries included, so a comparison against a figure the specification
+ * states is not thrown by a field a build reports beside them. A missing field
+ * is carried as `undefined` and fails the comparison it belongs to.
+ */
+export function documentedRun(run: RunView): Record<string, unknown> {
+  const out = pick(run, RUN_FIELDS);
+  const list = <T extends object>(
+    entries: readonly T[] | undefined,
+    fields: readonly string[],
+  ): Record<string, unknown>[] | undefined =>
+    Array.isArray(entries)
+      ? entries.map((entry) => pick(entry, fields))
+      : undefined;
+  if (run.player !== undefined && run.player !== null) {
+    out.player = pick(run.player, PLAYER_FIELDS);
+  }
+  out.weapons = list(run.weapons, WEAPON_SLOT_FIELDS);
+  out.passives = list(run.passives, PASSIVE_SLOT_FIELDS);
+  out.enemies = list(run.enemies, ENEMY_FIELDS)?.map((enemy) => ({
+    ...enemy,
+    heading:
+      typeof enemy.heading === "object" && enemy.heading !== null
+        ? pick(enemy.heading, ["x", "y"])
+        : enemy.heading,
+  }));
+  out.projectiles = list(run.projectiles, PROJECTILE_FIELDS)?.map((shape) => ({
+    ...shape,
+    hits: list(shape.hits as HitEntry[] | undefined, HIT_ENTRY_FIELDS),
+  }));
+  out.zones = list(run.zones, ZONE_FIELDS)?.map((zone, index) => {
+    const source = (run.zones ?? [])[index] as ZoneView;
+    const picked: Record<string, unknown> = {
+      ...zone,
+      hits: list(zone.hits as HitEntry[] | undefined, HIT_ENTRY_FIELDS),
+    };
+    if (source.width !== undefined) picked.width = source.width;
+    if (source.height !== undefined) picked.height = source.height;
+    return picked;
+  });
+  out.gems = list(run.gems, GEM_FIELDS);
+  out.pickups = list(run.pickups, PICKUP_FIELDS);
+  return out;
+}
+
+/** The whole snapshot reduced the same way, `run` included. */
+export function documentedSnapshot(
+  snapshot: WickSnapshot,
+): Record<string, unknown> {
+  const out = pick(snapshot, SNAPSHOT_FIELDS);
+  if (snapshot.run !== undefined && snapshot.run !== null) {
+    out.run = documentedRun(snapshot.run);
+  }
+  return out;
+}
+
+/* -------------------------------------------------------------------------- */
+/* The diagnostics overlay                                                    */
+/* -------------------------------------------------------------------------- */
+//
+// "The overlay is part of the runtime layer you write. It draws the registered
+// sources, the backtick key ... shows and hides it, it is off when the game
+// starts" (specs/instrumentation.md). It fixes no medium: a build is free to draw
+// the overlay on its canvas or to lay it over the page as elements, and both are
+// conformant, so a reading of what the overlay SHOWS takes both — the text runs
+// the last closed frame drew, and the text the document carries.
+
+/** What the page is showing as text: the last frame's drawn runs, and the document's own text. */
+export interface Readout {
+  /** Every run of text the last closed frame drew, in draw order. */
+  runs: string[];
+  /** `document.body.innerText`, the text of whatever the build laid over the page. */
+  dom: string;
+}
+
+/** Read the text on show: the last closed frame's drawn runs and the document's text. */
+export async function readout(h: Harness): Promise<Readout> {
+  const runs = drawnText(await h.lastCalls());
+  const dom = await h.page.evaluate(() => document.body.innerText ?? "");
+  return { runs, dom };
+}
+
+/**
+ * The runs `after` shows beyond `before`, as a multiset difference, joined with
+ * the document text `after` carries beyond `before`'s: what a toggle ADDED.
+ */
+export function addedText(before: Readout, after: Readout): string[] {
+  const counts = new Map<string, number>();
+  for (const run of before.runs) counts.set(run, (counts.get(run) ?? 0) + 1);
+  const added: string[] = [];
+  for (const run of after.runs) {
+    const left = counts.get(run) ?? 0;
+    if (left > 0) counts.set(run, left - 1);
+    else added.push(run);
+  }
+  const beforeLines = new Set(before.dom.split("\n"));
+  for (const line of after.dom.split("\n")) {
+    if (line.trim() !== "" && !beforeLines.has(line)) added.push(line);
+  }
+  return added;
+}
+
+/** Whether `a` and `b` show the same text, run for run and line for line. */
+export function sameReadout(a: Readout, b: Readout): boolean {
+  return addedText(a, b).length === 0 && addedText(b, a).length === 0;
+}
+
+/**
+ * `text` folded for a loose match: lower-cased, with every space, dash, and
+ * underscore removed, so `enemyMotion`, `enemy motion`, and `enemy-motion` are
+ * one word. The specification fixes the facts an overlay shows and not their
+ * spelling.
+ */
+export function folded(text: string): string {
+  return text.toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+/**
+ * The documented snapshot less `simTime`: what a POSE is answerable for.
+ *
+ * A check that a pose "leaves the state as it was" compares this on either side
+ * of the call. `simTime` is left out because the specification puts it outside
+ * the state a pose governs: "`simTime` and `muted` stand outside that: `simTime`
+ * rises by every frame's delta time on every screen" (specs/instrumentation.md,
+ * "A deterministic core"), and the build's own loop keeps running frames in real
+ * time while the clock is held. What a pose may not change is everything else.
+ */
+export function posedState(snapshot: WickSnapshot): Record<string, unknown> {
+  const state = documentedSnapshot(snapshot);
+  delete state.simTime;
+  return state;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Bracketing a call inside the page                                          */
+/* -------------------------------------------------------------------------- */
+//
+// WHY A CALL IS EVER BRACKETED THIS WAY. `specs/instrumentation.md` leaves the
+// build's own frame loop running while the clock is held: "the build's own loop
+// keeps running frames in real time, each reading the keys, reconciling the
+// loops, mirroring `muted`, and rendering", and "`simTime` rises by the delta
+// time of every frame, whatever the screen". A real-time frame that lands
+// between two crossings of this boundary therefore adds its own delta to
+// `simTime` and may start a looping cue, and a check that read the state with
+// one `snapshot()` crossing before a call and another after it would be reading
+// that frame as well as the call. Nothing the page's own `requestAnimationFrame`
+// runs can interleave with ONE synchronous evaluation, so a pair of readings
+// taken inside one is of the call alone.
+//
+// Only two readings need it: `simTime`, which every frame moves, and the sounds
+// a POSE is answerable for, which the next frame reconciles. Every other figure
+// — a position, a timer, a held slot, a screen, the run clock — is untouched by
+// a held frame and is read the ordinary way.
+
+/** What one bracketed call left, read either side of it inside the page. */
+export interface Bracketed {
+  /** The state as the call found it. */
+  before: WickSnapshot;
+  /** The state the call left. */
+  after: WickSnapshot;
+  /** Every sound the build emitted between the two readings. */
+  sounds: Sound[];
+}
+
+/** What a bracketed call is made under. */
+export interface BracketOptions {
+  /**
+   * A key held down for the call and released after it, as a dispatched
+   * `KeyboardEvent` raised inside the same evaluation, so no frame of the
+   * build's own loop can read its press edge before the bracketed one does.
+   * "A dispatched keyboard event moves the lamplighter and works the menus
+   * exactly as a player's key does" (specs/instrumentation.md).
+   */
+  hold?: string;
+}
+
+/**
+ * Call one operation on the surface with the state and the audio probe read
+ * either side of it, all inside one synchronous evaluation.
+ *
+ * The call goes through the build's own `window.__wick`, exactly as `h.debug`
+ * sends it, so nothing about what the operation sees differs; what differs is
+ * that no frame of the build's own loop can run between the two readings.
+ */
+export async function bracket(
+  h: Harness,
+  op: keyof WickDebugApi,
+  args: readonly unknown[] = [],
+  options: BracketOptions = {},
+): Promise<Bracketed> {
+  return (await h.page.evaluate(
+    ([handle, audioGlobal, name, rest, held]) => {
+      const globals = window as unknown as Record<
+        string,
+        Record<string, (...a: unknown[]) => unknown>
+      >;
+      const api = globals[handle];
+      if (api === undefined) {
+        throw new Error(`wick: the surface ${handle} is not installed`);
+      }
+      const active = document.activeElement;
+      const target =
+        active instanceof HTMLElement && active !== document.documentElement
+          ? active
+          : document.body;
+      const key = (kind: string, code: string): void => {
+        target.dispatchEvent(
+          new KeyboardEvent(kind, {
+            code,
+            key: code,
+            repeat: false,
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+          }),
+        );
+      };
+      const audio = globals[audioGlobal];
+      const from = audio === undefined ? 0 : (audio.count!() as number);
+      if (held !== null) key("keydown", held);
+      const before = api.snapshot!();
+      try {
+        api[name]!(...rest);
+      } finally {
+        if (held !== null) key("keyup", held);
+      }
+      const after = api.snapshot!();
+      const sounds = audio === undefined ? [] : audio.since!(from);
+      return { before, after, sounds };
+    },
+    [
+      HANDLE,
+      AUDIO_PROBE_GLOBAL,
+      op as string,
+      args,
+      options.hold ?? null,
+    ] as const,
+  )) as Bracketed;
+}
+
+/**
+ * Run `frames` frames of the build's `step` with the state read either side of
+ * them, all inside one synchronous evaluation, each frame opened and closed as
+ * one recorded frame so a capture wrapped around this call films every one.
+ *
+ * {@link Harness.step} already runs its frames inside one evaluation; what this
+ * adds is the reading taken BEFORE the first of them in that same evaluation,
+ * which is what a `simTime` figure over a stretch of frames needs. The harness's
+ * own frame counter does not move, so a check that reads `h.frame()` drives with
+ * {@link Harness.step} instead.
+ */
+export async function stepBracketed(
+  h: Harness,
+  frames: number,
+): Promise<{ before: WickSnapshot; after: WickSnapshot }> {
+  return (await h.page.evaluate(
+    ([handle, recorderGlobal, count, deltaMs]) => {
+      const globals = window as unknown as Record<
+        string,
+        Record<string, (...a: unknown[]) => unknown>
+      >;
+      const api = globals[handle];
+      if (api === undefined) {
+        throw new Error(`wick: the surface ${handle} is not installed`);
+      }
+      const rec = globals[recorderGlobal];
+      const before = api.snapshot!();
+      for (let i = 0; i < (count as number); i += 1) {
+        rec?.begin!();
+        api.step!(1);
+        rec?.end!(deltaMs);
+      }
+      const after = api.snapshot!();
+      return { before, after };
+    },
+    [HANDLE, h.config.recorderGlobal, frames, TICK_MS] as const,
+  )) as { before: WickSnapshot; after: WickSnapshot };
 }

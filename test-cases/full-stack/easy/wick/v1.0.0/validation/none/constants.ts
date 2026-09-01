@@ -1824,6 +1824,21 @@ export const POSITION_TOL = 1e-6;
 export const TIMER_TOL = 1e-6;
 
 /**
+ * The accumulator, or `simTime`, read back after frames of delta time joined
+ * it and whole ticks left it.
+ *
+ * specs/instrumentation.md fixes the arithmetic's own resolution: "A tick is
+ * consumed while the accumulator is at least `TICK_DT − TICK_EPSILON`, with
+ * `TICK_EPSILON` (`1e-9`) seconds, and a remainder whose magnitude is below
+ * `TICK_EPSILON` is `0`". So the specification itself distinguishes a
+ * remainder from `0` only at that scale, and a build that sums a frame's delta
+ * and subtracts `TICK_DT` in a different order differs by a few `1e-18`. The
+ * same figure, so a reading is held to exactly the resolution the rule gives
+ * it, and a remainder the rule calls `0` is read as `0`.
+ */
+export const ACCUMULATOR_TOL = TICK_EPSILON;
+
+/**
  * An angle, in degrees, recovered from a position on a circle through `atan2`:
  * a lantern after `30` ticks of `180` degrees per second. The trigonometry is
  * exact to `1e-12`; `1e-6` degrees is well inside the `7.5` degrees between
@@ -1850,6 +1865,28 @@ export const BLIT_TOL = 1;
 export const SAME_COLOR_TOL = 2;
 
 /**
+ * The ground read under a movement of the lamplighter (specs/world.md — "The
+ * camera and the view": "The ground is drawn as a pattern fixed in world space
+ * and repeating on both axes, so that the lamplighter's motion reads against
+ * it"). Both are the harness's own allowances, not the specification's figures.
+ *
+ * `GROUND_SHIFT_MATCH_MIN`: the share of a region's pixels that, after the
+ * lamplighter has moved, match the pixels that stood the movement's distance
+ * further along before it. A ground fixed in world space matches everywhere the
+ * region holds ground alone; a tenth is left for whatever a build lays over the
+ * ground in screen space — a HUD element, a vignette, a lamp's glow — since the
+ * specification fixes no layout for those.
+ *
+ * `GROUND_CHANGE_MIN`: the share of the region's pixels that differ between the
+ * two pictures at the SAME stage point, which is what "motion reads against it"
+ * asks for at all. A ground that is one flat colour changes nothing under any
+ * movement and reads as no motion; one pixel in two hundred is the least a
+ * pattern can put in a region for a movement to read against.
+ */
+export const GROUND_SHIFT_MATCH_MIN = 0.9;
+export const GROUND_CHANGE_MIN = 0.005;
+
+/**
  * The seeded drop roll (specs/world.md — "The drop roll"), read over a fixed
  * number of common kills.
  *
@@ -1864,3 +1901,118 @@ export const SAME_COLOR_TOL = 2;
 export const DROP_ROLL_KILLS = 4000;
 export const BREAD_COUNT_RANGE = { min: 40, max: 125 } as const;
 export const DRAFT_COUNT_RANGE = { min: 3, max: 45 } as const;
+
+/* -------------------------------------------------------------------------- */
+/* The snapshot's fields (specs/instrumentation.md — "Snapshot shape")         */
+/* -------------------------------------------------------------------------- */
+//
+// "The shape is fixed, and every field is present whatever the screen." Each
+// list below is one block of the documented shape, field for field, so a check
+// on the shape reads the names from here rather than spelling them.
+
+/** The top-level fields of `snapshot()`. */
+export const SNAPSHOT_FIELDS = [
+  "version",
+  "screen",
+  "menuIndex",
+  "autoStep",
+  ...SWITCH_NAMES,
+  "run",
+  "muted",
+  "accumulator",
+  "simTime",
+  "rngState",
+] as const;
+
+/** The fields of `snapshot().run`. */
+export const RUN_FIELDS = [
+  "tick",
+  "time",
+  "level",
+  "xp",
+  "xpToNext",
+  "kills",
+  "player",
+  "maxHp",
+  "armor",
+  "moveSpeed",
+  "pickupRadius",
+  "weapons",
+  "passives",
+  "enemies",
+  "projectiles",
+  "zones",
+  "gems",
+  "pickups",
+  "offers",
+  "pool",
+  "nextOffers",
+  "pendingLevelUps",
+  "chestResult",
+  "spawnTimer",
+  "spawnWindow",
+  "firedEvents",
+  "aliveCommons",
+  "nextId",
+] as const;
+
+/** "`player: { x, y, facing: "left" | "right", hp }`". */
+export const PLAYER_FIELDS = ["x", "y", "facing", "hp"] as const;
+
+/** "`weapons: [{ id, level, cooldown }]`". */
+export const WEAPON_SLOT_FIELDS = ["id", "level", "cooldown"] as const;
+
+/** "`passives: [{ id, level }]`". */
+export const PASSIVE_SLOT_FIELDS = ["id", "level"] as const;
+
+/** "`enemies: [{ id, type, x, y, hp, maxHp, heading: { x, y }, age, contactCooldown }]`". */
+export const ENEMY_FIELDS = [
+  "id",
+  "type",
+  "x",
+  "y",
+  "hp",
+  "maxHp",
+  "heading",
+  "age",
+  "contactCooldown",
+] as const;
+
+/** "`projectiles: [{ id, weapon, x, y, vx, vy, ax, ay, radius, damage, ttl, pierce, hits }]`". */
+export const PROJECTILE_FIELDS = [
+  "id",
+  "weapon",
+  "x",
+  "y",
+  "vx",
+  "vy",
+  "ax",
+  "ay",
+  "radius",
+  "damage",
+  "ttl",
+  "pierce",
+  "hits",
+] as const;
+
+/** "`zones: [{ id, weapon, kind, x, y, radius, width?, height?, damage, ttl, hits }]`", less the two a slash alone carries. */
+export const ZONE_FIELDS = [
+  "id",
+  "weapon",
+  "kind",
+  "x",
+  "y",
+  "radius",
+  "damage",
+  "ttl",
+  "hits",
+] as const;
+
+/** "`gems: [{ id, tier, x, y, attracted }]`". */
+export const GEM_FIELDS = ["id", "tier", "x", "y", "attracted"] as const;
+
+/** "`pickups: [{ id, kind, x, y }]`". */
+export const PICKUP_FIELDS = ["id", "kind", "x", "y"] as const;
+
+/** "`hits: [{ enemy, cooldown }]`". */
+export const HIT_ENTRY_FIELDS = ["enemy", "cooldown"] as const;
