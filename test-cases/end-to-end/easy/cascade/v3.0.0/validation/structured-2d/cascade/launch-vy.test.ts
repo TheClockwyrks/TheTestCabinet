@@ -9,9 +9,18 @@
 // launched in a frame takes no motion in that frame" (specs/victory.md), so the
 // frame's gravity has not been applied to it and the reading is the launch
 // velocity itself.
+//
+// THE FIRST FOUR LAUNCHES ARE READ, one from each foundation, so a build that
+// gave one slot a different pop — or that got the opening launch right and every
+// later one wrong — is caught rather than sampled around. The `none` suite reads
+// the same four.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LAUNCH_INTERVAL, LAUNCH_VY } from "../../src/constants";
+import {
+  FOUNDATION_COUNT,
+  LAUNCH_INTERVAL,
+  LAUNCH_VY,
+} from "../../src/constants";
 import { assertCloseTo, assertGreaterThanOrEqual } from "../assert";
 import { captureStill, startCascade, type Harness } from "../harness";
 import { createFlightHarness, flightFrames, watchLaunches } from "./flight";
@@ -25,8 +34,8 @@ import { createFlightHarness, flightFrames, watchLaunches } from "./flight";
  */
 const LAUNCH_VY_DIGITS = 3;
 
-/** Two intervals of room, so a slow clock is read rather than timed out. */
-const MAX_FRAMES = flightFrames(LAUNCH_INTERVAL * 3);
+/** Two intervals of room past the four launches, so a slow clock is read rather than timed out. */
+const MAX_FRAMES = flightFrames(LAUNCH_INTERVAL * (FOUNDATION_COUNT + 2));
 
 let harness: Harness;
 
@@ -45,19 +54,22 @@ it("pops a launched card upward at the stated speed", async () => {
   const launches = await watchLaunches(
     harness,
     MAX_FRAMES,
-    (seen) => seen.length >= 1,
+    (seen) => seen.length >= FOUNDATION_COUNT,
   );
   captureStill(harness, "launch");
 
   assertGreaterThanOrEqual(
     launches.length,
-    1,
-    "cards launched by a running cascade, which this point needs one of",
+    FOUNDATION_COUNT,
+    `cards launched by a running cascade, one for each of the ${FOUNDATION_COUNT} foundations`,
   );
-  assertCloseTo(
-    launches[0].flyer.vy,
-    LAUNCH_VY,
-    LAUNCH_VY_DIGITS,
-    "the vertical velocity a card launches with, in units per second",
-  );
+
+  for (const [ordinal, launch] of launches.entries()) {
+    assertCloseTo(
+      launch.flyer.vy,
+      LAUNCH_VY,
+      LAUNCH_VY_DIGITS,
+      `the vertical velocity the card launch ${ordinal} took from foundation ${launch.foundation} left with, in units per second`,
+    );
+  }
 });

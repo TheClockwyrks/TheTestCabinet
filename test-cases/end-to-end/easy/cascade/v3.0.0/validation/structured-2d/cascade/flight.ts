@@ -45,6 +45,7 @@ import {
   type CascadeSnapshot,
   type Harness,
   type Rgb,
+  type SnapshotCard,
   type SnapshotFlyer,
 } from "../harness";
 
@@ -226,6 +227,14 @@ export interface Launch {
   at: number;
   /** The foundation it came off, or `-1` where no foundation lost a card. */
   foundation: number;
+  /**
+   * The card that foundation's TOP held on the frame before, or `null` where no
+   * foundation lost a card.
+   *
+   * Read before the launch rather than assumed, so a check can hold the card that
+   * went into the air against the card the launch was supposed to take.
+   */
+  took: SnapshotCard | null;
   /** The card, as the snapshot reported it on that frame. */
   flyer: SnapshotFlyer;
 }
@@ -262,12 +271,16 @@ export async function watchLaunches(
     for (const flyer of after.flyers) {
       if (seen.has(flyer.id)) continue;
       seen.add(flyer.id);
+      const foundation = shrankFoundation(
+        before.foundations.map((pile) => pile.length),
+        after.foundations.map((pile) => pile.length),
+      );
+      const held =
+        foundation >= 0 ? (before.foundations[foundation] ?? []) : [];
       launches.push({
         at: after.simTime,
-        foundation: shrankFoundation(
-          before.foundations.map((pile) => pile.length),
-          after.foundations.map((pile) => pile.length),
-        ),
+        foundation,
+        took: held.length > 0 ? held[held.length - 1] : null,
         flyer,
       });
     }

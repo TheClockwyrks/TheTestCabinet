@@ -19,6 +19,13 @@
 // left off, per this group's rule: the trail is not needed to decide where a
 // foundation's cards are drawn, posing it would put paint under every anchor being
 // read, and its stage-sized blit is not a card-sized box in any case.
+//
+// AND EVERY FOUNDATION IS READ, none skipped. The frame is taken one second into
+// the cascade, when the launch interval specs/victory.md fixes has taken at most
+// two cards off any one thirteen-card pile, so all four still hold cards and each
+// is asserted to. Skipping an emptied slot instead would grade a build that
+// launched all fifty-two at once — the very failure this point exists to catch —
+// as a pass with no reading taken at all. The `none` suite guards it the same way.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CARD_H, CARD_W } from "../../src/constants";
@@ -107,7 +114,11 @@ it("goes on drawing the unlaunched foundations at their anchors", async () => {
 
   const boxes = cardBoxes(harness, calls);
   for (const [index, pile] of snapshot.foundations.entries()) {
-    if (pile.length === 0) continue;
+    assertGreaterThan(
+      pile.length,
+      0,
+      `cards still on foundation ${index} when the frame was read, so there is something for it to draw — a build that emptied every foundation the instant the cascade began is exactly what this point exists to catch (specs/victory.md)`,
+    );
     const anchor = pileTopLeft("foundation", index);
     assertTrue(
       boxAt(boxes, anchor.x, anchor.y),
