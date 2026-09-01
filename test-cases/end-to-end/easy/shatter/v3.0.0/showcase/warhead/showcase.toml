@@ -1,6 +1,14 @@
-# SCAFFOLD PLACEHOLDER. The Showcase stage replaces this file with the real
-# carousel: a leading twenty-to-forty-second take of sustained real play,
-# then the stills. See specs/showcase.md.hbs and the design plan.
+# The `warhead` case showcase, captured from `references/structured-2d/warhead` in
+# live play. `showcase/capture/README.md` records how each file was produced.
+
 [[media]]
-file = "placeholder.png"
-name = "Placeholder — replaced by the Showcase stage"
+file = "gameplay.json.gz"
+name = "Half a minute of play, armored rocks worn down and torpedoes spent"
+
+[[media]]
+file = "mid-wave.png"
+name = "A mid-wave field, the torpedo charge rebuilding"
+
+[[media]]
+file = "torpedo-run.png"
+name = "A torpedo closing on the rock it destroys"

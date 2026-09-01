@@ -1,6 +1,14 @@
-# SCAFFOLD PLACEHOLDER. The Showcase stage replaces this file with the real
-# carousel: a leading twenty-to-forty-second take of sustained real play,
-# then the stills. See specs/showcase.md.hbs and the design plan.
+# The `base` case showcase, captured from `references/structured-2d/base` in live
+# play. `showcase/capture/README.md` records how each file was produced.
+
 [[media]]
-file = "placeholder.png"
-name = "Placeholder — replaced by the Showcase stage"
+file = "gameplay.json.gz"
+name = "Half a minute of play, a wave cleared and the saucer hunting"
+
+[[media]]
+file = "mid-wave.png"
+name = "A shot streaking away across a mid-wave field"
+
+[[media]]
+file = "the-saucer.png"
+name = "The saucer weaving in, its shot already away"
