@@ -22,6 +22,15 @@
 //
 // NOTHING IS ON THE FIELD. `startPlaying` empties every roster and shuts both
 // world gates, so the reading — an empty torpedo roster — has one possible cause.
+//
+// AND THE PRESS THE GATE NO LONGER REFUSES IS THE CONTROL. An empty roster after a
+// press is only evidence of a gate if the same press, made on a full bar, fills
+// it. Without that reading a build that ignores the torpedo key altogether — or
+// binds it to nothing, or carries no torpedo at all — reads an empty roster and
+// passes. So the charge is posed FULL and the SAME action is driven again: one
+// torpedo must be in flight after it. That is what makes the first reading a
+// reading of the charge rather than of a key the build never listened to, and it
+// is why the two readings together name the rule.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
@@ -84,5 +93,29 @@ it("launches nothing when the torpedo key is pressed on a half-filled charge", a
     "no torpedo in flight after the torpedo key was pressed on a charge of " +
       `${POSED_CHARGE} — the key does nothing while the charge is below 1 ` +
       "(specs/weapons.md)",
+  );
+
+  // The control: the same action, on the same ship, with the charge posed full.
+  h.debug.setTorpedoCharge?.(1);
+  const ready = h.snapshot();
+  assertLessThanOrEqual(
+    Math.abs(
+      requireCharge(ready, "the charge the control press is made on") - 1,
+    ),
+    POSED_CHARGE_SLACK,
+    "setTorpedoCharge(1) to leave the charge full for the control press, " +
+      "which is what leaves the recharge rule nothing to refuse " +
+      "(specs/instrumentation.md)",
+  );
+
+  await tapAction(h, TORPEDO_ACTION);
+  assertLength(
+    torpedoesOf(h.snapshot()),
+    1,
+    "exactly one torpedo in flight after the SAME press was made with the " +
+      `charge full rather than at ${POSED_CHARGE} — the control that says ` +
+      "this build answers to the torpedo key at all, and so that the charge " +
+      "is what refused the press before it (specs/weapons.md, " +
+      "specs/controls.md: one launch per press)",
   );
 });

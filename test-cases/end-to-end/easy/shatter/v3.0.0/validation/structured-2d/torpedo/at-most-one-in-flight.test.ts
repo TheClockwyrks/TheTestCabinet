@@ -30,6 +30,16 @@
 // refusing reads one — with a DIFFERENT id, which the second assertion catches,
 // because a torpedo swapped for a fresh one is not the torpedo the specification
 // left in flight.
+//
+// AND THE PRESS THE RULE NO LONGER REFUSES IS THE CONTROL. A refusal is only
+// evidence of a gate if the same press, made with nothing to refuse it, launches.
+// Without that reading a build that ignores the torpedo key altogether — or never
+// binds it, or has no torpedo at all — reads "exactly one torpedo in flight"
+// after the press and passes, because the one it was posed with is still there.
+// So the standing torpedo is removed, the charge is posed full again, and the
+// SAME action is driven a second time: one torpedo must be in flight after it.
+// That is what makes the first reading a reading of the one-at-a-time rule rather
+// than of a key the build never listened to.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
@@ -42,6 +52,7 @@ import {
   torpedoesOf,
   type Harness,
 } from "../harness";
+import { requireOp } from "../surface";
 import {
   POSED_CHARGE_SLACK,
   TORPEDO_ACTION,
@@ -105,5 +116,27 @@ it("adds no second torpedo when the key is pressed with one already in flight", 
     "the torpedo still in flight to be the one that was already up, rather " +
       "than a fresh one launched in its place — the press launches nothing " +
       "(specs/weapons.md)",
+  );
+
+  // The control: the same action, on the same ship, with the field clear of
+  // torpedoes and the charge posed full again.
+  requireOp(h.debug, "removeTorpedo")(standing);
+  h.debug.setTorpedoCharge?.(1);
+  assertLength(
+    torpedoesOf(h.snapshot()),
+    0,
+    "the field clear of torpedoes for the control press, which is what leaves " +
+      "the one-at-a-time rule nothing to refuse (specs/instrumentation.md)",
+  );
+
+  await tapAction(h, TORPEDO_ACTION);
+  assertLength(
+    torpedoesOf(h.snapshot()),
+    1,
+    "exactly one torpedo in flight after the SAME press was made with the " +
+      "field clear and the charge full — the control that says this build " +
+      "answers to the torpedo key at all, and so that the torpedo already up " +
+      "is what refused the press before it (specs/weapons.md, " +
+      "specs/controls.md: one launch per press)",
   );
 });
