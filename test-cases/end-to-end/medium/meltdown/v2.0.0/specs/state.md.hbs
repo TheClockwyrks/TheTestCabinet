@@ -173,10 +173,12 @@ instance. Wherever this specification writes `state.foo`, it means a field of
 that instance.
 
 The game runs in one world for the whole session. The game definition registers a
-single level, the game never opens another, and every screen is a value of
-`screen`, so the state below is built once and lives until the page closes. The
-framework's states are live objects: a tick writes the fields it advances in
-place, and each field initializer below is that field's title-screen value, the
+single level, under its name in `LEVELS`, the game never opens another, and every
+screen is a value of `screen`, so the state below is built once and lives until
+the page closes. Every tower, surge unit, build preview, and panel actor on that
+level carries its tag from `TAGS`, so the floor's actors are found with
+`world.byTag` under the names this specification uses. The framework's states are
+live objects: a tick writes the fields it advances in place, and each field initializer below is that field's title-screen value, the
 same value the debug surface's `reset` restores.
 
 `GameState` comes from the engine's package, and `TowerType`, `SurgeType`,
