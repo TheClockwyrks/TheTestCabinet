@@ -24,17 +24,32 @@
 // What each readout SHOWS is the `presentation` category's question; this point
 // asks only where the bar is.
 //
-// NOTHING DRAWN ON THE STRAIT IS READ AS A DIFFERENCE, not as an inventory. The
-// four bodies specs/strait.md names — critter, bear, vehicle, floe — are all
-// drawn from the seeded sprite art (specs/overview.md's hard requirements), so
-// each is a blit; but so, legitimately, is a HUD that letters its lives or its
-// bays with art of its own, and no reading of one frame can tell those apart.
-// Two straits are therefore drawn instead, identical in everything the HUD shows
-// — same score, same lives, same level, same timer, same bays, same frame of the
-// same seeded clock — and differing only in whether the four bodies are on the
-// strait at all. Whatever blits reach into the bar in the empty one are the
-// HUD's own; if the populated one reaches into it any more, that is a body drawn
-// where the specification says none is.
+// NOTHING DRAWN ON THE STRAIT IS READ TWO WAYS, and both are needed.
+//
+//   1. THE BODIES THEMSELVES, held to the boundary. specs/assets.md makes the
+//      critter, the bear, the three vehicles and the two floes the only things
+//      drawn from seeded art, and every one of them is a body of the strait, so
+//      the reading is every `drawImage` whose SOURCE is one of those frames: the
+//      box it went into lies wholly at or below `HUD_H`. Without this half a
+//      build that drew no bodies at all would pass the difference reading below
+//      trivially, both counts being its own HUD icons.
+//
+//      THE CRITTER IS READ APART FROM THE OTHER SIX FOLDERS, because
+//      specs/assets.md says a lives icon in the HUD "may reuse one of these
+//      frames" — a crosser frame drawn inside the bar is a permitted readout, not
+//      the critter, and failing a build for it would fail a build that did
+//      exactly what the specification allows. What is held to the boundary
+//      instead is the critter's OWN draw, taken as the crosser frame nearest the
+//      centre the game reports for it; a lives icon in the bar is hundreds of
+//      units further from that centre than a misplaced draw of the critter is.
+//
+//   2. AND AS A DIFFERENCE, which catches a body a build drew from art of its
+//      own. Two straits are drawn, identical in everything the HUD shows — same
+//      score, same lives, same level, same timer, same bays, same frame of the
+//      same seeded clock — and differing only in whether the four bodies are on
+//      the strait at all. Whatever blits reach into the bar in the empty one are
+//      the HUD's own; if the populated one reaches into it any more, that is a
+//      body drawn where the specification says none is.
 //
 // THE BODIES ARE POSED AS HIGH AS THEY GO, because the bar is what they would
 // spill into: the critter on the cap, row `0`, whose 32-unit frame reaches
@@ -63,9 +78,11 @@ import {
   createHarness,
   drawnImages,
   drawnTextSpans,
+  nearestSeededFrame,
   poseBear,
   poseLane,
   startCrossing,
+  type DrawnImage,
   type Harness,
 } from "../harness";
 
@@ -93,6 +110,49 @@ const VEHICLE = { col: 5, row: ICE_TOP, kind: "plow" } as const;
 
 /** Where the floe is posed: the top row of the water band. */
 const FLOE = { col: 20, row: WATER_TOP, kind: "raft4" } as const;
+
+/**
+ * How far a drawn source may sit from a seeded frame and still BE it, as a mean
+ * absolute channel difference out of `255`.
+ *
+ * One. specs/assets.md has the build render each body from its own folder, so the
+ * source of the draw is that PNG and the comparison is an identity: the only
+ * thing this allowance covers is the single lossy step of reading a bitmap back
+ * out of a canvas. A build that drew a shape of its own measures far more, and is
+ * read by the difference half below rather than by this one.
+ */
+const SOURCE_MATCH_MAX = 1;
+
+/**
+ * How far below `HUD_H` a body's drawn box may begin, in stage units.
+ *
+ * specs/strait.md puts the boundary at exactly `HUD_H`, and the topmost body this
+ * scenario poses is centred on row `1`, whose own top edge is a whole tile below
+ * it, so a conforming build has thirty-two units of clearance and this bound is
+ * not a judgement call. It is `0.5` rather than `0` for one reason only: a build
+ * is free to draw a body scaled by a fraction of a unit — a hop's bounce, a
+ * bear's lunge — and a box half a unit into the bar is not "drawn in the HUD bar"
+ * by any reading, while eighty units into it is.
+ */
+const HUD_OVERLAP_MAX = 0.5;
+
+/** One draw the frame made from the seeded art, and which folder it came from. */
+interface Body {
+  folder: string;
+  image: DrawnImage;
+}
+
+/** Every draw of `h`'s last frame whose source IS a frame of the seeded art. */
+async function bodiesOf(h: Harness): Promise<Body[]> {
+  const bodies: Body[] = [];
+  for (const image of drawnImages(h)) {
+    const match = await nearestSeededFrame(image.source);
+    if (match.distance <= SOURCE_MATCH_MAX) {
+      bodies.push({ folder: match.folder, image });
+    }
+  }
+  return bodies;
+}
 
 let empty: Harness;
 let populated: Harness;
@@ -182,6 +242,57 @@ it("draws no critter, bear, vehicle or floe inside the HUD bar", async () => {
   await populated.advance(1);
   captureStill(populated, "hud");
 
+  // 1. The bodies themselves: the bear, the plow and the raft are drawn from
+  //    folders no HUD readout may borrow, so each is held to the boundary.
+  const reported = populated.snapshot().critter;
+  const bodies = await bodiesOf(populated);
+  const strait = bodies.filter((body) => body.folder !== "crosser");
+  assertGreaterThanOrEqual(
+    strait.length,
+    3,
+    "the bear, the vehicle and the floe this scenario posed, each drawn from " +
+      "its seeded folder (specs/assets.md)",
+  );
+  for (const { folder, image } of strait) {
+    assertGreaterThanOrEqual(
+      image.y - image.h / 2 + HUD_OVERLAP_MAX,
+      HUD_H,
+      `the top edge of the ${folder} drawn at (${Math.round(image.x)}, ` +
+        `${Math.round(image.y)}), which the HUD bar's ${HUD_H} units are above ` +
+        `(specs/strait.md)`,
+    );
+  }
+
+  //    And the critter's own draw: the crosser frame nearest the centre the game
+  //    reports for it, which a lives icon elsewhere in the bar cannot be.
+  const crosser = bodies.filter((body) => body.folder === "crosser");
+  const away = (image: DrawnImage): number =>
+    Math.hypot(image.x - reported.x, image.y - reported.y);
+  const critter = crosser.reduce<DrawnImage | null>(
+    (nearest, body) =>
+      nearest === null || away(body.image) < away(nearest)
+        ? body.image
+        : nearest,
+    null,
+  );
+  assertGreaterThanOrEqual(
+    crosser.length,
+    1,
+    `a frame of assets/crosser/ drawn for the critter posed on row ` +
+      `${CRITTER.row} (specs/assets.md)`,
+  );
+  if (critter !== null) {
+    assertGreaterThanOrEqual(
+      critter.y - critter.h / 2 + HUD_OVERLAP_MAX,
+      HUD_H,
+      `the top edge of the critter's own draw, nearest the centre the game ` +
+        `reports for it — the HUD bar's ${HUD_H} units are above the strait ` +
+        `(specs/strait.md)`,
+    );
+  }
+
+  // 2. And as a difference, which catches a body drawn from art of the build's
+  //    own rather than from the seeded folders.
   assertEqual(
     blitsInBar(populated),
     blitsInBar(empty),

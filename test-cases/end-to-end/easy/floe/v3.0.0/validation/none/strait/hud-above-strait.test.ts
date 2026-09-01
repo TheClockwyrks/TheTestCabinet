@@ -30,6 +30,16 @@
 // `HUD_H`. Everything else the build draws is its own — the bands, the bays, the
 // bar itself — and nothing here constrains it.
 //
+// THE CRITTER IS READ APART FROM THE OTHER SIX FOLDERS, because `specs/assets.md`
+// says a lives icon in the HUD "may reuse one of these frames" — a crosser frame
+// drawn inside the bar is a permitted readout, not the critter, and failing a
+// build for it would fail a build that did exactly what the specification allows.
+// What is held to the boundary instead is the critter's OWN draw, taken as the
+// crosser frame nearest the centre the game reports for it. A build that drew the
+// critter from a strait `y` rather than a stage one puts that draw eighty units
+// up, inside the bar, and a lives icon elsewhere in the bar is hundreds of units
+// further from the critter's reported centre than the misplaced draw is.
+//
 // THE SCENARIO POSES THE FOUR BODIES AT THE TOP OF THE STRAIT, each on the
 // topmost row its own rules allow it: the critter in a bay of row `1`, a bear on
 // row `2` (`specs/hunter.md` keeps a bear off the far shore), a floe on the top
@@ -43,6 +53,7 @@ import {
   assertDeepEqual,
   assertGreaterThanOrEqual,
   assertLength,
+  fail,
 } from "../assert";
 import {
   HUD_H,
@@ -59,6 +70,7 @@ import {
   poseLane,
   startCrossing,
   textDraws,
+  type Blit,
   type Harness,
 } from "../harness";
 
@@ -111,6 +123,7 @@ it("draws the readouts inside the HUD bar and none of the strait's bodies there"
 
   await h.step();
   await captureStill(h, "hud");
+  const reported = (await h.snapshot()).critter;
 
   // The readouts: the run of text carrying each, and the anchor it was drawn at.
   const calls = await h.frameCalls();
@@ -148,12 +161,19 @@ it("draws the readouts inside the HUD bar and none of the strait's bodies there"
   const blits = (await blitsOfFrame(h)).filter(
     (blit) => blit.matches.length > 0,
   );
-  assertGreaterThanOrEqual(
-    blits.length,
-    4,
-    "the four bodies this scenario posed, each drawn from its seeded folder (specs/assets.md)",
+
+  // The bear, the plow and the raft this scenario posed: three bodies drawn from
+  // a folder no HUD readout may borrow. The situation, read before the verdict.
+  const strait = blits.filter((blit) =>
+    blit.matches.every((frame) => frame.sheet !== "crosser"),
   );
-  for (const blit of blits) {
+  assertGreaterThanOrEqual(
+    strait.length,
+    3,
+    "the bear, the vehicle and the floe this scenario posed, each drawn from " +
+      "its seeded folder (specs/assets.md)",
+  );
+  for (const blit of strait) {
     const sheet = blit.matches[0].sheet;
     assertGreaterThanOrEqual(
       blit.y - blit.height / 2 + HUD_OVERLAP_MAX,
@@ -161,6 +181,33 @@ it("draws the readouts inside the HUD bar and none of the strait's bodies there"
       `the top edge of the ${sheet} drawn at (${Math.round(blit.x)}, ${Math.round(blit.y)}), which the HUD bar's ${HUD_H} units are above (specs/strait.md)`,
     );
   }
+
+  // The critter's own draw: the crosser frame nearest the centre the game reports
+  // for it, which a lives icon elsewhere in the bar cannot be.
+  const crosser = blits.filter((blit) =>
+    blit.matches.some((frame) => frame.sheet === "crosser"),
+  );
+  const away = (blit: Blit): number =>
+    Math.hypot(blit.x - reported.x, blit.y - reported.y);
+  const critter = crosser.reduce<Blit | null>(
+    (nearest, blit) =>
+      nearest === null || away(blit) < away(nearest) ? blit : nearest,
+    null,
+  );
+  if (critter === null) {
+    fail(
+      `a frame of assets/crosser/ drawn for the critter posed on row ` +
+        `${ROW_BAYS} (specs/assets.md)`,
+      `${crosser.length} crosser frames drawn, none of them attributable to it`,
+    );
+  }
+  assertGreaterThanOrEqual(
+    critter.y - critter.height / 2 + HUD_OVERLAP_MAX,
+    HUD_H,
+    `the top edge of the critter's own draw, nearest the centre the game ` +
+      `reports for it — the HUD bar's ${HUD_H} units are above the strait ` +
+      `(specs/strait.md)`,
+  );
 
   // Nothing the page threw or logged as an error while this harness drove it.
   assertDeepEqual(h.pageErrors, []);
