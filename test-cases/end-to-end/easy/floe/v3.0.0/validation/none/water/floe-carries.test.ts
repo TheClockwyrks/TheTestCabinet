@@ -22,16 +22,19 @@
 //   - carrying at the table's speed but the posed direction reads `+102.4`;
 //   - not carrying the rider at all reads `0`.
 //
-// The bound below is `1.6` units, and the nearest of those is `80` units from
+// The bound below is `1.6` units, and the nearest of those is `22.4` units from
 // the rule's figure, so the reading separates the rule from every one of them
-// fifty times over. `water/lane-speeds` and `water/lane-directions` are the
+// fourteen times over. `water/lane-speeds` and `water/lane-directions` are the
 // items that grade the table itself; nothing here rests on it.
 //
-// THE RIDER STAYS ON ITS RAFT. The critter is posed at the centre of a four-tile
-// raft, so the second of drift moves the two together and the footing under the
-// reading is the same floe at the end as at the start. The raft is mid-strait
-// and `2.5` tiles a second is `80` units, so neither reaches an edge inside the
-// measurement and no wrap lands in it.
+// THE RIDER STAYS ON ITS RAFT. The critter is posed on the FIRST tile of a
+// four-tile raft, so the second of drift moves the two together and the footing
+// under the reading is the same floe at the end as at the start. The first tile
+// rather than a middle one, so nothing here rests on how a build resolves the
+// middle of a span — that is `water/raft-spans-are-solid`'s requirement, and a
+// build that gets it wrong must fail there and not here as well. The raft is
+// mid-strait and `2.5` tiles a second is `80` units, so neither reaches an edge
+// inside the measurement and no wrap lands in it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -61,9 +64,9 @@ const LANE_ROW = 6;
 /** The kind it rides: a raft4, which the lane table gives row 6. */
 const LANE_KIND = "raft4";
 
-/** The column the critter starts on, and the raft's leftmost column. */
-const CRITTER_COL = 20;
-const FLOE_COL = CRITTER_COL - 1;
+/** The raft's leftmost column, and the column the critter starts on: its own. */
+const FLOE_COL = 20;
+const CRITTER_COL = FLOE_COL;
 
 /** The lane's posed motion — deliberately neither of row 6's table figures. */
 const LANE_DIR: LaneDir = 1;
@@ -79,8 +82,8 @@ const EXPECTED_CARRY = LANE_DIR * LANE_SPEED * TILE * MEASURED_SECONDS;
  * How far the carry may sit from that figure, as a fraction.
  *
  * The two per cent the item is stated at: `1.6` units out of `80`. The nearest
- * wrong model in the header is `80` units away, so the bound separates the rule
- * from every one of them fifty times over.
+ * wrong model in the header is `22.4` units away, so the bound separates the
+ * rule from every one of them fourteen times over.
  */
 const CARRY_TOLERANCE_FRACTION = 0.02;
 
