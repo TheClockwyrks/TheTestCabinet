@@ -9,12 +9,25 @@
 // shot-resolution path breaks the shell and leaves the Prism flying, which is
 // exactly the wrong model this point names.
 //
-// THE READING SEPARATES THE TWO MODELS BY ITSELF. A build that took the Prism
-// whole leaves nothing on the roster; a build that only broke the shell leaves
-// the drone there with `shellAlive` false. So the verdict is "off the roster"
-// rather than "not intact", and the second reading — the shell state a surviving
-// Prism would report — is named in the failure so a reviewer can see which of the
-// two happened.
+// THE WAVE IS READ FRAME BY FRAME, WHICH IS WHERE "IN ONE STEP" LIVES. A build
+// that took the Prism whole never shows it with `shellAlive` false; a build that
+// took it in TWO — the shell broken on one frame, the core taken on a later one,
+// both inside the wave's life — leaves nothing on the roster at the end and would
+// satisfy a reading taken only there. So the verdict is BOTH: no frame of the
+// wave's life on which the Prism stood on the roster with its shell gone, and
+// nothing on the roster once the wave has run. The first names the two-step model
+// the row exists to forbid; the second names the build that broke the shell and
+// left the core flying.
+//
+// THE SAMPLE IS THE FRAME, WHICH IS WHAT A FRAME-BY-FRAME READING CAN HONESTLY
+// CLAIM. This suite's clock runs at 100 Hz and `specs/simulation.md` divides a
+// frame into sub-steps of at most `SUBSTEP_MAX` (1/120 s), so a 10 ms frame is two
+// sub-steps and a build that broke a shell and took the core in consecutive
+// SUB-STEPS of one frame would show neither state to a sample. That build is not
+// separated here — nor under the `structured-2d` project, whose clock is the same
+// — and it is not what the row is aimed at: the two-step model a build actually
+// falls into is one where the shell break and the core kill are two RESOLUTIONS of
+// the wave, frames apart, and the sweep sees every one of those.
 //
 // THE PRISM IS POSED IN PHASE `diving` WITH ITS SHELL INTACT, which is the only
 // state in which the two models differ: a Prism whose shell is already gone would
@@ -30,7 +43,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertUndefined } from "../assert";
-import { DISCHARGE_MAX_R, DISCHARGE_TIME } from "../constants";
+import { DISCHARGE_MAX_R, DISCHARGE_TIME, PRISM_INVERT_Y } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -42,7 +55,7 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { release } from "./wave";
+import { release, sweep } from "./wave";
 
 /**
  * Where the diving Prism stands.
@@ -100,11 +113,33 @@ it("removes a shell-intact diving Prism whole", async () => {
     true,
     "precondition: the Prism's shell stands before the wave",
   );
+  assertEqual(
+    before.y < PRISM_INVERT_Y,
+    true,
+    `precondition: the Prism stands above PRISM_INVERT_Y (${PRISM_INVERT_Y}), ` +
+      `so nothing here triggers the inversion a dive to the bottom would ` +
+      `(specs/drones.md)`,
+  );
 
   await release(h);
-  await h.advance(WAVE_FRAMES);
+  const samples = await sweep(h, WAVE_FRAMES);
   await captureStill(h, "whole");
   const after = await h.snapshot();
+
+  // The whole of the two-step model, in one reading: a Prism still on the roster
+  // with its shell gone is one the wave took a layer at a time.
+  const halved = samples.filter(
+    (sample) => droneById(sample, prism)?.shellAlive === false,
+  );
+  assertEqual(
+    halved.length,
+    0,
+    `the frames of the wave's ${WAVE_FRAMES}-frame life on which the diving ` +
+      `Prism stood on the roster with its shell gone and its core still ` +
+      `flying: none, since the wave destroys a Prism whole, shell and core ` +
+      `together, IN ONE STEP (specs/resonance.md). A build that shows the ` +
+      `Prism in that state has taken it in two`,
+  );
 
   const survivor = droneById(after, prism);
   assertUndefined(
