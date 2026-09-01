@@ -1085,11 +1085,11 @@ validation = { script = "bullets/max-four.test.ts", outputs = [
 [[review.categories.items]]
 id = "fire-rate"
 title = "Shots are gated to one every 22 ticks"
-description = "Holding fire for one second of game time takes 120 / FIRE_INTERVAL_TICKS shots, within one."
+description = "Holding fire for ten seconds of game time takes 1200 / FIRE_INTERVAL_TICKS shots, within one — a window long enough that one shot of tolerance pins the gate to 22 ticks."
 domains = ["flight"]
 failure_cap = "passable"
 validation = { script = "bullets/fire-rate.test.ts", outputs = [
-  { id = "salvo", name = "A second of held fire", kind = "image" },
+  { id = "salvo", name = "Ten seconds of held fire", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "fire-cooldown-blocks"
@@ -1436,7 +1436,7 @@ validation = { script = "saucer/weave-interval.test.ts", outputs = [
 [[review.categories.items]]
 id = "weave-speed"
 title = "The weave runs at the stated speed"
-description = "With travel off, every vertical velocity the weave takes has magnitude at most SAUCER_WEAVE_SPEED (90), within 5 percent."
+description = "With travel off, every vertical velocity the weave takes past its first interval has magnitude SAUCER_WEAVE_SPEED (90), within 5 percent."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/weave-speed.test.ts", outputs = [
