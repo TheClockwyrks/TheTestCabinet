@@ -1,12 +1,10 @@
 // hud/on-floor-heat-read — a placed tower carries a heat read on its footprint
-// whose extent tracks its heat, with a marker at its redline.
+// whose extent tracks its heat.
 //
 // THE RULE. specs/hud.md, The reads on the floor: "Each placed tower carries a
 // heat read on its footprint whose extent tracks its heat, with a marker at the
-// tower's redline." specs/overview.md's legibility table says what the read is
-// FOR: "so a tower sitting in its plateau is told from one that is cold or about
-// to trip" — which is why the read runs the whole scale to `TRIP_HEAT` and the
-// redline is a mark along it rather than its end.
+// tower's redline." The extent is this point's half of that sentence; the marker
+// is `hud/on-floor-redline-marker`'s.
 //
 // FOUR HEATS ON ONE TOWER, AND THE FOUR ARE WHAT THE READ IS MEASURED WITH. The
 // same tower, on the same tile, at the same type, level and rotation, is drawn at
@@ -17,21 +15,11 @@
 // reading, and it tries all four ways round a bar may fill, so a build that draws
 // its read as an upright thermometer is read exactly as one that draws a strip.
 //
-// THE MARKER IS FOUND WHERE THE SPECIFICATION PUTS IT: at the redline's fraction
-// of the whole scale, along the read's own track. The frame at `TRIP_HEAT` is
-// what gives the track its full extent, so the marker is due at
-// `redline / TRIP_HEAT` of the way along it from where the read starts. What is
-// looked for there is a rectangle every one of the four frames drew identically —
-// the marker cannot move with the heat, or it would be a second read rather than
-// a mark — whose centre falls within {@link MARKER_TOLERANCE} of that point.
-//
-// A LANCE, BECAUSE ITS REDLINE IS THE ONE THAT PROVES A MARKER RATHER THAN A
-// DECORATION. specs/towers.md gives it 92, so the mark is due nine tenths of the
-// way along the track and nowhere near the middle or either end: a build that
-// centres a tick, that puts one at the far end, or that draws the read to the
-// redline rather than to `TRIP_HEAT` all miss it. Its 4x4 footprint is also the
-// largest this case has, so the track it is drawn on is as long as this floor
-// makes them and the tolerance is at its most demanding in proportion.
+// A LANCE, BECAUSE ITS 4x4 FOOTPRINT IS THE LARGEST THIS CASE HAS, so the track
+// the read is drawn on is as long as this floor makes them and a read that does
+// not move has the most room in which to fail to move. Its redline of 92
+// (specs/towers.md) also sits above every heat below `TRIP_HEAT` posed here, so
+// the reading does not turn on how a build scales the part of the read past it.
 //
 // THE HEAT IS PINNED AT EVERY FRAME. `posePinnedTower` holds the tower's part in
 // the heat model (specs/instrumentation.md), so each frame draws the heat this
@@ -40,19 +28,13 @@
 // `TRIP_HEAT` never crosses into a trip — the trip is a crossing the heat model
 // makes, and the model is held (specs/heat.md, The trip).
 //
-// WHAT IT DOES NOT DECIDE. That the tower's own colour tracks its heat is
+// WHAT IT DOES NOT DECIDE. The marker at the redline is
+// `hud.on-floor-redline-marker`. That the tower's own colour tracks its heat is
 // `presentation.heat-glow-ramp`, and what the heat DOES is the `heat` and `trip`
 // groups. This point decides that the floor says what a tower's heat is.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  TILE,
-  TOWER_DEFS,
-  TRIP_HEAT,
-  tileLeft,
-  tileTop,
-} from "../../src/constants";
-import { assertLessThanOrEqual } from "../assert";
+import { TILE, TRIP_HEAT, tileLeft, tileTop } from "../../src/constants";
 import { sizeOf } from "../geometry";
 import {
   captureStill,
@@ -64,13 +46,10 @@ import {
   type DrawnRect,
   type Harness,
 } from "../harness";
-import { drawnInEveryFrame, findBar } from "./bar";
-import { showRect } from "./read";
+import { findBar } from "./bar";
 
-/** The tower read, and the redline specs/towers.md gives it: 92. */
+/** The tower read: the 4x4 Lance, whose footprint is the largest on this floor. */
 const TYPE = "lance";
-const DEF = TOWER_DEFS[TYPE];
-const REDLINE = DEF.kind === "emitter" ? DEF.redline : 0;
 
 /** A quiet anchor: no opening and no corridor within a 4x4 footprint of it. */
 const AT = { col: 4, row: 4 };
@@ -79,9 +58,9 @@ const AT = { col: 4, row: 4 };
  * The heats the read is drawn at, in rising order, the last of them the top of
  * the scale.
  *
- * The first three are spread across the scale so the read has to move three
- * times rather than once, and `TRIP_HEAT` is what gives the track its full
- * extent, which is what the marker's position is measured along.
+ * They are spread across the scale so the read has to move three times rather
+ * than once, and the last of them is `TRIP_HEAT` so a read that stops moving
+ * short of the top of its own scale is caught.
  */
 const HEATS = [20, 50, 80, TRIP_HEAT];
 
@@ -95,18 +74,6 @@ const HEATS = [20, 50, 80, TRIP_HEAT];
  * that does not move while admitting one drawn on a track of any length.
  */
 const STEP_MIN = 1;
-
-/**
- * How far the marker's centre may sit from the redline's point on the track, in
- * logical units.
- *
- * A marker is a tick of its own width and a build may centre it on the redline or
- * hang it from one side, so a few units of slack is honest. Four is about a
- * twentieth of this tower's 76-unit footprint, which is far tighter than the gap
- * between the redline's point and any other place a build would naturally put a
- * fixed mark: the middle of the track is 29 units away and its far end 6.
- */
-const MARKER_TOLERANCE = 4;
 
 /** How far outside the footprint a rectangle may reach and still be part of the
  * read: the read is drawn ON the footprint (specs/hud.md), and a unit of slack
@@ -127,7 +94,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws a heat read whose extent tracks the heat, marked at the redline", async () => {
+it("draws a heat read whose extent tracks the heat", async () => {
   startRun(h, MODE, DIFFICULTY);
   h.debug.setPhase("wave");
 
@@ -150,35 +117,11 @@ it("draws a heat read whose extent tracks the heat, marked at the redline", asyn
     frames.push(drawnRects(h, calls).filter(onFootprint));
   }
 
-  const bar = findBar(
+  findBar(
     frames,
     1,
     STEP_MIN,
     `a heat read on the ${TYPE}'s footprint whose extent grows with its heat ` +
       `across ${HEATS.join(", ")} (specs/hud.md, The reads on the floor)`,
-  );
-
-  const track = bar.rects[bar.rects.length - 1];
-  const marked = bar.axis.along(track, REDLINE / TRIP_HEAT);
-  const fixed = drawnInEveryFrame(frames);
-  const nearest = fixed.reduce<DrawnRect | null>(
-    (best, rect) =>
-      best === null ||
-      Math.abs(bar.axis.centre(rect) - marked) <
-        Math.abs(bar.axis.centre(best) - marked)
-        ? rect
-        : best,
-    null,
-  );
-
-  assertLessThanOrEqual(
-    nearest === null ? Infinity : Math.abs(bar.axis.centre(nearest) - marked),
-    MARKER_TOLERANCE,
-    `how far the nearest mark that does not move with the heat sits from the ` +
-      `${TYPE}'s redline of ${REDLINE} on a read ${bar.axis.name} and running ` +
-      `to ${TRIP_HEAT} (specs/hud.md, The reads on the floor); the read filled ` +
-      `${bar.extents.map((e) => e.toFixed(1)).join(", ")} across heats ` +
-      `${HEATS.join(", ")}, and the nearest fixed mark was ` +
-      `${nearest === null ? "none at all" : showRect(nearest)}`,
   );
 });

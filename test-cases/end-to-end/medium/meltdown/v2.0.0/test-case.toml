@@ -3524,11 +3524,20 @@ validation = { script = "hud/targeting-read.test.ts", outputs = [
 [[review.categories.items]]
 id = "on-floor-heat-read"
 title = "Each tower carries a heat read"
-description = "A placed tower draws a heat read on its footprint whose extent tracks its heat, with a marker at its redline."
+description = "A placed tower draws a heat read on its footprint whose extent tracks its heat."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "hud/on-floor-heat-read.test.ts", outputs = [
-  { id = "heat", name = "A tower's heat read and its redline marker", kind = "image" },
+  { id = "heat", name = "A tower's heat read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "on-floor-redline-marker"
+title = "The heat read marks the redline"
+description = "The heat read on a tower's footprint carries a marker at the tower's redline."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "hud/on-floor-redline-marker.test.ts", outputs = [
+  { id = "redline", name = "A tower's redline marker on its heat read", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "unit-health-bars"

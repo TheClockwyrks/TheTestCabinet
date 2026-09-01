@@ -27,25 +27,15 @@
 // there. All three heats sit below the Stutter's redline of `60`, so the reading
 // does not turn on how a build scales the part of the read past it.
 //
-// THE MARKER, AND THE TWO SCALINGS THE SPECIFICATION ALLOWS. specs/hud.md puts a
-// marker "at the tower's redline" and does not say what the read is scaled over,
-// so a build may run it from `0` to `100` — the heat's own range, with the marker
-// inside — or from `0` to the redline, with the marker at the far end. Both are
-// conformant, so the marker is required at one of those two positions along the
-// read, measured against the read's own full extent, which is read at heat `100`.
-// A Stutter is used because its redline is `60`: on a `0`-to-`100` read its
-// marker sits three fifths of the way along, plainly apart from either end, so a
-// build that stamped a marker at a fixed place fails.
+// THE FULLEST FRAME IS POSED BUT NOT GRADED. Heat `100` is drawn only so the read
+// can be told from the marks around it: a mark whose length differs between the
+// lowest heat and the fullest is the read, and everything the footprint carries at
+// a fixed length is not. A Stutter is used because its redline of `60` sits inside
+// that range, so nothing here turns on how a build scales the part of the read
+// past it.
 //
-// AND WHY THE MARKER MAY NOT BE THE READ ITSELF. Every read ends where its own
-// far end is, and on a `0`-to-redline scaling that is exactly where the marker
-// goes — so a mark that begins where the read begins is the read's own fill or
-// its backing and is refused as a marker, however it ends. What is left is a mark
-// drawn somewhere ALONG the read, which is the only thing a marker can be. It
-// must also be part of the read rather than of the footprint: its cross-axis span
-// is held to three times the read's own and its cross-axis centre to within the
-// read's span, which is what tells a marker sitting on a heat bar from a radiator
-// face or a body outline running the length of the footprint.
+// WHAT IT DOES NOT DECIDE: the marker at the tower's redline, which is
+// `hud/on-floor-redline-marker`.
 //
 // THE HEAT IS PINNED at each reading, through `setTowerThermal(id, false)`, which
 // holds the tower's part in the heat model. The heat is the quantity being read,
@@ -66,7 +56,6 @@ import {
 import {
   emitterDef,
   findSpanMark,
-  marksAt,
   readRects,
   spanAt,
   towerOf,
@@ -104,39 +93,6 @@ const SLACK = 0.5;
  */
 const STEP = 1;
 
-/**
- * How far from its stated position the redline marker may sit: three logical
- * units.
- *
- * A marker is a mark of some thickness drawn AT a position, and a build is free
- * to centre it on that position or to start it there, so three units carries a
- * marker up to six units thick either way. It is a twentieth of a 2x2 footprint's
- * side and a fifth of the distance between the two positions the two scalings put
- * the marker at on this tower.
- */
-const MARKER_SLACK = 3;
-
-/**
- * How much thicker than the read a mark may be and still be sitting on it: three
- * times.
- *
- * A marker drawn to overhang the bar it marks is ordinary, and three times its
- * thickness carries a generous overhang while still refusing anything spanning a
- * footprint eight times the read's own thickness.
- */
-const MARKER_THICKNESS = 3;
-
-/** Where a mark starts along `axis`, and how far it reaches across it. */
-function along(rect: DrawnRect, axis: "x" | "y"): number {
-  return axis === "x" ? rect.x : rect.y;
-}
-function acrossCentre(rect: DrawnRect, axis: "x" | "y"): number {
-  return axis === "x" ? rect.y + rect.h / 2 : rect.x + rect.w / 2;
-}
-function acrossSpan(rect: DrawnRect, axis: "x" | "y"): number {
-  return Math.abs(axis === "x" ? rect.h : rect.w);
-}
-
 /** The footprint a `size`-tile tower anchored at `(col, row)` occupies. */
 function footprint(col: number, row: number, size: number): ControlRect {
   return {
@@ -157,7 +113,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("lengthens the Stutter's heat read with its heat, and marks its redline", async () => {
+it("lengthens the Stutter's heat read with its heat", async () => {
   startRun(h);
   const id = posePinnedTower(h, TYPE, FREE_SITE.col, FREE_SITE.row, HEATS[0]);
   const tower = towerOf(h.snapshot(), id, "the posed Stutter");
@@ -212,48 +168,4 @@ it("lengthens the Stutter's heat read with its heat, and marks its redline", asy
     }
     previous = extent;
   }
-
-  // The marker, at one of the two positions the two allowed scalings put it at.
-  const full = spanAt(fullest, read, SLACK);
-  assertTrue(full !== null, `the heat read to be drawn at heat ${FULL_HEAT}`);
-  if (full === null) return;
-  const [drawn] = marksAt(fullest, read, SLACK);
-  if (drawn === undefined) return;
-
-  const { axis } = read;
-  const band = acrossSpan(drawn, axis);
-  const bandCentre = acrossCentre(drawn, axis);
-  const origin = axis === "x" ? read.anchor.x : read.anchor.y;
-  const over100 = origin + read.direction * ((full * REDLINE) / 100);
-  const overRedline = origin + read.direction * full;
-
-  const markers = fullest.filter((mark) => {
-    // Part of the READ: a mark of about the read's own thickness, sitting on its
-    // band, rather than a radiator face or a body outline running the
-    // footprint's length.
-    if (acrossSpan(mark, axis) > MARKER_THICKNESS * band) return false;
-    if (Math.abs(acrossCentre(mark, axis) - bandCentre) > band) return false;
-    // Neither the read's own fill nor its backing, both of which BEGIN where the
-    // read does. A mark with an end at the origin is one of those, whatever its
-    // far end lands on.
-    const ends = [
-      along(mark, axis),
-      along(mark, axis) + (axis === "x" ? mark.w : mark.h),
-    ];
-    if (ends.some((at) => Math.abs(at - origin) <= MARKER_SLACK)) return false;
-    return ends.some(
-      (at) =>
-        Math.abs(at - over100) <= MARKER_SLACK ||
-        Math.abs(at - overRedline) <= MARKER_SLACK,
-    );
-  });
-
-  assertGreaterThanOrEqual(
-    markers.length,
-    1,
-    `a marker on the heat read at the Stutter's redline of ${REDLINE}: ` +
-      `${over100.toFixed(1)} along a read scaled over 0 to 100, or ` +
-      `${overRedline.toFixed(1)} along one scaled over 0 to the redline ` +
-      `(specs/hud.md)`,
-  );
 });
