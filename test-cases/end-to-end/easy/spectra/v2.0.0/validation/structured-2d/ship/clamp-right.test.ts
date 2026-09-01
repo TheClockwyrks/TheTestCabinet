@@ -48,13 +48,16 @@ const START_X = SHIP_X_MAX - START_INSIDE;
 /**
  * How far from `SHIP_X_MAX` the ship may come to rest, in logical units.
  *
- * The specification fixes the bound exactly, so this is float slack and nothing
- * else: a build integrating its travel a sub-step at a time (specs/simulation.md)
- * lands ON the bound the frame it crosses it. One unit is a fifteenth of the hull's
- * own half-extent `SHIP_HALF` (`15`), which is the nearest wrong figure a build
- * could clamp to.
+ * "Rests AT that bound" is an equality, so this is the room a floating-point
+ * integration needs around one figure rather than a tolerance on the figure — the
+ * same half-unit the other two engines read this point to, since the scenario and
+ * its reading belong to the case rather than to the runtime. For scale: one frame
+ * of this harness's 100 Hz clock carries the ship 3.6 units at `SHIP_SPEED`, and
+ * one sub-step of `SUBSTEP_MAX` carries it 3, so a build that merely STOPS SHORT —
+ * refusing the step that would cross the bound instead of clamping to it — rests at
+ * least three units away and fails, while a build that clamps arrives exactly.
  */
-const CLAMP_TOLERANCE = 1;
+const CLAMP_TOLERANCE = 0.5;
 
 /**
  * The frames the direction is held: two seconds.
