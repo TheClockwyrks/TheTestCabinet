@@ -68,14 +68,18 @@ const DRONE_X = 420;
 const DRONE_Y = 260;
 
 /**
- * How closely the drone's reported centre must match the one it was posed at.
+ * How closely the drone's reported centre must match the one it was posed at, in
+ * decimal digits for `assertCloseTo`.
  *
- * `addDrone` "adds one drone of `kind` ... with its center at a logical stage
- * position" and every faculty `poseDrone` leaves off holds it exactly there, so a
- * conforming build reports the two numbers it was handed. Half a thousandth of a
- * unit is a rounding, not a placement.
+ * Six, which is half a millionth of a logical unit. `addDrone` "adds one drone of
+ * `kind` ... with its center at a logical stage position" and every faculty
+ * `poseDrone` leaves off holds it exactly there, so a conforming build reports
+ * the two numbers it was handed back unchanged: this is float noise, not an
+ * allowance for drift. It is the figure the same point uses under the other two
+ * engines, because what a pose reads back as belongs to the case rather than to
+ * the runtime.
  */
-const PLACED_DIGITS = 3;
+const PLACED_DIGITS = 6;
 
 /** How long the direction key is held, in frames of the suite's clock. */
 const HOLD_TICKS = ticksFor(0.25);
@@ -143,7 +147,7 @@ it("returns a whole, live debug surface beside its state", async () => {
   // 3. Live. An empty, quiet, live wave, so the only things on the field are the
   // drone this poses and the ship no scenario can remove.
   startPosed(h);
-  const droneId = poseDrone(h, "shard", DRONE_X, DRONE_Y);
+  const droneId = poseDrone(h, "prism", DRONE_X, DRONE_Y);
   const placed = droneOf(h.snapshot(), droneId);
 
   h.debug.setShipX(LANE_CENTER);
@@ -157,6 +161,12 @@ it("returns a whole, live debug surface beside its state", async () => {
     droneId,
     "the drone addDrone appended is the last of the roster, which is how its " +
       "id is read (specs/instrumentation.md)",
+  );
+  assertEqual(
+    placed.kind,
+    "prism",
+    `the kind snapshot reports for the drone addDrone("prism", …) appended — ` +
+      `"shard" is what a build that ignores the kind argument reports`,
   );
   assertCloseTo(
     placed.x,
