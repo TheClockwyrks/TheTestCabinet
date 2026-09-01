@@ -21,13 +21,19 @@
 // by and half of the `32` a corner-anchored tile misses by, so neither of the
 // two wrong maps survives it.
 //
-// WHICH BLIT IS THE CRITTER. The strait is emptied first, so the only body on it
-// is the critter — and on the two water tiles, the floe it has to be standing on
-// (specs/water.md drowns a critter on open water on the very tick). That floe is
-// the four-tile `raft4`, drawn `128` units wide (specs/assets.md), so a blit's
-// own width tells the two apart with a wide margin. Blits above the strait are
-// left out: what a build draws inside the HUD bar is `hud-above-strait`'s
-// question, and the readouts there may legitimately carry art of their own.
+// WHICH BLIT IS THE CRITTER: THE ONE DRAWN FROM `assets/crosser/`. The bitmap
+// each `drawImage` was handed is matched pixel for pixel against the seeded PNGs
+// (`nearestSeededFrame`), and only a draw whose source IS a crosser frame is
+// read. Nothing about a blit's SIZE identifies it: on the two water tiles the
+// critter has to be standing on a floe (specs/water.md drowns a critter on open
+// water on the very tick), and specs/assets.md draws a floe "32 units wide for
+// every tile it spans, with its left edge on the item's own x and its top on its
+// row's top edge" — so a build that blits its raft one tile at a time puts a
+// 32-wide sprite exactly on this tile's own centre, and a check that took the
+// nearest tile-sized blit would measure the raft and pass with the critter drawn
+// anywhere. Blits above the strait are left out: what a build draws inside the
+// HUD bar is `hud-above-strait`'s question, and specs/assets.md lets a lives icon
+// there reuse a crosser frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
@@ -37,6 +43,7 @@ import {
   captureStill,
   createHarness,
   drawnImages,
+  nearestSeededFrame,
   poseLane,
   startCrossing,
   type DrawnImage,
@@ -54,14 +61,16 @@ import { MEASURED_TILES, STILL_TILE } from "./measured-tiles";
 const HALF_TILE = TILE / 2;
 
 /**
- * The widest blit this check will take for the critter, in stage units.
+ * How far a drawn source may sit from a seeded frame and still BE it, as a mean
+ * absolute channel difference out of `255`.
  *
- * The critter is drawn over ONE tile (specs/assets.md), so `32`; the only other
- * body posed is a four-tile raft, drawn `32` units wide for every tile it spans,
- * so `128`. Two tiles sits well clear of both, so a build that draws its critter
- * a little larger than a tile is still read while the raft never is.
+ * One. specs/assets.md has the build render the critter from `assets/crosser/`,
+ * so the source of the draw is that PNG and the comparison is an identity: the
+ * only thing this allowance covers is the single lossy step of reading a bitmap
+ * back out of a canvas. A build that drew a shape of its own, a recoloured copy
+ * or a sheet of its own measures far more, and is not read as the critter.
  */
-const SPRITE_MAX_W = 2 * TILE;
+const SOURCE_MATCH_MAX = 1;
 
 /** The floe kind the water tiles' critter stands on: the widest the game has. */
 const CARRIER = "raft4";
@@ -103,14 +112,19 @@ it.each(MEASURED_TILES)(
     const centre = { x: tileCX(col), y: tileCY(row) };
     const where = `the critter drawn on tile (${col}, ${row})`;
 
-    const candidates = drawnImages(h).filter(
-      (image) => image.w <= SPRITE_MAX_W && image.y >= HUD_H,
-    );
+    const candidates: DrawnImage[] = [];
+    for (const image of drawnImages(h)) {
+      if (image.y < HUD_H) continue;
+      const match = await nearestSeededFrame(image.source);
+      if (match.folder === "crosser" && match.distance <= SOURCE_MATCH_MAX) {
+        candidates.push(image);
+      }
+    }
     assertGreaterThanOrEqual(
       candidates.length,
       1,
-      `${where}: tile-sized sprites drawn on the strait, the critter among ` +
-        `them (specs/overview.md draws it from the seeded art)`,
+      `${where}: draws on the strait whose source is a frame of ` +
+        `assets/crosser/ (specs/assets.md)`,
     );
 
     const drawn = candidates.reduce((nearest, image) =>
