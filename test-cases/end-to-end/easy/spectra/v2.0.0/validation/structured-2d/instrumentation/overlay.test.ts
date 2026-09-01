@@ -163,7 +163,7 @@ const ENEMY_AT: readonly { x: number; y: number }[] = [
 ];
 
 /**
- * The forms the yes/no facts may be drawn in.
+ * The forms the facts that are not numbers may be drawn in.
  *
  * specs/instrumentation.md names each fact and fixes no spelling for any of them,
  * so each pattern accepts every form a build would honestly use, and the same set
@@ -171,8 +171,31 @@ const ENEMY_AT: readonly { x: number; y: number }[] = [
  * requirement is decided the same way on all three engines.
  */
 const CHALLENGE_FORMS = /challeng/i;
+/**
+ * A drone's kind, spelled out or abbreviated to its initial.
+ *
+ * The Diagnostics list names the fact and immediately asks a build to "Keep each
+ * one short enough to read on a line", so a one-letter kind on a per-drone line is
+ * an honest drawing of it and a spelled-out word is too. The three patterns cannot
+ * be satisfied by one token, so a panel that reports a kind at all still has to
+ * distinguish the three; a panel that reports none of them matches nothing.
+ */
+const SHARD_FORMS = /\bshard\b|\bs\b/i;
+const FLUX_FORMS = /\bflux\b|\bf\b/i;
+const PRISM_FORMS = /\bprism\b|\bp\b/i;
+/**
+ * A band, spelled out or abbreviated to its initial, for the same reason.
+ *
+ * A panel that draws only the STORED bands of this field draws neither a
+ * `magenta` nor a standalone `m`, because every drone on it stores cyan and so
+ * does the ship — so widening the form costs the reading below nothing.
+ */
+const CYAN_FORMS = /\bcyan\b|\bc\b/i;
+const MAGENTA_FORMS = /\bmagenta\b|\bm\b/i;
 const READY_FORMS = /ready|\byes\b|\btrue\b|\bon\b|\bfull\b/i;
 const INVERSION_FORMS = /invert|inversion|activ|\byes\b|\btrue\b|\bon\b/i;
+const SHIMMER_FORMS = /shimmer|\bshim\b/i;
+const SHELL_FORMS = /core|broken|shell/i;
 
 /** The scales a build may honestly print a duration in: seconds to milliseconds. */
 const DURATION_SCALES = [1, 10, 100, 1000] as const;
@@ -375,17 +398,34 @@ it("draws every registered value and changes nothing in the game", async () => {
   assertDuration(overlay, INVERSION, "how long is left of the inversion");
 
   assertFigure(overlay, SHIP_X, "the ship's x");
+  assertForm(
+    overlay,
+    CYAN_FORMS,
+    "the ship's band, and the drones' stored bands",
+  );
   assertDuration(overlay, LOCKOUT, "the ship's remaining fire lockout");
 
   assertFigure(overlay, shard, "the Shard's id");
   assertFigure(overlay, flux, "the Flux's id");
   assertFigure(overlay, prism, "the Prism's id");
+  assertForm(overlay, SHARD_FORMS, "the Shard's kind");
+  assertForm(overlay, FLUX_FORMS, "the Flux's kind");
+  assertForm(overlay, PRISM_FORMS, "the Prism's kind");
+  assertForm(
+    overlay,
+    MAGENTA_FORMS,
+    "an effective band — every drone on this field STORES cyan, and under the " +
+      "live inversion the plain Shard reads as magenta (specs/bands.md)",
+  );
   assertFigure(overlay, SHARD_AT.x, "the x of the Shard's position");
   assertFigure(overlay, SHARD_AT.y, "the y of the Shard's position");
   assertFigure(overlay, FLUX_AT.x, "the x of the Flux's position");
   assertFigure(overlay, FLUX_AT.y, "the y of the Flux's position");
   assertFigure(overlay, PRISM_AT.x, "the x of the Prism's position");
   assertFigure(overlay, PRISM_AT.y, "the y of the Prism's position");
+  assertForm(overlay, /formation/i, "each drone's phase");
+  assertForm(overlay, SHIMMER_FORMS, "the Flux's shimmer state");
+  assertForm(overlay, SHELL_FORMS, "the Prism's shell state");
 
   assertFigure(overlay, bullets, "how many bullets are in flight");
   assertFigure(overlay, bursts, "how many bursts are playing");
