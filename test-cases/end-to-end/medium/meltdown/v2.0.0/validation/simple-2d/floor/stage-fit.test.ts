@@ -64,6 +64,7 @@ import {
   ROWS,
   STAGE_H,
   STAGE_W,
+  TOWER_TYPES,
   tileCX,
   tileCY,
 } from "../../src/constants";
@@ -72,6 +73,7 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
+  assertNotNull,
   assertTrue,
 } from "../assert";
 import { sizeOf, type Point } from "../geometry";
@@ -408,7 +410,18 @@ it.each(SURFACES)(
       { name: "Pause", rect: controls.pause },
       { name: "the mute control", rect: controls.mute },
     ];
+    assertGreaterThanOrEqual(
+      controls.shop.length,
+      TOWER_TYPES.length,
+      `${label}: the shop entries the panel reports, each of which has to fit ` +
+        "inside the backing store (specs/hud.md, The shop)",
+    );
     for (const { name, rect } of named) {
+      assertNotNull(
+        rect,
+        `${label}: the rectangle the panel reports for ${name}, which cannot ` +
+          "be checked for fit until the panel reports one (specs/hud.md)",
+      );
       if (rect === null) continue;
       for (const point of [
         { x: rect.x, y: rect.y },
