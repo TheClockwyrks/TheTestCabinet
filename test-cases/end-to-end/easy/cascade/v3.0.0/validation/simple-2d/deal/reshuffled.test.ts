@@ -13,48 +13,72 @@
 // resets under two different seeds followed by two deals produce two draws from the
 // shuffle, and a build whose deal is fixed produces the same board twice.
 //
-// WHAT COUNTS AS DIFFERENT is the arrangement of the seven columns: every column's
-// cards in order, faces included. A build that shuffled only the stock and dealt a
-// fixed tableau is caught, which a comparison over the whole table would let
-// through only if it also fixed the stock.
+// THE COMPARISON IS POSITIONAL, and that is what makes this item's requirement
+// different from `instrumentation/reset-seed-differs`'s. That point reads the plain
+// inequality — a different seed produces a different board — and is satisfied by a
+// build whose shuffle permutes a corner of the deck. This one reads the SPREAD the
+// uniform shuffle specs/deal.md asks for: for each of the twenty-eight column
+// positions, whether the two deals put the same card there, over three seed pairs.
+// It is not a comparison of the two decks as sets, because both deals hold the same
+// fifty-two cards by `deal/full-deck` and a set comparison would find nothing
+// whatever the shuffle did.
 //
-// THE COLLISION THIS COULD SUFFER IS NOT REAL. A conformant build draws each board
-// uniformly from `52!` orderings, so two draws landing on the same tableau has
-// probability on the order of `1e-68`. No tolerance is stated because there is
-// nothing to soften: the two boards are equal or they are not.
+// A position one deal filled and the other did not counts as differing, so a build
+// that deals a different NUMBER of cards is not rewarded for it; what its columns
+// should hold is `deal/column-sizes`. The `none` suite reads the same three pairs to
+// the same share.
 //
 // It uses the surface's own operations rather than `openTable`, because the seed is
 // the whole point and `openTable` resets to the default one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertNotEqual } from "../assert";
+import { DEAL_TABLEAU_CARDS } from "../../src/constants";
+import { assertGreaterThan } from "../assert";
 import {
   captureStill,
+  cardSpec,
   createHarness,
-  pileSpecs,
   type Harness,
 } from "../harness";
 
 /**
- * The two seeds the two deals run under. Any two distinct numbers serve: what the
- * item asserts is that a different seed produces a different board, and neither
- * value carries a meaning of its own. `1` is `DEFAULT_SEED`, the seed a build
- * starts from, and `2` is its neighbor, so a build that reads the seed at all is
- * asked for nothing exotic.
+ * The share of the twenty-eight tableau positions that has to hold a different
+ * card between the two deals.
+ *
+ * Derived from the rule rather than from the reference. Under the uniform shuffle
+ * specs/deal.md requires, a given position holds the same card in two independent
+ * deals with probability 1/52, so about half of one position of the twenty-eight
+ * is expected to agree by chance; asking for more than half of them to differ
+ * leaves an enormous margin against a conformant build while a build that deals
+ * one fixed layout counts zero differing positions and a build that shuffles only
+ * a corner of the deck counts a handful.
  */
-const SEED_A = 1;
-const SEED_B = 2;
+const DIFFER_MIN_FRACTION = 0.5;
 
-/** Reset under `seed`, deal, and write the seven columns out as one line. */
-function dealUnder(h: Harness, seed: number): string {
+/** The seed pairs the comparison is read over. Each pair is one draw of the rule. */
+const PAIRS = [
+  { first: 1, second: 2 },
+  { first: 3, second: 4 },
+  { first: 11, second: 29 },
+];
+
+/**
+ * Reset under `seed`, deal, and hand back what each tableau position received,
+ * keyed `"column,row"` with the row counted from the top of the table.
+ */
+function dealUnder(h: Harness, seed: number): Map<string, string> {
   h.debug.reset({ seed });
   h.debug.setScreen("playing");
   h.debug.clearTable();
   h.debug.deal();
-  return h
-    .snapshot()
-    .tableau.map((column) => pileSpecs(column).join(" "))
-    .join(" | ");
+
+  const laid = new Map<string, string>();
+  for (const [column, cards] of h.snapshot().tableau.entries()) {
+    for (const [row, held] of cards.entries()) {
+      laid.set(`${column},${row}`, cardSpec(held));
+    }
+  }
+  return laid;
 }
 
 let harness: Harness;
@@ -67,20 +91,27 @@ afterEach(() => {
   harness?.dispose();
 });
 
-it("deals a different board from a different seed", async () => {
-  const first = dealUnder(harness, SEED_A);
-  await harness.advance(1);
+it.each(PAIRS)(
+  "deals different boards from seed $first and seed $second",
+  async ({ first, second }) => {
+    const before = dealUnder(harness, first);
+    await harness.advance(1);
 
-  const second = dealUnder(harness, SEED_B);
-  await harness.advance(1);
-  // The second of the two boards, which is the one on the canvas: a still holds one
-  // frame, and the failure below carries the first board's cards as text.
-  captureStill(harness, "deals");
+    // The second seed's deal is the one the still shows, so it is dealt last.
+    const after = dealUnder(harness, second);
+    await harness.advance(1);
+    captureStill(harness, "deals");
 
-  assertNotEqual(
-    second,
-    first,
-    `the columns dealt under seed ${SEED_B} to differ from the columns dealt ` +
-      `under seed ${SEED_A} (specs/deal.md)`,
-  );
-});
+    const positions = new Set([...before.keys(), ...after.keys()]);
+    const differing = [...positions].filter(
+      (at) => before.get(at) !== after.get(at),
+    ).length;
+
+    assertGreaterThan(
+      differing,
+      DIFFER_MIN_FRACTION * DEAL_TABLEAU_CARDS,
+      `tableau positions holding a different card between the deals from ` +
+        `seed ${first} and seed ${second} (specs/deal.md)`,
+    );
+  },
+);

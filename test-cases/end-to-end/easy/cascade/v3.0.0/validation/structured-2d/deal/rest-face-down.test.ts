@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TABLEAU_COLUMNS } from "../../src/constants";
-import { assertEqual } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   cardKey,
@@ -49,6 +49,17 @@ it("leaves every card above a column's lowest face-down", async () => {
   captureStill(harness, "dealt");
 
   const dealt = harness.snapshot();
+  let buried = 0;
+  for (let column = 0; column < TABLEAU_COLUMNS; column += 1) {
+    buried += Math.max(0, pileOf(dealt, "tableau", column).length - 1);
+  }
+  assertGreaterThanOrEqual(
+    buried,
+    1,
+    "cards a deal buried under a column's lowest, whose faces are read below " +
+      "(specs/deal.md)",
+  );
+
   for (let column = 0; column < TABLEAU_COLUMNS; column += 1) {
     const cards = pileOf(dealt, "tableau", column);
     for (let row = 0; row < cards.length - 1; row += 1) {

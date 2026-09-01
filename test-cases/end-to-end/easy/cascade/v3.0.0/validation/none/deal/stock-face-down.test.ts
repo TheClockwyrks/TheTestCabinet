@@ -16,7 +16,7 @@
 // missed. HOW MANY cards the stock holds is deal/stock-count.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -41,6 +41,11 @@ it("deals every stock card face-down", async () => {
   await captureStill(h, "dealt");
 
   const { stock } = await h.snapshot();
+  assertGreaterThanOrEqual(
+    stock.length,
+    1,
+    "cards in the stock a deal formed, whose faces are read below (specs/deal.md) — an empty stock would make the reading below vacuous",
+  );
   assertEqual(
     stock.filter((card) => card.faceUp).length,
     0,

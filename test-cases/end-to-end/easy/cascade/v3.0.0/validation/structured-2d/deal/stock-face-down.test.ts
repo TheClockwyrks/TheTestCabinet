@@ -16,7 +16,7 @@
 // is what holds a build to dealing reproducibly.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   cardKey,
@@ -43,6 +43,12 @@ it("forms the stock face-down", async () => {
   captureStill(harness, "dealt");
 
   const { stock } = harness.snapshot();
+  assertGreaterThanOrEqual(
+    stock.length,
+    1,
+    "cards in the stock a deal formed, whose faces are read below " +
+      "(specs/deal.md)",
+  );
   for (const [row, card] of stock.entries()) {
     assertEqual(
       card.faceUp,
