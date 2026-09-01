@@ -50,18 +50,29 @@
 // spared rock is read BY ID, because a torpedo that destroyed it would leave two
 // fragments with fresh ids in its place (`specs/rocks.md`).
 //
+// AND THE SPARED ROCK IS READ OFF THE HEADING AS WELL AS OFF THE ROSTER. Standing
+// still is not proof of not having been acquired: a build whose cone reached `16`
+// degrees but whose turn was too slow to close the `110` units of offset inside
+// the span would leave the rock on the field and pass a check that only counted
+// rosters. `specs/weapons.md` says what a torpedo with no candidate does — it
+// "flies straight on its current heading" — so the heading is sampled at every
+// tick of the pass and held to a degree of the one it was posed on. A build that
+// acquired the out-of-cone rock turns the whole `16` toward it and is named here
+// rather than passing on a technicality.
+//
 // EACH SCENARIO IS FLOWN ON ITS OWN GROUND, one after the other, each laid fresh
 // by `startPlaying` — an empty field with both world gates shut, so the only rock
 // in any of them is the one the check posed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG } from "../../src/constants";
-import { assertTrue } from "../assert";
+import { assertLessThanOrEqual, assertTrue } from "../assert";
+import { DEG, angleBetween } from "../geometry";
 import {
   captureStill,
   createHarness,
   poseRock,
   rockById,
+  sampleEvery,
   startPlaying,
   ticksFor,
   type Harness,
@@ -113,6 +124,17 @@ const FLIGHT_TICKS = ticksFor(1.5);
 
 /** How long the fragments are let come apart before the still is kept. */
 const AFTERMATH_TICKS = ticksFor(0.2);
+
+/**
+ * How far the heading may turn while passing the refused rock, in radians.
+ *
+ * One degree, compared as the shortest arc between two angles. A torpedo with no
+ * candidate "flies straight on its current heading" (`specs/weapons.md`) and the
+ * well never pulls it (`specs/gravity.md`), so a conforming build turns by nothing
+ * at all over the pass; a build whose cone reached `16` degrees would turn the
+ * whole `16` toward the rock it should have refused.
+ */
+const HEADING_TOLERANCE = 1 * DEG;
 
 /** Where a rock posed `off` radians off the launch line in `lane` stands. */
 function rockAt(lane: number, off: number): { x: number; y: number } {
@@ -173,7 +195,12 @@ it.each(SIDES)(
     const outsideId = poseRock(h, "large", outside.x, outside.y);
     poseTorpedo(h, TORPEDO_X, lane, HEADING);
 
-    await h.advance(FLIGHT_TICKS);
+    const headings = await sampleEvery(
+      h,
+      FLIGHT_TICKS,
+      1,
+      (s) => s.torpedoes?.find((torpedo) => torpedo.id === outsideId)?.heading,
+    );
 
     assertTrue(
       rockById(h.snapshot(), outsideId) !== undefined,
@@ -181,6 +208,23 @@ it.each(SIDES)(
         "heading — outside TORPEDO_CONE (15 degrees) — still on the field " +
         "after 1.5 seconds: a body outside the cone is never a candidate, so " +
         "nothing turns toward it (specs/weapons.md)",
+    );
+
+    const turned = headings.reduce(
+      (most: number, heading) =>
+        heading === undefined
+          ? most
+          : Math.max(most, angleBetween(heading, HEADING)),
+      0,
+    );
+    assertLessThanOrEqual(
+      turned,
+      HEADING_TOLERANCE,
+      "the radians the torpedo's heading turned while passing a rock " +
+        `${String(OUTSIDE_DEG)} degrees ${name} it — a degree outside the ` +
+        "TORPEDO_CONE (15 degrees) half-angle specs/weapons.md fixes, past " +
+        "which a body behind it is never acquired and the torpedo flies " +
+        `straight on its current heading; ${(turned / DEG).toFixed(3)} degrees`,
     );
   },
 );
