@@ -94,8 +94,9 @@ on its own rather than seeing only where the sweep ended.
 
 Press and release edges follow the same rule as action edges: armed by the
 transition, consumed by the first read, and discarded when the frame closes.
-One logical pointer is tracked, so a mouse and a touch drive the game the same
-way and a multi-touch gesture's second finger moves nothing.
+The snapshot and the edges follow the primary pointer, so a mouse and a touch
+drive the game the same way, and a multi-touch gesture's second finger reaches
+the game through the contacts and the samples alone.
 
 ## Touch layouts
 
