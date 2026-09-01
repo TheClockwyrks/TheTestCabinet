@@ -29,7 +29,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDefined, assertEqual, assertTrue } from "../assert";
-import { ROCK_RADIUS, SAUCER_BULLET_R, SAUCER_BULLET_SPEED } from "../constants";
+import {
+  ROCK_RADIUS,
+  SAUCER_BULLET_R,
+  SAUCER_BULLET_SPEED,
+} from "../constants";
 import { wrappedDistance } from "../geometry";
 import {
   captureStill,

@@ -25,7 +25,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNotNull, assertNull } from "../assert";
 import { SAUCER_FIRST_DELAY } from "../constants";
-import { captureStill, createHarness, ticksFor, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  ticksFor,
+  type Harness,
+} from "../harness";
 import { openSaucerGame } from "./cadence";
 
 /**

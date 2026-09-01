@@ -30,7 +30,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, fail } from "../assert";
-import { captureStill, createHarness, ticksFor, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  ticksFor,
+  type Harness,
+} from "../harness";
 import { openSaucerGame, traceSaucerVisits } from "./cadence";
 
 /** The two minutes of game time the sequence is read over. */

@@ -28,7 +28,14 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNotNull, assertNull } from "../assert";
 import { SAUCER_LIFETIME } from "../constants";
-import { captureStill, createHarness, poseSaucer, startPlaying, ticksFor, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  poseSaucer,
+  startPlaying,
+  ticksFor,
+  type Harness,
+} from "../harness";
 
 /** Where the visit is flown: a row well below the star. */
 const START = { x: 100, y: 660 };
