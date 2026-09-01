@@ -1,17 +1,112 @@
-// Spectra — swarm/dive-cadence: later dives keep their cadence
+// swarm/dive-cadence — later dives launch DIVE_GAP_MIN..DIVE_GAP_MAX apart.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `swarm.dive-cadence` on the
-// `structured-2d` configuration, and captures the media `test-case.toml` declares
-// for it.
+// specs/swarm.md, "The dive": each dive after the wave's first is launched when
+// the dive clock reaches "A value drawn between `DIVE_GAP_MIN` (`1.4`) and
+// `DIVE_GAP_MAX` (`2.6`) seconds, multiplied by `diveGapScale(stage)`", and the
+// clock "returns to `0` each time a dive is launched". So every gap between two
+// successive launches is a draw from that window, and the window is what this
+// checks — not the draw, which is the build's own generator's.
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// The bounds are the ENDS of that window, each given the item's own 20% either
+// way, so a build drawing from a window shifted or scaled off the specified one
+// fails on the first gap that lands outside it while a build drawing honestly
+// from the right window passes wherever its draws fall.
+//
+// THE CLOCK IS POSED AT `0` AND THE GATE OPENED, exactly as
+// `swarm/dive-first-delay` poses it and for the same reason, and the complete
+// formation is posed with every faculty off: the launched drones stay where they
+// are and take no part, so the wave always has drones standing to choose from and
+// nothing but the launcher's own clock decides when the next one goes. The gaps
+// are read between LAUNCHES — the frames on which one more drone is in phase
+// `diving` — so the first delay is not counted as a gap.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  DIVE_FIRST_DELAY,
+  DIVE_GAP_MAX,
+  DIVE_GAP_MIN,
+  diveGapScale,
+} from "../../src/constants";
+import { assertBetween, assertTrue } from "../assert";
+import {
+  captureReplay,
+  createHarness,
+  dronesInPhase,
+  poseFormation,
+  seconds,
+  startPosed,
+  ticksFor,
+  type Harness,
+} from "../harness";
+import { fullFormation } from "./formation";
 
-it("Later dives keep their cadence", () => {
-  throw new Error(
-    "Spectra: validation/structured-2d/swarm/dive-cadence.test.ts is a scaffold placeholder and has not been implemented",
-  );
+/** The stage the formation is posed at: the first, where diveGapScale is 1. */
+const STAGE = 1;
+
+/** The item's own 20% on each end of the window the gap is drawn from. */
+const GAP_TOLERANCE = 0.2;
+
+/** The window a gap must fall in, in seconds, at the stage posed. */
+const GAP_MIN = DIVE_GAP_MIN * diveGapScale(STAGE) * (1 - GAP_TOLERANCE);
+const GAP_MAX = DIVE_GAP_MAX * diveGapScale(STAGE) * (1 + GAP_TOLERANCE);
+
+/** The successive gaps read: enough that one wrong draw cannot hide. */
+const GAPS = 3;
+
+/** How long the first launch is waited for: twice DIVE_FIRST_DELAY. */
+const FIRST_FRAMES = ticksFor(2 * DIVE_FIRST_DELAY);
+
+/**
+ * How long each later launch is waited for, in frames.
+ *
+ * Twice the window's upper end, so a build launching too slowly to pass is still
+ * SEEN launching and its gap is reported as the figure it really ran.
+ */
+const GAP_FRAMES = ticksFor(2 * DIVE_GAP_MAX * diveGapScale(STAGE));
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("keeps every gap between successive dive launches inside the drawn window", async () => {
+  startPosed(h);
+  poseFormation(h, fullFormation("shard"));
+  h.debug.setDiveClock(0);
+  h.debug.setDiveLaunching(true);
+
+  const launches: { frames: number; hit: boolean }[] = [];
+  await captureReplay(h, "cadence", async () => {
+    for (let index = 0; index <= GAPS; index += 1) {
+      const before = dronesInPhase(h.snapshot(), "diving").length;
+      const swept = await h.until(
+        (snapshot) => dronesInPhase(snapshot, "diving").length > before,
+        { maxFrames: index === 0 ? FIRST_FRAMES : GAP_FRAMES, poll: 1 },
+      );
+      launches.push({ frames: swept.frames, hit: swept.hit });
+    }
+  });
+
+  for (const [index, launch] of launches.entries()) {
+    if (index === 0) continue;
+    assertTrue(
+      launch.hit,
+      `dive ${index + 1} launched within ${seconds(GAP_FRAMES)}s of dive ` +
+        `${index} (specs/swarm.md)`,
+    );
+    assertBetween(
+      seconds(launch.frames),
+      GAP_MIN,
+      GAP_MAX,
+      `the seconds between dive ${index} and dive ${index + 1}, against ` +
+        `DIVE_GAP_MIN..DIVE_GAP_MAX (${DIVE_GAP_MIN}..${DIVE_GAP_MAX}) times ` +
+        `diveGapScale(${STAGE}) (${diveGapScale(STAGE)}) with the item's 20% ` +
+        `either way (specs/swarm.md)`,
+    );
+  }
 });
