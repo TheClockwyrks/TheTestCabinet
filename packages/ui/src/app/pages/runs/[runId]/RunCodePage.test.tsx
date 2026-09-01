@@ -174,6 +174,7 @@ const DOCUMENT = {
 function renderPage(
   codeAnalysis: CodeAnalysisSummary | undefined,
   readCodeAnalysis?: (runId: string) => Promise<unknown>,
+  toolchain?: unknown,
 ) {
   fixture.readCodeAnalysis = readCodeAnalysis;
   fixture.detail = {
@@ -191,6 +192,7 @@ function renderPage(
       status: { state: "completed", detail: null },
       validation: { loaded: true, proofs: [] },
       codeAnalysis,
+      toolchain,
     } as unknown as RunRecord,
     reviews: [],
   };
@@ -225,9 +227,7 @@ describe("RunCodePage", () => {
   it("fetches the document and builds the explorer from it", async () => {
     const readCodeAnalysis = vi.fn().mockResolvedValue(DOCUMENT);
     renderPage(SUMMARY, readCodeAnalysis);
-    await waitFor(() =>
-      expect(readCodeAnalysis).toHaveBeenCalledWith(RUN_ID),
-    );
+    await waitFor(() => expect(readCodeAnalysis).toHaveBeenCalledWith(RUN_ID));
     expect(await screen.findByText("resolveCollision")).toBeInTheDocument();
     expect(
       screen.getByText("Everything in the produced tree"),
@@ -251,5 +251,147 @@ describe("RunCodePage", () => {
     expect(
       await screen.findByText(/corpus is not backfilled/i),
     ).toBeInTheDocument();
+  });
+});
+
+// The executed tier: the model's own suite and its coverage, gated on whether the case
+// actually wrote the report files those figures are read out of.
+//
+// Absence of the widget is the correct rendering, and these are the assertions that keep
+// it that way. Every case version predating the report-file contract writes no report, so
+// an empty widget here would appear on the entire existing corpus.
+describe("RunCodePage, the executed tier", () => {
+  const TESTS = {
+    total: 12,
+    passed: 11,
+    failed: 1,
+    skipped: 0,
+    filesRun: 2,
+    filesFailed: 1,
+    succeeded: false,
+    files: [{ path: "src/game.test.ts", passed: 11, failed: 1, skipped: 0 }],
+    filesTruncated: false,
+    failures: [
+      {
+        file: "src/game.test.ts",
+        name: "engine > advances",
+        message: "expected 3 to be 4",
+      },
+    ],
+    failuresTruncated: false,
+  };
+  const COVERAGE = {
+    totals: {
+      lines: { covered: 62, total: 100, pct: 62 },
+      statements: { covered: 70, total: 100, pct: 70 },
+      functions: { covered: 8, total: 10, pct: 80 },
+      branches: { covered: 3, total: 12, pct: 25 },
+    },
+    files: [
+      {
+        path: "src/loop.ts",
+        lines: { covered: 62, total: 100, pct: 62 },
+        statements: { covered: 70, total: 100, pct: 70 },
+        functions: { covered: 8, total: 10, pct: 80 },
+        branches: { covered: 3, total: 12, pct: 25 },
+      },
+    ],
+    filesMeasured: 1,
+    filesTruncated: false,
+  };
+
+  it("renders neither band for a run with no toolchain block", async () => {
+    renderPage(SUMMARY, vi.fn().mockResolvedValue(DOCUMENT));
+    expect(await screen.findByText("Exact")).toBeInTheDocument();
+    expect(screen.queryByText(/Tests the model wrote/)).toBeNull();
+    expect(
+      screen.queryByText(/Coverage of the code the model wrote/),
+    ).toBeNull();
+  });
+
+  // The shape of every run recorded before the report-file contract: the command ran and
+  // printed a table, and no file was written for either reader to parse. Not an empty
+  // widget, not a placeholder, not a zero — nothing.
+  it("renders neither band when the command ran but wrote no report files", async () => {
+    renderPage(SUMMARY, vi.fn().mockResolvedValue(DOCUMENT), {
+      test: {
+        result: {
+          command: "npx vitest run --coverage",
+          ran: true,
+          exitCode: 0,
+        },
+      },
+    });
+    expect(await screen.findByText("Exact")).toBeInTheDocument();
+    expect(screen.queryByText(/Tests the model wrote/)).toBeNull();
+    expect(
+      screen.queryByText(/Coverage of the code the model wrote/),
+    ).toBeNull();
+  });
+
+  // Two files, two gates. A config that writes the test report and no coverage summary
+  // shows one band and not the other.
+  it("gates the two bands independently", async () => {
+    renderPage(SUMMARY, vi.fn().mockResolvedValue(DOCUMENT), {
+      test: { result: { ran: true }, tests: TESTS },
+    });
+    expect(
+      await screen.findByText("Tests the model wrote"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Coverage of the code the model wrote/),
+    ).toBeNull();
+  });
+
+  it("renders both bands, and says whose tests they are", async () => {
+    renderPage(SUMMARY, vi.fn().mockResolvedValue(DOCUMENT), {
+      test: { result: { ran: true }, tests: TESTS, coverage: COVERAGE },
+    });
+    expect(
+      await screen.findByText("Tests the model wrote"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Coverage of the code the model wrote"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/The suite failed — 1 of 12 tests/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("expected 3 to be 4")).toBeInTheDocument();
+    expect(screen.getByText(/62 of 100 executable lines/)).toBeInTheDocument();
+
+    // The wording a reviewer needs, on both bands: these figures are the model's own
+    // suite over the model's own code, and the test case's validators — whose verdicts
+    // the same reviewer sees on a sibling surface — contribute nothing to them.
+    expect(
+      screen.getByText(
+        /tests the model wrote, run over the code the model wrote/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/validators are a separate suite that grades this run/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/validators’ suite has coverage disabled by design/i),
+    ).toBeInTheDocument();
+  });
+
+  // The two families that used to collide with the executed figures, renamed. The static
+  // counts stay on the page; what changes is that neither is called what the executed
+  // tier is called.
+  it("no longer heads a static family as Tests or Coverage", async () => {
+    renderPage(SUMMARY, vi.fn().mockResolvedValue(DOCUMENT), {
+      test: { result: { ran: true }, tests: TESTS, coverage: COVERAGE },
+    });
+    expect(await screen.findByText("Test authorship")).toBeInTheDocument();
+    // Read off the headings rather than off the page text: "Tests" is a perfectly good
+    // label for a tile counting executed tests, and the collision this rename removes was
+    // only ever a collision between two SECTIONS.
+    const headings = screen
+      .getAllByRole("heading")
+      .map((heading) => heading.textContent);
+    expect(headings).toContain("Test authorship");
+    expect(headings).toContain("Analysis notes");
+    expect(headings).not.toContain("Tests");
+    expect(headings).not.toContain("Coverage");
   });
 });

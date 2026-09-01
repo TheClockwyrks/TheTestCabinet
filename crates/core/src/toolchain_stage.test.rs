@@ -12,7 +12,7 @@ use std::time::Duration;
 use super::*;
 use crate::execution::ArtifactCollection;
 use crate::test_case::{BuildCommands, TestCaseVersion, TestType, Variant};
-use crate::toolchain::ToolchainCommands;
+use crate::toolchain::{ToolchainCommandResult, ToolchainCommands};
 
 /// A resolved version carrying `build` and (optionally) `toolchain`, and nothing
 /// else the stage reads.
@@ -155,7 +155,7 @@ fn noop_build() -> BuildCommands {
 #[tokio::test]
 async fn a_command_that_succeeds_is_recorded_with_its_output() {
     let repo = tempfile::tempdir().expect("repo");
-    let (result, raw) = run_command_raw(
+    let result = run_command(
         repo.path(),
         "printf 'on stdout\\n'; printf 'on stderr\\n' >&2",
         Duration::from_secs(30),
@@ -163,7 +163,7 @@ async fn a_command_that_succeeds_is_recorded_with_its_output() {
     .await;
     assert!(result.ran && result.succeeded);
     assert_eq!(result.exit_code, Some(0));
-    assert!(raw.contains("on stdout") && raw.contains("on stderr"));
+    assert!(result.output.contains("on stdout") && result.output.contains("on stderr"));
     assert!(!result.truncated);
 }
 
@@ -172,7 +172,7 @@ async fn a_command_that_succeeds_is_recorded_with_its_output() {
 #[tokio::test]
 async fn a_command_that_fails_records_its_exit_code() {
     let repo = tempfile::tempdir().expect("repo");
-    let (result, _) = run_command_raw(repo.path(), "exit 3", Duration::from_secs(30)).await;
+    let result = run_command(repo.path(), "exit 3", Duration::from_secs(30)).await;
     assert!(result.ran);
     assert!(!result.succeeded);
     assert_eq!(result.exit_code, Some(3));
@@ -183,7 +183,7 @@ async fn a_command_that_fails_records_its_exit_code() {
 #[tokio::test]
 async fn a_command_that_outruns_its_timeout_is_recorded_as_not_run() {
     let repo = tempfile::tempdir().expect("repo");
-    let (result, _) = run_command_raw(repo.path(), "sleep 30", Duration::from_millis(200)).await;
+    let result = run_command(repo.path(), "sleep 30", Duration::from_millis(200)).await;
     assert!(!result.ran);
     assert!(!result.succeeded);
     assert_eq!(result.exit_code, None);
@@ -203,7 +203,7 @@ async fn a_command_that_outruns_its_timeout_is_recorded_as_not_run() {
 #[tokio::test]
 async fn a_flood_of_output_is_capped_on_the_record() {
     let repo = tempfile::tempdir().expect("repo");
-    let (result, raw) = run_command_raw(
+    let result = run_command(
         repo.path(),
         "i=0; while [ $i -lt 4000 ]; do printf 'error TS2322: a very long diagnostic line\\n'; i=$((i+1)); done",
         Duration::from_secs(60),
@@ -211,10 +211,9 @@ async fn a_flood_of_output_is_capped_on_the_record() {
     .await;
     assert!(result.ran);
     assert!(
-        raw.len() > crate::toolchain::TOOLCHAIN_OUTPUT_LIMIT,
+        result.truncated,
         "the fixture must actually overflow the cap"
     );
-    assert!(result.truncated);
     assert!(result.output.len() <= crate::toolchain::TOOLCHAIN_OUTPUT_LIMIT + 64);
 }
 
@@ -244,9 +243,44 @@ async fn a_canceled_run_is_not_checked() {
     assert!(report.toolchain.is_none());
 }
 
-/// The whole happy path: install runs, every declared command runs, the test
-/// figures are parsed out of what the command printed, and a passing typecheck
-/// gates nothing.
+/// The shell line a fixture `test` command runs to stand in for the case's build
+/// vitest config: it writes the two report files into `coverage/` exactly where the
+/// config's `outputFile` and istanbul's default directory put them.
+///
+/// The paths inside the reports are absolute — `$(pwd)` is the repository root the
+/// command runs from — because that is how both reporters really key them, and
+/// relativising them is the reader's job. `exit_code` is the status the command then
+/// exits with, so a suite that failed can be shown to have reported anyway.
+fn writes_reports(exit_code: i32) -> String {
+    format!(
+        r#"mkdir -p coverage
+cat > coverage/test-report.json <<JSON
+{{"numTotalTestSuites":2,"numTotalTests":3,"numPassedTests":2,"numFailedTests":1,
+  "numPendingTests":0,"numTodoTests":0,"success":false,
+  "testResults":[{{"name":"$(pwd)/src/game.test.ts","message":"","assertionResults":[
+    {{"fullName":"the game advances","title":"advances","status":"passed","failureMessages":[]}},
+    {{"fullName":"the game scores","title":"scores","status":"passed","failureMessages":[]}},
+    {{"fullName":"the game ends","title":"ends","status":"failed",
+      "failureMessages":["AssertionError: expected 0 to be 7\n    at run ($(pwd)/src/game.test.ts:12:3)"]}}]}}]}}
+JSON
+cat > coverage/coverage-summary.json <<JSON
+{{"total":{{"lines":{{"total":50,"covered":41,"skipped":0,"pct":82}},
+           "statements":{{"total":52,"covered":42,"skipped":0,"pct":80.77}},
+           "functions":{{"total":10,"covered":9,"skipped":0,"pct":90}},
+           "branches":{{"total":8,"covered":5,"skipped":0,"pct":62.5}},
+           "branchesTrue":{{"total":0,"covered":0,"skipped":0,"pct":"Unknown"}}}},
+ "$(pwd)/src/game.ts":{{"lines":{{"total":50,"covered":41,"skipped":0,"pct":82}},
+                      "statements":{{"total":52,"covered":42,"skipped":0,"pct":80.77}},
+                      "functions":{{"total":10,"covered":9,"skipped":0,"pct":90}},
+                      "branches":{{"total":8,"covered":5,"skipped":0,"pct":62.5}}}}}}
+JSON
+exit {exit_code}"#
+    )
+}
+
+/// The whole happy path: install runs, every declared command runs, the test figures
+/// come out of the REPORT FILES the command wrote, and a passing typecheck gates
+/// nothing.
 #[tokio::test]
 async fn a_passing_toolchain_records_every_command_and_gates_nothing() {
     let repo = produced_tree();
@@ -254,12 +288,7 @@ async fn a_passing_toolchain_records_every_command_and_gates_nothing() {
         typecheck: "true".to_string(),
         lint: Some("true".to_string()),
         format: Some("true".to_string()),
-        test: Some(
-            "printf ' Test Files  2 passed (2)\\n      Tests  12 passed | 1 failed (13)\\n'; \
-             printf 'File       | %% Stmts | %% Branch | %% Funcs | %% Lines | Uncovered\\n'; \
-             printf 'All files  |   85.71 |    72.22 |     100 |   84.13 |\\n'"
-                .to_string(),
-        ),
+        test: Some(writes_reports(0)),
     };
     let report = drive(repo.path(), Some(toolchain), Some(noop_build()), false).await;
     let summary = report.toolchain.expect("a declared toolchain is recorded");
@@ -270,10 +299,22 @@ async fn a_passing_toolchain_records_every_command_and_gates_nothing() {
     assert!(summary.format.as_ref().expect("format declared").succeeded);
 
     let test = summary.test.as_ref().expect("test declared");
-    assert_eq!(test.tests_total, Some(13));
-    assert_eq!(test.tests_passed, Some(12));
-    assert_eq!(test.tests_failed, Some(1));
-    assert_eq!(test.coverage_percent, Some(84.13));
+    let tests = test.tests.as_ref().expect("the runner wrote a report");
+    assert_eq!((tests.total, tests.passed, tests.failed), (3, 2, 1));
+    assert_eq!(tests.files_run, 1);
+    // The absolute path the reporter wrote is relativised against the tree it was
+    // written in, which is the whole point of reading the file from the stage.
+    assert_eq!(tests.files[0].path, "src/game.test.ts");
+    assert_eq!(
+        tests.failures[0].message.as_deref(),
+        Some("AssertionError: expected 0 to be 7"),
+        "the failure's stack frames never reach the record"
+    );
+
+    let coverage = test.coverage.as_ref().expect("and a coverage summary");
+    assert_eq!(coverage.totals.lines.pct, Some(82.0));
+    assert_eq!(coverage.files_measured, 1);
+    assert_eq!(coverage.files[0].path, "src/game.ts");
 
     assert!(!summary.gates(), "a passing typecheck must not gate");
 
@@ -285,6 +326,62 @@ async fn a_passing_toolchain_records_every_command_and_gates_nothing() {
         .expect("a smoke result is always recorded");
     assert!(!smoke.ran);
     assert!(smoke.detail.is_some());
+}
+
+/// A failing suite still wrote its reports — `reportOnFailure` is what makes that
+/// true — so the figures are read whatever the command exited with. A red suite is
+/// the one whose coverage is most worth having, and it still gates nothing.
+#[tokio::test]
+async fn a_failing_test_command_still_records_the_figures_it_reported() {
+    let repo = produced_tree();
+    let toolchain = ToolchainCommands {
+        typecheck: "true".to_string(),
+        lint: None,
+        format: None,
+        test: Some(writes_reports(1)),
+    };
+    let report = drive(repo.path(), Some(toolchain), Some(noop_build()), false).await;
+    let summary = report.toolchain.expect("a declared toolchain is recorded");
+
+    let test = summary.test.as_ref().expect("test declared");
+    assert!(test.result.ran && !test.result.succeeded);
+    assert_eq!(
+        test.tests
+            .as_ref()
+            .expect("a report was still written")
+            .failed,
+        1
+    );
+    assert!(test.coverage.is_some());
+    assert!(!summary.gates(), "only the typecheck gates");
+}
+
+/// A case whose configuration writes no report files records **nothing** — not
+/// zeroes. Every case version predating the report-file contract is in this arm, and
+/// a console renders no widget at all for it rather than an empty one.
+#[tokio::test]
+async fn a_test_command_that_writes_no_reports_records_no_figures() {
+    let repo = produced_tree();
+    let toolchain = ToolchainCommands {
+        typecheck: "true".to_string(),
+        lint: None,
+        format: None,
+        test: Some(" Test Files  3 passed (3)\n      Tests  27 passed (27)".to_string())
+            .map(|line| format!("printf '{line}\n'")),
+    };
+    let report = drive(repo.path(), Some(toolchain), Some(noop_build()), false).await;
+    let summary = report.toolchain.expect("a declared toolchain is recorded");
+
+    let test = summary.test.as_ref().expect("test declared");
+    assert!(test.result.ran && test.result.succeeded);
+    assert!(
+        test.result.output.contains("27 passed"),
+        "the excerpt still carries what the command said, as a transcript"
+    );
+    assert!(
+        test.tests.is_none() && test.coverage.is_none(),
+        "nothing is ever derived from that transcript again"
+    );
 }
 
 /// A failing typecheck gates the run, and the other commands still run and are
@@ -329,6 +426,11 @@ async fn a_failed_install_skips_every_command_without_gating() {
         build: "true".to_string(),
         module: None,
     };
+    // The tree holds a green report the MODEL's own in-container test run left behind,
+    // which is what makes the assertion below about behaviour rather than about an
+    // empty directory.
+    seed_reports(repo.path());
+
     let report = drive(repo.path(), Some(toolchain), Some(build), false).await;
     let summary = report.toolchain.expect("a declared toolchain is recorded");
 
@@ -336,7 +438,12 @@ async fn a_failed_install_skips_every_command_without_gating() {
     assert!(!summary.typecheck.ran);
     assert!(!summary.lint.as_ref().expect("lint declared").ran);
     assert!(!summary.format.as_ref().expect("format declared").ran);
-    assert!(!summary.test.as_ref().expect("test declared").result.ran);
+    let test = summary.test.as_ref().expect("test declared");
+    assert!(!test.result.ran);
+    assert!(
+        test.tests.is_none() && test.coverage.is_none(),
+        "a command that never ran reports no figures, whatever the tree happens to hold"
+    );
     assert!(
         !summary.gates(),
         "a typecheck that never ran must never gate the run"
@@ -366,4 +473,121 @@ async fn a_tree_with_no_package_manifest_is_not_checked() {
     let missing = empty.path().join("never-collected");
     let report = drive(&missing, Some(toolchain), Some(noop_build()), false).await;
     assert!(report.toolchain.is_none());
+}
+
+/// Write the two report files into `repo` as the model's own in-container test run
+/// leaves them: a green suite over a file that is not this stage's doing.
+///
+/// The collector copies everything but `node_modules`, so a `coverage/` the model
+/// produced arrives on the host intact. This is the tree every test below starts from.
+fn seed_reports(repo: &Path) {
+    std::fs::create_dir_all(repo.join("coverage")).expect("a coverage directory");
+    std::fs::write(
+        repo.join(crate::toolchain::TOOLCHAIN_TEST_REPORT_PATH),
+        r#"{"numTotalTestSuites":1,"numTotalTests":27,"numPassedTests":27,
+            "numFailedTests":0,"numPendingTests":0,"numTodoTests":0,"success":true,
+            "testResults":[]}"#,
+    )
+    .expect("a seeded test report");
+    std::fs::write(
+        repo.join(crate::toolchain::TOOLCHAIN_COVERAGE_SUMMARY_PATH),
+        r#"{"total":{"lines":{"total":10,"covered":10,"skipped":0,"pct":100},
+                    "statements":{"total":10,"covered":10,"skipped":0,"pct":100},
+                    "functions":{"total":2,"covered":2,"skipped":0,"pct":100},
+                    "branches":{"total":2,"covered":2,"skipped":0,"pct":100}}}"#,
+    )
+    .expect("a seeded coverage summary");
+}
+
+/// Whether either report file is still in `repo`.
+fn reports_present(repo: &Path) -> bool {
+    repo.join(crate::toolchain::TOOLCHAIN_TEST_REPORT_PATH)
+        .exists()
+        || repo
+            .join(crate::toolchain::TOOLCHAIN_COVERAGE_SUMMARY_PATH)
+            .exists()
+}
+
+/// A command that ran and wrote nothing reports nothing, even when the tree arrived
+/// holding a green report of its own.
+///
+/// The model runs its own suite inside the container while the build is green, and the
+/// collected tree carries what that wrote. Any number of ordinary things then stop the
+/// host's own invocation from producing a report of its own: a `vitest.config.ts` the
+/// build renamed, the runner dropped from `devDependencies`, a crash before the
+/// reporter flushes. Reading whatever is lying there would put another invocation's
+/// figures on this run's record, under a `100%` no command here produced.
+#[tokio::test]
+async fn a_stale_report_left_by_the_model_is_never_recorded_as_this_commands_figures() {
+    let repo = produced_tree();
+    seed_reports(repo.path());
+    let toolchain = ToolchainCommands {
+        typecheck: "true".to_string(),
+        lint: None,
+        format: None,
+        test: Some("exit 7".to_string()),
+    };
+    let report = drive(repo.path(), Some(toolchain), Some(noop_build()), false).await;
+    let summary = report.toolchain.expect("a declared toolchain is recorded");
+
+    let test = summary.test.as_ref().expect("test declared");
+    assert!(test.result.ran && !test.result.succeeded);
+    assert!(
+        test.tests.is_none() && test.coverage.is_none(),
+        "the figures must describe THIS invocation or no invocation at all"
+    );
+    assert!(
+        !reports_present(repo.path()),
+        "the stale reports are cleared, not carried into the published tree"
+    );
+}
+
+/// The reports the stage's own command wrote do not survive into the published tree.
+///
+/// `implementation/` is copied and served as what the model produced. Both files are the
+/// host's writing: istanbul keys its summary by absolute host path and the test report
+/// embeds the whole instrumentation map plus unstripped stack frames, all of which the
+/// record itself takes care to strip before storing anything.
+#[tokio::test]
+async fn the_reports_are_removed_once_they_have_been_read() {
+    let repo = produced_tree();
+    let toolchain = ToolchainCommands {
+        typecheck: "true".to_string(),
+        lint: None,
+        format: None,
+        test: Some(writes_reports(0)),
+    };
+    let report = drive(repo.path(), Some(toolchain), Some(noop_build()), false).await;
+    let summary = report.toolchain.expect("a declared toolchain is recorded");
+
+    let test = summary.test.as_ref().expect("test declared");
+    assert!(
+        test.tests.is_some() && test.coverage.is_some(),
+        "the figures were read before the files were removed"
+    );
+    assert!(!reports_present(repo.path()));
+}
+
+/// A command that never ran contributes no figures, whatever the tree holds — and a
+/// command that ran and failed contributes all of them.
+///
+/// The gate is on `ran`, not on the exit code, and both halves matter. A timed-out or
+/// unstartable command has no result to describe, including when it flushed a partial
+/// report on its way to being killed. A red suite, on the other hand, wrote its coverage
+/// (`reportOnFailure`) and is the one whose coverage is most worth having.
+#[test]
+fn only_a_test_command_that_ran_contributes_the_figures_in_the_tree() {
+    let repo = tempfile::tempdir().expect("repo");
+    seed_reports(repo.path());
+
+    let never_ran = ToolchainCommandResult::skipped("npx vitest run --coverage", "timed out");
+    assert_eq!(reported_figures(repo.path(), &never_ran), (None, None));
+
+    let ran_and_failed = ToolchainCommandResult::ran("npx vitest run --coverage", Some(1), "");
+    let (tests, coverage) = reported_figures(repo.path(), &ran_and_failed);
+    assert_eq!(
+        tests.expect("a failing suite still wrote its report").total,
+        27
+    );
+    assert!(coverage.is_some());
 }

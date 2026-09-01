@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import type { ToolchainCoverage } from "@test-cabinet/run-record";
 import type {
   CodeAnalysisDocument,
   CodeFileEntry,
@@ -168,6 +169,98 @@ describe("CodeExplorer", () => {
     expect(flipped[flipped.length - 1]!.startsWith("resolveCollision")).toBe(
       true,
     );
+  });
+});
+
+// Executed coverage, joined onto the same per-file spine the table already walks. The
+// join is by repo-relative path — which is exactly why the record stores it that way —
+// and the two asymmetries it has to survive are both real: a file with no coverage row
+// (`coverage.include` names `src/**/*.ts`, so assets and tests are legitimately absent)
+// and a coverage row for a file the analysis never listed.
+describe("CodeExplorer, joined to executed coverage", () => {
+  const COVERAGE = {
+    totals: {} as ToolchainCoverage["totals"],
+    files: [
+      {
+        path: "src/game/loop.ts",
+        lines: { covered: 30, total: 100 },
+        statements: { covered: 30, total: 100 },
+        functions: { covered: 2, total: 6 },
+        branches: { covered: 1, total: 4 },
+      },
+      {
+        path: "src/game/draw.ts",
+        lines: { covered: 10, total: 20 },
+        statements: { covered: 10, total: 20 },
+        functions: { covered: 1, total: 4 },
+        branches: { covered: 0, total: 0 },
+      },
+    ],
+    filesMeasured: 2,
+    filesTruncated: false,
+  } satisfies ToolchainCoverage;
+
+  // Every run recorded before the report-file contract carries none, and the table on
+  // those runs must be exactly what it always was — not a column of em dashes.
+  it("draws no coverage column at all when the run measured none", () => {
+    render(<CodeExplorer document={DOCUMENT} />);
+    expect(screen.queryByRole("columnheader", { name: "Line cov" })).toBeNull();
+  });
+
+  // Counts add; percentages do not. `src` holds 40 of 120 covered lines across two
+  // measured files — 33.3% — while the mean of its files' percentages is 40%.
+  it("sums a directory's coverage rather than averaging its files'", () => {
+    render(<CodeExplorer document={DOCUMENT} coverage={COVERAGE} />);
+    const src = screen.getByRole("button", { name: "src/" }).closest("tr")!;
+    expect(within(src).getByText("33.3%")).toBeInTheDocument();
+  });
+
+  // Unmeasured is not uncovered. `assets/` holds one JSON file the reporter never
+  // instrumented, and reporting it at 0% would read as a directory whose tests reached
+  // nothing.
+  it("shows a directory the reporter never measured as an em dash", () => {
+    render(<CodeExplorer document={DOCUMENT} coverage={COVERAGE} />);
+    const assets = screen
+      .getByRole("button", { name: "assets/" })
+      .closest("tr")!;
+    // The last cell is the coverage one. The row carries other em dashes (a directory
+    // has no import figures of its own), so it is identified by position rather than by
+    // the glyph.
+    const cells = within(assets).getAllByRole("cell");
+    expect(cells[cells.length - 1]).toHaveTextContent("—");
+  });
+
+  // Drilling to a single file gives up the table for the file facts, which is where the
+  // other three metrics live — the ones a line percentage alone would hide.
+  it("gives one file all four metrics", () => {
+    render(<CodeExplorer document={DOCUMENT} coverage={COVERAGE} />);
+    fireEvent.click(screen.getByRole("button", { name: "src/" }));
+    fireEvent.click(screen.getByRole("button", { name: "game/" }));
+    fireEvent.click(screen.getByRole("button", { name: "loop.ts" }));
+    const fact = screen.getByText(/Reached by the model/).closest("div")!;
+    expect(fact).toHaveTextContent(
+      "lines 30.0% · statements 30.0% · functions 33.3% · branches 25.0%",
+    );
+  });
+
+  // The authorship counterpart of the coverage column: aggregated per directory by
+  // `codeTree` since it shipped, and rendered nowhere until now.
+  it("counts the test files under each entry", () => {
+    render(
+      <CodeExplorer
+        document={
+          {
+            ...DOCUMENT,
+            files: [...FILES, file("src/game/loop.test.ts", { isTest: true })],
+          } as unknown as CodeAnalysisDocument
+        }
+      />,
+    );
+    const src = screen.getByRole("button", { name: "src/" }).closest("tr")!;
+    const cells = within(src).getAllByRole("cell");
+    // Files, then test files: four under `src`, one of them a test.
+    expect(cells[0]).toHaveTextContent("4");
+    expect(cells[1]).toHaveTextContent("1");
   });
 });
 

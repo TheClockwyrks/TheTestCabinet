@@ -11,9 +11,19 @@
 // ramp the memory map uses. The tables are the map's table-view twin: every figure the
 // map encodes as area is also a number in a row, so nothing is reachable only by hovering
 // a rectangle.
+//
+// When the run carried executed coverage, it is joined onto this same spine rather than
+// listed again somewhere else — the coverage rows are repo-relative for exactly that
+// reason, so they resolve against `CodeFileEntry.path` by string equality. A directory's
+// figure is the sum of its files' covered and total counts (percentages do not average),
+// and a file the reporter never measured shows an em dash, never a zero: `src/**/*.ts`
+// is what was instrumented, so every asset, config and test file in the tree is
+// legitimately unmeasured. The column is drawn only when a report was actually parsed;
+// on every other run the table is exactly what it was.
 
 import { useMemo, useState } from "react";
 import { Treemap, type TreemapTile } from "@test-cabinet/ui";
+import type { CoverageFile, ToolchainCoverage } from "@test-cabinet/run-record";
 import type {
   CodeAnalysisDocument,
   CodeFileEntry,
@@ -27,6 +37,14 @@ import {
   type CodeTreeNode,
 } from "./codeTree";
 import { formatCodeBytes, formatCodeNumber } from "./codeFormat";
+import {
+  COVERAGE_METRIC_KEYS,
+  COVERAGE_METRIC_META,
+  coveragePercent,
+  formatCoveragePercent,
+  indexCoverage,
+  rollUpCoverage,
+} from "./coverageJoin";
 import { CodeSymbolTable } from "./CodeSymbolTable";
 import styles from "./CodePanels.module.scss";
 
@@ -86,11 +104,17 @@ function describe(
 
 export function CodeExplorer({
   document: analysis,
+  coverage = null,
 }: {
   document: CodeAnalysisDocument;
+  /** The run's executed coverage, when its case wrote a summary. `null` on every run
+   * that did not, which is the state the table renders exactly as it always did. */
+  coverage?: ToolchainCoverage | null;
 }) {
   const root = useMemo(() => buildCodeTree(analysis.files), [analysis.files]);
   const [path, setPath] = useState("");
+  const covered = useMemo(() => indexCoverage(coverage), [coverage]);
+  const measured = covered.size > 0;
   const node = findCodeNode(root, path);
   const trail = codeBreadcrumb(root, node.path);
   const symbols = useMemo(() => symbolsUnder(analysis, node), [analysis, node]);
@@ -189,7 +213,7 @@ export function CodeExplorer({
             )}
           />
         ) : (
-          file && <FileFacts file={file} />
+          file && <FileFacts file={file} coverage={covered.get(file.path)} />
         )}
 
         <table className={styles.table}>
@@ -205,6 +229,17 @@ export function CodeExplorer({
               <th scope="col">Name</th>
               <th scope="col" className={styles.numeric}>
                 Files
+              </th>
+              {/* The authorship counterpart of the coverage column: how many of those
+                  files the analyzer classified as test files. Always available — it is a
+                  static read — and until now aggregated per directory by `codeTree` and
+                  rendered nowhere. */}
+              <th
+                scope="col"
+                className={styles.numeric}
+                title="Files the analyzer classified as test files"
+              >
+                Test files
               </th>
               <th scope="col" className={styles.numeric}>
                 Code lines
@@ -224,6 +259,15 @@ export function CodeExplorer({
               <th scope="col" className={styles.numeric}>
                 Imported by
               </th>
+              {measured && (
+                <th
+                  scope="col"
+                  className={styles.numeric}
+                  title="Executable lines the model's own tests reached, summed over this entry"
+                >
+                  Line cov
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -231,6 +275,7 @@ export function CodeExplorer({
               <tr>
                 <th scope="row">{node.name}</th>
                 <td className={styles.numeric}>1</td>
+                <td className={styles.numeric}>{file.isTest ? 1 : 0}</td>
                 <td className={styles.numeric}>
                   {formatCodeNumber(file.codeLines)}
                 </td>
@@ -249,6 +294,18 @@ export function CodeExplorer({
                 <td className={styles.numeric}>
                   {formatCodeNumber(file.fanIn)}
                 </td>
+                {measured && (
+                  <td className={styles.numeric}>
+                    {formatCoveragePercent(
+                      coveragePercent(
+                        covered.get(file.path)?.lines ?? {
+                          covered: 0,
+                          total: 0,
+                        },
+                      ),
+                    )}
+                  </td>
+                )}
               </tr>
             )}
             {ranked.map((child) => {
@@ -259,6 +316,12 @@ export function CodeExplorer({
               const mean = meanCyclomatic(child);
               const share =
                 node.codeLines > 0 ? child.codeLines / node.codeLines : 0;
+              // Summed over the subtree, so a directory's figure is its files' covered
+              // lines over its files' total lines — not the mean of their percentages,
+              // which would weight a ten-line helper like a four-hundred-line system.
+              const rollup = measured
+                ? rollUpCoverage(child.fileIndices, analysis.files, covered)
+                : null;
               return (
                 <tr key={child.path}>
                   <th scope="row">
@@ -289,6 +352,9 @@ export function CodeExplorer({
                     {formatCodeNumber(child.files)}
                   </td>
                   <td className={styles.numeric}>
+                    {formatCodeNumber(child.testFiles)}
+                  </td>
+                  <td className={styles.numeric}>
                     {formatCodeNumber(child.codeLines)}
                   </td>
                   <td className={styles.numeric}>{Math.round(share * 100)}%</td>
@@ -304,6 +370,20 @@ export function CodeExplorer({
                   <td className={styles.numeric}>
                     {entry ? formatCodeNumber(entry.fanIn) : "—"}
                   </td>
+                  {measured && (
+                    <td
+                      className={styles.numeric}
+                      title={
+                        rollup
+                          ? `${formatCodeNumber(rollup.measuredFiles)} of ${formatCodeNumber(child.files)} files measured`
+                          : undefined
+                      }
+                    >
+                      {formatCoveragePercent(
+                        rollup ? coveragePercent(rollup.lines) : null,
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -320,9 +400,19 @@ export function CodeExplorer({
   );
 }
 
-// The facts about one file that its row cannot carry: how big it is on disk, and — the
-// one that matters — why it was never parsed, when it was not.
-function FileFacts({ file }: { file: CodeFileEntry }) {
+// The facts about one file that its row cannot carry: how big it is on disk, — the one
+// that matters — why it was never parsed, when it was not, and what the model's own tests
+// reached in it across all four istanbul metrics, when the run measured any. A file with
+// no coverage row is simply absent from the measured set (`src/**/*.ts` is what was
+// instrumented), which is a different fact from an untested one, so the entry is omitted
+// rather than shown at zero.
+function FileFacts({
+  file,
+  coverage,
+}: {
+  file: CodeFileEntry;
+  coverage?: CoverageFile;
+}) {
   return (
     <dl className={styles.fileFacts}>
       <div>
@@ -354,6 +444,20 @@ function FileFacts({ file }: { file: CodeFileEntry }) {
           {formatCodeNumber(file.fanIn)}
         </dd>
       </div>
+      {coverage && (
+        <div>
+          <dt>Reached by the model&rsquo;s tests</dt>
+          <dd>
+            {COVERAGE_METRIC_KEYS.map((key, index) => (
+              <span key={key}>
+                {index > 0 && " · "}
+                {COVERAGE_METRIC_META[key].label.toLowerCase()}{" "}
+                {formatCoveragePercent(coveragePercent(coverage[key]))}
+              </span>
+            ))}
+          </dd>
+        </div>
+      )}
     </dl>
   );
 }

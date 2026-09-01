@@ -1,10 +1,10 @@
-//! The toolchain contract's bounded excerpt and its two defensive parsers.
+//! The toolchain contract: the bounded excerpt, the gate, and what the record says.
 //!
-//! The parsers exist to read figures out of output the tools were never asked to
-//! format for us, so the tests below run them over output shaped exactly as vitest
-//! and jest print it — colorized, boxed and all — and over output that carries no
-//! such figures at all. **Absence must be an absence**: a runner that reports no
-//! coverage is not a runner that reports zero coverage.
+//! There are no parser tests here any more. The test and coverage figures are no
+//! longer scraped out of what a command printed — they are read from the report files
+//! the runner wrote, which [`crate::toolchain_report`] owns and tests. What is left
+//! is the contract itself: an excerpt that stays inside its cap without mangling a
+//! character, and a gate that fires for exactly one command in exactly one state.
 
 use super::*;
 
@@ -72,94 +72,6 @@ fn a_command_result_records_its_exit_status() {
     assert!(skipped.detail.is_some());
 }
 
-/// A vitest run reporting passes and failures, colorized the way it colorizes a
-/// pipe, and preceded by the `Test Files` line that must NOT be read as a test
-/// count.
-#[test]
-fn vitest_counts_are_parsed_from_real_output() {
-    let raw = concat!(
-        " \u{1b}[32m✓\u{1b}[0m src/game.test.ts (12)\n",
-        " \u{1b}[31m✗\u{1b}[0m src/hud.test.ts (1)\n",
-        "\n",
-        " Test Files  1 failed | 1 passed (2)\n",
-        "      \u{1b}[1mTests\u{1b}[0m  12 passed | 1 failed (13)\n",
-        "   Start at  12:00:00\n",
-        "   Duration  1.42s\n",
-    );
-    assert_eq!(parse_test_counts(raw), (Some(13), Some(12), Some(1)));
-}
-
-/// A clean vitest run: everything passed, nothing failed.
-#[test]
-fn a_clean_vitest_run_reports_zero_failures() {
-    let raw = " Test Files  3 passed (3)\n      Tests  27 passed (27)\n";
-    assert_eq!(parse_test_counts(raw), (Some(27), Some(27), Some(0)));
-}
-
-/// Jest's summary is a different shape — comma-separated, with an explicit `total`
-/// word — and is read just as well.
-#[test]
-fn jest_counts_are_parsed_from_real_output() {
-    let raw = concat!(
-        "Test Suites: 1 failed, 2 passed, 3 total\n",
-        "Tests:       1 failed, 12 passed, 13 total\n",
-        "Snapshots:   0 total\n",
-    );
-    assert_eq!(parse_test_counts(raw), (Some(13), Some(12), Some(1)));
-}
-
-/// A runner that prints no summary at all reports nothing, not zero. A count of
-/// zero here would be a fabricated figure claiming the suite ran and found nothing.
-#[test]
-fn output_without_a_summary_reports_no_counts() {
-    assert_eq!(
-        parse_test_counts("npm ERR! Missing script: \"test\"\n"),
-        (None, None, None)
-    );
-    assert_eq!(parse_test_counts(""), (None, None, None));
-    // `Test Files` alone is a file count, never a test count.
-    assert_eq!(
-        parse_test_counts(" Test Files  3 passed (3)\n"),
-        (None, None, None)
-    );
-}
-
-/// The istanbul-style coverage table every provider prints, read from the labelled
-/// `% Lines` column of the `All files` row.
-#[test]
-fn coverage_is_parsed_from_a_real_coverage_table() {
-    let raw = concat!(
-        " % Coverage report from v8\n",
-        "-----------|---------|----------|---------|---------|-------------------\n",
-        "File       | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s\n",
-        "-----------|---------|----------|---------|---------|-------------------\n",
-        "All files  |   85.71 |    72.22 |     100 |   84.13 |\n",
-        " game.ts   |   90.00 |    80.00 |     100 |   88.00 | 41-47\n",
-        "-----------|---------|----------|---------|---------|-------------------\n",
-    );
-    assert_eq!(parse_coverage_percent(raw), Some(84.13));
-}
-
-/// A genuine zero is a zero: the parser reports what the tool printed.
-#[test]
-fn zero_coverage_is_reported_as_zero() {
-    let raw = concat!(
-        "File       | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s\n",
-        "All files  |       0 |        0 |       0 |       0 |\n",
-    );
-    assert_eq!(parse_coverage_percent(raw), Some(0.0));
-}
-
-/// A test command run without `--coverage` prints no table, and that is an absence.
-#[test]
-fn output_without_a_coverage_table_reports_no_coverage() {
-    assert_eq!(
-        parse_coverage_percent(" Test Files  3 passed (3)\n      Tests  27 passed (27)\n"),
-        None
-    );
-    assert_eq!(parse_coverage_percent(""), None);
-}
-
 /// The gate is exactly "the typecheck ran and exited non-zero". A typecheck that
 /// never ran does not gate — the run learned nothing about whether it compiles.
 #[test]
@@ -192,10 +104,15 @@ fn the_recorded_commands_never_gate() {
         format: Some(ToolchainCommandResult::ran("prettier -c .", Some(1), "")),
         test: Some(ToolchainTestRun {
             result: ToolchainCommandResult::ran("vitest run", Some(1), ""),
-            tests_total: Some(13),
-            tests_passed: Some(12),
-            tests_failed: Some(1),
-            coverage_percent: Some(84.13),
+            tests: Some(ToolchainTests {
+                total: 13,
+                passed: 12,
+                failed: 1,
+                files_run: 2,
+                files_failed: 1,
+                ..Default::default()
+            }),
+            coverage: None,
         }),
         smoke: Some(ToolchainSmokeResult::not_run("no browser")),
     };
@@ -218,4 +135,85 @@ fn a_smoke_result_is_clean_only_when_every_part_held() {
         .push("TypeError: x is not a function".to_string());
     assert!(!smoke.clean());
     assert!(!ToolchainSmokeResult::not_run("no browser").clean());
+}
+
+/// A `test` block that is present with zeroes says the build shipped no tests, and a
+/// block that is absent says nothing was reported. The two must not collapse into one
+/// another: a consumer renders the first and renders nothing for the second.
+///
+/// Asserted on the JSON rather than on the struct, because the struct cannot tell them
+/// apart in a way a consumer can see. `Option` is a Rust distinction; what reaches the
+/// console is a document in which the key is either an object of zeroes or is not there
+/// at all, and that difference exists only because of the `skip_serializing_if` on the
+/// field. Dropping that attribute — or defaulting an unreported block to a present one —
+/// would leave every field of this struct unchanged and every reader downstream wrong.
+#[test]
+fn a_reported_zero_is_not_the_same_as_nothing_reported() {
+    let reported = ToolchainTestRun {
+        result: ToolchainCommandResult::ran("npx vitest run --coverage", Some(0), ""),
+        tests: Some(ToolchainTests {
+            succeeded: true,
+            ..Default::default()
+        }),
+        coverage: None,
+    };
+    let json = serde_json::to_value(&reported).expect("a reported run serializes");
+    assert_eq!(
+        json["tests"]["total"], 0,
+        "a build that shipped no tests reports a zero, which is a figure: {json}"
+    );
+    assert_eq!(json["tests"]["succeeded"], true);
+    assert!(
+        json.get("coverage").is_none(),
+        "a config that wrote no coverage summary reports no coverage, not zero coverage: {json}"
+    );
+
+    let unreported = ToolchainTestRun {
+        result: ToolchainCommandResult::skipped("npx vitest run --coverage", "install failed"),
+        tests: None,
+        coverage: None,
+    };
+    let json = serde_json::to_value(&unreported).expect("an unreported run serializes");
+    assert!(
+        json.get("tests").is_none(),
+        "nothing reported is an absent key, not a block of zeroes: {json}"
+    );
+
+    // And back, because a consumer of an older record reads the same absence: a document
+    // that never carried the keys must not deserialize into zeroes either.
+    let round_tripped: ToolchainTestRun =
+        serde_json::from_value(json).expect("and an absence deserializes");
+    assert_eq!(round_tripped, unreported);
+}
+
+/// The record's JSON keeps the coverage metrics beside the path rather than nested
+/// under a `metrics` object — the flatten is part of the wire shape, and a consumer
+/// reads `file.lines.pct`, not `file.metrics.lines.pct`.
+#[test]
+fn a_coverage_file_serializes_its_metrics_beside_its_path() {
+    let file = CoverageFile {
+        path: "src/game.ts".to_string(),
+        metrics: CoverageMetrics {
+            lines: CoverageMetric {
+                covered: 41,
+                total: 50,
+                pct: Some(82.0),
+            },
+            ..Default::default()
+        },
+    };
+    let json = serde_json::to_value(&file).expect("a coverage row serializes");
+    assert_eq!(json["path"], "src/game.ts");
+    assert_eq!(json["lines"]["covered"], 41);
+    assert_eq!(json["lines"]["pct"], 82.0);
+    assert!(
+        json.get("metrics").is_none(),
+        "the metrics are flattened onto the row: {json}"
+    );
+    // A metric istanbul declined to state carries no `pct` key at all, so a consumer
+    // sees an absence rather than a zero it can mistake for a measurement.
+    assert!(json["branches"].get("pct").is_none());
+
+    let round_tripped: CoverageFile = serde_json::from_value(json).expect("and deserializes");
+    assert_eq!(round_tripped, file);
 }

@@ -13,6 +13,11 @@
 // the same in both places: a count is grouped, a mean keeps one decimal, a ratio is a
 // percentage, a byte count is binary.
 
+import type {
+  RunRecord,
+  ToolchainCoverage,
+  ToolchainTests,
+} from "@test-cabinet/run-record";
 import { CODE_METRICS } from "@test-cabinet/run-record/code-metrics";
 import type {
   CodeMetricDef,
@@ -193,4 +198,36 @@ export function codeFigureFamilies(
     else families.push({ family: metric.family, figures: [figure] });
   }
   return families;
+}
+
+/**
+ * The runner's own report, when this run's case wrote one — otherwise `null`.
+ *
+ * This is the ONLY gate on the Tests widget. It is deliberately a test of whether
+ * file-derived data was actually parsed, not of whether the manifest declared a `test`
+ * command: a case that declares one but whose vitest config still writes only a terminal
+ * table produces no report file, and must therefore show nothing at all rather than an
+ * empty widget. Every case version predating the report-file contract fails this test for
+ * free.
+ *
+ * What it returns describes the MODEL'S OWN suite — the `build` vitest project, whose
+ * `include` is `src/**` and whose tests the model wrote. The test case's validators are a
+ * different vitest project entirely, run by a different code path, and nothing they do
+ * reaches this block.
+ */
+export function toolchainTests(run: RunRecord): ToolchainTests | null {
+  return run.toolchain?.test?.tests ?? null;
+}
+
+/**
+ * What the coverage reporter measured, when one wrote a summary — otherwise `null`.
+ *
+ * Gated separately from the tests, because the two come from two files: a config that
+ * writes a test report but no coverage summary shows the Tests widget and no Coverage
+ * widget. Like {@link toolchainTests}, this is coverage of the code the MODEL wrote by the
+ * tests the MODEL wrote; the validators' own project has coverage disabled by design and
+ * could not contribute to it even if it were asked to.
+ */
+export function toolchainCoverage(run: RunRecord): ToolchainCoverage | null {
+  return run.toolchain?.test?.coverage ?? null;
 }

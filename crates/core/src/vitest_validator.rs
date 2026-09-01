@@ -948,7 +948,7 @@ fn assertion(test: &TestOutcome, budget: &mut usize) -> Assertion {
 /// error's own text (`    at run (/…/window-fit.test.ts:175:21)`). Frames carry
 /// file paths and line numbers that mean nothing to a reviewer, so they never
 /// reach a stored assertion or detail.
-fn sanitize_failure(message: &str) -> String {
+pub(crate) fn sanitize_failure(message: &str) -> String {
     message
         .lines()
         .filter(|line| !is_stack_frame(line))
