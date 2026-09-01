@@ -122,6 +122,17 @@ const MODE_BLURB: Readonly<Record<ModeName, string[]>> = {
   ],
 };
 
+/**
+ * The how-to screen's vertical rhythm.
+ *
+ * The step is what makes the body fit: HOWTO_LINES is long enough that a 20px
+ * step would carry its last line to 716, past the 720 of the stage and straight
+ * through the footer.
+ */
+const HOWTO_TOP = 116;
+const HOWTO_LINE_STEP = 19;
+const HOWTO_FOOTER_GAP = 14;
+
 /** The how-to screen's body, one line per entry. */
 const HOWTO_LINES: readonly string[] = [
   "GOAL — the surge pours in through the two vents and crosses the floor to the",
@@ -861,12 +872,14 @@ function drawDifficultySelect(state: MeltdownState, ctx: Ctx): void {
 
 function drawHowTo(ctx: Ctx): void {
   text(ctx, "HOW TO PLAY", 80, 74, 34, COLOR.text, "left", 700);
-  let y = 116;
+  let y = HOWTO_TOP;
   for (const line of HOWTO_LINES) {
     text(ctx, line, 80, y, 15, line === "" ? COLOR.dim : COLOR.text);
-    y += 20;
+    y += HOWTO_LINE_STEP;
   }
-  text(ctx, "ESC — BACK", 80, 700, 15, COLOR.highlight);
+  // Below the copy rather than at a height of its own, so the block and the
+  // control under it cannot run into each other however long the copy grows.
+  text(ctx, "ESC — BACK", 80, y + HOWTO_FOOTER_GAP, 15, COLOR.highlight);
 }
 
 function drawPause(state: MeltdownState, ctx: Ctx): void {
