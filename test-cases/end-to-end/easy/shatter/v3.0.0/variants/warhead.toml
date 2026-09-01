@@ -571,17 +571,17 @@ validation = { script = "detonation/harmless-to-the-ship.test.ts", outputs = [
 # the charge readout, and the base checklist grades every other row of both — so
 # without these two a warhead build that draws its torpedo exactly like a bullet
 # and ships no charge indicator loses nothing, while a base build that omits its
-# ships-in-reserve glyphs loses a point. Both are presence-and-distinguishability
-# checks, of the same kind as the base group's: no palette, no silhouette and no
-# placement is asserted anywhere, because `specs/overview.md` leaves all three to
-# the build.
+# ships-in-reserve glyphs loses a point. Both ask only that a thing is drawn and
+# that it can be told from what it sits beside, exactly as the base group's
+# legibility points do: no palette, no silhouette and no placement is asserted
+# anywhere, because `specs/overview.md` leaves all three to the build.
 [[review.categories]]
 id = "presentation"
 title = "Look and readouts"
 [[review.categories.items]]
 id = "torpedo-is-drawn-and-distinct"
 title = "The torpedo reads apart from the bullets"
-description = "Pixels inside a posed torpedo differ from the background by more than 60 of 441, and the colour it was drawn in differs from a posed bullet's by more than 40."
+description = "Pixels inside a posed torpedo differ from the background by more than 60 of 441, and the color it was drawn in differs from a posed bullet's by more than 40."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/torpedo-is-drawn-and-distinct.test.ts", outputs = [
