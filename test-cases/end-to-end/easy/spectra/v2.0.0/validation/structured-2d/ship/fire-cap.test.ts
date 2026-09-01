@@ -36,10 +36,14 @@
 // its roster is caught: `FIRE_INTERVAL` is sixteen frames of the harness's 100 Hz
 // clock, and no shot can appear and vanish inside one.
 //
-// NO LIVENESS IS DEMANDED. A build that cannot fire at all also never exceeds the
-// cap, and passes this point — deliberately: `ship/fire-spawns-bullet` and
-// `controls/fire-*` are where a cannon that does not fire loses its points, and an
-// upper bound should not be turned into a second charge for the same fault.
+// THE HOLD IS SHOWN TO HAVE FIRED, so the ceiling is a ceiling on something. A
+// cannon that fires nothing ends the hold on the two posed bullets alone and
+// trivially satisfies any cap, so one shot beyond the posed pair is demanded first
+// — the scenario's precondition, not a second requirement. That a press fires is
+// `ship/fire-spawns-bullet`'s point, and how often shots leave is
+// `ship/fire-cadence`'s; neither is restated here. The bound above the precondition
+// stays one-sided, so a build with a slower cadence that never reaches three still
+// passes this point and loses that one.
 //
 // THE WORLD IS EMPTY AND QUIET. `startPosed` clears the four rosters and shuts the
 // wave's entry gate, its dive gate and the ship's contact test, so the only friendly
@@ -48,7 +52,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { MAX_PLAYER_BULLETS, SHIP_Y } from "../../src/constants";
-import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLength,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   captureStill,
   createHarness,
@@ -140,6 +149,16 @@ it("never lets more than MAX_PLAYER_BULLETS friendly bullets be alive at once", 
   // field the held key produced.
   captureStill(h, "capped");
 
+  assertGreaterThanOrEqual(
+    peak,
+    POSED + 1,
+    "the most of the player's bullets alive at once over the hold, against the " +
+      `${String(POSED)} posed before it — the hold put at least one more of the ` +
+      "player's bullets in the air, so the cap below is a cap on something. A " +
+      "cannon that fires nothing trivially satisfies any ceiling, and it is " +
+      "ship/fire-spawns-bullet that grades whether a press fires; this only keeps " +
+      "that build from passing here as well",
+  );
   assertLessThanOrEqual(
     peak,
     MAX_PLAYER_BULLETS,

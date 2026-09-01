@@ -34,7 +34,7 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { release } from "./wave";
+import { DISCHARGE_KEY } from "./wave";
 
 /** The meter the action is taken at: the one reading it is available from. */
 const POSED_METER = RESONANCE_MAX;
@@ -61,17 +61,34 @@ afterEach(() => {
 it("empties the meter when the discharge action is taken at RESONANCE_MAX", async () => {
   startPosed(h);
 
-  const armed = h.snapshot();
   assertEqual(
-    armed.screen,
+    h.snapshot().screen,
     "inWave",
     "precondition: the screen the discharge action is read on " +
       "(specs/controls.md)",
   );
 
-  // Fills the meter to POSED_METER and taps the discharge key, running the one
-  // frame that delivers the press.
-  await release(h, POSED_METER);
+  // The pose and the press are taken apart rather than through `release`, so the
+  // meter can be READ between them. `startPosed` leaves the meter at 0 and the
+  // spent meter is 0, so a check that only reads the meter afterwards is answered
+  // identically by a build that honours both `setResonance` and the discharge and
+  // by one that ignores both: the read-back below is what tells them apart, and
+  // without it this point grades nothing.
+  h.debug.setResonance(POSED_METER);
+  const armed = h.snapshot();
+  assertCloseTo(
+    armed.resonance,
+    POSED_METER,
+    METER_DIGITS,
+    `precondition: the meter the discharge is taken at, RESONANCE_MAX ` +
+      `(${RESONANCE_MAX}), posed with setResonance and read back ` +
+      `(specs/instrumentation.md)`,
+  );
+
+  // A real key press through the engine's own input, armed and released inside one
+  // frame, so the press edge `specs/controls.md` requires is one a build reading
+  // the action either conformant way can see.
+  await h.tap(DISCHARGE_KEY);
   captureStill(h, "spent");
 
   assertCloseTo(
