@@ -36,6 +36,28 @@
 // nothing the build draws on the strait — where `specs/ui.md` puts no readout —
 // can supply the difference.
 //
+// AND THE FIGURE ITSELF IS READ, because the review item states one: "a fresh
+// run reads three and it reads two after the first death". A readout drawn
+// differently for each count is not yet a readout that COUNTS — a build showing
+// the lives IN RESERVE draws `2` on a fresh run and `1` after the first death,
+// and a build drawing an arbitrary ornament per count draws neither, and the
+// difference reading above credits both. So a second reading is taken over a run
+// that has genuinely lost a life, and the bar is required to SHOW the figure.
+//
+// EITHER PRESENTATION SATISFIES IT, because `specs/ui.md` leaves the arrangement
+// and styling to the build and `specs/assets.md` says "a lives icon in the HUD
+// may reuse one of these frames": the figure is shown either by a run of text
+// inside the bar carrying it as a number, or by exactly that many draws of
+// `assets/crosser/` inside the bar. A build that draws three little critters up
+// there has shown the lives as plainly as one that draws a `3`. Nothing else the
+// bar can carry reads as `3` or `2`: `specs/progression.md` opens a run with a
+// score of `0` at level `1` of `8` on a `30`-second crossing timer.
+//
+// THE DEATH IS A REAL ONE — the critter is posed onto an uncovered water tile,
+// which `specs/water.md` makes a drowning, and the reading waits for the run to
+// come back to a live crossing on its own. `setLives(2)` would have decided the
+// same figure without deciding that the game counts it.
+//
 // WHAT THIS POINT DOES NOT DECIDE. That a fresh run HAS three lives, and that a
 // death takes one, are `progression`'s: `progression/three-lives` and the four
 // death items. This point poses the count and reads the drawing.
@@ -45,14 +67,18 @@ import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThanOrEqual,
+  assertTrue,
 } from "../assert";
 import { HUD_H, START_LIVES, STAGE_W } from "../constants";
 import {
+  blitsOfFrame,
   captureStill,
   createHarness,
   startCrossing,
+  ticksFor,
   type Harness,
 } from "../harness";
+import { hudNumbers, hudRuns } from "./hud";
 import { differingPixels, readRaster, unitArea, type Raster } from "./raster";
 
 /**
@@ -137,6 +163,110 @@ it("draws the HUD's lives readout differently for each count a run passes throug
       );
     }
   }
+
+  assertDeepEqual(h.pageErrors, []);
+});
+
+/**
+ * Where the critter is put to drown: open water, well inside the strait.
+ *
+ * `WATER_TOP + 4` is a middle row of the water band, and column `20` is the
+ * column a crossing begins on, so a floe drifting past cannot be under it at the
+ * instant it is posed — and if one arrives, the wait below simply ends on the
+ * death that follows.
+ */
+const DROWN_COL = 20;
+const DROWN_ROW = 6;
+
+/**
+ * How long the run is given to come back to a live crossing after the drowning.
+ *
+ * Three seconds. `specs/progression.md` holds a death for `DEATH_PAUSE` (`0.9` s)
+ * before the respawn, so this is a ceiling on a build that never comes back
+ * rather than a figure this point asserts — `progression/death-pause` is what
+ * decides the length of the hold.
+ */
+const RESPAWN_DEADLINE_TICKS = ticksFor(3);
+
+/** How a frame showed a count: as a figure in the bar, and as critter icons in it. */
+interface Shown {
+  /** A run of text inside the bar carries the count as one of its numbers. */
+  digits: boolean;
+  /** Draws of `assets/crosser/` whose box lies inside the bar. */
+  icons: number;
+  /** What the bar's runs of text actually said, for the failure message. */
+  drew: string;
+}
+
+/** Read what the build is drawing now for the count it holds. */
+async function shown(lives: number): Promise<Shown> {
+  const calls = await h.frameCalls();
+  // `blitsOfFrame` runs a frame of its own, so it is taken after the text
+  // reading rather than beside it; `startCrossing` leaves nothing on the strait
+  // moving, so the two frames draw the same bar.
+  const blits = await blitsOfFrame(h);
+  return {
+    digits: hudNumbers(calls).includes(lives),
+    // Draws of the critter's own art inside the bar: the icon presentation
+    // `specs/assets.md` allows. Nothing of the strait is drawn up here
+    // (`specs/ui.md`), which is `strait/hud-above-strait`'s own point.
+    icons: blits.filter(
+      (blit) =>
+        blit.y - blit.height / 2 >= 0 &&
+        blit.y - blit.height / 2 <= HUD_H &&
+        blit.matches.some((frame) => frame.sheet === "crosser"),
+    ).length,
+    drew: hudRuns(calls)
+      .map((run) => JSON.stringify(run.text))
+      .join(", "),
+  };
+}
+
+it("draws three lives on a fresh crossing and two after the first death", async () => {
+  await startCrossing(h);
+  await h.step(1);
+  const fresh = await h.snapshot();
+  const opening = await shown(START_LIVES);
+
+  // A real death: an uncovered water tile is a drowning (`specs/water.md`).
+  await h.debug.setCritterTile(DROWN_COL, DROWN_ROW);
+  const back = await h.until(
+    (snapshot) =>
+      snapshot.lives === START_LIVES - 1 && snapshot.phase === "crossing",
+    { maxTicks: RESPAWN_DEADLINE_TICKS },
+  );
+  const after = await shown(START_LIVES - 1);
+  await captureStill(h, "hud");
+
+  // The situation: the run really held three lives, and a death really took one.
+  assertEqual(
+    fresh.lives,
+    START_LIVES,
+    `a fresh crossing holding START_LIVES (${START_LIVES}) lives ` +
+      `(specs/progression.md)`,
+  );
+  assertTrue(
+    back.hit,
+    `the drowning to cost a life and the crossing to resume within three ` +
+      `seconds (specs/progression.md) — the run reported ` +
+      `${back.snapshot.lives} lives in phase ${back.snapshot.phase}`,
+  );
+
+  assertTrue(
+    opening.digits || opening.icons === START_LIVES,
+    `the HUD bar showing START_LIVES (${START_LIVES}) on a fresh crossing — ` +
+      `as a run of text inside the bar carrying ${START_LIVES}, or as ` +
+      `${START_LIVES} draws of assets/crosser/ inside it (specs/ui.md, ` +
+      `specs/assets.md); the bar drew ${opening.drew} and ${opening.icons} ` +
+      `critter icons`,
+  );
+  assertTrue(
+    after.digits || after.icons === START_LIVES - 1,
+    `the HUD bar showing ${START_LIVES - 1} after the first death, which is ` +
+      `the lives counting the critter currently crossing (specs/ui.md) — a ` +
+      `build showing the lives in reserve draws ${START_LIVES - 2} here; the ` +
+      `bar drew ${after.drew} and ${after.icons} critter icons`,
+  );
 
   assertDeepEqual(h.pageErrors, []);
 });
