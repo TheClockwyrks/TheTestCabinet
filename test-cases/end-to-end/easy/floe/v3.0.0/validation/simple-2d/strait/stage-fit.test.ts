@@ -42,6 +42,14 @@
 // is compared is the same build's own two pictures. Nothing here fixes a colour,
 // which the specification leaves to the build.
 //
+// AND THE BARS THEMSELVES. specs/overview.md also fixes what the letterbox
+// carries — "The letterbox bars around the stage carry the stage's background
+// color" — so wherever the fit leaves one, its pixels are held against the
+// build's own exported `BACKGROUND`. That is the reading that catches a build
+// which stretched its picture into the bars or drew the strait past the stage's
+// edge; the surfaces of the stage's own aspect leave no bar and are read on the
+// three above alone.
+//
 // EACH SHAPE IS A SURFACE OF ITS OWN, so `createHarness` builds one per shape and
 // the build meets each as a fresh game — which is also the state the item is
 // about.
@@ -56,6 +64,7 @@ import {
 } from "../assert";
 import {
   captureStill,
+  clearColor,
   colorDistance,
   createHarness,
   startCrossing,
@@ -63,6 +72,26 @@ import {
   type Rgb,
 } from "../harness";
 import { COLS, ROWS, STAGE_H, STAGE_W, bandColor } from "./harness";
+
+/**
+ * How far a letterbox pixel may sit from the stage's background colour, of 441.
+ *
+ * specs/overview.md gives the bars the stage's background colour exactly, so the
+ * only room this needs is for rasterizing a CSS colour string through a canvas and
+ * reading it back — a channel or two. Twenty-five of 441 is that and nothing more:
+ * a bar carrying anything the game visibly drew is far past it.
+ */
+const BAR_MAX = 25;
+
+/**
+ * How wide a letterbox has to be before its pixels are read, in device pixels.
+ *
+ * Two. A surface of the stage's own aspect leaves no bar at all, and the fit's
+ * rounding to whole device pixels can leave a sliver of one on a surface that is a
+ * fraction off — reading a bar one pixel wide would be reading that rounding
+ * rather than the requirement.
+ */
+const BAR_MIN = 2;
 
 /**
  * How far the reading at a corner must move when the critter is put on it, in RGB
@@ -126,6 +155,27 @@ const SURFACES = [
     dpr: 2,
   },
 ];
+
+/** A device point of each letterbox bar the fit left, or none where it left none. */
+function barPoints(
+  offsetX: number,
+  offsetY: number,
+  deviceWidth: number,
+  deviceHeight: number,
+): { x: number; y: number }[] {
+  const points: { x: number; y: number }[] = [];
+  if (offsetX >= BAR_MIN) {
+    const y = Math.floor(deviceHeight / 2);
+    points.push({ x: Math.floor(offsetX / 2), y });
+    points.push({ x: deviceWidth - 1 - Math.floor(offsetX / 2), y });
+  }
+  if (offsetY >= BAR_MIN) {
+    const x = Math.floor(deviceWidth / 2);
+    points.push({ x, y: Math.floor(offsetY / 2) });
+    points.push({ x, y: deviceHeight - 1 - Math.floor(offsetY / 2) });
+  }
+  return points;
+}
 
 /** The four extreme tiles of the strait: the corners of the whole play area. */
 const CORNERS = [
@@ -240,6 +290,28 @@ it.each(SURFACES)(
         CORNER_MOVE_MIN,
         `${corner.where} of the strait, read at its own logical centre through ` +
           `the fit the runtime derived: the build draws in logical units ` +
+          `(specs/overview.md)`,
+      );
+    }
+
+    // 3. The bars, with the game really drawn: a live crossing is the busiest
+    //    thing the game puts on the stage, and the bars still carry nothing but
+    //    the stage's background colour.
+    startCrossing(h);
+    await h.advance(1);
+    const background = clearColor();
+    for (const bar of barPoints(
+      view.offsetX,
+      view.offsetY,
+      deviceWidth,
+      deviceHeight,
+    )) {
+      const { data } = h.ctx.getImageData(bar.x, bar.y, 1, 1);
+      assertLessThanOrEqual(
+        colorDistance({ r: data[0], g: data[1], b: data[2] }, background),
+        BAR_MAX,
+        `${name}: the letterbox pixel at device (${bar.x}, ${bar.y}) — the ` +
+          `bars around the stage carry the stage's background colour ` +
           `(specs/overview.md)`,
       );
     }
