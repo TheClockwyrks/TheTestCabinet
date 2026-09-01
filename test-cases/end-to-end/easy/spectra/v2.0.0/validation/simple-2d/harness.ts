@@ -1859,6 +1859,19 @@ export interface DrawnImage {
   h: number;
   /** The build drew it flipped, whichever axis it wrote the flip on. */
   mirrored: boolean;
+  /**
+   * The SOURCE rectangle a nine-argument `drawImage` named, in the source's own
+   * pixels, where the call named one.
+   *
+   * The destination box above says where the draw landed; this says what part of
+   * the bitmap it took. A build that composed an atlas of its own, or that draws a
+   * Prism's core out of the middle of `prism.png`, blits a SUB-RECT of the source
+   * it handed the context — so a reading that holds a drawn source against the
+   * seeded art has to compare the rect the call named rather than the whole sheet
+   * behind it. `undefined` for the three- and five-argument forms, which draw the
+   * whole of the source.
+   */
+  crop?: { x: number; y: number; width: number; height: number };
 }
 
 /** A source's own pixel size, where it reports one. */
@@ -1884,7 +1897,9 @@ function naturalSize(
  *
  * All three argument forms are read: `(image, dx, dy)`, `(image, dx, dy, dw, dh)`,
  * and the nine-argument form with a source rectangle, which is what a build reaches
- * for to draw a Prism's core out of the middle of its sprite.
+ * for to draw a Prism's core out of the middle of its sprite. That source rectangle
+ * comes back as {@link DrawnImage.crop}, so a reading that compares the bitmap the
+ * build drew FROM can compare the part of it the call actually took.
  */
 export function drawnImages(
   h: Harness,
@@ -1899,8 +1914,13 @@ export function drawnImages(
     const [source, ...rest] = call.args;
 
     let box: [number, number, number, number] | null = null;
+    let crop: DrawnImage["crop"];
     if (rest.length >= 8) {
       box = rest.slice(4, 8) as [number, number, number, number];
+      const rect = rest.slice(0, 4) as [number, number, number, number];
+      if (rect.every((value) => typeof value === "number")) {
+        crop = { x: rect[0], y: rect[1], width: rect[2], height: rect[3] };
+      }
     } else if (rest.length >= 4) {
       box = rest.slice(0, 4) as [number, number, number, number];
     } else if (rest.length >= 2) {
@@ -1926,6 +1946,7 @@ export function drawnImages(
       h: Math.abs(dh * Math.hypot(m.c, m.d)) / view.scale,
       // A negative determinant is a flip, whichever axis the build wrote it on.
       mirrored: m.a * m.d - m.b * m.c < 0,
+      crop,
     });
   }
   return drawn;
