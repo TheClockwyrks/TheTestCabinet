@@ -16,13 +16,19 @@
 // in one direction" asks for. It also means the arithmetic cannot be satisfied by
 // a build that simply pays a very large figure per drone.
 //
-// THE READING IS ONE-DIRECTIONAL: THAT THE BONUS WAS PAID. A build that pays it
-// AND wrongly adds `SCORE_STAGE_CLEAR` on top reads `11000` here and still passes,
-// because the bonus really was paid; the surplus is
-// `scoring.challenge-pays-no-stage-bonus`'s point and it fails there. A build that
-// pays no bonus reads `0`, one that pays a bonus per drone reads a multiple, and
-// one that pays the stage-clear figure instead reads `1000` — each below the bound
-// and each named by the failure.
+// THE READING IS THE FIGURE ITSELF, NOT MERELY THAT SOMETHING WAS PAID.
+// `specs/scoring.md` fixes `SCORE_PERFECT_BONUS` at one number and closes the
+// section with "Nothing else adds to the score", so on a challenge stage every one
+// of whose drones was destroyed the surplus over the per-drone total is exactly
+// that number — which is what the review item's own description states. A build
+// that pays no bonus reads `0`, one that pays a bonus per drone reads a multiple,
+// one that pays the stage-clear figure instead reads `1000`, and one that pays an
+// inflated bonus reads whatever it inflated it to; each is named by the failure.
+// A build that pays the bonus AND wrongly adds `SCORE_STAGE_CLEAR` on top reads
+// `11000` and loses this point as well as `scoring/challenge-pays-no-stage-bonus`,
+// which is the price of reading the figure rather than a floor: on this one
+// scenario that build's total really is wrong, and a floor here would let a build
+// paying twice the bonus through unremarked.
 //
 // THE FORTY ARE THE GAME'S OWN, AND THEY ARE DESTROYED ONE BY ONE. Only the game
 // can build a flyover, so {@link openWave} runs stage `CHALLENGE_EVERY` (`3`) out
@@ -45,7 +51,7 @@ import {
   CHALLENGE_TOTAL,
   SCORE_PERFECT_BONUS,
 } from "../../src/constants";
-import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
+import { assertEqual, assertLength } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { destroyDrone, openWave } from "./wave";
 
@@ -108,7 +114,14 @@ it("adds SCORE_PERFECT_BONUS above the per-drone total when every drone is destr
   );
 
   const bonus = after.score - CHALLENGE_TOTAL * perDrone;
-  assertGreaterThanOrEqual(
+  // EXACTLY the bonus, not merely at least it. `specs/scoring.md` fixes
+  // SCORE_PERFECT_BONUS at one figure and closes with "Nothing else adds to the
+  // score", so a build that pays an inflated bonus, or that adds anything on top of
+  // the per-drone total when a challenge stage is cleared, is wrong in the same way
+  // as one that pays nothing. The per-drone rate stays isolated because it is
+  // subtracted out, and the stage-clear side is
+  // `scoring/challenge-pays-no-stage-bonus`'s point.
+  assertEqual(
     bonus,
     SCORE_PERFECT_BONUS,
     `the score above the per-drone total after all ${CHALLENGE_TOTAL} drones ` +
