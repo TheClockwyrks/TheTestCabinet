@@ -40,15 +40,9 @@
 // taken from.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertBetween,
-  assertCloseTo,
-  assertEqual,
-  assertGreaterThan,
-} from "../assert";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   HOP_KEY,
-  TICK_HZ,
   TILE,
   laneSpeed,
   tileCX,
@@ -73,9 +67,6 @@ const COL = 20;
 /** The lane's speed at level 1, in tiles per second (`specs/water.md`). */
 const RIDE_SPEED = laneSpeed(RIDE_ROW, 1);
 
-/** How far that lane carries a rider in one tick, in stage units. */
-const CARRY_PER_TICK = (RIDE_SPEED * TILE) / TICK_HZ;
-
 /** The center the critter is posed at: one unit inside the column's left edge. */
 const START_X = tileLeft(COL) + 1;
 
@@ -98,12 +89,16 @@ const DRIFT_TICKS = 4;
 const MIN_OFFSET = TILE / 4;
 
 /**
- * The decimal places the landing height is read to.
+ * The decimal places the landing centre is read to, on both axes.
  *
- * Six: `tileCY(6)` is an exact assignment of an integer, so the only slack a
- * conformant build needs is the last bits of a double.
+ * Six. `specs/hopping.md` makes a hop an assignment — it "sets the critter's
+ * center to the target tile's center exactly" — and both `tileCX(20)` and
+ * `tileCY(6)` are whole numbers, so the only slack a conformant build needs is
+ * the last bits of a double. Nothing carries the landing off that centre either:
+ * the landing row is laid by `poseLane`, which parks its lane at rest, so the
+ * tick that lands the hop moves nothing afterwards.
  */
-const Y_DIGITS = 6;
+const CENTRE_DIGITS = 6;
 
 let harness: Harness;
 
@@ -141,19 +136,16 @@ it("sets the center to the target tile's center exactly when hopping off a drift
 
   assertEqual(hopped.critter.row, TARGET_ROW, "the row one hop up");
   assertEqual(hopped.critter.col, COL, "the column the hop was taken from");
-  assertBetween(
+  assertCloseTo(
     hopped.critter.x,
-    tileCX(COL) - CARRY_PER_TICK,
-    tileCX(COL) + CARRY_PER_TICK,
+    tileCX(COL),
+    CENTRE_DIGITS,
     `the center x, tileCX(${COL})`,
   );
-  // The `y` carries no such ambiguity: `specs/water.md` leaves a rider's row and
-  // center `y` exactly where they are, so the landing height is the assignment
-  // and nothing else.
   assertCloseTo(
     hopped.critter.y,
     tileCY(TARGET_ROW),
-    Y_DIGITS,
+    CENTRE_DIGITS,
     `the center y, tileCY(${TARGET_ROW})`,
   );
 });
