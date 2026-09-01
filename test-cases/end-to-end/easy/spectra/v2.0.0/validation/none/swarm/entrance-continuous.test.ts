@@ -23,7 +23,7 @@
 // only thing moving a drone during the watch is the entrance under test.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLessThanOrEqual } from "../assert";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { ENTER_SPEED, droneSpeedScale } from "../constants";
 import {
   captureReplay,
@@ -76,6 +76,13 @@ it("never moves an entering drone more than a frame's travel between frames", as
     watchDrones(harness, { frames: WATCH }),
   );
 
+  // Counted so this point can reach a verdict at all: every bound below sits inside
+  // `watch.tracks`, guarded by a drone having been released and by the pair still
+  // being entrance-to-entrance, so a build that never builds a wave — or never
+  // releases the one it built — would run zero of them and satisfy the continuity
+  // rule by never moving. `swarm/drones-enter` grades that a wave enters; the free
+  // assertion at the end only refuses to grade continuity on an empty field.
+  let measured = 0;
   for (const track of watch.tracks) {
     const released = firstMotion(track.samples, RELEASED);
     if (released < 0) continue;
@@ -86,6 +93,7 @@ it("never moves an entering drone more than a frame's travel between frames", as
       // which `field/sway-amplitude` grades, and one launched into a dive is
       // `swarm/dive-continuous`'s.
       if (from.phase !== "entering" || to.phase !== "entering") break;
+      measured += 1;
       assertLessThanOrEqual(
         step(from, to),
         MAX_STEP,
@@ -97,4 +105,13 @@ it("never moves an entering drone more than a frame's travel between frames", as
       );
     }
   }
+
+  assertGreaterThan(
+    measured,
+    0,
+    `frame pairs of a released, entering drone the ${String(WATCH)}-frame watch of the ` +
+      `stage-${String(STAGE)} wave could read — a build that never builds a ` +
+      `wave, or never releases the one it built, leaves the continuity rule ` +
+      `undecided rather than satisfied (specs/swarm.md)`,
+  );
 });
