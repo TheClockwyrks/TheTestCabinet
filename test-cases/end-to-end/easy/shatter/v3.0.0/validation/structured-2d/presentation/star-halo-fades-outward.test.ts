@@ -26,6 +26,12 @@
 //     nothing, and `specs/overview.md` requires the softer halo as part of the star.
 //   - IT FALLS OUTWARD. Every ring from `CORE_R` to `HALO_R` reads at or below the
 //     one inside it, within a noise allowance. This is the rim and the spike.
+//   - AND IT REALLY FALLS. The outermost ring reads measurably below the innermost.
+//     Step-by-step monotonicity alone is satisfied by a halo that does not fade at
+//     all — a flat disc of one intensity out to `HALO_R` has every step at zero and
+//     clears the allowance above — while `specs/field.md` fixes the intensity as
+//     FALLING as the distance grows, not merely as never rising. So the span from
+//     the first ring to the last is read as well as the steps between them.
 //   - AND NOTHING OF IT IS DRAWN PAST `1.5 x HALO_R`. Rings at `190`, `220` and
 //     `250` read as the bare field.
 //
@@ -95,6 +101,21 @@ const MIN_HALO = 12;
  */
 const FALL_NOISE = 8;
 
+/**
+ * How far the outermost ring must read BELOW the innermost, out of 441.
+ *
+ * The same allowance one step is given, applied to the whole span: across the rings
+ * from just outside `CORE_R` out to `HALO_R` the halo has to have lost more than a
+ * single step's worth of rounding room, which is the least a reading can lose and
+ * still be said to have fallen. A build whose halo does not fade at all — one
+ * intensity from the core out to `HALO_R` — passes every step above, because every
+ * step is zero, and reads a span of zero here; `specs/field.md` states the intensity
+ * FALLS as the distance grows. Any real falloff loses far more than this: nothing of
+ * the star is drawn past `1.5 x HALO_R`, so by `HALO_R` most of what the innermost
+ * ring had is already gone.
+ */
+const FALL_SPAN = FALL_NOISE;
+
 /** The rings sampled beyond `1.5 x HALO_R`, where nothing of the star may be drawn. */
 const BEYOND = [STAR_DRAW_R + 10, STAR_DRAW_R + 40, STAR_DRAW_R + 70] as const;
 
@@ -150,6 +171,15 @@ it("fades the halo outward from the core and draws nothing past 1.5 x HALO_R", a
     `the mean distance out of 441 between the ring at ${String(FIRST)} and ` +
       "the field, so the halo the star is drawn with is there to fade " +
       "(specs/overview.md)",
+  );
+
+  assertGreaterThan(
+    ramp[0] - ramp[ramp.length - 1],
+    FALL_SPAN,
+    `how much dimmer the ring at ${String(radii[radii.length - 1])} reads ` +
+      `than the ring at ${String(FIRST)}, out of 441, where the halo's ` +
+      "intensity FALLS as the distance from the star grows rather than merely " +
+      "never rising (specs/field.md)",
   );
 
   for (let i = 1; i < ramp.length; i += 1) {
