@@ -111,7 +111,11 @@ it("plays CUES.inversion on the frame a diving Prism triggers one, and not befor
     fire: false,
   });
 
-  const watch = await watchForEvent(h, (s) => s.inversionActive, DESCENT_FRAMES);
+  const watch = await watchForEvent(
+    h,
+    (s) => s.inversionActive,
+    DESCENT_FRAMES,
+  );
   // Held on past the reading, so the still shows the field carrying its inversion
   // mark. Nothing after this line can reach an assertion.
   await h.advance(TAIL_FRAMES);
