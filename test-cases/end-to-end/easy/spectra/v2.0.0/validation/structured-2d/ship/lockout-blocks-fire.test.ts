@@ -44,7 +44,6 @@ import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,
   createHarness,
-  holdFor,
   playerBullets,
   startPosed,
   ticksFor,
@@ -105,18 +104,33 @@ it("adds no bullet while the fire lockout stands", async () => {
     "the player's bullets on the field before the key went down",
   );
 
-  await holdFor(h, FIRE_KEY, HELD_FRAMES);
+  // THE ROSTER IS COUNTED EVERY FRAME, NOT ONCE AT THE END. "Adds no bullet while
+  // the lockout stands" is a claim about every instant of the hold, and a bullet
+  // fired on the first frame and off the top of the field before the last would be
+  // invisible to a single reading taken afterwards. The high-water mark is what
+  // this point reads, so any bullet that stood on the field at any moment of the
+  // hold fails it.
+  let seen = playerBullets(h.snapshot()).length;
+  h.hold(FIRE_KEY);
+  try {
+    for (let frame = 0; frame < HELD_FRAMES; frame += 1) {
+      await h.advance(1);
+      seen = Math.max(seen, playerBullets(h.snapshot()).length);
+    }
+  } finally {
+    h.release(FIRE_KEY);
+  }
   // Before the assertion, so a check that fails still leaves the picture of the
   // field the locked-out key produced.
   captureStill(h, "blocked");
 
-  assertLength(
-    playerBullets(h.snapshot()),
+  assertEqual(
+    seen,
     BULLETS,
-    `the player's bullets on the field after the fire action was held for ` +
-      `${String(HELD_FRAMES)} frames — half of FLIP_LOCKOUT ` +
-      `(${String(FLIP_LOCKOUT)}s), and ${String(ticksFor(FIRE_INTERVAL))} ` +
-      "frames is all a build that ignored the lockout would have needed " +
-      "(specs/ship.md)",
+    `the most of the player's bullets standing on the field at any frame of a ` +
+      `hold of the fire action lasting ${String(HELD_FRAMES)} frames — half of ` +
+      `FLIP_LOCKOUT (${String(FLIP_LOCKOUT)}s), and ` +
+      `${String(ticksFor(FIRE_INTERVAL))} frames is all a build that ignored ` +
+      "the lockout would have needed (specs/ship.md)",
   );
 });
